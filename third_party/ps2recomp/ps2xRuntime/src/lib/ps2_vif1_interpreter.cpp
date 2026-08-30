@@ -802,6 +802,42 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
                         handledFormat = false;
                     }
 
+                    // The VIF expands V2 to XYXY. V3's otherwise-indeterminate W lane
+                    // overlaps the next packed source component; games rely on both
+                    // behaviors, so preserve them when the overlapping bytes are present.
+                    if (handledFormat && components == 2)
+                    {
+                        decompressed[2] = decompressed[0];
+                        decompressed[3] = decompressed[1];
+                    }
+                    else if (handledFormat && components == 3)
+                    {
+                        const size_t fourthComponentOffset =
+                            static_cast<size_t>(srcVec - data) +
+                            3u * static_cast<size_t>(bitsPerComponent / 8);
+                        const size_t fourthComponentBytes =
+                            static_cast<size_t>(bitsPerComponent / 8);
+                        if (fourthComponentOffset + fourthComponentBytes <= sizeBytes)
+                        {
+                            if (vl == 0u)
+                            {
+                                std::memcpy(&decompressed[3],
+                                            data + fourthComponentOffset,
+                                            sizeof(decompressed[3]));
+                            }
+                            else if (vl == 1u)
+                            {
+                                uint16_t raw = 0u;
+                                std::memcpy(&raw, data + fourthComponentOffset, sizeof(raw));
+                                decompressed[3] = extend16(raw);
+                            }
+                            else if (vl == 2u)
+                            {
+                                decompressed[3] = extend8(data[fourthComponentOffset]);
+                            }
+                        }
+                    }
+
                     // Unknown compressed format fallback: preserve legacy raw-copy behavior.
                     if (!handledFormat && decoded && !maskEnable && (vif1_regs.mode == 0u || vif1_regs.mode == 3u))
                     {

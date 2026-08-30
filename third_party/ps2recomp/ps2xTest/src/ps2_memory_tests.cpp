@@ -553,6 +553,77 @@ void register_ps2_memory_tests()
             t.Equals(sw, 0x00008001u, "zero-extend w");
         });
 
+        tc.Run("VIF UNPACK V2 duplicates XY into ZW", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+            std::memset(mem.getVU1Data(), 0, PS2_VU1_DATA_SIZE);
+
+            // UNPACK V2-8 (opcode 0x66), NUM=2, sign-extended.
+            std::vector<uint8_t> packet;
+            appendU32(packet, makeVifCmd(0x66u, 2u, 0u));
+            packet.insert(packet.end(), {0x01u, 0x02u, 0xFEu, 0x7Fu});
+
+            mem.processVIF1Data(packet.data(), static_cast<uint32_t>(packet.size()));
+
+            const uint8_t *vu = mem.getVU1Data();
+            const uint32_t expected[2][4] = {
+                {1u, 2u, 1u, 2u},
+                {0xFFFFFFFEu, 0x7Fu, 0xFFFFFFFEu, 0x7Fu},
+            };
+            for (uint32_t vector = 0u; vector < 2u; ++vector)
+            {
+                for (uint32_t lane = 0u; lane < 4u; ++lane)
+                {
+                    uint32_t actual = 0u;
+                    std::memcpy(&actual, vu + vector * 16u + lane * 4u, sizeof(actual));
+                    t.Equals(actual, expected[vector][lane],
+                             "V2 lane should follow XYXY hardware expansion");
+                }
+            }
+        });
+
+        tc.Run("VIF UNPACK V3 sources W from the next packed component", [](TestCase &t)
+        {
+            PS2Memory mem;
+            t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
+            std::memset(mem.getVU1Data(), 0, PS2_VU1_DATA_SIZE);
+
+            // UNPACK V3-16 (opcode 0x69), NUM=2. The first vector's W overlaps
+            // the second vector's X; the second overlaps the following VIF word.
+            std::vector<uint8_t> packet;
+            appendU32(packet, makeVifCmd(0x69u, 2u, 0u));
+            const uint16_t components[] = {
+                0x1111u, 0x2222u, 0x3333u,
+                0x4444u, 0x5555u, 0x6666u,
+            };
+            for (uint16_t component : components)
+            {
+                const size_t offset = packet.size();
+                packet.resize(offset + sizeof(component));
+                std::memcpy(packet.data() + offset, &component, sizeof(component));
+            }
+            appendU32(packet, 0x0000ABCDu); // NOP VIF word and final overlapping source.
+
+            mem.processVIF1Data(packet.data(), static_cast<uint32_t>(packet.size()));
+
+            const uint8_t *vu = mem.getVU1Data();
+            const uint32_t expected[2][4] = {
+                {0x1111u, 0x2222u, 0x3333u, 0x4444u},
+                {0x4444u, 0x5555u, 0x6666u, 0xFFFFABCDu},
+            };
+            for (uint32_t vector = 0u; vector < 2u; ++vector)
+            {
+                for (uint32_t lane = 0u; lane < 4u; ++lane)
+                {
+                    uint32_t actual = 0u;
+                    std::memcpy(&actual, vu + vector * 16u + lane * 4u, sizeof(actual));
+                    t.Equals(actual, expected[vector][lane],
+                             "V3 W should overlap the next packed source component");
+                }
+            }
+        });
+
         tc.Run("VIF UNPACK bit15 adds TOPS to destination address", [](TestCase &t)
         {
             PS2Memory mem;
