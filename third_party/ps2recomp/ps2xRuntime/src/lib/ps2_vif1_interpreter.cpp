@@ -802,9 +802,8 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
                         handledFormat = false;
                     }
 
-                    // The VIF expands V2 to XYXY. V3's otherwise-indeterminate W lane
-                    // overlaps the next packed source component; games rely on both
-                    // behaviors, so preserve them when the overlapping bytes are present.
+                    // The VIF expands V2 to XYXY. V3 sources W from the next packed
+                    // component unless XYZ ends on a quadword boundary, where W is zero.
                     if (handledFormat && components == 2)
                     {
                         decompressed[2] = decompressed[0];
@@ -817,7 +816,9 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
                             3u * static_cast<size_t>(bitsPerComponent / 8);
                         const size_t fourthComponentBytes =
                             static_cast<size_t>(bitsPerComponent / 8);
-                        if (fourthComponentOffset + fourthComponentBytes <= sizeBytes)
+                        decompressed[3] = 0u;
+                        if ((fourthComponentOffset & 0xFu) != 0u &&
+                            fourthComponentOffset + fourthComponentBytes <= sizeBytes)
                         {
                             if (vl == 0u)
                             {

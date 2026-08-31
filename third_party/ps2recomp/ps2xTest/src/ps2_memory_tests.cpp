@@ -583,14 +583,15 @@ void register_ps2_memory_tests()
             }
         });
 
-        tc.Run("VIF UNPACK V3 sources W from the next packed component", [](TestCase &t)
+        tc.Run("VIF UNPACK V3 zeros W at a quadword boundary", [](TestCase &t)
         {
             PS2Memory mem;
             t.IsTrue(mem.initialize(), "PS2Memory initialize should succeed");
             std::memset(mem.getVU1Data(), 0, PS2_VU1_DATA_SIZE);
 
             // UNPACK V3-16 (opcode 0x69), NUM=2. The first vector's W overlaps
-            // the second vector's X; the second overlaps the following VIF word.
+            // the second vector's X. The second vector's XYZ ends at the source
+            // quadword boundary, so hardware supplies zero for W.
             std::vector<uint8_t> packet;
             appendU32(packet, makeVifCmd(0x69u, 2u, 0u));
             const uint16_t components[] = {
@@ -603,14 +604,14 @@ void register_ps2_memory_tests()
                 packet.resize(offset + sizeof(component));
                 std::memcpy(packet.data() + offset, &component, sizeof(component));
             }
-            appendU32(packet, 0x0000ABCDu); // NOP VIF word and final overlapping source.
+            appendU32(packet, 0x0000ABCDu); // A following VIF word must not leak into W.
 
             mem.processVIF1Data(packet.data(), static_cast<uint32_t>(packet.size()));
 
             const uint8_t *vu = mem.getVU1Data();
             const uint32_t expected[2][4] = {
                 {0x1111u, 0x2222u, 0x3333u, 0x4444u},
-                {0x4444u, 0x5555u, 0x6666u, 0xFFFFABCDu},
+                {0x4444u, 0x5555u, 0x6666u, 0u},
             };
             for (uint32_t vector = 0u; vector < 2u; ++vector)
             {
@@ -619,7 +620,7 @@ void register_ps2_memory_tests()
                     uint32_t actual = 0u;
                     std::memcpy(&actual, vu + vector * 16u + lane * 4u, sizeof(actual));
                     t.Equals(actual, expected[vector][lane],
-                             "V3 W should overlap the next packed source component");
+                             "V3 W should follow source quadword boundary semantics");
                 }
             }
         });
