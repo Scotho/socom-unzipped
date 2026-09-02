@@ -46,7 +46,8 @@ class EE:
         self.patched = {}                            # addr -> original insn
         self.verbose = verbose
         self.syscall_handlers = {}
-        self.syscall_log = []
+        self.syscall_counts = {}
+        self.syscall_limit = 2_000_000
         self.uc.hook_add(UC_HOOK_INTR, self._intr)
         self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
 
@@ -208,7 +209,10 @@ class EE:
 
     def _real_syscall(self, uc, addr):
         num = sext64(self.reg(3))
-        self.syscall_log.append((addr, num))
+        c = self.syscall_counts.get(num, 0) + 1
+        self.syscall_counts[num] = c
+        if c > self.syscall_limit:
+            raise RuntimeError(f'syscall {num:#x} called {c} times (last at {addr:#x}) - runaway loop?')
         h = self.syscall_handlers.get(num)
         if h:
             h(self)

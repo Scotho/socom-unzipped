@@ -1,11 +1,10 @@
-research/
-ghidra_proj/
-game/
+/research/
+/ghidra_proj/
+/game/
 *.iso
 *.7z
-*.bin
-build/
+/build/
 .vs/
-out/
-tools/
+/out/
+/tools/
 __pycache__/

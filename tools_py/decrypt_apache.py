@@ -158,7 +158,7 @@ def main():
     t0 = time.time()
     print("call 0x534830 (init)")
     r = ee.call(0x534830, (), sp=SP)
-    print(f"  -> {r:#x}  ({time.time()-t0:.1f}s, syscalls {len(ee.syscall_log)})")
+    print(f"  -> {r:#x}  ({time.time()-t0:.1f}s, syscalls {ee.syscall_counts})")
 
     for name, dest in (("ftscore", 0x1e7000), ("zsealetc", 0x4c5380)):
         blob = blobs[name]
