@@ -8,3 +8,5 @@
 /out/
 /tools/
 __pycache__/
+/recomp/output/
+/recomp/*.log
