@@ -1,0 +1,20 @@
+ELF loaded, entry 0x180008, gp 0x1dd2f0, patched 3090 R5900 insns
+overlay DNAS.dec.bin @ 0x4c5380: text 0x840c0 data 0x1ed00 bss 0x91f80, patched 382
+ZDB entries: {'ftscore': 855920, 'zsealetc': 691792}
+call 0x534830 (init)
+  [syscall 0x45 at 0x1a3b74] -> 0
+  -> 0x0  (0.2s, syscalls {64: 5, 69: 1})
+  [syscall 0x45 at 0x1a3b74] -> 0
+Traceback (most recent call last):
+  File "C:\projects\socom_pc\tools_py\decrypt_apache.py", line 246, in <module>
+    main()
+    ~~~~^^
+  File "C:\projects\socom_pc\tools_py\decrypt_apache.py", line 214, in main
+    rc = sext32(ee.call(0x539d00, (size, BUF, OUT8), sp=SP))
+                ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\projects\socom_pc\tools_py\ee_unicorn.py", line 627, in call
+    uc.emu_start(pc, self.RET, count=max_insns)
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Utilisateur\AppData\Local\Packages\PythonSoftwareFoundation.Python.3.13_qbz5n2kfra8p0\LocalCache\local-packages\Python313\site-packages\unicorn\unicorn_py3\unicorn.py", line 766, in emu_start
+    raise UcError(status)
+unicorn.unicorn_py3.unicorn.UcError: Invalid memory read (UC_ERR_READ_UNMAPPED)

@@ -9,6 +9,7 @@ the 128-bit GPRs and the LO1/HI1 pipeline registers live in Python-side tables.
 import struct
 from unicorn import *
 from unicorn.mips_const import *
+from unicorn.unicorn_py3.unicorn import uccallback, HOOK_MEM_ACCESS_CFUNC
 
 GPR = [UC_MIPS_REG_0 + i for i in range(32)]
 M64 = (1 << 64) - 1
@@ -48,6 +49,11 @@ class EE:
         self.syscall_handlers = {}
         self.syscall_counts = {}
         self.syscall_limit = 2_000_000
+        self.deferred = []
+        self.skip_once = None
+        self.tmp_restored = []
+        self._keep = []
+        self.data_reads = set()
         self.uc.hook_add(UC_HOOK_INTR, self._intr)
         self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
 
@@ -92,7 +98,10 @@ class EE:
 
     def patch_range(self, addr, size, exclude=()):
         """Replace R5900-only instructions in [addr, addr+size) with trap syscalls.
-        `exclude` is a list of (start, end) ranges left untouched (e.g. encrypted code)."""
+        `exclude` is a list of (start, end) ranges left untouched (e.g. encrypted code).
+        An instruction sitting in a branch delay slot is handled by trapping the *branch*
+        instead (QEMU misbehaves when an exception fires inside a delay slot); the handler
+        then emulates the branch/slot pair."""
         data = bytearray(self.read(addr, size & ~3))
         n = 0
         for off in range(0, len(data), 4):
@@ -100,12 +109,35 @@ class EE:
             if any(s <= a < e for s, e in exclude):
                 continue
             w = struct.unpack_from('<I', data, off)[0]
-            if self._needs_emulation(w):
+            if not self._needs_emulation(w):
+                continue
+            prev = struct.unpack_from('<I', data, off - 4)[0] if off >= 4 else self.r32(a - 4)
+            if self._is_branch(prev) and not any(s <= a - 4 < e for s, e in exclude):
+                if off >= 4:
+                    self.patched[a - 4] = prev
+                    struct.pack_into('<I', data, off - 4, 0x0000000c | (1 << 6))
+                else:
+                    self.patched[a - 4] = prev
+                    self.w32(a - 4, 0x0000000c | (1 << 6))
+            else:
                 self.patched[a] = w
                 struct.pack_into('<I', data, off, 0x0000000c | (1 << 6))
-                n += 1
+            n += 1
         self.write(addr, bytes(data))
         return n
+
+    @staticmethod
+    def _is_branch(w):
+        op = w >> 26
+        if op in (2, 3, 4, 5, 6, 7, 0x14, 0x15, 0x16, 0x17):
+            return True
+        if op == 0 and (w & 0x3f) in (8, 9):
+            return True
+        if op == 1 and ((w >> 16) & 0x1f) in (0, 1, 2, 3, 0x10, 0x11, 0x12, 0x13):
+            return True
+        if op == 0x11 and ((w >> 21) & 0x1f) == 8:
+            return True
+        return False
 
     def unpatch_range(self, addr, size):
         """Restore original instruction words in [addr, addr+size)."""
@@ -152,26 +184,34 @@ class EE:
         addr = pc - 4
         insn = self.r32(addr)
         code = (insn >> 6) & 0xFFFFF
-        # branch in the slot before?  evaluate it BEFORE emulating the trapped insn
-        prev = self.r32(addr - 4) if addr >= 4 else 0
-        br = self._branch_eval(prev, addr - 4)
-        if br is not None and br[2]:
-            self.setreg(31, addr + 4)
         if code == 0:
+            # real Sony syscall; if it sits in a delay slot, evaluate the branch first
+            prev = self.r32(addr - 4) if addr >= 4 else 0
+            br = self._branch_eval(prev, addr - 4)
+            if br is not None and br[2]:
+                self.setreg(31, addr + 4)
             self._real_syscall(uc, addr)
+            if br is not None:
+                uc.reg_write(UC_MIPS_REG_PC, br[1] if br[0] else addr + 4)
+            else:
+                uc.reg_write(UC_MIPS_REG_PC, addr + 4)
+            return
+        orig = self.patched.get(addr)
+        if orig is None:
+            raise RuntimeError(f"trap with unknown index at {addr:#x}")
+        if self._is_branch(orig):
+            taken, target, link, likely = self._branch_eval(orig, addr)
+            if link:
+                self.setreg(31, addr + 8)
+            if taken or not likely:
+                self.emulate(self.r32(addr + 4), addr + 4)
+            uc.reg_write(UC_MIPS_REG_PC, target if taken else addr + 8)
         else:
-            orig = self.patched.get(addr)
-            if orig is None:
-                raise RuntimeError(f"trap with unknown index at {addr:#x}")
             self.emulate(orig, addr)
-        if br is not None:
-            taken, target, link = br
-            uc.reg_write(UC_MIPS_REG_PC, target if taken else addr + 4)
-        else:
             uc.reg_write(UC_MIPS_REG_PC, addr + 4)
 
     def _branch_eval(self, w, baddr):
-        """Return (taken, target, sets_link) if w is a branch/jump, else None."""
+        """Return (taken, target, sets_link, likely) if w is a branch/jump, else None."""
         op = w >> 26
         rs = (w >> 21) & 0x1f
         rt = (w >> 16) & 0x1f
@@ -179,32 +219,32 @@ class EE:
         off = sext16(w) << 2
         tgt = (baddr + 4 + off) & M32
         if op == 0 and fn in (8, 9):                  # jr / jalr
-            return (True, self.reg(rs) & M32, fn == 9)
+            return (True, self.reg(rs) & M32, fn == 9, False)
         if op in (2, 3):                              # j / jal
-            return (True, ((baddr + 4) & 0xF0000000) | ((w & 0x3ffffff) << 2), op == 3)
+            return (True, ((baddr + 4) & 0xF0000000) | ((w & 0x3ffffff) << 2), op == 3, False)
         s = sext64(self.reg(rs))
         t = sext64(self.reg(rt))
         if op in (4, 0x14):
-            return (s == t, tgt, False)        # beq / beql
+            return (s == t, tgt, False, op == 0x14)        # beq / beql
         if op in (5, 0x15):
-            return (s != t, tgt, False)        # bne / bnel
+            return (s != t, tgt, False, op == 0x15)        # bne / bnel
         if op in (6, 0x16):
-            return (s <= 0, tgt, False)        # blez
+            return (s <= 0, tgt, False, op == 0x16)        # blez
         if op in (7, 0x17):
-            return (s > 0, tgt, False)         # bgtz
+            return (s > 0, tgt, False, op == 0x17)         # bgtz
         if op == 1:                                            # REGIMM
             if rt in (0, 2):
-                return (s < 0, tgt, False)        # bltz / bltzl
+                return (s < 0, tgt, False, rt == 2)        # bltz / bltzl
             if rt in (1, 3):
-                return (s >= 0, tgt, False)       # bgez / bgezl
+                return (s >= 0, tgt, False, rt == 3)       # bgez / bgezl
             if rt in (0x10, 0x12):
-                return (s < 0, tgt, True)   # bltzal
+                return (s < 0, tgt, True, rt == 0x12)   # bltzal
             if rt in (0x11, 0x13):
-                return (s >= 0, tgt, True)  # bgezal
-        if op == 0x11 and rs == 8:                             # bc1f/bc1t
+                return (s >= 0, tgt, True, rt == 0x13)  # bgezal
+        if op == 0x11 and rs == 8:                             # bc1f/bc1t (+likely)
             fcr = self.uc.reg_read(UC_MIPS_REG_FCSR)
             c = (fcr >> 23) & 1
-            return (c == (rt & 1), tgt, False)
+            return (c == (rt & 1), tgt, False, bool(rt & 2))
         return None
 
     def _real_syscall(self, uc, addr):
@@ -237,11 +277,13 @@ class EE:
             raise NotImplementedError(f"COP2 insn {w:#010x} at {addr:#x}")
         if op == 0x1e:                                              # lq
             ea = (self.reg(rs) + sext16(w)) & M32 & ~0xf
-            self.setreg128(rt, int.from_bytes(self.read(ea, 16), 'little'))
+            self.setreg128(rt, int.from_bytes(self.read_data(ea, 16), 'little'))
             return
         if op == 0x1f:                                              # sq
             ea = (self.reg(rs) + sext16(w)) & M32 & ~0xf
             self.write(ea, self.reg128(rt).to_bytes(16, 'little'))
+            for a in range(ea, ea + 16, 4):
+                self.patched.pop(a, None)
             return
         if op == 0 and fn in (0x18, 0x19):                          # mult/multu rd
             a = self.reg(rs)
@@ -505,8 +547,68 @@ class EE:
                 return
         raise NotImplementedError(f"MMI grp={grp:#x} sub={sub:#x} insn {w:#010x} at {addr:#x}")
 
+    # ---- data views of patched code
+    def add_text_range(self, start, end):
+        """Make guest *data* reads of patched code words see the original words:
+        before a read we restore the original, after the read we re-insert the trap.
+        Guest writes into patched words drop the patch (the guest's word wins)."""
+        def before(uc, access, address, size, value, key):
+            for a in range(address & ~3, address + size, 4):
+                orig = self.patched.get(a)
+                if orig is not None:
+                    uc.mem_write(a, struct.pack('<I', orig))
+                    self.tmp_restored.append(a)
+                    self.data_reads.add(a)
+
+        def after(uc, access, address, size, value, key):
+            if self.tmp_restored:
+                for a in self.tmp_restored:
+                    if a in self.patched:
+                        uc.mem_write(a, struct.pack('<I', 0x0000000c | (1 << 6)))
+                self.tmp_restored = []
+
+        def onwrite(uc, access, address, size, value, key):
+            for a in range(address & ~3, address + size, 4):
+                self.patched.pop(a, None)
+
+        self.uc.hook_add(UC_HOOK_MEM_READ, before, None, start, end - 1)
+        self.uc.hook_add(UC_HOOK_MEM_WRITE, onwrite, None, start, end - 1)
+        fn = uccallback(self.uc, HOOK_MEM_ACCESS_CFUNC)(after)
+        self._keep.append(fn)
+        self.uc._Uc__do_hook_add(UC_HOOK_MEM_READ_AFTER, fn, start, end - 1)
+
+    def read_data(self, addr, n):
+        """Read guest memory as the guest would see it (original words where patched)."""
+        b = bytearray(self.read(addr, n))
+        for a in range(addr & ~3, addr + n, 4):
+            orig = self.patched.get(a)
+            if orig is not None and addr <= a and a + 4 <= addr + n:
+                struct.pack_into('<I', b, a - addr, orig)
+        return bytes(b)
+
+    # ---- function hooks (HLE replacement of guest functions)
+    def hook_function(self, addr, handler):
+        """Replace the guest function at `addr`: on entry call handler(ee) -> v0, then return to ra."""
+        def cb(uc, address, size, ud):
+            rv = handler(self)
+            if rv is not None:
+                self.setreg(2, rv)
+            uc.reg_write(UC_MIPS_REG_PC, self.reg(31) & M32)
+        self.uc.hook_add(UC_HOOK_CODE, cb, None, addr, addr)
+
+    def arg(self, i):
+        """i-th integer argument (0-based) under the EE ABI: a0-a3, t0-t3, then stack from 0x20(sp)."""
+        if i < 8:
+            return self.reg(4 + i) & M32 if i < 4 else self.reg(8 + i - 4) & M32
+        return self.r32(self.reg(29) + 0x20 + (i - 8) * 8) if False else self.r32((self.reg(29) & M32) + (i - 8) * 8 + 0x40 - 0x20)
+
     # ---- calling
     RET = 0x000000F0
+
+    def defer(self, fn):
+        """Run fn() outside the emulation loop (safe for code memory writes), then resume."""
+        self.deferred.append(fn)
+        self.uc.emu_stop()
 
     def call(self, addr, args=(), sp=None, max_insns=0):
         uc = self.uc
@@ -518,5 +620,16 @@ class EE:
         if sp is not None:
             self.setreg(29, sp)
         self.setreg(31, self.RET)
-        uc.emu_start(addr, self.RET, count=max_insns)
+        self.deferred = []
+        pc = addr
+        while True:
+            self.resume_pc = pc
+            uc.emu_start(pc, self.RET, count=max_insns)
+            pc = uc.reg_read(UC_MIPS_REG_PC) & M32
+            if not self.deferred:
+                break
+            for fn in self.deferred:
+                fn()
+            self.deferred = []
+            self.skip_once = pc
         return self.reg(2)

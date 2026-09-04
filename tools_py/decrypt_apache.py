@@ -47,80 +47,123 @@ def load_elf(ee, path):
             gp = struct.unpack_from('<I', d, sh_offset + 0x14)[0]
     # patch the code half (0x180000.. where entropy is non-zero)
     n = ee.patch_range(0x180000, 0xd5600 - 0x80000)
+    if not os.environ.get('NO_TEXT_HOOKS'):
+        ee.add_text_range(0x180000, 0x100000 + 0xd5600)
     print(f"ELF loaded, entry {e_entry:#x}, gp {gp:#x}, patched {n} R5900 insns")
     return e_entry, gp
 
 
-SELF_DECRYPT = 0x5412a0   # FUN_005412a0(start, size^key, key, flags): flags&1 ? re-encrypt : decrypt
+SELF_DECRYPTORS = (0x4ee9e8, 0x52b9d0, 0x53a358, 0x5412a0)   # FUN(start, size^key, key, flags): flags&1 ? re-encrypt : decrypt
 
 
 def find_encrypted_blocks(d, base, text_off, text_size):
-    """Static scan of `jal SELF_DECRYPT` sites -> [(start, size)] of self-encrypted code blocks."""
+    """Static scan of `jal <decryptor>` sites.
+    Returns (blocks, data): blocks = [(start, size)] of self-encrypted code, data = [(start, end)]
+    of key/flag constant words living inside .text that must never be patched."""
     blocks = []
-    jal = 0x0c000000 | (SELF_DECRYPT >> 2)
-    for off in range(text_off, text_off + text_size, 4):
-        if struct.unpack_from('<I', d, off)[0] != jal:
-            continue
-        a0 = None
-        hi = None
-        for back in range(4, 40, 4):
+    data = []
+    jals = {0x0c000000 | (a >> 2) for a in SELF_DECRYPTORS}
+
+    def const_reg(off, reg):
+        lo = None
+        for back in range(4, 48, 4):
             w = struct.unpack_from('<I', d, off - back)[0]
-            if (w >> 16) == 0x2484 and a0 is None:          # addiu a0, a0, imm
-                a0 = struct.unpack('<h', struct.pack('<H', w & 0xffff))[0]
-            elif (w >> 16) == 0x3c04:                       # lui a0, hi
-                hi = (w & 0xffff) << 16
-                break
-        if a0 is None or hi is None:
+            if (w >> 26) == 9 and ((w >> 21) & 0x1f) == reg and ((w >> 16) & 0x1f) == reg and lo is None:   # addiu reg, reg, imm
+                lo = struct.unpack('<h', struct.pack('<H', w & 0xffff))[0]
+            elif (w >> 26) == 0x0f and ((w >> 16) & 0x1f) == reg and lo is not None:                      # lui reg, hi
+                return (((w & 0xffff) << 16) + lo) & 0xffffffff
+        return None
+
+    for off in range(text_off, text_off + text_size, 4):
+        if struct.unpack_from('<I', d, off)[0] not in jals:
             continue
-        start = (hi + a0) & 0xffffffff
-        slot = struct.unpack_from('<I', d, off + 4)[0]        # delay slot: lw a2, 4(v1) => decrypt site
-        if (slot >> 26) != 0x23 or ((slot >> 16) & 0x1f) != 6 or (slot & 0xffff) != 4:
-            continue                                        # re-encrypt trailer site, skip
-        flag_off = start - 0x14 - base
-        w1, w2, w3 = struct.unpack_from('<III', d, flag_off + 4)
-        blocks.append((start, w3 ^ w1))
-    return sorted(set(blocks))
+        slot = struct.unpack_from('<I', d, off + 4)[0]
+        if (slot >> 26) != 0x23 or ((slot >> 16) & 0x1f) != 6:
+            continue
+        a0 = const_reg(off, 4)
+        if a0 is None:
+            continue
+        if (slot & 0xffff) == 4:                     # decrypt site: lw a2, 4(v1); flag block at start-0x14
+            flag = a0 - 0x14
+            w1, w2, w3 = struct.unpack_from('<III', d, flag + 4 - base)
+            blocks.append((a0, w3 ^ w1))
+            data.append((flag, flag + 0x10))
+        else:                                       # re-encrypt site: lw a2, 0(v0); constants at v0
+            v0 = const_reg(off, 2)
+            if v0 is not None:
+                data.append((v0, v0 + 0xc))
+    return sorted(set(blocks)), sorted(set(data))
 
 
 def load_overlay(ee, path, addr):
+    """Load the statically pre-decrypted DNAS overlay (see dnas_selfdecrypt.py) and neutralize
+    the four runtime self-decrypt/re-encrypt routines so the plaintext stays intact."""
     d = open(path, 'rb').read()
     ee.write(addr, d)
     text, data, bss = struct.unpack_from('<III', d, 0x0c)
     ee.write(addr + len(d), bytes(bss))
-    blocks = find_encrypted_blocks(d, addr, 0x80, text)
-    total = sum(sz for _, sz in blocks)
-    print(f"  {len(blocks)} self-encrypted blocks, {total:#x} bytes; first: {[(hex(a), hex(s)) for a, s in blocks[:3]]}")
-    n = ee.patch_range(addr + 0x80, text, exclude=[(a, a + s) for a, s in blocks])
+    n = ee.patch_range(addr + 0x80, text)
+    if not os.environ.get('NO_TEXT_HOOKS'):
+        ee.add_text_range(addr + 0x80, addr + 0x80 + text)
     print(f"overlay {os.path.basename(path)} @ {addr:#x}: text {text:#x} data {data:#x} bss {bss:#x}, patched {n}")
 
-    # runtime hooks: patch a block after it is decrypted, un-patch before it is re-encrypted
-    from unicorn import UC_HOOK_CODE
-    pending = {}
-
-    def on_return(uc, address, size, ud):
-        if address in pending:
-            start, sz = pending.pop(address)
-            n = ee.patch_range(start, sz)
-            if ee.verbose:
-                print(f"  [decrypted block {start:#x}+{sz:#x}: patched {n}]")
-
-    def on_selfdecrypt(uc, address, size, ud):
+    def noop_decryptor(ee):
         a0, a1, a2, a3 = (ee.reg(4) & 0xffffffff, ee.reg(5) & 0xffffffff, ee.reg(6) & 0xffffffff, ee.reg(7) & 0xffffffff)
         blk = a1 ^ a2
-        if a3 & 1:
-            n = ee.unpatch_range(a0 - blk, blk)
-            if ee.verbose:
-                print(f"  [re-encrypting block {a0-blk:#x}+{blk:#x}: unpatched {n}]")
-        else:
-            pending[ee.reg(31) & 0xffffffff] = (a0, blk)
+        flag = (a0 if not (a3 & 1) else a0 - blk) - 0x14
+        ee.w32(flag, 0 if (a3 & 1) else flag)      # keep the game's "decrypted" flag consistent
+        return 0
+    for a in SELF_DECRYPTORS:
+        ee.hook_function(a, noop_decryptor)
 
-    ee.uc.hook_add(UC_HOOK_CODE, on_selfdecrypt, None, SELF_DECRYPT, SELF_DECRYPT)
-    # return sites: every jal site + 8; hook the whole overlay text cheaply? no - hook exact return addrs
-    jal = 0x0c000000 | (SELF_DECRYPT >> 2)
-    for off in range(0x80, 0x80 + text, 4):
-        if struct.unpack_from('<I', d, off)[0] == jal:
-            ra = addr + off + 8
-            ee.uc.hook_add(UC_HOOK_CODE, on_return, None, ra, ra)
+
+SIF_BIND = 0x1a6aa8     # sceSifBindRpc(cd, sid, mode)
+SIF_CALL = 0x1a6c78     # sceSifCallRpc(cd, fno, mode, send, ssize, recv, rsize, endfunc, efarg)
+rpc_clients = {}        # cd address -> sid
+rpc_log = []
+
+
+def install_sif_hle(ee):
+    def sifgetreg(ee):
+        reg = ee.reg(4) & 0xffffffff
+        v = {1: 0x00001000, 2: 0x00001000, 3: 0x000f0000, 4: 0x000f0000}.get(reg & 0xff, 0)
+        ee.setreg(2, v)
+    ee.syscall_handlers[0x7a] = sifgetreg                        # SifGetReg
+    ee.syscall_handlers[0x79] = lambda ee: ee.setreg(2, ee.reg(5))   # SifSetReg
+    ee.syscall_handlers[0x77] = lambda ee: ee.setreg(2, 1)      # SifSetDma -> id
+    ee.syscall_handlers[0x76] = lambda ee: ee.setreg(2, 0xffffffffffffffff)  # SifDmaStat -> done
+    ee.syscall_handlers[0x78] = lambda ee: ee.setreg(2, 0)      # SifSetDChain
+    sema = [0]
+    def createsema(ee):
+        sema[0] += 1
+        ee.setreg(2, sema[0])
+    ee.syscall_handlers[0x40] = createsema
+
+    def bind(ee):
+        cd, sid = ee.arg(0), ee.arg(1)
+        rpc_clients[cd] = sid
+        ee.w32(cd + 0x14, 0x1234)          # cd->server: non-null so the caller believes it bound
+        print(f"  [RPC bind cd={cd:#x} sid={sid:#x}]")
+        return 0
+
+    def call(ee):
+        cd, fno, mode, send, ssize, recv, rsize = (ee.arg(i) for i in range(7))
+        sid = rpc_clients.get(cd, 0)
+        data = ee.read(send, min(ssize, 64)) if send and ssize else b""
+        print(f"  [RPC call sid={sid:#x} fno={fno} mode={mode} send={send:#x}/{ssize} recv={recv:#x}/{rsize} data={data.hex()}]")
+        rpc_log.append((sid, fno, ee.read(send, ssize) if send and ssize else b""))
+        h = RPC_SERVERS.get(sid)
+        if h:
+            h(ee, fno, send, ssize, recv, rsize)
+        elif recv and rsize:
+            ee.write(recv, bytes(rsize))
+        return 0
+
+    ee.hook_function(SIF_BIND, bind)
+    ee.hook_function(SIF_CALL, call)
+
+
+RPC_SERVERS = {}
 
 
 def zdb_entries(path):
@@ -140,7 +183,7 @@ def zdb_entries(path):
 def main():
     ee = EE(verbose=True)
     entry, gp = load_elf(ee, os.path.join(GAME, 'SCUS_972.75'))
-    load_overlay(ee, os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.BIN'), 0x4c5380)
+    load_overlay(ee, os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 0x4c5380)
     ee.setreg(28, gp)
     SP = 0x01fe0000
     BUF = 0x01000000
@@ -151,6 +194,7 @@ def main():
     def fc(ee):  # FlushCache
         ee.setreg(2, 0)
     ee.syscall_handlers[0x64] = fc
+    install_sif_hle(ee)
 
     blobs = zdb_entries(os.path.join(GAME, 'RUN', 'RAW', 'APACHE00.ZDB'))
     print("ZDB entries:", {k: len(v) for k, v in blobs.items()})
@@ -194,6 +238,7 @@ def main():
             f.write(plain)
         # after the first blob the game keeps DNAS resident; the second blob is
         # decrypted with DNAS still loaded (dest 0x4c5380 is only written by inflate)
+    print("data reads hitting patched words:", len(ee.data_reads), sorted(hex(a) for a in list(ee.data_reads)[:20]))
     print("done")
 
 
