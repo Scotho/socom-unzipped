@@ -111,11 +111,14 @@ namespace ps2x::iop::detail
             "socom2-us",
             "builtin",
             {.elfName = "socom2_game.elf"},
-            [](IopHost &, const GameIdentity &)
+            [](IopHost &host, const GameIdentity &)
             {
-                // SOCOM II (SCUS_972.75 r0001): 989snd / lgaud / inet+netcnf services are added
-                // here as they are implemented; core MCSERV/DBCMAN/LIBSD are always present.
-                return ServiceList{};
+                // SOCOM II (SCUS_972.75 r0001): 989snd (989SND.IRX, SIDs 0x123456/0x123457) is
+                // high-level emulated in modules/snd989.cpp; lgaud / inet+netcnf services are
+                // added as they are implemented; core MCSERV/DBCMAN/LIBSD are always present.
+                ServiceList services;
+                services.emplace_back(createSnd989Service(host));
+                return services;
             },
         });
 
