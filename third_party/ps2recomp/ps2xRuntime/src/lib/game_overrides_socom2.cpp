@@ -14,10 +14,15 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <thread>
+#include <chrono>
+#include <cstdlib>
 
 #include <cstdint>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
+#include <algorithm>
 
 namespace
 {
@@ -168,9 +173,36 @@ namespace
         PS2Runtime::setIoPaths(paths);
     }
 
+    // PS2X_PC_SAMPLER=<seconds>: print the live guest PC and the scheduler thread table
+    // periodically (diagnosing silent hangs).
+    void startPcSampler(PS2Runtime &runtime)
+    {
+        const char *env = std::getenv("PS2X_PC_SAMPLER");
+        if (!env || !*env)
+            return;
+        const int period = std::max(1, std::atoi(env));
+        std::thread([&runtime, period]() {
+            for (;;)
+            {
+                std::this_thread::sleep_for(std::chrono::seconds(period));
+                const R5900Context &c = runtime.cpu();
+                std::ostringstream o;
+                o << "[pc-sampler] live pc=0x" << std::hex << c.pc << " ra=0x" << GPR_U32(&c, 31)
+                  << " sp=0x" << GPR_U32(&c, 29) << std::dec;
+                const EeKernelSnapshot snap = runtime.eeScheduler().snapshot();
+                o << " running=" << snap.runningThreadId << " threads:";
+                for (const auto &t : snap.threads)
+                    o << " [" << t.id << " pc=0x" << std::hex << t.pc << std::dec << " st=" << static_cast<int>(t.status)
+                      << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
+                std::cout << o.str() << std::endl;
+            }
+        }).detach();
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
+        startPcSampler(runtime);
         {
             // sanity check that the FTSCore data segment is resident: should print the boot path string
             const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);
