@@ -1,0 +1,183 @@
+ELF loaded, entry 0x180008, gp 0x1dd2f0, patched 3172 R5900 insns
+ZDB entries: {'ftscore': 855920, 'zsealetc': 691792}
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5a at 0x1acf5c] -> 0
+  [syscall 0x5a at 0x1acf5c] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x5b at 0x1acfa4] -> 0
+  [syscall 0x74 at 0x1acf4c] -> 0
+  [syscall 0x20 at 0x1a3924] -> 0
+  [syscall 0x22 at 0x1a3944] -> 0
+  [syscall 0x29 at 0x1a39b4] -> 0
+  [syscall 0x4b at 0x1a3bd4] -> 0
+  [syscall 0x4a at 0x1a3bc4] -> 0
+  [syscall 0x4b at 0x1a3bd4] -> 0
+  [syscall 0x4a at 0x1a3bc4] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5a at 0x1ac0c4] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+  [syscall 0x74 at 0x1ac11c] -> 0
+  [syscall 0x5b at 0x1ac10c] -> 0
+crt0 done: reached main=False sp=0x1fffff0 gp=0x1dd2f0 syscalls={60: 1, 61: 1, 64: 3, 116: 16, 90: 3, 100: 5, 91: 12, 32: 1, 34: 1, 47: 1, 41: 1, 75: 2, 74: 2}
+overlay DNAS.dec.bin @ 0x4c5380: text 0x840c0 data 0x1ed00 bss 0x91f80, patched 324
+  [syscall 0x12 at 0x1a3834] -> 0
+  [syscall 0x16 at 0x1a3884] -> 0
+sceSifInitRpc -> 4096
+  [RPC bind cd=0x1d61a8 sid=0x80000592]
+  [RPC call sid=0x80000592 fno=0 mode=0 send=0x1d6200/4 recv=0x1cba40/16 data=00000000]
+sceCdInit -> 2
+call 0x534830 (init)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC bind cd=0x1cc3c0 sid=0x80000593]
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  -> 0x0  (0.2s, syscalls {60: 1, 61: 1, 64: 8, 116: 16, 90: 3, 100: 6, 91: 12, 32: 1, 34: 1, 47: 2, 41: 1, 75: 2, 74: 2, 120: 1, 18: 1, 22: 1, 122: 4, 121: 2, 119: 1, 69: 1, 48: 1, 66: 1})
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+ftscore: 0x539d00 -> 0  out8=0xd0b70 (3.5s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=36 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=38 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+ftscore: 0x539d50 -> 854896  (130.0s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+ftscore: 0x534848 -> 0 out4=0xcf779 (3.4s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=36 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=38 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+ftscore: 0x535018 -> 0 (80.6s)
+ftscore: compressed head 78dadcbd0f7c5cc5
+ftscore: inflated 2233472 bytes, head 4d576f330100000000701e00b84f1f00
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+zsealetc: 0x539d00 -> 0  out8=0xa8c80 (3.4s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=36 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=38 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+zsealetc: 0x539d50 -> 691328  (106.6s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+zsealetc: 0x534848 -> 0 out4=0xa7b65 (3.3s)
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=36 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=38 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+  [syscall 0x30 at 0x1a3a24] -> 0
+  [RPC call sid=0x80000593 fno=1 mode=0 send=0x0/0 recv=0x1cba40/16 data=]
+zsealetc: 0x535018 -> 0 (66.7s)
+zsealetc: compressed head 78daecbd0d745c57
+zsealetc: inflated 1723520 bytes, head 4d576f330300000080534c00b8a31800
+data reads hitting patched words: 0 []
+done

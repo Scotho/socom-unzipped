@@ -20,6 +20,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 from ee_unicorn import EE, sext32
+from unicorn import UC_HOOK_CODE
 
 GAME = os.path.join(os.path.dirname(__file__), '..', 'game', 'disc')
 OUT = os.path.join(os.path.dirname(__file__), '..', 'game', 'overlays')
@@ -47,7 +48,7 @@ def load_elf(ee, path):
             gp = struct.unpack_from('<I', d, sh_offset + 0x14)[0]
     # patch the code half (0x180000.. where entropy is non-zero)
     n = ee.patch_range(0x180000, 0xd5600 - 0x80000)
-    if not os.environ.get('NO_TEXT_HOOKS'):
+    if os.environ.get('TEXT_HOOKS'):
         ee.add_text_range(0x180000, 0x100000 + 0xd5600)
     print(f"ELF loaded, entry {e_entry:#x}, gp {gp:#x}, patched {n} R5900 insns")
     return e_entry, gp
@@ -102,16 +103,17 @@ def load_overlay(ee, path, addr):
     ee.write(addr, d)
     text, data, bss = struct.unpack_from('<III', d, 0x0c)
     ee.write(addr + len(d), bytes(bss))
-    n = ee.patch_range(addr + 0x80, text)
-    if not os.environ.get('NO_TEXT_HOOKS'):
+    # key/flag words and re-encrypt trailer constants live inside .text: never trap-patch them
+    _blocks, consts = find_encrypted_blocks(d, addr, 0x80, text)
+    n = ee.patch_range(addr + 0x80, text, exclude=consts)
+    if os.environ.get('TEXT_HOOKS'):     # NOTE: read hooks over code regions break Unicorn's translator
         ee.add_text_range(addr + 0x80, addr + 0x80 + text)
     print(f"overlay {os.path.basename(path)} @ {addr:#x}: text {text:#x} data {data:#x} bss {bss:#x}, patched {n}")
 
     def noop_decryptor(ee):
         a0, a1, a2, a3 = (ee.reg(4) & 0xffffffff, ee.reg(5) & 0xffffffff, ee.reg(6) & 0xffffffff, ee.reg(7) & 0xffffffff)
-        blk = a1 ^ a2
-        flag = (a0 if not (a3 & 1) else a0 - blk) - 0x14
-        ee.w32(flag, 0 if (a3 & 1) else flag)      # keep the game's "decrypted" flag consistent
+        if not (a3 & 1):                             # mark "decrypted" like the real routine would;
+            ee.defer(lambda: ee.w32(a0 - 0x14, a0 - 0x14))   # deferred: it is a code-page write
         return 0
     for a in SELF_DECRYPTORS:
         ee.hook_function(a, noop_decryptor)
@@ -133,16 +135,11 @@ def install_sif_hle(ee):
     ee.syscall_handlers[0x77] = lambda ee: ee.setreg(2, 1)      # SifSetDma -> id
     ee.syscall_handlers[0x76] = lambda ee: ee.setreg(2, 0xffffffffffffffff)  # SifDmaStat -> done
     ee.syscall_handlers[0x78] = lambda ee: ee.setreg(2, 0)      # SifSetDChain
-    sema = [0]
-    def createsema(ee):
-        sema[0] += 1
-        ee.setreg(2, sema[0])
-    ee.syscall_handlers[0x40] = createsema
 
     def bind(ee):
         cd, sid = ee.arg(0), ee.arg(1)
         rpc_clients[cd] = sid
-        ee.w32(cd + 0x14, 0x1234)          # cd->server: non-null so the caller believes it bound
+        ee.w32(cd + 0x24, 0x1234)          # t_SifClientData.server: non-null => bound
         print(f"  [RPC bind cd={cd:#x} sid={sid:#x}]")
         return 0
 
@@ -161,9 +158,24 @@ def install_sif_hle(ee):
 
     ee.hook_function(SIF_BIND, bind)
     ee.hook_function(SIF_CALL, call)
+    ee.hook_function(0x1a6e68, lambda ee: 0)        # sceSifCheckStatRpc -> idle
+    ee.hook_function(0x1a6c78 + 0, call)
 
 
-RPC_SERVERS = {}
+CONSOLE_ID = bytes.fromhex('0102030405060708')      # sceCdReadConsoleID (8 bytes) - any value
+ILINK_ID = bytes.fromhex('00a0b0c0d0e0f001')
+MECHACON_VER = bytes([0x03, 0x06, 0x00, 0x00])       # sceCdMV
+
+
+def cdvd_scmd(ee, fno, send, ssize, recv, rsize):
+    """cdvdfsv S-command server (SID 0x80000593): result word + payload."""
+    payload = {0x24: CONSOLE_ID, 0x22: ILINK_ID, 0x26: MECHACON_VER, 0x0c: b'SCPH-39001' + bytes(6)}.get(fno, b'')
+    if recv and rsize:
+        buf = struct.pack('<I', 1) + payload
+        ee.write(recv, (buf + bytes(rsize))[:rsize])
+
+
+RPC_SERVERS = {0x80000593: cdvd_scmd}
 
 
 def zdb_entries(path):
@@ -183,22 +195,47 @@ def zdb_entries(path):
 def main():
     ee = EE(verbose=True)
     entry, gp = load_elf(ee, os.path.join(GAME, 'SCUS_972.75'))
-    load_overlay(ee, os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 0x4c5380)
-    ee.setreg(28, gp)
-    SP = 0x01fe0000
     BUF = 0x01000000
     OUT8 = 0x00f00000
     OUT4 = 0x00f00010
 
     # trace helper for debugging: count instructions
-    def fc(ee):  # FlushCache
-        ee.setreg(2, 0)
-    ee.syscall_handlers[0x64] = fc
+    ee.install_kernel_hle()
     install_sif_hle(ee)
 
     blobs = zdb_entries(os.path.join(GAME, 'RUN', 'RAW', 'APACHE00.ZDB'))
     print("ZDB entries:", {k: len(v) for k, v in blobs.items()})
 
+    # Run the ELF's crt0 (register/FPU clear, bss clear, SetupThread/SetupHeap, MSL init) and
+    # stop at the entry of main(), so libc state (heap!) is valid for the DNAS code.
+    def setup_thread(ee):          # SetupThread(gp, stack, stack_size, args, root) -> sp
+        stack, size = ee.reg(5) & 0xffffffff, ee.reg(6) & 0xffffffff
+        if stack == 0xffffffff:                    # -1: kernel places the stack at the top of RAM
+            ee.setreg(2, 0x01fffff0)
+        else:
+            ee.setreg(2, (stack + size) & ~0xf)
+    def setup_heap(ee):            # SetupHeap(start, size) -> heap end
+        start, size = ee.reg(4) & 0xffffffff, ee.reg(5) & 0xffffffff
+        ee.setreg(2, 0x01f80000 if size == 0xffffffff else start + size)
+    ee.syscall_handlers[0x3c] = setup_thread
+    ee.syscall_handlers[0x3d] = setup_heap
+    ee.hook_function(0x1ac9d8, lambda ee: 0)     # _InitSys kernel-patch search (FindAddress loop) - not applicable
+    MAIN = 0x1c4cc0
+    stopped = []
+    def at_main(uc, address, size, ud):
+        stopped.append(True)
+        ee.stop_requested = True
+        uc.emu_stop()
+    ee.uc.hook_add(UC_HOOK_CODE, at_main, None, MAIN, MAIN)
+    ee.run(entry, MAIN)
+    print(f"crt0 done: reached main={bool(stopped)} sp={ee.reg(29):#x} gp={ee.reg(28):#x} syscalls={ee.syscall_counts}")
+    # the overlay region is part of the ELF's bss, which crt0 just zero-filled: load DNAS now (as main() does)
+    load_overlay(ee, os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 0x4c5380)
+    SP = None
+
+    # what main() does before touching DNAS: sceSifInitRpc(0), sceCdInit(SCECdINIT)
+    print("sceSifInitRpc ->", ee.call(0x1a6368, (0,)))
+    print("sceCdInit ->", ee.call(0x18ea98, (0,)))
     t0 = time.time()
     print("call 0x534830 (init)")
     r = ee.call(0x534830, (), sp=SP)

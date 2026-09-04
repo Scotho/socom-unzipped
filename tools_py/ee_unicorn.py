@@ -33,10 +33,14 @@ def sext64(v):
 
 
 class EE:
-    def __init__(self, ram_size=32 * 1024 * 1024, verbose=False):
+    def __init__(self, ram_size=32 * 1024 * 1024, verbose=False, safe_mode=True):
         self.uc = Uc(UC_ARCH_MIPS, UC_MODE_MIPS64 | UC_MODE_LITTLE_ENDIAN)
         self.uc.ctl_set_cpu_model(UC_CPU_MIPS64_MIPS64R2_GENERIC)
-        self.uc.mem_map(0, ram_size)
+        import ctypes
+        self.rambuf = (ctypes.c_ubyte * ram_size)()
+        self.uc.mem_map_ptr(0, ram_size, UC_PROT_ALL, self.rambuf)
+        self.uc.mem_map_ptr(0x20000000, ram_size, UC_PROT_ALL, self.rambuf)   # uncached mirror
+        self.uc.mem_map_ptr(0x30000000, ram_size, UC_PROT_ALL, self.rambuf)   # uncached-accelerated mirror
         self.uc.mem_map(0x70000000, 0x4000)          # scratchpad
         self.uc.mem_map(0x10000000, 0x10000)         # hardware regs (dummy)
         self.uc.mem_map(0x12000000, 0x10000)         # GS regs (dummy)
@@ -44,6 +48,10 @@ class EE:
         self.hi64 = [0] * 32                         # upper halves of 128-bit GPRs
         self.lo1 = 0
         self.hi1 = 0
+        self.sa = 0            # shift amount register (bits)
+        self.status = 0x70030C10   # soft COP0 Status (EIE|IE|...)
+        self.cop0 = {}
+        self.facc = 0.0        # FPU accumulator
         self.patched = {}                            # addr -> original insn
         self.verbose = verbose
         self.syscall_handlers = {}
@@ -52,9 +60,17 @@ class EE:
         self.deferred = []
         self.skip_once = None
         self.tmp_restored = []
+        self.hooked = {}
+        self.pending_pc = None
+        self.stop_requested = False
+        self.hooked_addr = {}
         self._keep = []
         self.data_reads = set()
         self.uc.hook_add(UC_HOOK_INTR, self._intr)
+        if safe_mode:
+            # a (cheap) global code hook keeps QEMU from chaining/caching translation blocks in a way
+            # that crashes the host when guest code modifies code pages (observed with this build)
+            self.uc.hook_add(UC_HOOK_CODE, lambda uc, a, s, u: None)
         self.uc.hook_add(UC_HOOK_MEM_UNMAPPED, self._unmapped)
 
     # ---- memory helpers
@@ -168,8 +184,14 @@ class EE:
             return True                                      # pref
         if op == 0x10 and (w & 0x02000000):
             return True                                      # COP0 CO ops (ei/di/eret/tlb*)
+        if op == 0x10 and ((w >> 21) & 0x1f) in (4, 0) and ((w >> 11) & 0x1f) in (12, 16, 13):
+            return True                                      # mtc0/mfc0 Status, Config, Cause -> emulated softly
         if op == 0x12:
             return True                                      # COP2 (VU0 macro) -> trap
+        if op == 1 and ((w >> 16) & 0x1f) in (0x18, 0x19):
+            return True                                      # mtsab / mtsah
+        if op == 0x11 and ((w >> 21) & 0x1f) == 0x10 and fn in (0x16, 0x18, 0x19, 0x1a, 0x1c, 0x1d, 0x1e, 0x1f, 0x28, 0x29):
+            return True                                      # R5900 FPU: rsqrt/adda/suba/mula/madd/msub/madda/msuba/max/min
         return False
 
     # ---- hooks
@@ -195,6 +217,15 @@ class EE:
                 uc.reg_write(UC_MIPS_REG_PC, br[1] if br[0] else addr + 4)
             else:
                 uc.reg_write(UC_MIPS_REG_PC, addr + 4)
+            return
+        if code & 0x80000:                               # HLE-replaced function entry
+            rv = self.hooked[code & 0x7ffff](self)
+            if rv is not None:
+                self.setreg(2, rv)
+            # resume via a fresh emu_start at $ra: writing PC here leaves QEMU in a stale
+            # branch state that makes the next branch instruction fault (RI)
+            self.pending_pc = self.reg(31) & M32
+            uc.emu_stop()
             return
         orig = self.patched.get(addr)
         if orig is None:
@@ -247,6 +278,44 @@ class EE:
             return (c == (rt & 1), tgt, False, bool(rt & 2))
         return None
 
+    def install_kernel_hle(self):
+        """Counting semaphores + trivial thread syscalls (single-threaded model)."""
+        semas = {}
+        def create(ee):
+            p = ee.reg(4) & M32
+            cnt = ee.r32(p + 8)        # ee_sema_t: count, max_count, init_count, attr, option
+            sid = len(semas) + 1
+            semas[sid] = cnt
+            ee.setreg(2, sid)
+        def delete(ee):
+            semas.pop(ee.reg(4) & M32, None); ee.setreg(2, ee.reg(4) & M32)
+        def signal(ee):
+            sid = ee.reg(4) & M32
+            if sid in semas: semas[sid] += 1; ee.setreg(2, sid)
+            else: ee.setreg(2, 0xffffffffffffffe6)     # KE_UNKNOWN_SEMID (-26)
+        def wait(ee):
+            sid = ee.reg(4) & M32
+            if sid in semas:
+                if semas[sid] > 0: semas[sid] -= 1
+                elif ee.verbose: print(f"  [WaitSema {sid} would block]")
+                ee.setreg(2, sid)
+            else: ee.setreg(2, 0xffffffffffffffe6)
+        def poll(ee):
+            sid = ee.reg(4) & M32
+            if sid in semas and semas[sid] > 0: semas[sid] -= 1; ee.setreg(2, sid)
+            elif sid in semas: ee.setreg(2, 0xfffffffffffffe5d)   # KE_SEMA_ZERO (-419)
+            else: ee.setreg(2, 0xffffffffffffffe6)
+        def refer(ee):
+            sid = ee.reg(4) & M32; p = ee.reg(5) & M32
+            ee.w32(p, semas.get(sid, 0)); ee.setreg(2, sid)
+        for n, h in ((0x40, create), (0x41, delete), (0x42, signal), (0x43, signal), (0x44, wait),
+                     (0x45, poll), (0x46, poll), (0x47, refer), (0x48, refer)):
+            self.syscall_handlers[n] = h
+        self.syscall_handlers[0x2f] = lambda ee: ee.setreg(2, 1)          # GetThreadId
+        self.syscall_handlers[0x23] = lambda ee: ee.setreg(2, 1)          # ReferThreadStatus
+        self.syscall_handlers[0x64] = lambda ee: ee.setreg(2, 0)          # FlushCache
+        self.semas = semas
+
     def _real_syscall(self, uc, addr):
         num = sext64(self.reg(3))
         c = self.syscall_counts.get(num, 0) + 1
@@ -271,8 +340,19 @@ class EE:
         fn = w & 0x3f
         if op == 0x2f or op == 0x33 or (op == 0 and fn == 0x0f):
             return                                                  # cache / pref / sync.*
-        if op == 0x10:                                              # COP0 CO: ei/di/eret/tlb -> nop
-            return
+        if op == 0x10:
+            if w & 0x02000000:                                      # CO ops
+                if (w & 0x3f) == 0x38: self.status |= 0x10000       # ei
+                elif (w & 0x3f) == 0x39: self.status &= ~0x10000    # di
+                return
+            if rs == 4:                                             # mtc0 rt -> soft register
+                self.cop0[rd] = self.reg(rt) & M32
+                if rd == 12: self.status = self.cop0[rd]
+                return
+            if rs == 0:                                             # mfc0 rt <- soft register
+                v = self.status if rd == 12 else self.cop0.get(rd, 0)
+                self.setreg(rt, sext32(v) & M64)
+                return
         if op == 0x12:
             raise NotImplementedError(f"COP2 insn {w:#010x} at {addr:#x}")
         if op == 0x1e:                                              # lq
@@ -297,7 +377,37 @@ class EE:
             return
         if op == 0x1c:
             return self._mmi(w, addr, rs, rt, rd, sa, fn)
+        if op == 1 and rt in (0x18, 0x19):                          # mtsab / mtsah
+            v = (self.reg(rs) + (w & 0xffff)) & 0xffffffff
+            self.sa = ((v & 0xf) * 8) if rt == 0x18 else ((v & 0x7) * 16)
+            return
+        if op == 0x11:
+            return self._fpu(w, addr, fn)
         raise NotImplementedError(f"insn {w:#010x} at {addr:#x}")
+
+    def _fpu(self, w, addr, fn):
+        import math
+        ft = (w >> 16) & 0x1f
+        fs = (w >> 11) & 0x1f
+        fd = (w >> 6) & 0x1f
+        def rf(i):
+            return struct.unpack('<f', struct.pack('<I', self.uc.reg_read(UC_MIPS_REG_F0 + i) & 0xffffffff))[0]
+        def wf(i, v):
+            v = max(min(v, 3.4028235e38), -3.4028235e38) if v == v else 0.0
+            self.uc.reg_write(UC_MIPS_REG_F0 + i, struct.unpack('<I', struct.pack('<f', v))[0])
+        a, b = rf(fs), rf(ft)
+        if fn == 0x18: self.facc = a + b
+        elif fn == 0x19: self.facc = a - b
+        elif fn == 0x1a: self.facc = a * b
+        elif fn == 0x1c: wf(fd, self.facc + a * b)
+        elif fn == 0x1d: wf(fd, self.facc - a * b)
+        elif fn == 0x1e: self.facc = self.facc + a * b
+        elif fn == 0x1f: self.facc = self.facc - a * b
+        elif fn == 0x28: wf(fd, max(a, b))
+        elif fn == 0x29: wf(fd, min(a, b))
+        elif fn == 0x16: wf(fd, a / math.sqrt(abs(b)) if b != 0 else (3.4028235e38 if a >= 0 else -3.4028235e38))
+        else:
+            raise NotImplementedError(f"FPU insn {w:#010x} at {addr:#x}")
 
     def _mmi(self, w, addr, rs, rt, rd, sa, fn):
         uc = self.uc
@@ -423,6 +533,12 @@ class EE:
         def lanes(v, width):
             return [(v >> (i * width)) & ((1 << width) - 1) for i in range(128 // width)]
 
+        def sgn32(x):
+            return x - (1 << 32) if x & 0x80000000 else x
+
+        def sgn16(x):
+            return x - (1 << 16) if x & 0x8000 else x
+
         def pack(ls, width):
             out = 0
             for i, e in enumerate(ls):
@@ -430,6 +546,21 @@ class EE:
             return out
 
         if grp == 0x08:   # MMI0
+            if sub == 0x0c:
+                self.setreg128(rd, pack([x if sgn32(x) > sgn32(y) else y for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
+                return  # pmaxw
+            if sub == 0x0f:
+                self.setreg128(rd, pack([x if sgn16(x) > sgn16(y) else y for x, y in zip(lanes(a, 16), lanes(b, 16))], 16))
+                return  # pmaxh
+            if sub == 0x02:
+                self.setreg128(rd, pack([M32 if sgn32(x) > sgn32(y) else 0 for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
+                return  # pcgtw
+            if sub == 0x06:
+                self.setreg128(rd, pack([0xffff if sgn16(x) > sgn16(y) else 0 for x, y in zip(lanes(a, 16), lanes(b, 16))], 16))
+                return  # pcgth
+            if sub == 0x0a:
+                self.setreg128(rd, pack([0xff if (x ^ 0x80) > (y ^ 0x80) else 0 for x, y in zip(lanes(a, 8), lanes(b, 8))], 8))
+                return  # pcgtb
             if sub == 0x00:
                 self.setreg128(rd, pack([x + y for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
                 return   # paddw
@@ -476,6 +607,42 @@ class EE:
                 self.setreg128(rd, pack([lb[i] for i in range(0, 16, 2)] + [la[i] for i in range(0, 16, 2)], 8))
                 return
         if grp == 0x28:   # MMI1
+            def sat_add(width, x, y, mx):
+                return min(x + y, mx)
+            def sat_sub(x, y):
+                return max(x - y, 0)
+            if sub == 0x10:
+                self.setreg128(rd, pack([min(x + y, M32) for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
+                return  # padduw
+            if sub == 0x11:
+                self.setreg128(rd, pack([max(x - y, 0) for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
+                return  # psubuw
+            if sub == 0x14:
+                self.setreg128(rd, pack([min(x + y, 0xffff) for x, y in zip(lanes(a, 16), lanes(b, 16))], 16))
+                return  # padduh
+            if sub == 0x15:
+                self.setreg128(rd, pack([max(x - y, 0) for x, y in zip(lanes(a, 16), lanes(b, 16))], 16))
+                return  # psubuh
+            if sub == 0x19:
+                self.setreg128(rd, pack([max(x - y, 0) for x, y in zip(lanes(a, 8), lanes(b, 8))], 8))
+                return  # psubub
+            if sub == 0x03:
+                self.setreg128(rd, pack([x if sgn32(x) < sgn32(y) else y for x, y in zip(lanes(a, 32), lanes(b, 32))], 32))
+                return  # pminw
+            if sub == 0x07:
+                self.setreg128(rd, pack([x if sgn16(x) < sgn16(y) else y for x, y in zip(lanes(a, 16), lanes(b, 16))], 16))
+                return  # pminh
+            if sub == 0x01:
+                self.setreg128(rd, pack([abs(sgn32(x)) if x != 0x80000000 else 0x7fffffff for x in lanes(b, 32)], 32))
+                return  # pabsw
+            if sub == 0x05:
+                self.setreg128(rd, pack([abs(sgn16(x)) if x != 0x8000 else 0x7fff for x in lanes(b, 16)], 16))
+                return  # pabsh
+            if sub == 0x1b:  # qfsrv: funnel shift right by SA register (bytes)
+                sa_bytes = self.sa // 8
+                v = (a << 128) | b
+                self.setreg128(rd, (v >> (sa_bytes * 8)) & M128)
+                return
             if sub == 0x12:
                 la, lb = lanes(a, 32), lanes(b, 32)
                 self.setreg128(rd, pack([lb[2], la[2], lb[3], la[3]], 32))
@@ -566,6 +733,9 @@ class EE:
                     if a in self.patched:
                         uc.mem_write(a, struct.pack('<I', 0x0000000c | (1 << 6)))
                 self.tmp_restored = []
+        self.hooked = {}
+        self.pending_pc = None
+        self.hooked_addr = {}
 
         def onwrite(uc, access, address, size, value, key):
             for a in range(address & ~3, address + size, 4):
@@ -588,13 +758,14 @@ class EE:
 
     # ---- function hooks (HLE replacement of guest functions)
     def hook_function(self, addr, handler):
-        """Replace the guest function at `addr`: on entry call handler(ee) -> v0, then return to ra."""
-        def cb(uc, address, size, ud):
-            rv = handler(self)
-            if rv is not None:
-                self.setreg(2, rv)
-            uc.reg_write(UC_MIPS_REG_PC, self.reg(31) & M32)
-        self.uc.hook_add(UC_HOOK_CODE, cb, None, addr, addr)
+        """Replace the guest function at `addr` with handler(ee) -> v0 (returns to $ra).
+        Implemented by planting a trap `syscall` (code bit 19 set) at the function entry, so
+        $ra is guaranteed to be written before we act (a code hook at the entry fires too early
+        in this Unicorn build)."""
+        idx = len(self.hooked) + 1
+        self.hooked[idx] = handler
+        self.hooked_addr[addr] = idx
+        self.w32(addr, 0x0000000c | ((0x80000 | idx) << 6))
 
     def arg(self, i):
         """i-th integer argument (0-based) under the EE ABI: a0-a3, t0-t3, then stack from 0x20(sp)."""
@@ -610,8 +781,31 @@ class EE:
         self.deferred.append(fn)
         self.uc.emu_stop()
 
-    def call(self, addr, args=(), sp=None, max_insns=0):
+    def run(self, pc, until=0, max_insns=0):
+        """Run from pc until `until` (0 = forever/stop), servicing HLE stops and deferred work."""
         uc = self.uc
+        self.deferred = []
+        while True:
+            self.pending_pc = None
+            self.resume_pc = pc
+            uc.emu_start(pc, until, count=max_insns)
+            pc = uc.reg_read(UC_MIPS_REG_PC) & M32
+            if self.deferred:
+                for fn in self.deferred:
+                    fn()
+                self.deferred = []
+                if self.pending_pc is None and pc != until:
+                    self.skip_once = pc
+            if self.pending_pc is not None:
+                pc = self.pending_pc
+                continue
+            if self.stop_requested:
+                self.stop_requested = False
+                return pc
+            if pc == until or until == 0:
+                return pc
+
+    def call(self, addr, args=(), sp=None, max_insns=0):
         for i, a in enumerate(args):
             if i < 4:
                 self.setreg(4 + i, a)
@@ -620,16 +814,5 @@ class EE:
         if sp is not None:
             self.setreg(29, sp)
         self.setreg(31, self.RET)
-        self.deferred = []
-        pc = addr
-        while True:
-            self.resume_pc = pc
-            uc.emu_start(pc, self.RET, count=max_insns)
-            pc = uc.reg_read(UC_MIPS_REG_PC) & M32
-            if not self.deferred:
-                break
-            for fn in self.deferred:
-                fn()
-            self.deferred = []
-            self.skip_once = pc
+        self.run(addr, self.RET, max_insns)
         return self.reg(2)
