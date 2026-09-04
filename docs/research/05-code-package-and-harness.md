@@ -61,3 +61,7 @@ On fatal init errors FTSCore calls `LoadExecPS2("cdrom0:\SCUS_972.75;1", 3, {"--
 
 ## Reference boot on PCSX2 2.8.1 (BIOS 0200a, `logs/pcsx2_reference_boot.txt`)
 Loader (t≈4 s): IOP reboot with DNAS271.IMG, then `SIO2MAN, CDVDSTM, SIO2D, DBCMAN, DS2U_S1, MCMAN, MCSERV`; PCSX2 patches a timeout loop at 0x1b3a10 (libmc). Game code (t≈12.5 s, after APACHE00 decryption): `USB\USBD.IRX hub=1`, `USB\USBKB.IRX`, `DEV9.IRX`, `LIBSD.IRX`, `SOUND\989SND.IRX stream_priority=18`, `SOUND\989DSTRM.IRX`, `LGAUD.IRX`, `HEADSETO.IRX priority=22` ("HEADSET Output module v2.0 built with liblgaud 1.08 and SCE 2.8.0"). First VU0 microprogram at t≈18 s, first VU1 microprogram at t≈33 s (intro rendering).
+
+## Two loader traps (found 2026-09-04 morning)
+1. The loader's crt0 zero-fills `0x1d5600..0x686f80` (its bss, which *contains* both overlay slots) before `main()`. Any overlay image placed by an ELF loader is wiped; the real game reloads them from the ZDB afterwards. Fix: recomp instruction patch at 0x180120/0x180128 (bss end -> 0x1e7000) plus the override re-copies the overlay segments from the ELF file.
+2. Metrowerks overlays keep their static-constructor thunks (`__sinit_*`, 125 in FTSCore at 0x3fd680.., 16 in ZSealEtc at 0x668480..) **after rodata, inside the "data" part** of the `MWo3` image, past the header's text size. The loader runs them via `FUN_00182840(ctor_start, ctor_end)` (header +0x18/+0x1c). The synthetic ELF must therefore keep the whole overlay image executable, and the override runs the tables through `EeScheduler::invokeCurrentSequence`.
