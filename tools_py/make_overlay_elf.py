@@ -32,17 +32,28 @@ def elf_segments(d):
     return e_entry, segs
 
 
-def build(out, elf_path, overlay_paths):
+def build(out, elf_path, overlay_paths, loader_text_end=None):
+    """Segments get accurate flags so recompilers do not treat data as code:
+    loader: [vaddr, loader_text_end) R-X, rest RW-;  overlay: header+text R-X, data+bss RW-."""
     elf = open(elf_path, 'rb').read()
     entry, segs = elf_segments(elf)
-    loads = [(va, data, memsz, 'boot') for va, data, memsz in segs]
+    loads = []
+    for va, data, memsz in segs:
+        if loader_text_end and va < loader_text_end < va + len(data):
+            cut = loader_text_end - va
+            loads.append((va, data[:cut], cut, 5, 'boot.text'))
+            loads.append((va + cut, data[cut:], memsz - cut, 6, 'boot.data'))
+        else:
+            loads.append((va, data, memsz, 7, 'boot'))
     for p in overlay_paths:
         d = open(p, 'rb').read()
         info = mwo3_info(d)
-        loads.append((info['load'], d, info['memsz'], info['name']))
+        tend = 0x80 + info['text']
+        loads.append((info['load'], d[:tend], tend, 5, info['name'] + '.text'))
+        loads.append((info['load'] + tend, d[tend:], info['memsz'] - tend, 6, info['name'] + '.data'))
         print(f"{p}: {info['name']} @ {info['load']:#x} text {info['text']:#x} data {info['data']:#x} bss {info['bss']:#x}")
     loads.sort(key=lambda x: x[0])
-    for (a, d1, m1, n1), (b, d2, m2, n2) in zip(loads, loads[1:]):
+    for (a, d1, m1, f1, n1), (b, d2, m2, f2, n2) in zip(loads, loads[1:]):
         if a + m1 > b:
             raise SystemExit(f"overlapping images {n1} and {n2}")
     phnum = len(loads)
@@ -51,21 +62,23 @@ def build(out, elf_path, overlay_paths):
     off = (off + 0xfff) & ~0xfff
     body = bytearray()
     phdrs = []
-    for va, data, memsz, name in loads:
-        phdrs.append((1, off + len(body), va, va, len(data), memsz, 7, 0x1000))
+    for va, data, memsz, flags, name in loads:
+        phdrs.append((1, off + len(body), va, va, len(data), memsz, flags, 0x1000))
         body += data
-        pad = (-len(body)) % 16
-        body += b'\0' * pad
-    hdr = bytearray(b'\x7fELF\x01\x01\x01\x00' + b'\0' * 8)
-    # e_type=2 EXEC, e_machine=8 MIPS, version 1, entry, phoff, shoff, flags, ehsize, phentsize, phnum, shentsize, shnum, shstrndx
+        body += bytes((-len(body)) % 16)
+    hdr = bytearray(bytes.fromhex('7f454c46010101') + bytes(9))
     hdr += struct.pack('<HHIIIIIHHHHHH', 2, 8, 1, entry, ehsize, 0, 0x20924001, ehsize, phentsize, phnum, 0, 0, 0)
     for ph in phdrs:
         hdr += struct.pack('<8I', *ph)
-    hdr += b'\0' * (off - len(hdr))
+    hdr += bytes(off - len(hdr))
     with open(out, 'wb') as f:
         f.write(hdr + body)
     print(f"wrote {out}: {phnum} segments, entry {entry:#x}")
 
 
 if __name__ == '__main__':
-    build(sys.argv[1], sys.argv[2], sys.argv[3:])
+    args = sys.argv[1:]
+    lte = None
+    if args and args[0].startswith('--loader-text-end='):
+        lte = int(args.pop(0).split('=')[1], 16)
+    build(args[0], args[1], args[2:], lte)

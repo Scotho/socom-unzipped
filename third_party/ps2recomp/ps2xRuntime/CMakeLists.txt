@@ -435,9 +435,18 @@ target_sources(ps2_runtime PRIVATE
     ${KERNEL_SRC_FILES}
 )
 
-file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/*.cpp"
-)
+set(PS2X_RUNNER_GENERATED_DIR "" CACHE PATH "Directory holding recompiler output (sub_*.cpp, register_functions.cpp, ps2_recompiled_*.h). Empty = use src/runner and include/.")
+if(PS2X_RUNNER_GENERATED_DIR)
+    file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
+        "${PS2X_RUNNER_GENERATED_DIR}/*.cpp"
+    )
+    set(PS2X_GENERATED_INCLUDE_DIR "${PS2X_RUNNER_GENERATED_DIR}")
+else()
+    file(GLOB RUNNER_SRC_FILES CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/*.cpp"
+    )
+    set(PS2X_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
+endif()
 
 set(RUNNER_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/main.cpp")
 set(ROOT_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
@@ -459,6 +468,7 @@ else()
         ${RUNNER_SRC_FILES}
     )
 endif()
+target_include_directories(ps2EntryRunner PRIVATE "${PS2X_GENERATED_INCLUDE_DIR}")
 
 if(PS2X_ENABLE_RUNNER_UNITY_BUILD)
     set_target_properties(ps2EntryRunner PROPERTIES
@@ -474,8 +484,8 @@ if(PS2X_ENABLE_RUNNER_PCH)
     )
 
     foreach(PS2X_RUNNER_GENERATED_HEADER IN ITEMS
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_recompiled_functions.h"
-        "${CMAKE_CURRENT_SOURCE_DIR}/include/ps2_recompiled_stubs.h")
+        "${PS2X_GENERATED_INCLUDE_DIR}/ps2_recompiled_functions.h"
+        "${PS2X_GENERATED_INCLUDE_DIR}/ps2_recompiled_stubs.h")
         if(EXISTS "${PS2X_RUNNER_GENERATED_HEADER}")
             list(APPEND PS2X_RUNNER_PCH_HEADERS "${PS2X_RUNNER_GENERATED_HEADER}")
         endif()
@@ -570,9 +580,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebI
     endif()
 endif()
 
-# Work around WinAPI vs raylib symbol clash for CloseWindow on x64
+# Work around WinAPI vs raylib symbol clash for CloseWindow/ShowCursor on x64
 if(MSVC)
     target_link_options(ps2EntryRunner PRIVATE "/FORCE:MULTIPLE")
+elseif(WIN32)
+    target_link_options(ps2EntryRunner PRIVATE "-Wl,--allow-multiple-definition")
 endif()
 
 # Vita: Work around for GCC 10's LTO plugin
