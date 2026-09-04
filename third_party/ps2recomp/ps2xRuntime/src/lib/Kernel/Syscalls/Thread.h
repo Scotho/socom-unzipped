@@ -9,6 +9,7 @@ namespace ps2_syscalls
     void EnableCache(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void DisableCache(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void ResetEE(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
+    void LoadExecPS2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SetMemoryMode(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void InitThread(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void CreateThread(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

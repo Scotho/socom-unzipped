@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "Dispatcher.h"
 #include "System.h"
+#include "Thread.h"
 
 namespace ps2_syscalls
 {

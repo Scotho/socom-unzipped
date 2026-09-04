@@ -42,3 +42,19 @@ HLE provided: kernel semaphores/threads (single-threaded), `SetupThread/SetupHea
 
 ## PS2Recomp with llvm-mingw
 Builds except the final `ps2EntryRunner` link: raylib's `CloseWindow`/`ShowCursor` collide with user32 (MSVC gets `/FORCE:MULTIPLE`). Fix when forking: build raylib with `-DSUPPORT_...` renames or link with `-Wl,--allow-multiple-definition`. `ps2_analyzer.exe` and `ps2_recomp.exe` built fine.
+
+## SIF RPC servers the game binds (from the recovered code)
+| SID | Module | Bound by |
+|---|---|---|
+| 0x123456 / 0x123457 | 989snd.irx (sound / stream) | FUN_00340d80 (989snd.c) |
+| 0x50494c42 'BLIP' | lgaud.irx (Logitech USB headset audio) | FUN_00243840 (lgAudInit) |
+| 0x75488909 | eznetctl.irx | FUN_001e89e8 |
+| 0x75499128 | eznetcnf.irx | FUN_001e8530 |
+| 0x80000001 / 03 / 06 | fileio / iopheap / loadfile (SDK) | loader |
+| 0x80000211 | libusbkb (usbkb.irx) | FUN_001be6a0 |
+| 0x80000400 | mcserv | FUN_001b3970 |
+| 0x80000592…59c | cdvdfsv (N-cmd, S-cmd, search file, stream, …) | libcdvd |
+| 0x80001300 / 131b / 131c | dbcman / ds2u (pads) | FUN_0018fd10 |
+
+The engine builds its own disc TOC by reading ISO9660 sectors (starting at LBN 16) through `sceCdRead`, then reads all files by LBN: the runtime must serve raw sectors from the ISO (`IoPaths.cdImage`).
+On fatal init errors FTSCore calls `LoadExecPS2("cdrom0:\SCUS_972.75;1", 3, {"--menu_state", "dlgAfterErrorReboot.rdr", ""})` — a self-relaunch with arguments parsed by the loader's `main()`.
