@@ -24,6 +24,7 @@ recomp() {
       "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/SCUS_972.75" \
       "$ROOT/game/overlays/ftscore.bin" "$ROOT/game/overlays/zsealetc.bin"
   cp "$ROOT/game/overlays/socom2_game.elf" "$ROOT/game/disc/socom2_game.elf"
+  python "$ROOT/tools_py/fix_ghidra_csv.py" "$ROOT/recomp/socom2_ghidra.csv" "$ROOT/recomp/extra_functions.txt"
   [ -x "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" ] || build_tools
   rm -rf "$GEN"
   (cd "$ROOT/recomp" && "$TOOLBUILD/ps2xRecomp/ps2_recomp.exe" socom2.toml > recomp_run.log 2>&1) \
