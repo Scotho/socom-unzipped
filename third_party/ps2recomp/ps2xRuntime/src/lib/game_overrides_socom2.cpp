@@ -80,31 +80,33 @@ namespace
         std::cout << "[socom2] LoadGameCodeFromDisc -> restoring overlays, running static constructors" << std::endl;
         reloadOverlaySegments(rdram);
 
+        // Loader's __initialize_cpp_rts(ctor_start, ctor_end, 0, 0) walks a table and calls each
+        // constructor; one guest call per overlay keeps the scheduler's invocation stack shallow.
+        constexpr uint32_t kInitCppRts = 0x00182840u;
         struct Table { uint32_t begin, end; const char *name; };
         const Table tables[] = {{0x00404d10u, 0x00404f04u, "FTSCore"}, {0x006690e0u, 0x00669120u, "ZSealEtc"}};
         std::vector<GuestInvocation> invocations;
-        for (const Table &t : tables)
+        if (!runtime->hasFunction(kInitCppRts))
         {
-            int n = 0;
-            for (uint32_t p = t.begin; p < t.end; p += 4)
+            std::cout << "[socom2] __initialize_cpp_rts (0x182840) has no recompiled body!" << std::endl;
+        }
+        else
+        {
+            for (const Table &t : tables)
             {
-                uint32_t fn;
-                std::memcpy(&fn, rdram + (p & PS2_RAM_MASK), 4);
-                if (fn == 0 || !runtime->hasFunction(fn))
-                {
-                    if (fn) std::cout << "[socom2]   ctor " << std::hex << fn << std::dec << " has no recompiled body" << std::endl;
-                    continue;
-                }
                 GuestInvocation inv{};
                 inv.kind = GuestInvocationKind::HleCall;
                 inv.context = *ctx;
-                inv.context.pc = fn;
+                inv.context.pc = kInitCppRts;
+                SET_GPR_U32(&inv.context, 4, t.begin);
+                SET_GPR_U32(&inv.context, 5, t.end);
+                SET_GPR_U32(&inv.context, 6, 0u);
+                SET_GPR_U32(&inv.context, 7, 0u);
                 SET_GPR_U32(&inv.context, 29, 0u);   // scheduler assigns an invocation stack
                 SET_GPR_U32(&inv.context, 31, 0u);   // scheduler supplies the return trampoline
                 invocations.push_back(std::move(inv));
-                ++n;
+                std::cout << "[socom2]   " << t.name << ": " << ((t.end - t.begin) / 4) << " static constructors via __initialize_cpp_rts" << std::endl;
             }
-            std::cout << "[socom2]   " << t.name << ": " << n << " static constructors queued" << std::endl;
         }
 
         // resume state of the caller once the constructors have run
