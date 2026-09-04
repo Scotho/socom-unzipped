@@ -11,6 +11,7 @@
 #include "ps2_runtime_macros.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <iostream>
 
 namespace
@@ -43,9 +44,45 @@ namespace
         returnTo(ctx, 1);
     }
 
+    // The engine reads the ISO9660 volume descriptor / directory records itself (sector 16...)
+    // and then reads files by LBN, so the disc must be available as a raw image.  Look for an
+    // .iso next to the ELF or one directory up; otherwise honour PS2X_CD_IMAGE.
+    void configureCdImage()
+    {
+        PS2Runtime::IoPaths paths = PS2Runtime::getIoPaths();
+        if (!paths.cdImage.empty())
+            return;
+        if (const char *env = std::getenv("PS2X_CD_IMAGE"); env && *env)
+        {
+            paths.cdImage = env;
+        }
+        else
+        {
+            std::error_code ec;
+            for (const auto &dir : {paths.elfDirectory, paths.elfDirectory.parent_path()})
+            {
+                for (const auto &e : std::filesystem::directory_iterator(dir, ec))
+                {
+                    auto ext = e.path().extension().string();
+                    for (auto &c : ext) c = static_cast<char>(std::tolower(c));
+                    if (ext == ".iso") { paths.cdImage = e.path(); break; }
+                }
+                if (!paths.cdImage.empty()) break;
+            }
+        }
+        if (paths.cdImage.empty())
+        {
+            std::cout << "[socom2] WARNING: no .iso found; raw sector reads will fail" << std::endl;
+            return;
+        }
+        std::cout << "[socom2] CD image: " << paths.cdImage.string() << std::endl;
+        PS2Runtime::setIoPaths(paths);
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
+        configureCdImage();
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);

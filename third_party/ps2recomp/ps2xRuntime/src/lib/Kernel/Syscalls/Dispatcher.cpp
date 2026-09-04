@@ -22,6 +22,9 @@ namespace ps2_syscalls
         case 0x04:
             ExitThread(rdram, ctx, runtime);
             return true;
+        case 0x06:
+            LoadExecPS2(rdram, ctx, runtime);
+            return true;
         case 0x10:
             AddIntcHandler(rdram, ctx, runtime);
             return true;

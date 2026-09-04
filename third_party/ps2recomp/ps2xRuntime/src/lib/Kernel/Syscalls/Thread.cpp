@@ -175,6 +175,37 @@ namespace ps2_syscalls
         setReturnS32(ctx, KE_OK);
     }
 
+    // LoadExecPS2(const char *filename, int argc, char **argv): the game asks the kernel to
+    // replace itself with another ELF (self-relaunch with arguments, or the network GUI).
+    // Not supported yet: log the request and stop so the reason is visible.
+    void LoadExecPS2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t pathAddr = getRegU32(ctx, 4);
+        const uint32_t argc = getRegU32(ctx, 5);
+        const uint32_t argvAddr = getRegU32(ctx, 6);
+        auto cstr = [rdram](uint32_t addr) {
+            std::string out;
+            for (uint32_t i = 0; addr && i < 256; ++i)
+            {
+                const char c = static_cast<char>(rdram[(addr + i) & PS2_RAM_MASK]);
+                if (!c) break;
+                out.push_back(c);
+            }
+            return addr ? out : std::string("<null>");
+        };
+        auto u32 = [rdram](uint32_t addr) {
+            uint32_t v; std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4); return v;
+        };
+        std::cerr << "[LoadExecPS2] path=\"" << cstr(pathAddr) << "\" argc=" << argc;
+        for (uint32_t i = 0; i < argc && i < 16; ++i)
+        {
+            std::cerr << " argv[" << i << "]=\"" << cstr(u32(argvAddr + i * 4)) << "\"";
+        }
+        std::cerr << std::endl;
+        std::cerr << "[LoadExecPS2] reboot not implemented; exiting." << std::endl;
+        std::exit(3);
+    }
+
     void SetMemoryMode(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         setReturnS32(ctx, KE_OK);
