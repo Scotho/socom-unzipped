@@ -92,3 +92,39 @@ DualShock 2 report from XInput/DirectInput via raylib/SDL, including pressure-se
 - Performance of the software GS. Mitigation: GPU backend is a planned phase, interface already exists.
 - VU1 microprogram location/behaviour unknown until Ghidra work is done. Mitigation: interpreter handles any program; dump via runtime logging.
 - No PS2 BIOS for PCSX2. Mitigation: harness + Play!; ask user again when validation is otherwise blocked.
+
+## 7. Course review (2026-09-04 12:00, after the first two days)
+
+**Verdict: the approach is working; keep it, with four adjustments.**
+
+Evidence: from a cold start the recompiled binary now executes the loader, the overlay static
+constructors and the engine's system init, reading the real ISO. Every blocker so far was a
+*function-discovery* or *loader-semantics* gap (missed vtable/callback entry points, the crt0 bss
+wipe, non-contiguous Ghidra functions), not a limitation of static recompilation itself. The
+recompiler + runtime handle SOCOM's instruction mix (FPU-heavy, little MMI/VU0) without
+unimplemented-instruction faults. Server side is already running.
+
+Alternatives considered again and rejected:
+- Embedding an EE interpreter/JIT (Play!-style) instead of static translation: would sidestep
+  function discovery, but the goal explicitly excludes a traditional emulator, and the discovery
+  problem is now largely automated (three scans + a forced-entry list).
+- Rewriting the runtime from scratch: PS2Recomp's scheduler/VU1/GS carry us through bring-up;
+  we own the fork and can replace subsystems (GPU GS) later.
+
+Adjustments:
+1. **Systematic function discovery** instead of one-crash-at-a-time: run pointer scan +
+   immediate scan + forced list inside Ghidra in a single pass and re-export, so bounds are real
+   (fixes the current garbage-function bloat).
+2. **Fast iteration builds**: LTO off (done), and compile generated code at -O1 during bring-up
+   (add `PS2X_GENERATED_OPT`), keeping -O3/LTO for release.
+3. **Pad and reboot are on the critical path** (not "later"): SOCOM uses libdbc (DBCMAN/ds2u),
+   not libpad, so the existing pad backend does not reach the game; and the engine relaunches
+   itself via `LoadExecPS2` for menu-state changes and the network-config utility. Both move to M2/M3.
+4. **Online scope**: avoid the separate network-config ELF entirely by HLE-ing netcnf to a canned
+   configuration; treat Medius 1.50 layout fixes in Horizon as expected work, with a minimal own
+   MAS/MLS as fallback only if divergence is large.
+
+Extensibility (goal: build on it later): EE-side hooks live in one file
+(`game_overrides_socom2.cpp`, address-keyed), IOP services are one class per module, the GS
+backend is an interface, and the server has a plugin directory. Higher-resolution rendering,
+widescreen and 60 fps patches are pnach-style instruction patches in `recomp/socom2.toml`.
