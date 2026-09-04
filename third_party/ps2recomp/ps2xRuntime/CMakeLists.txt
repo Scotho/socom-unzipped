@@ -377,7 +377,6 @@ endfunction()
 
 add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
-    src/lib/game_overrides_socom2.cpp
     src/lib/gs/ps2_gif_arbiter.cpp
     src/lib/ps2_audio.cpp
     src/lib/ps2_audio_vag.cpp
@@ -470,6 +469,15 @@ else()
     )
 endif()
 target_include_directories(ps2EntryRunner PRIVATE "${PS2X_GENERATED_INCLUDE_DIR}")
+if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
+    # generated code uses SSE4.1 intrinsics (MMI/VU0 lowering)
+    target_compile_options(ps2EntryRunner PRIVATE -msse4.1)
+    target_compile_options(ps2_runtime PRIVATE -msse4.1)
+endif()
+# Game-specific override modules self-register via static objects; they must live in the
+# executable (not the static runtime library) or the linker drops them.
+target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
+set_source_files_properties(src/lib/game_overrides_socom2.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 
 if(PS2X_ENABLE_RUNNER_UNITY_BUILD)
     set_target_properties(ps2EntryRunner PROPERTIES
