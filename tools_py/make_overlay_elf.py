@@ -48,9 +48,9 @@ def build(out, elf_path, overlay_paths, loader_text_end=None):
     for p in overlay_paths:
         d = open(p, 'rb').read()
         info = mwo3_info(d)
-        tend = 0x80 + info['text']
-        loads.append((info['load'], d[:tend], tend, 5, info['name'] + '.text'))
-        loads.append((info['load'] + tend, d[tend:], info['memsz'] - tend, 6, info['name'] + '.data'))
+        # Metrowerks places static-constructor code (__sinit_*) after rodata inside the "data"
+        # part of the overlay, so the whole file image must stay executable.
+        loads.append((info['load'], d, info['memsz'], 7, info['name']))
         print(f"{p}: {info['name']} @ {info['load']:#x} text {info['text']:#x} data {info['data']:#x} bss {info['bss']:#x}")
     loads.sort(key=lambda x: x[0])
     for (a, d1, m1, f1, n1), (b, d2, m2, f2, n2) in zip(loads, loads[1:]):
