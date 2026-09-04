@@ -2130,6 +2130,8 @@ entries = [
 [patches]
 # Individual instruction patches
 instructions = [
+  { address = "0x180120", value = "0x3c03001e" },  # crt0 bss clear end: lui v1,0x1e (was 0x68 -> 0x686f80 wiped the overlay slots)
+  { address = "0x180128", value = "0x24637000" },  # addiu v1,v1,0x7000 -> clear only up to 0x1e7000
   { address = "0x18dd9c", value = "0x0" },  # Potential self-modifying code
   { address = "0x18e294", value = "0x0" },  # Potential self-modifying code
   { address = "0x18e5d0", value = "0x0" },  # Potential self-modifying code
