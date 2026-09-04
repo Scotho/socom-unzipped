@@ -9,6 +9,7 @@
 #include "game_overrides.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
+#include "runtime/ps2_memory.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -82,6 +83,13 @@ namespace
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
+        {
+            // sanity check that the FTSCore data segment is resident: should print the boot path string
+            const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);
+            std::string s;
+            for (int i = 0; p && i < 24 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
+            std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
+        }
         configureCdImage();
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);

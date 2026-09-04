@@ -65,7 +65,8 @@ public class FindPointerTargets extends GhidraScript {
         if (op == 9 && rs == 29 && rt == 29) return true;                 // addiu sp,sp,imm
         if (op == 0x19 && rs == 29 && rt == 29) return true;              // daddiu sp,sp,imm
         if (op == 0x0f) return true;                                      // lui
-        if (op == 0x23 || op == 0x37 || op == 0x2b || op == 0x3f) return true; // lw/ld/sw/sd
+        if (op >= 0x20 && op <= 0x2e) return true;                        // loads/stores (lb..sd, lwc1..)
+        if (op >= 0x30 && op <= 0x3f) return true;                        // ll/lwc1/lq/ld/sc/swc1/sq/sd
         if (op == 2 || op == 3) return true;                              // j/jal
         if (op == 0 && (w & 0x3f) == 8 && rs == 31) return true;          // jr ra
         if (op == 0 && (w & 0x3f) == 0x25) return true;                   // or/move
