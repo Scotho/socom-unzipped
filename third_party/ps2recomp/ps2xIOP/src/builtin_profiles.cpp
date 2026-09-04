@@ -108,6 +108,18 @@ namespace ps2x::iop::detail
         std::vector<ProfileDefinition> profiles;
 
         profiles.push_back({
+            "socom2-us",
+            "builtin",
+            {.elfName = "socom2_game.elf"},
+            [](IopHost &, const GameIdentity &)
+            {
+                // SOCOM II (SCUS_972.75 r0001): 989snd / lgaud / inet+netcnf services are added
+                // here as they are implemented; core MCSERV/DBCMAN/LIBSD are always present.
+                return ServiceList{};
+            },
+        });
+
+        profiles.push_back({
             "recvx-us",
             "builtin",
             {.elfName = "slus_201.84"},

@@ -10,3 +10,6 @@
 __pycache__/
 /recomp/output/
 /recomp/*.log
+/third_party/ps2recomp/build*/
+*.log
+/dist/
