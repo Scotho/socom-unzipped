@@ -1,0 +1,19 @@
+{
+  "RefreshConfigInterval": 5000,
+  "UsePublicIp": true,
+  "PublicIpOverride": "127.0.0.1",
+  "TickRate": 10,
+  "MASPort": 10075,
+  "MLSPort": 10078,
+  "MPSPort": 10077,
+  "NATIp": "127.0.0.1",
+  "NATPort": 10070,
+  "MediusFileServerRootPath": "files",
+  "PluginsPath": "medius-plugins/",
+  "Logging": {
+    "LogPath": "logs/medius.log",
+    "LogMetrics": false,
+    "LogToConsole": true,
+    "LogLevel": 1
+  }
+}

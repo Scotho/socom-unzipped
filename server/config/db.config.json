@@ -1,0 +1,7 @@
+{
+  "SimulatedMode": true,
+  "SimulatedEncryptionKey": "socom2-local-dev-key",
+  "DatabaseUrl": "http://localhost:5000",
+  "DatabaseUsername": "horizon",
+  "DatabasePassword": "horizon"
+}

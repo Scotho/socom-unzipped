@@ -1,0 +1,37 @@
+{
+  "RefreshConfigInterval": 5000,
+  "Ports": [ 10071 ],
+  "EncryptMessages": true,
+  "Universes": {
+    "10472": [
+      {
+        "Enabled": true,
+        "Name": "SOCOM II Local",
+        "Description": "Local Horizon universe for SOCOM II (app id 10472)",
+        "Endpoint": "127.0.0.1",
+        "SvoURL": "",
+        "ExtendedInfo": "",
+        "Port": 10075,
+        "UniverseId": 1
+      }
+    ],
+    "0": [
+      {
+        "Enabled": true,
+        "Name": "Default Local",
+        "Description": "Fallback universe for unknown app ids",
+        "Endpoint": "127.0.0.1",
+        "SvoURL": "",
+        "ExtendedInfo": "",
+        "Port": 10075,
+        "UniverseId": 1
+      }
+    ]
+  },
+  "Logging": {
+    "LogPath": "logs/muis.log",
+    "LogMetrics": false,
+    "LogToConsole": true,
+    "LogLevel": 1
+  }
+}

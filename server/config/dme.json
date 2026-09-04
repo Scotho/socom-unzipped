@@ -1,0 +1,23 @@
+{
+  "MPS": {
+    "Ip": "127.0.0.1",
+    "Port": 10077
+  },
+  "PluginsPath": "dme-plugins/",
+  "RefreshConfigInterval": 5000,
+  "ApplicationIds": [ 10472 ],
+  "UsePublicIp": true,
+  "PublicIpOverride": "127.0.0.1",
+  "Location": 0,
+  "MPSReconnectInterval": 15,
+  "MainLoopSleepMs": 5,
+  "PluginTickIntervalMs": 50,
+  "TCPPort": 10073,
+  "UDPPort": 50000,
+  "Logging": {
+    "LogPath": "logs/dme.log",
+    "LogMetrics": false,
+    "LogToConsole": true,
+    "LogLevel": 1
+  }
+}

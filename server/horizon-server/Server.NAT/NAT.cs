@@ -1,0 +1,116 @@
+﻿using DotNetty.Buffers;
+using DotNetty.Handlers.Logging;
+using DotNetty.Transport.Bootstrapping;
+using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Sockets;
+using RT.Cryptography;
+using RT.Models;
+using Server.Common;
+using Server.Pipeline.Udp;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Server.NAT
+{
+    /// <summary>
+    /// Unimplemented NAT.
+    /// </summary>
+    public class NAT
+    {
+        public int Port => Program.Settings.Port;
+        public bool IsRunning => _boundChannel != null && _boundChannel.Active;
+
+        protected IEventLoopGroup _workerGroup = null;
+        protected IChannel _boundChannel = null;
+        protected SimpleDatagramHandler _scertHandler = null;
+
+        public NAT()
+        {
+
+        }
+
+        /// <summary>
+        /// Start the Dme Udp Client Server.
+        /// </summary>
+        public async Task Start()
+        {
+            //
+            _workerGroup = new MultithreadEventLoopGroup();
+
+            _scertHandler = new SimpleDatagramHandler();
+
+            // Queue all incoming messages
+            _scertHandler.OnChannelMessage += (channel, message) =>
+            {
+                // Send ip and port back if the last byte isn't 0xD4
+                if (message.Content.ReadableBytes == 4 && message.Content.GetByte(message.Content.ReaderIndex + 3) != 0xD4)
+                {
+                    var buffer = channel.Allocator.Buffer(6);
+                    if (Program.Settings.OverridePort.HasValue)
+                    {
+                        buffer.WriteBytes((message.Recipient as IPEndPoint).Address.MapToIPv4().GetAddressBytes());
+                        buffer.WriteUnsignedShort((ushort)Program.Settings.OverridePort.Value);
+                    }
+                    else
+                    {
+                        buffer.WriteBytes((message.Sender as IPEndPoint).Address.MapToIPv4().GetAddressBytes());
+                        buffer.WriteUnsignedShort((ushort)(message.Sender as IPEndPoint).Port);
+                    }
+                    channel.WriteAndFlushAsync(new DatagramPacket(buffer, message.Sender));
+                }
+            };
+
+            var bootstrap = new Bootstrap();
+            bootstrap
+                .Group(_workerGroup)
+                .ChannelFactory(() =>
+                {
+                    var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                    //socket.DualMode = false;
+                    return new SocketDatagramChannel(socket);
+                })
+                .Handler(new LoggingHandler(LogLevel.INFO))
+                .Handler(new ActionChannelInitializer<IChannel>(channel =>
+                {
+                    IChannelPipeline pipeline = channel.Pipeline;
+
+                    pipeline.AddLast(_scertHandler);
+                }));
+
+            _boundChannel = await bootstrap.BindAsync(Port);
+        }
+
+        /// <summary>
+        /// Stop the server.
+        /// </summary>
+        public virtual async Task Stop()
+        {
+            try
+            {
+                if (_boundChannel != null)
+                {
+                    var closeTask = _boundChannel.CloseAsync();
+                    await closeTask.TryAwait(TimeSpan.FromMilliseconds(2000));
+                }
+            }
+            finally
+            {
+                if (_workerGroup != null)
+                {
+                    await Task.WhenAll(
+                            _workerGroup.ShutdownGracefullyAsync(TimeSpan.FromMilliseconds(100), TimeSpan.FromSeconds(1)));
+                }
+            }
+        }
+
+        public Task Tick()
+        {
+            return Task.CompletedTask;
+        }
+    }
+}
