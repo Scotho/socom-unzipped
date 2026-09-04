@@ -2,6 +2,8 @@ include(CheckIPOSupported)
 
 check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
 
+option(PS2X_ENABLE_LTO "Enable link-time optimization for release builds" ON)
+
 function(EnableFastReleaseMode TargetName)
     message("> Enabling optimization for: ${TargetName}")
     if(MSVC)
@@ -34,8 +36,10 @@ function(EnableFastReleaseMode TargetName)
         endif()
     endif()
 
-    if(IPO_SUPPORTED)
+    if(IPO_SUPPORTED AND PS2X_ENABLE_LTO)
         set_property(TARGET ${TargetName} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+    elseif(NOT PS2X_ENABLE_LTO)
+        message("> LTO disabled for ${TargetName} (PS2X_ENABLE_LTO=OFF)")
     else()
         message(WARNING "Interprocedural optimization not supported: ${ipo_error}")
     endif()
