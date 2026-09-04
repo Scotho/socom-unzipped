@@ -58,3 +58,6 @@ Builds except the final `ps2EntryRunner` link: raylib's `CloseWindow`/`ShowCurso
 
 The engine builds its own disc TOC by reading ISO9660 sectors (starting at LBN 16) through `sceCdRead`, then reads all files by LBN: the runtime must serve raw sectors from the ISO (`IoPaths.cdImage`).
 On fatal init errors FTSCore calls `LoadExecPS2("cdrom0:\SCUS_972.75;1", 3, {"--menu_state", "dlgAfterErrorReboot.rdr", ""})` — a self-relaunch with arguments parsed by the loader's `main()`.
+
+## Reference boot on PCSX2 2.8.1 (BIOS 0200a, `logs/pcsx2_reference_boot.txt`)
+Loader (t≈4 s): IOP reboot with DNAS271.IMG, then `SIO2MAN, CDVDSTM, SIO2D, DBCMAN, DS2U_S1, MCMAN, MCSERV`; PCSX2 patches a timeout loop at 0x1b3a10 (libmc). Game code (t≈12.5 s, after APACHE00 decryption): `USB\USBD.IRX hub=1`, `USB\USBKB.IRX`, `DEV9.IRX`, `LIBSD.IRX`, `SOUND\989SND.IRX stream_priority=18`, `SOUND\989DSTRM.IRX`, `LGAUD.IRX`, `HEADSETO.IRX priority=22` ("HEADSET Output module v2.0 built with liblgaud 1.08 and SCE 2.8.0"). First VU0 microprogram at t≈18 s, first VU1 microprogram at t≈33 s (intro rendering).
