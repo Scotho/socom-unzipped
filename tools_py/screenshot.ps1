@@ -19,7 +19,7 @@ $rect = $null
 if ($Process -ne "") {
     $p = Get-Process -Name $Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
     if ($p) {
-        [Win32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null
+        # (no focus stealing)
         Start-Sleep -Milliseconds 300
         $r = New-Object Win32+RECT
         [Win32]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null
