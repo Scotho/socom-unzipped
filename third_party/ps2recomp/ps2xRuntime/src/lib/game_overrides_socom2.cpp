@@ -185,10 +185,10 @@ namespace
             for (;;)
             {
                 std::this_thread::sleep_for(std::chrono::seconds(period));
-                const R5900Context &c = runtime.cpu();
+                const R5900Context *c = &runtime.cpu();
                 std::ostringstream o;
-                o << "[pc-sampler] live pc=0x" << std::hex << c.pc << " ra=0x" << GPR_U32(&c, 31)
-                  << " sp=0x" << GPR_U32(&c, 29) << std::dec;
+                o << "[pc-sampler] live pc=0x" << std::hex << c->pc << " ra=0x" << GPR_U32(c, 31)
+                  << " sp=0x" << GPR_U32(c, 29) << std::dec;
                 const EeKernelSnapshot snap = runtime.eeScheduler().snapshot();
                 o << " running=" << snap.runningThreadId << " threads:";
                 for (const auto &t : snap.threads)
