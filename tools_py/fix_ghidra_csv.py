@@ -17,7 +17,11 @@ hdr, body = rows[0], rows[1:]
 fixed = 0
 for r in body:
     s, e, sz = int(r[1], 16), int(r[2], 16), int(r[3])
-    if e - s != sz:
+    hole = (e - s) - sz
+    # Small holes are cold blocks of other tiny functions inside this one: keep the full
+    # range (the recompiler needs the whole body).  Huge holes mean a thunk whose jump
+    # target Ghidra merged in: cut to the real size.
+    if hole > 0 and (hole > 1024 or hole > sz):
         r[2] = f"0x{s + sz:08X}"
         fixed += 1
 have = {int(r[1], 16) for r in body}
