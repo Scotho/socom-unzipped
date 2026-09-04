@@ -1497,6 +1497,8 @@ void EeScheduler::publishSnapshot()
         EeThreadSnapshot snapshot{};
         snapshot.id = id;
         snapshot.pc = item.activeContext().pc;
+        snapshot.ra = getRegU32(&item.activeContext(), 31);
+        snapshot.sp = getRegU32(&item.activeContext(), 29);
         snapshot.entry = item.entry;
         snapshot.stack = item.stack;
         snapshot.stackSize = item.stackSize;

@@ -192,7 +192,7 @@ namespace
                 const EeKernelSnapshot snap = runtime.eeScheduler().snapshot();
                 o << " running=" << snap.runningThreadId << " threads:";
                 for (const auto &t : snap.threads)
-                    o << " [" << t.id << " pc=0x" << std::hex << t.pc << std::dec << " st=" << static_cast<int>(t.status)
+                    o << " [" << t.id << " pc=0x" << std::hex << t.pc << " ra=0x" << t.ra << " sp=0x" << t.sp << std::dec << " st=" << static_cast<int>(t.status)
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
             }

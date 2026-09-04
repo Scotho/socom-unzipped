@@ -181,6 +181,8 @@ struct EeThreadSnapshot
 {
     int id = 0;
     uint32_t pc = 0;
+    uint32_t ra = 0;
+    uint32_t sp = 0;
     uint32_t entry = 0;
     uint32_t stack = 0;
     uint32_t stackSize = 0;
