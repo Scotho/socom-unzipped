@@ -146,7 +146,7 @@ public:
     // GPU backend host hooks (main thread). See GSRasterBackend::HostRenderFrame.
     bool hostDriven() const { return m_backend && m_backend->HostDriven(); }
     bool hostRenderFrame();
-    uint32_t hostFrameTexture(uint32_t &width, uint32_t &height);
+    uint32_t hostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight);
 
     void refreshDisplaySnapshot();
 

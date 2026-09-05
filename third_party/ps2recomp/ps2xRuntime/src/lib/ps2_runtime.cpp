@@ -2450,7 +2450,7 @@ void PS2Runtime::run()
         // GPU backend: replay the game thread's GS command stream on this (GL) thread and draw the
         // presented render target directly; otherwise upload the CPU-rasterized frame.
         Texture2D presentTex = frameTex;
-        uint32_t hostTexW = 0u, hostTexH = 0u;
+        uint32_t hostTexW = 0u, hostTexH = 0u, hostFullW = 0u, hostFullH = 0u;
         uint32_t hostTex = 0u;
         if (gs().hostDriven())
         {
@@ -2463,13 +2463,15 @@ void PS2Runtime::run()
                 s_gpuLastTick = tickNow;
             }
             if (gs().hostRenderFrame())
-                hostTex = gs().hostFrameTexture(hostTexW, hostTexH);
+                hostTex = gs().hostFrameTexture(hostTexW, hostTexH, hostFullW, hostFullH);
         }
         if (hostTex != 0u && hostTexW != 0u && hostTexH != 0u)
         {
+            // The GL texture is the whole render target; the displayed frame is its top-left
+            // hostTexW x hostTexH rectangle (srcRect below), so raylib must know the full size.
             presentTex.id = hostTex;
-            presentTex.width = static_cast<int>(hostTexW);
-            presentTex.height = static_cast<int>(hostTexH);
+            presentTex.width = static_cast<int>(hostFullW ? hostFullW : hostTexW);
+            presentTex.height = static_cast<int>(hostFullH ? hostFullH : hostTexH);
             presentTex.mipmaps = 1;
             presentTex.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
             presentWidth = hostTexW;

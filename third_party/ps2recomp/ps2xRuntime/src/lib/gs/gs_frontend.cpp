@@ -1759,14 +1759,14 @@ bool GS::hostRenderFrame()
     return m_backend ? m_backend->HostRenderFrame() : false;
 }
 
-uint32_t GS::hostFrameTexture(uint32_t &width, uint32_t &height)
+uint32_t GS::hostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight)
 {
     if (!m_backend)
     {
-        width = height = 0u;
+        width = height = textureWidth = textureHeight = 0u;
         return 0u;
     }
-    return m_backend->HostFrameTexture(width, height);
+    return m_backend->HostFrameTexture(width, height, textureWidth, textureHeight);
 }
 
 uint32_t GS::ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const

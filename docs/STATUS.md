@@ -115,7 +115,14 @@ script, and its list is empty (no saves). Traced (`PS2X_SOCOM2_PAD_TRACE=1`, com
 0a208a0): the presses DO reach the game — `scePad2GetButtonInfo` is polled for the digital ids
 0x00-0x0f and the pressure ids 0x14-0x1f, and each press shows as 0→1→0 (digital) and 0→ff→0
 (pressure). MCSERV (`[MCSERV]` trace) is only ever asked op 0 (Init), 11 times; the shell never
-queries card info. The gate is in the shell's UI layer: every UI input site uses the pad only when the current
+queries card info. **Presentation bug (reported by the user as a smaller frame, black squares and flicker on the GPU
+path; fixed 2026-09-05 17:55):** the runner was told the presented texture was 640x448 while the
+render target texture is 640x1024, so raylib squeezed the whole target into the display rectangle
+(picture squashed into the lower part, unused black rows visible, alternating targets flickering).
+`HostFrameTexture` now reports the texture's full size and the runner draws only the top-left
+presented rectangle. Depth textures are also cleared to 0 on creation now (were undefined).
+
+The gate is in the shell's UI layer: every UI input site uses the pad only when the current
 screen object's +0x114 (local player index) is 0 (`FUN_00592ac0`). Next step and lldb recipe in
 HANDOFF. The pad state machine itself (`FUN_002d9ff0`: states 0/1/2/3 + timers) is verified to
 work with the HLE input. Pad sockets: only the newest socket reports connected (the boot-time

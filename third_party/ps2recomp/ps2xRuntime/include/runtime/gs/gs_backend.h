@@ -36,10 +36,11 @@ public:
     // last presented frame (0 = none, use the CPU pixel path).
     virtual bool HostDriven() const { return false; }
     virtual bool HostRenderFrame() { return false; }
-    virtual uint32_t HostFrameTexture(uint32_t &width, uint32_t &height)
+    // width/height = the presented rectangle (rows/cols actually displayed); textureWidth/Height =
+    // the GL texture's full size (the presented rectangle is its top-left corner).
+    virtual uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight)
     {
-        width = 0u;
-        height = 0u;
+        width = height = textureWidth = textureHeight = 0u;
         return 0u;
     }
 };

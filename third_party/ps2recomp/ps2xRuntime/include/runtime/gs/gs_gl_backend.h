@@ -51,7 +51,7 @@ public:
     // Main thread: replay recorded commands. Returns true when a presentable texture exists.
     bool HostDriven() const override { return true; }
     bool HostRenderFrame() override;
-    uint32_t HostFrameTexture(uint32_t &width, uint32_t &height) override;
+    uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
 
 private:
     enum class CmdType : uint8_t
@@ -248,6 +248,8 @@ private:
     uint32_t m_presentWidth = 0;
     uint32_t m_presentHeight = 0;
     uint32_t m_presentFbp = 0;
+    uint32_t m_presentTexWidth = 0;
+    uint32_t m_presentTexHeight = 0;
     std::vector<uint8_t> m_presentPixels;   // filled only when a frame dump is requested
     bool m_presentPixelsRequested = false;
 

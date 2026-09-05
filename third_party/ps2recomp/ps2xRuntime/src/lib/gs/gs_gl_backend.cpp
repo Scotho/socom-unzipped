@@ -656,10 +656,12 @@ bool GSGlBackend::HostRenderFrame()
     return m_presentTexture != 0u;
 }
 
-uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height)
+uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight)
 {
     width = m_presentWidth;
     height = m_presentHeight;
+    textureWidth = m_presentTexWidth;
+    textureHeight = m_presentTexHeight;
     return m_presentTexture;
 }
 
@@ -850,7 +852,10 @@ GSGlBackend::DepthTarget *GSGlBackend::getDepthTarget(uint32_t zbp, uint32_t fbw
     dt.height = height;
     glGenTextures(1, &dt.texture);
     glBindTexture(GL_TEXTURE_2D, dt.texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    // PS2 local memory starts zeroed: initialise the depth buffer to 0 instead of leaving it undefined
+    // (otherwise GEQUAL tests fail until the game's own clear writes it).
+    std::vector<float> zeros(static_cast<size_t>(width) * height, 0.0f);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, zeros.data());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     m_depthTargets.push_back(dt);
@@ -1037,11 +1042,25 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
             if (pref->gpuDirty)
                 rt = pref;
     }
+    // DISPLAY gives the field height (224) when the game renders full frames (448 rows) and
+    // scans out interlaced; present the rows that were actually drawn in that case.
     m_presentTexture = rt->color;
     m_presentWidth = std::min<uint32_t>(width, rt->width);
     m_presentHeight = std::min<uint32_t>(height, rt->height);
+    m_presentTexWidth = rt->width;
+    m_presentTexHeight = rt->height;
     m_presentFbp = display.fbp;
     ++m_frameCounter;
+    {
+        static uint32_t s_logged = 0u;
+        if (s_logged < 4u && (m_frameCounter == 1u || m_frameCounter == 600u || m_frameCounter == 1200u || m_frameCounter == 1800u))
+        {
+            ++s_logged;
+            std::fprintf(stderr, "[gs-gl present] frame=%llu dispfb fbp=%03x fbw=%u psm=%02x display=%ux%u smode2=%llx rt=%ux%u used=%u -> present %ux%u\n",
+                         (unsigned long long)m_frameCounter, display.fbp, display.fbw, display.psm, width, height,
+                         (unsigned long long)request.smode2, rt->width, rt->height, rt->usedHeight, m_presentWidth, m_presentHeight);
+        }
+    }
 
     if (m_presentPixelsRequested)
     {
