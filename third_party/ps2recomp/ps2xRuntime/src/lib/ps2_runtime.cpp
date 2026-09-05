@@ -23,6 +23,7 @@
 #include <limits>
 #include <chrono>
 #include <atomic>
+#include <cstdlib>
 #include <thread>
 #include <unordered_map>
 #include <sstream>
@@ -633,6 +634,32 @@ bool PS2Runtime::syncCoreSubsystems()
                                          (cpuContext->vu0_fbrst & (1u << 10)) != 0u;
                                      m_vu1.state().tBitEnabled =
                                          (cpuContext->vu0_fbrst & (1u << 11)) != 0u;
+                                     if (std::getenv("PS2X_TRACE_VU"))
+                                     {
+                                         // Scan the microprogram reachable from startPC for an XGKICK lower-op,
+                                         // and report how the program terminates, to see whether the render path
+                                         // (geometry -> GIF) is present but unreached, or absent entirely.
+                                         extern std::atomic<uint64_t> g_vuXgkickInCode;   // XGKICK reachable from this startPC (to E-bit)
+                                         extern std::atomic<uint64_t> g_vuMscalWithXg;    // count of MSCAL'd programs that contain a reachable XGKICK
+                                         const uint8_t *code = m_memory.getVU1Code();
+                                         uint32_t found = 0u;
+                                         for (uint32_t p = startPC & ~0x7u; p + 8u <= PS2_VU1_CODE_SIZE; p += 8u)
+                                         {
+                                             uint32_t lower, upper;
+                                             std::memcpy(&lower, code + p, 4);
+                                             std::memcpy(&upper, code + p + 4, 4);
+                                             const uint32_t opHi = (lower >> 25) & 0x7Fu;
+                                             const uint32_t funct = lower & 0x3Fu;
+                                             const uint32_t funct2 = (lower & 3u) | ((lower >> 4) & 0x7Cu);
+                                             if (opHi == 0x40u && funct >= 0x3Cu && funct2 == 0x6Cu)
+                                                 ++found;
+                                             if (upper & 0x40000000u) // E-bit: last pair of this program
+                                                 break;
+                                         }
+                                         g_vuXgkickInCode.store(found, std::memory_order_relaxed);
+                                         if (found)
+                                             g_vuMscalWithXg.fetch_add(1, std::memory_order_relaxed);
+                                     }
                                      m_vu1.execute(m_memory.getVU1Code(), PS2_VU1_CODE_SIZE,
                                                    m_memory.getVU1Data(), PS2_VU1_DATA_SIZE,
                                                    m_gs, &m_memory, startPC, top, itop, 65536);
