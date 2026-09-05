@@ -5,7 +5,7 @@
 |---|---|---|
 | M1 | Fork + toolchain: merged ELF recompiles, runtime links, `socom2.exe` runs crt0→main | **done** |
 | M2 | Loader → game entry → engine init without unimplemented-instruction faults | **done** — engine runs its main loop; audio init + DBCMAN reached |
-| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — frame loop advances, verifying GS output; pad next |
+| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — libpad2 HLE lands (pad reported connected); now blocked in controller-config on DBCMAN rpc 0x8000131a |
 | M4 | Single-player mission playable | not started |
 | M5 | Online: login/lobby/room on local Horizon, second client joins | server side ready; client side not started |
 | M6 | Portable package | not started |
@@ -40,13 +40,18 @@ above them: the game loops in its shell render dispatch (`FUN_00339de0`) but onl
 **black clears** — `xgkick=0` (no VU1 geometry ever emitted), `nbWrites=0` (every rasterized pixel
 is black), ~0.45 GS draws/frame. So the game has not advanced to a state that draws content.
 
-Most likely gate: **controller input**. The shell state machine probably will not leave the
-attract/title state without a connected DualShock2. `DBCMAN` only answers the version RPC; the pad
-RPCs (0x80001301/2/4) return an untouched buffer. Next step: implement the pad path (libpad/PADMAN
-or the DBCMAN pad broker) reporting one connected DS2 pad with neutral state, then re-measure with
-`PS2X_FRAME_DUMP` — a jump in `gsSubmits`/`nbWrites` means the menu is drawing. Secondary: trace the
-shell state machine (`FUN_00339de0` selects the screen from `DAT_0049e888[state]`) to see what it
-waits on. Reproduce the black state: `PS2X_FRAME_DUMP=logs/frames ./run.sh 40`.
+**Update:** the controller was the gate. libpad2 (`scePad2*`) HLE now reports a connected
+DualShock2 (see `docs/research/08-controller-and-dbcman.md`), and the game advances out of the
+attract loop into first-time controller configuration. It now wedges there on a new IOP RPC:
+**DBCMAN `rpc=0x8000131a`**, which our DBCMAN stub leaves unanswered. The main thread pins at
+guest 0x32f174 inside a config/asset lookup (`FUN_00321390` list-walk → `FUN_00354670` →
+`FUN_0032f0e0` recursive string-tree search) that grinds because the config table DBCMAN 0x8000131a
+should populate is empty.
+
+Next step: reverse the DBCMAN 0x8000131a reply format (and the sibling 0x80001301/2/4 RPCs) and
+have `ps2xIOP/src/modules/dbcman.cpp` return a small connection/config table describing one attached
+DS2 pad, so the config lookup resolves. Reproduce: `PS2X_PC_SAMPLER=4 ./run.sh 60` — pinned at
+0x32f174, DBCMAN RPCs print from the IOP.
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.
