@@ -1270,6 +1270,10 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
 
     if (address >= 0x10008000 && address < 0x1000F000)
     {
+        // Persist every DMAC register (MADR/QWC/TADR/ASR/SADR, D_CTRL/STAT, D_RBOR/RBSR, ...).
+        // Previously only CHCR-start writes were acted on and nothing was stored, so RBOR/RBSR
+        // read back as 0 and MFIFO ring pointers collapsed to the RBSR mask.
+        m_ioRegisters[address] = value;
         if ((address & 0xFF) == 0x00 && (value & 0x100))
         {
             const auto dctrlIt = m_ioRegisters.find(0x1000E000u);
