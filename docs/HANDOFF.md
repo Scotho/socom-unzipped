@@ -14,12 +14,23 @@ With the pad enabled (`PS2X_SOCOM2_PAD=1`) the game boots, plays the Sony/intro 
 the intro, and **the shell UI renders over the menu movie with working host input** (2026-09-05,
 commits db51455 → 3c790b4). Keyboard is always mapped (arrows, WASD/IJKL, Enter/Backspace, ZXCV,
 QE, 1/3, 2/4), mouse via `PS2X_SOCOM2_MOUSE=1`, and `PS2X_SOCOM2_INPUT_SCRIPT="8:START,16:DOWN"`
-presses buttons on a timer for log-driven runs. The frame rate at the menu is 13-17 fps because the
-CPU rasterizer samples textures per pixel. Full story: `docs/STATUS.md` (13:00 and 14:30 sections),
-`docs/research/07 §Resolution 2`, `docs/research/08 §Resolution`.
+presses buttons on a timer for log-driven runs. Rendering runs on the **OpenGL 3.3 GS backend**
+(default; `PS2X_GS_BACKEND=cpu` = the old rasterizer) at a steady 60 fps at the menu. Full story:
+`docs/STATUS.md` (13:00, 14:30 and 16:50 sections), `docs/research/07 §Resolution 2`,
+`docs/research/08 §Resolution`, `docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`.
 
 ## Immediate next task
-Make the menu fast enough to use, then navigate it.
+The menu is fast now (GPU backend, 60 fps). Make it *navigable*: the slot/profile dialog ignores
+DOWN/CROSS/TRIANGLE/START from `PS2X_SOCOM2_INPUT_SCRIPT` and shows an empty list.
+
+- Trace whether presses reach the shell: log in `scePad2Read` (game_overrides_socom2.cpp) when a
+  non-neutral report is returned, and in `scePad2GetButtonInfo` which ids the game polls. If the
+  game polls ids the HLE returns 0 for (e.g. pressure ids expected instead of digital), fix the map.
+- Trace the memory-card flow: MCSERV RPCs in the log around the dialog; the dialog may be waiting
+  for a card/profile (mc0 folder mapping — see STATUS "Memory card").
+- Then continue the GPU plan stage 3 (docs/superpowers/plans/2026-09-05-gpu-gs-backend.md).
+
+## Previous next task (done 2026-09-05 16:50): make the menu fast enough to use
 
 - **Texture sampling is the hot path**: `GSCpuBackend::SampleTexture` (gs_cpu_backend.cpp) does a
   swizzled `ReadVramUnlocked` + `LookupCLUT` per texel, ×4 with bilinear. Add a decoded-texture
@@ -41,7 +52,7 @@ Make the menu fast enough to use, then navigate it.
 - `sceDmaSendI` should set TIE as well as TTE (the HLE currently ignores the "I" variants).
 
 ## Build / run
-- Runtime-only change: `./build.sh runtime` (~6-10 min). Run: `./run.sh <seconds>` or
+- Runtime-only change: `./build.sh runtime` (~3-10 min; **run it from `socom_pc/`, not a subdirectory**). Editing `gs_backend.h`/`gs_frontend.h` recompiles the generated code too (~15 min). Run: `./run.sh <seconds>` or
   `dist/socom2.exe game/disc/socom2_game.elf` (put `tools/llvm-mingw/bin` on PATH).
 - Changed the TOML stub list / `PS2_STUB_LIST` / recompile-time stubs → full
   `./build.sh recomp && ./build.sh runtime` (~15-20 min) because the recompiler embeds the list.
@@ -81,7 +92,7 @@ Make the menu fast enough to use, then navigate it.
 - Don't steal desktop focus or screenshot repeatedly — the user's machine is often gaming. Prefer
   logs. Pause if asked (machine under load).
 - Commit as you go with specific messages; keep `docs/STATUS.md` current. Co-author line:
-  `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
+  `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 - If running via cron, re-arm a one-shot cron ~4 h ahead when you start, and correct its prompt to
   point at the *current* blocker (prompts go stale fast).
 

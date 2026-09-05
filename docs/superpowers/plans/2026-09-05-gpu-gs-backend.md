@@ -56,9 +56,9 @@ GS frontend ──Submit/Transfer/Present──► GSGlBackend (records Cmd stre
 - Selection: `PS2X_GS_BACKEND=gpu|cpu` (default gpu once the menu renders correctly).
 
 ## Stages
-1. [ ] Skeleton: command stream, RT cache, untextured triangles/sprites, depth, blend table,
+1. [x] Skeleton: command stream, RT cache, untextured triangles/sprites, depth, blend table,
        presentation of the RT, `PS2X_GS_BACKEND`. Verify: menu frames (colour boxes) at 60 fps.
-2. [ ] Textures: decode cache + CLUT + TEXA, wrap/region modes, bilinear, ST/Q, TFX/TCC,
+2. [x] Textures (2026-09-05, commits 939655b..): decode cache + CLUT + TEXA, wrap/region modes, bilinear, ST/Q, TFX/TCC,
        RT-as-texture, uploads into RT pages refresh the RT. Verify: the slot dialog matches the
        CPU screenshot; video frames (image uploads) show; `PS2X_FRAME_DUMP` counters work.
 3. [ ] Fidelity: alpha test AFAIL modes, DATE, fog, FBMSK/FBA, 16-bit targets, Z16/Z24 formats,
@@ -72,3 +72,13 @@ GS frontend ──Submit/Transfer/Present──► GSGlBackend (records Cmd stre
 - Dual-source blending needs GL 3.3 `ARB_blend_func_extended` (core) — required.
 - Depth textures per ZBP are not aliased with colour pages.
 - The debug panel's frame preview is empty in GPU mode (no per-frame readback).
+
+## Status 2026-09-05 16:40
+Stages 1-2 landed: the shell renders on the GPU at a steady 60 fps (`PS2X_GS_STATS=1` prints
+elapsed/fps, replay timings, distinct blend/test states). Diagnostics: `PS2X_GS_DUMP_TEX=<dir>`
+(decoded textures), `PS2X_GS_TRACE_CMDS=<skip presents>` (ordered replay trace),
+`PS2X_GS_TEX_FROM_CPU=1` (decode from the game-thread VRAM; slow, experiment only).
+Observed: SOCOM II streams every UI texture through one slot (tbp 0x3bf7, clut 0x3bf3) so the
+texture cache re-decodes per draw (fine at 60 fps, ~150 draws/frame); the panel textures carry
+alpha 0 palettes and rely on vertex alpha. Differences vs the CPU path still to verify against
+PCSX2: the title logo stays visible behind the slot dialog on the GPU path.

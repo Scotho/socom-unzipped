@@ -1,11 +1,11 @@
-# Project status — updated 2026-09-05 13:00
+# Project status — updated 2026-09-05 16:50
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
 |---|---|---|
 | M1 | Fork + toolchain: merged ELF recompiles, runtime links, `socom2.exe` runs crt0→main | **done** |
 | M2 | Loader → game entry → engine init without unimplemented-instruction faults | **done** — engine runs its main loop; audio init + DBCMAN reached |
-| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — intro video plays with the pad enabled (DBCMAN heap-smash fixed 2026-09-05); next: menu + host input |
+| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — intro, title and slot dialog render on the new GPU backend at 60 fps; host input wired; dialog does not yet react to input (memory-card flow?) |
 | M4 | Single-player mission playable | not started |
 | M5 | Online: login/lobby/room on local Horizon, second client joins | server side ready; client side not started |
 | M6 | Portable package | not started |
@@ -93,6 +93,27 @@ thread inside `DrawSprite`→`SampleTexture` from the guest's DMA kick — it is
 Options: a decoded-texture cache keyed by (tbp0,tbw,psm,size,CLUT) with page-dirty invalidation,
 or the M4 GPU backend. Also visible: the dialog's highlighted row renders as a striped bar
 (likely a CLUT/format or alpha issue) — check once the frame rate is fixed.
+
+## Where the guest is now (2026-09-05 16:50) — GPU backend, menu at 60 fps
+**OpenGL 3.3 GS backend landed and is the default** (`GSGlBackend`, commits 939655b, f80a93b,
+0a208a0; design + status in `docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`). The game
+thread records GS commands, the main (GL) thread replays them into per-framebuffer render targets
+and presents the RT texture directly; two `GSCpuBackend` instances model VRAM (authoritative on
+the game thread, a shadow on the render thread for texture decoding). The shell renders at a
+steady 60 fps (`PS2X_GS_STATS=1`), vs 13-17 fps on the CPU rasterizer (`PS2X_GS_BACKEND=cpu`).
+Diagnostics: `PS2X_GS_DUMP_TEX=<dir>`, `PS2X_GS_TRACE_CMDS=<skip presents>`, and
+`PS2X_FRAME_DUMP` still works (Present blocks for a readback).
+
+Observed with the traces: SOCOM II streams every UI texture through one VRAM slot (texture at
+block 0x3bf7, palette at 0x3bf3, re-uploaded before each draw), so the texture cache re-decodes
+per draw; the dialog panel textures have alpha-0 palettes and rely on vertex alpha; the only
+visible difference from the CPU path is that the title logo stays visible behind the slot dialog
+(plausible for the real game; verify against PCSX2 when convenient).
+
+**Open:** the slot/profile dialog does not react to DOWN/CROSS/TRIANGLE/START from the input
+script, and its list is empty (no saves). Either the shell is waiting on the memory-card flow
+(MCSERV HLE) or the pad input is not reaching the shell's UI layer even though `FUN_002da930`
+reads it — next thing to trace (log non-neutral `scePad2Read` reports and the MCSERV RPCs).
 
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
