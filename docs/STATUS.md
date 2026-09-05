@@ -1,4 +1,4 @@
-# Project status — updated 2026-09-05 03:20
+# Project status — updated 2026-09-05 04:10
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
@@ -25,7 +25,7 @@ Progress today, each a runtime fix: alarm handler discovered (main thread wakes)
 Lessons: `runtime.replaceFunction()` only affects calls that go through the dispatch table; direct `jal` calls are compiled as direct C++ calls, so hooks on directly-called functions must be recompile-time stubs (`handler@0xADDR` in the TOML, handler name added to `PS2_STUB_LIST` in `ps2_call_list.h`, implementation in namespace `ps2_stubs`), and the recompiler must be rebuilt because it embeds that list (`build.sh recomp` now always rebuilds the tools). The crash reporter (`[crash]` lines with module-relative frames; symbolize with `llvm-nm -n dist/socom2.exe`) and the PC sampler (`PS2X_PC_SAMPLER`) are the two diagnostics that found every issue above.
 
 ## Current blocker (top task)
-Booted into the render frame loop. Main thread busy-waits in zVid_Swap (FUN_00350e30, `while VIF1_CHCR.STR`) for a frame the sleeping render thread (FUN_003b1dd0) must produce; cooperative scheduler + synchronous DMA do not interleave them. VIF1 INTC (cause 5) raising is implemented (commit); remaining gap is the frame-0 bootstrap wake of the render thread (see docs/research/05 "Frame-loop threading, refined"). Reproduce: `PS2X_PC_SAMPLER=8 ./run.sh 90` — main thread pinned at 0x350e78.
+Booted into the render frame loop. Main thread busy-waits in zVid_Swap (FUN_00350e30, `while VIF1_CHCR.STR`) for a frame the sleeping render thread (FUN_003b1dd0) must produce; cooperative scheduler + synchronous DMA do not interleave them. The render/display thread is woken by INTC-5 (VIF1), now raised on interrupt VIFcodes. It never fires because no VIF1 data flows: the MFIFO ring pointers collapse to RBSR (0x7fff0) after the first drain (RBOR reads 0 inside the wrap math despite being 0x100000 at CHCR-write time). See docs/research/05 "MFIFO ring-pointer bug — precise lead". Fixed en route: DMAC registers now persist (RBOR/RBSR were always 0). Trace with PS2X_TRACE_FIFO=1; deadlock at guest 0x350e78. Reproduce: `PS2X_PC_SAMPLER=8 ./run.sh 90` — main thread pinned at 0x350e78.
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.
