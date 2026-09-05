@@ -345,6 +345,12 @@ public:
     void processVIF1Data(const uint8_t *data, uint32_t sizeBytes);
     void processPendingTransfers();
     std::vector<uint32_t> consumeCompletedDmacCauses();
+    // MFIFO (D_CTRL.MFD): fromSPR (D8) feeds a ring buffer [RBOR, RBOR+RBSR+16) that VIF1 or GIF
+    // drains in chain mode, stalling when TADR catches up with D8_MADR.
+    uint32_t mfifoDrainChannel() const;
+    bool isMfifoStalled(uint32_t channelBase) const { return m_mfifoStalled && channelBase == m_mfifoStalledChannel; }
+    void kickMfifoDrain();
+    void runSprDma(uint32_t channelBase, uint32_t chcr);
 
     int pollDmaRegisters();
 
@@ -421,6 +427,8 @@ public:
     std::vector<PendingTransfer> m_pendingGifTransfers;
     std::vector<PendingTransfer> m_pendingVif0Transfers;
     std::vector<PendingTransfer> m_pendingVif1Transfers;
+    bool m_mfifoStalled = false;
+    uint32_t m_mfifoStalledChannel = 0u;
     std::mutex m_completedDmacMutex;
     std::vector<uint32_t> m_completedDmacCauses;
 
