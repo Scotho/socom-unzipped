@@ -55,6 +55,9 @@ namespace ps2x::iop::detail
                 }
                 else
                 {
+                    // Device queries (rpc 1 = lgAudGetDeviceInfo(index), 2 = open, ...): the EE enumerates
+                    // devices until a query fails, so report "no device" for everything else.
+                    reply[0] = 0x80000001u;
                     bool shouldLog = false;
                     {
                         std::lock_guard<std::mutex> lock(m_mutex);
