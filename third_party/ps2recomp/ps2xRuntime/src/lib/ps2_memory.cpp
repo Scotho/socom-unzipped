@@ -1288,7 +1288,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
             const uint32_t qwc = m_ioRegisters[channelBase + 0x20];
             m_dmaStartCount.fetch_add(1, std::memory_order_relaxed);
             if (g_traceFifo)
-                std::fprintf(stderr, "[fifo] CHCR w ch=%08x val=%08x madr=%08x qwc=%08x tadr=%08x mfd=%x\n", channelBase, value, madr, qwc, m_ioRegisters[channelBase+0x30], (m_ioRegisters.count(0x1000E000u)?((m_ioRegisters[0x1000E000u]>>2)&3):0));
+                std::fprintf(stderr, "[fifo] CHCR w ch=%08x val=%08x madr=%08x qwc=%08x tadr=%08x mfd=%x rbor=%08x rbsr=%08x d8madr=%08x\n", channelBase, value, madr, qwc, m_ioRegisters[channelBase+0x30], (m_ioRegisters.count(0x1000E000u)?((m_ioRegisters[0x1000E000u]>>2)&3):0), m_ioRegisters[0x1000E040u], m_ioRegisters[0x1000E050u], m_ioRegisters[0x1000D010u]);
 
             if (channelBase == 0x1000D000u || channelBase == 0x1000D400u)
             {
@@ -1296,8 +1296,8 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                 return true;
             }
             const bool mfifoDrain = (channelBase == mfifoDrainChannel());
-            const uint32_t rbor = m_ioRegisters[0x1000E040u];
-            const uint32_t rbsr = m_ioRegisters[0x1000E050u];
+            const uint32_t rbor = m_ioRegisters[0x1000E050u];   // D_RBOR = base
+            const uint32_t rbsr = m_ioRegisters[0x1000E040u];   // D_RBSR = size-1 mask
             auto ringWrap = [&](uint32_t a) -> uint32_t
             {
                 return mfifoDrain ? (rbor + ((a - rbor) & rbsr)) : a;
@@ -1874,8 +1874,8 @@ void PS2Memory::runSprDma(uint32_t channelBase, uint32_t chcr)
     uint32_t madr = m_ioRegisters[channelBase + 0x10];
     const uint32_t qwc = m_ioRegisters[channelBase + 0x20];
     uint32_t sadr = m_ioRegisters[channelBase + 0x80] & (PS2_SCRATCHPAD_SIZE - 1u);
-    const uint32_t rbor = m_ioRegisters[0x1000E040u];
-    const uint32_t rbsr = m_ioRegisters[0x1000E050u];
+    const uint32_t rbor = m_ioRegisters[0x1000E050u];   // D_RBOR = base
+    const uint32_t rbsr = m_ioRegisters[0x1000E040u];   // D_RBSR = size-1 mask
     const bool ring = fromSpr && mfifoDrainChannel() != 0u;
     for (uint32_t i = 0; i < qwc; ++i)
     {
