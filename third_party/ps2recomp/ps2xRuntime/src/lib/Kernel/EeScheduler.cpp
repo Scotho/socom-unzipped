@@ -1,3 +1,5 @@
+#include <cstdlib>
+#include <cstdio>
 #include "runtime/ee_scheduler.h"
 
 #include "ps2_log.h"
@@ -1252,6 +1254,7 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
 void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
 {
     assertExecutor();
+    if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] dispatchIrq dmac=%d cause=%u\n", (int)dmac, cause);
     const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
     if (cause < 32u && (mask & (1u << cause)) == 0u)
     {

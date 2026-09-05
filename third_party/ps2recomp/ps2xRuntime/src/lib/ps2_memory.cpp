@@ -4,6 +4,9 @@
 #include "ps2_log.h"
 #include <atomic>
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
+static const bool g_traceFifo = (std::getenv("PS2X_TRACE_FIFO") != nullptr);
 #include <limits>
 #include <stdexcept>
 #include <algorithm>
@@ -1280,6 +1283,8 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
             const uint32_t madr = m_ioRegisters[channelBase + 0x10];
             const uint32_t qwc = m_ioRegisters[channelBase + 0x20];
             m_dmaStartCount.fetch_add(1, std::memory_order_relaxed);
+            if (g_traceFifo)
+                std::fprintf(stderr, "[fifo] CHCR w ch=%08x val=%08x madr=%08x qwc=%08x tadr=%08x mfd=%x\n", channelBase, value, madr, qwc, m_ioRegisters[channelBase+0x30], (m_ioRegisters.count(0x1000E000u)?((m_ioRegisters[0x1000E000u]>>2)&3):0));
 
             if (channelBase == 0x1000D000u || channelBase == 0x1000D400u)
             {
@@ -1539,6 +1544,8 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     m_ioRegisters[channelBase + 0x50] = asr1;
                     chcr = (chcr & ~(0x3u << 4)) | ((asp & 0x3u) << 4);
                     chcr = (chcr & 0x0000FFFFu) | (lastTagUpper << 16);
+                    if (g_traceFifo && mfifoDrain)
+                        std::fprintf(stderr, "[fifo] drain ch=%08x tags=%d stalled=%d chainBytes=%zu newTadr=%08x\n", channelBase, tagsProcessed, (int)mfifoStalledNow, chainBuf.size(), ringWrap(tagAddr));
                     if (mfifoDrain)
                     {
                         m_mfifoStalled = mfifoStalledNow;

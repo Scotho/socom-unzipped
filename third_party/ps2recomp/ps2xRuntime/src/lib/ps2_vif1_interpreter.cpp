@@ -1,4 +1,6 @@
 // Based on Blackline Interactive implementation
+#include <cstdlib>
+#include <cstdio>
 #include "runtime/ps2_memory.h"
 #include <cstring>
 
@@ -315,6 +317,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         {
             vif1_regs.stat |= (1u << 11); // INT
             queueIntcCause(5u);           // EE INTC VIF1 -> game's render-thread waker
+            if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode -> INTC5\n");
         }
 
         if (opcode == VIF_NOP)
