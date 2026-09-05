@@ -1,5 +1,21 @@
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_gl_backend.h"
+
+#include <cstdlib>
+
+namespace
+{
+    // PS2X_GS_BACKEND=cpu|gpu (default gpu). The CPU rasterizer stays as the reference/fallback.
+    std::unique_ptr<GSRasterBackend> makeDefaultRasterBackend()
+    {
+        const char *choice = std::getenv("PS2X_GS_BACKEND");
+        if (choice && (choice[0] == 'c' || choice[0] == 'C'))
+            return std::make_unique<GSCpuBackend>();
+        return std::make_unique<GSGlBackend>();
+    }
+}
+
 #include "ps2_log.h"
 #include "runtime/ps2_memory.h"
 #include <atomic>
@@ -126,7 +142,7 @@ namespace
 
 
 GS::GS()
-    : m_backend(std::make_unique<GSCpuBackend>())
+    : m_backend(makeDefaultRasterBackend())
 {
     reset();
 }
@@ -1733,6 +1749,24 @@ void GS::setRasterBackend(std::unique_ptr<GSRasterBackend> backend)
 
     m_backend = std::move(backend);
     m_backend->Initialize(m_localMemoryStorage, m_localMemorySize);
+}
+
+// No m_backendLifetimeMutex here: the game thread holds it across Present(), and a GPU backend's
+// Present may block until this (render) thread has replayed the stream — taking the lock would
+// deadlock. The backend pointer only changes through setRasterBackend at startup.
+bool GS::hostRenderFrame()
+{
+    return m_backend ? m_backend->HostRenderFrame() : false;
+}
+
+uint32_t GS::hostFrameTexture(uint32_t &width, uint32_t &height)
+{
+    if (!m_backend)
+    {
+        width = height = 0u;
+        return 0u;
+    }
+    return m_backend->HostFrameTexture(width, height);
 }
 
 uint32_t GS::ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const

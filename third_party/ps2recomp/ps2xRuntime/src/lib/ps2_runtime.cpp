@@ -2447,7 +2447,38 @@ void PS2Runtime::run()
         });
         uint32_t presentWidth = FB_WIDTH;
         uint32_t presentHeight = DEFAULT_DISPLAY_HEIGHT;
-        UploadFrame(frameTex, this, presentWidth, presentHeight);
+        // GPU backend: replay the game thread's GS command stream on this (GL) thread and draw the
+        // presented render target directly; otherwise upload the CPU-rasterized frame.
+        Texture2D presentTex = frameTex;
+        uint32_t hostTexW = 0u, hostTexH = 0u;
+        uint32_t hostTex = 0u;
+        if (gs().hostDriven())
+        {
+            // Same vsync-tick gating as UploadFrame: latch (records the GS present), then replay.
+            static uint64_t s_gpuLastTick = std::numeric_limits<uint64_t>::max();
+            const uint64_t tickNow = eeScheduler().currentVSyncTick();
+            if (tickNow != s_gpuLastTick)
+            {
+                gs().latchHostPresentationFrame();
+                s_gpuLastTick = tickNow;
+            }
+            if (gs().hostRenderFrame())
+                hostTex = gs().hostFrameTexture(hostTexW, hostTexH);
+        }
+        if (hostTex != 0u && hostTexW != 0u && hostTexH != 0u)
+        {
+            presentTex.id = hostTex;
+            presentTex.width = static_cast<int>(hostTexW);
+            presentTex.height = static_cast<int>(hostTexH);
+            presentTex.mipmaps = 1;
+            presentTex.format = PIXELFORMAT_UNCOMPRESSED_R8G8B8A8;
+            presentWidth = hostTexW;
+            presentHeight = hostTexH;
+        }
+        else
+        {
+            UploadFrame(frameTex, this, presentWidth, presentHeight);
+        }
 
         BeginDrawing();
         ClearBackground(BLACK);
@@ -2464,7 +2495,7 @@ void PS2Runtime::run()
             (screenHeight - dstHeight) * 0.5f,
             dstWidth,
             dstHeight};
-        DrawTexturePro(frameTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+        DrawTexturePro(presentTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);

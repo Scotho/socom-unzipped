@@ -30,4 +30,16 @@ public:
     virtual void WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value) = 0;
     virtual void SnapshotVram(std::vector<uint8_t> &out) const = 0;
     virtual GSTransferSnapshot GetTransferSnapshot() const = 0;
+
+    // Optional host-side hooks (GPU backends). Called on the thread that owns the GL context.
+    // HostRenderFrame replays pending work; HostFrameTexture returns a GL texture id for the
+    // last presented frame (0 = none, use the CPU pixel path).
+    virtual bool HostDriven() const { return false; }
+    virtual bool HostRenderFrame() { return false; }
+    virtual uint32_t HostFrameTexture(uint32_t &width, uint32_t &height)
+    {
+        width = 0u;
+        height = 0u;
+        return 0u;
+    }
 };
