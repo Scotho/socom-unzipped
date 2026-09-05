@@ -1633,6 +1633,42 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     m_activeGs = &gs;
     m_activeMemory = memory;
 
+    // PS2X_TRACE_VU: dump the executed PC path of the first VU1 program that contains a reachable
+    // XGKICK, to locate where control flow diverges from the geometry-kick (xgDec stays 0).
+    static std::atomic<int> s_vuTraceDumped{0};
+    bool traceThis = false;
+    uint32_t traceFirstXg = 0xFFFFFFFFu;
+    if (m_unit == Unit::VU1 && std::getenv("PS2X_TRACE_VU") &&
+        s_vuTraceDumped.load(std::memory_order_relaxed) < 3)
+    {
+        for (uint32_t p = m_state.pc & ~0x7u; p + 8u <= codeSize; p += 8u)
+        {
+            uint32_t lo, up;
+            std::memcpy(&lo, vuCode + p, 4);
+            std::memcpy(&up, vuCode + p + 4, 4);
+            const uint32_t opHi = (lo >> 25) & 0x7Fu, funct = lo & 0x3Fu;
+            const uint32_t funct2 = (lo & 3u) | ((lo >> 4) & 0x7Cu);
+            if (opHi == 0x40u && funct >= 0x3Cu && funct2 == 0x6Cu) { traceFirstXg = p; break; }
+            if (up & 0x40000000u) break;
+        }
+        if (traceFirstXg != 0xFFFFFFFFu)
+        {
+            traceThis = true;
+            // Dump the input header the program reads (VU data memory at TOP*16 and at buffer 0),
+            // to tell whether the branch-over-XGKICK is due to empty input (data not reaching VU
+            // memory) or a legitimately idle frame.
+            const uint32_t topOff = (m_state.top & 0x3FFu) * 16u;
+            uint32_t h0[4] = {0}, hT[4] = {0};
+            if (16u <= dataSize) std::memcpy(h0, vuData, 16);
+            if (topOff + 16u <= dataSize) std::memcpy(hT, vuData + topOff, 16);
+            std::fprintf(stderr, "[vu-trace] start pc=0x%x firstXGKICK=0x%x top=0x%x itop=0x%x "
+                         "hdr@0=[%08x %08x %08x %08x] hdr@TOP=[%08x %08x %08x %08x]\n",
+                         m_state.pc, traceFirstXg, m_state.top, m_state.itop,
+                         h0[0], h0[1], h0[2], h0[3], hT[0], hT[1], hT[2], hT[3]);
+        }
+    }
+    uint32_t traceSteps = 0u;
+
     const int previousRoundingMode = std::fegetround();
     const bool useVuRounding = std::fesetround(FE_TOWARDZERO) == 0;
     const uint64_t budgetEnd = m_cycle + maxCycles;
@@ -1650,6 +1686,16 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             break;
         }
         g_vuInsnCount.fetch_add(1, std::memory_order_relaxed);
+
+        if (traceThis && traceSteps < 400u)
+        {
+            uint32_t lo, up;
+            std::memcpy(&lo, vuCode + m_state.pc, 4);
+            std::memcpy(&up, vuCode + m_state.pc + 4, 4);
+            std::fprintf(stderr, "[vu-trace] pc=0x%x lo=%08x up=%08x%s\n", m_state.pc, lo, up,
+                         m_state.pc == traceFirstXg ? "  <-- XGKICK" : "");
+            ++traceSteps;
+        }
 
         uint64_t readyCycle = calculatePairReadyCycle(decoded);
         while (readyCycle > m_cycle)
@@ -1836,6 +1882,12 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         m_state.haltAfterDelaySlot = false;
         m_pendingHaltD = false;
         m_pendingHaltT = false;
+    }
+    if (traceThis)
+    {
+        std::fprintf(stderr, "[vu-trace] END pc=0x%x steps=%u ended=%d (firstXGKICK was 0x%x)\n",
+                     m_state.pc, traceSteps, (int)programEnded, traceFirstXg);
+        s_vuTraceDumped.fetch_add(1, std::memory_order_relaxed);
     }
     m_state.cycles = m_cycle;
     if (useVuRounding && previousRoundingMode != -1)
