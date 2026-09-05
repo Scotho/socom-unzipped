@@ -1465,3 +1465,5 @@
 0x669f40  # imm target from 0x60d650
 0x3b7cf0  # static-init element ctor (0x30-byte objects at 0x4b4ef0) called via JALR from 0x181fb4; Ghidra missed it (gap after FUN_003b7c90)
 0x38e890  # static-init element ctor called via JALR from 0x181fb4 (array-construct helper); Ghidra missed it
+0x353d00  # VALVE sequence-command exec thunk: j 0x353fd0 / addiu a0,a0,4 (not a Ghidra function; new-game sequence stalled on it)
+0x2a98a0  # thunk j 0x2a98b0 used as the script-event completion callback (FUN_0034e6b0 arg)

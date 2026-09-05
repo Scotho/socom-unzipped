@@ -1109,6 +1109,9 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_presentCopyFbo);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_presentCopyTexture, 0);
     glDisable(GL_SCISSOR_TEST);
+    // glBlitFramebuffer honours the colour mask: a frame that ends with an FBMSK-masked draw
+    // would otherwise leave the copy black while the render target itself is fine.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glBlitFramebuffer(0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
                       0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
                       GL_COLOR_BUFFER_BIT, GL_NEAREST);
@@ -1116,6 +1119,23 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     m_presentTexture = m_presentCopyTexture;
     m_presentFbp = display.fbp;
     ++m_frameCounter;
+    // PS2X_GS_TRACE_PRESENT=<skip>: after <skip> presents, print 30 presents with the copy's
+    // centre pixel (rgba) and the GL error state, to tell a black copy from a black draw.
+    {
+        static const long s_skip = [] { const char *e = std::getenv("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
+        static uint32_t s_printed = 0u;
+        if (s_skip >= 0 && static_cast<long>(m_frameCounter) > s_skip && s_printed < 30u)
+        {
+            ++s_printed;
+            uint8_t px[4] = {0, 0, 0, 0};
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentCopyFbo);
+            glReadPixels(static_cast<GLint>(m_presentWidth / 2u), static_cast<GLint>(m_presentHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            std::fprintf(stderr, "[gs-gl present-trace] frame=%llu en1=%d en2=%d pmode=%llx fbp=%03x rt#fbo=%u %ux%u copy=%u centre=%02x%02x%02x%02x glerr=0x%x\n",
+                         (unsigned long long)m_frameCounter, en1 ? 1 : 0, en2 ? 1 : 0, (unsigned long long)request.pmode, display.fbp, rt->fbo,
+                         m_presentWidth, m_presentHeight, m_presentCopyTexture, px[0], px[1], px[2], px[3], glGetError());
+        }
+    }
     {
         static uint32_t s_logged = 0u;
         if (s_logged < 4u && (m_frameCounter == 1u || m_frameCounter == 600u || m_frameCounter == 1200u || m_frameCounter == 1800u))

@@ -11,6 +11,7 @@
 #include "Kernel/Stubs/GS.h"
 #include "Kernel/Stubs/MPEG.h"
 #include "ps2_host_backend.h"
+#include "rlgl.h"
 #include "ps2_iop_host.h"
 #include "ps2x/iop/iop_subsystem.h"
 
@@ -2497,7 +2498,12 @@ void PS2Runtime::run()
             (screenHeight - dstHeight) * 0.5f,
             dstWidth,
             dstHeight};
+        // The GS frame's alpha channel is game data (often 0): present it opaque, never blended.
+        rlDrawRenderBatchActive();
+        rlDisableColorBlend();
         DrawTexturePro(presentTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+        rlDrawRenderBatchActive();
+        rlEnableColorBlend();
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);

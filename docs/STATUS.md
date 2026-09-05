@@ -176,6 +176,27 @@ the game does not try to create it (Mkdir never called) — fine for now. After 
 reads or fio opens happen. VU1 keeps running programs (mscal rises) but XGKICKs stop: the UI
 packets carry the "no setup kick" flag (header.w bit 1 clear at microcode 0x30) and no vertices.
 
+## 2026-09-05 19:10 — root cause of the stalled "new game": an unrecompiled trampoline
+Runner R2 of the `UiprepMission1` animation (three runners: button anim → SOUND, motion,
+`SuspendMenuInput`; fade → OBJECT_OPACITY_FROM_TO + OBJECT_ACTIVE_STATE×3; then a sequence of
+14 `VALVE` nodes) stays in state 4 with its current node pointer on the first VALVE node
+forever. VALVE is registered by `FUN_0026a8e0(0x414bb0, "VALVE", parse=0x3535d0, 0,
+exec=0x353d00, 0)` (decomp line 252352) and **0x353d00 is not a function in the Ghidra CSV**: it is
+the two-instruction thunk `j 0x353fd0; addiu $a0,$a0,4`. The dispatcher's table call into it
+had no recompiled target and returned without doing anything, so the runner never advanced
+(`PS2X_CALL_TRACE=0x353d00:VALVE` prints `[call-trace] no function at 0x353d00`).
+
+Scan for the same class (thunks outside every CSV function range) found exactly two: 0x353d00
+and 0x2a98a0 (event-completion callback passed to `FUN_0034e6b0`). Both added to
+`recomp/extra_functions.txt`; full recomp started 19:05. Also noticed: 0x38e890/0x3b7cf0 were
+listed there since 17:00 but the EXE still reported `missing-target 0x38e890` — the forced list
+only takes effect with `./build.sh recomp`.
+
+Scan snippet (Python, from `socom_pc/`): parse the ELF program headers, for every executable
+segment word `w` with `w>>26 == 2` (j) whose next word is `addiu $a0,$a0,imm` (`>>16 == 0x2484`)
+or nop, compute `target = ((w & 0x3ffffff) << 2) | (addr & 0xf0000000)`, and report `addr` when
+it is neither a CSV `Start` nor inside any `[Start, End)` range (bisect over the sorted starts).
+
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
 `PS2X_FRAME_DUMP=<dir>` counters, every layer below the game is proven correct: VIF1 delivers
