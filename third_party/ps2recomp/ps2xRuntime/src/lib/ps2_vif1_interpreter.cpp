@@ -1,6 +1,11 @@
 // Based on Blackline Interactive implementation
 #include <cstdlib>
 #include <cstdio>
+#include <atomic>
+extern std::atomic<uint64_t> g_vif1CodeCount;
+extern std::atomic<uint64_t> g_mscalCount;
+extern std::atomic<uint64_t> g_vuMpgBytes;
+extern std::atomic<uint64_t> g_vif1BytesCount;
 #include "runtime/ps2_memory.h"
 #include <cstring>
 
@@ -265,6 +270,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
 {
     if (sizeBytes == 0u)
         return;
+    g_vif1BytesCount.fetch_add(sizeBytes, std::memory_order_relaxed);
 
     uint32_t pos = 0;
 
@@ -306,6 +312,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         pos += 4;
 
         uint8_t opcode = (cmd >> 24) & 0x7F;
+        g_vif1CodeCount.fetch_add(1, std::memory_order_relaxed);
         uint16_t imm = cmd & 0xFFFF;
         uint8_t num = (cmd >> 16) & 0xFF;
         const bool irq = (cmd & 0x80000000u) != 0u;
@@ -376,6 +383,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         }
         else if (opcode == VIF_MSCAL || opcode == VIF_MSCALF)
         {
+            g_mscalCount.fetch_add(1, std::memory_order_relaxed);
             uint32_t startPC = (uint32_t)imm * 8u;
 
             // Values visible to the VU program for this MSCAL.
@@ -456,6 +464,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
                 if (pos + copyBytes <= sizeBytes)
                 {
                     std::memcpy(m_vu1Code + destAddr, data + pos, copyBytes);
+                    g_vuMpgBytes.fetch_add(copyBytes, std::memory_order_relaxed);
                     markVU1CodeModified();
                 }
             }

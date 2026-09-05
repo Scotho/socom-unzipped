@@ -7,6 +7,11 @@
 #include "runtime/gs/ps2_gs_memory.h"
 #include "ps2_log.h"
 #include <atomic>
+extern std::atomic<uint64_t> g_gsPixelCount;
+extern std::atomic<uint64_t> g_gsFirstFbp;
+extern std::atomic<uint64_t> g_gsPixToFbp0;
+extern std::atomic<uint64_t> g_gsSomeNZFbp;
+extern std::atomic<uint64_t> g_gsNonBlackWrites;
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -930,6 +935,10 @@ void GSCpuBackend::WritePixel(const GSDrawState &state, int x, int y, int z, uin
             pixel = Rgba8888ToRgba5551(pixel);
         }
 
+        g_gsPixelCount.fetch_add(1, std::memory_order_relaxed);
+        if (fbp == 0u) g_gsPixToFbp0.fetch_add(1, std::memory_order_relaxed);
+        if ((pixel & 0x00FFFFFFu) != 0u) g_gsNonBlackWrites.fetch_add(1, std::memory_order_relaxed);
+        else { g_gsSomeNZFbp.store(fbp, std::memory_order_relaxed); }
         WriteVramUnlocked(fpsm, fbp, fbw, x, y, pixel);
     }
 

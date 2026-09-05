@@ -1,3 +1,6 @@
+#include <atomic>
+extern std::atomic<uint64_t> g_xgkickCount;
+extern std::atomic<uint64_t> g_vuInsnCount;
 #include "runtime/ps2_vu1.h"
 #include "runtime/gs/ps2_gif_arbiter.h"
 #include "runtime/gs/gs_frontend.h"
@@ -934,6 +937,7 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     const uint32_t sourceAddress = (qwordAddress * 16u) % m_activeVuDataSize;
     m_xgkick = {};
     m_xgkick.active = true;
+    g_xgkickCount.fetch_add(1, std::memory_order_relaxed);
     m_xgkick.sourceAddress = sourceAddress;
     m_xgkick.cycleCredit = 1u; // XGKICK's issue cycle counts toward PATH1.
     m_xgkick.issueCycle = m_cycle;
@@ -1645,6 +1649,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             reportReservedInstruction(decoded.upperUsage.reserved, decoded.upperUsage.reserved ? decoded.upper : decoded.lower);
             break;
         }
+        g_vuInsnCount.fetch_add(1, std::memory_order_relaxed);
 
         uint64_t readyCycle = calculatePairReadyCycle(decoded);
         while (readyCycle > m_cycle)

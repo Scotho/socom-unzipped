@@ -4,6 +4,8 @@
 #include "ps2_log.h"
 #include <atomic>
 #include <cstring>
+extern std::atomic<uint64_t> g_vif1EnqCount;
+extern std::atomic<uint64_t> g_vif1EnqQwc;
 #include <cstdlib>
 #include <cstdio>
 static const bool g_traceFifo = (std::getenv("PS2X_TRACE_FIFO") != nullptr);
@@ -1319,7 +1321,11 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     if (channelBase == 0x1000A000u)
                         m_pendingGifTransfers.push_back(pt);
                     else if (channelBase == 0x10009000u)
+                    {
+                        g_vif1EnqCount.fetch_add(1, std::memory_order_relaxed);
+                        g_vif1EnqQwc.fetch_add(qwCount, std::memory_order_relaxed);
                         m_pendingVif1Transfers.push_back(pt);
+                    }
                     else if (channelBase == 0x10008000u)
                         m_pendingVif0Transfers.push_back(pt);
                 };
