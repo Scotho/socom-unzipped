@@ -128,6 +128,54 @@ HANDOFF. The pad state machine itself (`FUN_002d9ff0`: states 0/1/2/3 + timers) 
 work with the HLE input. Pad sockets: only the newest socket reports connected (the boot-time
 controller-check socket is deleted by the game; the HLE never sees the delete).
 
+## Where the guest is now (2026-09-05 18:40) — main menu reached, "new game" hand-off stalls
+The "+0x114 player-index gate" theory above is dead: the presses work. What the shell shows after
+START is the **main menu screen** (`dlgMenu.rdr` in `game/disc/RUN/UI/READERC.ZAR`: buttons
+new_game/load_game/multiplayer/options/extras/LAN, the `SavedGames` list box with the
+`popup_load.tif` panel, the SplashLogo, a 3D `mainmenu_roller` model). We only see the load-game
+panel and the logo; the buttons and the roller are not drawn (open rendering question, see below).
+The user confirms that panel is not what the real game shows there.
+
+How it was found (all new diagnostics, env-gated, zero cost when unset):
+- `PS2X_CALL_TRACE="0xADDR[:name],..."` (game_overrides_socom2.cpp): logs every call of the
+  listed guest functions — time, a0-a3, f12-f14, ra, any argument that points at text — and the
+  return value (`[ret] name #n v0=… f0=…`). Works through the dense function table, so direct
+  JALs are caught. 320 slots. Traced set that decoded the shell: the **script binding table** at
+  ELF 0x3dd4d4..0x3de1c4 (207 `{name, fn, 0, id}` rows, 16 bytes each — SetMission, SwitchMenu,
+  SetMenuState, ReadyToLoad, LoadSavedGame, ListSavedGames, GetNumSavedGames, IsMemCardInserted,
+  SuspendMenuInput, PlayMPEG, …; dump: `tools_py` one-liner in the 18:40 session, list saved in
+  the scratchpad as script_bindings.txt) plus the **animation-sequence command table** registered
+  by `FUN_0026a8e0(0x414bb0, "NAME", 0, create, execute, 0)` at decomp lines 106865-106930
+  (OBJECT_OPACITY_FROM_TO exec 0x25f880, CALL_ANIMATION 0x25d550, ui::UI_COMMAND 0x2745a0 = the
+  dispatcher for the binding table, OBJECT_ACTIVE_STATE 0x263aa0, IF 0x25e7a0 / ELSE 0x25e6d0 /
+  ENDIF 0x25e6a0, CALL_SEQUENCE 0x25d270, …). `FUN_0034e6b0(delay, queue 0x49ea50, "event",
+  node, arg)` schedules a named script event ("goto_menu", "UiprepMission1" …).
+- `PS2X_CD_TRACE=1`: `[cd] SearchFile`/`[cd] Read`/`[fio] open` on stdout (the RUNTIME_LOG
+  versions are compiled out). `PS2X_MC_TRACE=1` now prints GetInfo/Sync on stdout.
+- `PS2X_PEEK="0xADDR[:words],..."` dumps guest words (hex + float) with every PC-sampler line.
+- `PS2X_FRAME_DUMP` pixels were **stale** on the GPU path (the same frame re-reported forever) —
+  do not trust the PPMs/`nonBlack` for "what is on screen"; `PS2X_HOST_SCREENSHOT=<dir>[:<s>]`
+  saves what the window shows. Display-off presents (PMODE EN1=EN2=0) now blank the dump.
+
+Shell flow observed (call trace, `8:START,16:CROSS`): boot → `do_onstart`, `intro_onstart`,
+`load_initial_config`, SwitchMenu → START → `goto_menu` → SwitchMenu(5) → `menu_fade_up`,
+`PulseArrows`, `UiStopAttract`, `SetMenuValve`, `has_memcard_changed`, `CleanupMissionMemory`,
+`Ensure_MC_Dirs_Fast` (sceMcGetDir root, sceMcChdir, sceMcGetDir "BASCUS-97275SOCOMII" → 0),
+GetNumSavedGames (sceMcGetDir SaveGame0..9 → none), `IF GotSaveGames > …` → then a 1.5 s
+`has_memcard_changed` poll loop. CROSS = the **new_game_button** → event `UiprepMission1`:
+SOUND, `SuspendMenuInput 0.75` (writes shell+0x900, decremented per frame in `FUN_003654c0`),
+OBJECT_ACTIVE_STATE ×3 (menu objects → INACTIVE: this is why the screen goes black), then the
+sequence engine stops ticking. The engine's main tick `FUN_001ebed0(dt, app)` then runs its
+fade-to-mission countdown branch (`app+0xc8 -= dt; f = app+0xc8 * app+0xc4; f < 0 →
+FUN_002a9a70(0x4364e0)` → push mission state 0x4086a0 via `FUN_002cf380(0x4084c0, …)`), but
+`FUN_002a9a70` never fires (traced, 6 s). Current step: peek app+0xb8..+0xc8 and dt to see why
+the countdown does not complete (app object address = a1 of the traced `FUN_001ebed0`).
+
+Other facts: memory card HLE reports a formatted 8 MB card with no `BASCUS-97275SOCOMII` dir;
+the game does not try to create it (Mkdir never called) — fine for now. After CROSS no disc
+reads or fio opens happen. VU1 keeps running programs (mscal rises) but XGKICKs stop: the UI
+packets carry the "no setup kick" flag (header.w bit 1 clear at microcode 0x30) and no vertices.
+
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
 `PS2X_FRAME_DUMP=<dir>` counters, every layer below the game is proven correct: VIF1 delivers

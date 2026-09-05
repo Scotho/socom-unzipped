@@ -3,6 +3,16 @@
 #include "MPEG.h"
 #include "runtime/ee_scheduler.h"
 
+
+namespace
+{
+    // PS2X_CD_TRACE=1: print CD file lookups and sector reads (which disc files a screen loads).
+    bool cdTraceEnabled()
+    {
+        static const bool on = std::getenv("PS2X_CD_TRACE") != nullptr;
+        return on;
+    }
+}
 namespace ps2_stubs
 {
     namespace
@@ -209,6 +219,8 @@ namespace ps2_stubs
         const uint32_t a0 = getRegU32(ctx, 4); // usually lbn
         const uint32_t a1 = getRegU32(ctx, 5); // usually sector count
         const uint32_t a2 = getRegU32(ctx, 6); // usually destination buffer
+        if (cdTraceEnabled())
+            std::cout << "[cd] Read lbn=0x" << std::hex << a0 << " sectors=0x" << a1 << " buf=0x" << a2 << std::dec << std::endl;
 
         struct CdReadArgs
         {
@@ -548,6 +560,8 @@ namespace ps2_stubs
         uint32_t pathAddr = getRegU32(ctx, 5);
         const std::string path = readPs2CStringBounded(rdram, pathAddr, 260);
         const std::string normalizedPath = normalizeCdPathNoPrefix(path);
+        if (cdTraceEnabled())
+            std::cout << "[cd] SearchFile \"" << sanitizeForLog(path) << "\"" << std::endl;
         static uint32_t traceCount = 0;
         const uint32_t callerRa = getRegU32(ctx, 31);
         const bool shouldTrace = (traceCount < 128u) || ((traceCount % 512u) == 0u);
@@ -637,6 +651,8 @@ namespace ps2_stubs
 
         g_cdStreamingLbn = resolvedEntry.baseLbn;
         g_cdStreamingEndLbn = resolvedEntry.baseLbn + resolvedEntry.sectors;
+        if (cdTraceEnabled())
+            std::cout << "[cd] SearchFile ok lsn=0x" << std::hex << resolvedEntry.baseLbn << " size=0x" << resolvedEntry.sizeBytes << std::dec << std::endl;
         if (shouldTrace)
         {
             RUNTIME_LOG("[sceCdSearchFile:ok] path=\"" << sanitizeForLog(path)

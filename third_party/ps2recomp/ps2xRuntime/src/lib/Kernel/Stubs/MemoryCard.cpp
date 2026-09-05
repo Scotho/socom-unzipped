@@ -1,3 +1,5 @@
+#include <iostream>
+#include <cstdlib>
 #include "Common.h"
 #include "MemoryCard.h"
 
@@ -905,9 +907,9 @@ namespace ps2_stubs
             }
         }
 
-        RUNTIME_LOG("[MC] GetInfo port=" << port << " type=" << cardType
+        if (std::getenv("PS2X_MC_TRACE")) std::cout << "[MC] GetInfo port=" << port << " type=" << cardType
                                          << " free=" << freeBlocks << " format=" << format
-                                         << " result=" << result);
+                                         << " result=" << result << std::endl;
         setReturnS32(ctx, 0);
     }
 
@@ -1213,7 +1215,7 @@ namespace ps2_stubs
             return;
         }
 
-        RUNTIME_LOG("[MC] Sync cmd=" << cmd << " result=" << result);
+        if (std::getenv("PS2X_MC_TRACE")) std::cout << "[MC] Sync cmd=" << cmd << " result=" << result << std::endl;
 
         if (cmdPtr != 0u)
         {

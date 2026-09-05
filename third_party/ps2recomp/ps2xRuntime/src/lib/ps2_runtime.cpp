@@ -2502,6 +2502,37 @@ void PS2Runtime::run()
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);
         }
+        // PS2X_HOST_SCREENSHOT=<dir>[:<seconds>]: save what the window shows every <seconds> (default 5).
+        {
+            static const char *s_shotEnv = std::getenv("PS2X_HOST_SCREENSHOT");
+            if (s_shotEnv)
+            {
+                static std::string s_dir;
+                static double s_interval = 5.0;
+                static double s_next = 1.0;
+                static int s_index = 0;
+                if (s_dir.empty())
+                {
+                    s_dir = s_shotEnv;
+                    const size_t colon = s_dir.rfind(':');
+                    if (colon != std::string::npos && colon > 1u)
+                    {
+                        s_interval = std::max(0.5, std::atof(s_dir.c_str() + colon + 1));
+                        s_dir.resize(colon);
+                    }
+                }
+                const double now = GetTime();
+                if (now >= s_next)
+                {
+                    s_next = now + s_interval;
+                    Image shot = LoadImageFromScreen();
+                    char path[512];
+                    std::snprintf(path, sizeof(path), "%s/host_%03d_%.0fs.png", s_dir.c_str(), s_index++, now);
+                    ExportImage(shot, path);
+                    UnloadImage(shot);
+                }
+            }
+        }
         EndDrawing();
 
         if (WindowShouldClose())

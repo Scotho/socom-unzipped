@@ -103,6 +103,9 @@ private:
         uint32_t attachedDepth = 0;
         bool gpuDirty = false;
         bool shadowStale = false;   // shadow VRAM does not hold the GPU contents
+        bool dirtyRows = false;     // rows [dirtyRowFirst, dirtyRowLast) must be re-read from the shadow
+        uint32_t dirtyRowFirst = 0;
+        uint32_t dirtyRowLast = 0;
     };
 
     struct DepthTarget
@@ -193,6 +196,7 @@ private:
     void downloadRenderTargetToShadow(RenderTarget &rt);
     void downloadRenderTargetToCpu(RenderTarget &rt);
     void refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer);
+    void refreshDirtyRows(RenderTarget &rt);
     void markShadowPages(uint32_t page, uint32_t pageCount);
     void setupDrawState(const GSDrawState &state);
     void appendVertex(const GSVertex &v, const GSDrawState &state, bool flatColorFromLast, const GSVertex &colorSource);

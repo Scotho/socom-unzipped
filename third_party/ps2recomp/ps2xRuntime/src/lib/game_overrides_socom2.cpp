@@ -25,9 +25,12 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
+#include <array>
+#include <utility>
 
 // Bound at recompile time via recomp/socom2.toml: "socom2_RsaGenerateKeyPair@0x0062B168".
 // rt_crypt FUN_0062b168(LargeInt *n, LargeInt *d) generates a 512-bit RSA key pair with two random
@@ -388,6 +391,44 @@ namespace
                     o << " [" << t.id << " pc=0x" << std::hex << t.pc << " ra=0x" << t.ra << " sp=0x" << t.sp << std::dec << " st=" << static_cast<int>(t.status)
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
+                // PS2X_PEEK="0xADDR[:words][,...]": dump guest words (hex + float) with each sample.
+                if (const char *peek = std::getenv("PS2X_PEEK"))
+                {
+                    std::string spec(peek);
+                    size_t pos = 0;
+                    std::ostringstream po;
+                    po << "[peek]";
+                    while (pos < spec.size())
+                    {
+                        size_t end = spec.find(',', pos);
+                        if (end == std::string::npos)
+                            end = spec.size();
+                        std::string item = spec.substr(pos, end - pos);
+                        pos = end + 1;
+                        uint32_t words = 1;
+                        const size_t colon = item.find(':');
+                        if (colon != std::string::npos)
+                        {
+                            words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
+                            item = item.substr(0, colon);
+                        }
+                        const uint32_t addr = static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
+                        const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
+                        if (!p)
+                            continue;
+                        po << " @" << std::hex << addr << ":";
+                        for (uint32_t w = 0; w < words && w < 64u; ++w)
+                        {
+                            uint32_t v = 0;
+                            std::memcpy(&v, p + w * 4u, sizeof(v));
+                            float fv = 0.0f;
+                            std::memcpy(&fv, &v, sizeof(fv));
+                            po << " " << std::setw(8) << std::setfill('0') << v << "(" << fv << ")";
+                        }
+                        po << std::dec << std::setfill(' ');
+                    }
+                    std::cout << po.str() << std::endl;
+                }
             }
         }).detach();
     }
@@ -441,6 +482,149 @@ namespace
     }
 #endif
 
+
+    // ------------------------------------------------------------------------------------------
+    // PS2X_CALL_TRACE="0xADDR[:name][,0xADDR[:name]...]": log every call of the listed guest
+    // functions (time, name, a0-a3, ra, and any argument that points at printable text). Works
+    // through the dense function table, so direct JALs are caught too. First 300 calls per
+    // function, then every 500th.
+    // ------------------------------------------------------------------------------------------
+    struct CallTraceSlot
+    {
+        uint32_t addr = 0;
+        std::string name;
+        PS2Runtime::RecompiledFunction original = nullptr;
+        uint32_t count = 0;
+    };
+    constexpr int kCallTraceSlots = 320;
+    CallTraceSlot g_callTrace[kCallTraceSlots];
+    int g_callTraceCount = 0;
+    std::chrono::steady_clock::time_point g_callTraceStart;
+
+    std::string callTraceGuestString(const uint8_t *rdram, uint32_t addr)
+    {
+        if (addr < 0x100000u || addr >= PS2_RAM_SIZE - 64u)
+            return {};
+        const uint8_t *p = getConstMemPtr(rdram, addr);
+        if (!p)
+            return {};
+        std::string s;
+        for (int i = 0; i < 48 && p[i]; ++i)
+        {
+            if (p[i] < 0x20 || p[i] > 0x7e)
+                return {};
+            s.push_back(static_cast<char>(p[i]));
+        }
+        return s.size() >= 3 ? s : std::string{};
+    }
+
+    bool callTraceShouldLog(uint32_t n)
+    {
+        // PS2X_CALL_TRACE_EVERY=<k>: after the first 300 calls log every k-th (default 500; 1 = all).
+        static const uint32_t s_every = [] {
+            const char *e = std::getenv("PS2X_CALL_TRACE_EVERY");
+            const uint32_t v = e ? static_cast<uint32_t>(std::strtoul(e, nullptr, 0)) : 500u;
+            return v == 0u ? 500u : v;
+        }();
+        return n < 300u || (n % s_every) == 0u;
+    }
+
+    void callTraceLog(int slot, const uint8_t *rdram, const R5900Context *ctx)
+    {
+        CallTraceSlot &t = g_callTrace[slot];
+        const uint32_t n = t.count++;
+        if (!callTraceShouldLog(n))
+            return;
+        const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - g_callTraceStart).count();
+        std::ostringstream o;
+        o << "[call] " << std::fixed << std::setprecision(1) << (ms / 1000.0) << "s " << t.name << " #" << n << std::hex;
+        for (int r = 4; r <= 7; ++r)
+            o << " a" << (r - 4) << "=0x" << GPR_U32(ctx, r);
+        o << " ra=0x" << GPR_U32(ctx, 31) << std::dec;
+        {
+            float f12 = 0.0f, f13 = 0.0f, f14 = 0.0f;
+            std::memcpy(&f12, &ctx->f[12], sizeof(f12));
+            std::memcpy(&f13, &ctx->f[13], sizeof(f13));
+            std::memcpy(&f14, &ctx->f[14], sizeof(f14));
+            o << " f12=" << f12 << " f13=" << f13 << " f14=" << f14;
+        }
+        for (int r = 4; r <= 6; ++r)
+        {
+            const std::string s = callTraceGuestString(rdram, GPR_U32(ctx, r));
+            if (!s.empty())
+                o << " a" << (r - 4) << "=\"" << s << "\"";
+        }
+        std::cout << o.str() << std::endl;
+    }
+
+    template <int N>
+    void callTraceThunk(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t n = g_callTrace[N].count;
+        callTraceLog(N, rdram, ctx);
+        g_callTrace[N].original(rdram, ctx, runtime);
+        // The generated function returned normally: report v0 (and f0 for float returns).
+        if (callTraceShouldLog(n))
+        {
+            float f0 = 0.0f;
+            std::memcpy(&f0, &ctx->f[0], sizeof(f0));
+            std::cout << "[ret] " << g_callTrace[N].name << " #" << n << " v0=0x" << std::hex << GPR_U32(ctx, 2) << std::dec << " f0=" << f0 << std::endl;
+        }
+    }
+
+    template <int... Is>
+    constexpr std::array<PS2Runtime::RecompiledFunction, sizeof...(Is)> makeCallTraceThunks(std::integer_sequence<int, Is...>)
+    {
+        return {{&callTraceThunk<Is>...}};
+    }
+
+    void installCallTrace(PS2Runtime &runtime)
+    {
+        const char *env = std::getenv("PS2X_CALL_TRACE");
+        if (!env || !*env)
+            return;
+        static const auto thunks = makeCallTraceThunks(std::make_integer_sequence<int, kCallTraceSlots>{});
+        g_callTraceStart = std::chrono::steady_clock::now();
+        std::string spec(env);
+        size_t pos = 0;
+        while (pos < spec.size() && g_callTraceCount < kCallTraceSlots)
+        {
+            size_t end = spec.find(',', pos);
+            if (end == std::string::npos)
+                end = spec.size();
+            std::string item = spec.substr(pos, end - pos);
+            pos = end + 1;
+            if (item.empty())
+                continue;
+            std::string name;
+            const size_t colon = item.find(':');
+            if (colon != std::string::npos)
+            {
+                name = item.substr(colon + 1);
+                item = item.substr(0, colon);
+            }
+            const uint32_t addr = static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
+            if (!runtime.hasFunction(addr))
+            {
+                std::cout << "[call-trace] no function at 0x" << std::hex << addr << std::dec << std::endl;
+                continue;
+            }
+            CallTraceSlot &t = g_callTrace[g_callTraceCount];
+            t.addr = addr;
+            t.original = runtime.lookupFunction(addr);
+            if (name.empty())
+            {
+                std::ostringstream o;
+                o << "FUN_" << std::hex << std::setw(8) << std::setfill('0') << addr;
+                name = o.str();
+            }
+            t.name = name;
+            if (runtime.replaceFunction(addr, thunks[static_cast<size_t>(g_callTraceCount)]))
+                ++g_callTraceCount;
+        }
+        std::cout << "[call-trace] tracing " << g_callTraceCount << " guest functions" << std::endl;
+    }
+
     void installCrashHandler(PS2Runtime &runtime)
     {
         g_runtimeForCrash = &runtime;
@@ -454,6 +638,7 @@ namespace
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
         installCrashHandler(runtime);
         startPcSampler(runtime);
+        installCallTrace(runtime);
         {
             // sanity check that the FTSCore data segment is resident: should print the boot path string
             const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);

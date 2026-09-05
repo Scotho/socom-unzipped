@@ -96,6 +96,11 @@ namespace ps2_syscalls
 
         const char *mode = translateFioMode(flags);
         RUNTIME_LOG("fioOpen: '" << hostPath << "' flags=0x" << std::hex << flags << std::dec << " mode='" << mode << "'");
+        {
+            static const bool s_trace = std::getenv("PS2X_CD_TRACE") != nullptr;
+            if (s_trace)
+                std::cout << "[fio] open '" << ps2Path << "' -> '" << hostPath << "' flags=0x" << std::hex << flags << std::dec << std::endl;
+        }
 
         FILE *fp = ::fopen(hostPath.c_str(), mode);
         if (!fp)

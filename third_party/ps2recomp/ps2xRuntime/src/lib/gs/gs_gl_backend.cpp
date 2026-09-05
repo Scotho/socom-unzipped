@@ -19,7 +19,7 @@
 // ---------------------------------------------------------------------------------------------
 namespace
 {
-    constexpr uint32_t kMaxRtWidth = 2048u;
+    constexpr uint32_t kMaxRtWidth = 1024u;
     constexpr uint32_t kRtHeight = 1024u;
     constexpr uint32_t kHostFrameWidth = 640u;
     constexpr uint32_t kHostFrameHeight = 512u;
@@ -803,16 +803,22 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
 
 GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create)
 {
+    // Targets are keyed by base page only: the game addresses the same buffer with different
+    // FRAME widths (1024-wide at boot, 640-wide in the shell) and draws must land in one texture.
+    // Allocate the maximum stride so pixel coordinates map directly regardless of FBW.
     for (RenderTarget &rt : m_renderTargets)
-        if (rt.fbp == fbp && rt.fbw == fbw)
+        if (rt.fbp == fbp)
+        {
+            rt.fbw = std::max<uint32_t>(fbw, 1u);
             return &rt;
+        }
     if (!create)
         return nullptr;
     RenderTarget rt;
     rt.fbp = fbp;
     rt.fbw = std::max<uint32_t>(fbw, 1u);
     rt.psm = psm;
-    rt.width = std::min<uint32_t>(kMaxRtWidth, rt.fbw * 64u);
+    rt.width = kMaxRtWidth;
     rt.height = kRtHeight;
     glGenTextures(1, &rt.color);
     glBindTexture(GL_TEXTURE_2D, rt.color);
@@ -830,20 +836,16 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     // Seed the target with whatever the shadow VRAM holds (uploads that landed before any draw).
     m_renderTargets.push_back(rt);
     RenderTarget &ref = m_renderTargets.back();
-    GSTransferCommand whole{};
-    whole.bitbltbuf.dbp = fbp << 5;
-    whole.bitbltbuf.dbw = static_cast<uint8_t>(rt.fbw);
-    whole.bitbltbuf.dpsm = static_cast<uint8_t>(psm);
-    whole.trxreg.rrw = static_cast<uint16_t>(rt.width);
-    whole.trxreg.rrh = 448u;
-    refreshRenderTargetsFromShadow(fbp, pageSpan(psm, rt.fbw, 448u), whole);
+    ref.dirtyRows = true;
+    ref.dirtyRowFirst = 0u;
+    ref.dirtyRowLast = 448u;
     return &ref;
 }
 
 GSGlBackend::DepthTarget *GSGlBackend::getDepthTarget(uint32_t zbp, uint32_t fbw, uint32_t width, uint32_t height)
 {
     for (DepthTarget &dt : m_depthTargets)
-        if (dt.zbp == zbp && dt.fbw == fbw)
+        if (dt.zbp == zbp)
             return &dt;
     DepthTarget dt;
     dt.zbp = zbp;
@@ -901,42 +903,67 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     }
 }
 
-// A transfer wrote into pages that a render target covers: re-decode that rectangle from the
-// shadow VRAM into the RT texture (video frames are uploaded straight into the display buffer).
+// A transfer wrote into pages a render target covers (video frames are uploaded straight into the
+// display buffer as hundreds of small transfers with their own base addresses). Mark the affected
+// page rows; they are re-read from the shadow VRAM in the target's own layout before the next draw
+// into that target or the next present (refreshDirtyRows).
 void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer)
 {
+    (void)transfer;
     for (RenderTarget &rt : m_renderTargets)
     {
-        // Only uploads addressed to this target's own base and format (video frames written
-        // straight into the display buffer). Texture uploads elsewhere must not be painted into a
-        // framebuffer just because a tall first target's page span happens to cover them.
-        if (transfer.bitbltbuf.dbp != (rt.fbp << 5) || transfer.bitbltbuf.dpsm != rt.psm)
+        const uint32_t pagesPerRow = std::max<uint32_t>(1u, (rt.fbw * 64u + 63u) / 64u);
+        const uint32_t pageHeight = pageHeightForPsm(rt.psm);
+        const uint32_t rtPages = pagesPerRow * ((kRtHeight + pageHeight - 1u) / pageHeight);
+        if (page + pageCount <= rt.fbp || page >= rt.fbp + rtPages)
             continue;
-        (void)page;
-        (void)pageCount;
-        const uint32_t x0 = std::min<uint32_t>(transfer.trxpos.dsax, rt.width);
-        const uint32_t y0 = std::min<uint32_t>(transfer.trxpos.dsay, rt.height);
-        const uint32_t w = std::min<uint32_t>(transfer.trxreg.rrw, rt.width - x0);
-        const uint32_t h = std::min<uint32_t>(transfer.trxreg.rrh, rt.height - y0);
-        if (w == 0u || h == 0u)
+        const uint32_t first = page > rt.fbp ? page - rt.fbp : 0u;
+        const uint32_t last = std::min<uint32_t>(page + pageCount - rt.fbp, rtPages);   // exclusive
+        const uint32_t rowFirst = (first / pagesPerRow) * pageHeight;
+        const uint32_t rowLast = std::min<uint32_t>(kRtHeight, ((last + pagesPerRow - 1u) / pagesPerRow) * pageHeight);
+        if (rowFirst >= rowLast)
             continue;
-        std::vector<uint32_t> pixels(static_cast<size_t>(w) * h);
-        const uint32_t base = rt.fbp << 5;
-        for (uint32_t y = 0; y < h; ++y)
-            for (uint32_t x = 0; x < w; ++x)
-            {
-                uint32_t p = readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x0 + x, y0 + y);
-                if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
-                    p = rgba5551To8888(p);
-                else if (rt.psm == GS_PSM_CT24)
-                    p |= 0x80000000u;
-                pixels[static_cast<size_t>(y) * w + x] = p;
-            }
-        glBindTexture(GL_TEXTURE_2D, rt.color);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(x0), static_cast<GLint>(y0), static_cast<GLsizei>(w), static_cast<GLsizei>(h), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-        rt.usedHeight = std::max(rt.usedHeight, std::min<uint32_t>(kRtHeight, y0 + h));
+        if (!rt.dirtyRows)
+        {
+            rt.dirtyRowFirst = rowFirst;
+            rt.dirtyRowLast = rowLast;
+            rt.dirtyRows = true;
+        }
+        else
+        {
+            rt.dirtyRowFirst = std::min(rt.dirtyRowFirst, rowFirst);
+            rt.dirtyRowLast = std::max(rt.dirtyRowLast, rowLast);
+        }
     }
+}
+
+// Re-read the marked rows of a render target from the shadow VRAM (its own base/width/format).
+void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
+{
+    if (!rt.dirtyRows)
+        return;
+    rt.dirtyRows = false;
+    const uint32_t y0 = rt.dirtyRowFirst;
+    const uint32_t y1 = std::min<uint32_t>(rt.dirtyRowLast, rt.height);
+    const uint32_t w = std::min<uint32_t>(rt.width, rt.fbw * 64u);
+    if (y1 <= y0 || w == 0u)
+        return;
+    std::vector<uint32_t> pixels(static_cast<size_t>(w) * (y1 - y0));
+    const uint32_t base = rt.fbp << 5;
+    for (uint32_t y = y0; y < y1; ++y)
+        for (uint32_t x = 0; x < w; ++x)
+        {
+            uint32_t p = readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y);
+            if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
+                p = rgba5551To8888(p);
+            else if (rt.psm == GS_PSM_CT24)
+                p |= 0x80000000u;
+            pixels[static_cast<size_t>(y - y0) * w + x] = p;
+        }
+    glBindTexture(GL_TEXTURE_2D, rt.color);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(y0), static_cast<GLsizei>(w), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    rt.usedHeight = std::max(rt.usedHeight, y1);
 }
 
 void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
@@ -1016,7 +1043,20 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     decodeDisplaySize(en1 ? request.display1 : request.display2, width, height);
     if (!en1 && !en2)
     {
+        // Display off (PMODE EN1=EN2=0): the host shows black. Blank the dump pixels too so
+        // PS2X_FRAME_DUMP counters do not report the last presented frame as still visible.
         m_presentTexture = 0u;
+        if (m_presentPixelsRequested)
+        {
+            std::lock_guard<std::mutex> lock(m_queueMutex);
+            m_presentPixels.assign(static_cast<size_t>(kHostFrameWidth) * kHostFrameHeight * 4u, 0u);
+        }
+        static uint32_t s_offLogged = 0u;
+        if (s_offLogged < 2u)
+        {
+            ++s_offLogged;
+            std::fprintf(stderr, "[gs-gl present] frame=%llu display off (pmode=%llx)\n", (unsigned long long)m_frameCounter, (unsigned long long)request.pmode);
+        }
         return;
     }
 
@@ -1044,6 +1084,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     }
     // DISPLAY gives the field height (224) when the game renders full frames (448 rows) and
     // scans out interlaced; present the rows that were actually drawn in that case.
+    refreshDirtyRows(*rt);
     // Copy the presented rectangle into a dedicated texture: the render target keeps being drawn
     // into (the next frame's clear lands on it while it is on screen), which showed as flicker.
     m_presentWidth = std::min<uint32_t>(width, rt->width);
@@ -1442,6 +1483,7 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     const auto &ctx = state.context;
     RenderTarget *rt = getRenderTarget(ctx.frame.fbp, ctx.frame.fbw, ctx.frame.psm, true);
     m_batchRt = rt;
+    refreshDirtyRows(*rt);
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
     // Depth attachment keyed by ZBP.
     const bool zte = (ctx.test >> 16) & 1u;
