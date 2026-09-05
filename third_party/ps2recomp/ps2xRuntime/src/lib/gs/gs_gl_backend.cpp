@@ -672,9 +672,53 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     static uint64_t s_bytes = 0;
     static auto s_lastReport = std::chrono::steady_clock::now();
     s_bytes += buffer.data.size();
+    // PS2X_GS_TRACE_CMDS=<presents to skip>: then print the next 4000 replayed commands.
+    static const char *s_traceEnv = std::getenv("PS2X_GS_TRACE_CMDS");
+    static const bool s_traceCmds = s_traceEnv != nullptr;
+    static const uint64_t s_traceSkipPresents = s_traceEnv ? static_cast<uint64_t>(std::atoll(s_traceEnv)) : 0u;
+    static uint32_t s_traceLines = 0;
     for (Cmd &cmd : buffer.commands)
     {
         const auto t0 = std::chrono::steady_clock::now();
+        if (s_traceCmds && s_traceLines < 4000u && m_frameCounter >= s_traceSkipPresents)
+        {
+            ++s_traceLines;
+            switch (cmd.type)
+            {
+            case CmdType::Submit:
+                std::fprintf(stderr, "[gs-cmd] submit prim=%u tme=%u tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
+                             cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.context.tex0.tbp0,
+                             cmd.batch.state.context.tex0.psm, cmd.batch.state.context.tex0.cbp, cmd.batch.state.context.tex0.cpsm,
+                             cmd.batch.state.context.frame.fbp, cmd.batch.state.context.frame.psm, cmd.batch.state.context.zbuf.zbp,
+                             cmd.batch.state.context.zbuf.psm, cmd.batch.state.context.zbuf.zmask ? 1u : 0u,
+                             (unsigned long long)(cmd.batch.state.context.test & 0x7FFFFu), cmd.batch.state.prim.abe ? 1u : 0u,
+                             cmd.batch.vertices[0].x, cmd.batch.vertices[0].y, (double)cmd.batch.vertices[0].z,
+                             cmd.batch.vertices[1].x, cmd.batch.vertices[1].y,
+                             cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, 10);
+                break;
+            case CmdType::BeginTransfer:
+                std::fprintf(stderr, "[gs-cmd] transfer dir=%u sbp=%05x spsm=%02x -> dbp=%05x dpsm=%02x dbw=%u at (%u,%u) %ux%u%c",
+                             cmd.transfer.direction, cmd.transfer.bitbltbuf.sbp, cmd.transfer.bitbltbuf.spsm, cmd.transfer.bitbltbuf.dbp,
+                             cmd.transfer.bitbltbuf.dpsm, cmd.transfer.bitbltbuf.dbw, cmd.transfer.trxpos.dsax, cmd.transfer.trxpos.dsay,
+                             cmd.transfer.trxreg.rrw, cmd.transfer.trxreg.rrh, 10);
+                break;
+            case CmdType::Upload:
+                std::fprintf(stderr, "[gs-cmd] upload %zu bytes%c", cmd.dataSize, 10);
+                break;
+            case CmdType::WriteVram:
+                std::fprintf(stderr, "[gs-cmd] writevram psm=%02x base=%05x%c", cmd.args[0], cmd.args[1], 10);
+                break;
+            case CmdType::Clear:
+                std::fprintf(stderr, "[gs-cmd] clear fbp=%03x%c", cmd.context.frame.fbp, 10);
+                break;
+            case CmdType::Present:
+                std::fprintf(stderr, "[gs-cmd] present%c", 10);
+                break;
+            default:
+                std::fprintf(stderr, "[gs-cmd] other %u%c", static_cast<unsigned>(cmd.type), 10);
+                break;
+            }
+        }
         switch (cmd.type)
         {
         case CmdType::Submit:
@@ -1021,7 +1065,13 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
 {
     const GSTex0Reg &tex = state.context.tex0;
     std::vector<uint32_t> pixels(static_cast<size_t>(width) * height);
-    uint8_t *vram = m_shadowMemory.data();
+    // Experiment: PS2X_GS_TEX_FROM_CPU=1 decodes from the authoritative (game-thread) VRAM instead
+    // of the render-thread shadow, to tell shadow staleness from decode bugs.
+    static const bool s_fromCpu = std::getenv("PS2X_GS_TEX_FROM_CPU") != nullptr;
+    static std::vector<uint8_t> s_cpuCopy;
+    if (s_fromCpu)
+        m_cpu->SnapshotVram(s_cpuCopy);
+    uint8_t *vram = s_fromCpu && !s_cpuCopy.empty() ? s_cpuCopy.data() : m_shadowMemory.data();
     const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
     const bool indexed = tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 || tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH;
 
@@ -1044,6 +1094,23 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
             default: c = 0xFFFF00FFu; break;
             }
             clut[i] = c;
+        }
+        // Diagnostic (with PS2X_GS_DUMP_TEX): does the shadow VRAM's CLUT match the authoritative VRAM?
+        if (std::getenv("PS2X_GS_DUMP_TEX"))
+        {
+            uint32_t mismatches = 0u;
+            for (uint32_t i = 0; i < 256u; ++i)
+            {
+                const uint32_t clutIndex = resolveClutIndex(static_cast<uint8_t>(i), tex.cpsm, tex.csm, tex.csa, tex.psm);
+                const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
+                const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
+                const uint32_t shadowRaw = readVramRaw(vram, tex.cpsm, tex.cbp, clutWidth, clutX, clutY);
+                const uint32_t cpuRaw = m_cpu->ReadVram(tex.cpsm, tex.cbp, clutWidth, clutX, clutY);
+                if (shadowRaw != cpuRaw)
+                    ++mismatches;
+            }
+            std::fprintf(stderr, "[gs-gl tex] tbp0=%05x psm=%02x cbp=%05x cpsm=%02x cbw=%u cou=%u cov=%u clut mismatches shadow vs cpu: %u; clut[0..3]=%08x %08x %08x %08x\n",
+                         tex.tbp0, tex.psm, tex.cbp, tex.cpsm, clutWidth, state.texclut.cou, state.texclut.cov, mismatches, clut[0], clut[1], clut[2], clut[3]);
         }
     }
 
