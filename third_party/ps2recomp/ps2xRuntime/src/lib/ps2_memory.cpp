@@ -1901,6 +1901,20 @@ void PS2Memory::runSprDma(uint32_t channelBase, uint32_t chcr)
         kickMfifoDrain();
 }
 
+void PS2Memory::queueIntcCause(uint32_t cause)
+{
+    std::lock_guard<std::mutex> lock(m_pendingIntcMutex);
+    m_pendingIntcCauses.push_back(cause);
+}
+
+std::vector<uint32_t> PS2Memory::consumePendingIntcCauses()
+{
+    std::lock_guard<std::mutex> lock(m_pendingIntcMutex);
+    std::vector<uint32_t> causes;
+    causes.swap(m_pendingIntcCauses);
+    return causes;
+}
+
 void PS2Memory::queueCompletedDmacCause(uint32_t cause)
 {
     std::lock_guard<std::mutex> lock(m_completedDmacMutex);

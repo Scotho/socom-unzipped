@@ -312,7 +312,10 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         vif1_regs.code = cmd;
         vif1_regs.num = num;
         if (irq)
+        {
             vif1_regs.stat |= (1u << 11); // INT
+            queueIntcCause(5u);           // EE INTC VIF1 -> game's render-thread waker
+        }
 
         if (opcode == VIF_NOP)
         {

@@ -345,6 +345,9 @@ public:
     void processVIF1Data(const uint8_t *data, uint32_t sizeBytes);
     void processPendingTransfers();
     std::vector<uint32_t> consumeCompletedDmacCauses();
+    // EE INTC unit interrupts (VIF1 = 5, etc.) raised from the VIF/GIF interpreters.
+    void queueIntcCause(uint32_t cause);
+    std::vector<uint32_t> consumePendingIntcCauses();
     // MFIFO (D_CTRL.MFD): fromSPR (D8) feeds a ring buffer [RBOR, RBOR+RBSR+16) that VIF1 or GIF
     // drains in chain mode, stalling when TADR catches up with D8_MADR.
     uint32_t mfifoDrainChannel() const;
@@ -430,6 +433,8 @@ public:
     bool m_mfifoStalled = false;
     uint32_t m_mfifoStalledChannel = 0u;
     std::mutex m_completedDmacMutex;
+    std::vector<uint32_t> m_pendingIntcCauses;
+    std::mutex m_pendingIntcMutex;
     std::vector<uint32_t> m_completedDmacCauses;
 
     struct CodeRegion
