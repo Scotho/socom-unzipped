@@ -59,21 +59,32 @@ namespace ps2_stubs
     };
     Socom2PadState g_socom2Pad;
 
+    // Reporting a connected pad through scePad2 makes the game run first-time controller
+    // configuration through Sony's libdbc/DBCMAN DS2 device-bus protocol (rpc 0x8000131a et al.),
+    // which is not yet emulated and stalls the config lookup. Until that path is implemented, the
+    // pad HLE is opt-in via PS2X_SOCOM2_PAD so the default boot stays in the (renderable) shell
+    // loop. When disabled these behave like the previous ret0 stubs (no controller).
+    bool socom2PadEnabled()
+    {
+        static const bool on = (std::getenv("PS2X_SOCOM2_PAD") != nullptr);
+        return on;
+    }
+
     void scePad2Init(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
-        SET_GPR_U32(ctx, 2, 1u);            // > 0 = ok
+        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? 1u : 0u);   // > 0 = ok
         ctx->pc = GPR_U32(ctx, 31);
     }
 
     void scePad2CreateSocket(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
-        SET_GPR_U32(ctx, 2, 0u);            // socket descriptor 0 (valid)
+        SET_GPR_U32(ctx, 2, 0u);            // socket descriptor 0 (valid) either way
         ctx->pc = GPR_U32(ctx, 31);
     }
 
     void scePad2GetState(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
-        SET_GPR_U32(ctx, 2, 1u);            // 1 = connected/ready (the value FUN_002da930 checks)
+        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? 1u : 0u);   // 1 = connected/ready
         ctx->pc = GPR_U32(ctx, 31);
     }
 
