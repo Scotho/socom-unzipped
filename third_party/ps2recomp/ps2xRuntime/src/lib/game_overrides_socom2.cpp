@@ -15,6 +15,9 @@
 #include <fstream>
 #include <vector>
 #include <thread>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include <chrono>
 #include <cstdlib>
 
@@ -199,9 +202,62 @@ namespace
         }).detach();
     }
 
+    // Host crash reporter: prints the faulting host address relative to the module base (symbolize
+    // with `llvm-nm -n dist/socom2.exe`), a host backtrace, and the guest thread table.
+    PS2Runtime *g_runtimeForCrash = nullptr;
+#ifdef _WIN32
+    LONG WINAPI crashHandler(EXCEPTION_POINTERS *info)
+    {
+        static bool reported = false;
+        if (reported)
+            return EXCEPTION_CONTINUE_SEARCH;
+        reported = true;
+        const auto *rec = info->ExceptionRecord;
+        const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
+        const auto addr = reinterpret_cast<uintptr_t>(rec->ExceptionAddress);
+        std::ostringstream o;
+        o << "[crash] code=0x" << std::hex << rec->ExceptionCode << " host=0x" << addr
+          << " module+0x" << (addr >= base ? addr - base : 0);
+        if (rec->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && rec->NumberParameters >= 2)
+            o << " access=" << (rec->ExceptionInformation[0] ? "write" : "read") << " at 0x" << rec->ExceptionInformation[1];
+        o << std::dec << std::endl;
+        void *frames[48];
+        const USHORT n = RtlCaptureStackBackTrace(0, 48, frames, nullptr);
+        o << "[crash] backtrace (module-relative):";
+        for (USHORT i = 0; i < n; ++i)
+        {
+            const auto f = reinterpret_cast<uintptr_t>(frames[i]);
+            o << " " << std::hex << (f >= base ? f - base : f) << std::dec;
+        }
+        o << std::endl;
+        if (g_runtimeForCrash)
+        {
+            const R5900Context *c = &g_runtimeForCrash->cpu();
+            o << "[crash] guest live pc=0x" << std::hex << c->pc << " ra=0x" << GPR_U32(c, 31) << std::dec;
+            const EeKernelSnapshot snap = g_runtimeForCrash->eeScheduler().snapshot();
+            o << " running=" << snap.runningThreadId << " threads:";
+            for (const auto &t : snap.threads)
+                o << " [" << t.id << " pc=0x" << std::hex << t.pc << " ra=0x" << t.ra << std::dec << " st=" << static_cast<int>(t.status) << "]";
+            o << std::endl;
+        }
+        std::cerr << o.str() << std::flush;
+        std::cout << o.str() << std::flush;
+        return EXCEPTION_CONTINUE_SEARCH;
+    }
+#endif
+
+    void installCrashHandler(PS2Runtime &runtime)
+    {
+        g_runtimeForCrash = &runtime;
+#ifdef _WIN32
+        AddVectoredExceptionHandler(1, crashHandler);
+#endif
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
+        installCrashHandler(runtime);
         startPcSampler(runtime);
         {
             // sanity check that the FTSCore data segment is resident: should print the boot path string
