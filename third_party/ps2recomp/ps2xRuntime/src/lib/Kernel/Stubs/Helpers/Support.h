@@ -1360,7 +1360,11 @@ namespace
         uint32_t madr = 0;
         uint32_t qwc = 0;
         uint32_t tadr = payloadPhys;
-        uint32_t chcr = 0x00000181u; // DIR=1, TIE=1, STR=1 (normal mode).
+        // CHCR bits: DIR=0, MOD=2-3, ASP=4-5, TTE=6, TIE=7, STR=8. Sony's libdma sends chains with
+        // TTE=1 (the DMAtag's upper 64 bits carry VIFcodes: STBASE/STOFFSET, MPG...), which is also
+        // what the game's own MFIFO sends use (0x145). This used to set TIE (0x185) instead, so the
+        // tag upper halves were only delivered by an unconditional hack in the chain walker.
+        uint32_t chcr = 0x00000101u; // DIR=1, STR=1 (normal mode).
 
         if (preferNormalCount)
         {
@@ -1369,7 +1373,7 @@ namespace
         }
         else
         {
-            chcr = 0x00000185u; // MODE=1 chain, DIR=1, TIE=1, STR=1.
+            chcr = 0x00000145u; // MOD=1 chain, DIR=1, TTE=1, STR=1.
         }
 
         PS2Memory &mem = runtime->memory();

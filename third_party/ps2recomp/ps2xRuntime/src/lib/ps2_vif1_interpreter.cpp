@@ -327,6 +327,30 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
             if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode -> INTC5\n");
         }
 
+        // PS2X_TRACE_VIF=<skip>: print VIF1 codes (after skipping <skip> of them), 3000 lines max.
+        {
+            static const char *s_traceVif = std::getenv("PS2X_TRACE_VIF");
+            if (s_traceVif)
+            {
+                static const uint64_t s_skip = static_cast<uint64_t>(std::atoll(s_traceVif));
+                static uint64_t s_seen = 0;
+                static uint32_t s_lines = 0;
+                const uint64_t n = s_seen++;
+                if (n >= s_skip && s_lines < 3000u && opcode != VIF_NOP)
+                {
+                    ++s_lines;
+                    if ((opcode & 0x60u) == 0x60u)
+                        std::fprintf(stderr, "[vif1] #%llu UNPACK vn/vl=%x num=%u addr=0x%x flg=%u usn=%u mask=%u cycle=%04x tops=0x%x base=0x%x ofst=0x%x dbf=%u\n",
+                                     (unsigned long long)n, opcode & 0xFu, num, imm & 0x3FFu, (imm >> 15) & 1u, (imm >> 14) & 1u,
+                                     (opcode >> 4) & 1u, vif1_regs.cycle, vif1_regs.tops, vif1_regs.base, vif1_regs.ofst, (vif1_regs.stat >> 7) & 1u);
+                    else
+                        std::fprintf(stderr, "[vif1] #%llu cmd=0x%02x num=%u imm=0x%04x tops=0x%x base=0x%x ofst=0x%x dbf=%u%s\n",
+                                     (unsigned long long)n, opcode, num, imm, vif1_regs.tops, vif1_regs.base, vif1_regs.ofst,
+                                     (vif1_regs.stat >> 7) & 1u, irq ? " IRQ" : "");
+                }
+            }
+        }
+
         if (opcode == VIF_NOP)
         {
             continue;

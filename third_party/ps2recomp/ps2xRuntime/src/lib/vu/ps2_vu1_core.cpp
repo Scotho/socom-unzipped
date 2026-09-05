@@ -846,6 +846,27 @@ void VU1Interpreter::commitReadyPipelines()
     }
 }
 
+// First XGKICK overrun: print the program state and save VU1 data memory (vu1_overrun_data.bin)
+// so the kicked address can be traced back to the handler that computed it.
+void VU1Interpreter::dumpOverrunState()
+{
+    static bool s_done = false;
+    if (s_done)
+        return;
+    s_done = true;
+    std::fprintf(stderr, "[VU1 xgkick] state: pc=0x%x top=0x%x itop=0x%x vi=", m_state.pc, m_state.top, m_state.itop);
+    for (int i = 0; i < 16; ++i)
+        std::fprintf(stderr, "%s%d", i ? "," : "", (int)m_state.vi[i]);
+    std::fprintf(stderr, "\n");
+    const char *dir = std::getenv("PS2X_FRAME_DUMP");
+    const std::string path = std::string(dir ? dir : "logs") + "/vu1_overrun_data.bin";
+    if (FILE *fp = std::fopen(path.c_str(), "wb"))
+    {
+        std::fwrite(m_activeVuData, 1, m_activeVuDataSize, fp);
+        std::fclose(fp);
+    }
+}
+
 void VU1Interpreter::progressXgkick()
 {
     if (!m_xgkick.active || !m_activeVuData || m_activeVuDataSize == 0u)
@@ -857,6 +878,8 @@ void VU1Interpreter::progressXgkick()
         m_xgkick.cycleCredit -= 2u;
         if (m_xgkick.copiedBytes > XgkickPipeline::kBufferSize - 16u)
         {
+            std::fprintf(stderr, "[VU1 xgkick] no EOP within buffer: src=0x%x copied=%u\n",
+                         m_xgkick.sourceAddress, m_xgkick.copiedBytes);
             reportReservedInstruction(false, 0xFFFFFFFBu);
             m_xgkick.active = false;
             return;
@@ -896,6 +919,12 @@ void VU1Interpreter::progressXgkick()
 
             if (tagBytes > XgkickPipeline::kBufferSize - qwordOffset)
             {
+                uint32_t t[4] = {0};
+                std::memcpy(t, m_xgkick.packet.data() + qwordOffset, 16);
+                dumpOverrunState();
+                std::fprintf(stderr, "[VU1 xgkick] packet overrun: src=0x%x off=%u tag=[%08x %08x %08x %08x] nloop=%u fmt=%u nreg=%u tagBytes=%llu\n",
+                             m_xgkick.sourceAddress, qwordOffset, t[0], t[1], t[2], t[3], nloop, format, nreg,
+                             (unsigned long long)tagBytes);
                 reportReservedInstruction(false, 0xFFFFFFFBu);
                 m_xgkick.active = false;
                 return;
@@ -1687,6 +1716,18 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 if (topOff + (q + 1u) * 16u <= dataSize)
                     std::memcpy(w, vuData + topOff + q * 16u, 16);
                 std::fprintf(stderr, "[vu-trace]   data@TOP+%u=[%08x %08x %08x %08x]\n", q, w[0], w[1], w[2], w[3]);
+            }
+            // Dump the whole VU1 data memory for each traced program (vu1_data_<n>.bin).
+            {
+                const char *dir = std::getenv("PS2X_FRAME_DUMP");
+                const std::string path = std::string(dir ? dir : "logs") + "/vu1_data_" +
+                                         std::to_string(s_vuTraceDumped.load(std::memory_order_relaxed)) + ".bin";
+                if (FILE *fp = std::fopen(path.c_str(), "wb"))
+                {
+                    std::fwrite(vuData, 1, dataSize, fp);
+                    std::fclose(fp);
+                    std::fprintf(stderr, "[vu-trace] wrote %s (%u bytes)\n", path.c_str(), dataSize);
+                }
             }
             // Dump the whole microprogram once (disassemble with tools_py/vu1dis.py).
             static bool s_codeDumped = false;
