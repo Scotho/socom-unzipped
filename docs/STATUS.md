@@ -63,7 +63,7 @@ Correction to research 08: `untracked_stubs` in the TOML is **informational only
 recompiler** (ps2xAnalyzer/Readme.md) — those functions run natively. That is why
 `sceVibGetProfile`/`scePad2GetButtonProfile`/`scePad2DeleteSocket` reached DBCMAN at all.
 
-Step 2 (built after db51455, see the next section for verification): HLE `scePad2GetButtonProfile`,
+Step 2 (verified: `./run.sh 60` with the pad on shows only boot-time CheckVersion/SetWorkAddr/DeleteSocket DBCMAN traffic, no guest faults, content drawing, disc streaming): HLE `scePad2GetButtonProfile`,
 `sceVibGetProfile`, `sceVibSetActParam` as recompile-time stubs so the pad state machine in
 `FUN_002da930` advances 0→1 (GetButtonProfile could never succeed natively: it reads the DMA buffer
 that only the native `scePad2CreateSocket` registers) and libdbc stays idle.

@@ -148,6 +148,9 @@
     X(scePad2GetState)                        \
     X(scePad2Read)                            \
     X(scePad2GetButtonInfo)                   \
+    X(scePad2GetButtonProfile)                \
+    X(sceVibGetProfile)                       \
+    X(sceVibSetActParam)                      \
     X(ret1)                                   \
     X(reta0)                                  \
     X(calloc_r)                               \

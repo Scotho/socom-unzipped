@@ -122,6 +122,43 @@ namespace ps2_stubs
         SET_GPR_U32(ctx, 2, value);
         ctx->pc = GPR_U32(ctx, 31);
     }
+
+    // The three remaining libpad2 entry points the game calls each frame (FUN_002da930) are
+    // *not* covered by the socket HLE above: natively they read the DMA double buffer registered
+    // by scePad2CreateSocket (never set up by the HLE) and talk to DBCMAN through libdbc
+    // (sceDbcReceiveData / SendData2). Answering them here keeps the pad state machine consistent
+    // (state 0 -> 1 needs GetButtonProfile >= 0 and sceVibGetProfile >= 0) and keeps libdbc idle.
+    void scePad2GetButtonProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        // a1 = destination for the 40-bit button profile (bit n = button n supported). A DualShock2
+        // reports the 16 digital buttons and the 16 analog/pressure fields (ids 0x00-0x1f).
+        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
+        static const uint8_t kDs2Profile[5] = {0xFFu, 0xFFu, 0xFFu, 0xFFu, 0x00u};
+        uint32_t length = 0u;
+        if (socom2PadEnabled())
+        {
+            std::memcpy(rdram + buf, kDs2Profile, sizeof(kDs2Profile));
+            length = static_cast<uint32_t>(sizeof(kDs2Profile));
+        }
+        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? length : 0xFFFFFFFFu);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void sceVibGetProfile(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        // a1 = actuator profile buffer; the game only sends SetActParam when byte 0 is nonzero.
+        // Report no actuators (0 bytes, buffer zeroed) so no vibration traffic is generated.
+        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
+        std::memset(rdram + buf, 0, 2);
+        SET_GPR_U32(ctx, 2, 0u);            // count 0, >= 0 = success
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void sceVibSetActParam(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        SET_GPR_U32(ctx, 2, 1u);            // accepted
+        ctx->pc = GPR_U32(ctx, 31);
+    }
 }
 
 namespace

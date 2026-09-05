@@ -1464,3 +1464,4 @@
 0x669e70  # imm target from 0x5f6bac
 0x669f40  # imm target from 0x60d650
 0x3b7cf0  # static-init element ctor (0x30-byte objects at 0x4b4ef0) called via JALR from 0x181fb4; Ghidra missed it (gap after FUN_003b7c90)
+0x38e890  # static-init element ctor called via JALR from 0x181fb4 (array-construct helper); Ghidra missed it
