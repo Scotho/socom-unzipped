@@ -23,11 +23,13 @@ presses buttons on a timer for log-driven runs. Rendering runs on the **OpenGL 3
 The menu is fast now (GPU backend, 60 fps). Make it *navigable*: the slot/profile dialog ignores
 DOWN/CROSS/TRIANGLE/START from `PS2X_SOCOM2_INPUT_SCRIPT` and shows an empty list.
 
-- Trace whether presses reach the shell: log in `scePad2Read` (game_overrides_socom2.cpp) when a
-  non-neutral report is returned, and in `scePad2GetButtonInfo` which ids the game polls. If the
-  game polls ids the HLE returns 0 for (e.g. pressure ids expected instead of digital), fix the map.
-- Trace the memory-card flow: MCSERV RPCs in the log around the dialog; the dialog may be waiting
-  for a card/profile (mc0 folder mapping — see STATUS "Memory card").
+- Done: presses reach the game (`PS2X_SOCOM2_PAD_TRACE=1` shows digital 0→1→0 and pressure
+  0→ff→0 per press) and MCSERV is only asked to Init (`[MCSERV]` lines). Neither is the gate.
+- Find the shell's input consumer: the pad object filled by `FUN_002da930` (digital results at
+  +0x240..+0x243 for ids 0x12/0x13/0x10/0x11, stick floats at +0x210..+0x21c) is read by the UI
+  layer; grep the decomp for readers of those offsets, or break in lldb on the recompiled
+  function that reads them, and see what condition keeps the dialog idle (timer? "press start"
+  state? a second controller port?). The dialog list is empty because there are no saves.
 - Then continue the GPU plan stage 3 (docs/superpowers/plans/2026-09-05-gpu-gs-backend.md).
 
 ## Previous next task (done 2026-09-05 16:50): make the menu fast enough to use

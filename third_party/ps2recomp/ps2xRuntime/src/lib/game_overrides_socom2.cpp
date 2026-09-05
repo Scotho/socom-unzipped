@@ -109,6 +109,16 @@ namespace ps2_stubs
         for (int field = 0; field < 12; ++field)
             report[9 + field] = g_socom2Pad.button[kSocom2PressureButton[field]] ? 0xFFu : 0x00u;
         std::memcpy(rdram + buf, report, sizeof(report));
+        // PS2X_SOCOM2_PAD_TRACE=1: log the first non-neutral reports the game reads.
+        static const bool s_padTrace = std::getenv("PS2X_SOCOM2_PAD_TRACE") != nullptr;
+        if (s_padTrace && (report[3] != 0xFFu || report[4] != 0xFFu))
+        {
+            static uint32_t s_lines = 0;
+            if (s_lines++ < 40u)
+                std::cout << "[pad-trace] read: buttons=" << std::hex << (unsigned)report[3] << " " << (unsigned)report[4]
+                          << " axes=" << (unsigned)report[5] << "," << (unsigned)report[6] << "," << (unsigned)report[7] << "," << (unsigned)report[8]
+                          << std::dec << std::endl;
+        }
         SET_GPR_U32(ctx, 2, static_cast<uint32_t>(sizeof(report)));
         ctx->pc = GPR_U32(ctx, 31);
     }
@@ -126,6 +136,25 @@ namespace ps2_stubs
             value = g_socom2Pad.button[kSocom2PressureButton[id - 0x14u]] ? 0xFFu : 0u;
         else
             value = 0u;
+        // PS2X_SOCOM2_PAD_TRACE=1: which ids does the game poll, and what did it get for pressed ones?
+        static const bool s_padTrace = std::getenv("PS2X_SOCOM2_PAD_TRACE") != nullptr;
+        if (s_padTrace)
+        {
+            static uint32_t s_seenMask = 0u;
+            static uint32_t s_pressedLines = 0u;
+            const uint32_t bit = id < 32u ? (1u << id) : 0u;
+            if (bit && !(s_seenMask & bit))
+            {
+                s_seenMask |= bit;
+                std::cout << "[pad-trace] GetButtonInfo polls id 0x" << std::hex << id << std::dec << std::endl;
+            }
+            static uint32_t s_lastValue[32] = {0};
+            if (id < 32u && value != s_lastValue[id] && s_pressedLines++ < 200u)
+            {
+                std::cout << "[pad-trace] GetButtonInfo id 0x" << std::hex << id << " " << s_lastValue[id] << " -> " << value << std::dec << std::endl;
+                s_lastValue[id] = value;
+            }
+        }
         SET_GPR_U32(ctx, 2, value);
         ctx->pc = GPR_U32(ctx, 31);
     }

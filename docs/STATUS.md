@@ -111,9 +111,13 @@ visible difference from the CPU path is that the title logo stays visible behind
 (plausible for the real game; verify against PCSX2 when convenient).
 
 **Open:** the slot/profile dialog does not react to DOWN/CROSS/TRIANGLE/START from the input
-script, and its list is empty (no saves). Either the shell is waiting on the memory-card flow
-(MCSERV HLE) or the pad input is not reaching the shell's UI layer even though `FUN_002da930`
-reads it — next thing to trace (log non-neutral `scePad2Read` reports and the MCSERV RPCs).
+script, and its list is empty (no saves). Traced (`PS2X_SOCOM2_PAD_TRACE=1`, commit after
+0a208a0): the presses DO reach the game — `scePad2GetButtonInfo` is polled for the digital ids
+0x00-0x0f and the pressure ids 0x14-0x1f, and each press shows as 0→1→0 (digital) and 0→ff→0
+(pressure). MCSERV (`[MCSERV]` trace) is only ever asked op 0 (Init), 11 times; the shell never
+queries card info. So the dialog is gated by something in the shell's own UI layer: next, find
+the dialog's input handler in the decomp (start from `FUN_002da930`'s pad object fields +0x240..
++0x243 / +0x210.. and the `dlgIntroScreen.rdr`/"MainMenu" strings) and see what it waits for.
 
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new

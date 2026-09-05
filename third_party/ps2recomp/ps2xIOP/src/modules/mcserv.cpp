@@ -233,7 +233,20 @@ namespace ps2x::iop::detail
                          uint32_t a3 = 0u,
                          uint32_t stackArgument = 0u)
             {
-                return m_host.memoryCard({operation, {a0, a1, a2, a3, stackArgument}});
+                const int32_t result = m_host.memoryCard({operation, {a0, a1, a2, a3, stackArgument}});
+                // Rate-limited trace of memory-card operations (the shell's profile/slot dialogs
+                // depend on these answers).
+                static uint32_t s_traceLines = 0u;
+                if (s_traceLines < 64u)
+                {
+                    ++s_traceLines;
+                    std::ostringstream message;
+                    message << "[MCSERV] op=" << static_cast<int>(operation)
+                            << " args=" << a0 << "," << a1 << "," << a2 << "," << a3 << "," << stackArgument
+                            << " -> " << result;
+                    m_host.log(LogLevel::Info, message.str());
+                }
+                return result;
             }
 
             void writeResult(GuestBuffer receive, int32_t result)
