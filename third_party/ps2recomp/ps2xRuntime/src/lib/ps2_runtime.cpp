@@ -2006,14 +2006,38 @@ uint32_t PS2Runtime::reserveAsyncCallbackStack(uint32_t size, uint32_t alignment
     return top - 0x10u;
 }
 
+namespace
+{
+    // Guest memory faults (TLB miss / unaligned access) are turned into a COP0 address error and
+    // the access returns 0. They used to be completely silent, which hid a heap-smashing bug for a
+    // long time; print the first few with the guest register state so they are visible in the log.
+    void reportGuestMemoryFault(const R5900Context *ctx, const char *op, uint32_t vaddr, const char *what)
+    {
+        static std::atomic<uint32_t> reported{0};
+        if (reported.fetch_add(1u, std::memory_order_relaxed) >= 16u)
+        {
+            return;
+        }
+        auto reg = [ctx](int index) { return static_cast<uint32_t>(_mm_extract_epi32(ctx->r[index], 0)); };
+        std::ostringstream o;
+        o << "[guest-fault] " << op << " vaddr=0x" << std::hex << vaddr
+          << " pc=0x" << ctx->pc << " ra=0x" << reg(31) << " sp=0x" << reg(29)
+          << " a0=0x" << reg(4) << " a1=0x" << reg(5) << " a2=0x" << reg(6) << " a3=0x" << reg(7)
+          << " s0=0x" << reg(16) << " s1=0x" << reg(17) << " v0=0x" << reg(2) << std::dec
+          << " (" << what << ")";
+        std::cout << o.str() << std::endl;
+    }
+}
+
 uint8_t PS2Runtime::Load8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
 {
     try
     {
         return m_memory.read8(vaddr);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "load8", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
@@ -2025,8 +2049,9 @@ uint16_t PS2Runtime::Load16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     {
         return m_memory.read16(vaddr);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "load16", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
@@ -2038,8 +2063,9 @@ uint32_t PS2Runtime::Load32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     {
         return m_memory.read32(vaddr);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "load32", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
@@ -2051,8 +2077,9 @@ uint64_t PS2Runtime::Load64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     {
         return m_memory.read64(vaddr);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "load64", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
         return 0;
     }
@@ -2064,8 +2091,9 @@ __m128i PS2Runtime::Load128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr)
     {
         return m_memory.read128(vaddr);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "load128", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_LOAD);
         return _mm_setzero_si128();
     }
@@ -2078,8 +2106,9 @@ void PS2Runtime::Store8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint8
     {
         m_memory.write8(vaddr, value);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "store8", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
@@ -2091,8 +2120,9 @@ void PS2Runtime::Store16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     {
         m_memory.write16(vaddr, value);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "store16", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
@@ -2105,8 +2135,9 @@ void PS2Runtime::Store32(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
         m_memory.write32(vaddr, value);
         drainCompletedDmacHandlers(rdram);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "store32", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
@@ -2118,8 +2149,9 @@ void PS2Runtime::Store64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     {
         m_memory.write64(vaddr, value);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "store64", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
@@ -2133,8 +2165,9 @@ void PS2Runtime::Store128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, __m
     {
         m_memory.write128(vaddr, value);
     }
-    catch (const std::exception &)
+    catch (const std::exception &e)
     {
+        reportGuestMemoryFault(ctx, "store128", vaddr, e.what());
         SignalException(ctx, EXCEPTION_ADDRESS_ERROR_STORE);
     }
 }
