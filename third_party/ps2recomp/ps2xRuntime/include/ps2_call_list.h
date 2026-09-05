@@ -142,6 +142,7 @@
 #define PS2_STUB_LIST(X)                      \
     /* Std/Libc */                            \
     X(ret0)                                   \
+    X(socom2_RsaGenerateKeyPair)                                   \
     X(ret1)                                   \
     X(reta0)                                  \
     X(calloc_r)                               \
