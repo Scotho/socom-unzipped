@@ -474,6 +474,12 @@ if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
     target_compile_options(ps2EntryRunner PRIVATE -msse4.1)
     target_compile_options(ps2_runtime PRIVATE -msse4.1)
 endif()
+set(PS2X_GENERATED_OPT "" CACHE STRING "Optimization flag override for the generated (recompiled) code, e.g. -O1 for fast bring-up builds")
+if(PS2X_GENERATED_OPT AND NOT MSVC)
+    # Later flags win on clang: this overrides the configuration's -O3 for the runner only.
+    target_compile_options(ps2EntryRunner PRIVATE ${PS2X_GENERATED_OPT})
+    message("> generated code optimization override: ${PS2X_GENERATED_OPT}")
+endif()
 # Game-specific override modules self-register via static objects; they must live in the
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
