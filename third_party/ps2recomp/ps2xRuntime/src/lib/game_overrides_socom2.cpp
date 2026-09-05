@@ -72,15 +72,35 @@ namespace ps2_stubs
         ctx->pc = GPR_U32(ctx, 31);
     }
 
-    void scePad2CreateSocket(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    // One DualShock2 only: socket 0 (the first CreateSocket) is connected; every other socket the
+    // game opens (port 2, multitap slots) reports "no controller". Reporting all of them connected
+    // made the shell count several local players and route the UI to a pad that never gets data.
+    uint32_t g_socom2NextSocket = 0u;
+
+    void scePad2CreateSocket(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
     {
-        SET_GPR_U32(ctx, 2, 0u);            // socket descriptor 0 (valid) either way
+        const uint32_t descriptor = GPR_U32(ctx, 4);
+        const uint32_t socket = g_socom2NextSocket++;
+        if (std::getenv("PS2X_SOCOM2_PAD_TRACE"))
+        {
+            uint32_t words[2] = {0u, 0u};
+            if (descriptor != 0u)
+                std::memcpy(words, rdram + (descriptor & PS2_RAM_MASK), sizeof(words));
+            std::cout << "[pad-trace] CreateSocket desc=0x" << std::hex << descriptor << " [" << words[0] << " " << words[1]
+                      << "] -> socket " << std::dec << socket << std::endl;
+        }
+        SET_GPR_U32(ctx, 2, socket);
         ctx->pc = GPR_U32(ctx, 31);
     }
 
     void scePad2GetState(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
-        SET_GPR_U32(ctx, 2, socom2PadEnabled() ? 1u : 0u);   // 1 = connected/ready
+        // The game opens a socket for its controller check at boot, deletes it, then opens the
+        // one it actually reads; the HLE never sees the delete, so treat the newest socket as the
+        // live one.
+        const uint32_t socket = GPR_U32(ctx, 4);
+        const bool connected = socom2PadEnabled() && g_socom2NextSocket != 0u && socket == g_socom2NextSocket - 1u;
+        SET_GPR_U32(ctx, 2, connected ? 1u : 0u);   // 1 = connected/ready, 0 = nothing on this socket
         ctx->pc = GPR_U32(ctx, 31);
     }
 
