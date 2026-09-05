@@ -143,6 +143,11 @@
     /* Std/Libc */                            \
     X(ret0)                                   \
     X(socom2_RsaGenerateKeyPair)                                   \
+    X(scePad2Init)                            \
+    X(scePad2CreateSocket)                    \
+    X(scePad2GetState)                        \
+    X(scePad2Read)                            \
+    X(scePad2GetButtonInfo)                   \
     X(ret1)                                   \
     X(reta0)                                  \
     X(calloc_r)                               \

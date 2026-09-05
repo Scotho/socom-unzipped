@@ -43,6 +43,74 @@ namespace ps2_stubs
         std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key" << std::endl;
         ctx->pc = GPR_U32(ctx, 31);
     }
+
+    // ---- libpad2 (scePad2*) HLE ----------------------------------------------------------------
+    // The game statically links Sony's socket-based libpad2 (scePad2Init/CreateSocket/Read/
+    // GetState/GetButtonInfo) which RPCs to SIO2MAN/DS2U on the IOP. Those IOP drivers are not
+    // emulated, so the wrappers were stubbed to return 0 and the game's per-frame reader
+    // (FUN_002da930) saw no controller. We HLE the five top-level entry points to report one
+    // connected DualShock2 on port 0 with neutral input, bypassing the IOP path entirely.
+    // Button ids 0x10-0x13 are the analog axes (center 0x80); 0x00-0x0F are the digital buttons
+    // (0 = released). Host input injection (real button presses) hooks the same shared state later.
+    struct Socom2PadState
+    {
+        uint8_t axis[4] = {0x80u, 0x80u, 0x80u, 0x80u}; // RX,RY,LX,LY equivalents (ids 0x10-0x13)
+        uint8_t button[16] = {0};                        // ids 0x00-0x0F, 0 = released
+    };
+    Socom2PadState g_socom2Pad;
+
+    void scePad2Init(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        SET_GPR_U32(ctx, 2, 1u);            // > 0 = ok
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void scePad2CreateSocket(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        SET_GPR_U32(ctx, 2, 0u);            // socket descriptor 0 (valid)
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void scePad2GetState(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        SET_GPR_U32(ctx, 2, 1u);            // 1 = connected/ready (the value FUN_002da930 checks)
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void scePad2Read(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        // Write a standard DualShock2 poll report into the caller's buffer (a1) for any code that
+        // reads it raw, and return a positive data length so FUN_002da930 proceeds.
+        const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
+        uint8_t report[32] = {0};
+        report[0] = 0x00;
+        report[1] = 0x79;                   // DS2 analog + pressure mode
+        report[2] = 0x5Au;
+        report[3] = 0xFFu;                  // digital buttons, active-low: none pressed
+        report[4] = 0xFFu;
+        report[5] = g_socom2Pad.axis[0];    // RX
+        report[6] = g_socom2Pad.axis[1];    // RY
+        report[7] = g_socom2Pad.axis[2];    // LX
+        report[8] = g_socom2Pad.axis[3];    // LY
+        std::memcpy(rdram + buf, report, sizeof(report));
+        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(sizeof(report)));
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void scePad2GetButtonInfo(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        // a2 = button id. 0x10-0x13 = analog axes (center 0x80); else digital button pressure.
+        const uint32_t id = GPR_U32(ctx, 6);
+        uint32_t value;
+        if (id >= 0x10u && id <= 0x13u)
+            value = g_socom2Pad.axis[id - 0x10u];
+        else if (id < 0x10u)
+            value = g_socom2Pad.button[id];
+        else
+            value = 0u;
+        SET_GPR_U32(ctx, 2, value);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
 }
 
 namespace
