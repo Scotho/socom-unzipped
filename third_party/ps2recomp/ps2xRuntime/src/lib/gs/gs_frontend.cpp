@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+static std::atomic<uint64_t> g_gsSubmitCount{0};
 #include <cstring>
 #include <iostream>
 #include <sstream>
@@ -572,6 +574,44 @@ void GS::latchHostPresentationFrame()
     {
         std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
         recordPresentDebugEventUnlocked(displayFbp, sourceFbp, width, height, usedPreferred);
+    }
+
+    // PS2X_FRAME_DUMP=<dir>: log non-black pixel count each present and dump a PPM every 60 frames.
+    static const char *s_frameDumpDir = std::getenv("PS2X_FRAME_DUMP");
+    if (s_frameDumpDir && hasFrame && width && height)
+    {
+        static std::atomic<uint64_t> s_frameNo{0};
+        const uint64_t n = s_frameNo.fetch_add(1);
+        std::lock_guard<std::mutex> presentationLock(m_presentationMutex);
+        const uint32_t stride = 640u * 4u;
+        uint64_t nonBlack = 0;
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            const uint8_t *row = m_hostPresentationFrame.data() + (size_t)y * stride;
+            for (uint32_t x = 0; x < width; ++x)
+                if (row[x * 4u] | row[x * 4u + 1u] | row[x * 4u + 2u])
+                    ++nonBlack;
+        }
+        if ((n % 15u) == 0u)
+            std::fprintf(stderr, "[frame-dump] frame=%llu %ux%u nonBlack=%llu/%u dispFbp=%u srcFbp=%u gsSubmits=%llu\n",
+                         (unsigned long long)n, width, height, (unsigned long long)nonBlack, width * height, displayFbp, sourceFbp,
+                         (unsigned long long)g_gsSubmitCount.load(std::memory_order_relaxed));
+        if ((n % 60u) == 0u)
+        {
+            char path[512];
+            std::snprintf(path, sizeof(path), "%s/frame_%06llu.ppm", s_frameDumpDir, (unsigned long long)n);
+            if (FILE *fp = std::fopen(path, "wb"))
+            {
+                std::fprintf(fp, "P6\n%u %u\n255\n", width, height);
+                for (uint32_t y = 0; y < height; ++y)
+                {
+                    const uint8_t *row = m_hostPresentationFrame.data() + (size_t)y * stride;
+                    for (uint32_t x = 0; x < width; ++x)
+                        std::fwrite(row + x * 4u, 1, 3, fp);
+                }
+                std::fclose(fp);
+            }
+        }
     }
 }
 
@@ -1575,6 +1615,7 @@ void GS::vertexKick(bool drawing)
         GSPrimitiveBatch batch = buildDrawBatch(needed);
         updatePreferredDisplaySourceForDraw(batch);
         m_backend->Submit(batch);
+        g_gsSubmitCount.fetch_add(1, std::memory_order_relaxed);
         recordDrawDebugEventUnlocked(needed);
     }
 

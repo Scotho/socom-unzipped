@@ -1,11 +1,11 @@
-# Project status — updated 2026-09-05 04:10
+# Project status — updated 2026-09-05 08:00
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
 |---|---|---|
 | M1 | Fork + toolchain: merged ELF recompiles, runtime links, `socom2.exe` runs crt0→main | **done** |
-| M2 | Loader → game entry → engine init without unimplemented-instruction faults | **in progress** (see "Where the guest is now") |
-| M3 | Legal/intro screens + main menu render, pad works, UI sounds | not started |
+| M2 | Loader → game entry → engine init without unimplemented-instruction faults | **done** — engine runs its main loop; audio init + DBCMAN reached |
+| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — frame loop advances, verifying GS output; pad next |
 | M4 | Single-player mission playable | not started |
 | M5 | Online: login/lobby/room on local Horizon, second client joins | server side ready; client side not started |
 | M6 | Portable package | not started |
@@ -24,8 +24,15 @@ Progress today, each a runtime fix: alarm handler discovered (main thread wakes)
 
 Lessons: `runtime.replaceFunction()` only affects calls that go through the dispatch table; direct `jal` calls are compiled as direct C++ calls, so hooks on directly-called functions must be recompile-time stubs (`handler@0xADDR` in the TOML, handler name added to `PS2_STUB_LIST` in `ps2_call_list.h`, implementation in namespace `ps2_stubs`), and the recompiler must be rebuilt because it embeds that list (`build.sh recomp` now always rebuilds the tools). The crash reporter (`[crash]` lines with module-relative frames; symbolize with `llvm-nm -n dist/socom2.exe`) and the PC sampler (`PS2X_PC_SAMPLER`) are the two diagnostics that found every issue above.
 
+## Where the guest is now (2026-09-05 08:00) — engine main loop running
+Two fixes this session unblocked the boot:
+1. **EE INTC I_STAT (0x1000F000) emulation** (`ps2_memory.cpp` `raiseIntcStatBit` + write-1-to-clear read/write; `EeScheduler.cpp` raises bit 2 on VBlankStart, bit 3 on VBlankEnd; `ps2_runtime.cpp` raises the bit for drained INTC causes). The engine's vsync wait `FUN_001a3fb0` clears I_STAT bit 2 and polls until the next vblank sets it.
+2. **94 truncated `[mmio]` overrides fixed** (`tools_py/resolve_mmio.py`). A prior auto-generated table had folded many hardware-register accesses to their `lui` high-half (e.g. I_STAT 0x1000F000 → 0x10000000, GS 0x10002010 → 0x10000000, DMAC 0x1000dxxx → 0x10000000), silently routing guest MMIO to EE Timer0. The resolver backward-reconstructs each base register via lui/ori/addiu within its Ghidra function and computes base+imm. The three I_STAT poll sites (0x1a3fcc/0x1a3ff0/0x1a4020) were among them.
+
+Result: the vsync wait completes, thread 1 (main) advances through the frame loop, and the live PC now spreads across engine subsystems (FIFO kick 0x350ab0, render 0x3b7130, 0x33xxxx/0x32xxxx). Threads 2/3 park correctly in `WaitSema`/`SleepThread` waiting for work. The game reaches audio-system init (`snd_StartSoundSystem`, master volumes, reverb, voice groups all set) and calls **DBCMAN** (controller/memory-card manager) — the shell/menu init path. Reproduce: `PS2X_PC_SAMPLER=1 ./run.sh 40`.
+
 ## Current blocker (top task)
-Booted into the render frame loop. Main thread busy-waits in zVid_Swap (FUN_00350e30, `while VIF1_CHCR.STR`) for a frame the sleeping render thread (FUN_003b1dd0) must produce; cooperative scheduler + synchronous DMA do not interleave them. The render/display thread is woken by INTC-5 (VIF1), now raised on interrupt VIFcodes. It never fires because no VIF1 data flows: the MFIFO ring pointers collapse to RBSR (0x7fff0) after the first drain (RBOR reads 0 inside the wrap math despite being 0x100000 at CHCR-write time). See docs/research/05 "MFIFO ring-pointer bug — precise lead". Fixed en route: DMAC registers now persist (RBOR/RBSR were always 0). Trace with PS2X_TRACE_FIFO=1; deadlock at guest 0x350e78. Reproduce: `PS2X_PC_SAMPLER=8 ./run.sh 90` — main thread pinned at 0x350e78.
+Verifying GS video output. The runner is built headless (window is behind the `PS2X_ENABLE_DEBUG_UI` compile flag); the software GS renders to an offscreen 640x512 RGBA host-presentation frame that nothing displays. Added `PS2X_FRAME_DUMP=<dir>`: logs non-black pixel count each present and writes a PPM every 60 frames (`gs_frontend.cpp` `latchHostPresentationFrame`). Next: run with it, confirm the menu/intro is drawing (non-black frames), then implement DualShock2 pad input (DBCMAN/ds2u) so the menu is navigable.
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.
