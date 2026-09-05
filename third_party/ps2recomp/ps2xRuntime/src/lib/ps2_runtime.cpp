@@ -1452,6 +1452,7 @@ void PS2Runtime::drainCompletedDmacHandlers(uint8_t *rdram)
     for (uint32_t cause : m_memory.consumePendingIntcCauses())
     {
         (void)rdram;
+        m_memory.raiseIntcStatBit(cause);
         m_eeScheduler->dispatchIrq(false, cause);
     }
 }

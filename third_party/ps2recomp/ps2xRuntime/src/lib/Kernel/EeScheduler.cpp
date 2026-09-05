@@ -1897,12 +1897,14 @@ void EeScheduler::processEvent(const EeEvent &event)
             SET_GPR_U32(&invocation.context, 31, 0u);
             queueInvocation(std::move(invocation));
         }
+        m_runtime.memory().raiseIntcStatBit(2u);
         dispatchIrq(false, 2u);
         break;
     case EeEventType::ExternalWake:
         completeExternalWait(event.id, event.value, KE_OK);
         break;
     case EeEventType::VBlankEnd:
+        m_runtime.memory().raiseIntcStatBit(3u);
         dispatchIrq(false, 3u);
         break;
     case EeEventType::Dmac:

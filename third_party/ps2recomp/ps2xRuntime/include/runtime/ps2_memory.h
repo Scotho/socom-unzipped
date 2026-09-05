@@ -347,6 +347,7 @@ public:
     std::vector<uint32_t> consumeCompletedDmacCauses();
     // EE INTC unit interrupts (VIF1 = 5, etc.) raised from the VIF/GIF interpreters.
     void queueIntcCause(uint32_t cause);
+    void raiseIntcStatBit(uint32_t bit);   // set I_STAT (0x1000F000) bit and OR into pending causes
     std::vector<uint32_t> consumePendingIntcCauses();
     // MFIFO (D_CTRL.MFD): fromSPR (D8) feeds a ring buffer [RBOR, RBOR+RBSR+16) that VIF1 or GIF
     // drains in chain mode, stalling when TADR catches up with D8_MADR.

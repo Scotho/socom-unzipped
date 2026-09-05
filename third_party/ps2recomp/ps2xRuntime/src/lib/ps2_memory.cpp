@@ -1600,6 +1600,16 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
         return true;
     }
 
+    if (address == 0x1000F000u)   // I_STAT: write-1-to-clear
+    {
+        m_ioRegisters[0x1000F000u] &= ~value;
+        return true;
+    }
+    if (address == 0x1000F010u)   // I_MASK: toggles on write
+    {
+        m_ioRegisters[0x1000F010u] ^= value;
+        return true;
+    }
     if (address >= 0x10000000 && address < 0x10010000)
     {
         if (address >= 0x10000200 && address < 0x10000300)
@@ -1910,6 +1920,11 @@ void PS2Memory::runSprDma(uint32_t channelBase, uint32_t chcr)
     queueCompletedDmacCause(channelBit);
     if (ring)
         kickMfifoDrain();
+}
+
+void PS2Memory::raiseIntcStatBit(uint32_t bit)
+{
+    m_ioRegisters[0x1000F000u] |= (1u << bit);
 }
 
 void PS2Memory::queueIntcCause(uint32_t cause)
@@ -2358,6 +2373,14 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
             break;
         }
         return val;
+    }
+    if (address == 0x1000F000u)
+    {
+        return m_ioRegisters.count(0x1000F000u) ? m_ioRegisters[0x1000F000u] : 0u;
+    }
+    if (address == 0x1000F010u)
+    {
+        return m_ioRegisters.count(0x1000F010u) ? m_ioRegisters[0x1000F010u] : 0u;
     }
     if (address >= 0x10000000 && address < 0x10010000)
     {
