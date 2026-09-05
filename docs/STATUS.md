@@ -24,6 +24,9 @@ Progress today, each a runtime fix: alarm handler discovered (main thread wakes)
 
 Lessons: `runtime.replaceFunction()` only affects calls that go through the dispatch table; direct `jal` calls are compiled as direct C++ calls, so hooks on directly-called functions must be recompile-time stubs (`handler@0xADDR` in the TOML, handler name added to `PS2_STUB_LIST` in `ps2_call_list.h`, implementation in namespace `ps2_stubs`), and the recompiler must be rebuilt because it embeds that list (`build.sh recomp` now always rebuilds the tools). The crash reporter (`[crash]` lines with module-relative frames; symbolize with `llvm-nm -n dist/socom2.exe`) and the PC sampler (`PS2X_PC_SAMPLER`) are the two diagnostics that found every issue above.
 
+## Current blocker (top task)
+Booted into the render frame loop. Main thread busy-waits in zVid_Swap (FUN_00350e30, `while VIF1_CHCR.STR`) for a frame the sleeping render thread (FUN_003b1dd0) must produce; cooperative scheduler + synchronous DMA do not interleave them. See docs/research/05 "frame-loop threading" for the three candidate fixes. Reproduce: `PS2X_PC_SAMPLER=8 ./run.sh 90` — main thread pinned at 0x350e78.
+
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.
 - Missing ctor targets seen at runtime: 0x231a10, 0x2cde70 (added to `extra_functions.txt`). Expect more "guest-branch:missing-target" lines; each is an entry point to add.
