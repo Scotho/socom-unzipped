@@ -248,6 +248,8 @@ private:
     uint32_t m_presentWidth = 0;
     uint32_t m_presentHeight = 0;
     uint32_t m_presentFbp = 0;
+    uint32_t m_presentCopyTexture = 0;
+    uint32_t m_presentCopyFbo = 0;
     uint32_t m_presentTexWidth = 0;
     uint32_t m_presentTexHeight = 0;
     std::vector<uint8_t> m_presentPixels;   // filled only when a frame dump is requested

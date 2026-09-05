@@ -907,13 +907,13 @@ void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCou
 {
     for (RenderTarget &rt : m_renderTargets)
     {
-        const uint32_t rtSpan = pageSpan(rt.psm, rt.fbw, rt.usedHeight);
-        if (page + pageCount <= rt.fbp || page >= rt.fbp + rtSpan)
-            continue;
+        // Only uploads addressed to this target's own base and format (video frames written
+        // straight into the display buffer). Texture uploads elsewhere must not be painted into a
+        // framebuffer just because a tall first target's page span happens to cover them.
         if (transfer.bitbltbuf.dbp != (rt.fbp << 5) || transfer.bitbltbuf.dpsm != rt.psm)
-        {
-            // Different base/format aliasing the same memory: re-read the affected rows in the RT's own layout.
-        }
+            continue;
+        (void)page;
+        (void)pageCount;
         const uint32_t x0 = std::min<uint32_t>(transfer.trxpos.dsax, rt.width);
         const uint32_t y0 = std::min<uint32_t>(transfer.trxpos.dsay, rt.height);
         const uint32_t w = std::min<uint32_t>(transfer.trxreg.rrw, rt.width - x0);
@@ -1026,7 +1026,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
         // The display base may sit inside a larger target (or an upload-only buffer).
         for (RenderTarget &candidate : m_renderTargets)
         {
-            const uint32_t span = pageSpan(candidate.psm, candidate.fbw, candidate.usedHeight);
+            const uint32_t span = pageSpan(candidate.psm, candidate.fbw, std::min<uint32_t>(candidate.usedHeight, 512u));
             if (display.fbp >= candidate.fbp && display.fbp < candidate.fbp + span)
             {
                 rt = &candidate;
@@ -1044,11 +1044,35 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     }
     // DISPLAY gives the field height (224) when the game renders full frames (448 rows) and
     // scans out interlaced; present the rows that were actually drawn in that case.
-    m_presentTexture = rt->color;
+    // Copy the presented rectangle into a dedicated texture: the render target keeps being drawn
+    // into (the next frame's clear lands on it while it is on screen), which showed as flicker.
     m_presentWidth = std::min<uint32_t>(width, rt->width);
     m_presentHeight = std::min<uint32_t>(height, rt->height);
-    m_presentTexWidth = rt->width;
-    m_presentTexHeight = rt->height;
+    if (m_presentCopyTexture == 0u || m_presentTexWidth != rt->width || m_presentTexHeight != rt->height)
+    {
+        if (m_presentCopyTexture != 0u)
+            glDeleteTextures(1, &m_presentCopyTexture);
+        if (m_presentCopyFbo == 0u)
+            glGenFramebuffers(1, &m_presentCopyFbo);
+        glGenTextures(1, &m_presentCopyTexture);
+        glBindTexture(GL_TEXTURE_2D, m_presentCopyTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        m_presentTexWidth = rt->width;
+        m_presentTexHeight = rt->height;
+    }
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, rt->fbo);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_presentCopyFbo);
+    glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_presentCopyTexture, 0);
+    glDisable(GL_SCISSOR_TEST);
+    glBlitFramebuffer(0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
+                      0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
+                      GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    m_presentTexture = m_presentCopyTexture;
     m_presentFbp = display.fbp;
     ++m_frameCounter;
     {
@@ -1222,7 +1246,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     {
         if (!rt.shadowStale)
             continue;
-        const uint32_t span = pageSpan(rt.psm, rt.fbw, rt.usedHeight);
+        const uint32_t span = pageSpan(rt.psm, rt.fbw, std::min<uint32_t>(rt.usedHeight, 512u));
         if (pageStart + pageCount <= rt.fbp || pageStart >= rt.fbp + span)
             continue;
         downloadRenderTargetToShadow(rt);
