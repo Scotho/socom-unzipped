@@ -670,6 +670,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     static uint64_t s_count[8] = {0};
     static uint64_t s_calls = 0;
     static uint64_t s_bytes = 0;
+    static auto s_lastReport = std::chrono::steady_clock::now();
     s_bytes += buffer.data.size();
     for (Cmd &cmd : buffer.commands)
     {
@@ -736,6 +737,13 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     m_queueCv.notify_all();
     if (s_stats && (++s_calls % 60u) == 0u)
     {
+        const auto now = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double, std::milli>(now - s_lastReport).count();
+        s_lastReport = now;
+        std::fprintf(stderr, "[gs-gl stats] elapsed=%.0fms (%.1f fps) blends=%s\n", elapsed, 60000.0 / std::max(1.0, elapsed), m_blendLog.c_str());
+        m_blendLog.clear();
+        std::fprintf(stderr, "[gs-gl stats] states=%s%c", m_stateLog.c_str(), 10);
+        m_stateLog.clear();
         std::fprintf(stderr, "[gs-gl stats] calls=%llu bytes=%llu ms: submit=%.1f/%llu transfer=%.1f/%llu upload=%.1f/%llu wvram=%.1f/%llu clear=%.1f/%llu present=%.1f/%llu readback=%.1f/%llu textures=%zu rts=%zu\n",
                      (unsigned long long)s_calls, (unsigned long long)s_bytes,
                      s_time[0], (unsigned long long)s_count[0], s_time[1], (unsigned long long)s_count[1],
@@ -1064,6 +1072,35 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
             pixels[static_cast<size_t>(y) * width + x] = out;
         }
 
+    // PS2X_GS_DUMP_TEX=<dir>: write every decoded texture as a PPM (RGB) + PGM (alpha) for inspection.
+    static const char *s_dumpDir = std::getenv("PS2X_GS_DUMP_TEX");
+    if (s_dumpDir)
+    {
+        static uint32_t s_dumpIndex = 0;
+        char path[512];
+        std::snprintf(path, sizeof(path), "%s/tex_%03u_tbp%05x_psm%02x_%ux%u_cbp%05x_cpsm%02x.ppm", s_dumpDir, s_dumpIndex,
+                      tex.tbp0, tex.psm, width, height, tex.cbp, tex.cpsm);
+        if (FILE *fp = std::fopen(path, "wb"))
+        {
+            std::fprintf(fp, "P6\n%u %u\n255\n", width, height);
+            for (uint32_t i = 0; i < width * height; ++i)
+                std::fwrite(&pixels[i], 1, 3, fp);
+            std::fclose(fp);
+        }
+        std::snprintf(path, sizeof(path), "%s/tex_%03u_alpha.pgm", s_dumpDir, s_dumpIndex);
+        if (FILE *fp = std::fopen(path, "wb"))
+        {
+            std::fprintf(fp, "P5\n%u %u\n255\n", width, height);
+            for (uint32_t i = 0; i < width * height; ++i)
+            {
+                const uint8_t a = static_cast<uint8_t>(pixels[i] >> 24);
+                std::fwrite(&a, 1, 1, fp);
+            }
+            std::fclose(fp);
+        }
+        ++s_dumpIndex;
+    }
+
     GLuint texture = 0u;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture);
@@ -1313,6 +1350,13 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     rt->gpuDirty = true;
     rt->shadowStale = true;
 
+    {
+        char tag[64];
+        std::snprintf(tag, sizeof(tag), " T%05llx/M%08x/tfx%u%s", (unsigned long long)(ctx.test & 0x7FFFFu), ctx.frame.fbmsk,
+                      ctx.tex0.tfx & 3u, state.prim.tme ? "t" : "");
+        if (m_stateLog.find(tag) == std::string::npos && m_stateLog.size() < 600u)
+            m_stateLog += tag;
+    }
     // Depth test.
     uint32_t ztst = (ctx.test >> 17) & 3u;
     if (!zte)
@@ -1337,6 +1381,12 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     {
         const uint64_t alpha = ctx.alpha;
         const uint32_t asel = alpha & 3u, bsel = (alpha >> 2) & 3u, csel = (alpha >> 4) & 3u, dsel = (alpha >> 6) & 3u;
+        {
+            char tag[48];
+            std::snprintf(tag, sizeof(tag), " A%uB%uC%uD%u/fix%02llx", asel, bsel, csel, dsel, (unsigned long long)((alpha >> 32) & 0xFFu));
+            if (m_blendLog.find(tag) == std::string::npos && m_blendLog.size() < 400u)
+                m_blendLog += tag;
+        }
         const float fix = std::min(1.0f, static_cast<float>((alpha >> 32) & 0xFFu) / 128.0f);
         GLenum cFactor = GL_SRC1_ALPHA, cInv = GL_ONE_MINUS_SRC1_ALPHA;
         if (csel == 1u) { cFactor = GL_DST_ALPHA; cInv = GL_ONE_MINUS_DST_ALPHA; }

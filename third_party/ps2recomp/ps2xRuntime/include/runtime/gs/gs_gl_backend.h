@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -252,6 +253,8 @@ private:
 
     // transfer bookkeeping for readback decisions (game thread)
     GSTransferCommand m_currentTransfer{};
+    std::string m_blendLog;
+    std::string m_stateLog;
     uint64_t m_uploadExpectedBytes = 0;
     uint64_t m_uploadReceivedBytes = 0;
 };
