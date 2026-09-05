@@ -31,8 +31,22 @@ Two fixes this session unblocked the boot:
 
 Result: the vsync wait completes, thread 1 (main) advances through the frame loop, and the live PC now spreads across engine subsystems (FIFO kick 0x350ab0, render 0x3b7130, 0x33xxxx/0x32xxxx). Threads 2/3 park correctly in `WaitSema`/`SleepThread` waiting for work. The game reaches audio-system init (`snd_StartSoundSystem`, master volumes, reverb, voice groups all set) and calls **DBCMAN** (controller/memory-card manager) — the shell/menu init path. Reproduce: `PS2X_PC_SAMPLER=1 ./run.sh 40`.
 
-## Current blocker (top task)
-Verifying GS video output. The runner is built headless (window is behind the `PS2X_ENABLE_DEBUG_UI` compile flag); the software GS renders to an offscreen 640x512 RGBA host-presentation frame that nothing displays. Added `PS2X_FRAME_DUMP=<dir>`: logs non-black pixel count each present and writes a PPM every 60 frames (`gs_frontend.cpp` `latchHostPresentationFrame`). Next: run with it, confirm the menu/intro is drawing (non-black frames), then implement DualShock2 pad input (DBCMAN/ds2u) so the menu is navigable.
+## Current blocker (top task) — game stays on a black shell screen
+Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
+`PS2X_FRAME_DUMP=<dir>` counters, every layer below the game is proven correct: VIF1 delivers
+1.5 MB/frame to `processVIF1Data`, VU1 launches 1047 microprograms and executes 87k instructions,
+the software rasterizer writes pixels, the double-buffer flip and presentation work. The gap is
+above them: the game loops in its shell render dispatch (`FUN_00339de0`) but only issues per-frame
+**black clears** — `xgkick=0` (no VU1 geometry ever emitted), `nbWrites=0` (every rasterized pixel
+is black), ~0.45 GS draws/frame. So the game has not advanced to a state that draws content.
+
+Most likely gate: **controller input**. The shell state machine probably will not leave the
+attract/title state without a connected DualShock2. `DBCMAN` only answers the version RPC; the pad
+RPCs (0x80001301/2/4) return an untouched buffer. Next step: implement the pad path (libpad/PADMAN
+or the DBCMAN pad broker) reporting one connected DS2 pad with neutral state, then re-measure with
+`PS2X_FRAME_DUMP` — a jump in `gsSubmits`/`nbWrites` means the menu is drawing. Secondary: trace the
+shell state machine (`FUN_00339de0` selects the screen from `DAT_0049e888[state]`) to see what it
+waits on. Reproduce the black state: `PS2X_FRAME_DUMP=logs/frames ./run.sh 40`.
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.

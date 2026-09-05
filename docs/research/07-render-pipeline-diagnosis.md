@@ -1,0 +1,87 @@
+# Render pipeline diagnosis (2026-09-05)
+
+The engine boots and runs its shell/main loop, but the screen stays black. This note
+records the end-to-end instrumentation that localized why, so the next agent can resume
+without redoing the measurements.
+
+## How to reproduce the measurements
+
+Build the runtime, then run with the frame dump:
+
+```
+./build.sh runtime
+PS2X_FRAME_DUMP=logs/frames PS2X_PC_SAMPLER=5 dist/socom2.exe game/disc/socom2_game.elf
+```
+
+`PS2X_FRAME_DUMP=<dir>` (added in `gs_frontend.cpp::latchHostPresentationFrame`) prints a
+`[frame-dump]` line every 15 presents and writes a PPM every 60. The line carries the whole
+pipeline's live counters (all env-gated globals defined in `gs_frontend.cpp`, incremented in
+`ps2_vif1_interpreter.cpp`, `vu/ps2_vu1_core.cpp`, `gs_cpu_backend.cpp`, `ps2_memory.cpp`):
+
+```
+frame  nonBlack  dispFbp srcFbp  enq enqQwc  vif1codes vif1bytes  mscal vuInsn mpgB xgkick  gsSubmits pixels pixFbp0 nbWrites someNZfbp
+```
+
+## What the counters say (steady state, ~frame 2340)
+
+| Counter | Value | Meaning |
+|---|---|---|
+| `vif1codes` / `vif1bytes` | 129k / 1.5 MB | VIF1 DMA reaches `processVIF1Data` fine — geometry upload path works |
+| `mscal` | 1047 | VU1 microprograms are launched (MSCAL VIFcode) |
+| `vuInsn` | 87k | the VU1 interpreter executes real instructions (~84 per program) |
+| `mpgB` | 15656 | ~2000 VU instructions of microcode uploaded via VIF MPG (code buffer is populated) |
+| **`xgkick`** | **0** | **no microprogram ever executes XGKICK — no geometry is emitted to the GS** |
+| `gsSubmits` | 1048 | ~0.45 draws per frame — essentially only the occasional clear |
+| `pixels` / `pixFbp0` | 12.6M / 12.6M | every rasterized pixel goes to framebuffer page 0 |
+| **`nbWrites`** | **0** | **every rasterized pixel is black** — the draws are black fills/clears |
+| `someNZfbp` | 0 | nothing is ever drawn to any page other than 0 (incl. the displayed page 140) |
+| `dispFbp` | 0 / 140 | the game double-buffers (pages 0 and 140) and flips DISPFB correctly |
+
+## Conclusion
+
+Every layer *below* the game is correct: VIF1 feed, VU1 launch + execution, the software
+rasterizer (it faithfully draws the black clears it is given), framebuffer addressing, the
+double-buffer flip, and host presentation. No VU reserved-instruction errors fire, so the
+microprograms run clean.
+
+The gap is *above*: the game is looping in its shell render dispatch (`FUN_00339de0`) but only
+issues per-frame black clears. It is **not** submitting menu geometry, and the VU1 programs it
+does run are utility programs (matrix/anim/cull) that contain no XGKICK. So the game has not
+advanced to a state that draws content.
+
+## What it is NOT
+
+- Not a VIF1/MFIFO/DMA bug (that was the previous blocker; fixed via I_STAT + the 94 `[mmio]`
+  corrections). VIF1 delivers 1.5 MB/frame to the interpreter.
+- Not a rasterizer or presentation bug — pixels are written and presented; they are just black.
+- Not an intro-movie/IPU wait — no MPEG/IPU/PSS activity or disc streaming in the log.
+- Not a DBCMAN spin — only 3–4 DBCMAN RPCs at init, then silence (the game accepted the stub
+  replies and moved on).
+
+## Prioritized next investigations
+
+1. **Controller/pad gate (most likely, and a required feature).** The shell state machine
+   probably will not leave the attract/title state without a connected DualShock2 reporting
+   input. `DBCMAN` (`ps2xIOP/src/modules/dbcman.cpp`) only answers the version RPC; RPCs
+   0x80001301/0x80001302/0x80001304 return an untouched receive buffer. Implement the pad
+   path (libpad/PADMAN or the DBCMAN pad broker): report one connected pad, DualShock2 mode,
+   neutral state with pressure. Then re-measure — if `gsSubmits`/`nbWrites` jump, the menu is
+   drawing.
+2. **Trace the shell state machine.** `FUN_00339de0` selects the active screen from
+   `DAT_0049e888[state]`. Find who advances `state` and what condition it waits on. Sampling
+   a candidate state global over time will show whether the game is stuck or slowly advancing.
+3. **Only if 1–2 show the game believes it is drawing content but still no XGKICK:** dump the
+   uploaded VU1 microcode at MSCAL time and confirm the render programs (which must contain
+   XGKICK) are being uploaded and MSCAL'd. If they are and still no XGKICK, inspect the VU1
+   lower-op decode for the render programs' specific encodings.
+
+## Instrumentation left in place (all env-gated, zero cost when `PS2X_FRAME_DUMP` unset)
+
+- `gs_frontend.cpp`: frame dump + counter print; globals `g_gsSubmitCount`, `g_vif1CodeCount`,
+  `g_vif1BytesCount`, `g_mscalCount`, `g_xgkickCount`, `g_vif1EnqCount`, `g_vif1EnqQwc`,
+  `g_gsPixelCount`, `g_gsPixToFbp0`, `g_gsSomeNZFbp`, `g_gsNonBlackWrites`, `g_vuInsnCount`,
+  `g_vuMpgBytes`.
+- `ps2_vif1_interpreter.cpp`: VIF1 code/byte + MSCAL + MPG-byte counters.
+- `vu/ps2_vu1_core.cpp`: XGKICK + VU-instruction counters.
+- `ps2_memory.cpp`: VIF1 enqueue counters.
+- `gs_cpu_backend.cpp`: pixel-write, per-fbp, and non-black-write counters.
