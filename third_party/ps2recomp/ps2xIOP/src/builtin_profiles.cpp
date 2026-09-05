@@ -118,6 +118,7 @@ namespace ps2x::iop::detail
                 // added as they are implemented; core MCSERV/DBCMAN/LIBSD are always present.
                 ServiceList services;
                 services.emplace_back(createSnd989Service(host));
+                services.emplace_back(createLgAudService(host));
                 return services;
             },
         });
