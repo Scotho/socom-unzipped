@@ -208,11 +208,16 @@ namespace
 #ifdef _WIN32
     LONG WINAPI crashHandler(EXCEPTION_POINTERS *info)
     {
-        static bool reported = false;
-        if (reported)
-            return EXCEPTION_CONTINUE_SEARCH;
-        reported = true;
         const auto *rec = info->ExceptionRecord;
+        // C++ throws (0x20474343 'GCC') and debugger/breakpoint codes are not crashes.
+        const DWORD code = rec->ExceptionCode;
+        if (code != EXCEPTION_ACCESS_VIOLATION && code != EXCEPTION_ILLEGAL_INSTRUCTION &&
+            code != EXCEPTION_STACK_OVERFLOW && code != EXCEPTION_INT_DIVIDE_BY_ZERO &&
+            code != EXCEPTION_IN_PAGE_ERROR && code != EXCEPTION_PRIV_INSTRUCTION)
+            return EXCEPTION_CONTINUE_SEARCH;
+        static int reported = 0;
+        if (reported++ > 2)
+            return EXCEPTION_CONTINUE_SEARCH;
         const auto base = reinterpret_cast<uintptr_t>(GetModuleHandleA(nullptr));
         const auto addr = reinterpret_cast<uintptr_t>(rec->ExceptionAddress);
         std::ostringstream o;
