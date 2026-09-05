@@ -1,4 +1,4 @@
-# Project status — updated 2026-09-04 12:00 (paused by user: machine under load)
+# Project status — updated 2026-09-05 03:20
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
