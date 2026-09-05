@@ -10,35 +10,33 @@ by static recompilation (no emulator). Stop only once we've booted, reached a mi
 lobby we host. This is copyrighted-game work confined to `socom_pc/`; game assets are gitignored.
 
 ## One-paragraph state
-The engine boots and runs its shell/main loop. The **render pipeline is proven working** (GS, VU1,
-XGKICK all function) — the game is simply idle, feeding empty display lists because it hasn't
-reached an interactive screen. The gate to visible content is **game-state progression**, and the
-next concrete lever is the **controller path**: with the pad reported connected (`PS2X_SOCOM2_PAD=1`)
-the game runs Sony's proprietary libdbc/DBCMAN DualShock2 configuration and wedges on
-`rpc=0x8000131a` (sceDbcReceiveData) at guest 0x32f174. Full evidence in `docs/research/07`
-(§Resolution) and `docs/research/08`.
+The engine boots, the render pipeline works, and **with the pad enabled (`PS2X_SOCOM2_PAD=1`) the
+game plays its intro video with sound banks loading** (2026-09-05, commit db51455). The former
+"wedge at 0x32f174" was heap corruption from an unanswered `sceDbcReceiveData` (DBCMAN now answers
+every libdbc RPC). The libpad2 surface the game touches is fully HLE'd (`scePad2*` + `sceVib*` stubs
+in `game_overrides_socom2.cpp`, shared state `g_socom2Pad`, neutral input). Full story in
+`docs/STATUS.md` (13:00 section) and `docs/research/08 §Resolution`.
 
 ## Immediate next task
-Implement the DBCMAN DS2 config handshake in `third_party/ps2recomp/ps2xIOP/src/modules/dbcman.cpp`
-so the game leaves configuration and reaches the shell menu.
+Get from the intro to a **navigable main menu with real input**.
 
-- The client wrappers and their RPC numbers + reply-buffer offsets (in the 0x1d62c0 buffer) are
-  decoded in `docs/research/08-controller-and-dbcman.md`. Key ones: 0x1301 CreateSocket (result at
-  buffer+0x24), 0x1303 GetDepNumber (+0x04), 0x1317 GetDeviceStatus (+0x04), 0x131a ReceiveData
-  (status +0x20c, count +0x08, data +0x0c).
-- **Start cheap:** make each RPC write a *benign success* reply (valid socket, one device, ready
-  status, 0 bytes received) and see whether the config loop completes. The DBCMAN stub already
-  logs unknown RPCs — extend `handleRpc` to write the fields above.
-- If the game keeps looping (needs a real DS2 command/response handshake), reverse it further; the
-  authoritative source is `game/disc/RUN/IRX/DBCMAN.IRX` (not yet decompiled).
-- Verify: `PS2X_SOCOM2_PAD=1 PS2X_FRAME_DUMP=logs/frames PS2X_PC_SAMPLER=4 ./run.sh 40`. Success =
-  the main thread leaves 0x32f174 AND the `[frame-dump]` line shows `xgkick`/`nbWrites` rising
-  (content is drawing).
+- Confirm the pad state machine advances: `FUN_002da930` goes state 0→1 once `scePad2GetButtonProfile`
+  and `sceVibGetProfile` return ≥ 0 (both HLE'd now). With `PS2X_PC_SAMPLER=4` the main thread should
+  cycle through the shell render dispatch, and `[DBCMAN]` traffic should stop after boot.
+- Wire host input into `g_socom2Pad` (keyboard first: START/X/O/d-pad; the runner uses raylib, so
+  poll `IsKeyDown` on the present path) and set the corresponding `button[]`/`axis[]` entries. The
+  HLE `scePad2Read` report and `scePad2GetButtonInfo` already read that state.
+- Skip/complete the intro: find the intro-movie state in `FUN_00339de0`'s selector
+  `DAT_0049e888[state]` and see whether START ends it.
+- Verify: `PS2X_SOCOM2_PAD=1 PS2X_FRAME_DUMP=logs/frames PS2X_PC_SAMPLER=4 ./run.sh 60` — no
+  `[guest-fault]` lines, `nonBlack` stays high, and the guest reaches the menu screen.
 
 ## Parallel/secondary
-The game is idle even with the pad off, so the controller may not be the *only* gate. Trace
-`FUN_00339de0`'s screen selector `DAT_0049e888[state]` to find what else (memory-card check, a
-timer, an intro trigger) keeps it on the idle screen. Only chase this if the DBCMAN work stalls.
+- Make `PS2X_SOCOM2_PAD` default-on once the menu is reachable (the flag only exists because the
+  pad path used to wedge).
+- The `.ppm` from `PS2X_FRAME_DUMP` came out black for a frame the counters say was 85% non-black
+  (dispFbp changed to 0x140 around then): the dump probably reads the wrong buffer when the game
+  double-buffers at a non-zero FBP. Low priority; the counters are trustworthy.
 
 ## Build / run
 - Runtime-only change: `./build.sh runtime` (~6-10 min). Run: `./run.sh <seconds>` or
@@ -54,6 +52,15 @@ timer, an intro trigger) keeps it on the idle screen. Only chase this if the DBC
 - `PS2X_TRACE_VU=1` — VU1 program execution trace + input-header dump.
 - `PS2X_TRACE_FIFO=1` — VIF/GIF/DMA channel trace.
 - `PS2X_SOCOM2_PAD=1` — report a connected DualShock2 (default off; needed to exercise the pad path).
+- `[guest-fault]` lines (always on, first 16): a guest load/store hit a TLB miss or unaligned
+  address; shows op, vaddr, pc/ra/sp, a0-a3, s0-s1, v0. The same line repeating = the scheduler is
+  re-dispatching a faulting function forever (that is what the old "grind at 0x32f174" was).
+- **lldb** (`tools/llvm-mingw/bin/lldb.exe`) gives real guest call chains: host frames are named
+  `sub_XXXXXXXX_0xXXXXXX` / `FUN_xxxxxxxx_0xxxxxxx`, `rcx` = rdram and `rdx` = R5900Context at a
+  `sub_*` entry (GPR n = `*(unsigned int*)($rdx+16*n)`), so `memory read -f x '$rcx + 0x45c3c0'`
+  peeks guest memory and `watchpoint set expression -s 4 -w write -- $rcx+0xADDR` catches a guest
+  writer. Batch recipe: `lldb.exe --batch -s cmds.lldb -- dist/socom2.exe game/disc/socom2_game.elf`
+  with `breakpoint set -r runtime_error::runtime_error` / `run` / `bt 30` (see research 08).
 
 ## Gotchas (respect these)
 - The git repo root is the parent monorepo `C:\projects`. **Never `git add -A`** — stage explicit

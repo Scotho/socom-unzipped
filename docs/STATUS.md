@@ -1,11 +1,11 @@
-# Project status — updated 2026-09-05 08:00
+# Project status — updated 2026-09-05 13:00
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
 |---|---|---|
 | M1 | Fork + toolchain: merged ELF recompiles, runtime links, `socom2.exe` runs crt0→main | **done** |
 | M2 | Loader → game entry → engine init without unimplemented-instruction faults | **done** — engine runs its main loop; audio init + DBCMAN reached |
-| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — libpad2 HLE lands (pad reported connected); now blocked in controller-config on DBCMAN rpc 0x8000131a |
+| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — intro video plays with the pad enabled (DBCMAN heap-smash fixed 2026-09-05); next: menu + host input |
 | M4 | Single-player mission playable | not started |
 | M5 | Online: login/lobby/room on local Horizon, second client joins | server side ready; client side not started |
 | M6 | Portable package | not started |
@@ -31,7 +31,44 @@ Two fixes this session unblocked the boot:
 
 Result: the vsync wait completes, thread 1 (main) advances through the frame loop, and the live PC now spreads across engine subsystems (FIFO kick 0x350ab0, render 0x3b7130, 0x33xxxx/0x32xxxx). Threads 2/3 park correctly in `WaitSema`/`SleepThread` waiting for work. The game reaches audio-system init (`snd_StartSoundSystem`, master volumes, reverb, voice groups all set) and calls **DBCMAN** (controller/memory-card manager) — the shell/menu init path. Reproduce: `PS2X_PC_SAMPLER=1 ./run.sh 40`.
 
-## Current blocker (top task) — game stays on a black shell screen
+## Where the guest is now (2026-09-05 13:00) — intro video plays
+**The pad-path wedge is fixed and the game plays its intro** (`PS2X_SOCOM2_PAD=1 ./run.sh 45`: 2445
+frames, ~250k/287k non-black pixels per frame, 989snd banks loading, zero guest faults). Commit
+db51455; full write-up in `docs/research/08-controller-and-dbcman.md §Resolution`.
+
+Root cause (not the "config loop" the previous status guessed): with the pad reported connected,
+the native `sceVibGetProfile` wrapper calls `sceDbcReceiveData` every frame with an
+*uninitialised* max-length in the reply buffer's count field (+0x08). Our DBCMAN stub never wrote a
+reply, so the wrapper read that garbage back as the received byte count and memcpy'd it out of the
+0x1d62c0 RPC buffer into the pad object — running through the heap and overwriting the global
+texture registry (0x45c3c0) with loader code bytes. The texture loader (`FUN_00354670`) then
+dereferenced code words as pointers → TLB-miss fault → the runtime silently raised a COP0 address
+error and re-dispatched the same function forever (the "grind" at 0x32f174/0x3546d0).
+
+Found with **lldb** (ships in `tools/llvm-mingw/bin`): attach or launch under `lldb.exe --batch`,
+break on `runtime_error::runtime_error` to get the host stack of the first guest fault (host frames
+are named `sub_XXXXXXXX_0xXXXXXX`, so the host stack *is* the guest call chain), peek guest memory
+as `$rcx + <guest addr>` at a `sub_*` entry (rcx = rdram, rdx = R5900Context, GPR n at rdx+16*n),
+and `watchpoint set expression -s 4 -w write -- $rcx+0x8668c8` to catch the writer. Scripts used:
+see the research doc.
+
+Fixes: (1) `ps2xIOP/src/modules/dbcman.cpp` answers every libdbc RPC with a consistent "one DS2 on
+socket 0, nothing received" state (count 0 at +0x08 is the crucial part) and publishes the 32-word
+link table to the SetWorkAddr address. (2) `ps2_runtime.cpp` Load*/Store* fault handlers now print
+a rate-limited `[guest-fault] op vaddr pc ra sp a0-a3 s0-s1 v0 (what)` line — these faults were
+100% silent before. (3) `recomp/extra_functions.txt` += 0x3b7cf0, a static-init element ctor
+Ghidra missed (the one `[guest-branch:missing-target]` at every boot).
+
+Correction to research 08: `untracked_stubs` in the TOML is **informational only, ignored by the
+recompiler** (ps2xAnalyzer/Readme.md) — those functions run natively. That is why
+`sceVibGetProfile`/`scePad2GetButtonProfile`/`scePad2DeleteSocket` reached DBCMAN at all.
+
+Step 2 (built after db51455, see the next section for verification): HLE `scePad2GetButtonProfile`,
+`sceVibGetProfile`, `sceVibSetActParam` as recompile-time stubs so the pad state machine in
+`FUN_002da930` advances 0→1 (GetButtonProfile could never succeed natively: it reads the DMA buffer
+that only the native `scePad2CreateSocket` registers) and libdbc stays idle.
+
+## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
 `PS2X_FRAME_DUMP=<dir>` counters, every layer below the game is proven correct: VIF1 delivers
 1.5 MB/frame to `processVIF1Data`, VU1 launches 1047 microprograms and executes 87k instructions,
@@ -63,18 +100,15 @@ configuration through Sony's proprietary **libdbc/DBCMAN** device-bus protocol a
 `rpc=0x8000131a` (sceDbcReceiveData) at guest 0x32f174. Reply-buffer layouts for the DBCMAN RPCs are
 decoded in `docs/research/08` (offsets in the 0x1d62c0 buffer).
 
-Next step (primary): implement the DBCMAN DS2 config handshake in `ps2xIOP/src/modules/dbcman.cpp`
-— SetWorkAddr/CreateSocket/GetDepNumber/InitSocket/GetDeviceStatus/SendData/ReceiveData — returning
-a consistent "one DS2 attached and configured" state so the game leaves config and reaches the shell
-menu. Then re-run with `PS2X_SOCOM2_PAD=1 PS2X_FRAME_DUMP=logs/frames` and confirm content draws.
-Secondary (parallel): trace `FUN_00339de0`'s state selector `DAT_0049e888[state]` to see what
-non-controller condition (if any) also gates leaving the idle screen.
+(Superseded: the DBCMAN replies were implemented — see the 13:00 section above. The "config loop"
+theory was wrong; it was heap corruption from an unanswered ReceiveData.)
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.
 - Missing ctor targets seen at runtime: 0x231a10, 0x2cde70 (added to `extra_functions.txt`). Expect more "guest-branch:missing-target" lines; each is an entry point to add.
 - `LoadExecPS2` (self-relaunch with `--menu_state ...`, and the network-config utility `SCUSNGUI.ELF`) is reported and exits; a real implementation (reset scheduler/memory, reload ELF with argv) is needed for error reboots and network setup.
-- DBCMAN (pad) is a stub that only answers the version RPC: controller input must be implemented (libdbc/ds2u protocol, DualShock 2 report incl. pressure).
+- Controller input is HLE only (`scePad2*`/`sceVib*` stubs in `game_overrides_socom2.cpp`, shared state `g_socom2Pad`, neutral input): host keyboard/gamepad → `g_socom2Pad` injection is not wired yet. DBCMAN answers libdbc with a fixed "one DS2, nothing received" state; no real DS2 protocol.
+- Guest memory faults are converted to COP0 address errors and the access returns 0 (silently until the `[guest-fault]` log, first 16 only). A fault inside a function makes the scheduler re-dispatch that function from `ctx->pc`; a repeated identical `[guest-fault]` line means a retry loop like the one fixed on 2026-09-05.
 - GS is the CPU rasterizer at 640x448; fine for bring-up, replace with a GPU backend for M4.
 - The loader's libcdvd is partly replaced by runtime stubs (sceCd*), partly recompiled; the engine reads sectors by LBN from the ISO (works). VAG streaming later goes through 989snd's stream-safe read path.
 - Build hygiene: shell scripts must stay LF (`.gitattributes`); Python on Windows writes CRLF when opened in text mode without `newline='\n'`.
