@@ -48,10 +48,27 @@ guest 0x32f174 inside a config/asset lookup (`FUN_00321390` list-walk → `FUN_0
 `FUN_0032f0e0` recursive string-tree search) that grinds because the config table DBCMAN 0x8000131a
 should populate is empty.
 
-Next step: reverse the DBCMAN 0x8000131a reply format (and the sibling 0x80001301/2/4 RPCs) and
-have `ps2xIOP/src/modules/dbcman.cpp` return a small connection/config table describing one attached
-DS2 pad, so the config lookup resolves. Reproduce: `PS2X_PC_SAMPLER=4 ./run.sh 60` — pinned at
-0x32f174, DBCMAN RPCs print from the IOP.
+**Unified conclusion (2026-09-05, verified by `PS2X_TRACE_VU`):** the render pipeline is *correct*
+and the black screen is a **game-state** condition, not a GS/VU bug. Full write-up in
+`docs/research/07 §Resolution`. The one render program the game MSCALs (startPC=0x0, ~748× identical)
+reads its input command header from double-buffered VU memory at TOP (0x1a8/0x2d4) = `[0,0,0,1]`
+(empty/skip) and correctly branches over the XGKICK at 0x50 — the game is feeding it an empty
+display list. GS, rasterizer, framebuffer, presentation, VIF1 feed, VU1 execution and XGKICK decode
+all work; when the game reaches an interactive screen it will submit real lists and XGKICK fires on
+its own (watch `xgkick`/`nbWrites` rise under `PS2X_FRAME_DUMP`).
+
+So the gate to visible graphics is **advancing the game state**, i.e. the controller path. The pad
+HLE (`PS2X_SOCOM2_PAD`, default off to keep the fast render loop) makes the game try first-time DS2
+configuration through Sony's proprietary **libdbc/DBCMAN** device-bus protocol and wedge on
+`rpc=0x8000131a` (sceDbcReceiveData) at guest 0x32f174. Reply-buffer layouts for the DBCMAN RPCs are
+decoded in `docs/research/08` (offsets in the 0x1d62c0 buffer).
+
+Next step (primary): implement the DBCMAN DS2 config handshake in `ps2xIOP/src/modules/dbcman.cpp`
+— SetWorkAddr/CreateSocket/GetDepNumber/InitSocket/GetDeviceStatus/SendData/ReceiveData — returning
+a consistent "one DS2 attached and configured" state so the game leaves config and reaches the shell
+menu. Then re-run with `PS2X_SOCOM2_PAD=1 PS2X_FRAME_DUMP=logs/frames` and confirm content draws.
+Secondary (parallel): trace `FUN_00339de0`'s state selector `DAT_0049e888[state]` to see what
+non-controller condition (if any) also gates leaving the idle screen.
 
 ## Known issues / debt
 - Forced entries get `End = next function start`, which spans rodata: unhandled-instruction count rose from 11k to 114k (garbage that never executes, but +1,400 files). Better: hand the list to Ghidra (`MakeFunctions.java`) so real bounds are found, then re-export.

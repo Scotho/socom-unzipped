@@ -85,3 +85,31 @@ advanced to a state that draws content.
 - `vu/ps2_vu1_core.cpp`: XGKICK + VU-instruction counters.
 - `ps2_memory.cpp`: VIF1 enqueue counters.
 - `gs_cpu_backend.cpp`: pixel-write, per-fbp, and non-black-write counters.
+
+## Resolution (2026-09-05, later): the render pipeline is correct — the game is idle
+
+Deeper VU1 tracing (`PS2X_TRACE_VU`, in `vu/ps2_vu1_core.cpp`/`ps2_vu1_lower.cpp`) settled the
+question. Counters: every MSCAL'd program (`mscalXg == mscal`) contains a reachable XGKICK
+(`xgReach > 0`), the XGKICK decode path is correct (case 0x6C → `startXgkick`), yet `xgDec == 0`
+(XGKICK never decoded) and `xgkick == 0`.
+
+Per-program trace of the render program (startPC=0x0, executed identically ~748×):
+- pc=0x0 `XGKICK`-adjacent setup: `XTOP` reads the VIF1 double-buffer TOP into vi[1].
+- pc=0x8/0x10 `ILW` load a command header from VU data memory at `data[TOP]`.
+- pc=0x30 `IBEQ` (target 0x118) **branches over the XGKICK at 0x50**, program ends at 0x1b50 in
+  82 steps having emitted nothing.
+- The input header at TOP (0x1a8 and 0x2d4, both double-buffers) is `[0,0,0,1]` — an empty/skip
+  command. VIF double-buffering (BASE/OFFSET/TOP toggle) and unpack-to-TOPS addressing check out.
+
+So the VU program is **correctly** deciding there is nothing to draw: the game is feeding it an
+empty display list. The software GS, rasterizer, framebuffer, presentation, VIF1 feed, VU1
+execution and XGKICK decode are all functioning. The black screen is because the game is sitting
+on a pre-content screen with no geometry to submit — a **game-state** condition, not a rendering
+bug.
+
+### Consequence for priorities
+The gate to visible graphics is advancing the game past its idle/attract state, which means the
+**controller/game-state path** (libpad2 + libdbc/DBCMAN — see `08-controller-and-dbcman.md`), not
+the GS/VU pipeline. Once the game reaches an interactive screen it will submit real display lists
+and XGKICK will fire on its own. The instrumentation added here (`PS2X_TRACE_VU`, `PS2X_FRAME_DUMP`
+counters) is the tool to confirm that: when `xgkick`/`nbWrites` rise, content is drawing.
