@@ -25,11 +25,19 @@ DOWN/CROSS/TRIANGLE/START from `PS2X_SOCOM2_INPUT_SCRIPT` and shows an empty lis
 
 - Done: presses reach the game (`PS2X_SOCOM2_PAD_TRACE=1` shows digital 0→1→0 and pressure
   0→ff→0 per press) and MCSERV is only asked to Init (`[MCSERV]` lines). Neither is the gate.
-- Find the shell's input consumer: the pad object filled by `FUN_002da930` (digital results at
-  +0x240..+0x243 for ids 0x12/0x13/0x10/0x11, stick floats at +0x210..+0x21c) is read by the UI
-  layer; grep the decomp for readers of those offsets, or break in lldb on the recompiled
-  function that reads them, and see what condition keeps the dialog idle (timer? "press start"
-  state? a second controller port?). The dialog list is empty because there are no saves.
+- **Lead (2026-09-05 17:40):** the pad object is the global `DAT_0044f108` (per-button state
+  bytes at +1+idx: 0 up, 1 just pressed, 2 held, 3 released; timers at +0x74+idx*4; updated by
+  `FUN_002d9ff0` from `FUN_002da930` — verified working with the HLE input). The UI only takes the
+  pad when the current screen object's field **+0x114 is 0**: every UI site does
+  `pad = (*(screen+0xc0))->+0x114 == 0 ? DAT_0044f108 : 0` (see `FUN_00592ac0` and the readers at
+  decomp lines 56650/62162/64708/77639/83899). +0x114 is a local-player index (assigned 1..N-1 in
+  `FUN_002b2e50` line ~156089 when `DAT_00440c3c` > 1). So either the dialog's screen carries a
+  non-zero player index, or the shell is polling a *different* screen object than the one drawn.
+  Next: break in lldb on `FUN_00592ac0` (`FUN_00592ac0_0x592ac0`) and read `*(int*)(rcx+a0+0x114)`
+  and `DAT_00440c3c` (0x440c3c) from rdram; if the index is non-zero, find who set it (the writers
+  of +0x114 are listed by `grep -n "+ 0x114) = " game/analysis/socom2_game.elf.decomp.c`).
+- Pad sockets: the game creates a socket at boot (deleted after the controller check) and a second
+  one it actually reads; the HLE reports only the newest socket connected (commit after 3fd31d0).
 - Then continue the GPU plan stage 3 (docs/superpowers/plans/2026-09-05-gpu-gs-backend.md).
 
 ## Previous next task (done 2026-09-05 16:50): make the menu fast enough to use

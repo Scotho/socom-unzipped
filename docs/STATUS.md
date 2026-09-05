@@ -115,9 +115,11 @@ script, and its list is empty (no saves). Traced (`PS2X_SOCOM2_PAD_TRACE=1`, com
 0a208a0): the presses DO reach the game — `scePad2GetButtonInfo` is polled for the digital ids
 0x00-0x0f and the pressure ids 0x14-0x1f, and each press shows as 0→1→0 (digital) and 0→ff→0
 (pressure). MCSERV (`[MCSERV]` trace) is only ever asked op 0 (Init), 11 times; the shell never
-queries card info. So the dialog is gated by something in the shell's own UI layer: next, find
-the dialog's input handler in the decomp (start from `FUN_002da930`'s pad object fields +0x240..
-+0x243 / +0x210.. and the `dlgIntroScreen.rdr`/"MainMenu" strings) and see what it waits for.
+queries card info. The gate is in the shell's UI layer: every UI input site uses the pad only when the current
+screen object's +0x114 (local player index) is 0 (`FUN_00592ac0`). Next step and lldb recipe in
+HANDOFF. The pad state machine itself (`FUN_002d9ff0`: states 0/1/2/3 + timers) is verified to
+work with the HLE input. Pad sockets: only the newest socket reports connected (the boot-time
+controller-check socket is deleted by the game; the HLE never sees the delete).
 
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
