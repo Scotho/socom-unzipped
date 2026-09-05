@@ -11,6 +11,7 @@
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
+#include "socom2_rsa_key.h"
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -259,6 +260,19 @@ namespace
 #endif
     }
 
+    // rt_crypt FUN_0062b168(LargeInt *n, LargeInt *d): generates a 512-bit RSA key pair with two
+    // random 256-bit primes (e = 17).  Under recompiled code the prime search takes minutes; a
+    // fixed key pair is equivalent for a private server, so write precomputed limbs instead.
+    void socom2_RsaGenerateKeyPair(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t nAddr = GPR_U32(ctx, 4);
+        const uint32_t dAddr = GPR_U32(ctx, 5);
+        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), kSocom2RsaN, sizeof(kSocom2RsaN));
+        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), kSocom2RsaD, sizeof(kSocom2RsaD));
+        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key" << std::endl;
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
     void applySocom2(PS2Runtime &runtime)
     {
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
@@ -275,6 +289,7 @@ namespace
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
+        runtime.replaceFunction(0x0062b168u, socom2_RsaGenerateKeyPair);
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
     }
