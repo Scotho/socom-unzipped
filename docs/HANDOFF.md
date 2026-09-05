@@ -10,33 +10,35 @@ by static recompilation (no emulator). Stop only once we've booted, reached a mi
 lobby we host. This is copyrighted-game work confined to `socom_pc/`; game assets are gitignored.
 
 ## One-paragraph state
-The engine boots, the render pipeline works, and **with the pad enabled (`PS2X_SOCOM2_PAD=1`) the
-game plays its intro video with sound banks loading** (2026-09-05, commit db51455). The former
-"wedge at 0x32f174" was heap corruption from an unanswered `sceDbcReceiveData` (DBCMAN now answers
-every libdbc RPC). The libpad2 surface the game touches is fully HLE'd (`scePad2*` + `sceVib*` stubs
-in `game_overrides_socom2.cpp`, shared state `g_socom2Pad`, neutral input). Full story in
-`docs/STATUS.md` (13:00 section) and `docs/research/08 §Resolution`.
+With the pad enabled (`PS2X_SOCOM2_PAD=1`) the game boots, plays the Sony/intro movies, START skips
+the intro, and **the shell UI renders over the menu movie with working host input** (2026-09-05,
+commits db51455 → 3c790b4). Keyboard is always mapped (arrows, WASD/IJKL, Enter/Backspace, ZXCV,
+QE, 1/3, 2/4), mouse via `PS2X_SOCOM2_MOUSE=1`, and `PS2X_SOCOM2_INPUT_SCRIPT="8:START,16:DOWN"`
+presses buttons on a timer for log-driven runs. The frame rate at the menu is 13-17 fps because the
+CPU rasterizer samples textures per pixel. Full story: `docs/STATUS.md` (13:00 and 14:30 sections),
+`docs/research/07 §Resolution 2`, `docs/research/08 §Resolution`.
 
 ## Immediate next task
-Get from the intro to a **navigable main menu with real input**.
+Make the menu fast enough to use, then navigate it.
 
-- Confirm the pad state machine advances: `FUN_002da930` goes state 0→1 once `scePad2GetButtonProfile`
-  and `sceVibGetProfile` return ≥ 0 (both HLE'd now). With `PS2X_PC_SAMPLER=4` the main thread should
-  cycle through the shell render dispatch, and `[DBCMAN]` traffic should stop after boot.
-- Wire host input into `g_socom2Pad` (keyboard first: START/X/O/d-pad; the runner uses raylib, so
-  poll `IsKeyDown` on the present path) and set the corresponding `button[]`/`axis[]` entries. The
-  HLE `scePad2Read` report and `scePad2GetButtonInfo` already read that state.
-- Skip/complete the intro: find the intro-movie state in `FUN_00339de0`'s selector
-  `DAT_0049e888[state]` and see whether START ends it.
-- Verify: `PS2X_SOCOM2_PAD=1 PS2X_FRAME_DUMP=logs/frames PS2X_PC_SAMPLER=4 ./run.sh 60` — no
-  `[guest-fault]` lines, `nonBlack` stays high, and the guest reaches the menu screen.
+- **Texture sampling is the hot path**: `GSCpuBackend::SampleTexture` (gs_cpu_backend.cpp) does a
+  swizzled `ReadVramUnlocked` + `LookupCLUT` per texel, ×4 with bilinear. Add a decoded-texture
+  cache: key (tbp0, tbw, psm, tw, th, cbp, cpsm, csa, texa), value = linear RGBA8 buffer; invalidate
+  by VRAM page (8 KB) dirty bits set from image uploads and framebuffer writes. `DrawSprite` then
+  samples the linear buffer (or blits directly for axis-aligned, unfiltered sprites). Measure with
+  the `[frame-dump]` line vs `PS2X_PC_SAMPLER` timestamps (see the timeline recipe in STATUS).
+- Then drive the menu with the script: the first screen is the slot/profile dialog
+  (`SLOT MISSION RANK DATE TIME`); try `DOWN`/`CROSS`/`TRIANGLE` and map disc reads with
+  `tools_py/iso_lbn.py` to see which screen loads next. The memory-card side is the MCSERV HLE.
+- Check the striped highlight bar in that dialog (CLUT/alpha?) once frames are cheap to capture.
+- Verify: `PS2X_SOCOM2_PAD=1 PS2X_SOCOM2_INPUT_SCRIPT="8:START" PS2X_FRAME_DUMP=logs/frames
+  PS2X_PC_SAMPLER=5 ./run.sh 30` — no `[guest-fault]`/`[VU1 xgkick]`/`[VU1 reserved]` lines,
+  `xgkick` rising, frame count ≥ 1500 in 30 s. Convert a `.ppm` to view it (any PPM→PNG one-liner;
+  pick the newest file by mtime, not by name — old frames linger in `logs/frames`).
 
 ## Parallel/secondary
-- Make `PS2X_SOCOM2_PAD` default-on once the menu is reachable (the flag only exists because the
-  pad path used to wedge).
-- The `.ppm` from `PS2X_FRAME_DUMP` came out black for a frame the counters say was 85% non-black
-  (dispFbp changed to 0x140 around then): the dump probably reads the wrong buffer when the game
-  double-buffers at a non-zero FBP. Low priority; the counters are trustworthy.
+- Make `PS2X_SOCOM2_PAD` default-on (the flag only exists because the pad path used to wedge).
+- `sceDmaSendI` should set TIE as well as TTE (the HLE currently ignores the "I" variants).
 
 ## Build / run
 - Runtime-only change: `./build.sh runtime` (~6-10 min). Run: `./run.sh <seconds>` or
@@ -52,6 +54,15 @@ Get from the intro to a **navigable main menu with real input**.
 - `PS2X_TRACE_VU=1` — VU1 program execution trace + input-header dump.
 - `PS2X_TRACE_FIFO=1` — VIF/GIF/DMA channel trace.
 - `PS2X_SOCOM2_PAD=1` — report a connected DualShock2 (default off; needed to exercise the pad path).
+  With it: keyboard/mouse input (`socom2_host_input.h` has the map), `PS2X_SOCOM2_MOUSE=1`,
+  `PS2X_SOCOM2_INPUT_SCRIPT="t:BTN[+BTN][:hold],..."`.
+- `PS2X_TRACE_VU=<skip>` — after <skip> VU1 programs, trace the next three (PC path, header, 32
+  qwords at TOP, VU data 24-47), dump VU1 data memory per program and the microcode once
+  (`vu1_code.bin` → `python tools_py/vu1dis.py`). `[VU1 xgkick]` overrun lines print the bad tag,
+  vi registers and save `vu1_overrun_data.bin`.
+- `PS2X_TRACE_VIF=<skip>` — VIF1 codes (UNPACK addr/num/flg, STCYCL/OFFSET/BASE/MSCAL...) and the
+  first 400 VIF1 DMA chain tags (id, qwc, addr, SPR, upper half, TTE).
+- `tools_py/iso_lbn.py <iso> log <run.log>` — which disc files a run streamed (screen transitions).
 - `[guest-fault]` lines (always on, first 16): a guest load/store hit a TLB miss or unaligned
   address; shows op, vaddr, pc/ra/sp, a0-a3, s0-s1, v0. The same line repeating = the scheduler is
   re-dispatching a faulting function forever (that is what the old "grind at 0x32f174" was).

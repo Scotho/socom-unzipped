@@ -68,6 +68,32 @@ Step 2 (verified: `./run.sh 60` with the pad on shows only boot-time CheckVersio
 `FUN_002da930` advances 0→1 (GetButtonProfile could never succeed natively: it reads the DMA buffer
 that only the native `scePad2CreateSocket` registers) and libdbc stays idle.
 
+## Where the guest is now (2026-09-05 14:30) — menu UI renders, host input works
+**Keyboard/mouse/scripted input** (`socom2_host_input.cpp`, commit 7aa0981): arrows = d-pad,
+WASD/IJKL = sticks, Enter/Backspace = START/SELECT, ZXCV = Square/Cross/Circle/Triangle, QE/13/24 =
+L1R1/L2R2/L3R3; `PS2X_SOCOM2_MOUSE=1` maps motion to the right stick and LMB/RMB to R1/L1;
+`PS2X_SOCOM2_INPUT_SCRIPT="8:START,16:DOWN,18:CROSS"` presses buttons at those seconds (log-driven
+testing). START at 8 s skips INTRO_2.PSS; the game then streams MENULOOP.PSS.
+`tools_py/iso_lbn.py <iso> log <run.log>` maps a run's disc reads to file names.
+
+**The shell UI now draws** (commit 3c790b4): the slot/profile dialog ("SLOT MISSION RANK DATE
+TIME") renders over the menu movie; XGKICK fires (6480 kicks by frame 825), no faults, no VU
+errors. Three EE→VIF1 delivery bugs were in the way, found with `tools_py/vu1dis.py` + the VU/VIF
+traces (details in `docs/research/07 §Resolution 2`):
+1. DMAtag upper-half (VIFcode) transfer was unconditional for CNT/NEXT/CALL/RET/END and never for
+   REF tags; hardware does it for every tag iff CHCR.TTE. The shell's eye vector (REF tag) never
+   arrived, the VU backface cull rejected every UI triangle, no XGKICK.
+2. DMAtag ADDR bit 31 (SPR) was dropped.
+3. The HLE libdma sent chains with CHCR 0x185 (TIE) instead of 0x145 (TTE).
+
+**Next bottleneck: the CPU rasterizer.** With the UI up the game submits ~370 sprites and ~1M
+textured pixels per frame; `GSCpuBackend::SampleTexture` does a swizzled VRAM read plus a CLUT
+lookup per texel (×4 when bilinear) so the frame rate drops to 13-17 fps (lldb shows the game
+thread inside `DrawSprite`→`SampleTexture` from the guest's DMA kick — it is slow, not stuck).
+Options: a decoded-texture cache keyed by (tbp0,tbw,psm,size,CLUT) with page-dirty invalidation,
+or the M4 GPU backend. Also visible: the dialog's highlighted row renders as a striped bar
+(likely a CLUT/format or alpha issue) — check once the frame rate is fixed.
+
 ## Previous blocker (resolved 2026-09-05) — game stayed on a black shell screen
 Full render-pipeline diagnosis in `docs/research/07-render-pipeline-diagnosis.md`. Using the new
 `PS2X_FRAME_DUMP=<dir>` counters, every layer below the game is proven correct: VIF1 delivers

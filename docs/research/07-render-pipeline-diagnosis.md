@@ -113,3 +113,36 @@ The gate to visible graphics is advancing the game past its idle/attract state, 
 the GS/VU pipeline. Once the game reaches an interactive screen it will submit real display lists
 and XGKICK will fire on its own. The instrumentation added here (`PS2X_TRACE_VU`, `PS2X_FRAME_DUMP`
 counters) is the tool to confirm that: when `xgkick`/`nbWrites` rise, content is drawing.
+
+## Resolution 2 (2026-09-05 14:30) — why the shell never XGKICKed, and the fix
+
+The earlier conclusion ("the game feeds empty display lists; XGKICK fires when it reaches an
+interactive screen") was only half right. At the menu the VU1 programs *did* receive real UI
+geometry and still never kicked. Tracing them (`PS2X_TRACE_VU=15000`, `tools_py/vu1dis.py`):
+
+- The shell microprogram is a command interpreter: `XTOP vi1`, then a command list at VU data
+  qword 340 dispatched through a jump table at 0x1ba0 (`JR vi5+884`). Handlers seen for a UI quad:
+  0xb20 int→float vertices, 0x1638 **backface cull**, 0xdf8 transform/divide, 0x5d8 template
+  fill, 0x1440 lighting, 0x1780 build GIF packet + `XGKICK vi2` (0x1920).
+- The cull is `dot(eye - v0, normal)` via `MULAx/MADDAy/MADDz.w` then `FMAND vi13, 16` (MAC sign
+  flag of w) → `IBGTZ` clears the triangle's visible bit. Both triangles were culled because the
+  eye position (VU data qword 30, loaded by `LQ vf26, 30(vi0)`) contained `0x0044ca90 0 0 0` — a
+  guest RAM address, not a vector.
+- That qword is uploaded by a **REF DMAtag whose upper 64 bits hold the VIFcodes**. The chain
+  walker (`ps2_memory.cpp`) injected tag upper halves unconditionally for ids 1/2/5/6/7 and never
+  for REF/REFS/REFE; hardware (and PCSX2's `_chainVIF1`) transfers them for every tag iff
+  `CHCR.TTE`. Fixed: TTE-gated, all ids. Also fixed: DMAtag ADDR bit 31 (SPR) was masked away.
+- With the gate in place the *boot* chains broke: the HLE libdma (`Support.h submitDmaSend`)
+  started chains with CHCR 0x185 (TIE) instead of Sony's 0x145 (TTE), so the END tags carrying
+  `STBASE 0x1a8 / STOFFSET 0x12c` and `NOP / MPG` stopped delivering them and the microcode was
+  parsed as VIFcodes (`[vif1] cmd=0x08 ...` = `ILW` words; TOPS became 0x3fd; index data flooded
+  VU memory; `[VU1 xgkick] packet overrun`). Fixed to 0x145 (chain) / 0x101 (normal).
+
+Result: XGKICK fires (`xgkick=6480` by frame 825), the slot/profile dialog draws over the menu
+movie. The remaining cost is `GSCpuBackend::SampleTexture` (swizzled VRAM read + CLUT lookup per
+texel, ×4 bilinear) at ~1M textured pixels/frame → 13-17 fps. The lldb backtrace at "the stall"
+was `sub_00350AB0 (FIFO kick) → Store8 → runSprDma → processVIF1Data → GifArbiter::drain →
+GS::vertexKick → DrawSprite → SampleTexture`: slow, not stuck.
+
+Timeline recipe (sampler every 3 s vs frame-dump): `awk '/frame-dump/{...} /pc-sampler/{t+=3; print}'`
+gives frames/second and GS submits/pixels per interval — see STATUS 14:30.
