@@ -1,4 +1,5 @@
 #include "Common.h"
+#include <cstring>
 #include "System.h"
 
 namespace ps2_syscalls
@@ -250,30 +251,22 @@ namespace ps2_syscalls
         setReturnS32(ctx, 0);
     }
 
-    void GetRomName(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    // char *GetRomName(char *romname): copies the 14-byte ROMVER string (no size argument!).
+    // Report the US 2004 BIOS ("0200AD20040614"): version 0200, region A, type D, date.
+    void GetRomName(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
     {
-        uint32_t bufAddr = getRegU32(ctx, 4); // $a0
-        size_t bufSize = getRegU32(ctx, 5);   // $a1
+        const uint32_t bufAddr = getRegU32(ctx, 4);
         char *hostBuf = reinterpret_cast<char *>(getMemPtr(rdram, bufAddr));
-        const char *romName = "ROMVER 0100";
-
-        if (!hostBuf)
+        static const char romName[15] = "0200AD20040614";
+        if (hostBuf)
         {
-            std::cerr << "GetRomName error: Invalid buffer address" << std::endl;
-            setReturnS32(ctx, -1); // Error
-            return;
+            std::memcpy(hostBuf, romName, 14);
         }
-        if (bufSize == 0)
+        else
         {
-            setReturnS32(ctx, 0);
-            return;
+            std::cerr << "GetRomName: invalid buffer 0x" << std::hex << bufAddr << std::dec << std::endl;
         }
-
-        strncpy(hostBuf, romName, bufSize - 1);
-        hostBuf[bufSize - 1] = '\0';
-
-        // returns the length of the string (excluding null?) or error
-        setReturnS32(ctx, (int32_t)strlen(hostBuf));
+        setReturnU32(ctx, bufAddr);
     }
 
     void SifLoadElfPart(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
