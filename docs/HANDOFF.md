@@ -1,185 +1,192 @@
-# Handoff — SOCOM II PC recompilation
+# Handoff — SOCOM II PC recompilation (2026-09-05 19:50)
 
-Read this first, then `docs/STATUS.md`. This is the fast on-ramp for a new agent. Work in
-**bounded steps**: one hypothesis → one build → one run → read counters → commit. Do not open more
-than one deep subsystem at a time.
+Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
+written so a fresh agent can continue **autonomously** toward the project vision without asking.
 
-## The goal (unchanged)
+## The vision (unchanged, this is what you are working toward)
 A native SOCOM II EXE for modern PCs with controller + online play to a self-hosted server, built
-by static recompilation (no emulator). Stop only once we've booted, reached a mission or an online
-lobby we host. This is copyrighted-game work confined to `socom_pc/`; game assets are gitignored.
+by static recompilation of the PS2 game (no emulator). Milestones
+(`docs/superpowers/plans/2026-09-04-implementation-plan.md`):
+M1 toolchain ✅ · M2 boot-to-engine ✅ · **M3 menu render + pad (nearly done, you are here)** ·
+M4 load and play a single-player mission · M5 online lobby against our Horizon server (already
+stood up, app id 10472) · M6 portable package. Stop only when a mission plays or an online lobby
+we host is reached. Copyrighted-game work stays inside `socom_pc/`; game assets are gitignored.
 
-## One-paragraph state
-With the pad enabled (`PS2X_SOCOM2_PAD=1`) the game boots, plays the Sony/intro movies, START skips
-the intro, and **the main menu (dlgMenu) runs with working host input** (2026-09-05, commits
-db51455 → 916559a; only the load-game panel and logo are drawn so far, see next task). Keyboard is always mapped (arrows, WASD/IJKL, Enter/Backspace, ZXCV,
-QE, 1/3, 2/4), mouse via `PS2X_SOCOM2_MOUSE=1`, and `PS2X_SOCOM2_INPUT_SCRIPT="8:START,16:DOWN"`
-presses buttons on a timer for log-driven runs. Rendering runs on the **OpenGL 3.3 GS backend**
-(default; `PS2X_GS_BACKEND=cpu` = the old rasterizer) at a steady 60 fps at the menu. Full story:
-`docs/STATUS.md` (13:00, 14:30 and 16:50 sections), `docs/research/07 §Resolution 2`,
-`docs/research/08 §Resolution`, `docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`.
+## How to work (the loop that has been productive)
+Bounded steps: one hypothesis → one build → one run → read the log/screenshot → commit → update
+STATUS. Never open more than one deep subsystem at a time. Prefer runtime evidence
+(`PS2X_CALL_TRACE`, `PS2X_PEEK`, screenshots) over static reading; the decomp is huge and
+Ghidra's function list is incomplete. Commit as you go with specific messages and the co-author
+line (below). If the user is away, keep going: every open item below has a concrete first step.
 
-## Immediate next task (2026-09-05 19:35)
-**Verified (commit 60fe75c):** with the two trampolines recompiled the shell runs the real
-first-boot flow — `PS2X_SOCOM2_PAD=1 PS2X_SOCOM2_INPUT_SCRIPT="8:CROSS,12:CROSS,16:CROSS"` =
-memory-card slot popup → loading warning → "no SOCOM data found" → StoreOptions → Sony logo →
-intro movie → **dlgMenu with the menu-loop movie, VU1 kicking, 60 fps** (screenshots in
-`logs/host`). Three open problems, in priority order:
-1. **UI layout is at the origin.** Every popup and every text glyph is drawn relative to (0,0)
-   (menu frame: ~234 glyph sprites in rows 0-63, the SplashLogo at its raw position); the six
-   menu buttons are therefore invisible (piled top-left, alpha 0x5a) and popups sit top-left. The
-   pre-fix flow positioned the load panel correctly, so a *now-executed* path zeroes positions:
-   suspects are the HCENTERED/XPOS/YPOS control loader `FUN_0036e880` (decomp 267680-267760:
-   reads XPOS/YPOS/SPEC via `FUN_0032dd80/FUN_0032e970/FUN_0032f0d0` into the control at
-   +0xac/+0xb0/+0xe8), `SetScreenOrigin` (never called; writes DAT_004a4508/450c
-   from UI vars 0x3ef120/0x3ef130) and screen-size UI vars from `UiParams.rdr`. Start with
-   `PS2X_CALL_TRACE` on the loader function containing line 267707 and peek the control's
-   position fields; compare against the pre-fix flow (`git stash` the extra_functions entries is
-   NOT needed — just run the old exe if kept, or read positions from a GS trace).
-2. **Intermittent null-vtable crash when dlgMenu loads** (2 of 5 runs):
-   `[guest-branch:missing-target] target=0x14 ra=0x36abc0` = `FUN_0036ab20` ("Add2dNode") calls
-   `param_3->+0x60->+0x18` with `param_3->+0x60 == 0`; param_3 is the screen object. The EE
-   thread dies afterwards (frame counter keeps going, no more `[call]`s). Timing-dependent →
-   probably an animation/event completing before the screen's interface is set. Trace 0x36ab20
-   with EVERY=1 and peek `a2+0x60`.
-3. **VU1 packets carry no vertices** (hdrKick 0, microcode 0x30 branch skips the setup kick at
-   0x50; xgkick counts rise but the GS trace shows only sprites, no triangles) → the 3D roller
-   model never draws. Likely the same layout/transform problem as 1 (objects culled).
-Then: CROSS at the menu (new game) → expect `UiprepMission1` → VALVE runner → SetMission /
-"LOAD_SCREEN" (`ShellGoto` a1) → state 0x4085ac → mission load (M4).
+## Where the game is now
+`PS2X_SOCOM2_PAD=1 PS2X_SOCOM2_INPUT_SCRIPT="8:CROSS,12:CROSS,16:CROSS" ./run.sh 40` runs the
+real first boot end to end: memory-card slot popup → "loading" warning → "no SOCOM data found"
+→ StoreOptions → Sony logo (SONY448.PSS) → intro movie (INTRO_2.PSS) → `goto_menu` → **main menu
+(dlgMenu) over the menu-loop movie at 60 fps on the OpenGL backend** (commits 916559a, 60fe75c,
+67d3b01). Host keyboard/mouse input works (arrows, WASD/IJKL, Enter/Backspace, Z X C V = Square
+Cross Circle Triangle, Space = Cross, Q/E, 1/3, 2/4; `PS2X_SOCOM2_MOUSE=1`).
 
-**Root cause of "CROSS does nothing" (19:10):** The screen after START is the *main
-menu* (`dlgMenu.rdr`), CROSS = the new_game button → script event `UiprepMission1` → its third
-sequence runner stalls on its first `VALVE` node because the VALVE command's exec handler at
-**0x353d00 is a 2-instruction trampoline (`j 0x353fd0; addiu $a0,$a0,4`) that Ghidra never made
-a function**, so the recompiler had no code for it (`[call-trace] no function at 0x353d00`) and
-the guest call silently did nothing. `recomp/extra_functions.txt` now forces 0x353d00 and
-0x2a98a0 (the other uncovered thunk: event-completion callback); a full `./build.sh recomp &&
-./build.sh runtime` was started at 19:05.
+What you see on screen at the menu: the SOCOM II logo only. What is missing and why (see next
+task): all UI positions resolve to (0,0), so the six menu buttons are piled invisibly top-left and
+popups sit top-left and dark; the 3D roller model never draws (VU1 packets carry no vertices).
+CROSS at the menu is the **new_game** button; its script event (`UiprepMission1`) now runs through
+its VALVE nodes (that was the previous blocker) but the run has not yet been followed past that
+point (an intermittent crash at the dlgMenu load, item 2, got in the way twice).
 
-1. **Verify** with `PS2X_SOCOM2_PAD=1 PS2X_CALL_TRACE="0x353d00:VALVE,0x2745a0:UI_COMMAND,
-   0x27eb50:SetMission,0x27eb10:PopUpDialog,0x365a00:ShellGoto" PS2X_CD_TRACE=1
-   PS2X_SOCOM2_INPUT_SCRIPT="8:START,16:CROSS" ./run.sh 30`: expect `[call] VALVE` lines after
-   the press, then SetMission / a "LOAD_SCREEN" message (`ShellGoto` a1="LOAD_SCREEN" → state
-   0x4085ac = load screen) and `[cd] SearchFile` for mission data. Also confirm
-   `[guest-branch:missing-target] target=0x38e890` is gone (0x38e890/0x3b7cf0 were in
-   extra_functions.txt but had never been recompiled in).
-2. If the mission load starts: M4 begins — follow `[cd]`/`[fio]` traces and `[guest-fault]`s.
-3. Separately, the main menu draws only the load-game panel + logo: the six text buttons and the
-   `mainmenu_roller` 3D model are missing (rendering, not logic — the VU1 packets for them carry
-   no vertices / no setup kick). Compare `PS2X_GS_TRACE_CMDS` before/after `goto_menu`.
-4. Then continue the GPU plan stage 3 (docs/superpowers/plans/2026-09-05-gpu-gs-backend.md).
+## Next tasks, in order (each with a starting recipe)
 
-### How the shell works (decoded 2026-09-05, see STATUS 18:40)
-- Top loop `FUN_001e7040`: `for(;;) stateMgr(0x4084c0)->tick(dt)` = `FUN_002ce9e0` (message
-  queue: push/pop/set state) → current state's update. Shell state 0x408538 update =
-  `FUN_001f4640` → `FUN_003654c0` (ShellUpdate: input timer +0x900, script-event queue tick
-  `FUN_0034e070(dt, 0x49ea50)`, UI messages → `FUN_00365a00(shell, "LOAD_SCREEN" |
-  "POP_TO_MENU_STATE" | "MENU_SCREEN" | "SHUTDOWN" | "REBOOT")` → state 0x4085ac (load screen) /
-  0x408538 / 0x408758). The ELF's `FUN_001ebed0` (fade countdown → `FUN_002a9a70` → push state
-  0x4086a0) is **never called** — do not chase it.
-- UI = `game/disc/RUN/UI/READERC.ZAR` (111 `.rdr` dialogs; `dlgMenu.rdr` = main menu). Scripts are
-  **animation sequences**: nodes `{u16 type, u16 size<<2, …}`, runner header 0x1c bytes
-  (`+5` state: 1 idle, 2 start, 4 running, 5 done; `+8` current node; `+0xc` length). Command ids:
-  registration order of `FUN_0026a8e0(0x414bb0, "NAME", parse, create, exec, post)` (1-based:
-  IF=2 … OBJECT_ACTIVE_STATE=0x11, OBJECT_OPACITY_FROM_TO=0x19, SOUND=0x1e, CALL_ANIMATION=0x2d,
-  TIMER=0x38, VALVE=0x3d, VBIT=0x3e, VWATCH=0x3f, ui::UI_COMMAND=0x101, ai::*=0x2xx). Dispatcher
-  `FUN_0026a6e0`; runner step `FUN_00269da0`; animation update `FUN_00270220`. `ui::UI_COMMAND`
-  (`FUN_002745a0`) calls the **script binding table** (ELF 0x3dd4d4, 207 `{name, fn, 0, id}`
-  rows: SetMission 0x27eb50, SwitchMenu 0x27e720, SetMenuState, ReadyToLoad, LoadSavedGame,
-  GetNumSavedGames, IsMemCardInserted, SuspendMenuInput 0x277220, PopUpDialog 0x27eb10 …).
-  Named events are scheduled with `FUN_0034e6b0(delay, 0x49ea50, "name", node, arg)`.
-- Memory card: HLE = formatted 8 MB card with no `BASCUS-97275SOCOMII` dir; the shell lists
-  SaveGame0..9 (none) and shows the load panel. Fine for a new game.
+### 1. UI positions are all at the origin (blocks seeing/using the menu)
+Evidence: GS trace of a menu frame (`PS2X_GS_TRACE_CMDS=1500`) = ~234 textured glyph sprites in
+rows 0-63 at x 19-60 (alpha 0x5a) + one big sprite (the logo). Popups earlier in the flow also
+drew their panel at (0,0) with text at (19..60, 26). Child offsets work; the parent control's
+position is 0. The pre-fix flow (before commit 60fe75c) positioned the load-game panel correctly,
+so a path that *now* executes is zeroing positions — most likely valve/expression-driven layout.
+- Control loader: `FUN_0036e880` (decomp lines 267680-267760) reads XPOS/YPOS/SPEC via
+  `FUN_0032dd80` / `FUN_0032e970` / `FUN_0032f0d0(node, "HCENTERED"=0x3f91f8)` into the control
+  at +0xac/+0xb0/+0xe8. `SetScreenOrigin` (`FUN_0027bf10`, writes DAT_004a4508/450c from UI vars
+  0x3ef120/0x3ef130) is never called. Screen-size UI vars come from `UiParams.rdr` in
+  `READERC.ZAR`.
+- Recipe: `PS2X_CALL_TRACE="0x36e880:LoadControl,0x32dd80:ReadFloat,0x32e970:ReadInt"
+  PS2X_CALL_TRACE_EVERY=1` on the boot flow; then `PS2X_PEEK` the control at `a0+0xac:4` once
+  you know its address (heap addresses are deterministic for a given input script). Also check
+  `EXPRESSION`/`VBIT`/`VWATCH` (exec 0x353260 / 0x353030) results with `[ret]` and the UI-var
+  getter `FUN_00351ff0(name, type)` (a0 = name string → the tracer prints it).
+- Also verify the memory-card popup text renders once positioned; the popup panel colour was
+  dark — may be alpha-0 palette + vertex alpha like the earlier panel textures.
 
-## Previous next task (done 2026-09-05 16:50): make the menu fast enough to use
+### 2. Intermittent crash when dlgMenu loads (2 of 5 runs)
+`[guest-branch:missing-target] kind=DirectJump target=0x14 ra=0x36abc0`: `FUN_0036ab20`
+("Add2dNode": a0 node data, a1 2D library 0x408dc0, a2 screen) calls
+`screen->+0x60->+0x18(screen, node)` with `screen->+0x60 == 0`. The EE main thread then dies
+(frame counter keeps rising, no more `[call]` lines, screen static). Timing dependent → an
+animation/event probably tears down or swaps the screen object while nodes are still being
+added (SwitchMenu → ShellGoto "dlgMenu.rdr" is posted 5 times in a row, see traces).
+- Recipe: `PS2X_CALL_TRACE="0x36ab20:Add2dNode,0x27e720:SwitchMenu,0x365a00:ShellGoto,0x2cf410:SetState"
+  PS2X_CALL_TRACE_EVERY=1 PS2X_PEEK=<screen>+0x60` and compare a crashing vs a clean run; the
+  crash reproduces more often with extra scripted presses (`...,20:CROSS`). Look for who zeroes
+  `+0x60` (decomp: `grep -n "+ 0x60) = 0;"` → lines 51258, 82092, 117088, 117278, 133793).
+- A cheap mitigation while investigating: the runtime could treat a JALR to an address < 0x100
+  as a no-op return (log once) instead of killing the thread — but find the real cause first.
 
-- **Texture sampling is the hot path**: `GSCpuBackend::SampleTexture` (gs_cpu_backend.cpp) does a
-  swizzled `ReadVramUnlocked` + `LookupCLUT` per texel, ×4 with bilinear. Add a decoded-texture
-  cache: key (tbp0, tbw, psm, tw, th, cbp, cpsm, csa, texa), value = linear RGBA8 buffer; invalidate
-  by VRAM page (8 KB) dirty bits set from image uploads and framebuffer writes. `DrawSprite` then
-  samples the linear buffer (or blits directly for axis-aligned, unfiltered sprites). Measure with
-  the `[frame-dump]` line vs `PS2X_PC_SAMPLER` timestamps (see the timeline recipe in STATUS).
-- Then drive the menu with the script: the first screen is the slot/profile dialog
-  (`SLOT MISSION RANK DATE TIME`); try `DOWN`/`CROSS`/`TRIANGLE` and map disc reads with
-  `tools_py/iso_lbn.py` to see which screen loads next. The memory-card side is the MCSERV HLE.
-- Check the striped highlight bar in that dialog (CLUT/alpha?) once frames are cheap to capture.
-- Verify: `PS2X_SOCOM2_PAD=1 PS2X_SOCOM2_INPUT_SCRIPT="8:START" PS2X_FRAME_DUMP=logs/frames
-  PS2X_PC_SAMPLER=5 ./run.sh 30` — no `[guest-fault]`/`[VU1 xgkick]`/`[VU1 reserved]` lines,
-  `xgkick` rising, frame count ≥ 1500 in 30 s. Convert a `.ppm` to view it (any PPM→PNG one-liner;
-  pick the newest file by mtime, not by name — old frames linger in `logs/frames`).
+### 3. VU1 packets carry no vertices (no 3D roller, likely same cause as 1)
+`hdrKick=0/N` in `[frame-dump]`: every UI VU1 packet's header word w has bit 1 clear
+(microcode 0x30 `IBEQ` skips the setup XGKICK at 0x50) and the program ends after ~82 steps
+with no kick. `PS2X_TRACE_VU=<skip>` dumps the packet; the EE builds it from the model's mesh
+after transform/cull, so zeroed transforms (item 1) would produce exactly this. Re-check after 1.
 
-## Parallel/secondary
-- Make `PS2X_SOCOM2_PAD` default-on (the flag only exists because the pad path used to wedge).
-- `sceDmaSendI` should set TIE as well as TTE (the HLE currently ignores the "I" variants).
+### 4. New game → mission load (M4)
+Once the menu is visible, CROSS on NEW GAME → `UiprepMission1` → VALVE runner → expect
+`SetMission` (0x27eb50) and a `ShellGoto` with a1="LOAD_SCREEN" → shell state 0x4085ac (the load
+screen) → mission data streaming (`PS2X_CD_TRACE=1` shows `[cd] Read`; map LBNs to files with
+`python tools_py/iso_lbn.py "game/SOCOM II - U.S. Navy SEALs (USA).iso" log <run.log>`; the game
+reads by LBN table, `sceCdSearchFile` is never used). Also possible on the way: dlgSelectRank
+(difficulty) and dlgControllerPresetsNewGame. Expect new unrecompiled-code holes (see gotcha 1)
+and `[guest-fault]`s in mission code; the AI/mission commands (`ai::*`, VALVE 0x3d…0x56 game
+commands) live in the APACHE00.ZDB overlay, which is recompiled too.
+- Memory card: the HLE is a formatted 8 MB card with no `BASCUS-97275SOCOMII` dir; the game
+  never tried Mkdir yet. Saving a profile will need Mkdir/Open/Write in
+  `Kernel/Stubs/MemoryCard.cpp` (already implemented, untested) — watch `PS2X_MC_TRACE=1`.
+
+### 5. Online (M5), after a mission runs
+The Horizon server is up (app id 10472). DNAS is bypassed (research 05). Start from the shell's
+`multiplayer_button` → `do_multi_or_medius` → dlgNetLogin/dlgNetConnect; the network stack
+(inet/netcnf IRX) is not HLE'd yet — `docs/research/05` and the IOP module list in
+`third_party/ps2recomp/ps2xIOP/src/modules/`.
+
+### Secondary / cleanup
+- GPU plan stage 3-5 (`docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`): AFAIL modes,
+  DATE, 16-bit targets, readback paths, resolution scaling.
+- Make `PS2X_SOCOM2_PAD` default-on; `sceDmaSendI` should set TIE as well as TTE.
+- `PS2X_FRAME_DUMP` pixels are stale on the GPU path (only counters are reliable); fix or
+  document; use `PS2X_HOST_SCREENSHOT` for "what is on screen".
+
+## How the shell works (decoded; details in STATUS 18:40 / 19:10)
+- Top loop `FUN_001e7040`: `for(;;) stateMgr(0x4084c0)->tick(dt)` (`FUN_002ce9e0`, a message
+  queue for push/pop/set state). Shell state 0x408538 update = `FUN_001f4640` → `FUN_003654c0`
+  (input timer +0x900, script-event queue tick `FUN_0034e070(dt, 0x49ea50)`, UI messages →
+  `FUN_00365a00(shell, "LOAD_SCREEN" | "POP_TO_MENU_STATE" | "MENU_SCREEN" | "SHUTDOWN" |
+  "REBOOT")` → states 0x4085ac (load screen) / 0x408538 / 0x408758). The ELF's `FUN_001ebed0`
+  is never called — do not chase it.
+- UI = `game/disc/RUN/UI/READERC.ZAR` (111 `.rdr` dialogs; `dlgMenu.rdr` = main menu; locale
+  text in `RUN/LOCALE/STATES/UIMNLOC.ZAR`, loaded fine). Scripts are animation sequences: node =
+  `{u16 type, u16 size<<2, …}`; runner header 0x1c bytes (`+5` state: 1 idle, 2 start, 4 running,
+  5 done; `+8` current node; `+0xc` length). Command ids = registration order of
+  `FUN_0026a8e0(0x414bb0, "NAME", parse, create, exec, post)`: IF=2, OBJECT_ACTIVE_STATE=0x11,
+  OBJECT_OPACITY_FROM_TO=0x19, SOUND=0x1e, CALL_ANIMATION=0x2d, TIMER=0x38, VALVE=0x3d
+  (exec 0x353d00), VBIT=0x3e (0x353260), VWATCH=0x3f (0x353030), ui::UI_COMMAND=0x101
+  (`FUN_002745a0` → script binding table), ai::*=0x2xx. Dispatcher `FUN_0026a6e0`; runner step
+  `FUN_00269da0`; animation update `FUN_00270220`; named events via
+  `FUN_0034e6b0(delay, 0x49ea50, "name", node, arg)`.
+- Script binding table at ELF 0x3dd4d4: 207 `{name, fn, 0, id}` rows (16 bytes). Useful ones:
+  SetMission 0x27eb50, SwitchMenu 0x27e720, SetMenuState 0x27c9f0, ReadyToLoad 0x27caf0,
+  PopUpDialog 0x27eb10, SuspendMenuInput 0x277220, GetNumSavedGames 0x27dea0, LoadSavedGame
+  0x27fa40, IsMemCardInserted 0x27e1b0, PlayMPEG 0x27ab30, SetScreenOrigin 0x27bf10. Dump the
+  whole table with a 10-line Python ELF reader (pairs at 0x3dd4d4 + 16·i).
+- Pad: HLE in `game_overrides_socom2.cpp` (scePad2*), game reader `FUN_002da930` →
+  `FUN_002d9ff0` (states 0/1/2/3 per button at DAT_0044f108+1+idx). Works.
 
 ## Build / run
-- Runtime-only change: `./build.sh runtime` (~3-10 min; **run it from `socom_pc/`, not a subdirectory**). Editing `gs_backend.h`/`gs_frontend.h` recompiles the generated code too (~15 min). Run: `./run.sh <seconds>` or
-  `dist/socom2.exe game/disc/socom2_game.elf` (put `tools/llvm-mingw/bin` on PATH).
-- Changed the TOML stub list / `PS2_STUB_LIST` / recompile-time stubs → full
-  `./build.sh recomp && ./build.sh runtime` (~15-20 min) because the recompiler embeds the list.
-- IOP module change (dbcman.cpp) is runtime-only.
+- `./build.sh runtime` (3-10 min) for runtime/IOP changes; **run from `socom_pc/`**. Editing
+  `gs_backend.h`/`gs_frontend.h` also recompiles generated code (~15 min).
+- `./build.sh recomp && ./build.sh runtime` (15-20 min) after touching `recomp/socom2.toml`,
+  `PS2_STUB_LIST`, or `recomp/extra_functions.txt` — the forced-function list only takes
+  effect through a recomp build.
+- Run: `./run.sh <seconds>` (writes `logs/run_<stamp>.log`; newest = `ls -t logs/run_*.log | head -1`).
+- Never run two game instances at once (they skew each other's timing); never rebuild while a
+  run is active (the link overwrites `dist/socom2.exe`).
 
-## Diagnostics already built (all env-gated, zero cost when unset)
-- `PS2X_PC_SAMPLER=<s>` — live guest PC + thread table every s seconds.
-- `PS2X_FRAME_DUMP=<dir>` — per-present pipeline counters (vif1/mscal/vuInsn/xgkick/gsSubmits/
-  pixels/nbWrites…) + a PPM every 60 frames. This is the primary "is it drawing?" signal.
-- **`PS2X_CALL_TRACE="0xADDR[:name],..."`** — logs every call of the listed guest functions
-  (time, a0-a3, f12-f14, ra, string args) and `[ret] v0/f0`. Catches direct JALs (dense function
-  table). 320 slots; `PS2X_CALL_TRACE_EVERY=k` (after the first 300 calls log every k-th; 1 =
-  all). Prints `no function at 0x…` when the address is not recompiled — that itself is a finding.
-- `PS2X_PEEK="0xADDR[:words],..."` — guest words (hex+float) with every `PS2X_PC_SAMPLER` line.
-- `PS2X_CD_TRACE=1` (`[cd] SearchFile/Read`, `[fio] open`), `PS2X_MC_TRACE=1` (`[MC] GetInfo/Sync`).
-- `PS2X_HOST_SCREENSHOT=<dir>[:<s>]` — PNG of what the window shows. On the GPU path the
-  `PS2X_FRAME_DUMP` PPM/`nonBlack` can be **stale** (same frame re-reported); trust screenshots.
-- `PS2X_TRACE_VU=1` — VU1 program execution trace + input-header dump.
-- `PS2X_TRACE_FIFO=1` — VIF/GIF/DMA channel trace.
-- `PS2X_SOCOM2_PAD=1` — report a connected DualShock2 (default off; needed to exercise the pad path).
-  With it: keyboard/mouse input (`socom2_host_input.h` has the map), `PS2X_SOCOM2_MOUSE=1`,
-  `PS2X_SOCOM2_INPUT_SCRIPT="t:BTN[+BTN][:hold],..."`.
-- `PS2X_TRACE_VU=<skip>` — after <skip> VU1 programs, trace the next three (PC path, header, 32
-  qwords at TOP, VU data 24-47), dump VU1 data memory per program and the microcode once
-  (`vu1_code.bin` → `python tools_py/vu1dis.py`). `[VU1 xgkick]` overrun lines print the bad tag,
-  vi registers and save `vu1_overrun_data.bin`.
-- `PS2X_TRACE_VIF=<skip>` — VIF1 codes (UNPACK addr/num/flg, STCYCL/OFFSET/BASE/MSCAL...) and the
-  first 400 VIF1 DMA chain tags (id, qwc, addr, SPR, upper half, TTE).
-- `tools_py/iso_lbn.py <iso> log <run.log>` — which disc files a run streamed (screen transitions).
-- `[guest-fault]` lines (always on, first 16): a guest load/store hit a TLB miss or unaligned
-  address; shows op, vaddr, pc/ra/sp, a0-a3, s0-s1, v0. The same line repeating = the scheduler is
-  re-dispatching a faulting function forever (that is what the old "grind at 0x32f174" was).
-- **lldb** (`tools/llvm-mingw/bin/lldb.exe`) gives real guest call chains: host frames are named
-  `sub_XXXXXXXX_0xXXXXXX` / `FUN_xxxxxxxx_0xxxxxxx`, `rcx` = rdram and `rdx` = R5900Context at a
-  `sub_*` entry (GPR n = `*(unsigned int*)($rdx+16*n)`), so `memory read -f x '$rcx + 0x45c3c0'`
-  peeks guest memory and `watchpoint set expression -s 4 -w write -- $rcx+0xADDR` catches a guest
-  writer. Batch recipe: `lldb.exe --batch -s cmds.lldb -- dist/socom2.exe game/disc/socom2_game.elf`
-  with `breakpoint set -r runtime_error::runtime_error` / `run` / `bt 30` (see research 08).
+## Diagnostics (env-gated, zero cost when unset)
+- `PS2X_CALL_TRACE="0xADDR[:name],..."` — every call of the listed guest functions: time,
+  a0-a3, f12-f14, ra, any argument that points at text, and `[ret] v0/f0`. 320 slots.
+  `PS2X_CALL_TRACE_EVERY=k` (after the first 300 calls log every k-th; 1 = all). Prints
+  `no function at 0x…` for unrecompiled targets — that itself is a finding.
+- `PS2X_PEEK="0xADDR[:words],..."` with `PS2X_PC_SAMPLER=<s>` — guest words (hex+float) every s.
+- `PS2X_CD_TRACE=1` (`[cd] Read lbn`, `[fio] open`), `PS2X_MC_TRACE=1` (`[MC] GetInfo/Sync`).
+- `PS2X_HOST_SCREENSHOT=<dir>[:<s>]` — PNG of the window every s seconds (the truth for
+  "what is displayed"). `PS2X_GS_TRACE_PRESENT=<skip>` — per-present state incl. copy pixel.
+- `PS2X_FRAME_DUMP=<dir>` — per-present counters (`xgkick`, `hdrKick`, `gsSubmits`, `mscal`…).
+- `PS2X_GS_TRACE_CMDS=<skip presents>` — 4000 replayed GS commands (submits with coords/rgba,
+  uploads, transfers, presents). `PS2X_GS_STATS=1`, `PS2X_GS_DUMP_TEX=<dir>`,
+  `PS2X_GS_BACKEND=cpu` (reference rasterizer).
+- `PS2X_TRACE_VU=<skip>` (VU1 program path + data dumps; `tools_py/vu1dis.py`),
+  `PS2X_TRACE_VIF=<skip>`, `PS2X_TRACE_FIFO=1`.
+- `PS2X_SOCOM2_PAD=1` (+ `PS2X_SOCOM2_PAD_TRACE=1`, `PS2X_SOCOM2_MOUSE=1`,
+  `PS2X_SOCOM2_INPUT_SCRIPT="t:BTN[+BTN][:hold],..."`).
+- `[guest-fault]` (first 16, always on) and `[guest-branch:missing-target]` lines: silent
+  guest failures. lldb recipe in `docs/research/08` (host frames are named after guest functions;
+  `rcx` = rdram, `rdx` = R5900Context at a `sub_*` entry). Batch-mode breakpoints proved slow
+  and flaky; prefer `PS2X_CALL_TRACE`.
 
 ## Gotchas (respect these)
-- **Code the recompiler never saw fails silently.** Ghidra misses 2-instruction trampolines
-  (`j target; addiu $a0,$a0,imm`) and some callback targets; a guest call into such an address
-  does nothing (only `[guest-branch:missing-target]` for JALR, nothing for table-dispatched
-  calls). Scan: the Python snippet in STATUS 19:10 (thunks outside every CSV range); add hits to
-  `recomp/extra_functions.txt`, then a **full** `./build.sh recomp && ./build.sh runtime` —
-  entries added to that file without a recomp build are not in the EXE.
-- The git repo root is the parent monorepo `C:\projects`. **Never `git add -A`** — stage explicit
-  `socom_pc/...` paths only. Unrelated untracked siblings exist.
-- Shell/py scripts stay **LF** (`.gitattributes`); when writing files from Python use
-  `newline='\n'`.
-- Don't steal desktop focus or screenshot repeatedly — the user's machine is often gaming. Prefer
-  logs. Pause if asked (machine under load).
-- Commit as you go with specific messages; keep `docs/STATUS.md` current. Co-author line:
-  `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
-- If running via cron, re-arm a one-shot cron ~4 h ahead when you start, and correct its prompt to
-  point at the *current* blocker (prompts go stale fast).
-
-## Milestone map (docs/superpowers/plans/2026-09-04-implementation-plan.md)
-M1 toolchain ✅ · M2 boot-to-engine ✅ · **M3 menu render + pad ← you are here** · M4 mission ·
-M5 online (Horizon server already stood up, app id 10472) · M6 portable package.
+1. **Code the recompiler never saw fails silently.** Ghidra misses 2-instruction trampolines
+   (`j target; addiu $a0,$a0,imm`) and some callback targets; table-dispatched calls into them do
+   nothing. Scan (Python over the ELF text segments): every `j` word (`w>>26 == 2`) followed by
+   `addiu $a0,$a0,imm` (`>>16 == 0x2484`) or nop whose address is neither a CSV `Start` nor inside
+   any `[Start,End)` → add to `recomp/extra_functions.txt` → full recomp. Two were found and
+   fixed (0x353d00, 0x2a98a0); rerun the scan when new symptoms of "call does nothing" appear.
+2. Shell heredocs mangle backslashes: never write C string escapes (`\n`) through a bash
+   heredoc; use the Edit tool (or Python with `newline='\n'`, checking the result).
+3. Git root is the parent monorepo `C:\projects`: **never `git add -A`**, stage explicit
+   `socom_pc/...` paths. Shell/py files stay LF.
+4. Don't steal desktop focus or screenshot the desktop; the raylib window screenshot
+   (`PS2X_HOST_SCREENSHOT`) is fine. Pause if the user says the machine is under load.
+5. Commit trailer:
+   `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`
+   `Claude-Session: https://claude.ai/code/session_011tbmAp4gkXRTbbAoNMtvg7`
+6. If running via cron, re-arm a one-shot ~4 h ahead when you start and point its prompt at the
+   *current* blocker.
 
 ## Landmarks
-- Recompiler config: `recomp/socom2.toml` (stubs, mmio, patches). Generated code: `recomp/output/`.
-- Game decomp/strings: `game/analysis/socom2_game.elf.decomp.c` / `.strings.txt`.
-- Controller HLE: `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp`
-  (`namespace ps2_stubs`, scePad2*). DBCMAN: `ps2xIOP/src/modules/dbcman.cpp`.
-- Research: `docs/research/05` (code package/DNAS/MFIFO), `06` (989snd), `07` (render pipeline +
-  resolution), `08` (controller/DBCMAN).
+- Recompiler: `recomp/socom2.toml` (stubs/mmio/patches), `recomp/extra_functions.txt`,
+  `recomp/socom2_ghidra.csv` (name,Start,End,Size), generated code `recomp/output/`
+  (MIPS listing in comments — use it when the decomp lacks a function).
+- Decomp/strings: `game/analysis/socom2_game.elf.decomp.c` / `.strings.txt`; overlay decomps
+  (`DNAS.*`, `SCUS_972.75`) alongside. Disc tree: `game/disc/` (ISO in `game/`).
+- Runtime: `third_party/ps2recomp/ps2xRuntime/src/lib/` — `ps2_runtime.cpp` (runner, present),
+  `gs/gs_gl_backend.cpp` (OpenGL GS), `gs/gs_cpu_backend.cpp`, `game_overrides_socom2.cpp`
+  (pad HLE, call tracer, peek, PC sampler), `Kernel/Stubs/{CD,MemoryCard,FileIO}.cpp`,
+  `src/lib/socom2_host_input.cpp` (keyboard/mouse/script). IOP: `ps2xIOP/src/modules/`
+  (dbcman, mcserv, snd989…).
+- Research: `docs/research/05` (code package/DNAS/MFIFO), `06` (989snd), `07` (render
+  pipeline), `08` (controller/DBCMAN). GPU plan: `docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`.
