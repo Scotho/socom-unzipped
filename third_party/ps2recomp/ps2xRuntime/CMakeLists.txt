@@ -483,6 +483,7 @@ endif()
 # Game-specific override modules self-register via static objects; they must live in the
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
 set_source_files_properties(src/lib/game_overrides_socom2.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 
 if(PS2X_ENABLE_RUNNER_UNITY_BUILD)

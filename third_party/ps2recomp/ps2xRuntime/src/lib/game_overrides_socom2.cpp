@@ -12,6 +12,7 @@
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
 #include "socom2_rsa_key.h"
+#include "socom2_host_input.h"
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -52,12 +53,7 @@ namespace ps2_stubs
     // connected DualShock2 on port 0 with neutral input, bypassing the IOP path entirely.
     // Button ids 0x10-0x13 are the analog axes (center 0x80); 0x00-0x0F are the digital buttons
     // (0 = released). Host input injection (real button presses) hooks the same shared state later.
-    struct Socom2PadState
-    {
-        uint8_t axis[4] = {0x80u, 0x80u, 0x80u, 0x80u}; // RX,RY,LX,LY equivalents (ids 0x10-0x13)
-        uint8_t button[16] = {0};                        // ids 0x00-0x0F, 0 = released
-    };
-    Socom2PadState g_socom2Pad;
+    Socom2PadState g_socom2Pad;   // refreshed from the host by socom2HostInputPoll (socom2_host_input.cpp)
 
     // Reporting a connected pad through scePad2 makes the game run first-time controller
     // configuration through Sony's libdbc/DBCMAN DS2 device-bus protocol (rpc 0x8000131a et al.),
@@ -93,16 +89,25 @@ namespace ps2_stubs
         // Write a standard DualShock2 poll report into the caller's buffer (a1) for any code that
         // reads it raw, and return a positive data length so FUN_002da930 proceeds.
         const uint32_t buf = GPR_U32(ctx, 5) & PS2_RAM_MASK;
+        if (socom2PadEnabled())
+            socom2HostInputPoll(g_socom2Pad);
         uint8_t report[32] = {0};
         report[0] = 0x00;
         report[1] = 0x79;                   // DS2 analog + pressure mode
         report[2] = 0x5Au;
-        report[3] = 0xFFu;                  // digital buttons, active-low: none pressed
+        report[3] = 0xFFu;                  // digital buttons, active-low
         report[4] = 0xFFu;
+        for (int id = 0; id < 16; ++id)
+        {
+            if (g_socom2Pad.button[id])
+                report[3 + id / 8] = static_cast<uint8_t>(report[3 + id / 8] & ~(1u << (id % 8)));
+        }
         report[5] = g_socom2Pad.axis[0];    // RX
         report[6] = g_socom2Pad.axis[1];    // RY
         report[7] = g_socom2Pad.axis[2];    // LX
         report[8] = g_socom2Pad.axis[3];    // LY
+        for (int field = 0; field < 12; ++field)
+            report[9 + field] = g_socom2Pad.button[kSocom2PressureButton[field]] ? 0xFFu : 0x00u;
         std::memcpy(rdram + buf, report, sizeof(report));
         SET_GPR_U32(ctx, 2, static_cast<uint32_t>(sizeof(report)));
         ctx->pc = GPR_U32(ctx, 31);
@@ -117,6 +122,8 @@ namespace ps2_stubs
             value = g_socom2Pad.axis[id - 0x10u];
         else if (id < 0x10u)
             value = g_socom2Pad.button[id];
+        else if (id >= 0x14u && id <= 0x1fu)
+            value = g_socom2Pad.button[kSocom2PressureButton[id - 0x14u]] ? 0xFFu : 0u;
         else
             value = 0u;
         SET_GPR_U32(ctx, 2, value);
