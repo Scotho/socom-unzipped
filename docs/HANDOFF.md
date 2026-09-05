@@ -19,8 +19,36 @@ presses buttons on a timer for log-driven runs. Rendering runs on the **OpenGL 3
 `docs/STATUS.md` (13:00, 14:30 and 16:50 sections), `docs/research/07 §Resolution 2`,
 `docs/research/08 §Resolution`, `docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`.
 
-## Immediate next task (2026-09-05 19:10)
-**Root cause of "CROSS does nothing" found; fix building.** The screen after START is the *main
+## Immediate next task (2026-09-05 19:35)
+**Verified (commit 60fe75c):** with the two trampolines recompiled the shell runs the real
+first-boot flow — `PS2X_SOCOM2_PAD=1 PS2X_SOCOM2_INPUT_SCRIPT="8:CROSS,12:CROSS,16:CROSS"` =
+memory-card slot popup → loading warning → "no SOCOM data found" → StoreOptions → Sony logo →
+intro movie → **dlgMenu with the menu-loop movie, VU1 kicking, 60 fps** (screenshots in
+`logs/host`). Three open problems, in priority order:
+1. **UI layout is at the origin.** Every popup and every text glyph is drawn relative to (0,0)
+   (menu frame: ~234 glyph sprites in rows 0-63, the SplashLogo at its raw position); the six
+   menu buttons are therefore invisible (piled top-left, alpha 0x5a) and popups sit top-left. The
+   pre-fix flow positioned the load panel correctly, so a *now-executed* path zeroes positions:
+   suspects are the HCENTERED/XPOS/YPOS control loader `FUN_0036e880` (decomp 267680-267760:
+   reads XPOS/YPOS/SPEC via `FUN_0032dd80/FUN_0032e970/FUN_0032f0d0` into the control at
+   +0xac/+0xb0/+0xe8), `SetScreenOrigin` (never called; writes DAT_004a4508/450c
+   from UI vars 0x3ef120/0x3ef130) and screen-size UI vars from `UiParams.rdr`. Start with
+   `PS2X_CALL_TRACE` on the loader function containing line 267707 and peek the control's
+   position fields; compare against the pre-fix flow (`git stash` the extra_functions entries is
+   NOT needed — just run the old exe if kept, or read positions from a GS trace).
+2. **Intermittent null-vtable crash when dlgMenu loads** (2 of 5 runs):
+   `[guest-branch:missing-target] target=0x14 ra=0x36abc0` = `FUN_0036ab20` ("Add2dNode") calls
+   `param_3->+0x60->+0x18` with `param_3->+0x60 == 0`; param_3 is the screen object. The EE
+   thread dies afterwards (frame counter keeps going, no more `[call]`s). Timing-dependent →
+   probably an animation/event completing before the screen's interface is set. Trace 0x36ab20
+   with EVERY=1 and peek `a2+0x60`.
+3. **VU1 packets carry no vertices** (hdrKick 0, microcode 0x30 branch skips the setup kick at
+   0x50; xgkick counts rise but the GS trace shows only sprites, no triangles) → the 3D roller
+   model never draws. Likely the same layout/transform problem as 1 (objects culled).
+Then: CROSS at the menu (new game) → expect `UiprepMission1` → VALVE runner → SetMission /
+"LOAD_SCREEN" (`ShellGoto` a1) → state 0x4085ac → mission load (M4).
+
+**Root cause of "CROSS does nothing" (19:10):** The screen after START is the *main
 menu* (`dlgMenu.rdr`), CROSS = the new_game button → script event `UiprepMission1` → its third
 sequence runner stalls on its first `VALVE` node because the VALVE command's exec handler at
 **0x353d00 is a 2-instruction trampoline (`j 0x353fd0; addiu $a0,$a0,4`) that Ghidra never made

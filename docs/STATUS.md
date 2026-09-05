@@ -176,6 +176,19 @@ the game does not try to create it (Mkdir never called) — fine for now. After 
 reads or fio opens happen. VU1 keeps running programs (mscal rises) but XGKICKs stop: the UI
 packets carry the "no setup kick" flag (header.w bit 1 clear at microcode 0x30) and no vertices.
 
+## 2026-09-05 19:35 — first-boot flow runs end to end; main menu reached (commit 60fe75c)
+After the full recomp with 0x353d00/0x2a98a0 forced, `PS2X_SOCOM2_INPUT_SCRIPT="8:CROSS,12:CROSS,
+16:CROSS"` drives: memory-card slot popup → "loading" warning → "no SOCOM data found" →
+StoreOptions → Sony logo (SONY448.PSS) → intro (INTRO_2.PSS) → `goto_menu` → dlgMenu over
+MENULOOP.PSS, VU1 kicking, 60 fps. (The pre-fix flow had skipped the whole valve-guarded
+memory-card path, which is why it went straight to the menu with a load-game panel.)
+Also fixed: the GL present drew the frame with alpha blending, and the menu frame's alpha is 0,
+so the window was black while the RT was fine — the present is now drawn opaque
+(`rlDisableColorBlend`), plus a full colour mask before the present blit.
+Open (see HANDOFF next task): UI positions all at (0,0) (buttons invisible, popups top-left),
+an intermittent null-vtable crash in `FUN_0036ab20` when dlgMenu loads, VU1 packets with no
+vertices (no 3D roller). Locale archives do load (`LoadLocale "UIMn"` ok), so captions exist.
+
 ## 2026-09-05 19:10 — root cause of the stalled "new game": an unrecompiled trampoline
 Runner R2 of the `UiprepMission1` animation (three runners: button anim → SOUND, motion,
 `SuspendMenuInput`; fade → OBJECT_OPACITY_FROM_TO + OBJECT_ACTIVE_STATE×3; then a sequence of
