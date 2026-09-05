@@ -1,6 +1,8 @@
 #include <atomic>
 extern std::atomic<uint64_t> g_xgkickCount;
 extern std::atomic<uint64_t> g_vuInsnCount;
+extern std::atomic<uint64_t> g_vuProgramsAtZero;
+extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/ps2_vu1.h"
 #include "runtime/gs/ps2_gif_arbiter.h"
 #include "runtime/gs/gs_frontend.h"
@@ -13,6 +15,7 @@ extern std::atomic<uint64_t> g_vuInsnCount;
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <filesystem>
 #include <limits>
 #include <ps2_log.h>
@@ -1635,10 +1638,15 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
 
     // PS2X_TRACE_VU: dump the executed PC path of the first VU1 program that contains a reachable
     // XGKICK, to locate where control flow diverges from the geometry-kick (xgDec stays 0).
+    // PS2X_TRACE_VU=<skip>: skip that many VU1 programs first (0 = trace from boot), then dump
+    // the next three, so the trace can be aimed at a later screen (menu, mission).
     static std::atomic<int> s_vuTraceDumped{0};
+    static std::atomic<uint64_t> s_vuTraceSeen{0};
+    static const int s_vuTraceSkip = std::getenv("PS2X_TRACE_VU") ? std::atoi(std::getenv("PS2X_TRACE_VU")) : 0;
     bool traceThis = false;
     uint32_t traceFirstXg = 0xFFFFFFFFu;
     if (m_unit == Unit::VU1 && std::getenv("PS2X_TRACE_VU") &&
+        s_vuTraceSeen.fetch_add(1, std::memory_order_relaxed) >= static_cast<uint64_t>(s_vuTraceSkip) &&
         s_vuTraceDumped.load(std::memory_order_relaxed) < 3)
     {
         for (uint32_t p = m_state.pc & ~0x7u; p + 8u <= codeSize; p += 8u)
@@ -1665,9 +1673,52 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                          "hdr@0=[%08x %08x %08x %08x] hdr@TOP=[%08x %08x %08x %08x]\n",
                          m_state.pc, traceFirstXg, m_state.top, m_state.itop,
                          h0[0], h0[1], h0[2], h0[3], hT[0], hT[1], hT[2], hT[3]);
+            // Constants the shell program reads by absolute address (eye position at 30, viewport at 27/38...).
+            for (uint32_t q = 24u; q < 48u; ++q)
+            {
+                uint32_t w[4] = {0};
+                if ((q + 1u) * 16u <= dataSize) std::memcpy(w, vuData + q * 16u, 16);
+                std::fprintf(stderr, "[vu-trace]   data@%u=[%08x %08x %08x %08x]\n", q, w[0], w[1], w[2], w[3]);
+            }
+            // The 32 qwords behind the header at TOP (the packet body the program consumes).
+            for (uint32_t q = 0u; q < 32u; ++q)
+            {
+                uint32_t w[4] = {0};
+                if (topOff + (q + 1u) * 16u <= dataSize)
+                    std::memcpy(w, vuData + topOff + q * 16u, 16);
+                std::fprintf(stderr, "[vu-trace]   data@TOP+%u=[%08x %08x %08x %08x]\n", q, w[0], w[1], w[2], w[3]);
+            }
+            // Dump the whole microprogram once (disassemble with tools_py/vu1dis.py).
+            static bool s_codeDumped = false;
+            if (!s_codeDumped)
+            {
+                s_codeDumped = true;
+                const char *dir = std::getenv("PS2X_FRAME_DUMP");
+                const std::string path = std::string(dir ? dir : "logs") + "/vu1_code.bin";
+                if (FILE *fp = std::fopen(path.c_str(), "wb"))
+                {
+                    std::fwrite(vuCode, 1, codeSize, fp);
+                    std::fclose(fp);
+                    std::fprintf(stderr, "[vu-trace] wrote %s (%u bytes)\n", path.c_str(), codeSize);
+                }
+            }
         }
     }
     uint32_t traceSteps = 0u;
+
+    // Frame-dump counters: how many VU1 programs start with the "kick" bit (bit 1 of the input
+    // header's w word at TOP) set, versus all programs. The game's shell microprogram only reaches
+    // its XGKICK when that bit is set (IAND vi09, hdr.w, 2; IBEQ vi09, vi00 -> skip).
+    if (m_unit == Unit::VU1 && m_state.pc == 0u)
+    {
+        const uint32_t topOff = (m_state.top & 0x3FFu) * 16u;
+        uint32_t hdrW = 0u;
+        if (topOff + 16u <= dataSize)
+            std::memcpy(&hdrW, vuData + topOff + 12u, 4);
+        g_vuProgramsAtZero.fetch_add(1, std::memory_order_relaxed);
+        if (hdrW & 2u)
+            g_vuProgramsKickBit.fetch_add(1, std::memory_order_relaxed);
+    }
 
     const int previousRoundingMode = std::fegetround();
     const bool useVuRounding = std::fesetround(FE_TOWARDZERO) == 0;
@@ -1687,7 +1738,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         }
         g_vuInsnCount.fetch_add(1, std::memory_order_relaxed);
 
-        if (traceThis && traceSteps < 400u)
+        if (traceThis && traceSteps < 1200u)
         {
             uint32_t lo, up;
             std::memcpy(&lo, vuCode + m_state.pc, 4);

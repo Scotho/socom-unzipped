@@ -20,6 +20,8 @@ std::atomic<uint64_t> g_gsPixToFbp0{0};
 std::atomic<uint64_t> g_gsSomeNZFbp{0};
 std::atomic<uint64_t> g_gsNonBlackWrites{0};
 std::atomic<uint64_t> g_vuInsnCount{0};
+std::atomic<uint64_t> g_vuProgramsAtZero{0};   // VU1 programs started at pc 0
+std::atomic<uint64_t> g_vuProgramsKickBit{0};  // ... whose input header w has bit 1 (kick) set
 std::atomic<uint64_t> g_vuMpgBytes{0};
 std::atomic<uint64_t> g_vuXgkickInCode{0};
 std::atomic<uint64_t> g_vuMscalWithXg{0};
@@ -609,7 +611,7 @@ void GS::latchHostPresentationFrame()
                     ++nonBlack;
         }
         if ((n % 15u) == 0u)
-            std::fprintf(stderr, "[frame-dump] frame=%llu %ux%u nonBlack=%llu/%u dispFbp=%u srcFbp=%u enq=%llu enqQwc=%llu vif1codes=%llu vif1bytes=%llu mscal=%llu vuInsn=%llu mpgB=%llu xgkick=%llu xgDec=%llu xgReach=%llu mscalXg=%llu gsSubmits=%llu pixels=%llu pixFbp0=%llu nbWrites=%llu someNZfbp=%llu\n",
+            std::fprintf(stderr, "[frame-dump] frame=%llu %ux%u nonBlack=%llu/%u dispFbp=%u srcFbp=%u enq=%llu enqQwc=%llu vif1codes=%llu vif1bytes=%llu mscal=%llu vuInsn=%llu mpgB=%llu xgkick=%llu xgDec=%llu xgReach=%llu mscalXg=%llu hdrKick=%llu/%llu gsSubmits=%llu pixels=%llu pixFbp0=%llu nbWrites=%llu someNZfbp=%llu\n",
                          (unsigned long long)n, width, height, (unsigned long long)nonBlack, width * height, displayFbp, sourceFbp,
                          (unsigned long long)g_vif1EnqCount.load(std::memory_order_relaxed),
                          (unsigned long long)g_vif1EnqQwc.load(std::memory_order_relaxed),
@@ -622,6 +624,8 @@ void GS::latchHostPresentationFrame()
                          (unsigned long long)g_xgkickDecoded.load(std::memory_order_relaxed),
                          (unsigned long long)g_vuXgkickInCode.load(std::memory_order_relaxed),
                          (unsigned long long)g_vuMscalWithXg.load(std::memory_order_relaxed),
+                         (unsigned long long)g_vuProgramsKickBit.load(std::memory_order_relaxed),
+                         (unsigned long long)g_vuProgramsAtZero.load(std::memory_order_relaxed),
                          (unsigned long long)g_gsSubmitCount.load(std::memory_order_relaxed),
                          (unsigned long long)g_gsPixelCount.load(std::memory_order_relaxed),
                          (unsigned long long)g_gsPixToFbp0.load(std::memory_order_relaxed),
