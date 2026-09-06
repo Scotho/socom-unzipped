@@ -1381,6 +1381,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
     // this charge bounds straight-line call chains that have no local loop.
     if (m_eeScheduler && m_eeScheduler->checkpointDue(EeScheduler::kGuestDispatchCycles))
     {
+        markDispatchUnwind();
         return false;
     }
 
@@ -1392,6 +1393,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
         }
 
         ctx->pc = targetPc;
+        markDispatchUnwind();
         return false;
     }
 
@@ -1413,6 +1415,7 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
             return true;
         }
 
+        markDispatchUnwind();
         return false;
     }
 
@@ -1421,6 +1424,16 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
     targetFn(rdram, ctx, this);
 
     if (isStopRequested() || ctx->pc == 0u)
+    {
+        return false;
+    }
+
+    // The callee (or something below it) left through a checkpoint/transfer: keep unwinding. This
+    // must be checked before the pc == entryPc heuristic — a recursive callee that unwinds at the
+    // dispatch of its own entry address leaves pc == entryPc and would otherwise be taken as
+    // "returned", resuming the caller with the callee's registers (SOCOM II FUN_00315a80 →
+    // Add2dNode crash with s1 == 1).
+    if (dispatchUnwinding())
     {
         return false;
     }
@@ -2272,7 +2285,12 @@ void PS2Runtime::postEeEvent(EeEvent event)
 
 bool PS2Runtime::eeCheckpointDue(uint32_t cycles) noexcept
 {
-    return m_eeScheduler->checkpointDue(cycles);
+    const bool due = m_eeScheduler->checkpointDue(cycles);
+    if (due)
+    {
+        markDispatchUnwind();
+    }
+    return due;
 }
 
 [[noreturn]] void PS2Runtime::eeWaitVSyncTicks(uint32_t ticks, uint32_t resumePc)

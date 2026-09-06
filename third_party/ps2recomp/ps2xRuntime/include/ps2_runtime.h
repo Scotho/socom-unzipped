@@ -383,6 +383,13 @@ public:
     const EeScheduler &eeScheduler() const;
     void postEeEvent(EeEvent event);
     bool eeCheckpointDue(uint32_t cycles = 32u) noexcept;
+    // Set whenever a generated function returns to the host without having finished (scheduler
+    // checkpoint, non-call transfer, missing target); cleared by the scheduler before each dispatch.
+    // dispatchGuestBranch uses it to tell "callee returned" from "callee unwound", which the
+    // pc-based check cannot do when a recursive callee unwinds at its own entry pc.
+    void markDispatchUnwind() noexcept { m_dispatchUnwinding = true; }
+    void clearDispatchUnwind() noexcept { m_dispatchUnwinding = false; }
+    bool dispatchUnwinding() const noexcept { return m_dispatchUnwinding; }
     [[noreturn]] void eeWaitVSyncTicks(uint32_t ticks, uint32_t resumePc);
 
     struct EeExitHandlerRegistration
@@ -499,6 +506,7 @@ private:
 
     std::atomic<uint32_t> m_missingFunctionPolicy{static_cast<uint32_t>(MissingFunctionPolicy::ContinueToTarget)};
     std::atomic<bool> m_missingFunctionReported{false};
+    bool m_dispatchUnwinding = false;
     std::atomic<bool> m_stopRequested{false};
     DebugUiCallback m_debugUiInitCallback = nullptr;
     DebugUiCallback m_debugUiDrawCallback = nullptr;

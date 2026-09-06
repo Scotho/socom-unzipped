@@ -433,6 +433,58 @@ namespace
         }).detach();
     }
 
+    // PS2X_RDRAM_DUMP="<path>:<seconds>": write the whole 32 MB guest RAM to <path> once, <seconds>
+    // after start (offline inspection of heap structures with Python; heap addresses are
+    // deterministic for a given input script).
+    void writeRdramDump(const uint8_t *rdram, const std::string &path, const std::string &when)
+    {
+        std::ofstream f(path, std::ios::binary);
+        f.write(reinterpret_cast<const char *>(rdram), PS2_RAM_SIZE);
+        std::cout << "[rdram-dump] wrote " << PS2_RAM_SIZE << " bytes to " << path << " at " << when << std::endl;
+    }
+
+    // PS2X_RDRAM_DUMP_AT="<path>:<Name>#<n>": dump when the n-th call of the PS2X_CALL_TRACE
+    // function <Name> is entered (before it runs).
+    std::string g_dumpAtPath, g_dumpAtName;
+    uint32_t g_dumpAtCount = 0;
+    void initRdramDumpAt()
+    {
+        const char *env = std::getenv("PS2X_RDRAM_DUMP_AT");
+        if (!env || !*env)
+            return;
+        std::string spec(env);
+        const size_t hash = spec.rfind('#');
+        const size_t colon = spec.rfind(':', hash);
+        if (hash == std::string::npos || colon == std::string::npos)
+            return;
+        g_dumpAtPath = spec.substr(0, colon);
+        g_dumpAtName = spec.substr(colon + 1, hash - colon - 1);
+        g_dumpAtCount = static_cast<uint32_t>(std::strtoul(spec.c_str() + hash + 1, nullptr, 0));
+    }
+
+    void startRdramDump(PS2Runtime &runtime)
+    {
+        initRdramDumpAt();
+        const char *env = std::getenv("PS2X_RDRAM_DUMP");
+        if (!env || !*env)
+            return;
+        std::string spec(env);
+        const size_t colon = spec.rfind(':');
+        int seconds = 10;
+        std::string path = spec;
+        if (colon != std::string::npos && colon > 1)
+        {
+            seconds = std::max(1, std::atoi(spec.c_str() + colon + 1));
+            path = spec.substr(0, colon);
+        }
+        std::thread([&runtime, seconds, path]() {
+            std::this_thread::sleep_for(std::chrono::seconds(seconds));
+            std::ofstream f(path, std::ios::binary);
+            f.write(reinterpret_cast<const char *>(runtime.memory().getRDRAM()), PS2_RAM_SIZE);
+            std::cout << "[rdram-dump] wrote " << PS2_RAM_SIZE << " bytes to " << path << " at " << seconds << "s" << std::endl;
+        }).detach();
+    }
+
     // Host crash reporter: prints the faulting host address relative to the module base (symbolize
     // with `llvm-nm -n dist/socom2.exe`), a host backtrace, and the guest thread table.
     PS2Runtime *g_runtimeForCrash = nullptr;
@@ -562,6 +614,8 @@ namespace
     {
         const uint32_t n = g_callTrace[N].count;
         callTraceLog(N, rdram, ctx);
+        if (!g_dumpAtName.empty() && n == g_dumpAtCount && g_callTrace[N].name == g_dumpAtName)
+            writeRdramDump(rdram, g_dumpAtPath, g_dumpAtName + "#" + std::to_string(n));
         // Callee-saved registers at entry (s0-s7, gp, sp, fp) and the return address: on a real
         // return (pc == ra) any difference means the callee, or something it called, clobbered them.
         uint32_t savedRegs[11];
@@ -664,6 +718,7 @@ namespace
         std::cout << "[socom2] applying SOCOM II overrides" << std::endl;
         installCrashHandler(runtime);
         startPcSampler(runtime);
+        startRdramDump(runtime);
         installCallTrace(runtime);
         {
             // sanity check that the FTSCore data segment is resident: should print the boot path string
