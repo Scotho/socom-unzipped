@@ -330,7 +330,11 @@ namespace ps2recomp
         emitDelaySlot("    ");
 
         const uint32_t target = buildAbsoluteJumpTarget(m_branchInst.address, m_branchInst.target);
-        if (isInternalTarget(target))
+        // A JAL is always a call, even when the target is one of this function's own entry points
+        // (self-recursion, e.g. the rdr tree search FUN_0032f0e0). Emitting a goto for it ran the
+        // callee in the caller's host frame, so the callee's `jr $ra` returned from the host function
+        // and the scheduler had to unwind and re-enter the caller at ra for every recursive return.
+        if (isInternalTarget(target) && kind != StaticBranchKind::Call)
         {
             emitInternalTarget(target, branchPc(), "    ");
             return;
