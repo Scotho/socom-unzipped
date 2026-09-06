@@ -1,3 +1,4 @@
+#include <iostream>
 #include "Common.h"
 #include "Interrupt.h"
 
@@ -28,6 +29,14 @@ namespace ps2_syscalls
                         PS2Runtime *runtime,
                         bool dmac)
         {
+            static int s_logged = 0;
+            if (s_logged < 8)
+            {
+                ++s_logged;
+                std::cout << "[ee] Add" << (dmac ? "Dmac" : "Intc") << "Handler cause=" << getRegU32(ctx, 4)
+                          << " handler=0x" << std::hex << getRegU32(ctx, 5) << " caller sp=0x" << getRegU32(ctx, 29)
+                          << std::dec << " (handler runs on a dedicated stack)" << std::endl;
+            }
             const int id = scheduler(rdram, ctx, runtime)
                                .addIrqHandler(dmac,
                                               getRegU32(ctx, 4),
@@ -35,7 +44,11 @@ namespace ps2_syscalls
                                               getRegU32(ctx, 6) != 0u,
                                               getRegU32(ctx, 7),
                                               getRegU32(ctx, 28),
-                                              getRegU32(ctx, 29));
+                                              // sp 0: run the handler on a dedicated invocation stack.
+                                              // The caller's sp at registration time is a live frame of
+                                              // that thread; a handler firing later on it trampled the
+                                              // interrupted callee's saved registers (SOCOM II dlgMenu crash).
+                                              0u);
             setReturnS32(ctx, id);
         }
 

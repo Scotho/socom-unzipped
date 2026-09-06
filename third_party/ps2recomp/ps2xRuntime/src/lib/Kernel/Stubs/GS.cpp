@@ -1,3 +1,4 @@
+#include <iostream>
 #include "Common.h"
 #include "GS.h"
 #include "ps2_log.h"
@@ -1292,7 +1293,16 @@ namespace ps2_stubs
         const uint32_t callerPc = ctx ? ctx->pc : 0u;
         const uint32_t callerRa = ctx ? getRegU32(ctx, 31) : 0u;
         const uint32_t gp = getRegU32(ctx, 28);
-        const uint32_t sp = getRegU32(ctx, 29);
+        const uint32_t sp = 0u; // dedicated invocation stack (see Syscalls/Interrupt.cpp)
+        {
+            static int s_logged = 0;
+            if (s_logged < 8)
+            {
+                ++s_logged;
+                std::cout << "[ee] sceGsSyncVCallback handler=0x" << std::hex << newCallback << " caller sp=0x"
+                          << getRegU32(ctx, 29) << std::dec << " (handler runs on a dedicated stack)" << std::endl;
+            }
+        }
 
         EeScheduler &ee = runtime->eeScheduler();
         ee.bindMainContextForSyscall(*ctx, rdram);

@@ -1,3 +1,4 @@
+#include <iostream>
 #include "Common.h"
 #include "Sync.h"
 #include "runtime/ee_scheduler.h"
@@ -332,13 +333,20 @@ namespace ps2_syscalls
 
     void SetAlarm(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        static int s_logged = 0;
+        if (s_logged < 8)
+        {
+            ++s_logged;
+            std::cout << "[ee] SetAlarm ticks=" << getRegU32(ctx, 4) << " handler=0x" << std::hex << getRegU32(ctx, 5)
+                      << " caller sp=0x" << getRegU32(ctx, 29) << std::dec << " (handler runs on a dedicated stack)" << std::endl;
+        }
         setReturnS32(ctx,
                      scheduler(rdram, ctx, runtime)
                          .setAlarm(static_cast<uint16_t>(getRegU32(ctx, 4)),
                                    getRegU32(ctx, 5),
                                    getRegU32(ctx, 6),
                                    getRegU32(ctx, 28),
-                                   getRegU32(ctx, 29)));
+                                   0u)); // sp 0: dedicated invocation stack (see Interrupt.cpp)
     }
 
     void InitAlarm(uint8_t *, R5900Context *ctx, PS2Runtime *)

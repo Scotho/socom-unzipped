@@ -18,6 +18,7 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <vector>
 #include <array>
 #include <cctype>
 #include <cstring>
@@ -1342,6 +1343,39 @@ bool PS2Runtime::dispatchGuestBranch(uint8_t *rdram,
     ctx->pc = targetPc;
     const bool isCall = (kind == GuestBranchKind::DirectCall || kind == GuestBranchKind::IndirectCall);
 
+    // PS2X_JALR_TRACE="0xSRC[,0xSRC...]": print the target of every indirect call/jump issued
+    // from the listed guest pcs (which function a vtable slot or function pointer resolved to).
+    if (kind == GuestBranchKind::IndirectCall || kind == GuestBranchKind::IndirectJump)
+    {
+        static const std::vector<uint32_t> s_jalrTrace = [] {
+            std::vector<uint32_t> v;
+            if (const char *e = std::getenv("PS2X_JALR_TRACE"))
+            {
+                std::string spec(e);
+                size_t pos = 0;
+                while (pos < spec.size())
+                {
+                    size_t end = spec.find(',', pos);
+                    if (end == std::string::npos)
+                        end = spec.size();
+                    const std::string item = spec.substr(pos, end - pos);
+                    pos = end + 1;
+                    if (!item.empty())
+                        v.push_back(static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0)));
+                }
+            }
+            return v;
+        }();
+        if (!s_jalrTrace.empty() && std::find(s_jalrTrace.begin(), s_jalrTrace.end(), sourcePc) != s_jalrTrace.end())
+        {
+            std::cout << "[jalr] src=0x" << std::hex << sourcePc << " target=0x" << targetPc
+                      << (hasFunction(targetPc) ? "" : " (no function)")
+                      << " a0=0x" << GPR_U32(ctx, 4) << " a1=0x" << GPR_U32(ctx, 5)
+                      << " a2=0x" << GPR_U32(ctx, 6) << " s0=0x" << GPR_U32(ctx, 16)
+                      << " s1=0x" << GPR_U32(ctx, 17) << " sp=0x" << GPR_U32(ctx, 29) << std::dec << std::endl;
+        }
+    }
+
     // Every inter-function transfer is also a deterministic EE safe point.
     // Backward edges inside generated functions use eeCheckpointDue(), while
     // this charge bounds straight-line call chains that have no local loop.
@@ -1455,7 +1489,7 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encod
 
     const uint32_t syscallId = (encodedSyscallId != 0u)
                                    ? encodedSyscallId
-                                   : getRegU32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
+                                   : GPR_U32(ctx, 3); // $v1 / $3 is the EE kernel syscall number
 
     if (ps2_syscalls::dispatchNumericSyscall(syscallId, rdram, ctx, this))
     {

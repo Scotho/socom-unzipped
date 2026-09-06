@@ -562,7 +562,33 @@ namespace
     {
         const uint32_t n = g_callTrace[N].count;
         callTraceLog(N, rdram, ctx);
+        // Callee-saved registers at entry (s0-s7, gp, sp, fp) and the return address: on a real
+        // return (pc == ra) any difference means the callee, or something it called, clobbered them.
+        uint32_t savedRegs[11];
+        for (int r = 16; r <= 23; ++r)
+            savedRegs[r - 16] = GPR_U32(ctx, r);
+        savedRegs[8] = GPR_U32(ctx, 28);
+        savedRegs[9] = GPR_U32(ctx, 29);
+        savedRegs[10] = GPR_U32(ctx, 30);
+        const uint32_t entryRa = GPR_U32(ctx, 31);
         g_callTrace[N].original(rdram, ctx, runtime);
+        if (ctx->pc == entryRa)
+        {
+            for (int i = 0; i < 11; ++i)
+            {
+                const int r = i < 8 ? 16 + i : (i == 8 ? 28 : (i == 9 ? 29 : 30));
+                const uint32_t now = GPR_U32(ctx, r);
+                if (now != savedRegs[i])
+                    std::cout << "[ret-clobber] " << g_callTrace[N].name << " #" << n << " r" << r << " (s" << i
+                              << ") was 0x" << std::hex << savedRegs[i] << " now 0x" << now << " ra=0x" << entryRa
+                              << std::dec << std::endl;
+            }
+        }
+        else
+        {
+            std::cout << "[ret-unwound] " << g_callTrace[N].name << " #" << n << " pc=0x" << std::hex << ctx->pc
+                      << " ra=0x" << entryRa << std::dec << std::endl;
+        }
         // The generated function returned normally: report v0 (and f0 for float returns).
         if (callTraceShouldLog(n))
         {
