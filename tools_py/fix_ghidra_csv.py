@@ -3,7 +3,8 @@
   Size = bytes actually in the body; PS2Recomp treats [Start, End) as the function, which
   swallows every function in between.  Force End = Start + Size.
 - Append forced entry points listed in recomp/extra_functions.txt (one hex address per line),
-  ending at the next known function start.
+  ending at the next known function start.  A forced entry that falls *inside* an existing range
+  (two functions Ghidra merged into one) truncates that range, so the two do not overlap.
 Usage: python fix_ghidra_csv.py recomp/socom2_ghidra.csv recomp/extra_functions.txt
 """
 import bisect
@@ -37,7 +38,18 @@ if os.path.exists(extra_path):
             continue
         i = bisect.bisect_right(starts, a)
         nxt = starts[i] if i < len(starts) else a + 0x100
-        body.append([f"FUN_{a:08x}", f"0x{a:08X}", f"0x{nxt:08X}", str(nxt - a)])
+        # If a covering range exists, this forced entry is its second function: truncate the
+        # parent at `a` and let the new row run to where the parent ended.
+        end = nxt
+        for r in body:
+            rs, re_ = int(r[1], 16), int(r[2], 16)
+            if rs < a < re_:
+                end = max(end, re_) if re_ <= nxt else re_
+                end = re_
+                r[2] = f"0x{a:08X}"
+                r[3] = str(a - rs)
+                break
+        body.append([f"FUN_{a:08x}", f"0x{a:08X}", f"0x{end:08X}", str(end - a)])
         added += 1
 body.sort(key=lambda r: int(r[1], 16))
 with open(csv_path, 'w', newline='') as f:
