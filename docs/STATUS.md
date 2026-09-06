@@ -1,12 +1,12 @@
-# Project status — updated 2026-09-05 16:50
+# Project status — updated 2026-09-06 02:15
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |
 |---|---|---|
 | M1 | Fork + toolchain: merged ELF recompiles, runtime links, `socom2.exe` runs crt0→main | **done** |
 | M2 | Loader → game entry → engine init without unimplemented-instruction faults | **done** — engine runs its main loop; audio init + DBCMAN reached |
-| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **in progress** — intro, title and slot dialog render on the new GPU backend at 60 fps; host input wired; dialog does not yet react to input (memory-card flow?) |
-| M4 | Single-player mission playable | not started |
+| M3 | Legal/intro screens + main menu render, pad works, UI sounds | **done for navigation** — first boot runs to the main menu at 60 fps, input drives every shell screen; button captions and the 3D roller still do not draw |
+| M4 | Single-player mission playable | **in progress** — the Albania 5-1 mission loads from the briefing screen and its engine, AI and mission scripts run at 60 fps; the in-mission renderer submits no geometry |
 | M5 | Online: login/lobby/room on local Horizon, second client joins | server side ready; client side not started |
 | M6 | Portable package | not started |
 
@@ -18,6 +18,82 @@
 - PCSX2 2.8.1 + BIOS (`tools/pcsx2`) boots the ISO; reference log in `logs/pcsx2_reference_boot.txt` (IRX load order, timings).
 - Horizon Private Server runs locally for app id 10472 (`server/README.md`, `server/start-servers.ps1`; simulated DB, account socom/socom; the game's baked-in RSA key matches Horizon's).
 - 989snd IOP service first version (`ps2xIOP/src/modules/snd989.cpp`, protocol in `docs/research/06-989snd-rpc.md`): answers all RPCs with correct framing, models banks/voices/streams, serves stream-safe CD reads; no audible output yet (host backend is libsd-only).
+
+## 2026-09-06 02:15 — the first single-player mission loads and runs (M4 opened)
+
+Driving the pad script `8:CROSS,12:CROSS,16:CROSS,20:CROSS,24:CROSS,30:DOWN,32:DOWN,34:DOWN,
+36:DOWN,38:DOWN,41:CROSS` now walks the whole single-player entry: first boot → main menu →
+NEW GAME → dlgSelectRank → dlgControllerPresetsNewGame → dlgControllerPresetsRG →
+dlgAlbaniaCinematic → **dlg_Brief_Alb51** (the Albania 5-1 briefing, which draws its real
+photo panels) → five DOWN presses move the briefing selection from `overview_button` to
+`deploy_button` → CROSS fires `OnDeployActivate` → `LoadMission` → `LOAD_SCREEN` → the mission's
+own systems register (`CClutterAnimManager`, `diTick`, `Mission`, `ParticleTick`, `UnitTick`,
+`ai_pre_tick`, `entity_pre_tick`, `weapon_pre_tick`) and the level's AI scripts start
+(`Supply1-4_start`, `Informant_start`, `Sniper1/2_start`, `Alarm1-4_start`, `PatrolWatch_start`,
+`set_iris`, `otc_init`). Zero `[guest-branch:missing-target]`, and the engine holds 60 fps.
+
+Four fixes got there, in order:
+
+1. **The EE dispatcher mistook a scheduler unwind for a return** (commit 2acef9c).
+   `dispatchGuestBranch` decided "the callee returned" by comparing `ctx->pc` with the entry pc it
+   dispatched to. A callee that leaves through a scheduler checkpoint while its pc still equals its
+   own entry address is indistinguishable that way, so the caller resumed with the *callee's*
+   registers. That is what killed the EE thread when dlgMenu loaded: the 2D-node lookup
+   `FUN_00315a80` called from `Add2dNode` (`FUN_0036ab20`) came back with s1 = 1 and the caller
+   dereferenced `screen+0x60` through `0x1` → `missing-target target=0x14 ra=0x36abc0`. The runtime
+   now carries an explicit unwind flag (`markDispatchUnwind` / `clearDispatchUnwind`) that
+   `eeCheckpointDue`, the non-call path and the missing-target path set and the scheduler clears
+   before every dispatch. 5 of 5 runs reach dlgMenu with all 17 of its controls created.
+
+2. **Interrupt handlers ran on the interrupted thread's stack** (commit 3eb4285).
+   `AddIntcHandler`/`AddDmacHandler`, `SetAlarm` and `sceGsSyncVCallback` registered the *caller's*
+   sp as the handler's sp, so a handler firing later trampled live frames of whatever that thread
+   was doing. They now pass sp = 0, which makes the scheduler allocate its per-(thread, depth)
+   invocation stack — the same stack every other invocation kind already uses. This reduced the
+   dlgMenu crash rate but was not its root cause (that was item 1); it is still a real bug fixed.
+
+3. **136 function bodies Ghidra never listed** (commit 1754184). `tools_py/find_gap_functions.py`
+   walks the gaps between CSV function ranges and reports every gap whose body contains `jr $ra`,
+   skipping anything `socom2.toml` stubs. A register-dispatched call into one of these found no
+   recompiled target and silently did nothing (gotcha 1). The 4-instruction leaf at 0x346300 was
+   hit during "new game" and ended the run. Same commit: `ControlFlowEmitter::emitStaticJump` was
+   emitting `goto label_X` for a JAL whose target is one of the function's own entry points, so a
+   self-recursive call ran in the caller's host frame and its `jr $ra` returned out of the host
+   function — 97k scheduler unwinds in a single 24 s menu run, all from the rdr tree search
+   `FUN_0032f0e0`. A JAL is now always emitted as a call.
+
+4. **Six merged Ghidra ranges whose second function is called by pointer** (commit 316dafd).
+   `tools_py/find_interior_functions.py` looks inside every CSV range for a `jr $ra` + delay slot
+   followed by more code, and keeps the boundary only when that address is actually referenced — as
+   a JAL target, as a 32-bit word in the image, or as an address built by a `lui`/`addiu` pair.
+   That reference test is what separates a real second function from a second return point: 362 raw
+   boundaries reduce to 6 referenced ones. `fix_ghidra_csv.py` now truncates the parent range at a
+   forced entry inside it so the two do not overlap. The one that mattered: the static-array
+   construct helper at 0x181fb4 calls the element constructor 0x5550c0, which lived inside
+   `FUN_005550b0`'s range and blocked the mission load.
+
+**Correction to the previous handoff:** "all UI positions resolve to (0,0)" is wrong. Dumping guest
+RAM at the moment dlgMenu's CONTROLS list loads (`PS2X_RDRAM_DUMP_AT`, then `tools_py/rdr_tree.py`)
+shows the parsed tree carries the real values — `new_game_button` XPOS 256 YPOS 330, `SplashLogo`
+70/45 — the 17 design records built from it hold the same numbers, and the 2D nodes created from
+those records have them at +0x30/+0x34 as floats. The SOCOM II logo does draw at its correct
+position. What is actually missing on the menu is the button *captions* (their rdr CAPTION is a
+single space; the text comes from elsewhere) and the 3D roller.
+
+**Where it stops now:** in the mission, `FUN_001ebed0` (the in-mission tick — the previous handoff
+said it is never called, which was true only before the mission could load) runs, but the frame
+counters freeze at the values they had in the shell (`vif1codes=399073`, `mscal=22426`,
+`xgkick=4421`, `nonBlack=0`), so the in-mission renderer submits no new geometry. The EE main
+thread (1) goes dormant when the mission starts and the mission runs on thread 2; sampling shows
+that thread spending essentially all its time at the resume point 0x2716e0 inside `FUN_00271650`,
+a recursive scene-graph walk, with a *constant* guest sp (so it is not runaway recursion).
+
+New diagnostics this session: `PS2X_JALR_TRACE="0xSRC,..."` (resolved target of the indirect calls
+issued from those pcs), `[ret-clobber]`/`[ret-unwound]` lines from the `PS2X_CALL_TRACE` thunk (a
+traced function returning with a callee-saved register changed / leaving through a scheduler
+unwind, in which case its `[ret] v0` is not its result), `PS2X_RDRAM_DUMP="<path>:<seconds>"` and
+`PS2X_RDRAM_DUMP_AT="<path>:<TracedName>#<n>"` (32 MB guest RAM to a file), and
+`tools_py/rdr_tree.py` to print a parsed .rdr tree out of such a dump.
 
 ## Where the guest is now (2026-09-05 03:20)
 Progress today, each a runtime fix: alarm handler discovered (main thread wakes) → all IRX modules load in the PCSX2 order → `lgaud` service answers lgAudInit (version 1.08, no headset) → `usbkb` bind → engine's scratchpad MFIFO renderer path implemented (fromSPR/toSPR DMA + ring drain; see research doc) → 989snd sound-system init runs through the service → `GetRomName` crash fixed (one-argument syscall) → the SCE-RT rt_crypt library generates a 512-bit RSA key pair at startup (two 256-bit primes by trial; takes minutes under recompiled code) → replaced with a fixed precomputed key via a recompile-time stub (`socom2_RsaGenerateKeyPair@0x0062B168` in `recomp/socom2.toml`, key in `socom2_rsa_key.h`).
