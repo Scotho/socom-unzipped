@@ -13,6 +13,20 @@ here, and the blocker is that nothing is drawn)** · M5 online lobby against our
 (already stood up, app id 10472) · M6 portable package. Stop only when a mission plays or an online lobby
 we host is reached. Copyrighted-game work stays inside `socom_pc/`; game assets are gitignored.
 
+## Priority (set by the user 2026-09-07 21:30): online play first, home-screen movie second
+1. **Online play (M5)**: host the Horizon private server (`server/`), connect PCSX2 clients to it
+   over DEV9 (docs/research/02 "PCSX2 networking") and validate login → lobby → room → match with two
+   clients. PCSX2 is both the reference and the first working client: capture the online screens as
+   golden (dlgNetLogin, dlgNetConnect, lobby, room) with the parity harness, then bring our exe's
+   network stack (inet/netcnf HLE → Winsock, DNAS bypass) to the same screens and score them.
+2. **Home-screen background**: MENULOOP.PSS must play behind the menu — needs the IPU/MPEG decode
+   path (Kernel/Stubs/IPU.cpp and the 17 sceMpeg/sceIpu stubs are placeholders). Plan it as its own
+   sub-project (FFmpeg-decoded PSS video → the frames the game expects in its IPU output buffer).
+3. Missions are third; shell parity stays the grade for every screen touched.
+Open, lower priority: the controller-configuration dialogs are skipped on ours (memory-card flow
+variables are identical to PCSX2 — MemcardAlreadyHasData=1 on both — so the cause is elsewhere,
+probably a pad/DBCMAN-derived UI variable read by the rank-confirm script).
+
 ## The grade (added 2026-09-07): visual parity with the original, per screen
 `docs/parity/REPORT.md` is the project's grade. It scores our screens against a golden set
 captured from PCSX2 running the same ISO with the same posted-key script
