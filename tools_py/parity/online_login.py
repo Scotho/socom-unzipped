@@ -119,6 +119,8 @@ def main():
     time.sleep(20); shot("09_lobby")
     for n, step in enumerate(a.then.split(",") if a.then else []):
         b, w = (step.split(":") + ["2"])[:2]
+        if b == "type":                                        # type:<text> on an open keyboard
+            osk_type(hwnd, w); time.sleep(3); shot(f"10_then_{n:02d}_typed"); continue
         keys.press(hwnd, b, "pcsx2"); time.sleep(float(w)); shot(f"10_then_{n:02d}_{b}")
     for i in range(a.hold // 5):
         time.sleep(5); shot(f"11_hold_{i:02d}")

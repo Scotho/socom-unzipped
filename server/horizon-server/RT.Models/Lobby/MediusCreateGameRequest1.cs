@@ -55,7 +55,9 @@ namespace RT.Models
             GenericField2 = reader.ReadInt32();
             GenericField3 = reader.ReadInt32();
             GameHostType = reader.Read<MediusGameHostType>();
-            Attributes = reader.Read<MediusWorldAttributesType>();
+            // Medius 1.50 (SOCOM II) sends a 0xD0-byte request that ends at GameHostType.
+            if (reader.BaseStream.Length - reader.BaseStream.Position >= 4)
+                Attributes = reader.Read<MediusWorldAttributesType>();
         }
 
         public override void Serialize(Server.Common.Stream.MessageWriter writer)
