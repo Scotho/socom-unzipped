@@ -1,0 +1,18 @@
+[DEV9/Eth]
+EthEnable = true
+EthApi = Sockets
+EthDevice = {95852BA5-54B5-4A50-A84D-8ED1B927EDD9}
+EthLogDHCP = true
+EthLogDNS = true
+InterceptDHCP = true
+PS2IP = 0.0.0.0
+Mask = 0.0.0.0
+Gateway = 0.0.0.0
+DNS1 = 192.168.2.10
+DNS2 = 192.168.2.10
+AutoMask = true
+AutoGateway = true
+ModeDNS1 = Manual
+ModeDNS2 = Manual
+
+

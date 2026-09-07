@@ -1,5 +1,40 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 18:45 (local) — online: a PCSX2 client logs into Horizon and reaches the SOCOM II ONLINE lobby
+Priority is online play (user, 21:30 entry in HANDOFF). Result tonight: the retail client running in
+PCSX2 goes LOGIN → LOCATING UNIVERSES → SELECT UNIVERSE ("SOCOM II Local", news text) → CONNECT TO
+SOCOM II (persona/password typed on the on-screen keyboard) → ACCOUNT LOGIN → USER AGREEMENT →
+SOCOM II ONLINE lobby with the SERVER NEWS popup from Horizon. Screens: logs/parity/online/login/.
+
+Plumbing (all under tools/pcsx2, git-ignored; templates in scripts/parity/pcsx2/):
+- DEV9 Sockets on the Realtek adapter, InterceptDHCP, manual DNS = 192.168.2.10 (host LAN IP).
+  PCSX2's [DEV9/Eth/Hosts] table was not honoured, so `tools_py/parity/dns_stub.py` answers the
+  game's hostnames (socom2-prod[.muis].pdonline.scea.com, gate1.*.dnas.playstation.org) on UDP 53.
+- DNAS bypass pnach (unconditional; labelled groups are opt-in and were skipped).
+- Memory card recreated with mymcplus (the original was unformatted) and a saved network config.
+- Horizon configs advertise 192.168.2.10, not 127.0.0.1 (the guest cannot reach loopback).
+- Savestate 9 = the LOGIN TO SOCOM II ONLINE screen. Only this state is usable: states saved after
+  any network traffic restore with a stuck SMAP transmit ring (BD_TX storm) or dead input.
+
+Protocol fixes in Horizon (commit e990033), found by reading the 1.50 client library in the decomp:
+- Universe query is LobbyExt/0x03 → ExtraInfo list LobbyExt/0x04 (0x338 bytes) **and** a
+  UniverseNews reply (Lobby/0xC9); completion needs InfoType == accumulated bits (DAT_006561b0).
+- AccountLoginResponse must be exactly 0xC4 bytes: NetConnectionInfo's 2-byte alignment pad is
+  now unconditional (the PS2 client sends no CLIENT_HELLO, so Horizon assumed version 108).
+- The client's VersionServer request (Lobby/0x86) can stay unanswered: no game callback.
+
+Method that worked: handler ids are assigned sequentially per class by FUN_0063c8a0, so id N of
+class 1 is the N-th registration after line 564046 of the decomp; the handler returns the expected
+byte count. Reading the slot table over PINE (e.g. 0x686f14) gives the live ids.
+
+Unhandled by Horizon so far (client still proceeds): Lobby 0xB2 FileListFiles (WeapProfile_1.dat),
+0xEC ChannelList_ExtraInfo0 (lobby room list — needed next), 0xEF LadderList_ExtraInfo0,
+LobbyExt/0x08 GetBuddyInvitations, Lobby 0x86 VersionServer.
+
+Next: close server news → BRIEFING ROOMS (channel list) → create/join a room; then a second
+PCSX2 instance (separate ini/memcard/PINE port; the "never two instances" rule is about our exe
+sharing logs, but two PCSX2 processes also need distinct DEV9 MACs) and a match through DME.
+
 ## 2026-09-07 20:00 — roller renders; mission renders textured; report ours_e
 After un-stubbing libvu0 (commit fb97a7b): the main menu shows the 3D roller with LOAD GAME /
 NEW GAME / ONLINE (menu 79 → 81; the MENULOOP.PSS movie background is still black), popup 99.6,

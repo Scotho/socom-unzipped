@@ -1,0 +1,5 @@
+gametitle=SOCOM II - U.S. Navy SEALs (USA) SCUS-97275 r0001
+author=community
+comment=DNAS bypass r0001 (jr ra / nop at 0x2cc670 in FTSCore), unconditional
+patch=1,EE,202CC670,extended,03E00008
+patch=1,EE,202CC674,extended,00000000
