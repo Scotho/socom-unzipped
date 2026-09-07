@@ -76,19 +76,27 @@ namespace
             return (sourcePsm == GS_PSM_T4 || sourcePsm == GS_PSM_T4HH || sourcePsm == GS_PSM_T4HL) ? (clutIndex & 0x0Fu) : clutIndex;
         const bool is16 = cpsm == GS_PSM_CT16 || cpsm == GS_PSM_CT16S;
         const uint32_t csaMask = is16 ? 0x1Fu : 0x0Fu;
+        const uint32_t clutIndexMask = is16 ? 0x1FFu : 0x0FFu;
         const uint32_t clutBase = (static_cast<uint32_t>(csa) & csaMask) << 4u;
         switch (sourcePsm)
         {
         case GS_PSM_T4:
         case GS_PSM_T4HH:
         case GS_PSM_T4HL:
-            return clutBase + (clutIndex & 0x0Fu);
+            clutIndex = clutBase + (clutIndex & 0x0Fu);
+            break;
         case GS_PSM_T8:
         case GS_PSM_T8H:
-            return clutBase + clutIndex;
+            clutIndex = clutBase + clutIndex;
+            break;
         default:
             return clutIndex;
         }
+        // CSM1 stores the CLUT with address bits 3 and 4 swapped (a 4-bit CLUT is an 8x2 block,
+        // not a 16x1 strip). Same as the CPU rasterizer's swizzleClutIndexCSM1; without it the
+        // bright half of every 4-bit palette read the wrong slot (UI text came out dim).
+        clutIndex &= clutIndexMask;
+        return (clutIndex & ~0x18u) | ((clutIndex & 0x08u) << 1u) | ((clutIndex & 0x10u) >> 1u);
     }
 
     uint32_t readVramRaw(uint8_t *vram, uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y)
@@ -688,8 +696,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             switch (cmd.type)
             {
             case CmdType::Submit:
-                std::fprintf(stderr, "[gs-cmd] submit prim=%u tme=%u tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
-                             cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.context.tex0.tbp0,
+                std::fprintf(stderr, "[gs-cmd] submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
+                             cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.prim.fst ? 1u : 0u,
+                             (double)cmd.batch.vertices[1].q, cmd.batch.state.context.tex0.tbp0,
                              cmd.batch.state.context.tex0.psm, cmd.batch.state.context.tex0.cbp, cmd.batch.state.context.tex0.cpsm,
                              cmd.batch.state.context.frame.fbp, cmd.batch.state.context.frame.psm, cmd.batch.state.context.zbuf.zbp,
                              cmd.batch.state.context.zbuf.psm, cmd.batch.state.context.zbuf.zmask ? 1u : 0u,
@@ -1382,7 +1391,9 @@ void GSGlBackend::appendVertex(const GSVertex &v, const GSDrawState &state, bool
     {
         out.s = v.s * static_cast<float>(state.textureWidth);
         out.t = v.t * static_cast<float>(state.textureHeight);
-        out.q = std::fabs(v.q) < 1e-9f ? 1e-9f : std::fabs(v.q);
+        // Q of 0 means "no perspective" for 2D STQ sprites (the UI's text glyphs never set Q);
+        // treat it as 1.0 like the CPU rasterizer, not as a near-zero divisor.
+        out.q = std::fabs(v.q) < 1e-8f ? 1.0f : std::fabs(v.q);
     }
     const GSVertex &c = flatColorFromLast ? colorSource : v;
     out.r = c.r;
@@ -1514,6 +1525,10 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
         rt->attachedDepth = dt->texture;
     }
     glViewport(0, 0, rt->width, rt->height);
+    // The GS has no face culling. raylib's rlglInit enables GL_CULL_FACE for its own drawing
+    // (and may re-enable it while drawing the debug UI), which silently dropped every sprite
+    // whose second vertex lies above/left of the first — all of the UI's text glyphs.
+    glDisable(GL_CULL_FACE);
     glEnable(GL_SCISSOR_TEST);
     glScissor(ctx.scissor.x0, ctx.scissor.y0,
               std::max<int>(0, ctx.scissor.x1 - ctx.scissor.x0 + 1),
@@ -1657,9 +1672,96 @@ void GSGlBackend::flushBatch()
     if (m_vertices.empty())
         return;
     setupDrawState(m_batchState);
+    // PS2X_GS_GL_DEBUG_PSM=<psm>: print the first batches drawn with that texture format (state,
+    // bound texture, blend and the vertices actually submitted), to compare with the CPU path.
+    static const int s_debugPsm = std::getenv("PS2X_GS_GL_DEBUG_PSM") ? std::atoi(std::getenv("PS2X_GS_GL_DEBUG_PSM")) : -1;
+    static int s_debugCount = 0;
+    if (s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount++ < 12)
+    {
+        GLint tex = 0, prog = 0, blend = 0, srcRgb = 0, dstRgb = 0, eqRgb = 0, depthFn = 0, depthMask = 0;
+        GLint scissor[4] = {0, 0, 0, 0};
+        GLboolean colorMask[4] = {0, 0, 0, 0};
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &tex);
+        glGetIntegerv(GL_CURRENT_PROGRAM, &prog);
+        glGetIntegerv(GL_BLEND, &blend);
+        glGetIntegerv(GL_BLEND_SRC_RGB, &srcRgb);
+        glGetIntegerv(GL_BLEND_DST_RGB, &dstRgb);
+        glGetIntegerv(GL_BLEND_EQUATION_RGB, &eqRgb);
+        glGetIntegerv(GL_DEPTH_FUNC, &depthFn);
+        glGetIntegerv(GL_DEPTH_WRITEMASK, &depthMask);
+        glGetIntegerv(GL_SCISSOR_BOX, scissor);
+        glGetBooleanv(GL_COLOR_WRITEMASK, colorMask);
+        const auto &c = m_batchState.context;
+        std::fprintf(stderr, "[gs-gl dbg] psm=%02x tex=%d prog=%d blend=%d src=%#x dst=%#x eq=%#x depth=%#x zmask=%d scissor=%d,%d %dx%d cmask=%d%d%d%d tw=%u th=%u clamp=%#llx alpha=%#llx tfx=%u tcc=%u fst=%u verts=%zu\n",
+                     c.tex0.psm, tex, prog, blend, srcRgb, dstRgb, eqRgb, depthFn, depthMask, scissor[0], scissor[1], scissor[2], scissor[3],
+                     colorMask[0], colorMask[1], colorMask[2], colorMask[3], m_batchState.textureWidth, m_batchState.textureHeight,
+                     (unsigned long long)c.clamp, (unsigned long long)c.alpha, c.tex0.tfx & 3u, c.tex0.tcc & 1u, m_batchState.prim.fst ? 1u : 0u, m_vertices.size());
+        for (size_t i = 0; i < std::min<size_t>(6, m_vertices.size()); ++i)
+        {
+            const GlVertex &v = m_vertices[i];
+            std::fprintf(stderr, "[gs-gl dbg]   v%zu pos=(%.1f,%.1f,%.6f) st=(%.2f,%.2f) q=%.3f rgba=%u,%u,%u,%u\n", i, v.x, v.y, v.z, v.s, v.t, v.q, v.r, v.g, v.b, v.a);
+        }
+    }
+    const bool debugThis = s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount <= 12;
+    float dbgCx = 0.0f, dbgCy = 0.0f;
+    if (debugThis && m_vertices.size() >= 6)
+    {
+        dbgCx = (m_vertices[0].x + m_vertices[4].x) * 0.5f;
+        dbgCy = (m_vertices[0].y + m_vertices[4].y) * 0.5f;
+        uint8_t before[4] = {0, 0, 0, 0};
+        glReadPixels(static_cast<int>(dbgCx), static_cast<int>(dbgCy), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, before);
+        std::memcpy(m_dbgBefore, before, 4);
+        float storedDepth = -2.0f;
+        glReadPixels(static_cast<int>(dbgCx), static_cast<int>(dbgCy), 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &storedDepth);
+        std::fprintf(stderr, "[gs-gl dbg]   pixel(%d,%d) before=%u,%u,%u,%u storedDepth=%.7f vertexDepth(ndc->[0,1])=%.7f\n", static_cast<int>(dbgCx), static_cast<int>(dbgCy),
+                     before[0], before[1], before[2], before[3], storedDepth, m_vertices[0].z);
+        static const bool s_noDepth = std::getenv("PS2X_GS_GL_DEBUG_NODEPTH") != nullptr;
+        if (s_noDepth)
+            glDisable(GL_DEPTH_TEST);
+        // What does the bound texture hold at the sampled texel?
+        GLint tw = 0, th = 0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
+        glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &th);
+        if (tw > 0 && th > 0)
+        {
+            std::vector<uint8_t> img(static_cast<size_t>(tw) * th * 4);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGBA, GL_UNSIGNED_BYTE, img.data());
+            const int sx = std::clamp(static_cast<int>((m_vertices[0].s + m_vertices[4].s) * 0.5f), 0, tw - 1);
+            const int sy = std::clamp(static_cast<int>((m_vertices[0].t + m_vertices[4].t) * 0.5f), 0, th - 1);
+            size_t opaque = 0;
+            for (size_t i = 3; i < img.size(); i += 4)
+                opaque += img[i] > 0 ? 1 : 0;
+            const uint8_t *px = &img[(static_cast<size_t>(sy) * tw + sx) * 4];
+            std::fprintf(stderr, "[gs-gl dbg]   bound tex %dx%d texel(%d,%d)=%u,%u,%u,%u nonzero-alpha texels=%zu\n", tw, th, sx, sy, px[0], px[1], px[2], px[3], opaque);
+        }
+    }
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(m_vertices.size()));
+    if (debugThis && m_vertices.size() >= 6)
+    {
+        // Read back the whole quad region and count pixels the draw changed.
+        const int x0 = static_cast<int>(std::min(m_vertices[0].x, m_vertices[4].x)), x1 = static_cast<int>(std::max(m_vertices[0].x, m_vertices[4].x));
+        const int y0 = static_cast<int>(std::min(m_vertices[0].y, m_vertices[4].y)), y1 = static_cast<int>(std::max(m_vertices[0].y, m_vertices[4].y));
+        const int w = std::max(1, x1 - x0), h = std::max(1, y1 - y0);
+        std::vector<uint8_t> after(static_cast<size_t>(w) * h * 4);
+        glReadPixels(x0, y0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, after.data());
+        size_t changed = 0;
+        uint8_t brightest[4] = {0, 0, 0, 0};
+        for (size_t i = 0; i < after.size(); i += 4)
+        {
+            if (after[i] != m_dbgBefore[0] || after[i + 1] != m_dbgBefore[1] || after[i + 2] != m_dbgBefore[2])
+            {
+                ++changed;
+                if (after[i] > brightest[0])
+                    std::memcpy(brightest, &after[i], 4);
+            }
+        }
+        GLint fbo = 0;
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &fbo);
+        std::fprintf(stderr, "[gs-gl dbg]   quad %dx%d at (%d,%d): %zu of %d pixels changed, brightest=%u,%u,%u,%u fbo=%d glerr=%#x\n",
+                     w, h, x0, y0, changed, w * h, brightest[0], brightest[1], brightest[2], brightest[3], fbo, glGetError());
+    }
     m_vertices.clear();
 }

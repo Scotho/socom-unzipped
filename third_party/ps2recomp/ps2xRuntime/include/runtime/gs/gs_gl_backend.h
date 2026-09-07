@@ -163,6 +163,7 @@ private:
         uint8_t fogR = 0, fogG = 0, fogB = 0;
     };
 
+    uint8_t m_dbgBefore[4] = {0, 0, 0, 0};   // PS2X_GS_GL_DEBUG_PSM readback
     struct GlVertex
     {
         float x, y, z;

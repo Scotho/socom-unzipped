@@ -1,0 +1,2 @@
+# start end : fold every row starting inside [start,end) into the row at start
+0x00510970 0x005109A8  # thunk_FUN_00510980 + gap (loop body 0x510978) + FUN_00510980; no direct refs to 0x510980

@@ -51,9 +51,33 @@ if os.path.exists(extra_path):
                 break
         body.append([f"FUN_{a:08x}", f"0x{a:08X}", f"0x{end:08X}", str(end - a)])
         added += 1
+# recomp/merge_ranges.txt: "0xSTART 0xEND" lines. Every row starting inside [START, END) is folded
+# into the row that starts at START (a loop body Ghidra split into a "thunk" row plus a gap plus a
+# second row makes the backward branch an unwind to an address no function owns — see
+# tools_py/find_escaping_branches.py). Only merge when nothing calls the inner rows directly.
+merge_path = os.path.join(os.path.dirname(extra_path), 'merge_ranges.txt')
+merged = 0
+if os.path.exists(merge_path):
+    for line in open(merge_path):
+        line = line.split('#')[0].strip()
+        if not line:
+            continue
+        lo, hi = (int(x, 16) for x in line.split())
+        keep = []
+        for r in body:
+            rs = int(r[1], 16)
+            if rs == lo:
+                r[2] = f"0x{hi:08X}"
+                r[3] = str(hi - lo)
+                keep.append(r)
+            elif lo < rs < hi:
+                merged += 1
+            else:
+                keep.append(r)
+        body = keep
 body.sort(key=lambda r: int(r[1], 16))
 with open(csv_path, 'w', newline='') as f:
     w = csv.writer(f)
     w.writerow(hdr)
     w.writerows(body)
-print(f"fix_ghidra_csv: {fixed} ranges fixed, {added} forced entries added, {len(body)} functions")
+print(f"fix_ghidra_csv: {fixed} ranges fixed, {added} forced entries added, {merged} rows merged, {len(body)} functions")
