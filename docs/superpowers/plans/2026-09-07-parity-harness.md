@@ -664,3 +664,18 @@ Under "The vision", add: *"The grade is `docs/parity/REPORT.md`. A session's las
 - Spec coverage: §1 rule → Task 10; §2 script → Task 5; §3 probe address → Task 4; §4 capture → Task 1; §5 injection spike → Task 3; §6 PINE → Task 2; §7 compare/report → Task 7; §8 runner → Task 8; §9 escalation → Task 9 (option 2) + Task 10 (triggers; option 3 is documented, not built). Testing section: Tasks 1, 2, 5, 7 have tests; Task 8 is the end-to-end.
 - Names used across tasks: `winshot.find_window/capture`, `pine.Pine.read32/cstring/status/title`, `pcsx2_keys.press`, `addresses.current_dialog(read32, cstring)`, `script.parse -> Step(key, ordinal, delay, buttons, hold)`, `compare.score/side_by_side/report`, log line `[socom2-ui] dialog=<name> n=<k> t=<s>`, env `PS2X_SOCOM2_INPUT_SCRIPT_FILE`.
 - Open risk carried in the plan: SwitchMenu's a0 may not be the name (Task 4 step 1 verifies and Task 5 step 4 hooks whichever function is); PostMessage may not reach PCSX2 (Task 3 fallback = assisted capture).
+
+---
+
+## Amendment 2026-09-07 (after Tasks 1-3)
+The current-dialog probe (Task 4) proved unreliable: the static pointer at 0x415700 is the menu
+*state list* (dlgMenu → dlgSelectRank → dlgAlbaniaCinematic → dlg_Brief_Alb51), not the dialog on
+screen, and SwitchMenu's a0 is not a name. Instead of dialog-keyed scripts (Tasks 4-6, 8) the
+harness now uses **one driver for both sides** (`tools_py/parity/drive.py`): it posts keys to
+either window (PCSX2's Qt window or our raylib window, both accept `PostMessage` without focus —
+`keys.py` holds the two key maps), waits for a *new, settled* screen (`next` steps) and labels
+screens by step index. Screens align by construction; while our side skips screens (text-only
+title cards are black) `scripts/parity/align.json` maps golden steps to our steps by content.
+PCSX2's card was formatted offline with `mymcplus` so its flow has no format prompts (the
+original unformatted image is in `logs/parity/Mcd001.unformatted.bak`). `addresses.py`/`pine.py`
+stay as escalation aids (option 2). Task 8's runner is `drive.py --target ours` + `compare.report`.

@@ -38,9 +38,10 @@ def targets(main_hwnd):
 def press(main_hwnd, button, hold_s=0.1, post=None):
     vk = VK[button.upper()]
     scan = user32.MapVirtualKeyW(vk, 0)
+    ext = (1 << 24) if vk in (0x25, 0x26, 0x27, 0x28) else 0   # arrows are extended keys
     fn = post or user32.PostMessageW
     for h in targets(main_hwnd):
-        fn(h, WM_KEYDOWN, vk, (scan << 16) | 1)
+        fn(h, WM_KEYDOWN, vk, (scan << 16) | ext | 1)
     time.sleep(hold_s)
     for h in targets(main_hwnd):
-        fn(h, WM_KEYUP, vk, (scan << 16) | 0xC0000001)
+        fn(h, WM_KEYUP, vk, (scan << 16) | ext | 0xC0000001)

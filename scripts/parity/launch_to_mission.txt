@@ -1,0 +1,21 @@
+# Shared step script; screens align by step index. `next` = wait for a new, settled screen.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ...
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN       # DEPLOY
+wait+2.0:CROSS      # deploy -> load mission
+next+10.0:NONE      # mission

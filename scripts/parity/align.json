@@ -1,0 +1,23 @@
+{
+  "_comment": "golden step label -> our step label (null = not drawn / not reached on our side). Re-check after any script change.",
+  "s00_CROSS": [null, "loading screen (logo + LOADING...) is black on ours"],
+  "s01_CROSS": ["s00_CROSS", "memory card slot popup"],
+  "s02_CROSS": [null, "'No SOCOM data' notice: text-only, black on ours"],
+  "s03_CROSS": [null, "SCEA title card: text-only, black on ours"],
+  "s04_CROSS": [null, "'presents' title card: text-only, black on ours"],
+  "s05_CROSS": [null, "'Developed by Zipper' title card: text-only, black on ours"],
+  "s06_CROSS": ["s01_CROSS", "warning / intro screen"],
+  "s07_CROSS": ["s02_CROSS", "main menu"],
+  "s08_CROSS": ["s03_CROSS", "select rank"],
+  "s09_CROSS": [null, "controller configuration: not drawn on ours"],
+  "s10_CROSS": [null, "precision shooter configuration: not drawn on ours"],
+  "s11_CROSS": [null, "save prompt (PCSX2 card flow)"],
+  "s12_CROSS": [null, "save slot select (PCSX2 card flow)"],
+  "s13_DOWN":  [null, "saving notice (PCSX2 card flow)"],
+  "s14_DOWN":  [null, "configuration after save (PCSX2 card flow)"],
+  "s15_DOWN":  ["s04_CROSS", "cinematic (black frame)"],
+  "s16_DOWN":  [null, "cinematic"],
+  "s17_DOWN":  [null, "cinematic caption"],
+  "s18_CROSS": [null, "cinematic caption"],
+  "s19_none":  ["s05_CROSS", "mission briefing"]
+}
