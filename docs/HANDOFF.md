@@ -84,7 +84,15 @@ bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed
 
 ## Next tasks, in order (each with a starting recipe)
 
-### 0. (2026-09-07 17:00) Shell parity by score, then the mission thread
+### 0. (2026-09-07 20:00) Shell parity by score — current state
+Done today: placement (vf00), text (culling + CLUT), roller (libvu0 un-stubbed: never re-add
+`sceVu0*` HLE stubs; Sony's code runs correctly now), mission thread halt (range merge). The
+mission renders textured geometry. Next by score: **main menu 81** — the MENULOOP.PSS movie should
+play behind the roller (find how the menu state feeds movie frames to a texture / the movie
+player's target while the shell is up); **controller configuration** (black on ours after Select
+Rank, golden s09/s10: 3D controller models + text); then the text-only title cards' capture
+timing. Then mission camera/HUD. Old notes below this line predate the fixes.
+
 The shell now renders text and layout like the original (STATUS 17:00). By report score the next
 screens are: **main menu** (79) and the **controller configuration** screens (black on ours;
 golden s09/s10). Evidence gathered 17:40 (`tools_py/iso_lbn.py … log <run.log>` on a

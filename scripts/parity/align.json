@@ -1,11 +1,11 @@
 {
-  "_comment": "golden step label -> our step label (null = not drawn / not reached on our side). Re-check after any script change.",
+  "_comment": "golden step label -> our step label (null = not drawn / not reached on our side). Our side captures one extra early frame since the libvu0 fix (ours_e): golden sN maps to ours s(N+1) for the six matched screens. Re-check after any script change.",
   "s00_CROSS": [
     null,
     "loading screen (logo + LOADING...) is black on ours"
   ],
   "s01_CROSS": [
-    "s00_CROSS",
+    "s01_CROSS",
     "memory card slot popup"
   ],
   "s02_CROSS": [
@@ -25,15 +25,15 @@
     "'Developed by Zipper' title card: text-only, black on ours"
   ],
   "s06_CROSS": [
-    "s01_CROSS",
+    "s02_CROSS",
     "warning / intro screen (animated fade: score varies with capture timing, not a regression signal)"
   ],
   "s07_CROSS": [
-    "s02_CROSS",
+    "s03_CROSS",
     "main menu"
   ],
   "s08_CROSS": [
-    "s03_CROSS",
+    "s04_CROSS",
     "select rank"
   ],
   "s09_CROSS": [
@@ -61,7 +61,7 @@
     "configuration after save (PCSX2 card flow)"
   ],
   "s15_DOWN": [
-    "s04_CROSS",
+    "s05_CROSS",
     "cinematic (black frame)"
   ],
   "s16_DOWN": [
@@ -77,7 +77,7 @@
     "cinematic caption"
   ],
   "s19_none": [
-    "s05_CROSS",
+    "s06_CROSS",
     "mission briefing"
   ]
 }

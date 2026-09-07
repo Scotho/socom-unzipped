@@ -1,5 +1,15 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 20:00 — roller renders; mission renders textured; report ours_e
+After un-stubbing libvu0 (commit fb97a7b): the main menu shows the 3D roller with LOAD GAME /
+NEW GAME / ONLINE (menu 79 → 81; the MENULOOP.PSS movie background is still black), popup 99.6,
+select rank 99.0, briefing 96.4, and the mission frame is now textured (rock walls, timber) instead
+of flat grey — the same wrong-order matrix maths had been feeding the mission's transforms.
+`scripts/parity/align.json` shifted by one step (our side now captures an extra early frame).
+Still open on the shell: the menu movie background; the controller-configuration screens (our
+step after Select Rank is a black frame where the original shows two screens with 3D controller
+models). Mission: camera/HUD/movement not yet looked at.
+
 ## 2026-09-07 19:30 — main menu roller: culled by a wrong clip matrix from the libvu0 HLE
 Chain of evidence (all at the real main menu, two presses; the earlier "menu" numbers in this file
 were taken one press too late, on Select Rank): the roller model loads (23 mesh parts under a
