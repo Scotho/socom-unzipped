@@ -143,6 +143,7 @@
     /* Std/Libc */                            \
     X(ret0)                                   \
     X(socom2_RsaGenerateKeyPair)                                   \
+    X(socom2_LumReadPixel)                    \
     X(scePad2Init)                            \
     X(scePad2CreateSocket)                    \
     X(scePad2GetState)                        \

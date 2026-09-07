@@ -30,7 +30,14 @@ update `docs/STATUS.md` at the end of a session.
        with volume/pan/pitch, master groups (see `docs/research/06-989snd-rpc.md` §5).
 9. [ ] Memory card: `mc0` folder mapping works; confirm SOCOM's save/netcnf files persist.
 
-## M4 — mission
+## M4 — mission (current, 2026-09-07; M2/M3 items above are done except 2, 4 and 8 — see STATUS)
+9a. [x] Find why the mission tick ran twice in 30 s → the auto-exposure thread `FUN_003b1dd0`
+        starved the main thread (its one-pixel GS readback `FUN_003b24c0` spun to timeout on the
+        unimplemented VIF1 reverse-FIFO path). Stubbed via `socom2_LumReadPixel@0x003B24C0`.
+9b. [ ] Verify with the stubbed build that `MissionTick` runs per frame and the frame counters move;
+        if nothing draws, trace `FUN_0033bf30`/`FUN_0033be70`/`FUN_001fba70` submissions.
+9c. [ ] Implement GS local→host readback (BUSDIR, VIF1 reverse DMA + FIFO/FQC) and drop the stub.
+9d. [ ] Animation keyframe fault (`FUN_00289bb0`, unset keyframe pointer) — 16 non-fatal faults at load.
 10. [ ] Streaming: `CFileCD`-style LBN reads at scale, `sceCdStRead` stream buffers, VAGSTORE streams.
 11. [ ] VU1: identify SOCOM's microprograms (uploaded by VIF MPG from model data / zRender);
         verify interpreter output vs PCSX2 software renderer on the same frame.

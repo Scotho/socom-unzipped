@@ -22,6 +22,7 @@ patch_cache = true
 # Functions to stub (only names with runtime syscall/stub handlers)
 stubs = [
   "socom2_RsaGenerateKeyPair@0x0062B168",
+  "socom2_LumReadPixel@0x003B24C0",
   "scePad2Init@0x001BD588",
   "scePad2CreateSocket@0x001BD630",
   "scePad2GetState@0x001BD938",

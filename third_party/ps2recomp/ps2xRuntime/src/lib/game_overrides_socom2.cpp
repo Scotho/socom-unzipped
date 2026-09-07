@@ -48,6 +48,29 @@ namespace ps2_stubs
         ctx->pc = GPR_U32(ctx, 31);
     }
 
+    // Bound at recompile time via recomp/socom2.toml: "socom2_LumReadPixel@0x003B24C0".
+    // FUN_003b24c0(packet, out) is the auto-exposure thread's one-pixel framebuffer readback: it
+    // sends a 7-qword VIF1 packet (BITBLTBUF/TRXPOS/TRXREG/TRXDIR local->host), waits for FINISH,
+    // sets BUSDIR and reads the pixel back through the VIF1 FIFO in reverse mode (VIF1_STAT FQC).
+    // The runtime has no reverse-FIFO path yet, so every wait ran to its 16M-iteration timeout
+    // (~0.3 s per cell, ~176 cells per pass) and the priority-4 thread (FUN_003b1dd0, woken from the
+    // vsync path once a mission is up) starved the main thread down to one tick per minute. Until
+    // the readback is implemented, answer with a mid-grey pixel (neutral iris) immediately.
+    void socom2_LumReadPixel(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t outAddr = GPR_U32(ctx, 5);
+        uint8_t *out = rdram + (outAddr & PS2_RAM_MASK);
+        out[0] = 0x80;
+        out[1] = 0x80;
+        out[2] = 0x80;
+        out[3] = 0x80;
+        static int logged = 0;
+        if (logged++ < 3)
+            std::cout << "[socom2] exposure readback FUN_003b24c0 -> stubbed grey pixel" << std::endl;
+        SET_GPR_U32(ctx, 2, 0u);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
     // ---- libpad2 (scePad2*) HLE ----------------------------------------------------------------
     // The game statically links Sony's socket-based libpad2 (scePad2Init/CreateSocket/Read/
     // GetState/GetButtonInfo) which RPCs to SIO2MAN/DS2U on the IOP. Those IOP drivers are not

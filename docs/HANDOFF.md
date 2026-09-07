@@ -40,9 +40,19 @@ throughout. Details and the four fixes that got there are in STATUS 2026-09-06 0
 The briefing's six buttons are, in order: `overview_button`, `mission_details_button`,
 `objective_button`, `map_button`, `equipment_button`, `deploy_button` (the last runs `LoadMission`).
 
-What is **not** working: nothing is drawn once the mission starts (see task 1), the menu's button
-captions and 3D roller do not draw (task 3), and the shell's EE main thread goes dormant when the
-mission begins — the mission runs on thread 2 (may be by design; confirm before chasing it).
+What is **not** working: nothing is drawn once the mission starts (see task 1), and the menu's
+button captions and 3D roller do not draw (task 3).
+
+**Correction (2026-09-07):** the main thread does *not* go dormant by design and thread 2 is *not*
+"the mission". Thread 2 is the game's auto-exposure thread (`FUN_003b1dd0`, priority 4, created by
+`FUN_003b2450`, woken from the vsync path `FUN_0033c010` once a mission is up). Each pass samples a
+grid of ~176 framebuffer pixels with `FUN_003b24c0`, a one-pixel GS local→host readback through the
+VIF1 FIFO in reverse mode (BUSDIR=1, `VIF1_STAT` FQC). The runtime has no reverse-FIFO path, so
+every wait in that function ran to its 16M-iteration timeout (~0.3 s per cell) and, being higher
+priority, starved the main thread to one mission tick per minute — which is why the frame counters
+froze and `FUN_001ebed0` was seen twice in 30 s. `FUN_00271650` (the old "scene-graph walk") is a
+bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed at recompile time
+(`socom2_LumReadPixel`, mid-grey pixel) until the readback is implemented (secondary list).
 
 ## Next tasks, in order (each with a starting recipe)
 
@@ -58,12 +68,16 @@ scene-graph walk — with a **constant** guest sp, so it is not runaway recursio
   twice in 30 s, so measure how long one call takes and which callee owns the time. `FUN_001ebed0`
   calls `FUN_00339de0(0x4887c0, app+0xa0)` at 0x1ec148 (return 0x1ec150) and the
   `FUN_0033bf30`/`FUN_0033be70`/`FUN_001fba70` triples after it — those are the render submissions.
-- Also worth one measurement: whether the JAL-as-call change (commit 1754184) made this walk slow.
-  Compare a build with `emitStaticJump`'s internal-target branch restored to `goto` — but note the
-  `goto` form is what produced the 97k unwinds, so prefer fixing the cost in the dispatcher.
+- **Superseded 2026-09-07** by the exposure-thread finding above; the recipe stays valid for
+  measuring the tick. The JAL-as-call cost question is closed (the walk is bounded, ~1.5k calls per
+  run). Verify with the stubbed build: `MissionTick` should now run every frame after the load
+  (the load itself is ~13 s of synchronous work inside the first tick), and the `PS2X_FRAME_DUMP`
+  counters (`vif1codes`, `xgkick`, `mscal`) should move. If they still do not, the next suspects are
+  the render submissions `FUN_0033bf30`/`FUN_0033be70`/`FUN_001fba70` after `FUN_00339de0` in
+  `FUN_001ebed0` — trace them with `PS2X_JALR_TRACE` on their call sites.
 - 16 `[guest-fault] load16` with garbage addresses (0xfd9302aa, pc=0x289c5c ra=0x28c2b8) appear
-  during the mission load. They are non-fatal but point at an uninitialised structure; worth
-  resolving because corrupt scene data would also explain an empty display list.
+  during the mission load. `FUN_00289bb0` is an animation keyframe interpolator reading
+  `*param_1 + index*6` with an unset keyframe pointer. Non-fatal; resolve once something draws.
 
 ### 2. Keep the mission running long enough to see it (M4)
 After task 1, drive past the load: watch for the mission camera/HUD, then try movement on the left
@@ -90,6 +104,12 @@ The Horizon server is up (app id 10472). DNAS is bypassed (research 05). Start f
 `third_party/ps2recomp/ps2xIOP/src/modules/`.
 
 ### Secondary / cleanup
+- **GS local→host readback** so the exposure stub can go: `FUN_003b24c0` sends a 7-qword VIF1
+  packet (BITBLTBUF/TRXPOS/TRXREG/TRXDIR=1), waits for `GS_CSR` FINISH (bit 1), sets `GS_BUSDIR=1`
+  and `VIF1_STAT` FDR (0x800000), then DMAs `DAT_004a45a8` qwords *from* VIF1 (`CHCR=0x100`) and
+  reads the remainder from `VIF1_FIFO` while `VIF1_STAT & 0x1f000000` (FQC) is non-zero. The CPU
+  backend already has `PerformLocalToHostTransfer`/`ConsumeLocalToHostBytes`; the GL backend defers
+  to it, and the VIF1 reverse DMA/FIFO consumer is what is missing. The stub answers 0x80 grey.
 - GPU plan stage 3-5 (`docs/superpowers/plans/2026-09-05-gpu-gs-backend.md`): AFAIL modes,
   DATE, 16-bit targets, readback paths, resolution scaling.
 - Make `PS2X_SOCOM2_PAD` default-on; `sceDmaSendI` should set TIE as well as TTE.
@@ -181,6 +201,19 @@ The Horizon server is up (app id 10472). DNAS is bypassed (research 05). Start f
    this session's URL — both are given to you at the start of the session; do not copy old ones.
 6. If running via cron, re-arm a one-shot ~4 h ahead when you start and point its prompt at the
    *current* blocker.
+7. **Read the sampler's thread table before chasing a "slow" function.** `[pc-sampler] live pc`
+   is the main context; `running=N` names the scheduled thread and `[N pc=… st=…]` its saved state.
+   A live pc frozen at a function *entry* with constant sp while `running` is another thread means
+   the main thread is preempted and starved (PS2 threads are strict priority), not that the function
+   is slow. Then trace the running thread's function with `PS2X_CALL_TRACE` and read its `[ret]`
+   cadence — the exposure thread was found this way in two 90 s runs.
+8. Bounded spin loops on MMIO (`while (REG & bit) if (++n > 0x1000000) fail`) are the engine's
+   way of waiting for hardware; an unimplemented path shows up as a ~0.3 s stall per call, not a
+   hang. Grep the decomp for `0x1000000 <` to find them.
+9. Background shell commands are capped at 10 min; a full `./build.sh recomp && ./build.sh runtime`
+   is longer. Launch it detached (`nohup bash -c '… > logs/build_x.log 2>&1; echo done > logs/build_x.done' &`)
+   and poll for the marker file. `python -` through a heredoc mangles backslashes exactly like
+   bash does — use the Edit tool for C/C++ macro lines.
 
 ## Landmarks
 - Recompiler: `recomp/socom2.toml` (stubs/mmio/patches), `recomp/extra_functions.txt`,
