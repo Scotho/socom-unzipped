@@ -92,6 +92,16 @@ play behind the roller (find how the menu state feeds movie frames to a texture 
 player's target while the shell is up); **controller configuration** (black on ours after Select
 Rank, golden s09/s10: 3D controller models + text); then the text-only title cards' capture
 timing. Then mission camera/HUD. Old notes below this line predate the fixes.
+Evidence 20:20: (1) at the menu the GS trace shows no frame-sized uploads at all (largest are
+512x128 font/UI pages) and the only large textured quads are the 500x195 panels — the movie
+decoder never produces frames: `Kernel/Stubs/IPU.cpp` is a stub, so MENULOOP.PSS (and the intro
+movies) need a real IPU/MPEG decode path (plan M3 item 7) before the menu background can appear.
+Golden vs ours on the menu is otherwise the roller + captions, both present now.
+(2) the controller-configuration screens are *skipped* in our flow, not black: Select Rank goes
+straight to the cinematic fade (screenshots every second, `logs/parity/exp_ctrl`). The original
+inserts dlgControllerPresetsNewGame/RG; find the script/UIVAR condition that skips them
+(trace ui::UI_COMMAND args around the rank confirm, compare with a PINE read of the same UIVAR
+on PCSX2).
 
 The shell now renders text and layout like the original (STATUS 17:00). By report score the next
 screens are: **main menu** (79) and the **controller configuration** screens (black on ours;
