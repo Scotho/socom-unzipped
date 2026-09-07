@@ -30,7 +30,16 @@ update `docs/STATUS.md` at the end of a session.
        with volume/pan/pitch, master groups (see `docs/research/06-989snd-rpc.md` §5).
 9. [ ] Memory card: `mc0` folder mapping works; confirm SOCOM's save/netcnf files persist.
 
-## M4 — mission (current, 2026-09-07; M2/M3 items above are done except 2, 4 and 8 — see STATUS)
+## M3-parity — shell screens scored against PCSX2 (current, 2026-09-07 17:45)
+Grade: `docs/parity/REPORT.md` (see HANDOFF "The grade"). Targets: ≥90 static screens, ≥75 animated.
+- [x] 2D placement (vf00 writes clobbered the constant register) — popup 99.6, rank 99.2, briefing 96.2
+- [x] Text (GL face culling, CSM1 CLUT swizzle, CPU sprite texcoords)
+- [ ] Main menu 79: MENULOOP.PSS background + `mainmenu_roller` (UI_GEO/UI_MDL) via the VU1 packet path whose header kick flag is clear (HANDOFF task 0)
+- [ ] Controller configuration screens (3D controller models, same path)
+- [ ] Text-only title cards: appear but flash past our capture; align the script/timing
+- [ ] Glyph weight slightly heavier than the original (shadow pass alpha?) — low priority
+
+## M4 — mission (M2/M3 items above are done except 2, 4 and 8 — see STATUS)
 9a. [x] Find why the mission tick ran twice in 30 s → the auto-exposure thread `FUN_003b1dd0`
         starved the main thread (its one-pixel GS readback `FUN_003b24c0` spun to timeout on the
         unimplemented VIF1 reverse-FIFO path). Stubbed via `socom2_LumReadPixel@0x003B24C0`.

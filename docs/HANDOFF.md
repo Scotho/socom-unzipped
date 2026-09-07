@@ -86,10 +86,20 @@ bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed
 
 ### 0. (2026-09-07 17:00) Shell parity by score, then the mission thread
 The shell now renders text and layout like the original (STATUS 17:00). By report score the next
-screens are: **main menu** (79: soldier background art and the roller captions LOAD GAME / NEW GAME
-/ ONLINE are missing — the art draws on the rank screen, so start from the menu's draw order /
-clear; the roller is the VU1 "no vertices" path, `hdrKick=0/N`), then the **controller
-configuration** screens (black on ours; golden s09/s10). Then verify the merged range
+screens are: **main menu** (79) and the **controller configuration** screens (black on ours;
+golden s09/s10). Evidence gathered 17:40 (`tools_py/iso_lbn.py … log <run.log>` on a
+`PS2X_CD_TRACE=1` run): the menu's "soldier art" background is the looping movie
+`RUN/MOVIES/COMMON/MENULOOP.PSS` (read ×16) and the roller is `RUN/UI/UI_GEO.ZED` /
+`UI_MDL.ZED` (+ UI_TXR/UI_PAL), all of which *are* read from disc. At the menu the frame dump
+shows `mscal` rising but `xgkick=0`, `hdrKick=0/N`: VU1 programs run, none kicks geometry.
+`PS2X_TRACE_VU=2000` at the menu dumps the program (`logs/vu1_code.bin`, first XGKICK at 0x50)
+and its input: the header at 0 is `[43e480f2 0 0 0]` (w = 0, the "setup kick" flag clear) and
+the buffer at TOP holds a matrix whose rows are one lane rotated ((0,0,0,1),(1,0,0,0),(0,1,0,0),
+(0,0,1,0)) followed by position/viewport rows and zeros where vertices should be. So the EE-side
+packet builder for UI 3D objects never marks/loads vertices — start there: find who writes the
+header word 3 (bit 1) and the vertex count for `mainmenu_roller` (UI_MDL) and check the movie
+texture (MENULOOP frames → GS upload) reaches the same object. The controller screens are 3D
+controller models on the same path. Then verify the merged range
 0x510970-0x5109a8 (`recomp/merge_ranges.txt`) stops the mission-thread halt: run the mission script
 10 min, expect no `[guest-branch:missing-target]` and the tick to keep running; then the next
 `missing-target`, if any, via `tools_py/find_escaping_branches.py` (only 2 functions have the
