@@ -156,7 +156,16 @@ namespace ps2recomp
         case OPCODE_COP1:
             return m_codeGenerator.translateFPUInstruction(inst);
         case OPCODE_COP2:
-            return m_codeGenerator.translateVUInstruction(inst);
+        {
+            // vf00 is the hardware constant (0,0,0,1): writes to it are ignored by the VU. The game
+            // uses `qmtc2.i $a0,$vf0` as an interlock idiom and `vaddx vf0,vf0,vf0x` as a nop; if we
+            // executed them, every `vmaddw ... vf0w` translation term would multiply by garbage
+            // (the 2D UI lost every node position that way).
+            std::string vu = m_codeGenerator.translateVUInstruction(inst);
+            if (vu.find("ctx->vu0_vf[0] = ") != std::string::npos)
+                return "// write to $vf0 ignored (hardware constant 0,0,0,1)";
+            return vu;
+        }
         case OPCODE_ADDI:
             if (inst.rt == 0)
                 return "// NOP (addi to $zero)";
@@ -217,6 +226,8 @@ namespace ps2recomp
                 inst.rt,
                 genWrite(32, fmt::format("ADD32(GPR_U32(ctx, {}), {})", inst.rs, inst.simmediate), "bits"));
         case OPCODE_LDC2:
+            if (inst.rt == 0)
+                return "// lqc2 $vf0 ignored (hardware constant 0,0,0,1)";
             return fmt::format("ctx->vu0_vf[{}] = _mm_castsi128_ps({});", inst.rt, genRead(128, fmt::format("ADD32(GPR_U32(ctx, {}), {})", inst.rs, inst.simmediate)));
         case OPCODE_SDC2:
             return genWrite(128, fmt::format("ADD32(GPR_U32(ctx, {}), {})", inst.rs, inst.simmediate), fmt::format("_mm_castps_si128(ctx->vu0_vf[{}])", inst.rt)) + ";";

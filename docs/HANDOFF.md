@@ -13,6 +13,34 @@ here, and the blocker is that nothing is drawn)** · M5 online lobby against our
 (already stood up, app id 10472) · M6 portable package. Stop only when a mission plays or an online lobby
 we host is reached. Copyrighted-game work stays inside `socom_pc/`; game assets are gitignored.
 
+## The grade (added 2026-09-07): visual parity with the original, per screen
+`docs/parity/REPORT.md` is the project's grade. It scores our screens against a golden set
+captured from PCSX2 running the same ISO with the same posted-key script
+(`scripts/parity/launch_to_mission.txt`, aligned by `scripts/parity/align.json`). The loop is:
+
+```
+python -m tools_py.parity.drive --target pcsx2 --out logs/parity/golden      # once, or after a script change
+python -m tools_py.parity.drive --target ours  --out logs/parity/runs/<stamp> --seconds 300
+python - <<'EOF'
+import json; from tools_py.parity import compare
+align={k:v for k,v in json.load(open("scripts/parity/align.json")).items() if not k.startswith("_")}
+compare.report("logs/parity/golden","logs/parity/runs/<stamp>","docs/parity/REPORT.md",prev_md="docs/parity/REPORT.md",stamp="<stamp>",align=align)
+EOF
+python -m tools_py.parity.montage logs/parity/runs/<stamp> logs/parity/<stamp>_sheet.png   # then Read the sheet
+```
+
+Rules: a session's last act is a fresh report; the next task is the worst screen on the launch →
+mission path unless a hard blocker (thread death, no frame) stops the path earlier; a change that
+lowers any screen's score is a regression to fix before moving on; shell screens first, then the
+mission. The metric flatters dark screens — read the `.diff.png` (golden | ours | heat) before
+trusting a number. Screenshots stay under `logs/parity/` (not in git); the report is committed.
+Escalate only on these triggers: `tools_py/parity/probe.py`-style memory comparison over PINE
+(`pine.py`, `addresses.py`) when a diff image does not explain a low score; a PCSX2 GS dump
+against `PS2X_GS_TRACE_CMDS` only when the same primitives land differently (renderer bug).
+The two systemic causes found by the first report: 2D elements ignore their parent/dialog
+offset (everything drawn at the top-left), and text never draws. Fix those before anything
+screen-specific.
+
 ## How to work (the loop that has been productive)
 Bounded steps: one hypothesis → one build → one run → read the log/screenshot → commit → update
 STATUS. Never open more than one deep subsystem at a time. Prefer runtime evidence

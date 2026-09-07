@@ -1,4 +1,52 @@
-# Project status — updated 2026-09-06 02:15
+# Project status — updated 2026-09-07 15:40
+
+## 2026-09-07 — mission draws; parity harness is the grade; two systemic UI bugs found
+
+**Mission (M4):** the "renderer submits nothing" blocker was thread starvation, not rendering.
+Thread 2 is the priority-4 auto-exposure thread (`FUN_003b1dd0`) which, once a mission is up, reads
+~176 framebuffer pixels per pass with `FUN_003b24c0` (GS local→host through the VIF1 reverse FIFO).
+The runtime has no reverse-FIFO path, so each read spun to its 16M-iteration timeout (~0.3 s) and
+the main thread got one tick per minute. `FUN_003b24c0` is stubbed at recompile time
+(`socom2_LumReadPixel@0x003B24C0`, mid-grey pixel). Result: `MissionTick` ~20/s after the load,
+geometry counters climb (xgkick 4k → 700k), flat-shaded world polygons and a night sky on screen —
+the first in-mission frames. ~30 s in, the main thread dies at 0x510978: a list-search loop whose
+head Ghidra split into an 8-byte "thunk" row, so the backward branch becomes an unwind to an
+address no function owns (`[guest-branch:missing-target]`). `tools_py/find_escaping_branches.py`
+lists every such branch (35k in 1.1k functions, mostly harmless case chunks); the fix is to merge
+rows whose branch target is not another row's entry. Queued behind the shell parity work.
+
+**Parity harness (the new grade, see HANDOFF "The grade"):** `tools_py/parity/` — `winshot.py`
+(PrintWindow capture, no focus), `keys.py` (posted keys to PCSX2's Qt window or our raylib window,
+both accept them without focus), `drive.py` (one step script for both sides, `next` = wait for a
+new settled screen, screens labelled by step index), `compare.py` (score + side-by-side diff +
+`docs/parity/REPORT.md`), `pine.py`/`addresses.py` (PCSX2 PINE memory reads, escalation aid),
+`montage.py`. PCSX2 2.8.1 in `tools/pcsx2` with PINE on 28011; its card was formatted offline with
+`mymcplus` so the save prompts do not loop. First report (`ours_a`): 6 of 20 golden screens have a
+matching screen on our side; our sequence skips the loading screen, the "No SOCOM data" notice and
+the three text-only title cards (all black), draws the main menu as logo-only, and reaches the
+briefing. `scripts/parity/align.json` maps golden steps to ours by content until the sequences
+converge.
+
+**What the first side-by-side proved (GS command trace at the memory-card popup):**
+1. **Text is submitted, not missing.** Glyphs are tiny textured sprites (4-bit PSMT4 font page
+   512x128 at tbp 0x3bf7, CLUT at 0x3bf3) drawn with the second vertex *above* the first. The CPU
+   rasterizer drew them vertically flipped because `DrawSprite` swapped the corner coordinates
+   without swapping the texture coordinates — fixed (text now upright with `PS2X_GS_BACKEND=cpu`).
+   The GL backend still draws nothing for them (decode of the 4-bit page is correct — verified with
+   `PS2X_GS_DUMP_TEX`; the difference from the 8-bit box that does draw is not yet understood).
+2. **Every 2D element is drawn at the origin.** The popup box is submitted at (0,0)-(340,100) and
+   both slot buttons at (0,0); the element drawer (`FUN_003643b0`) transforms its local rect through
+   the node matrix with `FUN_00308640`, whose translation term is `vmaddw.xyz vf9, vf7, vf0w`. The
+   recompiled game *writes vf00*: `qmtc2.i $a0,$vf0` (an interlock idiom, e.g. 0x30702c/0x3076b4
+   right next to the transform helper), `vaddx vf0,vf0,vf0x` and `lqc2 $vf0,…($k1)`. On hardware
+   vf00 is the read-only constant (0,0,0,1); we clobbered it, so every translation multiplied by
+   garbage. Fix in `instruction_translator.cpp`: writes to vf00 are emitted as comments (recomp
+   rebuild in progress at the time of writing — verify with the popup: box centred, logo centred).
+
+**Docs/process:** HANDOFF gained "The grade" (parity loop, rules, escalation triggers) and gotchas
+7-9; spec `docs/superpowers/specs/2026-09-07-parity-harness-design.md`, plan
+`docs/superpowers/plans/2026-09-07-parity-harness.md` (with the design simplification amendment).
+
 
 ## Milestone board (from the design spec)
 | # | Milestone | State |

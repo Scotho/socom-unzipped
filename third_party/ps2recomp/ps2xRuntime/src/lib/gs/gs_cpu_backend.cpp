@@ -1098,9 +1098,14 @@ void GSCpuBackend::DrawSprite(const GSPrimitiveBatch &batch)
     int y1 = static_cast<int>(v1.y) - ofy;
     u32 z1 = static_cast<u32>(v1.z);
 
-    if (x0 > x1)
+    // A sprite's two vertices may come in any order (the UI draws text glyphs with the second
+    // vertex above the first); the texture coordinates travel with their vertex, so they are
+    // swapped below together with the positions.
+    const bool swapX = x0 > x1;
+    const bool swapY = y0 > y1;
+    if (swapX)
         std::swap(x0, x1);
-    if (y0 > y1)
+    if (swapY)
         std::swap(y0, y1);
 
     const int unclippedX0 = x0;
@@ -1149,6 +1154,10 @@ void GSCpuBackend::DrawSprite(const GSPrimitiveBatch &batch)
             u1f = (v1.s / q1) * static_cast<float>(texW);
             v1f = (v1.t / q1) * static_cast<float>(texH);
         }
+        if (swapX)
+            std::swap(u0f, u1f);
+        if (swapY)
+            std::swap(v0f, v1f);
 
         float spriteW = static_cast<float>(spanX);
         float spriteH = static_cast<float>(spanY);
