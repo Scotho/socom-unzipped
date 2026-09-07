@@ -1,5 +1,15 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 18:10 — mission thread no longer dies (merged Ghidra range)
+With `recomp/merge_ranges.txt` folding 0x510970-0x5109a8 (the while-loop whose body Ghidra had
+left in a gap between a "thunk" row and the loop condition), the 400 s mission run shows
+`MissionTick` #1560 at 305 s and zero `[guest-branch:missing-target]` (it used to halt ~30 s into
+the mission, around tick 660). Geometry keeps flowing (`xgkick` 1.5M by frame 2685) and the frame
+stays a flat-shaded blue-grey world from a fixed camera: no textures, no HUD, no visible camera
+motion yet — those are the next mission items once the shell screens are scored ≥90.
+`tools_py/find_escaping_branches.py` found only two functions with this split-loop shape; the
+other (0x534c4c) is a real multi-entry function and is left alone.
+
 ## 2026-09-07 17:00 — the shell looks like the original (text, placement, palettes fixed)
 Parity report `ours_d` (docs/parity/REPORT.md): memory-card popup 99.6, select rank 99.2,
 mission briefing 96.2 (all text, tabs, fireteam loadout, typewriter effect), main menu 79.1
