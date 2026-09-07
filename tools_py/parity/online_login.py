@@ -86,6 +86,7 @@ def main():
     ap.add_argument("--out", default="logs/parity/online/login")
     ap.add_argument("--hold", type=int, default=40, help="seconds to watch after CONNECT")
     ap.add_argument("--existing", action="store_true", help="the persona is already on the memory card")
+    ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,down:1,cross:10")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     proc, hwnd = launch_state9()
@@ -115,8 +116,12 @@ def main():
         keys.press(hwnd, "cross", "pcsx2")
     time.sleep(30); shot("08_eula")
     keys.press(hwnd, "cross", "pcsx2")                         # ACCEPT the user agreement
+    time.sleep(20); shot("09_lobby")
+    for n, step in enumerate(a.then.split(",") if a.then else []):
+        b, w = (step.split(":") + ["2"])[:2]
+        keys.press(hwnd, b, "pcsx2"); time.sleep(float(w)); shot(f"10_then_{n:02d}_{b}")
     for i in range(a.hold // 5):
-        time.sleep(5); shot(f"09_after_eula_{i:02d}")
+        time.sleep(5); shot(f"11_hold_{i:02d}")
     subprocess.run(["taskkill", "/F", "/IM", "pcsx2-qt.exe"], capture_output=True)
 
 

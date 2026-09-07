@@ -3352,6 +3352,46 @@ namespace Server.Medius
                             break;
                         }
 
+                    case MediusChannelList_ExtraInfoRequest0 channelListRequest0:
+                        {
+                            // Medius 1.50 (SOCOM II): Lobby/0xEC request, Lobby/0xED 0x70-byte entries.
+                            if (data.ClientObject == null || !data.ClientObject.IsLoggedIn)
+                                throw new InvalidOperationException($"INVALID OPERATION: {clientChannel} sent {channelListRequest0} without a session.");
+
+                            var lobbies = Program.Manager.GetChannelList(data.ClientObject.ApplicationId, 1, 999, ChannelType.Lobby).ToList();
+                            if (lobbies.Count == 0)
+                            {
+                                // SOCOM II shows these as Briefing Rooms; give the server a few.
+                                foreach (var name in new[] { "Alpha", "Bravo", "Charlie", "Delta" })
+                                    Program.Manager.AddChannel(new Channel() { ApplicationId = data.ClientObject.ApplicationId, Name = name, Type = ChannelType.Lobby, MaxPlayers = 64 });
+                            }
+                            var page = Program.Manager.GetChannelList(data.ClientObject.ApplicationId, channelListRequest0.PageID, channelListRequest0.PageSize, ChannelType.Lobby).ToList();
+                            if (page.Count == 0)
+                            {
+                                data.ClientObject.Queue(new MediusChannelList_ExtraInfoResponse0()
+                                {
+                                    MessageID = channelListRequest0.MessageID,
+                                    StatusCode = MediusCallbackStatus.MediusNoResult,
+                                    EndOfList = true
+                                });
+                            }
+                            else
+                            {
+                                data.ClientObject.Queue(page.Select(channel => new MediusChannelList_ExtraInfoResponse0()
+                                {
+                                    MessageID = channelListRequest0.MessageID,
+                                    StatusCode = MediusCallbackStatus.MediusSuccess,
+                                    MediusWorldID = channel.Id,
+                                    LobbyName = channel.Name,
+                                    PlayerCount = (ushort)channel.PlayerCount,
+                                    MaxPlayers = (ushort)channel.MaxPlayers,
+                                    SecurityLevel = channel.SecurityLevel,
+                                    GenericField1 = channel.GenericField1,
+                                    EndOfList = channel == page.Last()
+                                }).ToList());
+                            }
+                            break;
+                        }
                     case MediusChannelList_ExtraInfoRequest channelList_ExtraInfoRequest:
                         {
                             // ERROR - Need a session
