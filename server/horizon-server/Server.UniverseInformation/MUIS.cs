@@ -295,6 +295,68 @@ namespace Server.UnivereInformation
 
             switch (message)
             {
+                case MediusGetUniverse_ExtraInfoRequest getUniverseExtra:
+                    {
+                        // Medius 1.50 clients (SOCOM II) ask with LobbyExt/0x03 and expect LobbyExt/0x04 entries.
+                        var appId = data.ApplicationId;
+                        if (!Program.Settings.Universes.ContainsKey(appId))
+                            appId = 0;
+                        if (Program.Settings.Universes.TryGetValue(appId, out var extraInfos) && extraInfos.Any(x => x.Enabled))
+                        {
+                            var available = extraInfos.Where(x => x.Enabled).ToList();
+                            foreach (var info in available)
+                            {
+                                Queue(new RT_MSG_SERVER_APP()
+                                {
+                                    Message = new MediusUniverseStatusList_ExtraInfoResponse()
+                                    {
+                                        MessageID = getUniverseExtra.MessageID,
+                                        StatusCode = MediusCallbackStatus.MediusSuccess,
+                                        UniverseName = info.Name,
+                                        DNS = info.Endpoint,
+                                        Port = info.Port,
+                                        UniverseDescription = info.Description,
+                                        Status = 1,
+                                        UserCount = 0,
+                                        MaxUsers = 256,
+                                        UniverseBilling = "",
+                                        ExtendedInfo = info.ExtendedInfo ?? "",
+                                        EndOfList = available.Last() == info
+                                    }
+                                }, clientChannel);
+                            }
+                            // The 1.50 client completes the query only once both bits of InfoType are
+                            // satisfied: bit 0 by the ExtraInfo list above, bit 1 by a UniverseNews reply
+                            // (Lobby/0xC9, handled by the game's news callback).
+                            if (getUniverseExtra.InfoType.HasFlag(MediusUniverseVariableInformationInfoFilter.INFO_NEWS))
+                            {
+                                Queue(new RT_MSG_SERVER_APP()
+                                {
+                                    Message = new MediusUniverseNewsResponse()
+                                    {
+                                        MessageID = getUniverseExtra.MessageID,
+                                        StatusCode = MediusCallbackStatus.MediusSuccess,
+                                        News = "Welcome to SOCOM II on Horizon.",
+                                        EndOfList = true
+                                    }
+                                }, clientChannel);
+                            }
+                        }
+                        else
+                        {
+                            Logger.Warn($"Unable to find universe (ExtraInfo) for app id {data.ApplicationId}");
+                            Queue(new RT_MSG_SERVER_APP()
+                            {
+                                Message = new MediusUniverseStatusList_ExtraInfoResponse()
+                                {
+                                    MessageID = getUniverseExtra.MessageID,
+                                    StatusCode = MediusCallbackStatus.MediusNoResult,
+                                    EndOfList = true
+                                }
+                            }, clientChannel);
+                        }
+                        break;
+                    }
                 case MediusGetUniverseInformationRequest getUniverseInfo:
                     {
                         var appId = data.ApplicationId;

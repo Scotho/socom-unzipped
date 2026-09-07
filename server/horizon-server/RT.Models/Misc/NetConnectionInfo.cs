@@ -25,10 +25,9 @@ namespace RT.Models
             SessionKey = reader.ReadString(Constants.NET_SESSION_KEY_LEN);
             AccessKey = reader.ReadString(Constants.NET_ACCESS_KEY_LEN);
 
-            if (reader.MediusVersion > 108)
-            {
-                reader.ReadBytes(2);
-            }
+            // Trailing 2 bytes of struct alignment. Medius 1.50 (SOCOM II) has them too: its
+            // AccountLoginResponse handler requires exactly 0xC4 bytes, so the pad is unconditional.
+            reader.ReadBytes(2);
         }
 
         public void Serialize(Server.Common.Stream.MessageWriter writer)
@@ -40,10 +39,8 @@ namespace RT.Models
             writer.Write(SessionKey, Constants.NET_SESSION_KEY_LEN);
             writer.Write(AccessKey, Constants.NET_ACCESS_KEY_LEN);
 
-            if (writer.MediusVersion > 108)
-            {
-                writer.Write(new byte[2]);
-            }
+            // See Deserialize: alignment pad, required by the Medius 1.50 client as well.
+            writer.Write(new byte[2]);
         }
 
         public override string ToString()

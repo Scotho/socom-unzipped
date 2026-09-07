@@ -66,6 +66,12 @@ class Pine:
     def status(self):
         return struct.unpack("<I", self._call(OP_STATUS))[0]
 
+    def save_state(self, slot):
+        self._call(0x9, struct.pack("<B", slot))
+
+    def load_state(self, slot):
+        self._call(0xA, struct.pack("<B", slot))
+
     def cstring(self, a, max=64):
         out = bytearray()
         for i in range(max):
