@@ -1609,3 +1609,11 @@
 0x0064f5a0
 0x0064f5c0
 0x0064f5e8
+0x1bfdb8  # libvu0 sceVu0DivVector (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1bfdd8  # libvu0 sceVu0DivVectorXYZ (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c0210  # libvu0 sceVu0ClampVector (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c0518  # libvu0 sceVu0DropShadowMatrix (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c06a8  # libvu0 sceVu0RotTransPersN (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c07b0  # libvu0 sceVu0ClipScreen (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c07f8  # libvu0 sceVu0ClipScreen3 (un-stubbed 2026-09-07; run Sony's code instead of the HLE)
+0x1c0858  # libvu0 sceVu0ClipAll (un-stubbed 2026-09-07; run Sony's code instead of the HLE)

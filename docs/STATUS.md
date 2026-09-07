@@ -1,5 +1,23 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 19:30 — main menu roller: culled by a wrong clip matrix from the libvu0 HLE
+Chain of evidence (all at the real main menu, two presses; the earlier "menu" numbers in this file
+were taken one press too late, on Select Rank): the roller model loads (23 mesh parts under a
+type-2 node with 12 leaf children, bbox ±13.7), is added to the scene (`FUN_0031f240`) and is handed
+to the node draw `FUN_0033b110` every frame — identical node/scene state to PCSX2 read over PINE.
+The children traversal `FUN_003389c0` then asks the frustum test `FUN_00290c30` and gets 2
+("fully outside") every frame, so no leaf part is ever submitted (`xgkick=0` at the menu). The
+camera object (static path `0x4887c0+0x628`) matches PCSX2 word for word except the clip matrix at
++0x330: rows 0-1 equal, ours rows 2-3 = `[-320 0 319 1] / [0 0 0.40 0]` vs PCSX2
+`[0 0 -1.004 -1] / [-457 0 320.9 320]`. `FUN_00294070` builds it as
+`sceVu0MulMatrix(clip, proj, viewInv)` and PCSX2's result is viewInv·proj, so the HLE stub in
+`Kernel/Stubs/VU.cpp` multiplies in the wrong operand order (its "ViewScreenMatrix" and friends are
+guesses too). Fix: stop hand-emulating libvu0 — the 29 `sceVu0*` stubs are removed from
+`recomp/socom2.toml` and the uncovered entry points forced in `recomp/extra_functions.txt`, so
+Sony's own VU0-macro code runs (safe now that vf00 writes are ignored). Recomp rebuild pending
+verification: popup placement must stay, the roller and the controller-config models should appear.
+Side note: camera +0x130 holds NaN on ours vs 255 on PCSX2 (a clamp/lerp path), unexplained.
+
 ## 2026-09-07 18:10 — mission thread no longer dies (merged Ghidra range)
 With `recomp/merge_ranges.txt` folding 0x510970-0x5109a8 (the while-loop whose body Ghidra had
 left in a gap between a "thunk" row and the loop condition), the 400 s mission run shows
