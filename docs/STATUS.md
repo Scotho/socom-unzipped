@@ -9,6 +9,10 @@ stays a flat-shaded blue-grey world from a fixed camera: no textures, no HUD, no
 motion yet — those are the next mission items once the shell screens are scored ≥90.
 `tools_py/find_escaping_branches.py` found only two functions with this split-loop shape; the
 other (0x534c4c) is a real multi-entry function and is left alone.
+Caveat: two 400 s runs of this build overlapped by accident (a background wait loop launched
+one 13 s before the hand-started one: `run_20260907_154947.log` and `_155000.log`). Both show
+zero `missing-target` and ticks continuing to the end (#1800 / #1560), which is a control-flow
+result and holds; their frame-rate and counter values are skewed and should not be quoted.
 
 ## 2026-09-07 17:00 — the shell looks like the original (text, placement, palettes fixed)
 Parity report `ours_d` (docs/parity/REPORT.md): memory-card popup 99.6, select rank 99.2,
