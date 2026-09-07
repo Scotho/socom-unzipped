@@ -84,6 +84,17 @@ bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed
 
 ## Next tasks, in order (each with a starting recipe)
 
+### 0. (2026-09-07 17:00) Shell parity by score, then the mission thread
+The shell now renders text and layout like the original (STATUS 17:00). By report score the next
+screens are: **main menu** (79: soldier background art and the roller captions LOAD GAME / NEW GAME
+/ ONLINE are missing — the art draws on the rank screen, so start from the menu's draw order /
+clear; the roller is the VU1 "no vertices" path, `hdrKick=0/N`), then the **controller
+configuration** screens (black on ours; golden s09/s10). Then verify the merged range
+0x510970-0x5109a8 (`recomp/merge_ranges.txt`) stops the mission-thread halt: run the mission script
+10 min, expect no `[guest-branch:missing-target]` and the tick to keep running; then the next
+`missing-target`, if any, via `tools_py/find_escaping_branches.py` (only 2 functions have the
+split-loop pattern; 0x534c4c is a real multi-entry function, leave it).
+
 ### 1. In-mission renderer submits no geometry (the M4 blocker)
 Once the mission is running, `PS2X_FRAME_DUMP` counters freeze at their shell values
 (`vif1codes=399073`, `mscal=22426`, `xgkick=4421`, `nonBlack=0/286720`) — the EE is not sending new

@@ -1,4 +1,27 @@
-# Project status — updated 2026-09-07 15:40
+# Project status — updated 2026-09-07 17:00
+
+## 2026-09-07 17:00 — the shell looks like the original (text, placement, palettes fixed)
+Parity report `ours_d` (docs/parity/REPORT.md): memory-card popup 99.6, select rank 99.2,
+mission briefing 96.2 (all text, tabs, fireteam loadout, typewriter effect), main menu 79.1
+(soldier background art and the roller captions still missing), warning screen 78 (animated;
+capture timing). Four fixes, each verified with the popup screenshot and then the full run:
+1. **vf00 writes** (recompiler, `instruction_translator.cpp`): the game's `qmtc2.i $a0,$vf0` /
+   `vaddx vf0,vf0,vf0x` / `lqc2 $vf0` idioms are no-ops on hardware; we executed them and every
+   `vmaddw … vf0w` translation term went to garbage — all 2D elements sat at the origin.
+2. **Face culling** (`gs_gl_backend.cpp` setupDrawState): raylib's rlglInit enables GL_CULL_FACE
+   and the GS backend never disabled it; glyph sprites (second vertex above the first) have the
+   opposite winding and were culled. Diagnosed with the new `PS2X_GS_GL_DEBUG_PSM=<psm>` print
+   (state, bound texture texel, region readback before/after the draw: "0 of 216 pixels changed").
+3. **CSM1 CLUT swizzle** (GL): 4-bit palettes are 8x2 blocks, address bits 3/4 swapped; the GL
+   resolver read a linear strip, so the bright half of every 4-bit palette was wrong (dim text).
+   The CPU rasterizer already had `swizzleClutIndexCSM1`.
+4. **CPU sprites** swap texcoords with corners (text was flipped on the reference rasterizer).
+Also: `recomp/merge_ranges.txt` (+ `fix_ghidra_csv.py`) folds the split loop 0x510970-0x5109a8
+that killed the mission thread; recomp rebuild pending verification.
+Remaining shell gaps (next by score): main menu background art + roller captions; the
+controller-configuration screens (our s04 is black where the original shows two screens — likely
+the same class as the menu art); the text-only title cards flash past on our side (not captured);
+glyphs render slightly heavier than the original (shadow pass alpha?).
 
 ## 2026-09-07 — mission draws; parity harness is the grade; two systemic UI bugs found
 
