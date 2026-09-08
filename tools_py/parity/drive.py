@@ -28,6 +28,8 @@ def launch(target, seconds):
     if target == "pcsx2":
         return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", ISO],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
+    os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     return subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -47,7 +49,7 @@ def parse(text):
 
 
 def frame(hwnd):
-    return np.asarray(winshot.capture(hwnd).convert("L").resize((160, 112)), dtype=np.float32)
+    return np.asarray(winshot.grab(hwnd).convert("L").resize((160, 112)), dtype=np.float32)
 
 
 def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3):
@@ -100,6 +102,7 @@ def main():
     if hwnd is None:
         proc.terminate()
         raise SystemExit("game window not found")
+    winshot.keep_on_top(hwnd)
     manifest = []
     # The window can be found while it is still being created (empty client area); wait it out.
     last = None
@@ -121,7 +124,7 @@ def main():
         time.sleep(delay)
         label = f"s{i:02d}_{'+'.join(buttons) or 'none'}"
         path = os.path.join(a.out, label + ".png")
-        winshot.capture(hwnd).save(path)
+        winshot.grab(hwnd).save(path)
         last = frame(hwnd)
         for b in buttons:
             keys.press(hwnd, b, a.target)
@@ -129,7 +132,7 @@ def main():
                          "waited": round(waited, 1), "buttons": buttons})
         print(f"{label:24s} t={time.time()-t0:6.1f}s stable={stable} waited={waited:.1f}s", flush=True)
     time.sleep(a.tail)
-    winshot.capture(hwnd).save(os.path.join(a.out, "final.png"))
+    winshot.grab(hwnd).save(os.path.join(a.out, "final.png"))
     json.dump(manifest, open(os.path.join(a.out, "manifest.json"), "w"), indent=1)
     proc.terminate()
     subprocess.run(["taskkill", "/F", "/IM", "pcsx2-qt.exe" if a.target == "pcsx2" else "socom2.exe"],

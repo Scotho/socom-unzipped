@@ -48,6 +48,48 @@ class _BMI(ctypes.Structure):
                 ("biClrImportant", wt.DWORD)]
 
 
+_frame_files = {}   # hwnd -> frame file (per instance; see register_frame_file)
+
+
+def register_frame_file(hwnd, path):
+    """Route grab(hwnd) to the exe instance's own frame file (two instances, two files)."""
+    _frame_files[hwnd] = path
+
+
+def grab(hwnd):
+    """The harness's capture: the exe's own frame file when one is registered for the window or
+    PS2X_HOST_SCREENSHOT_LATEST is set (a GL readback the runtime rewrites every ~150 ms — immune
+    to windows overlapping ours), else PrintWindow. The file is renamed into place atomically;
+    retry while it is being replaced."""
+    import os
+    import time
+    path = _frame_files.get(hwnd) or os.environ.get("PS2X_HOST_SCREENSHOT_LATEST")
+    if not path:
+        return capture(hwnd)
+    deadline = time.time() + 3.0
+    last_err = None
+    while time.time() < deadline:
+        try:
+            with open(path, "rb") as fp:
+                im = Image.open(fp)
+                im.load()
+                return im.convert("RGB")
+        except Exception as e:  # noqa: BLE001 - mid-rename / not yet written
+            last_err = e
+            time.sleep(0.05)
+    raise RuntimeError(f"no frame file at {path}: {last_err}")
+
+
+def keep_on_top(hwnd):
+    """Pin a window above the others without activating it. PrintWindow hands back a white bitmap
+    for a GL window that another window overlaps (DWM keeps no composed copy), and the desktop
+    BitBlt fallback then captures the overlapping window instead — a stray Settings window or a
+    firewall prompt made every screen 'unstable' for whole runs."""
+    HWND_TOPMOST = -1
+    SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0010
+    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+
+
 def capture(hwnd):
     rect = wt.RECT()
     user32.GetClientRect(hwnd, ctypes.byref(rect))

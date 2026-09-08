@@ -38,12 +38,15 @@ def launch(seconds, instance=None):
     """Start the exe; returns (proc, title substring to find its window)."""
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
     title = keys.WINDOW_TITLES[T]
+    latest = os.path.abspath(os.path.join("logs", "parity", f"latest_frame_{instance or 'A'}.png"))
+    env["PS2X_HOST_SCREENSHOT_LATEST"] = latest
     if instance:
         env.update(INSTANCES[instance])
         title = INSTANCES[instance]["PS2X_WINDOW_TITLE"]
         os.makedirs(env.get("PS2X_MC_DIR", "game/disc/mc0"), exist_ok=True)
     proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    proc.latest_frame = latest
     return proc, title
 
 
@@ -59,19 +62,19 @@ class Shell:
         print(f"{time.time() - self.t0:6.1f}s {self.tag}{m}", flush=True)
 
     def shot(self, label):
-        winshot.capture(self.hwnd).save(os.path.join(self.out, f"{self.tag}{label}.png"))
+        winshot.grab(self.hwnd).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
         keys.press(self.hwnd, b, T)
         time.sleep(wait)
 
     def diff(self, name, im=None):
-        im = (im or winshot.capture(self.hwnd)).convert("L").resize((320, 224)).crop(tuple(self.meta[name]["box"]))
+        im = (im or winshot.grab(self.hwnd)).convert("L").resize((320, 224)).crop(tuple(self.meta[name]["box"]))
         return float(abs(np.asarray(im, dtype=float) - self.refs[name]).mean())
 
     def is_screen(self, name, thresh=None):
         if name == "main_menu":
-            return score(self.menu, winshot.capture(self.hwnd))["score"] >= (thresh or 90.0)
+            return score(self.menu, winshot.grab(self.hwnd))["score"] >= (thresh or 90.0)
         return self.diff(name) <= (thresh or self.meta[name]["thresh"])
 
     def wait_for(self, name, timeout, thresh=None):
@@ -97,7 +100,7 @@ class Shell:
         crop = lambda im: np.asarray(im.crop(OSK_ACCENT_BOX).convert("L"), dtype=float)
         normal = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_normal.png")).convert("L"), dtype=float)
         accent = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_accent.png")).convert("L"), dtype=float)
-        cur = crop(winshot.capture(self.hwnd))
+        cur = crop(winshot.grab(self.hwnd))
         if abs(cur - accent).mean() < abs(cur - normal).mean():
             self.log("keyboard in accent mode -> toggling")
             self.press("cross", 0.8)
@@ -118,6 +121,9 @@ def attach(proc, title, out, tag=""):
     if hwnd is None:
         proc.terminate()
         raise SystemExit(f"{tag}game window not found")
+    winshot.keep_on_top(hwnd)
+    if getattr(proc, "latest_frame", None):
+        winshot.register_frame_file(hwnd, proc.latest_frame)
     last = None
     while last is None and time.time() - t0 < 60:
         try:
@@ -125,6 +131,7 @@ def attach(proc, title, out, tag=""):
         except RuntimeError:
             time.sleep(0.5)
     sh = Shell(hwnd, out, t0, tag)
+    sh.latest_frame = getattr(proc, "latest_frame", None)
     sh.last = last
     return sh
 

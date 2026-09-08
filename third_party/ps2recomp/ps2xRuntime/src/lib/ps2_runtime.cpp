@@ -2603,6 +2603,29 @@ void PS2Runtime::run()
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);
         }
+        // PS2X_HOST_SCREENSHOT_LATEST=<file.png>: keep rewriting the current frame (GL readback,
+        // every ~150 ms, atomic rename) so the parity harness can read it instead of PrintWindow,
+        // which hands back a white bitmap whenever another window (a firewall prompt, Settings)
+        // overlaps the GL window.
+        {
+            static const char *s_latestEnv = std::getenv("PS2X_HOST_SCREENSHOT_LATEST");
+            if (s_latestEnv)
+            {
+                static double s_nextLatest = 0.5;
+                const double now = GetTime();
+                if (now >= s_nextLatest)
+                {
+                    s_nextLatest = now + 0.15;
+                    const std::string finalPath(s_latestEnv);
+                    const std::string tmpPath = finalPath + ".tmp.png";
+                    Image shot = LoadImageFromScreen();
+                    ExportImage(shot, tmpPath.c_str());
+                    UnloadImage(shot);
+                    std::error_code ec;
+                    std::filesystem::rename(tmpPath, finalPath, ec);
+                }
+            }
+        }
         // PS2X_HOST_SCREENSHOT=<dir>[:<seconds>]: save what the window shows every <seconds> (default 5).
         {
             static const char *s_shotEnv = std::getenv("PS2X_HOST_SCREENSHOT");

@@ -107,6 +107,9 @@ private:
         bool dirtyRows = false;     // rows [dirtyRowFirst, dirtyRowLast) must be re-read from the shadow
         uint32_t dirtyRowFirst = 0;
         uint32_t dirtyRowLast = 0;
+        bool gpuRows = false;       // rows [gpuRowFirst, gpuRowLast) drawn by the GPU since the last download
+        uint32_t gpuRowFirst = 0;
+        uint32_t gpuRowLast = 0;
     };
 
     struct DepthTarget
@@ -199,6 +202,7 @@ private:
     void downloadRenderTargetToCpu(RenderTarget &rt);
     void refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer);
     void refreshDirtyRows(RenderTarget &rt);
+    void noteGpuRows(RenderTarget &rt, uint32_t y0, uint32_t y1);
     void markShadowPages(uint32_t page, uint32_t pageCount);
     void setupDrawState(const GSDrawState &state);
     void appendVertex(const GSVertex &v, const GSDrawState &state, bool flatColorFromLast, const GSVertex &colorSource);
@@ -233,6 +237,9 @@ private:
     std::array<uint64_t, 512> m_shadowPageGeneration{};
     uint64_t m_generation = 1;
     uint64_t m_frameCounter = 0;
+    uint64_t m_movieStartFrame = 0;   // first 16x16 movie block upload seen (trace windows are relative to it)
+    uint64_t m_seamFrame = 0;         // first decode where page columns 0 and 6 of the movie frame start on different rows
+    long traceSkip(const char *env) const;
 
     uint32_t m_program = 0;
     uint32_t m_vao = 0;
