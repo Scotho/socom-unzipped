@@ -23,3 +23,15 @@ wait+8.0:NONE       # in-mission holds (camera/HUD parity)
 wait+8.0:NONE
 wait+8.0:NONE
 wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE

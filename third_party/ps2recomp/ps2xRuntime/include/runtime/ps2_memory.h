@@ -464,6 +464,10 @@ public:
 
     std::array<EeTimer, 4> m_eeTimers{};
     void queueCompletedDmacCause(uint32_t cause);
+
+public:
+    uint32_t eeTimerCount(size_t index) const noexcept { return index < m_eeTimers.size() ? (m_eeTimers[index].count & 0xFFFFu) : 0u; }
+    uint32_t eeTimerMode(size_t index) const noexcept { return index < m_eeTimers.size() ? m_eeTimers[index].mode : 0u; }
 };
 
 #endif // PS2_MEMORY_H

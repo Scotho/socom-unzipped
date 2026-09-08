@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <cstdio>
+#include <string>
 #include "runtime/ee_scheduler.h"
 
 #include "ps2_log.h"
@@ -392,7 +393,56 @@ bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
 
 void EeScheduler::accountCycles(uint32_t cycles) noexcept
 {
-    const uint64_t elapsed = std::max<uint64_t>(1u, cycles);
+    // The EE timers (T0..T3) and the cycle clock follow the host steady clock, not the
+    // recompiler's per-checkpoint cycle estimates: a guest busy-loop that polls a timer register
+    // (SOCOM II's movie/frame pacer waits for T0 % 525 >= 500, i.e. the last hblanks of a
+    // 30 fps frame) executes far fewer estimated cycles per wall second than a real EE, so the
+    // count crawled and the loading movie took 3x longer than on PCSX2. Real hardware timers
+    // are wall-clock; the scheduler's vblank deadlines already are. PS2X_CYCLE_CLOCK=guest
+    // restores estimate-driven accounting.
+    static const bool s_guestClock = [] { const char *e = std::getenv("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
+    uint64_t elapsed = std::max<uint64_t>(1u, cycles);
+    if (!s_guestClock)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        if (m_lastAccountHost != std::chrono::steady_clock::time_point{})
+        {
+            const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastAccountHost).count();
+            if (ns > 0)
+            {
+                const uint64_t uns = static_cast<uint64_t>(ns);
+                elapsed = (uns / 1000000000ull) * kEeClockHz + (uns % 1000000000ull) * kEeClockHz / 1000000000ull;
+            }
+            else
+            {
+                elapsed = 0u;
+            }
+        }
+        m_lastAccountHost = now;
+        // PS2X_CLOCK_TRACE=1: once a second, the cycle clock vs host time, T0, the next deadline.
+        static const bool s_trace = std::getenv("PS2X_CLOCK_TRACE") != nullptr;
+        if (s_trace)
+        {
+            static auto s_epoch = now;
+            static auto s_last = now;
+            static uint64_t s_calls = 0;
+            ++s_calls;
+            if (now - s_last >= std::chrono::seconds(1))
+            {
+                s_last = now;
+                const double hostSec = std::chrono::duration<double>(now - s_epoch).count();
+                std::fprintf(stderr, "[clock] host=%.1fs eeCycle=%.3fs T0=%u mode=0x%x nextDeadline=%.3fs vsyncTick=%llu checkpoints=%llu\n",
+                             hostSec, static_cast<double>(m_eeCycle) / static_cast<double>(kEeClockHz),
+                             m_runtime.memory().eeTimerCount(0), m_runtime.memory().eeTimerMode(0),
+                             static_cast<double>(m_nextDeadlineCycle.load(std::memory_order_relaxed)) / static_cast<double>(kEeClockHz),
+                             (unsigned long long)currentVSyncTick(), (unsigned long long)s_calls);
+            }
+        }
+        if (elapsed == 0u)
+        {
+            return;
+        }
+    }
     m_eeCycle += elapsed;
     m_pendingEeTimerInterrupts |= m_runtime.memory().advanceEeTimers(elapsed);
     if (m_pendingEeTimerInterrupts != 0u)

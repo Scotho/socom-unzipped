@@ -416,6 +416,16 @@ namespace ps2x::iop::detail
 
             void logCommand(uint32_t fno, const CommandArgs &args, uint32_t result, bool hasResult)
             {
+                // Polled every frame (or in a busy loop while a level loads): log the first few
+                // and then every 4096th, otherwise the run log is 800k lines of idle polls.
+                if (fno == kStreamCdIdle || fno == kPcmStreamPosition)
+                {
+                    static uint32_t s_polls[2] = {0u, 0u};
+                    uint32_t &n = s_polls[fno == kStreamCdIdle ? 0 : 1];
+                    ++n;
+                    if (n > 4u && (n & 0xFFFu) != 0u)
+                        return;
+                }
                 std::string message = commandName(fno);
                 message += " (fno ";
                 message += hexString(fno);

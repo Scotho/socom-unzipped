@@ -2586,6 +2586,19 @@ void PS2Runtime::run()
         DrawTexturePro(presentTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
         rlDrawRenderBatchActive();
         rlEnableColorBlend();
+        // PMODE merge of two read circuits (movies letterbox over a black buffer this way): the
+        // backend hands back circuit 2 with alpha = its weight; standard alpha blending does
+        // C2*w + C1*(1-w).
+        if (hostTex != 0u)
+        {
+            if (const uint32_t tex2 = gs().hostFrameTexture2())
+            {
+                Texture2D presentTex2 = presentTex;
+                presentTex2.id = tex2;
+                DrawTexturePro(presentTex2, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+                rlDrawRenderBatchActive();
+            }
+        }
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);

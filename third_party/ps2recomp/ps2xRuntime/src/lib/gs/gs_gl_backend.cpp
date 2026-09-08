@@ -997,11 +997,24 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
 {
     const uint32_t h = std::min<uint32_t>(rt.usedHeight, rt.height);
     std::vector<uint32_t> pixels(static_cast<size_t>(rt.width) * h);
+    // Called from the texture path in the middle of a draw batch: restore the batch target's
+    // FBO afterwards, or the draw lands in this target (SOCOM II's movie copy sprite went into
+    // the staging buffer instead of the display buffer whenever the two were laid out that way).
+    GLint prevFbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, rt.fbo);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, rt.width, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     const uint32_t base = rt.fbp << 5;
     for (uint32_t y = 0; y < h; ++y)
+    {
+        // Rows an image upload wrote into the shadow after the last GPU draw hold the newest
+        // data (the GPU copy is refreshed from them lazily): do not clobber them with the stale
+        // GPU pixels. SOCOM II's movie path clears the movie buffer on the GPU, uploads the next
+        // decoded frame into it, then textures from it; this download used to overwrite the
+        // uploaded frame with the clear, so every movie frame textured black.
+        if (rt.dirtyRows && y >= rt.dirtyRowFirst && y < rt.dirtyRowLast)
+            continue;
         for (uint32_t x = 0; x < rt.width; ++x)
         {
             uint32_t p = pixels[static_cast<size_t>(y) * rt.width + x];
@@ -1009,7 +1022,9 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
                 p = rgba8888To5551(p);
             writeVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y, p);
         }
+    }
     rt.shadowStale = false;
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
 }
 
 // Download into the game thread's authoritative VRAM (guest reads GS memory).
@@ -1017,11 +1032,19 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
 {
     const uint32_t h = std::min<uint32_t>(rt.usedHeight, rt.height);
     std::vector<uint32_t> pixels(static_cast<size_t>(rt.width) * h);
+    // Called from the texture path in the middle of a draw batch: restore the batch target's
+    // FBO afterwards, or the draw lands in this target (SOCOM II's movie copy sprite went into
+    // the staging buffer instead of the display buffer whenever the two were laid out that way).
+    GLint prevFbo = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
     glBindFramebuffer(GL_FRAMEBUFFER, rt.fbo);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glReadPixels(0, 0, rt.width, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     const uint32_t base = rt.fbp << 5;
     for (uint32_t y = 0; y < h; ++y)
+    {
+        if (rt.dirtyRows && y >= rt.dirtyRowFirst && y < rt.dirtyRowLast)   // see downloadRenderTargetToShadow
+            continue;
         for (uint32_t x = 0; x < rt.width; ++x)
         {
             uint32_t p = pixels[static_cast<size_t>(y) * rt.width + x];
@@ -1030,8 +1053,10 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
             m_cpu->WriteVram(rt.psm, base, rt.fbw, x, y, p);
             writeVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y, p);
         }
+    }
     rt.gpuDirty = false;
     rt.shadowStale = false;
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
 }
 
 void GSGlBackend::executeReadback()
@@ -1091,6 +1116,24 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
             if (pref->gpuDirty)
                 rt = pref;
     }
+    // PS2X_GS_TRACE_PRESENT: sample the displayed target before the shadow refresh, and record
+    // the refresh window, to tell a blank target from a refresh that blanks it.
+    {
+        static const long s_skipPre = [] { const char *e = std::getenv("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
+        static uint32_t s_printedPre = 0u;
+        if (s_skipPre >= 0 && static_cast<long>(m_frameCounter + 1u) > s_skipPre && s_printedPre < 30u)
+        {
+            ++s_printedPre;
+            uint8_t px[4] = {0, 0, 0, 0};
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, rt->fbo);
+            glReadPixels(320, 224, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            std::fprintf(stderr, "[gs-gl present-pre] frame=%llu rt fbp=%03x fbo=%u used=%u centre=%02x%02x%02x%02x dirty=%d rows=%u..%u shadowStale=%d gpuDirty=%d pref=%d\n",
+                         (unsigned long long)(m_frameCounter + 1u), rt->fbp, rt->fbo, rt->usedHeight, px[0], px[1], px[2], px[3],
+                         rt->dirtyRows ? 1 : 0, rt->dirtyRowFirst, rt->dirtyRowLast, rt->shadowStale ? 1 : 0, rt->gpuDirty ? 1 : 0,
+                         (request.hasPreferredSource && request.preferredDestFbp == display.fbp) ? 1 : 0);
+        }
+    }
     // DISPLAY gives the field height (224) when the game renders full frames (448 rows) and
     // scans out interlaced; present the rows that were actually drawn in that case.
     refreshDirtyRows(*rt);
@@ -1127,6 +1170,72 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     m_presentTexture = m_presentCopyTexture;
     m_presentFbp = display.fbp;
+
+    // PMODE merge: both read circuits enabled on different frame buffers. SOCOM II shows its
+    // pre-rendered movies this way — circuit 1 reads a black buffer, circuit 2 the buffer the
+    // decoded frames are uploaded into, ALP=0x7f (MMOD=1) — so presenting circuit 1 alone was a
+    // black screen. Copy circuit 2's target too and hand it out with alpha = its weight
+    // (1 - ALP/255); the host draws it alpha-blended over circuit 1. SLBG=1 (background colour
+    // instead of circuit 2) and MMOD=0 (per-pixel alpha from circuit 1) fall back to circuit 1.
+    m_presentTexture2 = 0u;
+    if (en1 && en2 && display2.fbp != display1.fbp)
+    {
+        const bool mmod = (request.pmode & (1ull << 5)) != 0ull;
+        const bool slbg = (request.pmode & (1ull << 7)) != 0ull;
+        const uint32_t alp = static_cast<uint32_t>((request.pmode >> 8) & 0xFFull);
+        if (mmod && !slbg && alp < 0xFFu)
+        {
+            RenderTarget *rt2 = getRenderTarget(display2.fbp, display2.fbw, display2.psm, false);
+            if (!rt2)
+            {
+                for (RenderTarget &candidate : m_renderTargets)
+                {
+                    const uint32_t span = pageSpan(candidate.psm, candidate.fbw, std::min<uint32_t>(candidate.usedHeight, 512u));
+                    if (display2.fbp >= candidate.fbp && display2.fbp < candidate.fbp + span)
+                    {
+                        rt2 = &candidate;
+                        break;
+                    }
+                }
+            }
+            if (rt2 && rt2 != rt)
+            {
+                refreshDirtyRows(*rt2);
+                if (m_presentCopyTexture2 == 0u || m_presentTexWidth != rt->width || m_presentTexHeight != rt->height)
+                {
+                    if (m_presentCopyTexture2 != 0u)
+                        glDeleteTextures(1, &m_presentCopyTexture2);
+                    if (m_presentCopyFbo2 == 0u)
+                        glGenFramebuffers(1, &m_presentCopyFbo2);
+                    glGenTextures(1, &m_presentCopyTexture2);
+                    glBindTexture(GL_TEXTURE_2D, m_presentCopyTexture2);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, rt->width, rt->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+                }
+                const uint32_t w2 = std::min<uint32_t>(m_presentWidth, rt2->width);
+                const uint32_t h2 = std::min<uint32_t>(m_presentHeight, rt2->height);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, rt2->fbo);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_presentCopyFbo2);
+                glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_presentCopyTexture2, 0);
+                glDisable(GL_SCISSOR_TEST);
+                glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                glBlitFramebuffer(0, 0, static_cast<GLint>(w2), static_cast<GLint>(h2),
+                                  0, 0, static_cast<GLint>(w2), static_cast<GLint>(h2),
+                                  GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                // Alpha channel := circuit 2's weight in the merge (RGB untouched).
+                glBindFramebuffer(GL_FRAMEBUFFER, m_presentCopyFbo2);
+                glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_TRUE);
+                glClearColor(0.0f, 0.0f, 0.0f, 1.0f - static_cast<float>(alp) / 255.0f);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                m_presentTexture2 = m_presentCopyTexture2;
+            }
+        }
+    }
     ++m_frameCounter;
     // PS2X_GS_TRACE_PRESENT=<skip>: after <skip> presents, print 30 presents with the copy's
     // centre pixel (rgba) and the GL error state, to tell a black copy from a black draw.
@@ -1140,9 +1249,17 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
             glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentCopyFbo);
             glReadPixels(static_cast<GLint>(m_presentWidth / 2u), static_cast<GLint>(m_presentHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            std::fprintf(stderr, "[gs-gl present-trace] frame=%llu en1=%d en2=%d pmode=%llx fbp=%03x rt#fbo=%u %ux%u copy=%u centre=%02x%02x%02x%02x glerr=0x%x\n",
-                         (unsigned long long)m_frameCounter, en1 ? 1 : 0, en2 ? 1 : 0, (unsigned long long)request.pmode, display.fbp, rt->fbo,
-                         m_presentWidth, m_presentHeight, m_presentCopyTexture, px[0], px[1], px[2], px[3], glGetError());
+            uint8_t px2[4] = {0, 0, 0, 0};
+            if (m_presentTexture2 != 0u)
+            {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentCopyFbo2);
+                glReadPixels(static_cast<GLint>(m_presentWidth / 2u), static_cast<GLint>(m_presentHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px2);
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            }
+            std::fprintf(stderr, "[gs-gl present-trace] frame=%llu en1=%d en2=%d pmode=%llx fbp=%03x fbp2=%03x rt#fbo=%u %ux%u copy=%u centre=%02x%02x%02x%02x tex2=%u centre2=%02x%02x%02x%02x glerr=0x%x\n",
+                         (unsigned long long)m_frameCounter, en1 ? 1 : 0, en2 ? 1 : 0, (unsigned long long)request.pmode, display.fbp, display2.fbp, rt->fbo,
+                         m_presentWidth, m_presentHeight, m_presentCopyTexture, px[0], px[1], px[2], px[3],
+                         m_presentTexture2, px2[0], px2[1], px2[2], px2[3], glGetError());
         }
     }
     {
@@ -1676,7 +1793,10 @@ void GSGlBackend::flushBatch()
     // bound texture, blend and the vertices actually submitted), to compare with the CPU path.
     static const int s_debugPsm = std::getenv("PS2X_GS_GL_DEBUG_PSM") ? std::atoi(std::getenv("PS2X_GS_GL_DEBUG_PSM")) : -1;
     static int s_debugCount = 0;
-    if (s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount++ < 12)
+    // PS2X_GS_GL_DEBUG_AFTER=<presents>: only debug draws issued after that many presents.
+    static const unsigned long long s_debugAfter = std::getenv("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(std::getenv("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
+    const bool debugWindow = m_frameCounter >= s_debugAfter;
+    if (debugWindow && s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount++ < 12)
     {
         GLint tex = 0, prog = 0, blend = 0, srcRgb = 0, dstRgb = 0, eqRgb = 0, depthFn = 0, depthMask = 0;
         GLint scissor[4] = {0, 0, 0, 0};
@@ -1702,7 +1822,7 @@ void GSGlBackend::flushBatch()
             std::fprintf(stderr, "[gs-gl dbg]   v%zu pos=(%.1f,%.1f,%.6f) st=(%.2f,%.2f) q=%.3f rgba=%u,%u,%u,%u\n", i, v.x, v.y, v.z, v.s, v.t, v.q, v.r, v.g, v.b, v.a);
         }
     }
-    const bool debugThis = s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount <= 12;
+    const bool debugThis = debugWindow && s_debugPsm >= 0 && m_batchState.prim.tme && static_cast<int>(m_batchState.context.tex0.psm) == s_debugPsm && s_debugCount <= 12;
     float dbgCx = 0.0f, dbgCy = 0.0f;
     if (debugThis && m_vertices.size() >= 6)
     {
@@ -1715,6 +1835,13 @@ void GSGlBackend::flushBatch()
         glReadPixels(static_cast<int>(dbgCx), static_cast<int>(dbgCy), 1, 1, GL_DEPTH_COMPONENT, GL_FLOAT, &storedDepth);
         std::fprintf(stderr, "[gs-gl dbg]   pixel(%d,%d) before=%u,%u,%u,%u storedDepth=%.7f vertexDepth(ndc->[0,1])=%.7f\n", static_cast<int>(dbgCx), static_cast<int>(dbgCy),
                      before[0], before[1], before[2], before[3], storedDepth, m_vertices[0].z);
+        // Two more probes above the quad (letterbox band) to tell a failed clear from a stray draw.
+        uint8_t pa[4] = {0, 0, 0, 0}, pb[4] = {0, 0, 0, 0};
+        glReadPixels(100, 50, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pa);
+        glReadPixels(500, 50, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pb);
+        std::fprintf(stderr, "[gs-gl dbg]   band before: (100,50)=%u,%u,%u,%u (500,50)=%u,%u,%u,%u target fbp=%03x fbo=%u tex tbp0=%05x\n",
+                     pa[0], pa[1], pa[2], pa[3], pb[0], pb[1], pb[2], pb[3],
+                     m_batchRt ? m_batchRt->fbp : 0u, m_batchRt ? m_batchRt->fbo : 0u, m_batchState.context.tex0.tbp0);
         static const bool s_noDepth = std::getenv("PS2X_GS_GL_DEBUG_NODEPTH") != nullptr;
         if (s_noDepth)
             glDisable(GL_DEPTH_TEST);
@@ -1735,6 +1862,8 @@ void GSGlBackend::flushBatch()
             std::fprintf(stderr, "[gs-gl dbg]   bound tex %dx%d texel(%d,%d)=%u,%u,%u,%u nonzero-alpha texels=%zu\n", tw, th, sx, sy, px[0], px[1], px[2], px[3], opaque);
         }
     }
+    if (m_batchRt)
+        glBindFramebuffer(GL_FRAMEBUFFER, m_batchRt->fbo);   // the texture path may have rebound another target
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);

@@ -52,6 +52,7 @@ public:
     bool HostDriven() const override { return true; }
     bool HostRenderFrame() override;
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
+    uint32_t HostFrameTexture2() override { return m_presentTexture2; }
 
 private:
     enum class CmdType : uint8_t
@@ -257,6 +258,9 @@ private:
     uint32_t m_presentCopyFbo = 0;
     uint32_t m_presentTexWidth = 0;
     uint32_t m_presentTexHeight = 0;
+    uint32_t m_presentTexture2 = 0;          // second read circuit (PMODE EN1 && EN2), alpha = weight
+    uint32_t m_presentCopyTexture2 = 0;
+    uint32_t m_presentCopyFbo2 = 0;
     std::vector<uint8_t> m_presentPixels;   // filled only when a frame dump is requested
     bool m_presentPixelsRequested = false;
 

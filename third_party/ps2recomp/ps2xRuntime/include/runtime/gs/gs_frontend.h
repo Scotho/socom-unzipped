@@ -147,6 +147,7 @@ public:
     bool hostDriven() const { return m_backend && m_backend->HostDriven(); }
     bool hostRenderFrame();
     uint32_t hostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight);
+    uint32_t hostFrameTexture2() { return m_backend ? m_backend->HostFrameTexture2() : 0u; }
 
     void refreshDisplaySnapshot();
 

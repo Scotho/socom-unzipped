@@ -43,4 +43,9 @@ public:
         width = height = textureWidth = textureHeight = 0u;
         return 0u;
     }
+    // PMODE with both read circuits enabled (EN1 && EN2, different frame buffers): the second
+    // circuit's frame, same size/rectangle as HostFrameTexture's, with its alpha channel set to
+    // the circuit's weight in the merge (1 - ALP when MMOD=1). Draw it alpha-blended over the
+    // first. 0 = single circuit.
+    virtual uint32_t HostFrameTexture2() { return 0u; }
 };
