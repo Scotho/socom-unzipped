@@ -8,12 +8,20 @@ PW_CLIENTONLY = 1
 PW_RENDERFULLCONTENT = 2
 
 
-def find_window(title_substring):
+def window_pid(hwnd):
+    pid = wt.DWORD()
+    user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+    return pid.value
+
+
+def find_window(title_substring, pid=None):
+    """First visible top-level window whose title contains the substring; `pid` restricts the
+    search to one process (two PCSX2 instances share a title)."""
     found = []
 
     @ctypes.WINFUNCTYPE(ctypes.c_bool, wt.HWND, wt.LPARAM)
     def cb(hwnd, _):
-        if user32.IsWindowVisible(hwnd):
+        if user32.IsWindowVisible(hwnd) and (pid is None or window_pid(hwnd) == pid):
             n = user32.GetWindowTextLengthW(hwnd)
             if n:
                 buf = ctypes.create_unicode_buffer(n + 1)

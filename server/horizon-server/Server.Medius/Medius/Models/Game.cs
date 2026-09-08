@@ -365,6 +365,10 @@ namespace Server.Medius.Models
             GenericField1 = report.GenericField1;
             GenericField2 = report.GenericField2;
             GenericField3 = report.GenericField3;
+            // SOCOM II (Medius 1.50) carries its map/round settings in GameStats; without them the
+            // game list shows "unknown" and other clients refuse to join.
+            if (report.GameStats != null)
+                GameStats = report.GameStats;
 
             // Once the world has been closed then we force it closed.
             // This is because when the host hits 'Play Again' they tell the server the world has closed (EndGameReport)
