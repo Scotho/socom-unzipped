@@ -178,27 +178,36 @@ must come from a UI variable or locale lookup at draw time.
 - The 3D roller is the same VU1 "no vertices" symptom as before (`hdrKick=0/N`); re-check it after
   the in-mission renderer works, since both go through the same path.
 
-### 4. Online (M5) — NOW THE TOP TASK; state as of 2026-09-07 21:10 local
-Done: two PCSX2 clients log into the local Horizon stack, meet in a briefing room, and play a
-match (STATUS 21:10 and 18:45 entries: plumbing, protocol fixes, second-client setup). Recipe:
-1. `powershell -NoProfile -Command ".\start-servers.ps1"` in `server/` (MUIS 10071, MAS 10075,
-   MLS 10078, MPS 10077, DME 10073, NAT 10070/UDP). Rebuild with
-   `dotnet build Horizon.Server.sln -c Release` in `server/horizon-server` after stopping the
-   processes (the running exe locks its output; delete server/pids.json if the script trips on a
-   reused pid).
-2. `nohup python -m tools_py.parity.dns_stub > logs/dns_stub.log &` (UDP 53 on 192.168.2.10; if
-   the host IP changed, update the stub args, both PCSX2.ini DNS1/2 and server/config/*.json).
-3. `python -m tools_py.parity.online_login --hold 90` = one client to the lobby;
-   `python -m tools_py.parity.online_match --hold 60` = the two-client match (A from
-   tools/pcsx2 state 9, B from tools/pcsx2_b state 5). Screens land in logs/parity/online/.
-   Slice `server/logs/console-Medius.log` / `console-DME.log` from the line count taken before.
-4. For any new "Unhandled Medius Message" find the client's handler by id (STATUS 18:45 "method")
-   to get the expected byte layout before writing the Horizon model.
-Next (in order): (a) capture the online screens as the golden set for the exe (drive.py with the
-online script) ; (b) our exe's network: inet/netcnf HLE → Winsock in the runtime, DNAS bypass,
-then run the same online_login flow against socom2.exe and score; (c) voice/lgaud stubs.
-Rules: never savestate after network traffic (only A slot 9 / B slot 5); a savestate is only
-valid in the install that made it; two PCSX2 instances need distinct UDP ports (B's pnach).
+### 4. Online (M5) — NOW THE TOP TASK; state as of 2026-09-08 local
+Two working clients now exist end to end:
+- **PCSX2** logs in and two clients play a match on the local Horizon stack (STATUS 21:10).
+- **Our exe** brings up SOCOM's SCE-RT network layer on the host and completes the Medius SCERT
+  transport handshake against the real MUIS (STATUS 2026-09-08): it resolves the retail hostnames
+  to PS2X_SOCOM2_SERVER (default 127.0.0.1), TCP-connects to 10071, exchanges CRYPTKEY_PUBLIC/PEER
+  and CONNECT_TCP, and the server sends CONNECT_ACCEPT + CONNECT_COMPLETE. The client then closes
+  the socket before the LobbyExt/0x03 universe query — the current blocker.
+
+Recipe for the exe path:
+1. Start Horizon: `powershell -NoProfile -Command ".\start-servers.ps1"` in `server/` (delete
+   server/pids.json if the script trips on a reused pid). No dns_stub is needed — the exe resolves
+   the hostnames itself (socom2_hostnet.cpp; override with PS2X_SOCOM2_SERVER / PS2X_SOCOM2_HOSTS).
+2. `python -m tools_py.parity.drive --target ours --script scripts/parity/launch_to_online_ours.txt
+   --out logs/parity/ours_online --seconds 150`. Add `PS2X_SOCOM2_NET_TRACE=1` for the socket log.
+3. Slice `server/logs/console-MUIS.log` from the line count taken before the run.
+
+Next, in order:
+- (a) The exe reads the 39-byte CONNECT_ACCEPT/COMPLETE once, then disconnects. Trace the SCERT
+  client read loop after CONNECT_COMPLETE (the recompiled message pump around 0x62e1e8/0x62e4a0,
+  and the libnetb_ex recv FUN_002474f8 / exTcpRecv): likely a recv-framing or post-connect step.
+  Once it sends the universe query, the same Horizon path PCSX2 uses (MUIS LobbyExt/0x03 -> 0x04 +
+  UniverseNews) applies.
+- (b) then MAS login, lobby, room, a match — mirroring the PCSX2 flow, all already server-side done.
+- (c) capture the exe's online screens as a golden set and score them against PCSX2.
+
+Layers already HLE'd (all in third_party/ps2recomp/ps2xRuntime/src/lib/socom2_*.cpp and
+ps2xIOP/src/modules/eznetcnf.cpp; see docs/research/10-libnetb-rpc.md): msifrpc, libnetb (simple +
+ex ring), eznetcnf/eznetctl, DNAS bypass, rt_crypt (RSA/SHA1/RC4), fixed 512-bit client keypair.
+Rules: never savestate after network traffic (PCSX2 side); the exe needs no savestates.
 
 ### Secondary / cleanup
 - **GS local→host readback** so the exposure stub can go: `FUN_003b24c0` sends a 7-qword VIF1
