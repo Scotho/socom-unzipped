@@ -528,6 +528,45 @@ namespace
     // periodically (diagnosing silent hangs).
     void startPcSampler(PS2Runtime &runtime)
     {
+        // PS2X_WATCH="0xADDR[,0xADDR...]": poll guest words every ~0.5 ms and print every change with
+        // the host time, the new value and the live guest pc/ra — a poor man's write watchpoint
+        // (which code cuts a linked list, at what moment relative to the call trace).
+        if (const char *watch = std::getenv("PS2X_WATCH"))
+        {
+            std::vector<uint32_t> addrs;
+            std::string spec(watch);
+            size_t pos = 0;
+            while (pos < spec.size())
+            {
+                size_t end = spec.find(',', pos);
+                if (end == std::string::npos)
+                    end = spec.size();
+                addrs.push_back(static_cast<uint32_t>(std::strtoul(spec.substr(pos, end - pos).c_str(), nullptr, 0)));
+                pos = end + 1;
+            }
+            std::thread([&runtime, addrs]() {
+                std::vector<uint32_t> last(addrs.size(), 0xDEADBEEFu);
+                const auto epoch = std::chrono::steady_clock::now();
+                for (;;)
+                {
+                    std::this_thread::sleep_for(std::chrono::microseconds(500));
+                    const uint8_t *rdram = runtime.memory().getRDRAM();
+                    for (size_t i = 0; i < addrs.size(); ++i)
+                    {
+                        uint32_t v = 0;
+                        std::memcpy(&v, rdram + (addrs[i] & PS2_RAM_MASK), sizeof(v));
+                        if (v != last[i])
+                        {
+                            const R5900Context *c = &runtime.cpu();
+                            const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - epoch).count();
+                            std::printf("[watch] %.3fs @%08x = %08x (was %08x) pc=0x%x ra=0x%x\n", t, addrs[i], v, last[i],
+                                        c->pc, GPR_U32(c, 31));
+                            last[i] = v;
+                        }
+                    }
+                }
+            }).detach();
+        }
         const char *env = std::getenv("PS2X_PC_SAMPLER");
         if (!env || !*env)
             return;
@@ -567,32 +606,63 @@ namespace
                             words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
                             item = item.substr(0, colon);
                         }
-                        // "*0xADDR+0xOFF": follow the pointer stored at ADDR, then add OFF (heap objects
-                        // reached through a static slot, e.g. the mission camera at *(0x4887c0+0x628)).
-                        bool deref = false;
-                        if (!item.empty() && item[0] == '*')
+                        // Pointer chains: "*0xADDR+0xOFF*+0xOFF2": '*' follows the pointer at the current
+                        // address, "+0x.." adds an offset, in the order written. E.g. the mission camera is
+                        // "*0x488de8" (static scene 0x4887c0 + 0x628) and the actor it follows
+                        // "*0x488de8+0xbc*" (its transform at +0x1070, translation at +0x10a0).
+                        uint32_t addr = 0;
+                        bool bad = false;
                         {
-                            deref = true;
-                            item.erase(0, 1);
+                            size_t i = 0;
+                            bool haveBase = false;
+                            while (i < item.size() && !bad)
+                            {
+                                const char ch = item[i];
+                                if (ch == '*')
+                                {
+                                    if (!haveBase)
+                                    {
+                                        // leading '*': parse the base number that follows first
+                                        size_t j = i + 1;
+                                        while (j < item.size() && item[j] != '*' && item[j] != '+')
+                                            ++j;
+                                        addr = static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
+                                        haveBase = true;
+                                        i = j;
+                                    }
+                                    else
+                                        ++i;
+                                    const uint8_t *pp = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
+                                    if (!pp)
+                                    {
+                                        bad = true;
+                                        break;
+                                    }
+                                    std::memcpy(&addr, pp, sizeof(addr));
+                                    if (addr == 0u)
+                                        bad = true;
+                                }
+                                else if (ch == '+')
+                                {
+                                    size_t j = i + 1;
+                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
+                                        ++j;
+                                    addr += static_cast<uint32_t>(std::strtoul(item.substr(i + 1, j - i - 1).c_str(), nullptr, 0));
+                                    i = j;
+                                }
+                                else
+                                {
+                                    size_t j = i;
+                                    while (j < item.size() && item[j] != '*' && item[j] != '+')
+                                        ++j;
+                                    addr = static_cast<uint32_t>(std::strtoul(item.substr(i, j - i).c_str(), nullptr, 0));
+                                    haveBase = true;
+                                    i = j;
+                                }
+                            }
                         }
-                        uint32_t offset = 0;
-                        const size_t plus = item.find('+');
-                        if (plus != std::string::npos)
-                        {
-                            offset = static_cast<uint32_t>(std::strtoul(item.c_str() + plus + 1, nullptr, 0));
-                            item = item.substr(0, plus);
-                        }
-                        uint32_t addr = static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
-                        if (deref)
-                        {
-                            const uint8_t *pp = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
-                            if (!pp)
-                                continue;
-                            std::memcpy(&addr, pp, sizeof(addr));
-                            if (addr == 0u)
-                                continue;
-                        }
-                        addr += offset;
+                        if (bad)
+                            continue;
                         const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
                         if (!p)
                             continue;
