@@ -1,5 +1,36 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-08 (local) — our exe completes the SCERT handshake with Horizon; menu movie merged
+Two fronts landed since the 22:40 entry.
+
+**Menu background movie (merged to develop, commits 8c01711/1f15173/db44f62).** The runtime already
+had an FFmpeg-backed sceMpeg HLE; two protocol gaps (sceMpegCreate not zeroing the libmpeg work
+buffer, and GetPicture parking the only feeder thread) stopped every movie. Fixed in
+Kernel/Stubs/MPEG.cpp. Main-menu parity 81.0 -> 98.8; the Sony/intro/cinematic movies play too.
+Boot now has two more screens than before, so the online script uses five boot presses.
+
+**Exe online netstack (uncommitted until this entry's commit).** From black-screen after the network
+IRX loads to a completed SCERT TCP handshake with the real MUIS (10071). Layers:
+- SIF sreg handshake echo (socom2_SifSendCmd) and msifrpc init/bind/call/unbind HLE.
+- eznetcnf/eznetctl IOP service (ps2xIOP/src/modules/eznetcnf.cpp): one "Setting 1" combination,
+  interface always up. DNAS tick (FUN_002cc670) reports done.
+- libnetb (socom2_libnetb.cpp): the simple RPCs (sceInetCreate/Open/Recv/Send/Name2Address/poll/
+  interface events) and the libnetb_ex ring path (FUN_002472c8/74f8/7738/7d30/7fe8/79b8/7bd8)
+  replaced by host Winsock (socom2_hostnet.cpp). Contract: docs/research/10-libnetb-rpc.md.
+- rt_crypt on the host (socom2_crypto.cpp): 512-bit RSA modexp (FUN_0062b948), SHA-1 prefix
+  (FUN_0062eec0) and the RC4 variant (FUN_0062a638/5a8/720/7c8). The fixed client keypair
+  (socom2_rsa_key.h) was regenerated as a FULL 512-bit modulus: a 511-bit N let the server's
+  512-bit RC4 session key exceed N and broke the CONNECT_TCP decrypt.
+Result: the exe resolves the retail hostnames to PS2X_SOCOM2_SERVER (default 127.0.0.1), connects
+TCP to MUIS, and the server accepts CONNECT_TCP and sends CONNECT_ACCEPT + CONNECT_COMPLETE. The
+client then closes the socket before sending the universe query — the next task (it reads the
+39-byte accept/complete once, then disconnects; likely a recv-framing or post-connect step).
+Driver: `python -m tools_py.parity.drive --target ours --script scripts/parity/launch_to_online_ours.txt`
+with the Horizon stack up (no dns_stub needed; the exe resolves internally).
+
+Reference: tools/reference/reCOM (git-ignored) and docs/research/11-recom-applicability.md map
+~70 of our FUN_ addresses to SOCOM 1 / GameZ names.
+
 ## 2026-09-07 22:40 (local) — our exe reaches LOGIN TO SOCOM II ONLINE (netstack bring-up started)
 ONLINE on our exe used to go black after loading the network IRX set. Three layers were missing:
 - SIF sreg handshake: msifrpc's init sends SETSREG (0x80000001) to the IOP and spins on the EE

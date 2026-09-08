@@ -14,6 +14,8 @@
 #include "runtime/ee_scheduler.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
+#include "socom2_libnetb.h"
+#include "socom2_crypto.h"
 #include <cstring>
 #include <fstream>
 #include <vector>
@@ -123,19 +125,13 @@ namespace ps2_stubs
         std::memcpy(rdram + (addr & PS2_RAM_MASK), &v, 4);
     }
 
-    // Returns the libnetb result word; fills recv. Placeholder until the RPC contract is mapped
-    // (docs/research/10-libnetb-rpc.md): every function is logged and answered with -1.
-    int32_t socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
-                              uint32_t recv, uint32_t recvSize)
+    // libnetb service 0x80001201: dispatched in socom2_libnetb.cpp (docs/research/10-libnetb-rpc.md).
+    void socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
+                           uint32_t recv, uint32_t recvSize)
     {
-        std::ostringstream hex;
-        for (uint32_t i = 0; i < std::min<uint32_t>(sendSize, 64u); ++i)
-            hex << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(rdram[(send + i) & PS2_RAM_MASK]) << ' ';
-        std::cout << "[socom2/libnetb] fno=0x" << std::hex << fno << " send=0x" << send << "/" << std::dec << sendSize
-                  << " recv=0x" << std::hex << recv << "/" << std::dec << recvSize << " [" << hex.str() << "]" << std::endl;
-        if (recv != 0u && recvSize >= 4u)
-            std::memset(rdram + (recv & PS2_RAM_MASK), 0, recvSize);
-        return -1;
+        if (std::getenv("PS2X_SOCOM2_NET_TRACE"))
+            std::cout << "[socom2/msifrpc] libnetb fno=0x" << std::hex << fno << std::dec << " send=" << sendSize << " recv=" << recvSize << std::endl;
+        socom2_libnetb::call(rdram, fno, send, sendSize, recv, recvSize);
     }
 
     void socom2_MsifBind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
@@ -193,6 +189,16 @@ namespace ps2_stubs
     // FUN_001bcd80: msifrpc init (SIF handler + sreg handshake). Nothing to set up on the host.
     void socom2_MsifInit(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    // FUN_002cc670: the DNAS authentication state tick (creates the libdnas2 object on the first
+    // call, returns 1 when authentication has finished). A private server needs no DNAS, so the
+    // tick reports "done" immediately; this is what the published r0001 pnach (`jr ra` at the
+    // entry, with v0 still holding the previous call's 1) achieves on PCSX2.
+    void socom2_DnasTickDone(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        SET_GPR_U32(ctx, 2, 1u);
         ctx->pc = GPR_U32(ctx, 31);
     }
 
@@ -885,9 +891,27 @@ namespace
         runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
         runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);
         runtime.replaceFunction(0x001bd200u, ps2_stubs::socom2_MsifUnbind);
+        // libnetb_ex ring-buffer path -> host sockets (socom2_libnetb.cpp).
+        runtime.replaceFunction(0x002472c8u, socom2_libnetb::exOpen);
+        runtime.replaceFunction(0x002474f8u, socom2_libnetb::exTcpRecv);
+        runtime.replaceFunction(0x00247738u, socom2_libnetb::exTcpSend);
+        runtime.replaceFunction(0x00247d30u, socom2_libnetb::exUdpRecv);
+        runtime.replaceFunction(0x00247fe8u, socom2_libnetb::exUdpSend);
+        runtime.replaceFunction(0x002479b8u, socom2_libnetb::exAvailable);
+        runtime.replaceFunction(0x00247bd8u, socom2_libnetb::exConnected);
+        runtime.replaceFunction(0x00248350u, socom2_libnetb::exStartAsync);
+        runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
+        ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
+        // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).
+        runtime.replaceFunction(0x0062b948u, socom2_crypto::rsaBlock);
+        runtime.replaceFunction(0x0062eec0u, socom2_crypto::sha1Hash);
+        runtime.replaceFunction(0x0062a638u, socom2_crypto::rc4SetKeyHash);
+        runtime.replaceFunction(0x0062a5a8u, socom2_crypto::rc4SetKey);
+        runtime.replaceFunction(0x0062a720u, socom2_crypto::rc4EncryptFn);
+        runtime.replaceFunction(0x0062a7c8u, socom2_crypto::rc4DecryptFn);
         // DNAS authentication object (FTSCore FUN_002cc670): the published r0001 bypass patches
         // `jr ra` at its entry; a private Horizon server needs no DNAS.
-        ps2_game_overrides::bindAddressHandler(runtime, 0x002cc670u, "ret0");
+        runtime.replaceFunction(0x002cc670u, ps2_stubs::socom2_DnasTickDone);
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
     }

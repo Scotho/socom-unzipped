@@ -485,7 +485,12 @@ endif()
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
 target_sources(ps2EntryRunner PRIVATE src/lib/socom2_host_input.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_hostnet.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_libnetb.cpp)
+target_sources(ps2EntryRunner PRIVATE src/lib/socom2_crypto.cpp)
 set_source_files_properties(src/lib/game_overrides_socom2.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
+set_source_files_properties(src/lib/socom2_hostnet.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
+set_source_files_properties(src/lib/socom2_libnetb.cpp PROPERTIES SKIP_UNITY_BUILD_INCLUSION TRUE)
 
 if(PS2X_ENABLE_RUNNER_UNITY_BUILD)
     set_target_properties(ps2EntryRunner PROPERTIES

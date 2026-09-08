@@ -14,7 +14,7 @@
 //   fno 2 ezNetCnfGetNetcnfifData(path,name,dest)   send [0] EE dest pointer, +0x10 path,
 //                                                   +0x110 combination name -> [0] result (0 ok)
 // The combination list (FUN_001e8810/FUN_001e8890): 48-byte header {count, default(1-based)}
-// then 104-byte entries {int flags(>=0 valid), +8 name, +40 hardware/provider string}.
+// then 104-byte entries {int flags(>=0 valid), +8 hardware string, +40 setting name}.
 //
 // eznetctl:
 //   fno 0 (4 bytes)      -> [0] IOP buffer address for the netcnfif data (0 = "not running")
@@ -132,6 +132,10 @@ namespace ps2x::iop::detail
                         reply[2] = 1u;     // link up
                         reply[3] = 3u;     // connected
                         break;
+                    case 5u: // FUN_001e8e38(value): setter, e.g. timeout / retry policy
+                    case 6u: // FUN_001e8eb0(value): setter
+                        reply[0] = 0u;
+                        break;
                     default:
                         reply[0] = static_cast<uint32_t>(-1);
                         logUnknown(request);
@@ -177,8 +181,8 @@ namespace ps2x::iop::detail
                 std::memcpy(block.data(), &count, 4);
                 std::memcpy(block.data() + 4, &def, 4);
                 uint8_t *entry = block.data() + kListHeaderSize;
-                std::memcpy(entry + 8, kSettingName, sizeof(kSettingName));
-                std::memcpy(entry + 40, kHardwareName, sizeof(kHardwareName));
+                std::memcpy(entry + 8, kHardwareName, sizeof(kHardwareName));   // shown under HARDWARE:
+                std::memcpy(entry + 40, kSettingName, sizeof(kSettingName));    // the list row
                 (void)m_host.writeGuest(listAddr, block.data(), static_cast<uint32_t>(block.size()));
             }
 
