@@ -53,15 +53,15 @@ def osk_moves(cur, dst):
     return moves
 
 
-def osk_type(hwnd, text, shots=None, tag=""):
+def osk_type(hwnd, text, shots=None, tag="", target="pcsx2"):
     cur = OSK_START
     for n, ch in enumerate(list(text) + ["ENTER"]):
         dst = osk_pos(ch)
         for m in osk_moves(cur, dst):
-            keys.press(hwnd, m, "pcsx2")
+            keys.press(hwnd, m, target)
             time.sleep(0.35)
         cur = dst
-        keys.press(hwnd, "cross", "pcsx2")
+        keys.press(hwnd, "cross", target)
         time.sleep(0.6)
         if shots and ch != "ENTER":
             winshot.capture(hwnd).save(os.path.join(shots, f"{tag}_key{n}_{ch}.png"))
