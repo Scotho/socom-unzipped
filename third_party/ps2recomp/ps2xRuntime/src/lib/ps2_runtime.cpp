@@ -1036,6 +1036,10 @@ void PS2Runtime::setIoPaths(const IoPaths &paths)
     {
         normalized.mcRoot = normalized.elfDirectory / "mc0";
     }
+    if (const char *mcDir = std::getenv("PS2X_MC_DIR"))
+    {
+        normalized.mcRoot = normalizeAbsolutePath(std::filesystem::path(mcDir));
+    }
 
     runtimeIoPaths() = normalized;
 }
@@ -1054,6 +1058,11 @@ void PS2Runtime::configureIoPathsFromElf(const std::string &elfPath)
         paths.hostRoot = paths.elfDirectory;
         paths.cdRoot = paths.elfDirectory;
         paths.mcRoot = paths.elfDirectory / "mc0";
+    }
+    // PS2X_MC_DIR=<dir>: memory-card root override (a second instance needs its own card).
+    if (const char *mcDir = std::getenv("PS2X_MC_DIR"))
+    {
+        paths.mcRoot = normalizeAbsolutePath(std::filesystem::path(mcDir));
     }
 
     setIoPaths(paths);

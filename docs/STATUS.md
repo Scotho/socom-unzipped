@@ -27,7 +27,10 @@ client sends the LobbyExt/0x03 universe query and shows SELECT UNIVERSE with the
 and its news (2026-09-08). Later the same night the exe logs in (MAS), reaches the lobby (MLS),
 joins Channel 1 and hosts a game: GAME LOBBY with a live DME world (TCP + aux UDP), driven by
 `tools_py/parity/online_login_ours.py --existing --host`; parity 98-99 vs the PCSX2 golden set.
-Only a second client is missing for a match. The earlier stall was the frozen COP0 Count: `mfc0 Count` reads
+**02:40 — a full online match between two instances of our exe** (`online_match_ours.py`: A hosts,
+B joins and switches team, both READY → VIGILANCE/SUPPRESSION → in mission; Horizon world
+WorldStaging → WorldActive). The second instance uses PS2X_WINDOW_TITLE / PS2X_MC_DIR /
+PS2X_SOCOM2_UDP_SHIFT. M5 (online lobby + match against our own server) is reached. The earlier stall was the frozen COP0 Count: `mfc0 Count` reads
 ctx->cop0_count, which nothing advanced, so SCE-RT's clock stayed at 0 and the connected-state
 send gate (30 ms since the last flush) never opened; the runtime now refreshes cop0_count from the
 host steady clock at 294.912 MHz on every syscall and scheduler switch-in.

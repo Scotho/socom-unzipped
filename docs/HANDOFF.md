@@ -219,11 +219,16 @@ Next, in order:
   the news popup appears seconds after the lobby). Horizon fix: the RC4 session key is clamped
   below 2^511 (`PS2CipherFactory.CreateSym`) — a random 512-bit key ≥ the client's modulus broke
   ~8% of handshakes ("Unable to decrypt RT_MSG_CLIENT_CONNECT_TCP").
-- (c) NEXT: a second client to launch the match. Either rebuild the PCSX2 client-B state (savestate
-  5 + `tools/pcsx2_b`, see HANDOFF-2026-09-08 §0) and run `online_login_ours --existing --host`
-  alongside `online_match.py`'s B side, or teach the runtime a second exe instance (distinct window
-  title, the client-B UDP port shift 3658/3659 → 3660/3661 as an env var, separate mc0/ dir).
-  Then READY on both and score the in-mission screens against `match/A_18_hold05.png`.
+- (c) DONE 2026-09-08 02:40 — **two instances of our exe play an online match on our Horizon
+  server**: `python -m tools_py.parity.online_match_ours` (A hosts "test"/Medley as socomc, B logs
+  in as socome, joins, switches to TERRORISTS, both READY → VIGILANCE / SUPPRESSION briefing → in
+  mission; Horizon WorldStatus WorldStaging → WorldActive, DME relays APP_SINGLE/BROADCAST between
+  the two clients). The second instance is plain env: `PS2X_WINDOW_TITLE` (window tag),
+  `PS2X_MC_DIR` (its own memory card dir, game/disc/mc0_b), `PS2X_SOCOM2_UDP_SHIFT=2` (the game's
+  fixed UDP 3658/3659 → 3660/3661, like PCSX2 client B's pnach). Screens: `logs/parity/ours_match/`.
+- (d) NEXT: grade the in-mission screens (`match/A_18_hold05.png` is the PCSX2 golden; ours show
+  the map from the spawn — compare the diff images, not the number), then gameplay parity in the
+  mission (movement, HUD, round timer) and the M6 portable package.
 - (c) capture the exe's online screens as a golden set and score them against PCSX2.
 
 Layers already HLE'd (all in third_party/ps2recomp/ps2xRuntime/src/lib/socom2_*.cpp and

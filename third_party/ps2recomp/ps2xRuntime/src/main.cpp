@@ -180,6 +180,10 @@ int main(int argc, char *argv[])
         std::string normalizedId = normalizeGameId(elfName);
 
         std::string windowTitle = "PS2-Recomp | ";
+        // PS2X_WINDOW_TITLE=tag: distinguishes a second instance's window (the parity harness finds
+        // windows by title substring).
+        if (const char *tag = std::getenv("PS2X_WINDOW_TITLE"))
+            windowTitle = std::string(tag) + " | ";
         const char *gameName = getGameName(normalizedId);
 
 #if !defined(PLATFORM_VITA)

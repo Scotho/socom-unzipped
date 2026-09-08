@@ -143,7 +143,13 @@ namespace socom2_libnetb
         int32_t doCreate(uint8_t *rdram, uint32_t send)
         {
             const int32_t type = static_cast<int32_t>(rd32(rdram, send + 4u));
-            const int32_t localPort = static_cast<int32_t>(rd32(rdram, send + 8u));
+            int32_t localPort = static_cast<int32_t>(rd32(rdram, send + 8u));
+            // PS2X_SOCOM2_UDP_SHIFT=n: a second client on the same host must not bind the game's
+            // fixed UDP ports (3658/3659); shift its local UDP ports by n (PCSX2 client B does the
+            // same with the 0F6FC6CF.clientB.pnach). Peers learn the real port from the packets.
+            static const int32_t s_udpShift = [] { const char *e = std::getenv("PS2X_SOCOM2_UDP_SHIFT"); return e ? std::atoi(e) : 0; }();
+            if (s_udpShift != 0 && localPort > 0 && type != kConnect && type != kListen)
+                localPort += s_udpShift;
             const uint32_t remoteIp = rd32(rdram, send + 16u);
             const int32_t remotePort = static_cast<int32_t>(rd32(rdram, send + 28u));
             const Proto proto = (type == kConnect || type == kListen) ? Proto::Tcp : Proto::Udp;

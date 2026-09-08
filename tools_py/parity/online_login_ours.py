@@ -1,14 +1,15 @@
 """Drive OUR exe from boot through ONLINE -> LOGIN -> universe -> persona/password (on-screen
-keyboard) -> CONNECT -> EULA -> lobby -> briefing room -> CREATE GAME against the local Horizon
-stack, mirroring online_login.py / online_match.py (the PCSX2 reference). Every screen transition
-is detected against scripts/parity/refs/*.png (our own captures, or the PCSX2 golden screens for
-screens we had not reached yet) instead of fixed waits: the shell eats presses that land during
-a transition, and the transitions' durations vary run to run.
+keyboard) -> CONNECT -> EULA -> lobby -> briefing room -> CREATE GAME / JOIN GAME against the local
+Horizon stack, mirroring online_login.py / online_match.py (the PCSX2 reference). Every screen
+transition is detected against title crops in scripts/parity/refs (refs.json) instead of fixed
+waits: the shell eats presses that land during a transition, and transition times vary per run.
 
 Usage: python -m tools_py.parity.online_login_ours [--existing] [--name socomc] [--password socom]
        [--out logs/parity/ours_host] [--seconds 500] [--host] [--then cross:3,...] [--hold 30]
+       [--instance B]   (second exe instance: own window title, memory card dir and UDP ports)
 """
 import argparse
+import json
 import os
 import subprocess
 import time
@@ -22,24 +23,43 @@ from .online_login import osk_type
 
 T = "ours"
 REFS = os.path.join("scripts", "parity", "refs")
-OSK_ACCENT_BOX = (20, 396, 96, 428)   # accent-toggle key: "aei" with accents in normal mode, "abc" in accent mode
+OSK_ACCENT_BOX = (20, 396, 96, 428)   # accent-toggle key: accented "aei" in normal mode, "abc" in accent mode
+
+# Per-instance environment: window title tag (the harness finds windows by title substring),
+# memory-card directory and the UDP port shift (two clients on one host must not both bind the
+# game's fixed 3658/3659, like PCSX2 client B's 0F6FC6CF.clientB.pnach).
+INSTANCES = {
+    "A": {"PS2X_WINDOW_TITLE": "SOCOM-A"},
+    "B": {"PS2X_WINDOW_TITLE": "SOCOM-B", "PS2X_MC_DIR": os.path.abspath("game/disc/mc0_b"), "PS2X_SOCOM2_UDP_SHIFT": "2"},
+}
+
+
+def launch(seconds, instance=None):
+    """Start the exe; returns (proc, title substring to find its window)."""
+    env = dict(os.environ, PS2X_SOCOM2_PAD="1")
+    title = keys.WINDOW_TITLES[T]
+    if instance:
+        env.update(INSTANCES[instance])
+        title = INSTANCES[instance]["PS2X_WINDOW_TITLE"]
+        os.makedirs(env.get("PS2X_MC_DIR", "game/disc/mc0"), exist_ok=True)
+    proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return proc, title
 
 
 class Shell:
-    def __init__(self, hwnd, out, t0):
-        self.hwnd, self.out, self.t0 = hwnd, out, t0
-        # Title-crop references (scripts/parity/refs/refs.json: crop box at 320x224 + threshold on
-        # the mean absolute grey difference); the main menu is matched on the whole frame instead.
-        import json
+    def __init__(self, hwnd, out, t0, tag=""):
+        self.hwnd, self.out, self.t0, self.tag = hwnd, out, t0, tag
         self.meta = json.load(open(os.path.join(REFS, "refs.json")))
         self.refs = {n: np.asarray(Image.open(os.path.join(REFS, n + ".png")).convert("L"), dtype=float) for n in self.meta}
         self.menu = Image.open(os.path.join(REFS, "main_menu.png"))
+        self.last = None
 
     def log(self, m):
-        print(f"{time.time() - self.t0:6.1f}s {m}", flush=True)
+        print(f"{time.time() - self.t0:6.1f}s {self.tag}{m}", flush=True)
 
     def shot(self, label):
-        winshot.capture(self.hwnd).save(os.path.join(self.out, f"{label}.png"))
+        winshot.capture(self.hwnd).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
         keys.press(self.hwnd, b, T)
@@ -58,7 +78,7 @@ class Shell:
         t = time.time()
         while time.time() - t < timeout:
             if self.is_screen(name, thresh):
-                self.log(f"screen {name} after {time.time() - t:.1f}s (diff {self.diff(name):.1f})" if name != "main_menu" else f"screen {name}")
+                self.log(f"screen {name} after {time.time() - t:.1f}s")
                 return True
             time.sleep(0.5)
         self.log(f"TIMEOUT waiting for {name}")
@@ -88,6 +108,159 @@ class Shell:
         time.sleep(3.0)
 
 
+def attach(proc, title, out, tag=""):
+    """Find the instance's window (by title substring) and wait for its first frame."""
+    t0 = time.time()
+    hwnd = None
+    while hwnd is None and time.time() - t0 < 90:
+        hwnd = winshot.find_window(title)
+        time.sleep(0.5)
+    if hwnd is None:
+        proc.terminate()
+        raise SystemExit(f"{tag}game window not found")
+    last = None
+    while last is None and time.time() - t0 < 60:
+        try:
+            last = drive.frame(hwnd)
+        except RuntimeError:
+            time.sleep(0.5)
+    sh = Shell(hwnd, out, t0, tag)
+    sh.last = last
+    return sh
+
+
+def boot_to_online(sh):
+    """CROSS through the boot screens until the main menu (five or six presses), then ONLINE."""
+    for i in range(9):
+        drive.wait_stable(sh.hwnd, 1.5, 40.0, changed_from=sh.last)
+        time.sleep(1.0)
+        if sh.is_screen("main_menu", 90.0):
+            sh.log(f"main menu after {i} presses")
+            break
+        sh.last = drive.frame(sh.hwnd)
+        sh.press("cross")
+        sh.log(f"boot press {i}")
+        for _ in range(12):
+            time.sleep(1.0)
+            if sh.is_screen("main_menu", 90.0):
+                break
+    else:
+        raise SystemExit(f"{sh.tag}main menu not reached")
+    time.sleep(3.0)
+    sh.press("down", 1.5)
+    sh.press("cross", 3.0)                                       # ONLINE
+    sh.wait_for("login", 40)
+    sh.shot("00_login")
+
+
+def login(sh, name, password, existing):
+    """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed)."""
+    sh.press_until_gone("cross", "login")                        # LOGIN
+    sh.wait_for("universe", 60)
+    sh.shot("01_universe")
+    sh.press_until_gone("cross", "universe")                     # connect to the universe
+    sh.wait_for("persona", 60)
+    sh.shot("02_persona")
+    sh.press("cross", 4.0)                                       # persona list
+    if existing:
+        sh.press("cross", 4.0)                                   # saved persona -> password keyboard opens
+        sh.shot("03_name")
+        sh.shot("04_pw_kbd")
+    else:
+        sh.press("cross", 4.0)                                   # <New Persona> -> name keyboard
+        sh.type(name, sh.out, sh.tag + "name")
+        sh.shot("03_name")
+        sh.press("down", 1.0)
+        sh.press("cross", 4.0)
+        sh.shot("04_pw_kbd")
+    sh.type(password)
+    sh.shot("05_password")
+    for _ in range(4):                                           # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
+        sh.press("down", 0.8)
+    sh.shot("06_connect_focus")
+    sh.press("cross", 5.0)
+    sh.shot("07_after_connect")
+    # Prompts between CONNECT and the EULA vary (write-down notice, save to card?, slot,
+    # overwrite?): answer whichever is on screen until the EULA shows.
+    t = time.time()
+    seen = set()
+    quiet = 0
+    while time.time() - t < 120 and not sh.is_screen("eula"):
+        for pname in ("write_down", "save_card", "card_slot"):
+            if sh.is_screen(pname):
+                sh.log(f"prompt {pname}")
+                sh.shot(f"07_{pname}")
+                seen.add(pname)
+                quiet = 0
+                sh.press("cross", 3.0)
+                break
+        else:
+            quiet += 1
+            if "card_slot" in seen and quiet == 8:               # an unrecognised prompt (overwrite?): YES
+                sh.log("unrecognised prompt after the slot -> LEFT, CROSS")
+                sh.shot("07_unknown_prompt")
+                sh.press("left", 0.8)
+                sh.press("cross", 3.0)
+                quiet = 0
+            time.sleep(1.0)
+    sh.wait_for("eula", 30)
+    sh.shot("08_eula")
+    sh.press_until_gone("cross", "eula")                         # ACCEPT
+    sh.wait_for("lobby_news", 60)
+    sh.shot("09_lobby")
+    sh.press_until_gone("cross", "lobby_news")                   # close SERVER NEWS
+    time.sleep(2.0)
+    sh.shot("09_lobby_no_news")
+
+
+def to_briefing_room(sh):
+    sh.press("down", 2.0)
+    sh.press("cross", 3.0)                                       # BRIEFING ROOMS
+    sh.wait_for("rooms", 30)
+    sh.shot("10_rooms")
+    sh.press_until_gone("cross", "rooms", wait=5.0)              # join Channel 1
+    sh.wait_for("briefing_room", 40)
+    sh.shot("11_briefing_room")
+
+
+def host_game(sh, game_name="test"):
+    sh.press("up", 2.0)
+    sh.press("cross", 6.0)                                       # CREATE GAME
+    sh.shot("12_create_game")
+    sh.press("cross", 5.0)                                       # game name keyboard
+    sh.type(game_name)
+    sh.shot("13_game_name")
+    sh.press("up", 2.5)
+    sh.press("cross", 6.0)                                       # CHOOSE GAMES
+    sh.shot("14_choose_games")
+    sh.press("cross", 4.0)                                       # Medley
+    sh.press("square", 5.0)                                      # ACCEPT PLAY LIST
+    sh.shot("15_play_list")
+    sh.press("square", 25.0)                                     # CREATE GAME (DME world)
+    sh.shot("16_game_lobby")
+    sh.press("cross", 4.0)                                       # CONTINUE on the 30 s notice
+    sh.shot("17_game_lobby_ok")
+
+
+def join_game(sh):
+    sh.press("cross", 8.0)                                       # JOIN GAME activates the list
+    sh.shot("12_games_list")
+    sh.press("cross", 25.0)                                      # first game
+    sh.shot("16_game_lobby")
+    sh.press("cross", 3.0)                                       # CONTINUE
+    sh.shot("17_game_lobby_ok")
+    sh.press("down", 1.0)
+    sh.press("cross", 4.0)                                       # SWITCH TEAMS
+    sh.shot("18_switched")
+
+
+def ready(sh):
+    sh.press("down", 1.0)                                        # menu: ARMORY, SWITCH TEAMS, READY
+    sh.press("down", 1.0)
+    sh.press("cross", 3.0)
+    sh.shot("19_ready")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--name", default="socomc")
@@ -97,122 +270,20 @@ def main():
     ap.add_argument("--hold", type=int, default=30)
     ap.add_argument("--existing", action="store_true", help="the persona is already on the memory card")
     ap.add_argument("--host", action="store_true", help="after the briefing room: CREATE GAME (Medley)")
+    ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
+    if not a.instance and subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
         raise SystemExit("socom2.exe is already running; refusing to start a second game instance")
-    proc = drive.launch(T, a.seconds)
-    t0 = time.time()
-    hwnd = None
-    while hwnd is None and time.time() - t0 < 60:
-        hwnd = winshot.find_window(keys.WINDOW_TITLES[T])
-        time.sleep(0.5)
-    if hwnd is None:
-        proc.terminate()
-        raise SystemExit("game window not found")
-    last = None
-    while last is None and time.time() - t0 < 60:
-        try:
-            last = drive.frame(hwnd)
-        except RuntimeError:
-            time.sleep(0.5)
-    sh = Shell(hwnd, a.out, t0)
+    proc, title = launch(a.seconds, a.instance or None)
     try:
-        # Boot: CROSS through the boot screens until the main menu (five or six presses).
-        for i in range(9):
-            drive.wait_stable(hwnd, 1.5, 40.0, changed_from=last)
-            time.sleep(1.0)
-            if sh.is_screen("main_menu", 90.0):
-                sh.log(f"main menu after {i} presses")
-                break
-            last = drive.frame(hwnd)
-            sh.press("cross")
-            sh.log(f"boot press {i}")
-            for _ in range(12):
-                time.sleep(1.0)
-                if sh.is_screen("main_menu", 90.0):
-                    break
-        else:
-            raise SystemExit("main menu not reached")
-        time.sleep(3.0)
-        sh.press("down", 1.5)
-        sh.press("cross", 3.0)                                   # ONLINE
-        sh.wait_for("login", 40)
-        sh.shot("00_login")
-        sh.press_until_gone("cross", "login")                    # LOGIN
-        sh.wait_for("universe", 60)
-        sh.shot("01_universe")
-        sh.press_until_gone("cross", "universe")                 # connect to the universe
-        sh.wait_for("persona", 60)
-        sh.shot("02_persona")
-        sh.press("cross", 4.0)                                   # persona list
-        if a.existing:
-            sh.press("cross", 4.0)                               # saved persona -> password keyboard opens
-            sh.shot("03_name")
-            sh.shot("04_pw_kbd")
-        else:
-            sh.press("cross", 4.0)                               # <New Persona> -> name keyboard
-            sh.type(a.name, a.out, "name")
-            sh.shot("03_name")
-            sh.press("down", 1.0)
-            sh.press("cross", 4.0)
-            sh.shot("04_pw_kbd")
-        sh.type(a.password)
-        sh.shot("05_password")
-        for _ in range(4):                                       # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
-            sh.press("down", 0.8)
-        sh.shot("06_connect_focus")
-        sh.press("cross", 5.0)
-        sh.shot("07_after_connect")
-        # Prompts between CONNECT and the EULA vary (write-down notice, save to card?, slot,
-        # overwrite?): answer whichever is on screen until the EULA shows.
-        t = time.time(); seen = set(); quiet = 0
-        while time.time() - t < 120 and not sh.is_screen("eula"):
-            for name, presses in (("write_down", ["cross"]), ("save_card", ["cross"]), ("card_slot", ["cross"])):
-                if sh.is_screen(name):
-                    sh.log(f"prompt {name}"); sh.shot(f"07_{name}"); seen.add(name); quiet = 0
-                    for b in presses:
-                        sh.press(b, 3.0)
-                    break
-            else:
-                quiet += 1
-                if "card_slot" in seen and quiet == 8:          # an unrecognised prompt (overwrite?): YES
-                    sh.log("unrecognised prompt after the slot -> LEFT, CROSS"); sh.shot("07_unknown_prompt")
-                    sh.press("left", 0.8); sh.press("cross", 3.0); quiet = 0
-                time.sleep(1.0)
-        sh.wait_for("eula", 30)
-        sh.shot("08_eula")
-        sh.press_until_gone("cross", "eula")                     # ACCEPT
-        sh.wait_for("lobby_news", 60)
-        sh.shot("09_lobby")
-        sh.press_until_gone("cross", "lobby_news")               # close SERVER NEWS
-        time.sleep(2.0)
-        sh.shot("09_lobby_no_news")
+        sh = attach(proc, title, a.out)
+        boot_to_online(sh)
+        login(sh, a.name, a.password, a.existing)
         if a.host:
-            sh.press("down", 2.0)
-            sh.press("cross", 3.0)                               # BRIEFING ROOMS
-            sh.wait_for("rooms", 30)
-            sh.shot("10_rooms")
-            sh.press_until_gone("cross", "rooms", wait=5.0)      # join Channel 1
-            sh.wait_for("briefing_room", 40)
-            sh.shot("11_briefing_room")
-            sh.press("up", 2.0)
-            sh.press("cross", 6.0)                               # CREATE GAME
-            sh.shot("12_create_game")
-            sh.press("cross", 5.0)                               # game name keyboard
-            sh.type("test")
-            sh.shot("13_game_name")
-            sh.press("up", 2.5)
-            sh.press("cross", 6.0)                               # CHOOSE GAMES
-            sh.shot("14_choose_games")
-            sh.press("cross", 4.0)                               # Medley
-            sh.press("square", 5.0)                              # ACCEPT PLAY LIST
-            sh.shot("15_play_list")
-            sh.press("square", 25.0)                             # CREATE GAME (DME world)
-            sh.shot("16_game_lobby")
-            sh.press("cross", 4.0)                               # CONTINUE on the 30 s notice
-            sh.shot("17_game_lobby_ok")
+            to_briefing_room(sh)
+            host_game(sh)
         for n, step in enumerate(a.then.split(",") if a.then else []):
             b, w = (step.split(":") + ["2"])[:2]
             if b == "type":

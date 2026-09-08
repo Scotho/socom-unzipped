@@ -1,0 +1,99 @@
+"""Two instances of OUR exe play a match on the local Horizon stack: A logs in and hosts a game
+(Medley), B logs in, joins it and switches team, both press READY -> the match launches
+(mirrors online_match.py, the PCSX2 two-client reference). Screens land in --out as A_*/B_*.
+
+Instance B runs with its own window title, memory card dir (game/disc/mc0_b) and UDP port shift
+(see online_login_ours.INSTANCES). Personas: A = --name-a (default socomc, saved on mc0),
+B = --name-b (default socome; created on first use unless --existing-b).
+
+Usage: python -m tools_py.parity.online_match_ours [--hold 120] [--out logs/parity/ours_match]
+"""
+import argparse
+import os
+import subprocess
+import threading
+import time
+
+from . import online_login_ours as L
+
+
+class Client:
+    def __init__(self, tag, out, name, existing, seconds):
+        self.tag, self.out, self.name, self.existing, self.seconds = tag, out, name, existing, seconds
+        self.proc = self.sh = None
+        self.error = None
+
+    def launch(self):
+        self.proc, self.title = L.launch(self.seconds, self.tag)
+
+    def login(self):
+        try:
+            self.sh = L.attach(self.proc, self.title, self.out, self.tag + "_")
+            L.boot_to_online(self.sh)
+            L.login(self.sh, self.name, "socom", self.existing)
+            L.to_briefing_room(self.sh)
+        except BaseException as e:      # noqa: BLE001 - surfaced by the caller
+            self.error = e
+
+    def kill(self):
+        if self.proc:
+            self.proc.kill()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--hold", type=int, default=120)
+    ap.add_argument("--out", default="logs/parity/ours_match")
+    ap.add_argument("--seconds", type=int, default=700)
+    ap.add_argument("--name-a", default="socomc")
+    ap.add_argument("--name-b", default="socome")
+    ap.add_argument("--existing-b", action="store_true")
+    ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
+    a = ap.parse_args()
+    os.makedirs(a.out, exist_ok=True)
+    if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
+        raise SystemExit("socom2.exe is already running")
+    A = Client("A", a.out, a.name_a, True, a.seconds)
+    B = Client("B", a.out, a.name_b, a.existing_b, a.seconds)
+    if a.only:
+        c = A if a.only == "A" else B
+        try:
+            c.launch()
+            c.login()
+            if c.error:
+                raise c.error
+            c.sh.shot("done")
+        finally:
+            c.kill()
+        return
+    try:
+        A.launch()
+        time.sleep(6)
+        B.launch()
+        tA = threading.Thread(target=A.login)
+        tB = threading.Thread(target=B.login)
+        tA.start()
+        time.sleep(5)
+        tB.start()
+        tA.join()
+        tB.join()
+        for c in (A, B):
+            if c.error:
+                raise c.error
+        L.host_game(A.sh)
+        L.join_game(B.sh)
+        time.sleep(35)                                           # READY becomes available
+        L.ready(A.sh)
+        L.ready(B.sh)
+        for i in range(a.hold // 10):
+            time.sleep(10)
+            A.sh.shot(f"hold{i:02d}")
+            B.sh.shot(f"hold{i:02d}")
+    finally:
+        A.kill()
+        B.kill()
+        subprocess.run(["taskkill", "/F", "/IM", "socom2.exe"], capture_output=True)
+
+
+if __name__ == "__main__":
+    main()
