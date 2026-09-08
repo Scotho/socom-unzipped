@@ -680,6 +680,12 @@ long GSGlBackend::traceSkip(const char *env) const
     const char *e = std::getenv(env);
     if (!e)
         return -1;
+    if (e[0] == 't')   // "t<seconds>": host-time trigger (any frame once that much time has passed)
+    {
+        static const auto s_epoch = std::chrono::steady_clock::now();
+        const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count();
+        return elapsed >= std::atof(e + 1) ? 0L : 0x7FFFFFF0L;
+    }
     const long v = std::strtol(e, nullptr, 0);
     if (v >= 0)
         return v;
@@ -744,7 +750,18 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             switch (cmd.type)
             {
             case CmdType::Submit:
-                std::fprintf(stderr, "[gs-cmd] submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
+            {
+                float xmin = 1e30f, xmax = -1e30f, ymin = 1e30f, ymax = -1e30f;
+                double zmin = 1e300, zmax = -1e300;
+                for (const GSVertex &v : cmd.batch.vertices)
+                {
+                    xmin = std::min(xmin, v.x); xmax = std::max(xmax, v.x);
+                    ymin = std::min(ymin, v.y); ymax = std::max(ymax, v.y);
+                    zmin = std::min(zmin, v.z); zmax = std::max(zmax, v.z);
+                }
+                std::fprintf(stderr, "[gs-cmd] n=%u x=[%.0f..%.0f] y=[%.0f..%.0f] z=[%.0f..%.0f] ", (unsigned)cmd.batch.vertices.size(),
+                             xmin, xmax, ymin, ymax, zmin, zmax);
+                std::fprintf(stderr, "submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
                              cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.prim.fst ? 1u : 0u,
                              (double)cmd.batch.vertices[1].q, cmd.batch.state.context.tex0.tbp0,
                              cmd.batch.state.context.tex0.psm, cmd.batch.state.context.tex0.cbp, cmd.batch.state.context.tex0.cpsm,
@@ -755,6 +772,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                              cmd.batch.vertices[1].x, cmd.batch.vertices[1].y,
                              cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, 10);
                 break;
+            }
             case CmdType::BeginTransfer:
                 std::fprintf(stderr, "[gs-cmd] transfer dir=%u sbp=%05x spsm=%02x -> dbp=%05x dpsm=%02x dbw=%u at (%u,%u) %ux%u%c",
                              cmd.transfer.direction, cmd.transfer.bitbltbuf.sbp, cmd.transfer.bitbltbuf.spsm, cmd.transfer.bitbltbuf.dbp,

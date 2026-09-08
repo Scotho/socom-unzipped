@@ -74,6 +74,8 @@ VU1Interpreter::VU1Interpreter(Unit unit)
 
 void VU1Interpreter::resetScheduler()
 {
+    m_nextReadyCycle = ~0ull;
+    m_maxReadyCycle = 0;
     m_flagPipeline = {};
     m_fdiv = {};
     m_efu = {};
@@ -541,6 +543,7 @@ void VU1Interpreter::updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest,
     entry->valid = true;
     entry->issueCycle = m_cycle;
     entry->readyCycle = m_cycle + kFmacLatency;
+    noteQueued(entry->readyCycle);
     entry->mac = mac;
     entry->status = status;
     entry->extraSticky = extraSticky;
@@ -580,6 +583,7 @@ void VU1Interpreter::queueFsset(uint16_t immediate)
             entry.valid = true;
             entry.issueCycle = m_cycle;
             entry.readyCycle = m_cycle + kFmacLatency;
+            noteQueued(entry.readyCycle);
             entry.status = static_cast<uint32_t>(immediate) & 0xFC0u;
             entry.writesSticky = true;
             return;
@@ -599,6 +603,7 @@ void VU1Interpreter::queueClip(uint32_t clip)
             entry.valid = true;
             entry.issueCycle = m_cycle;
             entry.readyCycle = m_cycle + kFmacLatency;
+            noteQueued(entry.readyCycle);
             entry.clip = m_workingClip;
             entry.writesClip = true;
             return;
@@ -623,6 +628,7 @@ void VU1Interpreter::queueFcset(uint32_t clip)
             entry.valid = true;
             entry.issueCycle = m_cycle;
             entry.readyCycle = m_cycle + kFmacLatency;
+            noteQueued(entry.readyCycle);
             entry.clip = m_workingClip;
             entry.writesClip = true;
             return;
@@ -637,6 +643,8 @@ void VU1Interpreter::queueQ(float value, uint32_t latency, uint32_t statusDi)
     value = normalizeResult(value, ignoredFlags);
     m_fdiv.valid = true;
     m_fdiv.readyCycle = m_cycle + latency;
+    noteQueued(m_fdiv.readyCycle);
+    noteReady(m_fdiv.readyCycle);
     m_fdiv.value = value;
     m_fdiv.statusDi = statusDi & 0x30u;
 }
@@ -651,9 +659,11 @@ void VU1Interpreter::queueP(float value, uint32_t latency)
         {
             entry.valid = true;
             entry.readyCycle = m_cycle + latency;
+            noteQueued(entry.readyCycle);
             entry.value = value;
             // EFU throughput is one cycle shorter than result visibility.
             m_efuResourceReady = m_cycle + (latency > 0u ? latency - 1u : 0u);
+            noteReady(entry.readyCycle);
             return;
         }
     }
@@ -668,6 +678,7 @@ void VU1Interpreter::queueStore(uint32_t address, const uint32_t words[4], uint8
         {
             store.valid = true;
             store.readyCycle = m_cycle + 1u;
+            noteQueued(store.readyCycle);
             store.address = address;
             store.laneMask = laneMask;
             std::copy(words, words + 4, store.words.begin());
@@ -689,6 +700,7 @@ void VU1Interpreter::queueVfWrite(uint8_t reg, uint8_t laneMask,
             write = {};
             write.valid = true;
             write.readyCycle = m_cycle + latency;
+            noteQueued(write.readyCycle);
             write.sequence = ++m_nextWriteSequence;
             write.reg = reg;
             write.laneMask = laneMask;
@@ -715,6 +727,7 @@ void VU1Interpreter::queueViWrite(uint8_t reg, int32_t value, uint32_t latency)
             write = {};
             write.valid = true;
             write.readyCycle = m_cycle + latency;
+            noteQueued(write.readyCycle);
             write.sequence = ++m_nextWriteSequence;
             write.reg = reg;
             write.value = value;
@@ -736,6 +749,7 @@ void VU1Interpreter::queueAccWrite(uint8_t laneMask, const float value[4], uint3
             write = {};
             write.valid = true;
             write.readyCycle = m_cycle + latency;
+            noteQueued(write.readyCycle);
             write.sequence = ++m_nextWriteSequence;
             write.laneMask = laneMask;
             std::copy(value, value + 4, write.value.begin());
@@ -752,10 +766,23 @@ void VU1Interpreter::queueAccWrite(uint8_t laneMask, const float value[4], uint3
 
 void VU1Interpreter::commitReadyPipelines()
 {
+    if (m_cycle < m_nextReadyCycle)
+        return;
+    uint64_t next = ~0ull;
+    const auto pending = [&next](uint64_t ready)
+    {
+        if (ready < next)
+            next = ready;
+    };
     for (FlagPipelineEntry &entry : m_flagPipeline)
     {
-        if (!entry.valid || entry.readyCycle > m_cycle)
+        if (!entry.valid)
             continue;
+        if (entry.readyCycle > m_cycle)
+        {
+            pending(entry.readyCycle);
+            continue;
+        }
 
         if (entry.writesMac)
             m_state.mac = entry.mac;
@@ -773,6 +800,8 @@ void VU1Interpreter::commitReadyPipelines()
         entry = {};
     }
 
+    if (m_fdiv.valid && m_fdiv.readyCycle > m_cycle)
+        pending(m_fdiv.readyCycle);
     if (m_fdiv.valid && m_fdiv.readyCycle <= m_cycle)
     {
         m_state.q = m_fdiv.value;
@@ -783,17 +812,26 @@ void VU1Interpreter::commitReadyPipelines()
 
     for (ScalarPipelineEntry &entry : m_efu)
     {
-        if (entry.valid && entry.readyCycle <= m_cycle)
+        if (!entry.valid)
+            continue;
+        if (entry.readyCycle > m_cycle)
         {
-            m_state.p = entry.value;
-            entry = {};
+            pending(entry.readyCycle);
+            continue;
         }
+        m_state.p = entry.value;
+        entry = {};
     }
 
     for (PendingStore &store : m_storePipeline)
     {
-        if (!store.valid || store.readyCycle > m_cycle)
+        if (!store.valid)
             continue;
+        if (store.readyCycle > m_cycle)
+        {
+            pending(store.readyCycle);
+            continue;
+        }
         if (m_activeVuData && store.address + 16u <= m_activeVuDataSize)
         {
             uint32_t oldWords[4]{};
@@ -810,8 +848,13 @@ void VU1Interpreter::commitReadyPipelines()
 
     for (PendingVfWrite &write : m_vfWritePipeline)
     {
-        if (!write.valid || write.readyCycle > m_cycle)
+        if (!write.valid)
             continue;
+        if (write.readyCycle > m_cycle)
+        {
+            pending(write.readyCycle);
+            continue;
+        }
         for (uint32_t component = 0; component < 4u; ++component)
         {
             if ((write.laneMask & laneForComponent(component)) != 0u &&
@@ -825,8 +868,13 @@ void VU1Interpreter::commitReadyPipelines()
 
     for (PendingViWrite &write : m_viWritePipeline)
     {
-        if (!write.valid || write.readyCycle > m_cycle)
+        if (!write.valid)
             continue;
+        if (write.readyCycle > m_cycle)
+        {
+            pending(write.readyCycle);
+            continue;
+        }
         if (m_viLatestWrite[write.reg] == write.sequence)
             m_state.vi[write.reg] = static_cast<int16_t>(write.value);
         write = {};
@@ -834,8 +882,13 @@ void VU1Interpreter::commitReadyPipelines()
 
     for (PendingAccWrite &write : m_accWritePipeline)
     {
-        if (!write.valid || write.readyCycle > m_cycle)
+        if (!write.valid)
             continue;
+        if (write.readyCycle > m_cycle)
+        {
+            pending(write.readyCycle);
+            continue;
+        }
         for (uint32_t component = 0; component < 4u; ++component)
         {
             if ((write.laneMask & laneForComponent(component)) != 0u &&
@@ -846,6 +899,7 @@ void VU1Interpreter::commitReadyPipelines()
         }
         write = {};
     }
+    m_nextReadyCycle = next;
 }
 
 // First XGKICK overrun: print the program state and save VU1 data memory (vu1_overrun_data.bin)
@@ -888,10 +942,13 @@ void VU1Interpreter::progressXgkick()
         }
 
         const uint32_t qwordOffset = m_xgkick.copiedBytes;
-        for (uint32_t i = 0; i < 16u; ++i)
         {
-            const uint32_t source = (m_xgkick.sourceAddress + m_xgkick.copiedBytes + i) % m_activeVuDataSize;
-            m_xgkick.packet[m_xgkick.copiedBytes + i] = m_activeVuData[source];
+            const uint32_t source = (m_xgkick.sourceAddress + m_xgkick.copiedBytes) % m_activeVuDataSize;
+            if (source + 16u <= m_activeVuDataSize)
+                std::memcpy(m_xgkick.packet.data() + m_xgkick.copiedBytes, m_activeVuData + source, 16u);
+            else
+                for (uint32_t i = 0; i < 16u; ++i)
+                    m_xgkick.packet[m_xgkick.copiedBytes + i] = m_activeVuData[(source + i) % m_activeVuDataSize];
         }
         m_xgkick.copiedBytes += 16u;
 
@@ -1027,31 +1084,44 @@ void VU1Interpreter::flushPipelines()
 uint64_t VU1Interpreter::calculatePairReadyCycle(const DecodedInstructionPair &decoded) const
 {
     uint64_t ready = m_cycle;
+    if (decoded.lowerUsage.pipeline == PipelineXgkick && m_xgkick.active)
+        ready = m_cycle + 1u;
+    // Every pending result has landed: nothing below can raise `ready`.
+    if (m_cycle >= m_maxReadyCycle)
+        return ready;
+
     const InstructionUsage *usages[2] = {
         &decoded.upperUsage,
         &decoded.lowerUsage};
     for (const InstructionUsage *usage : usages)
     {
-        if (!usage)
-            continue;
         for (uint32_t index = 0; index < usage->vfReadCount; ++index)
         {
             const VfAccess &access = usage->vfRead[index];
+            const uint64_t *readyLanes = m_vfReady[access.reg].data();
+            if (access.lanes & 0x8u)
+                ready = std::max(ready, readyLanes[0]);
+            if (access.lanes & 0x4u)
+                ready = std::max(ready, readyLanes[1]);
+            if (access.lanes & 0x2u)
+                ready = std::max(ready, readyLanes[2]);
+            if (access.lanes & 0x1u)
+                ready = std::max(ready, readyLanes[3]);
+        }
+        uint32_t viMask = usage->viRead & 0xFFFEu;
+        while (viMask != 0u)
+        {
+            const uint32_t reg = static_cast<uint32_t>(__builtin_ctz(viMask));
+            ready = std::max(ready, m_viReady[reg]);
+            viMask &= viMask - 1u;
+        }
+        if (usage->accRead != 0u)
+        {
             for (uint32_t component = 0; component < 4u; ++component)
             {
-                if ((access.lanes & laneForComponent(component)) != 0u)
-                    ready = std::max(ready, m_vfReady[access.reg][component]);
+                if ((usage->accRead & laneForComponent(component)) != 0u)
+                    ready = std::max(ready, m_accReady[component]);
             }
-        }
-        for (uint32_t reg = 1; reg < m_viReady.size(); ++reg)
-        {
-            if ((usage->viRead & (1u << reg)) != 0u)
-                ready = std::max(ready, m_viReady[reg]);
-        }
-        for (uint32_t component = 0; component < 4u; ++component)
-        {
-            if ((usage->accRead & laneForComponent(component)) != 0u)
-                ready = std::max(ready, m_accReady[component]);
         }
     }
 
@@ -1067,8 +1137,6 @@ uint64_t VU1Interpreter::calculatePairReadyCycle(const DecodedInstructionPair &d
             if (entry.valid)
                 ready = std::max(ready, entry.readyCycle);
     }
-    if (decoded.lowerUsage.pipeline == PipelineXgkick && m_xgkick.active)
-        ready = std::max(ready, m_cycle + 1u);
     return ready;
 }
 
@@ -1086,6 +1154,7 @@ void VU1Interpreter::markPairWrites(const DecodedInstructionPair &decoded)
             if ((lowerWrite.lanes & laneForComponent(component)) != 0u)
                 m_vfReady[lowerWrite.reg][component] = m_cycle + latency;
         }
+        noteReady(m_cycle + latency);
     }
 
     const VfAccess upperWrite = decoded.upperUsage.vfWrite;
@@ -1099,17 +1168,24 @@ void VU1Interpreter::markPairWrites(const DecodedInstructionPair &decoded)
             if ((upperWrite.lanes & laneForComponent(component)) != 0u)
                 m_vfReady[upperWrite.reg][component] = m_cycle + latency;
         }
+        noteReady(m_cycle + latency);
     }
 
     for (uint32_t reg = 1; reg < m_viReady.size(); ++reg)
     {
         if ((decoded.lowerUsage.viWrite & (1u << reg)) != 0u)
+        {
             m_viReady[reg] = m_cycle + (decoded.lowerUsage.viLatency != 0u ? decoded.lowerUsage.viLatency : decoded.lowerUsage.latency);
+            noteReady(m_viReady[reg]);
+        }
     }
     for (uint32_t component = 0; component < 4u; ++component)
     {
         if ((decoded.upperUsage.accWrite & laneForComponent(component)) != 0u)
+        {
             m_accReady[component] = m_cycle + kAccForwardLatency;
+            noteReady(m_accReady[component]);
+        }
     }
 }
 
@@ -1583,17 +1659,17 @@ void VU1Interpreter::rebuildDecodedCodeCache(const uint8_t *vuCode, uint32_t cod
     m_decodedCodeCacheValid = true;
 }
 
-VU1Interpreter::DecodedInstructionPair VU1Interpreter::getDecodedInstructionPairForPc(
+const VU1Interpreter::DecodedInstructionPair &VU1Interpreter::getDecodedInstructionPairForPc(
     const uint8_t *vuCode, uint32_t codeSize, PS2Memory *memory, uint32_t pc)
 {
     if ((pc & 7u) != 0u)
-        return decodeInstructionPair(vuCode, pc);
+        return m_uncachedDecoded = decodeInstructionPair(vuCode, pc);
 
     const bool trackedVu1Code = memory != nullptr &&
                                 ((m_unit == Unit::VU1 && vuCode == memory->getVU1Code()) ||
                                  (m_unit == Unit::VU0 && vuCode == memory->getVU0Code()));
     if (!trackedVu1Code)
-        return decodeInstructionPair(vuCode, pc);
+        return m_uncachedDecoded = decodeInstructionPair(vuCode, pc);
 
     const uint64_t generation = m_unit == Unit::VU1 ? memory->getVU1CodeGeneration() : memory->getVU0CodeGeneration();
     if (!m_decodedCodeCacheValid ||
@@ -1606,7 +1682,7 @@ VU1Interpreter::DecodedInstructionPair VU1Interpreter::getDecodedInstructionPair
     }
     const uint32_t pairIndex = pc / 8u;
     if (pairIndex >= kMaxDecodedPairs)
-        return decodeInstructionPair(vuCode, pc);
+        return m_uncachedDecoded = decodeInstructionPair(vuCode, pc);
     return m_decodedCodeCache[pairIndex];
 }
 
@@ -1775,7 +1851,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         if (m_state.pc + 8u > codeSize)
             break;
 
-        const DecodedInstructionPair decoded = getDecodedInstructionPairForPc(vuCode, codeSize, memory, m_state.pc);
+        const DecodedInstructionPair &decoded = getDecodedInstructionPairForPc(vuCode, codeSize, memory, m_state.pc);
         if (decoded.upperUsage.reserved || decoded.lowerUsage.reserved)
         {
             reportReservedInstruction(decoded.upperUsage.reserved, decoded.upperUsage.reserved ? decoded.upper : decoded.lower);

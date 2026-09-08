@@ -250,7 +250,17 @@ private:
     static void addVfWrite(InstructionUsage &usage, uint8_t reg, uint8_t lanes);
     static uint8_t vfReadLanes(const InstructionUsage &usage, uint8_t reg);
     DecodedInstructionPair decodeInstructionPair(const uint8_t *vuCode, uint32_t pc) const;
-    DecodedInstructionPair getDecodedInstructionPairForPc(const uint8_t *vuCode, uint32_t codeSize, PS2Memory *memory, uint32_t pc);
+    const DecodedInstructionPair &getDecodedInstructionPairForPc(const uint8_t *vuCode, uint32_t codeSize, PS2Memory *memory, uint32_t pc);
+    // Scratch slot for pairs that are not served from the decoded-code cache (odd pc, foreign code).
+    DecodedInstructionPair m_uncachedDecoded{};
+    // Earliest readyCycle of any queued pipeline entry (UINT64_MAX when none): commitReadyPipelines()
+    // returns immediately before that cycle instead of scanning every queue on every instruction.
+    uint64_t m_nextReadyCycle = ~0ull;
+    void noteQueued(uint64_t readyCycle) { if (readyCycle < m_nextReadyCycle) m_nextReadyCycle = readyCycle; }
+    // Latest cycle at which any operand (VF/VI/ACC/Q/P/EFU resource) becomes ready: once m_cycle reaches
+    // it, calculatePairReadyCycle() cannot stall and skips the operand scan.
+    uint64_t m_maxReadyCycle = 0;
+    void noteReady(uint64_t readyCycle) { if (readyCycle > m_maxReadyCycle) m_maxReadyCycle = readyCycle; }
     void rebuildDecodedCodeCache(const uint8_t *vuCode, uint32_t codeSize, const PS2Memory *memory, uint64_t generation);
 
     void execUpper(uint32_t instr);
