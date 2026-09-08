@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <string>
 #include "runtime/ee_scheduler.h"
+#include "runtime/ps2_guest_clock.h"
 
 #include "ps2_log.h"
 #include "ps2_runtime_macros.h"
@@ -407,7 +408,26 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
         const auto now = std::chrono::steady_clock::now();
         if (m_lastAccountHost != std::chrono::steady_clock::time_point{})
         {
-            const int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastAccountHost).count();
+            int64_t ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_lastAccountHost).count();
+            // Guest time only advances while the EE is being emulated. A long gap between two
+            // accounting calls means the game thread was stalled inside a runtime service (the
+            // VU1 interpreter runs inside the DMA kick; the render thread; disk) — an emulator
+            // slows the whole machine down then, it does not let the guest observe the stall.
+            // SOCOM II measures its frame time on timer T0 between flips and integrates the camera
+            // spring with it: at 3 flips/s in the mission it saw dt = 300 ms and the camera position
+            // diverged to +/-FLT_MAX. The VU1 interpreter reports its host time through
+            // ps2GuestClockExcludedNs() and it is subtracted here (it runs in ~1000-cycle slices,
+            // so a per-gap cap never sees it). PS2X_CLOCK_CAP_MS=<ms> additionally caps a single
+            // gap (default off; a vsync idle wait is a legitimate 16 ms gap).
+            const int64_t excluded = ps2GuestClockExcludedNs().exchange(0, std::memory_order_relaxed);
+            ns -= excluded;
+            static const int64_t s_capNs = [] {
+                const char *e = std::getenv("PS2X_CLOCK_CAP_MS");
+                const double ms = e ? std::atof(e) : 0.0;
+                return ms > 0.0 ? static_cast<int64_t>(ms * 1000000.0) : 0;
+            }();
+            if (s_capNs > 0 && ns > s_capNs)
+                ns = s_capNs;
             if (ns > 0)
             {
                 const uint64_t uns = static_cast<uint64_t>(ns);

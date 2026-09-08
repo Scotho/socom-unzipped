@@ -20,6 +20,7 @@
 #include <fstream>
 #include <vector>
 #include <thread>
+#include <unordered_map>
 #ifdef _WIN32
 #include <windows.h>
 #endif
@@ -530,11 +531,11 @@ namespace
         const char *env = std::getenv("PS2X_PC_SAMPLER");
         if (!env || !*env)
             return;
-        const int period = std::max(1, std::atoi(env));
+        const double period = std::max(0.01, std::atof(env));   // fractional seconds allowed (0.05 = 20 Hz profile)
         std::thread([&runtime, period]() {
             for (;;)
             {
-                std::this_thread::sleep_for(std::chrono::seconds(period));
+                std::this_thread::sleep_for(std::chrono::duration<double>(period));
                 const R5900Context *c = &runtime.cpu();
                 std::ostringstream o;
                 o << "[pc-sampler] live pc=0x" << std::hex << c->pc << " ra=0x" << GPR_U32(c, 31)
@@ -566,7 +567,32 @@ namespace
                             words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
                             item = item.substr(0, colon);
                         }
-                        const uint32_t addr = static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
+                        // "*0xADDR+0xOFF": follow the pointer stored at ADDR, then add OFF (heap objects
+                        // reached through a static slot, e.g. the mission camera at *(0x4887c0+0x628)).
+                        bool deref = false;
+                        if (!item.empty() && item[0] == '*')
+                        {
+                            deref = true;
+                            item.erase(0, 1);
+                        }
+                        uint32_t offset = 0;
+                        const size_t plus = item.find('+');
+                        if (plus != std::string::npos)
+                        {
+                            offset = static_cast<uint32_t>(std::strtoul(item.c_str() + plus + 1, nullptr, 0));
+                            item = item.substr(0, plus);
+                        }
+                        uint32_t addr = static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0));
+                        if (deref)
+                        {
+                            const uint8_t *pp = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
+                            if (!pp)
+                                continue;
+                            std::memcpy(&addr, pp, sizeof(addr));
+                            if (addr == 0u)
+                                continue;
+                        }
+                        addr += offset;
                         const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), addr & PS2_RAM_MASK);
                         if (!p)
                             continue;
@@ -918,3 +944,79 @@ namespace
 }
 
 PS2_REGISTER_GAME_OVERRIDE("socom2-us", "socom2_game.elf", 0x00180008u, 0u, applySocom2)
+
+// PS2X_HOST_PROF=<ms>: sample the game thread's host instruction pointer every <ms> (SuspendThread +
+// GetThreadContext) and write the histogram to PS2X_HOST_PROF_OUT (default logs/hostprof.txt) every
+// 10 s: "rva count" lines, RVA relative to the exe's load address, plus the load address itself.
+// Symbolize offline with tools_py/hostprof_symbolize.py (llvm-nm on dist/socom2.exe). Guest-level
+// samplers only say which recompiled function is hot; this says which *host* code is hot inside it.
+void ps2HostProfStart(void *nativeHandle)
+{
+    const char *env = std::getenv("PS2X_HOST_PROF");
+    if (!env || !*env)
+        return;
+    const double periodMs = std::max(0.2, std::atof(env));
+    const char *outEnv = std::getenv("PS2X_HOST_PROF_OUT");
+    const std::string outPath = outEnv && *outEnv ? outEnv : "logs/hostprof.txt";
+    HANDLE dup = nullptr;
+    if (!DuplicateHandle(GetCurrentProcess(), static_cast<HANDLE>(nativeHandle), GetCurrentProcess(), &dup,
+                         THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0))
+    {
+        std::cerr << "[host-prof] DuplicateHandle failed: " << GetLastError() << std::endl;
+        return;
+    }
+    const uint64_t base = reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
+    std::cout << "[host-prof] sampling every " << periodMs << " ms -> " << outPath << " (base 0x" << std::hex << base << std::dec << ")" << std::endl;
+    std::thread([dup, periodMs, outPath, base]() {
+        std::unordered_map<uint64_t, uint32_t> counts;
+        uint64_t total = 0, suspendFail = 0;
+        auto lastDump = std::chrono::steady_clock::now();
+        for (;;)
+        {
+            std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(periodMs));
+            if (SuspendThread(dup) == static_cast<DWORD>(-1))
+            {
+                if (++suspendFail > 100)
+                    break;
+                continue;
+            }
+            CONTEXT c;
+            std::memset(&c, 0, sizeof(c));
+            c.ContextFlags = CONTEXT_CONTROL;
+            uint64_t rip = 0;
+            if (GetThreadContext(dup, &c))
+                rip = c.Rip;
+            ResumeThread(dup);
+            if (rip)
+            {
+                ++counts[rip];
+                ++total;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            if (now - lastDump >= std::chrono::seconds(10))
+            {
+                lastDump = now;
+                std::vector<std::pair<uint64_t, uint32_t>> v(counts.begin(), counts.end());
+                std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+                std::ofstream f(outPath + ".tmp", std::ios::trunc);
+                f << "base 0x" << std::hex << base << std::dec << " total " << total << "\n";
+                size_t n = 0;
+                for (const auto &kv : v)
+                {
+                    f << std::hex << (kv.first >= base ? kv.first - base : kv.first) << std::dec << " " << kv.second
+                      << (kv.first >= base ? "" : " ext") << "\n";
+                    if (++n >= 20000u)
+                        break;
+                }
+                f.close();
+                std::error_code ec;
+                std::filesystem::rename(outPath + ".tmp", outPath, ec);
+                if (ec)
+                {
+                    std::filesystem::remove(outPath, ec);
+                    std::filesystem::rename(outPath + ".tmp", outPath, ec);
+                }
+            }
+        }
+    }).detach();
+}

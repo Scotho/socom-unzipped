@@ -7,12 +7,14 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/gs/ps2_gif_arbiter.h"
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
+#include "runtime/ps2_guest_clock.h"
 #include "ps2_vu1_detail.h"
 
 #include <algorithm>
 #include <cfenv>
 #include <cmath>
 #include <cstdio>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -1764,6 +1766,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     const int previousRoundingMode = std::fegetround();
     const bool useVuRounding = std::fesetround(FE_TOWARDZERO) == 0;
     const uint64_t budgetEnd = m_cycle + maxCycles;
+    const uint64_t runStartCycle = m_cycle;
+    const auto runStart = std::chrono::steady_clock::now();
     bool programEnded = false;
     while (m_cycle < budgetEnd && !m_stopRequested)
     {
@@ -1984,4 +1988,36 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     m_state.cycles = m_cycle;
     if (useVuRounding && previousRoundingMode != -1)
         std::fesetround(previousRoundingMode);
+    // Guest time must not include the host time this interpreter took (see ps2GuestClockExcludedNs).
+    if (m_unit == Unit::VU1)
+    {
+        const auto runEnd = std::chrono::steady_clock::now();
+        ps2GuestClockExcludedNs().fetch_add(
+            std::chrono::duration_cast<std::chrono::nanoseconds>(runEnd - runStart).count(), std::memory_order_relaxed);
+    }
+    // PS2X_VU_STATS=1: once a second, VU1 programs / cycles executed and host time spent in run().
+    {
+        static const bool s_stats = std::getenv("PS2X_VU_STATS") != nullptr;
+        if (s_stats && m_unit == Unit::VU1)
+        {
+            static uint64_t s_programs = 0, s_cycles = 0;
+            static double s_hostMs = 0.0;
+            static auto s_last = std::chrono::steady_clock::now();
+            static auto s_runStart = std::chrono::steady_clock::now();
+            ++s_programs;
+            s_cycles += m_cycle - runStartCycle;
+            const auto now = std::chrono::steady_clock::now();
+            s_hostMs += std::chrono::duration<double, std::milli>(now - runStart).count();
+            if (now - s_last >= std::chrono::seconds(1))
+            {
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle)\n",
+                             (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
+                             s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0);
+                s_last = now;
+                s_programs = 0;
+                s_cycles = 0;
+                s_hostMs = 0.0;
+            }
+        }
+    }
 }

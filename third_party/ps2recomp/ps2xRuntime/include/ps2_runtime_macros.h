@@ -140,12 +140,32 @@ static inline uint32_t ps2_plzcw32(uint32_t x)
 #define PS2_PXOR(a, b) _mm_xor_si128((__m128i)(a), (__m128i)(b))
 #define PS2_PNOR(a, b) _mm_xor_si128(_mm_or_si128((__m128i)(a), (__m128i)(b)), _mm_set1_epi32(0xFFFFFFFF))
 
-// PS2 VU (Vector Unit) operations
-#define PS2_VADD(a, b) _mm_add_ps((__m128)(a), (__m128)(b))
-#define PS2_VSUB(a, b) _mm_sub_ps((__m128)(a), (__m128)(b))
-#define PS2_VMUL(a, b) _mm_mul_ps((__m128)(a), (__m128)(b))
-#define PS2_VDIV(a, b) _mm_div_ps((__m128)(a), (__m128)(b))
-#define PS2_VMULQ(a, q) _mm_mul_ps((__m128)(a), _mm_set1_ps(q))
+// PS2 VU (Vector Unit) operations.
+// Like the EE FPU, the VUs have no infinities/NaNs: exponent-255 values behave as +/-FLT_MAX and
+// denormals as +/-0, on inputs and results. Host SSE math is clamped the same way (PCSX2's
+// "VU clamping"), or a single overflow turns into NaN and poisons everything downstream.
+static inline __m128 ps2_vu_sat(__m128 v)
+{
+    const __m128i bits = _mm_castps_si128(v);
+    const __m128i expMask = _mm_set1_epi32(0x7F800000);
+    const __m128i exp = _mm_and_si128(bits, expMask);
+    const __m128i infNan = _mm_cmpeq_epi32(exp, expMask);
+    const __m128i denorm = _mm_cmpeq_epi32(exp, _mm_setzero_si128());
+    const __m128i sign = _mm_and_si128(bits, _mm_set1_epi32(static_cast<int>(0x80000000u)));
+    const __m128i maxv = _mm_or_si128(sign, _mm_set1_epi32(0x7F7FFFFF));
+    __m128i r = _mm_or_si128(_mm_andnot_si128(infNan, bits), _mm_and_si128(infNan, maxv));
+    r = _mm_or_si128(_mm_andnot_si128(denorm, r), _mm_and_si128(denorm, sign));
+    return _mm_castsi128_ps(r);
+}
+#define PS2_VADD(a, b) ps2_vu_sat(_mm_add_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
+#define PS2_VSUB(a, b) ps2_vu_sat(_mm_sub_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
+#define PS2_VMUL(a, b) ps2_vu_sat(_mm_mul_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
+#define PS2_VDIV(a, b) ps2_vu_sat(_mm_div_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
+#define PS2_VMULQ(a, q) ps2_vu_sat(_mm_mul_ps(ps2_vu_sat((__m128)(a)), _mm_set1_ps(ps2_fpu_sat(q))))
+// Q-register ops (VDIV / VSQRT / VRSQRT): a zero divisor gives +/-FLT_MAX, the roots take |x|.
+#define PS2_VDIVQ(fs, ft) ps2_fpu_div((float)(fs), (float)(ft))
+#define PS2_VSQRTQ(ft) ps2_fpu_sat(sqrtf(fabsf(ps2_fpu_sat((float)(ft)))))
+#define PS2_VRSQRTQ(fs, ft) ps2_fpu_div((float)(fs), sqrtf(fabsf(ps2_fpu_sat((float)(ft)))))
 #define PS2_VBLEND(a, b, mask) PS2_BLENDV_PS((__m128)(a), (__m128)(b), (__m128)(mask))
 
 // Memory access helpers - Hybrid Fast/Slow Path
@@ -421,6 +441,72 @@ static inline void Ps2FastWrite128(uint8_t *rdram, uint32_t addr, __m128i value)
         }                                                                            \
     } while (0)
 
+// Scratchpad (0x70000000, 16 KB) fast path. The scratchpad is a "special" address, so every
+// access went through runtime->Load/Store -> PS2Memory::read/write -> range checks + the DMAC
+// handler drain (a mutex and two vector swaps per store). SOCOM II builds all of its GS packets in
+// the scratchpad (FUN_00350950 / FUN_003b4580 / FUN_003643b0 ...), hundreds of thousands of
+// stores per frame: the mission ran at 3 flips/s, and the camera spring (dt from timer T0)
+// exploded. Accesses that stay inside the 16 KB touch the host buffer directly.
+static inline uint8_t *Ps2SprPtr(uint32_t addr, uint32_t size)
+{
+    const uint32_t off = (addr & 0x7FFFFFFFu) - PS2_SCRATCHPAD_BASE;
+    if (off < PS2_SCRATCHPAD_SIZE && off + size <= PS2_SCRATCHPAD_SIZE)
+    {
+        uint8_t *base = ps2GetScratchpadHostPtr();
+        return base ? base + off : nullptr;
+    }
+    return nullptr;
+}
+#define PS2_SPR_READ(T, addr, slowExpr) ([&]() -> T {                                     \
+    uint32_t _a = (uint32_t)(addr);                                                     \
+    if (const uint8_t *_spr = Ps2SprPtr(_a, (uint32_t)sizeof(T)))                       \
+    {                                                                                   \
+        T _v;                                                                           \
+        std::memcpy(&_v, _spr, sizeof(T));                                              \
+        return _v;                                                                      \
+    }                                                                                   \
+    return slowExpr(_a); }())
+#undef READ8
+#undef READ16
+#undef READ32
+#undef READ64
+#undef READ128
+#define PS2_READ8_SLOW(_addr) (PS2Runtime::isSpecialAddress(_addr) ? runtime->Load8(rdram, ctx, _addr) : FAST_READ8(_addr))
+#define PS2_READ16_SLOW(_addr) (PS2Runtime::isSpecialAddress(_addr) ? runtime->Load16(rdram, ctx, _addr) : FAST_READ16(_addr))
+#define PS2_READ32_SLOW(_addr) (PS2Runtime::isSpecialAddress(_addr) ? runtime->Load32(rdram, ctx, _addr) : FAST_READ32(_addr))
+#define PS2_READ64_SLOW(_addr) (PS2Runtime::isSpecialAddress(_addr) ? runtime->Load64(rdram, ctx, _addr) : FAST_READ64(_addr))
+#define PS2_READ128_SLOW(_addr) (PS2Runtime::isSpecialAddress(_addr) ? runtime->Load128(rdram, ctx, _addr) : FAST_READ128(_addr))
+#define READ8(addr) PS2_SPR_READ(uint8_t, addr, PS2_READ8_SLOW)
+#define READ16(addr) PS2_SPR_READ(uint16_t, addr, PS2_READ16_SLOW)
+#define READ32(addr) PS2_SPR_READ(uint32_t, addr, PS2_READ32_SLOW)
+#define READ64(addr) PS2_SPR_READ(uint64_t, addr, PS2_READ64_SLOW)
+#define READ128(addr) PS2_SPR_READ(__m128i, addr, PS2_READ128_SLOW)
+#define PS2_SPR_WRITE(T, addr, val, slowStmt)                                           \
+    do                                                                                  \
+    {                                                                                   \
+        uint32_t _a = (uint32_t)(addr);                                                 \
+        T _v = (T)(val);                                                                \
+        if (uint8_t *_spr = Ps2SprPtr(_a, (uint32_t)sizeof(T)))                         \
+            std::memcpy(_spr, &_v, sizeof(T));                                          \
+        else                                                                            \
+            slowStmt(_a, _v);                                                           \
+    } while (0)
+#undef WRITE8
+#undef WRITE16
+#undef WRITE32
+#undef WRITE64
+#undef WRITE128
+#define PS2_WRITE8_SLOW(_a, _v) do { if (PS2Runtime::isSpecialAddress(_a)) runtime->Store8(rdram, ctx, _a, _v); else FAST_WRITE8(_a, _v); } while (0)
+#define PS2_WRITE16_SLOW(_a, _v) do { if (PS2Runtime::isSpecialAddress(_a)) runtime->Store16(rdram, ctx, _a, _v); else FAST_WRITE16(_a, _v); } while (0)
+#define PS2_WRITE32_SLOW(_a, _v) do { if (PS2Runtime::isSpecialAddress(_a)) runtime->Store32(rdram, ctx, _a, _v); else FAST_WRITE32(_a, _v); } while (0)
+#define PS2_WRITE64_SLOW(_a, _v) do { if (PS2Runtime::isSpecialAddress(_a)) runtime->Store64(rdram, ctx, _a, _v); else FAST_WRITE64(_a, _v); } while (0)
+#define PS2_WRITE128_SLOW(_a, _v) do { if (PS2Runtime::isSpecialAddress(_a)) runtime->Store128(rdram, ctx, _a, _v); else FAST_WRITE128(_a, _v); } while (0)
+#define WRITE8(addr, val) PS2_SPR_WRITE(uint8_t, addr, val, PS2_WRITE8_SLOW)
+#define WRITE16(addr, val) PS2_SPR_WRITE(uint16_t, addr, val, PS2_WRITE16_SLOW)
+#define WRITE32(addr, val) PS2_SPR_WRITE(uint32_t, addr, val, PS2_WRITE32_SLOW)
+#define WRITE64(addr, val) PS2_SPR_WRITE(uint64_t, addr, val, PS2_WRITE64_SLOW)
+#define WRITE128(addr, val) PS2_SPR_WRITE(__m128i, addr, val, PS2_WRITE128_SLOW)
+
 // Packed Compare Greater Than (PCGT)
 #define PS2_PCGTW(a, b) _mm_cmpgt_epi32((__m128i)(a), (__m128i)(b))
 #define PS2_PCGTH(a, b) _mm_cmpgt_epi16((__m128i)(a), (__m128i)(b))
@@ -603,13 +689,47 @@ inline __m128i ps2_u64_to_epi64_pair(uint64_t value)
 #define PS2_PMFHL_LH(hi, lo) _mm_shuffle_epi32(_mm_packs_epi32(ps2_u64_to_epi64_pair(lo), ps2_u64_to_epi64_pair(hi)), _MM_SHUFFLE(3, 1, 2, 0))
 #define PS2_PMFHL_SH(hi, lo) _mm_shufflehi_epi16(_mm_shufflelo_epi16(_mm_packs_epi32(ps2_u64_to_epi64_pair(lo), ps2_u64_to_epi64_pair(hi)), _MM_SHUFFLE(3, 1, 2, 0)), _MM_SHUFFLE(3, 1, 2, 0))
 
-// FPU (COP1) operations
+// FPU (COP1) operations.
+// The EE FPU is not IEEE: it has no infinities and no NaNs. Overflow saturates to +/-FLT_MAX,
+// a zero (or denormal) divisor yields +/-FLT_MAX, denormals are flushed to zero and SQRT takes
+// |x|. Host IEEE math then diverges silently: SOCOM II's fog setup does 255 - near * (-255 /
+// (far - near)); with far == near the PS2 gets 255 (0 * -FLT_MAX = -0), IEEE gets NaN
+// (0 * -inf), and the NaN spreads through the camera object.
+inline float ps2_fpu_sat(float v)
+{
+    uint32_t bits;
+    std::memcpy(&bits, &v, sizeof(bits));
+    const uint32_t exp = bits & 0x7F800000u;
+    if (exp == 0x7F800000u)          // inf / NaN -> +/-FLT_MAX
+        bits = (bits & 0x80000000u) | 0x7F7FFFFFu;
+    else if (exp == 0u)              // zero / denormal -> +/-0
+        bits &= 0x80000000u;
+    std::memcpy(&v, &bits, sizeof(v));
+    return v;
+}
+inline float ps2_fpu_div(float a, float b)
+{
+    uint32_t bb;
+    std::memcpy(&bb, &b, sizeof(bb));
+    if ((bb & 0x7F800000u) == 0u)   // divisor zero/denormal: +/-FLT_MAX with the quotient's sign
+    {
+        uint32_t ab;
+        std::memcpy(&ab, &a, sizeof(ab));
+        const uint32_t sign = (ab ^ bb) & 0x80000000u;
+        const uint32_t out = sign | 0x7F7FFFFFu;
+        float r;
+        std::memcpy(&r, &out, sizeof(r));
+        return r;
+    }
+    return ps2_fpu_sat(ps2_fpu_sat(a) / b);
+}
 #define FPU_SET_ACC(ctx, res) (ctx->f_acc = res)
-#define FPU_ADD_S(a, b) ((float)(a) + (float)(b))
-#define FPU_SUB_S(a, b) ((float)(a) - (float)(b))
-#define FPU_MUL_S(a, b) ((float)(a) * (float)(b))
-#define FPU_DIV_S(a, b) ((float)(a) / (float)(b))
-#define FPU_SQRT_S(a) sqrtf((float)(a))
+#define FPU_ADD_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) + ps2_fpu_sat((float)(b)))
+#define FPU_SUB_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) - ps2_fpu_sat((float)(b)))
+#define FPU_MUL_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) * ps2_fpu_sat((float)(b)))
+#define FPU_DIV_S(a, b) ps2_fpu_div((float)(a), (float)(b))
+#define FPU_SQRT_S(a) ps2_fpu_sat(sqrtf(fabsf(ps2_fpu_sat((float)(a)))))
+#define FPU_RSQRT_S(a) ps2_fpu_div(1.0f, sqrtf(fabsf(ps2_fpu_sat((float)(a)))))
 #define FPU_ABS_S(a) fabsf((float)(a))
 #define FPU_MOV_S(a) ((float)(a))
 #define FPU_NEG_S(a) (-(float)(a))

@@ -1,0 +1,87 @@
+#!/usr/bin/env python
+"""Symbolize a PS2X_HOST_PROF histogram (logs/hostprof.txt: "rva count" lines) against dist/socom2.exe
+using llvm-nm (symbol table, no debug info needed). Prints the top functions by sample count.
+
+Usage: python tools_py/hostprof_symbolize.py [logs/hostprof.txt] [--top 40] [--exe dist/socom2.exe]
+"""
+import argparse
+import bisect
+import collections
+import os
+import subprocess
+import sys
+
+NM = os.path.join("tools", "llvm-mingw", "bin", "llvm-nm.exe")
+OBJDUMP = os.path.join("tools", "llvm-mingw", "bin", "llvm-objdump.exe")
+
+
+def image_base(exe):
+    out = subprocess.run([OBJDUMP, "-p", exe], capture_output=True, text=True).stdout
+    for line in out.splitlines():
+        if "ImageBase" in line:
+            return int(line.split()[-1], 16)
+    return 0x140000000
+
+
+def symbols(exe):
+    out = subprocess.run([NM, "--defined-only", exe], capture_output=True, text=True, errors="ignore").stdout
+    syms = []
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[1] not in ("T", "t", "W", "w"):
+            continue
+        try:
+            syms.append((int(parts[0], 16), parts[2]))
+        except ValueError:
+            pass
+    syms.sort()
+    return syms
+
+
+def demangle(names):
+    try:
+        out = subprocess.run([os.path.join("tools", "llvm-mingw", "bin", "llvm-cxxfilt.exe")], input="\n".join(names),
+                             capture_output=True, text=True, errors="ignore").stdout.splitlines()
+        return dict(zip(names, out)) if len(out) == len(names) else {}
+    except OSError:
+        return {}
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("hist", nargs="?", default=os.path.join("logs", "hostprof.txt"))
+    ap.add_argument("--top", type=int, default=40)
+    ap.add_argument("--exe", default=os.path.join("dist", "socom2.exe"))
+    a = ap.parse_args()
+    base = image_base(a.exe)
+    syms = symbols(a.exe)
+    addrs = [s[0] for s in syms]
+    per_fn = collections.Counter()
+    total = 0
+    ext = 0
+    with open(a.hist) as f:
+        header = f.readline().strip()
+        for line in f:
+            parts = line.split()
+            if len(parts) < 2:
+                continue
+            rva = int(parts[0], 16)
+            n = int(parts[1])
+            total += n
+            if len(parts) > 2 and parts[2] == "ext":
+                ext += n
+                per_fn["<other module (system DLL / GL driver)>"] += n
+                continue
+            va = base + rva
+            i = bisect.bisect_right(addrs, va) - 1
+            name = syms[i][1] if i >= 0 else f"<{rva:#x}>"
+            per_fn[name] += n
+    names = [k for k, _ in per_fn.most_common(a.top)]
+    dm = demangle(names)
+    print(header, f"(samples in file {total}, other modules {ext})")
+    for name, n in per_fn.most_common(a.top):
+        print(f"{100.0 * n / max(1, total):6.2f}%  {n:7d}  {dm.get(name, name)}")
+
+
+if __name__ == "__main__":
+    main()

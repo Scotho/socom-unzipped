@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <thread>
 #include <unordered_map>
+void ps2HostProfStart(void *nativeHandle);   // game_overrides_socom2.cpp (PS2X_HOST_PROF)
 #include <sstream>
 
 namespace ps2_stubs
@@ -2493,6 +2494,8 @@ void PS2Runtime::run()
             std::cerr << "Error during program execution: unknown exception" << std::endl;
         }
         gameThreadFinished.store(true, std::memory_order_release); });
+    // PS2X_HOST_PROF=<ms>: host-level sampling profiler of the game thread (game_overrides_socom2.cpp).
+    ps2HostProfStart(gameThread.native_handle());
 
     uint64_t tick = 0;
     while (!isStopRequested() && !gameThreadFinished.load(std::memory_order_acquire))
@@ -2599,14 +2602,11 @@ void PS2Runtime::run()
                 rlDrawRenderBatchActive();
             }
         }
-        if (m_debugUiInitialized && m_debugUiDrawCallback)
-        {
-            m_debugUiDrawCallback(*this, m_debugUiUserData);
-        }
         // PS2X_HOST_SCREENSHOT_LATEST=<file.png>: keep rewriting the current frame (GL readback,
         // every ~150 ms, atomic rename) so the parity harness can read it instead of PrintWindow,
         // which hands back a white bitmap whenever another window (a firewall prompt, Settings)
-        // overlaps the GL window.
+        // overlaps the GL window. Taken before the debug UI draws so its collapsed title bar does
+        // not end up in the parity captures.
         {
             static const char *s_latestEnv = std::getenv("PS2X_HOST_SCREENSHOT_LATEST");
             if (s_latestEnv)
@@ -2625,6 +2625,10 @@ void PS2Runtime::run()
                     std::filesystem::rename(tmpPath, finalPath, ec);
                 }
             }
+        }
+        if (m_debugUiInitialized && m_debugUiDrawCallback)
+        {
+            m_debugUiDrawCallback(*this, m_debugUiUserData);
         }
         // PS2X_HOST_SCREENSHOT=<dir>[:<seconds>]: save what the window shows every <seconds> (default 5).
         {

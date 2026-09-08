@@ -1,4 +1,44 @@
-# Project status — updated 2026-09-07 17:00
+# Project status — updated 2026-09-08 10:30
+
+## 2026-09-08 10:30 (local) — intro movie seam fixed; in-mission camera diverges because the VU1 interpreter caps the game at 3 flips/s
+**Movie seam (commit df9f8fe).** Render-target downloads wrote all 1024 texture columns back into
+VRAM; past FBW*64 the page arithmetic lands in the *next* page row's first columns, so the black GPU
+rows 64..96 of the movie staging buffer (FBW 10) overwrote frame rows 96..128 of page columns 0-5
+after every upload — the x=384 seam on every intro-movie frame. Downloads now stop at FBW*64.
+Found with a per-command shadow-VRAM probe (PS2X_GS_TRACE_PRESENT=-1 arms it from the first
+seam-like decode; negative values count from the first movie block upload).
+
+**EE FPU / VU float semantics (uncommitted, needs `./build.sh recomp`).** The generated code used
+IEEE math; the EE FPU and the VUs have no infinities or NaNs (overflow saturates to +/-FLT_MAX, x/0
+gives +/-FLT_MAX, denormals flush to 0, SQRT takes |x|). FPU_* macros, the DIV/RSQRT emitters, the
+PS2_V* macros and the VDIV/VSQRT/VRSQRT emitters now saturate (VRSQRT also ignored its numerator
+register before). The archived menu camera showed the effect: fog coefficient
+`255 - near * (-255 / (far - near))` with far == near is 255 on the PS2 and NaN under IEEE.
+
+**In-mission picture: camera, not renderer.** PCSX2 (tools/pcsx2, PINE port 28011) runs the
+mission script fine — `tools_py/parity/cam_poll.py` reads the camera object (`*(0x488de8)`, static
+scene 0x4887c0 + 0x628) over PINE while `drive --target pcsx2` runs; ours uses
+`PS2X_PEEK="*0x488de8+0x320:3"` (peek now dereferences pointers). Fog block, frustum, view matrix
+and spawn position match PCSX2 word for word at spawn. Then ours lets the camera height decay
+(8.8 -> 3.1 in one second; PCSX2 holds 8.35) and the position grows exponentially to +/-FLT_MAX for
+~22 s (the scripted shots), returns to spawn, and the later scripted move happens on both sides.
+The sky-dome-from-below frames are that runaway camera.
+
+**Root cause of the divergence: frame time.** `FUN_003aff30` (flip) reads T0 as the frame time and
+resets it; the camera update `FUN_002998f0` integrates with it. Per-second flip counts (call trace
+on 0x3aff30) are 2-16 in the mission (PCSX2: 60). A host-level sampling profiler
+(`PS2X_HOST_PROF=<ms>` + `tools_py/hostprof_symbolize.py`) puts ~80% of the game thread in the
+VU1 interpreter's cycle-exact bookkeeping (`calculatePairReadyCycle`, `commitReadyPipelines`,
+long-double FMAC rounding); `PS2X_VU_STATS=1` measures 4-7 M VU1 cycles/s at 120 ns/cycle,
+i.e. ~1 M VU1 cycles per game frame, 0.5-0.8 s of host time per second. Ruled out on the way: the
+scratchpad slow store path (fast path added anyway), the GS command queue (no backpressure),
+guest-clock overhead. A 60 fps mission needs ~16 ns/VU1 cycle: a VU1 recompiler/JIT, not
+interpreter tuning (2-3x at best from mask-based hazard checks and an early-out commit).
+
+**Interim fix in progress:** guest time must exclude the host time spent in the VU1 interpreter
+(`ps2GuestClockExcludedNs`, subtracted in `EeScheduler::accountCycles`), so the game sees ~1/60 s
+per frame and runs in slow motion instead of integrating a 300 ms step (a per-gap cap did nothing:
+the interpreter runs in ~1000-cycle slices). Result: see the next entry.
 
 ## 2026-09-08 (local) — our exe completes the SCERT handshake with Horizon; menu movie merged
 Two fronts landed since the 22:40 entry.
