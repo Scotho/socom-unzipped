@@ -1032,6 +1032,18 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     m_xgkick.sourceAddress = sourceAddress;
     m_xgkick.cycleCredit = 1u; // XGKICK's issue cycle counts toward PATH1.
     m_xgkick.issueCycle = m_cycle;
+    // PS2X_VU1_XGKICK_IMMEDIATE=1: copy the whole packet at kick time (what most emulators do)
+    // instead of one qword per two cycles while the program runs on. Experiment for SOCOM II's
+    // object geometry, which arrives as 1700 identical degenerate vertices per frame — the
+    // signature of a buffer re-templated by the program before the modeled transfer finished.
+    // Default since 2026-09-08: the per-cycle model dropped SOCOM II's object geometry (buffers
+    // re-templated before the modeled transfer finished); PS2X_VU1_XGKICK_CYCLE_EXACT=1 restores it.
+    static const bool s_immediate = std::getenv("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+    if (s_immediate)
+    {
+        m_xgkick.cycleCredit = 0x40000000u;
+        progressXgkick();
+    }
 }
 
 void VU1Interpreter::advanceOneCycle()
@@ -1742,6 +1754,48 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     m_activeVuDataSize = dataSize;
     m_activeGs = &gs;
     m_activeMemory = memory;
+
+    // PS2X_VU1_DUMP=<dir>: once PS2X_TRIGGER has armed the traces, save the first 12 distinct VU1
+    // programs (by start pc + code hash) as <dir>/vu1_prog_<n>.bin: 16 bytes header
+    // (startPc, top, itop, codeSize) + code (16 KB) + data (16 KB) + vi[16] + vf[32][4].
+    if (m_unit == Unit::VU1)
+    {
+        static const char *s_dumpDir = std::getenv("PS2X_VU1_DUMP");
+        extern std::atomic<bool> g_ps2xTraceArmed;
+        if (s_dumpDir && g_ps2xTraceArmed.load(std::memory_order_relaxed))
+        {
+            static int s_dumped = 0;
+            static uint64_t s_seenKeys[12] = {0};
+            uint64_t h = 1469598103934665603ull;
+            for (uint32_t i = 0; i < codeSize && i < 0x4000u; i += 8u)
+            {
+                uint64_t w = 0;
+                std::memcpy(&w, vuCode + i, sizeof(w));
+                h = (h ^ w) * 1099511628211ull;
+            }
+            h ^= m_state.pc;
+            bool seen = false;
+            for (int i = 0; i < s_dumped; ++i)
+                seen = seen || s_seenKeys[i] == h;
+            if (!seen && s_dumped < 12)
+            {
+                s_seenKeys[s_dumped] = h;
+                const std::string path = std::string(s_dumpDir) + "/vu1_prog_" + std::to_string(s_dumped) + ".bin";
+                if (FILE *fp = std::fopen(path.c_str(), "wb"))
+                {
+                    const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
+                    std::fwrite(hdr, sizeof(hdr), 1, fp);
+                    std::fwrite(vuCode, 1, std::min<uint32_t>(codeSize, 0x4000u), fp);
+                    std::fwrite(vuData, 1, std::min<uint32_t>(dataSize, 0x4000u), fp);
+                    std::fwrite(m_state.vi, sizeof(m_state.vi), 1, fp);
+                    std::fwrite(m_state.vf, sizeof(m_state.vf), 1, fp);
+                    std::fclose(fp);
+                    std::fprintf(stderr, "[vu1-dump] #%d pc=0x%x top=0x%x itop=0x%x -> %s\n", s_dumped, m_state.pc, m_state.top, m_state.itop, path.c_str());
+                }
+                ++s_dumped;
+            }
+        }
+    }
 
     // PS2X_TRACE_VU: dump the executed PC path of the first VU1 program that contains a reachable
     // XGKICK, to locate where control flow diverges from the geometry-kick (xgDec stays 0).

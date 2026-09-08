@@ -2,8 +2,10 @@
 """Drive one side (PCSX2 or our exe) through the shared step script and capture each screen.
 
 Script lines: `<mode>+<delay>:<BTN>[+<BTN>]` with mode `stable` (wait until the frame has been
-stable for --settle seconds, at most --maxwait, then wait <delay>), `next` (first wait for the
-screen to change since the previous press, then as `stable`) or `wait` (just wait <delay>);
+stable for --settle seconds, at most --maxwait, then wait <delay>), `long` (as `stable` with a
+150 s cap, for screens behind a slow cinematic), `next` (first wait for the screen to change
+since the previous press, then as `stable`), `idle` (press only if the screen stays unchanged for
+<delay> s) or `wait` (just wait <delay>);
 BTN `NONE` presses nothing. A screenshot `sNN_<btn>.png` is taken right before each press;
 `manifest.json` records the step, wall time since launch, stability wait and whether the frame
 was stable. Screens on both sides align by step index.
@@ -119,6 +121,10 @@ def main():
         stable, waited = (True, 0.0)
         if mode == "stable":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait)
+        elif mode == "long":
+            # Like `stable` with a 150 s cap: for a screen reached only after a cinematic whose
+            # length depends on the frame rate (our exe plays the location intro at a few fps).
+            stable, waited = wait_stable(hwnd, a.settle, 150.0)
         elif mode == "next":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait, changed_from=last)
         elif mode == "idle":

@@ -1,4 +1,28 @@
-# Project status — updated 2026-09-08 16:30
+# Project status — updated 2026-09-08 17:30
+
+## 2026-09-08 17:30 (local) — game state matches PCSX2 in-mission; the render does not (downstream of the EE)
+With the SQRT.S fix the whole mission intro replays PCSX2's path: fly-by camera at (-3787,-109,..)
+with the same rotation rows, spawn camera (939.4, 3.4, -843.6) / player (939.4, -131.7, 833.3) vs
+PCSX2 (939.8, 8.3, -841.3) / (939.4, -126.3, 832.2), second fly-by, hold at (-3328, 282), then the
+gameplay camera. The camera object's derived matrices (+0x2f0 world matrix, +0x330 view-projection,
++0x370 projection, +0x3b0 screen: `PS2X_PEEK="*0x488de8+0x2f0:64"`) equal PCSX2's to four
+decimals. The picture at that camera is still a few giant flat polygons and sky (mission_s5/s6)
+and the *pre-change* run of this morning (mission_z2, 06:54) shows the same frames, while the
+online-match urban map rendered correctly on 2026-09-07 (logs/parity/online/match/A_18_hold05.png)
+— so this is not a regression of today's float work but a mission-map rendering fault
+downstream of the EE: VIF1 unpack, VU1 program or GS. Suspects in order: VIF unpack formats the
+urban map does not use (STROW/STMASK/mode offsets for terrain chunks), a VU1 micro path, GS depth.
+Discriminators prepared: `PS2X_GS_TRACE_CMDS=t<sec>` (per-batch vertex count + XYZ extents at
+host time), `PS2X_TRACE_VIF=t<sec>` (UNPACK format/mode/mask/row histogram), and a
+`PS2X_GS_BACKEND=cpu` mission run (GL vs reference rasterizer).
+
+**VU1 interpreter: 158 -> 111 ns/cycle (commit 4960120).** A mission-only host profile
+(diff of two PS2X_HOST_PROF dumps, logs/hostprof_mission.txt) put calculatePairReadyCycle at
+20%, commitReadyPipelines at 20%, run() 8%, long-double FMAC rounding ~6%, and 15% in DLLs
+outside the exe (unsymbolized). The commit scan now early-outs on an "earliest pending cycle",
+the readiness scan on a "latest ready cycle", VI reads walk a bit mask, decoded pairs are served
+by reference and XGKICK copies a qword at a time. Still ~700 ms of every host second in VU1 at
+5 M cycles/s: the next step for frame rate is the fast (non-cycle-exact) path or a recompiler.
 
 ## 2026-09-08 16:15 (local) — ROOT CAUSE of the exploding actors: SQRT.S read the wrong register
 The recompiler emitted SQRT.S with the *fs* field as its source. On the EE, `sqrt.s fd, ft` reads

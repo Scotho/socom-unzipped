@@ -1,5 +1,6 @@
 // Based on Blackline Interactive implementation
 #include <cstdlib>
+#include <chrono>
 #include <cstdio>
 #include <atomic>
 extern std::atomic<uint64_t> g_vif1CodeCount;
@@ -332,17 +333,28 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
             static const char *s_traceVif = std::getenv("PS2X_TRACE_VIF");
             if (s_traceVif)
             {
-                static const uint64_t s_skip = static_cast<uint64_t>(std::atoll(s_traceVif));
+                // "t<seconds>": start after that much host time instead of after <skip> codes.
+                static const bool s_timed = s_traceVif[0] == 't';
+                static const uint64_t s_skip = s_timed ? 0u : static_cast<uint64_t>(std::atoll(s_traceVif));
+                static const auto s_epoch = std::chrono::steady_clock::now();
                 static uint64_t s_seen = 0;
                 static uint32_t s_lines = 0;
                 const uint64_t n = s_seen++;
-                if (n >= s_skip && s_lines < 3000u && opcode != VIF_NOP)
+                extern std::atomic<bool> g_ps2xTraceArmed;
+                static const bool s_trig = s_traceVif[0] == 't' && s_traceVif[1] == 'r';
+                const bool armed = s_trig ? g_ps2xTraceArmed.load()
+                                   : s_timed
+                                       ? std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count() >= std::atof(s_traceVif + 1)
+                                       : n >= s_skip;
+                if (armed && s_lines < 3000u && opcode != VIF_NOP)
                 {
                     ++s_lines;
                     if ((opcode & 0x60u) == 0x60u)
-                        std::fprintf(stderr, "[vif1] #%llu UNPACK vn/vl=%x num=%u addr=0x%x flg=%u usn=%u mask=%u cycle=%04x tops=0x%x base=0x%x ofst=0x%x dbf=%u\n",
+                        std::fprintf(stderr, "[vif1] #%llu UNPACK vn/vl=%x num=%u addr=0x%x flg=%u usn=%u mask=%u cycle=%04x mode=%u stmask=%08x row=%08x,%08x,%08x,%08x tops=0x%x base=0x%x ofst=0x%x dbf=%u\n",
                                      (unsigned long long)n, opcode & 0xFu, num, imm & 0x3FFu, (imm >> 15) & 1u, (imm >> 14) & 1u,
-                                     (opcode >> 4) & 1u, vif1_regs.cycle, vif1_regs.tops, vif1_regs.base, vif1_regs.ofst, (vif1_regs.stat >> 7) & 1u);
+                                     (opcode >> 4) & 1u, vif1_regs.cycle, vif1_regs.mode & 3u, vif1_regs.mask,
+                                     vif1_regs.row[0], vif1_regs.row[1], vif1_regs.row[2], vif1_regs.row[3],
+                                     vif1_regs.tops, vif1_regs.base, vif1_regs.ofst, (vif1_regs.stat >> 7) & 1u);
                     else
                         std::fprintf(stderr, "[vif1] #%llu cmd=0x%02x num=%u imm=0x%04x tops=0x%x base=0x%x ofst=0x%x dbf=%u%s\n",
                                      (unsigned long long)n, opcode, num, imm, vif1_regs.tops, vif1_regs.base, vif1_regs.ofst,

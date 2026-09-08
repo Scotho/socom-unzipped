@@ -29,6 +29,9 @@
 #include <cstdlib>
 
 #include <cstdint>
+#include <atomic>
+// Set by PS2X_TRIGGER (see startPcSampler); read by the "trig" trace modes.
+std::atomic<bool> g_ps2xTraceArmed{false};
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
@@ -646,6 +649,7 @@ namespace
                     size_t pos = 0;
                     std::ostringstream po;
                     po << "[peek]";
+                    uint32_t itemCounter = 0;
                     while (pos < spec.size())
                     {
                         size_t end = spec.find(',', pos);
@@ -653,6 +657,7 @@ namespace
                             end = spec.size();
                         std::string item = spec.substr(pos, end - pos);
                         pos = end + 1;
+                        const uint32_t itemIndex = itemCounter++;
                         uint32_t words = 1;
                         const size_t colon = item.find(':');
                         if (colon != std::string::npos)
@@ -728,6 +733,21 @@ namespace
                             float fv = 0.0f;
                             std::memcpy(&fv, &v, sizeof(fv));
                             po << " " << std::setw(8) << std::setfill('0') << v << "(" << fv << ")";
+                            // PS2X_TRIGGER="lo:hi": when the first word of the first PS2X_PEEK item, read as
+                            // a float, lies in [lo, hi], arm the "trig" mode of PS2X_GS_TRACE_CMDS /
+                            // PS2X_TRACE_VIF (traces of the exact game state, e.g. the gameplay camera).
+                            static const char *s_trig = std::getenv("PS2X_TRIGGER");
+                            if (s_trig && w == 0u && itemIndex == 0u && !g_ps2xTraceArmed.load())
+                            {
+                                const double lo = std::atof(s_trig);
+                                const char *c = std::strchr(s_trig, ':');
+                                const double hi = c ? std::atof(c + 1) : lo;
+                                if (fv >= lo && fv <= hi)
+                                {
+                                    g_ps2xTraceArmed.store(true);
+                                    std::printf("[trigger] armed: first peek word %g in [%g, %g]\n", (double)fv, lo, hi);
+                                }
+                            }
                         }
                         po << std::dec << std::setfill(' ');
                     }

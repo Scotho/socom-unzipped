@@ -680,6 +680,11 @@ long GSGlBackend::traceSkip(const char *env) const
     const char *e = std::getenv(env);
     if (!e)
         return -1;
+    if (e[0] == 't' && e[1] == 'r')   // "trig": armed by PS2X_TRIGGER (game-state trigger in the PC sampler)
+    {
+        extern std::atomic<bool> g_ps2xTraceArmed;
+        return g_ps2xTraceArmed.load() ? 0L : 0x7FFFFFF0L;
+    }
     if (e[0] == 't')   // "t<seconds>": host-time trigger (any frame once that much time has passed)
     {
         static const auto s_epoch = std::chrono::steady_clock::now();

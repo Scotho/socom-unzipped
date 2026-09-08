@@ -12,7 +12,7 @@ next+2.0:CROSS      # controller presets (1)
 next+2.0:CROSS      # controller presets (2)
 next+2.0:CROSS      # save prompt / cinematic
 next+2.0:CROSS      # cinematic -> skip
-next+2.0:DOWN       # briefing: OVERVIEW -> ...
+long+2.0:DOWN       # briefing: OVERVIEW -> ... (waits out the location cinematic, up to 150 s)
 wait+1.0:DOWN
 wait+1.0:DOWN
 wait+1.0:DOWN
