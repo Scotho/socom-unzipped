@@ -62,6 +62,16 @@ def capture(hwnd):
     bmi = _BMI(ctypes.sizeof(_BMI), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
     buf = ctypes.create_string_buffer(w * h * 4)
     gdi32.GetDIBits(mdc, bmp, 0, h, buf, ctypes.byref(bmi), 0)
+    if buf.raw.count(b"\xff") >= len(buf.raw) - w * h:
+        # PrintWindow intermittently hands back an all-white bitmap for the GL window (DWM has
+        # no composed copy at that instant). Fall back to a desktop BitBlt of the client rect,
+        # which is right whenever the window is on top (the drive harness keeps it focused).
+        origin = wt.POINT(0, 0)
+        user32.ClientToScreen(hwnd, ctypes.byref(origin))
+        sdc = user32.GetDC(None)
+        gdi32.BitBlt(mdc, 0, 0, w, h, sdc, origin.x, origin.y, 0x00CC0020)  # SRCCOPY
+        user32.ReleaseDC(None, sdc)
+        gdi32.GetDIBits(mdc, bmp, 0, h, buf, ctypes.byref(bmi), 0)
     gdi32.DeleteObject(bmp)
     gdi32.DeleteDC(mdc)
     user32.ReleaseDC(hwnd, hdc)

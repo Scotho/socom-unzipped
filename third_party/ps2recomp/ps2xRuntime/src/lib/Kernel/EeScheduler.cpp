@@ -215,6 +215,7 @@ void EeScheduler::run()
             }
         }
         R5900Context &context = running->activeContext();
+        PS2Runtime::refreshCop0Count(&context);
         if (m_debugPublishCountdown == 0u)
         {
             copyMainContextToRuntime();

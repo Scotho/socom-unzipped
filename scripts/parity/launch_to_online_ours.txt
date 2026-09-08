@@ -1,11 +1,14 @@
-# Our exe: boot -> main menu -> ONLINE. Since the movie merge the boot shows the studio cards and
-# the intro like PCSX2, but two screens fewer before the main menu (five presses).
+# Our exe: boot -> main menu -> ONLINE. Since the movie merge the boot shows the studio cards,
+# the intro and the attract cinematic like PCSX2. Six presses reach the main menu: the sixth
+# skips the (long, looping) attract cinematic. The menu has an animated background, so navigate
+# it on fixed waits — a `stable` wait never settles there.
 next+1.0:CROSS      # loading logo
 next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
 next+1.0:CROSS      # card notice / SCEA card
 next+1.0:CROSS      # DEVELOPED BY
 next+1.0:CROSS      # intro / warning
-next+3.0:DOWN       # main menu: NEW GAME -> ONLINE
+next+2.0:CROSS      # skip the attract cinematic -> main menu
+wait+4.0:DOWN       # main menu: NEW GAME -> ONLINE
 wait+1.5:CROSS      # ONLINE
 wait+8.0:NONE
 wait+8.0:CROSS      # LOGIN

@@ -327,6 +327,12 @@ public:
     bool registerFunction(uint32_t address, RecompiledFunction func);
     RecompiledFunction lookupFunction(uint32_t address);
     bool hasFunction(uint32_t address) const;
+    // COP0 Count as the guest sees it: the EE core clock (294.912 MHz) derived from the host
+    // steady clock. `mfc0 Count` is recompiled as a plain read of ctx->cop0_count, so the field is
+    // refreshed at every syscall, guest-branch dispatch and scheduler switch-in (SOCOM's SCE-RT
+    // timers, e.g. the SCERT send interval, are built on it).
+    static uint32_t guestCop0Count();
+    static void refreshCop0Count(R5900Context *ctx);
     bool dispatchGuestBranch(uint8_t *rdram,
                              R5900Context *ctx,
                              uint32_t targetPc,

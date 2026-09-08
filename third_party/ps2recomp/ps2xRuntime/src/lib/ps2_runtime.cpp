@@ -17,6 +17,7 @@
 
 #include <iostream>
 #include <fstream>
+#include <chrono>
 #include <algorithm>
 #include <vector>
 #include <array>
@@ -1492,8 +1493,28 @@ void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx)
     handleSyscall(rdram, ctx, 0);
 }
 
+uint32_t PS2Runtime::guestCop0Count()
+{
+    static const auto s_epoch = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::steady_clock::now() - s_epoch;
+    const uint64_t ns = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed).count());
+    // 294,912,000 cycles per second; keep the multiplication in 128-bit-safe order (ns * Hz / 1e9
+    // overflows 64 bits after ~62 s), so split seconds and the sub-second remainder.
+    constexpr uint64_t kHz = 294912000ull;
+    const uint64_t seconds = ns / 1000000000ull;
+    const uint64_t remainderNs = ns % 1000000000ull;
+    return static_cast<uint32_t>(seconds * kHz + remainderNs * kHz / 1000000000ull);
+}
+
+void PS2Runtime::refreshCop0Count(R5900Context *ctx)
+{
+    if (ctx)
+        ctx->cop0_count = guestCop0Count();
+}
+
 void PS2Runtime::handleSyscall(uint8_t *rdram, R5900Context *ctx, uint32_t encodedSyscallId)
 {
+    refreshCop0Count(ctx);
     if (ctx->in_delay_slot)
     {
         throw std::runtime_error("Attempted to execute a syscall inside a branch delay slot! "

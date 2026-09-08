@@ -188,8 +188,9 @@ Two working clients now exist end to end:
 - **Our exe** brings up SOCOM's SCE-RT network layer on the host and completes the Medius SCERT
   transport handshake against the real MUIS (STATUS 2026-09-08): it resolves the retail hostnames
   to PS2X_SOCOM2_SERVER (default 127.0.0.1), TCP-connects to 10071, exchanges CRYPTKEY_PUBLIC/PEER
-  and CONNECT_TCP, and the server sends CONNECT_ACCEPT + CONNECT_COMPLETE. The client then closes
-  the socket before the LobbyExt/0x03 universe query — the current blocker.
+  and CONNECT_TCP, the server sends CONNECT_ACCEPT + CONNECT_COMPLETE, the client sends the
+  LobbyExt/0x03 universe query, gets the universe list + UniverseNews and shows **SELECT UNIVERSE**
+  (2026-09-08; parity vs the PCSX2 golden `logs/parity/online/login/01_universe.png` 98.5).
 
 Recipe for the exe path:
 1. Start Horizon: `powershell -NoProfile -Command ".\start-servers.ps1"` in `server/` (delete
@@ -200,12 +201,15 @@ Recipe for the exe path:
 3. Slice `server/logs/console-MUIS.log` from the line count taken before the run.
 
 Next, in order:
-- (a) The exe reads the 39-byte CONNECT_ACCEPT/COMPLETE once, then disconnects. Trace the SCERT
-  client read loop after CONNECT_COMPLETE (the recompiled message pump around 0x62e1e8/0x62e4a0,
-  and the libnetb_ex recv FUN_002474f8 / exTcpRecv): likely a recv-framing or post-connect step.
-  Once it sends the universe query, the same Horizon path PCSX2 uses (MUIS LobbyExt/0x03 -> 0x04 +
-  UniverseNews) applies.
-- (b) then MAS login, lobby, room, a match — mirroring the PCSX2 flow, all already server-side done.
+- (a) DONE 2026-09-08. The "closes the socket" diagnosis was wrong: the queued universe query
+  never left the SCERT send ring because `mfc0 Count` (ctx->cop0_count) never advanced in the
+  runtime, so the SCE-RT clock (FUN_0063db68 → sec/usec at 0x676430) stayed at 0 and the
+  connected-state send gate ("30 ms since the last flush", FUN_00634dd8) never opened. Fix:
+  PS2Runtime::refreshCop0Count derives Count from the host steady clock at 294.912 MHz and is
+  applied at every syscall and scheduler switch-in (ps2_runtime.cpp / EeScheduler.cpp).
+- (b) NEXT: press CROSS on SELECT UNIVERSE → MAS login (10075), persona/password on the OSK, EULA,
+  lobby, room, a match — mirror `tools_py/parity/online_login.py`'s PCSX2 key script; the golden
+  screens are `logs/parity/online/login/02_persona.png` onward. Server side is already done.
 - (c) capture the exe's online screens as a golden set and score them against PCSX2.
 
 Layers already HLE'd (all in third_party/ps2recomp/ps2xRuntime/src/lib/socom2_*.cpp and

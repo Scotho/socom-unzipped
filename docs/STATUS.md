@@ -22,9 +22,12 @@ IRX loads to a completed SCERT TCP handshake with the real MUIS (10071). Layers:
   (socom2_rsa_key.h) was regenerated as a FULL 512-bit modulus: a 511-bit N let the server's
   512-bit RC4 session key exceed N and broke the CONNECT_TCP decrypt.
 Result: the exe resolves the retail hostnames to PS2X_SOCOM2_SERVER (default 127.0.0.1), connects
-TCP to MUIS, and the server accepts CONNECT_TCP and sends CONNECT_ACCEPT + CONNECT_COMPLETE. The
-client then closes the socket before sending the universe query — the next task (it reads the
-39-byte accept/complete once, then disconnects; likely a recv-framing or post-connect step).
+TCP to MUIS, the server accepts CONNECT_TCP and sends CONNECT_ACCEPT + CONNECT_COMPLETE, the
+client sends the LobbyExt/0x03 universe query and shows SELECT UNIVERSE with the Horizon universe
+and its news (2026-09-08). The earlier stall was the frozen COP0 Count: `mfc0 Count` reads
+ctx->cop0_count, which nothing advanced, so SCE-RT's clock stayed at 0 and the connected-state
+send gate (30 ms since the last flush) never opened; the runtime now refreshes cop0_count from the
+host steady clock at 294.912 MHz on every syscall and scheduler switch-in.
 Driver: `python -m tools_py.parity.drive --target ours --script scripts/parity/launch_to_online_ours.txt`
 with the Horizon stack up (no dns_stub needed; the exe resolves internally).
 

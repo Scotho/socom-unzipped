@@ -531,8 +531,17 @@ namespace socom2_libnetb
             ret(ctx, 0u);
             return;
         }
-        if (n == -11) { ret(ctx, 0u); return; }
-        if (n < 0) { ret(ctx, static_cast<uint32_t>(kErrAbort)); return; }
+        if (n == -11)
+        {
+            // Idle poll: trace the first few and then every 256th so the log shows the pump is alive.
+            static uint32_t idle = 0;
+            ++idle;
+            if (g_verbose && (idle <= 4 || (idle & 0xffu) == 0u))
+                trace("tcp recv cid " + std::to_string(c->fd + 1) + " max=" + std::to_string(len) + " -> would-block (#" + std::to_string(idle) + ")");
+            ret(ctx, 0u);
+            return;
+        }
+        if (n < 0) { trace("tcp recv cid " + std::to_string(c->fd + 1) + " host error " + std::to_string(n)); ret(ctx, static_cast<uint32_t>(kErrAbort)); return; }
         if (g_verbose)
         {
             std::ostringstream o;

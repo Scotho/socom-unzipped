@@ -101,7 +101,17 @@ def main():
         proc.terminate()
         raise SystemExit("game window not found")
     manifest = []
-    last = frame(hwnd)
+    # The window can be found while it is still being created (empty client area); wait it out.
+    last = None
+    while last is None and time.time() - t0 < 60:
+        try:
+            last = frame(hwnd)
+        except RuntimeError:
+            time.sleep(0.5)
+            hwnd = winshot.find_window(keys.WINDOW_TITLES[a.target]) or hwnd
+    if last is None:
+        proc.terminate()
+        raise SystemExit("game window never showed a client area")
     for i, (mode, delay, buttons) in enumerate(steps):
         stable, waited = (True, 0.0)
         if mode == "stable":
