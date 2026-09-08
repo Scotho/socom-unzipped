@@ -178,26 +178,27 @@ must come from a UI variable or locale lookup at draw time.
 - The 3D roller is the same VU1 "no vertices" symptom as before (`hdrKick=0/N`); re-check it after
   the in-mission renderer works, since both go through the same path.
 
-### 4. Online (M5) — NOW THE TOP TASK; state as of 2026-09-07 18:45 local
-Done: a PCSX2 client logs into the local Horizon stack and sits in the SOCOM II ONLINE lobby
-(STATUS 18:45 entry has the plumbing and the protocol fixes). Recipe:
+### 4. Online (M5) — NOW THE TOP TASK; state as of 2026-09-07 21:10 local
+Done: two PCSX2 clients log into the local Horizon stack, meet in a briefing room, and play a
+match (STATUS 21:10 and 18:45 entries: plumbing, protocol fixes, second-client setup). Recipe:
 1. `powershell -NoProfile -Command ".\start-servers.ps1"` in `server/` (MUIS 10071, MAS 10075,
    MLS 10078, MPS 10077, DME 10073, NAT 10070/UDP). Rebuild with
    `dotnet build Horizon.Server.sln -c Release` in `server/horizon-server` after stopping the
-   processes (the running exe locks its output).
-2. `nohup python -m tools_py.parity.dns_stub > logs/dns_stub.log &` (needs UDP 53 on 192.168.2.10;
-   if the host IP changed, update it in the stub args, PCSX2.ini DNS1/2 and server/config/*.json).
-3. `python -m tools_py.parity.online_login --hold 90` drives PCSX2 from savestate 9 to the lobby and
-   drops screens in logs/parity/online/login/. Read the server logs by slicing
-   `server/logs/console-Medius.log` from the line count taken before the run.
+   processes (the running exe locks its output; delete server/pids.json if the script trips on a
+   reused pid).
+2. `nohup python -m tools_py.parity.dns_stub > logs/dns_stub.log &` (UDP 53 on 192.168.2.10; if
+   the host IP changed, update the stub args, both PCSX2.ini DNS1/2 and server/config/*.json).
+3. `python -m tools_py.parity.online_login --hold 90` = one client to the lobby;
+   `python -m tools_py.parity.online_match --hold 60` = the two-client match (A from
+   tools/pcsx2 state 9, B from tools/pcsx2_b state 5). Screens land in logs/parity/online/.
+   Slice `server/logs/console-Medius.log` / `console-DME.log` from the line count taken before.
 4. For any new "Unhandled Medius Message" find the client's handler by id (STATUS 18:45 "method")
    to get the expected byte layout before writing the Horizon model.
-Next: BRIEFING ROOMS list (Lobby/0xEC ChannelList_ExtraInfo0 — the Horizon models exist only under
-the LobbyExt ids; add a Lobby-class request model with the 1.50 layout and answer with channel
-entries), create room, then a second PCSX2 client (own ini, memcard, PINE slot, DEV9 MAC) and a
-match through DME. After that: our exe's netstack (inet/netcnf HLE → Winsock) to the same screens,
-scored by the harness.
-Rule: never savestate after network traffic; only slot 9 is valid (SMAP TX ring / input die).
+Next (in order): (a) capture the online screens as the golden set for the exe (drive.py with the
+online script) ; (b) our exe's network: inet/netcnf HLE → Winsock in the runtime, DNAS bypass,
+then run the same online_login flow against socom2.exe and score; (c) voice/lgaud stubs.
+Rules: never savestate after network traffic (only A slot 9 / B slot 5); a savestate is only
+valid in the install that made it; two PCSX2 instances need distinct UDP ports (B's pnach).
 
 ### Secondary / cleanup
 - **GS local→host readback** so the exposure stub can go: `FUN_003b24c0` sends a 7-qword VIF1

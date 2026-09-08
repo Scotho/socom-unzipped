@@ -1,5 +1,30 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 21:10 (local) — ONLINE MATCH: two PCSX2 clients play VIGILANCE on the local Horizon stack
+`python -m tools_py.parity.online_match` logs two retail clients in (socom / socomb), A creates a
+game (Medley play list), B joins it, B switches team, both press READY and the match launches:
+both screens show VIGILANCE / SUPPRESSION in-game with the round timer (logs/parity/online/match/,
+A_18_hold05 and B_20_hold05). DME world with two clients, TCP + aux UDP, broadcasts flowing.
+
+Fixes since the 18:45 entry (commits a2fdc45, 1ce3047, and the match commit):
+- Lobby/0xEC channel list request + 0x70-byte 0xED entries (briefing rooms).
+- CreateGameRequest1: Attributes optional (1.50 sends 0xD0 bytes).
+- Game.OnWorldReport(MediusWorldReport0) copies GameStats — the 1.50 client keeps map/rounds
+  there; without it the joiner shows "unknown" and refuses to join.
+Second client plumbing (tools/pcsx2_b, git-ignored; templates in scripts/parity/pcsx2/):
+- robocopy of tools/pcsx2 with PINESlot 28012, Slot2 memory card disabled.
+- Its own savestate 5 of the LOGIN screen made by booting it (main menu → ONLINE): a state copied
+  from the other install re-probes the card on load and drops the network configuration.
+- Its card already holds A's persona, so the persona list needs Up, Cross, Down, Cross.
+- Two guests on one host adapter both bind host UDP 3658/3659 (PCSX2 Sockets mode) and DME replies
+  went to the wrong socket; a B-only pnach changes `li a0,0xE4A` at 0x620678 to 3660. (The
+  host-only adapter alternative fails: Windows strong-host routing, no admin for weakhost.)
+Still unhandled by Horizon and harmless so far: Lobby 0x86, 0xB2, 0xCE, 0xEF, LobbyExt 0x08.
+
+Next: our exe. The PS2 side is now fully characterised (every request/reply the 1.50 client needs
+is in server/logs); bring the recomp's inet/netcnf HLE up (Winsock) so socom2.exe reaches the
+same screens, scored by the harness against these PCSX2 captures.
+
 ## 2026-09-07 18:45 (local) — online: a PCSX2 client logs into Horizon and reaches the SOCOM II ONLINE lobby
 Priority is online play (user, 21:30 entry in HANDOFF). Result tonight: the retail client running in
 PCSX2 goes LOGIN → LOCATING UNIVERSES → SELECT UNIVERSE ("SOCOM II Local", news text) → CONNECT TO
