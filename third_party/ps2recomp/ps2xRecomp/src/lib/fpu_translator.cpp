@@ -58,7 +58,10 @@ namespace ps2recomp
                                    "ctx->f[{}] = FPU_DIV_S(ctx->f[{}], ctx->f[{}]);",
                                    ft, fd, fs, ft);
             case COP1_S_SQRT:
-                return fmt::format("ctx->f[{}] = FPU_SQRT_S(ctx->f[{}]);", fd, fs);
+                // EE SQRT.S fd, ft: the source is the *ft* field (fs is zero in the encoding).
+                // Reading fs gave sqrt($f0) = 0 for `sqrt.s $f21, $f1`; every axis-angle length came
+                // out 0, sin(0)/0 saturated and SOCOM II's actor quaternions exploded.
+                return fmt::format("ctx->f[{}] = FPU_SQRT_S(ctx->f[{}]);", fd, ft);
             case COP1_S_ABS:
                 return fmt::format("ctx->f[{}] = FPU_ABS_S(ctx->f[{}]);", fd, fs);
             case COP1_S_MOV:
@@ -76,7 +79,8 @@ namespace ps2recomp
             case COP1_S_CVT_W:
                 return fmt::format("{{ int32_t tmp = FPU_CVT_W_S(ctx->f[{}]); std::memcpy(&ctx->f[{}], &tmp, sizeof(tmp)); }}", fs, fd);
             case COP1_S_RSQRT:
-                return fmt::format("ctx->f[{}] = FPU_RSQRT_S(ctx->f[{}]);", fd, fs);
+                // EE RSQRT.S fd, fs, ft: fd = fs / sqrt(ft).
+                return fmt::format("ctx->f[{}] = FPU_RSQRT_S(ctx->f[{}], ctx->f[{}]);", fd, fs, ft);
             case COP1_S_ADDA:
                 return fmt::format("FPU_SET_ACC(ctx, FPU_ADD_S(ctx->f[{}], ctx->f[{}]));", fs, ft);
             case COP1_S_SUBA:

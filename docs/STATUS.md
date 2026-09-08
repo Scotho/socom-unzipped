@@ -1,4 +1,23 @@
-# Project status — updated 2026-09-08 13:30
+# Project status — updated 2026-09-08 16:30
+
+## 2026-09-08 16:15 (local) — ROOT CAUSE of the exploding actors: SQRT.S read the wrong register
+The recompiler emitted SQRT.S with the *fs* field as its source. On the EE, `sqrt.s fd, ft` reads
+**ft** (fs is zero in the encoding) and `rsqrt.s fd, fs, ft` is fs / sqrt(ft). Every square root
+in the game therefore computed sqrt($f0) — usually 0.0 — e.g. the axis-angle length in the
+quaternion builder FUN_003067b0 (`sqrt.s $f21, $f1` -> sqrt($f0) = 0), so sin(0)/0 saturated to
+FLT_MAX and the actor orientations became (2^64, 2^64, ...). Found by the float traps
+(`PS2X_FPU_TRAP`): the site divided 0 by 0 right after a `length == 0` guard that could not have
+been skipped, and the generated code showed `FPU_SQRT_S(ctx->f[0])` for an instruction the
+disassembler had printed as an unknown `c1 0x10544`. Fixed in ps2xRecomp/src/lib/fpu_translator.cpp
+(SQRT uses ft; RSQRT takes fs and ft) and FPU_RSQRT_S became two-argument. VERIFIED 16:30
+(logs/run_20260908_162132.log, screens logs/parity/runs/mission_s3): the teammate quaternion
+node 0x1a83cb0 now holds unit-quaternion values (1.0, 0.707, 0.706) instead of +/-FLT_MAX, the
+0x306854 trap site is gone, the collision free list stays non-empty (0xdf3538) and the player
+holds y = -120 on the terrain instead of falling. The camera follows the mission intro fly-by at
+(-3787, -109, ...) exactly where PCSX2's trace has it at t=202-207 s. The fly-by had not finished
+by the end of the 320 s run because the game still runs at a few frames per second (VU1
+interpreter); the gameplay camera (939, 8.3, ...) needs a longer run.
+Along the way the FPU comparisons now flush denormals (hardware behaviour; not the cause here).
 
 ## 2026-09-08 13:30 (local) — the fall through the floor: collision grid collapse traced to exploding actor orientations
 Guest-memory comparison against a PCSX2 savestate (`tools/pcsx2` + PINE work locally; the state
