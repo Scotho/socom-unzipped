@@ -102,6 +102,37 @@ bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed
 
 ## Next tasks, in order (each with a starting recipe)
 
+### 0a. (2026-09-08 14:30) In-mission parity — where the "player falls through the floor" chain stands
+Read the 2026-09-08 entries at the top of docs/STATUS.md first. Facts established with guest-memory
+diffs against PCSX2 (PINE works; `tools_py/parity/cam_poll.py --spec` polls chains, a savestate's
+eeMemory.bin is the console image; ours via `PS2X_RDRAM_DUMP="C:/projects/socom_pc/logs/x.rdram:<s>"`
+with a Windows path, a POSIX path fails silently):
+- After the level load the collision grid matches PCSX2 exactly. At ~182 s the four squad members'
+  collision-node rotation rows go to +/-FLT_MAX; each then occupies all 900 grid cells, the
+  8192-node pool drains, chains get cut, the terrain leaves the grid, the player sinks; the camera
+  runaway during the intro shots is the same objects. The node matrix comes from the actor's own
+  matrix (`FUN_00315820` <- `FUN_005483d0` ra 0x549910; actor vtable 0x6691a0, matrix at +0x80,
+  orientation quaternions at +0x54/+0x5c/+0x74/+0x7c) which jump to exactly 2^64 == sqrt(FLT_MAX).
+- Traps (`PS2X_FPU_TRAP=<seconds>`; EE div by zero / sqrt of a saturated value, VU0 macro results
+  that overflowed, VU micro DIV by zero; with host time and a per-site cap of 5): the mission-phase
+  overflows sit in the quaternion library (`FUN_003070c0` q*q via the cross product
+  `FUN_001bfc78`, `FUN_003072e0` normalize -> sqrt(MAX)) and in `FUN_005df930` (bone transform),
+  called from actor code (`FUN_005a3070`). Their inputs are already ~1e37, i.e. the first bad
+  number is produced without an overflow — a wrong value from data or from an integer/MMI path
+  (keyframe decompression is the prime suspect), not from float arithmetic.
+- Benign sites the console also hits: fog `FUN_00294070` (far == near at load), flip 1/0
+  (`FUN_003aff30`), normalize of a zero vector (`FUN_001bfcc0`), HUD progress step `FUN_003719e0`.
+Next recipe: run with `PS2X_FPU_TRAP=115` and read the first trap after the load in time order;
+peek the actor quaternions (`PS2X_PEEK="0x1a89254:1,0x1a8925c:1"`, heap addresses are
+deterministic for this script) at 0.1 s to catch the first frame they change; then read the
+writer of the actor's +0x54 (class 0x6691a0 update methods: vtable at 0x6691a0). Compare the
+same actor in the PCSX2 post-load image (`logs/parity/postload_pcsx2.rdram`, slot 7 state) by
+finding it through the static player-position records (0x416054 probes, 0x4884d0) rather than
+by heap address. Do not trust object layouts guessed from a vtable word: the render-mesh node
+(0x408330) has a variable child-pointer array before its matrix.
+The 3 flips/s (cycle-exact VU1 interpreter, `PS2X_VU_STATS=1`) is a separate, larger item: a VU1
+recompiler. Until then `PS2X_CYCLE_CLOCK=guest` gives the game a constant 33 ms step.
+
 ### 0. (2026-09-07 20:00) Shell parity by score — current state
 Done today: placement (vf00), text (culling + CLUT), roller (libvu0 un-stubbed: never re-add
 `sceVu0*` HLE stubs; Sony's code runs correctly now), mission thread halt (range merge). The

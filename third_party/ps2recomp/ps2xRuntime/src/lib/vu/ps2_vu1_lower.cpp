@@ -4,8 +4,11 @@
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_vu1_detail.h"
+#include "ps2_runtime_macros.h"
 
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 
@@ -507,6 +510,14 @@ void VU1Interpreter::execLower(uint32_t instr, uint8_t *vuData, uint32_t dataSiz
                 float result = 0.0f;
                 if (den == 0.0f)
                 {
+                    // PS2X_FPU_TRAP=1: report micro-mode divisions by zero (unit, program pc).
+                    static int s_trapCount = 0;
+                    if (ps2_fpu_trap_enabled() && s_trapCount < 300)
+                    {
+                        ++s_trapCount;
+                        std::fprintf(stderr, "[vu-micro-trap] VU%d DIV by zero num=%g pc=0x%x\n",
+                                     m_unit == Unit::VU1 ? 1 : 0, (double)num, m_state.pc);
+                    }
                     statusDi = num == 0.0f ? 0x10u : 0x20u;
                     result = std::signbit(num) != std::signbit(den)
                                  ? -std::numeric_limits<float>::max()

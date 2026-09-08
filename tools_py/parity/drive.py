@@ -121,6 +121,21 @@ def main():
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait)
         elif mode == "next":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait, changed_from=last)
+        elif mode == "idle":
+            # Press only if the screen stays unchanged for <delay> seconds (a menu waiting for
+            # input); skip the press when it changes (a movie/loading screen already moving on).
+            # Makes the boot sequence robust to a movie that sometimes plays to its end.
+            t_idle = time.time()
+            ref = frame(hwnd)
+            skip = False
+            while time.time() - t_idle < delay:
+                time.sleep(0.5)
+                if float(np.abs(frame(hwnd) - ref).mean()) > 1.0:
+                    skip = True
+                    break
+            if skip:
+                buttons = []
+            delay = 0.5
         time.sleep(delay)
         label = f"s{i:02d}_{'+'.join(buttons) or 'none'}"
         path = os.path.join(a.out, label + ".png")

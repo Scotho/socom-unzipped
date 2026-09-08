@@ -17,6 +17,7 @@
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
 #include <cstring>
+#include <cmath>
 #include <fstream>
 #include <vector>
 #include <thread>
@@ -544,13 +545,66 @@ namespace
                 addrs.push_back(static_cast<uint32_t>(std::strtoul(spec.substr(pos, end - pos).c_str(), nullptr, 0)));
                 pos = end + 1;
             }
-            std::thread([&runtime, addrs]() {
+            // PS2X_WATCH_HUGE="0xADDR:words": scan a range every ~0.5 ms and print the first 60
+            // words that turn from a sane float (|x| < 1e9) into a huge one (|x| >= 1e15 or NaN),
+            // with the host time and the word's offset — where an object's state first explodes.
+            std::vector<std::pair<uint32_t, uint32_t>> hugeRanges;
+            if (const char *hw = std::getenv("PS2X_WATCH_HUGE"))
+            {
+                std::string hs(hw);
+                size_t p = 0;
+                while (p < hs.size())
+                {
+                    size_t e = hs.find(',', p);
+                    if (e == std::string::npos)
+                        e = hs.size();
+                    std::string item = hs.substr(p, e - p);
+                    p = e + 1;
+                    uint32_t words = 64;
+                    const size_t colon = item.find(':');
+                    if (colon != std::string::npos)
+                    {
+                        words = static_cast<uint32_t>(std::strtoul(item.c_str() + colon + 1, nullptr, 0));
+                        item = item.substr(0, colon);
+                    }
+                    hugeRanges.emplace_back(static_cast<uint32_t>(std::strtoul(item.c_str(), nullptr, 0)), words);
+                }
+            }
+            std::thread([&runtime, addrs, hugeRanges]() {
                 std::vector<uint32_t> last(addrs.size(), 0xDEADBEEFu);
+                std::vector<std::vector<uint8_t>> hugeState;
+                for (const auto &r : hugeRanges)
+                    hugeState.emplace_back(r.second, 0u);   // 0 unknown, 1 sane, 2 huge
+                int hugePrinted = 0;
                 const auto epoch = std::chrono::steady_clock::now();
                 for (;;)
                 {
                     std::this_thread::sleep_for(std::chrono::microseconds(500));
                     const uint8_t *rdram = runtime.memory().getRDRAM();
+                    for (size_t r = 0; r < hugeRanges.size() && hugePrinted < 60; ++r)
+                    {
+                        for (uint32_t w = 0; w < hugeRanges[r].second && hugePrinted < 60; ++w)
+                        {
+                            uint32_t bits = 0;
+                            std::memcpy(&bits, rdram + ((hugeRanges[r].first + w * 4u) & PS2_RAM_MASK), sizeof(bits));
+                            float x;
+                            std::memcpy(&x, &bits, sizeof(x));
+                            const bool isHuge = (x != x) || std::fabs(x) >= 1e15f;
+                            const bool isSane = !isHuge && std::fabs(x) < 1e9f && (bits & 0x7F800000u) != 0u;
+                            uint8_t &st = hugeState[r][w];
+                            if (isSane)
+                                st = 1;
+                            else if (isHuge && st == 1)
+                            {
+                                st = 2;
+                                const R5900Context *c = &runtime.cpu();
+                                const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - epoch).count();
+                                std::printf("[watch-huge] %.3fs @%08x (+0x%x) = %08x (%g) pc=0x%x ra=0x%x\n", t,
+                                            hugeRanges[r].first + w * 4u, w * 4u, bits, x, c->pc, GPR_U32(c, 31));
+                                ++hugePrinted;
+                            }
+                        }
+                    }
                     for (size_t i = 0; i < addrs.size(); ++i)
                     {
                         uint32_t v = 0;

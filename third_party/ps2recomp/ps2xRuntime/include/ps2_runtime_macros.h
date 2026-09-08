@@ -3,6 +3,9 @@
 #include <cstdint>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <cstdlib>
+#include <chrono>
 #include <bit>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -157,15 +160,27 @@ static inline __m128 ps2_vu_sat(__m128 v)
     r = _mm_or_si128(_mm_andnot_si128(denorm, r), _mm_and_si128(denorm, sign));
     return _mm_castsi128_ps(r);
 }
-#define PS2_VADD(a, b) ps2_vu_sat(_mm_add_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
-#define PS2_VSUB(a, b) ps2_vu_sat(_mm_sub_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
-#define PS2_VMUL(a, b) ps2_vu_sat(_mm_mul_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
-#define PS2_VDIV(a, b) ps2_vu_sat(_mm_div_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))))
-#define PS2_VMULQ(a, q) ps2_vu_sat(_mm_mul_ps(ps2_vu_sat((__m128)(a)), _mm_set1_ps(ps2_fpu_sat(q))))
+// PS2X_FPU_TRAP=1 also reports VU0 macro-mode results that overflowed (a lane with exponent 255
+// before clamping) and Q-register divisions by zero, with the guest pc (see ps2_fpu_trap_report).
+void ps2_vu_trap_report(const char *what, __m128 v, const R5900Context *ctx);
+inline __m128 ps2_vu_sat_traced(__m128 v, const R5900Context *ctx, const char *what)
+{
+    const __m128i bits = _mm_castps_si128(v);
+    const __m128i expMask = _mm_set1_epi32(0x7F800000);
+    const __m128i infNan = _mm_cmpeq_epi32(_mm_and_si128(bits, expMask), expMask);
+    if (_mm_movemask_epi8(infNan) != 0)
+        ps2_vu_trap_report(what, v, ctx);
+    return ps2_vu_sat(v);
+}
+#define PS2_VADD(a, b) ps2_vu_sat_traced(_mm_add_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))), ctx, "vadd")
+#define PS2_VSUB(a, b) ps2_vu_sat_traced(_mm_sub_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))), ctx, "vsub")
+#define PS2_VMUL(a, b) ps2_vu_sat_traced(_mm_mul_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))), ctx, "vmul")
+#define PS2_VDIV(a, b) ps2_vu_sat_traced(_mm_div_ps(ps2_vu_sat((__m128)(a)), ps2_vu_sat((__m128)(b))), ctx, "vdiv")
+#define PS2_VMULQ(a, q) ps2_vu_sat_traced(_mm_mul_ps(ps2_vu_sat((__m128)(a)), _mm_set1_ps(ps2_fpu_sat(q))), ctx, "vmulq")
 // Q-register ops (VDIV / VSQRT / VRSQRT): a zero divisor gives +/-FLT_MAX, the roots take |x|.
-#define PS2_VDIVQ(fs, ft) ps2_fpu_div((float)(fs), (float)(ft))
-#define PS2_VSQRTQ(ft) ps2_fpu_sat(sqrtf(fabsf(ps2_fpu_sat((float)(ft)))))
-#define PS2_VRSQRTQ(fs, ft) ps2_fpu_div((float)(fs), sqrtf(fabsf(ps2_fpu_sat((float)(ft)))))
+#define PS2_VDIVQ(fs, ft) ps2_fpu_div_traced((float)(fs), (float)(ft), ctx)
+#define PS2_VSQRTQ(ft) ps2_fpu_sqrt_traced((float)(ft), ctx)
+#define PS2_VRSQRTQ(fs, ft) ps2_fpu_div_traced((float)(fs), sqrtf(fabsf(ps2_fpu_sat((float)(ft)))), ctx)
 #define PS2_VBLEND(a, b, mask) PS2_BLENDV_PS((__m128)(a), (__m128)(b), (__m128)(mask))
 
 // Memory access helpers - Hybrid Fast/Slow Path
@@ -689,7 +704,8 @@ inline __m128i ps2_u64_to_epi64_pair(uint64_t value)
 #define PS2_PMFHL_LH(hi, lo) _mm_shuffle_epi32(_mm_packs_epi32(ps2_u64_to_epi64_pair(lo), ps2_u64_to_epi64_pair(hi)), _MM_SHUFFLE(3, 1, 2, 0))
 #define PS2_PMFHL_SH(hi, lo) _mm_shufflehi_epi16(_mm_shufflelo_epi16(_mm_packs_epi32(ps2_u64_to_epi64_pair(lo), ps2_u64_to_epi64_pair(hi)), _MM_SHUFFLE(3, 1, 2, 0)), _MM_SHUFFLE(3, 1, 2, 0))
 
-// FPU (COP1) operations.
+// FPU (COP1) operations. Comparisons flush denormals first: the EE FPU treats them as zero
+// (an axis-angle length of 1e-40 must take the `length == 0` guard, as on the console).
 // The EE FPU is not IEEE: it has no infinities and no NaNs. Overflow saturates to +/-FLT_MAX,
 // a zero (or denormal) divisor yields +/-FLT_MAX, denormals are flushed to zero and SQRT takes
 // |x|. Host IEEE math then diverges silently: SOCOM II's fog setup does 255 - near * (-255 /
@@ -723,13 +739,57 @@ inline float ps2_fpu_div(float a, float b)
     }
     return ps2_fpu_sat(ps2_fpu_sat(a) / b);
 }
+// PS2X_FPU_TRAP=1: print the guest pc of the first divisions by zero and square roots of a
+// saturated operand (the first overflow in a divergence chain: a quantity that is zero here and
+// not on the console). Cheap when off (one predictable branch on the slow paths only).
+// PS2X_FPU_TRAP=<seconds>: report only after that much host time (the boot and menus have
+// legitimate divisions by zero: fog with far == near, the flip's 1/0). 300 reports per kind.
+inline bool ps2_fpu_trap_enabled()
+{
+    static const double s_after = [] { const char *e = std::getenv("PS2X_FPU_TRAP"); return e ? std::atof(e) : -1.0; }();
+    if (s_after < 0.0)
+        return false;
+    static const auto s_epoch = std::chrono::steady_clock::now();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count() >= s_after;
+}
+// Per-site cap (5 reports per guest pc) with the host time, so one benign site cannot exhaust
+// the budget and the first occurrence of every site is visible in time order.
+bool ps2_fpu_trap_site_ok(uint32_t pc);   // ps2_runtime.cpp: one shared per-site table (an inline
+                                          // function's statics got duplicated per unity batch)
+inline double ps2_fpu_trap_time()
+{
+    static const auto s_epoch = std::chrono::steady_clock::now();
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count();
+}
+inline void ps2_fpu_trap_report(const char *what, float a, float b, const R5900Context *ctx)
+{
+    if (!ps2_fpu_trap_site_ok(ctx->pc))
+        return;
+    std::fprintf(stderr, "[fpu-trap] %.3fs %s a=%g b=%g pc=0x%x ra=0x%x\n", ps2_fpu_trap_time(), what, (double)a, (double)b,
+                 ctx->pc, (uint32_t)_mm_cvtsi128_si32(ctx->r[31]));
+}
+inline float ps2_fpu_div_traced(float a, float b, const R5900Context *ctx)
+{
+    uint32_t bb;
+    std::memcpy(&bb, &b, sizeof(bb));
+    if ((bb & 0x7F800000u) == 0u && ps2_fpu_trap_enabled())
+        ps2_fpu_trap_report("div-by-zero", a, b, ctx);
+    return ps2_fpu_div(a, b);
+}
+inline float ps2_fpu_sqrt_traced(float a, const R5900Context *ctx)
+{
+    const float v = ps2_fpu_sat(a);
+    if (std::fabs(v) >= 3.0e38f && ps2_fpu_trap_enabled())
+        ps2_fpu_trap_report("sqrt-of-max", v, 0.0f, ctx);
+    return ps2_fpu_sat(sqrtf(fabsf(v)));
+}
 #define FPU_SET_ACC(ctx, res) (ctx->f_acc = res)
 #define FPU_ADD_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) + ps2_fpu_sat((float)(b)))
 #define FPU_SUB_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) - ps2_fpu_sat((float)(b)))
 #define FPU_MUL_S(a, b) ps2_fpu_sat(ps2_fpu_sat((float)(a)) * ps2_fpu_sat((float)(b)))
-#define FPU_DIV_S(a, b) ps2_fpu_div((float)(a), (float)(b))
-#define FPU_SQRT_S(a) ps2_fpu_sat(sqrtf(fabsf(ps2_fpu_sat((float)(a)))))
-#define FPU_RSQRT_S(a) ps2_fpu_div(1.0f, sqrtf(fabsf(ps2_fpu_sat((float)(a)))))
+#define FPU_DIV_S(a, b) ps2_fpu_div_traced((float)(a), (float)(b), ctx)
+#define FPU_SQRT_S(a) ps2_fpu_sqrt_traced((float)(a), ctx)
+#define FPU_RSQRT_S(a) ps2_fpu_div_traced(1.0f, sqrtf(fabsf(ps2_fpu_sat((float)(a)))), ctx)
 #define FPU_ABS_S(a) fabsf((float)(a))
 #define FPU_MOV_S(a) ((float)(a))
 #define FPU_NEG_S(a) (-(float)(a))
@@ -743,24 +803,35 @@ inline float ps2_fpu_div(float a, float b)
 #define FPU_FLOOR_W_S(a) ((int32_t)floorf((float)(a)))
 #define FPU_CVT_S_W(a) ((float)(int32_t)(a))
 #define FPU_CVT_S_L(a) ((float)(int64_t)(a))
-#define FPU_CVT_W_S(a) ((int32_t)nearbyintf((float)(a)))
+// EE cvt.w.s truncates toward zero and saturates (|x| >= 2^31 -> 0x7FFFFFFF / 0x80000000), the
+// FCR31 rounding mode is not applied — the same as PCSX2's CVT_W. Rounding to nearest here made
+// every float->int of the form (int)(pos / cell) land one cell off half of the time.
+static inline int32_t ps2_fpu_cvt_w(float v)
+{
+    uint32_t bits;
+    std::memcpy(&bits, &v, sizeof(bits));
+    if ((bits & 0x7F800000u) <= 0x4E800000u)   // |v| < 2^31 (and not inf/NaN)
+        return static_cast<int32_t>(v);
+    return (bits & 0x80000000u) ? static_cast<int32_t>(0x80000000u) : 0x7FFFFFFF;
+}
+#define FPU_CVT_W_S(a) ps2_fpu_cvt_w((float)(a))
 #define FPU_CVT_L_S(a) ((int64_t)(float)(a))
 #define FPU_C_F_S(a, b) (0)
-#define FPU_C_UN_S(a, b) (isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_EQ_S(a, b) ((float)(a) == (float)(b))
-#define FPU_C_UEQ_S(a, b) ((float)(a) == (float)(b) || isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_OLT_S(a, b) ((float)(a) < (float)(b))
-#define FPU_C_ULT_S(a, b) ((float)(a) < (float)(b) || isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_OLE_S(a, b) ((float)(a) <= (float)(b))
-#define FPU_C_ULE_S(a, b) ((float)(a) <= (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+#define FPU_C_UN_S(a, b) (isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_EQ_S(a, b) (ps2_fpu_sat((float)(a)) == ps2_fpu_sat((float)(b)))
+#define FPU_C_UEQ_S(a, b) (ps2_fpu_sat((float)(a)) == ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_OLT_S(a, b) (ps2_fpu_sat((float)(a)) < ps2_fpu_sat((float)(b)))
+#define FPU_C_ULT_S(a, b) (ps2_fpu_sat((float)(a)) < ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_OLE_S(a, b) (ps2_fpu_sat((float)(a)) <= ps2_fpu_sat((float)(b)))
+#define FPU_C_ULE_S(a, b) (ps2_fpu_sat((float)(a)) <= ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
 #define FPU_C_SF_S(a, b) (0)
-#define FPU_C_NGLE_S(a, b) (isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_SEQ_S(a, b) ((float)(a) == (float)(b))
-#define FPU_C_NGL_S(a, b) ((float)(a) == (float)(b) || isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_LT_S(a, b) ((float)(a) < (float)(b))
-#define FPU_C_NGE_S(a, b) ((float)(a) < (float)(b) || isnan((float)(a)) || isnan((float)(b)))
-#define FPU_C_LE_S(a, b) ((float)(a) <= (float)(b))
-#define FPU_C_NGT_S(a, b) ((float)(a) <= (float)(b) || isnan((float)(a)) || isnan((float)(b)))
+#define FPU_C_NGLE_S(a, b) (isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_SEQ_S(a, b) (ps2_fpu_sat((float)(a)) == ps2_fpu_sat((float)(b)))
+#define FPU_C_NGL_S(a, b) (ps2_fpu_sat((float)(a)) == ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_LT_S(a, b) (ps2_fpu_sat((float)(a)) < ps2_fpu_sat((float)(b)))
+#define FPU_C_NGE_S(a, b) (ps2_fpu_sat((float)(a)) < ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
+#define FPU_C_LE_S(a, b) (ps2_fpu_sat((float)(a)) <= ps2_fpu_sat((float)(b)))
+#define FPU_C_NGT_S(a, b) (ps2_fpu_sat((float)(a)) <= ps2_fpu_sat((float)(b)) || isnan(ps2_fpu_sat((float)(a))) || isnan(ps2_fpu_sat((float)(b))))
 
 // QFSRV: Quadword Funnel Shift Right Variable
 // Concatenates rs || rt (256 bits) and right-shifts by SA bits, taking lower 128 bits.

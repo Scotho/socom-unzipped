@@ -2687,3 +2687,33 @@ void PS2Runtime::run()
 
     RUNTIME_LOG("[run] exiting loop");
 }
+
+// PS2X_FPU_TRAP=1: VU0 macro-mode overflow reporter (declared in ps2_runtime_macros.h).
+void ps2_vu_trap_report(const char *what, __m128 v, const R5900Context *ctx)
+{
+    if (!ps2_fpu_trap_enabled() || !ctx || !ps2_fpu_trap_site_ok(ctx->pc))
+        return;
+    alignas(16) float lanes[4];
+    _mm_store_ps(lanes, v);
+    std::fprintf(stderr, "[vu-trap] %.3fs %s lanes=(%g,%g,%g,%g) pc=0x%x ra=0x%x\n", ps2_fpu_trap_time(), what, (double)lanes[0],
+                 (double)lanes[1], (double)lanes[2], (double)lanes[3], ctx->pc, GPR_U32(ctx, 31));
+}
+
+// One shared per-site cap for the float traps (5 reports per guest pc).
+bool ps2_fpu_trap_site_ok(uint32_t pc)
+{
+    static uint32_t s_pcs[256];
+    static uint8_t s_counts[256];
+    static int s_n = 0;
+    for (int i = 0; i < s_n; ++i)
+        if (s_pcs[i] == pc)
+            return s_counts[i]++ < 5;
+    if (s_n < 256)
+    {
+        s_pcs[s_n] = pc;
+        s_counts[s_n] = 1;
+        ++s_n;
+        return true;
+    }
+    return false;
+}

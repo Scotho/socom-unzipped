@@ -1,4 +1,29 @@
-# Project status — updated 2026-09-08 10:30
+# Project status — updated 2026-09-08 13:30
+
+## 2026-09-08 13:30 (local) — the fall through the floor: collision grid collapse traced to exploding actor orientations
+Guest-memory comparison against a PCSX2 savestate (`tools/pcsx2` + PINE work locally; the state
+file's eeMemory.bin is zstd inside a zip, `logs/parity/spawn_pcsx2.rdram`) versus our
+`PS2X_RDRAM_DUMP` images:
+- After the level load our collision grid (world+0x684: 36x25 cells, 8192-node pool, cells at
+  +0x30, free list at +0x38) is identical to PCSX2's: 3566 nodes, 1262 objects.
+- At ~182 s the four squad-member collision nodes get rotation rows saturated to +/-FLT_MAX
+  (translation sane), so `FUN_002d7580` inserts each into all 900 cells; the pool drains, the next
+  insert links a null node and cuts the cell chain; the terrain leaves the grid, the ground probes
+  return nothing and the player sinks (PCSX2 holds the player at y=-126.26, ours rests at -131.4).
+  The camera runaway during the intro shots is the same objects (the camera follows them).
+- The node matrix is copied from the actor's own matrix (`FUN_00315820`, called from
+  `FUN_005483d0` at ra 0x549910); the actor's orientation quaternions (object+0x54/+0x5c and
+  +0x74/+0x7c, class vtable 0x6691a0) jump from (-0.383, -0.924) to exactly 2^64 in every
+  component. 2^64 == sqrt(FLT_MAX): a saturated maximum went through a square root, i.e. a
+  division by zero happened on ours and not on the console.
+- Census of saturated words: ours 798 at load / 1306 at rest, PCSX2 18. 33 heap objects of
+  class 0x408330 (scene/bone nodes) hold 24 saturated matrix words each already at load.
+- The EE FPU trap (`PS2X_FPU_TRAP=1`: divisions by zero, square roots of a saturated operand,
+  with the guest pc) fired zero times in a full run, so the overflow originates in VU0 macro-mode
+  math or a VU microprogram; traps for those are in the build being tested.
+Tools added on the way (commit 91e7588): pointer-chain `PS2X_PEEK`, `PS2X_WATCH` word poller,
+`PS2X_WATCH_HUGE` range scanner, `PS2X_HOST_PROF` sampling profiler, `PS2X_VU_STATS`,
+`tools_py/parity/cam_poll.py` (PINE chains).
 
 ## 2026-09-08 10:30 (local) — intro movie seam fixed; in-mission camera diverges because the VU1 interpreter caps the game at 3 flips/s
 **Movie seam (commit df9f8fe).** Render-target downloads wrote all 1024 texture columns back into
