@@ -1,3 +1,7 @@
+>>> 2026-09-08: SEE docs/HANDOFF-2026-09-08.md FIRST — a worktree removal permanently deleted the
+>>> git-ignored game/ and tools/ (ISO, PCSX2 installs + savestates + memcards, llvm-mingw, Ghidra,
+>>> reCOM). Restore per its "STOP FIRST" section before any run or autonomous cycle.
+
 # Handoff — SOCOM II PC recompilation (2026-09-06 02:15)
 
 Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
