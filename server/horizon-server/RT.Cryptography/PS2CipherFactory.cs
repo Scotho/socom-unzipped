@@ -39,6 +39,13 @@ namespace RT.Cryptography
             // generate random series of bytes
             var b = new byte[0x40];
             RNG.NextBytes(b);
+            // The client session key travels RSA-encrypted under the client's 512-bit modulus N.
+            // RSA only round-trips plaintexts < N, and a uniformly random 512-bit key is >= N with
+            // probability (2^512 - N) / 2^512 (about 8% for the SOCOM II client's key), which then
+            // broke every message after CRYPTKEY_PEER ("Unable to decrypt RT_MSG_CLIENT_CONNECT_TCP").
+            // Keep the key below 2^511 whichever end is the most significant byte.
+            b[0] &= 0x7F;
+            b[0x3F] &= 0x7F;
 
             return new PS2_RC4(b, context);
         }

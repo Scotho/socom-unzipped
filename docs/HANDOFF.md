@@ -207,9 +207,23 @@ Next, in order:
   connected-state send gate ("30 ms since the last flush", FUN_00634dd8) never opened. Fix:
   PS2Runtime::refreshCop0Count derives Count from the host steady clock at 294.912 MHz and is
   applied at every syscall and scheduler switch-in (ps2_runtime.cpp / EeScheduler.cpp).
-- (b) NEXT: press CROSS on SELECT UNIVERSE → MAS login (10075), persona/password on the OSK, EULA,
-  lobby, room, a match — mirror `tools_py/parity/online_login.py`'s PCSX2 key script; the golden
-  screens are `logs/parity/online/login/02_persona.png` onward. Server side is already done.
+- (b) DONE 2026-09-08 01:50: `python -m tools_py.parity.online_login_ours --existing --host` takes
+  the exe boot → ONLINE → LOGIN → universe → persona "socomc" (password on the OSK) → CONNECT →
+  EULA → lobby (SERVER NEWS closed) → BRIEFING ROOMS → Channel 1 → CREATE GAME "test" (Medley) →
+  **GAME LOBBY** (VIGILANCE, socomc on SEALS). Server side: MAS AccountLogin, MLS lobby sequence,
+  JoinChannel, CreateGameRequest1 → DME world, JoinGame, DME TCP + aux UDP CONNECT_COMPLETE,
+  broadcasts + ECHO keepalives — the same trace as PCSX2 client A. Parity vs the PCSX2 golden
+  (`logs/parity/online/{login,match}/`): 98–99 on every matching screen. Every transition is
+  detected against title crops in `scripts/parity/refs/` (fixed waits lose presses: the shell eats
+  input during transitions, the boot press count varies, the OSK sometimes opens in accent mode,
+  the news popup appears seconds after the lobby). Horizon fix: the RC4 session key is clamped
+  below 2^511 (`PS2CipherFactory.CreateSym`) — a random 512-bit key ≥ the client's modulus broke
+  ~8% of handshakes ("Unable to decrypt RT_MSG_CLIENT_CONNECT_TCP").
+- (c) NEXT: a second client to launch the match. Either rebuild the PCSX2 client-B state (savestate
+  5 + `tools/pcsx2_b`, see HANDOFF-2026-09-08 §0) and run `online_login_ours --existing --host`
+  alongside `online_match.py`'s B side, or teach the runtime a second exe instance (distinct window
+  title, the client-B UDP port shift 3658/3659 → 3660/3661 as an env var, separate mc0/ dir).
+  Then READY on both and score the in-mission screens against `match/A_18_hold05.png`.
 - (c) capture the exe's online screens as a golden set and score them against PCSX2.
 
 Layers already HLE'd (all in third_party/ps2recomp/ps2xRuntime/src/lib/socom2_*.cpp and

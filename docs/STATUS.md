@@ -24,7 +24,10 @@ IRX loads to a completed SCERT TCP handshake with the real MUIS (10071). Layers:
 Result: the exe resolves the retail hostnames to PS2X_SOCOM2_SERVER (default 127.0.0.1), connects
 TCP to MUIS, the server accepts CONNECT_TCP and sends CONNECT_ACCEPT + CONNECT_COMPLETE, the
 client sends the LobbyExt/0x03 universe query and shows SELECT UNIVERSE with the Horizon universe
-and its news (2026-09-08). The earlier stall was the frozen COP0 Count: `mfc0 Count` reads
+and its news (2026-09-08). Later the same night the exe logs in (MAS), reaches the lobby (MLS),
+joins Channel 1 and hosts a game: GAME LOBBY with a live DME world (TCP + aux UDP), driven by
+`tools_py/parity/online_login_ours.py --existing --host`; parity 98-99 vs the PCSX2 golden set.
+Only a second client is missing for a match. The earlier stall was the frozen COP0 Count: `mfc0 Count` reads
 ctx->cop0_count, which nothing advanced, so SCE-RT's clock stayed at 0 and the connected-state
 send gate (30 ms since the last flush) never opened; the runtime now refreshes cop0_count from the
 host steady clock at 294.912 MHz on every syscall and scheduler switch-in.
