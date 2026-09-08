@@ -1,0 +1,9 @@
+# Our exe: boot -> main menu -> ONLINE (ours skips the movie and the studio cards).
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # placeholder screen (menu movie missing) -> main menu
+next+3.0:DOWN       # main menu: NEW GAME -> ONLINE
+wait+1.5:CROSS      # ONLINE
+wait+8.0:NONE
+wait+8.0:CROSS      # LOGIN (or dismiss a notice)
+wait+10.0:NONE
+wait+10.0:NONE

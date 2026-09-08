@@ -119,6 +119,7 @@ namespace ps2x::iop::detail
                 ServiceList services;
                 services.emplace_back(createSnd989Service(host));
                 services.emplace_back(createLgAudService(host));
+                services.emplace_back(createEzNetCnfService(host));
                 return services;
             },
         });

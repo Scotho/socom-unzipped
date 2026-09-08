@@ -1,5 +1,25 @@
 # Project status — updated 2026-09-07 17:00
 
+## 2026-09-07 22:40 (local) — our exe reaches LOGIN TO SOCOM II ONLINE (netstack bring-up started)
+ONLINE on our exe used to go black after loading the network IRX set. Three layers were missing:
+- SIF sreg handshake: msifrpc's init sends SETSREG (0x80000001) to the IOP and spins on the EE
+  sreg table until the IOP module echoes it. `socom2_SifSendCmd` mirrors the write (sreg table
+  at 0x1da6c0). `sceSifGetSreg` is not stubbed — it is the game's own code reading that table.
+- msifrpc (multi-SIF RPC, SCE-RT's transport for libnetb, service 0x80001201): init/bind/call/
+  unbind (FUN_001bcd80/1bd050/1bd320/1bd200) are replaced by host handlers; the call is answered
+  synchronously by `socom2LibnetbCall` (for now every fno logs and returns -1). EE ABI: args 5-8
+  in t0-t3.
+- eznetcnf/eznetctl (0x75499128/0x75488909) are a new ps2xIOP service
+  (ps2xIOP/src/modules/eznetcnf.cpp): one "Setting 1" combination, interface always connected.
+- DNAS: FUN_002cc670 bound to ret0 (the pnach's `jr ra` equivalent).
+The login screen appears; it still says "No Network Adaptor detected" because libnetb fno 8
+(interface list) / fno 9 (interface control) return -1. Reverse-engineering of the libnetb RPC
+contract (LIBNETB.IRX decompiled to game/analysis/LIBNETB.IRX.decomp.c, spec going to
+docs/research/10-libnetb-rpc.md) is in progress; the socket layer (Winsock) comes next.
+Driver: `python -m tools_py.parity.drive --target ours --script scripts/parity/launch_to_online_ours.txt`.
+Reference: tools/reference/reCOM (git-ignored clone of NotEnoughPhotons/reCOM, a SOCOM 1/2 +
+GameZ decomp with demo-disc symbol names) for naming engine functions.
+
 ## 2026-09-07 21:10 (local) — ONLINE MATCH: two PCSX2 clients play VIGILANCE on the local Horizon stack
 `python -m tools_py.parity.online_match` logs two retail clients in (socom / socomb), A creates a
 game (Medley play list), B joins it, B switches team, both press READY and the match launches:

@@ -7,6 +7,7 @@
 // plaintext, so the loader's decrypt path is replaced by "success" and the memory-card
 // update path by "not found".  See docs/research/05-code-package-and-harness.md.
 #include "game_overrides.h"
+#include "ps2_stubs.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
@@ -68,6 +69,130 @@ namespace ps2_stubs
         if (logged++ < 3)
             std::cout << "[socom2] exposure readback FUN_003b24c0 -> stubbed grey pixel" << std::endl;
         SET_GPR_U32(ctx, 2, 0u);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    // ---- SIF sreg handshake (ONLINE path) ------------------------------------------------------
+    // After loading the network IRX set (NETCNF, INET, INETCTL, PPP, PPPOE, SMAP, MSIFRPC,
+    // LIBNETB) the game's FUN_001bcd80 registers a SIF command handler (0x80000018), sends the
+    // system command SETSREG (0x80000001, {reg=1, val=1}) to the IOP and then spins on its own
+    // EE-side sreg table (`sceSifGetSreg` = DAT_001da6c0[reg]) until the IOP module answers with
+    // the same SETSREG towards the EE. There is no IOP module here to answer, so mirror the write
+    // into the EE table immediately; the generic stub then copies the payload and returns 1.
+    void socom2_SifSendCmd(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t cid = GPR_U32(ctx, 4);
+        const uint32_t packet = GPR_U32(ctx, 5);
+        if (cid == 0x80000001u && packet != 0u)
+        {
+            const uint32_t reg = *reinterpret_cast<const uint32_t *>(rdram + ((packet + 16u) & PS2_RAM_MASK));
+            const uint32_t val = *reinterpret_cast<const uint32_t *>(rdram + ((packet + 20u) & PS2_RAM_MASK));
+            if (reg < 32u)
+            {
+                *reinterpret_cast<uint32_t *>(rdram + ((0x001da6c0u + reg * 4u) & PS2_RAM_MASK)) = val;
+                std::cout << "[socom2] SIF SETSREG reg=" << reg << " val=" << val
+                          << " mirrored into the EE sreg table" << std::endl;
+            }
+        }
+        ps2_stubs::sceSifSendCmd(rdram, ctx, runtime);
+    }
+
+    // ---- msifrpc (multi-SIF RPC) HLE ----------------------------------------------------------
+    // SCE-RT's libnetb EE library (0x245ad8..0x2472xx) talks to LIBNETB.IRX through msifrpc:
+    // FUN_001bd050 bind(client, sid, 0, bufSize, p5, p6) -> SIF cmd 0x80000019 + WaitSema,
+    // FUN_001bd320 call(client, fno, 0, send, sendSize, recv, recvSize, cb, cbArg) -> 0x8000001a,
+    // FUN_001bd200 unbind(client, 0) -> 0x8000001d. The replies come back as SIF commands handled
+    // by FUN_001bcf20, which fills the client struct and signals the semaphores. With no IOP the
+    // calls are answered synchronously here: the libnetb service (sid 0x80001201) is dispatched
+    // by function number to a host implementation; the result word the EE wrappers read is the
+    // first u32 of the receive buffer.
+    // Client struct (u32 index): [0] packet, [1] ?, [2] reply sema, [4] sid, [5] IOP buffer,
+    // [9] IOP handle (non-zero = bound), [10] mutex sema, [11] unbind result,
+    // [12] buffer size (wrappers check it as +0x30), [13],[14] bind extras.
+    constexpr uint32_t kLibnetbSid = 0x80001201u;
+
+    uint32_t rd32(const uint8_t *rdram, uint32_t addr)
+    {
+        uint32_t v;
+        std::memcpy(&v, rdram + (addr & PS2_RAM_MASK), 4);
+        return v;
+    }
+
+    void wr32(uint8_t *rdram, uint32_t addr, uint32_t v)
+    {
+        std::memcpy(rdram + (addr & PS2_RAM_MASK), &v, 4);
+    }
+
+    // Returns the libnetb result word; fills recv. Placeholder until the RPC contract is mapped
+    // (docs/research/10-libnetb-rpc.md): every function is logged and answered with -1.
+    int32_t socom2LibnetbCall(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize,
+                              uint32_t recv, uint32_t recvSize)
+    {
+        std::ostringstream hex;
+        for (uint32_t i = 0; i < std::min<uint32_t>(sendSize, 64u); ++i)
+            hex << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(rdram[(send + i) & PS2_RAM_MASK]) << ' ';
+        std::cout << "[socom2/libnetb] fno=0x" << std::hex << fno << " send=0x" << send << "/" << std::dec << sendSize
+                  << " recv=0x" << std::hex << recv << "/" << std::dec << recvSize << " [" << hex.str() << "]" << std::endl;
+        if (recv != 0u && recvSize >= 4u)
+            std::memset(rdram + (recv & PS2_RAM_MASK), 0, recvSize);
+        return -1;
+    }
+
+    void socom2_MsifBind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t client = GPR_U32(ctx, 4);
+        const uint32_t sid = GPR_U32(ctx, 5);
+        const uint32_t bufSize = GPR_U32(ctx, 7);
+        wr32(rdram, client + 4u * 4u, sid);
+        wr32(rdram, client + 5u * 4u, 0u);
+        wr32(rdram, client + 9u * 4u, 1u);          // "bound"
+        wr32(rdram, client + 11u * 4u, 0u);
+        wr32(rdram, client + 12u * 4u, bufSize);
+        std::cout << "[socom2/msifrpc] bind sid=0x" << std::hex << sid << " bufSize=0x" << bufSize << std::dec
+                  << " -> host HLE" << std::endl;
+        SET_GPR_U32(ctx, 2, 0u);
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void socom2_MsifUnbind(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t client = GPR_U32(ctx, 4);
+        wr32(rdram, client + 9u * 4u, 0u);
+        SET_GPR_U32(ctx, 2, 1u);                    // the wrapper loops until unbind returns 1
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    void socom2_MsifCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t client = GPR_U32(ctx, 4);
+        const uint32_t fno = GPR_U32(ctx, 5);
+        const uint32_t mode = GPR_U32(ctx, 6);
+        const uint32_t send = GPR_U32(ctx, 7);
+        // EE ABI: arguments 5..8 travel in t0..t3, the 9th on the stack.
+        const uint32_t sendSize = GPR_U32(ctx, 8);
+        const uint32_t recv = GPR_U32(ctx, 9);
+        const uint32_t recvSize = GPR_U32(ctx, 10);
+        int32_t result = -1;
+        if (mode == 0u)
+        {
+            const uint32_t sid = rd32(rdram, client + 4u * 4u);
+            if (sid == kLibnetbSid)
+            {
+                socom2LibnetbCall(rdram, fno, send, sendSize, recv, recvSize);
+                result = 0;                          // transport ok; the result word is in recv[0]
+            }
+            else
+            {
+                std::cout << "[socom2/msifrpc] call to unknown sid=0x" << std::hex << sid << " fno=0x" << fno << std::dec << std::endl;
+            }
+        }
+        SET_GPR_U32(ctx, 2, static_cast<uint32_t>(result));
+        ctx->pc = GPR_U32(ctx, 31);
+    }
+
+    // FUN_001bcd80: msifrpc init (SIF handler + sreg handshake). Nothing to set up on the host.
+    void socom2_MsifInit(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
         ctx->pc = GPR_U32(ctx, 31);
     }
 
@@ -754,6 +879,15 @@ namespace
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
         runtime.replaceFunction(0x00181c90u, socom2_LoadOverlayFile);
+        runtime.replaceFunction(0x001a6110u, ps2_stubs::socom2_SifSendCmd); // sceSifSendCmd: sreg handshake echo
+        // msifrpc (libnetb transport) answered on the host; see the "msifrpc HLE" section.
+        runtime.replaceFunction(0x001bcd80u, ps2_stubs::socom2_MsifInit);
+        runtime.replaceFunction(0x001bd050u, ps2_stubs::socom2_MsifBind);
+        runtime.replaceFunction(0x001bd320u, ps2_stubs::socom2_MsifCall);
+        runtime.replaceFunction(0x001bd200u, ps2_stubs::socom2_MsifUnbind);
+        // DNAS authentication object (FTSCore FUN_002cc670): the published r0001 bypass patches
+        // `jr ra` at its entry; a private Horizon server needs no DNAS.
+        ps2_game_overrides::bindAddressHandler(runtime, 0x002cc670u, "ret0");
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
     }

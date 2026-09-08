@@ -18,6 +18,7 @@ add_library(ps2_iop STATIC
     src/modules/sdrdrv.cpp
     src/modules/snd989.cpp
     src/modules/lgaud.cpp
+    src/modules/eznetcnf.cpp
 )
 
 target_compile_features(ps2_iop PUBLIC cxx_std_20)
