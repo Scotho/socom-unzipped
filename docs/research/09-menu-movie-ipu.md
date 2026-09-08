@@ -73,5 +73,25 @@ is a placeholder" was wrong — the decoder was there, the protocol around it wa
 - `PS2X_MPEG_TRACE=1`: runtime-gated trace of create / demux / picture / end events
   (independent of the compile-time AGRESSIVE_LOGS).
 
-## Verification
-(filled in below as runs complete)
+## Verification (2026-09-07 22:00-22:12, worktree build of feat/menu-movie)
+- `PS2X_MPEG_TRACE=1` run to the menu: sony448 → 310 pictures then `end reached` → shell
+  closes it; Intro_2 plays (skipped by the pad script); MENULOOP creates at 28 s and serves
+  640×448 pictures every 2 vsync ticks (30 fps, PTS-paced by the HLE) — frame 3600 at
+  149 s, when the shell's idle timer switches to the attract intro (game behaviour, same
+  on the console). No STOPDMA starvation rounds were needed (`cbTotal=0`): the vsync feed
+  loop keeps the host decoder 7-8 pictures ahead. No `[guest-fault]`, 60 fps shell.
+- Parity: `python -m tools_py.parity.drive --target ours --script
+  scripts/parity/launch_to_mission.txt --out logs/parity/video_check --seconds 200`, scored
+  with `compare.report(..., align={"s07_CROSS": ["s05_CROSS", ...]})` →
+  `logs/parity/video_check_REPORT.md`: **main menu (golden s07) 81.0 → 98.8**
+  (mean diff 0.0204, block diff 0.0036); select rank 99.0, warning screen 98.6 (fade timing).
+  Captures: `logs/parity/video_check/s05_CROSS.png` (menu with the movie),
+  `logs/parity/video_check_sheet.png` (montage), `logs/shots_loop/host_00*_*s.png`.
+- Side effect to know about: our boot now shows the Sony logo movie, the intro movie and
+  the cinematics, so our step count changed — golden sN now maps to ours s(N-2) for the
+  menu/rank/briefing screens (menu = ours s05, rank = s06, briefing = s08). Update
+  `scripts/parity/align.json` on develop after merging (left untouched here on purpose).
+- Not done: `sceMpegGetPictureRAW8/RAW8xy` stay TODO (the game does not call them);
+  the CD stream stub still reports `endLbn=0xffffffff` for the movies (the file end is
+  taken from the PSS program_end code instead, which every SOCOM movie carries); movie
+  audio (ADPCM stream callback → 989snd PCM stream) was not checked.
