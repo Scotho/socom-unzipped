@@ -1,4 +1,18 @@
-# Project status — updated 2026-09-09 05:30
+# Project status — updated 2026-09-09 06:20
+
+## 2026-09-09 06:20 (local) — VU1 program regenerated from 900 dumps (300 gameplay): hand-backs 850 -> 32/s, mission gameplay 22-29 frames/s
+The in-game `[vu1-bail]` histogram showed the generated code handing ~1100 programs/s to the
+interpreter at computed-jump targets (command handlers) the 300 intro-window dumps never
+reached (0x1c30, then 0x1c70/0x1a78 one hop further). 300 gameplay programs were dumped with
+`PS2X_VU1_DUMP=logs/vu1dump4:300 PS2X_VU1_DUMP_AFTER=220`, their exact-interpreter golden
+recorded (logs/vu1golden/d4, 1.1 M cycles), and the program regenerated from all 900 dumps plus
+the bail pcs (`vu1_replay --gen --seeds logs/vu1_seeds_mission.txt`). The generated code equals
+the exact interpreter on all 900 programs (d2/d3/d4 diff 0, FMAC check clean); the gameplay
+dumps run at 6.9 ns/cycle offline. In the mission (run_20260909_053430-ish seeds_2, sheet
+identical): hand-backs 32/s, 5.9-10.7 ns/cycle, VU1 host 430-480 ms/s incl. GS work, and
+**syncv/s 21.8 over the last 60 s, 29.0 in the best 30 s phase** (2.5-3.1 M VU1 cycles/frame).
+Remaining hand-back pc 0x3d18 (4211 in the run) is next in the seeds. PS2X_HOST_PROF_MAIN=1
+samples the main/GL thread (it uses a full core: next profile target).
 
 ## 2026-09-09 05:30 (local) — stage 3: host stack profiler; scheduler clock batching; row-span GS uploads + pooled arbiter -> mission gameplay 12.7 -> 19 frames/s
 **Measuring.** `PS2X_HOST_PROF=1` now writes module names for external addresses and runs its

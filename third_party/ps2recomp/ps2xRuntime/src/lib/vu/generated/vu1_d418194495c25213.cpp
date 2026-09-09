@@ -328,8 +328,8 @@ bool vu1gen_d418194495c25213(VU1Interpreter &vu, uint64_t budgetEnd)
         &&B_0xe00,&&B_0xe08,&&B_0xe10,&&B_0xe18,&&B_0xe20,&&B_0xe28,&&B_0xe30,&&B_0xe38,
         &&B_0xe40,&&B_0xe48,&&B_0xe50,&&B_0xe58,&&B_0xe60,&&B_0xe68,&&B_0xe70,&&B_0xe78,
         &&B_0xe80,&&B_0xe88,&&B_0xe90,&&B_0xe98,&&B_0xea0,&&B_0xea8,&&B_0xeb0,&&B_0xeb8,
-        &&B_0xec0,&&B_0xec8,&&B_0xed0,&&B_0xed8,&&B_0xee0,&&B_0xee8,&&B_0xef0,&&B_0xef8,
-        &&B_0xf00,&&B_0xf08,&&B_0xf10,&&B_0xf18,&&B_0xf20,&&B_0xf28,&&B_0xf30,&&B_0xf38,
+        &&B_0xec0,&&B_0xec8,&&L_0xed0,&&B_0xed8,&&B_0xee0,&&B_0xee8,&&B_0xef0,&&B_0xef8,
+        &&B_0xf00,&&B_0xf08,&&B_0xf10,&&B_0xf18,&&L_0xf20,&&B_0xf28,&&B_0xf30,&&B_0xf38,
         &&B_0xf40,&&B_0xf48,&&B_0xf50,&&B_0xf58,&&B_0xf60,&&B_0xf68,&&B_0xf70,&&B_0xf78,
         &&B_0xf80,&&B_0xf88,&&B_0xf90,&&B_0xf98,&&B_0xfa0,&&B_0xfa8,&&B_0xfb0,&&B_0xfb8,
         &&B_0xfc0,&&B_0xfc8,&&B_0xfd0,&&B_0xfd8,&&B_0xfe0,&&B_0xfe8,&&B_0xff0,&&B_0xff8,
@@ -354,7 +354,7 @@ bool vu1gen_d418194495c25213(VU1Interpreter &vu, uint64_t budgetEnd)
         &&B_0x1480,&&B_0x1488,&&B_0x1490,&&B_0x1498,&&B_0x14a0,&&B_0x14a8,&&B_0x14b0,&&B_0x14b8,
         &&B_0x14c0,&&B_0x14c8,&&B_0x14d0,&&B_0x14d8,&&B_0x14e0,&&B_0x14e8,&&B_0x14f0,&&B_0x14f8,
         &&B_0x1500,&&B_0x1508,&&B_0x1510,&&B_0x1518,&&B_0x1520,&&B_0x1528,&&B_0x1530,&&B_0x1538,
-        &&B_0x1540,&&B_0x1548,&&B_0x1550,&&B_0x1558,&&B_0x1560,&&B_0x1568,&&B_0x1570,&&B_0x1578,
+        &&B_0x1540,&&B_0x1548,&&L_0x1550,&&B_0x1558,&&B_0x1560,&&B_0x1568,&&B_0x1570,&&B_0x1578,
         &&B_0x1580,&&B_0x1588,&&B_0x1590,&&B_0x1598,&&B_0x15a0,&&B_0x15a8,&&B_0x15b0,&&B_0x15b8,
         &&B_0x15c0,&&B_0x15c8,&&B_0x15d0,&&B_0x15d8,&&B_0x15e0,&&B_0x15e8,&&B_0x15f0,&&B_0x15f8,
         &&B_0x1600,&&B_0x1608,&&B_0x1610,&&B_0x1618,&&B_0x1620,&&B_0x1628,&&B_0x1630,&&B_0x1638,
@@ -374,23 +374,23 @@ bool vu1gen_d418194495c25213(VU1Interpreter &vu, uint64_t budgetEnd)
         &&B_0x1980,&&B_0x1988,&&B_0x1990,&&B_0x1998,&&B_0x19a0,&&B_0x19a8,&&B_0x19b0,&&B_0x19b8,
         &&B_0x19c0,&&B_0x19c8,&&B_0x19d0,&&B_0x19d8,&&B_0x19e0,&&B_0x19e8,&&B_0x19f0,&&B_0x19f8,
         &&B_0x1a00,&&B_0x1a08,&&B_0x1a10,&&B_0x1a18,&&B_0x1a20,&&B_0x1a28,&&B_0x1a30,&&B_0x1a38,
-        &&B_0x1a40,&&B_0x1a48,&&B_0x1a50,&&B_0x1a58,&&B_0x1a60,&&B_0x1a68,&&B_0x1a70,&&B_0x1a78,
+        &&B_0x1a40,&&B_0x1a48,&&B_0x1a50,&&B_0x1a58,&&B_0x1a60,&&B_0x1a68,&&B_0x1a70,&&L_0x1a78,
         &&B_0x1a80,&&B_0x1a88,&&B_0x1a90,&&B_0x1a98,&&B_0x1aa0,&&B_0x1aa8,&&B_0x1ab0,&&B_0x1ab8,
         &&B_0x1ac0,&&B_0x1ac8,&&B_0x1ad0,&&B_0x1ad8,&&B_0x1ae0,&&B_0x1ae8,&&B_0x1af0,&&B_0x1af8,
         &&B_0x1b00,&&B_0x1b08,&&B_0x1b10,&&B_0x1b18,&&B_0x1b20,&&B_0x1b28,&&B_0x1b30,&&B_0x1b38,
         &&B_0x1b40,&&B_0x1b48,&&L_0x1b50,&&B_0x1b58,&&B_0x1b60,&&B_0x1b68,&&B_0x1b70,&&B_0x1b78,
         &&B_0x1b80,&&B_0x1b88,&&B_0x1b90,&&B_0x1b98,&&B_0x1ba0,&&B_0x1ba8,&&L_0x1bb0,&&B_0x1bb8,
         &&B_0x1bc0,&&B_0x1bc8,&&L_0x1bd0,&&B_0x1bd8,&&L_0x1be0,&&B_0x1be8,&&L_0x1bf0,&&B_0x1bf8,
-        &&B_0x1c00,&&B_0x1c08,&&B_0x1c10,&&B_0x1c18,&&L_0x1c20,&&B_0x1c28,&&B_0x1c30,&&B_0x1c38,
-        &&B_0x1c40,&&B_0x1c48,&&B_0x1c50,&&B_0x1c58,&&L_0x1c60,&&B_0x1c68,&&B_0x1c70,&&B_0x1c78,
+        &&B_0x1c00,&&B_0x1c08,&&B_0x1c10,&&B_0x1c18,&&L_0x1c20,&&B_0x1c28,&&L_0x1c30,&&B_0x1c38,
+        &&B_0x1c40,&&B_0x1c48,&&B_0x1c50,&&B_0x1c58,&&L_0x1c60,&&B_0x1c68,&&L_0x1c70,&&B_0x1c78,
         &&B_0x1c80,&&B_0x1c88,&&B_0x1c90,&&B_0x1c98,&&B_0x1ca0,&&B_0x1ca8,&&B_0x1cb0,&&B_0x1cb8,
         &&B_0x1cc0,&&B_0x1cc8,&&B_0x1cd0,&&B_0x1cd8,&&L_0x1ce0,&&B_0x1ce8,&&L_0x1cf0,&&B_0x1cf8,
-        &&B_0x1d00,&&B_0x1d08,&&B_0x1d10,&&B_0x1d18,&&L_0x1d20,&&B_0x1d28,&&B_0x1d30,&&B_0x1d38,
-        &&L_0x1d40,&&B_0x1d48,&&B_0x1d50,&&B_0x1d58,&&B_0x1d60,&&B_0x1d68,&&B_0x1d70,&&B_0x1d78,
-        &&B_0x1d80,&&B_0x1d88,&&B_0x1d90,&&B_0x1d98,&&L_0x1da0,&&B_0x1da8,&&L_0x1db0,&&B_0x1db8,
+        &&B_0x1d00,&&B_0x1d08,&&B_0x1d10,&&B_0x1d18,&&L_0x1d20,&&B_0x1d28,&&L_0x1d30,&&B_0x1d38,
+        &&L_0x1d40,&&B_0x1d48,&&L_0x1d50,&&B_0x1d58,&&B_0x1d60,&&B_0x1d68,&&B_0x1d70,&&B_0x1d78,
+        &&L_0x1d80,&&B_0x1d88,&&L_0x1d90,&&B_0x1d98,&&L_0x1da0,&&B_0x1da8,&&L_0x1db0,&&B_0x1db8,
         &&B_0x1dc0,&&B_0x1dc8,&&B_0x1dd0,&&B_0x1dd8,&&B_0x1de0,&&B_0x1de8,&&B_0x1df0,&&B_0x1df8,
         &&L_0x1e00,&&B_0x1e08,&&B_0x1e10,&&B_0x1e18,&&B_0x1e20,&&B_0x1e28,&&L_0x1e30,&&B_0x1e38,
-        &&L_0x1e40,&&B_0x1e48,&&B_0x1e50,&&B_0x1e58,&&B_0x1e60,&&B_0x1e68,&&B_0x1e70,&&B_0x1e78,
+        &&L_0x1e40,&&B_0x1e48,&&L_0x1e50,&&B_0x1e58,&&B_0x1e60,&&B_0x1e68,&&B_0x1e70,&&B_0x1e78,
         &&B_0x1e80,&&B_0x1e88,&&B_0x1e90,&&B_0x1e98,&&B_0x1ea0,&&B_0x1ea8,&&B_0x1eb0,&&B_0x1eb8,
         &&L_0x1ec0,&&B_0x1ec8,&&L_0x1ed0,&&B_0x1ed8,&&L_0x1ee0,&&B_0x1ee8,&&B_0x1ef0,&&B_0x1ef8,
         &&B_0x1f00,&&B_0x1f08,&&B_0x1f10,&&B_0x1f18,&&L_0x1f20,&&B_0x1f28,&&L_0x1f30,&&B_0x1f38,
@@ -488,32 +488,32 @@ bool vu1gen_d418194495c25213(VU1Interpreter &vu, uint64_t budgetEnd)
         &&B_0x3600,&&B_0x3608,&&B_0x3610,&&B_0x3618,&&B_0x3620,&&B_0x3628,&&B_0x3630,&&B_0x3638,
         &&B_0x3640,&&B_0x3648,&&B_0x3650,&&B_0x3658,&&B_0x3660,&&B_0x3668,&&B_0x3670,&&B_0x3678,
         &&B_0x3680,&&B_0x3688,&&B_0x3690,&&B_0x3698,&&B_0x36a0,&&B_0x36a8,&&B_0x36b0,&&B_0x36b8,
-        &&B_0x36c0,&&B_0x36c8,&&B_0x36d0,&&B_0x36d8,&&B_0x36e0,&&B_0x36e8,&&B_0x36f0,&&B_0x36f8,
+        &&B_0x36c0,&&B_0x36c8,&&B_0x36d0,&&L_0x36d8,&&B_0x36e0,&&B_0x36e8,&&B_0x36f0,&&B_0x36f8,
         &&B_0x3700,&&L_0x3708,&&B_0x3710,&&B_0x3718,&&B_0x3720,&&B_0x3728,&&B_0x3730,&&B_0x3738,
         &&L_0x3740,&&B_0x3748,&&B_0x3750,&&B_0x3758,&&B_0x3760,&&B_0x3768,&&B_0x3770,&&B_0x3778,
-        &&B_0x3780,&&B_0x3788,&&B_0x3790,&&B_0x3798,&&B_0x37a0,&&B_0x37a8,&&B_0x37b0,&&B_0x37b8,
+        &&B_0x3780,&&B_0x3788,&&B_0x3790,&&B_0x3798,&&B_0x37a0,&&B_0x37a8,&&B_0x37b0,&&L_0x37b8,
         &&B_0x37c0,&&L_0x37c8,&&B_0x37d0,&&B_0x37d8,&&B_0x37e0,&&B_0x37e8,&&B_0x37f0,&&B_0x37f8,
         &&L_0x3800,&&B_0x3808,&&B_0x3810,&&B_0x3818,&&B_0x3820,&&B_0x3828,&&B_0x3830,&&B_0x3838,
         &&B_0x3840,&&B_0x3848,&&B_0x3850,&&B_0x3858,&&B_0x3860,&&B_0x3868,&&B_0x3870,&&B_0x3878,
         &&B_0x3880,&&L_0x3888,&&B_0x3890,&&B_0x3898,&&B_0x38a0,&&B_0x38a8,&&B_0x38b0,&&B_0x38b8,
-        &&L_0x38c0,&&B_0x38c8,&&B_0x38d0,&&B_0x38d8,&&B_0x38e0,&&B_0x38e8,&&B_0x38f0,&&B_0x38f8,
+        &&L_0x38c0,&&L_0x38c8,&&B_0x38d0,&&B_0x38d8,&&B_0x38e0,&&B_0x38e8,&&B_0x38f0,&&B_0x38f8,
         &&B_0x3900,&&B_0x3908,&&B_0x3910,&&B_0x3918,&&B_0x3920,&&B_0x3928,&&B_0x3930,&&B_0x3938,
         &&B_0x3940,&&B_0x3948,&&L_0x3950,&&B_0x3958,&&B_0x3960,&&B_0x3968,&&B_0x3970,&&B_0x3978,
         &&B_0x3980,&&L_0x3988,&&B_0x3990,&&B_0x3998,&&B_0x39a0,&&B_0x39a8,&&B_0x39b0,&&B_0x39b8,
         &&B_0x39c0,&&B_0x39c8,&&B_0x39d0,&&B_0x39d8,&&B_0x39e0,&&B_0x39e8,&&B_0x39f0,&&B_0x39f8,
-        &&B_0x3a00,&&B_0x3a08,&&B_0x3a10,&&L_0x3a18,&&B_0x3a20,&&B_0x3a28,&&B_0x3a30,&&B_0x3a38,
+        &&L_0x3a00,&&B_0x3a08,&&B_0x3a10,&&L_0x3a18,&&B_0x3a20,&&B_0x3a28,&&B_0x3a30,&&B_0x3a38,
         &&B_0x3a40,&&B_0x3a48,&&L_0x3a50,&&B_0x3a58,&&B_0x3a60,&&B_0x3a68,&&B_0x3a70,&&B_0x3a78,
         &&B_0x3a80,&&B_0x3a88,&&B_0x3a90,&&B_0x3a98,&&B_0x3aa0,&&B_0x3aa8,&&B_0x3ab0,&&B_0x3ab8,
-        &&B_0x3ac0,&&B_0x3ac8,&&B_0x3ad0,&&B_0x3ad8,&&B_0x3ae0,&&B_0x3ae8,&&B_0x3af0,&&B_0x3af8,
-        &&B_0x3b00,&&B_0x3b08,&&B_0x3b10,&&B_0x3b18,&&B_0x3b20,&&B_0x3b28,&&B_0x3b30,&&B_0x3b38,
-        &&B_0x3b40,&&B_0x3b48,&&B_0x3b50,&&B_0x3b58,&&B_0x3b60,&&B_0x3b68,&&B_0x3b70,&&B_0x3b78,
+        &&B_0x3ac0,&&B_0x3ac8,&&L_0x3ad0,&&B_0x3ad8,&&B_0x3ae0,&&B_0x3ae8,&&B_0x3af0,&&B_0x3af8,
+        &&B_0x3b00,&&B_0x3b08,&&B_0x3b10,&&B_0x3b18,&&B_0x3b20,&&B_0x3b28,&&L_0x3b30,&&B_0x3b38,
+        &&B_0x3b40,&&B_0x3b48,&&B_0x3b50,&&B_0x3b58,&&B_0x3b60,&&B_0x3b68,&&B_0x3b70,&&L_0x3b78,
         &&B_0x3b80,&&B_0x3b88,&&B_0x3b90,&&B_0x3b98,&&B_0x3ba0,&&B_0x3ba8,&&B_0x3bb0,&&B_0x3bb8,
         &&B_0x3bc0,&&B_0x3bc8,&&B_0x3bd0,&&B_0x3bd8,&&B_0x3be0,&&B_0x3be8,&&B_0x3bf0,&&B_0x3bf8,
         &&B_0x3c00,&&B_0x3c08,&&B_0x3c10,&&B_0x3c18,&&B_0x3c20,&&B_0x3c28,&&B_0x3c30,&&B_0x3c38,
         &&B_0x3c40,&&B_0x3c48,&&B_0x3c50,&&B_0x3c58,&&B_0x3c60,&&B_0x3c68,&&B_0x3c70,&&B_0x3c78,
         &&B_0x3c80,&&B_0x3c88,&&B_0x3c90,&&B_0x3c98,&&B_0x3ca0,&&B_0x3ca8,&&B_0x3cb0,&&B_0x3cb8,
         &&B_0x3cc0,&&B_0x3cc8,&&B_0x3cd0,&&B_0x3cd8,&&B_0x3ce0,&&B_0x3ce8,&&B_0x3cf0,&&B_0x3cf8,
-        &&B_0x3d00,&&B_0x3d08,&&B_0x3d10,&&B_0x3d18,&&B_0x3d20,&&B_0x3d28,&&B_0x3d30,&&B_0x3d38,
+        &&B_0x3d00,&&B_0x3d08,&&L_0x3d10,&&B_0x3d18,&&B_0x3d20,&&B_0x3d28,&&B_0x3d30,&&B_0x3d38,
         &&B_0x3d40,&&B_0x3d48,&&B_0x3d50,&&B_0x3d58,&&B_0x3d60,&&B_0x3d68,&&B_0x3d70,&&B_0x3d78,
         &&B_0x3d80,&&B_0x3d88,&&B_0x3d90,&&B_0x3d98,&&B_0x3da0,&&B_0x3da8,&&B_0x3db0,&&B_0x3db8,
         &&B_0x3dc0,&&B_0x3dc8,&&B_0x3dd0,&&B_0x3dd8,&&B_0x3de0,&&B_0x3de8,&&B_0x3df0,&&B_0x3df8,
@@ -3676,12 +3676,22 @@ L_0xec8:
     Vu1Gen::markVi<3, 1>(vu);
     ++vu.m_cycle;
 L_0xed0:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<3, 15>(vu, ready);
+    Vu1Gen::readyVf<20, 2>(vu, ready);
+    Vu1Gen::readyVf<24, 15>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xed0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, acc);
     Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xed8:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<4, 15>(vu, ready);
+    Vu1Gen::readyVi<3>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xed8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
     Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
@@ -3690,6 +3700,10 @@ L_0xed8:
     Vu1Gen::markVf<27, 15, 4>(vu);
     ++vu.m_cycle;
 L_0xee0:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<26, 15>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xee0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 14, 0, 0, false, false, false>(vu, acc);
@@ -3701,7 +3715,7 @@ L_0xee0:
 L_0xee8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xee8; goto bail; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, true, false>(vu, acc);
     taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0xea0u;
     Vu1Gen::storeVf<29, 15>(vu, up);
     Vu1Gen::markVf<29, 15, 4>(vu);
@@ -3765,6 +3779,9 @@ L_0xf18:
     ++pairs;
     ++vu.m_cycle;
 L_0xf20:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xf20; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[3];
     Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
@@ -4202,6 +4219,9 @@ L_0x1100:
     ++pairs;
     ++vu.m_cycle;
 L_0x1108:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1108; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
@@ -5029,7 +5049,7 @@ L_0x14d8:
 L_0x14e0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, true, false>(vu, acc);
     Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -2));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
@@ -5037,21 +5057,21 @@ L_0x14e0:
     ++vu.m_cycle;
 L_0x14e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, true, false>(vu, acc);
     Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     Vu1Gen::storeAcc<15>(acc, up);
     Vu1Gen::markVf<18, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x14f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, true, false>(vu, acc);
     Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
     Vu1Gen::storeAcc<15>(acc, up);
     Vu1Gen::markVf<19, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x14f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, acc);
     Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
     Vu1Gen::storeAcc<14>(acc, up);
     Vu1Gen::markVf<20, 15, 4>(vu);
@@ -5084,18 +5104,18 @@ L_0x1510:
     ++vu.m_cycle;
 L_0x1518:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 30, false, true, false>(vu, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1520:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 30, false, true, false>(vu, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1528:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 30, false, true, false>(vu, acc);
     Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
@@ -5104,7 +5124,7 @@ L_0x1528:
 L_0x1530:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, acc);
     Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 6));
     Vu1Gen::storeAcc<14>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
@@ -5131,16 +5151,28 @@ L_0x1548:
     Vu1Gen::markVf<27, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x1550:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<5, 15>(vu, ready);
+    Vu1Gen::readyVf<20, 1>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1550; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 20, false, true, true>(vu, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1558:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<6, 15>(vu, ready);
+    Vu1Gen::readyVf<21, 2>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1558; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 21, false, true, true>(vu, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1560:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<7, 15>(vu, ready);
+    Vu1Gen::readyVf<21, 1>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1560; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 21, false, true, true>(vu, acc);
@@ -9469,6 +9501,9 @@ L_0x2950:
     ++pairs;
     ++vu.m_cycle;
 L_0x2958:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2958; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
@@ -9914,6 +9949,9 @@ L_0x2b78:
     Vu1Gen::markVi<9, 1>(vu);
     ++vu.m_cycle;
 L_0x2b80:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<1>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2b80; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
@@ -10361,6 +10399,9 @@ L_0x2df8:
     ++pairs;
     ++vu.m_cycle;
 L_0x2e00:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2e00; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
@@ -12235,6 +12276,9 @@ L_0x36d8:
     Vu1Gen::markVi<11, 1>(vu);
     ++vu.m_cycle;
 L_0x36e0:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x36e0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
     Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
@@ -13111,6 +13155,9 @@ L_0x39f8:
     Vu1Gen::markVi<8, 1>(vu);
     ++vu.m_cycle;
 L_0x3a00:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a00; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
     Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
@@ -13334,6 +13381,10 @@ L_0x3ac8:
     ++pairs;
     ++vu.m_cycle;
 L_0x3ad0:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<21, 15>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ad0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
@@ -13347,6 +13398,9 @@ L_0x3ad0:
     Vu1Gen::markVi<8, 1>(vu);
     ++vu.m_cycle;
 L_0x3ad8:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<22, 15>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ad8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
     up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 22, 0, false, true, false>(vu, acc);
@@ -13359,6 +13413,9 @@ L_0x3ad8:
     Vu1Gen::markVi<8, 1>(vu);
     ++vu.m_cycle;
 L_0x3ae0:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<23, 15>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ae0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
     up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 23, 0, false, true, false>(vu, acc);
@@ -13415,17 +13472,23 @@ L_0x3b28:
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b30:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<25, 4>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b30; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, true>(vu, acc);
     Vu1Gen::setVi<7>(vu, (int16_t)(0 + 32));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
     Vu1Gen::markVi<7, 1>(vu);
     ++vu.m_cycle;
 L_0x3b38:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<25, 2>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b38; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, true>(vu, acc);
     Vu1Gen::storeVf<25, 1>(vu, up);
     Vu1Gen::markVf<25, 1, 4>(vu);
     ++vu.m_cycle;
@@ -13440,17 +13503,17 @@ L_0x3b40:
     ++vu.m_cycle;
 L_0x3b48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, true>(vu, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, true>(vu, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, true>(vu, acc);
     Vu1Gen::storeVf<26, 1>(vu, up);
     Vu1Gen::markVf<26, 1, 4>(vu);
     ++vu.m_cycle;
@@ -13472,19 +13535,29 @@ L_0x3b70:
     ++pairs;
     ++vu.m_cycle;
 L_0x3b78:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<26, 1>(vu, ready);
+    Vu1Gen::readyVf<25, 2>(vu, ready);
+    Vu1Gen::readyVi<13>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b78; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, true, true>(vu, acc);
     Vu1Gen::setVi<13>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[13]));
     Vu1Gen::storeVf<25, 1>(vu, up);
     Vu1Gen::markVf<25, 1, 4>(vu);
     Vu1Gen::markVi<13, 1>(vu);
     ++vu.m_cycle;
 L_0x3b80:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVf<25, 2>(vu, ready);
+    Vu1Gen::readyVf<26, 1>(vu, ready);
+    Vu1Gen::readyVi<7>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b80; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 25, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 25, 26, false, true, true>(vu, acc);
     Vu1Gen::setVi<13>(vu, vu.m_state.vi[13] | vu.m_state.vi[7]);
     Vu1Gen::storeVf<26, 2>(vu, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
@@ -13572,19 +13645,19 @@ L_0x3bd0:
     ++vu.m_cycle;
 L_0x3bd8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 21, false, false, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 21, false, true, true>(vu, acc);
     Vu1Gen::storeVf<25, 15>(vu, up);
     Vu1Gen::markVf<25, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3be0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 18, 22, false, false, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 18, 22, false, true, true>(vu, acc);
     Vu1Gen::storeVf<26, 15>(vu, up);
     Vu1Gen::markVf<26, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3be8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 19, 23, false, false, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 19, 23, false, true, true>(vu, acc);
     Vu1Gen::storeVf<27, 15>(vu, up);
     Vu1Gen::markVf<27, 15, 4>(vu);
     ++vu.m_cycle;
@@ -13688,19 +13761,19 @@ L_0x3c60:
 L_0x3c68:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, true>(vu, acc);
     Vu1Gen::storeVf<25, 15>(vu, up);
     Vu1Gen::markVf<25, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3c70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, true>(vu, acc);
     Vu1Gen::storeVf<26, 15>(vu, up);
     Vu1Gen::markVf<26, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3c78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, true>(vu, acc);
     Vu1Gen::storeVf<27, 15>(vu, up);
     Vu1Gen::markVf<27, 15, 4>(vu);
     ++vu.m_cycle;
@@ -13743,19 +13816,19 @@ L_0x3ca0:
     ++vu.m_cycle;
 L_0x3ca8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, true>(vu, acc);
     Vu1Gen::storeVf<25, 15>(vu, up);
     Vu1Gen::markVf<25, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3cb0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, true>(vu, acc);
     Vu1Gen::storeVf<26, 15>(vu, up);
     Vu1Gen::markVf<26, 15, 4>(vu);
     ++vu.m_cycle;
 L_0x3cb8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, true>(vu, acc);
     Vu1Gen::storeVf<27, 15>(vu, up);
     Vu1Gen::markVf<27, 15, 4>(vu);
     ++vu.m_cycle;
@@ -13838,6 +13911,9 @@ L_0x3d08:
     Vu1Gen::markVi<9, 1>(vu);
     ++vu.m_cycle;
 L_0x3d10:
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<11>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3d10; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[11];
     Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 1));
@@ -13846,6 +13922,9 @@ L_0x3d10:
     ++vu.m_cycle;
 L_0x3d18:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3d18; goto bail; }
+    ready = vu.m_cycle;
+    Vu1Gen::readyVi<2>(vu, ready);
+    if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3d18; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu) * 8u) & 0x3FFFu;
@@ -14787,7 +14866,6 @@ B_0xeb0: vu.m_state.pc = 0xeb0; goto bail;
 B_0xeb8: vu.m_state.pc = 0xeb8; goto bail;
 B_0xec0: vu.m_state.pc = 0xec0; goto bail;
 B_0xec8: vu.m_state.pc = 0xec8; goto bail;
-B_0xed0: vu.m_state.pc = 0xed0; goto bail;
 B_0xed8: vu.m_state.pc = 0xed8; goto bail;
 B_0xee0: vu.m_state.pc = 0xee0; goto bail;
 B_0xee8: vu.m_state.pc = 0xee8; goto bail;
@@ -14797,7 +14875,6 @@ B_0xf00: vu.m_state.pc = 0xf00; goto bail;
 B_0xf08: vu.m_state.pc = 0xf08; goto bail;
 B_0xf10: vu.m_state.pc = 0xf10; goto bail;
 B_0xf18: vu.m_state.pc = 0xf18; goto bail;
-B_0xf20: vu.m_state.pc = 0xf20; goto bail;
 B_0xf28: vu.m_state.pc = 0xf28; goto bail;
 B_0xf30: vu.m_state.pc = 0xf30; goto bail;
 B_0xf38: vu.m_state.pc = 0xf38; goto bail;
@@ -14995,7 +15072,6 @@ B_0x1530: vu.m_state.pc = 0x1530; goto bail;
 B_0x1538: vu.m_state.pc = 0x1538; goto bail;
 B_0x1540: vu.m_state.pc = 0x1540; goto bail;
 B_0x1548: vu.m_state.pc = 0x1548; goto bail;
-B_0x1550: vu.m_state.pc = 0x1550; goto bail;
 B_0x1558: vu.m_state.pc = 0x1558; goto bail;
 B_0x1560: vu.m_state.pc = 0x1560; goto bail;
 B_0x1568: vu.m_state.pc = 0x1568; goto bail;
@@ -15159,7 +15235,6 @@ B_0x1a58: vu.m_state.pc = 0x1a58; goto bail;
 B_0x1a60: vu.m_state.pc = 0x1a60; goto bail;
 B_0x1a68: vu.m_state.pc = 0x1a68; goto bail;
 B_0x1a70: vu.m_state.pc = 0x1a70; goto bail;
-B_0x1a78: vu.m_state.pc = 0x1a78; goto bail;
 B_0x1a80: vu.m_state.pc = 0x1a80; goto bail;
 B_0x1a88: vu.m_state.pc = 0x1a88; goto bail;
 B_0x1a90: vu.m_state.pc = 0x1a90; goto bail;
@@ -15208,14 +15283,12 @@ B_0x1c08: vu.m_state.pc = 0x1c08; goto bail;
 B_0x1c10: vu.m_state.pc = 0x1c10; goto bail;
 B_0x1c18: vu.m_state.pc = 0x1c18; goto bail;
 B_0x1c28: vu.m_state.pc = 0x1c28; goto bail;
-B_0x1c30: vu.m_state.pc = 0x1c30; goto bail;
 B_0x1c38: vu.m_state.pc = 0x1c38; goto bail;
 B_0x1c40: vu.m_state.pc = 0x1c40; goto bail;
 B_0x1c48: vu.m_state.pc = 0x1c48; goto bail;
 B_0x1c50: vu.m_state.pc = 0x1c50; goto bail;
 B_0x1c58: vu.m_state.pc = 0x1c58; goto bail;
 B_0x1c68: vu.m_state.pc = 0x1c68; goto bail;
-B_0x1c70: vu.m_state.pc = 0x1c70; goto bail;
 B_0x1c78: vu.m_state.pc = 0x1c78; goto bail;
 B_0x1c80: vu.m_state.pc = 0x1c80; goto bail;
 B_0x1c88: vu.m_state.pc = 0x1c88; goto bail;
@@ -15236,18 +15309,14 @@ B_0x1d08: vu.m_state.pc = 0x1d08; goto bail;
 B_0x1d10: vu.m_state.pc = 0x1d10; goto bail;
 B_0x1d18: vu.m_state.pc = 0x1d18; goto bail;
 B_0x1d28: vu.m_state.pc = 0x1d28; goto bail;
-B_0x1d30: vu.m_state.pc = 0x1d30; goto bail;
 B_0x1d38: vu.m_state.pc = 0x1d38; goto bail;
 B_0x1d48: vu.m_state.pc = 0x1d48; goto bail;
-B_0x1d50: vu.m_state.pc = 0x1d50; goto bail;
 B_0x1d58: vu.m_state.pc = 0x1d58; goto bail;
 B_0x1d60: vu.m_state.pc = 0x1d60; goto bail;
 B_0x1d68: vu.m_state.pc = 0x1d68; goto bail;
 B_0x1d70: vu.m_state.pc = 0x1d70; goto bail;
 B_0x1d78: vu.m_state.pc = 0x1d78; goto bail;
-B_0x1d80: vu.m_state.pc = 0x1d80; goto bail;
 B_0x1d88: vu.m_state.pc = 0x1d88; goto bail;
-B_0x1d90: vu.m_state.pc = 0x1d90; goto bail;
 B_0x1d98: vu.m_state.pc = 0x1d98; goto bail;
 B_0x1da8: vu.m_state.pc = 0x1da8; goto bail;
 B_0x1db8: vu.m_state.pc = 0x1db8; goto bail;
@@ -15266,7 +15335,6 @@ B_0x1e20: vu.m_state.pc = 0x1e20; goto bail;
 B_0x1e28: vu.m_state.pc = 0x1e28; goto bail;
 B_0x1e38: vu.m_state.pc = 0x1e38; goto bail;
 B_0x1e48: vu.m_state.pc = 0x1e48; goto bail;
-B_0x1e50: vu.m_state.pc = 0x1e50; goto bail;
 B_0x1e58: vu.m_state.pc = 0x1e58; goto bail;
 B_0x1e60: vu.m_state.pc = 0x1e60; goto bail;
 B_0x1e68: vu.m_state.pc = 0x1e68; goto bail;
@@ -16043,7 +16111,6 @@ B_0x36b8: vu.m_state.pc = 0x36b8; goto bail;
 B_0x36c0: vu.m_state.pc = 0x36c0; goto bail;
 B_0x36c8: vu.m_state.pc = 0x36c8; goto bail;
 B_0x36d0: vu.m_state.pc = 0x36d0; goto bail;
-B_0x36d8: vu.m_state.pc = 0x36d8; goto bail;
 B_0x36e0: vu.m_state.pc = 0x36e0; goto bail;
 B_0x36e8: vu.m_state.pc = 0x36e8; goto bail;
 B_0x36f0: vu.m_state.pc = 0x36f0; goto bail;
@@ -16069,7 +16136,6 @@ B_0x3798: vu.m_state.pc = 0x3798; goto bail;
 B_0x37a0: vu.m_state.pc = 0x37a0; goto bail;
 B_0x37a8: vu.m_state.pc = 0x37a8; goto bail;
 B_0x37b0: vu.m_state.pc = 0x37b0; goto bail;
-B_0x37b8: vu.m_state.pc = 0x37b8; goto bail;
 B_0x37c0: vu.m_state.pc = 0x37c0; goto bail;
 B_0x37d0: vu.m_state.pc = 0x37d0; goto bail;
 B_0x37d8: vu.m_state.pc = 0x37d8; goto bail;
@@ -16099,7 +16165,6 @@ B_0x38a0: vu.m_state.pc = 0x38a0; goto bail;
 B_0x38a8: vu.m_state.pc = 0x38a8; goto bail;
 B_0x38b0: vu.m_state.pc = 0x38b0; goto bail;
 B_0x38b8: vu.m_state.pc = 0x38b8; goto bail;
-B_0x38c8: vu.m_state.pc = 0x38c8; goto bail;
 B_0x38d0: vu.m_state.pc = 0x38d0; goto bail;
 B_0x38d8: vu.m_state.pc = 0x38d8; goto bail;
 B_0x38e0: vu.m_state.pc = 0x38e0; goto bail;
@@ -16136,7 +16201,6 @@ B_0x39e0: vu.m_state.pc = 0x39e0; goto bail;
 B_0x39e8: vu.m_state.pc = 0x39e8; goto bail;
 B_0x39f0: vu.m_state.pc = 0x39f0; goto bail;
 B_0x39f8: vu.m_state.pc = 0x39f8; goto bail;
-B_0x3a00: vu.m_state.pc = 0x3a00; goto bail;
 B_0x3a08: vu.m_state.pc = 0x3a08; goto bail;
 B_0x3a10: vu.m_state.pc = 0x3a10; goto bail;
 B_0x3a20: vu.m_state.pc = 0x3a20; goto bail;
@@ -16160,7 +16224,6 @@ B_0x3ab0: vu.m_state.pc = 0x3ab0; goto bail;
 B_0x3ab8: vu.m_state.pc = 0x3ab8; goto bail;
 B_0x3ac0: vu.m_state.pc = 0x3ac0; goto bail;
 B_0x3ac8: vu.m_state.pc = 0x3ac8; goto bail;
-B_0x3ad0: vu.m_state.pc = 0x3ad0; goto bail;
 B_0x3ad8: vu.m_state.pc = 0x3ad8; goto bail;
 B_0x3ae0: vu.m_state.pc = 0x3ae0; goto bail;
 B_0x3ae8: vu.m_state.pc = 0x3ae8; goto bail;
@@ -16172,7 +16235,6 @@ B_0x3b10: vu.m_state.pc = 0x3b10; goto bail;
 B_0x3b18: vu.m_state.pc = 0x3b18; goto bail;
 B_0x3b20: vu.m_state.pc = 0x3b20; goto bail;
 B_0x3b28: vu.m_state.pc = 0x3b28; goto bail;
-B_0x3b30: vu.m_state.pc = 0x3b30; goto bail;
 B_0x3b38: vu.m_state.pc = 0x3b38; goto bail;
 B_0x3b40: vu.m_state.pc = 0x3b40; goto bail;
 B_0x3b48: vu.m_state.pc = 0x3b48; goto bail;
@@ -16181,7 +16243,6 @@ B_0x3b58: vu.m_state.pc = 0x3b58; goto bail;
 B_0x3b60: vu.m_state.pc = 0x3b60; goto bail;
 B_0x3b68: vu.m_state.pc = 0x3b68; goto bail;
 B_0x3b70: vu.m_state.pc = 0x3b70; goto bail;
-B_0x3b78: vu.m_state.pc = 0x3b78; goto bail;
 B_0x3b80: vu.m_state.pc = 0x3b80; goto bail;
 B_0x3b88: vu.m_state.pc = 0x3b88; goto bail;
 B_0x3b90: vu.m_state.pc = 0x3b90; goto bail;
@@ -16232,7 +16293,6 @@ B_0x3cf0: vu.m_state.pc = 0x3cf0; goto bail;
 B_0x3cf8: vu.m_state.pc = 0x3cf8; goto bail;
 B_0x3d00: vu.m_state.pc = 0x3d00; goto bail;
 B_0x3d08: vu.m_state.pc = 0x3d08; goto bail;
-B_0x3d10: vu.m_state.pc = 0x3d10; goto bail;
 B_0x3d18: vu.m_state.pc = 0x3d18; goto bail;
 B_0x3d20: vu.m_state.pc = 0x3d20; goto bail;
 B_0x3d28: vu.m_state.pc = 0x3d28; goto bail;

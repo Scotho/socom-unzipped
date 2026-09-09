@@ -1176,8 +1176,10 @@ void ps2HostProfStart(void *nativeHandle)
     // part of the work). Samples are merged into one histogram plus a per-thread table; addresses
     // outside the exe are written with their module name ("ext <module>+off").
     const bool allThreads = std::getenv("PS2X_HOST_PROF_ALL") != nullptr;
+    // PS2X_HOST_PROF_MAIN=1: sample the calling (main / GL render) thread instead of the game thread.
+    const bool mainThread = std::getenv("PS2X_HOST_PROF_MAIN") != nullptr;
     HANDLE dup = nullptr;
-    if (!DuplicateHandle(GetCurrentProcess(), static_cast<HANDLE>(nativeHandle), GetCurrentProcess(), &dup,
+    if (!DuplicateHandle(GetCurrentProcess(), mainThread ? GetCurrentThread() : static_cast<HANDLE>(nativeHandle), GetCurrentProcess(), &dup,
                          THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0))
     {
         std::cerr << "[host-prof] DuplicateHandle failed: " << GetLastError() << std::endl;

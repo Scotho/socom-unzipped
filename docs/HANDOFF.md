@@ -29,14 +29,13 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
-1b. **Frame rate (STATUS 05:30): mission gameplay 19 frames/s, menus 55+.** VU1 image recompiled
+1b. **Frame rate (STATUS 06:20): mission gameplay 22-29 frames/s, menus 55+.** VU1 image recompiled
    (`PS2X_VU1_GEN=0` = fast interpreter 18 ns/cycle, `PS2X_VU1_FAST=0` = exact 100); scheduler
    clock batching; row-span GS uploads; pooled arbiter. Measure with `PS2X_VU_STATS=1
    PS2X_VU1_BAILHIST=1` and `python tools_py/vu1stats_summary.py` (syncv/s = frames/s; compare the
    gameplay phase, ~2.9 M VU1 cycles/frame). Profile with `PS2X_HOST_PROF=1 PS2X_HOST_PROF_STACKS=1`
-   + `tools_py/hostprof_stacks.py`. Next: (1) regenerate the VU1 program with the in-game hand-back
-   pcs as seeds (`vu1_replay --gen --seeds logs/vu1_seeds_mission.txt`, verify on the 300 + the
-   gameplay dumps), (2) pooled record/Cmd buffers in gs_gl_backend.cpp (~5%), (3) the GL thread is
+   + `tools_py/hostprof_stacks.py`. Next: (1) keep the VU1 program regenerated from all dumps + `[vu1-bail]` pcs (900 dumps verified,
+   hand-backs 32/s, seeds file logs/vu1_seeds_mission.txt), (2) pooled record/Cmd buffers in gs_gl_backend.cpp (~5%), (3) the GL thread is
    at 100% of a core — profile it (PS2X_HOST_PROF_ALL hung once; fix or sample by thread id),
    (4) VU1 register file in host registers, (5) dump + --gen the title/online VU1 images.
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
