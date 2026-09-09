@@ -1,4 +1,32 @@
-# Project status — updated 2026-09-09 01:30
+# Project status — updated 2026-09-09 03:20
+
+## 2026-09-09 03:20 (local) — title labels (user report 01:50): the label VRAM pages are overwritten by a 512x256 upload from the menu-movie texture set; the console never runs that set at the title
+The garbled LOAD GAME / NEW GAME / ONLINE labels are NOT a rounding or GS-decode fault any
+more: the label images the EE uploads (128x32 CT32 at blocks 0x3207/0x3247/0x3287 = pages
+0x190/0x192/0x194, texture set [11] base 0x2fcc) decode cleanly (PS2X_GS_DUMP_TEX). New
+diagnostics `PS2X_GS_TRACE_PAGES=0x190:6` (every upload/copy/refresh/download/draw/decode on
+those pages) and `PS2X_GIF_TRACE` (each GIF submission with path, PATH3 mask, GIFtag and
+BITBLTBUF) show a PATH3 upload of a 512x256 CT32 image to block 0x2bc0 (pages 0x15e..0x19d,
+covering the label pages) every third frame; the label textures are decoded right after it
+and hold background pixels until the next label upload. The packet is built by the
+texture-set flusher FUN_00356e90 -> FUN_00356d20 (CNT 6 qwords + IMAGE 0x7fff + REF) for a
+set object (class vtable 0x6f0330) with base 0x2bc0 / limit 0x33d8 living at 0x7abcc0 on
+ours; its image source is the 512x256 double buffer 0x15493b0/0x15c93b0 (stale logo bitmap in
+it). PCSX2's title memory (new savestate slot 6 = title; `tools_py/parity/p2s_extract.py`
+pulls eeMemory/Scratchpad out of a .p2s) has the same 16 texture-set managers as ours (all
+equal, labels in set [11] at the same addresses) but NO set with base 0x2bc0/limit 0x33d8 and
+no packet uploading to 0x2bc0 anywhere (main RAM or scratchpad), and its title background is
+static for 90 s (captures 6 s apart differ only in the roller box). Both sides hold the dlgMenu
+element with `run/movies/common/menuloop.pss`; on ours a live movie element exists (object at
+0x7ab940.., "ui/assetlib/uisk..") streaming MENULOOP (sceCdStRead every frame) and pushing
+frames through that overlapping set — the set is meant to be used only while the shell set
+[11] is not (they overlap in VRAM by design). The CPU backend renders the labels clean only
+because the timing of the interleaved uploads differs (title_cpu4); GL runs with extra render
+work (title_gl4, texture dumps) were clean for the same reason. In progress (title_trace5):
+PS2X_MPEG_TRACE/PIC_TRACE lifecycle at the title to see why our menu movie starts when the
+console's does not (candidates: sceMpegIsEnd/GetPicture semantics after the intro skip, or the
+attract-mode idle timer). Fix direction: make the menu movie behave like the console (not
+running at the title) — not a GS/arbiter change.
 
 ## 2026-09-09 01:30 (local) — ground height: the collision probe is IDENTICAL to PCSX2's; the actor rests at a different height above the same hit
 With the new tracer (`PS2X_CALL_TRACE_DUMP="GroundQuery:a1:16,GroundQuery:a1+0x48*:16"`,
@@ -21,6 +49,17 @@ to diff the mover object against PCSX2's (candidate fields: +0x88/+0xf8 = 25.0, 
 spawn images; find the actor through the vtable scan instead. spawn_ours3.rdram (s18, 318 s)
 was taken before the spawn (boot drift) and holds the post-load position (935.6, -120.0, 834.4),
 identical to PCSX2's post-load record.
+Update 02:10: mission_s21's 400 s image (logs/parity/rest_ours.rdram) holds the player at rest
+(939.24, -131.73, 831.95); the player's actor is the one whose mover has vtable 0x6694b0 (AI
+actors' movers use 0x6693f0). Diff against PCSX2's spawn image (scratch moverdiff.py: actor
+0x1a5e4b0/mover 0x1785ee0 vs 0x1713ce0/0x170d510): mover +0x5c = 4.0 (PCSX2 6.3338, with
++0x54/+0x58 = 4.0/3.0 on both), +0x70..+0x7c = (-12.43, -39.13, -10.48, -14.29) vs (-11.86,
+-41.58, -5.99, -12.96); actor +0x10 state word 0x00080502 vs 0x2, actor +0x24/+0xb8 = 856.39 vs
+857.07 (a second position copy with y = 856?), actor +0x2bc..+0x2c4 = (939.24, -145.875, 856.39)
+on ours vs zeros on PCSX2 (a cached ground point: -145.875 vs the probe's -146.371). No
+constant 6.3338 in the decomp (computed). Parked here: the next step is the mover's update
+method (writer of mover+0x90 y / reader of +0x5c) — trace it with PS2X_CALL_TRACE_DUMP on
+the mover object — but the title-screen labels come first (user report 01:50).
 
 ## 2026-09-09 00:10 (local) — ROOT CAUSE of the giant sky polygons: VU0 macro-mode ops never set the MAC/STATUS flags, so the EE's frustum test called every object "fully inside" and sent it through the no-clip VU1 path
 The object at the camera (STATUS 23:10) was the terrain/road strip the camera stands next to
