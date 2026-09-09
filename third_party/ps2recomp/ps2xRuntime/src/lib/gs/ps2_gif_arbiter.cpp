@@ -19,10 +19,21 @@ bool GifArbiter::isImagePacket(const uint8_t *data, uint32_t sizeBytes)
     return flg == 2u;
 }
 
+static const bool s_prioritySort = std::getenv("PS2X_GIF_PRIORITY_SORT") != nullptr;
+
 void GifArbiter::submit(GifPathId pathId, const uint8_t *data, uint32_t sizeBytes, bool path2DirectHl)
 {
     if (!data || sizeBytes < 16 || !m_processFn)
         return;
+    // Packets are processed in submission order and nothing but other submissions happens
+    // between a submit and the drain (the DMA emulation is synchronous), so a packet arriving
+    // at an empty queue is next in any case: process it from the caller's buffer, no copy
+    // (an XGKICK packet was memcpy'd here on every kick, ~7% of the game thread).
+    if (m_queueCount == 0u && !s_prioritySort)
+    {
+        m_processFn(data, sizeBytes);
+        return;
+    }
 
     if (m_queueCount == m_queue.size())
         m_queue.emplace_back();
@@ -45,7 +56,6 @@ void GifArbiter::drain()
     // priority sort moved a VU1 XGKICK (PATH1) ahead of PATH3 texture uploads queued by the same
     // DMA chain, which garbled SOCOM II's title-screen text once XGKICK packets were copied at
     // kick time (2026-09-08). PS2X_GIF_PRIORITY_SORT=1 restores the sort for A/B checks.
-    static const bool s_prioritySort = std::getenv("PS2X_GIF_PRIORITY_SORT") != nullptr;
     if (s_prioritySort)
     std::stable_sort(m_queue.begin(), m_queue.begin() + static_cast<std::ptrdiff_t>(m_queueCount),
                      [](const GifArbiterPacket &a, const GifArbiterPacket &b)
