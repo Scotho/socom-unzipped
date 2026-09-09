@@ -22,7 +22,7 @@
   memory); slot 8 = spawn, slot 7 = post-load.
 
 **Open items, in order, each with its first step:**
-1. **DONE 2026-09-09 02:15 � title labels** (STATUS 02:15): VIF1 now stalls on i-bit VIFcodes until
+1. **DONE 2026-09-09 02:15 — title labels** (STATUS 02:15): VIF1 now stalls on i-bit VIFcodes until
    FBRST.STC and every MMIO store width drains pending IRQs; the texture-set marker protocol
    (0x4887c0 render queue, FUN_0033c010 handler) is in sync with the console. Verify the title
    (s00..s22 of a `scripts/parity/title_menu.txt` run) after any VIF/DMA/scheduler change. The
@@ -309,7 +309,7 @@ The shell now renders text and layout like the original (STATUS 17:00). By repor
 screens are: **main menu** (79) and the **controller configuration** screens (black on ours;
 golden s09/s10). Evidence gathered 17:40 (`tools_py/iso_lbn.py … log <run.log>` on a
 `PS2X_CD_TRACE=1` run): the menu's "soldier art" background is the looping movie
-`RUN/MOVIES/COMMON/MENULOOP.PSS` (read ×16) and the roller is `RUN/UI/UI_GEO.ZED` /
+`RUN/MOVIES/COMMON/MENULOOP.PSS` (read �—16) and the roller is `RUN/UI/UI_GEO.ZED` /
 `UI_MDL.ZED` (+ UI_TXR/UI_PAL), all of which *are* read from disc. At the menu the frame dump
 shows `mscal` rising but `xgkick=0`, `hdrKick=0/N`: VU1 programs run, none kicks geometry.
 `PS2X_TRACE_VU=2000` at the menu dumps the program (`logs/vu1_code.bin`, first XGKICK at 0x50)
