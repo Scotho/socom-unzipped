@@ -29,6 +29,10 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
+1a. **DONE 2026-09-09 12:10 — menu-video strip before the briefing** (STATUS 12:10): the GL
+   backend re-reads only the exact uploaded rectangle from the shadow VRAM (dirty rects + band
+   mask). Any future "stale content reappears" report: look at refreshRenderTargetsFromShadow /
+   refreshDirtyRows first; tools are PS2X_GS_TRACE_DIRTY, PS2X_GS_PROBE, PS2X_GS_DUMP_DISPLAY.
 1b. **Frame rate (STATUS 07:30): mission gameplay 29-31 frames/s, menus 55+.** VU1 image recompiled
    (`PS2X_VU1_GEN=0` = fast interpreter 18 ns/cycle, `PS2X_VU1_FAST=0` = exact 100); scheduler
    clock batching; row-span GS uploads; pooled arbiter. Measure with `PS2X_VU_STATS=1
