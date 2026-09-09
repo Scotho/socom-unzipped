@@ -65,7 +65,10 @@ class Shell:
         winshot.grab(self.hwnd).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
-        keys.press(self.hwnd, b, T)
+        # 0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to
+        # trip the UI's held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the
+        # repeat reopened it, eight times in a row, 2026-09-09 play4).
+        keys.press(self.hwnd, b, T, hold_s=0.08)
         time.sleep(wait)
 
     def hold(self, b, seconds, wait=0.3):
@@ -141,10 +144,15 @@ class Shell:
         return False
 
     def press_until_gone(self, b, name, tries=8, wait=3.0, thresh=None):
+        """Press `b` until `name` is no longer on screen. "Gone" needs two checks 0.6 s apart:
+        a single frame can miss (a fade or a transient overlay), which skipped the press that
+        connects to the universe on instance B (2026-09-09, play4)."""
         for i in range(tries):
             if not self.is_screen(name, thresh):
-                self.log(f"{name} gone after {i} {b}")
-                return True
+                time.sleep(0.6)
+                if not self.is_screen(name, thresh):
+                    self.log(f"{name} gone after {i} {b}")
+                    return True
             self.press(b, wait)
         return False
 
