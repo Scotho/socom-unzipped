@@ -3,6 +3,8 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
+#include <emmintrin.h>
 
 class GS;
 class PS2Memory;
@@ -258,6 +260,22 @@ private:
     // returns immediately before that cycle instead of scanning every queue on every instruction.
     uint64_t m_nextReadyCycle = ~0ull;
     uint32_t m_lastMacPc = 0;       // issuePc of the entry that last committed MAC flags (flag trace)
+    // Fast path (PS2X_VU1_FAST, default on): no per-cycle scheduler. VF/VI/ACC writes and stores land
+    // immediately (every VF write has the same latency and reads stall on the register anyway), the
+    // cycle counter still advances by the modeled stalls so MAC/STATUS/CLIP flags, Q and P become
+    // visible exactly when the cycle-exact path shows them (4-deep flag ring in issue order, Q/P by
+    // their latencies). Verified packet-for-packet and register-for-register against the exact path
+    // with vu1_replay --batch (see docs/STATUS.md 2026-09-09).
+    bool m_fast = false;
+    uint32_t m_fastFlagHead = 0;    // m_flagPipeline used as a ring in issue order
+    uint32_t m_fastFlagCount = 0;
+    uint64_t m_fastPairs = 0;       // executed pairs, folded into g_vuInsnCount at the end of a run
+    void runFast(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                 GS &gs, PS2Memory *memory, uint64_t budgetEnd, bool &programEnded);
+    void fastCommit();
+    void fastFlush();
+    __attribute__((always_inline)) uint64_t fastReadyCycle(const DecodedInstructionPair &decoded) const;
+    void fastPushFlags(const FlagPipelineEntry &entry);
     void noteQueued(uint64_t readyCycle) { if (readyCycle < m_nextReadyCycle) m_nextReadyCycle = readyCycle; }
     // Latest cycle at which any operand (VF/VI/ACC/Q/P/EFU resource) becomes ready: once m_cycle reaches
     // it, calculatePairReadyCycle() cannot stall and skips the operand scan.
@@ -268,7 +286,18 @@ private:
     void execUpper(uint32_t instr);
     void execLower(uint32_t instr, uint8_t *vuData, uint32_t dataSize, GS &gs, PS2Memory *memory, uint32_t upperInstr);
 
-    void applyDest(float *dst, const float *result, uint8_t dest);
+    static void applyDest(float *dst, const float *result, uint8_t dest)
+    {
+        alignas(16) static constexpr int32_t kDestLanes[16][4] = {
+            {0, 0, 0, 0}, {0, 0, 0, -1}, {0, 0, -1, 0}, {0, 0, -1, -1},
+            {0, -1, 0, 0}, {0, -1, 0, -1}, {0, -1, -1, 0}, {0, -1, -1, -1},
+            {-1, 0, 0, 0}, {-1, 0, 0, -1}, {-1, 0, -1, 0}, {-1, 0, -1, -1},
+            {-1, -1, 0, 0}, {-1, -1, 0, -1}, {-1, -1, -1, 0}, {-1, -1, -1, -1}};
+        const __m128i mask = _mm_load_si128(reinterpret_cast<const __m128i *>(kDestLanes[dest & 0xFu]));
+        const __m128i old = _mm_loadu_si128(reinterpret_cast<const __m128i *>(dst));
+        const __m128i value = _mm_loadu_si128(reinterpret_cast<const __m128i *>(result));
+        _mm_storeu_si128(reinterpret_cast<__m128i *>(dst), _mm_or_si128(_mm_andnot_si128(mask, old), _mm_and_si128(mask, value)));
+    }
     void applyDestAcc(const float *result, uint8_t dest);
     void applyFmacDest(float *dst, float *result, uint8_t dest);
     void applyFmacDestAcc(float *result, uint8_t dest);
@@ -277,6 +306,9 @@ private:
     uint8_t normalizeFmacExactResult(float &value, long double exactResult) const;
     uint32_t calculateFmacProductSticky(uint8_t dest) const;
     void updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest, uint32_t extraSticky);
+    void pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky);
+    void checkFmac(uint32_t instr, uint8_t kind, bool opmul, __m128 first, __m128 second, __m128 value,
+                   uint32_t mac, uint32_t status, uint32_t sticky);
     void queueFsset(uint16_t immediate);
     void queueClip(uint32_t clip);
     void queueFcset(uint32_t clip);
@@ -300,9 +332,22 @@ private:
     void markPairWrites(const DecodedInstructionPair &decoded);
     bool pipelinesPending() const;
 
-    float normalizeOperand(float value) const;
+    // Operand normalization (denormals flush to +/-0, infinities and NaNs clamp to +/-FLT_MAX);
+    // inline: every FMAC operand goes through it.
+    static float normalizeOperand(float value)
+    {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof(bits));
+        const uint32_t exponent = (bits >> 23) & 0xFFu;
+        if (exponent == 0u)
+            bits &= 0x80000000u;
+        else if (exponent == 0xFFu)
+            bits = (bits & 0x80000000u) | 0x7F7FFFFFu;
+        std::memcpy(&value, &bits, sizeof(value));
+        return value;
+    }
     float normalizeResult(float value, uint32_t &laneFlags) const;
-    uint32_t microAddressMask() const;
+    uint32_t microAddressMask() const { return m_unit == Unit::VU1 ? 0x3FFFu : 0x0FFFu; }
     int32_t readBranchVi(uint8_t reg) const;
     void recordViWriteForBranch(uint8_t reg, int32_t oldValue);
     void reportReservedInstruction(bool upper, uint32_t instruction);

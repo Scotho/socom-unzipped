@@ -77,6 +77,8 @@ void VU1Interpreter::resetScheduler()
     m_nextReadyCycle = ~0ull;
     m_maxReadyCycle = 0;
     m_flagPipeline = {};
+    m_fastFlagHead = 0;
+    m_fastFlagCount = 0;
     m_fdiv = {};
     m_efu = {};
     m_storePipeline = {};
@@ -116,23 +118,6 @@ float VU1Interpreter::broadcast(const float *vf, uint8_t bc)
     return normalizeOperand(vf[bc & 3u]);
 }
 
-float VU1Interpreter::normalizeOperand(float value) const
-{
-    uint32_t bits = 0;
-    std::memcpy(&bits, &value, sizeof(bits));
-    const uint32_t exponent = (bits >> 23) & 0xFFu;
-    if (exponent == 0u)
-    {
-        bits &= 0x80000000u;
-    }
-    else if (exponent == 0xFFu)
-    {
-        bits = (bits & 0x80000000u) | 0x7F7FFFFFu;
-    }
-    std::memcpy(&value, &bits, sizeof(value));
-    return value;
-}
-
 float VU1Interpreter::normalizeResult(float value, uint32_t &laneFlags) const
 {
     uint32_t bits = 0;
@@ -161,11 +146,6 @@ float VU1Interpreter::normalizeResult(float value, uint32_t &laneFlags) const
     return value;
 }
 
-uint32_t VU1Interpreter::microAddressMask() const
-{
-    return m_unit == Unit::VU1 ? 0x3FFFu : 0x0FFFu;
-}
-
 int32_t VU1Interpreter::readBranchVi(uint8_t reg) const
 {
     if (reg == 0u)
@@ -185,18 +165,6 @@ void VU1Interpreter::recordViWriteForBranch(uint8_t reg, int32_t oldValue)
     m_viBranchBackupValue = oldValue;
     m_viBranchBackupReg = reg;
     m_viBranchBackupValid = true;
-}
-
-void VU1Interpreter::applyDest(float *dst, const float *result, uint8_t dest)
-{
-    if (dest & 0x8u)
-        dst[0] = result[0];
-    if (dest & 0x4u)
-        dst[1] = result[1];
-    if (dest & 0x2u)
-        dst[2] = result[2];
-    if (dest & 0x1u)
-        dst[3] = result[3];
 }
 
 void VU1Interpreter::applyDestAcc(const float *result, uint8_t dest)
@@ -523,6 +491,26 @@ void VU1Interpreter::updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest,
             mac |= static_cast<uint32_t>(lane) << 12;
         status |= flags;
     }
+    pushFmacFlags(mac, status, extraSticky);
+}
+
+void VU1Interpreter::pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky)
+{
+    if (m_fast)
+    {
+        FlagPipelineEntry entry{};
+        entry.valid = true;
+        entry.issueCycle = m_cycle;
+        entry.issuePc = m_state.pc;
+        entry.readyCycle = m_cycle + kFmacLatency;
+        entry.mac = mac;
+        entry.status = status;
+        entry.extraSticky = extraSticky;
+        entry.writesMac = true;
+        entry.writesStatus = true;
+        fastPushFlags(entry);
+        return;
+    }
 
     FlagPipelineEntry *entry = nullptr;
     for (FlagPipelineEntry &candidate : m_flagPipeline)
@@ -552,6 +540,19 @@ void VU1Interpreter::updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest,
     entry->writesStatus = true;
 }
 
+void VU1Interpreter::fastPushFlags(const FlagPipelineEntry &entry)
+{
+    if (m_fastFlagCount >= kMaxFlagEntries)
+    {
+        reportReservedInstruction(true, 0xFFFFFFFFu);
+        return;
+    }
+    const uint32_t slot = (m_fastFlagHead + m_fastFlagCount) % kMaxFlagEntries;
+    m_flagPipeline[slot] = entry;
+    ++m_fastFlagCount;
+    noteQueued(entry.readyCycle);
+}
+
 void VU1Interpreter::applyFmacDest(float *dst, float *result, uint8_t dest)
 {
     uint8_t laneFlags[4]{};
@@ -575,6 +576,17 @@ void VU1Interpreter::queueFsset(uint16_t immediate)
         if (entry.valid && entry.issueCycle == m_cycle)
             entry.writesStatus = false;
     }
+    if (m_fast)
+    {
+        FlagPipelineEntry entry{};
+        entry.valid = true;
+        entry.issueCycle = m_cycle;
+        entry.readyCycle = m_cycle + kFmacLatency;
+        entry.status = static_cast<uint32_t>(immediate) & 0xFC0u;
+        entry.writesSticky = true;
+        fastPushFlags(entry);
+        return;
+    }
 
     for (FlagPipelineEntry &entry : m_flagPipeline)
     {
@@ -596,6 +608,17 @@ void VU1Interpreter::queueFsset(uint16_t immediate)
 void VU1Interpreter::queueClip(uint32_t clip)
 {
     m_workingClip = ((m_workingClip << 6) | (clip & 0x3Fu)) & 0xFFFFFFu;
+    if (m_fast)
+    {
+        FlagPipelineEntry entry{};
+        entry.valid = true;
+        entry.issueCycle = m_cycle;
+        entry.readyCycle = m_cycle + kFmacLatency;
+        entry.clip = m_workingClip;
+        entry.writesClip = true;
+        fastPushFlags(entry);
+        return;
+    }
     for (FlagPipelineEntry &entry : m_flagPipeline)
     {
         if (!entry.valid)
@@ -620,6 +643,17 @@ void VU1Interpreter::queueFcset(uint32_t clip)
     {
         if (entry.valid && entry.issueCycle == m_cycle)
             entry.writesClip = false;
+    }
+    if (m_fast)
+    {
+        FlagPipelineEntry entry{};
+        entry.valid = true;
+        entry.issueCycle = m_cycle;
+        entry.readyCycle = m_cycle + kFmacLatency;
+        entry.clip = m_workingClip;
+        entry.writesClip = true;
+        fastPushFlags(entry);
+        return;
     }
     for (FlagPipelineEntry &entry : m_flagPipeline)
     {
@@ -673,6 +707,20 @@ void VU1Interpreter::queueP(float value, uint32_t latency)
 
 void VU1Interpreter::queueStore(uint32_t address, const uint32_t words[4], uint8_t laneMask)
 {
+    if (m_fast)
+    {
+        if (m_activeVuData && address + 16u <= m_activeVuDataSize)
+        {
+            uint32_t *dst = reinterpret_cast<uint32_t *>(m_activeVuData + address);
+            if (laneMask == 0xFu)
+                std::memcpy(dst, words, 16u);
+            else
+                for (uint32_t component = 0; component < 4u; ++component)
+                    if ((laneMask & laneForComponent(component)) != 0u)
+                        dst[component] = words[component];
+        }
+        return;
+    }
     for (PendingStore &store : m_storePipeline)
     {
         if (!store.valid)
@@ -1750,6 +1798,309 @@ void VU1Interpreter::resume(uint8_t *vuCode, uint32_t codeSize,
     run(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
 }
 
+// ============================================================================
+// Fast path: same instruction semantics, no per-cycle scheduler.
+// ============================================================================
+void VU1Interpreter::fastCommit()
+{
+    if (m_cycle < m_nextReadyCycle)
+        return;
+    while (m_fastFlagCount != 0u)
+    {
+        FlagPipelineEntry &entry = m_flagPipeline[m_fastFlagHead];
+        if (entry.readyCycle > m_cycle)
+            break;
+        if (entry.writesMac)
+        {
+            m_state.mac = entry.mac;
+            m_lastMacPc = entry.issuePc;
+        }
+        if (entry.writesStatus)
+        {
+            const uint32_t current = entry.status & 0xFu;
+            m_state.status = (m_state.status & 0xFF0u) | current | ((current | entry.extraSticky) << 6);
+        }
+        if (entry.writesSticky)
+            m_state.status = (m_state.status & 0x03Fu) | (entry.status & 0xFC0u);
+        if (entry.writesClip)
+            m_state.clip = entry.clip;
+        entry = {};
+        m_fastFlagHead = (m_fastFlagHead + 1u) % kMaxFlagEntries;
+        --m_fastFlagCount;
+    }
+    if (m_fdiv.valid && m_fdiv.readyCycle <= m_cycle)
+    {
+        m_state.q = m_fdiv.value;
+        const uint32_t currentDi = m_fdiv.statusDi & 0x30u;
+        m_state.status = (m_state.status & 0xFCFu) | currentDi | (currentDi << 6);
+        m_fdiv = {};
+    }
+    // EFU results land in ready order (the exact path commits one cycle at a time).
+    for (;;)
+    {
+        ScalarPipelineEntry *oldest = nullptr;
+        for (ScalarPipelineEntry &entry : m_efu)
+            if (entry.valid && entry.readyCycle <= m_cycle && (!oldest || entry.readyCycle < oldest->readyCycle))
+                oldest = &entry;
+        if (!oldest)
+            break;
+        m_state.p = oldest->value;
+        *oldest = {};
+    }
+    uint64_t next = ~0ull;
+    if (m_fastFlagCount != 0u)
+        next = m_flagPipeline[m_fastFlagHead].readyCycle;
+    if (m_fdiv.valid && m_fdiv.readyCycle < next)
+        next = m_fdiv.readyCycle;
+    for (const ScalarPipelineEntry &entry : m_efu)
+        if (entry.valid && entry.readyCycle < next)
+            next = entry.readyCycle;
+    m_nextReadyCycle = next;
+}
+
+// Program end: every queued result lands; the cycle counter advances to the last landing like the
+// exact path's flushPipelines().
+void VU1Interpreter::fastFlush()
+{
+    uint64_t last = m_cycle;
+    for (uint32_t i = 0; i < m_fastFlagCount; ++i)
+        last = std::max(last, m_flagPipeline[(m_fastFlagHead + i) % kMaxFlagEntries].readyCycle);
+    if (m_fdiv.valid)
+        last = std::max(last, m_fdiv.readyCycle);
+    for (const ScalarPipelineEntry &entry : m_efu)
+        if (entry.valid)
+            last = std::max(last, entry.readyCycle);
+    m_cycle = last;
+    m_state.cycles = m_cycle;
+    m_nextReadyCycle = 0;
+    fastCommit();
+}
+
+uint64_t VU1Interpreter::fastReadyCycle(const DecodedInstructionPair &decoded) const
+{
+    uint64_t ready = m_cycle;
+    if (decoded.lowerUsage.pipeline == PipelineXgkick && m_xgkick.active)
+        ready = m_cycle + 1u;
+    if (m_cycle >= m_maxReadyCycle)
+        return ready;
+
+    const InstructionUsage *usages[2] = {&decoded.upperUsage, &decoded.lowerUsage};
+    for (const InstructionUsage *usage : usages)
+    {
+        for (uint32_t index = 0; index < usage->vfReadCount; ++index)
+        {
+            const VfAccess &access = usage->vfRead[index];
+            const uint64_t *readyLanes = m_vfReady[access.reg].data();
+            if (access.lanes & 0x8u)
+                ready = std::max(ready, readyLanes[0]);
+            if (access.lanes & 0x4u)
+                ready = std::max(ready, readyLanes[1]);
+            if (access.lanes & 0x2u)
+                ready = std::max(ready, readyLanes[2]);
+            if (access.lanes & 0x1u)
+                ready = std::max(ready, readyLanes[3]);
+        }
+        uint32_t viMask = usage->viRead & 0xFFFEu;
+        while (viMask != 0u)
+        {
+            const uint32_t reg = static_cast<uint32_t>(__builtin_ctz(viMask));
+            ready = std::max(ready, m_viReady[reg]);
+            viMask &= viMask - 1u;
+        }
+        // ACC is forwarded one cycle after its write: the next pair never stalls on it.
+    }
+
+    if (decoded.lowerUsage.pipeline == PipelineFdiv && m_fdiv.valid)
+        ready = std::max(ready, m_fdiv.readyCycle);
+    if (decoded.lowerUsage.pipeline == PipelineEfu)
+        ready = std::max(ready, m_efuResourceReady);
+    if (decoded.lowerUsage.waitQ && m_fdiv.valid)
+        ready = std::max(ready, m_fdiv.readyCycle);
+    if (decoded.lowerUsage.waitP)
+    {
+        for (const ScalarPipelineEntry &entry : m_efu)
+            if (entry.valid)
+                ready = std::max(ready, entry.readyCycle);
+    }
+    return ready;
+}
+
+void VU1Interpreter::runFast(uint8_t *vuCode, uint32_t codeSize,
+                             uint8_t *vuData, uint32_t dataSize,
+                             GS &gs, PS2Memory *memory, uint64_t budgetEnd, bool &programEnded)
+{
+    uint64_t pairs = 0;
+    // The microprogram cannot change while it runs: validate the decoded-code cache once and index
+    // it directly (pc is always pair-aligned: it advances by 8 and every branch target is a pair).
+    const bool cached = memory != nullptr && vuCode == memory->getVU1Code() && codeSize / 8u <= kMaxDecodedPairs;
+    if (cached)
+        (void)getDecodedInstructionPairForPc(vuCode, codeSize, memory, 0u);
+    const uint32_t codeMask = microAddressMask();
+    while (m_cycle < budgetEnd && !m_stopRequested)
+    {
+        if (m_state.pc + 8u > codeSize)
+            break;
+
+        const DecodedInstructionPair &decoded = (cached && (m_state.pc & 7u) == 0u)
+                                                    ? m_decodedCodeCache[m_state.pc >> 3]
+                                                    : getDecodedInstructionPairForPc(vuCode, codeSize, memory, m_state.pc);
+        if (decoded.upperUsage.reserved || decoded.lowerUsage.reserved)
+        {
+            reportReservedInstruction(decoded.upperUsage.reserved, decoded.upperUsage.reserved ? decoded.upper : decoded.lower);
+            break;
+        }
+        ++pairs;
+
+        const uint64_t readyCycle = fastReadyCycle(decoded);
+        if (readyCycle > m_cycle)
+        {
+            if (readyCycle >= budgetEnd)
+            {
+                m_cycle = budgetEnd;
+                break;
+            }
+            m_cycle = readyCycle;
+        }
+        fastCommit();
+
+        uint8_t writtenVi = 0u;
+        int32_t oldVi = 0;
+        const uint32_t viWriteMask = decoded.lowerUsage.viWrite & 0xFFFEu;
+        if (viWriteMask != 0u)
+        {
+            writtenVi = static_cast<uint8_t>(__builtin_ctz(viWriteMask));
+            oldVi = m_state.vi[writtenVi];
+        }
+
+        if (decoded.iBit)
+        {
+            execUpper(decoded.upper);
+            float immediate = 0.0f;
+            std::memcpy(&immediate, &decoded.lower, sizeof(immediate));
+            m_state.i = normalizeOperand(immediate);
+        }
+        else if (decoded.upperVfShadowReg != 0u)
+        {
+            // The lower instruction reads (or writes) the upper's destination: it sees the old
+            // value, and the upper's result wins over a lower write to the same register.
+            float oldVf[4]{};
+            float upperVf[4]{};
+            std::memcpy(oldVf, m_state.vf[decoded.upperVfShadowReg], sizeof(oldVf));
+            execUpper(decoded.upper);
+            std::memcpy(upperVf, m_state.vf[decoded.upperVfShadowReg], sizeof(upperVf));
+            std::memcpy(m_state.vf[decoded.upperVfShadowReg], oldVf, sizeof(oldVf));
+            execLower(decoded.lower, vuData, dataSize, gs, memory, decoded.upper);
+            std::memcpy(m_state.vf[decoded.upperVfShadowReg], upperVf, sizeof(upperVf));
+        }
+        else
+        {
+            execUpper(decoded.upper);
+            execLower(decoded.lower, vuData, dataSize, gs, memory, decoded.upper);
+        }
+
+        m_viBranchBackupValid = false;
+
+        // Ready cycles of the written registers (the only scheduler state the fast path keeps).
+        {
+            const VfAccess lowerWrite = decoded.lowerUsage.vfWrite;
+            if (lowerWrite.reg != 0u && decoded.suppressedLowerVf != lowerWrite.reg)
+            {
+                const uint64_t ready = m_cycle + (decoded.lowerUsage.vfLatency != 0u ? decoded.lowerUsage.vfLatency : decoded.lowerUsage.latency);
+                uint64_t *lanes = m_vfReady[lowerWrite.reg].data();
+                if (lowerWrite.lanes & 0x8u) lanes[0] = ready;
+                if (lowerWrite.lanes & 0x4u) lanes[1] = ready;
+                if (lowerWrite.lanes & 0x2u) lanes[2] = ready;
+                if (lowerWrite.lanes & 0x1u) lanes[3] = ready;
+                noteReady(ready);
+            }
+            const VfAccess upperWrite = decoded.upperUsage.vfWrite;
+            if (upperWrite.reg != 0u)
+            {
+                const uint64_t ready = m_cycle + (decoded.upperUsage.vfLatency != 0u ? decoded.upperUsage.vfLatency : decoded.upperUsage.latency);
+                uint64_t *lanes = m_vfReady[upperWrite.reg].data();
+                if (upperWrite.lanes & 0x8u) lanes[0] = ready;
+                if (upperWrite.lanes & 0x4u) lanes[1] = ready;
+                if (upperWrite.lanes & 0x2u) lanes[2] = ready;
+                if (upperWrite.lanes & 0x1u) lanes[3] = ready;
+                noteReady(ready);
+            }
+            uint32_t mask = viWriteMask;
+            if (mask != 0u)
+            {
+                const uint64_t ready = m_cycle + (decoded.lowerUsage.viLatency != 0u ? decoded.lowerUsage.viLatency : decoded.lowerUsage.latency);
+                while (mask != 0u)
+                {
+                    m_viReady[__builtin_ctz(mask)] = ready;
+                    mask &= mask - 1u;
+                }
+                noteReady(ready);
+            }
+        }
+        if (writtenVi != 0u && decoded.lowerUsage.delaysNextBranchRead)
+            recordViWriteForBranch(writtenVi, oldVi);
+
+        // vf0/vi0 are constant; one 16-byte store (four scalar stores followed by the FMAC's vector
+        // load of vf0 would stall store forwarding).
+        _mm_storeu_ps(m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+        m_state.vi[0] = 0;
+
+        uint32_t nextPc = m_state.pc + 8u;
+        if (nextPc >= codeSize)
+            nextPc = 0u;
+        m_state.pc = nextPc;
+
+        if (m_state.branchPending)
+        {
+            if (m_state.branchDelay == 0u)
+            {
+                m_state.pc = m_state.branchTarget & codeMask;
+                m_state.branchPending = false;
+            }
+            else
+            {
+                --m_state.branchDelay;
+            }
+        }
+
+        ++m_cycle;
+        // Program end: E bit (one more pair runs), D/T bits when enabled, or a pending halt.
+        if (decoded.eBit | decoded.dBit | decoded.tBit | m_state.ebit | m_state.haltAfterDelaySlot)
+        {
+            const bool dHalt = decoded.dBit && m_state.dBitEnabled;
+            const bool tHalt = decoded.tBit && m_state.tBitEnabled;
+            const bool haltBit = dHalt || tHalt;
+            const bool haltBranch = haltBit && decoded.lowerUsage.pipeline == PipelineBranch;
+
+            if (m_state.haltAfterDelaySlot)
+            {
+                m_state.stoppedByD = m_pendingHaltD;
+                m_state.stoppedByT = m_pendingHaltT;
+                programEnded = true;
+            }
+            else if (m_state.ebit)
+                programEnded = true;
+            else if (haltBit && !haltBranch)
+            {
+                m_state.stoppedByD = dHalt;
+                m_state.stoppedByT = tHalt;
+                programEnded = true;
+            }
+            else if (decoded.eBit)
+                m_state.ebit = true;
+            else if (haltBranch)
+            {
+                m_state.haltAfterDelaySlot = true;
+                m_pendingHaltD = dHalt;
+                m_pendingHaltT = tHalt;
+            }
+            if (programEnded)
+                break;
+        }
+    }
+    m_state.cycles = m_cycle;
+    g_vuInsnCount.fetch_add(pairs, std::memory_order_relaxed);
+}
+
 void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                          uint8_t *vuData, uint32_t dataSize,
                          GS &gs, PS2Memory *memory, uint32_t maxCycles)
@@ -1811,7 +2162,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     static const int s_vuTraceSkip = std::getenv("PS2X_TRACE_VU") ? std::atoi(std::getenv("PS2X_TRACE_VU")) : 0;
     bool traceThis = false;
     uint32_t traceFirstXg = 0xFFFFFFFFu;
-    if (m_unit == Unit::VU1 && std::getenv("PS2X_TRACE_VU") &&
+    static const bool s_vuTraceEnv = std::getenv("PS2X_TRACE_VU") != nullptr;
+    if (m_unit == Unit::VU1 && s_vuTraceEnv &&
         s_vuTraceSeen.fetch_add(1, std::memory_order_relaxed) >= static_cast<uint64_t>(s_vuTraceSkip) &&
         s_vuTraceDumped.load(std::memory_order_relaxed) < 3)
     {
@@ -1904,7 +2256,13 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     const uint64_t runStartCycle = m_cycle;
     const auto runStart = std::chrono::steady_clock::now();
     bool programEnded = false;
-    while (m_cycle < budgetEnd && !m_stopRequested)
+    // PS2X_VU1_FAST=1 selects the fast path (opt-in until verified in the game; a VU trace forces
+    // the cycle-exact scheduler).
+    static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") != nullptr && std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
+    m_fast = s_fastEnv && m_unit == Unit::VU1 && !traceThis;
+    if (m_fast)
+        runFast(vuCode, codeSize, vuData, dataSize, gs, memory, budgetEnd, programEnded);
+    while (!m_fast && m_cycle < budgetEnd && !m_stopRequested)
     {
         commitReadyPipelines();
         if (m_state.pc + 8u > codeSize)
@@ -2109,7 +2467,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
 
     if (programEnded)
     {
-        flushPipelines();
+        if (m_fast)
+            fastFlush();
+        else
+            flushPipelines();
         m_state.ebit = false;
         m_state.haltAfterDelaySlot = false;
         m_pendingHaltD = false;

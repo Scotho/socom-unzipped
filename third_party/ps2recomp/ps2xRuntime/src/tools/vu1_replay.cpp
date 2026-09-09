@@ -1,13 +1,25 @@
 // vu1_replay: run one VU1 program dump (PS2X_VU1_DUMP=<dir> -> vu1_prog_N.bin) through the runtime's
 // VU1 interpreter offline and save every XGKICK packet it produces.
 //
-//   vu1_replay <dump.bin> [--out packets.bin] [--trace]
+//   vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]
+//   vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...
 //
 // Dump layout: uint32 startPc, top, itop, codeSize; 16 KB code; 16 KB data; int32 vi[16]; float
 // vf[32][4] (the register file at program start — VU registers persist across MSCALs, so the dump
 // restores them before running). The packet file is a sequence of (uint32 length, bytes) records;
 // tools_py/gif_packets.py parses them into vertices.
+//
+// Batch mode writes <outdir>/<dump basename>.pk per dump and <outdir>/state.txt with one line per
+// dump (packet count/bytes/FNV hash, cycles, end pc, every register as hex, VU data memory hash) —
+// the "golden" used to verify a faster execution path packet-for-packet and register-for-register.
+// --repeat N runs every program N times (fresh data memory each time) and reports host ns/cycle.
 #include <atomic>
+#include <algorithm>
+#include <chrono>
+#include <fstream>
+#include <thread>
+#include <unordered_map>
+#include <windows.h>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,43 +36,133 @@
 // triggered program dump. Never armed here.
 std::atomic<bool> g_ps2xTraceArmed{false};
 
+namespace
+{
+    struct Dump
+    {
+        std::string path;
+        uint32_t hdr[4] = {0, 0, 0, 0};
+        std::vector<uint8_t> code, data;
+        int32_t vi[16] = {0};
+        float vf[32][4] = {};
+    };
+
+    bool loadDump(const char *path, Dump &d)
+    {
+        FILE *fp = std::fopen(path, "rb");
+        if (!fp)
+        {
+            std::fprintf(stderr, "cannot open %s\n", path);
+            return false;
+        }
+        d.path = path;
+        d.code.assign(0x4000, 0);
+        d.data.assign(0x4000, 0);
+        const bool ok = std::fread(d.hdr, sizeof(d.hdr), 1, fp) == 1 &&
+                        std::fread(d.code.data(), 1, d.code.size(), fp) == d.code.size() &&
+                        std::fread(d.data.data(), 1, d.data.size(), fp) == d.data.size() &&
+                        std::fread(d.vi, sizeof(d.vi), 1, fp) == 1 &&
+                        std::fread(d.vf, sizeof(d.vf), 1, fp) == 1;
+        std::fclose(fp);
+        if (!ok)
+            std::fprintf(stderr, "short dump file %s\n", path);
+        return ok;
+    }
+
+    uint64_t fnv1a(const uint8_t *p, size_t n, uint64_t h = 1469598103934665603ull)
+    {
+        for (size_t i = 0; i < n; ++i)
+        {
+            h ^= p[i];
+            h *= 1099511628211ull;
+        }
+        return h;
+    }
+
+    std::string baseName(const std::string &path)
+    {
+        const size_t slash = path.find_last_of("/\\");
+        std::string base = slash == std::string::npos ? path : path.substr(slash + 1);
+        const size_t dot = base.find_last_of('.');
+        if (dot != std::string::npos)
+            base = base.substr(0, dot);
+        return base;
+    }
+
+    void printState(FILE *out, const char *name, const VU1Interpreter &vu, uint32_t packetCount,
+                    const std::vector<uint8_t> &packets, uint64_t cycles, const std::vector<uint8_t> &data)
+    {
+        const VU1State &s = vu.m_state;
+        std::fprintf(out, "%s packets=%u bytes=%zu hash=%016llx cycles=%llu endpc=0x%x", name, packetCount,
+                     packets.size(), (unsigned long long)fnv1a(packets.data(), packets.size()),
+                     (unsigned long long)cycles, s.pc);
+        std::fprintf(out, " mac=%03x status=%03x clip=%06x r=%08x", s.mac, s.status, s.clip, s.r);
+        uint32_t w = 0;
+        std::memcpy(&w, &s.q, 4);
+        std::fprintf(out, " q=%08x", w);
+        std::memcpy(&w, &s.p, 4);
+        std::fprintf(out, " p=%08x", w);
+        std::memcpy(&w, &s.i, 4);
+        std::fprintf(out, " i=%08x", w);
+        std::fprintf(out, " vi=");
+        for (int r = 0; r < 16; ++r)
+            std::fprintf(out, "%s%04x", r ? "," : "", (unsigned)(s.vi[r] & 0xFFFF));
+        std::fprintf(out, " acc=");
+        for (int c = 0; c < 4; ++c)
+        {
+            std::memcpy(&w, &s.acc[c], 4);
+            std::fprintf(out, "%s%08x", c ? "," : "", w);
+        }
+        std::fprintf(out, " vf=");
+        for (int r = 0; r < 32; ++r)
+            for (int c = 0; c < 4; ++c)
+            {
+                std::memcpy(&w, &s.vf[r][c], 4);
+                std::fprintf(out, "%s%08x", (r || c) ? "," : "", w);
+            }
+        std::fprintf(out, " data=%016llx\n", (unsigned long long)fnv1a(data.data(), data.size()));
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2)
     {
-        std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace]\n");
+        std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]\n"
+                             "       vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...\n");
         return 2;
     }
     std::string outPath = "vu1_packets.bin";
+    std::string batchDir;
+    std::string profPath;
     bool trace = false;
-    for (int i = 2; i < argc; ++i)
+    bool printStateFlag = false;
+    int repeat = 1;
+    std::vector<std::string> inputs;
+    for (int i = 1; i < argc; ++i)
     {
         if (!std::strcmp(argv[i], "--out") && i + 1 < argc)
             outPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--batch") && i + 1 < argc)
+            batchDir = argv[++i];
+        else if (!std::strcmp(argv[i], "--repeat") && i + 1 < argc)
+            repeat = std::atoi(argv[++i]);
+        else if (!std::strcmp(argv[i], "--prof") && i + 1 < argc)
+            profPath = argv[++i];
         else if (!std::strcmp(argv[i], "--trace"))
             trace = true;
+        else if (!std::strcmp(argv[i], "--state"))
+            printStateFlag = true;
+        else
+            inputs.push_back(argv[i]);
     }
-
-    FILE *fp = std::fopen(argv[1], "rb");
-    if (!fp)
+    if (inputs.empty())
     {
-        std::fprintf(stderr, "cannot open %s\n", argv[1]);
-        return 1;
+        std::fprintf(stderr, "no dump given\n");
+        return 2;
     }
-    uint32_t hdr[4] = {0, 0, 0, 0};
-    std::vector<uint8_t> code(0x4000), data(0x4000);
-    int32_t vi[16] = {0};
-    float vf[32][4] = {};
-    if (std::fread(hdr, sizeof(hdr), 1, fp) != 1 ||
-        std::fread(code.data(), 1, code.size(), fp) != code.size() ||
-        std::fread(data.data(), 1, data.size(), fp) != data.size() ||
-        std::fread(vi, sizeof(vi), 1, fp) != 1 ||
-        std::fread(vf, sizeof(vf), 1, fp) != 1)
-    {
-        std::fprintf(stderr, "short dump file\n");
-        return 1;
-    }
-    std::fclose(fp);
+    if (repeat < 1)
+        repeat = 1;
 
     _putenv("PS2X_GS_BACKEND=cpu");
     if (trace)
@@ -68,6 +170,13 @@ int main(int argc, char **argv)
 
     GS gs;
     PS2Memory memory;
+    // The program runs from the memory object's own VU1 buffers so the interpreter's decoded-code
+    // cache applies exactly as in the game (a foreign code pointer is decoded pair by pair).
+    if (!memory.initialize())
+    {
+        std::fprintf(stderr, "PS2Memory::initialize failed\n");
+        return 1;
+    }
     std::vector<uint8_t> packets;
     uint32_t packetCount = 0;
     memory.setGifPacketCallback([&](const uint8_t *p, uint32_t n) {
@@ -78,18 +187,147 @@ int main(int argc, char **argv)
     });
 
     VU1Interpreter vu(VU1Interpreter::Unit::VU1);
-    vu.reset();
-    std::memcpy(vu.m_state.vi, vi, sizeof(vi));
-    std::memcpy(vu.m_state.vf, vf, sizeof(vf));
-    vu.execute(code.data(), static_cast<uint32_t>(code.size()), data.data(), static_cast<uint32_t>(data.size()),
-               gs, &memory, hdr[0], hdr[1], hdr[2], 1u << 28);
-
-    std::printf("pc=0x%x top=0x%x itop=0x%x: %u packets, %zu bytes, %llu cycles, end pc=0x%x\n",
-                hdr[0], hdr[1], hdr[2], packetCount, packets.size(), (unsigned long long)vu.m_cycle, vu.m_state.pc);
-    if (FILE *out = std::fopen(outPath.c_str(), "wb"))
+    FILE *stateOut = nullptr;
+    if (!batchDir.empty())
     {
-        std::fwrite(packets.data(), 1, packets.size(), out);
-        std::fclose(out);
+        const std::string statePath = batchDir + "/state.txt";
+        stateOut = std::fopen(statePath.c_str(), "w");
+        if (!stateOut)
+        {
+            std::fprintf(stderr, "cannot write %s\n", statePath.c_str());
+            return 1;
+        }
     }
+
+    // --prof <file>: sample this thread's instruction pointer every 0.2 ms from a helper thread and
+    // write a PS2X_HOST_PROF-style histogram (symbolize with tools_py/hostprof_symbolize.py --exe).
+    std::atomic<bool> profStop{false};
+    std::thread profThread;
+    if (!profPath.empty())
+    {
+        HANDLE dup = nullptr;
+        DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &dup,
+                        THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0);
+        const uint64_t base = reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
+        profThread = std::thread([dup, base, profPath, &profStop]() {
+            std::unordered_map<uint64_t, uint32_t> counts;
+            uint64_t total = 0;
+            while (!profStop.load())
+            {
+                // Sleep granularity on Windows is ~15 ms: spin (yielding) for the sample period.
+                const auto until = std::chrono::steady_clock::now() + std::chrono::microseconds(100);
+                while (std::chrono::steady_clock::now() < until)
+                    std::this_thread::yield();
+                if (SuspendThread(dup) == static_cast<DWORD>(-1))
+                    continue;
+                CONTEXT c;
+                std::memset(&c, 0, sizeof(c));
+                c.ContextFlags = CONTEXT_CONTROL;
+                uint64_t rip = GetThreadContext(dup, &c) ? c.Rip : 0;
+                ResumeThread(dup);
+                if (rip)
+                {
+                    ++counts[rip];
+                    ++total;
+                }
+            }
+            std::vector<std::pair<uint64_t, uint32_t>> v(counts.begin(), counts.end());
+            std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+            std::ofstream f(profPath, std::ios::trunc);
+            f << "base 0x" << std::hex << base << std::dec << " total " << total << '\n';
+            for (const auto &kv : v)
+            {
+                HMODULE mod = nullptr;
+                const bool inExe = GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                                      reinterpret_cast<LPCWSTR>(kv.first), &mod) &&
+                                   reinterpret_cast<uint64_t>(mod) == base;
+                if (inExe)
+                    f << std::hex << kv.first - base << std::dec << " " << kv.second << '\n';
+                else
+                {
+                    char name[MAX_PATH] = {0};
+                    if (mod)
+                        GetModuleFileNameA(mod, name, sizeof(name));
+                    f << std::hex << kv.first << std::dec << " " << kv.second << " ext " << (mod ? name : "?") << "+0x"
+                      << std::hex << (mod ? kv.first - reinterpret_cast<uint64_t>(mod) : 0) << std::dec << '\n';
+                }
+            }
+        });
+    }
+
+    double totalHostNs = 0.0;
+    uint64_t totalCycles = 0;
+    uint64_t totalPairs = 0;
+    std::vector<uint8_t> data;
+    for (const std::string &input : inputs)
+    {
+        Dump d;
+        if (!loadDump(input.c_str(), d))
+            return 1;
+        uint64_t cycles = 0;
+        for (int iter = 0; iter < repeat; ++iter)
+        {
+            packets.clear();
+            packetCount = 0;
+            uint8_t *code = memory.getVU1Code();
+            uint8_t *vuData = memory.getVU1Data();
+            if (std::memcmp(code, d.code.data(), PS2_VU1_CODE_SIZE) != 0)
+            {
+                std::memcpy(code, d.code.data(), PS2_VU1_CODE_SIZE);
+                memory.markVU1CodeModified();
+            }
+            std::memcpy(vuData, d.data.data(), PS2_VU1_DATA_SIZE);
+            vu.reset();
+            std::memcpy(vu.m_state.vi, d.vi, sizeof(d.vi));
+            std::memcpy(vu.m_state.vf, d.vf, sizeof(d.vf));
+            const uint64_t startCycle = vu.m_cycle;
+            extern std::atomic<uint64_t> g_vuInsnCount;
+            const uint64_t startPairs = g_vuInsnCount.load();
+            const auto t0 = std::chrono::steady_clock::now();
+            vu.execute(code, PS2_VU1_CODE_SIZE, vuData, PS2_VU1_DATA_SIZE,
+                       gs, &memory, d.hdr[0], d.hdr[1], d.hdr[2], 1u << 28);
+            const auto t1 = std::chrono::steady_clock::now();
+            totalHostNs += std::chrono::duration<double, std::nano>(t1 - t0).count();
+            cycles = vu.m_cycle - startCycle;
+            totalCycles += cycles;
+            totalPairs += g_vuInsnCount.load() - startPairs;
+            data.assign(vuData, vuData + PS2_VU1_DATA_SIZE);
+        }
+
+        if (batchDir.empty())
+        {
+            std::printf("pc=0x%x top=0x%x itop=0x%x: %u packets, %zu bytes, %llu cycles, end pc=0x%x\n",
+                        d.hdr[0], d.hdr[1], d.hdr[2], packetCount, packets.size(), (unsigned long long)cycles, vu.m_state.pc);
+            if (FILE *out = std::fopen(outPath.c_str(), "wb"))
+            {
+                std::fwrite(packets.data(), 1, packets.size(), out);
+                std::fclose(out);
+            }
+            if (printStateFlag)
+                printState(stdout, baseName(input).c_str(), vu, packetCount, packets, cycles, data);
+        }
+        else
+        {
+            const std::string base = baseName(input);
+            const std::string pk = batchDir + "/" + base + ".pk";
+            if (FILE *out = std::fopen(pk.c_str(), "wb"))
+            {
+                std::fwrite(packets.data(), 1, packets.size(), out);
+                std::fclose(out);
+            }
+            printState(stateOut, base.c_str(), vu, packetCount, packets, cycles, data);
+        }
+    }
+    if (stateOut)
+        std::fclose(stateOut);
+    if (profThread.joinable())
+    {
+        profStop.store(true);
+        profThread.join();
+    }
+    std::fprintf(stderr, "[vu1_replay] %zu programs x%d: %llu cycles, %llu pairs, host %.1f ms, %.1f ns/cycle, %.1f ns/pair\n",
+                 inputs.size(), repeat, (unsigned long long)totalCycles, (unsigned long long)totalPairs,
+                 totalHostNs / 1e6, totalCycles ? totalHostNs / (double)totalCycles : 0.0,
+                 totalPairs ? totalHostNs / (double)totalPairs : 0.0);
     return 0;
 }
