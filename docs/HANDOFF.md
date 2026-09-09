@@ -109,9 +109,11 @@ packets are copied at kick time (089516b: trees/bushes/road render), the EE game
 with host rounding toward zero (the EE FPU chops; the title labels were garbled without it —
 `PS2X_EE_ROUND=nearest` restores the old mode), VU1 interpreter 158 -> 111 ns/cycle.
 Open, in order:
-1. **Behind-camera triangles in the mission** (~1/3 of world triangles with q < 0 cover the
-   screen). The microprogram's near-plane clipper reads the MAC sign flags (`FMAND vi, 0x20/0x10`)
-   four instructions after the FMAC. Recipe: run the mission with `PS2X_PC_SAMPLER=1
+1. **Behind-camera triangles in the mission** — traced (STATUS 23:10) to ONE object drawn through
+   the 0x1b50 command-list path without near-plane clipping (backface test only); the console must
+   cull it or place it elsewhere (our player stands 6.6 units lower than PCSX2's: ground height).
+   Find the EE submitter of that command list and its visibility test; fix the ground height.
+   Recipe for the VU side (already done once): run the mission with `PS2X_PC_SAMPLER=1
    PS2X_PEEK="*0x488de8+0x320:3" PS2X_TRIGGER=938.5:940.5 PS2X_VU1_DUMP=logs/vu1dump2:150`
    (drive.py + scripts/parity/launch_to_mission_diag.txt, --seconds 480 --tail 170), replay every
    dump offline (`dist/vu1_replay.exe <dump> --out p.pk; python tools_py/gif_packets.py p.pk`),

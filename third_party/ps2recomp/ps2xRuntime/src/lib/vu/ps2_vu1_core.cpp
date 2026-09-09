@@ -542,6 +542,7 @@ void VU1Interpreter::updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest,
     *entry = {};
     entry->valid = true;
     entry->issueCycle = m_cycle;
+    entry->issuePc = m_state.pc;
     entry->readyCycle = m_cycle + kFmacLatency;
     noteQueued(entry->readyCycle);
     entry->mac = mac;
@@ -785,7 +786,10 @@ void VU1Interpreter::commitReadyPipelines()
         }
 
         if (entry.writesMac)
+        {
             m_state.mac = entry.mac;
+            m_lastMacPc = entry.issuePc;
+        }
         if (entry.writesStatus)
         {
             const uint32_t current = entry.status & 0xFu;
@@ -1914,7 +1918,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         }
         g_vuInsnCount.fetch_add(1, std::memory_order_relaxed);
 
-        if (traceThis && traceSteps < 1200u)
+        static const uint32_t s_traceStepCap = std::getenv("PS2X_TRACE_VU_STEPS") ? static_cast<uint32_t>(std::atoi(std::getenv("PS2X_TRACE_VU_STEPS"))) : 1200u;
+        if (traceThis && traceSteps < s_traceStepCap)
         {
             uint32_t lo, up;
             std::memcpy(&lo, vuCode + m_state.pc, 4);

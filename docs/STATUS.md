@@ -1,4 +1,24 @@
-# Project status — updated 2026-09-08 22:30
+# Project status — updated 2026-09-08 23:10
+
+## 2026-09-08 23:10 (local) — the behind-camera triangles come from a no-clip object path; player stands 6.6 units lower than on the console
+Offline replay of 150 dumped VU1 runs at the gameplay camera (logs/vu1dump2, `dist/vu1_replay.exe`
++ tools_py/gif_packets.py): 108 of 1878 kicked vertices have q < 0, all from four consecutive
+frames of ONE object rendered through the 0x1b50 command-list entry (8 triangles, two texture
+passes, tbp0 0x3621/0x3661 psm 8-bit, positioned at the player). Its command list is
+b20 (vertex decompress: ITOF4 xyz + offset, ITOF15/ITOF12 normals/uv, ITOF0 colour) ->
+0x1638 (per-triangle BACKFACE test: FMAND 0x10 on dot(cam - v, n), bit0 of the triangle record)
+-> 0x4a8 -> 0xdf8 (transform, DIV Q = 1/w, NO near-plane clipping) -> 0xf90 (lighting) ->
+0x1780 (emit: draws when bit0 && (bit1 || global word 39)) -> 0x22a0. The other 27 invocations
+of 0x1b50 (a 60-vertex object every frame) and all 119 pc=0 runs are clean. The MAC-flag path
+works as the manual says (traced with `PS2X_TRACE_VU_FLAGS=1`: the FMAND four instructions after
+the FMAC sees that FMAC's flags). So the microcode is not clipping by design and the console must
+never feed it this object in this state: the EE either culls it or gives it other data. Related
+EE-side divergence found in the same run: the player stands at y = -132.9 (PCSX2: -126.26) with
+x/z equal — the ground height from the collision grid differs by 6.6 units, and this object
+(at the player) straddles the near plane. Next: find the EE submitter of the 0x1b50 list with
+commands [52,3,50,4,8,20,24,...] (the JR table at 0x1ba0 indexes 340(vi14) words) and its
+bounding/visibility test, and chase the ground-height difference (collision query FUN_002d49c0 /
+FUN_002d2890 vs PCSX2's spawn image logs/parity/spawn_pcsx2.rdram).
 
 ## 2026-09-08 22:30 (local) — title-screen labels: the EE FPU chops; the game thread now rounds toward zero
 The garbled LOAD GAME / NEW GAME / ONLINE labels (user report ~21:00) are 128x32 CT32 images the

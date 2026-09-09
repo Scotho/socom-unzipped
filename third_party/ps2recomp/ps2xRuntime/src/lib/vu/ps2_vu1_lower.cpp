@@ -243,6 +243,14 @@ void VU1Interpreter::execLower(uint32_t instr, uint8_t *vuData, uint32_t dataSiz
     }
     case 0x1A: // FMAND
     {
+        // PS2X_TRACE_VU_FLAGS=1: what the flag readers see (offline replay of dumped programs).
+        static const bool s_flagTrace = std::getenv("PS2X_TRACE_VU_FLAGS") != nullptr;
+        if (s_flagTrace)
+            std::fprintf(stderr, "[vu-flags] pc=0x%x FMAND vi%u=0x%x & mac=0x%03x (from pc=0x%x, cycle=%llu) -> 0x%x\n",
+                         m_state.pc, VIS(instr), m_state.vi[VIS(instr)] & 0xFFFF, m_state.mac, m_lastMacPc,
+                         (unsigned long long)m_cycle, (m_state.vi[VIS(instr)] & 0xFFFF) & m_state.mac);
+    }
+    {
         uint8_t it = VIT(instr);
         uint8_t is = VIS(instr);
         if (it != 0)

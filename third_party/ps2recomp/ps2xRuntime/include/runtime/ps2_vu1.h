@@ -121,6 +121,7 @@ private:
     {
         uint64_t readyCycle = 0;
         uint64_t issueCycle = 0;
+        uint32_t issuePc = 0;       // program counter of the producing instruction (flag trace)
         uint32_t mac = 0;
         uint32_t status = 0;
         uint32_t extraSticky = 0;
@@ -256,6 +257,7 @@ private:
     // Earliest readyCycle of any queued pipeline entry (UINT64_MAX when none): commitReadyPipelines()
     // returns immediately before that cycle instead of scanning every queue on every instruction.
     uint64_t m_nextReadyCycle = ~0ull;
+    uint32_t m_lastMacPc = 0;       // issuePc of the entry that last committed MAC flags (flag trace)
     void noteQueued(uint64_t readyCycle) { if (readyCycle < m_nextReadyCycle) m_nextReadyCycle = readyCycle; }
     // Latest cycle at which any operand (VF/VI/ACC/Q/P/EFU resource) becomes ready: once m_cycle reaches
     // it, calculatePairReadyCycle() cannot stall and skips the operand scan.
