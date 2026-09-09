@@ -450,4 +450,6 @@ private:
     EeKernelSnapshot m_snapshot;
     uint64_t m_snapshotSequence = 0;
     uint64_t m_snapshotPublishedCycle = ~0ull; // eeCycle of the last published snapshot (rate limit)
+    uint64_t m_accountBatchedCycles = 0;       // accountCycles: estimated cycles since the last clock read
+    bool m_accountForceClock = false;          // accountCycles: convert on this call regardless of the batch
 };

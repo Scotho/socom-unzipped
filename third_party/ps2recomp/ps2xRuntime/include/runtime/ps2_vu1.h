@@ -277,6 +277,7 @@ private:
     // the VIF MPG generation counter changes. PS2X_VU1_GEN=0 disables the generated code.
     uint64_t m_knownGeneration = ~0ull;
     KnownProgramFn m_knownFn = nullptr;
+    uint64_t m_knownHash = 0;
     uint32_t m_fastFlagHead = 0;    // m_flagPipeline used as a ring in issue order
     uint32_t m_fastFlagCount = 0;
     uint64_t m_fastPairs = 0;       // executed pairs, folded into g_vuInsnCount at the end of a run

@@ -1950,6 +1950,8 @@ uint32_t *g_vu1JrHist = nullptr;
 // vu1_replay --bailhist: per-pc count of generated-code hand-backs to the interpreter.
 uint32_t *g_vu1BailHist = nullptr;
 uint64_t g_vu1GenEntered = 0, g_vu1GenEnded = 0, g_vu1GenSkipped = 0; // known-program dispatch counters
+uint64_t g_vu1UnknownImagePrograms = 0; // programs run by the interpreter because their image has no generated code
+uint64_t g_vu1GenHandBacks = 0;          // generated code handed the rest of a program to the interpreter
 
 // Known-program table (src/lib/vu/generated/vu1_known_programs.cpp).
 struct Vu1KnownProgram
@@ -2325,6 +2327,24 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 for (uint32_t i = 0; i < g_vu1KnownProgramCount; ++i)
                     if (g_vu1KnownPrograms[i].hash == hash)
                         m_knownFn = g_vu1KnownPrograms[i].fn;
+                m_knownHash = hash;
+            }
+            if (!m_knownFn)
+            {
+                // Image with no generated code: count it for the stats line (and, once per hash,
+                // name it so it can be dumped with PS2X_VU1_DUMP and recompiled).
+                ++g_vu1UnknownImagePrograms;
+                static uint64_t s_reported[8] = {0};
+                static int s_reportedCount = 0;
+                bool seen = false;
+                for (int i = 0; i < s_reportedCount; ++i)
+                    seen |= s_reported[i] == m_knownHash;
+                if (!seen && s_reportedCount < 8)
+                {
+                    s_reported[s_reportedCount++] = m_knownHash;
+                    std::fprintf(stderr, "[vu1] program image %016llx (entry pc=0x%x) has no generated code\n",
+                                 (unsigned long long)m_knownHash, m_state.pc);
+                }
             }
             if (m_knownFn && !m_state.dBitEnabled && !m_state.tBitEnabled && !m_state.ebit &&
                 !m_state.haltAfterDelaySlot && !m_state.branchPending)
@@ -2333,6 +2353,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 programEnded = m_knownFn(*this, budgetEnd);
                 if (programEnded)
                     ++g_vu1GenEnded;
+                else
+                    ++g_vu1GenHandBacks;
             }
             else
                 ++g_vu1GenSkipped;
@@ -2612,11 +2634,15 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                     }
                 }
 #endif
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s\n",
+                static uint64_t s_lastUnknown = 0, s_lastHandBacks = 0;
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
                              static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,
-                             threadMs, procMs);
+                             threadMs, procMs, (unsigned long long)(g_vu1UnknownImagePrograms - s_lastUnknown),
+                             (unsigned long long)(g_vu1GenHandBacks - s_lastHandBacks));
+                s_lastUnknown = g_vu1UnknownImagePrograms;
+                s_lastHandBacks = g_vu1GenHandBacks;
                 s_lastFlips = flips;
                 s_lastSyncV = syncs;
                 s_last = now;

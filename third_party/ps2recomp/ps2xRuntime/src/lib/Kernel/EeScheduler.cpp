@@ -406,6 +406,16 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
     uint64_t elapsed = std::max<uint64_t>(1u, cycles);
     if (!s_guestClock)
     {
+        // The recompiled code checkpoints every few hundred guest cycles; reading the host clock
+        // (QueryPerformanceCounter through ntdll) on each of them was ~13% of the game thread in
+        // the mission. Batch the estimated cycles and convert them every ~17 us of guest time
+        // (5000 cycles) — finer than the hblank timer step (63 us) the game paces on.
+        constexpr uint64_t kAccountBatchCycles = 5000u;
+        m_accountBatchedCycles += elapsed;
+        if (m_accountBatchedCycles < kAccountBatchCycles && !m_accountForceClock)
+            return;
+        m_accountBatchedCycles = 0u;
+        m_accountForceClock = false;
         const auto now = std::chrono::steady_clock::now();
         if (m_lastAccountHost != std::chrono::steady_clock::time_point{})
         {
@@ -1327,7 +1337,8 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
 void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
 {
     assertExecutor();
-    if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] dispatchIrq dmac=%d cause=%u\n", (int)dmac, cause);
+    static const bool s_traceFifo = std::getenv("PS2X_TRACE_FIFO") != nullptr;
+    if (s_traceFifo) std::fprintf(stderr, "[fifo] dispatchIrq dmac=%d cause=%u\n", (int)dmac, cause);
     const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
     if (cause < 32u && (mask & (1u << cause)) == 0u)
     {
@@ -1851,6 +1862,13 @@ void EeScheduler::processPendingEvents()
 
 void EeScheduler::processDueDeadlines()
 {
+    // m_nextDeadlineCycle is the earliest deadlineCycle in m_deadlines (updateNextDeadline): before
+    // it nothing is due, so skip the mutex and the clock read that cost ~4% of the game thread.
+    {
+        const uint64_t next = m_nextDeadlineCycle.load(std::memory_order_acquire);
+        if (next != 0u && m_eeCycle < next)
+            return;
+    }
     for (;;)
     {
         std::vector<ScheduledEvent> due;
@@ -2125,6 +2143,7 @@ void EeScheduler::waitForEvent()
         while (remaining > 0u)
         {
             const uint32_t step = static_cast<uint32_t>(std::min<uint64_t>(remaining, std::numeric_limits<uint32_t>::max()));
+            m_accountForceClock = true;
             accountCycles(step);
             remaining -= step;
         }

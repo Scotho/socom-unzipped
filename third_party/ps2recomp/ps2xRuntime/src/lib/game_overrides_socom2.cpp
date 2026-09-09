@@ -1189,6 +1189,11 @@ void ps2HostProfStart(void *nativeHandle)
     std::thread([dup, periodMs, outPath, base, allThreads]() {
         SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
         std::unordered_map<uint64_t, uint32_t> counts;
+        // PS2X_HOST_PROF_STACKS=1: also record the call stack of every sample ("stack <n> a;b;c"
+        // lines, leaf first, raw addresses; tools_py/hostprof_stacks.py folds and symbolizes).
+        const bool stacks = std::getenv("PS2X_HOST_PROF_STACKS") != nullptr;
+        constexpr uint32_t kMaxFrames = 24u;
+        std::unordered_map<std::string, uint32_t> stackCounts;
         std::unordered_map<DWORD, uint64_t> perThread;
         std::unordered_map<DWORD, HANDLE> handles;
         uint64_t total = 0, suspendFail = 0;
@@ -1233,16 +1238,59 @@ void ps2HostProfStart(void *nativeHandle)
                 }
                 CONTEXT c;
                 std::memset(&c, 0, sizeof(c));
-                c.ContextFlags = CONTEXT_CONTROL;
+                c.ContextFlags = CONTEXT_FULL;
                 uint64_t rip = 0;
+                uint64_t frames[kMaxFrames];
+                uint32_t frameCount = 0;
                 if (GetThreadContext(h, &c))
+                {
                     rip = c.Rip;
+                    if (stacks)
+                    {
+                        // x64 unwind through the module unwind tables (no allocation while the
+                        // thread is suspended; the stack memory stays mapped, so a stale read
+                        // costs at most a garbage frame).
+                        CONTEXT u = c;
+                        for (; frameCount < kMaxFrames && u.Rip != 0; ++frameCount)
+                        {
+                            frames[frameCount] = u.Rip;
+                            DWORD64 imageBase = 0;
+                            PRUNTIME_FUNCTION fn = RtlLookupFunctionEntry(u.Rip, &imageBase, nullptr);
+                            if (!fn)
+                            {
+                                // leaf function without unwind info: the return address is at [rsp]
+                                if (u.Rsp == 0 || IsBadReadPtr(reinterpret_cast<void *>(u.Rsp), 8))
+                                    break;
+                                u.Rip = *reinterpret_cast<uint64_t *>(u.Rsp);
+                                u.Rsp += 8;
+                                continue;
+                            }
+                            void *handlerData = nullptr;
+                            DWORD64 establisher = 0;
+                            RtlVirtualUnwind(UNW_FLAG_NHANDLER, imageBase, u.Rip, fn, &u, &handlerData, &establisher, nullptr);
+                        }
+                    }
+                }
                 ResumeThread(h);
                 if (rip)
                 {
                     ++counts[rip];
                     ++perThread[tid];
                     ++total;
+                    if (stacks && frameCount > 0)
+                    {
+                        std::string key;
+                        key.reserve(frameCount * 13);
+                        char b[24];
+                        for (uint32_t i = 0; i < frameCount; ++i)
+                        {
+                            std::snprintf(b, sizeof(b), "%llx", static_cast<unsigned long long>(frames[i]));
+                            if (i)
+                                key += ';';
+                            key += b;
+                        }
+                        ++stackCounts[key];
+                    }
                 }
             };
             if (allThreads)
@@ -1279,6 +1327,18 @@ void ps2HostProfStart(void *nativeHandle)
                     }
                     if (++n >= 40000u)
                         break;
+                }
+                if (stacks)
+                {
+                    std::vector<std::pair<std::string, uint32_t>> sv(stackCounts.begin(), stackCounts.end());
+                    std::sort(sv.begin(), sv.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+                    size_t m = 0;
+                    for (const auto &kv : sv)
+                    {
+                        f << "stack " << kv.second << " " << kv.first << "\n";
+                        if (++m >= 20000u)
+                            break;
+                    }
                 }
                 if (allThreads)
                 {
