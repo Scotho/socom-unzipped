@@ -37,7 +37,22 @@
    issued it (PS2X_CALL_TRACE on 0x356be0 + the UI_COMMAND dispatcher), then compare the UI
    variable it tests against PCSX2 (title_pcsx2.rdram / PINE). Do NOT "fix" this in the GS or
    the GIF arbiter: the uploads are real and ordered correctly; the game simply should not be
-   playing that movie there. Verify with `scripts/parity/launch_to_mission_diag.txt` +
+   presenting that movie there. Refinement (03:50): the console DOES stream MENULOOP at the
+   title — its IOP cdvdman state in savestate 6 (`p2s_extract.py ... iopMemory.bin`) holds
+   LBNs 0xdd2e8/0xdd8d8 inside the file, read slowly (~0x6c0 sectors in ~30 s) — but shows a
+   static background and has no movie texture set, so its movie element streams without
+   presenting pictures. The trace of the set activation (title_trace6: every third frame,
+   set 0xf2e020 via FUN_00365210 <- ra 0x365358, a texture-group flush that rebuilds when
+   a record's stamp at +0x1c differs from the group's +0x20) shows ours presents a new
+   picture every 3 frames (640x448 decoded, `[MPEG:GetPicture] frame N` in title_trace5).
+   So compare what sceMpegGetPicture / sceMpegIsEnd / the CBSTOPDMA callback return on the
+   console vs ours for MENULOOP (real libmpeg may wait for a PTS/first GOP that our decoder
+   delivers immediately, or the game may present only after the stream's audio clock
+   starts): trace the game's movie element around sceMpegGetPicture's return value with
+   PS2X_CALL_TRACE on its caller (find it with `python tools_py/ra2fun.py <ra>` from a
+   PS2X_CALL_TRACE of the stub's guest caller), and check the element's "visible"/alpha
+   state in title_pcsx2.rdram (element record at 0x11920ac: fields after the path string,
+   e.g. -0x20, 0x1cc, 0x20, 0x41, 0x14, tex 0x11a8110). Verify with `scripts/parity/launch_to_mission_diag.txt` +
    `PS2X_PC_SAMPLER=1` (GL backend), which reproduces the garbling every run; title_only runs
    and the CPU backend sometimes look clean by timing luck.
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
