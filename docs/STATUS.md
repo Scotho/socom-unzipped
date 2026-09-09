@@ -1,4 +1,28 @@
-# Project status — updated 2026-09-09 13:30
+# Project status — updated 2026-09-09 15:05
+
+## 2026-09-09 15:05 (local) — online match driver on the 60 fps shell: three timing/matcher fixes; instance A logs in to the lobby, B stalls on a missed press (fixed, re-run queued)
+Runs ours_match_play1..4 (logs/parity/ours_match_play*/, drive logs logs/parity/drive_match_play*.txt).
+The two-instance driver (tools_py/parity/online_match_ours.py, `--play N` adds a gameplay phase: A
+walks + fires, B turns) had not been run since the shell went from ~20 to 59 fps; three things broke:
+1. Screen matcher: the renderer now draws the UI ~8 px left and a little darker than the
+   scripts/parity/refs bands (raw diff 22 vs an 8 threshold). Shell.diff is now a normalised,
+   shift- (+-20/+-6 px) and horizontal-scale- (0.90-1.04) tolerant distance; correct screens
+   score 0.26-0.44, wrong ones 0.45+ (prompts 0.5); is_screen also requires the best match among
+   references sharing a band. Validated on the play1-4 captures.
+2. Key holds: 0.15 s = 9 frames trips the UI's held-button repeat. On-screen keyboard typing lost
+   characters and overshot ("9`^h", 3 dots for a 5-char password); CROSS on the SERVER NEWS popup
+   closed it and the repeat reopened it 8 times in a row. Keyboard presses hold 0.06 s, all other
+   driver presses 0.08 s (5 frames).
+3. press_until_gone treated one missed frame as "gone" and skipped the press that connects to
+   the universe on instance B; a screen is gone only after two consecutive misses 0.6 s apart.
+Also: scripts/loop_lock.sh `take` is BUSY for its own owner too (two chains of one owner
+overlapped and stole/released each other's lock); `renew <owner>` refreshes a held lock. Host
+memory: ~2.5 GB available of 32 (other apps hold ~70 GB committed); the harness kills background
+shell tasks under that pressure, so long game runs are launched detached
+(logs/run_match_queued.sh via Start-Process) and polled by file.
+State: play4 — A: login -> universe -> persona -> password -> CONNECT -> write-down notice ->
+EULA -> SOCOM II ONLINE lobby (SERVER NEWS), Medius AccountLogin MediusSuccess; B: stuck on
+SELECT UNIVERSE (fix 3). play5 with all fixes is queued behind the VU1 agent's lock.
 
 ## 2026-09-09 13:30 (local) — FIRST MISSION IS PLAYABLE: scripted walk / fire / turn drives the game (enemies spotted, objective failed, squad engaging) at 36-42 frames/s
 Run logs/parity/runs/gameplay_probe5 (sheet logs/parity/gameplay_probe5_sheet.png, log
