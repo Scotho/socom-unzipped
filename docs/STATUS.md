@@ -1,4 +1,36 @@
-# Project status — updated 2026-09-08 17:30
+# Project status — updated 2026-09-08 21:40
+
+## 2026-09-08 21:40 (local) — object geometry appears (XGKICK copied at kick time); behind-camera triangles and a title-screen regression remain
+**Root cause of the missing objects.** With `PS2X_GS_TRACE_CMDS` armed at the gameplay camera
+(new `PS2X_TRIGGER=lo:hi` on the first PS2X_PEEK word, `trig` mode of the GS/VIF traces), every
+object triangle (1700 per frame, one texture, trees/bushes/characters) reached the GS as three
+identical vertices at the GS origin with z=0xFFFF: the VU1 program re-templates its output buffer
+right after XGKICK, and the per-cycle PATH1 model (one qword per two cycles while the program
+runs on) still had the transfer in flight. Copying the packet at the kick (PCSX2's default; commit
+089516b, `PS2X_VU1_XGKICK_CYCLE_EXACT=1` restores the old model) brings the objects back: trees
+with foliage, and mission_s13's last frame is the road-through-trees scene of the golden run.
+
+**Still wrong in-mission:** ~1/3 of the world triangles have q < 0 (vertices behind the near
+plane, z wrapped to ~0xFFxxxx) and straddle the screen as giant sky-coloured polygons. The
+microprogram (dumped with `PS2X_VU1_DUMP=<dir>[:count]`, disassembled with tools_py/vu1dis.py)
+clips against the near plane geometrically: it forms per-vertex w sums with MULAx/MADDAy/MADDz,
+reads the MAC sign flags four instructions later (`FMAND vi, 0x20` = z lane, `0x10` = w lane) and
+branches into an edge-clipping path (DIV Q, vf26w, vf25w). Our MAC flag layout and the 4-cycle
+flag latency match the manual on inspection, so the offline replay is the next step:
+`dist/vu1_replay.exe <dump> --out p.pk` runs a dumped program through the runtime's interpreter
+(registers restored from the dump), `tools_py/gif_packets.py p.pk` lists the kicked vertices and
+their q sign. The three programs dumped so far (entries 0x0 / 0x1b50 / 0x33c8 of one 16 KB
+microprogram) produced no negative q; a 150-program dump run is queued.
+
+**Title-screen regression (reported by the user 21:0x):** since the XGKICK change the main menu's
+LOAD GAME / NEW GAME / ONLINE labels render as teal/white noise (mission_s12..s14 s05/s06;
+mission_s9, same copy mode via the env var, was clean once). Suspected the GIF arbiter's
+priority sort (vendored: stable-sorts all queued packets PATH1 < PATH2 < PATH3 at drain, so a
+PATH1 packet overtakes PATH3 uploads queued by the same DMA chain); it now processes packets in
+submission order (`PS2X_GIF_PRIORITY_SORT=1` restores the sort) — the text is still garbled, so
+that was not it. A/B run with `PS2X_VU1_XGKICK_CYCLE_EXACT=1` on scripts/parity/title_only.txt
+in progress. Harness: drive.py `until(x0,y0,x1,y1)+<delay>:BTN` presses until the box shows the
+briefing's highlight tint (G-R > 25), on settled screens only, and `long` waits up to 150 s.
 
 ## 2026-09-08 17:30 (local) — game state matches PCSX2 in-mission; the render does not (downstream of the EE)
 With the SQRT.S fix the whole mission intro replays PCSX2's path: fly-by camera at (-3787,-109,..)

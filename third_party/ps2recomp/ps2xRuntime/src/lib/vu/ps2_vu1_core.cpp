@@ -1755,32 +1755,32 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     m_activeGs = &gs;
     m_activeMemory = memory;
 
-    // PS2X_VU1_DUMP=<dir>: once PS2X_TRIGGER has armed the traces, save the first 12 distinct VU1
-    // programs (by start pc + code hash) as <dir>/vu1_prog_<n>.bin: 16 bytes header
-    // (startPc, top, itop, codeSize) + code (16 KB) + data (16 KB) + vi[16] + vf[32][4].
+    // PS2X_VU1_DUMP=<dir>[:<count>]: once PS2X_TRIGGER has armed the traces, save the next <count>
+    // (default 150) VU1 program runs as <dir>/vu1_prog_<n>.bin: 16 bytes header (startPc, top,
+    // itop, codeSize) + code (16 KB) + data (16 KB) + vi[16] + vf[32][4]. Replay offline with
+    // vu1_replay + tools_py/gif_packets.py.
     if (m_unit == Unit::VU1)
     {
-        static const char *s_dumpDir = std::getenv("PS2X_VU1_DUMP");
+        static const char *s_dumpEnv = std::getenv("PS2X_VU1_DUMP");
         extern std::atomic<bool> g_ps2xTraceArmed;
-        if (s_dumpDir && g_ps2xTraceArmed.load(std::memory_order_relaxed))
+        if (s_dumpEnv && g_ps2xTraceArmed.load(std::memory_order_relaxed))
         {
+            static std::string s_dumpDir;
+            static int s_dumpMax = 150;
             static int s_dumped = 0;
-            static uint64_t s_seenKeys[12] = {0};
-            uint64_t h = 1469598103934665603ull;
-            for (uint32_t i = 0; i < codeSize && i < 0x4000u; i += 8u)
+            if (s_dumpDir.empty())
             {
-                uint64_t w = 0;
-                std::memcpy(&w, vuCode + i, sizeof(w));
-                h = (h ^ w) * 1099511628211ull;
+                s_dumpDir = s_dumpEnv;
+                const size_t colon = s_dumpDir.find_last_of(':');
+                if (colon != std::string::npos && colon > 1)   // not the drive letter
+                {
+                    s_dumpMax = std::atoi(s_dumpDir.c_str() + colon + 1);
+                    s_dumpDir = s_dumpDir.substr(0, colon);
+                }
             }
-            h ^= m_state.pc;
-            bool seen = false;
-            for (int i = 0; i < s_dumped; ++i)
-                seen = seen || s_seenKeys[i] == h;
-            if (!seen && s_dumped < 12)
+            if (s_dumped < s_dumpMax)
             {
-                s_seenKeys[s_dumped] = h;
-                const std::string path = std::string(s_dumpDir) + "/vu1_prog_" + std::to_string(s_dumped) + ".bin";
+                const std::string path = s_dumpDir + "/vu1_prog_" + std::to_string(s_dumped) + ".bin";
                 if (FILE *fp = std::fopen(path.c_str(), "wb"))
                 {
                     const uint32_t hdr[4] = {m_state.pc, m_state.top, m_state.itop, codeSize};
@@ -1790,7 +1790,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                     std::fwrite(m_state.vi, sizeof(m_state.vi), 1, fp);
                     std::fwrite(m_state.vf, sizeof(m_state.vf), 1, fp);
                     std::fclose(fp);
-                    std::fprintf(stderr, "[vu1-dump] #%d pc=0x%x top=0x%x itop=0x%x -> %s\n", s_dumped, m_state.pc, m_state.top, m_state.itop, path.c_str());
+                    if (s_dumped < 3 || s_dumped + 1 == s_dumpMax)
+                        std::fprintf(stderr, "[vu1-dump] #%d pc=0x%x top=0x%x itop=0x%x -> %s\n", s_dumped, m_state.pc, m_state.top, m_state.itop, path.c_str());
                 }
                 ++s_dumped;
             }

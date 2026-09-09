@@ -12,12 +12,13 @@ next+2.0:CROSS      # controller presets (1)
 next+2.0:CROSS      # controller presets (2)
 next+2.0:CROSS      # save prompt / cinematic
 next+2.0:CROSS      # cinematic -> skip
-long+2.0:DOWN       # briefing: OVERVIEW -> ... (waits out the location cinematic, up to 150 s)
-wait+1.0:DOWN
-wait+1.0:DOWN
-wait+1.0:DOWN
-wait+1.0:DOWN       # DEPLOY
-idle+12.0:CROSS   # briefing screen if the boot flow ran one press behind (intro movie played out)
+long+2.0:NONE       # briefing reached (waits out the location cinematic / typed text, up to 150 s)
+until(20,368,110,384)+1.2:DOWN   # DOWN until DEPLOY is highlighted (press count varies per run)
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
 wait+2.0:CROSS      # deploy -> load mission
 next+10.0:NONE      # mission
 wait+8.0:NONE       # in-mission holds (camera/HUD parity)

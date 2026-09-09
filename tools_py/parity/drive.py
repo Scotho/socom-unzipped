@@ -5,7 +5,7 @@ Script lines: `<mode>+<delay>:<BTN>[+<BTN>]` with mode `stable` (wait until the 
 stable for --settle seconds, at most --maxwait, then wait <delay>), `long` (as `stable` with a
 150 s cap, for screens behind a slow cinematic), `next` (first wait for the screen to change
 since the previous press, then as `stable`), `idle` (press only if the screen stays unchanged for
-<delay> s) or `wait` (just wait <delay>);
+<delay> s), `until(x0,y0,x1,y1)` (press until that box is highlighted) or `wait` (just wait <delay>);
 BTN `NONE` presses nothing. A screenshot `sNN_<btn>.png` is taken right before each press;
 `manifest.json` records the step, wall time since launch, stability wait and whether the frame
 was stable. Screens on both sides align by step index.
@@ -48,6 +48,16 @@ def parse(text):
         buttons = [b.strip().upper() for b in rest.split("+") if b.strip() and b.strip().upper() != "NONE"]
         steps.append((mode, float(delay), buttons))
     return steps
+
+
+def highlighted(hwnd, box):
+    """True when the menu box (x0,y0,x1,y1 in the 640x448 frame) shows the selection tint: SOCOM II's
+    briefing highlights an item in green-teal, which lifts G at least 25 above R (normal: <= 16)."""
+    im = np.asarray(winshot.grab(hwnd).convert("RGB"), dtype=np.float32)
+    x0, y0, x1, y1 = box
+    reg = im[y0:y1, x0:x1]
+    mean = reg.mean(axis=(0, 1))
+    return float(mean[1] - mean[0]) > 25.0
 
 
 def frame(hwnd):
@@ -127,6 +137,22 @@ def main():
             stable, waited = wait_stable(hwnd, a.settle, 150.0)
         elif mode == "next":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait, changed_from=last)
+        elif mode.startswith("until("):
+            # until(x0,y0,x1,y1)+<delay>:BTN — press BTN every <delay> s (at most 10 times) until the
+            # box is highlighted; makes menu navigation independent of how many presses the boot
+            # flow consumed (the briefing's typed text and the optional location cinematic vary).
+            box = tuple(int(v) for v in mode[6:-1].split(","))
+            presses = 0
+            while not highlighted(hwnd, box) and presses < 10:
+                # The briefing ignores DOWN while its text is typing: press only on a settled screen.
+                wait_stable(hwnd, 2.0, 25.0)
+                for b in buttons:
+                    keys.press(hwnd, b, a.target)
+                presses += 1
+                time.sleep(delay)
+            print(f"until{box}: {presses} presses, highlighted={highlighted(hwnd, box)}", flush=True)
+            buttons = []
+            delay = 0.5
         elif mode == "idle":
             # Press only if the screen stays unchanged for <delay> seconds (a menu waiting for
             # input); skip the press when it changes (a movie/loading screen already moving on).

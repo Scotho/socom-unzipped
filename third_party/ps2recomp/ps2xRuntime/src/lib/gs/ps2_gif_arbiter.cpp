@@ -1,6 +1,7 @@
 #include "runtime/gs/ps2_gif_arbiter.h"
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 
 GifArbiter::GifArbiter(ProcessPacketFn processFn)
     : m_processFn(std::move(processFn))
@@ -37,6 +38,14 @@ void GifArbiter::drain()
     if (!m_processFn)
         return;
 
+    // Packets are processed in submission order. The GIF only arbitrates between paths that are
+    // waiting at the same time, and a packet it has accepted is never overtaken; with the
+    // sequential DMA emulation here, submission order is that acceptance order. The old
+    // priority sort moved a VU1 XGKICK (PATH1) ahead of PATH3 texture uploads queued by the same
+    // DMA chain, which garbled SOCOM II's title-screen text once XGKICK packets were copied at
+    // kick time (2026-09-08). PS2X_GIF_PRIORITY_SORT=1 restores the sort for A/B checks.
+    static const bool s_prioritySort = std::getenv("PS2X_GIF_PRIORITY_SORT") != nullptr;
+    if (s_prioritySort)
     std::stable_sort(m_queue.begin(), m_queue.end(),
                      [](const GifArbiterPacket &a, const GifArbiterPacket &b)
                      {

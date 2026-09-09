@@ -1,0 +1,22 @@
+# Boot to the title screen only (A/B checks of the main-menu rendering); frames every 6 s after the movie skip.
+next+1.0:CROSS      # loading logo
+next+1.0:CROSS      # memory card slot
+next+1.0:CROSS      # card notice
+next+1.0:CROSS      # SCEA
+next+1.0:CROSS      # developed by
+next+1.0:CROSS      # intro / warning
+next+1.0:CROSS      # intro movie -> skip
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
