@@ -128,8 +128,20 @@ def main():
     if last is None:
         proc.terminate()
         raise SystemExit("game window never showed a client area")
+    try:
+        run_steps(a, steps, proc, hwnd, t0, last, manifest)
+    finally:
+        # Always take the game down, even when a step raises: a stray instance blocks every
+        # later drive.py run ("already running"). Git Bash mangles "/F": call taskkill via cmd.
+        proc.terminate()
+        subprocess.run(["cmd", "/c", "taskkill /F /IM " + ("pcsx2-qt.exe" if a.target == "pcsx2" else "socom2.exe")],
+                       capture_output=True)
+
+
+def run_steps(a, steps, proc, hwnd, t0, last, manifest):
     for i, (mode, delay, buttons) in enumerate(steps):
         stable, waited = (True, 0.0)
+        held = "none"
         if mode == "stable":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait)
         elif mode == "long":
@@ -159,14 +171,23 @@ def main():
             # until the top band of the frame (rows 8..62 of the 160x112 thumbnail: the logo /
             # dialog title) matches the reference image; then hold. Makes "reach the main menu"
             # independent of how many boot screens this run happens to show.
-            ref_path = mode[9:-1]
+            # untilref(<png>,<y0>,<y1>[,<loops>]) compares thumbnail rows y0..y1 instead (e.g. the
+            # HUD band 88..112) and loops up to <loops> times (default 12).
+            # Full form: untilref(<png>,<y0>,<y1>,<x0>,<x1>,<loops>,<thresh>) on the 160x112 thumbnail.
+            parts = mode[9:-1].split(",")
+            ref_path = parts[0]
+            nums = [float(v) for v in parts[1:]]
+            r0, r1 = (int(nums[0]), int(nums[1])) if len(nums) >= 2 else (8, 62)
+            c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
+            max_loops = int(nums[4]) if len(nums) >= 5 else 12
+            thresh = nums[5] if len(nums) >= 6 else 14.0
             ref_im = np.asarray(Image.open(ref_path).convert("L").resize((160, 112)), dtype=np.float32)
 
             def at_ref():
-                return float(np.abs(frame(hwnd)[8:62] - ref_im[8:62]).mean()) < 14.0
+                return float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean()) < thresh
 
             presses = 0
-            while not at_ref() and presses < 12:
+            while not at_ref() and presses < max_loops:
                 wait_stable(hwnd, 1.5, 20.0)
                 if at_ref():
                     break
@@ -177,12 +198,23 @@ def main():
             print(f"untilref({ref_path}): {presses} presses, matched={at_ref()}", flush=True)
             buttons = []
             delay = 0.5
+        elif mode == "burst":
+            # burst+<seconds>:NONE — capture a frame every 0.2 s for <seconds> (transition flashes
+            # that a single per-step capture misses), saved as sNN_burst_<k>.png.
+            t_b = time.time()
+            k = 0
+            while time.time() - t_b < delay:
+                winshot.grab(hwnd).save(os.path.join(a.out, f"s{i:02d}_burst_{k:03d}.png"))
+                k += 1
+                time.sleep(0.2)
+            delay = 0.0
         elif mode == "hold":
             # hold+<seconds>:BTN — hold the key(s) down for <seconds> (stick directions W/A/S/D,
             # I/J/K/L on ours; fire R1), then capture. For gameplay probes.
             for b in buttons:
                 keys.press(hwnd, b, a.target, hold_s=delay)
-            buttons = [f"hold{b}" for b in buttons]
+            held = "+".join(f"hold{b}" for b in buttons)
+            buttons = []
             delay = 0.5
         elif mode == "idle":
             # Press only if the screen stays unchanged for <delay> seconds (a menu waiting for
@@ -200,7 +232,7 @@ def main():
                 buttons = []
             delay = 0.5
         time.sleep(delay)
-        label = f"s{i:02d}_{'+'.join(buttons) or 'none'}"
+        label = f"s{i:02d}_{'+'.join(buttons) or (held if mode == 'hold' else 'none')}"
         path = os.path.join(a.out, label + ".png")
         winshot.grab(hwnd).save(path)
         last = frame(hwnd)
@@ -212,9 +244,6 @@ def main():
     time.sleep(a.tail)
     winshot.grab(hwnd).save(os.path.join(a.out, "final.png"))
     json.dump(manifest, open(os.path.join(a.out, "manifest.json"), "w"), indent=1)
-    proc.terminate()
-    subprocess.run(["taskkill", "/F", "/IM", "pcsx2-qt.exe" if a.target == "pcsx2" else "socom2.exe"],
-                   capture_output=True)
 
 
 if __name__ == "__main__":

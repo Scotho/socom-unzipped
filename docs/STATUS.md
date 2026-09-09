@@ -1,4 +1,37 @@
-# Project status — updated 2026-09-09 07:30
+# Project status — updated 2026-09-09 12:10
+
+## 2026-09-09 12:10 (local) — menu-video strip before the briefing FIXED: shadow->GPU refresh now re-reads exactly the uploaded rectangle, not the enclosing rows
+User report (07:45): a strip of the main-menu video at the bottom of the black screen just before
+the mission briefing (rows 396-447 of the 448-row frame, flickering every other frame). Console
+(PCSX2 burst capture, logs/parity/runs/transition_pcsx2) shows pure black there. Evidence chain
+(runs transition1..15, tools: burst step in drive.py, PS2X_GS_DUMP_DISPLAY three-layer dumps of
+the displayed buffer, PS2X_GS_TRACE_DIRTY, PS2X_GS_PROBE post-draw pixel reads):
+- The game double-buffers at fbp 0 / 0x8c (448 rows each). The letterboxed cinematic
+  (alb_aop.pss, 640x368) is uploaded into the display buffer as 16x16 blocks from a base one page
+  row below the buffer (dbp 0x12c0 / 0x140), so its last block row lands at rows 384..399.
+  VRAM rows 400..447 still hold the main-menu movie's leftovers (the menu movie is uploaded
+  through the same path). The game's full-screen black sprite (0,0)-(640,448) does paint the GPU
+  target black there (probe: rows 420/440 = 000000 right after every such sprite).
+- Our GL backend mirrors uploads into the GPU target lazily: an upload marks the target's rows
+  dirty and the next draw/present re-reads them from the shadow VRAM. The dirty window was a
+  single merged [first,last) row range, then (this morning) 32-row bands: a 16-row block at rows
+  384..399 re-read rows 384..415, i.e. also the stale rows 400..415 the GPU had just painted
+  black — and the previous merged-range scheme re-read everything between the topmost and
+  bottommost mark. The GPU's own draws are never in the shadow, so any re-read beyond the
+  uploaded pixels resurrects old content.
+- Fix (gs_gl_backend.cpp): uploads in the target's own layout (same dbw/psm, page-row aligned)
+  record an exact DirtyRect (dsax/dsay/rrw/rrh) that refreshDirtyRows re-reads with a
+  glTexSubImage2D of just that rectangle; other layouts keep the 32-row band mask (dirtyMask);
+  executeClear applies pending rows before clearing. Verified: transition run rects_transition
+  (black screen band 0.0, was 8.1), title-menu run rects_title (24 clean captures, movie
+  background and labels intact). Mission sheet still to be re-checked by the next mission run.
+New switches: PS2X_GS_TRACE_DISPFB=1 (display buffer + clear log), PS2X_GS_NO_DIRTY_REFRESH,
+PS2X_GS_NO_ZTEST, PS2X_GS_TRACE_DIRTY=<frame>, PS2X_GS_PROBE=<frame>,
+PS2X_GS_DUMP_DISPLAY=<dir>:<t0>:<t1>, PS2X_GS_TRACE_CMDS_FROM/_MAX; drive.py `burst+<s>:NONE`
+captures a frame every 0.2 s (transition flashes). Wrong turns worth not repeating: the CPU GS
+backend (PS2X_GS_BACKEND=cpu) does not feed PS2X_HOST_SCREENSHOT_LATEST, so it cannot A/B a
+display bug; PS2X_GS_TRACE_CMDS=<n> is relative to the movie-start frame (use _FROM for an
+absolute frame); PS2X_GS_TRACE_DIRTY without a row filter floods the log and stalls the run.
 
 ## 2026-09-09 07:30 (local) — scheduler fast paths, direct XGKICK submit, VU0 fast path: mission gameplay 28.7 frames/s (best 30 s: 31)
 Fresh game-thread stack profile after the GS spans (run gtprof_2): startXgkick 9% in memcpy (the

@@ -771,7 +771,10 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                     s_probe[i] = p[i];
             }
         }
-        if (s_traceCmds && s_traceLines < 4000u && static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_TRACE_CMDS"))
+        static const uint32_t s_traceMax = std::getenv("PS2X_GS_TRACE_CMDS_MAX") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_TRACE_CMDS_MAX"), nullptr, 0)) : 4000u;
+        static const long s_traceFrom = std::getenv("PS2X_GS_TRACE_CMDS_FROM") ? std::strtol(std::getenv("PS2X_GS_TRACE_CMDS_FROM"), nullptr, 0) : -1L;
+        if (s_traceCmds && s_traceLines < s_traceMax &&
+            (s_traceFrom >= 0 ? static_cast<long>(m_frameCounter) >= s_traceFrom : static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_TRACE_CMDS")))
         {
             ++s_traceLines;
             switch (cmd.type)
@@ -788,7 +791,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 }
                 std::fprintf(stderr, "[gs-cmd] n=%u x=[%.0f..%.0f] y=[%.0f..%.0f] z=[%.0f..%.0f] ", (unsigned)cmd.batch.vertices.size(),
                              xmin, xmax, ymin, ymax, zmin, zmax);
-                std::fprintf(stderr, "submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x%c",
+                std::fprintf(stderr, "submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x sc=(%d,%d)-(%d,%d) off=(%u,%u) frame=%llu%c",
                              cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.prim.fst ? 1u : 0u,
                              (double)cmd.batch.vertices[1].q, cmd.batch.state.context.tex0.tbp0,
                              cmd.batch.state.context.tex0.psm, cmd.batch.state.context.tex0.cbp, cmd.batch.state.context.tex0.cpsm,
@@ -797,7 +800,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                              (unsigned long long)(cmd.batch.state.context.test & 0x7FFFFu), cmd.batch.state.prim.abe ? 1u : 0u,
                              cmd.batch.vertices[0].x, cmd.batch.vertices[0].y, (double)cmd.batch.vertices[0].z,
                              cmd.batch.vertices[1].x, cmd.batch.vertices[1].y,
-                             cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, 10);
+                             cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, cmd.batch.state.context.scissor.x0, cmd.batch.state.context.scissor.y0, cmd.batch.state.context.scissor.x1, cmd.batch.state.context.scissor.y1, (unsigned)(cmd.batch.state.context.xyoffset.ofx >> 4), (unsigned)(cmd.batch.state.context.xyoffset.ofy >> 4), (unsigned long long)m_frameCounter, 10);
                 break;
             }
             case CmdType::BeginTransfer:
@@ -941,6 +944,7 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     ref.dirtyRows = true;
     ref.dirtyRowFirst = 0u;
     ref.dirtyRowLast = 448u;
+    ref.dirtyMask = (1u << 14) - 1u;   // bands 0..13 = rows 0..448
     return &ref;
 }
 
@@ -1050,7 +1054,6 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
 // into that target or the next present (refreshDirtyRows).
 void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer)
 {
-    (void)transfer;
     for (RenderTarget &rt : m_renderTargets)
     {
         const uint32_t pagesPerRow = std::max<uint32_t>(1u, (rt.fbw * 64u + 63u) / 64u);
@@ -1060,21 +1063,59 @@ void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCou
             continue;
         const uint32_t first = page > rt.fbp ? page - rt.fbp : 0u;
         const uint32_t last = std::min<uint32_t>(page + pageCount - rt.fbp, rtPages);   // exclusive
-        const uint32_t rowFirst = (first / pagesPerRow) * pageHeight;
-        const uint32_t rowLast = std::min<uint32_t>(kRtHeight, ((last + pagesPerRow - 1u) / pagesPerRow) * pageHeight);
+        uint32_t rowFirst = (first / pagesPerRow) * pageHeight;
+        uint32_t rowLast = std::min<uint32_t>(kRtHeight, ((last + pagesPerRow - 1u) / pagesPerRow) * pageHeight);
+        // A transfer in the target's own layout writes exactly rows [dsay, dsay+rrh) below its
+        // base page row: use them. The page-span window above starts at the base page, so a
+        // 16x16 movie block at row 392 marked rows 0..408 dirty, and the next draw re-read the
+        // whole window from the shadow — resurrecting rows of the last cinematic frame that the
+        // GPU had already painted black (the movie strip at rows ~396-415 on SOCOM II's
+        // black typing screen before the mission briefing, user report 2026-09-09).
+        bool exact = false;
+        if (transfer.bitbltbuf.dbw == rt.fbw && transfer.bitbltbuf.dpsm == rt.psm && page >= rt.fbp && (page - rt.fbp) % pagesPerRow == 0u)
+        {
+            const uint32_t baseRow = ((page - rt.fbp) / pagesPerRow) * pageHeight;
+            const uint32_t y0 = baseRow + transfer.trxpos.dsay;
+            const uint32_t y1 = y0 + transfer.trxreg.rrh;
+            const uint32_t x0 = transfer.trxpos.dsax;
+            const uint32_t x1 = std::min<uint32_t>(x0 + transfer.trxreg.rrw, rt.fbw * 64u);
+            if (y0 < kRtHeight && y1 > y0 && x1 > x0)
+            {
+                rowFirst = std::max(rowFirst, y0);
+                rowLast = std::min<uint32_t>(rowLast, y1);
+                if (rt.dirtyRects.size() < 4096u)
+                {
+                    rt.dirtyRects.push_back({x0, y0, x1, std::min<uint32_t>(y1, kRtHeight)});
+                    exact = true;
+                }
+            }
+        }
         if (rowFirst >= rowLast)
             continue;
+        {
+            // PS2X_GS_TRACE_DIRTY=<frame>: from that frame on, log every dirty mark that lands in
+            // the visible rows of a display buffer, with the transfer that caused it.
+            static const long s_traceDirty = std::getenv("PS2X_GS_TRACE_DIRTY") ? std::strtol(std::getenv("PS2X_GS_TRACE_DIRTY"), nullptr, 0) : -1L;
+            if (s_traceDirty >= 0 && static_cast<long>(m_frameCounter) >= s_traceDirty && rowFirst < 448u && rowLast > 380u)
+                std::fprintf(stderr, "[gs-gl dirty] frame=%llu rt fbp=%03x rows %u..%u <- transfer dbp=%05x dbw=%u dpsm=%02x dst=(%u,%u) %ux%u pages %03x+%u\n",
+                             (unsigned long long)m_frameCounter, rt.fbp, rowFirst, rowLast, transfer.bitbltbuf.dbp, transfer.bitbltbuf.dbw,
+                             transfer.bitbltbuf.dpsm, transfer.trxpos.dsax, transfer.trxpos.dsay, transfer.trxreg.rrw, transfer.trxreg.rrh, page, pageCount);
+        }
         if (!rt.dirtyRows)
         {
             rt.dirtyRowFirst = rowFirst;
             rt.dirtyRowLast = rowLast;
             rt.dirtyRows = true;
+            rt.dirtyMask = 0u;
         }
         else
         {
             rt.dirtyRowFirst = std::min(rt.dirtyRowFirst, rowFirst);
             rt.dirtyRowLast = std::max(rt.dirtyRowLast, rowLast);
         }
+        if (!exact)
+            for (uint32_t band = rowFirst / 32u; band < (std::min<uint32_t>(rowLast, kRtHeight) + 31u) / 32u && band < 32u; ++band)
+                rt.dirtyMask |= 1u << band;
     }
 }
 
@@ -1083,46 +1124,110 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
 {
     if (!rt.dirtyRows)
         return;
+    // PS2X_GS_NO_DIRTY_REFRESH=1: A/B switch — drop the pending rows instead of re-reading them.
+    static const bool s_noRefresh = std::getenv("PS2X_GS_NO_DIRTY_REFRESH") != nullptr;
+    if (s_noRefresh)
+    {
+        rt.dirtyRows = false;
+        rt.dirtyMask = 0u;
+        rt.dirtyRects.clear();
+        return;
+    }
     {
         const long skip = traceSkip("PS2X_GS_TRACE_PRESENT");
         if (skip >= 0 && static_cast<long>(m_frameCounter) > skip && static_cast<long>(m_frameCounter) <= skip + 3)
-            std::fprintf(stderr, "[gs-gl refresh] frame=%llu rt fbp=%03x rows %u..%u -> gpu\n", (unsigned long long)m_frameCounter,
-                         rt.fbp, rt.dirtyRowFirst, rt.dirtyRowLast);
+            std::fprintf(stderr, "[gs-gl refresh] frame=%llu rt fbp=%03x rows %u..%u mask=%08x -> gpu\n", (unsigned long long)m_frameCounter,
+                         rt.fbp, rt.dirtyRowFirst, rt.dirtyRowLast, rt.dirtyMask);
     }
+    const uint32_t mask = rt.dirtyMask;
+    std::vector<RenderTarget::DirtyRect> rects;
+    rects.swap(rt.dirtyRects);
     rt.dirtyRows = false;
-    const uint32_t y0 = rt.dirtyRowFirst;
-    const uint32_t y1 = std::min<uint32_t>(rt.dirtyRowLast, rt.height);
+    rt.dirtyMask = 0u;
     const uint32_t w = std::min<uint32_t>(rt.width, rt.fbw * 64u);
-    {
-        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
-        const uint32_t p0 = rt.fbp + (y0 / ph) * ppr, p1 = rt.fbp + ((y1 + ph - 1u) / ph) * ppr;
-        if (p1 > p0 && tracePagesHit(p0, p1 - p0))
-            std::fprintf(stderr, "[gs-pages] frame=%llu refresh shadow->gpu rt fbp=%03x rows %u..%u pages %03x+%u\n",
-                         (unsigned long long)m_frameCounter, rt.fbp, y0, y1, p0, p1 - p0);
-    }
-    if (y1 <= y0 || w == 0u)
+    if (w == 0u)
         return;
-    std::vector<uint32_t> pixels(static_cast<size_t>(w) * (y1 - y0));
     const uint32_t base = rt.fbp << 5;
-    for (uint32_t y = y0; y < y1; ++y)
-        for (uint32_t x = 0; x < w; ++x)
-        {
-            uint32_t p = readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y);
-            if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
-                p = rgba5551To8888(p);
-            else if (rt.psm == GS_PSM_CT24)
-                p |= 0x80000000u;
-            pixels[static_cast<size_t>(y - y0) * w + x] = p;
-        }
     glBindTexture(GL_TEXTURE_2D, rt.color);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(y0), static_cast<GLsizei>(w), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
-    rt.usedHeight = std::max(rt.usedHeight, y1);
+    auto convert = [&](uint32_t p) -> uint32_t
+    {
+        if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
+            return rgba5551To8888(p);
+        if (rt.psm == GS_PSM_CT24)
+            return p | 0x80000000u;
+        return p;
+    };
+    // Exact rectangles first (uploads in the target's own layout: only the written pixels).
+    for (const RenderTarget::DirtyRect &r : rects)
+    {
+        const uint32_t x0 = std::min(r.x0, w), x1 = std::min(r.x1, w);
+        const uint32_t y0 = r.y0, y1 = std::min<uint32_t>(r.y1, rt.height);
+        if (x1 <= x0 || y1 <= y0)
+            continue;
+        std::vector<uint32_t> px(static_cast<size_t>(x1 - x0) * (y1 - y0));
+        for (uint32_t y = y0; y < y1; ++y)
+            for (uint32_t x = x0; x < x1; ++x)
+                px[static_cast<size_t>(y - y0) * (x1 - x0) + (x - x0)] = convert(readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y));
+        glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(x0), static_cast<GLint>(y0), static_cast<GLsizei>(x1 - x0), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        rt.usedHeight = std::max(rt.usedHeight, y1);
+    }
+    // Re-read each run of dirty 32-row bands on its own; bands nobody uploaded into keep the
+    // GPU's newer contents (the game's draws are not mirrored in the shadow).
+    for (uint32_t band = 0; band < 32u;)
+    {
+        if (!(mask & (1u << band)))
+        {
+            ++band;
+            continue;
+        }
+        uint32_t end = band;
+        while (end < 32u && (mask & (1u << end)))
+            ++end;
+        const uint32_t y0 = band * 32u;
+        const uint32_t y1 = std::min<uint32_t>(end * 32u, rt.height);
+        band = end;
+        if (y1 <= y0)
+            continue;
+        {
+            const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+            const uint32_t p0 = rt.fbp + (y0 / ph) * ppr, p1 = rt.fbp + ((y1 + ph - 1u) / ph) * ppr;
+            if (p1 > p0 && tracePagesHit(p0, p1 - p0))
+                std::fprintf(stderr, "[gs-pages] frame=%llu refresh shadow->gpu rt fbp=%03x rows %u..%u pages %03x+%u\n",
+                             (unsigned long long)m_frameCounter, rt.fbp, y0, y1, p0, p1 - p0);
+        }
+        std::vector<uint32_t> pixels(static_cast<size_t>(w) * (y1 - y0));
+        for (uint32_t y = y0; y < y1; ++y)
+            for (uint32_t x = 0; x < w; ++x)
+            {
+                uint32_t p = readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y);
+                if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
+                    p = rgba5551To8888(p);
+                else if (rt.psm == GS_PSM_CT24)
+                    p |= 0x80000000u;
+                pixels[static_cast<size_t>(y - y0) * w + x] = p;
+            }
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(y0), static_cast<GLsizei>(w), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        rt.usedHeight = std::max(rt.usedHeight, y1);
+    }
 }
 
 void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
 {
     RenderTarget *rt = getRenderTarget(context.frame.fbp, context.frame.fbw, context.frame.psm, true);
+    // Rows an image upload wrote into this target before the clear must land before the clear,
+    // not after it: without this the next draw's refreshDirtyRows painted the stale rows (the
+    // last cinematic frame, uploaded as 16x16 blocks into the display buffer) over the cleared
+    // black screen — SOCOM II showed a strip of the previous movie at rows ~396-415 during the
+    // fade/typing screen before the mission briefing (user report 2026-09-09).
+    refreshDirtyRows(*rt);
+    {
+        static const bool s_traceClear = std::getenv("PS2X_GS_TRACE_DISPFB") != nullptr;
+        if (s_traceClear)
+            std::fprintf(stderr, "[gs-gl clear] frame=%llu fbp=%03x fbw=%u psm=%02x scissor=(%d,%d)-(%d,%d) rgba=%08x\n",
+                         (unsigned long long)m_frameCounter, context.frame.fbp, context.frame.fbw, context.frame.psm,
+                         context.scissor.x0, context.scissor.y0, context.scissor.x1, context.scissor.y1, rgba);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
     glViewport(0, 0, rt->width, rt->height);
     glEnable(GL_SCISSOR_TEST);
@@ -1212,7 +1317,7 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
         // GPU pixels. SOCOM II's movie path clears the movie buffer on the GPU, uploads the next
         // decoded frame into it, then textures from it; this download used to overwrite the
         // uploaded frame with the clear, so every movie frame textured black.
-        if (rt.dirtyRows && y >= rt.dirtyRowFirst && y < rt.dirtyRowLast)
+        if (rt.dirtyRows && ((rt.dirtyMask & (1u << std::min<uint32_t>(31u, y / 32u))) || std::any_of(rt.dirtyRects.begin(), rt.dirtyRects.end(), [&](const RenderTarget::DirtyRect &r) { return y >= r.y0 && y < r.y1; })))
             continue;
         // Only the buffer's own width: the texture is 1024 px wide regardless of FBW, and pixels
         // past FBW*64 address the *next* page row's first columns (SOCOM II's movie staging
@@ -1258,7 +1363,7 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
     }
     for (uint32_t y = yStart; y < yEnd; ++y)
     {
-        if (rt.dirtyRows && y >= rt.dirtyRowFirst && y < rt.dirtyRowLast)   // see downloadRenderTargetToShadow
+        if (rt.dirtyRows && ((rt.dirtyMask & (1u << std::min<uint32_t>(31u, y / 32u))) || std::any_of(rt.dirtyRects.begin(), rt.dirtyRects.end(), [&](const RenderTarget::DirtyRect &r) { return y >= r.y0 && y < r.y1; })))   // see downloadRenderTargetToShadow
             continue;
         // Only the buffer's own width: the texture is 1024 px wide regardless of FBW, and pixels
         // past FBW*64 address the *next* page row's first columns (SOCOM II's movie staging
@@ -1341,7 +1446,11 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     {
         static const long s_skipPre = [] { const char *e = std::getenv("PS2X_GS_TRACE_PRESENT"); return e ? std::strtol(e, nullptr, 0) : -1L; }();
         static uint32_t s_printedPre = 0u;
-        if (s_skipPre >= 0 && static_cast<long>(m_frameCounter + 1u) > s_skipPre && s_printedPre < 30u)
+        // After the skip: the first 30 presents, then every present that still has pending
+        // dirty rows below 512 (the visible part of the display buffers) — a refresh that would
+        // repaint rows of a buffer the game already drew over.
+        if (s_skipPre >= 0 && static_cast<long>(m_frameCounter + 1u) > s_skipPre &&
+            (s_printedPre < 30u || (rt->dirtyRows && rt->dirtyRowFirst < 512u)))
         {
             ++s_printedPre;
             uint8_t px[4] = {0, 0, 0, 0};
@@ -1357,6 +1466,62 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     // DISPLAY gives the field height (224) when the game renders full frames (448 rows) and
     // scans out interlaced; present the rows that were actually drawn in that case.
     refreshDirtyRows(*rt);
+    // PS2X_GS_DUMP_DISPLAY="<dir>:<t0>:<t1>": every ~2 s of host time in [t0, t1) write the
+    // displayed buffer three ways (gpu = the GL target, shadow = the render thread's VRAM copy,
+    // cpu = the authoritative game-thread VRAM) as PPMs, to tell which layer holds a pixel.
+    {
+        static const char *const s_dumpEnv = std::getenv("PS2X_GS_DUMP_DISPLAY");
+        if (s_dumpEnv)
+        {
+            static const auto s_epoch = std::chrono::steady_clock::now();
+            static double s_next = -1.0;
+            static std::string s_dir;
+            static double s_t0 = 0.0, s_t1 = 0.0;
+            if (s_next < 0.0)
+            {
+                std::string spec(s_dumpEnv);
+                // "<dir>:<t0>:<t1>" — split on the LAST two colons (the dir may carry a drive letter).
+                const size_t c2 = spec.rfind(':');
+                const size_t c1 = c2 == std::string::npos ? std::string::npos : spec.rfind(':', c2 - 1);
+                s_dir = spec.substr(0, c1);
+                s_t0 = c1 == std::string::npos ? 0.0 : std::atof(spec.c_str() + c1 + 1);
+                s_t1 = c2 == std::string::npos ? 1e9 : std::atof(spec.c_str() + c2 + 1);
+                s_next = s_t0;
+            }
+            const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count();
+            if (elapsed >= s_next && elapsed < s_t1)
+            {
+                s_next = elapsed + 2.0;
+                const uint32_t w = std::min<uint32_t>(640u, rt->width), h = std::min<uint32_t>(448u, rt->height);
+                std::vector<uint32_t> gpu(static_cast<size_t>(rt->width) * h);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, rt->fbo);
+                glReadPixels(0, 0, rt->width, h, GL_RGBA, GL_UNSIGNED_BYTE, gpu.data());
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                const uint32_t base = rt->fbp << 5;
+                auto writePpm = [&](const char *tag, auto fetch)
+                {
+                    char name[512];
+                    std::snprintf(name, sizeof(name), "%s/display_%03.0fs_fbp%03x_%s.ppm", s_dir.c_str(), elapsed, rt->fbp, tag);
+                    FILE *f = std::fopen(name, "wb");
+                    if (!f)
+                        return;
+                    std::fprintf(f, "P6\n%u %u\n255\n", w, h);
+                    for (uint32_t y = 0; y < h; ++y)
+                        for (uint32_t x = 0; x < w; ++x)
+                        {
+                            const uint32_t p = fetch(x, y);
+                            const uint8_t rgb[3] = {static_cast<uint8_t>(p & 0xFFu), static_cast<uint8_t>((p >> 8) & 0xFFu), static_cast<uint8_t>((p >> 16) & 0xFFu)};
+                            std::fwrite(rgb, 1, 3, f);
+                        }
+                    std::fclose(f);
+                };
+                writePpm("gpu", [&](uint32_t x, uint32_t y) { return gpu[static_cast<size_t>(y) * rt->width + x]; });
+                writePpm("shadow", [&](uint32_t x, uint32_t y) { return readVramRaw(m_shadowMemory.data(), rt->psm, base, rt->fbw, x, y); });
+                writePpm("cpu", [&](uint32_t x, uint32_t y) { return m_cpu->ReadVram(rt->psm, base, rt->fbw, x, y); });
+                std::fprintf(stderr, "[gs-gl dump-display] t=%.1f frame=%llu fbp=%03x -> %s\n", elapsed, (unsigned long long)m_frameCounter, rt->fbp, s_dir.c_str());
+            }
+        }
+    }
     // Copy the presented rectangle into a dedicated texture: the render target keeps being drawn
     // into (the next frame's clear lands on it while it is on screen), which showed as flicker.
     m_presentWidth = std::min<uint32_t>(width, rt->width);
@@ -1484,9 +1649,16 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     }
     {
         static uint32_t s_logged = 0u;
-        if (s_logged < 4u && (m_frameCounter == 1u || m_frameCounter == 600u || m_frameCounter == 1200u || m_frameCounter == 1800u))
+        // PS2X_GS_TRACE_DISPFB=1: log every change of the displayed buffer (fbp/fbw/psm/size).
+        static const bool s_traceDispfb = std::getenv("PS2X_GS_TRACE_DISPFB") != nullptr;
+        static uint64_t s_lastKey = ~0ull;
+        const uint64_t key = (static_cast<uint64_t>(display.fbp) << 32) | (display.fbw << 24) | (display.psm << 16) | (width << 4) | (height & 0xFu) | (static_cast<uint64_t>(height) << 40);
+        const bool changed = s_traceDispfb && key != s_lastKey;
+        s_lastKey = key;
+        if (changed || (s_logged < 4u && (m_frameCounter == 1u || m_frameCounter == 600u || m_frameCounter == 1200u || m_frameCounter == 1800u)))
         {
-            ++s_logged;
+            if (!changed)
+                ++s_logged;
             std::fprintf(stderr, "[gs-gl present] frame=%llu dispfb fbp=%03x fbw=%u psm=%02x display=%ux%u smode2=%llx rt=%ux%u used=%u -> present %ux%u\n",
                          (unsigned long long)m_frameCounter, display.fbp, display.fbw, display.psm, width, height,
                          (unsigned long long)request.smode2, rt->width, rt->height, rt->usedHeight, m_presentWidth, m_presentHeight);
@@ -1940,6 +2112,10 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     uint32_t ztst = (ctx.test >> 17) & 3u;
     if (!zte)
         ztst = 1u;
+    // PS2X_GS_NO_ZTEST=1: A/B switch — every draw passes the depth test.
+    static const bool s_noZtest = std::getenv("PS2X_GS_NO_ZTEST") != nullptr;
+    if (s_noZtest)
+        ztst = 1u;
     glEnable(GL_DEPTH_TEST);
     switch (ztst)
     {
@@ -2143,6 +2319,26 @@ void GSGlBackend::flushBatch()
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(m_vertices.size()));
+    {
+        // PS2X_GS_PROBE=<frame>: for 400 frames from there, after every untextured sprite batch
+        // into fbp 0x8c, read back rows 200 and 420 at x=320 (GL RT rows) to see whether the
+        // draw reached the bottom band (the movie strip investigation, 2026-09-09).
+        static const long s_probeFrom = std::getenv("PS2X_GS_PROBE") ? std::strtol(std::getenv("PS2X_GS_PROBE"), nullptr, 0) : -1L;
+        if (s_probeFrom >= 0 && static_cast<long>(m_frameCounter) >= s_probeFrom && static_cast<long>(m_frameCounter) < s_probeFrom + 400 &&
+            m_batchRt && m_batchRt->fbp == 0x8cu && !m_batchState.prim.tme && m_batchState.prim.type == GS_PRIM_SPRITE && m_vertices.size() >= 6)
+        {
+            uint8_t p200[4] = {0, 0, 0, 0}, p420[4] = {0, 0, 0, 0}, p440[4] = {0, 0, 0, 0};
+            glReadPixels(320, 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p200);
+            glReadPixels(320, 420, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p420);
+            glReadPixels(320, 440, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p440);
+            float ymin = m_vertices[0].y, ymax = m_vertices[0].y;
+            for (const auto &vv : m_vertices) { ymin = std::min(ymin, vv.y); ymax = std::max(ymax, vv.y); }
+            std::fprintf(stderr, "[gs-gl probe] frame=%llu fbp=%03x fbo=%u sprite y=[%.0f..%.0f] rgba=%02x%02x%02x%02x -> row200=%02x%02x%02x row420=%02x%02x%02x row440=%02x%02x%02x glerr=%x\n",
+                         (unsigned long long)m_frameCounter, m_batchRt->fbp, m_batchRt->fbo, ymin, ymax,
+                         m_vertices[0].r, m_vertices[0].g, m_vertices[0].b, m_vertices[0].a,
+                         p200[0], p200[1], p200[2], p420[0], p420[1], p420[2], p440[0], p440[1], p440[2], glGetError());
+        }
+    }
     if (debugThis && m_vertices.size() >= 6)
     {
         // Read back the whole quad region and count pixels the draw changed.

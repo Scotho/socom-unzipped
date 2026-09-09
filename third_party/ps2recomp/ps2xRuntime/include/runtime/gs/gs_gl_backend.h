@@ -104,9 +104,17 @@ private:
         uint32_t attachedDepth = 0;
         bool gpuDirty = false;
         bool shadowStale = false;   // shadow VRAM does not hold the GPU contents
-        bool dirtyRows = false;     // rows [dirtyRowFirst, dirtyRowLast) must be re-read from the shadow
-        uint32_t dirtyRowFirst = 0;
+        bool dirtyRows = false;     // some 32-row band must be re-read from the shadow (see dirtyMask)
+        uint32_t dirtyRowFirst = 0; // bounding range of the dirty bands (diagnostics)
         uint32_t dirtyRowLast = 0;
+        uint32_t dirtyMask = 0;     // bit i = rows [32i, 32i+32) were written by an upload since the last refresh
+                                    // (a single merged [first,last) range let a mark at the top of the
+                                    // target and one far below it re-read everything in between)
+        struct DirtyRect { uint32_t x0, y0, x1, y1; };
+        std::vector<DirtyRect> dirtyRects;   // exact rectangles (uploads in the target's own layout):
+                                             // re-read only these pixels — a band re-read dragged the
+                                             // stale rows next to a 16-row movie block back over the
+                                             // GPU's newer contents
         bool gpuRows = false;       // rows [gpuRowFirst, gpuRowLast) drawn by the GPU since the last download
         uint32_t gpuRowFirst = 0;
         uint32_t gpuRowLast = 0;
