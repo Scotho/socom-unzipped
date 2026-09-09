@@ -49,6 +49,7 @@ def main():
     ap.add_argument("--name-b", default="socome")
     ap.add_argument("--existing-b", action="store_true")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
+    ap.add_argument("--play", type=int, default=0, help="gameplay bursts after the hold (A walks + fires, B turns)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
@@ -89,6 +90,17 @@ def main():
             time.sleep(10)
             A.sh.shot(f"hold{i:02d}")
             B.sh.shot(f"hold{i:02d}")
+        if a.play:
+            # Gameplay phase (the user's acceptance test): A hunts, B stands. A walks forward in
+            # bursts and fires; B turns slowly so both sides render each other. Screens every
+            # burst on both sides; the kill/round end is read from the HUD captures and the DME log.
+            for i in range(a.play):
+                A.sh.hold("W", 3.0)
+                A.sh.hold("R1", 0.3)
+                A.sh.hold("R1", 0.3)
+                B.sh.hold("L", 0.6)
+                A.sh.shot(f"play{i:02d}")
+                B.sh.shot(f"play{i:02d}")
     finally:
         A.kill()
         B.kill()

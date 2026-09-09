@@ -68,14 +68,48 @@ class Shell:
         keys.press(self.hwnd, b, T)
         time.sleep(wait)
 
-    def diff(self, name, im=None):
-        im = (im or winshot.grab(self.hwnd)).convert("L").resize((320, 224)).crop(tuple(self.meta[name]["box"]))
-        return float(abs(np.asarray(im, dtype=float) - self.refs[name]).mean())
+    def hold(self, b, seconds, wait=0.3):
+        """Hold a key (stick directions W/A/S/D, I/J/K/L; R1 fire) for `seconds`."""
+        keys.press(self.hwnd, b, T, hold_s=seconds)
+        time.sleep(wait)
+
+    def diff(self, name, im=None, arr=None):
+        """Normalised, shift-tolerant distance of the screen's reference band: both crops are
+        brightness/contrast-normalised (the 2026-09-09 renderer draws the UI a little darker and
+        ~8 px left of the references, which put the raw score at 22 against an 8 threshold), and
+        the best offset within +-12 px horizontally / +-3 px vertically counts. Correct screens
+        score 0.37-0.44, wrong ones 0.45+ (measured on logs/parity/ours_match_play1)."""
+        if arr is None:
+            full = (im or winshot.grab(self.hwnd)).convert("L").resize((320, 224))
+            arr = np.asarray(full, dtype=float)
+        x0, y0, x1, y1 = self.meta[name]["box"]
+        ref = self.refs[name]
+        rn = (ref - ref.mean()) / (ref.std() + 1e-6)
+        best = 1e9
+        for dy in range(-3, 4):
+            for dx in range(-12, 13):
+                ax0, ay0 = x0 + dx, y0 + dy
+                if ax0 < 0 or ay0 < 0 or ax0 + ref.shape[1] > arr.shape[1] or ay0 + ref.shape[0] > arr.shape[0]:
+                    continue
+                c = arr[ay0:ay0 + ref.shape[0], ax0:ax0 + ref.shape[1]]
+                d = float(abs((c - c.mean()) / (c.std() + 1e-6) - rn).mean())
+                if d < best:
+                    best = d
+        return best
 
     def is_screen(self, name, thresh=None):
         if name == "main_menu":
             return score(self.menu, winshot.grab(self.hwnd))["score"] >= (thresh or 90.0)
-        return self.diff(name) <= (thresh or self.meta[name]["thresh"])
+        arr = np.asarray(winshot.grab(self.hwnd).convert("L").resize((320, 224)), dtype=float)
+        d = self.diff(name, arr=arr)
+        if d > 0.45:
+            return False
+        # Among the references sharing this band, this screen must also be the best match.
+        box = tuple(self.meta[name]["box"])
+        for other in self.meta:
+            if other != name and tuple(self.meta[other]["box"]) == box and self.diff(other, arr=arr) < d:
+                return False
+        return True
 
     def wait_for(self, name, timeout, thresh=None):
         t = time.time()
