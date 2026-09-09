@@ -19,6 +19,7 @@ import subprocess
 import time
 
 import numpy as np
+from PIL import Image
 
 from tools_py.parity import keys, winshot
 
@@ -151,6 +152,29 @@ def main():
                 presses += 1
                 time.sleep(delay)
             print(f"until{box}: {presses} presses, highlighted={highlighted(hwnd, box)}", flush=True)
+            buttons = []
+            delay = 0.5
+        elif mode.startswith("untilref("):
+            # untilref(<png>)+<delay>:BTN — press BTN on each settled screen (at most 12 times)
+            # until the top band of the frame (rows 8..62 of the 160x112 thumbnail: the logo /
+            # dialog title) matches the reference image; then hold. Makes "reach the main menu"
+            # independent of how many boot screens this run happens to show.
+            ref_path = mode[9:-1]
+            ref_im = np.asarray(Image.open(ref_path).convert("L").resize((160, 112)), dtype=np.float32)
+
+            def at_ref():
+                return float(np.abs(frame(hwnd)[8:62] - ref_im[8:62]).mean()) < 14.0
+
+            presses = 0
+            while not at_ref() and presses < 12:
+                wait_stable(hwnd, 1.5, 20.0)
+                if at_ref():
+                    break
+                for b in buttons:
+                    keys.press(hwnd, b, a.target)
+                presses += 1
+                time.sleep(delay)
+            print(f"untilref({ref_path}): {presses} presses, matched={at_ref()}", flush=True)
             buttons = []
             delay = 0.5
         elif mode == "idle":

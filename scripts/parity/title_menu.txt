@@ -1,0 +1,24 @@
+# Boot to the main menu by screen state and hold there (frames every 6 s).
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
+wait+6.0:NONE
