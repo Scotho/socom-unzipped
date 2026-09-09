@@ -46,6 +46,6 @@ runtime` (3 min; header change = 10 min); `python -m tools_py.parity.drive --tar
 RDRAM dump paths must be Windows paths.
 
 ## Lock protocol
-`scripts/loop_lock.sh take <owner>` before any `./build.sh`, `run.sh` or drive.py run;
+`scripts/loop_lock.sh take <owner>` before any `./build.sh`, `run.sh` or drive.py run (BUSY even for the same owner: a second job queues with `wait`); `renew <owner>` refreshes a held lock;
 `scripts/loop_lock.sh release <owner>` after; `check` to inspect; `wait <owner> [minutes]` blocks
 until it is free (stale after 45 min). Offline tools (vu1_replay, python analysis) need no lock.
