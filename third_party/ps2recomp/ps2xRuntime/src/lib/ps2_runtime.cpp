@@ -2185,6 +2185,7 @@ void PS2Runtime::Store8(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint8
     try
     {
         m_memory.write8(vaddr, value);
+        drainCompletedDmacHandlers(rdram);   // MMIO kicks (SOCOM II writes D8_CHCR.STR as a byte) may raise IRQs
     }
     catch (const std::exception &e)
     {
@@ -2199,6 +2200,7 @@ void PS2Runtime::Store16(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     try
     {
         m_memory.write16(vaddr, value);
+        drainCompletedDmacHandlers(rdram);   // MMIO kicks (SOCOM II writes D8_CHCR.STR as a byte) may raise IRQs
     }
     catch (const std::exception &e)
     {
@@ -2228,6 +2230,7 @@ void PS2Runtime::Store64(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, uint
     try
     {
         m_memory.write64(vaddr, value);
+        drainCompletedDmacHandlers(rdram);   // MMIO kicks (SOCOM II writes D8_CHCR.STR as a byte) may raise IRQs
     }
     catch (const std::exception &e)
     {
@@ -2244,6 +2247,7 @@ void PS2Runtime::Store128(uint8_t *rdram, R5900Context *ctx, uint32_t vaddr, __m
     try
     {
         m_memory.write128(vaddr, value);
+        drainCompletedDmacHandlers(rdram);
     }
     catch (const std::exception &e)
     {

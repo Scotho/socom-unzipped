@@ -16,6 +16,10 @@ static const bool g_traceFifo = (std::getenv("PS2X_TRACE_FIFO") != nullptr);
 #include <string>
 #include <vector>
 
+// VIF1 i-bit stall state (ps2_vif1_interpreter.cpp).
+void ps2xVif1Reset();
+void ps2xVif1StallCancel(PS2Memory &mem);
+
 namespace
 {
     inline void inRange(uint32_t offset, size_t bytes, size_t regionSize, const char *op, uint32_t address)
@@ -1215,10 +1219,12 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                 std::memset(&vif1_regs, 0, sizeof(vif1_regs));
                 m_vif1PendingPath2ImageQwc = 0u;
                 m_vif1PendingPath2DirectHl = false;
+                ps2xVif1Reset();
             }
             if (value & 0x8u) // STC
             {
                 vif1_regs.stat &= ~((1u << 8) | (1u << 9) | (1u << 10) | (1u << 11) | (1u << 12) | (1u << 13));
+                ps2xVif1StallCancel(*this);   // resume the data held since the i-bit VIFcode
             }
             break;
         case 0x10003C30u:
@@ -2023,6 +2029,7 @@ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t 
             const uint32_t flg = static_cast<uint32_t>((tagLo >> 58) & 3u);
             const uint32_t nreg = static_cast<uint32_t>((tagLo >> 60) & 0xFu);
             uint32_t dbp = 0xFFFFFFFFu, dbw = 0, rrw = 0, rrh = 0;
+            uint64_t tex0 = 0xFFFFFFFFFFFFFFFFull;
             const uint32_t scan = std::min<uint32_t>(sizeBytes / 16u, 16u);
             for (uint32_t q = 1; q < scan; ++q)
             {
@@ -2039,13 +2046,21 @@ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t 
                     rrw = static_cast<uint32_t>(lo & 0xFFFu);
                     rrh = static_cast<uint32_t>((lo >> 32) & 0xFFFu);
                 }
+                else if ((hi & 0xFFu) == 0x06u || (hi & 0xFFu) == 0x16u)
+                {
+                    tex0 = lo;
+                }
             }
-            char line[256];
+            char line[320];
             int n = std::snprintf(line, sizeof(line), "[gif-submit] path%u bytes=%u masked=%d drain=%d hl=%d tag nloop=%u eop=%u flg=%u nreg=%u",
                                   static_cast<unsigned>(pathId), sizeBytes, m_path3Masked ? 1 : 0, drainImmediately ? 1 : 0, path2DirectHl ? 1 : 0,
                                   nloop, eop, flg, nreg);
             if (dbp != 0xFFFFFFFFu)
                 n += std::snprintf(line + n, sizeof(line) - n, " bitblt dbp=%05x dbw=%u trx=%ux%u", dbp, dbw, rrw, rrh);
+            if (tex0 != 0xFFFFFFFFFFFFFFFFull)
+                n += std::snprintf(line + n, sizeof(line) - n, " tex0 tbp0=%05x tbw=%u psm=%02x %ux%u",
+                                   static_cast<unsigned>(tex0 & 0x3FFFu), static_cast<unsigned>((tex0 >> 14) & 0x3Fu),
+                                   static_cast<unsigned>((tex0 >> 20) & 0x3Fu), 1u << ((tex0 >> 26) & 0xFu), 1u << ((tex0 >> 30) & 0xFu));
             std::fprintf(stderr, "%s\n", line);
         }
     }

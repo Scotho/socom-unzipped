@@ -1,4 +1,41 @@
-# Project status â€” updated 2026-09-09 03:20
+# Project status — updated 2026-09-09 02:15
+
+## 2026-09-09 02:15 (local) — TITLE LABELS FIXED: VIF1 i-bit stall + prompt IRQ delivery; the console never stops the menu movie (that lead was built on the wrong savestate)
+The garbled LOAD GAME / NEW GAME / ONLINE labels are gone: logs/parity/title_stall5_sheet.png
+holds 24 main-menu captures over 2+ minutes, all clean (before: logs/parity/title_trace7_sheet.png,
+garbled from s10 on). Root cause, established with a PCSX2 GS dump of the real main menu
+(savestate slot 21; slot 6 — the "title" image every 03:20 conclusion was built on — is the
+SELECT RANK dialog, so "the console has no movie set at the title" was never a valid comparison;
+the user confirmed the menu movie is correct and must stay):
+- Console per-frame GS order (tools_py/gsdump_timeline.py on tools/pcsx2/snaps/*.gs, captured by
+  tools_py/parity/gsdump_capture.py --slot 21): 512x256 background upload -> background sprite ->
+  the 11 label textures (set [11], 0x3107..0x3387) -> label draws. Ours (tools_py/gif_submit_timeline.py
+  on a PS2X_GIF_TRACE run, which now also prints TEX0 binds): set [11] flush -> background upload
+  (to 0x2bc0 every other frame, overlapping the label pages) -> label draws. One step out of phase,
+  so the labels were drawn from the background's pixels every other frame.
+- The game sequences texture-set uploads against its draw stream with a marker protocol: each
+  set flush appends an entry to the render queue at 0x4887c0 (FUN_0033bf30/be70/bd90) and emits
+  [FLUSH][DIRECT 1qw][FLUSHA][NOP with the VIF i-bit] into the VIF1 MFIFO ring. VIF1 stalls at the
+  i-bit code and raises INTC5; the handler FUN_0033c010 kicks the GIF chain of entry[index++]
+  (PATH3 upload), re-bases sets (FUN_00355de0) and writes FBRST.STC to release VIF1. FUN_00339de0
+  (frame begin) resets the index. Two runtime defects broke the mapping between markers and entries:
+  1. VIF1 never stalled on an i-bit VIFcode (it raised INTC5 and carried on), so the next segment's
+     draws ran before the handler kicked their uploads. Fixed: ps2_vif1_interpreter.cpp holds the rest
+     of the stream after an i-bit code (STAT.VIS|INT) until FBRST.STC (ps2xVif1StallCancel resumes it);
+     PS2X_VIF1_NO_IRQ_STALL=1 restores the old behaviour for A/B.
+  2. The 7th (last) marker of a frame is committed to the ring by FUN_00350ab0 with a BYTE store to
+     D8_CHCR (0x1000d001); only PS2Runtime::Store32 drained pending INTC causes, so that interrupt
+     was delivered at the next 32-bit MMIO store — inside FUN_00339de0, after it had reset the index —
+     and every chain of the new frame was kicked one marker early (the label set before the
+     background instead of after it). Fixed: Store8/16/64/128 drain completed DMAC/INTC causes too.
+  Evidence: tools_py/marker_timeline.py merges FrameBegin/AppendFlush/Vif1Irq call traces, stalls,
+  STC, GIF kicks and submissions (run logs/run_20260909_020018.log = before, 020640 = after).
+- Also landed: scripts/parity/title_menu.txt reaches the main menu by screen state
+  (drive.py `untilref(<png>)` presses CROSS until the frame matches ref_main_menu_ours.png, then
+  holds) — boot drift made fixed press counts land on SELECT RANK in 2 of 3 runs.
+Not re-verified in this step (the VU1 agent's mission run is next and covers it): the mission
+load and online screens with the i-bit stall. If a run ever hangs with VIF1 stalled, the game
+did not STC — A/B with PS2X_VIF1_NO_IRQ_STALL=1 and report.
 
 ## 2026-09-09 03:20 (local) â€” title labels (user report 01:50): the label VRAM pages are overwritten by a 512x256 upload from the menu-movie texture set; the console never runs that set at the title
 The garbled LOAD GAME / NEW GAME / ONLINE labels are NOT a rounding or GS-decode fault any

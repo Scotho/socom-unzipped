@@ -9,6 +9,41 @@ extern std::atomic<uint64_t> g_vuMpgBytes;
 extern std::atomic<uint64_t> g_vif1BytesCount;
 #include "runtime/ps2_memory.h"
 #include <cstring>
+#include <vector>
+
+// VIF1 interrupt stall (EE User's Manual, VIF "I bit"): after a VIFcode with the i bit is
+// executed, VIF1 raises INTC5, sets STAT.INT/VIS and STOPS processing until the CPU writes
+// FBRST.STC. SOCOM II drains its draw lists through a VIF1 MFIFO ring and ends every frame's
+// list with an i-bit code; its INTC5 handler (FUN_0033c010) kicks the GIF chain that uploads the
+// next frame's texture sets (PATH3) and only then writes STC. Without the stall the next frame's
+// draws ran before their uploads (title labels drawn from the movie's pixels, 2026-09-09).
+// State lives here (not in the header) so this change does not force the generated-code rebuild.
+static bool g_vif1Stalled = false;
+static bool g_vif1IrqPending = false;
+static std::vector<uint8_t> g_vif1StallBuffer;
+static const bool g_vif1NoIrqStall = std::getenv("PS2X_VIF1_NO_IRQ_STALL") != nullptr;
+
+bool ps2xVif1IsStalled() { return g_vif1Stalled; }
+
+void ps2xVif1Reset()
+{
+    g_vif1Stalled = false;
+    g_vif1IrqPending = false;
+    g_vif1StallBuffer.clear();
+}
+
+void ps2xVif1StallCancel(PS2Memory &mem)
+{
+    if (!g_vif1Stalled)
+        return;
+    g_vif1Stalled = false;
+    std::vector<uint8_t> pending;
+    pending.swap(g_vif1StallBuffer);
+    if (std::getenv("PS2X_TRACE_FIFO"))
+        std::fprintf(stderr, "[fifo] VIF1 STC: resuming %zu stalled bytes\n", pending.size());
+    if (!pending.empty())
+        mem.processVIF1Data(pending.data(), static_cast<uint32_t>(pending.size()));
+}
 
 enum VIFCmd : uint8_t
 {
@@ -271,12 +306,29 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
 {
     if (sizeBytes == 0u)
         return;
+    if (g_vif1Stalled)
+    {
+        // Stalled on an i-bit VIFcode: hold everything until FBRST.STC (see ps2xVif1StallCancel).
+        g_vif1StallBuffer.insert(g_vif1StallBuffer.end(), data, data + sizeBytes);
+        return;
+    }
     g_vif1BytesCount.fetch_add(sizeBytes, std::memory_order_relaxed);
 
     uint32_t pos = 0;
 
     while (pos + 4 <= sizeBytes)
     {
+        if (g_vif1IrqPending && m_vif1PendingPath2ImageQwc == 0u)
+        {
+            // The i-bit command (and its data) is complete: stall here, keep the rest for STC.
+            g_vif1IrqPending = false;
+            g_vif1Stalled = true;
+            vif1_regs.stat |= (1u << 10); // VIS
+            g_vif1StallBuffer.assign(data + pos, data + sizeBytes);
+            if (std::getenv("PS2X_TRACE_FIFO"))
+                std::fprintf(stderr, "[fifo] VIF1 i-bit stall, %u bytes held\n", sizeBytes - pos);
+            return;
+        }
         if (m_vif1PendingPath2ImageQwc != 0u)
         {
             const uint32_t availableQw = (sizeBytes - pos) / 16u;
@@ -325,7 +377,9 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         {
             vif1_regs.stat |= (1u << 11); // INT
             queueIntcCause(5u);           // EE INTC VIF1 -> game's render-thread waker
-            if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode -> INTC5\n");
+            if (!g_vif1NoIrqStall)
+                g_vif1IrqPending = true;  // stall after this command completes (hardware behaviour)
+            if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode %08x (op %02x) -> INTC5\n", cmd, opcode);
         }
 
         // PS2X_TRACE_VIF=<skip>: print VIF1 codes (after skipping <skip> of them), 3000 lines max.
@@ -807,5 +861,14 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         {
             continue;
         }
+    }
+    if (g_vif1IrqPending && m_vif1PendingPath2ImageQwc == 0u)
+    {
+        // The i-bit command was the last one in this packet: stall with nothing held.
+        g_vif1IrqPending = false;
+        g_vif1Stalled = true;
+        vif1_regs.stat |= (1u << 10); // VIS
+        if (std::getenv("PS2X_TRACE_FIFO"))
+            std::fprintf(stderr, "[fifo] VIF1 i-bit stall at packet end\n");
     }
 }

@@ -22,39 +22,16 @@
   memory); slot 8 = spawn, slot 7 = post-load.
 
 **Open items, in order, each with its first step:**
-1. **Title labels garbled (user report 01:50, top priority — the user watches this screen).**
-   Root mechanism found (STATUS 03:20): a 512x256 CT32 upload to block 0x2bc0 (pages
-   0x15e..0x19d) every third frame overwrites the label pages 0x190/0x192/0x194; it is the
-   menu-movie texture set (class vtable 0x6f0330, base 0x2bc0 limit 0x33d8, object at 0x7abcc0
-   on ours) flushing MENULOOP.PSS frames (640x448 decoded by our sceMpeg, delivered into the
-   512 KB double buffer 0x15493b0/0x15c93b0, uploaded by FUN_00356e90 -> FUN_00356d20, ra
-   0x357028). PCSX2 at the title has no such set, no such packet (RAM or scratchpad) and a
-   static background for 90 s: the console does not play the menu movie at that point, so
-   its labels are never overwritten. Next: find what starts the dlgMenu movie element
-   (`run/movies/common/menuloop.pss` in dlgMenu.rdr, live element on ours at 0x7ab940..) on
-   ours and not on the console — trace FUN_00356be0's callers (lines 50944/51042/51333 in the
-   decomp) and the sceMpegCreate for lbn 0xdd218 (MENULOOP) back to the UI command that
-   issued it (PS2X_CALL_TRACE on 0x356be0 + the UI_COMMAND dispatcher), then compare the UI
-   variable it tests against PCSX2 (title_pcsx2.rdram / PINE). Do NOT "fix" this in the GS or
-   the GIF arbiter: the uploads are real and ordered correctly; the game simply should not be
-   presenting that movie there. Refinement (03:50): the console DOES stream MENULOOP at the
-   title — its IOP cdvdman state in savestate 6 (`p2s_extract.py ... iopMemory.bin`) holds
-   LBNs 0xdd2e8/0xdd8d8 inside the file, read slowly (~0x6c0 sectors in ~30 s) — but shows a
-   static background and has no movie texture set, so its movie element streams without
-   presenting pictures. The trace of the set activation (title_trace6: every third frame,
-   set 0xf2e020 via FUN_00365210 <- ra 0x365358, a texture-group flush that rebuilds when
-   a record's stamp at +0x1c differs from the group's +0x20) shows ours presents a new
-   picture every 3 frames (640x448 decoded, `[MPEG:GetPicture] frame N` in title_trace5).
-   So compare what sceMpegGetPicture / sceMpegIsEnd / the CBSTOPDMA callback return on the
-   console vs ours for MENULOOP (real libmpeg may wait for a PTS/first GOP that our decoder
-   delivers immediately, or the game may present only after the stream's audio clock
-   starts): trace the game's movie element around sceMpegGetPicture's return value with
-   PS2X_CALL_TRACE on its caller (find it with `python tools_py/ra2fun.py <ra>` from a
-   PS2X_CALL_TRACE of the stub's guest caller), and check the element's "visible"/alpha
-   state in title_pcsx2.rdram (element record at 0x11920ac: fields after the path string,
-   e.g. -0x20, 0x1cc, 0x20, 0x41, 0x14, tex 0x11a8110). Verify with `scripts/parity/launch_to_mission_diag.txt` +
-   `PS2X_PC_SAMPLER=1` (GL backend), which reproduces the garbling every run; title_only runs
-   and the CPU backend sometimes look clean by timing luck.
+1. **DONE 2026-09-09 02:15 � title labels** (STATUS 02:15): VIF1 now stalls on i-bit VIFcodes until
+   FBRST.STC and every MMIO store width drains pending IRQs; the texture-set marker protocol
+   (0x4887c0 render queue, FUN_0033c010 handler) is in sync with the console. Verify the title
+   (s00..s22 of a `scripts/parity/title_menu.txt` run) after any VIF/DMA/scheduler change. The
+   console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
+   --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
+   menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
+1b. **Frame rate (in progress, VU1 agent)**: non-cycle-exact VU1 fast path, opt-in
+   `PS2X_VU1_FAST=1`, bit-identical to the interpreter on all 300 dumped programs at 23.5 ns/cycle
+   (was 92 offline / 111 in-game); in-game verification run pending, then default-on.
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
