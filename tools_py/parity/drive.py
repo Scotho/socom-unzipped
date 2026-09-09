@@ -177,6 +177,13 @@ def main():
             print(f"untilref({ref_path}): {presses} presses, matched={at_ref()}", flush=True)
             buttons = []
             delay = 0.5
+        elif mode == "hold":
+            # hold+<seconds>:BTN — hold the key(s) down for <seconds> (stick directions W/A/S/D,
+            # I/J/K/L on ours; fire R1), then capture. For gameplay probes.
+            for b in buttons:
+                keys.press(hwnd, b, a.target, hold_s=delay)
+            buttons = [f"hold{b}" for b in buttons]
+            delay = 0.5
         elif mode == "idle":
             # Press only if the screen stays unchanged for <delay> seconds (a menu waiting for
             # input); skip the press when it changes (a movie/loading screen already moving on).
