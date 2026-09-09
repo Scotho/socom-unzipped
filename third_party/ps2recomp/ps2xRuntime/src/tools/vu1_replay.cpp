@@ -144,6 +144,7 @@ int main(int argc, char **argv)
     std::string profPath;
     std::string genPath;
     std::string pcHistPath;
+    std::string seedsPath; // --seeds <file>: extra pcs (hex, one per line; in-game [vu1-bail] pcs) as unknown entries
     bool bailHist = false;
     bool trace = false;
     bool printStateFlag = false;
@@ -165,6 +166,8 @@ int main(int argc, char **argv)
             pcHistPath = argv[++i];
         else if (!std::strcmp(argv[i], "--bailhist"))
             bailHist = true;
+        else if (!std::strcmp(argv[i], "--seeds") && i + 1 < argc)
+            seedsPath = argv[++i];
         else if (!std::strcmp(argv[i], "--trace"))
             trace = true;
         else if (!std::strcmp(argv[i], "--state"))
@@ -396,6 +399,22 @@ int main(int argc, char **argv)
         for (uint32_t i = 0; i < jrHist.size(); ++i)
             if (jrHist[i])
                 unknownEntries.insert(i * 8u);
+        if (!seedsPath.empty())
+        {
+            if (FILE *sf = std::fopen(seedsPath.c_str(), "r"))
+            {
+                char line[128];
+                while (std::fgets(line, sizeof(line), sf))
+                {
+                    const uint32_t pc = static_cast<uint32_t>(std::strtoul(line, nullptr, 0)) & 0x3FF8u;
+                    seeds.insert(pc);
+                    unknownEntries.insert(pc);
+                }
+                std::fclose(sf);
+            }
+            else
+                std::fprintf(stderr, "cannot read %s\n", seedsPath.c_str());
+        }
         std::fprintf(stderr, "[vu1_gen] %zu entry pcs, %u executed pairs, %zu computed-jump/entry pcs\n", entryPcs.size(), executed, unknownEntries.size());
         const int rc = vu1GenerateKnownProgram(firstCode.data(), fnv1a(firstCode.data(), firstCode.size()), seeds, unknownEntries, genPath);
         if (rc != 0)

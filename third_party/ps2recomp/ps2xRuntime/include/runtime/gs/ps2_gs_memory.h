@@ -549,6 +549,12 @@ namespace GSMem
 	void WriteZ16(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 	void WriteZ16S(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 
+	// Row span: `count` consecutive pixels from (x, y) taken from `src` in the host-to-local transfer
+	// layout of the format (4/3/2/1 bytes per pixel; 4-bit formats: packed nibbles, `nibble` = index
+	// of the first pixel's nibble in src[0], low first). Same addresses and values as `count` calls
+	// of the per-pixel writer, without the std::function call and the per-pixel page arithmetic.
+	// Returns false for a format without a span writer.
+	bool WriteSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble);
 	void WriteP8(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 	void WriteP8H(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 

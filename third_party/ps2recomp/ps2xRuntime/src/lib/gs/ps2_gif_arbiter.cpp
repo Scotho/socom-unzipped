@@ -24,13 +24,14 @@ void GifArbiter::submit(GifPathId pathId, const uint8_t *data, uint32_t sizeByte
     if (!data || sizeBytes < 16 || !m_processFn)
         return;
 
-    GifArbiterPacket pkt;
+    if (m_queueCount == m_queue.size())
+        m_queue.emplace_back();
+    GifArbiterPacket &pkt = m_queue[m_queueCount++];
     pkt.pathId = pathId;
     pkt.path2DirectHl = (pathId == GifPathId::Path2) && path2DirectHl;
     pkt.path3Image = (pathId == GifPathId::Path3) && isImagePacket(data, sizeBytes);
     pkt.data.resize(sizeBytes);
     std::memcpy(pkt.data.data(), data, sizeBytes);
-    m_queue.push_back(std::move(pkt));
 }
 
 void GifArbiter::drain()
@@ -46,7 +47,7 @@ void GifArbiter::drain()
     // kick time (2026-09-08). PS2X_GIF_PRIORITY_SORT=1 restores the sort for A/B checks.
     static const bool s_prioritySort = std::getenv("PS2X_GIF_PRIORITY_SORT") != nullptr;
     if (s_prioritySort)
-    std::stable_sort(m_queue.begin(), m_queue.end(),
+    std::stable_sort(m_queue.begin(), m_queue.begin() + static_cast<std::ptrdiff_t>(m_queueCount),
                      [](const GifArbiterPacket &a, const GifArbiterPacket &b)
                      {
                          // DIRECTHL cannot preempt PATH3 IMAGE transfers.
@@ -60,7 +61,9 @@ void GifArbiter::drain()
                          return pathPriority(a.pathId) < pathPriority(b.pathId);
                      });
 
-    for (size_t i = 0; i < m_queue.size(); ++i)
+    // Packet slots (and their buffers) are kept for reuse: a submit is one memcpy, no allocation.
+    // The count is re-read every iteration so packets appended while draining are processed too.
+    for (size_t i = 0; i < m_queueCount; ++i)
     {
         auto &pkt = m_queue[i];
         if (!pkt.data.empty())
@@ -68,7 +71,7 @@ void GifArbiter::drain()
             m_processFn(pkt.data.data(), static_cast<uint32_t>(pkt.data.size()));
         }
     }
-    m_queue.clear();
+    m_queueCount = 0;
 }
 
 uint8_t GifArbiter::pathPriority(GifPathId id)

@@ -289,6 +289,64 @@ namespace GSMem
     {
     }
 
+    template<PixelStorageMode psm, typename Table>
+    static void WriteSpanT(const Table& table, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble)
+    {
+        using Traits = PixelStorageTraits<psm>;
+        using Packed = typename Traits::PackedT;
+        for (u32 i = 0; i < count; ++i)
+        {
+            u32 value = 0;
+            if constexpr (psm == C32 || psm == Z32)
+            {
+                std::memcpy(&value, src + i * 4u, 4);
+            }
+            else if constexpr (psm == C24 || psm == Z24)
+            {
+                value = static_cast<u32>(src[i * 3u]) | (static_cast<u32>(src[i * 3u + 1u]) << 8) | (static_cast<u32>(src[i * 3u + 2u]) << 16);
+            }
+            else if constexpr (psm == C16 || psm == C16S || psm == Z16 || psm == Z16S)
+            {
+                u16 v = 0;
+                std::memcpy(&v, src + i * 2u, 2);
+                value = v;
+            }
+            else if constexpr (psm == P8 || psm == P8H)
+            {
+                value = src[i];
+            }
+            else
+            {
+                const u32 n = nibble + i;
+                const u8 packed = src[n >> 1];
+                value = (n & 1u) ? ((packed >> 4) & 0x0Fu) : (packed & 0x0Fu);
+            }
+            Traits::Write(table, data, bp, bw, x + i, y, static_cast<Packed>(value));
+        }
+    }
+
+    bool WriteSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble)
+    {
+        switch (psm)
+        {
+        case 0x00: WriteSpanT<C32>(PageTableC32, data, bp, bw, x, y, count, src, nibble); return true;   // CT32
+        case 0x01: WriteSpanT<C24>(PageTableC32, data, bp, bw, x, y, count, src, nibble); return true;   // CT24
+        case 0x02: WriteSpanT<C16>(PageTableC16, data, bp, bw, x, y, count, src, nibble); return true;   // CT16
+        case 0x0A: WriteSpanT<C16S>(PageTableC16S, data, bp, bw, x, y, count, src, nibble); return true; // CT16S
+        case 0x13: WriteSpanT<P8>(PageTableP8, data, bp, bw, x, y, count, src, nibble); return true;     // T8
+        case 0x14: WriteSpanT<P4>(PageTableP4, data, bp, bw, x, y, count, src, nibble); return true;     // T4
+        case 0x1B: WriteSpanT<P8H>(PageTableC32, data, bp, bw, x, y, count, src, nibble); return true;   // T8H
+        case 0x24: WriteSpanT<P4HL>(PageTableC32, data, bp, bw, x, y, count, src, nibble); return true;  // T4HL
+        case 0x2C: WriteSpanT<P4HH>(PageTableC32, data, bp, bw, x, y, count, src, nibble); return true;  // T4HH
+        case 0x30: WriteSpanT<Z32>(PageTableZ32, data, bp, bw, x, y, count, src, nibble); return true;   // Z32
+        case 0x31: WriteSpanT<Z24>(PageTableZ32, data, bp, bw, x, y, count, src, nibble); return true;   // Z24
+        case 0x32: WriteSpanT<Z16>(PageTableZ16, data, bp, bw, x, y, count, src, nibble); return true;   // Z16
+        case 0x3A: WriteSpanT<Z16S>(PageTableZ16S, data, bp, bw, x, y, count, src, nibble); return true; // Z16S
+        default:
+            return false;
+        }
+    }
+
     u32 ReadCT32(u8* data, u32 bp, u32 bw, u32 x, u32 y)
     {
         return PixelStorageTraits<C32>::Read(PageTableC32, data, bp, bw, x, y);

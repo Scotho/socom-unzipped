@@ -1441,6 +1441,57 @@ void GSCpuBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
         m_transferState.y = m_transfer.trxpos.dsay + (m_transferState.copiedPixels / rrw);
     };
 
+    // Row spans through GSMem::WriteSpan (identical addresses/values to the per-pixel path below,
+    // which stays for formats without a span writer): the per-pixel std::function call and page
+    // arithmetic were ~9% of the game thread in the mission (STATUS 2026-09-09).
+    {
+        uint32_t bytesPerPixel = 0u; // 0 = 4-bit
+        switch (dpsm)
+        {
+        case GS_PSM_CT32: case GS_PSM_Z32: bytesPerPixel = 4u; break;
+        case GS_PSM_CT24: case GS_PSM_Z24: bytesPerPixel = 3u; break;
+        case GS_PSM_CT16: case GS_PSM_CT16S: case GS_PSM_Z16: case GS_PSM_Z16S: bytesPerPixel = 2u; break;
+        case GS_PSM_T8: case GS_PSM_T8H: bytesPerPixel = 1u; break;
+        case GS_PSM_T4: case GS_PSM_T4HL: case GS_PSM_T4HH: bytesPerPixel = 0u; break;
+        default: bytesPerPixel = 0xFFu; break;
+        }
+        if (bytesPerPixel != 0xFFu)
+        {
+            const uint32_t dsay = m_transfer.trxpos.dsay;
+            // 4-bit formats: pixel index within this call = 2 * byte offset (+ nibble)
+            uint32_t nibble = 0u;
+            while (offset < sizeBytes && m_transferState.direction == 0u)
+            {
+                const uint32_t copied = m_transferState.copiedPixels;
+                const uint32_t total = m_transferState.totalPixels;
+                const uint32_t column = copied % rrw;
+                const uint32_t x = dsax + column;
+                const uint32_t y = dsay + copied / rrw;
+                uint32_t n = std::min<uint32_t>(rrw - column, total - copied);
+                if (bytesPerPixel != 0u)
+                {
+                    const uint32_t available = (sizeBytes - offset) / bytesPerPixel;
+                    if (available == 0u)
+                        return; // a partial pixel at the end of the packet is dropped, as before
+                    n = std::min<uint32_t>(n, available);
+                    GSMem::WriteSpan(dpsm, m_vram, dbp, dbw, x, y, n, data + offset, 0u);
+                    offset += n * bytesPerPixel;
+                }
+                else
+                {
+                    const uint32_t availableNibbles = (sizeBytes - offset) * 2u - nibble;
+                    n = std::min<uint32_t>(n, availableNibbles);
+                    GSMem::WriteSpan(dpsm, m_vram, dbp, dbw, x, y, n, data + offset, nibble);
+                    nibble += n;
+                    offset += nibble >> 1;
+                    nibble &= 1u;
+                }
+                advancePixel(n);
+            }
+            return;
+        }
+    }
+
     while (offset < sizeBytes && m_transferState.direction == 0u)
     {
         switch (dpsm)

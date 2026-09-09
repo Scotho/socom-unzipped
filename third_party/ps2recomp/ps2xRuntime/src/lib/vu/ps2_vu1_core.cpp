@@ -2346,6 +2346,12 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                                  (unsigned long long)m_knownHash, m_state.pc);
                 }
             }
+            static const bool s_bailHistEnv = std::getenv("PS2X_VU1_BAILHIST") != nullptr;
+            if (s_bailHistEnv && !g_vu1BailHist)
+            {
+                static uint32_t s_bailHist[2048] = {0};
+                g_vu1BailHist = s_bailHist;
+            }
             if (m_knownFn && !m_state.dBitEnabled && !m_state.tBitEnabled && !m_state.ebit &&
                 !m_state.haltAfterDelaySlot && !m_state.branchPending)
             {
@@ -2643,6 +2649,30 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                              (unsigned long long)(g_vu1GenHandBacks - s_lastHandBacks));
                 s_lastUnknown = g_vu1UnknownImagePrograms;
                 s_lastHandBacks = g_vu1GenHandBacks;
+                if (g_vu1BailHist)
+                {
+                    // top hand-back pcs so far (PS2X_VU1_BAILHIST=1): seeds for vu1_replay --gen --seeds
+                    uint32_t top[6] = {0, 0, 0, 0, 0, 0};
+                    for (int k = 0; k < 6; ++k)
+                    {
+                        uint32_t best = 0, bestPc = 0;
+                        for (uint32_t i = 0; i < 2048u; ++i)
+                        {
+                            bool taken = false;
+                            for (int j = 0; j < k; ++j)
+                                taken |= top[j] == i * 8u && g_vu1BailHist[i] != 0u;
+                            if (!taken && g_vu1BailHist[i] > best)
+                            {
+                                best = g_vu1BailHist[i];
+                                bestPc = i * 8u;
+                            }
+                        }
+                        top[k] = bestPc;
+                        if (best == 0u)
+                            break;
+                        std::fprintf(stderr, "[vu1-bail] pc=0x%04x count=%u\n", bestPc, best);
+                    }
+                }
                 s_lastFlips = flips;
                 s_lastSyncV = syncs;
                 s_last = now;
