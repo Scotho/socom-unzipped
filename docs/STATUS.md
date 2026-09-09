@@ -1,4 +1,26 @@
-# Project status — updated 2026-09-09 00:10
+# Project status — updated 2026-09-09 01:30
+
+## 2026-09-09 01:30 (local) — ground height: the collision probe is IDENTICAL to PCSX2's; the actor rests at a different height above the same hit
+With the new tracer (`PS2X_CALL_TRACE_DUMP="GroundQuery:a1:16,GroundQuery:a1+0x48*:16"`,
+run mission_s19) every GroundQuery (FUN_002d49c0) prints its ray and hit records. The player's
+vertical probe at (939.24, 832.6) returns ONE hit at y = -146.371, normal (0.070, 0.997, 0.021)
+— exactly PCSX2's (polled live over PINE at savestate 8 with the new
+tools_py/parity/probe_poll.py: -146.37, (0.0698, 0.9973, 0.0212)). So terrain, collision grid
+and the probe math agree; the 5.5-unit difference is how far the actor rests ABOVE the hit:
+PCSX2 20.11 (y = -126.264), ours 14.69 (y = -131.68). At spawn ours is placed at -125.97 (the
+console value), drops to -135.9 and settles at -131.7 (s16 peek rows), PCSX2 never drops.
+Structures: the player actor (class vtable 0x6691a0, PCSX2 spawn image 0x1713ce0) points at
++0xc0 to its mover (vtable 0x6694b0, 0x170d510) whose +0x90 is the position; the static records
+0x416050/0x4160b0/0x416110/0x416170 are four horizontal segment probes cast from that position
+(FUN_0029bf70) and never hit on PCSX2 — they do not set the height. The per-frame vertical
+GroundQuery via FUN_0031dfd0 only feeds the surface material (+0x2c0 of the actor's +0xb4
+object). The height therefore comes from the mover's own gravity/step logic or an animation
+root offset. In progress: run mission_s21 dumps RDRAM at rest (400 s and at GroundQuery #350)
+to diff the mover object against PCSX2's (candidate fields: +0x88/+0xf8 = 25.0, +0xf0 = 60,
++0x54.. = (4, 3, 6.33)). Gotcha: the camera's follow pointer (*0x488de8+0xbc) is null in the
+spawn images; find the actor through the vtable scan instead. spawn_ours3.rdram (s18, 318 s)
+was taken before the spawn (boot drift) and holds the post-load position (935.6, -120.0, 834.4),
+identical to PCSX2's post-load record.
 
 ## 2026-09-09 00:10 (local) — ROOT CAUSE of the giant sky polygons: VU0 macro-mode ops never set the MAC/STATUS flags, so the EE's frustum test called every object "fully inside" and sent it through the no-clip VU1 path
 The object at the camera (STATUS 23:10) was the terrain/road strip the camera stands next to
