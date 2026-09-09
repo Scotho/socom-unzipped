@@ -237,6 +237,25 @@ namespace ps2_stubs
             }
         }
 
+        // PS2X_SOCOM2_INPUT_TRACE=1: log every change of the pad state the game will read
+        // (buttons as a 16-bit mask, the four axes), so a scripted probe's presses are provable.
+        {
+            static const bool s_trace = std::getenv("PS2X_SOCOM2_INPUT_TRACE") != nullptr;
+            if (s_trace)
+            {
+                static Socom2PadState s_last;
+                if (std::memcmp(&s_last, &next, sizeof(next)) != 0)
+                {
+                    unsigned mask = 0;
+                    for (int id = 0; id < 16; ++id)
+                        if (next.button[id])
+                            mask |= 1u << id;
+                    std::fprintf(stderr, "[socom2-input] state buttons=%04x rx=%02x ry=%02x lx=%02x ly=%02x\n",
+                                 mask, next.axis[0], next.axis[1], next.axis[2], next.axis[3]);
+                    s_last = next;
+                }
+            }
+        }
         pad = next;
     }
 }

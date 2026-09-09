@@ -23,15 +23,15 @@ wait+2.0:CROSS      # deploy -> load mission
 next+10.0:NONE      # mission
 untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD ammo panel shows
 wait+2.0:NONE
-hold+4.0:W          # walk forward 4 s
+hold+8.0:W          # walk forward 8 s
 wait+2.0:NONE
 hold+0.3:R1         # R1 = fire
 wait+1.0:NONE
-hold+0.3:E
+hold+0.3:R1
 wait+3.0:NONE
 hold+3.0:L          # right stick: turn right
 wait+2.0:NONE
-hold+4.0:S          # walk back
+hold+8.0:S          # walk back 8 s
 wait+2.0:NONE
-hold+0.3:E
+hold+0.3:R1
 wait+3.0:NONE

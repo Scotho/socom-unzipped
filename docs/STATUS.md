@@ -1,4 +1,26 @@
-# Project status — updated 2026-09-09 12:10
+# Project status — updated 2026-09-09 13:30
+
+## 2026-09-09 13:30 (local) — FIRST MISSION IS PLAYABLE: scripted walk / fire / turn drives the game (enemies spotted, objective failed, squad engaging) at 36-42 frames/s
+Run logs/parity/runs/gameplay_probe5 (sheet logs/parity/gameplay_probe5_sheet.png, log
+logs/parity/gameplay_probe5.log) with scripts/parity/gameplay_probe.txt on the current build
+(ff7bdac + input trace): boot -> NEW GAME -> briefing -> DEPLOY -> mission intro -> HUD detected by
+screen state (untilref on the squad panel, 34 CROSS presses through the cinematics) -> hold W 8 s
+(player walks: x/z 939,832 -> 940,969, i.e. ~137 units; the actor's y follows the terrain)
+-> R1 (fire) x2 -> hold L 3 s (right stick: view turns, "Enemies spotted!") -> hold S 8 s
+(walks back: to 774,2047 — the walk-back went somewhere else, fine for a probe) -> R1. The game
+responds like the console: JESTER/WARDOG/VANDAL name tags, "OBJECTIVE FAILED: TEAM SPOTTED",
+squad status FOLLOWING -> ENGAGING, the first-operation help popup. New PS2X_SOCOM2_INPUT_TRACE=1
+logs every pad-state change (buttons mask + axes) so a probe's presses are provable in the log
+([socom2-input] state buttons=0800 = R1, ly=00 = stick up, rx=ff = right).
+Frame rate ([vu1-stats] syncv/s) in gameplay: 36.5-41.9 (mission intro cinematics 20-28).
+Known gaps toward the user's "playable" acceptance (a two-instance match ended by a shot or a
+grenade): (1) no kill/round-end readout from guest memory yet — find the round/score state the
+DME world reports (server/logs has the Horizon side) or the HUD text; (2) online_match_ours.py
+needs the same hold/burst steps and the fixed R1 key; (3) HUD text is slightly soft vs the console
+(texture filtering) — parity item, not a blocker. Also seen: the probe's DOWN through the briefing
+now needs 34 presses since the faster boot (no functional issue).
+Tools: drive.py `hold+<s>:KEY` (W/A/S/D left stick, I/J/K/L right stick, R1/L1... buttons),
+`untilref(<png>,y0,y1,x0,x1,loops,thresh)`, `burst+<s>:NONE`; scripts/parity/ref_hud_ours.png.
 
 ## 2026-09-09 12:10 (local) — menu-video strip before the briefing FIXED: shadow->GPU refresh now re-reads exactly the uploaded rectangle, not the enclosing rows
 User report (07:45): a strip of the main-menu video at the bottom of the black screen just before

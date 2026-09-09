@@ -29,6 +29,14 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
+0. **PLAYABLE FIRST MISSION reached 2026-09-09 13:30** (STATUS 13:30): scripts/parity/gameplay_probe.txt
+   walks, fires and turns in Albania 5-1 at 36-42 frames/s with the game reacting. NEXT for the
+   user's acceptance test (two-instance online match ended by a shot or grenade): (a) add the
+   hold/burst steps to tools_py/parity/online_match_ours.py (A hosts, B joins; both spawn; A walks
+   to B and fires until B's death registers), (b) read the kill/round state: the Horizon DME world
+   log on the server side (server/logs) or guest memory — find the per-player health/kills record
+   near the player actor (vtable 0x6691a0; STATUS 01:30 lists the mover fields), (c) capture the
+   round-end screens on both instances. Use PS2X_SOCOM2_INPUT_TRACE=1 to prove the inputs.
 1a. **DONE 2026-09-09 12:10 — menu-video strip before the briefing** (STATUS 12:10): the GL
    backend re-reads only the exact uploaded rectangle from the shadow VRAM (dirty rects + band
    mask). Any future "stale content reappears" report: look at refreshRenderTargetsFromShadow /
