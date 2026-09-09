@@ -1,4 +1,46 @@
-# Project status — updated 2026-09-09 04:05
+# Project status — updated 2026-09-09 05:30
+
+## 2026-09-09 05:30 (local) — stage 3: host stack profiler; scheduler clock batching; row-span GS uploads + pooled arbiter -> mission gameplay 12.7 -> 19 frames/s
+**Measuring.** `PS2X_HOST_PROF=1` now writes module names for external addresses and runs its
+sampler at time-critical priority (the old sampler under-sampled compute and blamed `_setmode`);
+`PS2X_HOST_PROF_STACKS=1` unwinds the x64 call stack of every sample (RtlVirtualUnwind) and
+`tools_py/hostprof_stacks.py` prints inclusive shares, the exe callers of DLL time and folded
+stacks. `[vu1-stats]` prints `thread=`/`proc=` CPU ms/s, `interp-programs/s` (images without
+generated code, named once as `[vu1] program image <hash> ... has no generated code`),
+`handbacks/s`, and with `PS2X_VU1_BAILHIST=1` the top hand-back pcs (`[vu1-bail]`);
+`tools_py/vu1stats_summary.py <log>` summarizes a run by 30 s phase with VU1 cycles per frame.
+Frame rate = `syncv/s` (sceGsSyncV, one per presented frame; the game never calls
+sceGsSwapDBuff). The game thread is 100% of one core; the process uses ~2 cores (GL thread).
+
+**Profile of the game thread in the mission (run_20260909_043923, stacks).** Inclusive:
+EeScheduler::accountCycles 21% (13% inside ntdll: a QueryPerformanceCounter on every recompiled
+checkpoint), GS::processGIFPacket 15.5% (GSCpuBackend::UploadImage 9.2% = a std::function call per
+pixel into GSMem::WriteP8/P4/CT32; GSGlBackend::record copies 3%; vector<GSGlBackend::Cmd> growth
+2.2%), processDueDeadlines 4.6% (mutex + clock per call), dispatchIrq 3.4% (std::getenv per IRQ),
+VU1 generated code ~9%, VU1 interpreter ~12% (hand-backs, see below), recompiled EE code ~3%.
+
+**Fixes (commits 9b4212b, 5ef9c5b).** accountCycles converts the host clock once per 5000
+estimated guest cycles (~17 us; waitForEvent forces a conversion); processDueDeadlines returns
+before m_nextDeadlineCycle without locking; dispatchIrq caches its trace switch; publishSnapshot
+(a138ad3) publishes at most every 50 ms of guest time. GSMem::WriteSpan writes host-to-local
+transfers in row spans (same PixelStorageTraits<psm>::Write per pixel, inlined, no std::function;
+the per-pixel path stays for formats without a span writer) and GifArbiter reuses its packet
+slots/buffers. Sheets sched_1 and gsup_1 are identical to vu1gen_1 (title labels, briefing
+textures, cinematics, HUD).
+
+**Result.** Gameplay phase of the mission (HUD on screen, ~2.9 M VU1 cycles per frame):
+run_20260909_051059 **19.0 syncv/s** at 10 ns/cycle (56 M VU1 cycles/s, VU1 host 560 ms/s incl.
+the GS work done inside XGKICK) vs 12.7 before the scheduler/GS changes (the scheduler-only run
+sched_1 measured 11.7 in a heavier phase — the phases do not align run to run; compare the
+gameplay phase and cycles/frame). Menus 55-57/s.
+
+**Open.** The generated VU1 code hands ~1100 programs/s back to the interpreter at computed-jump
+targets the 300 dumps never reached (0x1c30: 200k, 0x1e50: 28k, 0x1d80, 0x1d30, 0x1d90, 0x3d10 ...):
+those pcs are now generator seeds (logs/vu1_seeds_mission.txt, `vu1_replay --gen --seeds`) and a
+gameplay dump (PS2X_VU1_DUMP_AFTER) is being taken for a second golden. Still in gs_gl_backend.cpp
+(main's file, pending its commit): pooled record/Cmd buffers (~5%). Then: what the other core does
+(the GL thread is at 100%: decode/upload on the render thread may be the next wall), and the VU1
+register file in host registers.
 
 ## 2026-09-09 04:05 (local) — VU1 microcode recompiler ("known programs"): 18 -> 12 ns/cycle in the mission, frame rate 10 -> 13 per second; the other 35 ms/frame is now outside VU1
 **What landed (commit 6dcf73d, default on; `PS2X_VU1_GEN=0` disables).** `vu1_replay --gen`
