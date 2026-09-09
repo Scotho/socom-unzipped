@@ -28,6 +28,14 @@ all hash 638cb8f0), so the recompiler already covers them (`interp-programs/s=0`
 the title itself runs at ~30 syncv/s with the game thread at 100% and VU1 at 2 ms/s — the menu
 movie decode/upload path, not VU1, if that ever matters. Online lobby image: dump in progress.
 
+**08:20 addendum — one VU1 image everywhere.** The online lobby (SELECT UNIVERSE on the local
+Horizon universe, run online_dump3, 59 syncv/s) and the title/main menu both run the mission
+microcode image (hash 638cb8f0, entry pc 0): 150 dumps each, `interp-programs/s=0`,
+`handbacks/s=0`. So the single generated program covers title, menus, mission and lobby. The
+fixed-press online scripts no longer line up with the faster boot (they land on NEW GAME);
+`scripts/parity/launch_to_online_fast.txt` drives the menu by screen state (`untilref` on the
+main-menu reference) and reaches the lobby.
+
 ## 2026-09-09 06:20 (local) — VU1 program regenerated from 900 dumps (300 gameplay): hand-backs 850 -> 32/s, mission gameplay 22-29 frames/s
 The in-game `[vu1-bail]` histogram showed the generated code handing ~1100 programs/s to the
 interpreter at computed-jump targets (command handlers) the 300 intro-window dumps never

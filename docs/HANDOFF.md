@@ -37,7 +37,8 @@
    + `tools_py/hostprof_stacks.py`. Next: (1) keep the VU1 program regenerated from all dumps + `[vu1-bail]` pcs (900 dumps verified,
    hand-backs 32/s, seeds file logs/vu1_seeds_mission.txt), (2) pooled record/Cmd buffers in gs_gl_backend.cpp (~5%), (3) the GL thread is
    at 100% of a core — profile it (PS2X_HOST_PROF_ALL hung once; fix or sample by thread id),
-   (4) VU1 register file in host registers, (5) dump + --gen the title/online VU1 images.
+   (4) VU1 register file in host registers, (5) title, menus and the online lobby run the same VU1 image (verified 08:20): nothing to add; use
+   `scripts/parity/launch_to_online_fast.txt` for the lobby (the fixed-press scripts miss ONLINE now).
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
