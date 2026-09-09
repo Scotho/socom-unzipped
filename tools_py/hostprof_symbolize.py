@@ -61,16 +61,20 @@ def main():
     ext = 0
     with open(a.hist) as f:
         header = f.readline().strip()
+        threads = []
         for line in f:
             parts = line.split()
             if len(parts) < 2:
+                continue
+            if parts[0] == "thread":
+                threads.append((int(parts[2]), parts[1], " ".join(parts[3:])))
                 continue
             rva = int(parts[0], 16)
             n = int(parts[1])
             total += n
             if len(parts) > 2 and parts[2] == "ext":
                 ext += n
-                per_fn["<other module (system DLL / GL driver)>"] += n
+                per_fn["<ext> " + (parts[3].split("+")[0] if len(parts) > 3 else "?")] += n
                 continue
             va = base + rva
             i = bisect.bisect_right(addrs, va) - 1
@@ -79,6 +83,8 @@ def main():
     names = [k for k, _ in per_fn.most_common(a.top)]
     dm = demangle(names)
     print(header, f"(samples in file {total}, other modules {ext})")
+    for n, tid, desc in sorted(threads, reverse=True)[:12]:
+        print(f"  thread {tid:>6} {n:7d} {100.0 * n / max(1, total):5.1f}%  {desc}")
     for name, n in per_fn.most_common(a.top):
         print(f"{100.0 * n / max(1, total):6.2f}%  {n:7d}  {dm.get(name, name)}")
 

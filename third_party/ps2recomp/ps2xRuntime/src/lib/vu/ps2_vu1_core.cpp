@@ -21,6 +21,9 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include <filesystem>
 #include <limits>
 #include <ps2_log.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace
 {
@@ -2152,7 +2155,13 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     {
         static const char *s_dumpEnv = std::getenv("PS2X_VU1_DUMP");
         extern std::atomic<bool> g_ps2xTraceArmed;
-        if (s_dumpEnv && g_ps2xTraceArmed.load(std::memory_order_relaxed))
+        // PS2X_VU1_DUMP_AFTER=<seconds>: arm the dump on a timer instead of PS2X_TRIGGER (title /
+        // online screens have no convenient trigger value).
+        static const double s_dumpAfter = std::getenv("PS2X_VU1_DUMP_AFTER") ? std::atof(std::getenv("PS2X_VU1_DUMP_AFTER")) : 0.0;
+        static const auto s_dumpStart = std::chrono::steady_clock::now();
+        const bool timerArmed = s_dumpAfter > 0.0 &&
+                                std::chrono::duration<double>(std::chrono::steady_clock::now() - s_dumpStart).count() >= s_dumpAfter;
+        if (s_dumpEnv && (g_ps2xTraceArmed.load(std::memory_order_relaxed) || timerArmed))
         {
             static std::string s_dumpDir;
             static int s_dumpMax = 150;
@@ -2580,10 +2589,34 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 const uint64_t flips = g_gsSwapDBuffCount.load(std::memory_order_relaxed);
                 const uint64_t syncs = g_gsSyncVCount.load(std::memory_order_relaxed);
                 const double seconds = std::chrono::duration<double>(now - s_last).count();
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f\n",
+                // CPU time of this (game) thread and of the whole process per wall second: tells
+                // whether the frame rate is bound by this thread or by another (GL) thread.
+                double threadMs = 0.0, procMs = 0.0;
+#ifdef _WIN32
+                {
+                    static uint64_t s_lastThread = 0, s_lastProc = 0;
+                    FILETIME c, e, k, u;
+                    if (GetThreadTimes(GetCurrentThread(), &c, &e, &k, &u))
+                    {
+                        const uint64_t t = ((static_cast<uint64_t>(k.dwHighDateTime) << 32) | k.dwLowDateTime) +
+                                           ((static_cast<uint64_t>(u.dwHighDateTime) << 32) | u.dwLowDateTime);
+                        threadMs = static_cast<double>(t - s_lastThread) / 10000.0 / seconds;
+                        s_lastThread = t;
+                    }
+                    if (GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u))
+                    {
+                        const uint64_t t = ((static_cast<uint64_t>(k.dwHighDateTime) << 32) | k.dwLowDateTime) +
+                                           ((static_cast<uint64_t>(u.dwHighDateTime) << 32) | u.dwLowDateTime);
+                        procMs = static_cast<double>(t - s_lastProc) / 10000.0 / seconds;
+                        s_lastProc = t;
+                    }
+                }
+#endif
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
-                             static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds);
+                             static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,
+                             threadMs, procMs);
                 s_lastFlips = flips;
                 s_lastSyncV = syncs;
                 s_last = now;

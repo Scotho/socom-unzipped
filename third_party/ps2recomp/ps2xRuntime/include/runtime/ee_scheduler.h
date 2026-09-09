@@ -449,4 +449,5 @@ private:
     mutable std::mutex m_snapshotMutex;
     EeKernelSnapshot m_snapshot;
     uint64_t m_snapshotSequence = 0;
+    uint64_t m_snapshotPublishedCycle = ~0ull; // eeCycle of the last published snapshot (rate limit)
 };

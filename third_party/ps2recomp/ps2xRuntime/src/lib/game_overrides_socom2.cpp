@@ -24,6 +24,7 @@
 #include <unordered_map>
 #ifdef _WIN32
 #include <windows.h>
+#include <tlhelp32.h>
 #endif
 #include <chrono>
 #include <cstdlib>
@@ -1171,6 +1172,10 @@ void ps2HostProfStart(void *nativeHandle)
     const double periodMs = std::max(0.2, std::atof(env));
     const char *outEnv = std::getenv("PS2X_HOST_PROF_OUT");
     const std::string outPath = outEnv && *outEnv ? outEnv : "logs/hostprof.txt";
+    // PS2X_HOST_PROF_ALL=1: sample every thread of the process (the game thread alone may show only
+    // part of the work). Samples are merged into one histogram plus a per-thread table; addresses
+    // outside the exe are written with their module name ("ext <module>+off").
+    const bool allThreads = std::getenv("PS2X_HOST_PROF_ALL") != nullptr;
     HANDLE dup = nullptr;
     if (!DuplicateHandle(GetCurrentProcess(), static_cast<HANDLE>(nativeHandle), GetCurrentProcess(), &dup,
                          THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0))
@@ -1179,33 +1184,74 @@ void ps2HostProfStart(void *nativeHandle)
         return;
     }
     const uint64_t base = reinterpret_cast<uint64_t>(GetModuleHandleW(nullptr));
-    std::cout << "[host-prof] sampling every " << periodMs << " ms -> " << outPath << " (base 0x" << std::hex << base << std::dec << ")" << std::endl;
-    std::thread([dup, periodMs, outPath, base]() {
+    std::cout << "[host-prof] sampling every " << periodMs << " ms -> " << outPath << " (base 0x" << std::hex << base << std::dec
+              << (allThreads ? ", all threads" : "") << ")" << std::endl;
+    std::thread([dup, periodMs, outPath, base, allThreads]() {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
         std::unordered_map<uint64_t, uint32_t> counts;
+        std::unordered_map<DWORD, uint64_t> perThread;
+        std::unordered_map<DWORD, HANDLE> handles;
         uint64_t total = 0, suspendFail = 0;
         auto lastDump = std::chrono::steady_clock::now();
+        auto lastScan = std::chrono::steady_clock::time_point{};
+        const DWORD self = GetCurrentThreadId();
+        const DWORD pid = GetCurrentProcessId();
+        typedef HRESULT(WINAPI * GetThreadDescriptionFn)(HANDLE, PWSTR *);
+        const GetThreadDescriptionFn getDesc = reinterpret_cast<GetThreadDescriptionFn>(
+            reinterpret_cast<void *>(GetProcAddress(GetModuleHandleW(L"kernel32.dll"), "GetThreadDescription")));
         for (;;)
         {
             std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(periodMs));
-            if (SuspendThread(dup) == static_cast<DWORD>(-1))
-            {
-                if (++suspendFail > 100)
-                    break;
-                continue;
-            }
-            CONTEXT c;
-            std::memset(&c, 0, sizeof(c));
-            c.ContextFlags = CONTEXT_CONTROL;
-            uint64_t rip = 0;
-            if (GetThreadContext(dup, &c))
-                rip = c.Rip;
-            ResumeThread(dup);
-            if (rip)
-            {
-                ++counts[rip];
-                ++total;
-            }
             const auto now = std::chrono::steady_clock::now();
+            if (allThreads && now - lastScan >= std::chrono::seconds(2))
+            {
+                lastScan = now;
+                HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+                if (snap != INVALID_HANDLE_VALUE)
+                {
+                    THREADENTRY32 te;
+                    te.dwSize = sizeof(te);
+                    if (Thread32First(snap, &te))
+                    {
+                        do
+                        {
+                            if (te.th32OwnerProcessID != pid || te.th32ThreadID == self || handles.count(te.th32ThreadID))
+                                continue;
+                            HANDLE h = OpenThread(THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, te.th32ThreadID);
+                            if (h)
+                                handles[te.th32ThreadID] = h;
+                        } while (Thread32Next(snap, &te));
+                    }
+                    CloseHandle(snap);
+                }
+            }
+            auto sampleOne = [&](HANDLE h, DWORD tid) {
+                if (SuspendThread(h) == static_cast<DWORD>(-1))
+                {
+                    ++suspendFail;
+                    return;
+                }
+                CONTEXT c;
+                std::memset(&c, 0, sizeof(c));
+                c.ContextFlags = CONTEXT_CONTROL;
+                uint64_t rip = 0;
+                if (GetThreadContext(h, &c))
+                    rip = c.Rip;
+                ResumeThread(h);
+                if (rip)
+                {
+                    ++counts[rip];
+                    ++perThread[tid];
+                    ++total;
+                }
+            };
+            if (allThreads)
+            {
+                for (auto &kv : handles)
+                    sampleOne(kv.second, kv.first);
+            }
+            else
+                sampleOne(dup, 0);
             if (now - lastDump >= std::chrono::seconds(10))
             {
                 lastDump = now;
@@ -1216,10 +1262,42 @@ void ps2HostProfStart(void *nativeHandle)
                 size_t n = 0;
                 for (const auto &kv : v)
                 {
-                    f << std::hex << (kv.first >= base ? kv.first - base : kv.first) << std::dec << " " << kv.second
-                      << (kv.first >= base ? "" : " ext") << "\n";
-                    if (++n >= 20000u)
+                    HMODULE mod = nullptr;
+                    const bool inExe = GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                                          reinterpret_cast<LPCWSTR>(kv.first), &mod) &&
+                                       reinterpret_cast<uint64_t>(mod) == base;
+                    if (inExe)
+                        f << std::hex << kv.first - base << std::dec << " " << kv.second << "\n";
+                    else
+                    {
+                        char name[MAX_PATH] = {0};
+                        if (mod)
+                            GetModuleFileNameA(mod, name, sizeof(name));
+                        const char *slash = std::strrchr(name, '\\');
+                        f << std::hex << kv.first << std::dec << " " << kv.second << " ext " << (mod ? (slash ? slash + 1 : name) : "?")
+                          << "+0x" << std::hex << (mod ? kv.first - reinterpret_cast<uint64_t>(mod) : 0) << std::dec << "\n";
+                    }
+                    if (++n >= 40000u)
                         break;
+                }
+                if (allThreads)
+                {
+                    for (const auto &kv : perThread)
+                    {
+                        std::string desc;
+                        auto it = handles.find(kv.first);
+                        if (it != handles.end() && getDesc)
+                        {
+                            PWSTR w = nullptr;
+                            if (SUCCEEDED(getDesc(it->second, &w)) && w)
+                            {
+                                for (PWSTR q = w; *q; ++q)
+                                    desc += static_cast<char>(*q < 128 ? *q : '?');
+                                LocalFree(w);
+                            }
+                        }
+                        f << "thread " << kv.first << " " << kv.second << " " << desc << "\n";
+                    }
                 }
                 f.close();
                 std::error_code ec;

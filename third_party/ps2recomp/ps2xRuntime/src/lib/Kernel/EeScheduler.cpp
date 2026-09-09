@@ -89,6 +89,7 @@ EeScheduler::~EeScheduler()
 void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
 {
     m_executorThread = std::this_thread::get_id();
+    m_snapshotPublishedCycle = ~0ull;
     m_rdram = rdram;
     m_readyQueues = {};
     m_threads.clear();
@@ -1556,6 +1557,12 @@ EeKernelSnapshot EeScheduler::snapshot() const
 
 void EeScheduler::publishSnapshot()
 {
+    // The snapshot only feeds 1 Hz samplers, the debug panel and the crash report: publishing it
+    // (three sorted copies of the kernel tables) on every scheduler event cost ~7% of the game
+    // thread in the mission. Publish at most every 50 ms of guest time (and on the first call).
+    if (m_snapshotPublishedCycle != ~0ull && m_eeCycle - m_snapshotPublishedCycle < kEeClockHz / 20u)
+        return;
+    m_snapshotPublishedCycle = m_eeCycle;
     EeKernelSnapshot next{};
     next.sequence = ++m_snapshotSequence;
     next.eeCycle = m_eeCycle;
