@@ -41,16 +41,18 @@
    backend re-reads only the exact uploaded rectangle from the shadow VRAM (dirty rects + band
    mask). Any future "stale content reappears" report: look at refreshRenderTargetsFromShadow /
    refreshDirtyRows first; tools are PS2X_GS_TRACE_DIRTY, PS2X_GS_PROBE, PS2X_GS_DUMP_DISPLAY.
-1b. **Frame rate (STATUS 07:30): mission gameplay 29-31 frames/s, menus 55+.** VU1 image recompiled
-   (`PS2X_VU1_GEN=0` = fast interpreter 18 ns/cycle, `PS2X_VU1_FAST=0` = exact 100); scheduler
-   clock batching; row-span GS uploads; pooled arbiter. Measure with `PS2X_VU_STATS=1
-   PS2X_VU1_BAILHIST=1` and `python tools_py/vu1stats_summary.py` (syncv/s = frames/s; compare the
-   gameplay phase, ~2.9 M VU1 cycles/frame). Profile with `PS2X_HOST_PROF=1 PS2X_HOST_PROF_STACKS=1`
-   + `tools_py/hostprof_stacks.py`. Next: (1) keep the VU1 program regenerated from all dumps + `[vu1-bail]` pcs (900 dumps verified,
-   hand-backs 32/s, seeds file logs/vu1_seeds_mission.txt), (2) pooled record/Cmd buffers in gs_gl_backend.cpp (~5%), (3) the GL thread is
-   at 100% of a core — profile it (PS2X_HOST_PROF_ALL hung once; fix or sample by thread id),
-   (4) VU1 register file in host registers, (5) title, menus and the online lobby run the same VU1 image (verified 08:20): nothing to add; use
-   `scripts/parity/launch_to_online_fast.txt` for the lobby (the fixed-press scripts miss ONLINE now).
+1b. **Frame rate (STATUS 13:30): mission gameplay 30-42 frames/s, menus/lobby 59.** Landed today:
+   VU1 fast path + microcode recompiler (900-dump golden, `PS2X_VU1_GEN=0` / `PS2X_VU1_FAST=0` /
+   `PS2X_VU0_FAST=0` revert layers), scheduler clock batching and idle fast paths, GS row-span
+   uploads/decodes, copy-free arbiter, GL command-buffer pooling, render targets sampled directly
+   (`PS2X_GS_RT_TEXTURE=0` reverts). Measure: `PS2X_VU_STATS=1 PS2X_VU1_BAILHIST=1` +
+   `python tools_py/vu1stats_summary.py` (syncv/s = frames/s; compare phases by VU1 cycles/frame).
+   Profile: `PS2X_HOST_PROF=1 PS2X_HOST_PROF_STACKS=1` (+ `_MAIN=1` for the GL thread) and
+   `tools_py/hostprof_stacks.py`. Gates after any GS change: title_menu.txt (labels + movie),
+   transition_probe.txt + `tools_py/parity/black_rows.py` (rows 396-447 black), mission diag sheet
+   (HUD crisp). Next levers: VU1 register file in host registers (VU1 ~20% of the game thread at
+   ~7 ns/cycle), sceMpegDemuxPssRing on the game thread (~5% in the mission), guest malloc
+   emulation (unordered_map, ~2%).
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:

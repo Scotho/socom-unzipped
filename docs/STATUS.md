@@ -22,6 +22,28 @@ now needs 34 presses since the faster boot (no functional issue).
 Tools: drive.py `hold+<s>:KEY` (W/A/S/D left stick, I/J/K/L right stick, R1/L1... buttons),
 `untilref(<png>,y0,y1,x0,x1,loops,thresh)`, `burst+<s>:NONE`; scripts/parity/ref_hud_ours.png.
 
+## 2026-09-09 13:30 (local) — GL thread: cached trace switches, row-span texture decode, buffer pooling, render targets sampled directly (no readback); all three parity gates clean
+Commits ff7bdac and 1c63db7 (gs_gl_backend.cpp, after main's 9dbe933 dirty-rect fix, whose
+semantics are untouched): traceSkip caches its getenv lookups (4.4% of the GL thread with tracing
+off); decodeTexture reads row spans through GSMem::ReadSpan and converts per row (14%); the
+executed CommandBuffer is a member swapped with m_pending so both keep their capacity (no per-frame
+vector growth on the game thread, ~7% of it); and resolveTexture samples a GPU-drawn render
+target's own colour texture when a texel-coordinate, clamp/region-clamp draw textures from exactly
+that target in CT32 (pending shadow->GPU rectangles applied first; never for the target being drawn
+into) — the readback+decode was 26% of the GL thread. `PS2X_GS_RT_TEXTURE=0` restores the readback.
+
+**Gates.** title_menu.txt (runs gl_title, rt_title): 20 clean title captures (movie background,
+crisp LOAD GAME / NEW GAME / ONLINE) then the attract cinematic; transition_probe.txt (gl_transition,
+rt_transition): rows 396-447 peak 0 on every black-screen frame (`tools_py/parity/black_rows.py`,
+scores only frames whose upper rows are black; main's rects_transition baselines at 0); mission
+diag (gl_mission, rt_mission): sheets identical to sched2_1, HUD text / minimap / squad panel crisp.
+
+**Numbers.** [vu1-stats] `proc` minus `thread`: the GL thread went from ~1000 ms/s (a full core,
+half of it the vsync wait) to 0-650 ms/s in the mission; main's gameplay probe on this build
+reports 36-42 fps (cdd2c4c). Mission frame rate in the diag script varies with the scene (2.4-4.2 M
+VU1 cycles per frame between runs), so compare phases by cycles/frame. GL-thread profile of this
+build: pending (run glprof_3 queued behind the lock).
+
 ## 2026-09-09 12:10 (local) — menu-video strip before the briefing FIXED: shadow->GPU refresh now re-reads exactly the uploaded rectangle, not the enclosing rows
 User report (07:45): a strip of the main-menu video at the bottom of the black screen just before
 the mission briefing (rows 396-447 of the 448-row frame, flickering every other frame). Console
