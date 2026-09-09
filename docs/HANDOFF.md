@@ -1,9 +1,62 @@
 >>> The 2026-09-08 data-loss incident is RESOLVED (game/ and tools/ restored, see STATUS). The
 >>> section below is the current pick-up; everything under "The vision" is background.
 
-# Handoff — SOCOM II PC recompilation (2026-09-08 23:30)
+# Handoff — SOCOM II PC recompilation (2026-09-09 03:40)
 
-## START HERE — pick up the autonomous loop (written 2026-09-08 23:30 for the next agent)
+## START HERE (2026-09-09 03:40) — state after the overnight loop; the section below it is the previous pick-up and still describes the run recipes
+
+**Landed tonight (all on `develop`, last 0a154aa; read STATUS 2026-09-09 entries top-down):**
+- 47ffc73 **VU0 macro-mode FMAC ops now set the MAC/STATUS flags** (they never did; only CTC2
+  wrote them) and VCLIP uses the manual's bit order against |w|. The EE's camera-frustum box
+  test (FUN_00290c30) read those flags, called everything "fully inside" and sent near objects
+  through the no-clip VU1 list (word 8 of FUN_003b5f20's command list instead of word 2). The
+  giant sky polygons are gone; the mission intro renders like the golden run (mission_s16,
+  dump run s17: 0/3164 vertices with q<0, was 108/1878). Lesson: when the EE chooses a render
+  path, check the VU0 flag registers (CFC2 of STATUS/MAC/CLIP) before the VU1 side.
+- 48e285d/dc99469 diagnostics: `PS2X_CALL_TRACE_DUMP="Name:a1[+off][*]:words"` prints guest
+  words behind a traced call's argument after it returns; `PS2X_GS_TRACE_PAGES=0xPAGE:count`
+  logs every VRAM-page event in the GL backend; `PS2X_GIF_TRACE=<n>` logs GIF submissions;
+  `tools_py/parity/probe_poll.py` and `state_poll.py` poll PCSX2 memory at a savestate over
+  PINE; `tools_py/parity/p2s_extract.py` pulls eeMemory.bin/Scratchpad.bin out of a .p2s.
+  New PCSX2 savestate slot 6 = the title screen (logs/parity/title_pcsx2.rdram is its EE
+  memory); slot 8 = spawn, slot 7 = post-load.
+
+**Open items, in order, each with its first step:**
+1. **Title labels garbled (user report 01:50, top priority — the user watches this screen).**
+   Root mechanism found (STATUS 03:20): a 512x256 CT32 upload to block 0x2bc0 (pages
+   0x15e..0x19d) every third frame overwrites the label pages 0x190/0x192/0x194; it is the
+   menu-movie texture set (class vtable 0x6f0330, base 0x2bc0 limit 0x33d8, object at 0x7abcc0
+   on ours) flushing MENULOOP.PSS frames (640x448 decoded by our sceMpeg, delivered into the
+   512 KB double buffer 0x15493b0/0x15c93b0, uploaded by FUN_00356e90 -> FUN_00356d20, ra
+   0x357028). PCSX2 at the title has no such set, no such packet (RAM or scratchpad) and a
+   static background for 90 s: the console does not play the menu movie at that point, so
+   its labels are never overwritten. Next: find what starts the dlgMenu movie element
+   (`run/movies/common/menuloop.pss` in dlgMenu.rdr, live element on ours at 0x7ab940..) on
+   ours and not on the console — trace FUN_00356be0's callers (lines 50944/51042/51333 in the
+   decomp) and the sceMpegCreate for lbn 0xdd218 (MENULOOP) back to the UI command that
+   issued it (PS2X_CALL_TRACE on 0x356be0 + the UI_COMMAND dispatcher), then compare the UI
+   variable it tests against PCSX2 (title_pcsx2.rdram / PINE). Do NOT "fix" this in the GS or
+   the GIF arbiter: the uploads are real and ordered correctly; the game simply should not be
+   playing that movie there. Verify with `scripts/parity/launch_to_mission_diag.txt` +
+   `PS2X_PC_SAMPLER=1` (GL backend), which reproduces the garbling every run; title_only runs
+   and the CPU backend sometimes look clean by timing luck.
+2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
+   (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
+   Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
+   mover +0x5c = 4.0 vs 6.3338, +0x70..+0x7c differ, actor +0x10 state 0x00080502 vs 0x2,
+   actor +0x2bc.. holds a cached ground point on ours. Next: trace the mover's update method
+   (writer of mover+0x90.y) with PS2X_CALL_TRACE_DUMP on the mover object; the s16 peek rows
+   show the actor placed at the console height (-125.97) then dropping to -135.9 and settling
+   at -131.7, i.e. a gravity/step overshoot, not a placement error.
+3. **Frame rate**: unchanged (VU1 interpreter ~0.7 s host per second); fast path or recompiler.
+4. Then the mission parity report (`tools_py/parity/compare`) against pcsx2_mission_g.
+
+**Run hygiene learned tonight:** `PS2X_VU1_DUMP` and `PS2X_RDRAM_DUMP` do not create
+directories; the poller scripts leave pcsx2-qt.exe running if killed early (drive.py then
+refuses to start — `taskkill /F /IM pcsx2-qt.exe`); timed RDRAM dumps miss the spawn when the
+boot drifts — prefer `PS2X_RDRAM_DUMP_AT=<path>:<TracedName>#<n>` or a late fixed time (400 s).
+
+## Previous pick-up (written 2026-09-08 23:30) — run recipes below are still current
 
 **Mandate.** The user is away and wants in-game visual parity with PCSX2 for the single-player
 mission ("lots of menus, little actual game"), worked autonomously in bounded steps: one hypothesis
