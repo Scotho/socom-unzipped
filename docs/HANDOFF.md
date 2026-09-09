@@ -309,7 +309,7 @@ The shell now renders text and layout like the original (STATUS 17:00). By repor
 screens are: **main menu** (79) and the **controller configuration** screens (black on ours;
 golden s09/s10). Evidence gathered 17:40 (`tools_py/iso_lbn.py … log <run.log>` on a
 `PS2X_CD_TRACE=1` run): the menu's "soldier art" background is the looping movie
-`RUN/MOVIES/COMMON/MENULOOP.PSS` (read �—16) and the roller is `RUN/UI/UI_GEO.ZED` /
+`RUN/MOVIES/COMMON/MENULOOP.PSS` (read ×16) and the roller is `RUN/UI/UI_GEO.ZED` /
 `UI_MDL.ZED` (+ UI_TXR/UI_PAL), all of which *are* read from disc. At the menu the frame dump
 shows `mscal` rising but `xgkick=0`, `hdrKick=0/N`: VU1 programs run, none kicks geometry.
 `PS2X_TRACE_VU=2000` at the menu dumps the program (`logs/vu1_code.bin`, first XGKICK at 0x50)

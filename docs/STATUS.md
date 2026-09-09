@@ -700,7 +700,7 @@ traces (details in `docs/research/07 §Resolution 2`):
 
 **Next bottleneck: the CPU rasterizer.** With the UI up the game submits ~370 sprites and ~1M
 textured pixels per frame; `GSCpuBackend::SampleTexture` does a swizzled VRAM read plus a CLUT
-lookup per texel (�—4 when bilinear) so the frame rate drops to 13-17 fps (lldb shows the game
+lookup per texel (×4 when bilinear) so the frame rate drops to 13-17 fps (lldb shows the game
 thread inside `DrawSprite`→`SampleTexture` from the guest's DMA kick — it is slow, not stuck).
 Options: a decoded-texture cache keyed by (tbp0,tbw,psm,size,CLUT) with page-dirty invalidation,
 or the M4 GPU backend. Also visible: the dialog's highlighted row renders as a striped bar
@@ -776,7 +776,7 @@ Shell flow observed (call trace, `8:START,16:CROSS`): boot → `do_onstart`, `in
 GetNumSavedGames (sceMcGetDir SaveGame0..9 → none), `IF GotSaveGames > …` → then a 1.5 s
 `has_memcard_changed` poll loop. CROSS = the **new_game_button** → event `UiprepMission1`:
 SOUND, `SuspendMenuInput 0.75` (writes shell+0x900, decremented per frame in `FUN_003654c0`),
-OBJECT_ACTIVE_STATE �—3 (menu objects → INACTIVE: this is why the screen goes black), then the
+OBJECT_ACTIVE_STATE ×3 (menu objects → INACTIVE: this is why the screen goes black), then the
 sequence engine stops ticking. The engine's main tick `FUN_001ebed0(dt, app)` then runs its
 fade-to-mission countdown branch (`app+0xc8 -= dt; f = app+0xc8 * app+0xc4; f < 0 →
 FUN_002a9a70(0x4364e0)` → push mission state 0x4086a0 via `FUN_002cf380(0x4084c0, …)`), but
@@ -803,7 +803,7 @@ vertices (no 3D roller). Locale archives do load (`LoadLocale "UIMn"` ok), so ca
 
 ## 2026-09-05 19:10 — root cause of the stalled "new game": an unrecompiled trampoline
 Runner R2 of the `UiprepMission1` animation (three runners: button anim → SOUND, motion,
-`SuspendMenuInput`; fade → OBJECT_OPACITY_FROM_TO + OBJECT_ACTIVE_STATE�—3; then a sequence of
+`SuspendMenuInput`; fade → OBJECT_OPACITY_FROM_TO + OBJECT_ACTIVE_STATE×3; then a sequence of
 14 `VALVE` nodes) stays in state 4 with its current node pointer on the first VALVE node
 forever. VALVE is registered by `FUN_0026a8e0(0x414bb0, "VALVE", parse=0x3535d0, 0,
 exec=0x353d00, 0)` (decomp line 252352) and **0x353d00 is not a function in the Ghidra CSV**: it is
@@ -841,7 +841,7 @@ should populate is empty.
 
 **Unified conclusion (2026-09-05, verified by `PS2X_TRACE_VU`):** the render pipeline is *correct*
 and the black screen is a **game-state** condition, not a GS/VU bug. Full write-up in
-`docs/research/07 §Resolution`. The one render program the game MSCALs (startPC=0x0, ~748�— identical)
+`docs/research/07 §Resolution`. The one render program the game MSCALs (startPC=0x0, ~748× identical)
 reads its input command header from double-buffered VU memory at TOP (0x1a8/0x2d4) = `[0,0,0,1]`
 (empty/skip) and correctly branches over the XGKICK at 0x50 — the game is feeding it an empty
 display list. GS, rasterizer, framebuffer, presentation, VIF1 feed, VU1 execution and XGKICK decode
