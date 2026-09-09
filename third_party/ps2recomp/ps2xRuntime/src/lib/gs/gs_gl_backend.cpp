@@ -24,6 +24,28 @@ namespace
     constexpr uint32_t kHostFrameWidth = 640u;
     constexpr uint32_t kHostFrameHeight = 512u;
 
+    // PS2X_GS_TRACE_PAGES="0xPAGE:count": log every shadow/GPU event that touches those VRAM
+    // pages (uploads, local copies, render-target refreshes, downloads, GPU draws, texture
+    // decodes) with the frame number — the order of who wrote what into a page that a texture
+    // is later decoded from (SOCOM II's title labels: pages 0x190..0x195 inside frame buffer
+    // 0x8c's row band).
+    bool tracePagesHit(uint32_t page, uint32_t count)
+    {
+        static const char *const s_env = std::getenv("PS2X_GS_TRACE_PAGES");
+        static uint32_t s_page = 0u, s_count = 0u;
+        static bool s_parsed = false;
+        if (!s_env)
+            return false;
+        if (!s_parsed)
+        {
+            s_parsed = true;
+            char *end = nullptr;
+            s_page = static_cast<uint32_t>(std::strtoul(s_env, &end, 0));
+            s_count = (end && *end == ':') ? static_cast<uint32_t>(std::strtoul(end + 1, nullptr, 0)) : 1u;
+        }
+        return page < s_page + s_count && page + count > s_page;
+    }
+
     uint32_t rgba5551To8888(uint32_t c)
     {
         const uint32_t r = (c & 0x1Fu) << 3;
@@ -959,6 +981,10 @@ void GSGlBackend::executeTransfer(const GSTransferCommand &command)
         const uint32_t page = command.bitbltbuf.dbp >> 5;
         const uint32_t span = pageSpan(command.bitbltbuf.dpsm, command.bitbltbuf.dbw, command.trxpos.dsay + command.trxreg.rrh);
         markShadowPages(page, span);
+        if (tracePagesHit(page, span))
+            std::fprintf(stderr, "[gs-pages] frame=%llu local-copy sbp=%05x -> dbp=%05x dbw=%u %ux%u pages %03x+%u\n",
+                         (unsigned long long)m_frameCounter, command.bitbltbuf.sbp, command.bitbltbuf.dbp, command.bitbltbuf.dbw,
+                         command.trxreg.rrw, command.trxreg.rrh, page, span);
         refreshRenderTargetsFromShadow(page, span, command);
     }
     if (m_movieStartFrame == 0u && command.trxreg.rrw == 16u && command.trxreg.rrh == 16u && command.bitbltbuf.dbw == 10u &&
@@ -977,6 +1003,10 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     const uint32_t page = t.bitbltbuf.dbp >> 5;
     const uint32_t span = pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, t.trxpos.dsay + t.trxreg.rrh);
     markShadowPages(page, span);
+    if (tracePagesHit(page, span))
+        std::fprintf(stderr, "[gs-pages] frame=%llu upload dbp=%05x dbw=%u psm=%02x dst=(%u,%u) %ux%u pages %03x+%u bytes=%zu\n",
+                     (unsigned long long)m_frameCounter, t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.bitbltbuf.dpsm,
+                     t.trxpos.dsax, t.trxpos.dsay, t.trxreg.rrw, t.trxreg.rrh, page, span, size);
     // Uploads arrive in chunks; refresh overlapping render targets once per completed rectangle.
     m_uploadReceivedBytes += size;
     if (m_uploadExpectedBytes != 0u && m_uploadReceivedBytes >= m_uploadExpectedBytes)
@@ -1063,6 +1093,13 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     const uint32_t y0 = rt.dirtyRowFirst;
     const uint32_t y1 = std::min<uint32_t>(rt.dirtyRowLast, rt.height);
     const uint32_t w = std::min<uint32_t>(rt.width, rt.fbw * 64u);
+    {
+        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+        const uint32_t p0 = rt.fbp + (y0 / ph) * ppr, p1 = rt.fbp + ((y1 + ph - 1u) / ph) * ppr;
+        if (p1 > p0 && tracePagesHit(p0, p1 - p0))
+            std::fprintf(stderr, "[gs-pages] frame=%llu refresh shadow->gpu rt fbp=%03x rows %u..%u pages %03x+%u\n",
+                         (unsigned long long)m_frameCounter, rt.fbp, y0, y1, p0, p1 - p0);
+    }
     if (y1 <= y0 || w == 0u)
         return;
     std::vector<uint32_t> pixels(static_cast<size_t>(w) * (y1 - y0));
@@ -1110,6 +1147,13 @@ void GSGlBackend::noteGpuRows(RenderTarget &rt, uint32_t y0, uint32_t y1)
 {
     if (y1 <= y0)
         return;
+    {
+        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+        const uint32_t p0 = rt.fbp + (y0 / ph) * ppr, p1 = rt.fbp + ((y1 + ph - 1u) / ph) * ppr;
+        if (p1 > p0 && tracePagesHit(p0, p1 - p0))
+            std::fprintf(stderr, "[gs-pages] frame=%llu gpu-draw rt fbp=%03x rows %u..%u pages %03x+%u (dirty %d %u..%u)\n",
+                         (unsigned long long)m_frameCounter, rt.fbp, y0, y1, p0, p1 - p0, rt.dirtyRows ? 1 : 0, rt.dirtyRowFirst, rt.dirtyRowLast);
+    }
     if (!rt.gpuRows)
     {
         rt.gpuRowFirst = y0;
@@ -1153,6 +1197,14 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;
     const uint32_t yEnd = rt.gpuRows ? std::min(h, rt.gpuRowLast) : 0u;
     const uint32_t xEnd = std::min<uint32_t>(rt.width, std::max<uint32_t>(1u, rt.fbw) * 64u);
+    if (yEnd > yStart)
+    {
+        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+        const uint32_t p0 = rt.fbp + (yStart / ph) * ppr, p1 = rt.fbp + ((yEnd + ph - 1u) / ph) * ppr;
+        if (p1 > p0 && tracePagesHit(p0, p1 - p0))
+            std::fprintf(stderr, "[gs-pages] frame=%llu download gpu->shadow rt fbp=%03x rows %u..%u (skip dirty %d %u..%u) pages %03x+%u\n",
+                         (unsigned long long)m_frameCounter, rt.fbp, yStart, yEnd, rt.dirtyRows ? 1 : 0, rt.dirtyRowFirst, rt.dirtyRowLast, p0, p1 - p0);
+    }
     for (uint32_t y = yStart; y < yEnd; ++y)
     {
         // Rows an image upload wrote into the shadow after the last GPU draw hold the newest
@@ -1196,6 +1248,14 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;   // see downloadRenderTargetToShadow
     const uint32_t yEnd = rt.gpuRows ? std::min(h, rt.gpuRowLast) : 0u;
     const uint32_t xEnd = std::min<uint32_t>(rt.width, std::max<uint32_t>(1u, rt.fbw) * 64u);
+    if (yEnd > yStart)
+    {
+        const uint32_t ph = pageHeightForPsm(rt.psm), ppr = std::max<uint32_t>(1u, rt.fbw);
+        const uint32_t p0 = rt.fbp + (yStart / ph) * ppr, p1 = rt.fbp + ((yEnd + ph - 1u) / ph) * ppr;
+        if (p1 > p0 && tracePagesHit(p0, p1 - p0))
+            std::fprintf(stderr, "[gs-pages] frame=%llu download gpu->cpu rt fbp=%03x rows %u..%u (skip dirty %d %u..%u) pages %03x+%u\n",
+                         (unsigned long long)m_frameCounter, rt.fbp, yStart, yEnd, rt.dirtyRows ? 1 : 0, rt.dirtyRowFirst, rt.dirtyRowLast, p0, p1 - p0);
+    }
     for (uint32_t y = yStart; y < yEnd; ++y)
     {
         if (rt.dirtyRows && y >= rt.dirtyRowFirst && y < rt.dirtyRowLast)   // see downloadRenderTargetToShadow
@@ -1637,6 +1697,10 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     outHeight = height;
     const uint32_t pageStart = tex.tbp0 >> 5;
     const uint32_t pageCount = pageSpan(tex.psm, tex.tbw, height);
+    if (tracePagesHit(pageStart, pageCount))
+        std::fprintf(stderr, "[gs-pages] frame=%llu texture tbp0=%05x tbw=%u psm=%02x %ux%u pages %03x+%u gpu-dirty=%d\n",
+                     (unsigned long long)m_frameCounter, tex.tbp0, tex.tbw, tex.psm, width, height, pageStart, pageCount,
+                     pagesMayBeGpuDirty(pageStart, pageCount) ? 1 : 0);
 
     // If the texture lives in pages a render target has drawn into, bring the shadow up to date.
     for (RenderTarget &rt : m_renderTargets)

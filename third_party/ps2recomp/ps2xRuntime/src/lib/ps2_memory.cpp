@@ -2005,6 +2005,51 @@ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t 
     if (!data || sizeBytes < 16)
         return;
 
+    // PS2X_GIF_TRACE=<lines>: log every GIF submission (path, bytes, PATH3 mask, leading GIFtag,
+    // and any A+D BITBLTBUF in the first 16 qwords) — the order in which the two upload paths
+    // reach the GS (SOCOM II's title labels are overwritten by the menu background when a
+    // PATH2 IMAGE transfer is split around a PATH3 one).
+    {
+        static const long s_traceMax = std::getenv("PS2X_GIF_TRACE") ? std::strtol(std::getenv("PS2X_GIF_TRACE"), nullptr, 0) : 0L;
+        static long s_traced = 0;
+        if (s_traceMax > 0 && s_traced < s_traceMax)
+        {
+            ++s_traced;
+            uint64_t tagLo = 0, tagHi = 0;
+            std::memcpy(&tagLo, data, 8);
+            std::memcpy(&tagHi, data + 8, 8);
+            const uint32_t nloop = static_cast<uint32_t>(tagLo & 0x7FFFu);
+            const uint32_t eop = static_cast<uint32_t>((tagLo >> 15) & 1u);
+            const uint32_t flg = static_cast<uint32_t>((tagLo >> 58) & 3u);
+            const uint32_t nreg = static_cast<uint32_t>((tagLo >> 60) & 0xFu);
+            uint32_t dbp = 0xFFFFFFFFu, dbw = 0, rrw = 0, rrh = 0;
+            const uint32_t scan = std::min<uint32_t>(sizeBytes / 16u, 16u);
+            for (uint32_t q = 1; q < scan; ++q)
+            {
+                uint64_t lo = 0, hi = 0;
+                std::memcpy(&lo, data + q * 16, 8);
+                std::memcpy(&hi, data + q * 16 + 8, 8);
+                if ((hi & 0xFFu) == 0x50u)
+                {
+                    dbp = static_cast<uint32_t>((lo >> 32) & 0x3FFFu);
+                    dbw = static_cast<uint32_t>((lo >> 48) & 0x3Fu);
+                }
+                else if ((hi & 0xFFu) == 0x52u)
+                {
+                    rrw = static_cast<uint32_t>(lo & 0xFFFu);
+                    rrh = static_cast<uint32_t>((lo >> 32) & 0xFFFu);
+                }
+            }
+            char line[256];
+            int n = std::snprintf(line, sizeof(line), "[gif-submit] path%u bytes=%u masked=%d drain=%d hl=%d tag nloop=%u eop=%u flg=%u nreg=%u",
+                                  static_cast<unsigned>(pathId), sizeBytes, m_path3Masked ? 1 : 0, drainImmediately ? 1 : 0, path2DirectHl ? 1 : 0,
+                                  nloop, eop, flg, nreg);
+            if (dbp != 0xFFFFFFFFu)
+                n += std::snprintf(line + n, sizeof(line) - n, " bitblt dbp=%05x dbw=%u trx=%ux%u", dbp, dbw, rrw, rrh);
+            std::fprintf(stderr, "%s\n", line);
+        }
+    }
+
     if (pathId == GifPathId::Path3)
     {
         if (m_path3Masked)
