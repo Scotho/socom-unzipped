@@ -1,8 +1,91 @@
->>> 2026-09-08: SEE docs/HANDOFF-2026-09-08.md FIRST — a worktree removal permanently deleted the
->>> git-ignored game/ and tools/ (ISO, PCSX2 installs + savestates + memcards, llvm-mingw, Ghidra,
->>> reCOM). Restore per its "STOP FIRST" section before any run or autonomous cycle.
+>>> The 2026-09-08 data-loss incident is RESOLVED (game/ and tools/ restored, see STATUS). The
+>>> section below is the current pick-up; everything under "The vision" is background.
 
-# Handoff — SOCOM II PC recompilation (2026-09-08 22:30)
+# Handoff — SOCOM II PC recompilation (2026-09-08 23:30)
+
+## START HERE — pick up the autonomous loop (written 2026-09-08 23:30 for the next agent)
+
+**Mandate.** The user is away and wants in-game visual parity with PCSX2 for the single-player
+mission ("lots of menus, little actual game"), worked autonomously in bounded steps: one hypothesis
+-> one build -> one run -> read the evidence -> commit -> STATUS entry. Online play (M5) is the
+long-term priority but is already reached; do not regress it. The user watches the TITLE SCREEN
+closely: every run passes it, so look at s05/s06 of each run sheet before trusting a build.
+
+**Where it stands (all committed on `develop`, last 692100e).**
+- EE side now matches PCSX2 in the mission: actors, collision grid, camera path and the camera
+  object's world / view-projection / projection / screen matrices (`*(0x488de8)` +0x2f0 / +0x330 /
+  +0x370 / +0x3b0) equal PCSX2's to 4 decimals. Fixes behind that: SQRT.S source register
+  (c9da469), EE/VU0 saturation (75dcadd), game thread rounds toward zero like the EE FPU (c57dccc).
+- Object geometry renders (trees, bushes, road) since XGKICK packets are copied at kick time
+  (089516b). mission_s13's last frame is the golden run's road-through-trees scene.
+- The picture is still mostly covered by giant sky-coloured polygons. They are ONE object at the
+  player's position (8 triangles, two 8-bit texture passes, tbp0 0x3621/0x3661), drawn through
+  the VU1 command-list entry 0x1b50 with commands b20 -> 1638 (backface test on MAC flags) -> 4a8
+  -> df8 (transform, DIV Q=1/w, NO near-plane clipping) -> f90 -> 1780 (emit) -> 22a0. Verified by
+  offline replay of 150 dumped programs: 108/1878 kicked vertices have q<0, all from that object
+  (4 consecutive frames); the 119 pc=0 world programs and the other 0x1b50 object are clean. The
+  VU1 flag pipeline behaves per the manual. So the console must not feed this object in this
+  state: the EE either culls it (bounding test) or gives it other data.
+- Related EE divergence: our player stands at y=-132.9 at spawn, PCSX2 at -126.26 (x/z equal):
+  ground height from the collision grid differs by 6.6 units.
+- Frame rate: VU1 interpreter 158 -> 111 ns/cycle (4960120) but still ~0.7 s host per second at
+  ~5 M cycles/s; the game runs at a few frames per second in the mission (`PS2X_VU_STATS=1`).
+
+**Next tasks, in order, each with its first step.**
+1. Identify the no-clip object and why the console does not draw it like this.
+   a. Find the EE code that builds that command list: the VU reads command words at `340(vi14)`
+      and jumps through the table at 0x1ba0 (index = word; b20 is entry 52, 1638 is 3, 4a8 is 50,
+      df8 is 4, f90 is 8, 1780 is 20, 22a0 is 24, end is 33). Search the recompiled/decomp code
+      (`game/analysis/socom2_game.elf.decomp.c`, `recomp/output`) for a packet builder that
+      stores that sequence of small integers into a VIF packet, or watch it: `PS2X_WATCH` on the
+      RDRAM source of the VIF1 DMA that carries it (`PS2X_TRACE_VIF=trig` prints the UNPACKs; the
+      command words land at VU address TOP+2.. per `ILW.x vi5, 340(vi14)`).
+   b. Read the submitter's visibility/bounding test (a float compare, now chop-rounded) and what
+      it uses as "camera position": VU constant qword 30 = (938.56, -124.37, 832.51) is the
+      player position, i.e. the object is back-face tested against the player, not the camera.
+   c. Cheap experiment while reading: skip drawing that object (env-gated, by tbp0 0x3621/0x3661
+      in the GL backend) to see the rest of the scene and re-grade the mission screens against
+      `logs/parity/runs/pcsx2_mission_g` (`tools_py/parity/compare`). Do not ship the skip.
+2. Ground height: compare the collision query for the spawn point (`FUN_002d49c0`, `FUN_002d2890`;
+   grid at world+0x684, 36x25 cells, scale 1/180) between ours and PCSX2's post-load image
+   `logs/parity/spawn_pcsx2.rdram` (PINE savestate slot 8). Suspects: chop rounding in the
+   height interpolation, or a terrain triangle missing from the grid.
+3. Frame rate: a non-cycle-exact VU1 fast path (immediate VF/VI writes, 4-deep MAC/status/clip
+   flag ring, Q/P by instruction count) or a VU1 recompiler. Profile first with
+   `PS2X_HOST_PROF=1`, copy logs/hostprof.txt before the mission and diff (STATUS 17:30).
+4. Then the parity report for the mission path, worst screen first (see "The grade").
+
+**The run you will repeat.** One game instance at a time (drive.py refuses otherwise); never build
+during a run; delete `logs/parity/latest_frame.png(.tmp)` before a run.
+```
+PS2X_MC_DIR=game/disc/mc0_parity PS2X_PC_SAMPLER=1 PS2X_PEEK="*0x488de8+0x320:3,0x416054:3" \
+PS2X_TRIGGER=938.5:940.5 PS2X_VU1_DUMP=logs/vu1dump2:150 PS2X_GS_TRACE_CMDS=trig \
+python -m tools_py.parity.drive --target ours --script scripts/parity/launch_to_mission_diag.txt \
+  --out logs/parity/runs/<stamp> --seconds 480 --tail 170 > logs/parity/drive_<stamp>.txt
+```
+The trigger arms when the camera x (first peeked word) reaches the gameplay value; the log is the
+newest `logs/run_*.log` (`[trigger]`, `[vu1-dump]`, `[gs-cmd]`, `[peek]` one row per second, no
+timestamps). Offline: `dist/vu1_replay.exe logs/vu1dump2/vu1_prog_N.bin --out p.pk [--trace]`
+(`PS2X_TRACE_VU_FLAGS=1`, `PS2X_TRACE_VU_STEPS=40000`), `python tools_py/gif_packets.py p.pk
+--verts`, `python tools_py/vu1dis.py <dump>`. Title-only A/B: `scripts/parity/title_only.txt`
+(frames every 6 s after the movie skip; the title is s06). CPU reference rasterizer:
+`PS2X_GS_BACKEND=cpu` — use it to tell GS-input bugs from GL texture-cache effects.
+
+**Build.** `./build.sh runtime` (3 min; a header change forces the 500-batch generated-code
+rebuild, ~10 min, and editing a header mid-build breaks the PCH — rebuild from scratch). Replay
+tool: `cmake --build third_party/ps2recomp/build-clang --target vu1_replay` then copy the exe
+into dist/ (it needs the DLLs there). `./build.sh all` after any recompiler change.
+
+**Gotchas learned today.** Boot flow drifts run to run (intro/location cinematics may or may not
+play): scripts navigate by screen state (`long`, `idle`, `until(x0,y0,x1,y1)` modes in drive.py),
+never by press counts. C++ patches: Edit tool or a Python script written with the Write tool
+(bash heredocs mangle backslashes; a failed assert writes nothing). Python subprocess needs
+os.path.join paths for exes. `PS2X_PEEK` needs `PS2X_PC_SAMPLER=1`. Commit with explicit
+`socom_pc/...` paths from C:\projects, never `git add -A`; leave `server/config/simulated.db`
+unstaged; trailers `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
+`Claude-Session: <session url>`. Update docs/STATUS.md (newest entry on top) and the memory
+file after each milestone.
+
 
 Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
 written so a fresh agent can continue **autonomously** toward the project vision without asking.
