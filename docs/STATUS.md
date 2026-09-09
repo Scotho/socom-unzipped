@@ -20,6 +20,14 @@ hand-backs 33/s (0x3828 now the top one). Progression today: 3 -> 10 -> 13 -> 19
 GSMem::ReadSpan (row-span texture reads, mirror of WriteSpan) is in for the GL backend's
 decodeTexture (per-pixel ReadCT32 today, 14% of the GL thread; main's file).
 
+**07:50 addendum.** GifArbiter::submit now processes a packet straight from the caller's buffer
+when its queue is empty (order-preserving: nothing but other submissions happens between a submit
+and the drain), which removes the per-XGKICK memcpy (run arb_1: 26-28 frames/s, sheet identical).
+The title screen and main menu run the mission VU1 image with entry pc 0 (150 dumps at the title,
+all hash 638cb8f0), so the recompiler already covers them (`interp-programs/s=0` at the title);
+the title itself runs at ~30 syncv/s with the game thread at 100% and VU1 at 2 ms/s — the menu
+movie decode/upload path, not VU1, if that ever matters. Online lobby image: dump in progress.
+
 ## 2026-09-09 06:20 (local) — VU1 program regenerated from 900 dumps (300 gameplay): hand-backs 850 -> 32/s, mission gameplay 22-29 frames/s
 The in-game `[vu1-bail]` histogram showed the generated code handing ~1100 programs/s to the
 interpreter at computed-jump targets (command handlers) the 300 intro-window dumps never
