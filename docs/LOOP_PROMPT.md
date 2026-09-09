@@ -37,3 +37,8 @@ runtime` (3 min; header change = 10 min); `python -m tools_py.parity.drive --tar
 `python -m tools_py.parity.montage <run> <sheet.png>` then Read the sheet; kill stray
 `pcsx2-qt.exe` before drive.py; `PS2X_VU1_DUMP`/`PS2X_RDRAM_DUMP` need existing directories;
 RDRAM dump paths must be Windows paths.
+
+## Lock protocol
+`scripts/loop_lock.sh take <owner>` before any `./build.sh`, `run.sh` or drive.py run;
+`scripts/loop_lock.sh release <owner>` after; `check` to inspect; `wait <owner> [minutes]` blocks
+until it is free (stale after 45 min). Offline tools (vu1_replay, python analysis) need no lock.
