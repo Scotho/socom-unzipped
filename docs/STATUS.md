@@ -1,4 +1,51 @@
-# Project status — updated 2026-09-09 02:40
+# Project status — updated 2026-09-09 04:05
+
+## 2026-09-09 04:05 (local) — VU1 microcode recompiler ("known programs"): 18 -> 12 ns/cycle in the mission, frame rate 10 -> 13 per second; the other 35 ms/frame is now outside VU1
+**What landed (commit 6dcf73d, default on; `PS2X_VU1_GEN=0` disables).** `vu1_replay --gen`
+turns a dumped 16 KB VU1 code image into one goto-threaded C++ function
+(src/lib/vu/generated/vu1_d418194495c25213.cpp for the mission image, md5 638cb8f0, all 300
+dumped programs) registered in vu1_known_programs.cpp; the interpreter hashes VU1 code memory
+(FNV-1a, only when the VIF MPG generation changes) and runs the matching function. The generated
+code is a static unrolling of the fast path with constant register indices and the same shared
+SSE FMAC helpers (ps2_vu1_ops.h): flag ring / Q / P timing kept exactly (commits deferred to
+readers, loop heads and every 16 pushes on a 64-entry ring), same-pair shadow rule, delay slots
+(also a branch inside a delay slot), E-bit end, and a hand-back to the interpreter with
+m_state.pc set for anything unsupported (cycle budget, computed-jump targets not seen in the
+profile, D/T bits). A dataflow pass over the image (per-lane "pairs since the last write" slack,
+"lane holds a normalized value") removes the ready checks and operand normalizations that cannot
+matter (1400 -> 62 VF ready checks in the mission image); the MADD/MSUB flag classification has a
+proved-exact float fast path (double/long double only near zero, overflow or cancellation; proof
+in ps2_vu1_ops.h); ACC stays in a host register across pairs; XGKICK copies whole GIFtag
+payloads. Tooling: `--pchist`/`--bailhist`/dispatch counters, `-g1` on the generated file so
+`--prof` maps to pairs (scratch script genprof), `[vu1-stats]` now prints `flips/s`
+(sceGsSwapDBuff — SOCOM II never calls it) and `syncv/s` (sceGsSyncV = one wait per presented
+frame: the frame-rate number).
+
+**Verification.** Offline: identical to the exact interpreter on all 300 dumps (packets,
+registers, flags, cycle counts), 0 hand-backs, `PS2X_VU1_FMAC_CHECK=1` clean; 10.0 ns/cycle vs
+21.4 (fast interpreter) and 92 (exact) in the same tool. In-game (same build, mission phase,
+last 60 s of each run): generated `[vu1-stats]` 45.1 M cycles/s at 12.1 ns/cycle, 27.9k
+programs/s, host 546 ms/s, **syncv/s 12.7** (run_20260909_034405, sheet vu1gen_1: title clean,
+intro clean, gameplay HUD at s33); `PS2X_VU1_GEN=0` baseline 32.9 M cycles/s at 18.5 ns/cycle,
+21.6k programs/s, host 605 ms/s, **syncv/s 10.2** (run_20260909_035139). Menus run at 50-57
+syncv/s in both. Yesterday's exact interpreter: 6.9 M cycles/s at 100 ns/cycle.
+
+**Where the time goes now.** The mission issues ~3.3-3.5 M VU1 cycles per presented frame
+(~2100 programs), so at 12 ns/cycle VU1 costs ~42 ms/frame and the rest of the runtime (EE
+recompiled code, VIF/DMA, GS front end on the game thread) ~35 ms/frame: frame time ~77 ms.
+Even a 4 ns/cycle VU1 (14 ms) leaves ~50 ms/frame -> 20 fps, so the next step for frame rate is
+a `PS2X_HOST_PROF` profile of the mission with this build to find the non-VU1 hot spots (the
+earlier profile, STATUS 2026-09-08 17:30, was taken when VU1 was 70% of the time). VU1 itself:
+the generated code's remaining cost is the FMAC flag build/push (~40% of its time), startXgkick
+(~5%), fastCommit (~3%); the register file still lives in memory (store-forwarding latency on
+dependent pairs), which a per-block register allocator could remove.
+
+**Caveats.** Only the mission image is recompiled; the title/UI and online images run on the
+fast interpreter until dumped (`PS2X_VU1_DUMP` at those screens, then `vu1_replay --gen` and a
+line in vu1_known_programs.cpp). The generator's DIV/SQRT/RSQRT skip the PS2X_FPU_TRAP
+diagnostics. Regenerating needs a bootstrap when the helper signatures change (scratch
+regen.sh: remove the generated file and its table entry, build vu1_replay, --gen, restore,
+build).
 
 ## 2026-09-09 02:40 (local) — VU1 fast path: 100 -> 18 ns/cycle in the mission (5.4x VU1 throughput), default on; the run reaches gameplay with the HUD
 The cycle-exact VU1 scheduler (per-instruction ready scan, pending-write queues, long double FMAC

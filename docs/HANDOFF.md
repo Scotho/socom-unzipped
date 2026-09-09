@@ -29,14 +29,16 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
-1b. **Frame rate — VU1 fast path landed (STATUS 02:40)**: default on, `PS2X_VU1_FAST=0` restores
-   the cycle-exact scheduler. In the mission 100 -> 18 ns/cycle, 6.9 -> 37 M VU1 cycles/s, ~3x
-   programs/s; the 420 s run now reaches gameplay with the HUD (vu1fast_1 s34-s37). The host still
-   spends ~650 ms/s in VU1 (the game is VU1-bound), so the next step for native frame rate is a
-   VU1 block recompiler to host, verified the same way: `dist/vu1_replay.exe --batch <dir>
-   logs/vu1dump2/*.bin` golden (packets + registers + cycles) must stay identical, `--repeat 100`
-   for ns/cycle, `--prof` for host hot spots, `PS2X_VU1_FMAC_CHECK=1` for the FMAC flags. Add a
-   flips/s counter to PS2X_VU_STATS to measure frame rate directly.
+1b. **Frame rate — VU1 done twice over (STATUS 02:40, 04:05); the bottleneck moved.** The
+   mission image runs as generated C++ (12 ns/cycle in-game, `PS2X_VU1_GEN=0` = fast
+   interpreter at 18, `PS2X_VU1_FAST=0` = exact at 100), bit-identical on the 300-dump golden
+   (`dist/vu1_replay.exe --batch`, `--bailhist`, `--gen`). Frame rate is `syncv/s` in
+   `[vu1-stats]` (PS2X_VU_STATS=1): mission 12.7/s now vs 10.2 before, menus 50-57/s. Per frame
+   the mission costs ~42 ms of VU1 and ~35 ms of everything else, so the next step is a
+   `PS2X_HOST_PROF=1` mission profile (tools_py/hostprof_symbolize.py) of the non-VU1 side (EE
+   recompiled code, VIF/DMA, GS front end); VU1 alone can gain at most ~2x more (register-file
+   in host registers, cheaper flag push). Other VU1 images (title UI, online) still run on the
+   interpreter: dump them (`PS2X_VU1_DUMP=<dir>:150` after a `PS2X_TRIGGER`) and `--gen` them.
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
