@@ -24,8 +24,9 @@ VCLIP fixed to the manual's bit order with |w|. VERIFIED (logs/parity/runs/missi
 logs/parity/mission_s16_sheet.png): the mission intro now renders every shot like the golden
 run — helicopter over the valley, the car on the dirt road, the river/bridge scene, the forest —
 with no sky-coloured polygons; the title screen (s05) is unchanged. The run ends in the forest
-fly-by because the frame rate is still a few fps (item 3 below). Confirmation dump run
-(logs/vu1dump3, mission_s17) in progress to show q < 0 = 0. Gotcha: `PS2X_VU1_DUMP` does not
+fly-by because the frame rate is still a few fps (item 3 below). CONFIRMED by the dump run
+(logs/vu1dump3, mission_s17): 0 of 3164 kicked vertices have q < 0 (was 108 of 1878) and six
+of the 150 programs now run the clipping list (word 2) that never appeared before. Gotcha: `PS2X_VU1_DUMP` does not
 create its directory — mkdir it first or the run dumps nothing (silent fopen failure).
 Remaining in order: ground height (-131.7 vs PCSX2 -126.3 at 0x416054), frame rate (VU1 fast
 path / recompiler), then the mission parity report.
