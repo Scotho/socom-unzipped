@@ -375,6 +375,12 @@ function(ps2x_stage_ffmpeg_runtime_dlls target_name)
     )
 endfunction()
 
+# VU1 known programs: microcode images recompiled to C++ by vu1_replay --gen (see
+# src/lib/vu/ps2_vu1_ops.h); vu1_known_programs.cpp is the table the interpreter looks up by hash.
+file(GLOB PS2X_VU1_GENERATED_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/vu/generated/*.cpp)
+# Line tables for the generated VU1 code so vu1_replay --prof samples map back to pairs.
+set_source_files_properties(${PS2X_VU1_GENERATED_SOURCES} PROPERTIES COMPILE_OPTIONS "-g1")
+
 add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
     src/lib/gs/ps2_gif_arbiter.cpp
@@ -393,6 +399,7 @@ add_library(ps2_runtime STATIC
     src/lib/vu/ps2_vu1_upper.cpp
     src/lib/vu/ps2_vu1_lower.cpp
     src/lib/games_database.cpp
+    ${PS2X_VU1_GENERATED_SOURCES}
 )
 
 if(PS2X_ENABLE_RUNTIME_LOGS)
@@ -643,7 +650,7 @@ install(DIRECTORY include/
 
 # Offline VU1 program replay (tools_py/vu1dis.py + PS2X_VU1_DUMP dumps); no generated code needed.
 if(NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
-    add_executable(vu1_replay src/tools/vu1_replay.cpp)
+    add_executable(vu1_replay src/tools/vu1_replay.cpp src/tools/vu1_gen.cpp)
     target_link_libraries(vu1_replay PRIVATE ps2_runtime)
     if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
         target_compile_options(vu1_replay PRIVATE -msse4.1)

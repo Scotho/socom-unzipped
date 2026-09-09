@@ -5,6 +5,12 @@
 #include "runtime/gs/ps2_gs_common.h"
 #include "runtime/gs/ps2_gs_psmct16.h"
 #include "runtime/ee_scheduler.h"
+#include <atomic>
+
+// Presented-frame counters for PS2X_VU_STATS (ps2_vu1_core.cpp): sceGsSwapDBuff = a flip of the
+// display buffer (one per presented frame), sceGsSyncV = the game waited for a vsync.
+extern std::atomic<uint64_t> g_gsSwapDBuffCount; // defined in vu/ps2_vu1_core.cpp
+extern std::atomic<uint64_t> g_gsSyncVCount;
 
 namespace ps2_stubs
 {
@@ -1189,6 +1195,7 @@ namespace ps2_stubs
 
     void sceGsSwapDBuff(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        g_gsSwapDBuffCount.fetch_add(1, std::memory_order_relaxed);
         const uint32_t envAddr = getRegU32(ctx, 4);
         const uint32_t which = getRegU32(ctx, 5) & 1u;
 
@@ -1281,6 +1288,7 @@ namespace ps2_stubs
 
     void sceGsSyncV(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        g_gsSyncVCount.fetch_add(1, std::memory_order_relaxed);
         ps2_syscalls::WaitVSyncTick(rdram,
                                     ctx,
                                     runtime,

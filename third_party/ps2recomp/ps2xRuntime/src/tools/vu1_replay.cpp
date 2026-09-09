@@ -3,6 +3,7 @@
 //
 //   vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]
 //   vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...
+//   vu1_replay --gen <out.cpp> [--pchist hist.bin] <dump.bin>...   (VU1 image -> known-program C++)
 //
 // Dump layout: uint32 startPc, top, itop, codeSize; 16 KB code; 16 KB data; int32 vi[16]; float
 // vf[32][4] (the register file at program start — VU registers persist across MSCALs, so the dump
@@ -23,6 +24,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -35,6 +37,11 @@
 // Defined in the game runner (game_overrides_socom2.cpp); the interpreter references it for the
 // triggered program dump. Never armed here.
 std::atomic<bool> g_ps2xTraceArmed{false};
+extern uint32_t *g_vu1PcHist; // ps2_vu1_core.cpp: per-pair execution counts of the fast path
+extern uint32_t *g_vu1JrHist; // computed-jump targets
+extern uint32_t *g_vu1BailHist; // per-pc hand-backs of the generated code
+extern uint64_t g_vu1GenEntered, g_vu1GenEnded, g_vu1GenSkipped;
+int vu1GenerateKnownProgram(const uint8_t *code, uint64_t hash, const std::set<uint32_t> &seeds, const std::set<uint32_t> &unknownEntries, const std::string &outPath);
 
 namespace
 {
@@ -135,6 +142,9 @@ int main(int argc, char **argv)
     std::string outPath = "vu1_packets.bin";
     std::string batchDir;
     std::string profPath;
+    std::string genPath;
+    std::string pcHistPath;
+    bool bailHist = false;
     bool trace = false;
     bool printStateFlag = false;
     int repeat = 1;
@@ -149,6 +159,12 @@ int main(int argc, char **argv)
             repeat = std::atoi(argv[++i]);
         else if (!std::strcmp(argv[i], "--prof") && i + 1 < argc)
             profPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--gen") && i + 1 < argc)
+            genPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--pchist") && i + 1 < argc)
+            pcHistPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--bailhist"))
+            bailHist = true;
         else if (!std::strcmp(argv[i], "--trace"))
             trace = true;
         else if (!std::strcmp(argv[i], "--state"))
@@ -167,6 +183,23 @@ int main(int argc, char **argv)
     _putenv("PS2X_GS_BACKEND=cpu");
     if (trace)
         _putenv("PS2X_TRACE_VU=0");
+    // The generator needs the interpreter's own execution profile (the generated code keeps none).
+    std::vector<uint32_t> bails;
+    if (bailHist)
+    {
+        bails.assign(2048, 0u);
+        g_vu1BailHist = bails.data();
+    }
+    std::vector<uint32_t> pcHist, jrHist;
+    if (!genPath.empty() || !pcHistPath.empty())
+    {
+        _putenv("PS2X_VU1_GEN=0");
+        _putenv("PS2X_VU1_FAST=1");
+        pcHist.assign(2048, 0u);
+        g_vu1PcHist = pcHist.data();
+        jrHist.assign(2048, 0u);
+        g_vu1JrHist = jrHist.data();
+    }
 
     GS gs;
     PS2Memory memory;
@@ -259,11 +292,21 @@ int main(int argc, char **argv)
     uint64_t totalCycles = 0;
     uint64_t totalPairs = 0;
     std::vector<uint8_t> data;
+    std::set<uint32_t> entryPcs;
+    std::vector<uint8_t> firstCode;
     for (const std::string &input : inputs)
     {
         Dump d;
         if (!loadDump(input.c_str(), d))
             return 1;
+        entryPcs.insert(d.hdr[0]);
+        if (firstCode.empty())
+            firstCode = d.code;
+        else if (!genPath.empty() && firstCode != d.code)
+        {
+            std::fprintf(stderr, "--gen: %s runs a different microcode image than the first dump\n", input.c_str());
+            return 1;
+        }
         uint64_t cycles = 0;
         for (int iter = 0; iter < repeat; ++iter)
         {
@@ -320,6 +363,44 @@ int main(int argc, char **argv)
     }
     if (stateOut)
         std::fclose(stateOut);
+    if (bailHist)
+    {
+        uint64_t total = 0;
+        for (uint32_t i = 0; i < bails.size(); ++i)
+            total += bails[i];
+        std::fprintf(stderr, "[vu1_replay] generated code: entered %llu, ended %llu, dispatch skipped %llu, hand-backs %llu\n",
+                     (unsigned long long)g_vu1GenEntered, (unsigned long long)g_vu1GenEnded, (unsigned long long)g_vu1GenSkipped, (unsigned long long)total);
+        for (uint32_t i = 0; i < bails.size(); ++i)
+            if (bails[i])
+                std::fprintf(stderr, "  pc=0x%04x: %u\n", i * 8u, bails[i]);
+    }
+    if (!pcHistPath.empty())
+    {
+        if (FILE *fp = std::fopen(pcHistPath.c_str(), "wb"))
+        {
+            std::fwrite(pcHist.data(), sizeof(uint32_t), pcHist.size(), fp);
+            std::fclose(fp);
+        }
+    }
+    if (!genPath.empty())
+    {
+        std::set<uint32_t> seeds(entryPcs);
+        uint32_t executed = 0;
+        for (uint32_t i = 0; i < pcHist.size(); ++i)
+            if (pcHist[i])
+            {
+                seeds.insert(i * 8u);
+                ++executed;
+            }
+        std::set<uint32_t> unknownEntries(entryPcs);
+        for (uint32_t i = 0; i < jrHist.size(); ++i)
+            if (jrHist[i])
+                unknownEntries.insert(i * 8u);
+        std::fprintf(stderr, "[vu1_gen] %zu entry pcs, %u executed pairs, %zu computed-jump/entry pcs\n", entryPcs.size(), executed, unknownEntries.size());
+        const int rc = vu1GenerateKnownProgram(firstCode.data(), fnv1a(firstCode.data(), firstCode.size()), seeds, unknownEntries, genPath);
+        if (rc != 0)
+            return rc;
+    }
     if (profThread.joinable())
     {
         profStop.store(true);

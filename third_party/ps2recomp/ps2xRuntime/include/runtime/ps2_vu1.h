@@ -1,6 +1,7 @@
 #ifndef PS2_VU1_H
 #define PS2_VU1_H
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -39,6 +40,7 @@ struct VU1State
 
 class VU1Interpreter
 {
+    friend struct Vu1Gen; // generated known-program code (src/lib/vu/ps2_vu1_ops.h)
 public:
     enum class Unit : uint8_t
     {
@@ -63,6 +65,9 @@ public:
 
     VU1State &state() { return m_state; }
     const VU1State &state() const { return m_state; }
+
+    // Generated known-program entry (src/lib/vu/generated): returns true when the program ended.
+    typedef bool (*KnownProgramFn)(VU1Interpreter &vu, uint64_t budgetEnd);
 
 private:
     enum Pipeline : uint8_t
@@ -196,7 +201,7 @@ private:
 
     static constexpr uint32_t kFmacLatency = 4u;
     static constexpr uint32_t kAccForwardLatency = 1u;
-    static constexpr uint32_t kMaxFlagEntries = 8u;
+    static constexpr uint32_t kMaxFlagEntries = 64u; // the generated code commits lazily (every 16 pushes / at readers)
     static constexpr uint32_t kMaxPendingStores = 8u;
     static constexpr uint32_t kMaxPendingVfWrites = 16u;
     static constexpr uint32_t kMaxPendingViWrites = 8u;
@@ -267,6 +272,11 @@ private:
     // their latencies). Verified packet-for-packet and register-for-register against the exact path
     // with vu1_replay --batch (see docs/STATUS.md 2026-09-09).
     bool m_fast = false;
+    // Known-program table: VU1 microcode images recompiled to host code (vu1_replay --gen ->
+    // src/lib/vu/generated). Keyed by the FNV-1a hash of the 16 KB code memory, rehashed only when
+    // the VIF MPG generation counter changes. PS2X_VU1_GEN=0 disables the generated code.
+    uint64_t m_knownGeneration = ~0ull;
+    KnownProgramFn m_knownFn = nullptr;
     uint32_t m_fastFlagHead = 0;    // m_flagPipeline used as a ring in issue order
     uint32_t m_fastFlagCount = 0;
     uint64_t m_fastPairs = 0;       // executed pairs, folded into g_vuInsnCount at the end of a run
@@ -275,7 +285,44 @@ private:
     void fastCommit();
     void fastFlush();
     __attribute__((always_inline)) uint64_t fastReadyCycle(const DecodedInstructionPair &decoded) const;
-    void fastPushFlags(const FlagPipelineEntry &entry);
+    void fastPushOverflow();
+    // Fast path flag ring push (issue order; entries commit in fastCommit when ready).
+    void fastPushFlags(const FlagPipelineEntry &entry)
+    {
+        if (m_fastFlagCount >= kMaxFlagEntries)
+        {
+            fastPushOverflow();
+            return;
+        }
+        const uint32_t slot = (m_fastFlagHead + m_fastFlagCount) % kMaxFlagEntries;
+        m_flagPipeline[slot] = entry;
+        ++m_fastFlagCount;
+        noteQueued(entry.readyCycle);
+    }
+    // In-place variant for the FMAC flag entry (the hot push).
+    __attribute__((always_inline)) void fastPushMacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky)
+    {
+        if (m_fastFlagCount >= kMaxFlagEntries)
+        {
+            fastPushOverflow();
+            return;
+        }
+        FlagPipelineEntry &e = m_flagPipeline[(m_fastFlagHead + m_fastFlagCount) % kMaxFlagEntries];
+        e.readyCycle = m_cycle + kFmacLatency;
+        e.issueCycle = m_cycle;
+        e.issuePc = m_state.pc;
+        e.mac = mac;
+        e.status = status;
+        e.extraSticky = extraSticky;
+        e.clip = 0u;
+        e.valid = true;
+        e.writesMac = true;
+        e.writesStatus = true;
+        e.writesSticky = false;
+        e.writesClip = false;
+        ++m_fastFlagCount;
+        noteQueued(e.readyCycle);
+    }
     void noteQueued(uint64_t readyCycle) { if (readyCycle < m_nextReadyCycle) m_nextReadyCycle = readyCycle; }
     // Latest cycle at which any operand (VF/VI/ACC/Q/P/EFU resource) becomes ready: once m_cycle reaches
     // it, calculatePairReadyCycle() cannot stall and skips the operand scan.
@@ -306,7 +353,16 @@ private:
     uint8_t normalizeFmacExactResult(float &value, long double exactResult) const;
     uint32_t calculateFmacProductSticky(uint8_t dest) const;
     void updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest, uint32_t extraSticky);
-    void pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky);
+    void pushFmacFlagsExact(uint32_t mac, uint32_t status, uint32_t extraSticky);
+    __attribute__((always_inline)) void pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky)
+    {
+        if (!m_fast)
+        {
+            pushFmacFlagsExact(mac, status, extraSticky);
+            return;
+        }
+        fastPushMacFlags(mac, status, extraSticky);
+    }
     void checkFmac(uint32_t instr, uint8_t kind, bool opmul, __m128 first, __m128 second, __m128 value,
                    uint32_t mac, uint32_t status, uint32_t sticky);
     void queueFsset(uint16_t immediate);

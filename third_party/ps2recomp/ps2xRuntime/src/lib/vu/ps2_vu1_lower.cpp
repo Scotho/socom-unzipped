@@ -6,6 +6,8 @@
 #include "ps2_vu1_detail.h"
 #include "ps2_runtime_macros.h"
 
+extern uint32_t *g_vu1JrHist; // vu1_replay --gen: computed-jump targets (ps2_vu1_core.cpp)
+
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
@@ -297,6 +299,8 @@ void VU1Interpreter::execLower(uint32_t instr, uint8_t *vuData, uint32_t dataSiz
     {
         uint8_t is = VIS(instr);
         uint32_t target = ((uint32_t)(uint16_t)readBranchVi(is) * 8u) & pcMask;
+        if (g_vu1JrHist)
+            ++g_vu1JrHist[(target >> 3) & 0x7FFu];
         m_state.branchPending = true;
         m_state.branchTarget = target;
         m_state.branchDelay = 1;
@@ -307,6 +311,8 @@ void VU1Interpreter::execLower(uint32_t instr, uint8_t *vuData, uint32_t dataSiz
         uint8_t it = VIT(instr);
         uint8_t is = VIS(instr);
         uint32_t target = ((uint32_t)(uint16_t)readBranchVi(is) * 8u) & pcMask;
+        if (g_vu1JrHist)
+            ++g_vu1JrHist[(target >> 3) & 0x7FFu];
         if (it != 0)
             m_state.vi[it] = (int32_t)((m_state.pc + 16) / 8);
         m_state.branchPending = true;

@@ -494,24 +494,8 @@ void VU1Interpreter::updateFmacFlags(const uint8_t laneFlags[4], uint8_t dest,
     pushFmacFlags(mac, status, extraSticky);
 }
 
-void VU1Interpreter::pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extraSticky)
+void VU1Interpreter::pushFmacFlagsExact(uint32_t mac, uint32_t status, uint32_t extraSticky)
 {
-    if (m_fast)
-    {
-        FlagPipelineEntry entry{};
-        entry.valid = true;
-        entry.issueCycle = m_cycle;
-        entry.issuePc = m_state.pc;
-        entry.readyCycle = m_cycle + kFmacLatency;
-        entry.mac = mac;
-        entry.status = status;
-        entry.extraSticky = extraSticky;
-        entry.writesMac = true;
-        entry.writesStatus = true;
-        fastPushFlags(entry);
-        return;
-    }
-
     FlagPipelineEntry *entry = nullptr;
     for (FlagPipelineEntry &candidate : m_flagPipeline)
     {
@@ -540,17 +524,9 @@ void VU1Interpreter::pushFmacFlags(uint32_t mac, uint32_t status, uint32_t extra
     entry->writesStatus = true;
 }
 
-void VU1Interpreter::fastPushFlags(const FlagPipelineEntry &entry)
+void VU1Interpreter::fastPushOverflow()
 {
-    if (m_fastFlagCount >= kMaxFlagEntries)
-    {
-        reportReservedInstruction(true, 0xFFFFFFFFu);
-        return;
-    }
-    const uint32_t slot = (m_fastFlagHead + m_fastFlagCount) % kMaxFlagEntries;
-    m_flagPipeline[slot] = entry;
-    ++m_fastFlagCount;
-    noteQueued(entry.readyCycle);
+    reportReservedInstruction(true, 0xFFFFFFFFu);
 }
 
 void VU1Interpreter::applyFmacDest(float *dst, float *result, uint8_t dest)
@@ -1094,6 +1070,40 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     if (s_immediate)
     {
         m_xgkick.cycleCredit = 0x40000000u;
+        // Bulk copy: one memcpy per GIFtag payload instead of one qword per step, as long as the
+        // packet does not wrap around the end of VU memory (then the per-qword path takes over).
+        while (m_xgkick.active)
+        {
+            const uint32_t off = m_xgkick.copiedBytes;
+            const uint32_t src = m_xgkick.sourceAddress + off;
+            if (src + 16u > m_activeVuDataSize || off > XgkickPipeline::kBufferSize - 16u)
+                break;
+            uint64_t tagLo = 0;
+            std::memcpy(&tagLo, m_activeVuData + src, sizeof(tagLo));
+            const uint32_t nloop = static_cast<uint32_t>(tagLo & 0x7FFFu);
+            const uint32_t format = static_cast<uint32_t>((tagLo >> 58) & 0x3u);
+            uint32_t nreg = static_cast<uint32_t>((tagLo >> 60) & 0xFu);
+            if (nreg == 0u)
+                nreg = 16u;
+            uint64_t tagBytes = 16u;
+            if (format == 0u)
+                tagBytes += static_cast<uint64_t>(nloop) * nreg * 16u;
+            else if (format == 1u)
+                tagBytes += ((static_cast<uint64_t>(nloop) * nreg + 1u) & ~1ull) * 8u;
+            else if (format == 2u)
+                tagBytes += static_cast<uint64_t>(nloop) * 16u;
+            else
+                break; // reserved format: the per-qword path reports it
+            if (tagBytes > XgkickPipeline::kBufferSize - off || src + tagBytes > m_activeVuDataSize)
+                break; // overrun or wrap: the per-qword path handles/reports it
+            std::memcpy(m_xgkick.packet.data() + off, m_activeVuData + src, static_cast<size_t>(tagBytes));
+            m_xgkick.copiedBytes = off + static_cast<uint32_t>(tagBytes);
+            if (((tagLo >> 15) & 1u) != 0u)
+            {
+                m_xgkick.totalBytes = m_xgkick.copiedBytes;
+                finishXgkick();
+            }
+        }
         progressXgkick();
     }
 }
@@ -1925,6 +1935,28 @@ uint64_t VU1Interpreter::fastReadyCycle(const DecodedInstructionPair &decoded) c
     return ready;
 }
 
+// Presented-frame counters for the PS2X_VU_STATS line (incremented in Kernel/Stubs/GS.cpp).
+std::atomic<uint64_t> g_gsSwapDBuffCount{0};
+std::atomic<uint64_t> g_gsSyncVCount{0};
+
+// vu1_replay --pchist: per-pair execution counts of the fast path (2048 entries, VU1 only).
+uint32_t *g_vu1PcHist = nullptr;
+// vu1_replay --gen: per-pc counts of JR/JALR targets (the generated code needs the set of pcs a
+// computed jump can land on; other targets hand back to the interpreter).
+uint32_t *g_vu1JrHist = nullptr;
+// vu1_replay --bailhist: per-pc count of generated-code hand-backs to the interpreter.
+uint32_t *g_vu1BailHist = nullptr;
+uint64_t g_vu1GenEntered = 0, g_vu1GenEnded = 0, g_vu1GenSkipped = 0; // known-program dispatch counters
+
+// Known-program table (src/lib/vu/generated/vu1_known_programs.cpp).
+struct Vu1KnownProgram
+{
+    uint64_t hash;
+    VU1Interpreter::KnownProgramFn fn;
+};
+extern const Vu1KnownProgram g_vu1KnownPrograms[];
+extern const uint32_t g_vu1KnownProgramCount;
+
 void VU1Interpreter::runFast(uint8_t *vuCode, uint32_t codeSize,
                              uint8_t *vuData, uint32_t dataSize,
                              GS &gs, PS2Memory *memory, uint64_t budgetEnd, bool &programEnded)
@@ -1944,6 +1976,8 @@ void VU1Interpreter::runFast(uint8_t *vuCode, uint32_t codeSize,
         const DecodedInstructionPair &decoded = (cached && (m_state.pc & 7u) == 0u)
                                                     ? m_decodedCodeCache[m_state.pc >> 3]
                                                     : getDecodedInstructionPairForPc(vuCode, codeSize, memory, m_state.pc);
+        if (g_vu1PcHist)
+            ++g_vu1PcHist[(m_state.pc >> 3) & 0x7FFu];
         if (decoded.upperUsage.reserved || decoded.lowerUsage.reserved)
         {
             reportReservedInstruction(decoded.upperUsage.reserved, decoded.upperUsage.reserved ? decoded.upper : decoded.lower);
@@ -2262,7 +2296,41 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
     m_fast = s_fastEnv && m_unit == Unit::VU1 && !traceThis;
     if (m_fast)
-        runFast(vuCode, codeSize, vuData, dataSize, gs, memory, budgetEnd, programEnded);
+    {
+        // Known program (recompiled image): run the generated code until it ends the program or
+        // hands back to the interpreter (budget, unsupported pair) with m_state.pc set.
+        static const bool s_genEnv = std::getenv("PS2X_VU1_GEN") == nullptr || std::atoi(std::getenv("PS2X_VU1_GEN")) != 0;
+        if (s_genEnv && memory != nullptr && vuCode == memory->getVU1Code() && g_vu1KnownProgramCount != 0u)
+        {
+            const uint64_t generation = memory->getVU1CodeGeneration();
+            if (generation != m_knownGeneration)
+            {
+                m_knownGeneration = generation;
+                uint64_t hash = 1469598103934665603ull;
+                for (uint32_t i = 0; i < codeSize; ++i)
+                {
+                    hash ^= vuCode[i];
+                    hash *= 1099511628211ull;
+                }
+                m_knownFn = nullptr;
+                for (uint32_t i = 0; i < g_vu1KnownProgramCount; ++i)
+                    if (g_vu1KnownPrograms[i].hash == hash)
+                        m_knownFn = g_vu1KnownPrograms[i].fn;
+            }
+            if (m_knownFn && !m_state.dBitEnabled && !m_state.tBitEnabled && !m_state.ebit &&
+                !m_state.haltAfterDelaySlot && !m_state.branchPending)
+            {
+                ++g_vu1GenEntered;
+                programEnded = m_knownFn(*this, budgetEnd);
+                if (programEnded)
+                    ++g_vu1GenEnded;
+            }
+            else
+                ++g_vu1GenSkipped;
+        }
+        if (!programEnded && m_cycle < budgetEnd && !m_stopRequested)
+            runFast(vuCode, codeSize, vuData, dataSize, gs, memory, budgetEnd, programEnded);
+    }
     while (!m_fast && m_cycle < budgetEnd && !m_stopRequested)
     {
         commitReadyPipelines();
@@ -2508,9 +2576,16 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             s_hostMs += std::chrono::duration<double, std::milli>(now - runStart).count();
             if (now - s_last >= std::chrono::seconds(1))
             {
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle)\n",
+                static uint64_t s_lastFlips = 0, s_lastSyncV = 0;
+                const uint64_t flips = g_gsSwapDBuffCount.load(std::memory_order_relaxed);
+                const uint64_t syncs = g_gsSyncVCount.load(std::memory_order_relaxed);
+                const double seconds = std::chrono::duration<double>(now - s_last).count();
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
-                             s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0);
+                             s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
+                             static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds);
+                s_lastFlips = flips;
+                s_lastSyncV = syncs;
                 s_last = now;
                 s_programs = 0;
                 s_cycles = 0;
