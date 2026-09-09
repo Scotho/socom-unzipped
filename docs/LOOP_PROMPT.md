@@ -13,6 +13,13 @@ plans are suggestions. Ordered goals (user, 2026-09-09):
 4. Playable first mission (Albania 5-1).
 Long term: a full PC-native recreation.
 
+Acceptance for "playable" (user, 2026-09-09): visual accuracy of the game itself (not just the
+shell) AND an automated test that drives a two-instance online match to its END by one player
+shooting the other or killing them with a grenade (extend tools_py/parity/online_match_ours.py:
+scripted movement/aim/fire, read the kill/round-end state from guest memory or the Horizon
+world state, capture the screens). Expect many gameplay issues on the way; each is a bounded
+hypothesis->build->run->evidence step.
+
 ## Every firing
 1. If a game run or build is in progress (check `logs/.loop_lock` — a file with the owner and
    a start time under 20 minutes old — or a running `socom2*.exe`/`pcsx2-qt.exe`), do NOT start
