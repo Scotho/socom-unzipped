@@ -2256,9 +2256,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     const uint64_t runStartCycle = m_cycle;
     const auto runStart = std::chrono::steady_clock::now();
     bool programEnded = false;
-    // PS2X_VU1_FAST=1 selects the fast path (opt-in until verified in the game; a VU trace forces
-    // the cycle-exact scheduler).
-    static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") != nullptr && std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
+    // Fast path on by default since 2026-09-09 (verified in the mission: title, intro and gameplay
+    // clean, 18 ns/cycle vs 100); PS2X_VU1_FAST=0 selects the cycle-exact scheduler, which a VU
+    // trace also forces.
+    static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
     m_fast = s_fastEnv && m_unit == Unit::VU1 && !traceThis;
     if (m_fast)
         runFast(vuCode, codeSize, vuData, dataSize, gs, memory, budgetEnd, programEnded);

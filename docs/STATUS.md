@@ -1,4 +1,54 @@
-# Project status — updated 2026-09-09 02:15
+# Project status — updated 2026-09-09 02:40
+
+## 2026-09-09 02:40 (local) — VU1 fast path: 100 -> 18 ns/cycle in the mission (5.4x VU1 throughput), default on; the run reaches gameplay with the HUD
+The cycle-exact VU1 scheduler (per-instruction ready scan, pending-write queues, long double FMAC
+flags) is replaced by a non-cycle-exact fast path (commit 773991c, default on since this entry;
+`PS2X_VU1_FAST=0` restores the exact path, a VU trace forces it):
+- VF/VI/ACC writes and stores land immediately. Every VF write in the model has the same 4-cycle
+  latency and every read stalls on the register, so immediate writes give the same values; the
+  same-pair rule (the lower reads the old value of the upper's destination, the upper wins a
+  write to the same register) and the one-instruction VI branch bypass are kept.
+- The cycle counter still advances by the modeled stalls (per-lane VF and VI ready cycles, Q/P
+  and EFU resources, WAITQ/WAITP), so MAC/STATUS/CLIP flags (8-entry ring in issue order,
+  +4 cycles), Q (+7/+13) and P land at exactly the cycles the exact path shows them — the
+  game's FMAND backface test and FCAND clip tests see the same flags. E-bit, branch delay,
+  D/T halts, XGKICK at kick time, the 65536-cycle budget and the flush at program end are
+  unchanged.
+- FMAC lanes run on SSE2 for the four lanes together. The Z/S/U/O classification comes from the
+  chop-rounded float (single ops) or double (product-sum: the float product is exact in double)
+  result and drops to the long double computation only when a result lands exactly on FLT_MAX;
+  proof sketch in ps2_vu1_upper.cpp (a single chop-rounded op has |r| <= |exact| < |r| + ulp), so
+  the flags and stored values are bit-identical to the old long double path. `PS2X_VU1_FMAC_CHECK=1`
+  cross-checks every FMAC against that path (0 differences over the 300 dumps). applyDest and the
+  vf0 reset store 16 bytes (scalar lane stores followed by the FMAC's vector load stalled store
+  forwarding); normalizeOperand/microAddressMask/fastReadyCycle inlined; the decoded-code cache is
+  validated once per program instead of per pair.
+
+**Verification.** `dist/vu1_replay.exe --batch <dir> <dumps>` writes a golden per dump (packet
+bytes + FNV hash, cycle count, end pc, MAC/STATUS/CLIP/R/Q/P/I, all VI/VF/ACC, VU data memory
+hash). The fast path equals the exact interpreter on all 300 dumped mission programs
+(logs/vu1dump2 + logs/vu1dump3: 287k cycles, 274k pairs, 118 programs with packets) in every
+field, including cycle counts. Timing with `--repeat 100` (`--prof` samples the host pc): exact
+92 ns/cycle (same tool; the tool now runs programs from PS2Memory's VU1 buffers so the decoded
+cache applies), fast 21.4 ns/cycle. In the mission (logs/run_20260909_021205.log, run
+vu1fast_1, sheet logs/parity/vu1fast_1_sheet.png): `[vu1-stats]` 34-37 M cycles/s at 17.7-19.1
+ns/cycle, 21-23k programs/s, vs 6.5-8.2 M cycles/s at 93-103 ns/cycle, 6.5-8.7k programs/s in the
+last stats run (run_20260908_171207). The host still spends ~650 ms/s in VU1: the game is VU1-
+bound and simply runs ~3x more frames (programs/s), so the next speed step is still VU1 (a
+block recompiler to host; the interpreter's remaining cost is the per-pair dispatch, the
+Windows-ABI xmm save/restore of execUpper and the ready-cycle scan). Screens: title labels clean
+(s05/s06), mission loads, the intro cinematics play (s21-s27, no giant polygons), and for the
+first time the 420 s run reaches gameplay with the HUD (s34-s37, "RENDEZVOUS WITH MALLARD",
+squad status, help popup); same 16 pre-existing guest faults as before; no hang with the VIF1
+i-bit stall (16af5ad).
+
+**Not done / caveats.** ps2x_tests does not link on this toolchain (pre-existing: bad
+`--stack` link option, then unresolved runner symbols ps2HostProfStart, ps2_stubs::sceVibGetProfile,
+socom2_RsaGenerateKeyPair, scePad2GetState), so the VU unit tests were not run; the 300-dump
+golden and the FMAC check stand in. The fast path is VU1 only (VU0 micro programs keep the exact
+scheduler; they are tiny). The exact path's behaviour of reading the previous I register in an
+I-bit pair's upper instruction is preserved (not re-examined). No frame counter exists in the
+log; frame rate is inferred from programs/s (~3x) — add a flips/s line to PS2X_VU_STATS next.
 
 ## 2026-09-09 02:15 (local) — TITLE LABELS FIXED: VIF1 i-bit stall + prompt IRQ delivery; the console never stops the menu movie (that lead was built on the wrong savestate)
 The garbled LOAD GAME / NEW GAME / ONLINE labels are gone: logs/parity/title_stall5_sheet.png

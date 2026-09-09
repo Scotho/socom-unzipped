@@ -29,9 +29,14 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
-1b. **Frame rate (in progress, VU1 agent)**: non-cycle-exact VU1 fast path, opt-in
-   `PS2X_VU1_FAST=1`, bit-identical to the interpreter on all 300 dumped programs at 23.5 ns/cycle
-   (was 92 offline / 111 in-game); in-game verification run pending, then default-on.
+1b. **Frame rate — VU1 fast path landed (STATUS 02:40)**: default on, `PS2X_VU1_FAST=0` restores
+   the cycle-exact scheduler. In the mission 100 -> 18 ns/cycle, 6.9 -> 37 M VU1 cycles/s, ~3x
+   programs/s; the 420 s run now reaches gameplay with the HUD (vu1fast_1 s34-s37). The host still
+   spends ~650 ms/s in VU1 (the game is VU1-bound), so the next step for native frame rate is a
+   VU1 block recompiler to host, verified the same way: `dist/vu1_replay.exe --batch <dir>
+   logs/vu1dump2/*.bin` golden (packets + registers + cycles) must stay identical, `--repeat 100`
+   for ns/cycle, `--prof` for host hot spots, `PS2X_VU1_FMAC_CHECK=1` for the FMAC flags. Add a
+   flips/s counter to PS2X_VU_STATS to measure frame rate directly.
 2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
@@ -40,7 +45,7 @@
    (writer of mover+0x90.y) with PS2X_CALL_TRACE_DUMP on the mover object; the s16 peek rows
    show the actor placed at the console height (-125.97) then dropping to -135.9 and settling
    at -131.7, i.e. a gravity/step overshoot, not a placement error.
-3. **Frame rate**: unchanged (VU1 interpreter ~0.7 s host per second); fast path or recompiler.
+3. **Frame rate**: see 1b (VU1 fast path landed; recompiler next).
 4. Then the mission parity report (`tools_py/parity/compare`) against pcsx2_mission_g.
 
 **Run hygiene learned tonight:** `PS2X_VU1_DUMP` and `PS2X_RDRAM_DUMP` do not create
