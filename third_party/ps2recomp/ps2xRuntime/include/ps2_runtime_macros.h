@@ -183,6 +183,42 @@ inline __m128 ps2_vu_sat_traced(__m128 v, const R5900Context *ctx, const char *w
 #define PS2_VRSQRTQ(fs, ft) ps2_fpu_div_traced((float)(fs), sqrtf(fabsf(ps2_fpu_sat((float)(ft)))), ctx)
 #define PS2_VBLEND(a, b, mask) PS2_BLENDV_PS((__m128)(a), (__m128)(b), (__m128)(mask))
 
+// VU0 macro-mode FMAC flags. Every ADD/SUB/MUL/MADD/MSUB/OPMULA/OPMSUB result (the lanes named
+// in dest, x=8 y=4 z=2 w=1) rewrites the MAC flags (Z bits 0-3, S 4-7, U 8-11, O 12-15; x is
+// the high bit of each nibble) and the STATUS flags (Z/S/U/O in bits 0-3, ORed into the sticky
+// bits 6-9 until CTC2 clears them). Updated immediately: the EE reads them with CFC2 after the
+// VNOPs the game inserts. MAX/MINI, FTOI/ITOF, MOVE/MR32 and ABS leave them alone, as on the
+// hardware. The result was already saturated, so an overflow shows as +/-FLT_MAX.
+static inline void ps2_vu0_fmac_flags(R5900Context *ctx, __m128 res, unsigned dest)
+{
+    alignas(16) uint32_t bits[4];
+    _mm_store_si128(reinterpret_cast<__m128i *>(bits), _mm_castps_si128(res));
+    uint32_t mac = 0u, status = 0u;
+    for (unsigned c = 0; c < 4u; ++c)
+    {
+        const uint32_t lane = 1u << (3u - c);
+        if ((dest & lane) == 0u)
+            continue;
+        const uint32_t b = bits[c];
+        uint32_t f = 0u;
+        if (((b >> 23) & 0xFFu) == 0u)
+            f |= 1u; // zero (denormals were flushed to a signed zero)
+        if ((b & 0x80000000u) != 0u)
+            f |= 2u; // sign
+        if ((b & 0x7FFFFFFFu) == 0x7F7FFFFFu)
+            f |= 8u; // overflow (saturated)
+        if (f & 1u)
+            mac |= lane;
+        if (f & 2u)
+            mac |= lane << 4;
+        if (f & 8u)
+            mac |= lane << 12;
+        status |= f;
+    }
+    ctx->vu0_mac_flags = mac;
+    ctx->vu0_status = static_cast<uint16_t>((ctx->vu0_status & 0xFF0u) | status | (status << 6));
+}
+
 // Memory access helpers - Hybrid Fast/Slow Path
 // Fast path: Direct RDRAM access (masked).
 // Slow path: Full runtime->Load/Store

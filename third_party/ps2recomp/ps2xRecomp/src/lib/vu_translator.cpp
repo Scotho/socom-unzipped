@@ -18,6 +18,37 @@ namespace ps2recomp
 
     std::string VuTranslator::translate(const Instruction &inst)
     {
+        return appendFmacFlags(inst, translateInner(inst));
+    }
+
+    std::string VuTranslator::appendFmacFlags(const Instruction &inst, std::string code) const
+    {
+        // Only the FMAC-class emitters produce a `res = PS2_V{ADD,SUB,MUL,MULQ}(` result; MAX/MINI,
+        // FTOI/ITOF, MOVE/MR32 and ABS do not touch the flags on the hardware and use other forms.
+        static const char *const kResultMacros[] = {
+            "__m128 res = PS2_VADD(", "__m128 res = PS2_VSUB(", "__m128 res = PS2_VMUL(",
+            "__m128 res = PS2_VMULQ("};
+        bool fmac = false;
+        for (const char *macro : kResultMacros)
+        {
+            if (code.find(macro) != std::string::npos)
+            {
+                fmac = true;
+                break;
+            }
+        }
+        if (!fmac)
+            return code;
+        const size_t close = code.find_last_of('}');
+        if (close == std::string::npos)
+            return code;
+        const unsigned dest = inst.vectorInfo.vectorField & 0xFu; // x=8 y=4 z=2 w=1
+        code.insert(close, fmt::format("ps2_vu0_fmac_flags(ctx, res, {}u); ", dest));
+        return code;
+    }
+
+    std::string VuTranslator::translateInner(const Instruction &inst)
+    {
         uint8_t format = inst.rs; // Use parsed rs field for COP2 format
         uint8_t rt = inst.rt;
         uint8_t rd = inst.rd;
@@ -266,17 +297,20 @@ namespace ps2recomp
                     uint8_t field = inst.function & 0x3;
                     std::string shuffle_pattern = fmt::format("_MM_SHUFFLE({},{},{},{})", field, field, field, field);
 
+                    // CLIP judgement (VU manual / VU1 core): bit0 = x > +|w|, bit1 = x < -|w|,
+                    // bit2/3 = y, bit4/5 = z; the register keeps the last four judgements.
                     return fmt::format(
                         "{{ __m128 fs = ctx->vu0_vf[{}]; "
-                        "__m128 ft = _mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], {}); "
+                        "__m128 ft = _mm_andnot_ps(_mm_castsi128_ps(_mm_set1_epi32(0x80000000)), "
+                        "_mm_shuffle_ps(ctx->vu0_vf[{}], ctx->vu0_vf[{}], {})); "
                         "__m128 neg_ft = _mm_xor_ps(ft, _mm_castsi128_ps(_mm_set1_epi32(0x80000000))); "
                         "__m128 gt = _mm_cmpgt_ps(fs, ft); "
                         "__m128 lt = _mm_cmplt_ps(fs, neg_ft); "
                         "uint32_t gt_mask = (uint32_t)_mm_movemask_ps(gt); "
                         "uint32_t lt_mask = (uint32_t)_mm_movemask_ps(lt); "
-                        "uint32_t flags = ((lt_mask & 0x1) << 0) | ((gt_mask & 0x1) << 1) | "
-                        "((lt_mask & 0x2) << 1) | ((gt_mask & 0x2) << 2) | "
-                        "((lt_mask & 0x4) << 2) | ((gt_mask & 0x4) << 3); "
+                        "uint32_t flags = ((gt_mask & 0x1) << 0) | ((lt_mask & 0x1) << 1) | "
+                        "((gt_mask & 0x2) << 1) | ((lt_mask & 0x2) << 2) | "
+                        "((gt_mask & 0x4) << 2) | ((lt_mask & 0x4) << 3); "
                         "ctx->vu0_clip_flags = ((ctx->vu0_clip_flags << 6) | (flags & 0x3F)) & 0xFFFFFF; }}",
                         inst.rd, inst.rt, inst.rt, shuffle_pattern);
                 }

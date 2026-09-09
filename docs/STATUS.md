@@ -1,4 +1,34 @@
-# Project status — updated 2026-09-08 23:10
+# Project status — updated 2026-09-09 00:10
+
+## 2026-09-09 00:10 (local) — ROOT CAUSE of the giant sky polygons: VU0 macro-mode ops never set the MAC/STATUS flags, so the EE's frustum test called every object "fully inside" and sent it through the no-clip VU1 path
+The object at the camera (STATUS 23:10) was the terrain/road strip the camera stands next to
+(a 2x5 vertex grid at 90-unit spacing, world space; the transform's eye solves to the camera
+position (938.6, -124.4, 832.5), which is also VU constant 30 — not a "player" test). Its VU1
+command list [0x68, 6, 0x64, 8, 0x10, 0x28, 0x30] is built by `FUN_003b5f20`: word 8 (0xdf8,
+transform without clipping) when the global `DAT_004b4eb0` is nonzero, word 2 (0x1f70 -> the
+CLIPw subroutine at 0x3618 + edge clipping at 0x3a90/0x3ad0) when it is zero. The flag is the
+third argument of `FUN_003b6b20` and comes from `FUN_00290c30`, the camera-frustum test of the
+mesh's bounding box (FUN_003374c0 <- FUN_00338480 path; 2 = culled, 1 = fully inside, 0 =
+intersects). That test is VU0 macro code: `FUN_00294ac0` multiplies the 8 corners by the
+view-projection, runs VCLIPw and reads the CLIP flag register with CFC2; when a corner is
+outside, `FUN_00294a30` does the fine test with two VSUBs and reads the STATUS register's sticky
+sign/zero bits (CFC2 vi16 & 0xC0). Our recompiler never updated `vu0_status`/`vu0_mac_flags`
+from any VU0 arithmetic (only CTC2 wrote them), so the fine test always returned "no corner
+outside" and the near strip went out unclipped with q < 0 vertices. Also found: the macro-mode
+VCLIP had the +/- bits swapped (bit0 must be x > +|w|) and compared against w instead of |w|.
+Fix (recompiler): `VuTranslator::appendFmacFlags` appends `ps2_vu0_fmac_flags(ctx, res, dest)`
+to every FMAC-class emission (ADD/SUB/MUL/MADD/MSUB/OPMULA/OPMSUB, broadcast/i/q/A forms; MAX,
+MINI, FTOI/ITOF, MOVE, ABS untouched as on hardware); the helper in ps2_runtime_macros.h
+rewrites the MAC flags (Z/S/O per lane) and STATUS (Z/S/O + sticky bits 6-9 ORed until CTC2).
+VCLIP fixed to the manual's bit order with |w|. VERIFIED (logs/parity/runs/mission_s16,
+logs/parity/mission_s16_sheet.png): the mission intro now renders every shot like the golden
+run — helicopter over the valley, the car on the dirt road, the river/bridge scene, the forest —
+with no sky-coloured polygons; the title screen (s05) is unchanged. The run ends in the forest
+fly-by because the frame rate is still a few fps (item 3 below). Confirmation dump run
+(logs/vu1dump3, mission_s17) in progress to show q < 0 = 0. Gotcha: `PS2X_VU1_DUMP` does not
+create its directory — mkdir it first or the run dumps nothing (silent fopen failure).
+Remaining in order: ground height (-131.7 vs PCSX2 -126.3 at 0x416054), frame rate (VU1 fast
+path / recompiler), then the mission parity report.
 
 ## 2026-09-08 23:10 (local) — the behind-camera triangles come from a no-clip object path; player stands 6.6 units lower than on the console
 Offline replay of 150 dumped VU1 runs at the gameplay camera (logs/vu1dump2, `dist/vu1_replay.exe`
