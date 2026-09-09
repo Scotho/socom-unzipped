@@ -325,6 +325,36 @@ namespace GSMem
         }
     }
 
+    template<PixelStorageMode psm, typename Table>
+    static void ReadSpanT(const Table& table, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, u32* dst)
+    {
+        using Traits = PixelStorageTraits<psm>;
+        for (u32 i = 0; i < count; ++i)
+            dst[i] = static_cast<u32>(Traits::Read(table, data, bp, bw, x + i, y));
+    }
+
+    bool ReadSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, u32* dst)
+    {
+        switch (psm)
+        {
+        case 0x00: ReadSpanT<C32>(PageTableC32, data, bp, bw, x, y, count, dst); return true;   // CT32
+        case 0x01: ReadSpanT<C24>(PageTableC32, data, bp, bw, x, y, count, dst); return true;   // CT24
+        case 0x02: ReadSpanT<C16>(PageTableC16, data, bp, bw, x, y, count, dst); return true;   // CT16
+        case 0x0A: ReadSpanT<C16S>(PageTableC16S, data, bp, bw, x, y, count, dst); return true; // CT16S
+        case 0x13: ReadSpanT<P8>(PageTableP8, data, bp, bw, x, y, count, dst); return true;     // T8
+        case 0x14: ReadSpanT<P4>(PageTableP4, data, bp, bw, x, y, count, dst); return true;     // T4
+        case 0x1B: ReadSpanT<P8H>(PageTableC32, data, bp, bw, x, y, count, dst); return true;   // T8H
+        case 0x24: ReadSpanT<P4HL>(PageTableC32, data, bp, bw, x, y, count, dst); return true;  // T4HL
+        case 0x2C: ReadSpanT<P4HH>(PageTableC32, data, bp, bw, x, y, count, dst); return true;  // T4HH
+        case 0x30: ReadSpanT<Z32>(PageTableZ32, data, bp, bw, x, y, count, dst); return true;   // Z32
+        case 0x31: ReadSpanT<Z24>(PageTableZ32, data, bp, bw, x, y, count, dst); return true;   // Z24
+        case 0x32: ReadSpanT<Z16>(PageTableZ16, data, bp, bw, x, y, count, dst); return true;   // Z16
+        case 0x3A: ReadSpanT<Z16S>(PageTableZ16S, data, bp, bw, x, y, count, dst); return true; // Z16S
+        default:
+            return false;
+        }
+    }
+
     bool WriteSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble)
     {
         switch (psm)

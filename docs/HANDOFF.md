@@ -29,7 +29,7 @@
    console reference for GS ordering is a PCSX2 GS dump (`tools_py/parity/gsdump_capture.py
    --slot 21`, `tools_py/gsdump_timeline.py`); PCSX2 savestate 6 is SELECT RANK, 21 is the main
    menu, 22 the online login. Do not trust the 03:20 "console has no movie set" conclusions.
-1b. **Frame rate (STATUS 06:20): mission gameplay 22-29 frames/s, menus 55+.** VU1 image recompiled
+1b. **Frame rate (STATUS 07:30): mission gameplay 29-31 frames/s, menus 55+.** VU1 image recompiled
    (`PS2X_VU1_GEN=0` = fast interpreter 18 ns/cycle, `PS2X_VU1_FAST=0` = exact 100); scheduler
    clock batching; row-span GS uploads; pooled arbiter. Measure with `PS2X_VU_STATS=1
    PS2X_VU1_BAILHIST=1` and `python tools_py/vu1stats_summary.py` (syncv/s = frames/s; compare the

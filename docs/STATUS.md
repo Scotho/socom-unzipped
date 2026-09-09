@@ -1,4 +1,24 @@
-# Project status — updated 2026-09-09 06:20
+# Project status — updated 2026-09-09 07:30
+
+## 2026-09-09 07:30 (local) — scheduler fast paths, direct XGKICK submit, VU0 fast path: mission gameplay 28.7 frames/s (best 30 s: 31)
+Fresh game-thread stack profile after the GS spans (run gtprof_2): startXgkick 9% in memcpy (the
+kicked packet was copied VU memory -> kick buffer -> arbiter), processPendingEvents 6% in mutex
+calls on every checkpoint return, selectReady 4% self (128 empty priority deques scanned on every
+idle wake), VU0 micro programs 4.5% (still the cycle-exact scheduler), GS front end ~12%
+(GSGlBackend record/Cmd growth, main's file). Fixes (commit below): the immediate XGKICK path
+walks the GIFtags in VU memory and submits the packet from there (the arbiter's copy is the only
+one; the copying paths remain for wrapping/overrunning packets), processPendingEvents clears the
+checkpoint request without the event mutex when nothing is posted (atomic event count) and no
+deadline is due, selectReady returns at once when the ready count is zero, and VU0 micro programs
+use the fast path too (`PS2X_VU0_FAST=0` restores the exact scheduler; the semantics are the same
+code that is golden-verified on VU1). The mission program was regenerated with the newest
+hand-back pcs added to logs/vu1_seeds_mission.txt (900-dump golden green, FMAC check clean).
+
+**Result** (run_20260909_07xx sched2_1, sheet identical): gameplay phase **28.7 syncv/s over the
+last 60 s, 31.0 in the best 30 s**, 7.0 ns/cycle, 69 M VU1 cycles/s, 2.4 M VU1 cycles/frame,
+hand-backs 33/s (0x3828 now the top one). Progression today: 3 -> 10 -> 13 -> 19 -> 22 -> 29.
+GSMem::ReadSpan (row-span texture reads, mirror of WriteSpan) is in for the GL backend's
+decodeTexture (per-pixel ReadCT32 today, 14% of the GL thread; main's file).
 
 ## 2026-09-09 06:20 (local) — VU1 program regenerated from 900 dumps (300 gameplay): hand-backs 850 -> 32/s, mission gameplay 22-29 frames/s
 The in-game `[vu1-bail]` histogram showed the generated code handing ~1100 programs/s to the

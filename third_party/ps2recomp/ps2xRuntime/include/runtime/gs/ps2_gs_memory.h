@@ -555,6 +555,9 @@ namespace GSMem
 	// of the per-pixel writer, without the std::function call and the per-pixel page arithmetic.
 	// Returns false for a format without a span writer.
 	bool WriteSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, const u8* src, u32 nibble);
+	// Row span read: `count` consecutive pixels from (x, y) into dst as u32 values (the format's
+	// unpacked value, like the per-pixel Read*). Same values as `count` calls of the per-pixel reader.
+	bool ReadSpan(u32 psm, u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 count, u32* dst);
 	void WriteP8(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 	void WriteP8H(u8* data, u32 bp, u32 bw, u32 x, u32 y, u32 value);
 

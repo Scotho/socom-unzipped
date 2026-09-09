@@ -1073,6 +1073,52 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     if (s_immediate)
     {
         m_xgkick.cycleCredit = 0x40000000u;
+        // Direct submit: walk the GIFtags in VU memory and hand the packet to the arbiter from
+        // there (it copies once). Falls back to the copying paths when the packet wraps around the
+        // end of VU memory, overruns the buffer or has a reserved tag format.
+        if (m_activeMemory)
+        {
+            uint32_t off = 0u;
+            bool ok = false;
+            for (;;)
+            {
+                const uint32_t src = sourceAddress + off;
+                if (src + 16u > m_activeVuDataSize || off > XgkickPipeline::kBufferSize - 16u)
+                    break;
+                uint64_t tagLo = 0;
+                std::memcpy(&tagLo, m_activeVuData + src, sizeof(tagLo));
+                const uint32_t nloop = static_cast<uint32_t>(tagLo & 0x7FFFu);
+                const uint32_t format = static_cast<uint32_t>((tagLo >> 58) & 0x3u);
+                uint32_t nreg = static_cast<uint32_t>((tagLo >> 60) & 0xFu);
+                if (nreg == 0u)
+                    nreg = 16u;
+                uint64_t tagBytes = 16u;
+                if (format == 0u)
+                    tagBytes += static_cast<uint64_t>(nloop) * nreg * 16u;
+                else if (format == 1u)
+                    tagBytes += ((static_cast<uint64_t>(nloop) * nreg + 1u) & ~1ull) * 8u;
+                else if (format == 2u)
+                    tagBytes += static_cast<uint64_t>(nloop) * 16u;
+                else
+                    break;
+                if (tagBytes > XgkickPipeline::kBufferSize - off || src + tagBytes > m_activeVuDataSize)
+                    break;
+                off += static_cast<uint32_t>(tagBytes);
+                if (((tagLo >> 15) & 1u) != 0u)
+                {
+                    ok = true;
+                    break;
+                }
+            }
+            if (ok)
+            {
+                m_xgkick.totalBytes = off;
+                m_xgkick.copiedBytes = off;
+                m_activeMemory->submitGifPacket(GifPathId::Path1, m_activeVuData + sourceAddress, off);
+                m_xgkick.active = false;
+                return;
+            }
+        }
         // Bulk copy: one memcpy per GIFtag payload instead of one qword per step, as long as the
         // packet does not wrap around the end of VU memory (then the per-qword path takes over).
         while (m_xgkick.active)
@@ -2305,7 +2351,10 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // clean, 18 ns/cycle vs 100); PS2X_VU1_FAST=0 selects the cycle-exact scheduler, which a VU
     // trace also forces.
     static const bool s_fastEnv = std::getenv("PS2X_VU1_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU1_FAST")) != 0;
-    m_fast = s_fastEnv && m_unit == Unit::VU1 && !traceThis;
+    // VU0 micro programs (VCALLMS) share the same instruction semantics; PS2X_VU0_FAST=0 keeps them on
+    // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
+    static const bool s_vu0FastEnv = std::getenv("PS2X_VU0_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU0_FAST")) != 0;
+    m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
     if (m_fast)
     {
         // Known program (recompiled image): run the generated code until it ends the program or

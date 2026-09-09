@@ -92,6 +92,8 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     m_snapshotPublishedCycle = ~0ull;
     m_rdram = rdram;
     m_readyQueues = {};
+    m_readyTotal = 0u;
+    m_eventCount.store(0u, std::memory_order_relaxed);
     m_threads.clear();
     m_semaphores.clear();
     m_eventFlags.clear();
@@ -124,6 +126,7 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     {
         std::lock_guard lock(m_eventMutex);
         m_events.clear();
+        m_eventCount.store(0u, std::memory_order_relaxed);
         m_deadlines.clear();
         m_pendingInvocations.clear();
     }
@@ -151,6 +154,7 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     main.status = EeThreadStatus::Ready;
     m_threads.emplace(main.id, std::move(main));
     m_readyQueues[0].push_back(kMainThreadId);
+    ++m_readyTotal;
     scheduleEvent(m_eeCycle + kVBlankPeriodCycles,
                   std::chrono::steady_clock::now() + kVBlankPeriod,
                   EeEvent{EeEventType::VBlankStart, 0, 0});
@@ -354,6 +358,7 @@ void EeScheduler::postEvent(EeEvent event)
     {
         std::lock_guard lock(m_eventMutex);
         m_events.push_back(event);
+        m_eventCount.fetch_add(1u, std::memory_order_release);
         m_checkpointPending.store(true, std::memory_order_release);
     }
     m_eventCv.notify_one();
@@ -1684,6 +1689,7 @@ void EeScheduler::enqueueReady(GuestThread &item, bool front)
     {
         queue.push_back(item.id);
     }
+    ++m_readyTotal;
 }
 
 void EeScheduler::removeReady(GuestThread &item)
@@ -1696,10 +1702,14 @@ void EeScheduler::removeReady(GuestThread &item)
     auto it = std::find(queue.begin(), queue.end(), item.id);
     assert(it != queue.end());
     queue.erase(it);
+    if (m_readyTotal > 0u)
+        --m_readyTotal;
 }
 
 GuestThread *EeScheduler::selectReady()
 {
+    if (m_readyTotal == 0u)
+        return nullptr; // 128 empty priority queues otherwise scanned on every idle wake (~4%)
     for (auto &queue : m_readyQueues)
     {
         if (queue.empty())
@@ -1708,6 +1718,7 @@ GuestThread *EeScheduler::selectReady()
         }
         const int id = queue.front();
         queue.pop_front();
+        --m_readyTotal;
         GuestThread *selected = thread(id);
         assert(selected != nullptr);
         assert(selected->status == EeThreadStatus::Ready);
@@ -1830,6 +1841,22 @@ void EeScheduler::applyPendingPreemption()
 void EeScheduler::processPendingEvents()
 {
     assertExecutor();
+    // Nothing posted, no timer interrupt, no deadline due: clear the checkpoint request without
+    // taking the event mutex twice (this ran on every checkpoint return, ~6% of the game thread).
+    if (m_eventCount.load(std::memory_order_acquire) == 0u && m_pendingEeTimerInterrupts == 0u &&
+        !m_stopRequested.load(std::memory_order_acquire))
+    {
+        const uint64_t next = m_nextDeadlineCycle.load(std::memory_order_acquire);
+        if (next == 0u || m_eeCycle < next)
+        {
+            m_checkpointPending.store(false, std::memory_order_release);
+            // a poster that slipped in between: it incremented the count before setting the flag
+            if (m_eventCount.load(std::memory_order_acquire) != 0u)
+                m_checkpointPending.store(true, std::memory_order_release);
+            applyPendingPreemption();
+            return;
+        }
+    }
     processDueDeadlines();
     const uint32_t timerInterrupts = m_pendingEeTimerInterrupts;
     m_pendingEeTimerInterrupts = 0u;
@@ -1844,6 +1871,7 @@ void EeScheduler::processPendingEvents()
     {
         std::lock_guard lock(m_eventMutex);
         pending.swap(m_events);
+        m_eventCount.store(0u, std::memory_order_release);
     }
     for (const EeEvent &event : pending)
     {
