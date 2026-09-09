@@ -57,11 +57,14 @@ def osk_type(hwnd, text, shots=None, tag="", target="pcsx2"):
     cur = OSK_START
     for n, ch in enumerate(list(text) + ["ENTER"]):
         dst = osk_pos(ch)
+        # Our exe runs the shell at 60 fps since 2026-09-09: a 0.15 s hold spans 9 frames and
+        # trips the keyboard's auto-repeat (cursor overshoots, characters lost). 3 frames is enough.
+        hold = 0.06 if target == "ours" else 0.15
         for m in osk_moves(cur, dst):
-            keys.press(hwnd, m, target)
+            keys.press(hwnd, m, target, hold_s=hold)
             time.sleep(0.35)
         cur = dst
-        keys.press(hwnd, "cross", target)
+        keys.press(hwnd, "cross", target, hold_s=hold)
         time.sleep(0.6)
         if shots and ch != "ENTER":
             winshot.capture(hwnd).save(os.path.join(shots, f"{tag}_key{n}_{ch}.png"))

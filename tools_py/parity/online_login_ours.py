@@ -83,26 +83,44 @@ class Shell:
             full = (im or winshot.grab(self.hwnd)).convert("L").resize((320, 224))
             arr = np.asarray(full, dtype=float)
         x0, y0, x1, y1 = self.meta[name]["box"]
-        ref = self.refs[name]
-        rn = (ref - ref.mean()) / (ref.std() + 1e-6)
         best = 1e9
-        for dy in range(-3, 4):
-            for dx in range(-12, 13):
-                ax0, ay0 = x0 + dx, y0 + dy
-                if ax0 < 0 or ay0 < 0 or ax0 + ref.shape[1] > arr.shape[1] or ay0 + ref.shape[0] > arr.shape[0]:
-                    continue
-                c = arr[ay0:ay0 + ref.shape[0], ax0:ax0 + ref.shape[1]]
-                d = float(abs((c - c.mean()) / (c.std() + 1e-6) - rn).mean())
-                if d < best:
-                    best = d
+        # The prompt notices are also drawn a few percent narrower than the references: try a
+        # few horizontal scales of the reference band (0.61 -> 0.44 on the write-down notice).
+        for ref in self.ref_scales(name):
+            rn = (ref - ref.mean()) / (ref.std() + 1e-6)
+            for dy in range(-6, 7):
+                for dx in range(-20, 21):
+                    ax0, ay0 = x0 + dx, y0 + dy
+                    if ax0 < 0 or ay0 < 0 or ax0 + ref.shape[1] > arr.shape[1] or ay0 + ref.shape[0] > arr.shape[0]:
+                        continue
+                    c = arr[ay0:ay0 + ref.shape[0], ax0:ax0 + ref.shape[1]]
+                    if c.std() < 2.0:
+                        continue
+                    d = float(abs((c - c.mean()) / (c.std() + 1e-6) - rn).mean())
+                    if d < best:
+                        best = d
         return best
+
+    def ref_scales(self, name):
+        if not hasattr(self, "_scaled"):
+            self._scaled = {}
+        if name not in self._scaled:
+            im = Image.open(os.path.join(REFS, name + ".png")).convert("L")
+            out = []
+            for sc in (0.90, 0.93, 0.96, 1.0, 1.04):
+                w = max(4, int(round(im.size[0] * sc)))
+                out.append(np.asarray(im.resize((w, im.size[1])), dtype=float))
+            self._scaled[name] = out
+        return self._scaled[name]
+
+    PROMPT_THRESH = {"write_down": 0.5, "save_card": 0.5, "card_slot": 0.5}
 
     def is_screen(self, name, thresh=None):
         if name == "main_menu":
             return score(self.menu, winshot.grab(self.hwnd))["score"] >= (thresh or 90.0)
         arr = np.asarray(winshot.grab(self.hwnd).convert("L").resize((320, 224)), dtype=float)
         d = self.diff(name, arr=arr)
-        if d > 0.45:
+        if d > self.PROMPT_THRESH.get(name, 0.45):
             return False
         # Among the references sharing this band, this screen must also be the best match.
         box = tuple(self.meta[name]["box"])
