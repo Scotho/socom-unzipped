@@ -411,7 +411,8 @@ void GSGlBackend::waitForToken(uint64_t token)
     if (std::this_thread::get_id() == m_renderThread)
     {
         // Called on the GL thread (debug readback): execute inline.
-        CommandBuffer buffer;
+        CommandBuffer &buffer = m_executing;
+        buffer.clear();
         {
             std::lock_guard<std::mutex> lock(m_queueMutex);
             buffer.commands.swap(m_pending.commands);
@@ -663,7 +664,10 @@ bool GSGlBackend::HostRenderFrame()
 {
     if (!ensureGl())
         return false;
-    CommandBuffer buffer;
+    // The executed buffer is a member so its capacity (commands and upload bytes) is handed back
+    // to m_pending by the swap: no vector growth on the game thread every frame (~7% of it).
+    CommandBuffer &buffer = m_executing;
+    buffer.clear();
     {
         std::lock_guard<std::mutex> lock(m_queueMutex);
         buffer.commands.swap(m_pending.commands);
@@ -699,7 +703,32 @@ uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32
 // the first movie block upload (SOCOM II's intro movie starts at a different present count per run).
 long GSGlBackend::traceSkip(const char *env) const
 {
-    const char *e = std::getenv(env);
+    // The trace switches never change during a run: cache the lookups (std::getenv here was ~4%
+    // of the GL thread with tracing off; the callers are on every upload/download/refresh).
+    struct CachedEnv
+    {
+        const char *name;
+        const char *value;
+    };
+    static CachedEnv s_cache[8] = {};
+    static int s_cacheCount = 0;
+    const char *e = nullptr;
+    bool found = false;
+    for (int i = 0; i < s_cacheCount; ++i)
+    {
+        if (s_cache[i].name == env || std::strcmp(s_cache[i].name, env) == 0)
+        {
+            e = s_cache[i].value;
+            found = true;
+            break;
+        }
+    }
+    if (!found)
+    {
+        e = std::getenv(env);
+        if (s_cacheCount < 8)
+            s_cache[s_cacheCount++] = {env, e};
+    }
     if (!e)
         return -1;
     if (e[0] == 't' && e[1] == 'r')   // "trig": armed by PS2X_TRIGGER (game-state trigger in the PC sampler)
@@ -1783,30 +1812,47 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
         }
     }
 
-    for (uint32_t y = 0; y < height; ++y)
-        for (uint32_t x = 0; x < width; ++x)
+    // Row spans (GSMem::ReadSpan: the same per-pixel Read* inlined, no page arithmetic per pixel;
+    // this loop was ~14% of the GL thread), conversion chosen once per texture.
+    {
+        std::vector<uint32_t> row(width);
+        const bool spanOk = GSMem::ReadSpan(tex.psm, vram, tex.tbp0, tex.tbw, 0u, 0u, 0u, row.data());
+        enum class Conv { Color32, Color16, Indexed, Missing } conv;
+        switch (tex.psm)
         {
-            uint32_t out = readVramRaw(vram, tex.psm, tex.tbp0, tex.tbw, x, y);
-            switch (tex.psm)
+        case GS_PSM_CT32: case GS_PSM_CT24: case GS_PSM_Z32: case GS_PSM_Z24: conv = Conv::Color32; break;
+        case GS_PSM_CT16: case GS_PSM_CT16S: case GS_PSM_Z16: case GS_PSM_Z16S: conv = Conv::Color16; break;
+        default: conv = indexed ? Conv::Indexed : Conv::Missing; break;
+        }
+        for (uint32_t y = 0; y < height; ++y)
+        {
+            if (spanOk)
+                GSMem::ReadSpan(tex.psm, vram, tex.tbp0, tex.tbw, 0u, y, width, row.data());
+            else
+                for (uint32_t x = 0; x < width; ++x)
+                    row[x] = readVramRaw(vram, tex.psm, tex.tbp0, tex.tbw, x, y);
+            uint32_t *dst = pixels.data() + static_cast<size_t>(y) * width;
+            switch (conv)
             {
-            case GS_PSM_CT32:
-            case GS_PSM_CT24:
-            case GS_PSM_Z32:
-            case GS_PSM_Z24:
-                out = applyTexa(state.texa, tex.psm, out);
+            case Conv::Color32:
+                for (uint32_t x = 0; x < width; ++x)
+                    dst[x] = applyTexa(state.texa, tex.psm, row[x]);
                 break;
-            case GS_PSM_CT16:
-            case GS_PSM_CT16S:
-            case GS_PSM_Z16:
-            case GS_PSM_Z16S:
-                out = applyTexa(state.texa, tex.psm, rgba5551To8888(out));
+            case Conv::Color16:
+                for (uint32_t x = 0; x < width; ++x)
+                    dst[x] = applyTexa(state.texa, tex.psm, rgba5551To8888(row[x]));
+                break;
+            case Conv::Indexed:
+                for (uint32_t x = 0; x < width; ++x)
+                    dst[x] = clut[row[x] & 0xFFu];
                 break;
             default:
-                out = indexed ? clut[out & 0xFFu] : 0xFFFF00FFu;
+                for (uint32_t x = 0; x < width; ++x)
+                    dst[x] = 0xFFFF00FFu;
                 break;
             }
-            pixels[static_cast<size_t>(y) * width + x] = out;
         }
+    }
 
     // PS2X_GS_DUMP_TEX=<dir>: write every decoded texture as a PPM (RGB) + PGM (alpha) for inspection.
     static const char *s_dumpDir = std::getenv("PS2X_GS_DUMP_TEX");
