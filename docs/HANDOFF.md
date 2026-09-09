@@ -2,7 +2,7 @@
 >>> git-ignored game/ and tools/ (ISO, PCSX2 installs + savestates + memcards, llvm-mingw, Ghidra,
 >>> reCOM). Restore per its "STOP FIRST" section before any run or autonomous cycle.
 
-# Handoff — SOCOM II PC recompilation (2026-09-06 02:15)
+# Handoff — SOCOM II PC recompilation (2026-09-08 22:30)
 
 Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
 written so a fresh agent can continue **autonomously** toward the project vision without asking.
@@ -101,6 +101,29 @@ bounded script-runner reset and was never the hotspot. `FUN_003b24c0` is stubbed
 (`socom2_LumReadPixel`, mid-grey pixel) until the readback is implemented (secondary list).
 
 ## Next tasks, in order (each with a starting recipe)
+
+### 0b. (2026-09-08 22:30) In-mission parity — objects render; what is left and how to pick it up
+Read the 2026-09-08 entries at the top of docs/STATUS.md (16:15 -> 22:30) first. Landed today:
+SQRT.S read the wrong register (c9da469: actors/collision/camera now match PCSX2), XGKICK
+packets are copied at kick time (089516b: trees/bushes/road render), the EE game thread runs
+with host rounding toward zero (the EE FPU chops; the title labels were garbled without it —
+`PS2X_EE_ROUND=nearest` restores the old mode), VU1 interpreter 158 -> 111 ns/cycle.
+Open, in order:
+1. **Behind-camera triangles in the mission** (~1/3 of world triangles with q < 0 cover the
+   screen). The microprogram's near-plane clipper reads the MAC sign flags (`FMAND vi, 0x20/0x10`)
+   four instructions after the FMAC. Recipe: run the mission with `PS2X_PC_SAMPLER=1
+   PS2X_PEEK="*0x488de8+0x320:3" PS2X_TRIGGER=938.5:940.5 PS2X_VU1_DUMP=logs/vu1dump2:150`
+   (drive.py + scripts/parity/launch_to_mission_diag.txt, --seconds 480 --tail 170), replay every
+   dump offline (`dist/vu1_replay.exe <dump> --out p.pk; python tools_py/gif_packets.py p.pk`),
+   pick one whose packets have q < 0, disassemble it (`tools_py/vu1dis.py <dump>`), then step the
+   clipper with `--trace` (PS2X_TRACE_VU path) and compare the MAC flags the program reads with
+   what the FMAC four cycles earlier produced (ps2_vu1_core.cpp updateFmacFlags / commit).
+2. **Frame rate**: VU1 interpreter still ~0.7 s host per second (PS2X_VU_STATS=1). A non-cycle-exact
+   fast path (immediate VF/VI writes, a 4-deep MAC/status/clip flag ring, Q/P by instruction count)
+   or a VU1 recompiler.
+3. Re-grade the in-mission screens against logs/parity/runs/pcsx2_mission_g once 1 is fixed.
+Boot-flow drift is real (the intro/location cinematics play or not): scripts navigate by screen
+state (`long`, `idle`, `until(x0,y0,x1,y1)` modes in drive.py), never by press counts.
 
 ### 0a. (2026-09-08 14:30) In-mission parity — where the "player falls through the floor" chain stands
 Read the 2026-09-08 entries at the top of docs/STATUS.md first. Facts established with guest-memory

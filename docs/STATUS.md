@@ -1,4 +1,18 @@
-# Project status — updated 2026-09-08 21:40
+# Project status — updated 2026-09-08 22:30
+
+## 2026-09-08 22:30 (local) — title-screen labels: the EE FPU chops; the game thread now rounds toward zero
+The garbled LOAD GAME / NEW GAME / ONLINE labels (user report ~21:00) are 128x32 CT32 images the
+EE composes and uploads (host->local to dbp 0x3207/0x3247/0x3287/... dbw=2), so the GS was drawing
+what it was given; the CPU rasterizer garbles them in every run, the GL backend only when its
+texture cache happens to re-decode (the cache made earlier runs look clean). The 8x8 blocks in the
+logo's colours are glyph cells fetched from the wrong source: an index computed from a float.
+The game writes FCR31 = 0 at entry (`ctc1 $zero`), PCSX2 truncates CVT.W regardless and runs the
+EE FPU and VU in "Chop/Zero" rounding, and our host math rounded to nearest — the old
+round-to-nearest cvt.w had masked the difference; today's hardware-correct truncating cvt.w
+exposed it. Test: `PS2X_EE_ROUND=chop` (host rounding toward zero on the game thread) on the CPU
+backend renders the labels correctly (logs/parity/runs/title_chop). Now the default in
+ps2_runtime.cpp (game thread `fesetround(FE_TOWARDZERO)`; `PS2X_EE_ROUND=nearest` restores the
+old mode). Expect other small parity shifts from this: every EE/VU0 float result now truncates.
 
 ## 2026-09-08 21:40 (local) — object geometry appears (XGKICK copied at kick time); behind-camera triangles and a title-screen regression remain
 **Root cause of the missing objects.** With `PS2X_GS_TRACE_CMDS` armed at the gameplay camera

@@ -23,6 +23,7 @@
 #include <array>
 #include <cctype>
 #include <cstring>
+#include <cfenv>
 #include <limits>
 #include <chrono>
 #include <atomic>
@@ -2477,6 +2478,15 @@ void PS2Runtime::run()
     std::thread gameThread([&]()
                            {
         ThreadNaming::SetCurrentThreadName("GameThread");
+        // The EE FPU and VU0 truncate every result (PCSX2's default "Chop/Zero" rounding for EE
+        // and VU); host float math rounds to nearest. Run the game thread with the host FPU/SSE
+        // rounding toward zero (2026-09-08: SOCOM II's title-screen labels are composed from an
+        // index that only comes out right with chop; PS2X_EE_ROUND=nearest restores the old mode).
+        {
+            const char *round = std::getenv("PS2X_EE_ROUND");
+            if (!round || std::strcmp(round, "nearest") != 0)
+                std::fesetround(FE_TOWARDZERO);
+        }
         try
         {
             m_eeScheduler->reset(m_memory.getRDRAM(), m_cpuContext);
