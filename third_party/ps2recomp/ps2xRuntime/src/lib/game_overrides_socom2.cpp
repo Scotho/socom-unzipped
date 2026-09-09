@@ -949,6 +949,9 @@ namespace
         savedRegs[9] = GPR_U32(ctx, 29);
         savedRegs[10] = GPR_U32(ctx, 30);
         const uint32_t entryRa = GPR_U32(ctx, 31);
+        uint32_t entryArgs[4];
+        for (int r = 4; r <= 7; ++r)
+            entryArgs[r - 4] = GPR_U32(ctx, r);
         g_callTrace[N].original(rdram, ctx, runtime);
         if (ctx->pc == entryRa)
         {
@@ -973,6 +976,72 @@ namespace
             float f0 = 0.0f;
             std::memcpy(&f0, &ctx->f[0], sizeof(f0));
             std::cout << "[ret] " << g_callTrace[N].name << " #" << n << " v0=0x" << std::hex << GPR_U32(ctx, 2) << std::dec << " f0=" << f0 << std::endl;
+            // PS2X_CALL_TRACE_DUMP="<Name>:a<k>[+0xOFF][*[+0xOFF]]:<words>[,...]": after the traced
+            // function returns, follow the chain from the entry value of argument k and print
+            // <words> guest words (hex + float) — e.g. the collision query object's ray and hit
+            // records for every GroundQuery call ("GroundQuery:a1:20,GroundQuery:a1+0x48*:16").
+            static const char *const dumpSpec = std::getenv("PS2X_CALL_TRACE_DUMP");
+            if (dumpSpec && *dumpSpec)
+            {
+                std::string spec(dumpSpec);
+                size_t p = 0;
+                while (p < spec.size())
+                {
+                    size_t e = spec.find(',', p);
+                    if (e == std::string::npos)
+                        e = spec.size();
+                    const std::string item = spec.substr(p, e - p);
+                    p = e + 1;
+                    const size_t c1 = item.find(':');
+                    const size_t c2 = item.rfind(':');
+                    if (c1 == std::string::npos || c2 == c1 || item.substr(0, c1) != g_callTrace[N].name)
+                        continue;
+                    const std::string chain = item.substr(c1 + 1, c2 - c1 - 1);
+                    const uint32_t words = static_cast<uint32_t>(std::strtoul(item.c_str() + c2 + 1, nullptr, 0));
+                    if (chain.size() < 2 || chain[0] != 'a')
+                        continue;
+                    const int k = chain[1] - '0';
+                    if (k < 0 || k > 3)
+                        continue;
+                    uint32_t addr = entryArgs[k];
+                    size_t i = 2;
+                    bool ok = true;
+                    while (i < chain.size() && ok)
+                    {
+                        if (chain[i] == '*')
+                        {
+                            if ((addr & 0x1FFFFFF) + 4 > PS2_RAM_SIZE)
+                            {
+                                ok = false;
+                                break;
+                            }
+                            std::memcpy(&addr, rdram + (addr & 0x1FFFFFF), 4);
+                            ++i;
+                        }
+                        else if (chain[i] == '+')
+                        {
+                            char *endp = nullptr;
+                            addr += static_cast<uint32_t>(std::strtoul(chain.c_str() + i + 1, &endp, 0));
+                            i = static_cast<size_t>(endp - chain.c_str());
+                        }
+                        else
+                            ok = false;
+                    }
+                    if (!ok || addr == 0 || (addr & 0x1FFFFFF) + words * 4 > PS2_RAM_SIZE)
+                        continue;
+                    std::ostringstream o;
+                    o << "[ret-dump] " << g_callTrace[N].name << " #" << n << " @" << std::hex << (addr & 0x1FFFFFF) << ":";
+                    for (uint32_t w = 0; w < words; ++w)
+                    {
+                        uint32_t v = 0;
+                        float fv = 0.0f;
+                        std::memcpy(&v, rdram + ((addr & 0x1FFFFFF) + w * 4), 4);
+                        std::memcpy(&fv, &v, 4);
+                        o << " " << std::hex << std::setw(8) << std::setfill('0') << v << "(" << std::dec << fv << ")";
+                    }
+                    std::cout << o.str() << std::endl;
+                }
+            }
         }
     }
 
