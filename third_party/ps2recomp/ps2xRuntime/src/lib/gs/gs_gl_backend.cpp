@@ -1920,6 +1920,39 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                      (unsigned long long)m_frameCounter, tex.tbp0, tex.tbw, tex.psm, width, height, pageStart, pageCount,
                      pagesMayBeGpuDirty(pageStart, pageCount) ? 1 : 0);
 
+    // Render target sampled as a texture: when the texture is exactly a render target the GPU
+    // drew into (same base, width and 32-bit format), sample the target's own colour texture
+    // instead of reading the GPU pixels back into the shadow and decoding them (the readback was
+    // ~26% of the GL thread). Pending shadow->GPU rectangles are applied first, so the GPU texture
+    // holds everything the readback+decode would have produced. Restricted to texel-coordinate
+    // draws with clamp/region-clamp wrapping (the shader normalizes by the target's size then),
+    // never for the target being drawn into (feedback). PS2X_GS_RT_TEXTURE=0 restores the readback.
+    static const bool s_rtTexture = std::getenv("PS2X_GS_RT_TEXTURE") == nullptr || std::atoi(std::getenv("PS2X_GS_RT_TEXTURE")) != 0;
+    if (s_rtTexture && tex.psm == GS_PSM_CT32 && state.prim.fst)
+    {
+        const uint64_t clamp = state.context.clamp;
+        const uint32_t wrapU = static_cast<uint32_t>(clamp & 3u), wrapV = static_cast<uint32_t>((clamp >> 2) & 3u);
+        if (wrapU <= 2u && wrapV <= 2u)
+        {
+            for (RenderTarget &rt : m_renderTargets)
+            {
+                if (!rt.shadowStale || rt.psm != GS_PSM_CT32 || rt.fbp != pageStart || rt.fbw != tex.tbw || rt.color == 0u)
+                    continue;
+                if (rt.fbp == state.context.frame.fbp)
+                    continue;
+                if (width > rt.width || height > rt.height)
+                    continue;
+                refreshDirtyRows(rt);
+                outWidth = rt.width;
+                outHeight = rt.height;
+                if (tracePagesHit(pageStart, pageCount))
+                    std::fprintf(stderr, "[gs-pages] frame=%llu texture tbp0=%05x sampled from rt fbp=%03x (%ux%u) directly\n",
+                                 (unsigned long long)m_frameCounter, tex.tbp0, rt.fbp, rt.width, rt.height);
+                return rt.color;
+            }
+        }
+    }
+
     // If the texture lives in pages a render target has drawn into, bring the shadow up to date.
     for (RenderTarget &rt : m_renderTargets)
     {
