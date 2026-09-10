@@ -309,16 +309,17 @@ def host_game(sh, game_name="test"):
     sh.shot("17_game_lobby_ok")
 
 
-def join_game(sh):
+def join_game(sh, switch=True):
     sh.press("cross", 8.0)                                       # JOIN GAME activates the list
     sh.shot("12_games_list")
     sh.press("cross", 25.0)                                      # first game
     sh.shot("16_game_lobby")
     sh.press("cross", 3.0)                                       # CONTINUE
     sh.shot("17_game_lobby_ok")
-    sh.press("down", 1.0)
-    sh.press("cross", 4.0)                                       # SWITCH TEAMS
-    sh.shot("18_switched")
+    if switch:
+        sh.press("down", 1.0)
+        sh.press("cross", 4.0)                                   # SWITCH TEAMS
+        sh.shot("18_switched")
 
 
 def ready(sh):

@@ -1,4 +1,40 @@
-# Project status — updated 2026-09-09 15:05
+# Project status — updated 2026-09-10 17:40
+
+## 2026-09-10 17:40 (local) — VU1 register-file build landed (841a6fc); two instances of our exe reach ONLINE GAMEPLAY on it (ours_match_play5); A walks into a wall, next = same-team sweep for the first kill
+Picked up the VU1 agent's uncommitted work (stale lock, 26 h): the generated VU1 code keeps the VF
+register file in a local (xmm-resident across pairs, written back around interpreter fallbacks),
+XGKICK bookkeeping is reset without zeroing the 64 KB packet buffer (`m_xgkick = {}` was ~24% of
+the game thread), the VU rounding mode is set through the x87/MXCSR control words instead of
+fesetround (142 ns per run(), VU0 macro programs run by the thousand per frame), and VU0 runs skip
+the steady_clock reads. Rebuilt (header change, 10 min) and gated on this build:
+- title_menu.txt (run vr_title, sheet logs/parity/vr_title_sheet.png): 20 clean captures, labels
+  crisp, movie background, 59 syncv/s at the menu.
+- gameplay_probe.txt (run vr_gameplay): did NOT reach the mission — not a build regression: this
+  boot showed the controller-configuration screens (yesterday's xg_gameplay run skipped them, the
+  known drift) and the probe's blind CROSS answered YES to "save to the memory card?", then looped
+  on "overwritten data will be lost? [NO]". Fix 7bf0160: drive.py `ifref(<png>,y0,y1,x0,x1,thresh)`
+  presses only when the settled screen matches; the probe presses RIGHT (NO) on that prompt
+  (ref scripts/parity/ref_save_prompt_ours.png, dist 0 on the prompt, 16 on the overwrite dialog,
+  35+ elsewhere; threshold 8).
+- **Two-instance online match (logs/parity/ours_match_play5, sheet match_play5_sheet.png), the
+  goal-1 run:** A (socomc) hosts test/Medley, B (socome) joins and switches to TERRORISTS, both
+  READY -> VIGILANCE -> both in gameplay with HUD, round timer, compass; A fires (27/30 after two
+  R1 bursts), B moves. 19-21 syncv/s per instance with both running (two game threads + two GL
+  threads on the host). Horizon: world 0 registered, both clients CONNECT_COMPLETE on DME TCP +
+  aux UDP (50000/50001), APP_SINGLE/BROADCAST relayed, no faults in either run log. The driver's
+  "B_TIMEOUT waiting for persona" at 180 s was spurious: B had already passed the persona screen
+  and continued to the EULA/lobby/briefing room (fix the message when touching the driver next).
+- A never moved: every A_play frame is the same view (a stone wall 2 m ahead); `hold W 3 s` walks
+  into it. B's frames change (it turns/moves). So position feedback is needed for A to hunt.
+Next (bounded): `--same-team --sweep 24` in online_match_ours.py (added, untested): B stays on
+SEALs so both spawn together; A rotates in place firing a burst per step; both instances run with
+`PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3` (local player x/y/z, one row per second in each
+logs/run_*.log) so the two positions and any death (B's y / respawn) are readable from the logs.
+Then the kill/round-end readout: B's HUD/death screen, and the DME world log slice
+(server/logs/console-DME.log from the line count the run script records as dme0=).
+Run hygiene: the harness kills long background shells, so runs go through a detached script
+(logs/run_match_play5.sh via PowerShell Start-Process) and a `.done` marker; the loop cron fires
+every 30 min and skips while `logs/.loop_lock` is held by a live run.
 
 ## 2026-09-09 15:05 (local) — online match driver on the 60 fps shell: three timing/matcher fixes; instance A logs in to the lobby, B stalls on a missed press (fixed, re-run queued)
 Runs ours_match_play1..4 (logs/parity/ours_match_play*/, drive logs logs/parity/drive_match_play*.txt).

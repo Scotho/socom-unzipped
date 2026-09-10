@@ -3,6 +3,38 @@
 
 # Handoff — SOCOM II PC recompilation (2026-09-09 03:40)
 
+## START HERE (2026-09-10 17:45) — goal 1 in gameplay on our exe; the section below is the previous pick-up (recipes still current)
+
+**State (all on `develop`, last 841a6fc/7bf0160; STATUS 2026-09-10 17:40):**
+- Build: VU1 register-file work landed (841a6fc). Gates on it: title clean (vr_title), main menu
+  59 syncv/s. gameplay_probe.txt now survives the controller-config "save to memory card?" prompt
+  (ifref step, 7bf0160) — re-run it once for the mission gate on this build.
+- **Two instances of our exe are in an online match in gameplay** (logs/parity/ours_match_play5:
+  HUD, round timer, compass, A fires, B moves; 19-21 syncv/s each with both running). Recipe:
+  Horizon up (`server/start-servers.ps1`), then a detached script like logs/run_match_play5.sh
+  (PowerShell `Start-Process bash.exe <script>` — the harness kills long background shells) and
+  wait for its `.done` marker; the driver's stdout is block-buffered until exit.
+- Known: A's "walk forward" bursts walk it into a wall (identical A_play frames); B moves. The
+  driver's "B_TIMEOUT waiting for persona" line was spurious (B continued).
+
+**Open items, in order, each with its first step:**
+1. **First kill / round end (the user's acceptance test).** Running/next: `python -m
+   tools_py.parity.online_match_ours --existing-b --same-team --hold 40 --sweep 24` with
+   `PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3` on both instances (logs/run_match_sweep1.sh, output
+   logs/parity/ours_match_sweep1, drive log drive_match_sweep1.txt). B stays on SEALs so both
+   spawn together; A turns in place firing a burst per step. Read: the two `[peek] @416054`
+   position rows (one per second per instance, newest two logs/run_*.log), A_sweep*/B_sweep*
+   frames (B's death/respawn screen), and the DME log slice from the `dme0=` line count. If no
+   kill: aim needs the relative bearing — compute it from the two positions and turn A by
+   timed L/J holds (calibrate degrees per second of `hold L` from the compass in the frames);
+   if the round cannot start with one team only, fall back to `--play` with position-driven
+   steering toward B.
+2. Frame rate with two instances (19-21 each; 36-42 single): the two game threads + two GL
+   threads share the host. Profile one instance with `PS2X_HOST_PROF=1 PS2X_HOST_PROF_STACKS=1`
+   during a match; next levers are in STATUS 2026-09-09 13:30 (sceMpegDemuxPssRing, guest malloc).
+3. Mission gate on this build (gameplay_probe.txt) and the items below (ground height, parity
+   report).
+
 ## START HERE (2026-09-09 03:40) — state after the overnight loop; the section below it is the previous pick-up and still describes the run recipes
 
 **Landed tonight (all on `develop`, last 0a154aa; read STATUS 2026-09-09 entries top-down):**

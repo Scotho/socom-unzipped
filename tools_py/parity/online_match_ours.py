@@ -50,6 +50,9 @@ def main():
     ap.add_argument("--existing-b", action="store_true")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
     ap.add_argument("--play", type=int, default=0, help="gameplay bursts after the hold (A walks + fires, B turns)")
+    ap.add_argument("--same-team", action="store_true", help="B stays on SEALs (teammates spawn together; friendly fire is the shortest path to a kill)")
+    ap.add_argument("--sweep", type=int, default=0, help="gameplay: A turns in place in <N> steps of --sweep-hold s firing a burst at each; B stands")
+    ap.add_argument("--sweep-hold", type=float, default=0.5)
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
@@ -82,7 +85,7 @@ def main():
             if c.error:
                 raise c.error
         L.host_game(A.sh)
-        L.join_game(B.sh)
+        L.join_game(B.sh, switch=not a.same_team)
         time.sleep(35)                                           # READY becomes available
         L.ready(A.sh)
         L.ready(B.sh)
@@ -101,6 +104,15 @@ def main():
                 B.sh.hold("L", 0.6)
                 A.sh.shot(f"play{i:02d}")
                 B.sh.shot(f"play{i:02d}")
+        if a.sweep:
+            # Same-team kill probe: A rotates in place (right stick) and fires a burst at every
+            # step; B stands where it spawned (a few metres from A when both are SEALs).
+            for i in range(a.sweep):
+                A.sh.hold("L", a.sweep_hold)
+                A.sh.hold("R1", 0.4)
+                A.sh.hold("R1", 0.4)
+                A.sh.shot(f"sweep{i:02d}")
+                B.sh.shot(f"sweep{i:02d}")
     finally:
         A.kill()
         B.kill()
