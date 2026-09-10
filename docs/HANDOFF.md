@@ -182,8 +182,8 @@ into dist/ (it needs the DLLs there). `./build.sh all` after any recompiler chan
 play): scripts navigate by screen state (`long`, `idle`, `until(x0,y0,x1,y1)` modes in drive.py),
 never by press counts. C++ patches: Edit tool or a Python script written with the Write tool
 (bash heredocs mangle backslashes; a failed assert writes nothing). Python subprocess needs
-os.path.join paths for exes. `PS2X_PEEK` needs `PS2X_PC_SAMPLER=1`. Commit with explicit
-`socom_pc/...` paths from C:\projects, never `git add -A`; leave `server/config/simulated.db`
+os.path.join paths for exes. `PS2X_PEEK` needs `PS2X_PC_SAMPLER=1`. Commit from the repo
+root (own repo, remote github.com/Scotho/socom-unzipped), never `git add -A`; leave `server/config/simulated.db`
 unstaged; trailers `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
 `Claude-Session: <session url>`. Update docs/STATUS.md (newest entry on top) and the memory
 file after each milestone.
@@ -567,8 +567,9 @@ Rules: never savestate after network traffic (PCSX2 side); the exe needs no save
    fixed (0x353d00, 0x2a98a0); rerun the scan when new symptoms of "call does nothing" appear.
 2. Shell heredocs mangle backslashes: never write C string escapes (`\n`) through a bash
    heredoc; use the Edit tool (or Python with `newline='\n'`, checking the result).
-3. Git root is the parent monorepo `C:\projects`: **never `git add -A`**, stage explicit
-   `socom_pc/...` paths. Shell/py files stay LF.
+3. Git root is `C:\projects\socom_pc` (own repo since 2026-09-10, remote
+   github.com/Scotho/socom-unzipped): **never `git add -A`**, stage explicit paths and push.
+   Shell/py files stay LF.
 4. Don't steal desktop focus or screenshot the desktop; the raylib window screenshot
    (`PS2X_HOST_SCREENSHOT`) is fine. Pause if the user says the machine is under load.
 5. Commit trailer: the `Co-Authored-By:` line names the model you are, and `Claude-Session:` is

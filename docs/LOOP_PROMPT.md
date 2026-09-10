@@ -31,8 +31,9 @@ hypothesis->build->run->evidence step.
 4. Subagents are welcome for offline/static work (decomp reading, VU1 fast-path/recompiler work
    verified with `dist/vu1_replay.exe` against the interpreter, server-side Horizon checks) but
    builds of the runtime and game runs are SERIAL: take `logs/.loop_lock` first.
-5. Commit with explicit `socom_pc/...` paths from C:\projects (never `git add -A`; leave
-   `server/config/simulated.db` unstaged), trailers
+5. Commit from the repo root C:\projects\socom_pc (its own git repo, remote
+   github.com/Scotho/socom-unzipped; never `git add -A`; leave `server/config/simulated.db`
+   unstaged), then `git push`; trailers
    `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and `Claude-Session: <url>`.
 6. Never regress: title labels clean (s05/s06 of every run sheet), online reaches SELECT
    UNIVERSE, mission loads. A regression is fixed before moving on.

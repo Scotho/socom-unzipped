@@ -1,4 +1,4 @@
-# SOCOM II: U.S. Navy SEALs — native PC port (static recompilation)
+# SOCOM Unzipped — SOCOM II: U.S. Navy SEALs, statically recompiled for PC
 
 Goal: a `socom2.exe` that runs the US retail game (SCUS_972.75, r0001) natively on modern
 Windows without a PS2 emulator, with controller support and online play against a server we

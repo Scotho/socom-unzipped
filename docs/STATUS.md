@@ -1207,5 +1207,5 @@ theory was wrong; it was heap corruption from an unanswered ReceiveData.)
 
 ## Environment facts
 - Windows 11, RTX 4070 SUPER, 28 threads, 32 GB. No Visual Studio C++ workload; everything uses the portable toolchain in `tools/`. Python 3.13 with `unicorn`, `capstone`, `pyelftools`.
-- Repo is the parent monorepo `C:\projects` (branch `develop`); this project is `socom_pc/`. Unrelated untracked siblings exist — never `git add -A` from the parent.
+- Repo: since 2026-09-10 this directory is its own git repo (branch `develop`, remote github.com/Scotho/socom-unzipped, project name SOCOM Unzipped). Never `git add -A`; push after committing.
 - The user's desktop is often in use (games): do not steal focus or capture the screen repeatedly; prefer logs. The user may pause work when the machine is loaded.
