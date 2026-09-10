@@ -32,7 +32,11 @@
 2. Frame rate with two instances (19-21 each; 36-42 single): the two game threads + two GL
    threads share the host. Profile one instance with `PS2X_HOST_PROF=1 PS2X_HOST_PROF_STACKS=1`
    during a match; next levers are in STATUS 2026-09-09 13:30 (sceMpegDemuxPssRing, guest malloc).
-3. Mission gate on this build (gameplay_probe.txt) and the items below (ground height, parity
+3. **Black squares on the opening cutscene** (user report 2026-09-10 18:45, STATUS 18:45): 16x16
+   blocks at the frame edges of the intro movie / location cinematic and the title's movie
+   background. Start from the MPEG/IPU decode or the 16x16-block upload (STATUS 2026-09-09 12:10);
+   compare a PS2X_GS_DUMP_DISPLAY dump with a PCSX2 burst capture of the same seconds.
+4. Mission gate on this build (gameplay_probe.txt) and the items below (ground height, parity
    report).
 
 ## START HERE (2026-09-09 03:40) — state after the overnight loop; the section below it is the previous pick-up and still describes the run recipes
