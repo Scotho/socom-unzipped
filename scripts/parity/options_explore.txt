@@ -1,0 +1,13 @@
+# Main menu -> OPTIONS (3 DOWN from NEW GAME) and walk the options list (screens before each press).
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+2.0:CROSS
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:NONE

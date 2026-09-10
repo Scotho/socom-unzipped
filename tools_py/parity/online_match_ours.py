@@ -28,7 +28,7 @@ class Client:
 
     def login(self):
         try:
-            self.sh = L.attach(self.proc, self.title, self.out, self.tag + "_")
+            self.sh = L.attach(self.proc, self.title, self.out, self.tag + "_", L.INSTANCES[self.tag]["PS2X_SOCOM2_INPUT_FILE"])
             L.boot_to_online(self.sh)
             L.login(self.sh, self.name, "socom", self.existing)
             L.to_briefing_room(self.sh)
@@ -50,9 +50,12 @@ def main():
     ap.add_argument("--existing-b", action="store_true")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
     ap.add_argument("--play", type=int, default=0, help="gameplay bursts after the hold (A walks + fires, B turns)")
-    ap.add_argument("--same-team", action="store_true", help="B stays on SEALs (teammates spawn together; friendly fire is the shortest path to a kill)")
+    ap.add_argument("--same-team", action="store_true", help="B switches to SEALs (the joiner is auto-assigned to TERRORISTS); teammates spawn together")
     ap.add_argument("--sweep", type=int, default=0, help="gameplay: A turns in place in <N> steps of --sweep-hold s firing a burst at each; B stands")
     ap.add_argument("--sweep-hold", type=float, default=0.5)
+    ap.add_argument("--host-switch", action="store_true", help="A (host) switches team after B joined (the joiner is auto-assigned opposite the host; the joiner's lobby cursor does not move)")
+    ap.add_argument("--probe", action="store_true", help="gameplay: A tries every stick direction and the stance buttons with screens after each (input probe)")
+    ap.add_argument("--turn-key", default="L", help="L = right stick right (Precision Shooter look), D = left stick right (Sure Shot turn)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
@@ -85,7 +88,13 @@ def main():
             if c.error:
                 raise c.error
         L.host_game(A.sh)
-        L.join_game(B.sh, switch=not a.same_team)
+        L.join_game(B.sh, switch=a.same_team and not a.host_switch)   # the joiner is auto-assigned to the other team
+        if a.host_switch:
+            A.sh.log(f"teams before host switch {L.lobby_teams(A.sh)}")
+            L.lobby_select(A.sh, 1, "SWITCH TEAMS")
+            A.sh.press("cross", 4.0)
+            A.sh.shot("18_host_switched")
+            A.sh.log(f"teams after host switch {L.lobby_teams(A.sh)}")
         time.sleep(35)                                           # READY becomes available
         L.ready(A.sh)
         L.ready(B.sh)
@@ -104,11 +113,20 @@ def main():
                 B.sh.hold("L", 0.6)
                 A.sh.shot(f"play{i:02d}")
                 B.sh.shot(f"play{i:02d}")
+        if a.probe:
+            # Each stick direction for 3 s with 2 s of rest, twice (posted keys are sometimes
+            # dropped); the position rows ([peek] @416054, 1/s) give the displacement per key.
+            for i, (key, secs) in enumerate([("K", 3.0), ("I", 3.0), ("J", 3.0), ("L", 3.0), ("W", 3.0), ("S", 3.0), ("A", 3.0), ("D", 3.0)] * 2):
+                A.sh.hold(key, secs)
+                A.sh.log(f"probe {i:02d} {key} {secs}s")
+                time.sleep(2.0)
+                A.sh.shot(f"probe{i:02d}_{key}")
+                B.sh.shot(f"probe{i:02d}")
         if a.sweep:
             # Same-team kill probe: A rotates in place (right stick) and fires a burst at every
             # step; B stands where it spawned (a few metres from A when both are SEALs).
             for i in range(a.sweep):
-                A.sh.hold("L", a.sweep_hold)
+                A.sh.hold(a.turn_key, a.sweep_hold)
                 A.sh.hold("R1", 0.4)
                 A.sh.hold("R1", 0.4)
                 A.sh.shot(f"sweep{i:02d}")

@@ -29,8 +29,9 @@ OSK_ACCENT_BOX = (20, 396, 96, 428)   # accent-toggle key: accented "aei" in nor
 # memory-card directory and the UDP port shift (two clients on one host must not both bind the
 # game's fixed 3658/3659, like PCSX2 client B's 0F6FC6CF.clientB.pnach).
 INSTANCES = {
-    "A": {"PS2X_WINDOW_TITLE": "SOCOM-A"},
-    "B": {"PS2X_WINDOW_TITLE": "SOCOM-B", "PS2X_MC_DIR": os.path.abspath("game/disc/mc0_b"), "PS2X_SOCOM2_UDP_SHIFT": "2"},
+    "A": {"PS2X_WINDOW_TITLE": "SOCOM-A", "PS2X_SOCOM2_INPUT_FILE": os.path.abspath("logs/pad_A.txt")},
+    "B": {"PS2X_WINDOW_TITLE": "SOCOM-B", "PS2X_MC_DIR": os.path.abspath("game/disc/mc0_b"), "PS2X_SOCOM2_UDP_SHIFT": "2",
+          "PS2X_SOCOM2_INPUT_FILE": os.path.abspath("logs/pad_B.txt")},
 }
 
 
@@ -42,6 +43,7 @@ def launch(seconds, instance=None):
     env["PS2X_HOST_SCREENSHOT_LATEST"] = latest
     if instance:
         env.update(INSTANCES[instance])
+        write_pad_file(INSTANCES[instance]["PS2X_SOCOM2_INPUT_FILE"])   # neutral before the exe starts
         title = INSTANCES[instance]["PS2X_WINDOW_TITLE"]
         os.makedirs(env.get("PS2X_MC_DIR", "game/disc/mc0"), exist_ok=True)
     proc = subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
@@ -50,9 +52,33 @@ def launch(seconds, instance=None):
     return proc, title
 
 
+# Pad-state injection (PS2X_SOCOM2_INPUT_FILE, socom2_host_input.cpp): the exe reads this file on
+# every pad poll, so holds are exact and never dropped (posted keyboard messages were). Button ids
+# are the pad ids (kPad*): SELECT 0, L3 1, R3 2, START 3, UP 4, RIGHT 5, DOWN 6, LEFT 7, L2 8,
+# R2 9, L1 10, R1 11, TRIANGLE 12, CIRCLE 13, CROSS 14, SQUARE 15. Axes 0..255, 0x80 = neutral.
+PAD_BUTTON = {"SELECT": 0, "L3": 1, "R3": 2, "START": 3, "UP": 4, "RIGHT": 5, "DOWN": 6, "LEFT": 7,
+              "L2": 8, "R2": 9, "L1": 10, "R1": 11, "TRIANGLE": 12, "CIRCLE": 13, "CROSS": 14, "SQUARE": 15}
+PAD_AXIS = {"J": ("rx", 0), "L": ("rx", 255), "I": ("ry", 0), "K": ("ry", 255),
+            "A": ("lx", 0), "D": ("lx", 255), "W": ("ly", 0), "S": ("ly", 255)}
+
+
+def write_pad_file(path, buttons=(), axes=None):
+    """Write the injected pad state atomically (tmp + replace); buttons by name, axes {rx,ry,lx,ly}."""
+    a = {"rx": 0x80, "ry": 0x80, "lx": 0x80, "ly": 0x80}
+    a.update(axes or {})
+    mask = 0
+    for b in buttons:
+        mask |= 1 << PAD_BUTTON[b.upper()]
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write(f"b={mask:04x} rx={a['rx']} ry={a['ry']} lx={a['lx']} ly={a['ly']}" + chr(10))
+    os.replace(tmp, path)
+
+
 class Shell:
-    def __init__(self, hwnd, out, t0, tag=""):
+    def __init__(self, hwnd, out, t0, tag="", pad_file=None):
         self.hwnd, self.out, self.t0, self.tag = hwnd, out, t0, tag
+        self.pad_file = pad_file
         self.meta = json.load(open(os.path.join(REFS, "refs.json")))
         self.refs = {n: np.asarray(Image.open(os.path.join(REFS, n + ".png")).convert("L"), dtype=float) for n in self.meta}
         self.menu = Image.open(os.path.join(REFS, "main_menu.png"))
@@ -72,9 +98,23 @@ class Shell:
         time.sleep(wait)
 
     def hold(self, b, seconds, wait=0.3):
-        """Hold a key (stick directions W/A/S/D, I/J/K/L; R1 fire) for `seconds`."""
-        keys.press(self.hwnd, b, T, hold_s=seconds)
+        """Hold a key (stick directions W/A/S/D, I/J/K/L; R1 fire) for `seconds`. With a pad file the
+        state is injected (exact, never dropped); otherwise a posted keyboard hold."""
+        if self.pad_file:
+            self.pad(seconds, [b] if b.upper() in PAD_BUTTON else (), [b] if b.upper() in PAD_AXIS else ())
+        else:
+            keys.press(self.hwnd, b, T, hold_s=seconds)
         time.sleep(wait)
+
+    def pad(self, seconds, buttons=(), sticks=()):
+        """Inject buttons (names) and stick directions (W/A/S/D, I/J/K/L) together for `seconds`."""
+        axes = {}
+        for k in sticks:
+            name, value = PAD_AXIS[k.upper()]
+            axes[name] = value
+        write_pad_file(self.pad_file, buttons, axes)
+        time.sleep(seconds)
+        write_pad_file(self.pad_file)
 
     def diff(self, name, im=None, arr=None):
         """Normalised, shift-tolerant distance of the screen's reference band: both crops are
@@ -171,7 +211,7 @@ class Shell:
         time.sleep(3.0)
 
 
-def attach(proc, title, out, tag=""):
+def attach(proc, title, out, tag="", pad_file=None):
     """Find the instance's window (by title substring) and wait for its first frame."""
     t0 = time.time()
     hwnd = None
@@ -190,7 +230,7 @@ def attach(proc, title, out, tag=""):
             last = drive.frame(hwnd)
         except RuntimeError:
             time.sleep(0.5)
-    sh = Shell(hwnd, out, t0, tag)
+    sh = Shell(hwnd, out, t0, tag, pad_file)
     sh.latest_frame = getattr(proc, "latest_frame", None)
     sh.last = last
     return sh
@@ -309,6 +349,41 @@ def host_game(sh, game_name="test"):
     sh.shot("17_game_lobby_ok")
 
 
+def lobby_cursor(sh):
+    """Index of the highlighted GAME LOBBY menu row (0 ARMORY, 1 SWITCH TEAMS, 2 NOT READY/READY),
+    -1 when nothing is highlighted (a fresh lobby shows no cursor until the first press). The
+    highlighted row is a teal fill (mean ~70 vs ~30)."""
+    im = np.asarray(winshot.grab(sh.hwnd).convert("L"), dtype=np.float32)
+    means = [float(im[y0:y1, 22:165].mean()) for y0, y1 in ((98, 120), (128, 150), (158, 180))]
+    i = int(np.argmax(means))
+    return i if means[i] > 50 else -1
+
+
+def lobby_teams(sh):
+    """Bright text pixels in the SEALS and TERRORISTS name columns (rows 240..300): who is where."""
+    im = np.asarray(winshot.grab(sh.hwnd).convert("L"), dtype=np.float32)
+    return int((im[240:300, 180:390] > 140).sum()), int((im[240:300, 405:615] > 140).sum())
+
+
+def lobby_select(sh, row, label):
+    """Move the lobby cursor to `row` by reading the highlight (no assumption about wrap-around or
+    where the cursor starts: the old fixed 'down, cross' for SWITCH TEAMS landed on NOT READY)."""
+    prev, key = None, None
+    for _ in range(8):
+        cur = lobby_cursor(sh)
+        if cur == row:
+            break
+        # Prefer the short way; if the last press did not move the cursor (sweep2: UP from
+        # NOT READY did nothing), go the other way round (the menu wraps on DOWN).
+        want = "down" if cur < row else "up"
+        if cur == prev and key is not None:
+            want = "down" if key == "up" else "up"
+        sh.press(want, 1.0)
+        sh.log(f"lobby cursor {cur} -> {want}")
+        prev, key = cur, want
+    sh.log(f"lobby cursor {lobby_cursor(sh)} for {label}")
+
+
 def join_game(sh, switch=True):
     sh.press("cross", 8.0)                                       # JOIN GAME activates the list
     sh.shot("12_games_list")
@@ -316,15 +391,16 @@ def join_game(sh, switch=True):
     sh.shot("16_game_lobby")
     sh.press("cross", 3.0)                                       # CONTINUE
     sh.shot("17_game_lobby_ok")
-    if switch:
-        sh.press("down", 1.0)
-        sh.press("cross", 4.0)                                   # SWITCH TEAMS
+    sh.log(f"teams (seals, terrorists text px) {lobby_teams(sh)}")
+    if switch:                                                   # a joiner is auto-assigned to the other team
+        lobby_select(sh, 1, "SWITCH TEAMS")
+        sh.press("cross", 4.0)
         sh.shot("18_switched")
+        sh.log(f"teams after switch {lobby_teams(sh)}")
 
 
 def ready(sh):
-    sh.press("down", 1.0)                                        # menu: ARMORY, SWITCH TEAMS, READY
-    sh.press("down", 1.0)
+    lobby_select(sh, 2, "READY")                                 # menu: ARMORY, SWITCH TEAMS, READY
     sh.press("cross", 3.0)
     sh.shot("19_ready")
 

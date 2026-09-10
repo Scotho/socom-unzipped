@@ -1,0 +1,10 @@
+# Explore the main-menu roller: capture each item as DOWN walks the list (screens before each press).
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:NONE

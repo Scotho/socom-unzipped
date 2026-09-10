@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -233,6 +234,37 @@ namespace ps2_stubs
                 {
                     if (event.axisSet[axis])
                         next.axis[axis] = event.axisValue[axis];
+                }
+            }
+        }
+
+        // PS2X_SOCOM2_INPUT_FILE=<path>: a driver-written pad state, read on every poll (the file is
+        // tiny). One line: "b=<hex 16-bit button mask> rx=<0-255> ry=<n> lx=<n> ly=<n>". Buttons are
+        // OR-ed with the keyboard, an axis overrides the keyboard when it is not neutral (0x80).
+        // Posted keyboard messages reach raylib only when the window thread pumps, so scripted
+        // holds were dropped or their release was seen only at the next press (probe6, 2026-09-10);
+        // the file path is deterministic and works for two instances on one host.
+        {
+            static const char *s_file = std::getenv("PS2X_SOCOM2_INPUT_FILE");
+            if (s_file != nullptr)
+            {
+                if (FILE *f = std::fopen(s_file, "rb"))
+                {
+                    char line[128] = {0};
+                    const size_t n = std::fread(line, 1, sizeof(line) - 1, f);
+                    std::fclose(f);
+                    line[n] = '\0';
+                    unsigned mask = 0, rx = 0x80, ry = 0x80, lx = 0x80, ly = 0x80;
+                    if (std::sscanf(line, "b=%x rx=%u ry=%u lx=%u ly=%u", &mask, &rx, &ry, &lx, &ly) == 5)
+                    {
+                        for (int id = 0; id < 16; ++id)
+                            if (mask & (1u << id))
+                                next.button[id] = 1u;
+                        const unsigned values[4] = {rx, ry, lx, ly};
+                        for (int axis = 0; axis < 4; ++axis)
+                            if (values[axis] != 0x80u)
+                                next.axis[axis] = static_cast<uint8_t>(std::min(values[axis], 255u));
+                    }
                 }
             }
         }
