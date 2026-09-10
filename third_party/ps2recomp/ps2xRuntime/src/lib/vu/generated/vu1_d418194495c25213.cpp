@@ -533,6 +533,8 @@ bool vu1gen_d418194495c25213(VU1Interpreter &vu, uint64_t budgetEnd)
     (void)taken2; (void)target2;
     __m128 up;
     __m128 acc = _mm_loadu_ps(vu.m_state.acc);
+    alignas(16) float vf[32][4];
+    std::memcpy(vf, vu.m_state.vf, sizeof(vf));
     int32_t oldVi = 0;
     (void)taken; (void)target; (void)up; (void)oldVi;
     if ((vu.m_state.pc & 7u) != 0u || vu.m_cycle >= budgetEnd) return false;
@@ -542,37 +544,37 @@ L_0x0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[1];
-    Vu1Gen::setVi<1>(vu, (int32_t)(vu.m_state.top & 0x3FFu));
-    Vu1Gen::markVi<1, 1>(vu);
+    Vu1Gen::setVi<1>(vu, vf, (int32_t)(vu.m_state.top & 0x3FFu));
+    Vu1Gen::markVi<1, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x8:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x10:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1])));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1])));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x18:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x20:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x20; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[5] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[5] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x28:
     ++pairs;
@@ -581,7 +583,7 @@ L_0x28:
 L_0x30:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x30; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x118u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x118u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -595,16 +597,16 @@ L_0x38:
 L_0x40:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(0 + 330));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(0 + 330));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x48:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 423));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 423));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x50:
     ready = vu.m_cycle;
@@ -620,75 +622,75 @@ L_0x58:
     ++vu.m_cycle;
 L_0x60:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x68:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x70:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x78:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x80:
     ++pairs;
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
     ++vu.m_cycle;
 L_0x88:
     ++pairs;
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
     ++vu.m_cycle;
 L_0x90:
     ++pairs;
-    Vu1Gen::storeVfMem<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (2)));
+    Vu1Gen::storeVfMem<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (2)));
     ++vu.m_cycle;
 L_0x98:
     ++pairs;
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (3)));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (3)));
     ++vu.m_cycle;
 L_0xa0:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (5)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (5)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa8:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (6)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (6)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb0:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (7)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (7)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb8:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (8)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (8)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc0:
     ++pairs;
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (4)));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (4)));
     ++vu.m_cycle;
 L_0xc8:
     ++pairs;
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (5)));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (5)));
     ++vu.m_cycle;
 L_0xd0:
     ++pairs;
-    Vu1Gen::storeVfMem<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (6)));
+    Vu1Gen::storeVfMem<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (6)));
     ++vu.m_cycle;
 L_0xd8:
     ++pairs;
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (7)));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (7)));
     ++vu.m_cycle;
 L_0xe0:
     ++pairs;
@@ -730,28 +732,28 @@ L_0x118:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x120:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[5] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[5] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x128:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[1] + 1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[1] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x130:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x130; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x3c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x3c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -764,119 +766,119 @@ L_0x138:
     ++vu.m_cycle;
 L_0x140:
     ++pairs;
-    Vu1Gen::loadVf<5, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (12)));
-    Vu1Gen::markVf<5, 15, 4>(vu);
+    Vu1Gen::loadVf<5, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (12)));
+    Vu1Gen::markVf<5, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x148:
     ++pairs;
-    Vu1Gen::loadVf<6, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (13)));
-    Vu1Gen::markVf<6, 15, 4>(vu);
+    Vu1Gen::loadVf<6, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (13)));
+    Vu1Gen::markVf<6, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x150:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x158:
     ++pairs;
-    Vu1Gen::loadVf<9, 15>(vu, Vu1Gen::dataAddress(0 + (4)));
-    Vu1Gen::markVf<9, 15, 4>(vu);
+    Vu1Gen::loadVf<9, 15>(vu, vf, Vu1Gen::dataAddress(0 + (4)));
+    Vu1Gen::markVf<9, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x160:
     ++pairs;
-    Vu1Gen::loadVf<10, 15>(vu, Vu1Gen::dataAddress(0 + (5)));
-    Vu1Gen::markVf<10, 15, 4>(vu);
+    Vu1Gen::loadVf<10, 15>(vu, vf, Vu1Gen::dataAddress(0 + (5)));
+    Vu1Gen::markVf<10, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x168:
     ++pairs;
-    Vu1Gen::loadVf<11, 15>(vu, Vu1Gen::dataAddress(0 + (6)));
-    Vu1Gen::markVf<11, 15, 4>(vu);
+    Vu1Gen::loadVf<11, 15>(vu, vf, Vu1Gen::dataAddress(0 + (6)));
+    Vu1Gen::markVf<11, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x170:
     ++pairs;
-    Vu1Gen::loadVf<12, 15>(vu, Vu1Gen::dataAddress(0 + (7)));
-    Vu1Gen::markVf<12, 15, 4>(vu);
+    Vu1Gen::loadVf<12, 15>(vu, vf, Vu1Gen::dataAddress(0 + (7)));
+    Vu1Gen::markVf<12, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x178:
     ++pairs;
-    Vu1Gen::storeVfMem<5, 15>(vu, Vu1Gen::dataAddress(0 + (327)));
+    Vu1Gen::storeVfMem<5, 15>(vu, vf, Vu1Gen::dataAddress(0 + (327)));
     ++vu.m_cycle;
 L_0x180:
     ++pairs;
-    Vu1Gen::storeVfMem<6, 15>(vu, Vu1Gen::dataAddress(0 + (328)));
+    Vu1Gen::storeVfMem<6, 15>(vu, vf, Vu1Gen::dataAddress(0 + (328)));
     ++vu.m_cycle;
 L_0x188:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x190:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x198:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1a0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<3>(vu)); target = 0x1e0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<3>(vu, vf)); target = 0x1e0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[1] + 14));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[1] + 14));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1e0;
     goto L_0x1b0;
 L_0x1a8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[1] + 14));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[1] + 14));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(0 + (16)));
-    Vu1Gen::storeVf<1, 15>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVf<1, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(0 + (16)));
+    Vu1Gen::storeVf<1, 15>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVf<1, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1b8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(0 + (17)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(0 + (17)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1c0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(0 + (18)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(0 + (18)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1c8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(0 + (19)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(0 + (19)));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1d0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1d0; goto bail; }
@@ -895,120 +897,120 @@ L_0x1d8:
 L_0x1e0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (14)));
-    Vu1Gen::storeVf<1, 15>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVf<1, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (14)));
+    Vu1Gen::storeVf<1, 15>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVf<1, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (15)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (15)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (16)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (16)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (17)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (17)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x200:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(0 + (8)));
-    Vu1Gen::storeVf<2, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<2, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(0 + (8)));
+    Vu1Gen::storeVf<2, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<2, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x208:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 19, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(0 + (9)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(0 + (9)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x210:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 19, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(0 + (10)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(0 + (10)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x218:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 19, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (11)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (11)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x220:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<3, 15>(vu, up);
-    Vu1Gen::markVf<3, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<3, 15>(vu, vf, up);
+    Vu1Gen::markVf<3, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x228:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 9, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x230:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 10, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x238:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 11, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x240:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 20, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<4, 15>(vu, up);
-    Vu1Gen::markVf<4, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 12, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<4, 15>(vu, vf, up);
+    Vu1Gen::markVf<4, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x248:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<1, 15>(vu, Vu1Gen::dataAddress(0));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<1, 15>(vu, vf, Vu1Gen::dataAddress(0));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x250:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<2, 15>(vu, Vu1Gen::dataAddress(0 + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<2, 15>(vu, vf, Vu1Gen::dataAddress(0 + (1)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x258:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<3, 15>(vu, Vu1Gen::dataAddress(0 + (2)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<3, 15>(vu, vf, Vu1Gen::dataAddress(0 + (2)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x260:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<4, 15>(vu, Vu1Gen::dataAddress(0 + (3)));
-    Vu1Gen::storeVf<13, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<4, 15>(vu, vf, Vu1Gen::dataAddress(0 + (3)));
+    Vu1Gen::storeVf<13, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<13, 15, 4>(vu);
+    Vu1Gen::markVf<13, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x268:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x268; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<3>(vu)); target = 0x2a8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<3>(vu, vf)); target = 0x2a8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -1021,34 +1023,34 @@ L_0x270:
     ++vu.m_cycle;
 L_0x278:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<9, 15>(vu, Vu1Gen::dataAddress(0 + (20)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<9, 15>(vu, vf, Vu1Gen::dataAddress(0 + (20)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<9, 15, 4>(vu);
+    Vu1Gen::markVf<9, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x280:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<10, 15>(vu, Vu1Gen::dataAddress(0 + (21)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<10, 15>(vu, vf, Vu1Gen::dataAddress(0 + (21)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<10, 15, 4>(vu);
+    Vu1Gen::markVf<10, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x288:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<11, 15>(vu, Vu1Gen::dataAddress(0 + (22)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<11, 15>(vu, vf, Vu1Gen::dataAddress(0 + (22)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<11, 15, 4>(vu);
+    Vu1Gen::markVf<11, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x290:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<12, 15>(vu, Vu1Gen::dataAddress(0 + (23)));
-    Vu1Gen::storeVf<14, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<12, 15>(vu, vf, Vu1Gen::dataAddress(0 + (23)));
+    Vu1Gen::storeVf<14, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<12, 15, 4>(vu);
-    Vu1Gen::markVf<14, 15, 4>(vu);
+    Vu1Gen::markVf<12, 15, 4>(vu, vf);
+    Vu1Gen::markVf<14, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x298:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x298; goto bail; }
@@ -1067,307 +1069,307 @@ L_0x2a0:
 L_0x2a8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<9, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (18)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<9, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (18)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<9, 15, 4>(vu);
+    Vu1Gen::markVf<9, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<10, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (19)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<10, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (19)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<10, 15, 4>(vu);
+    Vu1Gen::markVf<10, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<11, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (20)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<11, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (20)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<11, 15, 4>(vu);
+    Vu1Gen::markVf<11, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 18, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<12, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (21)));
-    Vu1Gen::storeVf<14, 15>(vu, up);
-    Vu1Gen::markVf<12, 15, 4>(vu);
-    Vu1Gen::markVf<14, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<12, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (21)));
+    Vu1Gen::storeVf<14, 15>(vu, vf, up);
+    Vu1Gen::markVf<12, 15, 4>(vu, vf);
+    Vu1Gen::markVf<14, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 19, false, true, true>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[3]));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[3]));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2d0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 19, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 19, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2d8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 19, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 19, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2e0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<15, 15>(vu, up);
-    Vu1Gen::markVf<15, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<15, 15>(vu, vf, up);
+    Vu1Gen::markVf<15, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<6, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (5)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 25, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<6, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (5)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<6, 15, 4>(vu);
+    Vu1Gen::markVf<6, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<7, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (6)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 26, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<7, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (6)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<7, 15, 4>(vu);
+    Vu1Gen::markVf<7, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<8, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (7)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 27, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<8, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (7)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<8, 15, 4>(vu);
+    Vu1Gen::markVf<8, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x300:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 20, false, true, true>(vu, acc);
-    Vu1Gen::setVi<11>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1])));
-    Vu1Gen::storeVf<16, 15>(vu, up);
-    Vu1Gen::markVf<16, 15, 4>(vu);
-    Vu1Gen::markVi<11, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<11>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1])));
+    Vu1Gen::storeVf<16, 15>(vu, vf, up);
+    Vu1Gen::markVf<16, 15, 4>(vu, vf);
+    Vu1Gen::markVi<11, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x308:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (8)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (8)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x310:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (9)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (9)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x318:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (10)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (10)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x320:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 17, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (11)));
-    Vu1Gen::storeVf<5, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<5, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (11)));
+    Vu1Gen::storeVf<5, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<5, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x328:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(0 + (33)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (33)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x330:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<6, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<6, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x338:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<7, 15>(vu, Vu1Gen::dataAddress(0 + (31)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<7, 15>(vu, vf, Vu1Gen::dataAddress(0 + (31)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x340:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<8, 15>(vu, Vu1Gen::dataAddress(0 + (32)));
-    Vu1Gen::storeVf<6, 15>(vu, up);
-    Vu1Gen::markVf<6, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<8, 15>(vu, vf, Vu1Gen::dataAddress(0 + (32)));
+    Vu1Gen::storeVf<6, 15>(vu, vf, up);
+    Vu1Gen::markVf<6, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x348:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(0 + (34)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 21, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(0 + (34)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x350:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(0 + (35)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 22, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(0 + (35)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x358:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<25, 15>(vu, Vu1Gen::dataAddress(0 + (36)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 23, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<25, 15>(vu, vf, Vu1Gen::dataAddress(0 + (36)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x360:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<7, 15>(vu, up);
-    Vu1Gen::markVf<7, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 24, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<7, 15>(vu, vf, up);
+    Vu1Gen::markVf<7, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x368:
     ++pairs;
-    { float t[4]; std::memcpy(t, vu.m_state.vf[24], 16); VU1Interpreter::applyDest(vu.m_state.vf[8], t, 15); }
+    { float t[4]; std::memcpy(t, vf[24], 16); VU1Interpreter::applyDest(vf[8], t, 15); }
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<8, 15, 4>(vu);
+    Vu1Gen::markVf<8, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x370:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x370; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x490u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x490u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[7]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x490;
     goto L_0x380;
 L_0x378:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[7]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x380:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[11]));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x388:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 400));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 400));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x390:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<17, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x398:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + -2));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + -2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<18, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<11>(vu) < 0); target = 0x490u;
+    taken = ((int16_t)Vu1Gen::branchVi<11>(vu, vf) < 0); target = 0x490u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x490;
     goto L_0x3b8;
 L_0x3b0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3b8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<11>(vu) > 0); target = 0x390u;
+    taken = ((int16_t)Vu1Gen::branchVi<11>(vu, vf) > 0); target = 0x390u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x390;
     goto L_0x3c8;
 L_0x3c0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 8));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 8));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[5] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[5] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1])));
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1])));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3e0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3e0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x438u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x438u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -1380,158 +1382,158 @@ L_0x3e8:
     ++vu.m_cycle;
 L_0x3f0:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3f8:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x400:
     ++pairs;
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x408:
     ++pairs;
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (4)));
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x410:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[1] + 5));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[1] + 5));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x418:
     ++pairs;
-    Vu1Gen::storeVfMem<20, 15>(vu, Vu1Gen::dataAddress(0 + (27)));
+    Vu1Gen::storeVfMem<20, 15>(vu, vf, Vu1Gen::dataAddress(0 + (27)));
     ++vu.m_cycle;
 L_0x420:
     ++pairs;
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(0 + (38)));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(0 + (38)));
     ++vu.m_cycle;
 L_0x428:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(0 + (28)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(0 + (28)));
     ++vu.m_cycle;
 L_0x430:
     ++pairs;
-    Vu1Gen::storeVfMem<23, 15>(vu, Vu1Gen::dataAddress(0 + (29)));
+    Vu1Gen::storeVfMem<23, 15>(vu, vf, Vu1Gen::dataAddress(0 + (29)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x438:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x438; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x438; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<4>(vu)); target = 0x490u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<4>(vu, vf)); target = 0x490u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[7]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x490;
     goto L_0x448;
 L_0x440:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[7]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x448:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x450:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x458:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<17, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x460:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + -2));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + -2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x468:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<18, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x470:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x470; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<4>(vu) < 0); target = 0x490u;
+    taken = ((int16_t)Vu1Gen::branchVi<4>(vu, vf) < 0); target = 0x490u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x490;
     goto L_0x480;
 L_0x478:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x480:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x480; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<4>(vu) > 0); target = 0x458u;
+    taken = ((int16_t)Vu1Gen::branchVi<4>(vu, vf) > 0); target = 0x458u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x458;
     goto L_0x490;
 L_0x488:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x490:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
@@ -1556,9 +1558,9 @@ L_0x4a8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(0 + 330));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(0 + 330));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x4b0:
     ++pairs;
@@ -1594,33 +1596,33 @@ L_0x4d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x4e0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x4e8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x4f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x4f8:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(0 + (328)));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(0 + (328)));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x500:
     ++pairs;
@@ -1635,36 +1637,36 @@ L_0x518:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 29, 20, false, true, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 29, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     Vu1Gen::storeAcc<14>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x520:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 29, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 29, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x528:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 29, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 29, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
     Vu1Gen::storeAcc<14>(acc, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x530:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 29, 29, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<24, 14>(vu, up);
-    Vu1Gen::markVf<24, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 29, 29, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<24, 14>(vu, vf, up);
+    Vu1Gen::markVf<24, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x538:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] - 1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x540:
     ++pairs;
@@ -1673,18 +1675,18 @@ L_0x540:
 L_0x548:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x548; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x518u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x518u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<24, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<24, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x518;
     goto L_0x558;
 L_0x550:
     ++pairs;
-    Vu1Gen::storeVfMem<24, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<24, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x558:
@@ -1705,16 +1707,16 @@ L_0x568:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x570:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x578:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x578; goto bail; }
@@ -1724,33 +1726,33 @@ L_0x578:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x4f0;
     goto L_0x588;
 L_0x580:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x588:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x590:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x598:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x598; goto bail; }
@@ -1760,46 +1762,46 @@ L_0x598:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x4f0;
     goto L_0x5a8;
 L_0x5a0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5a8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x5b0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5b8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5c0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5c8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x5c8; goto bail; }
@@ -1809,38 +1811,38 @@ L_0x5c8:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x4f0;
     goto L_0x5d8;
 L_0x5d0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x5e0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x5e8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (327)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (327)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x5f0:
     ++pairs;
@@ -1852,43 +1854,43 @@ L_0x600:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -3));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x608:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
     ++vu.m_cycle;
 L_0x610:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (4)));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (4)));
     ++vu.m_cycle;
 L_0x618:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (7)));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (7)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x620:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x620; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x600u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x600u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 9));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 9));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x600;
     goto L_0x630;
 L_0x628:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 9));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 9));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x630:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x630; goto bail; }
@@ -1908,9 +1910,9 @@ L_0x640:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x648:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x648; goto bail; }
@@ -1920,26 +1922,26 @@ L_0x648:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x5e8;
     goto L_0x658;
 L_0x650:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x658:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x660:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x660; goto bail; }
@@ -1949,25 +1951,25 @@ L_0x660:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x5e8;
     goto L_0x670;
 L_0x668:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x670:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x678:
     ++pairs;
@@ -1975,16 +1977,16 @@ L_0x678:
 L_0x680:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x688:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x690:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x690; goto bail; }
@@ -1994,18 +1996,18 @@ L_0x690:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x5e8;
     goto L_0x6a0;
 L_0x698:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x6a0:
     ++pairs;
@@ -2013,14 +2015,14 @@ L_0x6a0:
     ++vu.m_cycle;
 L_0x6a8:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x6b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 2, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 2>(vu, up);
-    Vu1Gen::markVf<20, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 2, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 2>(vu, vf, up);
+    Vu1Gen::markVf<20, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x6b8:
     ++pairs;
@@ -2034,9 +2036,9 @@ L_0x6c8:
     ++vu.m_cycle;
 L_0x6d0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 12, 20, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<20, 12>(vu, up);
-    Vu1Gen::markVf<20, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 12, 20, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 12>(vu, vf, up);
+    Vu1Gen::markVf<20, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x6d8:
     ++pairs;
@@ -2049,9 +2051,9 @@ L_0x6e8:
     ++vu.m_cycle;
 L_0x6f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 1>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x6f8:
     ++pairs;
@@ -2066,12 +2068,12 @@ L_0x710:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 20, 0, false, false, false>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] - 1));
-    Vu1Gen::storeVf<24, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 20, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] - 1));
+    Vu1Gen::storeVf<24, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x718:
     ++pairs;
@@ -2079,25 +2081,25 @@ L_0x718:
 L_0x720:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x728:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x728; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x710u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x710u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVfMem<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x710;
     goto L_0x738;
 L_0x730:
     ++pairs;
-    Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVfMem<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x738:
@@ -2117,8 +2119,8 @@ L_0x740:
 L_0x748:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x750:
     ++pairs;
@@ -2133,40 +2135,40 @@ L_0x768:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::itof<0, 20>(vu);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] - 1));
-    Vu1Gen::storeVf<24, 15>(vu, up);
+    up = Vu1Gen::itof<0, 20>(vu, vf);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] - 1));
+    Vu1Gen::storeVf<24, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x770:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x778:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x780:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x780; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x768u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x768u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVfMem<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x768;
     goto L_0x790;
 L_0x788:
     ++pairs;
-    Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVfMem<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x790:
@@ -2187,16 +2189,16 @@ L_0x7a0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 6));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 6));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x7a8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x7b0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x7b0; goto bail; }
@@ -2216,22 +2218,22 @@ L_0x7c0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x7c8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x7d0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x7d8:
     ++pairs;
@@ -2239,9 +2241,9 @@ L_0x7d8:
 L_0x7e0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[9] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[9] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x7e8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x7e8; goto bail; }
@@ -2261,8 +2263,8 @@ L_0x7f8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x800:
     ++pairs;
@@ -2270,9 +2272,9 @@ L_0x800:
 L_0x808:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x810:
     ++pairs;
@@ -2281,30 +2283,30 @@ L_0x810:
 L_0x818:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<10>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x820:
     ++pairs;
     ++vu.m_cycle;
 L_0x828:
     ++pairs;
-    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[20], t, 2); }
-    Vu1Gen::markVf<20, 2, 4>(vu);
+    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[20], t, 2); }
+    Vu1Gen::markVf<20, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x830:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 8, 0, 0, false, false, false>(vu, acc);
-    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[17], t, 8); }
-    Vu1Gen::storeVf<18, 8>(vu, up);
-    Vu1Gen::markVf<17, 8, 4>(vu);
-    Vu1Gen::markVf<18, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 8, 0, 0, false, false, false>(vu, vf, acc);
+    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[17], t, 8); }
+    Vu1Gen::storeVf<18, 8>(vu, vf, up);
+    Vu1Gen::markVf<17, 8, 4>(vu, vf);
+    Vu1Gen::markVf<18, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x838:
     ++pairs;
-    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[19], t, 8); }
-    Vu1Gen::markVf<19, 8, 4>(vu);
+    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[10] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[19], t, 8); }
+    Vu1Gen::markVf<19, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x840:
     ++pairs;
@@ -2314,15 +2316,15 @@ L_0x848:
     ++vu.m_cycle;
 L_0x850:
     ++pairs;
-    up = Vu1Gen::itof<0, 17>(vu);
-    Vu1Gen::storeVf<17, 8>(vu, up);
-    Vu1Gen::markVf<17, 8, 4>(vu);
+    up = Vu1Gen::itof<0, 17>(vu, vf);
+    Vu1Gen::storeVf<17, 8>(vu, vf, up);
+    Vu1Gen::markVf<17, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x858:
     ++pairs;
-    up = Vu1Gen::itof<0, 19>(vu);
-    Vu1Gen::storeVf<19, 8>(vu, up);
-    Vu1Gen::markVf<19, 8, 4>(vu);
+    up = Vu1Gen::itof<0, 19>(vu, vf);
+    Vu1Gen::storeVf<19, 8>(vu, vf, up);
+    Vu1Gen::markVf<19, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x860:
     ++pairs;
@@ -2336,7 +2338,7 @@ L_0x870:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x870; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<17, 0, 18, 0>(vu);
+    Vu1Gen::div<17, 0, 18, 0>(vu, vf);
     ++vu.m_cycle;
 L_0x878:
     ready = vu.m_cycle;
@@ -2344,16 +2346,16 @@ L_0x878:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x878; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 8, 19, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<19, 8>(vu, up);
-    Vu1Gen::markVf<19, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 8, 19, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<19, 8>(vu, vf, up);
+    Vu1Gen::markVf<19, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x880:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 8, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<18, 8>(vu, up);
-    Vu1Gen::markVf<18, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 8, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<18, 8>(vu, vf, up);
+    Vu1Gen::markVf<18, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x888:
     ++pairs;
@@ -2366,15 +2368,15 @@ L_0x898:
     ++vu.m_cycle;
 L_0x8a0:
     ++pairs;
-    up = Vu1Gen::ftoi<0, 18>(vu);
-    Vu1Gen::storeVf<18, 8>(vu, up);
-    Vu1Gen::markVf<18, 8, 4>(vu);
+    up = Vu1Gen::ftoi<0, 18>(vu, vf);
+    Vu1Gen::storeVf<18, 8>(vu, vf, up);
+    Vu1Gen::markVf<18, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x8a8:
     ++pairs;
-    up = Vu1Gen::ftoi<0, 19>(vu);
-    Vu1Gen::storeVf<19, 8>(vu, up);
-    Vu1Gen::markVf<19, 8, 4>(vu);
+    up = Vu1Gen::ftoi<0, 19>(vu, vf);
+    Vu1Gen::storeVf<19, 8>(vu, vf, up);
+    Vu1Gen::markVf<19, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x8b0:
     ++pairs;
@@ -2385,16 +2387,16 @@ L_0x8b8:
 L_0x8c0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    { uint32_t f; std::memcpy(&f, &vu.m_state.vf[18][0], 4); Vu1Gen::setVi<9>(vu, (int32_t)(int16_t)(f & 0xFFFFu)); }
+    { uint32_t f; std::memcpy(&f, &vf[18][0], 4); Vu1Gen::setVi<9>(vu, vf, (int32_t)(int16_t)(f & 0xFFFFu)); }
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x8c8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    { uint32_t f; std::memcpy(&f, &vu.m_state.vf[19][0], 4); Vu1Gen::setVi<3>(vu, (int32_t)(int16_t)(f & 0xFFFFu)); }
+    { uint32_t f; std::memcpy(&f, &vf[19][0], 4); Vu1Gen::setVi<3>(vu, vf, (int32_t)(int16_t)(f & 0xFFFFu)); }
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x8d0:
     ++pairs;
@@ -2404,79 +2406,79 @@ L_0x8d8:
     ++vu.m_cycle;
 L_0x8e0:
     ++pairs;
-    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[9] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[20], t, 1); }
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[9] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[20], t, 1); }
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x8e8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[3] + 2));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[3] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x8f0:
     ++pairs;
-    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[4] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[20], t, 8); }
-    Vu1Gen::markVf<20, 8, 4>(vu);
+    { int32_t v = (int32_t)(int16_t)(vu.m_state.vi[4] & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[20], t, 8); }
+    Vu1Gen::markVf<20, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x8f8:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[1] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[1] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x900:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + -1));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x908:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x910:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-2)));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-2)));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x918:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-3)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-3)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x920:
     ++pairs;
     ++vu.m_cycle;
 L_0x928:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
     ++vu.m_cycle;
 L_0x930:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
     ++vu.m_cycle;
 L_0x938:
     ++pairs;
-    Vu1Gen::storeVfMem<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-2)));
+    Vu1Gen::storeVfMem<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-2)));
     ++vu.m_cycle;
 L_0x940:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + -3));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + -3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x948:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] + -1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x950:
     ++pairs;
@@ -2485,7 +2487,7 @@ L_0x950:
 L_0x958:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x958; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x908u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x908u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -2498,47 +2500,47 @@ L_0x960:
     ++vu.m_cycle;
 L_0x968:
     ++pairs;
-    Vu1Gen::storeVfMem<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
+    Vu1Gen::storeVfMem<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2)));
     ++vu.m_cycle;
 L_0x970:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[1] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[1] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x978:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x980:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x988:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x990:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x998:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 3));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x9a0:
     ++pairs;
@@ -2548,14 +2550,14 @@ L_0x9a8:
     ++vu.m_cycle;
 L_0x9b0:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x9b8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 3));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x9c0:
     ++pairs;
@@ -2565,14 +2567,14 @@ L_0x9c8:
     ++vu.m_cycle;
 L_0x9d0:
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x9d8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 3));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x9e0:
     ++pairs;
@@ -2582,33 +2584,33 @@ L_0x9e8:
     ++vu.m_cycle;
 L_0x9f0:
     ++pairs;
-    Vu1Gen::storeWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[6]);
+    Vu1Gen::storeWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]), vu.m_state.vi[6]);
     ++vu.m_cycle;
 L_0x9f8:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + 2));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa00:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa08:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 1));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa10:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xa10; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x990u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x990u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -2622,8 +2624,8 @@ L_0xa18:
 L_0xa20:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa28:
     ++pairs;
@@ -2637,15 +2639,15 @@ L_0xa38:
 L_0xa40:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa48:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa50:
     ++pairs;
@@ -2653,23 +2655,23 @@ L_0xa50:
 L_0xa58:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa60:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa68:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xa70:
     ++pairs;
@@ -2680,38 +2682,38 @@ L_0xa78:
     ++vu.m_cycle;
 L_0xa80:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa88:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa90:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (6)));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (6)));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xa98:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 14>(vu, ready);
-    Vu1Gen::readyVf<28, 14>(vu, ready);
+    Vu1Gen::readyVf<26, 14>(vu, vf, ready);
+    Vu1Gen::readyVf<28, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xa98; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 26, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 14>(vu, up);
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 26, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xaa0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 14>(vu, ready);
-    Vu1Gen::readyVf<28, 14>(vu, ready);
+    Vu1Gen::readyVf<29, 14>(vu, vf, ready);
+    Vu1Gen::readyVf<28, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xaa0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 29, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 29, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xaa8:
     ++pairs;
@@ -2724,14 +2726,14 @@ L_0xab8:
     ++vu.m_cycle;
 L_0xac0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 26, true, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 26, true, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0xac8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 28, true, true, true>(vu, acc);
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 28, true, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xad0:
     ++pairs;
@@ -2745,42 +2747,42 @@ L_0xae0:
 L_0xae8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::ftoi<15, 29>(vu);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 9));
-    Vu1Gen::storeVf<29, 14>(vu, up);
+    up = Vu1Gen::ftoi<15, 29>(vu, vf);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 9));
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<29, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xaf0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -3));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xaf8:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + 2));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xb00:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xb00; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0xa78u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0xa78u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0xa78;
     goto L_0xb10;
 L_0xb08:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (-1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0xb10:
@@ -2799,279 +2801,279 @@ L_0xb18:
     ++vu.m_cycle;
 L_0xb20:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xb20; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xb28:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb30:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb38:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb40:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb48:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb50:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb58:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb60:
     ++pairs;
-    up = Vu1Gen::itof<4, 20>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (5)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::itof<4, 20>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (5)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb68:
     ++pairs;
-    up = Vu1Gen::itof<15, 30>(vu);
-    Vu1Gen::storeVf<31, 3>(vu, up);
-    Vu1Gen::markVf<31, 3, 4>(vu);
+    up = Vu1Gen::itof<15, 30>(vu, vf);
+    Vu1Gen::storeVf<31, 3>(vu, vf, up);
+    Vu1Gen::markVf<31, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb70:
     ++pairs;
-    up = Vu1Gen::itof<0, 19>(vu);
-    Vu1Gen::storeVf<22, 15>(vu, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 19>(vu, vf);
+    Vu1Gen::storeVf<22, 15>(vu, vf, up);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb78:
     ++pairs;
-    up = Vu1Gen::itof<4, 26>(vu);
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::itof<4, 26>(vu, vf);
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb80:
     ++pairs;
-    up = Vu1Gen::itof<15, 18>(vu);
-    Vu1Gen::storeVf<17, 3>(vu, up);
-    Vu1Gen::markVf<17, 3, 4>(vu);
+    up = Vu1Gen::itof<15, 18>(vu, vf);
+    Vu1Gen::storeVf<17, 3>(vu, vf, up);
+    Vu1Gen::markVf<17, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb88:
     ++pairs;
-    up = Vu1Gen::itof<0, 24>(vu);
-    Vu1Gen::storeVf<23, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 24>(vu, vf);
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb90:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xb98:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 25, 27, false, false, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
-    Vu1Gen::storeVf<25, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 25, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<25, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xba0:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xba8:
     ++pairs;
-    up = Vu1Gen::itof<12, 18>(vu);
-    Vu1Gen::storeVf<17, 12>(vu, up);
-    Vu1Gen::markVf<17, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 18>(vu, vf);
+    Vu1Gen::storeVf<17, 12>(vu, vf, up);
+    Vu1Gen::markVf<17, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbb0:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbb8:
     ++pairs;
-    up = Vu1Gen::itof<12, 30>(vu);
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<31, 12>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVf<31, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 30>(vu, vf);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<31, 12>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVf<31, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbc0:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbc8:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbd0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xbd8:
     ++pairs;
-    up = Vu1Gen::itof<4, 20>(vu);
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-6)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::itof<4, 20>(vu, vf);
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-6)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbe0:
     ++pairs;
-    up = Vu1Gen::itof<15, 30>(vu);
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-5)));
-    Vu1Gen::storeVf<31, 3>(vu, up);
+    up = Vu1Gen::itof<15, 30>(vu, vf);
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-5)));
+    Vu1Gen::storeVf<31, 3>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<31, 3, 4>(vu);
+    Vu1Gen::markVf<31, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xbe8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xbe8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) < 0); target = 0x1b60u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) < 0); target = 0x1b60u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x1b60;
     goto L_0xbf8;
 L_0xbf0:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     ++vu.m_cycle;
 L_0xbf8:
     ++pairs;
-    up = Vu1Gen::itof<4, 26>(vu);
-    Vu1Gen::storeVfMem<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::itof<4, 26>(vu, vf);
+    Vu1Gen::storeVfMem<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc00:
     ++pairs;
-    up = Vu1Gen::itof<15, 18>(vu);
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
-    Vu1Gen::storeVf<17, 3>(vu, up);
-    Vu1Gen::markVf<17, 3, 4>(vu);
+    up = Vu1Gen::itof<15, 18>(vu, vf);
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
+    Vu1Gen::storeVf<17, 3>(vu, vf, up);
+    Vu1Gen::markVf<17, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc08:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVfMem<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc10:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 14>(vu, ready);
+    Vu1Gen::readyVf<25, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xc10; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 25, 27, false, false, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
-    Vu1Gen::storeVf<25, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 25, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<25, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xc18:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc20:
     ++pairs;
-    up = Vu1Gen::itof<12, 18>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
-    Vu1Gen::storeVf<17, 12>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<17, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 18>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
+    Vu1Gen::storeVf<17, 12>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<17, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc28:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc30:
     ++pairs;
-    up = Vu1Gen::itof<12, 30>(vu);
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<31, 12>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVf<31, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 30>(vu, vf);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<31, 12>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVf<31, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc38:
     ++pairs;
-    up = Vu1Gen::itof<0, 19>(vu);
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::storeVf<22, 15>(vu, up);
+    up = Vu1Gen::itof<0, 19>(vu, vf);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::storeVf<22, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<26, 15, 4>(vu);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc40:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xc40; goto bail; }
     ++pairs;
-    up = Vu1Gen::itof<0, 24>(vu);
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0xbd0u;
-    Vu1Gen::storeVf<23, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 24>(vu, vf);
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0xbd0u;
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xbd0;
     goto L_0xc50;
 L_0xc48:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc50:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xc50; goto bail; }
@@ -3091,9 +3093,9 @@ L_0xc60:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xc68:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xc68; goto bail; }
@@ -3103,26 +3105,26 @@ L_0xc68:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xb30;
     goto L_0xc78;
 L_0xc70:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xc78:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xc80:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xc80; goto bail; }
@@ -3132,39 +3134,39 @@ L_0xc80:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xb30;
     goto L_0xc90;
 L_0xc88:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xc90:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xc98:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xca0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xca8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xca8; goto bail; }
@@ -3174,293 +3176,293 @@ L_0xca8:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xb30;
     goto L_0xcb8;
 L_0xcb0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xcb8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xcb8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xcc0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xcc8:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (3)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xcd0:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xcd8:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xce0:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xce8:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xcf0:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xcf8:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (5)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (5)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd00:
     ++pairs;
-    up = Vu1Gen::itof<15, 30>(vu);
-    Vu1Gen::storeVf<31, 3>(vu, up);
-    Vu1Gen::markVf<31, 3, 4>(vu);
+    up = Vu1Gen::itof<15, 30>(vu, vf);
+    Vu1Gen::storeVf<31, 3>(vu, vf, up);
+    Vu1Gen::markVf<31, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd08:
     ++pairs;
-    up = Vu1Gen::itof<0, 19>(vu);
-    Vu1Gen::storeVf<22, 15>(vu, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 19>(vu, vf);
+    Vu1Gen::storeVf<22, 15>(vu, vf, up);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd10:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd18:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::itof<15, 18>(vu);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
-    Vu1Gen::storeVf<17, 3>(vu, up);
+    up = Vu1Gen::itof<15, 18>(vu, vf);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::storeVf<17, 3>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<17, 3, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<17, 3, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xd20:
     ++pairs;
-    up = Vu1Gen::itof<0, 24>(vu);
-    Vu1Gen::storeVf<23, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 24>(vu, vf);
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 21, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 21, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 25, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 25, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd38:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd40:
     ++pairs;
-    up = Vu1Gen::itof<12, 18>(vu);
-    Vu1Gen::storeVf<17, 12>(vu, up);
-    Vu1Gen::markVf<17, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 18>(vu, vf);
+    Vu1Gen::storeVf<17, 12>(vu, vf, up);
+    Vu1Gen::markVf<17, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd48:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd50:
     ++pairs;
-    up = Vu1Gen::itof<12, 30>(vu);
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<31, 12>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVf<31, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 30>(vu, vf);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<31, 12>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVf<31, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd58:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd60:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd68:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xd70:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-6)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-6)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd78:
     ++pairs;
-    up = Vu1Gen::itof<15, 30>(vu);
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-5)));
-    Vu1Gen::storeVf<31, 3>(vu, up);
+    up = Vu1Gen::itof<15, 30>(vu, vf);
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-5)));
+    Vu1Gen::storeVf<31, 3>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<31, 3, 4>(vu);
+    Vu1Gen::markVf<31, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd80:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xd80; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) < 0); target = 0x1b60u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) < 0); target = 0x1b60u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x1b60;
     goto L_0xd90;
 L_0xd88:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     ++vu.m_cycle;
 L_0xd90:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::storeVfMem<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::storeVfMem<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-3)));
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xd98:
     ++pairs;
-    up = Vu1Gen::itof<15, 18>(vu);
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
-    Vu1Gen::storeVf<17, 3>(vu, up);
-    Vu1Gen::markVf<17, 3, 4>(vu);
+    up = Vu1Gen::itof<15, 18>(vu, vf);
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
+    Vu1Gen::storeVf<17, 3>(vu, vf, up);
+    Vu1Gen::markVf<17, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xda0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 21, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVfMem<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 21, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xda8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 14>(vu, ready);
+    Vu1Gen::readyVf<25, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xda8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 25, 27, false, false, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
-    Vu1Gen::storeVf<25, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 25, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<25, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xdb0:
     ++pairs;
-    up = Vu1Gen::itof<15, 26>(vu);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 26>(vu, vf);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xdb8:
     ++pairs;
-    up = Vu1Gen::itof<12, 18>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
-    Vu1Gen::storeVf<17, 12>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<17, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 18>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
+    Vu1Gen::storeVf<17, 12>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<17, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xdc0:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xdc8:
     ++pairs;
-    up = Vu1Gen::itof<12, 30>(vu);
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<31, 12>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVf<31, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 30>(vu, vf);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<31, 12>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVf<31, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xdd0:
     ++pairs;
-    up = Vu1Gen::itof<0, 19>(vu);
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::storeVf<22, 15>(vu, up);
+    up = Vu1Gen::itof<0, 19>(vu, vf);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::storeVf<22, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<26, 15, 4>(vu);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xdd8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xdd8; goto bail; }
     ++pairs;
-    up = Vu1Gen::itof<0, 24>(vu);
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0xd68u;
-    Vu1Gen::storeVf<23, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    up = Vu1Gen::itof<0, 24>(vu, vf);
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0xd68u;
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xd68;
     goto L_0xde8;
 L_0xde0:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xde8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xde8; goto bail; }
@@ -3478,87 +3480,87 @@ L_0xdf0:
     ++vu.m_cycle;
 L_0xdf8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xdf8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xe00:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xe08:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe10:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<3>(vu, ready);
+    Vu1Gen::readyVi<3>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xe10; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe18:
     ++pairs;
-    Vu1Gen::loadVf<30, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<30, 12, 4>(vu);
+    Vu1Gen::loadVf<30, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<30, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe20:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<20, 8>(vu, ready);
+    Vu1Gen::readyVf<20, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xe20; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xe28:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<20, 4>(vu, ready);
+    Vu1Gen::readyVf<20, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xe28; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xe30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xe38:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe40:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<30, 2>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 2>(vu, vf, up);
     { const uint32_t ib = 0x437e0000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<30, 2, 4>(vu);
+    Vu1Gen::markVf<30, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe50:
     ++pairs;
@@ -3569,192 +3571,192 @@ L_0xe58:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xe58; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::div<0, 3, 27, 3>(vu);
-    Vu1Gen::storeVf<28, 15>(vu, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::div<0, 3, 27, 3>(vu, vf);
+    Vu1Gen::storeVf<28, 15>(vu, vf, up);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xe68:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xe70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xe78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe80:
     ++pairs;
     ++vu.m_cycle;
 L_0xe88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe90:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 14, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<17, 14>(vu, up);
-    Vu1Gen::markVf<17, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 14, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<17, 14>(vu, vf, up);
+    Vu1Gen::markVf<17, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xe98:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<28, 15>(vu, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<28, 15>(vu, vf, up);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xea0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<27, 1>(vu, ready);
+    Vu1Gen::readyVf<27, 1>(vu, vf, ready);
     if (vu.m_fdiv.valid) ready = std::max(ready, vu.m_fdiv.readyCycle);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xea0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<0, 3, 27, 3>(vu);
+    Vu1Gen::div<0, 3, 27, 3>(vu, vf);
     ++vu.m_cycle;
 L_0xea8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 1>(vu, ready);
+    Vu1Gen::readyVf<29, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xea8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 0, 29, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 0, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xeb0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 29, 17, false, false, true>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
-    Vu1Gen::storeVf<26, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 29, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 14, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xeb8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 30, 17, false, true, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
-    Vu1Gen::storeVf<31, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 30, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::storeVf<31, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<31, 14, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<31, 14, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xec0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<30, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<30, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-2)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<30, 12, 4>(vu);
+    Vu1Gen::markVf<30, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xec8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xed0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<3, 15>(vu, ready);
-    Vu1Gen::readyVf<20, 2>(vu, ready);
-    Vu1Gen::readyVf<24, 15>(vu, ready);
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVf<3, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<20, 2>(vu, vf, ready);
+    Vu1Gen::readyVf<24, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xed0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0xed8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<4, 15>(vu, ready);
-    Vu1Gen::readyVi<3>(vu, ready);
+    Vu1Gen::readyVf<4, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<3>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xed8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xee0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 15>(vu, ready);
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVf<26, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xee0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 14, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
-    Vu1Gen::storeVf<17, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcQ, 0, 14, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
+    Vu1Gen::storeVf<17, 14>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<17, 14, 4>(vu);
+    Vu1Gen::markVf<17, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xee8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xee8; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<28, 15>(vu, ready);
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVf<28, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xee8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, true, false>(vu, acc);
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0xea0u;
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 28, 0, false, true, false>(vu, vf, acc);
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0xea0u;
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<27, 15>(vu, ready);
-    Vu1Gen::readyVf<31, 15>(vu, ready);
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVf<27, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<31, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0xef0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
-    Vu1Gen::storeVf<28, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
+    Vu1Gen::storeVf<28, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xea0;
     goto L_0xef8;
 L_0xef0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<27, 15>(vu, ready);
-    Vu1Gen::readyVf<31, 15>(vu, ready);
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVf<27, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<31, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xef0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
-    Vu1Gen::storeVf<28, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
+    Vu1Gen::storeVf<28, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xef8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xef8; goto bail; }
@@ -3774,9 +3776,9 @@ L_0xf08:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 423));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 423));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf10:
     ready = vu.m_cycle;
@@ -3792,20 +3794,20 @@ L_0xf18:
     ++vu.m_cycle;
 L_0xf20:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xf20; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf28:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf30:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xf30; goto bail; }
@@ -3814,40 +3816,40 @@ L_0xf30:
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0xf38; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xe10;
     goto L_0xf40;
 L_0xf38:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xf38; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf40:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf48:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf50:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xf50; goto bail; }
@@ -3857,46 +3859,46 @@ L_0xf50:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xe10;
     goto L_0xf60;
 L_0xf58:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf60:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xf68:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf70:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf78:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf80:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0xf80; goto bail; }
@@ -3906,265 +3908,265 @@ L_0xf80:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xe10;
     goto L_0xf90;
 L_0xf88:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xf90:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0xf90; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xf98:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xfa0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0xfa8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(0 + (28)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(0 + (28)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfb0:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(0 + (29)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(0 + (29)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfb8:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfc0:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfc8:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfd0:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (5)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (5)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfd8:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfe0:
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xfe8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 20, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<22, 14>(vu, up);
-    Vu1Gen::markVf<22, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 20, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 14>(vu, vf, up);
+    Vu1Gen::markVf<22, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xff0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<23, 14>(vu, up);
-    Vu1Gen::markVf<23, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 14>(vu, vf, up);
+    Vu1Gen::markVf<23, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0xff8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 30, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 30, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1000:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<15, 1>(vu, up);
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1008:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 22, 18, false, false, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
-    Vu1Gen::storeVf<26, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 22, 18, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1010:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 23, 18, false, false, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 6));
-    Vu1Gen::storeVf<27, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 23, 18, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 6));
+    Vu1Gen::storeVf<27, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<27, 14, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<27, 14, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1018:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 1, 14, 17, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 1, 14, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1020:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 1, 15, 17, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::storeVf<15, 1>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 1, 15, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1028:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1030:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1038:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
     { const uint32_t ib = 0x437f0000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1040:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 14, 0>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 14, 0>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1048:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 15, 0>(vu);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (5)));
-    Vu1Gen::storeVf<15, 1>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 15, 0>(vu, vf);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (5)));
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1050:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 27, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 27, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1058:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 27, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 27, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1060:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 27, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 27, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 1>(vu, vf, up);
     { const uint32_t ib = 0x3f800000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<27, 1, 4>(vu);
+    Vu1Gen::markVf<27, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1068:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 26, 0>(vu);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 26, 0>(vu, vf);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1070:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 14, 0>(vu);
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 14, 0>(vu, vf);
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1078:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 15, 0>(vu);
-    Vu1Gen::storeVf<15, 1>(vu, up);
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 15, 0>(vu, vf);
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1080:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 27, 0>(vu);
-    Vu1Gen::storeVf<27, 1>(vu, up);
-    Vu1Gen::markVf<27, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmI, 0, 27, 0>(vu, vf);
+    Vu1Gen::storeVf<27, 1>(vu, vf, up);
+    Vu1Gen::markVf<27, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1088:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 26, 0>(vu);
-    Vu1Gen::storeVf<28, 1>(vu, up);
-    Vu1Gen::markVf<28, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 26, 0>(vu, vf);
+    Vu1Gen::storeVf<28, 1>(vu, vf, up);
+    Vu1Gen::markVf<28, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1090:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<27, 1>(vu, ready);
+    Vu1Gen::readyVf<27, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1090; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 27, 0>(vu);
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 27, 0>(vu, vf);
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1098:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 20, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<22, 14>(vu, up);
-    Vu1Gen::markVf<22, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 20, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 14>(vu, vf, up);
+    Vu1Gen::markVf<22, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x10a0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 17, false, true, true>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -2));
-    Vu1Gen::storeVf<23, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -2));
+    Vu1Gen::storeVf<23, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 14, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<23, 14, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x10a8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 14, 28, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 14, 28, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x10b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 15, 29, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<15, 1>(vu, up);
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 15, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x10b8:
     ++pairs;
@@ -4174,13 +4176,13 @@ L_0x10c0:
     ++vu.m_cycle;
 L_0x10c8:
     ++pairs;
-    Vu1Gen::storeVfMem<14, 1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-4)));
+    Vu1Gen::storeVfMem<14, 1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-4)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x10d0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x10d0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) < 0); target = 0x10f8u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) < 0); target = 0x10f8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -4193,33 +4195,33 @@ L_0x10d8:
     ++vu.m_cycle;
 L_0x10e0:
     ++pairs;
-    Vu1Gen::storeVfMem<15, 1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
+    Vu1Gen::storeVfMem<15, 1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x10e8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x10e8; goto bail; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 30, 18, false, true, true>(vu, acc);
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x1008u;
-    Vu1Gen::storeVf<14, 1>(vu, up);
-    Vu1Gen::markVf<14, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 30, 18, false, true, true>(vu, vf, acc);
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x1008u;
+    Vu1Gen::storeVf<14, 1>(vu, vf, up);
+    Vu1Gen::markVf<14, 1, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<15, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1008;
     goto L_0x10f8;
 L_0x10f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<15, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 31, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<15, 1>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<15, 1, 4>(vu);
+    Vu1Gen::markVf<15, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x10f8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x10f8; goto bail; }
@@ -4238,21 +4240,21 @@ L_0x1100:
     ++vu.m_cycle;
 L_0x1108:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1108; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1110:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1118:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1118; goto bail; }
@@ -4262,33 +4264,33 @@ L_0x1118:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xfa8;
     goto L_0x1128;
 L_0x1120:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1128:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1130:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1138:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1138; goto bail; }
@@ -4298,46 +4300,46 @@ L_0x1138:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xfa8;
     goto L_0x1148;
 L_0x1140:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1148:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1150:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1158:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1160:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1168:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1168; goto bail; }
@@ -4347,118 +4349,118 @@ L_0x1168:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0xfa8;
     goto L_0x1178;
 L_0x1170:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1178:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1180:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1188:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1190:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 400));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 400));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1198:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x11a0:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x11a8:
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     ++vu.m_cycle;
 L_0x11b0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11b8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11c0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11c8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11d0:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11d8:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11e0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 2));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x11e8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + -1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x11f0:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x11f8:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1200:
     ++pairs;
@@ -4468,14 +4470,14 @@ L_0x1208:
     ++vu.m_cycle;
 L_0x1210:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1218:
     ++pairs;
-    { const float *s = vu.m_state.vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 6); }
-    Vu1Gen::markVf<26, 6, 4>(vu);
+    { const float *s = vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 6); }
+    Vu1Gen::markVf<26, 6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1220:
     ++pairs;
@@ -4483,9 +4485,9 @@ L_0x1220:
 L_0x1228:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1230:
     ++pairs;
@@ -4496,108 +4498,108 @@ L_0x1238:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1238; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, acc);
-    Vu1Gen::execLower(vu, 0x81c0f73fu);
-    Vu1Gen::storeVf<26, 8>(vu, up);
-    Vu1Gen::markVf<26, 8, 4>(vu);
-    _mm_storeu_ps(vu.m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, vf, acc);
+    Vu1Gen::execLower(vu, vf, 0x81c0f73fu);
+    Vu1Gen::storeVf<26, 8>(vu, vf, up);
+    Vu1Gen::markVf<26, 8, 4>(vu, vf);
+    _mm_storeu_ps(vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
     vu.m_state.vi[0] = 0;
     ++vu.m_cycle;
 L_0x1240:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 30, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 14>(vu, up);
-    Vu1Gen::markVf<20, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 14>(vu, vf, up);
+    Vu1Gen::markVf<20, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1248:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1250:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1258:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 30, 26, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<31, 15>(vu, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 30, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 15>(vu, vf, up);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1260:
     ++pairs;
     ++vu.m_cycle;
 L_0x1268:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 8>(vu, up);
-    Vu1Gen::markVf<26, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 8>(vu, vf, up);
+    Vu1Gen::markVf<26, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1270:
     ++pairs;
     ++vu.m_cycle;
 L_0x1278:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1280:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1288:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1290:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 20, false, false, false>(vu, acc);
-    { const float *s = vu.m_state.vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 6); }
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 20, false, false, false>(vu, vf, acc);
+    { const float *s = vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 6); }
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<26, 6, 4>(vu);
+    Vu1Gen::markVf<26, 6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1298:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 20, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 20, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x12a0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 20, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 1>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12a8:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 31, 0>(vu);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 31, 0>(vu, vf);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12b0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x12b8:
     ++pairs;
     ++vu.m_cycle;
 L_0x12c0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 17, 20, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<22, 1>(vu, up);
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 17, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12c8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12d0:
     ++pairs;
@@ -4613,15 +4615,15 @@ L_0x12d8:
 L_0x12e0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 22, 28, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<22, 1>(vu, up);
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 22, 28, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12e8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vu.m_state.vf[19], t, 8); }
-    Vu1Gen::markVf<19, 8, 4>(vu);
+    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vf[19], t, 8); }
+    Vu1Gen::markVf<19, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x12f0:
     ready = vu.m_cycle;
@@ -4629,167 +4631,167 @@ L_0x12f0:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x12f0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::execLower(vu, 0x81c0f73fu);
-    _mm_storeu_ps(vu.m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+    Vu1Gen::execLower(vu, vf, 0x81c0f73fu);
+    _mm_storeu_ps(vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
     vu.m_state.vi[0] = 0;
     ++vu.m_cycle;
 L_0x12f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 30, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<20, 14>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<20, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<20, 14>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<20, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1300:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 22, 0>(vu);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<22, 1>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 22, 0>(vu, vf);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1308:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 31, 19, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 31, 19, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1310:
     ++pairs;
     ++vu.m_cycle;
 L_0x1318:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 30, 26, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<31, 15>(vu, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 30, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 15>(vu, vf, up);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1320:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 22, 0>(vu);
-    { const float *s = vu.m_state.vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 6); }
-    Vu1Gen::storeVf<22, 1>(vu, up);
-    Vu1Gen::markVf<26, 6, 4>(vu);
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 22, 0>(vu, vf);
+    { const float *s = vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 6); }
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 6, 4>(vu, vf);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1328:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 21, 0>(vu);
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 21, 0>(vu, vf);
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1330:
     ++pairs;
     ++vu.m_cycle;
 L_0x1338:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1340:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1348:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 21, 22, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 21, 22, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1350:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1358:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 20, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 20, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1360:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 20, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1368:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 28, 21, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 28, 21, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1370:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 20, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 1>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1378:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 31, 0>(vu);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 31, 0>(vu, vf);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1380:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 8>(vu, up);
-    Vu1Gen::markVf<26, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 8>(vu, vf, up);
+    Vu1Gen::markVf<26, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1388:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
-    Vu1Gen::storeVf<27, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 21, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::storeVf<27, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<27, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<27, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1390:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 17, 20, false, true, false>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
-    Vu1Gen::storeVf<22, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 17, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 1, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1398:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
-    Vu1Gen::storeVf<30, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 24, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<30, 14, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x13a0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x13a0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x12e0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x12e0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x12e0;
     goto L_0x13b0;
 L_0x13a8:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x13b0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x13b0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<7>(vu)); target = 0x11b8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<7>(vu, vf)); target = 0x11b8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -4819,16 +4821,16 @@ L_0x13d0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x13d8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x13e0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x13e0; goto bail; }
@@ -4838,33 +4840,33 @@ L_0x13e0:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1190;
     goto L_0x13f0;
 L_0x13e8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x13f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x13f8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1400:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1400; goto bail; }
@@ -4874,46 +4876,46 @@ L_0x1400:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1190;
     goto L_0x1410;
 L_0x1408:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1410:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1418:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1420:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1428:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1430:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1430; goto bail; }
@@ -4923,341 +4925,341 @@ L_0x1430:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1190;
     goto L_0x1440;
 L_0x1438:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1440:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(0 + (27)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(0 + (27)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1448:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1450:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1458:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1460:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 9, 31, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<13, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<13, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 9, 31, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<13, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<13, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1468:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 10, 31, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<14, 15>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVf<14, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 10, 31, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<14, 15>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVf<14, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1470:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 11, 31, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::storeVf<15, 15>(vu, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVf<15, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 15, 11, 31, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::storeVf<15, 15>(vu, vf, up);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVf<15, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1478:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 15, 12, 31, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::storeVf<16, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVf<16, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 15, 12, 31, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::storeVf<16, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVf<16, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1480:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1488:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 21, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 21, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1490:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 21, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 21, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1498:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 22, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 22, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x14a0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 23, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 23, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x14a8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 23, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 23, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14b0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x14b8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 6));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 6));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x14c0:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 29, 0>(vu);
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 29, 0>(vu, vf);
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14c8:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14d0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x14d0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-5)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-5)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14d8:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14e0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, true, false>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -2));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -2));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x14e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-4)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (-1)));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x14f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
     Vu1Gen::storeAcc<14>(acc, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1500:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1508:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 17, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
-    Vu1Gen::storeVf<24, 15>(vu, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 17, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (3)));
+    Vu1Gen::storeVf<24, 15>(vu, vf, up);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1510:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<24, 15>(vu, ready);
+    Vu1Gen::readyVf<24, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1510; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 18, 24, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 18, 24, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (4)));
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1518:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 30, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 30, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1520:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 30, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 30, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1528:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 30, false, true, false>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 6));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 30, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 6));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1530:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 6));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 16, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 6));
     Vu1Gen::storeAcc<14>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1538:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 0, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 0, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x1540:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 28, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1548:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 15>(vu, ready);
+    Vu1Gen::readyVf<25, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1548; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 19, 25, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 19, 25, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1550:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<5, 15>(vu, ready);
-    Vu1Gen::readyVf<20, 1>(vu, ready);
+    Vu1Gen::readyVf<5, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<20, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1550; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 20, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 20, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1558:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<6, 15>(vu, ready);
-    Vu1Gen::readyVf<21, 2>(vu, ready);
+    Vu1Gen::readyVf<6, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<21, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1558; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 21, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 21, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1560:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<7, 15>(vu, ready);
-    Vu1Gen::readyVf<21, 1>(vu, ready);
+    Vu1Gen::readyVf<7, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<21, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1560; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 21, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 21, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1568:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 22, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 5, 22, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1570:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 23, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 6, 23, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x1578:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 23, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 7, 23, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1580:
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-11)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-11)));
     ++vu.m_cycle;
 L_0x1588:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-8)));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-8)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x1590:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1590; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 14>(vu, ready);
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVf<29, 14>(vu, vf, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1590; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 29, 0>(vu);
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x14d0u;
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 29, 0>(vu, vf);
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x14d0u;
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 14>(vu, ready);
+    Vu1Gen::readyVf<30, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x1598; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 14>(vu, up);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x14d0;
     goto L_0x15a0;
 L_0x1598:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 14>(vu, ready);
+    Vu1Gen::readyVf<30, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1598; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 14>(vu, up);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x15a0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x15a0; goto bail; }
@@ -5276,22 +5278,22 @@ L_0x15a8:
 L_0x15b0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(0 + (27)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(0 + (27)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x15b8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x15c0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x15c8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x15c8; goto bail; }
@@ -5301,38 +5303,38 @@ L_0x15c8:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1460;
     goto L_0x15d8;
 L_0x15d0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x15d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(0 + (27)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(0 + (27)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x15e0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x15e8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x15f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x15f0; goto bail; }
@@ -5342,51 +5344,51 @@ L_0x15f0:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1460;
     goto L_0x1600;
 L_0x15f8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1600:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(0 + (27)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(0 + (27)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1608:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1610:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1618:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1620:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1628:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1628; goto bail; }
@@ -5396,71 +5398,71 @@ L_0x1628:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1460;
     goto L_0x1638;
 L_0x1630:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1638:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1638; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1640:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1648:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1650:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1658:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1660:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<8, 4>(vu);
+    Vu1Gen::setVi<8>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1668:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1670:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 16));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 16));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1678:
     ++pairs;
@@ -5468,17 +5470,17 @@ L_0x1678:
 L_0x1680:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[8]));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1688:
     ++pairs;
-    up = Vu1Gen::itof<15, 29>(vu);
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[11]));
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::itof<15, 29>(vu, vf);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[11]));
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1690:
     ++pairs;
@@ -5491,9 +5493,9 @@ L_0x16a0:
     ++vu.m_cycle;
 L_0x16a8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 26, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 26, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x16b0:
     ++pairs;
@@ -5508,22 +5510,22 @@ L_0x16c8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 27, 29, false, false, false>(vu, acc);
-    Vu1Gen::setVi<8>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2))));
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVi<8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 15, 27, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<8>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2))));
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x16d0:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (3)));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x16d8:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<12, 4>(vu);
+    Vu1Gen::setVi<12>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x16e0:
     ++pairs;
@@ -5531,45 +5533,45 @@ L_0x16e0:
 L_0x16e8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, acc);
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[8]));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[8]));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x16f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 30, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[11]));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[11]));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x16f8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, false>(vu, acc);
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 32766));
-    Vu1Gen::storeVf<30, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 32766));
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<30, 1, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1700:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, vu.m_state.vi[12] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<12>(vu, vf, vu.m_state.vi[12] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1708:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::itof<15, 29>(vu);
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 1));
-    Vu1Gen::storeVf<29, 15>(vu, up);
+    up = Vu1Gen::itof<15, 29>(vu, vf);
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 1));
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<29, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1710:
     ++pairs;
@@ -5578,14 +5580,14 @@ L_0x1718:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<13>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[5]));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1720:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1720; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<13>(vu) > 0); target = 0x1738u;
+    taken = ((int16_t)Vu1Gen::branchVi<13>(vu, vf) > 0); target = 0x1738u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -5599,36 +5601,36 @@ L_0x1728:
 L_0x1730:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, vu.m_state.vi[12] | vu.m_state.vi[8]);
+    Vu1Gen::setVi<12>(vu, vf, vu.m_state.vi[12] | vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1738:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]), vu.m_state.vi[12]);
+    Vu1Gen::storeWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]), vu.m_state.vi[12]);
     ++vu.m_cycle;
 L_0x1740:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 26, 28, false, true, true>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
-    Vu1Gen::storeVf<27, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 26, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<27, 15, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1748:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 2));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1750:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1750; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x16c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x16c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -5672,168 +5674,168 @@ L_0x1778:
 L_0x1780:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(0 + (38)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(0 + (38)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1788:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1788; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1790:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<20, 1>(vu, ready);
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVf<20, 1>(vu, vf, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1790; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 14, 0, 20, false, false, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 14, 0, 20, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
     Vu1Gen::storeAcc<14>(acc, up);
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1798:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x17a0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 4));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x17a8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x17a8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x17b0:
     ++pairs;
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(0 + (290)));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(0 + (290)));
     ++vu.m_cycle;
 L_0x17b8:
     ++pairs;
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(0 + (300)));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(0 + (300)));
     ++vu.m_cycle;
 L_0x17c0:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (290)), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (290)), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x17c8:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (300)), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (300)), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x17d0:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<13, 4>(vu);
+    Vu1Gen::setVi<13>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<13, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x17d8:
     ++pairs;
-    Vu1Gen::loadVf<20, 1>(vu, Vu1Gen::dataAddress(0 + (327)));
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    Vu1Gen::loadVf<20, 1>(vu, vf, Vu1Gen::dataAddress(0 + (327)));
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x17e0:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (329))));
-    Vu1Gen::markVi<2, 4>(vu);
+    Vu1Gen::setVi<2>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (329))));
+    Vu1Gen::markVi<2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x17e8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (329))));
-    Vu1Gen::markVi<8, 4>(vu);
+    Vu1Gen::setVi<8>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (329))));
+    Vu1Gen::markVi<8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x17f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<12, 4>(vu);
+    Vu1Gen::setVi<12>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x17f8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1800:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1808:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<6, 4>(vu);
+    Vu1Gen::setVi<6>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1810:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, vu.m_state.vi[12] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<3>(vu, vf, vu.m_state.vi[12] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1818:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(0 + (39))));
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(0 + (39))));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1820:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1820; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<3>(vu)); target = 0x1930u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<3>(vu, vf)); target = 0x1930u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1930;
     goto L_0x1830;
 L_0x1828:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1830:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1838:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, vu.m_state.vi[12] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<3>(vu, vf, vu.m_state.vi[12] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1840:
     ++pairs;
@@ -5841,9 +5843,9 @@ L_0x1840:
 L_0x1848:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, vu.m_state.vi[3] | vu.m_state.vi[9]);
+    Vu1Gen::setVi<3>(vu, vf, vu.m_state.vi[3] | vu.m_state.vi[9]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1850:
     ++pairs;
@@ -5852,144 +5854,144 @@ L_0x1850:
 L_0x1858:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1858; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<3>(vu)); target = 0x1930u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<3>(vu, vf)); target = 0x1930u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (41)));
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (41)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1930;
     goto L_0x1868;
 L_0x1860:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (41)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (41)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1868:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (41)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (41)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1870:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7] + (41)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7] + (41)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1878:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (42)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (42)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1880:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (42)));
-    Vu1Gen::storeVf<18, 15>(vu, up);
-    Vu1Gen::markVf<28, 15, 4>(vu);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (42)));
+    Vu1Gen::storeVf<18, 15>(vu, vf, up);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1888:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 27, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7] + (42)));
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 27, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7] + (42)));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1890:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 30, 20, false, true, true>(vu, acc);
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (40)));
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<17, 15, 4>(vu);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 30, 20, false, true, true>(vu, vf, acc);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (40)));
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1898:
     ++pairs;
-    up = Vu1Gen::ftoi<4, 19>(vu);
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (40)));
-    Vu1Gen::storeVf<19, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    up = Vu1Gen::ftoi<4, 19>(vu, vf);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (40)));
+    Vu1Gen::storeVf<19, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x18a0:
     ++pairs;
-    up = Vu1Gen::ftoi<0, 18>(vu);
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7] + (40)));
-    Vu1Gen::storeVf<18, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    up = Vu1Gen::ftoi<0, 18>(vu, vf);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7] + (40)));
+    Vu1Gen::storeVf<18, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x18a8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    up = Vu1Gen::ftoi<4, 28>(vu);
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + vu.m_state.vi[2]));
-    Vu1Gen::storeVf<28, 15>(vu, up);
+    up = Vu1Gen::ftoi<4, 28>(vu, vf);
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + vu.m_state.vi[2]));
+    Vu1Gen::storeVf<28, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<28, 15, 4>(vu);
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x18b0:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    up = Vu1Gen::ftoi<0, 27>(vu);
-    Vu1Gen::setVi<2>(vu, (int16_t)(0 + vu.m_state.vi[8]));
-    Vu1Gen::storeVf<27, 15>(vu, up);
+    up = Vu1Gen::ftoi<0, 27>(vu, vf);
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<27, 15, 4>(vu);
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x18b8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::ftoi<4, 31>(vu);
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[11]));
-    Vu1Gen::storeVf<31, 15>(vu, up);
+    up = Vu1Gen::ftoi<4, 31>(vu, vf);
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::storeVf<31, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<31, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x18c0:
     ++pairs;
-    up = Vu1Gen::ftoi<0, 30>(vu);
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    up = Vu1Gen::ftoi<0, 30>(vu, vf);
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x18c8:
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (4)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (4)));
     ++vu.m_cycle;
 L_0x18d0:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (7)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (7)));
     ++vu.m_cycle;
 L_0x18d8:
     ++pairs;
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (2)));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (2)));
     ++vu.m_cycle;
 L_0x18e0:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (5)));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (5)));
     ++vu.m_cycle;
 L_0x18e8:
     ++pairs;
-    Vu1Gen::storeVfMem<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (8)));
+    Vu1Gen::storeVfMem<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (8)));
     ++vu.m_cycle;
 L_0x18f0:
     ++pairs;
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (3)));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (3)));
     ++vu.m_cycle;
 L_0x18f8:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (6)));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (6)));
     ++vu.m_cycle;
 L_0x1900:
     ++pairs;
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (9)));
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (9)));
     ++vu.m_cycle;
 L_0x1908:
     ++pairs;
@@ -6016,21 +6018,21 @@ L_0x1930:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, (int16_t)(vu.m_state.vi[13] + -1));
+    Vu1Gen::setVi<13>(vu, vf, (int16_t)(vu.m_state.vi[13] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1938:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 2));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1940:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1940; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<13>(vu) > 0); target = 0x17f0u;
+    taken = ((int16_t)Vu1Gen::branchVi<13>(vu, vf) > 0); target = 0x17f0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -6043,7 +6045,7 @@ L_0x1948:
     ++vu.m_cycle;
 L_0x1950:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[2]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[2]);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x1958:
@@ -6053,21 +6055,21 @@ L_0x1958:
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[8]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[8]);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x1b60;
     goto L_0x1968;
 L_0x1960:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[8]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[8]);
     ++vu.m_cycle;
 L_0x1968:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(0 + (26)));
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(0 + (26)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1970:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1970; goto bail; }
@@ -6086,48 +6088,48 @@ L_0x1978:
 L_0x1980:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (38)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (38)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1988:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<28, 1>(vu, ready);
+    Vu1Gen::readyVf<28, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1988; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 14, 0, 28, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 14, 0, 28, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
     Vu1Gen::storeAcc<14>(acc, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1990:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::loadVf<28, 1>(vu, Vu1Gen::dataAddress(0 + (327)));
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::loadVf<28, 1>(vu, vf, Vu1Gen::dataAddress(0 + (327)));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<28, 1, 4>(vu);
+    Vu1Gen::markVf<28, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1998:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[4] + -1));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[4] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x19a0:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19a8:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<31, 15>(vu, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 15>(vu, vf, up);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19b8:
     ++pairs;
@@ -6135,125 +6137,125 @@ L_0x19b8:
 L_0x19c0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::ftoi<4, 19>(vu);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
-    Vu1Gen::storeVf<30, 15>(vu, up);
+    up = Vu1Gen::ftoi<4, 19>(vu, vf);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<30, 15, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x19c8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<21, 15>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 15>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19d0:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19d8:
     ++pairs;
-    up = Vu1Gen::ftoi<0, 31>(vu);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::ftoi<0, 31>(vu, vf);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19e0:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19e8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x19f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
-    Vu1Gen::storeVf<31, 15>(vu, up);
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcVt, 0, 15, 18, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (2)));
+    Vu1Gen::storeVf<31, 15>(vu, vf, up);
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x19f8:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
     ++vu.m_cycle;
 L_0x1a00:
     ++pairs;
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
     ++vu.m_cycle;
 L_0x1a08:
     ++pairs;
-    up = Vu1Gen::ftoi<4, 19>(vu);
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<30, 15>(vu, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    up = Vu1Gen::ftoi<4, 19>(vu, vf);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<30, 15>(vu, vf, up);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a10:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::storeVf<21, 15>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::storeVf<21, 15>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a18:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a20:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::ftoi<0, 31>(vu);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
-    Vu1Gen::storeVf<29, 15>(vu, up);
+    up = Vu1Gen::ftoi<0, 31>(vu, vf);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<29, 15, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a28:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a30:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1a30; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<9>(vu) > 0); target = 0x19f0u;
+    taken = ((int16_t)Vu1Gen::branchVi<9>(vu, vf) > 0); target = 0x19f0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x19f0;
     goto L_0x1a40;
 L_0x1a38:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a40:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 423));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 423));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a48:
     ready = vu.m_cycle;
@@ -6298,35 +6300,35 @@ L_0x1a78:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 113));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 113));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a80:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1))));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1))));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a88:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(0 + (39))));
-    Vu1Gen::markVi<6, 4>(vu);
+    Vu1Gen::setVi<6>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(0 + (39))));
+    Vu1Gen::markVi<6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1a90:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1a98:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1aa0:
     ++pairs;
@@ -6334,9 +6336,9 @@ L_0x1aa0:
 L_0x1aa8:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, vu.m_state.vi[6] | vu.m_state.vi[5]);
+    Vu1Gen::setVi<6>(vu, vf, vu.m_state.vi[6] | vu.m_state.vi[5]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1ab0:
     ++pairs;
@@ -6345,7 +6347,7 @@ L_0x1ab0:
 L_0x1ab8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1ab8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<6>(vu)); target = 0x1980u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<6>(vu, vf)); target = 0x1980u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -6375,16 +6377,16 @@ L_0x1ad8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1ae0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 113));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 113));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1ae8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1ae8; goto bail; }
@@ -6394,62 +6396,62 @@ L_0x1ae8:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1980;
     goto L_0x1af8;
 L_0x1af0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1af8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1b00:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b08:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1b10:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b18:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 41));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 41));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b20:
     ++pairs;
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
     ++vu.m_cycle;
 L_0x1b28:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b30:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1b30; goto bail; }
@@ -6459,18 +6461,18 @@ L_0x1b30:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x1980;
     goto L_0x1b40;
 L_0x1b38:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<9>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b40:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
@@ -6487,36 +6489,36 @@ L_0x1b50:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[1];
-    Vu1Gen::setVi<1>(vu, (int32_t)(vu.m_state.top & 0x3FFu));
-    Vu1Gen::markVi<1, 1>(vu);
+    Vu1Gen::setVi<1>(vu, vf, (int32_t)(vu.m_state.top & 0x3FFu));
+    Vu1Gen::markVi<1, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b58:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b60:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1b68:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 884));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 884));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b70:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 1));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b78:
     ++pairs;
@@ -6524,9 +6526,9 @@ L_0x1b78:
 L_0x1b80:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[5] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[5] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1b88:
     ++pairs;
@@ -6535,7 +6537,7 @@ L_0x1b88:
 L_0x1b90:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1b90; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<3>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<3>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7463,19 +7465,19 @@ L_0x1f68:
     ++vu.m_cycle;
 L_0x1f70:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x1f70; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<15, 4>(vu);
+    Vu1Gen::setVi<15>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1f78:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<12, 4>(vu);
+    Vu1Gen::setVi<12>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1f80:
     ++pairs;
@@ -7486,184 +7488,184 @@ L_0x1f88:
 L_0x1f90:
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, (int16_t)(vu.m_state.vi[15] + vu.m_state.vi[1]));
+    Vu1Gen::setVi<15>(vu, vf, (int16_t)(vu.m_state.vi[15] + vu.m_state.vi[1]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 15; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<15, 1>(vu);
+    Vu1Gen::markVi<15, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1f98:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1fa0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1fa8:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[15])));
-    Vu1Gen::markVi<13, 4>(vu);
+    Vu1Gen::setVi<13>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[15])));
+    Vu1Gen::markVi<13, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1fb0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[15])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[15])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1fb8:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[15])));
-    Vu1Gen::markVi<6, 4>(vu);
+    Vu1Gen::setVi<6>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[15])));
+    Vu1Gen::markVi<6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1fc0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[15])));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[15])));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x1fc8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, vu.m_state.vi[13] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<11>(vu, vf, vu.m_state.vi[13] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1fd0:
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, (int16_t)(vu.m_state.vi[15] + 2));
+    Vu1Gen::setVi<15>(vu, vf, (int16_t)(vu.m_state.vi[15] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 15; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<15, 1>(vu);
+    Vu1Gen::markVi<15, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1fd8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x1fd8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x20c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x20c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[15]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[15]);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x20c8;
     goto L_0x1fe8;
 L_0x1fe0:
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[15]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (329)), vu.m_state.vi[15]);
     ++vu.m_cycle;
 L_0x1fe8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1ff0:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, vu.m_state.vi[13] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<13>(vu, vf, vu.m_state.vi[13] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x1ff8:
     ++pairs;
-    Vu1Gen::storeWord<1>(vu, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[13]);
+    Vu1Gen::storeWord<1>(vu, vf, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[13]);
     ++vu.m_cycle;
 L_0x2000:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2008:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2010:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2018:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (2)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (2)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2020:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2028:
     ++pairs;
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2030:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2038:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (2)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (2)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2040:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2048:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7]));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7]));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2050:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2058:
     ++pairs;
-    Vu1Gen::loadVf<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7] + (2)));
-    Vu1Gen::markVf<31, 15, 4>(vu);
+    Vu1Gen::loadVf<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7] + (2)));
+    Vu1Gen::markVf<31, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2060:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + 3));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2068:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 3));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2070:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2070; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, 1040);
+    Vu1Gen::setVi<15>(vu, vf, 1040);
     taken = true; target = 0x3618u;
-    Vu1Gen::markVi<15, 1>(vu);
+    Vu1Gen::markVi<15, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7678,10 +7680,10 @@ L_0x2078:
 L_0x2080:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2080; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2080; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x20c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x20c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7694,33 +7696,33 @@ L_0x2088:
     ++vu.m_cycle;
 L_0x2090:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2090; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1]));
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1]));
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2098:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[10] + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[10] + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x20a0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 1));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x20a8:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x20b0:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 6>(vu, Vu1Gen::dataAddress(0 + (112)));
+    Vu1Gen::storeVfMem<22, 6>(vu, vf, Vu1Gen::dataAddress(0 + (112)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x20b8:
@@ -7739,26 +7741,26 @@ L_0x20c0:
     ++vu.m_cycle;
 L_0x20c8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<12>(vu, ready);
+    Vu1Gen::readyVi<12>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x20c8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, (int16_t)(vu.m_state.vi[12] + -1));
+    Vu1Gen::setVi<12>(vu, vf, (int16_t)(vu.m_state.vi[12] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x20d0:
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (329))));
+    Vu1Gen::setVi<15>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (329))));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<15, 4>(vu);
+    Vu1Gen::markVi<15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x20d8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x20d8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<12>(vu)); target = 0x2100u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<12>(vu, vf)); target = 0x2100u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7772,9 +7774,9 @@ L_0x20e0:
 L_0x20e8:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
+    Vu1Gen::setVi<14>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<14, 4>(vu);
+    Vu1Gen::markVi<14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x20f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x20f0; goto bail; }
@@ -7810,8 +7812,8 @@ L_0x2110:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (1))));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2118:
     ++pairs;
@@ -7819,109 +7821,109 @@ L_0x2118:
 L_0x2120:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 32767));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 32767));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2128:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2128; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, vu.m_state.vi[10] & vu.m_state.vi[11]);
+    Vu1Gen::setVi<12>(vu, vf, vu.m_state.vi[10] & vu.m_state.vi[11]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2130:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[1] + 2));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[1] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2138:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, (int16_t)(vu.m_state.vi[12] + -1));
+    Vu1Gen::setVi<12>(vu, vf, (int16_t)(vu.m_state.vi[12] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2140:
     ++pairs;
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1]));
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1]));
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2148:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 3));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2150:
     ++pairs;
     ++vu.m_cycle;
 L_0x2158:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[11]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (112)), vu.m_state.vi[11]);
     ++vu.m_cycle;
 L_0x2160:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 7>(vu, Vu1Gen::dataAddress(0 + (112)));
+    Vu1Gen::storeVfMem<22, 7>(vu, vf, Vu1Gen::dataAddress(0 + (112)));
     ++vu.m_cycle;
 L_0x2168:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2170:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10] + (1)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10] + (1)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2178:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10] + (2)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10] + (2)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2180:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10] + (3)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10] + (3)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2188:
     ++pairs;
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10] + (4)));
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10] + (4)));
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2190:
     ++pairs;
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[10] + (5)));
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[10] + (5)));
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2198:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] + 3));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x21a0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x21a8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x21a8; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[15];
-    Vu1Gen::setVi<15>(vu, 1079);
+    Vu1Gen::setVi<15>(vu, vf, 1079);
     taken = true; target = 0x34a0u;
-    Vu1Gen::markVi<15, 1>(vu);
+    Vu1Gen::markVi<15, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7936,7 +7938,7 @@ L_0x21b0:
 L_0x21b8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x21b8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x2220u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x2220u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -7949,34 +7951,34 @@ L_0x21c0:
     ++vu.m_cycle;
 L_0x21c8:
     ++pairs;
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(0 + (40)));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(0 + (40)));
     ++vu.m_cycle;
 L_0x21d0:
     ++pairs;
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(0 + (41)));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(0 + (41)));
     ++vu.m_cycle;
 L_0x21d8:
     ++pairs;
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(0 + (42)));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(0 + (42)));
     ++vu.m_cycle;
 L_0x21e0:
     ++pairs;
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress(0 + (43)));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress(0 + (43)));
     ++vu.m_cycle;
 L_0x21e8:
     ++pairs;
-    Vu1Gen::storeVfMem<23, 15>(vu, Vu1Gen::dataAddress(0 + (44)));
+    Vu1Gen::storeVfMem<23, 15>(vu, vf, Vu1Gen::dataAddress(0 + (44)));
     ++vu.m_cycle;
 L_0x21f0:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress(0 + (45)));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress(0 + (45)));
     ++vu.m_cycle;
 L_0x21f8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 423));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 423));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2200:
     ready = vu.m_cycle;
@@ -8009,9 +8011,9 @@ L_0x2220:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, (int16_t)(vu.m_state.vi[12] + -1));
+    Vu1Gen::setVi<12>(vu, vf, (int16_t)(vu.m_state.vi[12] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2228:
     ++pairs;
@@ -8020,7 +8022,7 @@ L_0x2228:
 L_0x2230:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2230; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<12>(vu)); target = 0x2258u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<12>(vu, vf)); target = 0x2258u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -8034,9 +8036,9 @@ L_0x2238:
 L_0x2240:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
+    Vu1Gen::setVi<14>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (340))));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<14, 4>(vu);
+    Vu1Gen::markVi<14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2248:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2248; goto bail; }
@@ -8071,7 +8073,7 @@ L_0x2260:
 L_0x2268:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<1>(vu, Vu1Gen::dataAddress(0 + (39)), 0);
+    Vu1Gen::storeWord<1>(vu, vf, Vu1Gen::dataAddress(0 + (39)), 0);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2270:
@@ -8092,13 +8094,13 @@ L_0x2280:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2288:
     ++pairs;
-    Vu1Gen::storeWord<1>(vu, Vu1Gen::dataAddress(0 + (39)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<1>(vu, vf, Vu1Gen::dataAddress(0 + (39)), vu.m_state.vi[3]);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2290:
@@ -8119,91 +8121,91 @@ L_0x22a0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x22a8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x22b0:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 752));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 752));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x22b8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x22c0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x22c8:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x22d0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x22d0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     ++vu.m_cycle;
 L_0x22d8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x22e0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[14] + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[14] + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x22e8:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 8));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 8));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x22f0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x22f8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2300:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2308:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + -1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2310:
     ready = vu.m_cycle;
@@ -8219,45 +8221,45 @@ L_0x2318:
     ++vu.m_cycle;
 L_0x2320:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2328:
     ++pairs;
-    Vu1Gen::loadVf<30, 8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
-    Vu1Gen::markVf<30, 8, 4>(vu);
+    Vu1Gen::loadVf<30, 8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
+    Vu1Gen::markVf<30, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2330:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 12>(vu, ready);
-    Vu1Gen::readyVf<30, 8>(vu, ready);
+    Vu1Gen::readyVf<25, 12>(vu, vf, ready);
+    Vu1Gen::readyVf<30, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2330; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 12, 25, 30, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 12>(vu, up);
-    Vu1Gen::markVf<25, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 12, 25, 30, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 12>(vu, vf, up);
+    Vu1Gen::markVf<25, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2338:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2340:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2348:
     ++pairs;
     ++vu.m_cycle;
 L_0x2350:
     ++pairs;
-    Vu1Gen::storeVfMem<25, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::storeVfMem<25, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
     ++vu.m_cycle;
 L_0x2358:
     ++pairs;
@@ -8270,8 +8272,8 @@ L_0x2368:
     ++vu.m_cycle;
 L_0x2370:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2378:
     ++pairs;
@@ -8280,28 +8282,28 @@ L_0x2378:
 L_0x2380:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2380; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x2330u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x2330u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x2330;
     goto L_0x2390;
 L_0x2388:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2390:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2390; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<7>(vu)); target = 0x22e0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<7>(vu, vf)); target = 0x22e0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -8316,7 +8318,7 @@ L_0x2398:
 L_0x23a0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x23a0; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -8331,23 +8333,23 @@ L_0x23b0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23b8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23c0:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 847));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 847));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23c8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x23c8; goto bail; }
@@ -8357,40 +8359,40 @@ L_0x23c8:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x22c0;
     goto L_0x23d8;
 L_0x23d0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[8] + 0));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[8] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23e0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23e8:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 847));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 847));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x23f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x23f0; goto bail; }
@@ -8400,78 +8402,78 @@ L_0x23f0:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x2420;
     goto L_0x2400;
 L_0x23f8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2400:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2408:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2410:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 752));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 752));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2418:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2420:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[14] + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[14] + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2428:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2430:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x2438:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x2440:
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2448:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2448; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<7>(vu)); target = 0x2478u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<7>(vu, vf)); target = 0x2478u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -8497,92 +8499,92 @@ L_0x2460:
 L_0x2468:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 6));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 6));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2470:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 6));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 6));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2478:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2480:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2488:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2490:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<3>(vu, ready);
+    Vu1Gen::readyVi<3>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2490; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2498:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24a0:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (2)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (2)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24a8:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24b0:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (1)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24b8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<17, 15>(vu, ready);
+    Vu1Gen::readyVf<17, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x24b8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, acc);
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[5] + 3));
-    Vu1Gen::storeVf<20, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 17, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[5] + 3));
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x24c0:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 3));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x24c8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, acc);
-    { const float *s = vu.m_state.vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 6); }
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<26, 6, 4>(vu);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, vf, acc);
+    { const float *s = vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 6); }
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 6, 4>(vu, vf);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24d0:
     ++pairs;
@@ -8595,30 +8597,30 @@ L_0x24e0:
     ++vu.m_cycle;
 L_0x24e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 8>(vu, up);
-    Vu1Gen::markVf<26, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 8>(vu, vf, up);
+    Vu1Gen::markVf<26, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x24f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x24f8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2500:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2508:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2510:
     ++pairs;
@@ -8635,12 +8637,12 @@ L_0x2528:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2528; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<0, 3, 29, 3>(vu);
+    Vu1Gen::div<0, 3, 29, 3>(vu, vf);
     ++vu.m_cycle;
 L_0x2530:
     ++pairs;
-    { const float *s = vu.m_state.vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[29], t, 12); }
-    Vu1Gen::markVf<29, 12, 4>(vu);
+    { const float *s = vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[29], t, 12); }
+    Vu1Gen::markVf<29, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2538:
     ++pairs;
@@ -8654,320 +8656,320 @@ L_0x2548:
     ++vu.m_cycle;
 L_0x2550:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 2, 0, 26, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<29, 2>(vu, up);
-    Vu1Gen::markVf<29, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 2, 0, 26, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 2>(vu, vf, up);
+    Vu1Gen::markVf<29, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2558:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 2>(vu, ready);
+    Vu1Gen::readyVf<29, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2558; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 6, 29, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<29, 6>(vu, up);
-    Vu1Gen::markVf<29, 6, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 6, 29, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 6>(vu, vf, up);
+    Vu1Gen::markVf<29, 6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2560:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 6>(vu, ready);
+    Vu1Gen::readyVf<29, 6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2560; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 29, 26, true, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 29, 26, true, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2568:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 6>(vu, ready);
+    Vu1Gen::readyVf<29, 6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2568; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 29, true, true, true>(vu, acc);
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 29, true, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2570:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 6>(vu, ready);
+    Vu1Gen::readyVf<29, 6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2570; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 14, 29, 27, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 14, 29, 27, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2578:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<28, 14>(vu, ready);
+    Vu1Gen::readyVf<28, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2578; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 14, 28, 27, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 1, 14, 28, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2580:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<29, 14>(vu, ready);
+    Vu1Gen::readyVf<29, 14>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2580; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 29, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<31, 14>(vu, up);
-    Vu1Gen::markVf<31, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 14>(vu, vf, up);
+    Vu1Gen::markVf<31, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2588:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 8>(vu, ready);
+    Vu1Gen::readyVf<31, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2588; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2590:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 4>(vu, ready);
+    Vu1Gen::readyVf<31, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2590; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2598:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 2>(vu, ready);
+    Vu1Gen::readyVf<31, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2598; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25a0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 28, false, false, false>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
-    Vu1Gen::storeVf<31, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 28, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::storeVf<31, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<31, 14, 4>(vu);
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVf<31, 14, 4>(vu, vf);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x25a8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 8>(vu, ready);
+    Vu1Gen::readyVf<31, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25a8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x25b0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 4>(vu, ready);
+    Vu1Gen::readyVf<31, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25b0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x25b8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 2>(vu, ready);
+    Vu1Gen::readyVf<31, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25b8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
     { const uint32_t ib = 0x3f000000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25c0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 23, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 8>(vu, up);
-    Vu1Gen::markVf<22, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 23, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 8>(vu, vf, up);
+    Vu1Gen::markVf<22, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25c8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<22, 1>(vu, ready);
+    Vu1Gen::readyVf<22, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25c8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 4, 0, 22, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 4>(vu, up);
-    Vu1Gen::markVf<22, 4, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 4, 0, 22, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 4>(vu, vf, up);
+    Vu1Gen::markVf<22, 4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25d0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<22, 12>(vu, ready);
+    Vu1Gen::readyVf<22, 12>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25d0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 12, 22, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 12>(vu, up);
-    Vu1Gen::markVf<22, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 12, 22, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 12>(vu, vf, up);
+    Vu1Gen::markVf<22, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25d8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<31, 14>(vu, up);
-    Vu1Gen::markVf<31, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 14>(vu, vf, up);
+    Vu1Gen::markVf<31, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25e0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 8>(vu, ready);
+    Vu1Gen::readyVf<31, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25e0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x25e8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 4>(vu, ready);
+    Vu1Gen::readyVf<31, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25e8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 31, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x25f0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<31, 2>(vu, ready);
+    Vu1Gen::readyVf<31, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25f0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x25f8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x25f8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 23, 0>(vu);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 23, 0>(vu, vf);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2600:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2600; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 23, 0>(vu);
-    Vu1Gen::storeVf<22, 1>(vu, up);
-    Vu1Gen::markVf<22, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 23, 0>(vu, vf);
+    Vu1Gen::storeVf<22, 1>(vu, vf, up);
+    Vu1Gen::markVf<22, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2608:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 12>(vu, up);
-    Vu1Gen::markVf<22, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 12>(vu, vf, up);
+    Vu1Gen::markVf<22, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2610:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2610; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 27, 23, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<23, 2>(vu, up);
-    Vu1Gen::markVf<23, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 27, 23, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 2>(vu, vf, up);
+    Vu1Gen::markVf<23, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2618:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 2>(vu, ready);
+    Vu1Gen::readyVf<23, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2618; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 23, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<23, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 23, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
     { const uint32_t ib = 0x3f000000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2620:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2620; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 23, 0>(vu);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 23, 0>(vu, vf);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2628:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2628; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 23, 0>(vu);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 0, 23, 0>(vu, vf);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2630:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2630; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 23, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<23, 1>(vu, up);
-    Vu1Gen::markVf<23, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 23, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 1>(vu, vf, up);
+    Vu1Gen::markVf<23, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2638:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 1>(vu, ready);
+    Vu1Gen::readyVf<23, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2638; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 17, 23, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<20, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 15, 17, 23, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2640:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<20, 1>(vu, ready);
+    Vu1Gen::readyVf<20, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2640; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 20, 22, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 1>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 20, 22, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2648:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2650:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2658:
     ++pairs;
-    Vu1Gen::storeVfMem<22, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::storeVfMem<22, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
     ++vu.m_cycle;
 L_0x2660:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2668:
     ++pairs;
-    Vu1Gen::storeVfMem<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
+    Vu1Gen::storeVfMem<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2670:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2670; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x24c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x24c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x24c8;
     goto L_0x2680;
 L_0x2678:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2680:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2680; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -8980,86 +8982,86 @@ L_0x2688:
     ++vu.m_cycle;
 L_0x2690:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2690; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2698:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x26a0:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 752));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 752));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x26a8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x26b0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[14] + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[14] + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x26b8:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x26c0:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x26c8:
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     ++vu.m_cycle;
 L_0x26d0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x26d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x26e0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x26e8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x26f0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + -1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x26f8:
     ready = vu.m_cycle;
@@ -9075,163 +9077,163 @@ L_0x2700:
     ++vu.m_cycle;
 L_0x2708:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2710:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2718:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2720:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2728:
     ++pairs;
-    Vu1Gen::loadVf<23, 13>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
-    Vu1Gen::markVf<23, 13, 4>(vu);
+    Vu1Gen::loadVf<23, 13>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
+    Vu1Gen::markVf<23, 13, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2730:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 17, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<20, 8>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<20, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<20, 8>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<20, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2738:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 4, 0, 18, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<20, 4>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<20, 4, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 4, 0, 18, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<20, 4>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<20, 4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2740:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 19, false, false, true>(vu, acc);
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 11));
-    Vu1Gen::storeVf<20, 2>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 19, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 11));
+    Vu1Gen::storeVf<20, 2>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<20, 2, 4>(vu);
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVf<20, 2, 4>(vu, vf);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2748:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 27, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<20, 1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::storeVf<30, 8>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
-    Vu1Gen::markVf<30, 8, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 27, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<20, 1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::storeVf<30, 8>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
+    Vu1Gen::markVf<30, 8, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2750:
     ++pairs;
     ++vu.m_cycle;
 L_0x2758:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<20, 2>(vu, ready);
+    Vu1Gen::readyVf<20, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2758; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 24, 20, false, true, false>(vu, acc);
-    { const float *s = vu.m_state.vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[29], t, 6); }
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<29, 6, 4>(vu);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 24, 20, false, true, false>(vu, vf, acc);
+    { const float *s = vf[25]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[29], t, 6); }
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 6, 4>(vu, vf);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2760:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 8>(vu, ready);
-    Vu1Gen::readyVf<30, 8>(vu, ready);
+    Vu1Gen::readyVf<30, 8>(vu, vf, ready);
+    Vu1Gen::readyVf<30, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2760; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 1>(vu, up);
-    Vu1Gen::markVf<27, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 1>(vu, vf, up);
+    Vu1Gen::markVf<27, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2768:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<28, 14>(vu, ready);
+    Vu1Gen::readyVf<28, 14>(vu, vf, ready);
     ready = std::max(ready, vu.m_efuResourceReady);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2768; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, acc);
-    Vu1Gen::execLower(vu, 0x81c0e73fu);
-    Vu1Gen::storeVf<29, 8>(vu, up);
-    Vu1Gen::markVf<29, 8, 4>(vu);
-    _mm_storeu_ps(vu.m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 8, 0, 24, false, false, true>(vu, vf, acc);
+    Vu1Gen::execLower(vu, vf, 0x81c0e73fu);
+    Vu1Gen::storeVf<29, 8>(vu, vf, up);
+    Vu1Gen::markVf<29, 8, 4>(vu, vf);
+    _mm_storeu_ps(vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
     vu.m_state.vi[0] = 0;
     ++vu.m_cycle;
 L_0x2770:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2778:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2780:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2788:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<24, 15>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<24, 15>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2790:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 29, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<21, 14>(vu, up);
-    Vu1Gen::markVf<21, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 29, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 14>(vu, vf, up);
+    Vu1Gen::markVf<21, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2798:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 8>(vu, ready);
+    Vu1Gen::readyVf<21, 8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2798; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 21, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 21, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x27a0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 4>(vu, ready);
+    Vu1Gen::readyVf<21, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x27a0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 21, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 21, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     { const uint32_t ib = 0x3c000000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
     ++vu.m_cycle;
 L_0x27a8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 2>(vu, ready);
+    Vu1Gen::readyVf<21, 2>(vu, vf, ready);
     if (vu.m_fdiv.valid) ready = std::max(ready, vu.m_fdiv.readyCycle);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x27a8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 21, false, false, false>(vu, acc);
-    Vu1Gen::div<0, 3, 24, 3>(vu);
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 21, false, false, false>(vu, vf, acc);
+    Vu1Gen::div<0, 3, 24, 3>(vu, vf);
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x27b0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 20, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<20, 1>(vu, up);
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 20, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 1>(vu, vf, up);
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x27b8:
     ++pairs;
@@ -9242,9 +9244,9 @@ L_0x27c0:
     ++vu.m_cycle;
 L_0x27c8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 21, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<21, 1>(vu, up);
-    Vu1Gen::markVf<21, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 1, 21, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 1>(vu, vf, up);
+    Vu1Gen::markVf<21, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x27d0:
     ++pairs;
@@ -9255,44 +9257,44 @@ L_0x27d8:
     ++vu.m_cycle;
 L_0x27e0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 4, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<31, 4>(vu, up);
-    Vu1Gen::markVf<31, 4, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 4, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 4>(vu, vf, up);
+    Vu1Gen::markVf<31, 4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x27e8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 29, 21, false, true, false>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
-    Vu1Gen::storeVf<22, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 29, 21, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::storeVf<22, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 14, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<22, 14, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x27f0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x27f8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2800:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2808:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 22, 28, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 14>(vu, up);
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 14, 22, 28, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2810:
     ++pairs;
@@ -9300,31 +9302,31 @@ L_0x2810:
     ++vu.m_cycle;
 L_0x2818:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 2, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<23, 2>(vu, up);
-    Vu1Gen::markVf<23, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 2, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 2>(vu, vf, up);
+    Vu1Gen::markVf<23, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2820:
     ++pairs;
     ++vu.m_cycle;
 L_0x2828:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 26, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 26, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2830:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 26, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 26, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2838:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 26, false, true, false>(vu, acc);
-    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vu.m_state.vf[31], t, 1); }
-    Vu1Gen::storeVf<26, 14>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 26, false, true, false>(vu, vf, acc);
+    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vf[31], t, 1); }
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2840:
     ++pairs;
@@ -9332,9 +9334,9 @@ L_0x2840:
 L_0x2848:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 32));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 32));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2850:
     ++pairs;
@@ -9344,14 +9346,14 @@ L_0x2858:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[5]));
+    Vu1Gen::setVi<13>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[5]));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2860:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2860; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x28b0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x28b0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -9364,25 +9366,25 @@ L_0x2868:
     ++vu.m_cycle;
 L_0x2870:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 2, 26, 23, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<23, 2>(vu, up);
-    Vu1Gen::markVf<23, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 2, 26, 23, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 2>(vu, vf, up);
+    Vu1Gen::markVf<23, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2878:
     ++pairs;
-    Vu1Gen::storeVf<26, 2>(vu, Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 26, 0>(vu));
+    Vu1Gen::storeVf<26, 2>(vu, vf, Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 26, 0>(vu, vf));
     { const uint32_t ib = 0x40000000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<26, 2, 4>(vu);
+    Vu1Gen::markVf<26, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2880:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 2>(vu, ready);
+    Vu1Gen::readyVf<26, 2>(vu, vf, ready);
     ready = std::max(ready, vu.m_efuResourceReady);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2880; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::execLower(vu, 0x81c0d73fu);
-    _mm_storeu_ps(vu.m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
+    Vu1Gen::execLower(vu, vf, 0x81c0d73fu);
+    _mm_storeu_ps(vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));
     vu.m_state.vi[0] = 0;
     ++vu.m_cycle;
 L_0x2888:
@@ -9396,11 +9398,11 @@ L_0x2888:
 L_0x2890:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 2, 23, 23, false, false, true>(vu, acc);
-    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vu.m_state.vf[31], t, 1); }
-    Vu1Gen::storeVf<23, 2>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
-    Vu1Gen::markVf<23, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 2, 23, 23, false, false, true>(vu, vf, acc);
+    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vf[31], t, 1); }
+    Vu1Gen::storeVf<23, 2>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
+    Vu1Gen::markVf<23, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2898:
     ++pairs;
@@ -9414,55 +9416,55 @@ L_0x28a8:
 L_0x28b0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 12, 26, 31, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 12>(vu, up);
-    Vu1Gen::markVf<26, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 12, 26, 31, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 12>(vu, vf, up);
+    Vu1Gen::markVf<26, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28b8:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 23, 0>(vu);
-    Vu1Gen::storeVf<23, 2>(vu, up);
-    Vu1Gen::markVf<23, 2, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 23, 0>(vu, vf);
+    Vu1Gen::storeVf<23, 2>(vu, vf, up);
+    Vu1Gen::markVf<23, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28c0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 27, 20, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 1>(vu, up);
-    Vu1Gen::markVf<27, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 27, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 1>(vu, vf, up);
+    Vu1Gen::markVf<27, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28c8:
     ++pairs;
     ++vu.m_cycle;
 L_0x28d0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 12, 26, 23, false, false, true>(vu, acc);
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::storeVf<26, 12>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVf<26, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 12, 26, 23, false, false, true>(vu, vf, acc);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVf<26, 12>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVf<26, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28d8:
     ++pairs;
     ++vu.m_cycle;
 L_0x28e0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 23, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 1>(vu, up);
-    Vu1Gen::markVf<27, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 23, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 1>(vu, vf, up);
+    Vu1Gen::markVf<27, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28e8:
     ++pairs;
     ++vu.m_cycle;
 L_0x28f0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 12, 26, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 12>(vu, up);
-    Vu1Gen::markVf<26, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 12, 26, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 12>(vu, vf, up);
+    Vu1Gen::markVf<26, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x28f8:
     ++pairs;
-    Vu1Gen::loadVf<20, 1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
-    Vu1Gen::markVf<20, 1, 4>(vu);
+    Vu1Gen::loadVf<20, 1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::markVf<20, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2900:
     ++pairs;
@@ -9473,39 +9475,39 @@ L_0x2908:
 L_0x2910:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 12>(vu, up);
-    Vu1Gen::markVf<26, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 12>(vu, vf, up);
+    Vu1Gen::markVf<26, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2918:
     ++pairs;
     ++vu.m_cycle;
 L_0x2920:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2928:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2928; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x2758u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x2758u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<26, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
+    Vu1Gen::storeVfMem<26, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x2758;
     goto L_0x2938;
 L_0x2930:
     ++pairs;
-    Vu1Gen::storeVfMem<26, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
+    Vu1Gen::storeVfMem<26, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-3)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2938:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2938; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<7>(vu)); target = 0x26d8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<7>(vu, vf)); target = 0x26d8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -9520,7 +9522,7 @@ L_0x2940:
 L_0x2948:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2948; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -9533,28 +9535,28 @@ L_0x2950:
     ++vu.m_cycle;
 L_0x2958:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2958; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2960:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2968:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 847));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 847));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2970:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2970; goto bail; }
@@ -9564,107 +9566,107 @@ L_0x2970:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x26b0;
     goto L_0x2980;
 L_0x2978:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2980:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2988:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2990:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 752));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 752));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2998:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x29a0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x29a8:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x29b0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x29b0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     ++vu.m_cycle;
 L_0x29b8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x29c0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[14] + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[14] + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x29c8:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 12));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 12));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x29d0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x29d8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x29e0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x29e8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + -1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x29f0:
     ready = vu.m_cycle;
@@ -9680,103 +9682,103 @@ L_0x29f8:
     ++vu.m_cycle;
 L_0x2a00:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a08:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a10:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a18:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a20:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a28:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a30:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (11)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (11)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a38:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a40:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, acc);
-    { const float *s = vu.m_state.vf[24]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 2); }
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<26, 2, 4>(vu);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, vf, acc);
+    { const float *s = vf[24]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 2); }
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 2, 4>(vu, vf);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2a50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2a58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2a60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 20, 0, false, true, false>(vu, acc);
-    { const float *s = vu.m_state.vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 4); }
-    Vu1Gen::storeVf<22, 14>(vu, up);
-    Vu1Gen::markVf<26, 4, 4>(vu);
-    Vu1Gen::markVf<22, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 20, 0, false, true, false>(vu, vf, acc);
+    { const float *s = vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 4); }
+    Vu1Gen::storeVf<22, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 4, 4>(vu, vf);
+    Vu1Gen::markVf<22, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a68:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, acc);
-    { float t[4]; std::memcpy(t, vu.m_state.vf[25], 16); VU1Interpreter::applyDest(vu.m_state.vf[26], t, 3); }
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, vf, acc);
+    { float t[4]; std::memcpy(t, vf[25], 16); VU1Interpreter::applyDest(vf[26], t, 3); }
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<26, 3, 4>(vu);
+    Vu1Gen::markVf<26, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2a78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2a80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a88:
     ++pairs;
-    { const float *s = vu.m_state.vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 14); }
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    { const float *s = vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 14); }
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2a90:
     ++pairs;
@@ -9791,16 +9793,16 @@ L_0x2aa0:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2aa0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::div<0, 3, 29, 3>(vu);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcI, 0, 1, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::div<0, 3, 29, 3>(vu, vf);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2aa8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ab0:
     ++pairs;
@@ -9813,119 +9815,119 @@ L_0x2ac0:
     ++vu.m_cycle;
 L_0x2ac8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 26, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 26, 30, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2ad0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 26, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 26, 30, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2ad8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 26, 30, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 26, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ae0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 12>(vu, up);
-    Vu1Gen::markVf<22, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 12>(vu, vf, up);
+    Vu1Gen::markVf<22, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ae8:
     ++pairs;
     ++vu.m_cycle;
 L_0x2af0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 29, false, false, false>(vu, acc);
-    { float t[4]; std::memcpy(t, vu.m_state.vf[28], 16); VU1Interpreter::applyDest(vu.m_state.vf[26], t, 15); }
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 29, false, false, false>(vu, vf, acc);
+    { float t[4]; std::memcpy(t, vf[28], 16); VU1Interpreter::applyDest(vf[26], t, 15); }
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2af8:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 29, false, false, false>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b00:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 29, false, false, false>(vu, acc);
-    Vu1Gen::storeVfMem<22, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<22, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b08:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b10:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 1>(vu, ready);
+    Vu1Gen::readyVf<30, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2b10; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 30, 0>(vu);
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 30, 0>(vu, vf);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b18:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b20:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 1>(vu, ready);
+    Vu1Gen::readyVf<30, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2b20; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 26, 30, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 26, 30, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2b28:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b30:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b38:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2b38; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x2a40u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x2a40u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x2a40;
     goto L_0x2b48;
 L_0x2b40:
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2b48:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2b48; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -9940,23 +9942,23 @@ L_0x2b58:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b60:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b68:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 847));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 847));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b70:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2b70; goto bail; }
@@ -9966,110 +9968,110 @@ L_0x2b70:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x29a0;
     goto L_0x2b80;
 L_0x2b78:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b80:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2b80; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b88:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b90:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 752));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 752));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2b98:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ba0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x2ba8:
     ++pairs;
-    Vu1Gen::storeWord<4>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
+    Vu1Gen::storeWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[4]);
     ++vu.m_cycle;
 L_0x2bb0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2bb0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    Vu1Gen::storeWord<2>(vu, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
+    Vu1Gen::storeWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339)), vu.m_state.vi[9]);
     ++vu.m_cycle;
 L_0x2bb8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[14] + (339))));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2bc0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[14] + 340));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[14] + 340));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2bc8:
     ++pairs;
     oldVi = vu.m_state.vi[14];
-    Vu1Gen::setVi<14>(vu, (int16_t)(vu.m_state.vi[14] + 14));
+    Vu1Gen::setVi<14>(vu, vf, (int16_t)(vu.m_state.vi[14] + 14));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 14; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<14, 1>(vu);
+    Vu1Gen::markVi<14, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2bd0:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2bd8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2be0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(0 + (339))));
-    Vu1Gen::markVi<9, 4>(vu);
+    Vu1Gen::setVi<9>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(0 + (339))));
+    Vu1Gen::markVi<9, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2be8:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[7] + -1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[7] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2bf0:
     ready = vu.m_cycle;
@@ -10085,18 +10087,18 @@ L_0x2bf8:
     ++vu.m_cycle;
 L_0x2c00:
     ++pairs;
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (11)));
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (11)));
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c08:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c10:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c18:
     ++pairs;
@@ -10104,101 +10106,101 @@ L_0x2c18:
     ++vu.m_cycle;
 L_0x2c20:
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (10)));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 15, 23, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
-    Vu1Gen::storeVf<23, 15>(vu, up);
-    Vu1Gen::markVf<17, 15, 4>(vu);
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 15, 23, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (6)));
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c30:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (7)));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c38:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (8)));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c40:
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (12)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (12)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c48:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (13)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (13)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c50:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5] + (9)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c58:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, acc);
-    { const float *s = vu.m_state.vf[24]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 2); }
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<26, 2, 4>(vu);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 21, 24, false, true, true>(vu, vf, acc);
+    { const float *s = vf[24]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 2); }
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 2, 4>(vu, vf);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 17, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2c68:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 18, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2c70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 19, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x2c78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 20, 0, false, true, false>(vu, acc);
-    { const float *s = vu.m_state.vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 4); }
-    Vu1Gen::storeVf<22, 14>(vu, up);
-    Vu1Gen::markVf<26, 4, 4>(vu);
-    Vu1Gen::markVf<22, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 20, 0, false, true, false>(vu, vf, acc);
+    { const float *s = vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 4); }
+    Vu1Gen::storeVf<22, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 4, 4>(vu, vf);
+    Vu1Gen::markVf<22, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, acc);
-    { float t[4]; std::memcpy(t, vu.m_state.vf[25], 16); VU1Interpreter::applyDest(vu.m_state.vf[26], t, 3); }
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 1, 24, false, true, true>(vu, vf, acc);
+    { float t[4]; std::memcpy(t, vf[25], 16); VU1Interpreter::applyDest(vf[26], t, 3); }
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVf<26, 3, 4>(vu);
+    Vu1Gen::markVf<26, 3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2c88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 2, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2c90:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 3, 24, false, true, true>(vu, vf, acc);
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x2c98:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<29, 15>(vu, up);
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 4, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 15>(vu, vf, up);
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ca0:
     ++pairs;
-    { const float *s = vu.m_state.vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[26], t, 14); }
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    { const float *s = vf[26]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[26], t, 14); }
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ca8:
     ++pairs;
@@ -10212,13 +10214,13 @@ L_0x2cb8:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2cb8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<0, 3, 29, 3>(vu);
+    Vu1Gen::div<0, 3, 29, 3>(vu, vf);
     ++vu.m_cycle;
 L_0x2cc0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<30, 14>(vu, up);
-    Vu1Gen::markVf<30, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 30, 26, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 14>(vu, vf, up);
+    Vu1Gen::markVf<30, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2cc8:
     ++pairs;
@@ -10231,25 +10233,25 @@ L_0x2cd8:
     ++vu.m_cycle;
 L_0x2ce0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 30, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2ce8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 30, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 30, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2cf0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2cf8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 23, 26, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 23, 26, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d00:
     ++pairs;
@@ -10257,86 +10259,86 @@ L_0x2d00:
 L_0x2d08:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 12>(vu, up);
-    Vu1Gen::markVf<22, 12, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 12, 22, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 12>(vu, vf, up);
+    Vu1Gen::markVf<22, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d10:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 27, 30, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<31, 2>(vu, up);
-    Vu1Gen::markVf<31, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 27, 30, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 2>(vu, vf, up);
+    Vu1Gen::markVf<31, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d18:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 29, false, false, false>(vu, acc);
-    { float t[4]; std::memcpy(t, vu.m_state.vf[28], 16); VU1Interpreter::applyDest(vu.m_state.vf[26], t, 15); }
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 29, false, false, false>(vu, vf, acc);
+    { float t[4]; std::memcpy(t, vf[28], 16); VU1Interpreter::applyDest(vf[26], t, 15); }
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d20:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 29, false, false, false>(vu, acc);
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2d28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 29, false, false, false>(vu, acc);
-    Vu1Gen::storeVfMem<22, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4]));
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 29, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<22, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4]));
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 31, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 27, 31, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d38:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d40:
     ++pairs;
     ++vu.m_cycle;
 L_0x2d48:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 29, 0>(vu);
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 29, 0>(vu, vf);
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d50:
     ++pairs;
-    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 31, 0>(vu);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::minmax<false, Vu1Gen::MmBc, 3, 31, 0>(vu, vf);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d58:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 30, 0>(vu);
-    Vu1Gen::storeVf<30, 1>(vu, up);
-    Vu1Gen::markVf<30, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 30, 0>(vu, vf);
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d60:
     ++pairs;
     ++vu.m_cycle;
 L_0x2d68:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 29, 0>(vu);
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 29, 0>(vu, vf);
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d70:
     ++pairs;
-    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 31, 0>(vu);
-    Vu1Gen::storeVf<31, 1>(vu, up);
-    Vu1Gen::markVf<31, 1, 4>(vu);
+    up = Vu1Gen::minmax<true, Vu1Gen::MmBc, 1, 31, 0>(vu, vf);
+    Vu1Gen::storeVf<31, 1>(vu, vf, up);
+    Vu1Gen::markVf<31, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d78:
     ++pairs;
@@ -10346,9 +10348,9 @@ L_0x2d80:
     ++vu.m_cycle;
 L_0x2d88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 29, 30, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 29, 30, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2d90:
     ++pairs;
@@ -10361,64 +10363,64 @@ L_0x2da0:
     ++vu.m_cycle;
 L_0x2da8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 29, 31, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<29, 1>(vu, up);
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 29, 31, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 1>(vu, vf, up);
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2db0:
     ++pairs;
     ++vu.m_cycle;
 L_0x2db8:
     ++pairs;
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2dc0:
     ++pairs;
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2dc8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 26, 29, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 1, 26, 29, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2dd0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + -1));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + -1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2dd8:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 3));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2de0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2de0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x2c58u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x2c58u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x2c58;
     goto L_0x2df0;
 L_0x2de8:
     ++pairs;
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-2)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2df0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2df0; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<6>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -10431,28 +10433,28 @@ L_0x2df8:
     ++vu.m_cycle;
 L_0x2e00:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2e00; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e08:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(0 + 150));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(0 + 150));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e10:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 847));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 847));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e18:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2e18; goto bail; }
@@ -10462,69 +10464,69 @@ L_0x2e18:
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x2ba0;
     goto L_0x2e28;
 L_0x2e20:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[10] + 0));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[10] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e28:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2e28; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e30:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e38:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2e38; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + vu.m_state.vi[1]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e40:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
-    Vu1Gen::markVi<13, 4>(vu);
+    Vu1Gen::setVi<13>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[1] + (2))));
+    Vu1Gen::markVi<13, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e48:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e50:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<6, 4>(vu);
+    Vu1Gen::setVi<6>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e58:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e60:
     ++pairs;
@@ -10532,38 +10534,38 @@ L_0x2e60:
 L_0x2e68:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e70:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e78:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e80:
     ++pairs;
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e88:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2e90:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7]));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7]));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2e98:
     ++pairs;
@@ -10575,22 +10577,22 @@ L_0x2ea8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 18, false, true, true>(vu, acc);
-    Vu1Gen::setVi<13>(vu, (int16_t)(vu.m_state.vi[13] + -1));
-    Vu1Gen::storeVf<26, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 17, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<13>(vu, vf, (int16_t)(vu.m_state.vi[13] + -1));
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 14, 4>(vu);
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2eb0:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 19, 18, false, true, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 2));
-    Vu1Gen::storeVf<28, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 14, 19, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 2));
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<28, 14, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2eb8:
     ++pairs;
@@ -10598,84 +10600,84 @@ L_0x2eb8:
 L_0x2ec0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ec8:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, Vu1Gen::loadWord<4>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
-    Vu1Gen::markVi<6, 4>(vu);
+    Vu1Gen::setVi<6>(vu, vf, Vu1Gen::loadWord<4>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    Vu1Gen::markVi<6, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ed0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 26, true, true, true>(vu, acc);
-    Vu1Gen::setVi<7>(vu, Vu1Gen::loadWord<2>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4])));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 28, 26, true, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, Vu1Gen::loadWord<2>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4])));
     Vu1Gen::storeAcc<14>(acc, up);
-    Vu1Gen::markVi<7, 4>(vu);
+    Vu1Gen::markVi<7, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ed8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 28, true, true, true>(vu, acc);
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMsub, Vu1Gen::SrcVt, 0, 14, 26, 28, true, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ee0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2ee8:
     ++pairs;
-    Vu1Gen::loadVf<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[5]));
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    Vu1Gen::loadVf<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[5]));
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2ef0:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2ef8:
     ++pairs;
-    up = Vu1Gen::ftoi<15, 29>(vu);
-    Vu1Gen::loadVf<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
-    Vu1Gen::storeVf<29, 14>(vu, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
-    Vu1Gen::markVf<29, 14, 4>(vu);
+    up = Vu1Gen::ftoi<15, 29>(vu, vf);
+    Vu1Gen::loadVf<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    Vu1Gen::storeVf<29, 14>(vu, vf, up);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
+    Vu1Gen::markVf<29, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f00:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[7]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2f08:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[7]));
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[7]));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f10:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2f10; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<13>(vu) > 0); target = 0x2ea8u;
+    taken = ((int16_t)Vu1Gen::branchVi<13>(vu, vf) > 0); target = 0x2ea8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x2ea8;
     goto L_0x2f20;
 L_0x2f18:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[4] + (-1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x2f20:
@@ -10695,15 +10697,15 @@ L_0x2f28:
 L_0x2f30:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f38:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f40:
     ++pairs;
@@ -10713,15 +10715,15 @@ L_0x2f48:
     ++vu.m_cycle;
 L_0x2f50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 25, 30, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 25, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 26, 30, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 14>(vu, up);
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 26, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f60:
     ++pairs;
@@ -10731,32 +10733,32 @@ L_0x2f68:
     ++vu.m_cycle;
 L_0x2f70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 25, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 25, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x2f78:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, false>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 32));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 32));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2f80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f88:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 1>(vu, ready);
+    Vu1Gen::readyVf<25, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x2f88; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 25, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 2>(vu, up);
-    Vu1Gen::markVf<25, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 25, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 2>(vu, vf, up);
+    Vu1Gen::markVf<25, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2f90:
     ++pairs;
@@ -10771,25 +10773,25 @@ L_0x2fa8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, false>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[7]));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[7]));
     Vu1Gen::storeAcc<1>(acc, up);
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2fb0:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, false>(vu, acc);
-    Vu1Gen::setVi<13>(vu, (int16_t)(0 + 16));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<13>(vu, vf, (int16_t)(0 + 16));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2fb8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x2fc0:
     ++pairs;
@@ -10804,8 +10806,8 @@ L_0x2fd8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[13]));
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::setVi<13>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[13]));
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2fe0:
     ++pairs;
@@ -10813,24 +10815,24 @@ L_0x2fe0:
 L_0x2fe8:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, vu.m_state.vi[13] | vu.m_state.vi[7]);
+    Vu1Gen::setVi<13>(vu, vf, vu.m_state.vi[13] | vu.m_state.vi[7]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2ff0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, false, false>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 48));
-    Vu1Gen::storeVf<25, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 48));
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<25, 1, 4>(vu);
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x2ff8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x2ff8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x30f0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x30f0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -10845,7 +10847,7 @@ L_0x3000:
 L_0x3008:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3008; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<7>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x30e8u;
+    taken = ((int16_t)Vu1Gen::branchVi<7>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x30e8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -10862,25 +10864,25 @@ L_0x3018:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3018; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<26, 3, 25, 3>(vu);
+    Vu1Gen::div<26, 3, 25, 3>(vu, vf);
     ++vu.m_cycle;
 L_0x3020:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3028:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3030:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3038:
     ready = vu.m_cycle;
@@ -10892,54 +10894,54 @@ L_0x3038:
 L_0x3040:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3048:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3050:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3058:
     ++pairs;
     ++vu.m_cycle;
 L_0x3060:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3068:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, true>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 16));
-    Vu1Gen::storeVf<26, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 16));
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 15, 4>(vu);
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3070:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3078:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3078; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<7>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x3098u;
+    taken = ((int16_t)Vu1Gen::branchVi<7>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x3098u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -10968,22 +10970,22 @@ L_0x3090:
 L_0x3098:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 25, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<17, 15>(vu, up);
-    Vu1Gen::markVf<17, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 25, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<17, 15>(vu, vf, up);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30a0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<18, 15>(vu, up);
-    Vu1Gen::markVf<18, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<18, 15>(vu, vf, up);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30a8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<19, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<19, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30b0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x30b0; goto bail; }
@@ -11002,22 +11004,22 @@ L_0x30b8:
 L_0x30c0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 25, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<21, 15>(vu, up);
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 25, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<21, 15>(vu, vf, up);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30c8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<22, 15>(vu, up);
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<22, 15>(vu, vf, up);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30d0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<23, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x30d8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x30d8; goto bail; }
@@ -11037,15 +11039,15 @@ L_0x30e8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x30f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x30f0; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11058,89 +11060,89 @@ L_0x30f8:
     ++vu.m_cycle;
 L_0x3100:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<1>(vu, ready);
+    Vu1Gen::readyVi<1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3100; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[1] + 0));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[1] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3108:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[1] + 5));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[1] + 5));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3110:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3118:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::loadVf<24, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 1));
+    Vu1Gen::loadVf<24, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<24, 15, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3120:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::loadVf<25, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 1));
+    Vu1Gen::loadVf<25, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<25, 15, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3128:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::loadVf<26, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
-    Vu1Gen::setVi<4>(vu, (int16_t)(vu.m_state.vi[4] + 1));
+    Vu1Gen::loadVf<26, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4]));
+    Vu1Gen::setVi<4>(vu, vf, (int16_t)(vu.m_state.vi[4] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 4; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 15, 4>(vu);
-    Vu1Gen::markVi<4, 1>(vu);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
+    Vu1Gen::markVi<4, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3130:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4])));
-    Vu1Gen::markVi<5, 4>(vu);
+    Vu1Gen::setVi<5>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4])));
+    Vu1Gen::markVi<5, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3138:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4])));
-    Vu1Gen::markVi<10, 4>(vu);
+    Vu1Gen::setVi<10>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[4])));
+    Vu1Gen::markVi<10, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3140:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3148:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3150:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, vu.m_state.vi[5] & vu.m_state.vi[7]);
+    Vu1Gen::setVi<7>(vu, vf, vu.m_state.vi[5] & vu.m_state.vi[7]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3158:
     ++pairs;
@@ -11149,7 +11151,7 @@ L_0x3158:
 L_0x3160:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3160; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<7>(vu) > 0); target = 0x3288u;
+    taken = ((int16_t)Vu1Gen::branchVi<7>(vu, vf) > 0); target = 0x3288u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11163,37 +11165,37 @@ L_0x3168:
 L_0x3170:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(0 + 40));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(0 + 40));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3178:
     ++pairs;
-    Vu1Gen::storeWord<8>(vu, Vu1Gen::dataAddress(0 + (37)), vu.m_state.vi[3]);
+    Vu1Gen::storeWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (37)), vu.m_state.vi[3]);
     ++vu.m_cycle;
 L_0x3180:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3188:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[10]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[10]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3190:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3198:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x31a0:
     ++pairs;
@@ -11203,15 +11205,15 @@ L_0x31a8:
     ++vu.m_cycle;
 L_0x31b0:
     ++pairs;
-    Vu1Gen::storeVf<19, 14>(vu, Vu1Gen::itof<15, 19>(vu));
+    Vu1Gen::storeVf<19, 14>(vu, vf, Vu1Gen::itof<15, 19>(vu, vf));
     { const uint32_t ib = 0x41200000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x31b8:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::storeVf<20, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x31c0:
     ++pairs;
@@ -11221,9 +11223,9 @@ L_0x31c8:
     ++vu.m_cycle;
 L_0x31d0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<19, 14>(vu, up);
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x31d8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
@@ -11238,120 +11240,120 @@ L_0x31e8:
 L_0x31f0:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 19, 20, false, false, false>(vu, acc);
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + 2));
-    Vu1Gen::storeVf<19, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 19, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + 2));
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<19, 14, 4>(vu);
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x31f8:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 20, 20, false, false, false>(vu, acc);
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
-    Vu1Gen::storeVf<20, 14>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 20, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::storeVf<20, 14>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<20, 14, 4>(vu);
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVf<20, 14, 4>(vu, vf);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3200:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3208:
     ++pairs;
     ++vu.m_cycle;
 L_0x3210:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 23, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 23, 19, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3218:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 19, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3220:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 19, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3228:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 26, 20, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
-    Vu1Gen::storeVf<27, 14>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<27, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 26, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::storeVf<27, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<27, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3230:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 23, 20, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 14, 23, 20, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3238:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 20, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 20, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3240:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 20, false, true, false>(vu, acc);
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3248:
     ++pairs;
-    up = Vu1Gen::itof<15, 19>(vu);
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::storeVf<19, 14>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    up = Vu1Gen::itof<15, 19>(vu, vf);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3250:
     ++pairs;
     ++vu.m_cycle;
 L_0x3258:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    Vu1Gen::storeVfMem<27, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
     ++vu.m_cycle;
 L_0x3260:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
+    Vu1Gen::storeVfMem<28, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x3268:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3268; goto bail; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, acc);
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x31d8u;
-    Vu1Gen::storeVf<19, 14>(vu, up);
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, vf, acc);
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x31d8u;
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
-    Vu1Gen::storeVf<20, 15>(vu, up);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x31d8;
     goto L_0x3278;
 L_0x3270:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
-    Vu1Gen::storeVf<20, 15>(vu, up);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<20, 15, 4>(vu);
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3278:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3278; goto bail; }
@@ -11371,54 +11373,54 @@ L_0x3288:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (37))));
-    Vu1Gen::markVi<3, 4>(vu);
+    Vu1Gen::setVi<3>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (37))));
+    Vu1Gen::markVi<3, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3290:
     ++pairs;
     ++vu.m_cycle;
 L_0x3298:
     ++pairs;
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
-    Vu1Gen::markVf<19, 15, 4>(vu);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32a0:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32a8:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x32b0:
     ++pairs;
     ++vu.m_cycle;
 L_0x32b8:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32c0:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32c8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::storeVf<19, 14>(vu, Vu1Gen::itof<15, 19>(vu));
+    Vu1Gen::storeVf<19, 14>(vu, vf, Vu1Gen::itof<15, 19>(vu, vf));
     { const uint32_t ib = 0x41200000u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32d0:
     ++pairs;
-    up = Vu1Gen::itof<15, 20>(vu);
-    Vu1Gen::storeVf<20, 15>(vu, up);
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    up = Vu1Gen::itof<15, 20>(vu, vf);
+    Vu1Gen::storeVf<20, 15>(vu, vf, up);
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32d8:
     ++pairs;
@@ -11428,9 +11430,9 @@ L_0x32e0:
     ++vu.m_cycle;
 L_0x32e8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<19, 14>(vu, up);
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcI, 0, 14, 19, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x32f0:
     ++pairs;
@@ -11440,14 +11442,14 @@ L_0x32f8:
     ++vu.m_cycle;
 L_0x3300:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 29, 0, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 29, 0, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3308:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 19, 20, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<19, 14>(vu, up);
-    Vu1Gen::markVf<19, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 19, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<19, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3310:
     ++pairs;
@@ -11460,42 +11462,42 @@ L_0x3320:
     ++vu.m_cycle;
 L_0x3328:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 0, 14, 23, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 0, 14, 23, 19, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3330:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 19, false, true, false>(vu, acc);
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + 2));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 19, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + 2));
     Vu1Gen::storeAcc<14>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3338:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 19, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 19, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3340:
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 26, 20, false, true, false>(vu, acc);
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<1>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
-    Vu1Gen::storeVf<27, 14>(vu, up);
-    Vu1Gen::markVf<27, 14, 4>(vu);
-    Vu1Gen::markVi<4, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 14, 26, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<1>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[2])));
+    Vu1Gen::storeVf<27, 14>(vu, vf, up);
+    Vu1Gen::markVf<27, 14, 4>(vu, vf);
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3348:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 30, 0, false, true, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 30, 0, false, true, false>(vu, vf, acc);
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3350:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 20, 20, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<20, 14>(vu, up);
-    Vu1Gen::markVf<20, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 3, 14, 20, 20, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<20, 14>(vu, vf, up);
+    Vu1Gen::markVf<20, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3358:
     ++pairs;
@@ -11503,9 +11505,9 @@ L_0x3358:
 L_0x3360:
     ++pairs;
     oldVi = vu.m_state.vi[12];
-    Vu1Gen::setVi<12>(vu, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
+    Vu1Gen::setVi<12>(vu, vf, (int16_t)(vu.m_state.vi[3] + vu.m_state.vi[4]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 12; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<12, 1>(vu);
+    Vu1Gen::markVi<12, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3368:
     ++pairs;
@@ -11513,66 +11515,66 @@ L_0x3368:
 L_0x3370:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 0, 14, 23, 20, false, true, false>(vu, acc);
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 0, 14, 23, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     Vu1Gen::storeAcc<14>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3378:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 20, false, true, false>(vu, acc);
-    Vu1Gen::storeVfMem<27, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6]));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 14, 24, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<27, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6]));
     Vu1Gen::storeAcc<14>(acc, up);
     ++vu.m_cycle;
 L_0x3380:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 20, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
-    Vu1Gen::storeVf<28, 14>(vu, up);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVf<28, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 14, 25, 20, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::storeVf<28, 14>(vu, vf, up);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVf<28, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3388:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[12]));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[12]));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3390:
     ++pairs;
-    Vu1Gen::loadVf<20, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::markVf<20, 15, 4>(vu);
+    Vu1Gen::loadVf<20, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::markVf<20, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3398:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[12] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[12] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x33a0:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 14>(vu, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
+    Vu1Gen::storeVfMem<28, 14>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[6] + (1)));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x33a8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x33a8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x32c8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x32c8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[12]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[12]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x32c8;
     goto L_0x33b8;
 L_0x33b0:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[12]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[12]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x33b8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
@@ -11588,25 +11590,25 @@ L_0x33c0:
 L_0x33c8:
     ++pairs;
     oldVi = vu.m_state.vi[1];
-    Vu1Gen::setVi<1>(vu, (int32_t)(vu.m_state.top & 0x3FFu));
-    Vu1Gen::markVi<1, 1>(vu);
+    Vu1Gen::setVi<1>(vu, vf, (int32_t)(vu.m_state.top & 0x3FFu));
+    Vu1Gen::markVi<1, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x33d0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 4));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x33d8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x33d8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, vu.m_state.vi[5] & vu.m_state.vi[7]);
+    Vu1Gen::setVi<7>(vu, vf, vu.m_state.vi[5] & vu.m_state.vi[7]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x33e0:
     ++pairs;
@@ -11615,7 +11617,7 @@ L_0x33e0:
 L_0x33e8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x33e8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<7>(vu)); target = 0x3100u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<7>(vu, vf)); target = 0x3100u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11629,68 +11631,68 @@ L_0x33f0:
 L_0x33f8:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (37))));
-    Vu1Gen::markVi<2, 4>(vu);
+    Vu1Gen::setVi<2>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (37))));
+    Vu1Gen::markVi<2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3400:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[1] + 4));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[1] + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3408:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (338)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (338)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3410:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    Vu1Gen::loadVf<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3418:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2] + (1)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3420:
     ++pairs;
-    Vu1Gen::loadVf<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[2]));
-    Vu1Gen::markVf<29, 15, 4>(vu);
+    Vu1Gen::loadVf<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[2]));
+    Vu1Gen::markVf<29, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3428:
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, (int16_t)(vu.m_state.vi[2] + 2));
+    Vu1Gen::setVi<2>(vu, vf, (int16_t)(vu.m_state.vi[2] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 2; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3430:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<30, 2>(vu, ready);
+    Vu1Gen::readyVf<30, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3430; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, true>(vu, acc);
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] - 1));
-    Vu1Gen::storeVf<30, 1>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 2, 1, 0, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] - 1));
+    Vu1Gen::storeVf<30, 1>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<30, 1, 4>(vu);
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVf<30, 1, 4>(vu, vf);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3438:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 2, 0, 30, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<30, 2>(vu, up);
-    Vu1Gen::markVf<30, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 1, 2, 0, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<30, 2>(vu, vf, up);
+    Vu1Gen::markVf<30, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3440:
     ++pairs;
-    up = Vu1Gen::itof<12, 27>(vu);
-    Vu1Gen::storeVf<27, 12>(vu, up);
-    Vu1Gen::markVf<27, 12, 4>(vu);
+    up = Vu1Gen::itof<12, 27>(vu, vf);
+    Vu1Gen::storeVf<27, 12>(vu, vf, up);
+    Vu1Gen::markVf<27, 12, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3448:
     ++pairs;
@@ -11700,46 +11702,46 @@ L_0x3450:
     ++vu.m_cycle;
 L_0x3458:
     ++pairs;
-    { const float *s = vu.m_state.vf[30]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[29], t, 1); }
-    Vu1Gen::markVf<29, 1, 4>(vu);
+    { const float *s = vf[30]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[29], t, 1); }
+    Vu1Gen::markVf<29, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3460:
     ++pairs;
-    Vu1Gen::storeVfMem<27, 12>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVfMem<27, 12>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
     ++vu.m_cycle;
 L_0x3468:
     ++pairs;
-    Vu1Gen::storeVfMem<30, 3>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
+    Vu1Gen::storeVfMem<30, 3>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (1)));
     ++vu.m_cycle;
 L_0x3470:
     ++pairs;
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3] + (2)));
     ++vu.m_cycle;
 L_0x3478:
     ++pairs;
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[3]));
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[3]));
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x3480:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3480; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<9>(vu)); target = 0x3410u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<9>(vu, vf)); target = 0x3410u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3410;
     goto L_0x3490;
 L_0x3488:
     ++pairs;
     oldVi = vu.m_state.vi[3];
-    Vu1Gen::setVi<3>(vu, (int16_t)(vu.m_state.vi[3] + 3));
+    Vu1Gen::setVi<3>(vu, vf, (int16_t)(vu.m_state.vi[3] + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 3; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<3, 1>(vu);
+    Vu1Gen::markVi<3, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3490:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3490; goto bail; }
@@ -11759,57 +11761,57 @@ L_0x34a0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (27))));
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (27))));
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x34a8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 32));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 32));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x34b0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<4>(vu, ready);
+    Vu1Gen::readyVi<4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x34b0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x34b8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x34b8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x34f0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x34f0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (31)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (31)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x34f0;
     goto L_0x34c8;
 L_0x34c0:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (31)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (31)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x34c8:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (32)));
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (32)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x34d0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x34d0; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1692);
+    Vu1Gen::setVi<2>(vu, vf, 1692);
     taken = true; target = 0x2f30u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11824,7 +11826,7 @@ L_0x34d8:
 L_0x34e0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x34e0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11839,48 +11841,48 @@ L_0x34f0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x34f8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3500:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3500; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3538u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3538u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3538;
     goto L_0x3510;
 L_0x3508:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3510:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (33)));
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (33)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3518:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3518; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1701);
+    Vu1Gen::setVi<2>(vu, vf, 1701);
     taken = true; target = 0x2f30u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11895,7 +11897,7 @@ L_0x3520:
 L_0x3528:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3528; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11910,48 +11912,48 @@ L_0x3538:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3540:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3548:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3548; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3578u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3578u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3578;
     goto L_0x3558;
 L_0x3550:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3558:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (34)));
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (34)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3560:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3560; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1710);
+    Vu1Gen::setVi<2>(vu, vf, 1710);
     taken = true; target = 0x2f30u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -11966,14 +11968,14 @@ L_0x3568:
 L_0x3570:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3570; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 8));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 8));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3608;
     goto L_0x3580;
@@ -11981,48 +11983,48 @@ L_0x3578:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 8));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 8));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3580:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3588:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3588; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x35c0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x35c0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x35c0;
     goto L_0x3598;
 L_0x3590:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3598:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (35)));
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (35)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x35a0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x35a0; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1718);
+    Vu1Gen::setVi<2>(vu, vf, 1718);
     taken = true; target = 0x2f30u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12037,7 +12039,7 @@ L_0x35a8:
 L_0x35b0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x35b0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12052,48 +12054,48 @@ L_0x35c0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 4));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x35c8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x35d0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x35d0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3608;
     goto L_0x35e0;
 L_0x35d8:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x35e0:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (36)));
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (36)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x35e8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x35e8; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1727);
+    Vu1Gen::setVi<2>(vu, vf, 1727);
     taken = true; target = 0x2f30u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12108,7 +12110,7 @@ L_0x35f0:
 L_0x35f8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x35f8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3608u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3608u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12124,7 +12126,7 @@ L_0x3608:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3608; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<15>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<15>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12139,211 +12141,211 @@ L_0x3618:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[4];
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 17, false, true, true>(vu, acc);
-    Vu1Gen::setVi<4>(vu, Vu1Gen::loadWord<8>(vu, Vu1Gen::dataAddress(0 + (27))));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<4>(vu, vf, Vu1Gen::loadWord<8>(vu, vf, Vu1Gen::dataAddress(0 + (27))));
     Vu1Gen::storeAcc<15>(acc, up);
-    Vu1Gen::markVi<4, 4>(vu);
+    Vu1Gen::markVi<4, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3620:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 17, false, true, true>(vu, acc);
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + 40));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + 40));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3628:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 17, false, true, true>(vu, acc);
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     Vu1Gen::storeAcc<15>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3630:
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, acc);
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + 76));
-    Vu1Gen::storeVf<23, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + 76));
+    Vu1Gen::storeVf<23, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3638:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 26, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8]));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8]));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3640:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 26, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (1)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (1)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3648:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 26, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (2)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (2)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3650:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (3)));
-    Vu1Gen::storeVf<24, 15>(vu, up);
-    Vu1Gen::markVf<24, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (3)));
+    Vu1Gen::storeVf<24, 15>(vu, vf, up);
+    Vu1Gen::markVf<24, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3658:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (4)));
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 15, 13, 29, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (4)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3660:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<28, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (5)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 15, 14, 29, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<28, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (5)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3668:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, true, true>(vu, acc);
-    Vu1Gen::storeVfMem<29, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (6)));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 15, 15, 29, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVfMem<29, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (6)));
     Vu1Gen::storeAcc<15>(acc, up);
     ++vu.m_cycle;
 L_0x3670:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, acc);
-    Vu1Gen::storeVfMem<30, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (7)));
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 3, 15, 16, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::storeVfMem<30, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (7)));
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3678:
     ++pairs;
-    Vu1Gen::clip<23, 23>(vu);
-    Vu1Gen::storeVfMem<31, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (8)));
+    Vu1Gen::clip<23, 23>(vu, vf);
+    Vu1Gen::storeVfMem<31, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (8)));
     ++vu.m_cycle;
 L_0x3680:
     ++pairs;
-    Vu1Gen::clip<24, 24>(vu);
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (9)));
+    Vu1Gen::clip<24, 24>(vu, vf);
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (9)));
     ++vu.m_cycle;
 L_0x3688:
     ++pairs;
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (10)));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (10)));
     ++vu.m_cycle;
 L_0x3690:
     ++pairs;
-    Vu1Gen::clip<25, 25>(vu);
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (11)));
+    Vu1Gen::clip<25, 25>(vu, vf);
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (11)));
     ++vu.m_cycle;
 L_0x3698:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 32));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 32));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36a0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36a8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x36a8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3758u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3758u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (31)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (31)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3758;
     goto L_0x36b8;
 L_0x36b0:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (31)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (31)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x36b8:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (32)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (32)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x36c0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36c8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36d0:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + 3));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + 3));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36d8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36e0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x36e0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36e8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36f0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x36f8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x36f8; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1761);
+    Vu1Gen::setVi<2>(vu, vf, 1761);
     taken = true; target = 0x3ad0u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12356,13 +12358,13 @@ L_0x3700:
     ++vu.m_cycle;
 L_0x3708:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3708; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3710:
     ++pairs;
@@ -12371,7 +12373,7 @@ L_0x3710:
 L_0x3718:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3718; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x36f8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x36f8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12385,34 +12387,34 @@ L_0x3720:
 L_0x3728:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3730:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3730; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1768);
+    Vu1Gen::setVi<2>(vu, vf, 1768);
     taken = true; target = 0x3a90u;
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot holding another branch
     ++pairs;
-    taken2 = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target2 = 0x3a80u;
+    taken2 = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target2 = 0x3a80u;
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken2) {
     taken = true; target = target2; // pending branch is now the second one
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3740; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     goto L_0x3a80; }
     if (taken) goto L_0x3a90;
@@ -12420,148 +12422,148 @@ L_0x3730:
 L_0x3738:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3738; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3a80u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3a80u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3740; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a80;
     goto L_0x3748;
 L_0x3740:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3740; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3748:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3748; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3750:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3758:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 2));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3760:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3768:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3768; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3818u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3818u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3818;
     goto L_0x3778;
 L_0x3770:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3778:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (33)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (33)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3780:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3788:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3790:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3798:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37a0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37a8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37b0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37b8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x37b8; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1785);
+    Vu1Gen::setVi<2>(vu, vf, 1785);
     taken = true; target = 0x3ad0u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12574,13 +12576,13 @@ L_0x37c0:
     ++vu.m_cycle;
 L_0x37c8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x37c8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37d0:
     ++pairs;
@@ -12589,7 +12591,7 @@ L_0x37d0:
 L_0x37d8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x37d8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x37b8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x37b8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12603,34 +12605,34 @@ L_0x37e0:
 L_0x37e8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x37f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x37f0; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1792);
+    Vu1Gen::setVi<2>(vu, vf, 1792);
     taken = true; target = 0x3a90u;
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot holding another branch
     ++pairs;
-    taken2 = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target2 = 0x3a80u;
+    taken2 = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target2 = 0x3a80u;
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken2) {
     taken = true; target = target2; // pending branch is now the second one
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3800; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     goto L_0x3a80; }
     if (taken) goto L_0x3a90;
@@ -12638,148 +12640,148 @@ L_0x37f0:
 L_0x37f8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x37f8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3a80u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3a80u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3800; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a80;
     goto L_0x3808;
 L_0x3800:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3800; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3808:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3808; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3810:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3818:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 1));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3820:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3828:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3828; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x38e0u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x38e0u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x38e0;
     goto L_0x3838;
 L_0x3830:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3838:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (34)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (34)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3840:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3848:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3850:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3858:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3860:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3868:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3870:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3878:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3878; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1809);
+    Vu1Gen::setVi<2>(vu, vf, 1809);
     taken = true; target = 0x3ad0u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12792,13 +12794,13 @@ L_0x3880:
     ++vu.m_cycle;
 L_0x3888:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3888; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3890:
     ++pairs;
@@ -12807,7 +12809,7 @@ L_0x3890:
 L_0x3898:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3898; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x3878u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x3878u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12821,17 +12823,17 @@ L_0x38a0:
 L_0x38a8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38b0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x38b0; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1816);
+    Vu1Gen::setVi<2>(vu, vf, 1816);
     taken = true; target = 0x3a90u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -12846,151 +12848,151 @@ L_0x38b8:
 L_0x38c0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x38c0; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<11>(vu, ready);
+    Vu1Gen::readyVi<11>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x38c0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3a80u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3a80u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x38c8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a80;
     goto L_0x38d0;
 L_0x38c8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x38c8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38d0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x38d0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38d8:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38e0:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 8));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 8));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38e8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x38f0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x38f0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x39a8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x39a8u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x39a8;
     goto L_0x3900;
 L_0x38f8:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3900:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (35)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (35)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3908:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3910:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3918:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3920:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3928:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3930:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3938:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3940:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3940; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1834);
+    Vu1Gen::setVi<2>(vu, vf, 1834);
     taken = true; target = 0x3ad0u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13003,13 +13005,13 @@ L_0x3948:
     ++vu.m_cycle;
 L_0x3950:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3950; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3958:
     ++pairs;
@@ -13018,7 +13020,7 @@ L_0x3958:
 L_0x3960:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3960; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x3940u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x3940u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13032,17 +13034,17 @@ L_0x3968:
 L_0x3970:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3978:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3978; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1841);
+    Vu1Gen::setVi<2>(vu, vf, 1841);
     taken = true; target = 0x3a90u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13057,154 +13059,154 @@ L_0x3980:
 L_0x3988:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3988; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<11>(vu, ready);
+    Vu1Gen::readyVi<11>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3988; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3a80u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3a80u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3990; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a80;
     goto L_0x3998;
 L_0x3990:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3990; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3998:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3998; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39a0:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39a8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + 4));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + 4));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39b0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, vu.m_state.vi[4] & vu.m_state.vi[8]);
+    Vu1Gen::setVi<8>(vu, vf, vu.m_state.vi[4] & vu.m_state.vi[8]);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39b8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x39b8; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<8>(vu)); target = 0x3a70u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<8>(vu, vf)); target = 0x3a70u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
     vu.m_viBranchBackupValid = false;
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a70;
     goto L_0x39c8;
 L_0x39c0:
     ++pairs;
-    Vu1Gen::loadVf<28, 15>(vu, Vu1Gen::dataAddress(0 + (30)));
-    Vu1Gen::markVf<28, 15, 4>(vu);
+    Vu1Gen::loadVf<28, 15>(vu, vf, Vu1Gen::dataAddress(0 + (30)));
+    Vu1Gen::markVf<28, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x39c8:
     ++pairs;
-    Vu1Gen::loadVf<30, 15>(vu, Vu1Gen::dataAddress(0 + (36)));
-    Vu1Gen::markVf<30, 15, 4>(vu);
+    Vu1Gen::loadVf<30, 15>(vu, vf, Vu1Gen::dataAddress(0 + (36)));
+    Vu1Gen::markVf<30, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x39d0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39d8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::setVi<9>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39e0:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39e8:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(0 + 0));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(0 + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39f0:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x39f8:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a00:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a00; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a08:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a08; goto bail; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1859);
+    Vu1Gen::setVi<2>(vu, vf, 1859);
     taken = true; target = 0x3ad0u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13217,13 +13219,13 @@ L_0x3a10:
     ++vu.m_cycle;
 L_0x3a18:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<10>(vu, ready);
+    Vu1Gen::readyVi<10>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a18; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(vu.m_state.vi[10] - 1));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(vu.m_state.vi[10] - 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a20:
     ++pairs;
@@ -13232,7 +13234,7 @@ L_0x3a20:
 L_0x3a28:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a28; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) != (int16_t)Vu1Gen::branchVi<10>(vu)); target = 0x3a08u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) != (int16_t)Vu1Gen::branchVi<10>(vu, vf)); target = 0x3a08u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13246,17 +13248,17 @@ L_0x3a30:
 L_0x3a38:
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a40:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a40; goto bail; }
     ++pairs;
     oldVi = vu.m_state.vi[2];
-    Vu1Gen::setVi<2>(vu, 1866);
+    Vu1Gen::setVi<2>(vu, vf, 1866);
     taken = true; target = 0x3a90u;
-    Vu1Gen::markVi<2, 1>(vu);
+    Vu1Gen::markVi<2, 1>(vu, vf);
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13271,73 +13273,73 @@ L_0x3a48:
 L_0x3a50:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a50; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<11>(vu, ready);
+    Vu1Gen::readyVi<11>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a50; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<11>(vu)); target = 0x3a80u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<11>(vu, vf)); target = 0x3a80u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3a58; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
     if (taken) goto L_0x3a80;
     goto L_0x3a60;
 L_0x3a58:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<6>(vu, ready);
+    Vu1Gen::readyVi<6>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a58; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(0 + vu.m_state.vi[6]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(0 + vu.m_state.vi[6]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a60:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<5>(vu, ready);
+    Vu1Gen::readyVi<5>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a60; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[6];
-    Vu1Gen::setVi<6>(vu, (int16_t)(0 + vu.m_state.vi[5]));
+    Vu1Gen::setVi<6>(vu, vf, (int16_t)(0 + vu.m_state.vi[5]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 6; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<6, 1>(vu);
+    Vu1Gen::markVi<6, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a68:
     ++pairs;
     oldVi = vu.m_state.vi[5];
-    Vu1Gen::setVi<5>(vu, (int16_t)(0 + vu.m_state.vi[8]));
+    Vu1Gen::setVi<5>(vu, vf, (int16_t)(0 + vu.m_state.vi[8]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 5; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<5, 1>(vu);
+    Vu1Gen::markVi<5, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a70:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[5] + 0));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[5] + 0));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a78:
     ++pairs;
     oldVi = vu.m_state.vi[10];
-    Vu1Gen::setVi<10>(vu, (int16_t)(0 + vu.m_state.vi[11]));
+    Vu1Gen::setVi<10>(vu, vf, (int16_t)(0 + vu.m_state.vi[11]));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 10; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<10, 1>(vu);
+    Vu1Gen::markVi<10, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3a80:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3a80; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<15>(vu, ready);
+    Vu1Gen::readyVi<15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3a80; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<15>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<15>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13351,56 +13353,56 @@ L_0x3a88:
 L_0x3a90:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8]));
-    Vu1Gen::markVf<21, 15, 4>(vu);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8]));
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3a98:
     ++pairs;
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (1)));
-    Vu1Gen::markVf<22, 15, 4>(vu);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (1)));
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3aa0:
     ++pairs;
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress(vu.m_state.vi[8] + (2)));
-    Vu1Gen::markVf<23, 15, 4>(vu);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress(vu.m_state.vi[8] + (2)));
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3aa8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 15>(vu, ready);
+    Vu1Gen::readyVf<21, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3aa8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ab0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<22, 15>(vu, ready);
+    Vu1Gen::readyVf<22, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ab0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ab8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 15>(vu, ready);
+    Vu1Gen::readyVf<23, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ab8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ac0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3ac0; goto bail; }
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13413,70 +13415,70 @@ L_0x3ac8:
     ++vu.m_cycle;
 L_0x3ad0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 15>(vu, ready);
-    Vu1Gen::readyVi<8>(vu, ready);
+    Vu1Gen::readyVf<21, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<8>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ad0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 21, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<21, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
-    Vu1Gen::storeVf<17, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 21, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<21, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::storeVf<17, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<21, 15, 4>(vu);
-    Vu1Gen::markVf<17, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<21, 15, 4>(vu, vf);
+    Vu1Gen::markVf<17, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ad8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<22, 15>(vu, ready);
+    Vu1Gen::readyVf<22, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ad8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 22, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<22, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
-    Vu1Gen::storeVf<18, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 22, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<22, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::storeVf<18, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<22, 15, 4>(vu);
-    Vu1Gen::markVf<18, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<22, 15, 4>(vu, vf);
+    Vu1Gen::markVf<18, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ae0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<23, 15>(vu, ready);
+    Vu1Gen::readyVf<23, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ae0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[8];
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 23, 0, false, true, false>(vu, acc);
-    Vu1Gen::loadVf<23, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
-    Vu1Gen::setVi<8>(vu, (int16_t)(vu.m_state.vi[8] + 1));
-    Vu1Gen::storeVf<19, 15>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 15, 23, 0, false, true, false>(vu, vf, acc);
+    Vu1Gen::loadVf<23, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[8]));
+    Vu1Gen::setVi<8>(vu, vf, (int16_t)(vu.m_state.vi[8] + 1));
+    Vu1Gen::storeVf<19, 15>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 8; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<23, 15, 4>(vu);
-    Vu1Gen::markVf<19, 15, 4>(vu);
-    Vu1Gen::markVi<8, 1>(vu);
+    Vu1Gen::markVf<23, 15, 4>(vu, vf);
+    Vu1Gen::markVf<19, 15, 4>(vu, vf);
+    Vu1Gen::markVi<8, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ae8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<21, 15>(vu, ready);
-    Vu1Gen::readyVf<28, 15>(vu, ready);
+    Vu1Gen::readyVf<21, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<28, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ae8; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3af0:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<17, 15>(vu, ready);
-    Vu1Gen::readyVf<28, 15>(vu, ready);
+    Vu1Gen::readyVf<17, 15>(vu, vf, ready);
+    Vu1Gen::readyVf<28, 15>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3af0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 28, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 28, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3af8:
     ++pairs;
@@ -13486,15 +13488,15 @@ L_0x3b00:
     ++vu.m_cycle;
 L_0x3b08:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 25, 30, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 14>(vu, up);
-    Vu1Gen::markVf<25, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 25, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 14>(vu, vf, up);
+    Vu1Gen::markVf<25, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3b10:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 26, 30, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 14>(vu, up);
-    Vu1Gen::markVf<26, 14, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcVt, 0, 14, 26, 30, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 14>(vu, vf, up);
+    Vu1Gen::markVf<26, 14, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3b18:
     ++pairs;
@@ -13504,149 +13506,149 @@ L_0x3b20:
     ++vu.m_cycle;
 L_0x3b28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 25, false, false, false>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 25, false, false, false>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b30:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 4>(vu, ready);
+    Vu1Gen::readyVf<25, 4>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b30; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, true>(vu, acc);
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 32));
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 25, false, false, true>(vu, vf, acc);
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 32));
     Vu1Gen::storeAcc<1>(acc, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b38:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 2>(vu, ready);
+    Vu1Gen::readyVf<25, 2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b38; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<25, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 25, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3b40:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 1>(vu, ready);
+    Vu1Gen::readyVf<25, 1>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b40; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 25, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 2>(vu, up);
-    Vu1Gen::markVf<25, 2, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 3, 2, 0, 25, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 2>(vu, vf, up);
+    Vu1Gen::markVf<25, 2, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3b48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcBc, 0, 1, 0, 26, false, false, true>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, true>(vu, acc);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 1, 1, 0, 26, false, false, true>(vu, vf, acc);
     Vu1Gen::storeAcc<1>(acc, up);
     ++vu.m_cycle;
 L_0x3b58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 1>(vu, up);
-    Vu1Gen::markVf<26, 1, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMadd, Vu1Gen::SrcBc, 2, 1, 0, 26, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 1>(vu, vf, up);
+    Vu1Gen::markVf<26, 1, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3b60:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[7]));
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::setVi<7>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[7]));
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b68:
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    Vu1Gen::setVi<13>(vu, (int16_t)(0 + 16));
+    Vu1Gen::setVi<13>(vu, vf, (int16_t)(0 + 16));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b70:
     ++pairs;
     ++vu.m_cycle;
 L_0x3b78:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 1>(vu, ready);
-    Vu1Gen::readyVf<25, 2>(vu, ready);
-    Vu1Gen::readyVi<13>(vu, ready);
+    Vu1Gen::readyVf<26, 1>(vu, vf, ready);
+    Vu1Gen::readyVf<25, 2>(vu, vf, ready);
+    Vu1Gen::readyVi<13>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b78; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, true, true>(vu, acc);
-    Vu1Gen::setVi<13>(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[13]));
-    Vu1Gen::storeVf<25, 1>(vu, up);
-    Vu1Gen::markVf<25, 1, 4>(vu);
-    Vu1Gen::markVi<13, 1>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 2, 1, 26, 25, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<13>(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)vu.m_state.vi[13]));
+    Vu1Gen::storeVf<25, 1>(vu, vf, up);
+    Vu1Gen::markVf<25, 1, 4>(vu, vf);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b80:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<25, 2>(vu, ready);
-    Vu1Gen::readyVf<26, 1>(vu, ready);
-    Vu1Gen::readyVi<7>(vu, ready);
+    Vu1Gen::readyVf<25, 2>(vu, vf, ready);
+    Vu1Gen::readyVf<26, 1>(vu, vf, ready);
+    Vu1Gen::readyVi<7>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b80; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[13];
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 25, 26, false, true, true>(vu, acc);
-    Vu1Gen::setVi<13>(vu, vu.m_state.vi[13] | vu.m_state.vi[7]);
-    Vu1Gen::storeVf<26, 2>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcBc, 3, 2, 25, 26, false, true, true>(vu, vf, acc);
+    Vu1Gen::setVi<13>(vu, vf, vu.m_state.vi[13] | vu.m_state.vi[7]);
+    Vu1Gen::storeVf<26, 2>(vu, vf, up);
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 13; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVf<26, 2, 4>(vu);
-    Vu1Gen::markVi<13, 1>(vu);
+    Vu1Gen::markVf<26, 2, 4>(vu, vf);
+    Vu1Gen::markVi<13, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b88:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 48));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 48));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3b90:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3b90; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<13>(vu, ready);
+    Vu1Gen::readyVi<13>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b90; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<0>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x3cf8u;
+    taken = ((int16_t)Vu1Gen::branchVi<0>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x3cf8u;
     ++vu.m_cycle;
     // delay slot
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 1>(vu, ready);
-    Vu1Gen::readyVf<25, 1>(vu, ready);
+    Vu1Gen::readyVf<26, 1>(vu, vf, ready);
+    Vu1Gen::readyVf<25, 1>(vu, vf, ready);
     if (vu.m_fdiv.valid) ready = std::max(ready, vu.m_fdiv.readyCycle);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; if (taken) { vu.m_state.branchPending = true; vu.m_state.branchTarget = target; vu.m_state.branchDelay = 0u; } vu.m_state.pc = 0x3b98; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<26, 3, 25, 3>(vu);
+    Vu1Gen::div<26, 3, 25, 3>(vu, vf);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
     if (taken) goto L_0x3cf8;
     goto L_0x3ba0;
 L_0x3b98:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<26, 1>(vu, ready);
-    Vu1Gen::readyVf<25, 1>(vu, ready);
+    Vu1Gen::readyVf<26, 1>(vu, vf, ready);
+    Vu1Gen::readyVf<25, 1>(vu, vf, ready);
     if (vu.m_fdiv.valid) ready = std::max(ready, vu.m_fdiv.readyCycle);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3b98; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<26, 3, 25, 3>(vu);
+    Vu1Gen::div<26, 3, 25, 3>(vu, vf);
     vu.m_viBranchBackupValid = false;
     ++vu.m_cycle;
 L_0x3ba0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3ba0; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<7>(vu, ready);
-    Vu1Gen::readyVi<13>(vu, ready);
+    Vu1Gen::readyVi<7>(vu, vf, ready);
+    Vu1Gen::readyVi<13>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3ba0; goto bail; } vu.m_cycle = ready; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<7>(vu) == (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x3d18u;
+    taken = ((int16_t)Vu1Gen::branchVi<7>(vu, vf) == (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x3d18u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13660,9 +13662,9 @@ L_0x3ba8:
 L_0x3bb0:
     ++pairs;
     oldVi = vu.m_state.vi[7];
-    Vu1Gen::setVi<7>(vu, (int16_t)(0 + 16));
+    Vu1Gen::setVi<7>(vu, vf, (int16_t)(0 + 16));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 7; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<7, 1>(vu);
+    Vu1Gen::markVi<7, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3bb8:
     ++pairs;
@@ -13671,7 +13673,7 @@ L_0x3bb8:
 L_0x3bc0:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3bc0; goto bail; }
     ++pairs;
-    taken = ((int16_t)Vu1Gen::branchVi<7>(vu) != (int16_t)Vu1Gen::branchVi<13>(vu)); target = 0x3c68u;
+    taken = ((int16_t)Vu1Gen::branchVi<7>(vu, vf) != (int16_t)Vu1Gen::branchVi<13>(vu, vf)); target = 0x3c68u;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13688,25 +13690,25 @@ L_0x3bd0:
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3bd0; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    Vu1Gen::div<25, 2, 26, 2>(vu);
+    Vu1Gen::div<25, 2, 26, 2>(vu, vf);
     ++vu.m_cycle;
 L_0x3bd8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 21, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 17, 21, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3be0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 18, 22, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 18, 22, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3be8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 19, 23, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 19, 23, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3bf0:
     ready = vu.m_cycle;
@@ -13718,44 +13720,44 @@ L_0x3bf0:
 L_0x3bf8:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c00:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c08:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c10:
     ++pairs;
     ++vu.m_cycle;
 L_0x3c18:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 21, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 21, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c20:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 22, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 22, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 23, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 23, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c30:
     ++pairs;
@@ -13763,33 +13765,33 @@ L_0x3c30:
 L_0x3c38:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<25, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<25, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c40:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c48:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c50:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 1));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c58:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3c58; goto bail; }
@@ -13808,115 +13810,115 @@ L_0x3c60:
 L_0x3c68:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 21, 17, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 22, 18, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithSub, Vu1Gen::SrcVt, 0, 15, 23, 19, false, true, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c80:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3c88:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 25, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c90:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 26, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3c98:
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithMul, Vu1Gen::SrcQ, 0, 15, 27, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3ca0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ca8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<25, 15>(vu, up);
-    Vu1Gen::markVf<25, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 25, 17, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<25, 15>(vu, vf, up);
+    Vu1Gen::markVf<25, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3cb0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<26, 15>(vu, up);
-    Vu1Gen::markVf<26, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 26, 18, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<26, 15>(vu, vf, up);
+    Vu1Gen::markVf<26, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3cb8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, true>(vu, acc);
-    Vu1Gen::storeVf<27, 15>(vu, up);
-    Vu1Gen::markVf<27, 15, 4>(vu);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcVt, 0, 15, 27, 19, false, false, true>(vu, vf, acc);
+    Vu1Gen::storeVf<27, 15>(vu, vf, up);
+    Vu1Gen::markVf<27, 15, 4>(vu, vf);
     ++vu.m_cycle;
 L_0x3cc0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3cc8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<25, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<25, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3cd0:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<26, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<26, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3cd8:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<27, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<27, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ce0:
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 2));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 2));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3ce8:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3ce8; goto bail; }
@@ -13934,51 +13936,51 @@ L_0x3cf0:
     ++vu.m_cycle;
 L_0x3cf8:
     ready = vu.m_cycle;
-    Vu1Gen::readyVf<17, 15>(vu, ready);
-    Vu1Gen::readyVi<9>(vu, ready);
+    Vu1Gen::readyVf<17, 15>(vu, vf, ready);
+    Vu1Gen::readyVi<9>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3cf8; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<17, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<17, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d00:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<18, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<18, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d08:
     ++pairs;
     oldVi = vu.m_state.vi[9];
-    Vu1Gen::storeVfMem<19, 15>(vu, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
-    Vu1Gen::setVi<9>(vu, (int16_t)(vu.m_state.vi[9] + 1));
+    Vu1Gen::storeVfMem<19, 15>(vu, vf, Vu1Gen::dataAddress((uint16_t)vu.m_state.vi[9]));
+    Vu1Gen::setVi<9>(vu, vf, (int16_t)(vu.m_state.vi[9] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 9; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<9, 1>(vu);
+    Vu1Gen::markVi<9, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d10:
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<11>(vu, ready);
+    Vu1Gen::readyVi<11>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3d10; goto bail; } vu.m_cycle = ready; }
     ++pairs;
     oldVi = vu.m_state.vi[11];
-    Vu1Gen::setVi<11>(vu, (int16_t)(vu.m_state.vi[11] + 1));
+    Vu1Gen::setVi<11>(vu, vf, (int16_t)(vu.m_state.vi[11] + 1));
     vu.m_viBranchBackupValue = oldVi; vu.m_viBranchBackupReg = 11; vu.m_viBranchBackupValid = true;
-    Vu1Gen::markVi<11, 1>(vu);
+    Vu1Gen::markVi<11, 1>(vu, vf);
     ++vu.m_cycle;
 L_0x3d18:
     if (vu.m_cycle >= budgetEnd) { vu.m_state.pc = 0x3d18; goto bail; }
     ready = vu.m_cycle;
-    Vu1Gen::readyVi<2>(vu, ready);
+    Vu1Gen::readyVi<2>(vu, vf, ready);
     if (ready > vu.m_cycle) { if (ready >= budgetEnd) { vu.m_cycle = budgetEnd; vu.m_state.pc = 0x3d18; goto bail; } vu.m_cycle = ready; }
     if (vu.m_cycle >= vu.m_nextReadyCycle) vu.fastCommit();
     ++pairs;
-    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu) * 8u) & 0x3FFFu;
+    taken = true; target = ((uint32_t)(uint16_t)Vu1Gen::branchVi<2>(vu, vf) * 8u) & 0x3FFFu;
     ++vu.m_cycle;
     // delay slot
     ++pairs;
@@ -13991,458 +13993,458 @@ L_0x3d20:
     ++vu.m_cycle;
 L_0x3d28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d38:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d40:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d68:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d90:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3d98:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3da0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3da8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3db0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3db8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3dc0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3dc8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3dd0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3dd8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3de0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3de8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3df0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3df8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e00:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e08:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e10:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e18:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e20:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e38:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e40:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e68:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e90:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3e98:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ea0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ea8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3eb0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3eb8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ec0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ec8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ed0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ed8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ee0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ee8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ef0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ef8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f00:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f08:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f10:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f18:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f20:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f28:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f30:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f38:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f40:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f48:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f50:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f58:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f60:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f68:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f70:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f78:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f80:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f88:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f90:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3f98:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fa0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fa8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fb0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fb8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fc0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fc8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fd0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fd8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fe0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3fe8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ff0:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 L_0x3ff8:
     ++pairs;
-    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, acc);
-    Vu1Gen::storeVf<0, 0>(vu, up);
+    up = Vu1Gen::fmac<vu1ops::ArithAdd, Vu1Gen::SrcBc, 0, 0, 0, 0, false, false, false>(vu, vf, acc);
+    Vu1Gen::storeVf<0, 0>(vu, vf, up);
     ++vu.m_cycle;
 B_0x8: vu.m_state.pc = 0x8; goto bail;
 B_0x10: vu.m_state.pc = 0x10; goto bail;
@@ -16431,12 +16433,14 @@ B_0x3ff0: vu.m_state.pc = 0x3ff0; goto bail;
 B_0x3ff8: vu.m_state.pc = 0x3ff8; goto bail;
 bail:
     _mm_storeu_ps(vu.m_state.acc, acc);
+    std::memcpy(vu.m_state.vf, vf, sizeof(vf));
     if (g_vu1BailHist) ++g_vu1BailHist[(vu.m_state.pc >> 3) & 0x7FFu];
     vu.m_maxReadyCycle = ~0ull; // the interpreter re-scans operand readiness
     g_vuInsnCount.fetch_add(pairs, std::memory_order_relaxed);
     return false;
 end:
     _mm_storeu_ps(vu.m_state.acc, acc);
+    std::memcpy(vu.m_state.vf, vf, sizeof(vf));
     g_vuInsnCount.fetch_add(pairs, std::memory_order_relaxed);
     return true;
 }

@@ -197,6 +197,20 @@ private:
         uint64_t issueCycle = 0;
         bool active = false;
         bool currentTagEop = false;
+        // Reset the bookkeeping without touching the 64 KB packet buffer: every byte of it is
+        // written (copied from VU memory) before it is read, and `m_xgkick = {}` zeroed the
+        // whole buffer on every XGKICK and every program start (~24% of the game thread).
+        void clear()
+        {
+            sourceAddress = 0;
+            totalBytes = 0;
+            copiedBytes = 0;
+            currentTagEnd = 0;
+            cycleCredit = 0;
+            issueCycle = 0;
+            active = false;
+            currentTagEop = false;
+        }
     };
 
     static constexpr uint32_t kFmacLatency = 4u;

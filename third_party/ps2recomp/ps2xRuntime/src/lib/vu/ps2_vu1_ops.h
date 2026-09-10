@@ -387,7 +387,9 @@ namespace vu1ops
 
 // Static-parameter building blocks for the generated known-program code. `friend struct Vu1Gen` in
 // VU1Interpreter gives them the interpreter's private state; every helper mirrors one piece of
-// runFast()/execUpper()/execLower().
+// runFast()/execUpper()/execLower(). The VF register file is passed as `vf`: the generated
+// function keeps a local copy (loaded at entry, written back at every exit and around the
+// interpreter fallbacks) so the compiler can keep hot registers in xmm registers across pairs.
 struct Vu1Gen
 {
     using VU = VU1Interpreter;
@@ -405,16 +407,16 @@ struct Vu1Gen
     // FMAC-family result), so normalize4 is the identity and is skipped. ACC only ever holds FMAC
     // results (reset() zeroes it), Q/P/I are normalized when written: never normalized here.
     template <vu1ops::ArithKind Kind, FmacSrc Src, uint32_t Lane, uint8_t Dest, uint8_t Fs, uint8_t Ft, bool Opmul, bool NormS = true, bool NormT = true>
-    __attribute__((always_inline)) static inline __m128 fmac(VU &vu, __m128 accIn)
+    __attribute__((always_inline)) static inline __m128 fmac(VU &vu, float (*vf)[4], __m128 accIn)
     {
         using namespace vu1ops;
-        __m128 first = _mm_loadu_ps(vu.m_state.vf[Fs]);
+        __m128 first = _mm_loadu_ps(vf[Fs]);
         if (NormS)
             first = normalize4(first);
         __m128 second;
         if (Opmul)
         {
-            __m128 vt = _mm_loadu_ps(vu.m_state.vf[Ft]);
+            __m128 vt = _mm_loadu_ps(vf[Ft]);
             if (NormT)
                 vt = normalize4(vt);
             second = _mm_shuffle_ps(vt, vt, _MM_SHUFFLE(3, 1, 0, 2));
@@ -422,7 +424,7 @@ struct Vu1Gen
         }
         else if (Src == SrcVt || Src == SrcBc)
         {
-            __m128 vt = _mm_loadu_ps(vu.m_state.vf[Ft]);
+            __m128 vt = _mm_loadu_ps(vf[Ft]);
             if (NormT)
                 vt = normalize4(vt);
             second = Src == SrcVt ? vt : broadcastLane(vt, Lane);
@@ -447,15 +449,15 @@ struct Vu1Gen
         MmI
     };
     template <bool IsMax, MinMaxSrc Src, uint32_t Lane, uint8_t Fs, uint8_t Ft>
-    __attribute__((always_inline)) static inline __m128 minmax(VU &vu)
+    __attribute__((always_inline)) static inline __m128 minmax(VU &vu, float (*vf)[4])
     {
         using namespace vu1ops;
-        const __m128 vs = normalize4(_mm_loadu_ps(vu.m_state.vf[Fs]));
+        const __m128 vs = normalize4(_mm_loadu_ps(vf[Fs]));
         __m128 other;
         if (Src == MmVt)
-            other = normalize4(_mm_loadu_ps(vu.m_state.vf[Ft]));
+            other = normalize4(_mm_loadu_ps(vf[Ft]));
         else if (Src == MmBc)
-            other = broadcastLane(normalize4(_mm_loadu_ps(vu.m_state.vf[Ft])), Lane);
+            other = broadcastLane(normalize4(_mm_loadu_ps(vf[Ft])), Lane);
         else
             other = _mm_set1_ps(VU::normalizeOperand(vu.m_state.i));
         // (vs > other) ? vs : other  /  (vs < other) ? vs : other, lane-wise (no NaNs after normalize)
@@ -464,13 +466,13 @@ struct Vu1Gen
     }
 
     template <uint32_t Shift, uint8_t Fs>
-    __attribute__((always_inline)) static inline __m128 itof(VU &vu)
+    __attribute__((always_inline)) static inline __m128 itof(VU &vu, float (*vf)[4])
     {
         alignas(16) float r[4];
         for (int c = 0; c < 4; ++c)
         {
             int32_t iv;
-            std::memcpy(&iv, &vu.m_state.vf[Fs][c], 4);
+            std::memcpy(&iv, &vf[Fs][c], 4);
             r[c] = Shift == 0u ? static_cast<float>(iv) : static_cast<float>(iv) / static_cast<float>(1u << Shift);
         }
         return _mm_load_ps(r);
@@ -487,10 +489,10 @@ struct Vu1Gen
     }
 
     template <uint32_t Shift, uint8_t Fs>
-    __attribute__((always_inline)) static inline __m128 ftoi(VU &vu)
+    __attribute__((always_inline)) static inline __m128 ftoi(VU &vu, float (*vf)[4])
     {
         alignas(16) float vs[4];
-        _mm_store_ps(vs, vu1ops::normalize4(_mm_loadu_ps(vu.m_state.vf[Fs])));
+        _mm_store_ps(vs, vu1ops::normalize4(_mm_loadu_ps(vf[Fs])));
         alignas(16) int32_t r[4];
         for (int c = 0; c < 4; ++c)
             r[c] = floatToInt(vs[c], static_cast<float>(1u << Shift));
@@ -498,23 +500,23 @@ struct Vu1Gen
     }
 
     template <uint8_t Fs>
-    __attribute__((always_inline)) static inline __m128 absVf(VU &vu)
+    __attribute__((always_inline)) static inline __m128 absVf(VU &vu, float (*vf)[4])
     {
-        const __m128 vs = vu1ops::normalize4(_mm_loadu_ps(vu.m_state.vf[Fs]));
+        const __m128 vs = vu1ops::normalize4(_mm_loadu_ps(vf[Fs]));
         return _mm_and_ps(vs, _mm_castsi128_ps(_mm_set1_epi32(0x7FFFFFFF)));
     }
 
     template <uint8_t Fs, uint8_t Ft>
-    __attribute__((always_inline)) static inline void clip(VU &vu)
+    __attribute__((always_inline)) static inline void clip(VU &vu, float (*vf)[4])
     {
         uint32_t wBits = 0u;
-        std::memcpy(&wBits, &vu.m_state.vf[Ft][3], sizeof(wBits));
+        std::memcpy(&wBits, &vf[Ft][3], sizeof(wBits));
         const int32_t limit = (wBits & 0x7F800000u) != 0u ? static_cast<int32_t>(wBits & 0x7FFFFFFFu) : 0x007FFFFF;
         uint32_t flags = 0u;
         for (uint32_t c = 0; c < 3u; ++c)
         {
             uint32_t bits = 0u;
-            std::memcpy(&bits, &vu.m_state.vf[Fs][c], sizeof(bits));
+            std::memcpy(&bits, &vf[Fs][c], sizeof(bits));
             int32_t pos = 0, neg = 0;
             std::memcpy(&pos, &bits, 4);
             const uint32_t nb = bits ^ 0x80000000u;
@@ -528,10 +530,10 @@ struct Vu1Gen
     }
 
     template <uint8_t Reg, uint8_t Dest>
-    static inline void storeVf(VU &vu, __m128 value)
+    static inline void storeVf(VU &vu, float (*vf)[4], __m128 value)
     {
         if (Reg != 0u && Dest != 0u)
-            vu1ops::storeLanes(vu.m_state.vf[Reg], value, Dest);
+            vu1ops::storeLanes(vf[Reg], value, Dest);
     }
 
     // ACC lives in a local of the generated function (synced to m_state.acc at hand-backs, at the
@@ -550,7 +552,7 @@ struct Vu1Gen
 
     // Ready-cycle bookkeeping (fastReadyCycle / the write marks in runFast).
     template <uint8_t Reg, uint8_t Lanes>
-    static inline void readyVf(const VU &vu, uint64_t &ready)
+    static inline void readyVf(const VU &vu, const float (*vf)[4], uint64_t &ready)
     {
         const uint64_t *lanes = vu.m_vfReady[Reg].data();
         if (Lanes & 0x8u)
@@ -564,14 +566,14 @@ struct Vu1Gen
     }
 
     template <uint8_t Reg>
-    static inline void readyVi(const VU &vu, uint64_t &ready)
+    static inline void readyVi(const VU &vu, const float (*vf)[4], uint64_t &ready)
     {
         if (Reg != 0u)
             ready = std::max(ready, vu.m_viReady[Reg]);
     }
 
     template <uint8_t Reg, uint8_t Lanes, uint32_t Latency>
-    static inline void markVf(VU &vu)
+    static inline void markVf(VU &vu, float (*vf)[4])
     {
         if (Reg == 0u || Lanes == 0u)
             return;
@@ -588,7 +590,7 @@ struct Vu1Gen
     }
 
     template <uint8_t Reg, uint32_t Latency>
-    static inline void markVi(VU &vu)
+    static inline void markVi(VU &vu, float (*vf)[4])
     {
         if (Reg != 0u)
             vu.m_viReady[Reg] = vu.m_cycle + Latency;
@@ -596,7 +598,7 @@ struct Vu1Gen
 
     // Branch-source VI read (one-instruction bypass of the previous pair's IALU write).
     template <uint8_t Reg>
-    static inline int32_t branchVi(const VU &vu)
+    static inline int32_t branchVi(const VU &vu, const float (*vf)[4])
     {
         if (Reg == 0u)
             return 0;
@@ -605,10 +607,10 @@ struct Vu1Gen
         return vu.m_state.vi[Reg];
     }
 
-    static inline int32_t vi(const VU &vu, uint8_t reg) { return reg == 0u ? 0 : vu.m_state.vi[reg]; }
+    static inline int32_t vi(const VU &vu, const float (*vf)[4], uint8_t reg) { return reg == 0u ? 0 : vu.m_state.vi[reg]; }
 
     template <uint8_t Reg>
-    static inline void setVi(VU &vu, int32_t value)
+    static inline void setVi(VU &vu, float (*vf)[4], int32_t value)
     {
         if (Reg != 0u)
             vu.m_state.vi[Reg] = value;
@@ -621,25 +623,25 @@ struct Vu1Gen
 
     // VU data memory loads/stores (fast path: immediate).
     template <uint8_t Vf, uint8_t Dest>
-    static inline void loadVf(VU &vu, uint32_t addr)
+    static inline void loadVf(VU &vu, float (*vf)[4], uint32_t addr)
     {
         if (Vf == 0u)
             return;
         float tmp[4];
         std::memcpy(tmp, vu.m_activeVuData + addr, 16);
-        VU::applyDest(vu.m_state.vf[Vf], tmp, Dest);
+        VU::applyDest(vf[Vf], tmp, Dest);
     }
 
     template <uint8_t Vf, uint8_t Dest>
-    static inline void storeVfMem(VU &vu, uint32_t addr)
+    static inline void storeVfMem(VU &vu, float (*vf)[4], uint32_t addr)
     {
         uint32_t words[4];
-        std::memcpy(words, vu.m_state.vf[Vf], 16);
+        std::memcpy(words, vf[Vf], 16);
         vu.queueStore(addr, words, Dest);
     }
 
     template <uint8_t Dest>
-    static inline int32_t loadWord(const VU &vu, uint32_t addr)
+    static inline int32_t loadWord(const VU &vu, const float (*vf)[4], uint32_t addr)
     {
         const int comp = (Dest & 0x8u) ? 0 : (Dest & 0x4u) ? 1 : (Dest & 0x2u) ? 2 : 3;
         uint32_t v;
@@ -648,7 +650,7 @@ struct Vu1Gen
     }
 
     template <uint8_t Dest>
-    static inline void storeWord(VU &vu, uint32_t addr, int32_t value)
+    static inline void storeWord(VU &vu, float (*vf)[4], uint32_t addr, int32_t value)
     {
         const uint32_t val = static_cast<uint32_t>(static_cast<uint16_t>(value & 0xFFFF));
         const uint32_t words[4] = {val, val, val, val};
@@ -657,10 +659,10 @@ struct Vu1Gen
 
     // FDIV unit (execLower's DIV/SQRT/RSQRT without the PS2X_FPU_TRAP diagnostics).
     template <uint8_t Fs, uint32_t Fsf, uint8_t Ft, uint32_t Ftf>
-    static inline void div(VU &vu)
+    static inline void div(VU &vu, float (*vf)[4])
     {
-        const float num = VU::normalizeOperand(vu.m_state.vf[Fs][Fsf]);
-        const float den = VU::normalizeOperand(vu.m_state.vf[Ft][Ftf]);
+        const float num = VU::normalizeOperand(vf[Fs][Fsf]);
+        const float den = VU::normalizeOperand(vf[Ft][Ftf]);
         uint32_t statusDi = 0u;
         float result;
         if (den == 0.0f)
@@ -675,16 +677,16 @@ struct Vu1Gen
         vu.queueQ(result, 7u, statusDi);
     }
     template <uint8_t Ft, uint32_t Ftf>
-    static inline void sqrtQ(VU &vu)
+    static inline void sqrtQ(VU &vu, float (*vf)[4])
     {
-        const float val = VU::normalizeOperand(vu.m_state.vf[Ft][Ftf]);
+        const float val = VU::normalizeOperand(vf[Ft][Ftf]);
         vu.queueQ(std::sqrt(std::fabs(val)), 7u, val < 0.0f ? 0x10u : 0u);
     }
     template <uint8_t Fs, uint32_t Fsf, uint8_t Ft, uint32_t Ftf>
-    static inline void rsqrt(VU &vu)
+    static inline void rsqrt(VU &vu, float (*vf)[4])
     {
-        const float num = VU::normalizeOperand(vu.m_state.vf[Fs][Fsf]);
-        const float radicand = VU::normalizeOperand(vu.m_state.vf[Ft][Ftf]);
+        const float num = VU::normalizeOperand(vf[Fs][Fsf]);
+        const float radicand = VU::normalizeOperand(vf[Ft][Ftf]);
         const float den = std::sqrt(std::fabs(radicand));
         uint32_t statusDi = radicand < 0.0f ? 0x10u : 0u;
         float result = 0.0f;
@@ -701,10 +703,18 @@ struct Vu1Gen
     }
 
     // Generic fallbacks: run one instruction through the interpreter's own switch.
-    static inline void execUpper(VU &vu, uint32_t word) { vu.execUpper(word); }
-    static inline void execLower(VU &vu, uint32_t word)
+    // The local register file is written back before and reloaded after the interpreter ran.
+    static inline void execUpper(VU &vu, float (*vf)[4], uint32_t word)
     {
+        std::memcpy(vu.m_state.vf, vf, sizeof(vu.m_state.vf));
+        vu.execUpper(word);
+        std::memcpy(vf, vu.m_state.vf, sizeof(vu.m_state.vf));
+    }
+    static inline void execLower(VU &vu, float (*vf)[4], uint32_t word)
+    {
+        std::memcpy(vu.m_state.vf, vf, sizeof(vu.m_state.vf));
         vu.execLower(word, vu.m_activeVuData, vu.m_activeVuDataSize, *vu.m_activeGs, vu.m_activeMemory, 0u);
+        std::memcpy(vf, vu.m_state.vf, sizeof(vu.m_state.vf));
     }
 };
 

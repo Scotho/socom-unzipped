@@ -12,6 +12,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 
 #include <algorithm>
 #include <cfenv>
+#include <xmmintrin.h>
 #include <cmath>
 #include <cstdio>
 #include <chrono>
@@ -88,7 +89,7 @@ void VU1Interpreter::resetScheduler()
     m_vfWritePipeline = {};
     m_viWritePipeline = {};
     m_accWritePipeline = {};
-    m_xgkick = {};
+    m_xgkick.clear();
     m_vfReady = {};
     m_viReady = {};
     m_accReady = {};
@@ -1057,7 +1058,7 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
         return;
 
     const uint32_t sourceAddress = (qwordAddress * 16u) % m_activeVuDataSize;
-    m_xgkick = {};
+    m_xgkick.clear();
     m_xgkick.active = true;
     g_xgkickCount.fetch_add(1, std::memory_order_relaxed);
     m_xgkick.sourceAddress = sourceAddress;
@@ -1987,6 +1988,31 @@ uint64_t VU1Interpreter::fastReadyCycle(const DecodedInstructionPair &decoded) c
 // Presented-frame counters for the PS2X_VU_STATS line (incremented in Kernel/Stubs/GS.cpp).
 std::atomic<uint64_t> g_gsSwapDBuffCount{0};
 std::atomic<uint64_t> g_gsSyncVCount{0};
+std::atomic<uint64_t> g_vu0Programs{0};
+
+namespace
+{
+    // Saves the x87 control word and MXCSR, sets both rounding controls to "toward zero"
+    // (x87 RC = 11b at bits 10-11, MXCSR RC = 11b at bits 13-14) and restores them on request.
+    struct VuRoundingScope
+    {
+        uint16_t x87 = 0;
+        uint32_t mxcsr = 0;
+        VuRoundingScope()
+        {
+            __asm__ __volatile__("fnstcw %0" : "=m"(x87));
+            mxcsr = _mm_getcsr();
+            const uint16_t x87Tz = static_cast<uint16_t>(x87 | 0x0C00u);
+            __asm__ __volatile__("fldcw %0" : : "m"(x87Tz));
+            _mm_setcsr(mxcsr | 0x6000u);
+        }
+        void restore() const
+        {
+            __asm__ __volatile__("fldcw %0" : : "m"(x87));
+            _mm_setcsr(mxcsr);
+        }
+    };
+}
 
 // vu1_replay --pchist: per-pair execution counts of the fast path (2048 entries, VU1 only).
 uint32_t *g_vu1PcHist = nullptr;
@@ -2341,11 +2367,18 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             g_vuProgramsKickBit.fetch_add(1, std::memory_order_relaxed);
     }
 
-    const int previousRoundingMode = std::fegetround();
-    const bool useVuRounding = std::fesetround(FE_TOWARDZERO) == 0;
+    // Round toward zero on both the x87 control word (the long double FMAC slow path) and MXCSR
+    // (the SSE fast path) — what fesetround(FE_TOWARDZERO) does, without the two ucrtbase calls
+    // (fegetround + 2x fesetround measured 142 ns per run(); VU0 macro programs run per frame
+    // by the thousand).
+    const VuRoundingScope roundingScope;
     const uint64_t budgetEnd = m_cycle + maxCycles;
     const uint64_t runStartCycle = m_cycle;
-    const auto runStart = std::chrono::steady_clock::now();
+    // Only VU1 accounts its host time (guest clock exclusion, [vu1-stats]); VU0 macro programs
+    // run far more often and took two clock reads each.
+    const auto runStart = m_unit == Unit::VU1 ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    if (m_unit != Unit::VU1)
+        g_vu0Programs.fetch_add(1, std::memory_order_relaxed);
     bool programEnded = false;
     // Fast path on by default since 2026-09-09 (verified in the mission: title, intro and gameplay
     // clean, 18 ns/cycle vs 100); PS2X_VU1_FAST=0 selects the cycle-exact scheduler, which a VU
@@ -2638,8 +2671,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         s_vuTraceDumped.fetch_add(1, std::memory_order_relaxed);
     }
     m_state.cycles = m_cycle;
-    if (useVuRounding && previousRoundingMode != -1)
-        std::fesetround(previousRoundingMode);
+    roundingScope.restore();
     // Guest time must not include the host time this interpreter took (see ps2GuestClockExcludedNs).
     if (m_unit == Unit::VU1)
     {
@@ -2662,7 +2694,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
             s_hostMs += std::chrono::duration<double, std::milli>(now - runStart).count();
             if (now - s_last >= std::chrono::seconds(1))
             {
-                static uint64_t s_lastFlips = 0, s_lastSyncV = 0;
+                static uint64_t s_lastFlips = 0, s_lastSyncV = 0, s_lastVu0 = 0;
                 const uint64_t flips = g_gsSwapDBuffCount.load(std::memory_order_relaxed);
                 const uint64_t syncs = g_gsSyncVCount.load(std::memory_order_relaxed);
                 const double seconds = std::chrono::duration<double>(now - s_last).count();
@@ -2690,14 +2722,16 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 }
 #endif
                 static uint64_t s_lastUnknown = 0, s_lastHandBacks = 0;
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu\n",
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
                              static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,
                              threadMs, procMs, (unsigned long long)(g_vu1UnknownImagePrograms - s_lastUnknown),
-                             (unsigned long long)(g_vu1GenHandBacks - s_lastHandBacks));
+                             (unsigned long long)(g_vu1GenHandBacks - s_lastHandBacks),
+                             (unsigned long long)(g_vu0Programs.load(std::memory_order_relaxed) - s_lastVu0));
                 s_lastUnknown = g_vu1UnknownImagePrograms;
                 s_lastHandBacks = g_vu1GenHandBacks;
+                s_lastVu0 = g_vu0Programs.load(std::memory_order_relaxed);
                 if (g_vu1BailHist)
                 {
                     // top hand-back pcs so far (PS2X_VU1_BAILHIST=1): seeds for vu1_replay --gen --seeds

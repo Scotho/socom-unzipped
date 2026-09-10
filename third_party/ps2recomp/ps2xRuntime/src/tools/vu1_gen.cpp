@@ -179,7 +179,7 @@ namespace
             o = {"", 0u, false};
             auto mm = [&](bool isMax, const char *src, uint32_t lane)
             {
-                o.expr = std::string("Vu1Gen::minmax<") + (isMax ? "true" : "false") + ", " + src + ", " + num(lane) + ", " + num(fs) + ", " + num(ft) + ">(vu)";
+                o.expr = std::string("Vu1Gen::minmax<") + (isMax ? "true" : "false") + ", " + src + ", " + num(lane) + ", " + num(fs) + ", " + num(ft) + ">(vu, vf)";
                 o.dstReg = fd;
             };
             if (op <= 0x2Fu)
@@ -199,19 +199,19 @@ namespace
             static const uint32_t shifts[4] = {0u, 4u, 12u, 15u};
             if (sp >= 0x10u && sp <= 0x13u)
             {
-                o.expr = "Vu1Gen::itof<" + num(shifts[sp - 0x10u]) + ", " + num(fs) + ">(vu)";
+                o.expr = "Vu1Gen::itof<" + num(shifts[sp - 0x10u]) + ", " + num(fs) + ">(vu, vf)";
                 o.dstReg = ft;
                 return true;
             }
             if (sp >= 0x14u && sp <= 0x17u)
             {
-                o.expr = "Vu1Gen::ftoi<" + num(shifts[sp - 0x14u]) + ", " + num(fs) + ">(vu)";
+                o.expr = "Vu1Gen::ftoi<" + num(shifts[sp - 0x14u]) + ", " + num(fs) + ">(vu, vf)";
                 o.dstReg = ft;
                 return true;
             }
             if (sp == 0x1Du)
             {
-                o.expr = "Vu1Gen::absVf<" + num(fs) + ">(vu)";
+                o.expr = "Vu1Gen::absVf<" + num(fs) + ">(vu, vf)";
                 o.dstReg = ft;
                 return true;
             }
@@ -324,14 +324,14 @@ namespace
                 {
                     const uint8_t lanes = stallLanes(pc, u->vfRead[i].reg, u->vfRead[i].lanes);
                     if (lanes)
-                        line("    Vu1Gen::readyVf<" + num(u->vfRead[i].reg) + ", " + num(lanes) + ">(vu, ready);");
+                        line("    Vu1Gen::readyVf<" + num(u->vfRead[i].reg) + ", " + num(lanes) + ">(vu, vf, ready);");
                 }
                 uint32_t m = u->viRead & 0xFFFEu;
                 while (m)
                 {
                     const uint32_t r = __builtin_ctz(m);
                     if (viMayStall(pc, static_cast<uint8_t>(r)))
-                        line("    Vu1Gen::readyVi<" + num(r) + ">(vu, ready);");
+                        line("    Vu1Gen::readyVi<" + num(r) + ">(vu, vf, ready);");
                     m &= m - 1u;
                 }
             }
@@ -356,13 +356,13 @@ namespace
             if (lw.reg != 0u && p.suppressedLowerVf != lw.reg)
             {
                 const uint32_t lat = p.lowerUsage.vfLatency ? p.lowerUsage.vfLatency : p.lowerUsage.latency;
-                line("    Vu1Gen::markVf<" + num(lw.reg) + ", " + num(lw.lanes) + ", " + num(lat) + ">(vu);");
+                line("    Vu1Gen::markVf<" + num(lw.reg) + ", " + num(lw.lanes) + ", " + num(lat) + ">(vu, vf);");
             }
             const auto &uw = p.upperUsage.vfWrite;
             if (uw.reg != 0u)
             {
                 const uint32_t lat = p.upperUsage.vfLatency ? p.upperUsage.vfLatency : p.upperUsage.latency;
-                line("    Vu1Gen::markVf<" + num(uw.reg) + ", " + num(uw.lanes) + ", " + num(lat) + ">(vu);");
+                line("    Vu1Gen::markVf<" + num(uw.reg) + ", " + num(uw.lanes) + ", " + num(lat) + ">(vu, vf);");
             }
             uint32_t m = p.lowerUsage.viWrite & 0xFFFEu;
             if (m)
@@ -370,7 +370,7 @@ namespace
                 const uint32_t lat = p.lowerUsage.viLatency ? p.lowerUsage.viLatency : p.lowerUsage.latency;
                 while (m)
                 {
-                    line("    Vu1Gen::markVi<" + num(__builtin_ctz(m)) + ", " + num(lat) + ">(vu);");
+                    line("    Vu1Gen::markVi<" + num(__builtin_ctz(m)) + ", " + num(lat) + ">(vu, vf);");
                     m &= m - 1u;
                 }
             }
@@ -398,22 +398,22 @@ namespace
             {
             case 0x00: // LQ
                 if (!suppressVf)
-                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, " + addrOf(is, imm11) + ");");
+                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, vf, " + addrOf(is, imm11) + ");");
                 return true;
             case 0x01: // SQ
-                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, " + addrOf(it, imm11) + ");");
+                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, vf, " + addrOf(it, imm11) + ");");
                 return true;
             case 0x04: // ILW
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, Vu1Gen::loadWord<" + sdest + ">(vu, " + addrOf(is, imm11) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, Vu1Gen::loadWord<" + sdest + ">(vu, vf, " + addrOf(is, imm11) + "));");
                 return true;
             case 0x05: // ISW
-                line("    Vu1Gen::storeWord<" + sdest + ">(vu, " + addrOf(is, imm11) + ", " + vi(it) + ");");
+                line("    Vu1Gen::storeWord<" + sdest + ">(vu, vf, " + addrOf(is, imm11) + ", " + vi(it) + ");");
                 return true;
             case 0x08: // IADDIU
             case 0x09: // ISUBIU
             {
                 const int16_t imm = static_cast<int16_t>(static_cast<int16_t>(lo & 0x7FFu) | ((lo >> 10) & 0x7800u));
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int16_t)(" + vi(is) + (opHi == 0x08u ? " + " : " - ") + num(imm) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int16_t)(" + vi(is) + (opHi == 0x08u ? " + " : " - ") + num(imm) + "));");
                 return true;
             }
             case 0x10: // FCEQ
@@ -434,11 +434,11 @@ namespace
             {
                 const uint32_t imm12 = (((lo >> 21) & 0x1u) << 11) | (lo & 0x7FFu);
                 if (opHi == 0x14u)
-                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, ((vu.m_state.status & 0xFFFu) == " + hex(imm12) + "u) ? 1 : 0);");
+                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, ((vu.m_state.status & 0xFFFu) == " + hex(imm12) + "u) ? 1 : 0);");
                 else if (opHi == 0x16u)
-                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)((vu.m_state.status & 0xFFFu) & " + hex(imm12) + "u));");
+                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)((vu.m_state.status & 0xFFFu) & " + hex(imm12) + "u));");
                 else
-                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)((vu.m_state.status & 0xFFFu) | " + hex(imm12) + "u));");
+                    line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)((vu.m_state.status & 0xFFFu) | " + hex(imm12) + "u));");
                 return true;
             }
             case 0x15: // FSSET
@@ -448,36 +448,36 @@ namespace
                 return true;
             }
             case 0x18: // FMEQ
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, ((vu.m_state.mac & 0xFFFFu) == (uint32_t)(uint16_t)" + vi(is) + ") ? 1 : 0);");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, ((vu.m_state.mac & 0xFFFFu) == (uint32_t)(uint16_t)" + vi(is) + ") ? 1 : 0);");
                 return true;
             case 0x1A: // FMAND
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)" + vi(is) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(vu.m_state.mac & (uint32_t)(uint16_t)" + vi(is) + "));");
                 return true;
             case 0x1B: // FMOR
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(vu.m_state.mac | (uint32_t)(uint16_t)" + vi(is) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(vu.m_state.mac | (uint32_t)(uint16_t)" + vi(is) + "));");
                 return true;
             case 0x1C: // FCGET
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(vu.m_state.clip & 0x0FFFu));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(vu.m_state.clip & 0x0FFFu));");
                 return true;
             // branches: condition and target only
             case 0x20: // B
                 line("    " + TK + " = true; " + TG + " = " + hex((pc + 8u + imm11 * 8) & 0x3FFFu) + "u;");
                 return true;
             case 0x21: // BAL
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, " + num((pc + 16u) / 8u) + ");");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, " + num((pc + 16u) / 8u) + ");");
                 line("    " + TK + " = true; " + TG + " = " + hex((pc + 8u + imm11 * 8) & 0x3FFFu) + "u;");
                 return true;
             case 0x24: // JR
-                line("    " + TK + " = true; " + TG + " = ((uint32_t)(uint16_t)Vu1Gen::branchVi<" + num(is) + ">(vu) * 8u) & 0x3FFFu;");
+                line("    " + TK + " = true; " + TG + " = ((uint32_t)(uint16_t)Vu1Gen::branchVi<" + num(is) + ">(vu, vf) * 8u) & 0x3FFFu;");
                 return true;
             case 0x25: // JALR
-                line("    " + TG + " = ((uint32_t)(uint16_t)Vu1Gen::branchVi<" + num(is) + ">(vu) * 8u) & 0x3FFFu; " + TK + " = true;");
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, " + num((pc + 16u) / 8u) + ");");
+                line("    " + TG + " = ((uint32_t)(uint16_t)Vu1Gen::branchVi<" + num(is) + ">(vu, vf) * 8u) & 0x3FFFu; " + TK + " = true;");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, " + num((pc + 16u) / 8u) + ");");
                 return true;
             case 0x28: case 0x29: case 0x2C: case 0x2D: case 0x2E: case 0x2F:
             {
-                const std::string a = "(int16_t)Vu1Gen::branchVi<" + num(is) + ">(vu)";
-                const std::string b = "(int16_t)Vu1Gen::branchVi<" + num(it) + ">(vu)";
+                const std::string a = "(int16_t)Vu1Gen::branchVi<" + num(is) + ">(vu, vf)";
+                const std::string b = "(int16_t)Vu1Gen::branchVi<" + num(it) + ">(vu, vf)";
                 std::string cond;
                 switch (opHi)
                 {
@@ -499,16 +499,16 @@ namespace
             const uint8_t funct = lo & 0x3Fu;
             switch (funct)
             {
-            case 0x30: line("    Vu1Gen::setVi<" + num(id) + ">(vu, (int16_t)(" + vi(is) + " + " + vi(it) + "));"); return true;
-            case 0x31: line("    Vu1Gen::setVi<" + num(id) + ">(vu, (int16_t)(" + vi(is) + " - " + vi(it) + "));"); return true;
+            case 0x30: line("    Vu1Gen::setVi<" + num(id) + ">(vu, vf, (int16_t)(" + vi(is) + " + " + vi(it) + "));"); return true;
+            case 0x31: line("    Vu1Gen::setVi<" + num(id) + ">(vu, vf, (int16_t)(" + vi(is) + " - " + vi(it) + "));"); return true;
             case 0x32:
             {
                 const int16_t imm5 = static_cast<int16_t>((static_cast<int32_t>((lo >> 6) & 0x1Fu) << 27) >> 27);
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int16_t)(" + vi(is) + " + " + num(imm5) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int16_t)(" + vi(is) + " + " + num(imm5) + "));");
                 return true;
             }
-            case 0x34: line("    Vu1Gen::setVi<" + num(id) + ">(vu, " + vi(is) + " & " + vi(it) + ");"); return true;
-            case 0x35: line("    Vu1Gen::setVi<" + num(id) + ">(vu, " + vi(is) + " | " + vi(it) + ");"); return true;
+            case 0x34: line("    Vu1Gen::setVi<" + num(id) + ">(vu, vf, " + vi(is) + " & " + vi(it) + ");"); return true;
+            case 0x35: line("    Vu1Gen::setVi<" + num(id) + ">(vu, vf, " + vi(is) + " | " + vi(it) + ");"); return true;
             default:
                 break;
             }
@@ -519,64 +519,64 @@ namespace
             {
             case 0x30: // MOVE
                 if (!suppressVf && ft != 0u)
-                    line("    { float t[4]; std::memcpy(t, vu.m_state.vf[" + num(fs) + "], 16); VU1Interpreter::applyDest(vu.m_state.vf[" + num(ft) + "], t, " + sdest + "); }");
+                    line("    { float t[4]; std::memcpy(t, vf[" + num(fs) + "], 16); VU1Interpreter::applyDest(vf[" + num(ft) + "], t, " + sdest + "); }");
                 return true;
             case 0x31: // MR32
                 if (!suppressVf && ft != 0u)
-                    line("    { const float *s = vu.m_state.vf[" + num(fs) + "]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vu.m_state.vf[" + num(ft) + "], t, " + sdest + "); }");
+                    line("    { const float *s = vf[" + num(fs) + "]; float t[4] = {s[1], s[2], s[3], s[0]}; VU1Interpreter::applyDest(vf[" + num(ft) + "], t, " + sdest + "); }");
                 return true;
             case 0x34: // LQI
                 if (!suppressVf)
-                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "));");
-                line("    Vu1Gen::setVi<" + num(is) + ">(vu, (int16_t)(" + vi(is) + " + 1));");
+                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "));");
+                line("    Vu1Gen::setVi<" + num(is) + ">(vu, vf, (int16_t)(" + vi(is) + " + 1));");
                 return true;
             case 0x35: // SQI
-                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(it) + "));");
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int16_t)(" + vi(it) + " + 1));");
+                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(it) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int16_t)(" + vi(it) + " + 1));");
                 return true;
             case 0x36: // LQD
-                line("    Vu1Gen::setVi<" + num(is) + ">(vu, (int16_t)(" + vi(is) + " - 1));");
+                line("    Vu1Gen::setVi<" + num(is) + ">(vu, vf, (int16_t)(" + vi(is) + " - 1));");
                 if (!suppressVf)
-                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "));");
+                    line("    Vu1Gen::loadVf<" + num(ft) + ", " + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "));");
                 return true;
             case 0x37: // SQD
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int16_t)(" + vi(it) + " - 1));");
-                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(it) + "));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int16_t)(" + vi(it) + " - 1));");
+                line("    Vu1Gen::storeVfMem<" + num(fs) + ", " + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(it) + "));");
                 return true;
             case 0x38: // DIV
-                line("    Vu1Gen::div<" + num(fs) + ", " + num((lo >> 21) & 3u) + ", " + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu);");
+                line("    Vu1Gen::div<" + num(fs) + ", " + num((lo >> 21) & 3u) + ", " + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu, vf);");
                 return true;
             case 0x39: // SQRT
-                line("    Vu1Gen::sqrtQ<" + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu);");
+                line("    Vu1Gen::sqrtQ<" + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu, vf);");
                 return true;
             case 0x3A: // RSQRT
-                line("    Vu1Gen::rsqrt<" + num(fs) + ", " + num((lo >> 21) & 3u) + ", " + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu);");
+                line("    Vu1Gen::rsqrt<" + num(fs) + ", " + num((lo >> 21) & 3u) + ", " + num(ft) + ", " + num((lo >> 23) & 3u) + ">(vu, vf);");
                 return true;
             case 0x3B: // WAITQ
             case 0x7B: // WAITP
                 return true;
             case 0x3C: // MTIR
-                line("    { uint32_t f; std::memcpy(&f, &vu.m_state.vf[" + num(fs) + "][" + num((lo >> 21) & 3u) + "], 4); Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(int16_t)(f & 0xFFFFu)); }");
+                line("    { uint32_t f; std::memcpy(&f, &vf[" + num(fs) + "][" + num((lo >> 21) & 3u) + "], 4); Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(int16_t)(f & 0xFFFFu)); }");
                 return true;
             case 0x3D: // MFIR
                 if (!suppressVf && ft != 0u)
-                    line("    { int32_t v = (int32_t)(int16_t)(" + vi(is) + " & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vu.m_state.vf[" + num(ft) + "], t, " + sdest + "); }");
+                    line("    { int32_t v = (int32_t)(int16_t)(" + vi(is) + " & 0xFFFF); float t[4]; std::memcpy(&t[0], &v, 4); t[1] = t[2] = t[3] = t[0]; VU1Interpreter::applyDest(vf[" + num(ft) + "], t, " + sdest + "); }");
                 return true;
             case 0x3E: // ILWR
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, Vu1Gen::loadWord<" + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(is) + ")));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, Vu1Gen::loadWord<" + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(is) + ")));");
                 return true;
             case 0x3F: // ISWR
-                line("    Vu1Gen::storeWord<" + sdest + ">(vu, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "), " + vi(it) + ");");
+                line("    Vu1Gen::storeWord<" + sdest + ">(vu, vf, Vu1Gen::dataAddress((uint16_t)" + vi(is) + "), " + vi(it) + ");");
                 return true;
             case 0x64: // MFP
                 if (!suppressVf && ft != 0u)
-                    line("    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vu.m_state.vf[" + num(ft) + "], t, " + sdest + "); }");
+                    line("    { float t[4] = {vu.m_state.p, vu.m_state.p, vu.m_state.p, vu.m_state.p}; VU1Interpreter::applyDest(vf[" + num(ft) + "], t, " + sdest + "); }");
                 return true;
             case 0x68: // XTOP
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(vu.m_state.top & 0x3FFu));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(vu.m_state.top & 0x3FFu));");
                 return true;
             case 0x69: // XITOP
-                line("    Vu1Gen::setVi<" + num(it) + ">(vu, (int32_t)(vu.m_state.itop & 0x3FFu));");
+                line("    Vu1Gen::setVi<" + num(it) + ">(vu, vf, (int32_t)(vu.m_state.itop & 0x3FFu));");
                 return true;
             case 0x6C: // XGKICK
                 line("    g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);");
@@ -659,22 +659,22 @@ namespace
             {
                 if (upArith)
                 {
-                    line("    up = Vu1Gen::fmac<" + std::string(ua.kind) + ", " + ua.src + ", " + num(ua.lane) + ", " + num(dest) + ", " + num(fs) + ", " + num(ft) + ", " + (ua.opmul ? "true" : "false") + fmacNormArgs(pc, p, ua) + ">(vu, acc);");
+                    line("    up = Vu1Gen::fmac<" + std::string(ua.kind) + ", " + ua.src + ", " + num(ua.lane) + ", " + num(dest) + ", " + num(fs) + ", " + num(ft) + ", " + (ua.opmul ? "true" : "false") + fmacNormArgs(pc, p, ua) + ">(vu, vf, acc);");
                     if (ua.toAcc)
                         line("    Vu1Gen::storeAcc<" + num(dest) + ">(acc, up);");
                     else
-                        line("    Vu1Gen::storeVf<" + num(fd) + ", " + num(dest) + ">(vu, up);");
+                        line("    Vu1Gen::storeVf<" + num(fd) + ", " + num(dest) + ">(vu, vf, up);");
                 }
                 else if (upOther)
                 {
                     if (uo.clip)
-                        line("    Vu1Gen::clip<" + num(fs) + ", " + num(ft) + ">(vu);");
+                        line("    Vu1Gen::clip<" + num(fs) + ", " + num(ft) + ">(vu, vf);");
                     else
-                        line("    Vu1Gen::storeVf<" + num(uo.dstReg) + ", " + num(dest) + ">(vu, " + uo.expr + ");");
+                        line("    Vu1Gen::storeVf<" + num(uo.dstReg) + ", " + num(dest) + ">(vu, vf, " + uo.expr + ");");
                 }
                 else if (!upNop)
                 {
-                    line("    _mm_storeu_ps(vu.m_state.acc, acc); Vu1Gen::execUpper(vu, " + hex(p.upper) + "u); acc = _mm_loadu_ps(vu.m_state.acc);");
+                    line("    _mm_storeu_ps(vu.m_state.acc, acc); Vu1Gen::execUpper(vu, vf, " + hex(p.upper) + "u); acc = _mm_loadu_ps(vu.m_state.acc);");
                     resetVf0 = true;
                 }
                 line("    { const uint32_t ib = " + hex(p.lower) + "u; float f; std::memcpy(&f, &ib, 4); vu.m_state.i = VU1Interpreter::normalizeOperand(f); }");
@@ -683,14 +683,14 @@ namespace
             {
                 // Generic same-pair dance around the interpreter's own handlers (rare).
                 line("    _mm_storeu_ps(vu.m_state.acc, acc);");
-                line("    { float oldVf[4], upperVf[4]; std::memcpy(oldVf, vu.m_state.vf[" + num(p.upperVfShadowReg) + "], 16);");
-                line("      vu.execUpper(" + hex(p.upper) + "u); std::memcpy(upperVf, vu.m_state.vf[" + num(p.upperVfShadowReg) + "], 16);");
-                line("      std::memcpy(vu.m_state.vf[" + num(p.upperVfShadowReg) + "], oldVf, 16);");
+                line("    { float oldVf[4], upperVf[4]; std::memcpy(oldVf, vf[" + num(p.upperVfShadowReg) + "], 16);");
+                line("      Vu1Gen::execUpper(vu, vf, " + hex(p.upper) + "u); std::memcpy(upperVf, vf[" + num(p.upperVfShadowReg) + "], 16);");
+                line("      std::memcpy(vf[" + num(p.upperVfShadowReg) + "], oldVf, 16);");
                 if (lc == LBranch || lc == LInline)
                     emitLowerInline(p.lower, pc, false);
                 else if (lc == LFallback)
-                    line("      Vu1Gen::execLower(vu, " + hex(p.lower) + "u);");
-                line("      std::memcpy(vu.m_state.vf[" + num(p.upperVfShadowReg) + "], upperVf, 16); }");
+                    line("      Vu1Gen::execLower(vu, vf, " + hex(p.lower) + "u);");
+                line("      std::memcpy(vf[" + num(p.upperVfShadowReg) + "], upperVf, 16); }");
                 line("    acc = _mm_loadu_ps(vu.m_state.acc);");
                 resetVf0 = true;
                 resetVi0 = true;
@@ -702,13 +702,13 @@ namespace
                 uint8_t deferredReg = fd;
                 if (upArith)
                 {
-                    line("    up = Vu1Gen::fmac<" + std::string(ua.kind) + ", " + ua.src + ", " + num(ua.lane) + ", " + num(dest) + ", " + num(fs) + ", " + num(ft) + ", " + (ua.opmul ? "true" : "false") + fmacNormArgs(pc, p, ua) + ">(vu, acc);");
+                    line("    up = Vu1Gen::fmac<" + std::string(ua.kind) + ", " + ua.src + ", " + num(ua.lane) + ", " + num(dest) + ", " + num(fs) + ", " + num(ft) + ", " + (ua.opmul ? "true" : "false") + fmacNormArgs(pc, p, ua) + ">(vu, vf, acc);");
                     deferred = true;
                 }
                 else if (upOther)
                 {
                     if (uo.clip)
-                        line("    Vu1Gen::clip<" + num(fs) + ", " + num(ft) + ">(vu);");
+                        line("    Vu1Gen::clip<" + num(fs) + ", " + num(ft) + ">(vu, vf);");
                     else
                     {
                         line("    up = " + uo.expr + ";");
@@ -718,7 +718,7 @@ namespace
                 }
                 else if (upperFallback)
                 {
-                    line("    _mm_storeu_ps(vu.m_state.acc, acc); Vu1Gen::execUpper(vu, " + hex(p.upper) + "u); acc = _mm_loadu_ps(vu.m_state.acc);");
+                    line("    _mm_storeu_ps(vu.m_state.acc, acc); Vu1Gen::execUpper(vu, vf, " + hex(p.upper) + "u); acc = _mm_loadu_ps(vu.m_state.acc);");
                     resetVf0 = true;
                 }
                 const bool suppress = p.suppressedLowerVf != 0u && p.suppressedLowerVf == p.lowerUsage.vfWrite.reg;
@@ -732,7 +732,7 @@ namespace
                 }
                 else if (lc == LFallback)
                 {
-                    line("    Vu1Gen::execLower(vu, " + hex(p.lower) + "u);"); // lowers never touch ACC
+                    line("    Vu1Gen::execLower(vu, vf, " + hex(p.lower) + "u);"); // lowers never touch ACC
                     resetVf0 = true;
                     resetVi0 = true;
                 }
@@ -741,7 +741,7 @@ namespace
                     if (upArith && ua.toAcc)
                         line("    Vu1Gen::storeAcc<" + num(dest) + ">(acc, up);");
                     else
-                        line("    Vu1Gen::storeVf<" + num(deferredReg) + ", " + num(dest) + ">(vu, up);");
+                        line("    Vu1Gen::storeVf<" + num(deferredReg) + ", " + num(dest) + ">(vu, vf, up);");
                 }
             }
 
@@ -755,7 +755,7 @@ namespace
                 line("    vu.m_viBranchBackupValid = false;");
             emitMarks(p);
             if (resetVf0)
-                line("    _mm_storeu_ps(vu.m_state.vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));");
+                line("    _mm_storeu_ps(vf[0], _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f));");
             if (resetVi0)
                 line("    vu.m_state.vi[0] = 0;");
             line("    ++vu.m_cycle;");
@@ -1177,6 +1177,8 @@ namespace
             line("    (void)taken2; (void)target2;");
             line("    __m128 up;");
             line("    __m128 acc = _mm_loadu_ps(vu.m_state.acc);");
+            line("    alignas(16) float vf[32][4];");
+            line("    std::memcpy(vf, vu.m_state.vf, sizeof(vf));");
             line("    int32_t oldVi = 0;");
             line("    (void)taken; (void)target; (void)up; (void)oldVi;");
             line("    if ((vu.m_state.pc & 7u) != 0u || vu.m_cycle >= budgetEnd) return false;");
@@ -1195,12 +1197,14 @@ namespace
                     line("B_" + hex(i * 8u) + ": vu.m_state.pc = " + hex(i * 8u) + "; goto bail;");
             line("bail:");
             line("    _mm_storeu_ps(vu.m_state.acc, acc);");
+            line("    std::memcpy(vu.m_state.vf, vf, sizeof(vf));");
             line("    if (g_vu1BailHist) ++g_vu1BailHist[(vu.m_state.pc >> 3) & 0x7FFu];");
             line("    vu.m_maxReadyCycle = ~0ull; // the interpreter re-scans operand readiness");
             line("    g_vuInsnCount.fetch_add(pairs, std::memory_order_relaxed);");
             line("    return false;");
             line("end:");
             line("    _mm_storeu_ps(vu.m_state.acc, acc);");
+            line("    std::memcpy(vu.m_state.vf, vf, sizeof(vf));");
             line("    g_vuInsnCount.fetch_add(pairs, std::memory_order_relaxed);");
             line("    return true;");
             line("}");
