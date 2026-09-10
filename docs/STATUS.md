@@ -1,5 +1,47 @@
 # Project status — updated 2026-09-10 17:40
 
+## 2026-09-10 20:10 (local) — ONLINE MATCH IS FROZEN AT ROUND START on both instances: only camera pitch and fire respond; peer UDP runs at ~1 packet/s (a handshake that never completes), not a game-state stream. Pad-state file injection replaces posted keys.
+Runs ours_match_sweep1..3, probe4..9 (logs/parity/ours_match_*, drive logs drive_match_*.txt,
+per-instance run logs with `[peek] @416054` = the local player's camera-orbit position, 1 row/s).
+- **Input delivery fixed (2561a29):** posted WM_KEYDOWN/UP reach raylib only when the window
+  thread pumps, so scripted holds were dropped or their release was seen only at the next press
+  (probe6: J->L->W transitions with no neutral state between). `PS2X_SOCOM2_INPUT_FILE=<path>`
+  is read on every pad poll ("b=<hex mask> rx= ry= lx= ly="); the online drivers write
+  logs/pad_A.txt / pad_B.txt (Shell.pad / Shell.hold). probe7: every 3 s hold lands as a clean
+  press/release pair, twice over.
+- **Mapping in the online match (probe7/9, identical twice):** RY (K/I) pitches the camera
+  (the 0x416054 record moves 27 units along the facing and 10 in y: it is the orbiting camera,
+  not the feet), R1 fires (ammo drops), CROSS/TRIANGLE change the camera/stance. RX, LX, LY do
+  NOTHING: no turn, no walk (single-player, same build family: LY walked 137 units in 8 s, RX
+  turned the view). OPTIONS -> CONTROLLER PRESETS says "1 - Precision Shooter preset is
+  currently selected" (presets_explore sheet), so the preset is right; the player is frozen.
+- **Netcode (PS2X_SOCOM2_NET_TRACE=1 + udp send/recv counters, this commit):** during the
+  8-minute match each instance sends ~1.5 UDP packets/s in total: DME aux (50000/50001)
+  keepalives and ONE 22/32-byte packet per second to the peer (A 3658 <-> B 3660, both
+  directions arrive). A real SOCOM II match streams tens of packets/s peer-to-peer. The DME
+  TCP side only carries the join/address exchange (APP_SINGLE 0x18 with two NetAddresses per
+  client) and a handful of broadcasts at spawn, then silence until disconnect. So both clients
+  sit at "STARTING ROUND 1 OF 11" waiting for a peer handshake/sync that never completes; the
+  HUD timer runs regardless.
+- **Local IP:** the exe derived its own address from the universe-server host (default
+  127.0.0.1), so both clients advertised 127.0.0.1:3658 as their first NetAddress (A sent peer
+  packets to itself). `PS2X_SOCOM2_SERVER=192.168.2.10` makes it 192.168.2.10 (probe9: no
+  loopback sends) — correct, but the match stays frozen. Keep the env in the run scripts.
+- Same-team is a dead end (probe4: no SEALs -> the lobby never starts the round). The joiner's
+  lobby cursor never leaves NOT READY (sweep2/3: UP and DOWN both ignored); the host's cursor
+  moves normally (lobby_select), so `--host-switch` is the way to move players between teams.
+- The PCSX2 golden (logs/parity/online/match/A_18_hold05, B_20_hold05) is the same frozen
+  state (same spawns, timer 05:04); movement was never verified on the reference, and
+  tools/pcsx2_b (client B) no longer exists (data-loss incident).
+Next: probe10 dumps the first 16 peer packets in hex (`udp peer send/recv`; SCERT ids:
+CLIENT_CONNECT_AUX_UDP 0x16, SERVER_CONNECT_ACCEPT_AUX_UDP 0x19, CLIENT_HELLO 0x24, SERVER_HELLO
+0x25, UDP_APP 0x0c, ECHO 0x05, PEER_QUERY 0x27..). Hypotheses in order: (1) both instances use the
+same fixed RSA keypair (socom2_rsa_key.h) and the peer SCERT handshake rejects/derives a bad
+session with an identical key (PCSX2 clients had distinct random keys) — test by giving instance
+B a second key (env-selected); (2) the peer connect message carries an address/port the receiver
+validates against the DME address list (sceInetAddress layout in exUdpRecv addrOut/portOut);
+(3) the P2P layer needs a libnetb feature the HLE answers wrongly (poll/available on UDP).
+
 ## 2026-09-10 18:45 (local) — USER REPORT: black squares still visible on the opening cutscene
 The user (watching the live runs) sees black squares in the opening cutscene (the intro movie /
 location cinematic). The title-gate sheets show the same on the movie background: 16x16-ish black

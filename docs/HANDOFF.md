@@ -18,7 +18,23 @@
   driver's "B_TIMEOUT waiting for persona" line was spurious (B continued).
 
 **Open items, in order, each with its first step:**
-1. **First kill / round end (the user's acceptance test).** Running/next: `python -m
+0. **THE ONLINE MATCH IS FROZEN AT ROUND START (STATUS 2026-09-10 20:10).** Both instances sit at
+   "STARTING ROUND 1 OF 11": only camera pitch (RY), fire and stance respond; RX/LX/LY do nothing.
+   Peer UDP (A 3658 <-> B 3660) is one 22/32-byte packet per second each way = a handshake that
+   never completes; a running match streams tens of packets/s. Evidence tools: run with
+   `PS2X_SOCOM2_NET_TRACE=1` (udp send/recv counters, `udp peer send/recv` hex of the first 16
+   peer packets), `PS2X_SOCOM2_INPUT_FILE` pad injection (drivers write logs/pad_A.txt/pad_B.txt),
+   `PS2X_SOCOM2_SERVER=192.168.2.10` (else the exe advertises 127.0.0.1 as its own address).
+   Hypotheses in order: (1) both instances share the fixed RSA keypair (socom2_rsa_key.h,
+   recomp stub socom2_RsaGenerateKeyPair) and the peer SCERT handshake fails with identical keys
+   -> give B a second key (env-selected) and rerun; (2) the peer connect packet carries an
+   address/port the receiver checks against the DME NetAddress list (exUdpRecv addrOut/portOut
+   layout); (3) a libnetb feature on UDP sockets (poll/available/flags) answered wrongly. Decode
+   the hex with the SCERT ids (CLIENT_CONNECT_AUX_UDP 0x16, SERVER_CONNECT_ACCEPT_AUX_UDP 0x19,
+   CLIENT_HELLO 0x24, SERVER_HELLO 0x25, UDP_APP 0x0c, ECHO 0x05) from RT.Common/Types.cs.
+   The PCSX2 golden match is the same frozen state (movement never verified there; tools/pcsx2_b
+   is gone). A run = `logs/run_match_probe10.sh` pattern (detached, ~12 min, `.done` marker).
+1. **First kill / round end (the user's acceptance test)** — after item 0. Running/next: `python -m
    tools_py.parity.online_match_ours --existing-b --same-team --hold 40 --sweep 24` with
    `PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3` on both instances (logs/run_match_sweep1.sh, output
    logs/parity/ours_match_sweep1, drive log drive_match_sweep1.txt). B stays on SEALs so both
