@@ -6,7 +6,10 @@ location cinematic). The title-gate sheets show the same on the movie background
 rectangles at the frame edges in a few captures (vr_title s00/s01 left of the logo, xg_title s14
 right edge). Size and placement say dropped/undecoded MPEG macroblocks (IPU/PSS decode or the
 16x16-block upload path, STATUS 2026-09-09 12:10 describes that upload), not a GS/dirty-rect
-issue. Open under goal 3; first step: PS2X_GS_DUMP_DISPLAY over the intro and a PCSX2 burst
+issue. The user adds they flicker in and out very fast, occasionally: per-frame, so either single
+decoded frames miss blocks or the two display buffers alternate a stale block (the 12:10 menu-video
+strip flickered every other frame the same way; a `burst` capture at 0.2 s catches it). Open under
+goal 3; first step: PS2X_GS_DUMP_DISPLAY over the intro and a PCSX2 burst
 capture of the same seconds (transition_probe_pcsx2.txt style), then compare the block grid.
 
 ## 2026-09-10 17:40 (local) — VU1 register-file build landed (841a6fc); two instances of our exe reach ONLINE GAMEPLAY on it (ours_match_play5); A walks into a wall, next = same-team sweep for the first kill
