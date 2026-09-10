@@ -25,7 +25,15 @@
    `PS2X_SOCOM2_NET_TRACE=1` (udp send/recv counters, `udp peer send/recv` hex of the first 16
    peer packets), `PS2X_SOCOM2_INPUT_FILE` pad injection (drivers write logs/pad_A.txt/pad_B.txt),
    `PS2X_SOCOM2_SERVER=192.168.2.10` (else the exe advertises 127.0.0.1 as its own address).
-   Hypotheses in order: (1) both instances share the fixed RSA keypair (socom2_rsa_key.h,
+   **Decoded 20:35 (STATUS):** the peer packets are the game's own 22-byte reliable channel
+   (`00 01 0a 00 | 0 | 0 | T 00 02 00 | S 00 Q 00 | P 00`, T 0x81/0x82/0x89, S sender index,
+   Q sequence, P payload 0x0a/0x05/0x0c), acked both ways at 1/s: the transport is alive, no
+   SCERT framing, no crypto -> the freeze is game logic above it (round "go" / local control
+   enable never reached). First step now: trace the guest callers of the libnetb_ex UDP
+   send/recv (FUN_00247fe8 / exUdpRecv) with PS2X_CALL_TRACE(+_DUMP) on BOTH instances to read
+   the P2P state machine; then the actor/controller flag that ignores LX/LY/RX online (the pad
+   floats at pad+0x210.. are fine: RY works). Superseded hypotheses, kept for the record:
+   (1) both instances share the fixed RSA keypair (socom2_rsa_key.h,
    recomp stub socom2_RsaGenerateKeyPair) and the peer SCERT handshake fails with identical keys
    -> give B a second key (env-selected) and rerun; (2) the peer connect packet carries an
    address/port the receiver checks against the DME NetAddress list (exUdpRecv addrOut/portOut

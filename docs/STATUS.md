@@ -1,5 +1,33 @@
 # Project status — updated 2026-09-10 17:40
 
+## 2026-09-10 20:35 (local) — peer packets decoded (probe10): the peer transport is ALIVE (acked, sequenced 22-byte packets, ~1/s), not SCERT-framed and not encrypted; the freeze is above the transport
+Run ours_match_probe10 (net trace with `udp peer send/recv` hex). Every peer packet has the same
+22-byte shape, little-endian: `00 01 0a 00 | 00 00 00 00 | 00 00 00 00 | T 00 02 00 | S 00 Q 00 | P 00`
+with T = 0x81 / 0x82 / 0x89 (message type), S = sender index (0 = A the host, 1 = B), Q = a
+per-sender sequence number (A 0x3f, 0x40, 0x41..; B 0x30, 0x31..), P = a small payload word
+(A always 0x0a; B 0x00 for 0x82, 0x0c/0x05 for 0x89/0x81). The two sides alternate: A 0x81 ->
+B 0x82 (ack) ; A 0x89, 0x81 -> B 0x82, 0x81 ; ... at one packet per second each way, every
+packet answered. So the game's own P2P reliable channel is up and both peers see each other;
+nothing here is an RT_MSG (SCERT) frame and there is no crypto handshake — hypothesis (1) of the
+20:10 entry (shared RSA key) is ruled out. What is missing is the game-state stream that a
+running round would put on this channel, so the blocker is game logic: the round's "go" (or
+the local player's control enable) is never reached on either side, while the HUD timer runs.
+Note A also sends the first packet to its own address (192.168.2.10:3658) — the player list
+includes itself; harmless.
+Next (in order): (a) find the P2P protocol code: grep the decomp/generated code for the header
+words (0x00000a0100 / the 0x81/0x82/0x89 type dispatch) or trace the callers of the libnetb_ex
+UDP send (FUN_00247fe8) and recv (exUdpRecv's guest caller) with PS2X_CALL_TRACE +
+PS2X_CALL_TRACE_DUMP to see the sender's state machine and what 0x81/0x89 carry (0x0a vs 0x05/
+0x0c payloads look like state codes: "loading", "ready"?); (b) the local control gate: the pad
+floats at pad+0x210.. are produced (RY works), so find the actor/controller flag that ignores
+LX/LY/RX online (compare the player actor's state word +0x10 in an online spawn vs the
+single-player spawn, 0x6691a0 vtable, PS2X_PEEK on both); (c) if (a) shows a "waiting for
+players" state, check what the 1.50 client expects from the host over this channel at round
+start (the host is our own instance A, so both ends are ours: trace both).
+Session hygiene: the loop cron was stopped and the run lock released at the end of this session;
+the run recipe is logs/run_match_probe10.sh (PS2X_SOCOM2_SERVER=192.168.2.10, NET_TRACE,
+INPUT_TRACE, PEEK 0x416054:3; --existing-b --hold 60).
+
 ## 2026-09-10 20:10 (local) — ONLINE MATCH IS FROZEN AT ROUND START on both instances: only camera pitch and fire respond; peer UDP runs at ~1 packet/s (a handshake that never completes), not a game-state stream. Pad-state file injection replaces posted keys.
 Runs ours_match_sweep1..3, probe4..9 (logs/parity/ours_match_*, drive logs drive_match_*.txt,
 per-instance run logs with `[peek] @416054` = the local player's camera-orbit position, 1 row/s).
