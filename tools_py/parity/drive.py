@@ -198,8 +198,26 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             print(f"untilref({ref_path}): {presses} presses, matched={at_ref()}", flush=True)
             buttons = []
             delay = 0.5
+        elif mode.startswith("ifref("):
+            # ifref(<png>[,<y0>,<y1>,<x0>,<x1>,<thresh>])+<delay>:BTN â€” press BTN once, only if the
+            # settled screen matches the reference in that thumbnail region; otherwise skip the
+            # press. For dialogs the boot flow shows only sometimes (the controller-configuration
+            # "save to memory card?" prompt: a blind CROSS answers YES and loops through
+            # slot-select / overwrite? / NO; RIGHT+CROSS answers NO and continues).
+            parts = mode[6:-1].split(",")
+            nums = [float(v) for v in parts[1:]]
+            r0, r1 = (int(nums[0]), int(nums[1])) if len(nums) >= 2 else (8, 62)
+            c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
+            thresh = nums[4] if len(nums) >= 5 else 14.0
+            ref_im = np.asarray(Image.open(parts[0]).convert("L").resize((160, 112)), dtype=np.float32)
+            wait_stable(hwnd, 1.5, 20.0)
+            dist = float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean())
+            matched = dist < thresh
+            print(f"ifref({parts[0]}): dist={dist:.1f} matched={matched}", flush=True)
+            if not matched:
+                buttons = []
         elif mode == "burst":
-            # burst+<seconds>:NONE — capture a frame every 0.2 s for <seconds> (transition flashes
+            # burst+<seconds>:NONE ï¿½ capture a frame every 0.2 s for <seconds> (transition flashes
             # that a single per-step capture misses), saved as sNN_burst_<k>.png.
             t_b = time.time()
             k = 0
@@ -209,7 +227,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
                 time.sleep(0.2)
             delay = 0.0
         elif mode == "hold":
-            # hold+<seconds>:BTN — hold the key(s) down for <seconds> (stick directions W/A/S/D,
+            # hold+<seconds>:BTN ï¿½ hold the key(s) down for <seconds> (stick directions W/A/S/D,
             # I/J/K/L on ours; fire R1), then capture. For gameplay probes.
             for b in buttons:
                 keys.press(hwnd, b, a.target, hold_s=delay)

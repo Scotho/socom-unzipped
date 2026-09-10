@@ -10,6 +10,7 @@ next+2.0:CROSS      # main menu -> NEW GAME
 next+2.0:CROSS      # select rank
 next+2.0:CROSS      # controller presets (1)
 next+2.0:CROSS      # controller presets (2)
+ifref(scripts/parity/ref_save_prompt_ours.png,47,75,36,125,8)+1.0:RIGHT   # 'save to memory card?' shows only on some boots: pick NO (a blind CROSS = YES loops on the overwrite prompt)
 next+2.0:CROSS      # save prompt / cinematic
 next+2.0:CROSS      # cinematic -> skip
 long+2.0:NONE       # briefing reached (waits out the location cinematic / typed text, up to 150 s)
