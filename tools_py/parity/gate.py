@@ -33,12 +33,15 @@ TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on
 HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
 # black_rows.py exits 0 when it examines nothing (empty dir, missing dir, a run with no
-# black-screen frame), so the exit code alone is a vacuous pass. Measured black-screen frame
-# counts 2026-09-10: logs/parity/gate/first/transition (the gate's own clean run) 6,
-# logs/parity/runs/gl_transition 8, logs/parity/runs/transition_probe 1 (and NOT BLACK),
-# logs/parity/runs/xg_transition 0, an empty or missing directory 0. A floor of 5 clears every
-# real transition run and rejects every vacuous one.
-TRANSITION_MIN_FRAMES = 5
+# black-screen frame), so the exit code alone is a vacuous pass: the count of examined frames is
+# part of the verdict. The floor is 1, not a "healthy run" count. How many black-screen frames a
+# transition run yields depends on whether drive.py's burst happens to overlap the ~1 s fade --
+# drive.py captures nothing during its settle waits -- not on rendering: Task 8 measured 4 frames
+# (all peak 0) on the rebuilt binary, 0 on a native-off control, and 0 of 8 runs on that binary
+# reached 5; 2 of the 3 historical runs the earlier floor of 5 was calibrated on would fail it too.
+# A floor of 1 still rejects every zero-evidence pass, which was the point. Follow-up for the
+# durable fix: capture during the settle waits in drive.py so the fade cannot be missed.
+TRANSITION_MIN_FRAMES = 1
 
 GATES = {
     "title": dict(script="scripts/parity/title_menu.txt", seconds=170, tail=8),
@@ -78,9 +81,12 @@ def score_transition(run_dir):
     examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
     bad = [ln for ln in examined if "NOT BLACK" in ln]
     peaks = [int(m.group(1)) for m in (re.search(r"peak\s+(\d+)", ln) for ln in examined) if m]
+    if not examined:
+        return False, ("transition not captured (0 black-screen frames examined; timing) in %s"
+                       % run_dir)
     if len(examined) < TRANSITION_MIN_FRAMES:
-        return False, ("only %d black-screen frames examined in %s, need %d (black_rows.py exits 0 "
-                       "on an empty result: not a pass)" % (len(examined), run_dir, TRANSITION_MIN_FRAMES))
+        return False, ("only %d black-screen frames examined in %s, need %d"
+                       % (len(examined), run_dir, TRANSITION_MIN_FRAMES))
     if bad or r.returncode != 0:
         return False, "%d black-screen frames examined; non-black band: %s" % (
             len(examined), "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])

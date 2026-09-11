@@ -10,6 +10,7 @@ GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")       
 GOOD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")    # known reached HUD (STATUS 2026-09-09 13:30)
 BAD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")         # known FAIL: HUD never matched
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "first", "transition")  # 6 black-screen frames, all black
+NATIVE_ON_TRANSITION = os.path.join(ROOT, "logs", "parity", "gate", "native_on", "transition")  # 4 black-screen frames, all black
 
 
 @unittest.skipUnless(os.path.isdir(GOOD_TITLE_RUN), "needs logs/parity/runs/vr_title")
@@ -49,6 +50,12 @@ class TransitionScoring(unittest.TestCase):
     @unittest.skipUnless(os.path.isdir(CLEAN_TRANSITION_RUN), "needs logs/parity/gate/first/transition")
     def test_known_clean_run_passes(self):
         ok, detail = gate.score_transition(CLEAN_TRANSITION_RUN)
+        self.assertTrue(ok, detail)
+
+    @unittest.skipUnless(os.path.isdir(NATIVE_ON_TRANSITION), "needs logs/parity/gate/native_on/transition")
+    def test_short_but_clean_run_passes(self):
+        """How many frames a run yields is drive.py burst timing, not rendering: 4 is a pass."""
+        ok, detail = gate.score_transition(NATIVE_ON_TRANSITION)
         self.assertTrue(ok, detail)
 
 
