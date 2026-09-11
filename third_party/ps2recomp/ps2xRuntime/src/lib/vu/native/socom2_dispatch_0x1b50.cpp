@@ -156,13 +156,12 @@ namespace
         return out.value;
     }
 
-    // ACC-writing form (MULA/MADDA/...): same op, the result lands in ACC instead of a register.
-    template <vu1ops::ArithKind Kind, Vu1Gen::FmacSrc Src, uint32_t Lane, uint8_t Dest,
-              uint8_t Fs, uint8_t Ft, bool Opmul = false, bool NormS = true, bool NormT = true>
-    void fmacToAcc(Ctx &c)
+    // Deferred ACC write of an upper op's result (MULA/MADDA/...).
+    template <uint8_t Dest>
+    void writeAcc(Ctx &c, __m128 value)
     {
-        const __m128 value = fmac<Kind, Src, Lane, Dest, Fs, Ft, Opmul, NormS, NormT>(c);
-        vu1ops::storeLanes(c.vu.m_state.acc, value, Dest);
+        if (Dest != 0u)
+            vu1ops::storeLanes(c.vu.m_state.acc, value, Dest);
     }
 
     // ITOF<n> / FTOI<n> / MINI / MAX / ABS: the non-arithmetic uppers, which push no flags.
@@ -408,6 +407,133 @@ namespace
         }
     }
 
+    // ---- command 0x08 -> 0x0df8: transform by the clip matrix + perspective divide ---------
+    //
+    // Per vertex: clip = M(vf1..vf4) x position, Q = 1/clip.w, and the three staging quads
+    //   +0 ST     = (uv * Q, clip.w)        perspective-correct texture coordinates
+    //   +1 RGBAQ  = the source colour quad, copied through untouched
+    //   +2 XYZF2  = clip.xyz * Q            screen position ( .w = 254, the fog default )
+    // The source records are the three-qword ones command 0x68 converted, from TOP+4; the staging
+    // array starts at qword 40, three qwords per vertex, in the GIFtag's REGS order.
+    //
+    // The microcode runs the transform two vertices ahead of the stores, with clip positions in a
+    // two-deep delay line (vf27 -> vf28 -> vf29) and Q one vertex ahead of its use, so the loop
+    // never waits on the divider. That schedule is kept here: it decides which vertex's values the
+    // registers hold on exit, and it is what keeps the DIV/Q pairing unambiguous.
+    namespace transform
+    {
+        constexpr uint8_t kSrcPos = 20;     // prefetched source position (two vertices ahead)
+        constexpr uint8_t kSrcTex = 30;     // prefetched source texture coordinates (.xy; .z = 1)
+        constexpr uint8_t kSrcColour = 24;  // source colour quad, passed through to RGBAQ
+        constexpr uint8_t kClip = 27;       // clip-space position of the newest transform
+        constexpr uint8_t kClipPrev = 28;   // ... one vertex behind
+        constexpr uint8_t kClipCurr = 29;   // ... two vertices behind: the one being stored
+        constexpr uint8_t kInvW = 17;       // 1/clip.w, broadcast over xyz
+        constexpr uint8_t kScreen = 26;     // XYZF2: clip.xyz * 1/w, with .w = 254
+        constexpr uint8_t kSt = 31;         // ST: uv * 1/w, with .w = clip.w
+        constexpr uint8_t kSrcCursor = 3;   // vi3, in qwords (stride 3)
+        constexpr uint8_t kStageCursor = 4; // vi4, in qwords (stride 3)
+        constexpr uint8_t kRemaining = 9;   // vi9
+    }
+
+    bool cmdTransformDivide(Ctx &c)
+    {
+        using namespace transform;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        __m128 up;
+
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                  // 0x0df8
+        c.vi(kStageCursor) = 40;                               // 0x0e00
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);         // 0x0e08: TOP+2.z, the vertex count
+        loadQword<kSrcPos, kXYZW>(c, c.vi(kSrcCursor) + 0);    // 0x0e10
+        loadQword<kSrcTex, kXY>(c, c.vi(kSrcCursor) + 1);      // 0x0e18
+
+        // 0x0e20-0x0e38: vertex 0's clip position, ACC = vf1*x + vf2*y + vf3*z, then + vf4*1.
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 1, kSrcPos>(c);  writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 2, kSrcPos>(c);
+        c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 3, kSrcPos>(c); writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 4, 0, false, true, false>(c);
+        loadQword<kSrcPos, kXYZW>(c, c.vi(kSrcCursor));
+        writeVf<kClip, kXYZW>(c, up);
+
+        // 0x0e40-0x0e48: the two constants the loop reuses -- the texture quad's third lane is 1,
+        // and the screen quad's fog lane is 254.
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kZ, 0, 0, false, false, false>(c);
+        loadImmediate(c, 0x437e0000u); // 254.0f
+        writeVf<kSrcTex, kZ>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcI, 0, kW, 0, 0, false, false, false>(c);
+        writeVf<kScreen, kW>(c, up);
+
+        // 0x0e58-0x0e98: start vertex 0's divide, transform vertex 1, and fill the delay line.
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kClip, 0, false, false, false>(c);
+        divQ<0, 3, kClip, 3>(c);
+        writeVf<kClipPrev, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 1, kSrcPos>(c);  writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 2, kSrcPos>(c);
+        c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 3, kSrcPos>(c); writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 4, 0, false, true, false>(c);
+        loadQword<kSrcPos, kXYZW>(c, c.vi(kSrcCursor));
+        writeVf<kClip, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kClipPrev, 0, false, false, false>(c);
+        writeVf<kClipCurr, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcQ, 0, kXYZ, 0, 0, false, false, false>(c);
+        writeVf<kInvW, kXYZ>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kClip, 0, false, false, false>(c);
+        writeVf<kClipPrev, kXYZW>(c, up);
+
+        for (;;)
+        {
+            // 0x0ea0: the divide for the vertex one ahead of the one being stored.
+            divQ<0, 3, kClip, 3>(c);
+
+            // 0x0ea8-0x0eb8: build this vertex's ST and XYZF2 quads and fetch its colour.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, 0, kClipCurr, false, false, false>(c);
+            loadQword<kSrcColour, kXYZW>(c, c.vi(kSrcCursor) - 4);
+            writeVf<kSt, kW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kClipCurr, kInvW, false, false, true>(c);
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 1);
+            writeVf<kScreen, kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZ, kSrcTex, kInvW>(c);
+            c.vi(kStageCursor) = vi16(c.vi(kStageCursor) + 3);
+            writeVf<kSt, kXYZ>(c, up);
+
+            // 0x0ec0-0x0ed8: transform the vertex two ahead while the stores of this one go out.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 1, kSrcPos>(c);
+            loadQword<kSrcTex, kXY>(c, c.vi(kSrcCursor) - 2);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 2, kSrcPos>(c);
+            c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 3, kSrcPos>(c);
+            storeQword<kSrcColour, kXYZW>(c, c.vi(kStageCursor) - 2); // +1 RGBAQ
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 4, 0, false, true, false>(c);
+            loadQword<kSrcPos, kXYZW>(c, c.vi(kSrcCursor));
+            writeVf<kClip, kXYZW>(c, up);
+
+            // 0x0ee0-0x0ef0: pick up the new Q, shift the clip delay line, store the rest.
+            up = fmac<ArithAdd, Vu1Gen::SrcQ, 0, kXYZ, 0, 0, false, false, false>(c);
+            storeQword<kScreen, kXYZW>(c, c.vi(kStageCursor) - 1);    // +2 XYZF2
+            writeVf<kInvW, kXYZ>(c, up);
+
+            // 0x0ee8 `IBGTZ vi9, 0x0ea0`; 0x0ef0 is its delay slot and runs on both paths.
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kClipPrev, 0, false, true, false>(c);
+            const bool more = c.vi(kRemaining) > 0;
+            writeVf<kClipCurr, kXYZW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kClip, 0, false, true, false>(c);
+            storeQword<kSt, kXYZW>(c, c.vi(kStageCursor) - 3);        // +0 ST
+            writeVf<kClipPrev, kXYZW>(c, up);
+            if (!more)
+                return true;                                          // 0x0ef8: B 0x1b60
+        }
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -416,6 +542,8 @@ namespace
         {
         case kCmdUnpack:
             return cmdUnpackVertices(c);
+        case kCmdTransform:
+            return cmdTransformDivide(c);
         default:
             return false;
         }
