@@ -89,6 +89,7 @@ namespace
         kCmdFade = 0x10u,          // 0x0f90 per-vertex distance fade (the XYZF2 fog lane)
         kCmdClippedFade = 0x12u,   // 0x1108 family-B shim: 0x10's fade on the 150 base
         kCmdLight = 0x18u,         // 0x1440 lighting
+        kCmdClippedLight = 0x1au,  // 0x15b0 family-B shim: 0x18's lighting on the 150 base
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
         kCmdEnd = 0x42u,           // 0x1b40 E bit
         kCmdTemplateFill = 0x54u,  // 0x05d8 broadcast data qword 327 into every RGBAQ slot
@@ -886,17 +887,16 @@ namespace
         constexpr uint8_t kRemaining = 9; // vi9
     }
 
-    bool cmdLighting(Ctx &c)
+    // 0x1460 onward -- the loop proper, entered with vf31 = the light parameters (data qword 27),
+    // vi3 = the source records, vi4 = the staging base and vi9 = the vertex count already set.
+    // Command 0x18 sets them from TOP; command 0x1a (family B, 0x15b0) loads qword 27 itself and
+    // points the loop at the clipped polygon / 150 / vi10 (research/13 4.5).
+    bool lightingLoop(Ctx &c)
     {
         using namespace lighting;
         using vu1ops::ArithMadd;
         using vu1ops::ArithMul;
         __m128 up;
-
-        loadQword<kParams, kXYZW>(c, 27);                        // 0x1440
-        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x1448
-        c.vi(kStageCursor) = 40;                                 // 0x1450
-        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x1458: TOP+2.z
 
         // 0x1460-0x1478: scale the colour block into this list's light matrix, and load the first
         // pair of source records.
@@ -991,6 +991,31 @@ namespace
             if (!more)
                 return true;                                            // 0x15a0: B 0x1b60
         }
+    }
+
+    bool cmdLighting(Ctx &c)
+    {
+        using namespace lighting;
+        loadQword<kParams, kXYZW>(c, 27);                        // 0x1440
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x1448
+        c.vi(kStageCursor) = 40;                                 // 0x1450
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x1458: TOP+2.z
+        return lightingLoop(c);
+    }
+
+    // ---- command 0x1a -> 0x15b0: 0x18's lighting over the clipped polygon ------------------
+    //
+    // Five instructions (research/13 4.5): the light parameters at data qword 27 (which 0x18's
+    // own prologue at 0x1440 loads), then the three family-B pointers. In the B/C corpus this is
+    // the only entry into 0x1460 -- command 0x18 is never dispatched there.
+    bool cmdClippedLighting(Ctx &c)
+    {
+        using namespace lighting;
+        loadQword<kParams, kXYZW>(c, 27);                        // 0x15b0
+        c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x15b8: vi3 = vi8
+        c.vi(kStageCursor) = 150;                                // 0x15c0
+        c.vi(kRemaining) = vi16(c.vi(10));                       // 0x15d0: the B 0x1460 delay slot
+        return lightingLoop(c);                                  // 0x15c8
     }
 
     // ---- command 0x28 -> 0x1780: triangle assembly, GIF packet, XGKICK ---------------------
@@ -1408,6 +1433,8 @@ namespace
             return cmdClippedTemplateFill(c);
         case kCmdLight:
             return cmdLighting(c);
+        case kCmdClippedLight:
+            return cmdClippedLighting(c);
         case kCmdBuildPacket:
             return cmdBuildPacket(c);
         default:
