@@ -113,6 +113,11 @@ namespace
         kCmdTemplateFill = 0x54u,  // 0x05d8 broadcast data qword 327 into every RGBAQ slot
         kCmdClippedTemplateFill = 0x56u, // 0x0640 family-B shim: 0x54's fill on the 150 base
         kCmdUnpack = 0x68u,        // 0x0b20 int->float vertex unpack
+
+        // Family C.
+        kCmdKickRenderState = 0x64u, // 0x04a8 XGKICK the render-state packet at data qword 330
+        kCmdDrawGateOff = 0x72u,     // 0x2268 data qword 39.w := 0
+        kCmdDrawGateOn = 0x74u,      // 0x2280 data qword 39.w := 2
     };
 
     // The command words a family-A list is allowed to contain. A list built only from these is
@@ -2104,6 +2109,38 @@ namespace
     // by a program that is not reproducing the whole register file.
     Outcome cmdPrimitiveLoopBack(Ctx &c) { return primitiveLoop(c, true); }
 
+    // ---- family C: the three stateless commands, 0x64, 0x72 and 0x74 -----------------------
+    //
+    // Three instructions each and completely order-independent with respect to registers: the only
+    // things they order are data qword 39.w and the GS state their packet sets (research/13 6.2).
+    //
+    // 0x64 -> 0x04a8 kicks the render-state packet the EE uploaded at data qword 330 -- a GIFtag
+    // with NLOOP = 5, EOP = 1, NREG = 1, REGS = A+D, so six qwords of GS register writes.
+    bool cmdKickRenderState(Ctx &c)
+    {
+        c.vi(2) = 330;                                           // 0x04a8
+        g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+        c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(2)))); // 0x04b8
+        return true;                                             // 0x04c8: B 0x1b60
+    }
+
+    // 0x72 -> 0x2268 and 0x74 -> 0x2280: the global draw gate at data qword 39.w, which commands
+    // 0x28 and 0x2a OR into their per-primitive visibility test. 0x74 forces everything to draw;
+    // 0x72 restores per-primitive gating. 0x72's store takes its value from vi0, so it clobbers
+    // nothing; 0x74 writes vi3 = 2 first, and vi3 is dead afterwards but still a compared register.
+    bool cmdDrawGateOff(Ctx &c)
+    {
+        storeIntWord<kW>(c, 39, 0);                              // 0x2268: ISW.w vi0, 39(vi0)
+        return true;                                             // 0x2270: B 0x1b60
+    }
+
+    bool cmdDrawGateOn(Ctx &c)
+    {
+        c.vi(3) = 2;                                             // 0x2280
+        storeIntWord<kW>(c, 39, c.vi(3));                        // 0x2288
+        return true;                                             // 0x2290: B 0x1b60
+    }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -2144,6 +2181,12 @@ namespace
             return fromHandler(cmdBuildPacket(c));
         case kCmdFlushPacket:
             return fromHandler(cmdFlushPacket(c));
+        case kCmdKickRenderState:
+            return fromHandler(cmdKickRenderState(c));
+        case kCmdDrawGateOff:
+            return fromHandler(cmdDrawGateOff(c));
+        case kCmdDrawGateOn:
+            return fromHandler(cmdDrawGateOn(c));
         default:
             return Outcome::NotImplemented;
         }
