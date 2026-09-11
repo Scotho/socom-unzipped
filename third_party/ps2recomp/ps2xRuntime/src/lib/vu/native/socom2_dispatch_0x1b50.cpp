@@ -1,38 +1,43 @@
 // SOCOM II VU1 image d418194495c25213, entry pc 0x1b50: the command dispatcher and the handlers
-// its "family A" (UI quad / 2D) command lists use.
+// its "family A" (UI quad / 2D) and "family B" (clipped world objects) command lists use.
 //
 // Structure, command encoding, register roles and the hand-back rules: docs/research/12-vu1-entry0-ui-path.md
-// section (f). Sprint-1 contract: emit exactly the GIF packets the microcode emits and leave the
-// register file and VU data memory exactly as the microcode leaves them
-// (verified by `vu1_replay --verify --native`, --regs all).
+// section (f) for family A, docs/research/13-vu1-family-b-world-objects.md for family B, the
+// 0x3618 clipper and the shared packet-flush tail. Contract: emit exactly the GIF packets the
+// microcode emits and leave the register file and VU data memory exactly as the microcode leaves
+// them (verified by `vu1_replay --verify --native`, --regs all).
 //
 // Sprint-2 addition: PS2X_VU1_HOST_DRAW=1 makes command 0x28 draw each assembled triangle through
 // GS::submitHostTriangle instead of XGKICKing its packet (see submitHostTriangleFromPacket). The
 // packet is still assembled byte for byte, so the contract above is unchanged with the knob on --
 // only the kick is replaced. `vu1_replay --vram-diff` compares the two renderings pixel for pixel.
 //
-// What runs natively: command lists whose linear decode from data qword 340 contains only the
-// family-A command words and terminates on 0x42 (END). Every other list -- family B (world
-// objects: 0x02/0x0a/0x12/0x1a/0x2a/0x4c and the 0x3618 subroutine) and family C (0x64/0x30/0x32)
-// -- hands back WHOLE at 0x1b50 before this file touches any state, so the generated microcode
-// translation runs it exactly as before. Family B is out of scope for Sprint 1: its 0x02/0x4c pair
-// keeps vi12 (the primitive counter) live across the dispatcher back-edge, so it is not safe to
-// hand back in the middle of such a list (research/12 f.3).
+// What runs natively: command lists whose linear decode from data qword 340 contains only command
+// words this file implements and terminates on 0x42 (END) -- all seven family-A commands and all
+// seven family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the
+// 0x1980 flush tail behind them). Family C still hands back WHOLE at 0x1b50 before this file
+// touches any state, so the generated microcode translation runs it exactly as before: its
+// 0x30/0x32/0x34 embed GIF packets in the command list itself and rewrite vi14 past them, and its
+// 0x64/0x72/0x74 are unimplemented.
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
-// vi1), so a command this file does not implement hands back at 0x1b60 -- the pc at which the
-// microcode reads the next command word -- with vi1 and vi14 set as the microcode would have them.
-// As of Sprint 1 all seven family-A commands are implemented, so that path is a safety net rather
-// than a live one.
+// vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
+// 0x3618) cross every 0x02 -> 0x0a -> ... -> 0x2a edge, and vi12/vi15 (the primitive counter and
+// the index cursor) cross the 0x4c back edge (research/13 6.2). That does not change the
+// hand-back rule here, because this file reproduces the whole register file and all of VU data
+// memory bit for bit: a command it cannot run hands back at 0x1b60 -- the pc at which the
+// microcode reads the next command word -- and the microcode resumes from exact state. With every
+// A and B command implemented that path is a safety net rather than a live one.
 //
 // Once a list is taken over it runs to its E bit: `budgetEnd` and `m_stopRequested` are ignored,
 // because 0x1b60 is the only pc this program could legally stop at and stopping there buys
 // nothing. That is only defensible while a list's work is bounded, and the counts that bound it
-// (TOP+2.z vertices, TOP+2.w triangles) are guest data, not something the microcode validates -- a
-// header with z = 32767 would mean ~11k template-fill iterations and up to 32767 uninterruptible
-// XGKICKs. So the pre-scan checks them too, against a ceiling with plenty of margin over the
-// corpus maxima (68 vertices, 44 triangles): see kMaxVertices / kMaxTriangles. A header outside
-// that range hands the list back whole, exactly like a family-B one.
+// (TOP+2.z vertices, TOP+2.w triangles, the latter also family B's primitive counter) are guest
+// data, not something the microcode validates -- a header with z = 32767 would mean ~11k
+// template-fill iterations and up to 32767 uninterruptible XGKICKs. So the pre-scan checks them
+// too, against a ceiling with plenty of margin over the corpus maxima (68 vertices, 44 triangles):
+// see kMaxVertices / kMaxTriangles. A header outside that range hands the list back whole,
+// exactly like a family-C one.
 //
 // The program also requires the interpreter's default XGKICK model, which copies the whole packet
 // at kick time. Under PS2X_VU1_XGKICK_CYCLE_EXACT=1 a kick streams as m_cycle advances and a new
@@ -104,6 +109,7 @@ namespace
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
         kCmdFlushPacket = 0x2au,   // 0x1a78 family-B packet flush: staging 150 -> 113, XGKICK 112
         kCmdEnd = 0x42u,           // 0x1b40 E bit
+        kCmdLoopBack = 0x4cu,      // 0x20c8 the primitive loop's back edge (and its E bit)
         kCmdTemplateFill = 0x54u,  // 0x05d8 broadcast data qword 327 into every RGBAQ slot
         kCmdClippedTemplateFill = 0x56u, // 0x0640 family-B shim: 0x54's fill on the 150 base
         kCmdUnpack = 0x68u,        // 0x0b20 int->float vertex unpack
@@ -124,6 +130,35 @@ namespace
         case kCmdEnd:
         case kCmdTemplateFill:
         case kCmdUnpack:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // ... and the ones a family-B list adds: `68 [06] 02 0a [12] [56] [1a] 2a 4c 42`.
+    //
+    // For family B the static decode is NOT the executed order -- 0x4c rewrites vi14 and the
+    // 0x0a..0x4c run repeats once per primitive -- but it still visits every command word in the
+    // list, which is all this scan has to establish.
+    //
+    // Family C is deliberately absent. Its extra commands (0x64, 0x30, 0x32, 0x34, 0x72, 0x74)
+    // are not implemented, and 0x30/0x32/0x34 embed an 8- or 11-qword GIF packet in the list
+    // itself, whose qwords are not commands. That is safe to scan past only because the command
+    // introducing a block always precedes it, so the scan stops on a real command word before it
+    // can ever misread a packet qword as one -- and in every C shape in the corpus an even
+    // earlier 0x64 stops it first (research/13 3.2).
+    bool isFamilyBCommand(uint32_t command)
+    {
+        switch (command)
+        {
+        case kCmdWorldObject:
+        case kCmdClippedTransform:
+        case kCmdClippedFade:
+        case kCmdClippedTemplateFill:
+        case kCmdClippedLight:
+        case kCmdFlushPacket:
+        case kCmdLoopBack:
             return true;
         default:
             return false;
@@ -373,24 +408,28 @@ namespace
         return value & 0xFFFFu;
     }
 
-    // True when this run is one this file may take over: a command list of family-A commands only,
-    // terminated by a literal 0x42 within the bound, and a header whose vertex and triangle counts
-    // keep the work inside kMaxVertices / kMaxTriangles. Called before anything is written, so a
-    // "no" is a clean whole-program hand-back.
-    bool isFamilyARun(Ctx &c, int32_t top)
+    // True when this run is one this file may take over: a command list built only from commands
+    // that are implemented here, terminated by a literal 0x42 within the bound, and a header
+    // whose vertex and primitive counts keep the work inside kMaxVertices / kMaxTriangles. Called
+    // before anything is written, so a "no" is a clean whole-program hand-back.
+    bool isNativeRun(Ctx &c, int32_t top)
     {
         bool terminated = false;
         for (uint32_t index = 0; index < kMaxCommands && !terminated; ++index)
         {
             const uint32_t command = peekCommand(c, index);
-            if (!isFamilyACommand(command))
+            if (!isFamilyACommand(command) && !isFamilyBCommand(command))
                 return false;
             terminated = command == kCmdEnd;
         }
         if (!terminated)
             return false;
 
-        // The same two header words every family-A handler reads as its loop count.
+        // The two header words the handlers read as their loop counts: TOP+2.z is the vertex
+        // count (0x68, 0x08, 0x10, 0x54, 0x18) and TOP+2.w the primitive count (0x06, 0x28, and
+        // family B's vi12). The clipper's own work is bounded by construction -- a stage emits at
+        // most two vertices per input edge, so from a triangle the five stages run at most
+        // 3 + 6 + 12 + 24 + 48 edge tests -- so bounding the primitive count bounds the list.
         const int32_t vertices = c.loadWord(top + 2, 2);  // TOP+2.z
         const int32_t triangles = c.loadWord(top + 2, 3); // TOP+2.w
         return vertices >= 0 && vertices <= kMaxVertices && triangles >= 0 && triangles <= kMaxTriangles;
@@ -2056,6 +2095,15 @@ namespace
         return primitiveLoop(c, false);
     }
 
+    // ---- command 0x4c -> 0x20c8: the primitive loop's back edge ----------------------------
+    //
+    // Nothing but an entry into the loop above at 0x20c8, which is where 0x02's skip branches
+    // already land. `B 0x1f98` re-enters 0x02's body *after* its prologue, so vi12 (the primitive
+    // counter) and vi15 (the index cursor, restored from 329.z) are carried over rather than
+    // recomputed -- which is exactly why family B cannot be handed back in the middle of a list
+    // by a program that is not reproducing the whole register file.
+    Outcome cmdPrimitiveLoopBack(Ctx &c) { return primitiveLoop(c, true); }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -2070,6 +2118,8 @@ namespace
         {
         case kCmdWorldObject:
             return cmdWorldObject(c);
+        case kCmdLoopBack:
+            return cmdPrimitiveLoopBack(c);
         case kCmdUnpack:
             return fromHandler(cmdUnpackVertices(c));
         case kCmdCull:
@@ -2109,7 +2159,7 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     // counts live at TOP+2) before it is committed to vi1.
     const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
     if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u || !xgkickIsImmediate() ||
-        !isFamilyARun(c, top))
+        !isNativeRun(c, top))
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
 
     // 0x1b50: vi1 is the base every handler derives its pointers from.
