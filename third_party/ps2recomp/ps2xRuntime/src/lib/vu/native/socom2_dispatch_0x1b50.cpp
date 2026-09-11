@@ -20,18 +20,32 @@
 // As of Sprint 1 all seven family-A commands are implemented, so that path is a safety net rather
 // than a live one.
 //
-// Two liberties this program takes with the interpreter's contract, both bounded by family A's
-// shape (at most 68 vertices and 44 triangles per list, no back-edge that can spin):
-//   * `budgetEnd` is ignored -- a list runs to its E bit rather than stopping mid-way, because
-//     0x1b60 is the only pc it could legally stop at and stopping there buys nothing;
-//   * `m_stopRequested` after an XGKICK is ignored for the same reason (the microcode translation
-//     bails there; this one finishes the list, at most a few dozen more packets).
+// Once a list is taken over it runs to its E bit: `budgetEnd` and `m_stopRequested` are ignored,
+// because 0x1b60 is the only pc this program could legally stop at and stopping there buys
+// nothing. That is only defensible while a list's work is bounded, and the counts that bound it
+// (TOP+2.z vertices, TOP+2.w triangles) are guest data, not something the microcode validates -- a
+// header with z = 32767 would mean ~11k template-fill iterations and up to 32767 uninterruptible
+// XGKICKs. So the pre-scan checks them too, against a ceiling with plenty of margin over the
+// corpus maxima (68 vertices, 44 triangles): see kMaxVertices / kMaxTriangles. A header outside
+// that range hands the list back whole, exactly like a family-B one.
+//
+// The program also requires the interpreter's default XGKICK model, which copies the whole packet
+// at kick time. Under PS2X_VU1_XGKICK_CYCLE_EXACT=1 a kick streams as m_cycle advances and a new
+// kick clears whatever is still in flight; this program never advances m_cycle, so command 0x28's
+// back-to-back per-triangle kicks would silently drop packets. That mode therefore hands back
+// whole as well.
 #define private public
 #include "../ps2_vu1_ops.h"
 #undef private
 
+#include <atomic>
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
+
+// ps2_vu1_core.cpp: XGKICKs whose packet this build decoded (the [vu1-stats] counter). The
+// generated translation increments it at its L_0x1920; so does this program's command 0x28.
+extern std::atomic<uint64_t> g_xgkickDecoded;
 
 namespace
 {
@@ -46,6 +60,15 @@ namespace
     // The longest list in the corpus is 10 commands; a list that does not terminate inside this
     // many qwords is stale data, not a list this file may run.
     constexpr uint32_t kMaxCommands = 32u;
+
+    // ---- the family-A work ceiling ---------------------------------------------------------
+    // Every family-A handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest
+    // data. The corpus maxima are 68 vertices and 44 triangles; these limits keep several times
+    // that margin while still bounding a native run to a few thousand iterations and at most 256
+    // XGKICKs, which is what makes ignoring budgetEnd and m_stopRequested defensible. A header
+    // outside the range (including a negative count) hands the list back whole.
+    constexpr int32_t kMaxVertices = 256;
+    constexpr int32_t kMaxTriangles = 256;
 
     enum Command : uint32_t
     {
@@ -118,6 +141,10 @@ namespace
 
     // FMAC flags as VU1Interpreter::fastCommit lands them: MAC is the newest op's lane flags,
     // STATUS keeps its sticky half (bits 6..11) and takes its current half (bits 0..3) from it.
+    // KEEP IN SYNC with the FMAC half of VU1Interpreter::fastCommit (ps2_vu1_core.cpp): this is a
+    // deliberate copy of that bit arithmetic, not a call, because the native path commits without
+    // going through the flag pipeline. The interpreter is frozen for Sprint 1, so the duplication
+    // stays; if fastCommit's formula changes, this must change with it.
     void commitFmacFlags(Ctx &c, const vu1ops::FmacResult &out)
     {
         c.vu.m_state.mac = out.mac;
@@ -228,7 +255,11 @@ namespace
                 dst[component] = word;
     }
 
-    // DIV Q, vfs<fsf>, vft<ftf> -- the FDIV unit (Vu1Gen::div), committed immediately.
+    // DIV Q, vfs<fsf>, vft<ftf> -- the FDIV unit, committed immediately instead of after the
+    // seven-cycle latency. KEEP IN SYNC with Vu1Gen::div (ps2_vu1_ops.h) for the divide-by-zero
+    // classification and the FLT_MAX saturation, and with the FDIV half of
+    // VU1Interpreter::fastCommit for the STATUS D/I bits. Both are frozen for Sprint 1; this is a
+    // deliberate copy rather than a call, because queueQ would never land without a cycle advance.
     template <uint8_t Fs, uint32_t Fsf, uint8_t Ft, uint32_t Ftf>
     void divQ(Ctx &c)
     {
@@ -277,20 +308,37 @@ namespace
         return value & 0xFFFFu;
     }
 
-    // True when the resident command list is one this file may run: family-A commands only, and a
-    // literal 0x42 terminator within the bound. Called before anything is written, so a "no" is a
-    // clean whole-program hand-back.
-    bool isFamilyAList(Ctx &c)
+    // True when this run is one this file may take over: a command list of family-A commands only,
+    // terminated by a literal 0x42 within the bound, and a header whose vertex and triangle counts
+    // keep the work inside kMaxVertices / kMaxTriangles. Called before anything is written, so a
+    // "no" is a clean whole-program hand-back.
+    bool isFamilyARun(Ctx &c, int32_t top)
     {
-        for (uint32_t index = 0; index < kMaxCommands; ++index)
+        bool terminated = false;
+        for (uint32_t index = 0; index < kMaxCommands && !terminated; ++index)
         {
             const uint32_t command = peekCommand(c, index);
             if (!isFamilyACommand(command))
                 return false;
-            if (command == kCmdEnd)
-                return true;
+            terminated = command == kCmdEnd;
         }
-        return false;
+        if (!terminated)
+            return false;
+
+        // The same two header words every family-A handler reads as its loop count.
+        const int32_t vertices = c.loadWord(top + 2, 2);  // TOP+2.z
+        const int32_t triangles = c.loadWord(top + 2, 3); // TOP+2.w
+        return vertices >= 0 && vertices <= kMaxVertices && triangles >= 0 && triangles <= kMaxTriangles;
+    }
+
+    // The interpreter's XGKICK model, read the way ps2_vu1_core.cpp's startXgkick reads it: the
+    // default copies the whole packet at kick time, PS2X_VU1_XGKICK_CYCLE_EXACT=1 streams it as
+    // m_cycle advances. This program never advances m_cycle, so only the default is safe for
+    // command 0x28's per-triangle kicks.
+    bool xgkickIsImmediate()
+    {
+        static const bool immediate = std::getenv("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+        return immediate;
     }
 
     // ---- command 0x68 -> 0x0b20: int -> float vertex unpack --------------------------------
@@ -985,7 +1033,9 @@ namespace
                 storeQword<kXyz2, kXYZW>(c, c.vi(kPacket) + 9);
 
                 // 0x1920: XGKICK vi2. The interpreter's default model copies the whole packet at
-                // kick time, so this is a complete GIF submission.
+                // kick time, so this is a complete GIF submission (the entry check refuses the
+                // cycle-exact model, under which back-to-back kicks would drop packets).
+                g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
                 c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kPacket))));
             }
 
@@ -1124,12 +1174,16 @@ namespace
 bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
 {
     Ctx c{vu};
-    if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u || !isFamilyAList(c))
+    // 0x1b50's XTOP result: the VIF double-buffered input base. Needed by the pre-scan (the header
+    // counts live at TOP+2) before it is committed to vi1.
+    const int32_t top = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
+    if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u || !xgkickIsImmediate() ||
+        !isFamilyARun(c, top))
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
 
-    // 0x1b50: XTOP vi1 -- the VIF double-buffered input base every handler derives its pointers
-    // from. 0x1b58: the command index starts at 0.
-    c.vi(1) = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
+    // 0x1b50: vi1 is the base every handler derives its pointers from.
+    // 0x1b58: the command index starts at 0.
+    c.vi(1) = top;
     c.vi(14) = 0;
 
     for (;;)

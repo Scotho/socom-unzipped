@@ -54,6 +54,12 @@ test_step() {
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" "$ROOT"/tests/fixtures/vu1/title/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  # Same two sets again with the hand-written native programs (src/lib/vu/native) selected. Note
+  # --native must follow the golden path: --verify consumes the next argument. The run prints
+  # "[vu1_replay] native entered=.. ended=.. handbacks=..", which is how these two lines are told
+  # apart from the two above (which report entered=0).
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --native "$ROOT"/tests/fixtures/vu1/title/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   echo "tests: ok"
 }
 
