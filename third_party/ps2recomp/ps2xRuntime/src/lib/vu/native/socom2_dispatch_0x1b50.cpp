@@ -243,6 +243,12 @@ namespace
         c.vu.m_state.status = (c.vu.m_state.status & 0xFCFu) | statusDi | (statusDi << 6);
     }
 
+    // FMAND: an integer register masked with the MAC flag register.
+    int32_t fmand(Ctx &c, int32_t mask)
+    {
+        return static_cast<int32_t>(c.vu.m_state.mac & static_cast<uint32_t>(static_cast<uint16_t>(mask)));
+    }
+
     // LOI: the pair's lower word is a float immediate in the I register.
     void loadImmediate(Ctx &c, uint32_t bits)
     {
@@ -988,6 +994,97 @@ namespace
         return true;                                             // 0x1958: B 0x1b60
     }
 
+    // ---- command 0x06 -> 0x1638: backface cull ---------------------------------------------
+    //
+    // Sets bit 0 of every triangle's flag word -- the gate command 0x28 reads -- from the sign of
+    // dot(eye - vertex, normal). The eye position is data qword 30 (research/07's cull eye); the
+    // index list is the same two-qword-per-triangle one 0x28 walks, with the reference vertex
+    // index in .x of qword 0 and the normal, in 15-bit fixed point, in qword 1.
+    //
+    // The sign test is the microcode's own: `FMAND vi13, vi5` with vi5 = 16 reads the S flag of
+    // the w lane of the MAC register, i.e. the sign of the dot product that the MADDz.w four pairs
+    // earlier produced. Four pairs is exactly the FMAC latency, so the interpreter has that entry
+    // committed at the FMAND and no other FMAC is in flight -- this file's immediate flag commit
+    // reads the same value.
+    namespace cull
+    {
+        constexpr uint8_t kEye = 26;     // data qword 30
+        constexpr uint8_t kNormal = 29;  // the triangle normal (ITOF15 of the index qword +1)
+        constexpr uint8_t kVertex = 28;  // the reference vertex's position
+        constexpr uint8_t kToEye = 27;   // eye - vertex
+        constexpr uint8_t kDot = 30;     // the product, then its .w = x + y + z
+        constexpr uint8_t kRecordBase = 3;  // vi3 = TOP+4
+        constexpr uint8_t kIndexCursor = 4; // vi4, two qwords per triangle
+        constexpr uint8_t kRemaining = 9;   // vi9
+        constexpr uint8_t kMacSignW = 5;    // vi5 = 16: the MAC bit for the w lane's sign
+        constexpr uint8_t kScratch = 8, kVertexPtr = 11, kFlags = 12, kSign = 13;
+    }
+
+    bool cmdBackfaceCull(Ctx &c)
+    {
+        using namespace cull;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        c.vi(kIndexCursor) = c.loadWord(c.vi(1) + 2, 0);         // 0x1638: TOP+2.x
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 3);           // 0x1640: TOP+2.w
+        loadQword<kEye, kXYZW>(c, 30);                           // 0x1648
+        c.vi(kRecordBase) = vi16(c.vi(1) + 4);                   // 0x1650
+        c.vi(kIndexCursor) = vi16(c.vi(kIndexCursor) + c.vi(1)); // 0x1658
+
+        // 0x1660-0x16a8: the first triangle's normal and reference vertex.
+        c.vi(kScratch) = c.loadWord(c.vi(kIndexCursor), 0);
+        loadQword<kNormal, kXYZW>(c, c.vi(kIndexCursor) + 1);
+        c.vi(kMacSignW) = 16;
+        c.vi(kVertexPtr) = vi16(c.vi(kRecordBase) + c.vi(kScratch));
+        up = itof<15, kNormal>(c);
+        loadQword<kVertex, kXYZW>(c, c.vi(kVertexPtr));
+        writeVf<kNormal, kXYZW>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kEye, kVertex>(c);
+        writeVf<kToEye, kXYZW>(c, up);
+
+        for (;;)
+        {
+            // 0x16c8-0x16f8: dot(eye - vertex, normal) in .w, while the next triangle's normal and
+            // reference vertex are fetched.
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZW, kToEye, kNormal, false, false, false>(c);
+            c.vi(kScratch) = c.loadWord(c.vi(kIndexCursor) + 2, 0);
+            writeVf<kDot, kXYZW>(c, up);
+            loadQword<kNormal, kXYZW>(c, c.vi(kIndexCursor) + 3);
+            c.vi(kFlags) = c.loadWord(c.vi(kIndexCursor), 3);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDot, false, false, false>(c);
+            c.vi(kVertexPtr) = vi16(c.vi(kRecordBase) + c.vi(kScratch));
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDot, false, false, false>(c);
+            loadQword<kVertex, kXYZW>(c, c.vi(kVertexPtr));
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDot, false, false, false>(c);
+            c.vi(kScratch) = 32766;
+            writeVf<kDot, kW>(c, up);
+
+            // 0x1700-0x1738: clear the visibility bit, set it again unless the dot came out
+            // negative, and write the flag word back.
+            c.vi(kFlags) = c.vi(kFlags) & c.vi(kScratch);
+            up = itof<15, kNormal>(c);
+            c.vi(kScratch) = 1;
+            writeVf<kNormal, kXYZW>(c, up);
+            c.vi(kSign) = fmand(c, c.vi(kMacSignW));
+            if (!(static_cast<int16_t>(c.vi(kSign)) > 0))
+                c.vi(kFlags) = c.vi(kFlags) | c.vi(kScratch);
+            storeIntWord<kW>(c, c.vi(kIndexCursor), c.vi(kFlags));
+
+            // 0x1740-0x1750: the next triangle's eye vector, then loop.
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kEye, kVertex>(c);
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 1);
+            writeVf<kToEye, kXYZW>(c, up);
+            c.vi(kIndexCursor) = vi16(c.vi(kIndexCursor) + 2);
+            if (!(static_cast<int16_t>(c.vi(kRemaining)) > 0))
+                return true;                                     // 0x1760: B 0x1b60
+        }
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -996,6 +1093,8 @@ namespace
         {
         case kCmdUnpack:
             return cmdUnpackVertices(c);
+        case kCmdCull:
+            return cmdBackfaceCull(c);
         case kCmdTransform:
             return cmdTransformDivide(c);
         case kCmdFade:
