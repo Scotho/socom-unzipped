@@ -298,10 +298,48 @@ namespace
         c.vu.m_state.status = (c.vu.m_state.status & 0xFCFu) | statusDi | (statusDi << 6);
     }
 
-    // FMAND: an integer register masked with the MAC flag register.
-    int32_t fmand(Ctx &c, int32_t mask)
+    // FMAND: an integer register masked with a MAC flag register value.
+    int32_t fmandWith(uint32_t mac, int32_t mask)
     {
-        return static_cast<int32_t>(c.vu.m_state.mac & static_cast<uint32_t>(static_cast<uint16_t>(mask)));
+        return static_cast<int32_t>(mac & static_cast<uint32_t>(static_cast<uint16_t>(mask)));
+    }
+
+    // ... against the newest FMAC's flags, which is what this file's immediate commit leaves in
+    // m_state.mac. Correct wherever the FMAND is at least four pairs downstream of the FMAC whose
+    // flags it wants and nothing else has issued in between (command 0x06's cull test); the
+    // clipper's two FMANDs are not, and pass a captured value to fmandWith instead.
+    int32_t fmand(Ctx &c, int32_t mask) { return fmandWith(c.vu.m_state.mac, mask); }
+
+    // CLIPw.xyz vfs, vft_w -- the clipping flag register. KEEP IN SYNC with Vu1Gen::clip
+    // (ps2_vu1_ops.h) and VU1Interpreter::queueClip (ps2_vu1_core.cpp): this is their bit
+    // arithmetic with an immediate commit, because a queued entry would never land without a
+    // cycle advance. Nothing in this microcode image reads the register back -- there is no
+    // FCAND/FCOR/FCEQ/FCGET anywhere in the 16 KB (research/13 4.4) -- but `--regs all` compares
+    // it, so the three dead CLIPws in the clipper's prologue still have to run.
+    template <uint8_t Fs, uint8_t Ft>
+    void clipW(Ctx &c)
+    {
+        const float(*vf)[4] = c.vu.m_state.vf;
+        uint32_t wBits = 0u;
+        std::memcpy(&wBits, &vf[Ft][3], sizeof(wBits));
+        const int32_t limit =
+            (wBits & 0x7F800000u) != 0u ? static_cast<int32_t>(wBits & 0x7FFFFFFFu) : 0x007FFFFF;
+        uint32_t flags = 0u;
+        for (uint32_t lane = 0; lane < 3u; ++lane)
+        {
+            uint32_t bits = 0u;
+            std::memcpy(&bits, &vf[Fs][lane], sizeof(bits));
+            int32_t positive = 0, negative = 0;
+            std::memcpy(&positive, &bits, 4);
+            const uint32_t negated = bits ^ 0x80000000u;
+            std::memcpy(&negative, &negated, 4);
+            if (positive > limit)
+                flags |= 1u << (2u * lane);
+            if (negative > limit)
+                flags |= 2u << (2u * lane);
+        }
+        c.vu.m_workingClip = ((c.vu.m_workingClip << 6) | (flags & 0x3Fu)) & 0xFFFFFFu;
+        c.vu.m_state.clip = c.vu.m_workingClip;
     }
 
     // LOI: the pair's lower word is a float immediate in the I register.
@@ -1535,6 +1573,354 @@ namespace
             if (!(static_cast<int16_t>(c.vi(kRemaining)) > 0))
                 return true;                                     // 0x1760: B 0x1b60
         }
+    }
+
+    // ---- 0x3618: the five-plane Sutherland-Hodgman clipper ---------------------------------
+    //
+    // Called only from command 0x02's `BAL vi15, 0x3618`, once per front-facing primitive, and by
+    // a wide margin the most expensive thing in a family-B list (60 % of all VU1 work in the
+    // research corpus). It clips the triangle against five planes in turn, ping-ponging between
+    // the buffers at data qwords 40 and 76, and hands back vi8 = the surviving polygon's base
+    // qword and vi10 = its vertex count (research/13 4.4).
+    //
+    // Each vertex is three qwords -- position, texture coordinates, colour -- and all three are
+    // interpolated with the same parameter, so the helpers below move them as a unit.
+    namespace clip
+    {
+        // Registers whose role is stable across the whole subroutine.
+        constexpr uint8_t kMask = 4;      // vi4: the plane-enable mask from qword 27.x -- dead
+        constexpr uint8_t kInBuffer = 5;  // vi5: the stage's input buffer base (40 or 76)
+        constexpr uint8_t kOutBuffer = 6; // vi6: ... its output buffer base, swapped per stage
+        constexpr uint8_t kLink = 2;      // vi2: the BAL link register of the two inner helpers
+        constexpr uint8_t kRead = 8;      // vi8: the input cursor; also the returned polygon base
+        constexpr uint8_t kWrite = 9;     // vi9: the output cursor
+        constexpr uint8_t kInCount = 10;  // vi10: input vertices left in this stage
+        constexpr uint8_t kOutCount = 11; // vi11: vertices this stage has emitted
+        constexpr uint8_t kSide = 13;     // vi13: the edge's code, 0 | 16 | 32 | 48
+        constexpr uint8_t kSideC = 7;     // vi7: its C half, then the 48 and 16 constants
+
+        // The edge's two endpoints while the helper runs: P (the previous vertex, saved) and C
+        // (the next one, loaded over P's registers), plus the plane and the working distances.
+        constexpr uint8_t kPrev0 = 17, kPrev1 = 18, kPrev2 = 19;
+        constexpr uint8_t kCurr0 = 21, kCurr1 = 22, kCurr2 = 23;
+        constexpr uint8_t kPlanePoint = 28, kPlaneNormal = 30;
+        constexpr uint8_t kDistC = 25, kDistP = 26, kLerp2 = 27;
+    }
+
+    // 0x3a90 -- close the polygon: append a copy of output vertex 0 after the last emitted one,
+    // so the next stage's edge loop wraps. vi8 = the output buffer base, vi9 = the write cursor.
+    void clipClosePolygon(Ctx &c)
+    {
+        using namespace clip;
+        loadQword<kCurr0, kXYZW>(c, c.vi(kRead) + 0);
+        loadQword<kCurr1, kXYZW>(c, c.vi(kRead) + 1);
+        loadQword<kCurr2, kXYZW>(c, c.vi(kRead) + 2);
+        storeQword<kCurr0, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+        storeQword<kCurr1, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+        storeQword<kCurr2, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+    }
+
+    // 0x3ad0 -- clip one edge P->C against the current plane, appending 0, 1 or 2 vertices at the
+    // output cursor. The hot loop: 12,492 calls and ~46 % of all pair-executions in the corpus.
+    void clipOneEdge(Ctx &c)
+    {
+        using namespace clip;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        // 0x3ad0-0x3ae0: P moves into vf17-19 (`ADDx vf0.x` -- a copy that still pushes FMAC
+        // flags) while C loads over vf21-23.
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kCurr0, 0, false, true, false>(c);
+        loadQword<kCurr0, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+        writeVf<kPrev0, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kCurr1, 0, false, true, false>(c);
+        loadQword<kCurr1, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+        writeVf<kPrev1, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kCurr2, 0, false, true, false>(c);
+        loadQword<kCurr2, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+        writeVf<kPrev2, kXYZW>(c, up);
+
+        // 0x3ae8-0x3b58: the two signed plane distances, dot((vertex - point), normal): dC in
+        // vf25 (.w, then copied to .z) and dP in vf26 (.w).
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kCurr0, kPlanePoint>(c);
+        writeVf<kDistC, kXYZW>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kPrev0, kPlanePoint>(c);
+        writeVf<kDistP, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kDistC, kPlaneNormal, false, false, true>(c);
+        writeVf<kDistC, kXYZ>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kDistP, kPlaneNormal, false, false, true>(c);
+        writeVf<kDistP, kXYZ>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDistC, false, false, false>(c);
+        writeAcc<kW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDistC, false, false, true>(c);
+        c.vi(kSideC) = 32;                                       // 0x3b30: the MAC bit for Sz
+        writeAcc<kW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDistC, false, false, true>(c);
+        writeVf<kDistC, kW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kZ, 0, kDistC, false, false, false>(c);
+        const uint32_t macDistC = c.vu.m_state.mac;              // 0x3b40, read by the first FMAND
+        writeVf<kDistC, kZ>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDistP, false, false, true>(c);
+        writeAcc<kW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDistP, false, false, true>(c);
+        writeAcc<kW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDistP, false, false, true>(c);
+        const uint32_t macDistP = c.vu.m_state.mac;              // 0x3b58, read by the second
+        writeVf<kDistP, kW>(c, up);
+
+        // 0x3b60-0x3b88: the side code. FMAC flags are four pairs deep, so the FMAND at 0x3b60
+        // reads the flags of the ADDw.z at 0x3b40 (dC's sign, MAC bit 5 = Sz) and the one at
+        // 0x3b78 those of the MADDz.w at 0x3b58 (dP's sign, MAC bit 4 = Sw) -- hence the two
+        // captured MAC values above rather than the newest one.
+        //
+        // Taking the sign from the VU's own MAC bit, instead of comparing the float with zero, is
+        // also what settles -0.0 (research/13 open question 4, not exercised by the corpus): the
+        // MAC sign bit is set for -0.0, so such a lane counts as OUTSIDE, where `dC < 0.0f` would
+        // have called it inside. Everything here goes through vu1ops::fmacArith, which is the
+        // interpreter's own flag arithmetic, so the two agree by construction rather than by a
+        // rule restated here.
+        c.vi(kSideC) = fmandWith(macDistC, c.vi(kSideC));        // 0x3b60: 32 iff dC < 0
+        c.vi(kSide) = 16;                                        // 0x3b68
+        up = fmac<ArithSub, Vu1Gen::SrcBc, 2, kW, kDistP, kDistC>(c);  // 0x3b78: vf25.w = dP - dC
+        c.vi(kSide) = fmandWith(macDistP, c.vi(kSide));          // 16 iff dP < 0
+        writeVf<kDistC, kW>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcBc, 3, kZ, kDistC, kDistP>(c);  // 0x3b80: vf26.z = dC - dP
+        c.vi(kSide) = c.vi(kSide) | c.vi(kSideC);
+        writeVf<kDistP, kZ>(c, up);
+        c.vi(kSideC) = 48;                                       // 0x3b88
+
+        // 0x3b90 `IBEQ vi13, vi0, 0x3cf8` with `DIV Q, vf26w, vf25w` (= dP / (dP - dC)) in its
+        // delay slot: the divide is issued on every path, including the two that never use it.
+        const bool bothInside = static_cast<int16_t>(c.vi(kSide)) == 0;
+        divQ<kDistP, 3, kDistC, 3>(c);
+        if (bothInside)
+        {
+            // 0x3cf8: P is emitted unchanged, C becomes the next call's P.
+            storeQword<kPrev0, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            storeQword<kPrev1, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            storeQword<kPrev2, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            c.vi(kOutCount) = vi16(c.vi(kOutCount) + 1);
+            return;
+        }
+
+        // 0x3ba0: 48 -- both outside, nothing is emitted.
+        if (static_cast<int16_t>(c.vi(kSide)) == static_cast<int16_t>(c.vi(kSideC)))
+            return;
+
+        c.vi(kSideC) = 16;                                       // 0x3bb0
+        if (static_cast<int16_t>(c.vi(kSide)) != static_cast<int16_t>(c.vi(kSideC)))
+        {
+            // 0x3c68: 32 -- P inside, C outside. Emit P, then the crossing point
+            // I = P + (C - P) * Q with the Q the delay slot above computed.
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kCurr0, kPrev0>(c);
+            writeVf<kDistC, kXYZW>(c, up);
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kCurr1, kPrev1>(c);
+            writeVf<kDistP, kXYZW>(c, up);
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kCurr2, kPrev2>(c);
+            writeVf<kLerp2, kXYZW>(c, up);
+            storeQword<kPrev0, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kDistC, 0, false, false, false>(c);
+            writeVf<kDistC, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kDistP, 0, false, false, false>(c);
+            writeVf<kDistP, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kLerp2, 0, false, false, false>(c);
+            writeVf<kLerp2, kXYZW>(c, up);
+            storeQword<kPrev1, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kDistC, kPrev0, false, false, true>(c);
+            writeVf<kDistC, kXYZW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kDistP, kPrev1, false, false, true>(c);
+            writeVf<kDistP, kXYZW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kLerp2, kPrev2, false, false, true>(c);
+            writeVf<kLerp2, kXYZW>(c, up);
+            storeQword<kPrev2, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            storeQword<kDistC, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            storeQword<kDistP, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            storeQword<kLerp2, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+            c.vi(kOutCount) = vi16(c.vi(kOutCount) + 2);
+            return;
+        }
+
+        // 0x3bd0: 16 -- P outside, C inside. Q is recomputed the other way round,
+        // dC / (dC - dP), and only the crossing point I = C + (P - C) * Q is emitted.
+        divQ<kDistC, 2, kDistP, 2>(c);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kPrev0, kCurr0>(c);
+        writeVf<kDistC, kXYZW>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kPrev1, kCurr1>(c);
+        writeVf<kDistP, kXYZW>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZW, kPrev2, kCurr2>(c);
+        writeVf<kLerp2, kXYZW>(c, up);
+        // 0x3bf0 WAITQ: the divide above has landed, which immediate commit makes a no-op here.
+        up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kDistC, 0, false, false, false>(c);
+        writeVf<kDistC, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kDistP, 0, false, false, false>(c);
+        writeVf<kDistP, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXYZW, kLerp2, 0, false, false, false>(c);
+        writeVf<kLerp2, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kDistC, kCurr0, false, false, true>(c);
+        writeVf<kDistC, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kDistP, kCurr1, false, false, true>(c);
+        writeVf<kDistP, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZW, kLerp2, kCurr2, false, false, true>(c);
+        writeVf<kLerp2, kXYZW>(c, up);
+        storeQword<kDistC, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+        storeQword<kDistP, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+        storeQword<kLerp2, kXYZW>(c, c.vi(kWrite)); c.vi(kWrite) = vi16(c.vi(kWrite) + 1);
+        c.vi(kOutCount) = vi16(c.vi(kOutCount) + 1);
+    }
+
+    // One clip stage: read the previous stage's polygon out of one buffer and write the clipped
+    // one into the other. Returns false when the stage emptied the polygon, which is the
+    // subroutine's early return with vi10 == 0.
+    //
+    // The gate at the head of every stage -- `IAND vi8, vi4, <bit>` immediately followed by
+    // `IBEQ vi8, vi0, <next stage>` -- is DEAD. On the VU a branch reading an integer register
+    // written by the instruction right before it sees the stale value, here the bit constant,
+    // which is never zero; so all five planes are always clipped against and data qword 27.x,
+    // which vi4 holds, has no effect at all. Proved by differential run (research/13 4.4). The
+    // IAND still runs because vi8 is a compared register until the stage overwrites it.
+    //
+    // EdgeLink / CloseLink are the two `BAL vi2` return addresses (pc / 8) -- vi2 is compared, and
+    // it differs per stage. EarlyOutInDelaySlot marks stages 1 and 2, where the emptiness test
+    // sits in the polygon-close BAL's delay slot and a taken branch cancels the call; stages 3-5
+    // have a NOP there and test after the call returns.
+    template <int32_t MaskBit, int32_t PlanePoint, int32_t PlaneNormal, bool FirstStage,
+              int32_t EdgeLink, int32_t CloseLink, bool EarlyOutInDelaySlot>
+    bool clipStage(Ctx &c)
+    {
+        using namespace clip;
+
+        c.vi(kRead) = MaskBit;
+        c.vi(kRead) = c.vi(kMask) & c.vi(kRead);                 // the dead gate's IAND
+        loadQword<kPlanePoint, kXYZW>(c, PlanePoint);
+        loadQword<kPlaneNormal, kXYZW>(c, PlaneNormal);
+        c.vi(kRead) = vi16(c.vi(kInBuffer));
+        c.vi(kWrite) = vi16(c.vi(kOutBuffer));
+        // Stage 1 knows it has the three source vertices; every later stage takes the count the
+        // stage before it emitted, immediately before zeroing that counter.
+        c.vi(kInCount) = FirstStage ? 3 : vi16(c.vi(kOutCount));
+        c.vi(kOutCount) = 0;
+
+        // The first "previous" vertex; the wrap copy at the end of the buffer means vi10 calls to
+        // the edge helper cover v0->v1 ... v(vi10-1)->v0.
+        loadQword<kCurr0, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+        loadQword<kCurr1, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+        loadQword<kCurr2, kXYZW>(c, c.vi(kRead)); c.vi(kRead) = vi16(c.vi(kRead) + 1);
+
+        do
+        {
+            c.vi(kLink) = EdgeLink;
+            clipOneEdge(c);
+            c.vi(kInCount) = vi16(c.vi(kInCount) - 1);
+        } while (static_cast<int16_t>(c.vi(kInCount)) != 0);
+
+        c.vi(kRead) = vi16(c.vi(kOutBuffer));
+        c.vi(kLink) = CloseLink;
+        const bool empty = static_cast<int16_t>(c.vi(kOutCount)) == 0;
+        if (EarlyOutInDelaySlot)
+        {
+            if (empty)
+            {
+                c.vi(kRead) = vi16(c.vi(kOutBuffer));            // the taken branch's delay slot
+                return false;
+            }
+            clipClosePolygon(c);
+            c.vi(kRead) = vi16(c.vi(kOutBuffer));
+        }
+        else
+        {
+            clipClosePolygon(c);
+            c.vi(kRead) = vi16(c.vi(kOutBuffer));
+            if (empty)
+                return false;
+        }
+
+        // The output becomes the next stage's input.
+        c.vi(kOutBuffer) = vi16(c.vi(kInBuffer));
+        c.vi(kInBuffer) = vi16(c.vi(kRead));
+        return true;
+    }
+
+    // Live-in: the triangle's three vertices in vf17/vf18/vf19, vf26/vf27/vf28, vf29/vf30/vf31.
+    // Live-out: vi8 = the final polygon's base qword, vi10 = its vertex count (0 when the
+    // triangle was clipped away entirely).
+    void primSubroutine3618(Ctx &c)
+    {
+        using namespace clip;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        __m128 up;
+
+        // 0x3618-0x3690. The local->view transform into vf23/vf24/vf25 and the three CLIPws over
+        // its results are DEAD -- vf23 and vf25 are overwritten before any read, vf24 is never
+        // read again, and no FCAND/FCOR/FCEQ/FCGET exists anywhere in the image, so the clipping
+        // flag register is never consumed (research/13 4.4). They stay because the register file
+        // and the clip register are compared. Interleaved with them, the three vertices are laid
+        // out at buffer A with vertex 0 repeated at the end: the wrap copy.
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 13, 17>(c);
+        c.vi(kMask) = c.loadWord(27, 0);                         // the dead plane-enable mask
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 14, 17>(c);
+        c.vi(kInBuffer) = 40;
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 15, 17>(c);
+        c.vi(kRead) = vi16(c.vi(kInBuffer));
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 16, 0, false, true, false>(c);
+        c.vi(kOutBuffer) = 76;
+        writeVf<23, kXYZW>(c, up);
+
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 13, 26>(c);
+        storeQword<17, kXYZW>(c, c.vi(kRead) + 0);               // vertex 0
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 14, 26>(c);
+        storeQword<18, kXYZW>(c, c.vi(kRead) + 1);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 15, 26>(c);
+        storeQword<19, kXYZW>(c, c.vi(kRead) + 2);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 16, 0, false, true, false>(c);
+        storeQword<26, kXYZW>(c, c.vi(kRead) + 3);               // vertex 1
+        writeVf<24, kXYZW>(c, up);
+
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 13, 29>(c);
+        storeQword<27, kXYZW>(c, c.vi(kRead) + 4);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 14, 29>(c);
+        storeQword<28, kXYZW>(c, c.vi(kRead) + 5);
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 15, 29>(c);
+        storeQword<29, kXYZW>(c, c.vi(kRead) + 6);               // vertex 2
+        writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 16, 0, false, true, false>(c);
+        storeQword<30, kXYZW>(c, c.vi(kRead) + 7);
+        writeVf<25, kXYZW>(c, up);
+
+        clipW<23, 23>(c);
+        storeQword<31, kXYZW>(c, c.vi(kRead) + 8);
+        clipW<24, 24>(c);
+        storeQword<17, kXYZW>(c, c.vi(kRead) + 9);               // the wrap copy of vertex 0
+        storeQword<18, kXYZW>(c, c.vi(kRead) + 10);
+        clipW<25, 25>(c);
+        storeQword<19, kXYZW>(c, c.vi(kRead) + 11);
+
+        // The five planes: qword 31 + normal 32 for the near plane, then the eye (qword 30) with
+        // normals 33-36. The mask bits are the ones the dead gates test.
+        if (!clipStage<0x20, 31, 32, true, 1761, 1768, true>(c))
+            return;
+        if (!clipStage<0x02, 30, 33, false, 1785, 1792, true>(c))
+            return;
+        if (!clipStage<0x01, 30, 34, false, 1809, 1816, false>(c))
+            return;
+        if (!clipStage<0x08, 30, 35, false, 1834, 1841, false>(c))
+            return;
+        if (!clipStage<0x04, 30, 36, false, 1859, 1866, false>(c))
+            return;
+
+        c.vi(kRead) = vi16(c.vi(kInBuffer));                     // 0x3a70: the final polygon
+        c.vi(kInCount) = vi16(c.vi(kOutCount));                  // 0x3a78: its vertex count
     }
 
     // Runs one command. Returns false when the command is not implemented yet: the caller then
