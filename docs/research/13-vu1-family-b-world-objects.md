@@ -94,7 +94,7 @@ first pc. **[verified]** — `logs/vu1entry0/famBC_handlers.txt`.
 | 2 | `0x0f90-0x1100` | 47 | 59,271 | 9 | `0x10` | family-A distance fade; **entered 765×** at its loop head `0xfa8` (9 from `0x10`, 756 from `0x12`) | **[verified]** |
 | 3 | `0x1980-0x1a70` | 31 | 49,261 | 961 | — (`B 0x1980` from `0x1ab8`) | **shared packet-flush tail**: staging → GS format → `XGKICK 423` + `XGKICK 112` | **[verified]** |
 | 4 | `0x0df8-0x0f00` | 34 | 45,800 | 9 | `0x08` | family-A transform+divide; loop head `0xe10` entered 791× (9 + 782 from `0x0a`) | **[verified]** |
-| 5 | `0x1b60-0x1b98` | 8 | 40,736 | 5092 | `0x4a` | the dispatcher body — 5092 commands over 48 programs = 106 per program | **[verified]** |
+| 5 | `0x1b60-0x1b98` | 8 | 40,736 | 5092 | — | **the dispatcher body** — 5092 commands over 48 programs = 106 per program. Jump-table slot 37 (command word `0x4a`, at `0x1df0`) also targets `0x1b60`, i.e. `0x4a` is a no-op command; it is never issued in this corpus, so all 5092 entries are ordinary dispatcher round trips. | **[verified]** |
 | 6 | `0x1f70-0x20c0` | 43 | 36,893 | 39 | **`0x02`** | world-object setup; per-primitive loop head `0x1f98` ran 1224× | **[verified]** |
 | 7 | `0x1460-0x15a8` | 42 | 36,652 | 539 | — (`B 0x1460` from `0x15c8`) | the lighting loop, entered only by `0x1a` in this corpus (`0x18` never dispatched) | **[verified]** |
 | 8 | `0x0b20-0x0c58` | 40 | 22,858 | 48 | **`0x68`** | int→float unpack, **in place**; first command of every list | **[verified]** |
@@ -166,7 +166,7 @@ Active `XGKICK` sites (pair-execution counts, 3428 kicks total):
 | `327` | template colour quad; **`.w` is the alpha scale used by the flush tail** | entry 0 (`SQ vf5`) | `0x5e8`, `0x17d8`, `0x1990` | **[verified]** |
 | `328` | unknown (`10000000 11111111 0 0` in the corpus) | entry 0 (`SQ vf6`) | `0x04f8` (cmd `0x5c`, never dispatched) | **[guess]** |
 | `329.x`,`329.y` | family-A packet-buffer bases (300, 290) | `0x1950`/`0x1960` | `0x17e0`/`0x17e8` | **[verified]** |
-| `329.z` | **saved index-list pointer** across the `BAL` that clobbers `vi15` | `0x1fe0` | `0x20d0` | **[verified]** |
+| `329.z` | **saved index-list pointer** across the `BAL` that clobbers `vi15`; written in the cull branch's delay slot, so on **every** primitive including culled ones | `0x1fe0` | `0x20d0` | **[verified]** |
 | `330 … 335` | the render-state packet kicked by `0x64`: GIFtag `NLOOP=5, EOP=1, NREG=1, REGS=A+D`, then 5 A+D register writes (observed: `ALPHA_1 0x42`, `TEX1_1 0x14`, `TEX0_1 0x06`, `TEST_1 0x47`, `CLAMP_1 0x08`) | EE via VIF | GS via `XGKICK 330` | **[verified]** tag + count; the register set is per-object data, so the list above is **[guess]** as a general rule |
 | `423` | a GIFtag with `NLOOP = 0, EOP = 1` — a **1-qword terminator/flush tag** | EE via VIF | `XGKICK` at `0x0f10` and `0x1a48` | **[verified]** |
 | `340 …` | the command list (see §3) | entry 0 | the dispatcher, `0x30`/`0x32`/`0x34` | **[verified]** |
@@ -194,7 +194,7 @@ is the standard convex-polygon Sutherland–Hodgman argument, **[guess]** as a h
 ## 3. The command list, revisited
 
 Research/12 §f.2 has the base format (one command per qword at 340, `x` low-16 = command word =
-2 × jump slot, `y` = branch target for `0x4c`, `z`/`w` unread). Two corrections:
+2 × jump slot, `y` = branch target for `0x4c`, `z`/`w` unread). Three corrections:
 
 ### 3.1 The `z` field is read — by `0x30`, `0x32` and `0x34`
 
@@ -241,8 +241,9 @@ Decoded, `logs/vu1dump4/vu1_prog_177.bin` (C over A). `0x30` sits at index 6, so
 **[verified]** — `logs/vu1entry0/famBC_cmdlists.txt`.
 
 `logs/vu1dump4/vu1_prog_35.bin` (C over B) is the same idea with `0x32` at index 7, block
-`q348…q355` (`q355.x = 4.0f`), list resuming at `q356` with `72 74 4c`, and `0x4c`'s `y = 3`
-looping back to index 3 (`0x0a`).
+`q348…q355` (`q355.x = 4.0f`), list resuming at `q356` with `72 74 4c`, and the `y = 3` that
+`0x4c` (index 18, `q358`) reads — from `q359`, the qword after it, see §4.7 — looping back to
+index 3 (`0x0a`).
 
 `logs/vu1dump3/vu1_prog_27.bin` has `0x34` at index 7, `vi14 = 8`, block `q348…q358`: GIFtag
 `NLOOP=5`, five A+D writes at `q349…q353`, then **five** VU-only parameter qwords `q354…q358`
@@ -253,6 +254,14 @@ looping back to index 3 (`0x0a`).
 `0x4c`/`0x32`/`0x30`/`0x34` all rewrite `vi14`. A parser must either follow the handlers or stop
 at the first command word it cannot explain. Research/12 §f.5's `?0x8006` entries are the first
 qword of an inline block, not a command. **[verified]**
+
+### 3.4 The `y` field `0x4c` reads is the qword **after** the `0x4c` command
+
+Same `vi14` bookkeeping as §3.1, opposite direction: `0x20e8` is `ILW.y vi14, 340(vi14)`, and at
+handler entry `vi14` already points past the `0x4c` command, so the offset `340` lands on the
+**following** qword, not on `0x4c`'s own. In every list in the corpus the neighbouring commands
+carry identical `y` values, so the distinction is invisible in the output but matters for a
+re-implementation. Details and the fall-in caveat: §4.7. **[verified]**
 
 ---
 
@@ -328,7 +337,8 @@ offsets relative to `vi1+4` (stride 3), `[0].w` = flags (**bit 0 = front-facing*
 0x1fc8  vi11 = vi13 & 1                  ; the front-facing bit from 0x06
 0x1fd0  vi15 += 2                        ; next index record
 0x1fd8  if (vi11 == 0) goto 0x20c8       ; culled -> straight to the loop back-edge
-0x1fe0  ISW.z vi15 -> 329(vi0)           ; save it: the BAL below clobbers vi15
+0x1fe0  ISW.z vi15 -> 329(vi0)           ; *** DELAY SLOT of 0x1fd8: RUNS ON BOTH PATHS ***
+                                         ; save the cursor; the BAL below clobbers vi15
 0x1fe8  vi11 = 2
 0x1ff0  vi13 = vi13 & 2                  ; the second flag bit
 0x1ff8  ISW.w vi13 -> 112(vi0)           ; stash it in the GIFtag's REGS[8..15] word
@@ -352,7 +362,12 @@ clipping; 122 clipped away), `0x20b8` 782.
 Notes an implementer must not miss:
 
 * `vi15` is **both** the index-list cursor **and** the `BAL` link register. `0x1fe0` saves the
-  cursor to `329.z` before the call; `0x20c8` restores it. **[verified]**
+  cursor to `329.z`; `0x20c8` restores it. **`0x1fe0` is the delay slot of the cull branch at
+  `0x1fd8` and therefore executes on the culled path as well** — the generated code does the
+  store first and only then `if (taken) goto L_0x20c8`. An implementation that only saves the
+  cursor on the "visible" path leaves `329.z` at the previous primitive's value, and `0x20c8`'s
+  `ILW.z vi15, 329(vi0)` then rewinds the index list. 320 of the 1224 loop iterations in this
+  corpus take the culled path, so the bug would be immediate. **[verified]**
 * `vi11 = vi10 + 32767 + 1` is 16-bit wraparound, i.e. `NLOOP = vi10, EOP = 1`. The observed
   qword-112 `x` value is `0x00008003` for a 3-vertex primitive. **[verified]**
 * `ISW.w vi13, 112(vi0)` writes a **software flag into the GIFtag's `REGS[8..15]` word**. With
@@ -370,8 +385,13 @@ polygon, **`vi10`** = its vertex count. **[verified]**
 Clobbered: `vi2` (the inner link register), `vi4`-`vi11`, `vi13`, `vf17`-`vf19`, `vf21`-`vf28`,
 `vf30`, `ACC`, `Q`, the MAC and clipping flag registers. `vf20`, `vf29` and `vf31` are **not**
 written; `vi3`, `vi12` and `vi14` are not written. Nothing else in a family-B list depends on any
-of the clobbered registers across the call. **[verified]** (register scan of `0x3618`-`0x3d20`). The caller's `vi10 = 3 ; vi11 = 3` at `0x2060` is redundant — `0x3618`
-sets both itself at `0x36d0`/`0x36d8`. **[verified]**
+of the clobbered registers across the call. **[verified]** (register scan of `0x3618`-`0x3d20`).
+
+The caller's `vi10 = 3 ; vi11 = 3` at `0x2060` is redundant: stage 1 sets `vi10 = 3` itself at
+`0x36d0`, and **`vi11` is reset to `0` at `0x36d8` — not to 3** (it is the *output* vertex
+counter, zeroed at the head of every stage: `0x36d8`, `0x3798`, `0x3858`, `0x3920`, `0x39e8`).
+Stages 2-5 take their input count from the previous stage's `vi11` (`0x3790`, `0x3850`, `0x3918`,
+`0x39e0`) immediately before zeroing it. **[verified]**
 
 #### Prologue (`0x3618`-`0x3690`)
 
@@ -613,16 +633,34 @@ times over 961 entries (mean 3.03 vertices per primitive).
 0x20c8  vi12 -= 1                       ; the primitive counter set by 0x1f78
 0x20d0  vi15 = ILW.z 329(vi0)           ; restore the index-list cursor (WRITE, not read)
 0x20d8  if (vi12 == 0) goto 0x2100      ; -> B 0x1b40, the E bit: PROGRAM ENDS
-0x20e8  vi14 = ILW.y 340(vi14)          ; the loop target from this command's own y field
+0x20e8  vi14 = ILW.y 340(vi14)          ; the loop target -- see the note below on WHICH qword
 0x20f0  B 0x1f98                        ; back into 0x02's per-primitive body
 ```
 Reached 1224 times: 782 by dispatch and 442 by `0x1f70`'s two skip branches (320 culled + 122
 clipped away). 1185 loops, 39 ends — 39 being exactly the number of dumps whose list contains
 `0x02`. **[verified]**
 
-Two things an implementer must get right: `B 0x1f98` re-enters `0x02` **after** its prologue, so
-`vi12` and `vi15` are *not* recomputed; and the branch target `vi14` comes from `y` of the `0x4c`
-command's qword, not from a fixed offset. **[verified]**
+**Which qword supplies the loop target.** The dispatcher increments `vi14` *before* jumping
+(`0x1b70`), so at handler entry `vi14` is the index of the **next** command and the handler's own
+qword is at `339 + vi14` (§3.1). `0x20e8` reads `340(vi14)` — i.e. **the qword after the `0x4c`
+command**, not `0x4c`'s own `y`. In this corpus the `0x42` that follows every `0x4c` carries the
+same `y` value (e.g. `vu1_prog_141`: `q347` = `0x4c` `y=2`, `q348` = `0x42` `y=2`), so the two
+readings are indistinguishable from the data. Take the pseudocode, not the intuition.
+**[verified]** from the disassembly and `logs/vu1entry0/famBC_cmdlists.txt`.
+
+**Caveat on the fall-in entries.** 442 of the 1224 entries arrive from `0x1f70`'s two skip
+branches rather than from a dispatch, and on those `vi14` is whatever the last *dispatched*
+command left it at — one past `0x02` on the culled path, one past `0x2a` on the clipped-away
+path — so `0x20e8` reads a **different list qword** than it does on a dispatched entry. That the
+loop still lands on the right index is a property of the EE's data (every command qword in a
+family-B list carries the same `y`), not of the microcode. A native implementation that caches
+"the loop target" once per list would be relying on the same accident. **[guess]** that the
+uniform-`y` invariant holds for every list the game can emit; **[verified]** that it holds for
+all 39 family-B lists here.
+
+Two further things an implementer must get right: `B 0x1f98` re-enters `0x02` **after** its
+prologue, so `vi12` and `vi15` are *not* recomputed; and `0x20d0`'s `ILW.z vi15, 329(vi0)` is a
+**write** to `vi15`, not a read of it. **[verified]**
 
 ### 4.8 Family C
 
@@ -721,8 +759,10 @@ trailing `42` is never dispatched — `0x4c` ends the program itself. **[verifie
 **`0x32` is the handler that rewrites `vi14`**: entered with `vi14 = 8` (index 8 of the list) it
 sets `vi14 = 16`, kicks the inline block at `q348…q354`, rescales `S`/`T` at qwords 150…, and
 `JR`s to `0x1a78`, which re-runs the flush (a second `XGKICK 423` + `XGKICK 112`) and hands back.
-The dispatcher then reads **q356 = `0x72`**, q357 = `0x74`, q358 = `0x4c` (`y = 3` → back to
-index 3, `0x0a`). **[verified]**
+The dispatcher then reads **q356 = `0x72`**, q357 = `0x74`, q358 = `0x4c`; `0x4c` enters with
+`vi14 = 19`, so its `ILW.y 340(vi14)` reads **`q359`** (`y = 3`) → back to index 3, `0x0a`.
+`q358` and `q359` both carry `y = 3`, so which one is read is invisible in the output; §4.7 has
+the mechanism. **[verified]**
 
 ### Family C over A — `logs/vu1dump4/vu1_prog_177.bin` (single pass, 10 dispatches)
 
@@ -774,6 +814,30 @@ array, `0x0a`/`0x12`/`0x56`/`0x1a` → `0x2a`/`0x32`), qword **39.w** (the draw 
 > are set inside `0x3618`, not by `0x02`'s own code. **[verified]** from the disassembly
 > (`0x0f20`/`0x0f38`, `0x1108`/`0x1120`, `0x15b8`/`0x15d0`, `0x0650`, `0x1a98`, `0x23d0`).
 
+Per-handler live-in / live-out, one line each (beyond the always-present `vi1` and `vi14`):
+
+| cmd | live-in (registers) | live-out (registers) | side effects in VU memory | marking |
+|---|---|---|---|---|
+| `0x68` `0x0b20` | none | none | rewrites the vertex block `TOP+4 …` in place | **[verified]** |
+| `0x06` `0x1638` | none | none | sets bit 0 of `w` in every index record | **[verified]** |
+| `0x02` `0x1f70` | none (first dispatch); `vi12`, `vi15` when re-entered at `0x1f98` | `vi8`, `vi10`, `vi12`, `vi15` | writes qwords 40-111 (clipper), 112 (GIFtag), 329.z | **[verified]** |
+| `0x0a` `0x0f08` | `vi8`, `vi10`, `vf1`-`vf4` | `vi8`, `vi10` unchanged | `XGKICK 423`; writes qwords 150 … | **[verified]** |
+| `0x12` `0x1108` | `vi8`, `vi10` | `vi8`, `vi10` unchanged | writes the `F` lane of qwords 152, 155, … | **[verified]** |
+| `0x56` `0x0640` | `vi10` | `vi10` unchanged | writes slot `+1` of qwords 150 … (overshoot to a multiple of 3) | **[verified]** |
+| `0x1a` `0x15b0` | `vi8`, `vi10`, `vf5`-`vf7`, `vf9`-`vf12` | `vi8`, `vi10` unchanged | writes slot `+1` of qwords 150 … | **[verified]** |
+| `0x2a` `0x1a78` | `vi10` | `vi10` unchanged | reads qwords 39.w and 112.w; writes 113 …; `XGKICK 423` + `XGKICK 112` | **[verified]** |
+| `0x4c` `0x20c8` | `vi12`, `vi14`, qword 329.z | `vi12`, `vi14`, `vi15` | none | **[verified]** |
+| **`0x64`** `0x04a8` | **none** | **none** (`vi2` is written `= 330` but read by nothing afterwards) | `XGKICK 330` only — the whole handler is `vi2 = 330; XGKICK vi2; B 0x1b60` | **[verified]** |
+| **`0x72`** `0x2268` | **none** | **none** | writes qword `39.w := 0`; clobbers nothing (`ISW.w vi0`) | **[verified]** |
+| **`0x74`** `0x2280` | **none** | `vi3` is written (`= 2`) but read by nothing afterwards | writes qword `39.w := 2` | **[verified]** |
+| `0x30` `0x22a0` | `vi14` (to locate the inline block) | `vi14` (advanced by 8·N); then falls into `0x1780`'s contract | `XGKICK` the inline block; rescales `S`/`T` at qwords 40 … in place; uses qword 339 as scratch | **[verified]** |
+| `0x32` `0x23b0` | `vi14`, `vi10` | `vi14` (advanced by 8·N), `vi10` unchanged; then falls into `0x1a78`'s contract | as above but qwords 150 …; qword 339 scratch | **[verified]** |
+| `0x34` `0x2690` | `vi14` | `vi14` (advanced by 11·N); then falls into `0x1780`'s contract | `XGKICK` the inline block; rewrites qwords 40 …; qword 339 scratch | **[verified]** for the register/`vi14` contract; the per-vertex maths is **[partial]** |
+
+`0x64`, `0x72` and `0x74` are therefore completely order-independent with respect to registers —
+the only thing that orders them is qword `39.w` and the GS state their packets set.
+**[verified]**
+
 ### 6.3 The hand-back rule for family B and C
 
 A native program may stop only immediately before an `ILW.x vi5, 340(vi14)` read
@@ -805,6 +869,7 @@ anywhere in that list as long as `vi14` is right; `vi9`/`vi3`/`vi4` are re-deriv
 |---|---|---|
 | §f.1 row 1: `0x3618` is a "per-primitive clip/transform subroutine; uses `vf13..vf16`" (name **[guess]**) | It is a five-plane Sutherland–Hodgman clipper. It reads `vf13`-`vf16` but the result is dead. | **[verified]** |
 | §f.2: "`z`, `w` … no handler in the corpus was observed reading them" | `z` **is** read, by `0x30`/`0x32`/`0x34`, as the inline-block count. `w` is still never read. | **[verified]** |
+| §f.2: "`y` = **branch target**: the command index that `0x20e8` … loads to loop the list" | True of the value, not of the qword: `0x20e8` reads `340(vi14)` with `vi14` already past the `0x4c` command, so it takes `y` from the **following** qword (§3.4, §4.7). Invisible here because neighbouring commands carry the same `y`. | **[verified]** |
 | §f.3: "`0x1440` and `0x3618` both *write* `vf13..vf16` before use" | `0x1440` writes them; `0x3618` **reads** them and discards the result. | **[verified]** |
 | §f.3: family B's boundary needs "exactly one register: `vi12`" | `vi8`, `vi10`, `vi12` (and `vi15`, mirrored in memory) all cross. | **[verified]** |
 | §f.4: `0xf90`'s `LQ vf24`/`vf25` shown without comment | They are dead loads; `vf24`/`vf25` are never read in `0xf90`-`0x1100`. | **[verified]** |
