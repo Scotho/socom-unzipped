@@ -35,6 +35,15 @@ namespace
     constexpr uint32_t kVuLowerNop = 0x8000033Cu;
     constexpr uint32_t kVuUpperEBit = 1u << 30;
 
+    // IADDIU vit, vis, imm (ps2_vu1_tests.cpp).
+    uint32_t makeVuIaddiu(uint8_t it, uint8_t is, int16_t imm)
+    {
+        return (0x08u << 25) |
+               (static_cast<uint32_t>(it & 0xFu) << 16) |
+               (static_cast<uint32_t>(is & 0xFu) << 11) |
+               (static_cast<uint32_t>(imm) & 0x7FFu);
+    }
+
     void writePair(uint8_t *code, uint32_t pc, uint32_t lower, uint32_t upper)
     {
         std::memcpy(code + pc, &lower, sizeof(lower));
@@ -53,13 +62,15 @@ namespace
         return hash;
     }
 
-    // Three NOP pairs, the second one carrying the E bit: entered at pc 0 the microcode runs the
-    // pair at 8 (E), then one more pair at 16, and ends with pc past it.
+    // Three pairs, the second one carrying the E bit: entered at pc 0 the microcode runs the
+    // pair at 8 (E), then one more pair at 16, and ends with pc past it. The pair at 0 writes
+    // vi12, so a run that started there is told apart from one that started at 8.
     constexpr uint32_t kProgramEndPc = 24u;
+    constexpr uint8_t kFirstPairVi = 12u;
 
     void writeThreePairProgram(uint8_t *code)
     {
-        writePair(code, 0u, kVuLowerNop, kVuUpperNop);
+        writePair(code, 0u, makeVuIaddiu(kFirstPairVi, 0u, 1), kVuUpperNop); // IADDIU vi12, vi0, 1
         writePair(code, 8u, kVuLowerNop, kVuUpperNop | kVuUpperEBit);
         writePair(code, 16u, kVuLowerNop, kVuUpperNop);
     }
@@ -82,11 +93,16 @@ void register_vu1_native_tests()
 {
     // PS2X_VU1_NATIVE is read once per process into a static in VU1Interpreter::run(), so it has
     // to be set before the first microprogram runs -- registration happens before MiniTest::Run().
+    // Only when the environment has not already chosen a value, so an A/B run can override it
+    // (the same rule main.cpp's setEnvDefault applies to the other reference-mode knobs).
+    if (std::getenv("PS2X_VU1_NATIVE") == nullptr)
+    {
 #ifdef _WIN32
-    _putenv_s("PS2X_VU1_NATIVE", "1");
+        _putenv_s("PS2X_VU1_NATIVE", "1");
 #else
-    setenv("PS2X_VU1_NATIVE", "1", 1);
+        setenv("PS2X_VU1_NATIVE", "1", 1);
 #endif
+    }
 
     MiniTest::Case("VU1Native", [](TestCase &tc)
     {
@@ -121,6 +137,9 @@ void register_vu1_native_tests()
             vu.setNativeProgramsOverride(nullptr, 0u);
 
             t.Equals(vu.state().vi[11], 0x5678, "the native program should have run first");
+            t.Equals(vu.state().vi[kFirstPairVi], 0,
+                     "the microcode should have resumed at the pc the native program set, not at the entry:"
+                     " the pair at 0 must not have run");
             t.Equals(vu.state().pc, kProgramEndPc,
                      "the microcode should have resumed at pc 8 and reached the E bit");
             t.IsFalse(vu.state().ebit, "the E bit should be cleared once the program ended");

@@ -2772,7 +2772,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 const uint64_t nativeEntered = g_vu1NativeEntered.load(std::memory_order_relaxed);
                 const uint64_t nativeEnded = g_vu1NativeEnded.load(std::memory_order_relaxed);
                 const uint64_t nativeHandBacks = g_vu1NativeHandBacks.load(std::memory_order_relaxed);
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu native/s=%llu entered %llu ended %llu handbacks\n",
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu native-entered/s=%llu ended/s=%llu handbacks/s=%llu\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
                              static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,

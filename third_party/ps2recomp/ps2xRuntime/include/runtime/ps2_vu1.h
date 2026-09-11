@@ -441,6 +441,9 @@ private:
 // Selected when the 16 KB code image hashes to `hash` and the program is entered at `entryPc`.
 // Same contract as KnownProgramFn: true = ended (E bit reached); false = hand back to the
 // microcode at m_state.pc with every live register set as the microcode would have them.
+// execute() resets the scheduler before the native call, but resume() (MSCNT) does not: a
+// program registered at a mid-program entry pc that hands back must expect in-flight FMAC
+// results to commit after it returns. Entry pcs that are program starts (0, 0x1b50) are safe.
 struct Vu1NativeProgram
 {
     uint64_t hash;
