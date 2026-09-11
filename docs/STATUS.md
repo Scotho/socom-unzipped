@@ -4,7 +4,7 @@
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify); gates `python -m tools_py.parity.gate`.
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
 - Sprint 1 (2026-09-10 →): Tasks 1-8 done (tests, verify fixtures, gate command, rules, research, native registry, dispatcher program, gate+default on).
-- Native VU1: dispatcher (entry 0x1b50) 107/166 lists native across dump2/3/4 — all 76 family-A plus all 31 family-B (0x02/0x0a/0x12/0x56/0x1a/0x2a/0x4c, the 0x3618 clipper, the 0x1980 flush tail); family C still hands back whole; gate green, default on (PS2X_VU1_NATIVE=0 reverts)
+- Native VU1: dispatcher (entry 0x1b50) 123/166 lists native across dump2/3/4 — all of families A and B plus 16 of the 17 family-C lists (0x64/0x72/0x74/0x30/0x32, the inline GIF block and the vi14 rewrite the pre-scan now walks); residual 43 hand-backs, all in dump3: 42 lists of a shape this file has no handlers for at all (`70 06 08 40 42`, `70 08 40 42`, `52 66 08 40 42` — commands 0x70/0x52/0x66/0x40, not a header-ceiling rejection) and 1 list using 0x34, whose per-vertex ERLENG maths research/13 documents only as [partial]; gate green, default on (PS2X_VU1_NATIVE=0 reverts)
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
 
 ## 2026-09-11 00:45 (local) — Sprint 1 landed: the project is testable (`./build.sh test` + one gate command) and the first hand-written native VU1 program (the 0x1b50 dispatcher) is on by default
