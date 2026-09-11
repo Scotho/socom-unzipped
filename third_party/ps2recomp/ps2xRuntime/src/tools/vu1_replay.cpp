@@ -18,6 +18,8 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <map>
+#include <sstream>
 #include <thread>
 #include <unordered_map>
 #include <windows.h>
@@ -96,38 +98,89 @@ namespace
         return base;
     }
 
+    std::string stateLine(const char *name, const VU1Interpreter &vu, uint32_t packetCount,
+                          const std::vector<uint8_t> &packets, uint64_t cycles, const std::vector<uint8_t> &data)
+    {
+        const VU1State &s = vu.m_state;
+        std::string out;
+        char buf[128];
+        auto add = [&](const char *fmt, auto... args) { std::snprintf(buf, sizeof(buf), fmt, args...); out += buf; };
+        add("%s packets=%u bytes=%zu hash=%016llx cycles=%llu endpc=0x%x", name, packetCount, packets.size(),
+            (unsigned long long)fnv1a(packets.data(), packets.size()), (unsigned long long)cycles, s.pc);
+        add(" mac=%03x status=%03x clip=%06x r=%08x", s.mac, s.status, s.clip, s.r);
+        uint32_t w = 0;
+        std::memcpy(&w, &s.q, 4); add(" q=%08x", w);
+        std::memcpy(&w, &s.p, 4); add(" p=%08x", w);
+        std::memcpy(&w, &s.i, 4); add(" i=%08x", w);
+        out += " vi=";
+        for (int r = 0; r < 16; ++r) add("%s%04x", r ? "," : "", (unsigned)(s.vi[r] & 0xFFFF));
+        out += " acc=";
+        for (int c = 0; c < 4; ++c) { std::memcpy(&w, &s.acc[c], 4); add("%s%08x", c ? "," : "", w); }
+        out += " vf=";
+        for (int r = 0; r < 32; ++r)
+            for (int c = 0; c < 4; ++c) { std::memcpy(&w, &s.vf[r][c], 4); add("%s%08x", (r || c) ? "," : "", w); }
+        add(" data=%016llx\n", (unsigned long long)fnv1a(data.data(), data.size()));
+        return out;
+    }
+
     void printState(FILE *out, const char *name, const VU1Interpreter &vu, uint32_t packetCount,
                     const std::vector<uint8_t> &packets, uint64_t cycles, const std::vector<uint8_t> &data)
     {
-        const VU1State &s = vu.m_state;
-        std::fprintf(out, "%s packets=%u bytes=%zu hash=%016llx cycles=%llu endpc=0x%x", name, packetCount,
-                     packets.size(), (unsigned long long)fnv1a(packets.data(), packets.size()),
-                     (unsigned long long)cycles, s.pc);
-        std::fprintf(out, " mac=%03x status=%03x clip=%06x r=%08x", s.mac, s.status, s.clip, s.r);
-        uint32_t w = 0;
-        std::memcpy(&w, &s.q, 4);
-        std::fprintf(out, " q=%08x", w);
-        std::memcpy(&w, &s.p, 4);
-        std::fprintf(out, " p=%08x", w);
-        std::memcpy(&w, &s.i, 4);
-        std::fprintf(out, " i=%08x", w);
-        std::fprintf(out, " vi=");
-        for (int r = 0; r < 16; ++r)
-            std::fprintf(out, "%s%04x", r ? "," : "", (unsigned)(s.vi[r] & 0xFFFF));
-        std::fprintf(out, " acc=");
-        for (int c = 0; c < 4; ++c)
+        const std::string line = stateLine(name, vu, packetCount, packets, cycles, data);
+        std::fputs(line.c_str(), out);
+    }
+
+    // "name k=v k=v ..." -> map; the first token is the dump name.
+    std::map<std::string, std::string> parseStateLine(const std::string &line, std::string &name)
+    {
+        std::map<std::string, std::string> kv;
+        std::istringstream in(line);
+        in >> name;
+        std::string tok;
+        while (in >> tok)
         {
-            std::memcpy(&w, &s.acc[c], 4);
-            std::fprintf(out, "%s%08x", c ? "," : "", w);
+            const size_t eq = tok.find('=');
+            if (eq != std::string::npos)
+                kv[tok.substr(0, eq)] = tok.substr(eq + 1);
         }
-        std::fprintf(out, " vf=");
-        for (int r = 0; r < 32; ++r)
-            for (int c = 0; c < 4; ++c)
+        return kv;
+    }
+
+    std::map<std::string, std::map<std::string, std::string>> loadGolden(const char *path)
+    {
+        std::map<std::string, std::map<std::string, std::string>> golden;
+        std::ifstream in(path);
+        std::string line, name;
+        while (std::getline(in, line))
+        {
+            if (line.empty()) continue;
+            auto kv = parseStateLine(line, name);
+            golden[name] = std::move(kv);
+        }
+        return golden;
+    }
+
+    // Returns the number of mismatching fields; prints one MISMATCH line per field.
+    int compareState(const std::string &name, const std::map<std::string, std::string> &golden,
+                     const std::map<std::string, std::string> &got, bool regs)
+    {
+        std::vector<const char *> fields = {"packets", "bytes", "hash", "endpc", "data"};
+        if (regs)
+            for (const char *f : {"vi", "vf", "acc", "q", "p", "i", "mac", "status", "clip", "r"})
+                fields.push_back(f);
+        int bad = 0;
+        for (const char *f : fields)
+        {
+            const auto g = golden.find(f), o = got.find(f);
+            const std::string gv = g == golden.end() ? "<missing>" : g->second;
+            const std::string ov = o == got.end() ? "<missing>" : o->second;
+            if (gv != ov)
             {
-                std::memcpy(&w, &s.vf[r][c], 4);
-                std::fprintf(out, "%s%08x", (r || c) ? "," : "", w);
+                ++bad;
+                std::printf("MISMATCH %s %s golden=%s got=%s\n", name.c_str(), f, gv.c_str(), ov.c_str());
             }
-        std::fprintf(out, " data=%016llx\n", (unsigned long long)fnv1a(data.data(), data.size()));
+        }
+        return bad;
     }
 }
 
@@ -136,11 +189,14 @@ int main(int argc, char **argv)
     if (argc < 2)
     {
         std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]\n"
-                             "       vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...\n");
+                             "       vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...\n"
+                             "       vu1_replay --verify <golden.txt> [--regs all|none] [--native] <dump.bin>...\n");
         return 2;
     }
     std::string outPath = "vu1_packets.bin";
     std::string batchDir;
+    std::string verifyPath;
+    bool verifyRegs = true;
     std::string profPath;
     std::string genPath;
     std::string pcHistPath;
@@ -172,6 +228,12 @@ int main(int argc, char **argv)
             trace = true;
         else if (!std::strcmp(argv[i], "--state"))
             printStateFlag = true;
+        else if (!std::strcmp(argv[i], "--verify") && i + 1 < argc)
+            verifyPath = argv[++i];
+        else if (!std::strcmp(argv[i], "--regs") && i + 1 < argc)
+            verifyRegs = std::strcmp(argv[++i], "none") != 0;
+        else if (!std::strcmp(argv[i], "--native"))
+            _putenv("PS2X_VU1_NATIVE=1");
         else
             inputs.push_back(argv[i]);
     }
@@ -202,6 +264,18 @@ int main(int argc, char **argv)
         g_vu1PcHist = pcHist.data();
         jrHist.assign(2048, 0u);
         g_vu1JrHist = jrHist.data();
+    }
+
+    std::map<std::string, std::map<std::string, std::string>> golden;
+    int mismatches = 0;
+    if (!verifyPath.empty())
+    {
+        golden = loadGolden(verifyPath.c_str());
+        if (golden.empty())
+        {
+            std::fprintf(stderr, "--verify: no lines read from %s\n", verifyPath.c_str());
+            return 2;
+        }
     }
 
     GS gs;
@@ -340,6 +414,26 @@ int main(int argc, char **argv)
             data.assign(vuData, vuData + PS2_VU1_DATA_SIZE);
         }
 
+        if (!verifyPath.empty())
+        {
+            const std::string base = baseName(input);
+            std::string gotName;
+            auto got = parseStateLine(stateLine(base.c_str(), vu, packetCount, packets, cycles, data), gotName);
+            const auto g = golden.find(base);
+            if (g == golden.end())
+            {
+                std::printf("MISMATCH %s <no golden line>\n", base.c_str());
+                ++mismatches;
+            }
+            else
+            {
+                const int bad = compareState(base, g->second, got, verifyRegs);
+                mismatches += bad;
+                if (bad == 0) std::printf("OK %s\n", base.c_str());
+            }
+            continue;
+        }
+
         if (batchDir.empty())
         {
             std::printf("pc=0x%x top=0x%x itop=0x%x: %u packets, %zu bytes, %llu cycles, end pc=0x%x\n",
@@ -429,5 +523,10 @@ int main(int argc, char **argv)
                  inputs.size(), repeat, (unsigned long long)totalCycles, (unsigned long long)totalPairs,
                  totalHostNs / 1e6, totalCycles ? totalHostNs / (double)totalCycles : 0.0,
                  totalPairs ? totalHostNs / (double)totalPairs : 0.0);
+    if (!verifyPath.empty())
+    {
+        std::printf("%s: %d mismatching field(s)\n", mismatches ? "FAIL" : "PASS", mismatches);
+        return mismatches ? 1 : 0;
+    }
     return 0;
 }
