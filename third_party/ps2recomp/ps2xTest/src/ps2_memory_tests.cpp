@@ -905,7 +905,11 @@ void register_ps2_memory_tests()
             t.IsTrue(secondOk, "second queued PATH3 packet should flush in-order");
         });
 
-        tc.Run("GIF arbiter prioritizes PATH1 then PATH2 then PATH3", [](TestCase &t)
+        // The arbiter drains in submission order rather than by path priority: the vendored
+        // priority sort moved a PATH1 XGKICK ahead of PATH3 texture uploads queued by the same
+        // DMA chain, which garbled the title-screen text (fork commit 3767dd1). The sort is still
+        // reachable for A/B checks through PS2X_GIF_PRIORITY_SORT.
+        tc.Run("GIF arbiter drains queued packets in submission order", [](TestCase &t)
         {
             std::vector<uint8_t> order;
             GifArbiter arbiter([&](const uint8_t *data, uint32_t sizeBytes)
@@ -924,9 +928,9 @@ void register_ps2_memory_tests()
             arbiter.drain();
 
             t.Equals(order.size(), static_cast<size_t>(3u), "all queued packets should be drained");
-            t.Equals(order[0], static_cast<uint8_t>(0x11u), "PATH1 should be drained first");
-            t.Equals(order[1], static_cast<uint8_t>(0x22u), "PATH2 should be drained second");
-            t.Equals(order[2], static_cast<uint8_t>(0x33u), "PATH3 should be drained third");
+            t.Equals(order[0], static_cast<uint8_t>(0x33u), "PATH3 was submitted first and should drain first");
+            t.Equals(order[1], static_cast<uint8_t>(0x22u), "PATH2 was submitted second and should drain second");
+            t.Equals(order[2], static_cast<uint8_t>(0x11u), "PATH1 was submitted last and should drain last");
         });
 
         tc.Run("VIF DIRECTHL stalls behind queued PATH3 IMAGE packets", [](TestCase &t)
@@ -1396,7 +1400,10 @@ void register_ps2_memory_tests()
             });
 
             t.IsTrue(mem.writeIORegister(kVif1Ch + 0x30u, kTag), "write VIF1 TADR should succeed");
-            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x104u), "write VIF1 CHCR STR|CHAIN should succeed");
+            // CHCR.TTE (bit 6) is what makes the DMAC transfer a DMAtag's upper 64 bits into the
+            // VIF1 FIFO; without it the compact VIFcode never reaches VIF1 (fork commit 5152946).
+            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x144u),
+                     "write VIF1 CHCR STR|CHAIN|TTE should succeed");
 
             mem.processPendingTransfers();
 
@@ -1435,7 +1442,10 @@ void register_ps2_memory_tests()
             std::memcpy(rdram + kTag + 12u, &itopCmd, sizeof(itopCmd));
 
             t.IsTrue(mem.writeIORegister(kVif1Ch + 0x30u, kTag), "write VIF1 TADR should succeed");
-            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x104u), "write VIF1 CHCR STR|CHAIN should succeed");
+            // CHCR.TTE (bit 6) is what makes the DMAC transfer a DMAtag's upper 64 bits into the
+            // VIF1 FIFO; without it the compact VIFcode never reaches VIF1 (fork commit 5152946).
+            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x144u),
+                     "write VIF1 CHCR STR|CHAIN|TTE should succeed");
 
             mem.processPendingTransfers();
 
@@ -1497,7 +1507,10 @@ void register_ps2_memory_tests()
             });
 
             t.IsTrue(mem.writeIORegister(kVif1Ch + 0x30u, kBaseAddr), "write VIF1 TADR should succeed");
-            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x104u), "write VIF1 CHCR STR|CHAIN should succeed");
+            // CHCR.TTE (bit 6) is what makes the DMAC transfer a DMAtag's upper 64 bits into the
+            // VIF1 FIFO; without it the compact VIFcode never reaches VIF1 (fork commit 5152946).
+            t.IsTrue(mem.writeIORegister(kVif1Ch + 0x00u, 0x144u),
+                     "write VIF1 CHCR STR|CHAIN|TTE should succeed");
 
             mem.processPendingTransfers();
 

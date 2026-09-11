@@ -1431,7 +1431,11 @@ void register_code_generator_tests()
                      "truncated trailing JAL must not degrade to comment-only output");
         });
 
-        tc.Run("JAL to internal target becomes goto", [](TestCase &t) {
+        // A JAL is a call even when its target is one of the function's own entry points:
+        // emitting a goto ran the callee in the caller's host frame, so its `jr $ra` returned
+        // out of the host function and the scheduler had to unwind and re-enter the caller at
+        // ra for every recursive return (control_flow_emitter.cpp, fork commit 2b06f50).
+        tc.Run("JAL to internal target is emitted as a call", [](TestCase &t) {
             Function func;
             func.name = "jal_internal";
             func.start = 0xC000;
@@ -1449,13 +1453,16 @@ void register_code_generator_tests()
 
             CodeGenerator gen({}, {});
             std::string generated = gen.generateFunction(func, {jal, delay, targetInst}, false);
-            printGeneratedCode("JAL to internal target becomes goto", generated);
+            printGeneratedCode("JAL to internal target is emitted as a call", generated);
 
             t.IsTrue(generated.find("SET_GPR_U32(ctx, 31, 0xC008u);") != std::string::npos, "Internal JAL should set RA");
-            t.IsTrue(generated.find("goto label_c010;") != std::string::npos, "Internal JAL should use goto");
+            t.IsTrue(generated.find("goto label_c010;") == std::string::npos,
+                     "Internal JAL should not branch inside the caller's host frame");
+            t.IsTrue(generated.find("PS2Runtime::GuestBranchKind::DirectCall") != std::string::npos,
+                     "Internal JAL should dispatch as a direct call");
         });
 
-        tc.Run("backward internal JAL stays inline and does not return to dispatcher", [](TestCase &t) {
+        tc.Run("backward internal JAL is emitted as a call, not a loop back-edge", [](TestCase &t) {
             Function func;
             func.name = "jal_internal_backward";
             func.start = 0xC100;
@@ -1469,12 +1476,14 @@ void register_code_generator_tests()
 
             CodeGenerator gen({}, {});
             std::string generated = gen.generateFunction(func, {loopHead, backwardJal, delay}, false);
-            printGeneratedCode("backward internal JAL stays inline and does not return to dispatcher", generated);
+            printGeneratedCode("backward internal JAL is emitted as a call, not a loop back-edge", generated);
 
             t.IsTrue(generated.find("SET_GPR_U32(ctx, 31, 0xC110u);") != std::string::npos,
                      "backward internal JAL should still set RA");
-            t.IsTrue(generated.find("goto label_c100;") != std::string::npos,
-                     "backward internal JAL should still re-enter the internal target directly");
+            t.IsTrue(generated.find("goto label_c100;") == std::string::npos,
+                     "backward internal JAL should not re-enter the caller's host frame");
+            t.IsTrue(generated.find("PS2Runtime::GuestBranchKind::DirectCall") != std::string::npos,
+                     "backward internal JAL should dispatch as a direct call");
             t.IsTrue(generated.find("if (runtime->shouldPreemptGuestExecution())") == std::string::npos,
                      "backward internal JAL should not expose a mid-call dispatcher return");
         });

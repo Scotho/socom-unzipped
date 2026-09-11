@@ -96,6 +96,11 @@ add_executable(ps2x_tests
     $<TARGET_OBJECTS:ps2_test_function_table>
 )
 
+# libps2_runtime.a references a few symbols that the SOCOM II runner defines in
+# game_overrides_socom2.cpp, which is attached to ps2EntryRunner rather than to the
+# static library (see ps2xRuntime/CMakeLists.txt). Inert definitions satisfy the link.
+target_sources(ps2x_tests PRIVATE src/socom2_link_stubs.cpp)
+
 option(PRINT_GENERATED_CODE "Print generated code in tests" OFF)
 if(PRINT_GENERATED_CODE)
 
@@ -123,7 +128,7 @@ target_link_libraries(ps2x_tests PRIVATE
 if(MSVC)
     target_link_options(ps2x_tests PRIVATE "/STACK:8388608")
 elseif(MINGW)
-    target_link_options(ps2x_tests PRIVATE "--stack,8388608")
+    target_link_options(ps2x_tests PRIVATE "-Wl,--stack,8388608")
 endif()
 
 if(COMMAND ps2x_stage_ffmpeg_runtime_dlls)

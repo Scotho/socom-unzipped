@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [recomp|runtime|all]   (default all)
+# Usage: ./build.sh [recomp|runtime|test|all]   (default all)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
@@ -46,10 +46,20 @@ runtime() {
   echo "built dist/socom2.exe"
 }
 
+test_step() {
+  cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
+  # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
+  ( cd "$RTBUILD/ps2xTest" && ./ps2x_tests.exe )
+  mkdir -p "$ROOT/dist"
+  cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
+  echo "tests: ok"
+}
+
 case "$STEP" in
   tools)   build_tools ;;
   recomp)  recomp ;;
   runtime) runtime ;;
+  test)    test_step ;;
   all)     recomp; runtime ;;
   *) echo "unknown step $STEP"; exit 2 ;;
 esac
