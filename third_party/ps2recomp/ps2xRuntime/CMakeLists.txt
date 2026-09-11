@@ -380,6 +380,9 @@ endfunction()
 file(GLOB PS2X_VU1_GENERATED_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/vu/generated/*.cpp)
 # Line tables for the generated VU1 code so vu1_replay --prof samples map back to pairs.
 set_source_files_properties(${PS2X_VU1_GENERATED_SOURCES} PROPERTIES COMPILE_OPTIONS "-g1")
+# VU1 native programs: hand-written host replacements of one microprogram entry point
+# (vu1_native_programs.cpp is the table the interpreter looks up by image hash and entry pc).
+file(GLOB PS2X_VU1_NATIVE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/vu/native/*.cpp)
 
 add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
@@ -400,6 +403,7 @@ add_library(ps2_runtime STATIC
     src/lib/vu/ps2_vu1_lower.cpp
     src/lib/games_database.cpp
     ${PS2X_VU1_GENERATED_SOURCES}
+    ${PS2X_VU1_NATIVE_SOURCES}
 )
 
 if(PS2X_ENABLE_RUNTIME_LOGS)

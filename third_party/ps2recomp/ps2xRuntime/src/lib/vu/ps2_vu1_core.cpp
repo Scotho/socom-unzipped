@@ -2034,6 +2034,21 @@ struct Vu1KnownProgram
 extern const Vu1KnownProgram g_vu1KnownPrograms[];
 extern const uint32_t g_vu1KnownProgramCount;
 
+// Native-program registry (src/lib/vu/native/vu1_native_programs.cpp): hand-written host
+// replacements of one microprogram entry point, keyed by (image hash, entry pc).
+extern const Vu1NativeProgram g_vu1NativePrograms[];
+extern const uint32_t g_vu1NativeProgramCount;
+std::atomic<uint64_t> g_vu1NativeEntered{0}, g_vu1NativeEnded{0}, g_vu1NativeHandBacks{0};
+// PS2X_VU1_NATIVE selects them; off until a native program is verified against the microcode.
+constexpr bool kVu1NativeDefault = false;
+
+void VU1Interpreter::setNativeProgramsOverride(const Vu1NativeProgram *table, uint32_t count)
+{
+    m_nativeTable = table;
+    m_nativeCount = count;
+    m_knownGeneration = ~0ull; // force the image hash to be recomputed on the next run
+}
+
 void VU1Interpreter::runFast(uint8_t *vuCode, uint32_t codeSize,
                              uint8_t *vuData, uint32_t dataSize,
                              GS &gs, PS2Memory *memory, uint64_t budgetEnd, bool &programEnded)
@@ -2388,29 +2403,59 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     // the cycle-exact scheduler (they were ~4.5% of the game thread on it, STATUS 2026-09-09).
     static const bool s_vu0FastEnv = std::getenv("PS2X_VU0_FAST") == nullptr || std::atoi(std::getenv("PS2X_VU0_FAST")) != 0;
     m_fast = s_fastEnv && (m_unit == Unit::VU1 || s_vu0FastEnv) && !traceThis;
+    static const bool s_genEnv = std::getenv("PS2X_VU1_GEN") == nullptr || std::atoi(std::getenv("PS2X_VU1_GEN")) != 0;
+    // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
+    // both the fast and the cycle-exact path: what they produce does not depend on how the
+    // microcode would have been interpreted. Off by default; PS2X_VU1_NATIVE=1 selects them.
+    static const bool s_nativeEnv = std::getenv("PS2X_VU1_NATIVE") ? std::atoi(std::getenv("PS2X_VU1_NATIVE")) != 0 : kVu1NativeDefault;
+    // Both registries are keyed by the FNV-1a hash of the 16 KB code image, rehashed only when
+    // the VIF MPG generation counter changes.
+    const bool hashableImage = memory != nullptr && vuCode == memory->getVU1Code();
+    if (hashableImage && (s_nativeEnv || (s_genEnv && g_vu1KnownProgramCount != 0u)))
+    {
+        const uint64_t generation = memory->getVU1CodeGeneration();
+        if (generation != m_knownGeneration)
+        {
+            m_knownGeneration = generation;
+            uint64_t hash = 1469598103934665603ull;
+            for (uint32_t i = 0; i < codeSize; ++i)
+            {
+                hash ^= vuCode[i];
+                hash *= 1099511628211ull;
+            }
+            m_knownFn = nullptr;
+            for (uint32_t i = 0; i < g_vu1KnownProgramCount; ++i)
+                if (g_vu1KnownPrograms[i].hash == hash)
+                    m_knownFn = g_vu1KnownPrograms[i].fn;
+            m_knownHash = hash;
+        }
+    }
+    // The entry pc is part of the native key, so this resolves on every run.
+    m_nativeFn = nullptr;
+    if (s_nativeEnv && hashableImage)
+    {
+        const Vu1NativeProgram *table = m_nativeTable ? m_nativeTable : g_vu1NativePrograms;
+        const uint32_t count = m_nativeTable ? m_nativeCount : g_vu1NativeProgramCount;
+        for (uint32_t i = 0; i < count; ++i)
+            if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn)
+                m_nativeFn = table[i].fn;
+    }
+    if (m_nativeFn && !m_state.dBitEnabled && !m_state.tBitEnabled && !m_state.ebit &&
+        !m_state.haltAfterDelaySlot && !m_state.branchPending)
+    {
+        g_vu1NativeEntered.fetch_add(1, std::memory_order_relaxed);
+        programEnded = m_nativeFn(*this, budgetEnd);
+        if (programEnded)
+            g_vu1NativeEnded.fetch_add(1, std::memory_order_relaxed);
+        else
+            g_vu1NativeHandBacks.fetch_add(1, std::memory_order_relaxed);
+    }
     if (m_fast)
     {
         // Known program (recompiled image): run the generated code until it ends the program or
         // hands back to the interpreter (budget, unsupported pair) with m_state.pc set.
-        static const bool s_genEnv = std::getenv("PS2X_VU1_GEN") == nullptr || std::atoi(std::getenv("PS2X_VU1_GEN")) != 0;
-        if (s_genEnv && memory != nullptr && vuCode == memory->getVU1Code() && g_vu1KnownProgramCount != 0u)
+        if (!programEnded && s_genEnv && hashableImage && g_vu1KnownProgramCount != 0u)
         {
-            const uint64_t generation = memory->getVU1CodeGeneration();
-            if (generation != m_knownGeneration)
-            {
-                m_knownGeneration = generation;
-                uint64_t hash = 1469598103934665603ull;
-                for (uint32_t i = 0; i < codeSize; ++i)
-                {
-                    hash ^= vuCode[i];
-                    hash *= 1099511628211ull;
-                }
-                m_knownFn = nullptr;
-                for (uint32_t i = 0; i < g_vu1KnownProgramCount; ++i)
-                    if (g_vu1KnownPrograms[i].hash == hash)
-                        m_knownFn = g_vu1KnownPrograms[i].fn;
-                m_knownHash = hash;
-            }
             if (!m_knownFn)
             {
                 // Image with no generated code: count it for the stats line (and, once per hash,
@@ -2450,7 +2495,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         if (!programEnded && m_cycle < budgetEnd && !m_stopRequested)
             runFast(vuCode, codeSize, vuData, dataSize, gs, memory, budgetEnd, programEnded);
     }
-    while (!m_fast && m_cycle < budgetEnd && !m_stopRequested)
+    // A native program that ended the program leaves nothing for the cycle-exact loop to run.
+    while (!m_fast && !programEnded && m_cycle < budgetEnd && !m_stopRequested)
     {
         commitReadyPipelines();
         if (m_state.pc + 8u > codeSize)
@@ -2722,16 +2768,26 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 }
 #endif
                 static uint64_t s_lastUnknown = 0, s_lastHandBacks = 0;
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu\n",
+                static uint64_t s_lastNativeEntered = 0, s_lastNativeEnded = 0, s_lastNativeHandBacks = 0;
+                const uint64_t nativeEntered = g_vu1NativeEntered.load(std::memory_order_relaxed);
+                const uint64_t nativeEnded = g_vu1NativeEnded.load(std::memory_order_relaxed);
+                const uint64_t nativeHandBacks = g_vu1NativeHandBacks.load(std::memory_order_relaxed);
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu native/s=%llu entered %llu ended %llu handbacks\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
                              static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,
                              threadMs, procMs, (unsigned long long)(g_vu1UnknownImagePrograms - s_lastUnknown),
                              (unsigned long long)(g_vu1GenHandBacks - s_lastHandBacks),
-                             (unsigned long long)(g_vu0Programs.load(std::memory_order_relaxed) - s_lastVu0));
+                             (unsigned long long)(g_vu0Programs.load(std::memory_order_relaxed) - s_lastVu0),
+                             (unsigned long long)(nativeEntered - s_lastNativeEntered),
+                             (unsigned long long)(nativeEnded - s_lastNativeEnded),
+                             (unsigned long long)(nativeHandBacks - s_lastNativeHandBacks));
                 s_lastUnknown = g_vu1UnknownImagePrograms;
                 s_lastHandBacks = g_vu1GenHandBacks;
                 s_lastVu0 = g_vu0Programs.load(std::memory_order_relaxed);
+                s_lastNativeEntered = nativeEntered;
+                s_lastNativeEnded = nativeEnded;
+                s_lastNativeHandBacks = nativeHandBacks;
                 if (g_vu1BailHist)
                 {
                     // top hand-back pcs so far (PS2X_VU1_BAILHIST=1): seeds for vu1_replay --gen --seeds

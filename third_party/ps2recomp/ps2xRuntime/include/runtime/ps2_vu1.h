@@ -38,6 +38,10 @@ struct VU1State
     uint32_t branchDelay;
 };
 
+// Hand-written host replacement of one microprogram entry point (src/lib/vu/native); defined
+// below the interpreter because it names VU1Interpreter::KnownProgramFn.
+struct Vu1NativeProgram;
+
 class VU1Interpreter
 {
     friend struct Vu1Gen; // generated known-program code (src/lib/vu/ps2_vu1_ops.h)
@@ -68,6 +72,10 @@ public:
 
     // Generated known-program entry (src/lib/vu/generated): returns true when the program ended.
     typedef bool (*KnownProgramFn)(VU1Interpreter &vu, uint64_t budgetEnd);
+
+    // Test hook: use `table` instead of the built-in native-program registry
+    // (src/lib/vu/native/vu1_native_programs.cpp). nullptr, 0 restores the built-in table.
+    void setNativeProgramsOverride(const Vu1NativeProgram *table, uint32_t count);
 
 private:
     enum Pipeline : uint8_t
@@ -292,6 +300,11 @@ private:
     uint64_t m_knownGeneration = ~0ull;
     KnownProgramFn m_knownFn = nullptr;
     uint64_t m_knownHash = 0;
+    // Native programs (src/lib/vu/native), keyed by (image hash, entry pc) and selected by
+    // PS2X_VU1_NATIVE. m_nativeTable is the test override; nullptr = the built-in table.
+    const Vu1NativeProgram *m_nativeTable = nullptr;
+    uint32_t m_nativeCount = 0;
+    KnownProgramFn m_nativeFn = nullptr; // resolved for (m_knownHash, entry pc) on each run
     uint32_t m_fastFlagHead = 0;    // m_flagPipeline used as a ring in issue order
     uint32_t m_fastFlagCount = 0;
     uint64_t m_fastPairs = 0;       // executed pairs, folded into g_vuInsnCount at the end of a run
@@ -423,6 +436,16 @@ private:
     void recordViWriteForBranch(uint8_t reg, int32_t oldValue);
     void reportReservedInstruction(bool upper, uint32_t instruction);
     float broadcast(const float *vf, uint8_t bc);
+};
+
+// Selected when the 16 KB code image hashes to `hash` and the program is entered at `entryPc`.
+// Same contract as KnownProgramFn: true = ended (E bit reached); false = hand back to the
+// microcode at m_state.pc with every live register set as the microcode would have them.
+struct Vu1NativeProgram
+{
+    uint64_t hash;
+    uint32_t entryPc;
+    VU1Interpreter::KnownProgramFn fn;
 };
 
 #endif
