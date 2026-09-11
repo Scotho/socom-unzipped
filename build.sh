@@ -96,6 +96,47 @@ test_step() {
   #      PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch tests/fixtures/vu1/clamp \
   #          --no-native tests/fixtures/vu1/clamp/*.bin     # then state.txt -> golden.txt
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/clamp/golden.txt" --native --regs all "$ROOT"/tests/fixtures/vu1/clamp/*.bin
+  # 8-9: the per-handler clamps. Run 7 exercises the PRE-SCAN's ceiling -- a header above it is
+  #    refused whole at 0x1b50 and no handler is ever entered -- so it says nothing about the
+  #    clamps inside the handlers. Those cannot be reached with data at all: the pre-scan reads
+  #    the same two header words first, and vi10 is bounded by the clipper that produces it. They
+  #    are reached instead with the two test-only ceiling overrides, which lower the HANDLER-side
+  #    ceilings and leave the pre-scan's real constants alone (socom2_dispatch_0x1b50.cpp:
+  #    vertexCeiling / triangleCeiling / clippedVertexCeiling). Nothing in the game sets either.
+  #
+  #    Both runs check against run 4's own unmodified golden, with no new fixture bytes, because
+  #    that is the whole claim: a clamp hand-back has to leave exactly the state the microcode then
+  #    finishes the list from, so the end state must be the microcode's to the last register.
+  #
+  #    8: PS2X_VU1_NATIVE_TEST_CEILING=2 trips cmdUnpackVertices' clamp at 0x0b28 (TOP+2.z is 8..76
+  #       across the set) on the FIRST command of all twelve lists, every one of which starts 68.
+  #    9: PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 leaves every family-A count alone and trips
+  #       cmdClippedTransform's clamp at 0x0f38 (vi10) MID-LIST on the six lists that contain
+  #       family-B commands -- after 68/06/02 have run and the clipper has written qwords 40-111,
+  #       112 and 329.z and left vi8/vi10/vi12/vi15 live. That is the hand-back research/13 6.3
+  #       calls the inside of an indivisible unit, and the one this file's whole-state
+  #       reproduction is what makes safe; the other six (family A and C-over-A) still run to
+  #       their E bit, which is what makes the run a two-sided check rather than a blanket refusal.
+  expect_native() { # $1 = the exact counts to require, then the command
+    local want="$1"; shift
+    local out
+    out="$("$@" 2>&1)"
+    printf '%s\n' "$out" | grep -E 'native entered|PASS|FAIL' || true
+    if ! printf '%s\n' "$out" | grep -q "\[vu1_replay\] native $want"; then
+      printf 'clamp check: expected "native %s", got: %s\n' \
+        "$want" "$(printf '%s\n' "$out" | grep 'native entered')" >&2
+      return 1
+    fi
+    printf '%s\n' "$out" | grep -q '^PASS' || { echo "clamp check: verify did not PASS" >&2; return 1; }
+  }
+  expect_native "entered=12 ended=0 handbacks=12" \
+    env PS2X_VU1_NATIVE_TEST_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
+      --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
+      "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  expect_native "entered=12 ended=6 handbacks=6" \
+    env PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
+      --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
+      "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   echo "tests: ok"
 }
 

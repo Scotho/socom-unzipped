@@ -80,7 +80,16 @@
 //     list is refused before it starts instead (see the family-B clauses in isNativeRun).
 //   * Commands 0x30 and 0x32 check *both* their own rescale count and the count of the draw
 //     handler they tail-jump into, at their own entry, because after their first XGKICK a
-//     hand-back would replay the inline block.
+//     hand-back would replay the inline block. 0x32's check is two-sided: its rescale loop ends
+//     on `!= 0`, so a vi10 of zero is 65536 wrapping stores, and a 0x4c back edge can reach a
+//     0x32 with the zero the clipper's "clipped away entirely" path leaves.
+//
+// On real data a clamp cannot fire, because the pre-scan reads the same two header words first
+// and vi10 is bounded by the clipper that produced it. That is a property of the data, not of the
+// code, so the clamps are exercised in `./build.sh test` through two TEST-ONLY environment knobs,
+// PS2X_VU1_NATIVE_TEST_CEILING and PS2X_VU1_NATIVE_TEST_CLIP_CEILING, which lower the
+// handler-side ceilings and leave the pre-scan's alone (see vertexCeiling / triangleCeiling /
+// clippedVertexCeiling). Nothing in the game sets either, and both can only narrow.
 //
 // CAVEAT on any mid-list hand-back, clamp or otherwise: this file commits FMAC flags immediately
 // (see commitFmacFlags) instead of queueing them for the interpreter's four-deep flag pipeline.
@@ -141,10 +150,21 @@ namespace
 
     // ---- the header work ceiling -----------------------------------------------------------
     // Every handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest data.
-    // These limits bound a native run to a few thousand iterations and to 256 XGKICKs for a
-    // family-A list or 768 for a family-B one (three kicks a primitive: 423 from 0x0a, then 423
-    // and 112 from 0x2a), which is what makes ignoring budgetEnd and m_stopRequested defensible.
-    // A header outside the range (including a negative count) hands the list back whole.
+    // These limits bound a native run to a few thousand iterations, which is what makes ignoring
+    // budgetEnd and m_stopRequested defensible. A header outside the range (including a negative
+    // count) hands the list back whole.
+    //
+    // The kick bound, stated in full rather than as the per-primitive figure alone, because a
+    // family-C list kicks from three places:
+    //     kicks <= 3 * kMaxTriangles          the draw commands -- one per triangle from 0x28
+    //                                         (family A), or three per primitive for family B
+    //                                         (423 from 0x0a, then 423 and 112 from 0x2a)
+    //           +  kMaxListQwords / 8         one per inline GIF block from 0x30/0x32, and the
+    //                                         blocks are eight list qwords each, so the list-qword
+    //                                         bound caps how many a list can carry (8)
+    //           +  kMaxCommands               one per 0x64, which kicks the render-state packet
+    // i.e. at most 768 + 8 + 32 = 808 XGKICKs for any list this file will run, against 32767 for
+    // an unbounded header. Each of the three terms is bounded by a constant here, none by data.
     //
     // The margin is measured, not asserted: `python -m tools_py.vu1_headers --quiet <dumps>`
     // prints the maxima over a dump set, and over the three dispatcher sets of
@@ -522,17 +542,73 @@ namespace
     // data qword or kicked anything -- so the hand-back is the same clean one a command with no
     // handler gets, and the microcode re-runs the whole command from its own entry.
     bool withinCeiling(int32_t count, int32_t ceiling) { return count >= 0 && count <= ceiling; }
-
-    // The clamp's hand-back: give this command back to the microcode at 0x1b60. vi14 is one past
-    // the command (the dispatcher's 0x1b70 increment has already run), so step it back to name the
-    // command again -- which is also what the dispatcher's own NotImplemented path does, so the
-    // two agree.
-    bool handBackAtNextCommand(Ctx &c)
+    // ... and the two-sided form, for the one loop whose test is `!= 0` rather than `> 0` and for
+    // which zero is therefore 65536 iterations, not none (the inline-block rescale at 0x2380).
+    bool withinBounds(int32_t count, int32_t low, int32_t high)
     {
-        c.vi(14) = vi16(c.vi(14) - 1);
+        return count >= low && count <= high;
+    }
+
+    // ---- test-only ceiling overrides ---------------------------------------------------------
+    //
+    // TEST-ONLY, and nothing in the game sets either of these. They lower the ceilings the
+    // HANDLER CLAMPS use, and only those -- the pre-scan keeps the real constants. That gap is
+    // exactly the point: on real data no count can pass the pre-scan and then fail a clamp,
+    // because the pre-scan reads the same two header words first, so without a knob the clamp code
+    // would ship untested. With one, `./build.sh test` can make a real corpus list take a real
+    // clamp hand-back and check that it still matches the unmodified golden bit for bit.
+    //
+    //   PS2X_VU1_NATIVE_TEST_CEILING=<n>       lowers the handler-side vertex and triangle ceilings
+    //   PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>  lowers the handler-side clipped-vertex ceiling
+    //
+    // A value is clamped into [0, the real constant], so these can only ever narrow what this file
+    // accepts, never widen it: the worst a bad value can do is hand more lists back.
+    int32_t envCeiling(const char *name, int32_t fallback)
+    {
+        const char *value = std::getenv(name);
+        if (value == nullptr)
+            return fallback;
+        const int32_t parsed = std::atoi(value);
+        if (parsed < 0)
+            return 0;
+        return parsed > fallback ? fallback : parsed;
+    }
+
+    int32_t vertexCeiling()
+    {
+        static const int32_t value = envCeiling("PS2X_VU1_NATIVE_TEST_CEILING", kMaxVertices);
+        return value;
+    }
+
+    int32_t triangleCeiling()
+    {
+        static const int32_t value = envCeiling("PS2X_VU1_NATIVE_TEST_CEILING", kMaxTriangles);
+        return value;
+    }
+
+    int32_t clippedVertexCeiling()
+    {
+        static const int32_t value =
+            envCeiling("PS2X_VU1_NATIVE_TEST_CLIP_CEILING", kMaxClippedVertices);
+        return value;
+    }
+
+    // The single hand-back at 0x1b60, used by the clamps AND by the dispatcher's NotImplemented
+    // path, so there is one place that decides what a hand-back leaves behind. vi14 has to name
+    // the command again, because 0x1b60 re-reads it and 0x1b70 re-increments it; vi3/vi4/vi5 are
+    // written by 0x1b60-0x1b80 before any use, so their value here does not matter.
+    bool handBackAtCommandIndex(Ctx &c, int32_t index)
+    {
+        c.vi(14) = index;
+        c.vu.m_viBranchBackupValid = false;
         c.vu.m_state.pc = kNextCommandPc;
         return false;
     }
+
+    // The clamp sites' form. vi14 is one past the command (the dispatcher's 0x1b70 increment has
+    // already run) and no clamp fires after its own handler has touched vi14 -- every one of them
+    // is its handler's first statement -- so vi14 - 1 is this command's index.
+    bool handBackAtNextCommand(Ctx &c) { return handBackAtCommandIndex(c, vi16(c.vi(14) - 1)); }
 
     // The command word the dispatcher would read for list index `index` (ILW.x: the low 16 bits of
     // the x word), read without disturbing any register.
@@ -757,7 +833,7 @@ namespace
         __m128 up;
 
         // Clamp: 0x0b28's vertex count, read before the handler touches anything.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
             return handBackAtNextCommand(c);
 
         c.vi(kCursor) = vi16(c.vi(1) + 4);                   // 0x0b20
@@ -990,7 +1066,7 @@ namespace
     {
         using namespace transform;
         // Clamp: 0x0e08's vertex count.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                  // 0x0df8
         c.vi(kStageCursor) = 40;                               // 0x0e00
@@ -1010,7 +1086,7 @@ namespace
         // Clamp: 0x0f38's count is the clipper's vi10, which the pre-scan cannot see. Checked
         // here, ahead of the microcode's own first instruction, because 0x0f10's XGKICK would
         // otherwise have happened twice once the microcode re-ran the command.
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
             return handBackAtNextCommand(c);
 
         c.vi(4) = 423;                                         // 0x0f08
@@ -1163,7 +1239,7 @@ namespace
     {
         using namespace fade;
         // Clamp: 0x0f90's vertex count.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x0f90: TOP+2.z, the vertex count
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x0f98
@@ -1180,7 +1256,7 @@ namespace
     {
         using namespace fade;
         // Clamp: 0x1120's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x1108: vi3 = vi8
         c.vi(kStageCursor) = 150;                                // 0x1110
@@ -1229,7 +1305,7 @@ namespace
     {
         using namespace fill;
         // Clamp: 0x05e0's vertex count.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 40;                                 // 0x05d8
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x05e0: TOP+2.z
@@ -1246,7 +1322,7 @@ namespace
         // Clamp: 0x0650's count is vi10. The loop decrements by three and tests `> 0`, so it also
         // overshoots to the next multiple of three -- 150 + 3*12 = 186 is inside the array's
         // headroom only because vi10 is bounded here.
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 150;                                // 0x0640
         c.vi(kRemaining) = vi16(c.vi(10));                       // 0x0650: the B 0x5e8 delay slot
@@ -1394,7 +1470,7 @@ namespace
     {
         using namespace lighting;
         // Clamp: 0x1458's vertex count.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
             return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x1440
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x1448
@@ -1412,7 +1488,7 @@ namespace
     {
         using namespace lighting;
         // Clamp: 0x15d0's count is vi10.
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
             return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x15b0
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x15b8: vi3 = vi8
@@ -1741,7 +1817,7 @@ namespace
     // its own entry, and the tail jump goes to the unwrapped body.
     bool cmdBuildPacketDispatched(Ctx &c)
     {
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
             return handBackAtNextCommand(c);
         return cmdBuildPacket(c);
     }
@@ -1878,7 +1954,7 @@ namespace
     // 0x32 makes the same check at its own entry and tail-jumps to the unwrapped body.
     bool cmdFlushPacketDispatched(Ctx &c)
     {
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        if (!withinCeiling(vi16(c.vi(10)), clippedVertexCeiling()))
             return handBackAtNextCommand(c);
         return cmdFlushPacket(c);
     }
@@ -1918,7 +1994,7 @@ namespace
         __m128 up;
 
         // Clamp: 0x1640's triangle count.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
             return handBackAtNextCommand(c);
 
         c.vi(kIndexCursor) = c.loadWord(c.vi(1) + 2, 0);         // 0x1638: TOP+2.x
@@ -2448,7 +2524,7 @@ namespace
         // whose hand-back research/13 6.3 licenses outright: "immediately before 0x02 is
         // dispatched" is its third safe boundary, because 0x1f70 recomputes vi15/vi12/vi3 from
         // vi1 and nothing else is live.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
         {
             handBackAtNextCommand(c);
             return Outcome::NotImplemented;
@@ -2623,8 +2699,8 @@ namespace
         // at the only point in the command where a hand-back is still clean -- after the first
         // XGKICK of an inline block, re-running 0x30 from the microcode would kick it twice and
         // rescale the staging array twice.
-        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices) ||
-            !withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()) ||
+            !withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 40;                                   // 0x22a0: the family-A staging
         c.vi(kDstCursor) = 40;                                   // 0x22a8: array, rescaled in place
@@ -2645,7 +2721,16 @@ namespace
         // Clamp: vi10 is both 0x23d0's rescale count and the count of the 0x1a78 body this tail-
         // jumps into, so one check at the entry covers both -- and it has to be here, for the same
         // reason as 0x30's.
-        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+        //
+        // The lower bound is NOT decoration. 0x2380's `IBNE vi9, vi0` ends the rescale loop on
+        // `!= 0`, so vi10 == 0 decrements to -1 and walks 65536 staging triples with wrapping
+        // stores. The pre-scan cannot rule that out the way it rules out 0x30's zero (whose count
+        // is the header word `hasInlineOverA && vertices < 1` rejects): vi10 is the clipper's
+        // output, and although 0x02 only reaches its `B 0x1b60` with vi10 != 0, a 0x4c back-edge
+        // `y` landing on a 0x32 would arrive here with whatever vi10 the last clipper call left --
+        // including the zero the "clipped away entirely" path at 0x2080 leaves. So 0x32 requires
+        // at least one, here, where the hand-back is still clean.
+        if (!withinBounds(vi16(c.vi(10)), 1, clippedVertexCeiling()))
             return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 150;                                  // 0x23b0
         c.vi(kDstCursor) = 150;                                  // 0x23b8
@@ -2761,13 +2846,11 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
         }
         if (outcome == Outcome::NotImplemented)
         {
-            // Give the microcode the command back. vi14 has to name this command again, because
-            // 0x1b60 re-reads and 0x1b70 re-increments it; vi3/vi4/vi5 are written by
-            // 0x1b60-0x1b80 before any use, so their value here does not matter.
-            c.vi(14) = index;
-            vu.m_viBranchBackupValid = false;
-            vu.m_state.pc = kNextCommandPc;
-            return false;
+            // Give the microcode the command back, through the same helper the clamps use -- one
+            // place decides what a hand-back leaves behind. `index` rather than the helper's
+            // vi14 - 1, because a handler that got as far as rewriting vi14 (0x30/0x32) can reach
+            // here too, and this command's index is what the re-dispatch needs.
+            return handBackAtCommandIndex(c, index);
         }
     }
 }

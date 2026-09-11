@@ -26,6 +26,7 @@
 // of differing pixels; it exits 1 if any dump exceeds --vram-tol (default 1.0 %). A dump whose two
 // passes both drew nothing prints `SKIP <name> (nothing drawn)` and does not count as a pass -- two
 // blank frames are identical for free -- and the final PASS/FAIL line reports checked=N skipped=M.
+// A run that ends with checked=0 FAILs and exits 1: nothing drew, so nothing was compared.
 // Because the knob is a read-once static inside the native program, the two renderings run in two
 // child processes (argv[0] re-executed with --vram-dump), which leave
 // <outdir>/<dump>.{gif,host}.rgba behind.
@@ -362,6 +363,14 @@ namespace
             ++checked;
             if (pct > tolerancePct)
                 failed = true;
+        }
+        // Every dump skipped is not a pass, it is the blank-frame regression this accounting was
+        // added to catch: nothing drew, so nothing was compared, so the run proves nothing.
+        if (checked == 0)
+        {
+            std::printf("FAIL: vram diff compared nothing -- all %zu dump(s) drew no pixels on "
+                        "either path\n", skipped);
+            return 1;
         }
         std::printf("%s: vram diff against %.2f%% tolerance, checked=%zu skipped=%zu\n",
                     failed ? "FAIL" : "PASS", tolerancePct, checked, skipped);
