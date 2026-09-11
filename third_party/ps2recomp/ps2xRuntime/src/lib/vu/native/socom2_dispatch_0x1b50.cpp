@@ -91,6 +91,7 @@ namespace
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
         kCmdEnd = 0x42u,           // 0x1b40 E bit
         kCmdTemplateFill = 0x54u,  // 0x05d8 broadcast data qword 327 into every RGBAQ slot
+        kCmdClippedTemplateFill = 0x56u, // 0x0640 family-B shim: 0x54's fill on the 150 base
         kCmdUnpack = 0x68u,        // 0x0b20 int->float vertex unpack
     };
 
@@ -779,14 +780,20 @@ namespace
     // loop overshoots to the next multiple of three -- for 68 vertices it writes the slot of
     // vertices 68 and 69 as well, i.e. up to qword 245 -- which is reproduced here because the
     // extra qwords are part of the compared data memory.
-    bool cmdTemplateFill(Ctx &c)
+    namespace fill
     {
         constexpr uint8_t kTemplate = 28;
         constexpr uint8_t kStageCursor = 4; // vi4, three vertices (9 qwords) per iteration
         constexpr uint8_t kRemaining = 9;   // vi9
+    }
 
-        c.vi(kStageCursor) = 40;                                 // 0x05d8
-        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x05e0: TOP+2.z
+    // 0x05e8 onward -- the loop proper, entered with vi4 = the staging base and vi9 = the vertex
+    // count already set. Command 0x54 sets them to 40 / TOP+2.z; command 0x56 (family B, 0x0640)
+    // to 150 / vi10, the clipped vertex count (research/13 4.5).
+    bool templateFillLoop(Ctx &c)
+    {
+        using namespace fill;
+
         loadQword<kTemplate, kXYZW>(c, 327);                     // 0x05e8
 
         for (;;)
@@ -801,6 +808,26 @@ namespace
             if (!more)
                 return true;                                     // 0x0630: B 0x1b60
         }
+    }
+
+    bool cmdTemplateFill(Ctx &c)
+    {
+        using namespace fill;
+        c.vi(kStageCursor) = 40;                                 // 0x05d8
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x05e0: TOP+2.z
+        return templateFillLoop(c);
+    }
+
+    // ---- command 0x56 -> 0x0640: 0x54's fill over the family-B staging array ----------------
+    //
+    // Three instructions (research/13 4.5). The loop still overshoots to the next multiple of
+    // three, which on the 150 base lands inside the array's headroom (150 + 3*12 = 186).
+    bool cmdClippedTemplateFill(Ctx &c)
+    {
+        using namespace fill;
+        c.vi(kStageCursor) = 150;                                // 0x0640
+        c.vi(kRemaining) = vi16(c.vi(10));                       // 0x0650: the B 0x5e8 delay slot
+        return templateFillLoop(c);                              // 0x0648
     }
 
     // ---- command 0x18 -> 0x1440: lighting --------------------------------------------------
@@ -1350,6 +1377,8 @@ namespace
             return cmdDistanceFade(c);
         case kCmdTemplateFill:
             return cmdTemplateFill(c);
+        case kCmdClippedTemplateFill:
+            return cmdClippedTemplateFill(c);
         case kCmdLight:
             return cmdLighting(c);
         case kCmdBuildPacket:
