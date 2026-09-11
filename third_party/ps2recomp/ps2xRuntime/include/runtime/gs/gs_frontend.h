@@ -116,6 +116,12 @@ public:
                            uint32_t sizeBytes);
     void writeRegister(uint8_t regAddr, uint64_t value);
 
+    // Draws one triangle with the current GS state of context prim.ctxt, from host-space vertices
+    // (x/y float pixels in XYOFFSET space exactly as the GIF path stores them, z the same integer
+    // the GIF path would carry, s/t/q floats with prim.fst == 0, fog byte). Equivalent to three
+    // XYZF2 kicks except that x/y keep their fraction.
+    void submitHostTriangle(const GSPrimReg &prim, const GSVertex &v0, const GSVertex &v1, const GSVertex &v2);
+
     const uint8_t *lockDisplaySnapshot(uint32_t &outSize);
     void unlockDisplaySnapshot();
     uint32_t getLastDisplayBaseBytes() const;
@@ -171,11 +177,13 @@ private:
     void recordGifTagDebugEventUnlocked(uint32_t sizeBytes, uint32_t nloop, uint8_t flg, uint32_t nreg);
     void recordRegisterDebugEventUnlocked(uint8_t regAddr, uint64_t value);
     void recordDrawDebugEventUnlocked(int vertexCount);
+    void recordHostDrawDebugEventUnlocked(const GSPrimitiveBatch &batch);
     void recordTransferDebugEventUnlocked();
     void recordPresentDebugEventUnlocked(uint32_t displayFbp, uint32_t sourceFbp, uint32_t width, uint32_t height, bool usedPreferred);
 
     void processImageData(const uint8_t *data, uint32_t sizeBytes);
     bool tryProcessNativeImageUploadPacket(const uint8_t *data, uint32_t sizeBytes);
+    void fillDrawState(GSDrawState &state, const GSPrimReg &prim) const;
     GSPrimitiveBatch buildDrawBatch(int vertexCount) const;
     void updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch);
     GSPresentationRequest buildPresentationRequestUnlocked() const;

@@ -87,6 +87,14 @@ namespace
         vu.state().pc = 8u; // hand the rest of the program back at the E-bit pair
         return false;
     }
+
+    GS *g_capturedActiveGs = nullptr;
+
+    bool nativeCapturesActiveGs(VU1Interpreter &vu, uint64_t)
+    {
+        g_capturedActiveGs = vu.activeGs();
+        return true;
+    }
 }
 
 void register_vu1_native_tests()
@@ -143,6 +151,24 @@ void register_vu1_native_tests()
             t.Equals(vu.state().pc, kProgramEndPc,
                      "the microcode should have resumed at pc 8 and reached the E bit");
             t.IsFalse(vu.state().ebit, "the E bit should be cleared once the program ended");
+        });
+
+        tc.Run("activeGs exposes the GS the native program should submit to", [](TestCase &t)
+        {
+            Vu1NativeFixture fx;
+            t.IsTrue(fx.initialize(), "fixture should initialize");
+            writeThreePairProgram(fx.code);
+            fx.mem.markVU1CodeModified();
+            const Vu1NativeProgram table[] = {{imageHash(fx.code, PS2_VU1_CODE_SIZE), 0u, &nativeCapturesActiveGs}};
+
+            g_capturedActiveGs = nullptr;
+            VU1Interpreter vu;
+            vu.setNativeProgramsOverride(table, 1u);
+            vu.execute(fx.code, PS2_VU1_CODE_SIZE, fx.data, PS2_VU1_DATA_SIZE, fx.gs, &fx.mem, 0u, 0u, 0u, 64u);
+            vu.setNativeProgramsOverride(nullptr, 0u);
+
+            t.IsTrue(g_capturedActiveGs == &fx.gs,
+                     "activeGs() should return the GS passed to execute() while the program runs");
         });
 
         tc.Run("a different entry pc is not intercepted", [](TestCase &t)

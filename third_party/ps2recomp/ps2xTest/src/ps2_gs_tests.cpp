@@ -775,6 +775,129 @@ void register_ps2_gs_tests()
                      "the next XYZ2 should draw BCD from the advanced strip queue");
         });
 
+        tc.Run("submitHostTriangle draws the same pixels as three XYZ2 kicks", [](TestCase &t)
+        {
+            // The host-render hook must reproduce the GIF path exactly for a triangle whose
+            // vertices happen to land on integer pixel centres: same state, same rasteriser.
+            constexpr uint32_t kColor = 0x800000FFu; // RGBAQ layout: R=0xFF G=0 B=0 A=0x80
+            constexpr uint64_t kFrame =
+                (1ull << 16) |
+                (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+            constexpr uint64_t kZbuf = (1ull << 32);
+            constexpr uint64_t kScissor =
+                (63ull << 16) |
+                (63ull << 48);
+
+            auto setupContext1 = [&](GS &gs)
+            {
+                gs.writeRegister(GS_REG_FRAME_1, kFrame);
+                gs.writeRegister(GS_REG_ZBUF_1, kZbuf);
+                gs.writeRegister(GS_REG_SCISSOR_1, kScissor);
+                gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+                gs.writeRegister(GS_REG_TEST_1, 0x30000ull);
+            };
+
+            auto xyz = [](uint32_t x, uint32_t y) -> uint64_t
+            {
+                return static_cast<uint64_t>(x * 16u) |
+                       (static_cast<uint64_t>(y * 16u) << 16);
+            };
+
+            std::vector<uint8_t> vramA(PS2_GS_VRAM_SIZE, 0u);
+            GS gsA;
+            gsA.init(vramA.data(), static_cast<uint32_t>(vramA.size()), nullptr);
+            setupContext1(gsA);
+
+            // A: three XYZ2 kicks of an integer-coordinate triangle through the GIF register path.
+            gsA.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_TRIANGLE));
+            gsA.writeRegister(GS_REG_RGBAQ, kColor);
+            gsA.writeRegister(GS_REG_XYZ2, xyz(10u, 10u));
+            gsA.writeRegister(GS_REG_XYZ2, xyz(40u, 10u));
+            gsA.writeRegister(GS_REG_XYZ2, xyz(10u, 40u));
+
+            t.Equals(readReferencePSMCT32Pixel(vramA, 0u, 1u, 15u, 15u), kColor,
+                     "the reference GIF triangle should have covered the sample pixel");
+
+            std::vector<uint8_t> vramB(PS2_GS_VRAM_SIZE, 0u);
+            GS gsB;
+            gsB.init(vramB.data(), static_cast<uint32_t>(vramB.size()), nullptr);
+            setupContext1(gsB);
+
+            // B: the same triangle through the hook, with no PRIM/RGBAQ/XYZ2 register writes.
+            GSPrimReg prim{};
+            prim.type = GS_PRIM_TRIANGLE;
+            prim.iip = false;
+            prim.tme = false;
+            prim.abe = false;
+            prim.ctxt = false;
+            GSVertex v0{}, v1{}, v2{};
+            v0.x = 10.0f; v0.y = 10.0f;
+            v1.x = 40.0f; v1.y = 10.0f;
+            v2.x = 10.0f; v2.y = 40.0f;
+            for (GSVertex *v : {&v0, &v1, &v2})
+            {
+                v->r = 255; v->g = 0; v->b = 0; v->a = 128; v->q = 1.0f;
+            }
+            gsB.submitHostTriangle(prim, v0, v1, v2);
+
+            t.Equals(std::memcmp(vramA.data(), vramB.data(), PS2_GS_VRAM_SIZE), 0,
+                     "host triangle must match the GIF triangle pixel for pixel");
+        });
+
+        tc.Run("submitHostTriangle honours the context selected by prim.ctxt", [](TestCase &t)
+        {
+            constexpr uint32_t kColor = 0x800000FFu;
+            constexpr uint32_t kFbp1 = 0u;
+            constexpr uint32_t kFbp2 = 4u; // a whole page past the 64x64 CT32 region of context 1
+            constexpr uint64_t kZbuf = (1ull << 32);
+            constexpr uint64_t kScissor =
+                (63ull << 16) |
+                (63ull << 48);
+            auto frameReg = [](uint32_t fbp) -> uint64_t
+            {
+                return static_cast<uint64_t>(fbp) |
+                       (1ull << 16) |
+                       (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+            };
+
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            GS gs;
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+
+            gs.writeRegister(GS_REG_FRAME_1, frameReg(kFbp1));
+            gs.writeRegister(GS_REG_ZBUF_1, kZbuf);
+            gs.writeRegister(GS_REG_SCISSOR_1, kScissor);
+            gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+            gs.writeRegister(GS_REG_TEST_1, 0x30000ull);
+
+            gs.writeRegister(GS_REG_FRAME_2, frameReg(kFbp2));
+            gs.writeRegister(GS_REG_ZBUF_2, kZbuf);
+            gs.writeRegister(GS_REG_SCISSOR_2, kScissor);
+            gs.writeRegister(GS_REG_XYOFFSET_2, 0ull);
+            gs.writeRegister(GS_REG_TEST_2, 0x30000ull);
+
+            // PRIM still selects context 1: the hook must ignore it and use prim.ctxt.
+            gs.writeRegister(GS_REG_PRIM, static_cast<uint64_t>(GS_PRIM_TRIANGLE));
+
+            GSPrimReg prim{};
+            prim.type = GS_PRIM_TRIANGLE;
+            prim.ctxt = true;
+            GSVertex v0{}, v1{}, v2{};
+            v0.x = 10.0f; v0.y = 10.0f;
+            v1.x = 40.0f; v1.y = 10.0f;
+            v2.x = 10.0f; v2.y = 40.0f;
+            for (GSVertex *v : {&v0, &v1, &v2})
+            {
+                v->r = 255; v->g = 0; v->b = 0; v->a = 128; v->q = 1.0f;
+            }
+            gs.submitHostTriangle(prim, v0, v1, v2);
+
+            t.Equals(readReferenceFramePSMCT32Pixel(vram, kFbp2, 1u, 15u, 15u), kColor,
+                     "prim.ctxt = 1 should draw into FRAME_2's framebuffer");
+            t.Equals(readReferenceFramePSMCT32Pixel(vram, kFbp1, 1u, 15u, 15u), 0u,
+                     "FRAME_1's framebuffer must be untouched when prim.ctxt selects context 2");
+        });
+
         tc.Run("GS fog blends the shaded color toward FOGCOL before framebuffer blending", [](TestCase &t)
         {
             auto renderFoggedPoint = [](bool fogEnabled, uint8_t fog, uint32_t fogColor = 0u) -> uint32_t

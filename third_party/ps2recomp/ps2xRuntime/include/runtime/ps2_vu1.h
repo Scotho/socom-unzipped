@@ -70,6 +70,9 @@ public:
     VU1State &state() { return m_state; }
     const VU1State &state() const { return m_state; }
 
+    // The GS the running microprogram submits to. Valid only during execute()/resume().
+    GS *activeGs() const { return m_activeGs; }
+
     // Generated known-program entry (src/lib/vu/generated): returns true when the program ended.
     typedef bool (*KnownProgramFn)(VU1Interpreter &vu, uint64_t budgetEnd);
 

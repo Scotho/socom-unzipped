@@ -481,6 +481,43 @@ void GS::recordDrawDebugEventUnlocked(int vertexCount)
     recordDebugEventUnlocked(entry);
 }
 
+void GS::recordHostDrawDebugEventUnlocked(const GSPrimitiveBatch &batch)
+{
+    if (m_debugHistoryPaused)
+    {
+        return;
+    }
+
+    if (batch.vertexCount == 0u)
+    {
+        return;
+    }
+
+    GSDebugHistoryEntry entry = makeDebugEventUnlocked(GSDebugEventKind::Draw);
+    entry.vertexCount = static_cast<uint32_t>(batch.vertexCount);
+
+    const size_t count = std::min<size_t>(batch.vertexCount, batch.vertices.size());
+    entry.xMin = entry.xMax = batch.vertices[0].x;
+    entry.yMin = entry.yMax = batch.vertices[0].y;
+    entry.zMin = entry.zMax = batch.vertices[0].z;
+    entry.aMin = entry.aMax = batch.vertices[0].a;
+
+    for (size_t i = 1; i < count; ++i)
+    {
+        const GSVertex &v = batch.vertices[i];
+        entry.xMin = std::min(entry.xMin, v.x);
+        entry.xMax = std::max(entry.xMax, v.x);
+        entry.yMin = std::min(entry.yMin, v.y);
+        entry.yMax = std::max(entry.yMax, v.y);
+        entry.zMin = std::min(entry.zMin, v.z);
+        entry.zMax = std::max(entry.zMax, v.z);
+        entry.aMin = std::min(entry.aMin, v.a);
+        entry.aMax = std::max(entry.aMax, v.a);
+    }
+
+    recordDebugEventUnlocked(entry);
+}
+
 void GS::recordTransferDebugEventUnlocked()
 {
     if (m_debugHistoryPaused)
@@ -1782,31 +1819,60 @@ void GS::WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_
         m_backend->WriteVram(psm, base, bw, x, y, value);
 }
 
+void GS::fillDrawState(GSDrawState &state, const GSPrimReg &prim) const
+{
+    state.context = m_ctx[prim.ctxt ? 1 : 0];
+    state.prim = prim;
+    state.texa = m_texa;
+    state.texclut = m_texclut;
+    state.pabe = m_pabe;
+    state.scanmsk = m_scanmsk;
+    state.dimx = m_dimx;
+    state.dthe = m_dthe;
+    state.colclamp = m_colclamp;
+    state.fogR = m_fogR;
+    state.fogG = m_fogG;
+    state.fogB = m_fogB;
+    state.textureWidth = static_cast<uint16_t>(1u << std::min<uint32_t>(state.context.tex0.tw, 10u));
+    state.textureHeight = static_cast<uint16_t>(1u << std::min<uint32_t>(state.context.tex0.th, 10u));
+    const uint64_t tex1 = state.context.tex1;
+    const uint8_t mmag = static_cast<uint8_t>((tex1 >> 5u) & 0x1u);
+    const uint8_t mmin = static_cast<uint8_t>((tex1 >> 6u) & 0x7u);
+    state.linearFilter = mmag != 0u || mmin == 1u || (mmin & 0x4u) != 0u;
+}
+
 GSPrimitiveBatch GS::buildDrawBatch(int vertexCount) const
 {
     GSPrimitiveBatch batch{};
     batch.vertexCount = static_cast<uint8_t>(std::min(vertexCount, 3));
     for (int i = 0; i < batch.vertexCount; ++i)
         batch.vertices[static_cast<size_t>(i)] = m_vtxQueue[i];
-    batch.state.context = m_ctx[m_prim.ctxt ? 1 : 0];
-    batch.state.prim = m_prim;
-    batch.state.texa = m_texa;
-    batch.state.texclut = m_texclut;
-    batch.state.pabe = m_pabe;
-    batch.state.scanmsk = m_scanmsk;
-    batch.state.dimx = m_dimx;
-    batch.state.dthe = m_dthe;
-    batch.state.colclamp = m_colclamp;
-    batch.state.fogR = m_fogR;
-    batch.state.fogG = m_fogG;
-    batch.state.fogB = m_fogB;
-    batch.state.textureWidth = static_cast<uint16_t>(1u << std::min<uint32_t>(batch.state.context.tex0.tw, 10u));
-    batch.state.textureHeight = static_cast<uint16_t>(1u << std::min<uint32_t>(batch.state.context.tex0.th, 10u));
-    const uint64_t tex1 = batch.state.context.tex1;
-    const uint8_t mmag = static_cast<uint8_t>((tex1 >> 5u) & 0x1u);
-    const uint8_t mmin = static_cast<uint8_t>((tex1 >> 6u) & 0x7u);
-    batch.state.linearFilter = mmag != 0u || mmin == 1u || (mmin & 0x4u) != 0u;
+    fillDrawState(batch.state, m_prim);
     return batch;
+}
+
+void GS::submitHostTriangle(const GSPrimReg &prim, const GSVertex &v0, const GSVertex &v1, const GSVertex &v2)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+    if (!m_backend)
+        return;
+
+    GSPrimitiveBatch batch{};
+    batch.vertexCount = 3;
+    batch.vertices[0] = v0;
+    batch.vertices[1] = v1;
+    batch.vertices[2] = v2;
+
+    // The hook is triangles only: the CPU backend truncates sprite/line coordinates to int, so
+    // host-space fractions would not survive those primitive types.
+    GSPrimReg p = prim;
+    p.type = GS_PRIM_TRIANGLE;
+    fillDrawState(batch.state, p);
+
+    updatePreferredDisplaySourceForDraw(batch);
+    m_backend->Submit(batch);
+    g_gsSubmitCount.fetch_add(1, std::memory_order_relaxed);
+    recordHostDrawDebugEventUnlocked(batch);
 }
 
 void GS::updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch)
