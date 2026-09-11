@@ -837,6 +837,157 @@ namespace
         }
     }
 
+    // ---- command 0x28 -> 0x1780: triangle assembly, GIF packet, XGKICK ---------------------
+    //
+    // Walks the triangle index list at TOP + TOP+2.x and emits one ten-qword GIF packet per
+    // surviving triangle: the list's GIFtag from TOP+1 with NLOOP patched to 3 and EOP set,
+    // followed by three vertices of (ST, RGBAQ, XYZF2) taken from the staging array. RGBAQ goes
+    // through MADD by the rounding bias at data qword 38 (whose .w comes from the RGBAQ template
+    // at 327) and FTOI0; XYZF2 through FTOI4; ST is copied as is.
+    //
+    // Two gates per triangle, both from the index qword's w word: bit 0 (set by the backface cull)
+    // and bit 1, the latter OR-ed with data qword 39.w so a list can force everything through.
+    //
+    // The two packet buffers at 290 and 300 ping-pong -- their bases live in data qword 329.x/.y
+    // and are swapped per triangle and written back at the end -- so the GS can still be reading
+    // one while the next is being built. One XGKICK per triangle.
+    namespace packet
+    {
+        constexpr uint8_t kBias = 20;      // data qword 38; .w replaced from qword 327
+        constexpr uint8_t kGifTag = 19;    // the GIFtag template from TOP+1 (vf19 before the loop)
+        constexpr uint8_t kSt0 = 17, kSt1 = 26, kSt2 = 29;
+        constexpr uint8_t kRgba0 = 18, kRgba1 = 27, kRgba2 = 30;
+        constexpr uint8_t kXyz0 = 19, kXyz1 = 28, kXyz2 = 31; // vf19 again, once the tag is stored
+        constexpr uint8_t kIndexCursor = 4;  // vi4, two qwords per triangle
+        constexpr uint8_t kTriangles = 13;   // vi13
+        constexpr uint8_t kPacket = 2;       // vi2: the buffer being built and kicked
+        constexpr uint8_t kOtherPacket = 8;  // vi8: the one the GS may still be reading
+        constexpr uint8_t kVertex0 = 5, kVertex1 = 6, kVertex2 = 7; // staging qword offsets
+        constexpr uint8_t kFlags = 12, kGate = 3, kForce = 9, kScratch = 11;
+    }
+
+    bool cmdBuildPacket(Ctx &c)
+    {
+        using namespace packet;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        loadQword<kBias, kXYZW>(c, 38);                          // 0x1780
+        loadQword<kGifTag, kXYZW>(c, c.vi(1) + 1);               // 0x1788: TOP+1
+
+        // 0x1790-0x1798: ACC holds the fixed-point rounding term the RGBAQ MADDs add; it is set
+        // once and never rewritten inside this command.
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kXYZ, 0, kBias, false, false, true>(c);
+        c.vi(kIndexCursor) = c.loadWord(c.vi(1) + 2, 0);         // TOP+2.x
+        writeAcc<kXYZ>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcBc, 3, kW, 0, 0, false, false, false>(c);
+        c.vi(kScratch) = 32767;
+        writeAcc<kW>(c, up);
+        c.vi(kScratch) = vi16(c.vi(kScratch) + 4);               // 0x17a0: 0x8003 = EOP | NLOOP 3
+        c.vi(kIndexCursor) = vi16(c.vi(kIndexCursor) + c.vi(1)); // 0x17a8
+
+        // 0x17b0-0x17c8: both packet buffers get the tag, with NLOOP patched to three vertices.
+        storeQword<kGifTag, kXYZW>(c, 290);
+        storeQword<kGifTag, kXYZW>(c, 300);
+        storeIntWord<kX>(c, 290, c.vi(kScratch));
+        storeIntWord<kX>(c, 300, c.vi(kScratch));
+
+        c.vi(kTriangles) = c.loadWord(c.vi(1) + 2, 3);           // 0x17d0: TOP+2.w
+        loadQword<kBias, kW>(c, 327);                            // 0x17d8
+        c.vi(kPacket) = c.loadWord(329, 0);                      // 0x17e0: 300
+        c.vi(kOtherPacket) = c.loadWord(329, 1);                 // 0x17e8: 290
+
+        for (;;)
+        {
+            // 0x17f0-0x1828: the triangle's three vertex offsets and its visibility gate.
+            c.vi(kFlags) = c.loadWord(c.vi(kIndexCursor), 3);
+            c.vi(kScratch) = 1;
+            c.vi(kVertex0) = c.loadWord(c.vi(kIndexCursor), 0);
+            c.vi(kVertex1) = c.loadWord(c.vi(kIndexCursor), 1);
+            c.vi(kGate) = c.vi(kFlags) & c.vi(kScratch);
+            c.vi(kForce) = c.loadWord(39, 3);
+            const bool visible = static_cast<int16_t>(c.vi(kGate)) != 0;
+            c.vi(kVertex2) = c.loadWord(c.vi(kIndexCursor), 2); // 0x1828, the branch's delay slot
+
+            bool emit = false;
+            if (visible)
+            {
+                // 0x1830-0x1860: the second gate, then the first RGBAQ load in the delay slot.
+                c.vi(kScratch) = 2;
+                c.vi(kGate) = c.vi(kFlags) & c.vi(kScratch);
+                c.vi(kGate) = c.vi(kGate) | c.vi(kForce);
+                emit = static_cast<int16_t>(c.vi(kGate)) != 0;
+                loadQword<kRgba0, kXYZW>(c, c.vi(kVertex0) + 41);
+            }
+
+            if (emit)
+            {
+                // 0x1868-0x1890: the other two RGBAQ quads and the three XYZF2 quads, with the
+                // rounding bias folded in.
+                loadQword<kRgba1, kXYZW>(c, c.vi(kVertex1) + 41);
+                loadQword<kRgba2, kXYZW>(c, c.vi(kVertex2) + 41);
+                loadQword<kXyz0, kXYZW>(c, c.vi(kVertex0) + 42);
+                up = fmac<ArithMadd, Vu1Gen::SrcVt, 0, kXYZW, kRgba0, kBias>(c);
+                loadQword<kXyz1, kXYZW>(c, c.vi(kVertex1) + 42);
+                writeVf<kRgba0, kXYZW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcVt, 0, kXYZW, kRgba1, kBias>(c);
+                loadQword<kXyz2, kXYZW>(c, c.vi(kVertex2) + 42);
+                writeVf<kRgba1, kXYZW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcVt, 0, kXYZW, kRgba2, kBias>(c);
+                loadQword<kSt0, kXYZW>(c, c.vi(kVertex0) + 40);
+                writeVf<kRgba2, kXYZW>(c, up);
+
+                // 0x1898-0x18c0: to fixed point (XYZF2 with 4 fractional bits, RGBAQ with none),
+                // while the ST quads load and the two packet buffers swap roles.
+                up = ftoi<4, kXyz0>(c);
+                loadQword<kSt1, kXYZW>(c, c.vi(kVertex1) + 40);
+                writeVf<kXyz0, kXYZW>(c, up);
+                up = ftoi<0, kRgba0>(c);
+                loadQword<kSt2, kXYZW>(c, c.vi(kVertex2) + 40);
+                writeVf<kRgba0, kXYZW>(c, up);
+                up = ftoi<4, kXyz1>(c);
+                c.vi(kScratch) = vi16(c.vi(kPacket));
+                writeVf<kXyz1, kXYZW>(c, up);
+                up = ftoi<0, kRgba1>(c);
+                c.vi(kPacket) = vi16(c.vi(kOtherPacket));
+                writeVf<kRgba1, kXYZW>(c, up);
+                up = ftoi<4, kXyz2>(c);
+                c.vi(kOtherPacket) = vi16(c.vi(kScratch));
+                writeVf<kXyz2, kXYZW>(c, up);
+                up = ftoi<0, kRgba2>(c);
+                storeQword<kSt0, kXYZW>(c, c.vi(kPacket) + 1);
+                writeVf<kRgba2, kXYZW>(c, up);
+
+                // 0x18c8-0x1900: the nine register qwords, in the tag's REGS order per vertex.
+                storeQword<kSt1, kXYZW>(c, c.vi(kPacket) + 4);
+                storeQword<kSt2, kXYZW>(c, c.vi(kPacket) + 7);
+                storeQword<kRgba0, kXYZW>(c, c.vi(kPacket) + 2);
+                storeQword<kRgba1, kXYZW>(c, c.vi(kPacket) + 5);
+                storeQword<kRgba2, kXYZW>(c, c.vi(kPacket) + 8);
+                storeQword<kXyz0, kXYZW>(c, c.vi(kPacket) + 3);
+                storeQword<kXyz1, kXYZW>(c, c.vi(kPacket) + 6);
+                storeQword<kXyz2, kXYZW>(c, c.vi(kPacket) + 9);
+
+                // 0x1920: XGKICK vi2. The interpreter's default model copies the whole packet at
+                // kick time, so this is a complete GIF submission.
+                c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kPacket))));
+            }
+
+            // 0x1930-0x1940: next triangle.
+            c.vi(kTriangles) = vi16(c.vi(kTriangles) - 1);
+            c.vi(kIndexCursor) = vi16(c.vi(kIndexCursor) + 2);
+            if (!(static_cast<int16_t>(c.vi(kTriangles)) > 0))
+                break;
+        }
+
+        // 0x1950-0x1960: hand the swapped buffer bases back to data qword 329.
+        storeIntWord<kX>(c, 329, c.vi(kPacket));
+        storeIntWord<kY>(c, 329, c.vi(kOtherPacket));
+        return true;                                             // 0x1958: B 0x1b60
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -853,6 +1004,8 @@ namespace
             return cmdTemplateFill(c);
         case kCmdLight:
             return cmdLighting(c);
+        case kCmdBuildPacket:
+            return cmdBuildPacket(c);
         default:
             return false;
         }
