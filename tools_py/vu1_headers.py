@@ -10,6 +10,13 @@ the margin those constants keep is documented from data rather than asserted.
     python -m tools_py.vu1_headers logs/vu1dump2/*.bin
     python -m tools_py.vu1_headers --all-entries logs/vu1dump3/*.bin
 
+With --set-vertices / --set-triangles and --out it also writes a patched COPY of each dump, which
+is how the ceilings' refusal path is tested: a dump whose TOP+2.z says 300 must be handed back
+whole and still match an exact golden of the patched dump.
+
+    python -m tools_py.vu1_headers --set-vertices 300 --out logs/vu1clamp \
+        tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin
+
 Dump layout (vu1_replay.cpp): uint32 startPc, top, itop, codeSize; 16 KB code; 16 KB data;
 int32 vi[16]; float vf[32][4]. Words are read the way the microcode's ILW reads them: the low
 16 bits of the word, sign-extended.
@@ -17,6 +24,7 @@ int32 vi[16]; float vf[32][4]. Words are read the way the microcode's ILW reads 
 
 import argparse
 import glob
+import os
 import struct
 import sys
 
@@ -39,6 +47,15 @@ def ilw(data, qword, component):
     return value - 0x10000 if value & 0x8000 else value
 
 
+def patch_ilw(blob, qword, component, value):
+    """Write the low 16 bits of one word of a data qword, leaving the high half alone -- ILW only
+    ever reads the low half, so this is the smallest edit that changes what a handler loops on."""
+    off = HEADER_BYTES + CODE_BYTES + data_address(qword) + component * 4
+    (word,) = struct.unpack_from("<I", blob, off)
+    word = (word & 0xFFFF0000) | (value & 0xFFFF)
+    struct.pack_into("<I", blob, off, word)
+
+
 def read_dump(path):
     with open(path, "rb") as handle:
         blob = handle.read()
@@ -56,7 +73,16 @@ def main(argv=None):
     parser.add_argument("--all-entries", action="store_true",
                         help="include dumps whose start pc is not 0x1b50 (skipped by default)")
     parser.add_argument("--quiet", action="store_true", help="print only the summary line")
+    parser.add_argument("--set-vertices", type=int, default=None,
+                        help="write a patched copy of each dump with TOP+2.z set to this")
+    parser.add_argument("--set-triangles", type=int, default=None,
+                        help="write a patched copy of each dump with TOP+2.w set to this")
+    parser.add_argument("--out", default=None,
+                        help="directory the patched copies go in (required with --set-*)")
     args = parser.parse_args(argv)
+    patching = args.set_vertices is not None or args.set_triangles is not None
+    if patching and not args.out:
+        parser.error("--set-vertices / --set-triangles need --out")
 
     paths = []
     for pattern in args.dumps:
@@ -86,6 +112,21 @@ def main(argv=None):
         if not args.quiet:
             print("%s top=0x%03x startpc=0x%04x vertices=%d triangles=%d"
                   % (path, top, start_pc, vertices, triangles))
+        if patching:
+            os.makedirs(args.out, exist_ok=True)
+            with open(path, "rb") as handle:
+                blob = bytearray(handle.read())
+            if args.set_vertices is not None:
+                patch_ilw(blob, top + 2, 2, args.set_vertices)
+            if args.set_triangles is not None:
+                patch_ilw(blob, top + 2, 3, args.set_triangles)
+            out_path = os.path.join(args.out, os.path.basename(path))
+            with open(out_path, "wb") as handle:
+                handle.write(blob)
+            print("  -> %s vertices=%d triangles=%d"
+                  % (out_path,
+                     args.set_vertices if args.set_vertices is not None else vertices,
+                     args.set_triangles if args.set_triangles is not None else triangles))
 
     if scanned == 0:
         print("no dumps scanned (%d skipped)" % skipped)

@@ -85,6 +85,17 @@ test_step() {
   #    path keeps the sub-1/16-pixel fraction the GIF path truncates, so edge and gouraud-rounding
   #    pixels differ by design; anything past the tolerance means a wrong lane or a wrong context.
   "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  # 7: the work-ceiling refusal path. tests/fixtures/vu1/clamp holds vu1dump4_prog_11 with TOP+2.z
+  #    rewritten from 76 to 300 -- above kMaxVertices -- and a golden taken from the microcode path
+  #    on that patched dump (which runs 5.6M cycles to produce nothing, i.e. exactly the runaway
+  #    the ceiling exists to stop). The native path must refuse it: this run has to report
+  #    "entered=1 ended=0 handbacks=1" and still match end pc, VU data memory and every register.
+  #    Regenerate with:
+  #      python -m tools_py.vu1_headers --set-vertices 300 --out tests/fixtures/vu1/clamp \
+  #          tests/fixtures/vu1/dispatch_0x1b50/vu1dump4_prog_11.bin
+  #      PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch tests/fixtures/vu1/clamp \
+  #          --no-native tests/fixtures/vu1/clamp/*.bin     # then state.txt -> golden.txt
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/clamp/golden.txt" --native --regs all "$ROOT"/tests/fixtures/vu1/clamp/*.bin
   echo "tests: ok"
 }
 
