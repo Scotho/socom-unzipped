@@ -34,14 +34,17 @@ HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
 # black_rows.py exits 0 when it examines nothing (empty dir, missing dir, a run with no
 # black-screen frame), so the exit code alone is a vacuous pass: the count of examined frames is
-# part of the verdict. The floor is 1, not a "healthy run" count. How many black-screen frames a
-# transition run yields depends on whether drive.py's burst happens to overlap the ~1 s fade --
-# drive.py captures nothing during its settle waits -- not on rendering: Task 8 measured 4 frames
-# (all peak 0) on the rebuilt binary, 0 on a native-off control, and 0 of 8 runs on that binary
-# reached 5; 2 of the 3 historical runs the earlier floor of 5 was calibrated on would fail it too.
-# A floor of 1 still rejects every zero-evidence pass, which was the point. Follow-up for the
-# durable fix: capture during the settle waits in drive.py so the fade cannot be missed.
-TRANSITION_MIN_FRAMES = 1
+# part of the verdict. Recalibrated 2026-09-11: the floor was dropped to 1 because how many
+# black-screen frames a run yielded depended on whether drive.py's burst step happened to overlap
+# the ~1 s fade into the briefing -- drive.py captured nothing during its settle waits, and 0 of 8
+# runs reached 5. drive.py now captures a frame every second of every wait (w<step>_<k>.png,
+# drive.wait_capturer) and black_rows.py scores those too, so the fade is recorded wherever it
+# falls. Two fresh runs on the same binary: logs/parity/gate/wcap1 examined 10 frames (all 10 are
+# wait captures -- that run had no black *step* capture at all and would have scored 0 under the
+# old capture scheme) and logs/parity/gate/wcap2 examined 13 (1 step capture + 12 wait captures);
+# every frame peak 0. Both clear 5 by 2x, so a run under the floor now means a real capture
+# failure rather than burst timing.
+TRANSITION_MIN_FRAMES = 5
 
 GATES = {
     "title": dict(script="scripts/parity/title_menu.txt", seconds=170, tail=8),
@@ -81,10 +84,10 @@ def score_transition(run_dir):
     examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
     bad = [ln for ln in examined if "NOT BLACK" in ln]
     peaks = [int(m.group(1)) for m in (re.search(r"peak\s+(\d+)", ln) for ln in examined) if m]
-    # One check, not two: the floor is 1, so "examined nothing" and "examined fewer than the
-    # floor" are the same condition -- a separate `if not examined` above this was unreachable.
+    # One check, not two: "examined nothing" and "examined fewer than the floor" are the same
+    # condition -- a separate `if not examined` above this was unreachable.
     if len(examined) < TRANSITION_MIN_FRAMES:
-        return False, ("transition not captured (%d black-screen frames examined, need %d; timing)"
+        return False, ("transition not captured (%d black-screen frames examined, need %d)"
                        " in %s" % (len(examined), TRANSITION_MIN_FRAMES, run_dir))
     if bad or r.returncode != 0:
         return False, "%d black-screen frames examined; non-black band: %s" % (

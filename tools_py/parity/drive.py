@@ -6,8 +6,9 @@ stable for --settle seconds, at most --maxwait, then wait <delay>), `long` (as `
 150 s cap, for screens behind a slow cinematic), `next` (first wait for the screen to change
 since the previous press, then as `stable`), `idle` (press only if the screen stays unchanged for
 <delay> s), `until(x0,y0,x1,y1)` (press until that box is highlighted) or `wait` (just wait <delay>);
-BTN `NONE` presses nothing. A screenshot `sNN_<btn>.png` is taken right before each press;
-`manifest.json` records the step, wall time since launch, stability wait and whether the frame
+BTN `NONE` presses nothing. A screenshot `sNN_<btn>.png` is taken right before each press, and a
+`wNN_<k>.png` every second of every wait within step NN (so a fade that never settles is still
+captured); `manifest.json` records the step, wall time since launch, stability wait and whether the frame
 was stable. Screens on both sides align by step index.
 
 Usage: python -m tools_py.parity.drive --target pcsx2|ours --script <file> --out <dir>
@@ -65,10 +66,13 @@ def frame(hwnd):
     return np.asarray(winshot.grab(hwnd).convert("L").resize((160, 112)), dtype=np.float32)
 
 
-def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3):
+def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3,
+                on_frame=None):
     """Wait until the frame has been stable for `settle` s (at most `maxwait`). With `changed_from`
     (a reference frame), first wait until the frame differs from it, so a press is only issued on
-    a *new* screen (a stable loading screen does not count)."""
+    a *new* screen (a stable loading screen does not count). `on_frame(elapsed)`, when given, is
+    called on every poll (every 0.25 s) with the seconds waited so far, so a caller can record
+    what the screen is doing *during* the wait and not only once it settles."""
     t0 = time.time()
     prev = frame(hwnd)
     stable_since = None
@@ -76,6 +80,8 @@ def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thr
     while time.time() - t0 < maxwait:
         time.sleep(0.25)
         cur = frame(hwnd)
+        if on_frame is not None:
+            on_frame(time.time() - t0)
         if not changed:
             if float(np.abs(cur - changed_from).mean()) > change_thresh:
                 changed = True
@@ -89,6 +95,36 @@ def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thr
             stable_since = None
         prev = cur
     return False, time.time() - t0
+
+
+def wait_capturer(out_dir, hwnd, step, period=1.0):
+    """Build an `on_frame` callback for wait_stable that saves a full-resolution capture every
+    `period` seconds of the wait as `w<step>_<k>.png`.
+
+    The per-step `s<step>_<btn>.png` captures are of the *settled* screen, so anything that only
+    happens while a screen is still changing -- above all the ~1 s fade to black on the way into
+    the briefing -- lived entirely inside a settle wait and was captured only when drive.py's
+    burst step happened to overlap it (gate.py TRANSITION_MIN_FRAMES). These frames are picked up
+    by black_rows.py; the title scorer globs `s[0-9][0-9]_*.png` and so ignores them, and they are
+    not recorded in manifest.json (which stays one entry per step).
+
+    Capturing must never take a run down: a failed grab is reported and the wait continues."""
+    state = {"k": 0, "next": 0.0, "warned": False}
+
+    def on_frame(elapsed):
+        if elapsed < state["next"]:
+            return
+        try:
+            winshot.grab(hwnd).save(os.path.join(out_dir, f"w{step:02d}_{state['k']:03d}.png"))
+        except Exception as e:                                  # noqa: BLE001 - diagnostic only
+            if not state["warned"]:
+                state["warned"] = True
+                print(f"w{step:02d}: wait capture failed ({e}); continuing", flush=True)
+        else:
+            state["k"] += 1
+        state["next"] = elapsed + period
+
+    return on_frame
 
 
 def main():
@@ -142,14 +178,17 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
     for i, (mode, delay, buttons) in enumerate(steps):
         stable, waited = (True, 0.0)
         held = "none"
+        # One counter per step, shared by every wait the step performs (the until*/ifref modes
+        # wait more than once), so the w<step>_<k>.png names never collide.
+        cap = wait_capturer(a.out, hwnd, i)
         if mode == "stable":
-            stable, waited = wait_stable(hwnd, a.settle, a.maxwait)
+            stable, waited = wait_stable(hwnd, a.settle, a.maxwait, on_frame=cap)
         elif mode == "long":
             # Like `stable` with a 150 s cap: for a screen reached only after a cinematic whose
             # length depends on the frame rate (our exe plays the location intro at a few fps).
-            stable, waited = wait_stable(hwnd, a.settle, 150.0)
+            stable, waited = wait_stable(hwnd, a.settle, 150.0, on_frame=cap)
         elif mode == "next":
-            stable, waited = wait_stable(hwnd, a.settle, a.maxwait, changed_from=last)
+            stable, waited = wait_stable(hwnd, a.settle, a.maxwait, changed_from=last, on_frame=cap)
         elif mode.startswith("until("):
             # until(x0,y0,x1,y1)+<delay>:BTN — press BTN every <delay> s (at most 10 times) until the
             # box is highlighted; makes menu navigation independent of how many presses the boot
@@ -158,7 +197,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             presses = 0
             while not highlighted(hwnd, box) and presses < 10:
                 # The briefing ignores DOWN while its text is typing: press only on a settled screen.
-                wait_stable(hwnd, 2.0, 25.0)
+                wait_stable(hwnd, 2.0, 25.0, on_frame=cap)
                 for b in buttons:
                     keys.press(hwnd, b, a.target)
                 presses += 1
@@ -188,7 +227,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
 
             presses = 0
             while not at_ref() and presses < max_loops:
-                wait_stable(hwnd, 1.5, 20.0)
+                wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
                 if at_ref():
                     break
                 for b in buttons:
@@ -210,7 +249,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
             thresh = nums[4] if len(nums) >= 5 else 14.0
             ref_im = np.asarray(Image.open(parts[0]).convert("L").resize((160, 112)), dtype=np.float32)
-            wait_stable(hwnd, 1.5, 20.0)
+            wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
             dist = float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean())
             matched = dist < thresh
             print(f"ifref({parts[0]}): dist={dist:.1f} matched={matched}", flush=True)

@@ -3,8 +3,9 @@ positive cases run on a fresh clone (no logs/ dir required).
 
 Sources (all git-ignored, kept locally from real runs -- see STATUS 2026-09-10/09-09):
   title:      logs/parity/runs/vr_title/s00_none.png .. s15_none.png  (known clean, 19/23 >= 90.0)
-  transition: logs/parity/gate/first/transition/{s04_CROSS,s09_burst_003}.png (both peak 0 in
-              black_rows.py's rows 396-448 band, confirmed by running black_rows.py on that run)
+  transition: five frames of logs/parity/gate/wcap2/transition (one step capture and four wait
+              captures, all peak 0 in black_rows.py's rows 396-448 band, confirmed by running
+              black_rows.py on that run; gate.TRANSITION_MIN_FRAMES is 5)
   mission:    logs/parity/drive_gameplay_probe5.txt (HUD matched=True, known good) and
               logs/parity/vr_gameplay.drive.log (HUD matched=False, known bad)
 
@@ -43,9 +44,14 @@ TITLE_REF = os.path.join(ROOT, "scripts", "parity", "ref_main_menu_ours.png")
 TITLE_SRC_DIR = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")
 TITLE_NAMES = ["s%02d_none.png" % i for i in range(16)]  # s00..s15: the TITLE_MIN_MATCHES floor
 
-TRANSITION_SRC_DIR = os.path.join(ROOT, "logs", "parity", "gate", "first", "transition")
-# (source name in that run, fixture name) -- both confirmed peak 0 in black_rows.py's default band
-TRANSITION_PAIRS = [("s04_CROSS.png", "s00_none.png"), ("s09_burst_003.png", "s01_burst_000.png")]
+TRANSITION_SRC_DIR = os.path.join(ROOT, "logs", "parity", "gate", "wcap2", "transition")
+# (source name in that run, fixture name) -- all confirmed peak 0 in black_rows.py's default band.
+# Five frames, because gate.TRANSITION_MIN_FRAMES is 5; taken from wcap2 rather than the older
+# `first` run so the fixture is a real slice of a post-Task-8 run: one settled step capture and
+# four of the w<step>_<k>.png frames drive.py now takes during its settle waits (the fade into
+# the briefing shows up almost entirely in those). Names are kept as they were in the run.
+TRANSITION_PAIRS = [(n, n) for n in ("s02_CROSS.png", "w00_000.png", "w00_001.png",
+                                     "w01_001.png", "w03_000.png")]
 
 MISSION_GOOD_SRC = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")
 MISSION_BAD_SRC = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")

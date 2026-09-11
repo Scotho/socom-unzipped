@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 """Report the brightest pixel in a row band of every black-screen capture of a run directory (default rows
 396..447 of the 448-row frame, the band that must stay black on the transition to the briefing;
-STATUS 2026-09-09 12:10). Frames are the 640x448 (or scaled) PNGs written by drive.py.
+STATUS 2026-09-09 12:10). Frames are the 640x448 (or scaled) PNGs written by drive.py: both its
+per-step `s*.png` captures and the `w*.png` it takes during its settle waits.
 
 Usage: python tools_py/parity/black_rows.py logs/parity/runs/<run> [--rows 396 448] [--max 8]
 Exit code 1 when any capture has a pixel brighter than --max in the band.
@@ -21,7 +22,11 @@ def main():
     ap.add_argument("--max", type=int, default=8)
     a = ap.parse_args()
     bad = 0
-    for path in sorted(glob.glob(os.path.join(a.run, "s*.png"))):
+    # Both capture families drive.py writes: `s*.png` (the settled screen of each step, plus its
+    # burst frames) and `w*.png` (one frame per second of every settle wait). The fade into the
+    # briefing does not settle, so it lives almost entirely in the w frames.
+    caps = glob.glob(os.path.join(a.run, "s*.png")) + glob.glob(os.path.join(a.run, "w*.png"))
+    for path in sorted(caps):
         im = Image.open(path).convert("RGB")
         w, h = im.size
         y0 = a.rows[0] * h // 448
