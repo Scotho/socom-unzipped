@@ -519,6 +519,16 @@ int main(int argc, char **argv)
         profStop.store(true);
         profThread.join();
     }
+    {
+        // Native-program registry counters (src/lib/vu/native): entered = runs a native program
+        // took over, ended = it ran the whole program to the E bit, handbacks = it gave control
+        // back to the microcode. Printed on every run so a --verify without --native shows zeros.
+        extern std::atomic<uint64_t> g_vu1NativeEntered, g_vu1NativeEnded, g_vu1NativeHandBacks;
+        std::fprintf(stderr, "[vu1_replay] native entered=%llu ended=%llu handbacks=%llu\n",
+                     (unsigned long long)g_vu1NativeEntered.load(),
+                     (unsigned long long)g_vu1NativeEnded.load(),
+                     (unsigned long long)g_vu1NativeHandBacks.load());
+    }
     std::fprintf(stderr, "[vu1_replay] %zu programs x%d: %llu cycles, %llu pairs, host %.1f ms, %.1f ns/cycle, %.1f ns/pair\n",
                  inputs.size(), repeat, (unsigned long long)totalCycles, (unsigned long long)totalPairs,
                  totalHostNs / 1e6, totalCycles ? totalHostNs / (double)totalCycles : 0.0,

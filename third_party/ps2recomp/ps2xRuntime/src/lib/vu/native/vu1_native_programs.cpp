@@ -5,7 +5,12 @@
 #include "runtime/ps2_vu1.h"
 
 // Add one line per native program (and its declaration above).
+bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
+
 extern const Vu1NativeProgram g_vu1NativePrograms[] = {
-    {0ull, 0u, nullptr}, // placeholder: the array must not be empty while the registry has no entries
+    // SOCOM II: the command dispatcher (src/lib/vu/native/socom2_dispatch_0x1b50.cpp). Entry 0 of
+    // the same image is a command-list upload stub that emits nothing and is left to the
+    // generated code.
+    {0xd418194495c25213ull, 0x1b50u, &vu1native_socom2_dispatch},
 };
-extern const uint32_t g_vu1NativeProgramCount = 0u;
+extern const uint32_t g_vu1NativeProgramCount = 1u;
