@@ -16,9 +16,15 @@ docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
    performance). 36-42 fps single instance is enough for this sprint. The two-instance frame
    rate is a test-rig concern: run the second client of the acceptance test in PCSX2.
 3. Native render path: the VU1 command dispatcher (entry pc 0x1b50 of image d418194495c25213)
-   hand-written in third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/, verified with
-   `dist/vu1_replay.exe --verify --native` on tests/fixtures/vu1/title and
-   tests/fixtures/vu1/dispatch_0x1b50 and by the title gate.
+   hand-written in third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ now runs families A, B
+   and C natively (123/166 lists across dump2/3/4, bit-exact `--regs all`); residual is one
+   dump3 list using 0x34 (EFU maths + same-lane write conflict) and 42 dump3 lists using a
+   fourth, unimplemented command family (0x70/0x52/0x66/0x40 -- Sprint 3 research). The native
+   0x28 handler can also draw host-space triangles straight through `GS::submitHostTriangle`
+   behind `PS2X_VU1_HOST_DRAW` (default off; the GIF path is unchanged and still what every
+   golden verifies). Verified with `dist/vu1_replay.exe --verify --native` on
+   tests/fixtures/vu1/title and tests/fixtures/vu1/dispatch_0x1b50, `--vram-diff` for the
+   host-draw knob, and by the title gate.
 4. The first-kill acceptance test (tools_py/parity/online_match_ours.py) continues unchanged.
 Long term: N64-recomp model — game logic stays recompiled, renderer/audio/input/network native.
 

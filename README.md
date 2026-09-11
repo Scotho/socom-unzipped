@@ -8,9 +8,11 @@ host, structured so it can be extended later. The user supplies their own disc i
 `docs/STATUS.md` (what works, what is next, how to resume), then the design and the task list:
 `docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` +
 `docs/superpowers/plans/2026-09-04-implementation-plan.md` for the project as a whole, and
-`docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md` +
-`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md` for the current
-sprint. `docs/research/` holds the reverse-engineering and research write-ups.
+`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md` +
+`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md` for the current
+sprint (previous: `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`
++ `docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`).
+`docs/research/` holds the reverse-engineering and research write-ups.
 
 ## How it works (one paragraph)
 The retail ELF is only a loader; the game is two Metrowerks overlays that the loader decrypts
@@ -43,12 +45,20 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ./build.sh recomp      # regenerate ELF, normalize the function map, run ps2_recomp (~10 s)
 ./build.sh runtime     # cmake+ninja, clang, LTO off (~15 min from scratch, ~3 min runtime-only)
 ./build.sh test        # ps2x_tests + vu1_replay (builds both, copies vu1_replay to dist/) and
-                       # replays the VU1 fixtures against their goldens, native path on and off
+                       # replays the VU1 fixtures against their goldens, native path on and off,
+                       # plus a --vram-diff equivalence check; PS2X_TEST_REPEAT=N runs the unit
+                       # suite N times (determinism check)
 python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
                        # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+Knobs: `PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
+`GS::submitHostTriangle` in host space instead of building/kicking a GIF packet (default off, GIF
+path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path;
+`PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a determinism check. `vu1_replay
+--vram-diff <outdir> [--vram-tol <pct>]` proves the host-draw and GIF paths render the same
+pixels offline; `vu1_replay --no-native` forces the interpreted path for comparison.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.

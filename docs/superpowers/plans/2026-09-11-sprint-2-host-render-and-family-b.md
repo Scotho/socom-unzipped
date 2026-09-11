@@ -62,7 +62,7 @@ void submitHostTriangle(const GSPrimReg &prim, const GSVertex &v0, const GSVerte
 GS *activeGs() const { return m_activeGs; }   // valid during execute()/resume()
 ```
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 In `ps2_gs_tests.cpp`, inside `register_ps2_gs_tests()`'s `MiniTest::Case("PS2GS", ...)`, find an existing test that draws a flat triangle through `processGIFPacket` and reads pixels back (search for `GS_PRIM_TRIANGLE` or `XYZ2` and `ReadVram`/`getGSVRAM`; copy its frame/scissor register setup verbatim). Add:
 ```cpp
@@ -94,11 +94,11 @@ tc.Run("submitHostTriangle honours the context selected by prim.ctxt", [](TestCa
 ```
 The test binary runs with `PS2X_GS_BACKEND=cpu` (main.cpp env default), so the CPU rasteriser draws into VRAM synchronously; integer coordinates keep the CPU sprite/line truncation out of the comparison (this test uses triangles only).
 
-- [ ] **Step 2: Run to verify they fail**
+- [x] **Step 2: Run to verify they fail**
 
 `cmake --build third_party/ps2recomp/build-clang --target ps2x_tests 2>&1 | grep -E "error" | head` — expected: `submitHostTriangle` is not a member of `GS`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In `gs_frontend.cpp`, refactor `buildDrawBatch` so the state fill is shared:
 ```cpp
@@ -145,11 +145,11 @@ Declare `fillDrawState` (private, const) and `submitHostTriangle` (public) in `g
 
 In `ps2_vu1.h` add the public inline `GS *activeGs() const { return m_activeGs; }` (forward declaration `class GS;` already exists there).
 
-- [ ] **Step 4: Run the tests**
+- [x] **Step 4: Run the tests**
 
 Rebuild `ps2x_tests`, run from `build-clang/ps2xTest`: the two new tests pass, everything else unchanged (`exit=0`). Then `./build.sh test` (lock) exit 0 — the fixture verifies are untouched by this task.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_frontend.h third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_frontend.cpp third_party/ps2recomp/ps2xRuntime/include/runtime/ps2_vu1.h third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp
@@ -170,11 +170,11 @@ git push
 - Consumes: `GS::submitHostTriangle`, `vu.activeGs()`, the handler's staging qwords (`+0` ST with `.z` = Q, `+1` RGBAQ after `ftoi<0>`, `+2` XYZF2 after `ftoi<4>`; research/12 f.4), the GIFtag template at qwords 290/300 (`PRIM` field, `REGS = 0x412`, `NLOOP = 3`, `EOP`), `vu.startXgkick(vi2)`.
 - Produces: with `PS2X_VU1_HOST_DRAW=1` each triangle is submitted through the hook instead of being packed and kicked; the data-memory writes that the GIF path performs (the nine register qwords, the ping-pong swap, `vi2`/`vi8`) are still performed so `--regs all` and `data=` stay identical; only the `startXgkick` call is replaced. `vu1_replay --host-draw` sets the env; `vu1_replay --vram-diff <outdir>` runs every dump twice (GIF path, host path) into fresh GS VRAM and prints `VRAMDIFF <name> differing=<n> of <pixels> (<pct>%)`, exit 1 if any dump exceeds `--vram-tol` (default 1.0 %).
 
-- [ ] **Step 1: Read the pre-conversion floats**
+- [x] **Step 1: Read the pre-conversion floats**
 
 In `cmdBuildPacket`, the XYZF2 quad for each vertex is produced by `ftoi<4>` from the transformed float position (`vf` from `0xdf8`, staging `+2` before conversion is not stored — check research/12 f.4: `0x1780` loads `+42` and applies `ftoi<4,...>` before `SQ` to `vi2+3/6/9`). Capture the float x/y before `ftoi<4>` for the three vertices of the triangle; keep the converted integers for z and for the packet qwords.
 
-- [ ] **Step 2: Emit through the hook**
+- [x] **Step 2: Emit through the hook**
 
 Where the handler calls `vu.startXgkick((uint32_t)(uint16_t)c.vi(2))`, add:
 ```cpp
@@ -203,11 +203,11 @@ else
 ```
 `primFromGifTag` decodes the 64-bit GIFtag's PRIM field (bits 47-57) into `GSPrimReg` exactly as `gs_frontend.cpp`'s GIFtag handler does (copy its bit layout; `PRE` must be set in the template, assert it in a debug check). The host path still executes every data-memory write and register update the GIF path does, so the goldens stay green with the knob on.
 
-- [ ] **Step 3: `vu1_replay --host-draw` and `--vram-diff`**
+- [x] **Step 3: `vu1_replay --host-draw` and `--vram-diff`**
 
 Arg parsing: `--host-draw` → `_putenv("PS2X_VU1_HOST_DRAW=1")`; `--vram-diff <outdir>` + optional `--vram-tol <pct>`. In `--vram-diff` mode, for each dump: run once with `PS2X_VU1_HOST_DRAW=0` into a fresh `GS`/VRAM (`memory.getGSVRAM()` zeroed, `gs.reset()`), copy the first 640×448×4 bytes of the frame region (fbp 0, the CPU backend's default frame if no FRAME register was set — confirm in `gs_frontend.cpp` what an unset FRAME resolves to; if draws need a FRAME register, write one through `gs.writeRegister` before each run, identically for both), then run again with `=1`, and count differing 32-bit pixels. Because `s_hostDraw` is a read-once static in the native file, the two runs must happen in two processes: implement `--vram-diff` as a driver that re-executes `vu1_replay` itself (`argv[0]`) with `--vram-dump <file>` for each mode and compares the two files. Print one `VRAMDIFF` line per dump and `PASS`/`FAIL` at the end; exit 1 on FAIL. Save `<outdir>/<dump>.{gif,host}.rgba` for inspection.
 
-- [ ] **Step 4: Verify offline**
+- [x] **Step 4: Verify offline**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target vu1_replay | tail -1 && cp third_party/ps2recomp/build-clang/ps2xRuntime/vu1_replay.exe dist/
@@ -221,11 +221,11 @@ Add to `build.sh` `test_step`, after the four verify lines:
   "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
 ```
 
-- [ ] **Step 5: Verify in-game**
+- [x] **Step 5: Verify in-game**
 
 `./build.sh runtime` (lock), then a detached full gate with `PS2X_VU1_HOST_DRAW=1 PS2X_VU_STATS=1` (`--stamp hostdraw_on`). Expected `GATE PASS (3/3)`; the mission sheet's HUD must look identical to `logs/parity/gate/native_default/mission_sheet.png` (score the two title run dirs against each other with `compare.score`: every capture ≥ 95).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/socom2_dispatch_0x1b50.cpp third_party/ps2recomp/ps2xRuntime/src/tools/vu1_replay.cpp build.sh
@@ -245,9 +245,10 @@ git push
 - Consumes: `kMaxRtWidth = 1024`, `kRtHeight = 1024`, `kHostFrameWidth/Height = 640/512` (gs_gl_backend.cpp:22-25), `appendVertex` (2019-2047), `executeSubmit` (2049-2152), `markRtDirtyFromFrame`, `refreshRenderTargetsFromShadow`/`refreshDirtyRows`, `resolveTexture` (render targets sampled directly, STATUS 2026-09-09 13:30), `HostFrameTexture`, the readback-to-shadow-VRAM path, `PS2X_GS_DUMP_DISPLAY`.
 - Produces: the note lists every place the GL backend assumes GS pixels are 1:1 with GL texels (render-target allocation, dirty rows, upload of shadow VRAM into RTs, RT-as-texture sampling, readback/download to shadow VRAM, scissor, display presentation, local-to-local copies), with the change each needs for an integer factor `S`. Decision rule: if the change set is ≤ 8 touch points and no readback path needs a downsample filter that affects gameplay-visible content (e.g. the title labels' page copies), implement `PS2X_GS_SCALE` (3b); otherwise stop, record why, and carry it to Sprint 3.
 
-- [ ] **Step 1: Enumerate (read-only)** — grep the backend for `kRtHeight`, `kMaxRtWidth`, `640`, `448`, `512`, `>> 4`, `xyoffset`, `scissor`, `ReadSpan`, `glReadPixels`/`rlReadTexturePixels`, `HostFrameTexture`; for each hit write one table row: line, what it assumes, change for scale S, risk. Include the CPU backend interplay (`PS2X_GS_BACKEND=cpu` stays 1x; state it).
-- [ ] **Step 2: Decide** — apply the rule above; write the decision and the plan for 3b (or Sprint 3) at the end of the note. Commit the note: `git commit -m "research: GL backend 1:1 assumptions for a render-target scale; decision"`.
+- [x] **Step 1: Enumerate (read-only)** — grep the backend for `kRtHeight`, `kMaxRtWidth`, `640`, `448`, `512`, `>> 4`, `xyoffset`, `scissor`, `ReadSpan`, `glReadPixels`/`rlReadTexturePixels`, `HostFrameTexture`; for each hit write one table row: line, what it assumes, change for scale S, risk. Include the CPU backend interplay (`PS2X_GS_BACKEND=cpu` stays 1x; state it).
+- [x] **Step 2: Decide** — apply the rule above; write the decision and the plan for 3b (or Sprint 3) at the end of the note. Commit the note: `git commit -m "research: GL backend 1:1 assumptions for a render-target scale; decision"`.
 - [ ] **Step 3 (3b, only on a "go"):** implement `PS2X_GS_SCALE` (integer, default 1) applied to RT allocation, vertex x/y/scissor in `appendVertex`/scissor setup, dirty-row bands, RT-as-texture coordinates, and the readback (box-filter downsample to 1x shadow VRAM); presentation at RT size. Verify: `PS2X_GS_SCALE=1` gate green and title captures score ≥ 99 against `native_default`; `PS2X_GS_SCALE=2 PS2X_VU1_HOST_DRAW=1` gate green and the mission sheet's HUD text visibly sharper (attach the sheet path to STATUS). Commit per sub-step.
+  Deferred to Sprint 3 per research/14 (NO-GO: 15 touch points, both readbacks need a content-altering downsample).
 
 ---
 
@@ -260,8 +261,8 @@ git push
 - Consumes: research/12 §f (the f.1 table: `0x02`→`0x1f70` world-object setup with `BAL vi15, 0x3618` at `0x2070`; `0x0a`→`0xf08` kick 423; `0x12`→`0x1108`; `0x56`→`0x640` template fill base 150; `0x1a`→`0x15b0`; `0x2a`→`0x1a78` flush/kick; `0x4c`→`0x20c8` loop back-edge; the `0x3618-0x3d20` subroutine with inner `BAL 0x3ad0`/`0x3a90`; the `0x1980-0x1a70` shared flush tail with `XGKICK vi6`/`vi5`; family C: `0x64`→`0x4a8` kick 330, `0x32`→`0x23b0`, `0x30`→`0x22a0`, `0x72`, `0x74`), `dist/vu1_replay.exe --pchist`, `tools_py/vu1dis.py`, the generated C++ labels, `logs/vu1dump{2,3,4}` and `logs/vu1entry0/dispatch_dumps.txt`.
 - Produces: for every family-B and family-C handler and for `0x3618` (with its inner subroutines) the same description level research/12 f.4 gives for `0xdf8`/`0xf90`: register roles, data-qword layout (the per-primitive index list `0x2070` walks, the 150-based template, qwords 327-330/423), loop structure, XGKICK sites and packet templates, live-in/live-out per handler, the exact hand-back contract for family B (list start and program end only, unless a handler is proven independent), and the executed order of the C lists (which handler rewrites `vi14`, to what). Every row `[verified]`/`[guess]`.
 
-- [ ] **Step 1:** histogram of the 90 family-B/C dumps (select by list content from `dispatch4_lists.txt` and the dump3/dump2 equivalents); disassemble each handler range; decode two family-B and two family-C lists end to end (executed order via `--trace` on one dump each).
-- [ ] **Step 2:** write the note; self-check: could an engineer implement `0x02` + `0x3618` + `0x4c` from it alone? Commit: `git commit -m "research: VU1 family B/C handlers and the 0x3618 primitive subroutine"`.
+- [x] **Step 1:** histogram of the 90 family-B/C dumps (select by list content from `dispatch4_lists.txt` and the dump3/dump2 equivalents); disassemble each handler range; decode two family-B and two family-C lists end to end (executed order via `--trace` on one dump each).
+- [x] **Step 2:** write the note; self-check: could an engineer implement `0x02` + `0x3618` + `0x4c` from it alone? Commit: `git commit -m "research: VU1 family B/C handlers and the 0x3618 primitive subroutine"`.
 
 ---
 
@@ -274,9 +275,9 @@ git push
 - Consumes: research/13, the existing `Ctx`, `isFamilyARun` pre-scan, `handleCommand` switch, the `Vu1Gen`/`vu1ops` helpers, `--verify --native --regs all` goldens (`logs/vu1golden/dump4_1b50_exact` etc., regenerate with the exact interpreter if missing).
 - Produces: the pre-scan accepts family-B lists (`68 [06] 02 0a 12 [56] 1a 2a 4c 42`, with the `0x4c` back-edge semantics: `y` = branch-target index, count from the header) when every command is implemented; otherwise whole hand-back as today. New handlers: `0x02` (calls a native `primSubroutine3618`), `0x0a`, `0x12`, `0x56`, `0x1a`, `0x2a`, `0x4c`. `0x3618` implemented as a native function with the same clamp discipline.
 
-- [ ] **Step 1:** implement `0x0a`, `0x56`, `0x12`, `0x1a`, `0x2a` (the small ones) one per commit; since family-B lists still contain `0x02`/`0x4c`, the pre-scan keeps handing them back until all are done — verify each commit with `--verify --native --regs all` on all three dump sets (must stay PASS, handbacks unchanged).
-- [ ] **Step 2:** implement `0x3618` (+ inner `0x3ad0`/`0x3a90`) as `primSubroutine3618(Ctx&)`, then `0x02`, then `0x4c` (the loop: re-read the command index from `y`, decrement the primitive count, end via `0x1b40` when it reaches 0). After `0x4c`, enable family-B lists in the pre-scan. Expected: `native ended` rises from 76 to 76 + (25 dump4 + the dump3/dump2 B counts), `--regs all` PASS on every set. Commit per handler with handbacks before/after.
-- [ ] **Step 3:** `./build.sh test` exit 0; gate (native default on) green; STATUS "Current state" line 4 updated with the new native count.
+- [x] **Step 1:** implement `0x0a`, `0x56`, `0x12`, `0x1a`, `0x2a` (the small ones) one per commit; since family-B lists still contain `0x02`/`0x4c`, the pre-scan keeps handing them back until all are done — verify each commit with `--verify --native --regs all` on all three dump sets (must stay PASS, handbacks unchanged).
+- [x] **Step 2:** implement `0x3618` (+ inner `0x3ad0`/`0x3a90`) as `primSubroutine3618(Ctx&)`, then `0x02`, then `0x4c` (the loop: re-read the command index from `y`, decrement the primitive count, end via `0x1b40` when it reaches 0). After `0x4c`, enable family-B lists in the pre-scan. Expected: `native ended` rises from 76 to 76 + (25 dump4 + the dump3/dump2 B counts), `--regs all` PASS on every set. Commit per handler with handbacks before/after.
+- [x] **Step 3:** `./build.sh test` exit 0; gate (native default on) green; STATUS "Current state" line 4 updated with the new native count.
 
 ---
 
@@ -284,8 +285,8 @@ git push
 
 **Files:** same as Task 5.
 
-- [ ] **Step 1:** implement `0x64` (`vi2 = 330; XGKICK vi2; B 0x1b60`), `0x30` (tail-jumps into `0x1780` with `vi6 = 752` — reuse `cmdBuildPacket` with the entry offset research/13 documents), `0x32`, `0x72`, `0x74`; the pre-scan must handle the C lists' executed order (a handler rewrites `vi14`): if research/13 shows the executed order is not derivable from the static list, the pre-scan may only accept a C list when the dispatcher loop itself can validate each command on the fly and a mid-list hand-back is safe at `0x1b60` for C handlers — otherwise C stays whole-hand-back and the report says so.
-- [ ] **Step 2:** verify on all sets; `./build.sh test`; gate; commit per handler. Target: 166/166 native or the residual set listed with reasons in STATUS.
+- [x] **Step 1:** implement `0x64` (`vi2 = 330; XGKICK vi2; B 0x1b60`), `0x30` (tail-jumps into `0x1780` with `vi6 = 752` — reuse `cmdBuildPacket` with the entry offset research/13 documents), `0x32`, `0x72`, `0x74`; the pre-scan must handle the C lists' executed order (a handler rewrites `vi14`): if research/13 shows the executed order is not derivable from the static list, the pre-scan may only accept a C list when the dispatcher loop itself can validate each command on the fly and a mid-list hand-back is safe at `0x1b60` for C handlers — otherwise C stays whole-hand-back and the report says so.
+- [x] **Step 2:** verify on all sets; `./build.sh test`; gate; commit per handler. Target: 166/166 native or the residual set listed with reasons in STATUS.
 
 ---
 
@@ -294,8 +295,8 @@ git push
 **Files:**
 - Modify: `socom2_dispatch_0x1b50.cpp` (every handler that reads a loop count from `TOP+2.z/.w` or from the index list)
 
-- [ ] **Step 1:** at each read of a loop count (`0xb28`, `0xe08`, `0xf90`, `0x5e0`, `0x1458` read `TOP+2.z`; `0x17d0`, `0x1640` read `TOP+2.w`; family-B counts per research/13), clamp against `kMaxVertices`/`kMaxTriangles`/the family-B ceilings; on violation set `c.vi(14)` to the current index, `m_state.pc = 0x1b60`, and return false from the handler (mid-list hand-back is safe for family A; for family B hand back only if research/13 proves it, otherwise finish the primitive and hand back at the `0x4c` boundary). Document the rule in the file header.
-- [ ] **Step 2:** synthetic test: take one fixture dump, rewrite `TOP+2.z` to 300 with a small Python script into `logs/`, run `--verify --native` against an exact golden of the modified dump: the native path must hand back and match. `./build.sh test` exit 0. Commit: `git commit -m "vu1(native): per-handler loop-count clamps hand back instead of running unbounded"`.
+- [x] **Step 1:** at each read of a loop count (`0xb28`, `0xe08`, `0xf90`, `0x5e0`, `0x1458` read `TOP+2.z`; `0x17d0`, `0x1640` read `TOP+2.w`; family-B counts per research/13), clamp against `kMaxVertices`/`kMaxTriangles`/the family-B ceilings; on violation set `c.vi(14)` to the current index, `m_state.pc = 0x1b60`, and return false from the handler (mid-list hand-back is safe for family A; for family B hand back only if research/13 proves it, otherwise finish the primitive and hand back at the `0x4c` boundary). Document the rule in the file header.
+- [x] **Step 2:** synthetic test: take one fixture dump, rewrite `TOP+2.z` to 300 with a small Python script into `logs/`, run `--verify --native` against an exact golden of the modified dump: the native path must hand back and match. `./build.sh test` exit 0. Commit: `git commit -m "vu1(native): per-handler loop-count clamps hand back instead of running unbounded"`.
 
 ---
 
@@ -308,9 +309,9 @@ git push
 - Consumes: `wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3)` polling every 0.25 s; capture naming `s{i:02d}_...png`; `black_rows.py` selects `s*.png`; `gate.score_title` globs `s[0-9][0-9]_*.png` minus `burst`.
 - Produces: `wait_stable(..., on_frame=None)` calls `on_frame(elapsed)` every poll; `run_steps` passes a callback that saves `w{i:02d}_{k:03d}.png` (full-resolution `winshot.grab`) every 1.0 s of every wait; `black_rows.py` globs `s*.png` and `w*.png`; the title scorer is unaffected (pattern starts with `s`); `TRANSITION_MIN_FRAMES = 5` restored with the calibration comment updated from a fresh run.
 
-- [ ] **Step 1 (test first):** in `test_gate.py` add `test_wait_frames_count_toward_transition` using a temp dir with three near-black `w00_000.png..w00_002.png` (`Image.new("RGB",(640,448),(0,0,0))`) and two `s01_none.png` black frames: `score_transition` must report 5 frames examined once the floor is 5. Run → FAIL (black_rows ignores `w*`).
-- [ ] **Step 2:** implement the callback and the glob; `python -m unittest tools_py.tests.test_gate -v` green.
-- [ ] **Step 3:** `./build.sh runtime` not needed; run the transition gate twice detached (`--only transition`, stamps `wcap1`, `wcap2`): both must examine ≥ 5 frames with `peak 0`; set the floor to 5 and record the counts in the comment. Commit: `git commit -m "parity: drive.py captures every second during settle waits (w*.png); black_rows counts them; transition floor back to 5"`.
+- [x] **Step 1 (test first):** in `test_gate.py` add `test_wait_frames_count_toward_transition` using a temp dir with three near-black `w00_000.png..w00_002.png` (`Image.new("RGB",(640,448),(0,0,0))`) and two `s01_none.png` black frames: `score_transition` must report 5 frames examined once the floor is 5. Run → FAIL (black_rows ignores `w*`).
+- [x] **Step 2:** implement the callback and the glob; `python -m unittest tools_py.tests.test_gate -v` green.
+- [x] **Step 3:** `./build.sh runtime` not needed; run the transition gate twice detached (`--only transition`, stamps `wcap1`, `wcap2`): both must examine ≥ 5 frames with `peak 0`; set the floor to 5 and record the counts in the comment. Commit: `git commit -m "parity: drive.py captures every second during settle waits (w*.png); black_rows counts them; transition floor back to 5"`.
 
 ---
 
@@ -320,8 +321,8 @@ git push
 - Create: `tests/fixtures/gate/title/s00_none.png` … `s15_none.png` (320×224, from a clean run, resized with `Image.BOX`), `tests/fixtures/gate/transition/s00_none.png`, `s01_burst_000.png` (two near-black 320×224 frames from a real run), `tests/fixtures/gate/mission/good.drive.log`, `bad.drive.log` (copies of `logs/parity/drive_gameplay_probe5.txt` and `logs/parity/vr_gameplay.drive.log`, trimmed to the lines the scorer reads)
 - Modify: `tools_py/tests/test_gate.py`
 
-- [ ] **Step 1:** produce the fixtures with a small Python script (resize with `Image.BOX` to 320×224; `compare.score` resizes to that size anyway); check each title fixture scores ≥ 95 against `scripts/parity/ref_main_menu_ours.png` (if resizing drops the score below 90, keep them at 640×448 instead and note the size). Total should stay under 1 MB.
-- [ ] **Step 2:** point the positive tests at the fixtures (no `skipUnless`), keep the `logs/`-based tests as additional skip-guarded cases. `python -m unittest tools_py.tests.test_gate -v` → all positive cases run and pass. Commit: `git commit -m "parity: committed gate fixtures so test_gate's positive cases run on a fresh clone"`.
+- [x] **Step 1:** produce the fixtures with a small Python script (resize with `Image.BOX` to 320×224; `compare.score` resizes to that size anyway); check each title fixture scores ≥ 95 against `scripts/parity/ref_main_menu_ours.png` (if resizing drops the score below 90, keep them at 640×448 instead and note the size). Total should stay under 1 MB.
+- [x] **Step 2:** point the positive tests at the fixtures (no `skipUnless`), keep the `logs/`-based tests as additional skip-guarded cases. `python -m unittest tools_py.tests.test_gate -v` → all positive cases run and pass. Commit: `git commit -m "parity: committed gate fixtures so test_gate's positive cases run on a fresh clone"`.
 
 ---
 
@@ -330,8 +331,8 @@ git push
 **Files:**
 - Modify: `build.sh` (`test_step`), `third_party/ps2recomp/ps2xTest/src/ps2_runtime_interrupt_tests.cpp` (only if a flake remains)
 
-- [ ] **Step 1:** `build.sh test` runs `ps2x_tests.exe` `${PS2X_TEST_REPEAT:-1}` times; run with `PS2X_TEST_REPEAT=5` under the lock. Expected: 5 × exit 0.
-- [ ] **Step 2:** if any run fails, capture which test, read it, fix the root cause (a wall-clock assumption becomes a condition wait with a generous budget, or an ordering assumption gets a barrier) — never loosen an assertion; re-run 5×. Commit: `git commit -m "test: ps2x_tests deterministic across repeated runs (PS2X_TEST_REPEAT)"`.
+- [x] **Step 1:** `build.sh test` runs `ps2x_tests.exe` `${PS2X_TEST_REPEAT:-1}` times; run with `PS2X_TEST_REPEAT=5` under the lock. Expected: 5 × exit 0.
+- [x] **Step 2:** if any run fails, capture which test, read it, fix the root cause (a wall-clock assumption becomes a condition wait with a generous budget, or an ordering assumption gets a barrier) — never loosen an assertion; re-run 5×. Commit: `git commit -m "test: ps2x_tests deterministic across repeated runs (PS2X_TEST_REPEAT)"`.
 
 ---
 
@@ -339,7 +340,7 @@ git push
 
 **Files:** `docs/STATUS.md`, `docs/LOOP_PROMPT.md`, `README.md`, `docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`
 
-- [ ] **Step 1:** STATUS "Current state" lines updated (knobs `PS2X_VU1_HOST_DRAW`, `PS2X_GS_SCALE` if landed, native coverage count, gate determinism), one dated Sprint 2 entry; README "Build and run" lists the new knobs; LOOP_PROMPT goal 3 text updated to the Sprint 2 spec; plan boxes ticked. Commit and push. Merge `sprint-2` into `develop` (fast-forward) and `main`.
+- [x] **Step 1:** STATUS "Current state" lines updated (knobs `PS2X_VU1_HOST_DRAW`, `PS2X_GS_SCALE` if landed, native coverage count, gate determinism), one dated Sprint 2 entry; README "Build and run" lists the new knobs; LOOP_PROMPT goal 3 text updated to the Sprint 2 spec; plan boxes ticked. Commit and push. Merge `sprint-2` into `develop` (fast-forward) and `main`.
 
 ---
 
