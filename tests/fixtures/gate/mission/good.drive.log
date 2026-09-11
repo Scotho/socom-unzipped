@@ -1,0 +1,7 @@
+untilref(scripts/parity/ref_hud_ours.png): 4 presses, matched=True
+s24_holdW                t= 176.6s stable=True waited=0.0s
+s26_holdR1               t= 179.4s stable=True waited=0.0s
+s28_holdR1               t= 181.3s stable=True waited=0.0s
+s30_holdL                t= 187.9s stable=True waited=0.0s
+s32_holdS                t= 198.5s stable=True waited=0.0s
+s34_holdR1               t= 201.4s stable=True waited=0.0s
