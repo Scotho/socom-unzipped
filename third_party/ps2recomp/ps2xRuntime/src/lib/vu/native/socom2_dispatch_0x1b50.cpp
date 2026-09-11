@@ -668,6 +668,37 @@ namespace
         }
     }
 
+    // ---- command 0x54 -> 0x05d8: template fill ---------------------------------------------
+    //
+    // Broadcasts data qword 327 (the list's RGBAQ template, which entry 0 copied from TOP+12) into
+    // the +1 slot of every vertex's staging triple, three vertices per iteration from base 40. The
+    // loop overshoots to the next multiple of three -- for 68 vertices it writes the slot of
+    // vertices 68 and 69 as well, i.e. up to qword 245 -- which is reproduced here because the
+    // extra qwords are part of the compared data memory.
+    bool cmdTemplateFill(Ctx &c)
+    {
+        constexpr uint8_t kTemplate = 28;
+        constexpr uint8_t kStageCursor = 4; // vi4, three vertices (9 qwords) per iteration
+        constexpr uint8_t kRemaining = 9;   // vi9
+
+        c.vi(kStageCursor) = 40;                                 // 0x05d8
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x05e0: TOP+2.z
+        loadQword<kTemplate, kXYZW>(c, 327);                     // 0x05e8
+
+        for (;;)
+        {
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 3);       // 0x0600
+            storeQword<kTemplate, kXYZW>(c, c.vi(kStageCursor) + 1);
+            storeQword<kTemplate, kXYZW>(c, c.vi(kStageCursor) + 4);
+            storeQword<kTemplate, kXYZW>(c, c.vi(kStageCursor) + 7);
+            // 0x0620 `IBGTZ vi9, 0x0600`, with the cursor step in its delay slot.
+            const bool more = c.vi(kRemaining) > 0;
+            c.vi(kStageCursor) = vi16(c.vi(kStageCursor) + 9);
+            if (!more)
+                return true;                                     // 0x0630: B 0x1b60
+        }
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -680,6 +711,8 @@ namespace
             return cmdTransformDivide(c);
         case kCmdFade:
             return cmdDistanceFade(c);
+        case kCmdTemplateFill:
+            return cmdTemplateFill(c);
         default:
             return false;
         }
