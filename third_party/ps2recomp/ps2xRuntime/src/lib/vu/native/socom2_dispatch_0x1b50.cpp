@@ -91,6 +91,7 @@ namespace
         kCmdLight = 0x18u,         // 0x1440 lighting
         kCmdClippedLight = 0x1au,  // 0x15b0 family-B shim: 0x18's lighting on the 150 base
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
+        kCmdFlushPacket = 0x2au,   // 0x1a78 family-B packet flush: staging 150 -> 113, XGKICK 112
         kCmdEnd = 0x42u,           // 0x1b40 E bit
         kCmdTemplateFill = 0x54u,  // 0x05d8 broadcast data qword 327 into every RGBAQ slot
         kCmdClippedTemplateFill = 0x56u, // 0x0640 family-B shim: 0x54's fill on the 150 base
@@ -1318,6 +1319,133 @@ namespace
         return true;                                             // 0x1958: B 0x1b60
     }
 
+    // ---- the shared packet-flush tail 0x1980, and command 0x2a -> 0x1a78 --------------------
+    //
+    // Converts a run of staging triples into GS-format ones and kicks them. Entered with vi3 = the
+    // staging base, vi4 = the packet-body base and vi9 = the vertex count. Per vertex:
+    //   +0 ST     copied verbatim (the PACKED ST descriptor takes floats)
+    //   +1 RGBAQ  (source * (1,1,1,alphaScale)) + (0.5,0.5,0.5,0), then FTOI0 -- round-to-nearest
+    //             on R,G,B and truncate on A, the alpha scale being data qword 327's .w
+    //   +2 XYZF2  FTOI4 -- float to 12.4 fixed point
+    // then XGKICK 423 (the NLOOP=0/EOP=1 terminator tag) followed by XGKICK of the GIFtag one
+    // qword below the body base, i.e. qword 112, which command 0x02 built (research/13 4.6).
+    //
+    // The microcode pipelines this one vertex deep, so it over-reads one staging triple past the
+    // end and leaves vi3 three qwords past where a naive loop would: reproduced here, because the
+    // registers and the source cursor are part of the compared end-of-program state.
+    namespace flush
+    {
+        constexpr uint8_t kBias = 28;      // data qword 38 = (1,1,1,0.5); .w replaced from 327
+        constexpr uint8_t kSrcSt = 17, kSrcRgba = 18, kSrcXyz = 19;  // the staging triple in flight
+        constexpr uint8_t kBiasedRgba = 31;                          // RGBAQ before FTOI0
+        constexpr uint8_t kOutSt = 21, kOutRgba = 29, kOutXyz = 30;  // the GS-format triple
+        constexpr uint8_t kSrcCursor = 3;  // vi3, stride 3
+        constexpr uint8_t kDstCursor = 4;  // vi4, stride 3
+        constexpr uint8_t kRemaining = 9;  // vi9
+        constexpr uint8_t kTag = 5;        // vi5 = vi4 - 1: the GIFtag qword that gets kicked
+        constexpr uint8_t kTermTag = 6;    // vi6 = 423
+    }
+
+    bool flushTail(Ctx &c)
+    {
+        using namespace flush;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        loadQword<kBias, kXYZW>(c, 38);                          // 0x1980
+
+        // 0x1988-0x1990: ACC becomes the rounding bias (0.5, 0.5, 0.5, 0) -- the .w lane is
+        // vf0.w - vf0.w, an exact zero, so alpha is truncated rather than rounded -- and vf28's
+        // own .w is replaced by the alpha scale from the colour template at qword 327.
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kXYZ, 0, kBias, false, false, true>(c);
+        loadQword<kSrcRgba, kXYZW>(c, c.vi(kSrcCursor) + 1);
+        writeAcc<kXYZ>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcBc, 3, kW, 0, 0, false, false, false>(c);
+        loadQword<kBias, kW>(c, 327);
+        writeAcc<kW>(c, up);
+
+        c.vi(kTag) = vi16(c.vi(kDstCursor) - 1);                 // 0x1998
+        loadQword<kSrcXyz, kXYZW>(c, c.vi(kSrcCursor) + 2);      // 0x19a0
+        loadQword<kSrcSt, kXYZW>(c, c.vi(kSrcCursor) + 0);       // 0x19a8
+
+        // 0x19b0-0x19e8: convert the first vertex and fetch the second, so the loop below always
+        // has a converted triple ready to store.
+        up = fmac<ArithMadd, Vu1Gen::SrcVt, 0, kXYZW, kSrcRgba, kBias>(c);
+        writeVf<kBiasedRgba, kXYZW>(c, up);
+        up = ftoi<4, kSrcXyz>(c);
+        c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+        writeVf<kOutXyz, kXYZW>(c, up);
+        up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kSrcSt, 0, false, true, false>(c);
+        writeVf<kOutSt, kXYZW>(c, up);
+        loadQword<kSrcRgba, kXYZW>(c, c.vi(kSrcCursor) + 1);
+        up = ftoi<0, kBiasedRgba>(c);
+        loadQword<kSrcXyz, kXYZW>(c, c.vi(kSrcCursor) + 2);
+        writeVf<kOutRgba, kXYZW>(c, up);
+        loadQword<kSrcSt, kXYZW>(c, c.vi(kSrcCursor) + 0);
+        c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+
+        for (;;)
+        {
+            // 0x19f0-0x1a00: store the triple converted last time round ...
+            up = fmac<ArithMadd, Vu1Gen::SrcVt, 0, kXYZW, kSrcRgba, kBias>(c);
+            storeQword<kOutXyz, kXYZW>(c, c.vi(kDstCursor) + 2);
+            writeVf<kBiasedRgba, kXYZW>(c, up);
+            storeQword<kOutRgba, kXYZW>(c, c.vi(kDstCursor) + 1);
+            storeQword<kOutSt, kXYZW>(c, c.vi(kDstCursor) + 0);
+
+            // 0x1a08-0x1a28: ... while the next one converts and the one after it loads.
+            up = ftoi<4, kSrcXyz>(c);
+            loadQword<kSrcRgba, kXYZW>(c, c.vi(kSrcCursor) + 1);
+            writeVf<kOutXyz, kXYZW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kXYZW, kSrcSt, 0, false, true, false>(c);
+            loadQword<kSrcXyz, kXYZW>(c, c.vi(kSrcCursor) + 2);
+            writeVf<kOutSt, kXYZW>(c, up);
+            loadQword<kSrcSt, kXYZW>(c, c.vi(kSrcCursor) + 0);
+            up = ftoi<0, kBiasedRgba>(c);
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 1);
+            writeVf<kOutRgba, kXYZW>(c, up);
+            c.vi(kDstCursor) = vi16(c.vi(kDstCursor) + 3);
+
+            // 0x1a30 `IBGTZ vi9, 0x19f0`, with the source-cursor step in its delay slot.
+            const bool more = static_cast<int16_t>(c.vi(kRemaining)) > 0;
+            c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+            if (!more)
+                break;
+        }
+
+        // 0x1a40-0x1a58: the terminator tag, then the primitive's own packet.
+        c.vi(kTermTag) = 423;
+        g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+        c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kTermTag))));
+        g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+        c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kTag))));
+        return true;                                             // 0x1a68: B 0x1b60
+    }
+
+    // Command 0x2a: point the tail at the family-B staging array and the qword-112 packet, behind
+    // a visibility gate that ORs the global draw gate (qword 39.w, set by 0x72/0x74) with the
+    // per-primitive software flag command 0x02 stashed in the GIFtag's REGS[8..15] word. The gate
+    // passed on all 961 entries in the research corpus; the "draw nothing" path exists but was
+    // never exercised there (research/13 4.6).
+    bool cmdFlushPacket(Ctx &c)
+    {
+        using namespace flush;
+
+        c.vi(kDstCursor) = 113;                                  // 0x1a78
+        c.vi(kTag) = c.loadWord(c.vi(kDstCursor) - 1, 3);        // 0x1a80: qword 112 .w
+        c.vi(kTermTag) = c.loadWord(39, 3);                      // 0x1a88: the global draw gate
+        c.vi(kSrcCursor) = 150;                                  // 0x1a90
+        c.vi(kRemaining) = vi16(c.vi(10));                       // 0x1a98
+        c.vi(kTermTag) = c.vi(kTermTag) | c.vi(kTag);            // 0x1aa8
+
+        // 0x1ab8 `IBNE vi6, vi0, 0x1980`; falling through is 0x1ac8's `B 0x1b60`.
+        if (static_cast<int16_t>(c.vi(kTermTag)) == 0)
+            return true;
+        return flushTail(c);
+    }
+
     // ---- command 0x06 -> 0x1638: backface cull ---------------------------------------------
     //
     // Sets bit 0 of every triangle's flag word -- the gate command 0x28 reads -- from the sign of
@@ -1437,6 +1565,8 @@ namespace
             return cmdClippedLighting(c);
         case kCmdBuildPacket:
             return cmdBuildPacket(c);
+        case kCmdFlushPacket:
+            return cmdFlushPacket(c);
         default:
             return false;
         }
