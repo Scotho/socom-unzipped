@@ -81,8 +81,19 @@ namespace
     constexpr int32_t kMaxVertices = 256;
     constexpr int32_t kMaxTriangles = 256;
 
+    // What running one command left behind. Most handlers only ever reach their own `B 0x1b60`,
+    // but command 0x4c ends the program itself -- a family-B list's trailing 0x42 is never
+    // dispatched -- so "the command ran" and "the program is over" have to be told apart.
+    enum class Outcome
+    {
+        NotImplemented, // hand the command back to the microcode at 0x1b60
+        NextCommand,    // the handler reached its `B 0x1b60`
+        ProgramEnd,     // the handler reached the E bit at 0x1b40
+    };
+
     enum Command : uint32_t
     {
+        kCmdWorldObject = 0x02u,   // 0x1f70 world-object setup: cull, clip, per-primitive GIFtag
         kCmdCull = 0x06u,          // 0x1638 backface cull
         kCmdTransform = 0x08u,     // 0x0df8 transform by the clip matrix + perspective divide
         kCmdClippedTransform = 0x0au, // 0x0f08 family-B shim: XGKICK 423, then 0x08's kernel
@@ -1923,38 +1934,168 @@ namespace
         c.vi(kInCount) = vi16(c.vi(kOutCount));                  // 0x3a78: its vertex count
     }
 
-    // Runs one command. Returns false when the command is not implemented yet: the caller then
-    // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
-    bool runCommand(Ctx &c, uint32_t command)
+    // ---- command 0x02 -> 0x1f70: world-object setup, one primitive per round trip -----------
+    //
+    // 0x02 walks the two-qword index records: cull test, load the triangle, clip it, build the
+    // per-primitive GIFtag at data qword 112, hand back. Command 0x4c (0x20c8) is the loop's back
+    // edge -- decrement the primitive counter, restore the index cursor, and either re-enter the
+    // body at 0x1f98 (*after* the prologue, so vi12 and vi15 are not recomputed) or end the
+    // program. 0x02's own two skip branches, culled and clipped-away, fall into that back edge
+    // without a dispatch, which is why both halves live in one function here (research/13 4.3,
+    // 4.7).
+    namespace world
+    {
+        constexpr uint8_t kRecordBase = 3;  // vi3 = TOP+4, the vertex block
+        constexpr uint8_t kVertex0 = 5, kVertex1 = 6, kVertex2 = 7; // qword offsets, then pointers
+        constexpr uint8_t kClipCount = 10;  // vi10: the clipper's vertex count
+        constexpr uint8_t kScratch = 11;    // vi11
+        constexpr uint8_t kPrimitives = 12; // vi12: the primitive counter, crosses the hand-back
+        constexpr uint8_t kFlags = 13;      // vi13: the index record's w word
+        constexpr uint8_t kCursor = 15;     // vi15: the index cursor, and the BAL link register
+
+        constexpr int32_t kSavedCursorQword = 329; // .z: vi15 mirrored across the clipper's BAL
+        constexpr int32_t kGifTagQword = 112;
+        constexpr int32_t kClipReturnLink = 1040;  // 0x2080 / 8, what `BAL vi15, 0x3618` stores
+        constexpr uint8_t kYZ = kY | kZ;           // SQ.yz: PRE/PRIM/FLG/NREG and REGS
+    }
+
+    Outcome primitiveLoop(Ctx &c, bool startAtBackEdge)
+    {
+        using namespace world;
+
+        for (bool atBackEdge = startAtBackEdge;; atBackEdge = false)
+        {
+            if (!atBackEdge)
+            {
+                // 0x1f98-0x1fd0: this primitive's three vertex offsets and its flag word.
+                c.vi(kRecordBase) = vi16(c.vi(1) + 4);
+                c.vi(kScratch) = 1;
+                c.vi(kFlags) = c.loadWord(c.vi(kCursor), 3);
+                c.vi(kVertex0) = c.loadWord(c.vi(kCursor), 0);
+                c.vi(kVertex1) = c.loadWord(c.vi(kCursor), 1);
+                c.vi(kVertex2) = c.loadWord(c.vi(kCursor), 2);
+                c.vi(kScratch) = c.vi(kFlags) & c.vi(kScratch);  // bit 0: command 0x06's cull bit
+                c.vi(kCursor) = vi16(c.vi(kCursor) + 2);
+
+                // 0x1fd8 `IBEQ vi11, vi0, 0x20c8`, and 0x1fe0 -- its DELAY SLOT -- saves the
+                // cursor to 329.z on BOTH paths. Saving it only when the primitive is visible
+                // would leave 329.z at the previous primitive's value and the back edge would
+                // rewind the index list; 320 of the corpus's 1224 iterations are culled.
+                const bool visible = static_cast<int16_t>(c.vi(kScratch)) != 0;
+                storeIntWord<kZ>(c, kSavedCursorQword, c.vi(kCursor));
+                if (visible)
+                {
+                    // 0x1fe8-0x1ff8: the second flag bit, stashed in the GIFtag's REGS[8..15]
+                    // word for command 0x2a's gate to read back. With NREG = 3 the GS ignores it.
+                    c.vi(kScratch) = 2;
+                    c.vi(kFlags) = c.vi(kFlags) & c.vi(kScratch);
+                    storeIntWord<kW>(c, kGifTagQword, c.vi(kFlags));
+
+                    // 0x2000-0x2058: the triangle, three qwords per vertex.
+                    c.vi(kVertex0) = vi16(c.vi(kRecordBase) + c.vi(kVertex0));
+                    loadQword<17, kXYZW>(c, c.vi(kVertex0) + 0);
+                    loadQword<18, kXYZW>(c, c.vi(kVertex0) + 1);
+                    loadQword<19, kXYZW>(c, c.vi(kVertex0) + 2);
+                    c.vi(kVertex1) = vi16(c.vi(kRecordBase) + c.vi(kVertex1));
+                    loadQword<26, kXYZW>(c, c.vi(kVertex1) + 0);
+                    loadQword<27, kXYZW>(c, c.vi(kVertex1) + 1);
+                    loadQword<28, kXYZW>(c, c.vi(kVertex1) + 2);
+                    c.vi(kVertex2) = vi16(c.vi(kRecordBase) + c.vi(kVertex2));
+                    loadQword<29, kXYZW>(c, c.vi(kVertex2) + 0);
+                    loadQword<30, kXYZW>(c, c.vi(kVertex2) + 1);
+                    loadQword<31, kXYZW>(c, c.vi(kVertex2) + 2);
+
+                    // 0x2060-0x2070: vi10 = vi11 = 3 is redundant -- the clipper's first stage
+                    // sets vi10 itself and zeroes vi11 -- but both registers are written.
+                    c.vi(kClipCount) = 3;
+                    c.vi(kScratch) = 3;
+                    c.vi(kCursor) = kClipReturnLink;             // BAL vi15, 0x3618
+                    primSubroutine3618(c);
+
+                    // 0x2080 `IBEQ vi10, vi0, 0x20c8`: clipped away entirely.
+                    if (static_cast<int16_t>(c.vi(kClipCount)) != 0)
+                    {
+                        // 0x2090-0x20b0: the per-primitive GIFtag. NLOOP = the clipped vertex
+                        // count with EOP set (`+ 32767` then `+ 1` is the 16-bit wraparound that
+                        // sets bit 15), and PRE/PRIM/FLG/NREG plus REGS copied from the
+                        // TRIANGLE_FAN template at TOP+0.
+                        loadQword<22, kXYZW>(c, c.vi(1));
+                        c.vi(kScratch) = vi16(c.vi(kClipCount) + 32767);
+                        c.vi(kScratch) = vi16(c.vi(kScratch) + 1);
+                        storeIntWord<kX>(c, kGifTagQword, c.vi(kScratch));
+                        storeQword<22, kYZ>(c, kGifTagQword);
+                        return Outcome::NextCommand;             // 0x20b8: B 0x1b60
+                    }
+                }
+            }
+
+            // 0x20c8-0x20f0: the back edge. Note that 0x20d0's `ILW.z vi15, 329(vi0)` WRITES
+            // vi15 -- it restores the cursor the clipper's BAL clobbered.
+            c.vi(kPrimitives) = vi16(c.vi(kPrimitives) - 1);
+            c.vi(kCursor) = c.loadWord(kSavedCursorQword, 2);
+            if (static_cast<int16_t>(c.vi(kPrimitives)) == 0)
+                return Outcome::ProgramEnd;                      // 0x2100: B 0x1b40, the E bit
+
+            // 0x20e8 reads `340(vi14)` with vi14 already past the 0x4c command, so the loop
+            // target is the y of the qword AFTER it, not 0x4c's own (research/13 3.4). On a
+            // fall-in from one of the skip branches above, vi14 is whatever the last *dispatched*
+            // command left, so this reads yet another list qword; the loop still lands on the
+            // right index only because every command qword in a family-B list carries the same y.
+            // Taking the microcode's arithmetic literally keeps that an accident of the guest
+            // data rather than something this file has baked in.
+            c.vi(14) = c.loadWord(340 + c.vi(14), 1);
+        }
+    }
+
+    Outcome cmdWorldObject(Ctx &c)
+    {
+        using namespace world;
+        c.vi(kCursor) = c.loadWord(c.vi(1) + 2, 0);              // 0x1f70: TOP+2.x
+        c.vi(kPrimitives) = c.loadWord(c.vi(1) + 2, 3);          // 0x1f78: TOP+2.w
+        c.vi(kCursor) = vi16(c.vi(kCursor) + c.vi(1));           // 0x1f90
+        return primitiveLoop(c, false);
+    }
+
+    Outcome fromHandler(bool reachedNextCommand)
+    {
+        return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
+    }
+
+    // Runs one command. NotImplemented hands back to the microcode at 0x1b60 with vi1/vi14
+    // already set for this command's re-read; every other register and every data qword is
+    // already what the microcode would have left, so the resume is exact.
+    Outcome runCommand(Ctx &c, uint32_t command)
     {
         switch (command)
         {
+        case kCmdWorldObject:
+            return cmdWorldObject(c);
         case kCmdUnpack:
-            return cmdUnpackVertices(c);
+            return fromHandler(cmdUnpackVertices(c));
         case kCmdCull:
-            return cmdBackfaceCull(c);
+            return fromHandler(cmdBackfaceCull(c));
         case kCmdTransform:
-            return cmdTransformDivide(c);
+            return fromHandler(cmdTransformDivide(c));
         case kCmdClippedTransform:
-            return cmdClippedTransform(c);
+            return fromHandler(cmdClippedTransform(c));
         case kCmdFade:
-            return cmdDistanceFade(c);
+            return fromHandler(cmdDistanceFade(c));
         case kCmdClippedFade:
-            return cmdClippedFade(c);
+            return fromHandler(cmdClippedFade(c));
         case kCmdTemplateFill:
-            return cmdTemplateFill(c);
+            return fromHandler(cmdTemplateFill(c));
         case kCmdClippedTemplateFill:
-            return cmdClippedTemplateFill(c);
+            return fromHandler(cmdClippedTemplateFill(c));
         case kCmdLight:
-            return cmdLighting(c);
+            return fromHandler(cmdLighting(c));
         case kCmdClippedLight:
-            return cmdClippedLighting(c);
+            return fromHandler(cmdClippedLighting(c));
         case kCmdBuildPacket:
-            return cmdBuildPacket(c);
+            return fromHandler(cmdBuildPacket(c));
         case kCmdFlushPacket:
-            return cmdFlushPacket(c);
+            return fromHandler(cmdFlushPacket(c));
         default:
-            return false;
+            return Outcome::NotImplemented;
         }
     }
 }
@@ -1999,11 +2140,20 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
             return true;
         }
 
-        if (!runCommand(c, command))
+        const Outcome outcome = runCommand(c, command);
+        if (outcome == Outcome::ProgramEnd)
         {
-            // Not implemented: give the microcode the command back. vi14 has to name this command
-            // again, because 0x1b60 re-reads and 0x1b70 re-increments it; vi3/vi4/vi5 are written
-            // by 0x1b60-0x1b80 before any use, so their value here does not matter.
+            // Command 0x4c's `B 0x1b40`: a family-B list ends here, with its trailing 0x42 never
+            // dispatched.
+            vu.m_viBranchBackupValid = false;
+            vu.m_state.pc = kProgramEndPc;
+            return true;
+        }
+        if (outcome == Outcome::NotImplemented)
+        {
+            // Give the microcode the command back. vi14 has to name this command again, because
+            // 0x1b60 re-reads and 0x1b70 re-increments it; vi3/vi4/vi5 are written by
+            // 0x1b60-0x1b80 before any use, so their value here does not matter.
             c.vi(14) = index;
             vu.m_viBranchBackupValid = false;
             vu.m_state.pc = kNextCommandPc;
