@@ -59,7 +59,7 @@
 
 Background: the link currently fails twice (documented at `docs/STATUS.md:333-336`): the mingw branch passes `--stack,8388608` without `-Wl,`, and `libps2_runtime.a` references four symbols that only exist in `game_overrides_socom2.cpp`, which is attached to the `ps2EntryRunner` executable, not the library (`ps2xRuntime/CMakeLists.txt:491-497` explains why: static self-registration objects would be dropped from a static lib).
 
-- [ ] **Step 1: Reproduce the link failure**
+- [x] **Step 1: Reproduce the link failure**
 
 Run (from repo root, Git Bash):
 ```bash
@@ -68,7 +68,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests 2>&1 | tail 
 ```
 Expected: FAIL. First `clang-23: error: unknown argument: '--stack,8388608'`; after fixing that, `undefined reference to ps2HostProfStart`, `ps2_stubs::sceVibGetProfile`, `ps2_stubs::socom2_RsaGenerateKeyPair`, `ps2_stubs::scePad2GetState`.
 
-- [ ] **Step 2: Fix the stack flag**
+- [x] **Step 2: Fix the stack flag**
 
 In `third_party/ps2recomp/ps2xTest/CMakeLists.txt` replace
 ```cmake
@@ -81,7 +81,7 @@ elseif(MINGW)
     target_link_options(ps2x_tests PRIVATE "-Wl,--stack,8388608")
 ```
 
-- [ ] **Step 3: Add the link-stub translation unit**
+- [x] **Step 3: Add the link-stub translation unit**
 
 Create `third_party/ps2recomp/ps2xTest/src/socom2_link_stubs.cpp`:
 ```cpp
@@ -108,7 +108,7 @@ In `third_party/ps2recomp/ps2xTest/CMakeLists.txt`, after the `add_executable(ps
 target_sources(ps2x_tests PRIVATE src/socom2_link_stubs.cpp)
 ```
 
-- [ ] **Step 4: Build and run the tests**
+- [x] **Step 4: Build and run the tests**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests 2>&1 | tail -3
@@ -116,7 +116,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests 2>&1 | tail 
 ```
 Expected: a `[Passed]`/`[Failed]` list, a Total/Passed/Failed block, `exit=0`. The working directory matters: `code_generator_tests.cpp:1141-1149` reads `../../ps2xRecomp/include/ps2recomp/instructions.h` relative to CWD. If `exit` is non-zero, the failures are pre-existing upstream or fork regressions: record each failing test name in the commit message, then fix the ones caused by fork changes (grep the test name, read the assertion, compare with `git log -p -- <file under test>`); do not delete or skip tests.
 
-- [ ] **Step 5: Add the `test` step to `build.sh`**
+- [x] **Step 5: Add the `test` step to `build.sh`**
 
 In `build.sh`, after the `runtime()` function add:
 ```bash
@@ -129,7 +129,7 @@ test_step() {
 ```
 and in the `case` add `test)    test_step ;;` before `all)`. (`set -euo pipefail` at the top makes a non-zero test exit abort the script.) Task 2 appends the fixture verification to this function.
 
-- [ ] **Step 6: Run and commit**
+- [x] **Step 6: Run and commit**
 
 ```bash
 scripts/loop_lock.sh take hygiene && ./build.sh test; echo "exit=$?"; scripts/loop_lock.sh release hygiene
@@ -152,7 +152,7 @@ Expected: `exit=0`.
 - Consumes: dump format (`vu1_replay.cpp:8-11`: 16-byte header `startPc, top, itop, codeSize`, 16 KB code, 16 KB data, `int32 vi[16]`, `float vf[32][4]`); `VU1Interpreter::execute(...)`; `memory.setGifPacketCallback`.
 - Produces: `vu1_replay --verify <golden.txt> [--regs all|none] [--native] <dump>...` → prints `OK <name>` / `MISMATCH <name> <field> golden=<v> got=<v>` per dump, exit 0 iff all OK. `--native` sets `PS2X_VU1_NATIVE=1` before the first run (Task 6 reads it).
 
-- [ ] **Step 1: Pick and commit the fixtures**
+- [x] **Step 1: Pick and commit the fixtures**
 
 ```bash
 mkdir -p tests/fixtures/vu1/title
@@ -161,7 +161,7 @@ ls -la tests/fixtures/vu1/title | wc -l   # expect 14 lines (., .., 12 files)
 ```
 Each dump is 32,848 bytes; the set is ~385 KB. `logs/vu1dump_title` holds 150 dumps of the title screen, all entry pc 0, image FNV `d418194495c25213`, alternating `top` 424/724 (verified 2026-09-10). If `logs/vu1dump_title` is missing, regenerate it: `mkdir -p logs/vu1dump_title` then a title run with `PS2X_VU1_DUMP=logs/vu1dump_title:150 PS2X_VU1_DUMP_AFTER=60` through `drive.py --script scripts/parity/title_only.txt` (lock required).
 
-- [ ] **Step 2: Refactor `printState` into a string builder**
+- [x] **Step 2: Refactor `printState` into a string builder**
 
 In `vu1_replay.cpp` replace `void printState(FILE *out, ...)` with a function that returns the line, and a thin wrapper that prints it:
 ```cpp
@@ -207,7 +207,7 @@ head -c 200 logs/vu1golden/t_after/state.txt
 ```
 Expected: one line per dump beginning `vu1_prog_0 packets=`.
 
-- [ ] **Step 3: Add the golden-comparison helpers**
+- [x] **Step 3: Add the golden-comparison helpers**
 
 Add to the anonymous namespace in `vu1_replay.cpp`:
 ```cpp
@@ -266,7 +266,7 @@ Add to the anonymous namespace in `vu1_replay.cpp`:
 ```
 Add `#include <map>`, `#include <sstream>`, `#include <fstream>` at the top if absent. `cycles` is deliberately excluded: a native program does not count VU cycles.
 
-- [ ] **Step 4: Wire the flags and the verify loop**
+- [x] **Step 4: Wire the flags and the verify loop**
 
 In the argument loop add:
 ```cpp
@@ -324,7 +324,7 @@ And at the end of `main`, before the final `return 0;`:
     }
 ```
 
-- [ ] **Step 5: Produce the golden with the exact interpreter and verify**
+- [x] **Step 5: Produce the golden with the exact interpreter and verify**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target vu1_replay | tail -1
@@ -343,7 +343,7 @@ dist/vu1_replay.exe --verify logs/vu1golden/bad_golden.txt tests/fixtures/vu1/ti
 ```
 Expected: `FAIL: 12 mismatching field(s)`, `exit=1`.
 
-- [ ] **Step 6: Add fixture verification to `build.sh test` and commit**
+- [x] **Step 6: Add fixture verification to `build.sh test` and commit**
 
 In `test_step()` in `build.sh`, before `echo "tests: ok"`:
 ```bash
@@ -369,7 +369,7 @@ git push
 - Consumes: `tools_py/parity/drive.py` CLI (`--target ours --script <txt> --out <dir> --seconds N --tail N`; prints one line per step and `untilref(...): N presses, matched=True|False`), `tools_py/parity/compare.py:score(golden_path, ours_path) -> (score, mad, block)` (check the exact return shape at `compare.py:19` before use and adapt `title_scores` below), `tools_py/parity/black_rows.py` (exit 1 on a non-black band), `scripts/loop_lock.sh`.
 - Produces: `python -m tools_py.parity.gate [--only title,transition,mission] [--owner gate] [--stamp S]` → per gate one line `PASS title (17/23 menu captures >= 90.0)` or `FAIL ...`, a summary, exit 1 on any FAIL. Also `--score-title <run_dir>` and `--score-mission <drive_log>` to re-score existing runs without a game (used by the unit test and for threshold calibration).
 
-- [ ] **Step 1: Write the failing unit test against stored runs**
+- [x] **Step 1: Write the failing unit test against stored runs**
 
 Create `tools_py/tests/__init__.py` (empty) and `tools_py/tests/test_gate.py`:
 ```python
@@ -410,12 +410,12 @@ if __name__ == "__main__":
 ```
 Check the two "known good" paths exist (`ls logs/parity/runs/vr_title | head`, `ls logs/parity/*.log`). If the mission drive log has a different name, use the newest `logs/parity/vr_gameplay.drive.log` from a run STATUS calls a pass, and note that the drive *log* (drive.py stdout) is what carries `matched=True`, not the game's `run_*.log`.
 
-- [ ] **Step 2: Run it to verify it fails**
+- [x] **Step 2: Run it to verify it fails**
 
 Run: `python -m unittest tools_py.tests.test_gate -v`
 Expected: `ImportError: cannot import name 'gate'` (or ModuleNotFoundError).
 
-- [ ] **Step 3: Write `gate.py`**
+- [x] **Step 3: Write `gate.py`**
 
 Create `tools_py/parity/gate.py`:
 ```python
@@ -561,19 +561,19 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 4: Calibrate the title threshold on the stored clean run**
+- [x] **Step 4: Calibrate the title threshold on the stored clean run**
 
 ```bash
 python -m tools_py.parity.gate --score-title logs/parity/runs/vr_title
 ```
 Read the per-capture scores. On a clean run the 20 menu captures should score well above 90 and the last two or three (attract cinematic) well below. If the menu captures score in the 80s (the reference was captured on an older renderer state), set `TITLE_MIN_SCORE` to five points under the lowest menu capture and `TITLE_MIN_MATCHES` to two under the count of menu captures, and record both numbers and the run they came from in a comment next to the constants. Then, as a negative control, score a directory that is not a title run (any mission run under `logs/parity/runs/`) and confirm FAIL.
 
-- [ ] **Step 5: Run the unit test to verify it passes**
+- [x] **Step 5: Run the unit test to verify it passes**
 
 Run: `python -m unittest tools_py.tests.test_gate -v`
 Expected: 4 tests, `OK`.
 
-- [ ] **Step 6: Run the full gate once on the current build**
+- [x] **Step 6: Run the full gate once on the current build**
 
 Detached, because it takes ~17 minutes (Global Constraints). Write `logs/run_gate_first.sh`:
 ```bash
@@ -585,7 +585,7 @@ echo done > logs/parity/gate_first.done
 Start it from PowerShell: `Start-Process bash.exe -ArgumentList "logs/run_gate_first.sh"`, poll `logs/parity/gate_first.done`, then `cat logs/parity/gate_first.out`.
 Expected: three PASS lines and `GATE PASS (3/3)`. If the mission gate FAILs on the controller-configuration prompt drift (STATUS 2026-09-10 17:40), that is a known probe issue; re-run once. If a gate fails for a real reason, that is a pre-existing regression: record it in STATUS and fix it before Task 4 declares the gate mandatory.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add tools_py/parity/gate.py tools_py/tests/__init__.py tools_py/tests/test_gate.py
@@ -604,7 +604,7 @@ git push
 - Consumes: `./build.sh test` (Task 1-2), `python -m tools_py.parity.gate` (Task 3).
 - Produces: the rules every later task and every loop firing follows.
 
-- [ ] **Step 1: Rewrite the goals block of `docs/LOOP_PROMPT.md`**
+- [x] **Step 1: Rewrite the goals block of `docs/LOOP_PROMPT.md`**
 
 Replace the "Ordered goals" list (lines 3-12) with:
 ```markdown
@@ -625,7 +625,7 @@ Long term: N64-recomp model — game logic stays recompiled, renderer/audio/inpu
 ```
 And in "Every firing" step 3, after "commit ->", insert "`./build.sh test` and `gate` green ->".
 
-- [ ] **Step 2: Put a five-line "Current state" at the top of `docs/STATUS.md`**
+- [x] **Step 2: Put a five-line "Current state" at the top of `docs/STATUS.md`**
 
 Insert before the first dated entry:
 ```markdown
@@ -637,11 +637,11 @@ Insert before the first dated entry:
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
 ```
 
-- [ ] **Step 3: Collapse HANDOFF's stacked START HERE sections**
+- [x] **Step 3: Collapse HANDOFF's stacked START HERE sections**
 
 In `docs/HANDOFF.md`, replace the three "START HERE" headers and their state blocks with a single "START HERE" that says: read STATUS "Current state", then the sprint plan, then the run recipes below. Keep the run recipes, gotchas and the "Previous pick-up" material under a "Reference: run recipes and history" header. Do not delete any recipe.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs/LOOP_PROMPT.md docs/HANDOFF.md docs/STATUS.md
@@ -662,7 +662,7 @@ git push
 
 Facts already established (2026-09-10): the whole game runs one VU1 image (FNV `d418194495c25213`); the title screen runs only entry pc 0 (150/150 dumps), `top` alternates 424/724, `itop` 0. The dispatch at pc 0 reads the qword at `top`: `vi1 = top & 0x3ff; vi5 = word1(data[vi1]); vi3 = word3(data[vi1]); vi8 = 2; vi9 = vi5 & 2; if (vi9 == 0) goto 0x118; else { vi2 = 330; vi6 = 423; XGKICK vi6 at 0x50; ... }` (generated code lines 543-617). Research/07 names the UI-quad chain: `0xb20` int→float vertices, `0x1638` backface cull, `0xdf8` transform/divide, `0x5d8` template fill, `0x1440` lighting, `0x1780` build GIF packet + `XGKICK vi2` at `0x1920`, dispatched through a jump table at `0x1ba0` (`JR vi5+884`) over command words.
 
-- [ ] **Step 1: Execution histogram over all 150 title dumps**
+- [x] **Step 1: Execution histogram over all 150 title dumps**
 
 ```bash
 mkdir -p logs/vu1entry0
@@ -684,7 +684,7 @@ EOF
 ```
 Expected: a list of contiguous pc ranges. Each range is a handler (or the dispatcher). Record them.
 
-- [ ] **Step 2: Disassemble each range and name it**
+- [x] **Step 2: Disassemble each range and name it**
 
 For each range: `python tools_py/vu1dis.py --start 0x<lo> --count <pairs> logs/vu1dump_title/vu1_prog_0.bin`. Read it beside the generated C++ (`L_0x<lo>` in `vu1_d418194495c25213.cpp`, whose `setVi<n>`/`loadWord<k>`/`Vu1Gen::...` calls are easier to read than raw microcode). For each handler write down: inputs (which vi/vf registers and which VU data qwords it reads), outputs (registers, data qwords, XGKICK address), and the command word that selects it. Also decode the command list for one `top=424` dump and one `top=724` dump: dump the qwords the dispatcher reads (`data[top]`, then wherever the jump-table index comes from; research/07 says the list is at qword 340 relative to `vi14`) with:
 ```bash
@@ -699,15 +699,15 @@ for q in (top, top+1, top+2, 330, 340, 423):
 EOF
 ```
 
-- [ ] **Step 3: Live-in and live-out registers**
+- [x] **Step 3: Live-in and live-out registers**
 
 From the disassembly of the dispatcher (pc 0 to the first `JR`), list every register read before it is written (live-in, e.g. `vi14` if the command pointer comes from it). At every `E`-bit end of the program (search the generated code for `vu.m_state.ebit`/`goto ended` near the ranges found), list the registers the program leaves that the *next* run could read (the same live-in set). This set is what the native program must reproduce exactly; everything else is scratch. Note which vf registers hold constants across runs (the dumps show them: compare `vf` between `vu1_prog_0.bin` and `vu1_prog_12.bin`).
 
-- [ ] **Step 4: Write the note**
+- [x] **Step 4: Write the note**
 
 `docs/research/12-vu1-entry0-ui-path.md` with: (a) the histogram table (range, pairs executed, name, command word, XGKICK site), (b) the register-role table (vi1 = top pointer, vi2 = 330 output base, vi6 = 423 ..., with "[verified]" or "[guess]" per row, following research/11's convention), (c) the data-memory layout on the title screen (header qword at `top`, vertex/colour/uv arrays, matrices, GIF template at 330/423), (d) the live-in/live-out set from Step 3, (e) the hand-back rule: the native program must stop *only* at a dispatcher boundary (before reading the next command word) with all live registers set as the microprogram would have them, and `vu.m_state.pc` = the dispatcher pc.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/research/12-vu1-entry0-ui-path.md
@@ -737,7 +737,7 @@ void setNativeProgramsOverride(const Vu1NativeProgram *table, uint32_t count);  
 ```
 Counters `g_vu1NativeEntered`, `g_vu1NativeEnded`, `g_vu1NativeHandBacks` (`std::atomic<uint64_t>`) printed in the `[vu1-stats]` line. Env `PS2X_VU1_NATIVE` (unset → default `kVu1NativeDefault`, initially `false`).
 
-- [ ] **Step 1: Write the failing unit test**
+- [x] **Step 1: Write the failing unit test**
 
 Create `third_party/ps2recomp/ps2xTest/src/vu1_native_tests.cpp`. It builds a two-instruction synthetic program (NOP/NOP then NOP with E-bit), registers a native function for that image's hash at entry 0 that writes a marker into `vi[10]` and returns true, and checks that with the override installed and the env on, the marker is set; and that a native function returning false with `pc` pointing at the second pair hands back and the interpreter finishes the program.
 ```cpp
@@ -836,14 +836,14 @@ Check three things against the real headers before building: the NOP encodings (
 
 Register it: add `void register_vu1_native_tests();` and a call in `ps2xTest/src/main.cpp`; add `src/vu1_native_tests.cpp` to the `ps2_test_lib` source list in `ps2xTest/CMakeLists.txt`.
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests 2>&1 | grep -E "error" | head -5
 ```
 Expected: compile errors — `Vu1NativeProgram` and `setNativeProgramsOverride` undeclared.
 
-- [ ] **Step 3: Declare the registry types and hook**
+- [x] **Step 3: Declare the registry types and hook**
 
 In `include/runtime/ps2_vu1.h`, after the `KnownProgramFn` typedef (line 70):
 ```cpp
@@ -867,7 +867,7 @@ and among the private members:
 ```
 Because `ps2_vu1.h` is a header, this is a 10-minute rebuild; batch it with nothing else.
 
-- [ ] **Step 4: The table and the dispatch**
+- [x] **Step 4: The table and the dispatch**
 
 Create `src/lib/vu/native/vu1_native_programs.cpp`:
 ```cpp
@@ -917,7 +917,7 @@ Where `[vu1-stats]` prints `gen entered/ended/handbacks`, add `native entered/en
 
 In `ps2xRuntime/CMakeLists.txt`, next to the `generated/*.cpp` glob (line ~380), add `file(GLOB PS2X_VU1_NATIVE_SOURCES src/lib/vu/native/*.cpp)` and append it to the `ps2_runtime` sources the same way.
 
-- [ ] **Step 5: Run the unit tests and the fixture verify**
+- [x] **Step 5: Run the unit tests and the fixture verify**
 
 ```bash
 scripts/loop_lock.sh take native && ./build.sh test; echo "exit=$?"
@@ -926,7 +926,7 @@ scripts/loop_lock.sh release native
 ```
 Expected: `exit=0` (three new VU1Native tests pass), and `PASS: 0 mismatching field(s)` with the knob on (the table is empty, so nothing changes yet).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add third_party/ps2recomp/ps2xRuntime/include/runtime/ps2_vu1.h third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/vu1_native_programs.cpp third_party/ps2recomp/ps2xRuntime/CMakeLists.txt third_party/ps2recomp/ps2xTest/src/vu1_native_tests.cpp third_party/ps2recomp/ps2xTest/src/main.cpp third_party/ps2recomp/ps2xTest/CMakeLists.txt
@@ -948,7 +948,7 @@ git push
 
 The rule for this task: **every step ends with `--verify --native` green on the 12 fixtures**, because an unimplemented command hands back to the generated code, which is already verified. The program becomes "native" one handler at a time, in the order of Task 5's histogram (most-executed first), and the finish line is zero hand-backs.
 
-- [ ] **Step 1: Skeleton that hands back immediately**
+- [x] **Step 1: Skeleton that hands back immediately**
 
 Create `src/lib/vu/native/socom2_entry0.cpp`:
 ```cpp
@@ -1013,7 +1013,7 @@ PS2X_VU1_NATIVE=1 dist/vu1_replay.exe --verify --native tests/fixtures/vu1/title
 ```
 Expected: `PASS: 0 mismatching field(s)`; `[vu1-stats]`-style counters (print them at the end of `vu1_replay` in `--native` mode: `native entered=12 ended=0 handbacks=12`). Commit: `git commit -m "vu1(native): socom2 entry-0 skeleton registered; hands back immediately (verify green)"`.
 
-- [ ] **Step 2: Implement the dispatcher natively**
+- [x] **Step 2: Implement the dispatcher natively**
 
 Using research/12 §a-b, implement in `vu1native_socom2_entry0` the loop the microcode runs at pc 0: read the header qword at `top`, evaluate the flag test (`vi9 = word1 & 2`), set the constant registers the dispatcher sets (`vi2 = 330`, `vi6 = 423`, and the others research/12 lists), perform the XGKICK the dispatcher does before the first command (`vu.startXgkick(423)` at `0x50` when the flag path is taken), then loop: read the command word, call `handleCommand`; on `false`, set every live register (research/12 §d) and `vu.m_state.pc = kDispatchPc`, return false. On the end command, set `vu.m_state.pc` to the pc after the E-bit pair as the interpreter would (compare `endpc` in the golden line) and return true.
 
@@ -1021,7 +1021,7 @@ Verify after this step exactly as in Step 1. The hand-back now happens at the fi
 
 Commit: `git commit -m "vu1(native): entry-0 dispatcher native (header flags, constants, pre-kick); commands still hand back"`.
 
-- [ ] **Step 3: One handler per commit, most-executed first**
+- [x] **Step 3: One handler per commit, most-executed first**
 
 For each handler in research/12's histogram order:
 1. Read its pc range in `vu1dis.py` output and in the generated C++.
@@ -1032,7 +1032,7 @@ For each handler in research/12's histogram order:
 
 The GIF-emitting handler (`0x1780` + `XGKICK vi2` at `0x1920`) is last; it builds the GIFtag + register qwords in data memory from the template at 330 and calls `vu.startXgkick(c.vi(2))`.
 
-- [ ] **Step 4: Finish line on the full title dump set**
+- [x] **Step 4: Finish line on the full title dump set**
 
 ```bash
 PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch logs/vu1golden/title150_exact logs/vu1dump_title/*.bin
@@ -1053,17 +1053,17 @@ Then the main menu and lobby: `logs/vu1dump_title` is the title only. Capture 15
 **Interfaces:**
 - Consumes: `python -m tools_py.parity.gate` (Task 3), `PS2X_VU1_NATIVE` (Task 6).
 
-- [ ] **Step 1: Full gate with the native program on**
+- [x] **Step 1: Full gate with the native program on**
 
 Detached (see Task 3 Step 6), with `export PS2X_VU1_NATIVE=1` at the top of the run script and `--stamp native_on`. Expected: `GATE PASS (3/3)`. The title gate is the one that exercises the native code; transition and mission prove no collateral damage (the mission runs the same image at other entry points, which still go through the generated code).
 
 If the title FAILs: the offline verify was green, so the difference is in what the *game* feeds the program versus the dumps (a command or flag combination not in any dump). Capture dumps during the failing run (`PS2X_VU1_DUMP=logs/vu1dump_gatefail:300`), verify them offline, implement what hands back, re-gate.
 
-- [ ] **Step 2: Flip the default and re-gate**
+- [x] **Step 2: Flip the default and re-gate**
 
 Set `constexpr bool kVu1NativeDefault = true;` in `ps2_vu1_core.cpp`, rebuild, run `./build.sh test` (the fixture verify now runs native by default; also run it once with `PS2X_VU1_NATIVE=0` to keep the generated path honest), then the full gate again without the env var, `--stamp native_default`. Expected: both green.
 
-- [ ] **Step 3: Update docs and commit**
+- [x] **Step 3: Update docs and commit**
 
 STATUS "Current state" line 4: `Native VU1: entry-0 program 150/150 title + 150/150 menu dumps native, gate green, default on (PS2X_VU1_NATIVE=0 reverts)`. Tick the plan's boxes. Commit:
 ```bash

@@ -2039,8 +2039,10 @@ extern const uint32_t g_vu1KnownProgramCount;
 extern const Vu1NativeProgram g_vu1NativePrograms[];
 extern const uint32_t g_vu1NativeProgramCount;
 std::atomic<uint64_t> g_vu1NativeEntered{0}, g_vu1NativeEnded{0}, g_vu1NativeHandBacks{0};
-// PS2X_VU1_NATIVE selects them; off until a native program is verified against the microcode.
-constexpr bool kVu1NativeDefault = false;
+// PS2X_VU1_NATIVE selects them; on by default since the 0x1b50 dispatcher was verified against
+// the microcode (76/76 family-A lists native across dump2/3/4) and gated green on title,
+// transition and mission. PS2X_VU1_NATIVE=0 reverts to the generated path.
+constexpr bool kVu1NativeDefault = true;
 
 void VU1Interpreter::setNativeProgramsOverride(const Vu1NativeProgram *table, uint32_t count)
 {

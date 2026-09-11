@@ -1,10 +1,10 @@
-# Project status — updated 2026-09-10 17:40
+# Project status — updated 2026-09-11 00:40
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify); gates `python -m tools_py.parity.gate`.
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
-- Sprint 1 (2026-09-10 →): Tasks 1-4 done (tests, verify fixtures, gate command, rules); Tasks 5-8 (research, native registry, dispatcher program, gate+default) in progress.
-- Native VU1: dispatcher (entry 0x1b50) program status: not started (registry + verify harness landing in Sprint 1 Tasks 6-7).
+- Sprint 1 (2026-09-10 →): Tasks 1-8 done (tests, verify fixtures, gate command, rules, research, native registry, dispatcher program, gate+default on).
+- Native VU1: dispatcher (entry 0x1b50) family-A lists 76/76 native across dump2/3/4 (family B/C hand back whole), gate green with PS2X_VU1_NATIVE on, default on (PS2X_VU1_NATIVE=0 reverts)
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
 
 ## 2026-09-10 20:35 (local) — peer packets decoded (probe10): the peer transport is ALIVE (acked, sequenced 22-byte packets, ~1/s), not SCERT-framed and not encrypted; the freeze is above the transport
