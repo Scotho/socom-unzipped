@@ -23,9 +23,12 @@
 //
 // --vram-diff <outdir> renders every dump twice into a fresh 640x448 framebuffer — once through
 // the GIF path, once through the host hook — and prints one VRAMDIFF line per dump with the number
-// of differing pixels; it exits 1 if any dump exceeds --vram-tol (default 1.0 %). Because the knob
-// is a read-once static inside the native program, the two renderings run in two child processes
-// (argv[0] re-executed with --vram-dump), which leave <outdir>/<dump>.{gif,host}.rgba behind.
+// of differing pixels; it exits 1 if any dump exceeds --vram-tol (default 1.0 %). A dump whose two
+// passes both drew nothing prints `SKIP <name> (nothing drawn)` and does not count as a pass -- two
+// blank frames are identical for free -- and the final PASS/FAIL line reports checked=N skipped=M.
+// Because the knob is a read-once static inside the native program, the two renderings run in two
+// child processes (argv[0] re-executed with --vram-dump), which leave
+// <outdir>/<dump>.{gif,host}.rgba behind.
 #include <atomic>
 #include <algorithm>
 #include <chrono>
@@ -319,6 +322,7 @@ namespace
         }
 
         bool failed = false;
+        size_t checked = 0, skipped = 0;
         for (const std::string &input : inputs)
         {
             const std::string name = baseName(input);
@@ -344,13 +348,23 @@ namespace
                     ++drawn;
             }
             const double pct = pixels ? 100.0 * static_cast<double>(differing) / static_cast<double>(pixels) : 0.0;
-            // drawn = pixels either pass wrote: a pair of blank frames would otherwise read as a pass.
+            // drawn = pixels either pass wrote. Two blank frames are trivially identical, so a dump
+            // that draws nothing is not evidence that the host path matches the GIF path: report it
+            // as SKIP and leave it out of the count the PASS line stands on.
+            if (drawn == 0)
+            {
+                std::printf("SKIP %s (nothing drawn)\n", name.c_str());
+                ++skipped;
+                continue;
+            }
             std::printf("VRAMDIFF %s differing=%zu of %zu (%.3f%%) drawn=%zu\n",
                         name.c_str(), differing, pixels, pct, drawn);
+            ++checked;
             if (pct > tolerancePct)
                 failed = true;
         }
-        std::printf("%s: vram diff against %.2f%% tolerance\n", failed ? "FAIL" : "PASS", tolerancePct);
+        std::printf("%s: vram diff against %.2f%% tolerance, checked=%zu skipped=%zu\n",
+                    failed ? "FAIL" : "PASS", tolerancePct, checked, skipped);
         return failed ? 1 : 0;
     }
 }

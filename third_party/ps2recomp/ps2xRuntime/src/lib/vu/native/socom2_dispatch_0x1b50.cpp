@@ -12,6 +12,10 @@
 // GS::submitHostTriangle instead of XGKICKing its packet (see submitHostTriangleFromPacket). The
 // packet is still assembled byte for byte, so the contract above is unchanged with the knob on --
 // only the kick is replaced. `vu1_replay --vram-diff` compares the two renderings pixel for pixel.
+// The hook falls back to the real kick for anything it cannot reproduce exactly, which now
+// includes two cases the GIF path handles differently rather than not at all: a PRIM with FST set
+// (UV in texel units, where the hook feeds S/T/Q) and a vertex whose FTOI4 X or Y word is outside
+// 0..65535, which PACKED XYZF2 wraps at 16 bits and the host path's float would not.
 //
 // What runs natively: command lists whose decode from data qword 340 contains only command words
 // this file implements and terminates on 0x42 (END) -- all seven family-A commands, all seven
@@ -67,6 +71,17 @@
 //     handler they tail-jump into, at their own entry, because after their first XGKICK a
 //     hand-back would replay the inline block.
 //
+// CAVEAT on any mid-list hand-back, clamp or otherwise: this file commits FMAC flags immediately
+// (see commitFmacFlags) instead of queueing them for the interpreter's four-deep flag pipeline.
+// At the E bit that is identical, because the interpreter flushes its queues in issue order. It
+// is NOT identical at 0x1b60: the microcode resumes with m_state.mac holding the newest FMAC's
+// flags, where hardware would still have an older entry in flight, so microcode whose next FMAND
+// is within four pairs of the boundary would read a newer MAC than hardware. No handler in this
+// image has an FMAND that close to 0x1b60 -- the only two are the cull's at 0x1718 and the
+// clipper's pair inside 0x3ad0, all of them many pairs into their own command -- so the path is
+// dead. It is stated because it is the one respect in which a hand-back from this file is not
+// bit-exact, and a new handler could wake it.
+//
 // The program also requires the interpreter's default XGKICK model, which copies the whole packet
 // at kick time. Under PS2X_VU1_XGKICK_CYCLE_EXACT=1 a kick streams as m_cycle advances and a new
 // kick clears whatever is still in flight; this program never advances m_cycle, so command 0x28's
@@ -112,12 +127,27 @@ namespace
     // block. (0x34's variant is eleven, and is not implemented here.)
     constexpr uint32_t kInlineBlockQwords = 8u;
 
-    // ---- the family-A work ceiling ---------------------------------------------------------
-    // Every family-A handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest
-    // data. The corpus maxima are 68 vertices and 44 triangles; these limits keep several times
-    // that margin while still bounding a native run to a few thousand iterations and at most 256
-    // XGKICKs, which is what makes ignoring budgetEnd and m_stopRequested defensible. A header
-    // outside the range (including a negative count) hands the list back whole.
+    // ---- the header work ceiling -----------------------------------------------------------
+    // Every handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest data.
+    // These limits bound a native run to a few thousand iterations and to 256 XGKICKs for a
+    // family-A list or 768 for a family-B one (three kicks a primitive: 423 from 0x0a, then 423
+    // and 112 from 0x2a), which is what makes ignoring budgetEnd and m_stopRequested defensible.
+    // A header outside the range (including a negative count) hands the list back whole.
+    //
+    // The margin is measured, not asserted: `python -m tools_py.vu1_headers --quiet <dumps>`
+    // prints the maxima over a dump set, and over the three dispatcher sets of
+    // logs/vu1entry0/dispatch_dumps.txt it gives
+    //
+    //     dump2 (31 lists)        vertices  50   triangles  31
+    //     dump3 (48 of 52)        vertices  78   triangles  73
+    //     dump4 (83 lists)        vertices  76   triangles  44
+    //
+    // so the ceiling keeps a factor of 3.3 over the worst list this file will run. The four dump3
+    // lists left out of that row are the `52 66 08 40 42` shape -- the fourth family, whose 0x52 /
+    // 0x66 / 0x40 have no handlers here -- and they are also the only lists in the corpus whose
+    // header is outside the ceiling at all (vertices 12384, -21943 x2, -22066; triangles 0). They
+    // are refused on their first command word, before any header check runs, so no list in the
+    // corpus is refused *by* these ceilings. Re-run the scan if the corpus grows.
     constexpr int32_t kMaxVertices = 256;
     constexpr int32_t kMaxTriangles = 256;
 
@@ -537,9 +567,8 @@ namespace
     // What the scan below learned about a list, for the work bounds isNativeRun applies after it.
     struct ListFacts
     {
-        bool hasWorldObject = false; // 0x02 -- the only command that puts a clipped count in vi10
+        bool hasFamilyB = false;     // any of 0x02 0x0a 0x12 0x56 0x1a 0x2a 0x4c
         bool hasInlineOverA = false; // 0x30 -- its vertex count is TOP+2.z
-        bool hasInlineOverB = false; // 0x32 -- its vertex count is vi10
     };
 
     // Walks the command list the way the dispatcher and the handlers walk it, and says whether
@@ -561,6 +590,15 @@ namespace
     bool scanCommandList(Ctx &c, ListFacts &facts)
     {
         uint32_t index = 0u;
+        // The three commands that consume the clipper's output -- 0x2a's flush count, 0x4c's
+        // vi12/vi15 re-entry and 0x32's rescale count -- all read state only 0x02 writes. The
+        // check is deliberately ORDER-based rather than a "the list contains 0x02 somewhere"
+        // post-check: a shape like `68 2a 42` or `68 2a 02 4c 42` contains 0x02 but would still
+        // run 0x2a's flushTail on whatever vi10 the previous program left in the register file.
+        // The walk is the executed order for everything up to the first 0x4c, and 0x4c's back
+        // edge only ever re-runs qwords the walk has already visited, so a flag set as the walk
+        // passes the 0x02 qword answers exactly "has 0x02 run by the time this command runs?".
+        bool seenWorldObject = false;
         for (uint32_t step = 0; step < kMaxCommands; ++step)
         {
             if (index >= kMaxListQwords)
@@ -571,14 +609,19 @@ namespace
             if (!isFamilyACommand(command) && !isFamilyBCommand(command) && !isFamilyCCommand(command))
                 return false;
 
+            if (isFamilyBCommand(command))
+                facts.hasFamilyB = true;
             if (command == kCmdWorldObject)
-                facts.hasWorldObject = true;
+                seenWorldObject = true;
+            if ((command == kCmdFlushPacket || command == kCmdLoopBack ||
+                 command == kCmdInlineBlockOverB) &&
+                !seenWorldObject)
+                return false;
+
             const bool introducesBlocks =
                 command == kCmdInlineBlockOverA || command == kCmdInlineBlockOverB;
             if (command == kCmdInlineBlockOverA)
                 facts.hasInlineOverA = true;
-            if (command == kCmdInlineBlockOverB)
-                facts.hasInlineOverB = true;
 
             const int32_t blockCount = introducesBlocks ? peekBlockCount(c, index) : 0;
             ++index;
@@ -620,16 +663,21 @@ namespace
         if (vertices < 0 || vertices > kMaxVertices || triangles < 0 || triangles > kMaxTriangles)
             return false;
 
+        // A family-B list's primitive counter is vi12, and 0x4c's back edge is a post-decrement
+        // `IBNE vi12, vi0`: a header triangle count of 0 decrements to -1 and runs 65536
+        // primitives, each with a clipper call and up to three XGKICKs, with no way out. So a
+        // list that uses any family-B command needs at least one primitive. Family A keeps
+        // accepting 0 -- its loops are `IBGTZ`, which a zero count simply falls out of -- so the
+        // family-A baseline does not move. No family-B list in the corpus has a zero header.
+        if (facts.hasFamilyB && triangles < 1)
+            return false;
+
         // 0x30 and 0x32 end their rescale loop on `vi9 != 0`, not `vi9 > 0`, so a zero count walks
         // 65536 staging triples instead of none -- bounded, but not a run to start uninterruptibly.
-        // 0x30's count is TOP+2.z, which therefore has to be at least one; 0x32's is vi10, which
-        // is only a count at all when 0x02 put it there (0x02 hands back only with vi10 != 0, and
-        // the clipper cannot leave more than the twelve vertex slots its buffers hold), so a list
-        // using 0x32 without 0x02 is refused rather than run on whatever vi10 the previous program
-        // left behind.
+        // 0x30's count is TOP+2.z, which therefore has to be at least one. 0x32's is vi10, which
+        // is only a count at all when 0x02 has run: that is the scan's order-based 0x02 check
+        // above, and 0x02 itself hands back to 0x32 only with vi10 != 0.
         if (facts.hasInlineOverA && vertices < 1)
-            return false;
-        if (facts.hasInlineOverB && !facts.hasWorldObject)
             return false;
         return true;
     }
@@ -1449,6 +1497,10 @@ namespace
         const GSPrimReg prim = primFromGifTag(tagLo);
         if (prim.type != GS_PRIM_TRIANGLE)
             return false;
+        // FST means the vertices carry UV in texel units instead of ST/Q in normalised ones, and
+        // the hook below fills S/T/Q. The corpus tag never sets it; if one ever does, kick.
+        if (prim.fst)
+            return false;
 
         GSVertex vertices[3];
         for (int i = 0; i < 3; ++i)
@@ -1476,6 +1528,15 @@ namespace
             const uint32_t zWord = loadPacketWord(xyzf + 8);
             const uint32_t fWord = loadPacketWord(xyzf + 12);
             if (((fWord >> 15) & 1u) != 0u)
+                return false;
+
+            // PACKED XYZF2 takes X from the low 16 bits of word 0 and Y from the low 16 bits of
+            // word 1, so the GIF path silently WRAPS an FTOI4 result outside 0..65535 -- a vertex
+            // at -1/16 of a pixel arrives at 4095.9375. The host path below uses the pre-FTOI4
+            // float, which does not wrap, and would draw the triangle where the geometry says it
+            // is rather than where the GS would have put it. Kick instead, so the two renderings
+            // stay comparable: --vram-diff must not score a difference the GIF path created.
+            if (loadPacketWord(xyzf) > 0xFFFFu || loadPacketWord(xyzf + 4) > 0xFFFFu)
                 return false;
             v.z = static_cast<double>((zWord >> 4) & 0xFFFFFFu);
             v.fog = static_cast<uint8_t>((fWord >> 4) & 0xFFu);
