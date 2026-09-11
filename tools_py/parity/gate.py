@@ -31,6 +31,14 @@ TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 TITLE_MIN_SCORE = 90.0      # compare.score of a capture vs the main-menu reference
 TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on a clean run, then the attract movie)
 HUD_REF_NAME = "ref_hud_ours.png"
+MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
+# black_rows.py exits 0 when it examines nothing (empty dir, missing dir, a run with no
+# black-screen frame), so the exit code alone is a vacuous pass. Measured black-screen frame
+# counts 2026-09-10: logs/parity/gate/first/transition (the gate's own clean run) 6,
+# logs/parity/runs/gl_transition 8, logs/parity/runs/transition_probe 1 (and NOT BLACK),
+# logs/parity/runs/xg_transition 0, an empty or missing directory 0. A floor of 5 clears every
+# real transition run and rejects every vacuous one.
+TRANSITION_MIN_FRAMES = 5
 
 GATES = {
     "title": dict(script="scripts/parity/title_menu.txt", seconds=170, tail=8),
@@ -43,14 +51,16 @@ def _score_value(golden, ours):
     """compare.score (compare.py:19) takes two PIL images and returns
     {"score": .., "mad": .., "block": ..}; it may also be a float or a (score, mad, block)
     tuple. Open the paths and normalise the result to a float."""
-    r = compare.score(Image.open(golden), Image.open(ours))
+    with Image.open(golden) as g, Image.open(ours) as o:
+        r = compare.score(g, o)
     if isinstance(r, dict):
         return float(r["score"])
     return float(r[0] if isinstance(r, (tuple, list)) else r)
 
 
 def score_title(run_dir):
-    caps = sorted(p for p in glob.glob(os.path.join(run_dir, "s[0-9][0-9]_*.png")) if "burst" not in p)
+    caps = sorted(p for p in glob.glob(os.path.join(run_dir, "s[0-9][0-9]_*.png"))
+                  if "burst" not in os.path.basename(p))
     if not caps:
         return False, "no captures in %s" % run_dir
     scores = [(os.path.basename(p), _score_value(TITLE_REF, p)) for p in caps]
@@ -61,10 +71,20 @@ def score_title(run_dir):
 
 
 def score_transition(run_dir):
+    """black_rows.py prints one "<file>  black screen, rows <y0>-<y1>: peak <n>" line per frame it
+    actually examines and exits 1 only when one of them is not black. Zero examined frames also
+    exits 0, so the count is part of the verdict, not just the exit code."""
     r = subprocess.run([sys.executable, "tools_py/parity/black_rows.py", run_dir], capture_output=True, text=True)
-    bad = [ln for ln in r.stdout.splitlines() if "NOT BLACK" in ln]
-    return r.returncode == 0, ("rows 396-447 black on every black-screen frame" if r.returncode == 0
-                               else "non-black band: " + "; ".join(bad[:5]))
+    examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
+    bad = [ln for ln in examined if "NOT BLACK" in ln]
+    peaks = [int(m.group(1)) for m in (re.search(r"peak\s+(\d+)", ln) for ln in examined) if m]
+    if len(examined) < TRANSITION_MIN_FRAMES:
+        return False, ("only %d black-screen frames examined in %s, need %d (black_rows.py exits 0 "
+                       "on an empty result: not a pass)" % (len(examined), run_dir, TRANSITION_MIN_FRAMES))
+    if bad or r.returncode != 0:
+        return False, "%d black-screen frames examined; non-black band: %s" % (
+            len(examined), "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])
+    return True, "%d black-screen frames examined, rows 396-447 peak %d" % (len(examined), max(peaks, default=0))
 
 
 def score_mission_log(drive_log):
@@ -79,11 +99,16 @@ def score_mission_log(drive_log):
     if m.group(1) != "True":
         return False, "HUD never matched (mission not reached)"
     holds = len(re.findall(r"^s\d\d_hold", text, re.M))
-    return holds >= 3, "HUD reached; %d hold steps captured" % holds
+    return holds >= MISSION_MIN_HOLDS, "HUD reached; %d hold steps captured (need %d)" % (
+        holds, MISSION_MIN_HOLDS)
 
 
 def _lock(cmd, owner):
-    return subprocess.run(["bash", "scripts/loop_lock.sh", cmd, owner], capture_output=True, text=True)
+    try:
+        return subprocess.run(["bash", "scripts/loop_lock.sh", cmd, owner], capture_output=True, text=True)
+    except OSError as e:
+        raise SystemExit("gate: cannot run scripts/loop_lock.sh (%s). Run the gate from Git Bash at "
+                         "the repo root." % e)
 
 
 def run_gate(name, out_root):
@@ -128,25 +153,31 @@ def main():
         print("%s mission (%s)" % ("PASS" if ok else "FAIL", detail))
         return 0 if ok else 1
 
+    # Make the output root before taking the lock: a makedirs failure must not leak the lock.
+    out_root = os.path.join("logs", "parity", "gate", args.stamp)
+    os.makedirs(out_root, exist_ok=True)
     take = _lock("take", args.owner)
     if take.returncode != 0:
         print("gate: lock busy: " + take.stdout.strip())
         return 2
-    out_root = os.path.join("logs", "parity", "gate", args.stamp)
-    os.makedirs(out_root, exist_ok=True)
+    wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
     try:
-        for name in [g.strip() for g in args.only.split(",") if g.strip()]:
+        for name in wanted:
             ok, detail = run_gate(name, out_root)
             line = "%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail)
             print(line, flush=True)
             results.append((ok, line))
     finally:
+        # Release the lock and leave a summary even when a gate raises part-way through.
         _lock("release", args.owner)
-    with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-        f.write("\n".join(line for _, line in results) + "\n")
-    failed = [line for ok, line in results if not ok]
-    print("GATE %s (%d/%d) -> %s" % ("FAIL" if failed else "PASS", len(results) - len(failed), len(results), out_root))
+        for name in wanted[len(results):]:
+            results.append((False, "FAIL %s (gate did not run)" % name))
+        failed = [line for ok, line in results if not ok]
+        with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(line for _, line in results) + "\n")
+        print("GATE %s (%d/%d) -> %s" % ("FAIL" if failed else "PASS",
+                                         len(results) - len(failed), len(results), out_root))
     return 1 if failed else 0
 
 
