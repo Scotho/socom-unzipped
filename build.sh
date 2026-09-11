@@ -49,7 +49,14 @@ runtime() {
 test_step() {
   cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
-  ( cd "$RTBUILD/ps2xTest" && ./ps2x_tests.exe )
+  local ps2x_test_repeat="${PS2X_TEST_REPEAT:-1}"
+  ( cd "$RTBUILD/ps2xTest" && for i in $(seq 1 "$ps2x_test_repeat"); do
+      echo "ps2x_tests run $i/$ps2x_test_repeat"
+      if ! ./ps2x_tests.exe; then
+        echo "ps2x_tests run $i/$ps2x_test_repeat FAILED"
+        exit 1
+      fi
+    done )
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
   # Four verify runs over the two fixture sets, then the two host-draw checks. The native registry is ON by default
