@@ -41,9 +41,31 @@
 // (TOP+2.z vertices, TOP+2.w triangles, the latter also family B's primitive counter) are guest
 // data, not something the microcode validates -- a header with z = 32767 would mean ~11k
 // template-fill iterations and up to 32767 uninterruptible XGKICKs. So the pre-scan checks them
-// too, against a ceiling with plenty of margin over the corpus maxima (68 vertices, 44 triangles):
-// see kMaxVertices / kMaxTriangles. A header outside that range hands the list back whole,
-// exactly like a family-C one.
+// too, against a ceiling with plenty of margin over the corpus maxima: see kMaxVertices /
+// kMaxTriangles. A header outside that range hands the list back whole, exactly like a family-C
+// one.
+//
+// THE PER-HANDLER CLAMPS. The pre-scan's header check is not the only place those bounds are
+// enforced. Every handler re-checks the count it is about to loop on, as its first statement,
+// against kMaxVertices (TOP+2.z: 0x0b28, 0x0e08, 0x0f90, 0x05e0, 0x1458, 0x22b8), kMaxTriangles
+// (TOP+2.w: 0x1640, 0x17d0, 0x1f78) or kMaxClippedVertices (vi10: 0x0f38, 0x1120, 0x0650, 0x15d0,
+// 0x1a98, 0x23d0). A violation hands the command back to the microcode at 0x1b60 with vi14 naming
+// it again -- the same clean hand-back a command with no handler gets, which is why every clamp
+// sits before its handler has written a register, stored a qword or kicked anything.
+//   * For family A that is a hand-back research/12 already licenses at any command boundary.
+//   * For family B the only boundary research/13 6.3 licenses outright is "immediately before
+//     0x02 is dispatched", and that is exactly where the primitive-count clamp sits (0x1f78);
+//     6.3 calls everything after it one indivisible unit for a program that reproduces only
+//     vi1/vi14. So the clamps that sit *inside* a family-B list -- the vi10 ones -- are placed
+//     ahead of their handler's first instruction and are unreachable on any accepted list:
+//     vi10 comes from this file's own clipper, whose ping-pong buffers cap it at twelve, and the
+//     pre-scan refuses a family-B list that could reach a shim without 0x02 having run. The
+//     escape hatch the brief's other option would need -- finishing the primitive and stopping at
+//     the 0x4c boundary -- is not taken, because 6.3 does not license that boundary either; the
+//     list is refused before it starts instead (see the family-B clauses in isNativeRun).
+//   * Commands 0x30 and 0x32 check *both* their own rescale count and the count of the draw
+//     handler they tail-jump into, at their own entry, because after their first XGKICK a
+//     hand-back would replay the inline block.
 //
 // The program also requires the interpreter's default XGKICK model, which copies the whole packet
 // at kick time. Under PS2X_VU1_XGKICK_CYCLE_EXACT=1 a kick streams as m_cycle advances and a new
@@ -98,6 +120,16 @@ namespace
     // outside the range (including a negative count) hands the list back whole.
     constexpr int32_t kMaxVertices = 256;
     constexpr int32_t kMaxTriangles = 256;
+
+    // The family-B counterpart: the clipped vertex count vi10, which the clipper at 0x3618 -- not
+    // the header -- produces, so the pre-scan cannot see it. Its ceiling is the clipper's own
+    // ping-pong buffers, qwords 40-75 and 76-111: 36 qwords, three per vertex, twelve vertices,
+    // and the polygon-close at 0x3a90 needs one of them for the wrap copy. A convex polygon
+    // clipped against one plane gains at most one vertex, so from a triangle the five planes can
+    // only reach 3 -> 4 -> 5 -> 6 -> 7 -> 8; twelve is the buffer, and anything above it would
+    // already have overrun the buffer inside the clipper. Read as a count by 0x0a, 0x12, 0x56,
+    // 0x1a, 0x2a and 0x32 (research/13 6.2).
+    constexpr int32_t kMaxClippedVertices = 12;
 
     // What running one command left behind. Most handlers only ever reach their own `B 0x1b60`,
     // but command 0x4c ends the program itself -- a family-B list's trailing 0x42 is never
@@ -434,6 +466,32 @@ namespace
     // 16-bit wrap of the VI ALU.
     int32_t vi16(int32_t value) { return static_cast<int32_t>(static_cast<int16_t>(value)); }
 
+    // ---- the per-handler work clamps --------------------------------------------------------
+    //
+    // Every handler that loops reads its trip count out of guest-controlled state -- TOP+2.z
+    // (vertices), TOP+2.w (triangles/primitives) or vi10 (the clipped vertex count) -- and every
+    // one of those loops tests `!= 0` or `> 0` on a 16-bit register, so an out-of-range count is
+    // not a slow run, it is up to 65535 uninterruptible iterations and their XGKICKs. The pre-scan
+    // checks the two header words before the list is accepted; these clamps check the same bound
+    // again at the point the handler actually reads it, so the bound holds even if a count ever
+    // comes from somewhere the scan cannot see (vi10 does; a future handler might).
+    //
+    // A clamp fires only at a handler's FIRST statement, before it has written any register, any
+    // data qword or kicked anything -- so the hand-back is the same clean one a command with no
+    // handler gets, and the microcode re-runs the whole command from its own entry.
+    bool withinCeiling(int32_t count, int32_t ceiling) { return count >= 0 && count <= ceiling; }
+
+    // The clamp's hand-back: give this command back to the microcode at 0x1b60. vi14 is one past
+    // the command (the dispatcher's 0x1b70 increment has already run), so step it back to name the
+    // command again -- which is also what the dispatcher's own NotImplemented path does, so the
+    // two agree.
+    bool handBackAtNextCommand(Ctx &c)
+    {
+        c.vi(14) = vi16(c.vi(14) - 1);
+        c.vu.m_state.pc = kNextCommandPc;
+        return false;
+    }
+
     // The command word the dispatcher would read for list index `index` (ILW.x: the low 16 bits of
     // the x word), read without disturbing any register.
     uint32_t peekCommand(Ctx &c, uint32_t index)
@@ -615,6 +673,10 @@ namespace
     {
         using namespace unpack;
         __m128 up;
+
+        // Clamp: 0x0b28's vertex count, read before the handler touches anything.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+            return handBackAtNextCommand(c);
 
         c.vi(kCursor) = vi16(c.vi(1) + 4);                   // 0x0b20
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);       // 0x0b28: TOP+2.z, the vertex count
@@ -845,6 +907,9 @@ namespace
     bool cmdTransformDivide(Ctx &c)
     {
         using namespace transform;
+        // Clamp: 0x0e08's vertex count.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+            return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                  // 0x0df8
         c.vi(kStageCursor) = 40;                               // 0x0e00
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);         // 0x0e08: TOP+2.z, the vertex count
@@ -859,6 +924,12 @@ namespace
     bool cmdClippedTransform(Ctx &c)
     {
         using namespace transform;
+
+        // Clamp: 0x0f38's count is the clipper's vi10, which the pre-scan cannot see. Checked
+        // here, ahead of the microcode's own first instruction, because 0x0f10's XGKICK would
+        // otherwise have happened twice once the microcode re-ran the command.
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
 
         c.vi(4) = 423;                                         // 0x0f08
         // 0x0f10: XGKICK vi4. Same model as command 0x28's kick -- the whole packet is copied at
@@ -1009,6 +1080,9 @@ namespace
     bool cmdDistanceFade(Ctx &c)
     {
         using namespace fade;
+        // Clamp: 0x0f90's vertex count.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+            return handBackAtNextCommand(c);
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x0f90: TOP+2.z, the vertex count
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x0f98
         c.vi(kStageCursor) = 40;                                 // 0x0fa0
@@ -1023,6 +1097,9 @@ namespace
     bool cmdClippedFade(Ctx &c)
     {
         using namespace fade;
+        // Clamp: 0x1120's count is vi10.
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x1108: vi3 = vi8
         c.vi(kStageCursor) = 150;                                // 0x1110
         c.vi(kRemaining) = vi16(c.vi(10));                       // 0x1120: the B 0xfa8 delay slot
@@ -1069,6 +1146,9 @@ namespace
     bool cmdTemplateFill(Ctx &c)
     {
         using namespace fill;
+        // Clamp: 0x05e0's vertex count.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+            return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 40;                                 // 0x05d8
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x05e0: TOP+2.z
         return templateFillLoop(c);
@@ -1081,6 +1161,11 @@ namespace
     bool cmdClippedTemplateFill(Ctx &c)
     {
         using namespace fill;
+        // Clamp: 0x0650's count is vi10. The loop decrements by three and tests `> 0`, so it also
+        // overshoots to the next multiple of three -- 150 + 3*12 = 186 is inside the array's
+        // headroom only because vi10 is bounded here.
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
         c.vi(kStageCursor) = 150;                                // 0x0640
         c.vi(kRemaining) = vi16(c.vi(10));                       // 0x0650: the B 0x5e8 delay slot
         return templateFillLoop(c);                              // 0x0648
@@ -1226,6 +1311,9 @@ namespace
     bool cmdLighting(Ctx &c)
     {
         using namespace lighting;
+        // Clamp: 0x1458's vertex count.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices))
+            return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x1440
         c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x1448
         c.vi(kStageCursor) = 40;                                 // 0x1450
@@ -1241,6 +1329,9 @@ namespace
     bool cmdClippedLighting(Ctx &c)
     {
         using namespace lighting;
+        // Clamp: 0x15d0's count is vi10.
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
         loadQword<kParams, kXYZW>(c, 27);                        // 0x15b0
         c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x15b8: vi3 = vi8
         c.vi(kStageCursor) = 150;                                // 0x15c0
@@ -1548,6 +1639,18 @@ namespace
         return true;                                             // 0x1958: B 0x1b60
     }
 
+    // Clamp wrapper for 0x28 as a *dispatched* command: 0x17d0's triangle count, checked before
+    // 0x17b0's stores so the hand-back is clean. 0x1780 is also the tail target of command 0x30's
+    // `JR vi6`, and on that path a hand-back would not be clean -- 0x30 has already kicked its
+    // inline block and rescaled the staging array in place -- so 0x30 does this check itself, at
+    // its own entry, and the tail jump goes to the unwrapped body.
+    bool cmdBuildPacketDispatched(Ctx &c)
+    {
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+            return handBackAtNextCommand(c);
+        return cmdBuildPacket(c);
+    }
+
     // ---- the shared packet-flush tail 0x1980, and command 0x2a -> 0x1a78 --------------------
     //
     // Converts a run of staging triples into GS-format ones and kicks them. Entered with vi3 = the
@@ -1675,6 +1778,16 @@ namespace
         return flushTail(c);
     }
 
+    // Clamp wrapper for 0x2a as a *dispatched* command: 0x1a98's count is the clipper's vi10.
+    // 0x1a78 is also command 0x32's `JR vi6` tail target, where a hand-back would not be clean, so
+    // 0x32 makes the same check at its own entry and tail-jumps to the unwrapped body.
+    bool cmdFlushPacketDispatched(Ctx &c)
+    {
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
+        return cmdFlushPacket(c);
+    }
+
     // ---- command 0x06 -> 0x1638: backface cull ---------------------------------------------
     //
     // Sets bit 0 of every triangle's flag word -- the gate command 0x28 reads -- from the sign of
@@ -1708,6 +1821,10 @@ namespace
         using vu1ops::ArithMul;
         using vu1ops::ArithSub;
         __m128 up;
+
+        // Clamp: 0x1640's triangle count.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+            return handBackAtNextCommand(c);
 
         c.vi(kIndexCursor) = c.loadWord(c.vi(1) + 2, 0);         // 0x1638: TOP+2.x
         c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 3);           // 0x1640: TOP+2.w
@@ -2230,6 +2347,17 @@ namespace
     Outcome cmdWorldObject(Ctx &c)
     {
         using namespace world;
+        // Clamp: 0x1f78's primitive count, the one that crosses every 0x4c back edge in vi12.
+        // 0x4c decrements it and tests `== 0`, so a zero or negative count is 65536 primitives,
+        // each of them a clipper call and up to three XGKICKs. This is the one family-B clamp
+        // whose hand-back research/13 6.3 licenses outright: "immediately before 0x02 is
+        // dispatched" is its third safe boundary, because 0x1f70 recomputes vi15/vi12/vi3 from
+        // vi1 and nothing else is live.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+        {
+            handBackAtNextCommand(c);
+            return Outcome::NotImplemented;
+        }
         c.vi(kCursor) = c.loadWord(c.vi(1) + 2, 0);              // 0x1f70: TOP+2.x
         c.vi(kPrimitives) = c.loadWord(c.vi(1) + 2, 3);          // 0x1f78: TOP+2.w
         c.vi(kCursor) = vi16(c.vi(kCursor) + c.vi(1));           // 0x1f90
@@ -2383,6 +2511,14 @@ namespace
     bool cmdInlineBlockOverA(Ctx &c)
     {
         using namespace inlineBlock;
+        // Clamp, for both halves of this command: 0x22b8's rescale count (TOP+2.z) and the
+        // triangle count of the 0x1780 body it tail-jumps into (TOP+2.w). Both are checked here,
+        // at the only point in the command where a hand-back is still clean -- after the first
+        // XGKICK of an inline block, re-running 0x30 from the microcode would kick it twice and
+        // rescale the staging array twice.
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), kMaxVertices) ||
+            !withinCeiling(c.loadWord(c.vi(1) + 2, 3), kMaxTriangles))
+            return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 40;                                   // 0x22a0: the family-A staging
         c.vi(kDstCursor) = 40;                                   // 0x22a8: array, rescaled in place
         c.vi(kReturnPc) = kBuildPacketPc;                        // 0x22b0
@@ -2399,6 +2535,11 @@ namespace
     bool cmdInlineBlockOverB(Ctx &c)
     {
         using namespace inlineBlock;
+        // Clamp: vi10 is both 0x23d0's rescale count and the count of the 0x1a78 body this tail-
+        // jumps into, so one check at the entry covers both -- and it has to be here, for the same
+        // reason as 0x30's.
+        if (!withinCeiling(vi16(c.vi(10)), kMaxClippedVertices))
+            return handBackAtNextCommand(c);
         c.vi(kSrcCursor) = 150;                                  // 0x23b0
         c.vi(kDstCursor) = 150;                                  // 0x23b8
         c.vi(kReturnPc) = kFlushPacketPc;                        // 0x23c0
@@ -2443,9 +2584,9 @@ namespace
         case kCmdClippedLight:
             return fromHandler(cmdClippedLighting(c));
         case kCmdBuildPacket:
-            return fromHandler(cmdBuildPacket(c));
+            return fromHandler(cmdBuildPacketDispatched(c));
         case kCmdFlushPacket:
-            return fromHandler(cmdFlushPacket(c));
+            return fromHandler(cmdFlushPacketDispatched(c));
         case kCmdKickRenderState:
             return fromHandler(cmdKickRenderState(c));
         case kCmdDrawGateOff:
