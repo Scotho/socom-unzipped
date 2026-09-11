@@ -1,11 +1,13 @@
 import os
 import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 
 from PIL import Image
 
-from tools_py.parity import drive, gate
+from tools_py.parity import black_rows, drive, gate
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "gate")   # committed: runs on a fresh clone
@@ -159,6 +161,29 @@ class TransitionScoring(unittest.TestCase):
         self.assertTrue(ok, detail)
         self.assertIn("5 black-screen frames examined", detail)
 
+    def test_bright_pixel_in_the_band_fails(self):
+        """The regression the band exists to catch (STATUS 2026-09-09 12:10: a strip of the
+        main-menu video at rows 396-447 of the black screen before the briefing). Copy the passing
+        fixture run, light one pixel inside the band of one frame -- scaled by h/448, the fixtures
+        are 320x224 -- and the gate must go red with the NOT BLACK reason, not merely count five
+        frames and pass. Without this, every transition assertion in this file is a positive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run = os.path.join(tmp, "transition")
+            shutil.copytree(TRANSITION_FIXTURE_RUN, run)
+            self.assertTrue(gate.score_transition(run)[0])
+            victim = sorted(f for f in os.listdir(run) if f.endswith(".png"))[0]
+            path = os.path.join(run, victim)
+            with Image.open(path) as im:
+                im = im.convert("RGB")
+                w, h = im.size
+                y = (396 * h // 448 + 447 * h // 448) // 2   # mid-band, in this frame's scale
+                im.putpixel((w // 2, y), (255, 255, 255))
+                im.save(path)
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("NOT BLACK", detail)
+        self.assertIn(victim, detail)
+
     @unittest.skipUnless(os.path.isdir(NATIVE_ON_TRANSITION), "needs logs/parity/gate/native_on/transition")
     def test_pre_wait_capture_run_is_below_the_floor(self):
         """Negative control for the 2026-09-11 recalibration. This run predates the wait
@@ -168,6 +193,58 @@ class TransitionScoring(unittest.TestCase):
         ok, detail = gate.score_transition(NATIVE_ON_TRANSITION)
         self.assertFalse(ok, detail)
         self.assertIn("4 black-screen frames examined", detail)
+
+
+class BurstStepFiltering(unittest.TestCase):
+    """The transition frame count has to be able to say which frames are the transition and
+    which are the boot: black_rows.py --from-step drops the boot ones, and gate.first_burst_step
+    reads the step index to drop them from off the probe script rather than a hard-coded number."""
+
+    def test_first_burst_step_of_the_transition_probe(self):
+        """transition_probe.txt: nine `next` steps (s00..s08, the boot screens through the rank
+        screen) and then the first `burst`. Captures from that step on are named s09_*/w09_*."""
+        self.assertEqual(gate.first_burst_step(), 9)
+
+    def test_first_burst_step_ignores_comments_and_blank_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("# a comment\n\nnext+1.0:CROSS   # step 0\nwait+1.0:NONE\n"
+                        "burst+5.0:NONE  # step 2\nburst+1.0:NONE\n")
+            self.assertEqual(gate.first_burst_step(path), 2)
+
+    def test_script_without_a_burst_step(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("next+1.0:CROSS\nwait+1.0:NONE\n")
+            self.assertIsNone(gate.first_burst_step(path))
+            self.assertIsNone(gate.first_burst_step(os.path.join(tmp, "no_such_script.txt")))
+
+    def test_step_index_of_capture_names(self):
+        self.assertEqual(black_rows.step_index("s09_burst_003.png"), 9)
+        self.assertEqual(black_rows.step_index("w10_001.png"), 10)
+        self.assertEqual(black_rows.step_index("s00_none.png"), 0)
+        self.assertEqual(black_rows.step_index("final.png"), -1)   # not a step capture
+
+    def test_frames_before_the_burst_step_do_not_count(self):
+        """The point of --from-step: eight black frames from the boot (s00..s07) plus two from
+        the burst step is ten frames of which only two can be the transition. Unrestricted,
+        black_rows.py examines all ten; --from-step 8 examines the two."""
+        with tempfile.TemporaryDirectory() as run:
+            names = ["s%02d_CROSS.png" % i for i in range(8)] + ["s08_burst_000.png", "w08_000.png"]
+            for name in names:
+                Image.new("RGB", (640, 448), (0, 0, 0)).save(os.path.join(run, name))
+
+            def examined(*extra):
+                r = subprocess.run([sys.executable, "tools_py/parity/black_rows.py", run] + list(extra),
+                                   capture_output=True, text=True, cwd=ROOT)
+                return [ln.split()[0] for ln in r.stdout.splitlines() if "black screen, rows " in ln]
+
+            self.assertEqual(len(examined()), 10)
+            self.assertEqual(sorted(examined("--from-step", "8")),
+                             ["s08_burst_000.png", "w08_000.png"])
+            self.assertEqual(examined("--from-step", "9"), [])
 
 
 if __name__ == "__main__":

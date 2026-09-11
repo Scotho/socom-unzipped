@@ -705,9 +705,19 @@ namespace
         // check is deliberately ORDER-based rather than a "the list contains 0x02 somewhere"
         // post-check: a shape like `68 2a 42` or `68 2a 02 4c 42` contains 0x02 but would still
         // run 0x2a's flushTail on whatever vi10 the previous program left in the register file.
-        // The walk is the executed order for everything up to the first 0x4c, and 0x4c's back
-        // edge only ever re-runs qwords the walk has already visited, so a flag set as the walk
-        // passes the 0x02 qword answers exactly "has 0x02 run by the time this command runs?".
+        // The walk is the executed order for everything up to the first 0x4c. Past that the walk
+        // is a superset rather than a transcript: 0x4c re-enters the list at a vi12 the clipper
+        // computed, which the walk cannot evaluate, so the "has 0x02 run?" flag has to hold for
+        // every target that re-entry can reach. It does, because there are only two outcomes and
+        // neither can run a consumer of the clipper output before 0x02:
+        //   - the target lands on a word that is not a command this file implements: the handler
+        //     hands the whole program back before writing anything, and the interpreter re-runs it
+        //     (an unvalidated target is a hand-back, never a mis-execution);
+        //   - the target lands on a command, i.e. a qword the walk already visited on its way to
+        //     the 0x4c -- a back edge into the walked prefix, whose 0x02 flag is therefore already
+        //     correct -- and that cycle is bounded by 0x4c's own clamp on vi12.
+        // So the flag set as the walk passes the 0x02 qword answers exactly "has 0x02 run by the
+        // time this command runs?" for every path the program can actually take.
         bool seenWorldObject = false;
         for (uint32_t step = 0; step < kMaxCommands; ++step)
         {
@@ -1657,9 +1667,31 @@ namespace
             v.y = screenXY[i][1];
         }
 
-        // The tag's PRE bit writes PRIM before the vertices; do the same so the GS register state
-        // a host-drawn triangle leaves behind is the state a kicked packet would have left.
+        // The GS register state a host-drawn triangle leaves behind has to be the state the kicked
+        // packet would have left, because the next packet the game builds may rely on it: the tag's
+        // PRE bit writes PRIM before the vertices, and each PACKED ST / RGBAQ descriptor updates the
+        // GS's sticky vertex latches (m_curS/m_curT/m_curQ, m_curR/G/B/A -- gs_frontend.cpp
+        // writeRegisterPacked cases 0x02 and 0x01). What survives the packet is the LAST vertex's
+        // pair, so replay those two writes with that vertex's own packet words.
+        //
+        // Through writeRegister (not writeRegisterPacked) the 64-bit values differ from the packet
+        // qwords: ST is S | T<<32 (Q rides in RGBAQ instead), RGBAQ is R | G<<8 | B<<16 | A<<24 |
+        // Q<<32. Writing ST first and RGBAQ second reproduces the packed pair exactly, including
+        // the Q==0 -> 1.0 fixup both paths apply.
         gs->writeRegister(GS_REG_PRIM, (tagLo >> 47) & 0x7FFu);
+        {
+            const uint8_t *st = c.qwordBytes(packetQword + 1 + 2 * 3);
+            const uint8_t *rgbaq = c.qwordBytes(packetQword + 2 + 2 * 3);
+            const uint64_t stValue = static_cast<uint64_t>(loadPacketWord(st)) |
+                                     (static_cast<uint64_t>(loadPacketWord(st + 4)) << 32);
+            const uint64_t rgbaqValue = static_cast<uint64_t>(rgbaq[0]) |
+                                        (static_cast<uint64_t>(rgbaq[4]) << 8) |
+                                        (static_cast<uint64_t>(rgbaq[8]) << 16) |
+                                        (static_cast<uint64_t>(rgbaq[12]) << 24) |
+                                        (static_cast<uint64_t>(loadPacketWord(st + 8)) << 32);
+            gs->writeRegister(GS_REG_ST, stValue);
+            gs->writeRegister(GS_REG_RGBAQ, rgbaqValue);
+        }
         gs->submitHostTriangle(prim, vertices[0], vertices[1], vertices[2]);
         return true;
     }

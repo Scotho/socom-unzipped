@@ -4,8 +4,10 @@ You are continuing the SOCOM II PC static-recompilation project at C:/projects/s
 autonomously. The user (Craig) is away and has given full authority to use best judgement;
 plans are suggestions.
 
-Ordered goals (user, 2026-09-10, Sprint 1 — see
-docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md and the plan in
+Ordered goals (user, 2026-09-11, Sprint 2 — see
+docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md and the plan in
+docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md; Sprint 1 is history:
+docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md and
 docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
 
 1. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED

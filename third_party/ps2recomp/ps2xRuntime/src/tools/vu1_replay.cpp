@@ -21,11 +21,17 @@
 // it on there are no packets to compare, so --verify then checks only end pc, VU data memory and
 // (with --regs all) the register file.
 //
-// --vram-diff <outdir> renders every dump twice into a fresh 640x448 framebuffer — once through
-// the GIF path, once through the host hook — and prints one VRAMDIFF line per dump with the number
-// of differing pixels; it exits 1 if any dump exceeds --vram-tol (default 1.0 %). A dump whose two
-// passes both drew nothing prints `SKIP <name> (nothing drawn)` and does not count as a pass -- two
-// blank frames are identical for free -- and the final PASS/FAIL line reports checked=N skipped=M.
+// --vram-diff <outdir> renders every dump twice into a fresh 640x448 framebuffer - once through
+// the GIF path, once through the host hook - and prints one VRAMDIFF line per dump. The score is
+// `hard / drawn`: drawn = pixels either pass wrote, hard = differing pixels that are neither a
+// one-step gouraud rounding difference (max channel delta <= 1) nor on a coverage boundary (a
+// 3x3 neighbourhood that is not uniformly drawn in one of the two renderings, i.e. where the
+// host path's un-truncated 1/16-pixel coordinates put an edge the GIF path's truncated ones do
+// not). It exits 1 if any dump exceeds --vram-tol (default 1.0 %). differing / rounding / edge
+// and the whole-frame percentage are printed alongside as context: a frame-relative score cannot
+// fail on dumps that paint a few hundred of 286720 pixels. A dump whose two passes both drew
+// nothing prints `SKIP <name> (nothing drawn)` and does not count as a pass - two blank frames
+// are identical for free - and the final PASS/FAIL line reports checked=N skipped=M.
 // A run that ends with checked=0 FAILs and exits 1: nothing drew, so nothing was compared.
 // Because the knob is a read-once static inside the native program, the two renderings run in two
 // child processes (argv[0] re-executed with --vram-dump), which leave
@@ -294,6 +300,14 @@ namespace
     {
         CreateDirectoryA(outDir.c_str(), nullptr);
 
+        // A child pass that dies before it writes its dump must not be scored against the
+        // artefact a previous invocation left in outDir: clear both expected paths up front.
+        for (const std::string &input : inputs)
+        {
+            std::remove(vramDumpPath(outDir, input, false).c_str());
+            std::remove(vramDumpPath(outDir, input, true).c_str());
+        }
+
         for (int pass = 0; pass < 2; ++pass)
         {
             const bool hostDraw = pass == 1;
@@ -337,18 +351,28 @@ namespace
                 continue;
             }
             const size_t pixels = gif.size() / 4u;
+            if (pixels != static_cast<size_t>(kFrameWidth) * kFrameHeight)
+            {
+                std::printf("VRAMDIFF %s unexpected dump size (%zu pixels)\n", name.c_str(), pixels);
+                failed = true;
+                continue;
+            }
+            // Per-pixel "did this pass write here?" masks, so a differing pixel can be told apart
+            // from one that exists in only one of the two renderings.
+            std::vector<uint8_t> drawnGif(pixels, 0u), drawnHost(pixels, 0u);
             size_t differing = 0, drawn = 0;
             for (size_t p = 0; p < pixels; ++p)
             {
                 uint32_t a = 0, b = 0;
                 std::memcpy(&a, gif.data() + p * 4u, 4);
                 std::memcpy(&b, host.data() + p * 4u, 4);
+                drawnGif[p] = a != 0u;
+                drawnHost[p] = b != 0u;
                 if (a != b)
                     ++differing;
                 if (a != 0u || b != 0u)
                     ++drawn;
             }
-            const double pct = pixels ? 100.0 * static_cast<double>(differing) / static_cast<double>(pixels) : 0.0;
             // drawn = pixels either pass wrote. Two blank frames are trivially identical, so a dump
             // that draws nothing is not evidence that the host path matches the GIF path: report it
             // as SKIP and leave it out of the count the PASS line stands on.
@@ -358,8 +382,57 @@ namespace
                 ++skipped;
                 continue;
             }
-            std::printf("VRAMDIFF %s differing=%zu of %zu (%.3f%%) drawn=%zu\n",
-                        name.c_str(), differing, pixels, pct, drawn);
+
+            // A pixel sits on a coverage boundary when its 3x3 neighbourhood is not uniformly
+            // drawn (nor uniformly undrawn) in one of the two renderings: that is where the host
+            // path's un-truncated 1/16-pixel vertex coordinates put a triangle edge somewhere the
+            // GIF path's truncated ones do not, so the two rasterisers legitimately disagree about
+            // whether the pixel is covered at all.
+            auto boundaryAt = [&](const std::vector<uint8_t> &mask, size_t x, size_t y) {
+                bool anySet = false, allSet = true;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx)
+                    {
+                        const long nx = static_cast<long>(x) + dx;
+                        const long ny = static_cast<long>(y) + dy;
+                        const bool set = nx >= 0 && ny >= 0 && nx < static_cast<long>(kFrameWidth) &&
+                                         ny < static_cast<long>(kFrameHeight) &&
+                                         mask[static_cast<size_t>(ny) * kFrameWidth + static_cast<size_t>(nx)] != 0u;
+                        anySet |= set;
+                        allSet &= set;
+                    }
+                return anySet && !allSet;
+            };
+
+            // Split the differing pixels into the two kinds the two paths produce by design and the
+            // remainder, which is the only kind a wrong lane or a wrong context shows up as.
+            size_t rounding = 0, edge = 0, hard = 0;
+            for (size_t y = 0; y < kFrameHeight; ++y)
+                for (size_t x = 0; x < kFrameWidth; ++x)
+                {
+                    const size_t p = y * kFrameWidth + x;
+                    int delta = 0;
+                    for (int c = 0; c < 4; ++c)
+                        delta = std::max(delta, std::abs(static_cast<int>(gif[p * 4u + c]) -
+                                                         static_cast<int>(host[p * 4u + c])));
+                    if (delta == 0)
+                        continue;
+                    if (delta <= 1)
+                        ++rounding;   // gouraud interpolation rounding: one step in one channel
+                    else if (boundaryAt(drawnGif, x, y) || boundaryAt(drawnHost, x, y))
+                        ++edge;       // sub-pixel coverage difference at a triangle edge
+                    else
+                        ++hard;
+                }
+
+            // The score is hard / drawn, not differing / whole frame: these dumps paint a few
+            // hundred pixels of a 286720-pixel frame, so a frame-relative percentage cannot reach
+            // 1% even when every drawn pixel is wrong. The frame percentage is printed as context.
+            const double pct = 100.0 * static_cast<double>(hard) / static_cast<double>(drawn);
+            const double framePct = 100.0 * static_cast<double>(differing) / static_cast<double>(pixels);
+            std::printf("VRAMDIFF %s hard=%zu of drawn=%zu (%.3f%%) [differing=%zu: rounding=%zu "
+                        "edge=%zu hard=%zu; %.4f%% of the %zu-pixel frame]\n",
+                        name.c_str(), hard, drawn, pct, differing, rounding, edge, hard, framePct, pixels);
             ++checked;
             if (pct > tolerancePct)
                 failed = true;
@@ -430,7 +503,21 @@ int main(int argc, char **argv)
         else if (!std::strcmp(argv[i], "--verify") && i + 1 < argc)
             verifyPath = argv[++i];
         else if (!std::strcmp(argv[i], "--regs") && i + 1 < argc)
-            verifyRegs = std::strcmp(argv[++i], "none") != 0;
+        {
+            // Only two spellings, and a typo must not silently select "all": every other value
+            // used to compare unequal to "none" and turn the register check ON, so `--regs non`
+            // and `--regs off` read as `--regs all`.
+            const char *mode = argv[++i];
+            if (!std::strcmp(mode, "all"))
+                verifyRegs = true;
+            else if (!std::strcmp(mode, "none"))
+                verifyRegs = false;
+            else
+            {
+                std::fprintf(stderr, "--regs takes all|none, not \"%s\"\n", mode);
+                return 2;
+            }
+        }
         else if (!std::strcmp(argv[i], "--host-draw"))
             hostDraw = true;
         else if (!std::strcmp(argv[i], "--vram-diff") && i + 1 < argc)

@@ -2,9 +2,13 @@
 
 ## START HERE
 Read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays,
-and where Sprint 1 stands; then the sprint plan
-(`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`); then the run
-recipes and history below.
+and where Sprint 2 stands; then the current sprint spec and plan
+(`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
+`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`); then the run
+recipes and history below. Sprint 1 is history -- read it for how the VU1 native path and the
+gates got here, not for what to do next:
+`docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
+`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`.
 
 ## Reference: run recipes and history
 

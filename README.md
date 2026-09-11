@@ -56,7 +56,10 @@ PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest threa
 Knobs: `PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
 `GS::submitHostTriangle` in host space instead of building/kicking a GIF packet (default off, GIF
 path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path;
-`PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a determinism check. `vu1_replay
+`PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a determinism check.
+`PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native
+dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach
+the refusal path on the normal fixtures -- test-only, never set them for a real run. `vu1_replay
 --vram-diff <outdir> [--vram-tol <pct>]` proves the host-draw and GIF paths render the same
 pixels offline; `vu1_replay --no-native` forces the interpreted path for comparison.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up

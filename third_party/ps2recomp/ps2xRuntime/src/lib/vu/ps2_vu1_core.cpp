@@ -2233,10 +2233,25 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                          uint8_t *vuData, uint32_t dataSize,
                          GS &gs, PS2Memory *memory, uint32_t maxCycles)
 {
+    // Valid only for the length of this call: every user (the XGKICK pipeline, execLower, and
+    // activeGs() in the native VU1 programs) reads them from inside run(). ActiveScope clears them
+    // again on every way out, so nothing outside a run can be handed a stale GS pointer or a stale
+    // VU data pointer the caller may since have freed or repurposed.
     m_activeVuData = vuData;
     m_activeVuDataSize = dataSize;
     m_activeGs = &gs;
     m_activeMemory = memory;
+    struct ActiveScope
+    {
+        VU1Interpreter *vu;
+        ~ActiveScope()
+        {
+            vu->m_activeVuData = nullptr;
+            vu->m_activeVuDataSize = 0u;
+            vu->m_activeGs = nullptr;
+            vu->m_activeMemory = nullptr;
+        }
+    } activeScope{this};
 
     // PS2X_VU1_DUMP=<dir>[:<count>]: once PS2X_TRIGGER has armed the traces, save the next <count>
     // (default 150) VU1 program runs as <dir>/vu1_prog_<n>.bin: 16 bytes header (startPc, top,

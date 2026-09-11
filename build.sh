@@ -70,20 +70,38 @@ test_step() {
   #                      no-op for the registry and also reports entered=0 -- this line is a
   #                      regression check that the native programs do NOT intercept the title set,
   #                      not native coverage.
+  #   Runs 3-5 pass --regs all (runs 8-9 always did): without it --verify compares only end pc,
+  #   data memory and the packets, so a native program that got a register right in the packet and
+  #   wrong in the file would pass. The goldens were taken on the interpreted path, so this is the
+  #   check that the native path reproduces the whole register file, not just what it kicked.
   #   4   (--native):    the 0x1b50 dispatcher set is the one with native coverage; it reports a
   #                      non-zero entered=.. (entered = ended + handbacks) and must still match the
   #                      same golden packets and registers as run 2.
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --no-native "$ROOT"/tests/fixtures/vu1/title/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --no-native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
-  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --native "$ROOT"/tests/fixtures/vu1/title/*.bin
-  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --native --regs all "$ROOT"/tests/fixtures/vu1/title/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 5: the same set with PS2X_VU1_HOST_DRAW=1 (command 0x28 draws through GS::submitHostTriangle
   #    instead of kicking its packet). There are no packets to compare then, so this run checks end
   #    pc, VU data memory and the register file -- the knob must not change any of them.
-  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --host-draw "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --host-draw --regs all "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 6: and what the two paths actually draw, pixel for pixel, into a 640x448 framebuffer. The host
   #    path keeps the sub-1/16-pixel fraction the GIF path truncates, so edge and gouraud-rounding
   #    pixels differ by design; anything past the tolerance means a wrong lane or a wrong context.
+  #    The score is hard / drawn, NOT differing / whole frame: these dumps paint 26..3291 pixels of
+  #    a 286720-pixel frame, so a frame-relative score tops out at 0.32% here and could not fail at
+  #    1% however wrong the drawing was (measured: forcing the host path +8 px in x leaves 9 of the
+  #    10 dumps at 0.0000-0.2570% of frame).
+  #    "hard" excludes the two differences the two paths produce by design, both measured on this
+  #    fixture set rather than assumed:
+  #      - rounding: max channel delta <= 1. 174/179, 897/922, 67/69, 122/134 and 63/66 of each
+  #        dump's differing pixels are exactly this -- one step of gouraud interpolation.
+  #      - edge: a differing pixel whose 3x3 neighbourhood is not uniformly drawn in one of the two
+  #        renderings, i.e. sub-pixel coverage at a triangle edge (delta 127/128 = drawn vs blank).
+  #    What is left on a clean build is 0, 4, 0, 0 and 1 pixel: 0.000% of drawn on eight dumps,
+  #    0.122% on prog_11 and 0.806% on prog_6 (1 pixel of 124 drawn -- the smallest dump, so the
+  #    least headroom under the 1.00% default). The +8 px experiment scores 29.4-54.9%, so the
+  #    check does fail when the drawing is wrong.
   "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 7: the work-ceiling refusal path. tests/fixtures/vu1/clamp holds vu1dump4_prog_11 with TOP+2.z
   #    rewritten from 76 to 300 -- above kMaxVertices -- and a golden taken from the microcode path
