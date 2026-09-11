@@ -62,7 +62,7 @@ step named.
 
 | pc range | pairs | runs each | what it is | command word | XGKICK site |
 |---|---|---|---|---|---|
-| `0x0000-0x0038` | 8 | 150 | entry-0 prologue: `XTOP`, read the header qword, test flag bit 1 | jump-table entry **0** (`0x1ba0: B 0x0`) — but on the title screen reached by `MSCAL 0` from the EE, not through the table **[verified]** | none |
+| `0x0000-0x0038` | 8 | 150 | entry-0 prologue: `XTOP`, read the header qword, test flag bit 1 | jump-table **slot 0** (`0x1ba0: B 0x0`), i.e. command word `0x00` — but on the title screen reached by `MSCAL 0` from the EE, not through the table **[verified]** | none |
 | `0x0118-0x01d8` | 25 | 150 | flag-bit-0 branch: load the object matrix from `TOP+1..TOP+4`, save `TOP+12/13` to 327/328, start `M_proj × M_obj` | same handler | none |
 | `0x0200-0x02a0` | 21 | 150 | finish `M_proj × M_obj` → qwords 0..3; start `M_view × M_obj` | same handler | none |
 | `0x02c8-0x0378` | 23 | 150 | finish `M_view × M_obj` (stays in `vf13..vf16`); `M_light × M_obj` → `vf5..vf8`; copy camera/clip-plane block `TOP+5..TOP+11` → qwords 30..36; read `header.y` (= 0) and skip the vertex-copy loop | same handler | none |
@@ -84,22 +84,44 @@ bit 3: four qwords to 27/38/28/29), `0x438-0x488` (command-list upload to qword 
 1b68: IADDIU vi4, vi0, 884           ; 884 pairs * 8 = 0x1ba0 = the jump table
 1b70: IADDIU vi14, vi14, 1           ; ++command index
 1b80: IADD   vi3, vi5, vi4
-1b90: JR     vi3                     ; -> 0x1ba0 + 16*cmd
+1b90: JR     vi3                     ; -> 0x1ba0 + 8*cmd  ==  0x1ba0 + 16*slot
+                                     ;    (JR targets a pair address; each slot is 2 pairs,
+                                     ;     so the stored command word is 2 x the slot index)
 ```
 
-`0x1b60` is the re-entry point that skips `XTOP` (jump-table command 37 and handler `0x4c8`
-branch there); `0x1b50` is the full restart (jump-table command 34). **[verified]** from the
-disassembly and the generated code (`L_0x1b50`ff.).
+`0x1b60` is the re-entry point that skips `XTOP` (jump-table **slot 37**, command word `0x4a`,
+and handler `0x4c8` branch there); `0x1b50` is the full restart (**slot 34**, command word
+`0x44`). **[verified]** from the disassembly and the generated code (`L_0x1b50`ff.).
 
-Jump table at `0x1ba0`, 61 entries (commands 0..60), each entry two pairs (`B target` + delay).
-First entries: 0 → `0x0` (this handler), 1 → `0x1f70`, 2 → `0x2110`, 3 → `0x1638` (backface
-cull), 4 → `0xdf8` (transform/divide), 5 → `0xf08`, … 12 → `0x1440` (lighting), 20 → `0x1780`
-(build GIF packet + `XGKICK vi2` at `0x1920`), 33 → `0x1b40` (**end program**, E bit), 34 →
-`0x1b50` (restart with `XTOP`), 37 → `0x1b60` (next command, no `XTOP`), 44 → `0x4a8`
-(`XGKICK 330` then `B 0x1b60`), 52 → `0xb20` (int→float vertices), 60 → `0x2b58`.
-The handler names for 3/4/12/20/52 are carried over from
+Jump table at `0x1ba0`, **61 slots (0..60)**, each slot two pairs (`B target` + delay) at
+`0x1ba0 + 16*slot`. The value stored in the command list is the *command word* `2 * slot`
+(see §(f).0); slots are numbered here, command words are given alongside.
+
+| slot | cmd word | target | name |
+|---|---|---|---|
+| 0 | `0x00` | `0x0000` | this handler (entry 0) |
+| 1 | `0x02` | `0x1f70` | world-object setup |
+| 2 | `0x04` | `0x2110` | — |
+| 3 | `0x06` | `0x1638` | backface cull |
+| 4 | `0x08` | `0x0df8` | transform / perspective divide |
+| 5 | `0x0a` | `0x0f08` | `XGKICK` qword 423 |
+| 12 | `0x18` | `0x1440` | lighting |
+| 20 | `0x28` | `0x1780` | build GIF packet + `XGKICK vi2` at `0x1920` |
+| 33 | `0x42` | `0x1b40` | **end program** (E bit) |
+| 34 | `0x44` | `0x1b50` | restart the dispatcher (with `XTOP`) |
+| 37 | `0x4a` | `0x1b60` | next command (no `XTOP`) |
+| 42 | `0x54` | `0x05d8` | template fill from qword 327 |
+| 43 | `0x56` | `0x0640` | template fill, base qword 150 |
+| 44 | `0x58` | `0x0658` | — |
+| 50 | `0x64` | `0x04a8` | `XGKICK` qword 330, then `B 0x1b60` |
+| 52 | `0x68` | `0x0b20` | int→float vertex unpack |
+| 60 | `0x78` | `0x2b58` | — (the last slot; `0x1f70` follows the table) |
+
+The full 61-row enumeration is regenerable from `logs/vu1entry0/full_dis.txt`. The handler names
+for slots 3/4/12/20/52 are carried over from
 `docs/research/07-render-pipeline-diagnosis.md:123-127` **[string-match to research/07]**; the
-table addresses themselves are **[verified]** from the disassembly.
+slot→target addresses are **[verified]** from the disassembly (an earlier draft of this note gave
+slot 44 as `0x4a8`, which is wrong — `0x4a8` is slot 50).
 
 ---
 
@@ -116,7 +138,7 @@ table addresses themselves are **[verified]** from the disassembly.
 | `vi8`, `vi9` | scratch for the flag tests (`vi8` = the mask 2/1/8, `vi9` = `vi5 & vi8`); `vi8` is reused as the copy-loop source cursor. `vi8` ends equal to `vi7`. | **[verified]** |
 | `vi2` | GIF-packet base **330**, only on the flag-bit-1 path (`IADDIU vi2, vi0, 330` at `0x40`, `XGKICK vi2` at `0xf8`). Untouched on the title path. | **[verified]** (scramble run leaves `vi2` = garbage) |
 | `vi6` | GIF-packet base **423**, only on the flag-bit-1 path (`XGKICK vi6` at `0x50`). Untouched on the title path. | **[verified]** (same) |
-| `vi10`, `vi12`-`vi15` | never touched by entry 0 on the title screen. `vi14` is the dispatcher's command index; `vi15` is the `BAL` link register used by other handlers. | **[verified]** (scramble run) |
+| `vi10`, `vi12`-`vi15` | never touched by entry 0 on the title screen. `vi14` is the dispatcher's command index. **`vi15` is overloaded**: it is the `BAL` link register at `0x2070` and `0x21a8`, *and* a plain data pointer elsewhere — the world-object handler sets it to the index-list base (`vi15 = ILW.x 2(vi1) + vi1` at `0x1f90`) and reloads it from qword `329.z` at `0x20d0`. A native implementation must treat it as caller-saved scratch, not as a dedicated link register. | **[verified]** (scramble run for entry 0; the overload from the disassembly at `0x1f90`, `0x2070`, `0x20d0`, `0x21a8`) |
 | `vf9`-`vf12` | the projection matrix rows, loaded from data qwords **4..7**; then reloaded at `0x278` with qwords **20..23** (a fourth matrix) and left there. | **[verified]** |
 | `vf25`-`vf28` | the view matrix rows, from data qwords **8..11**; then reloaded at `0x308` with `TOP+8..TOP+11` (clip-plane rows) on their way to qwords 33..36. | **[verified]** |
 | `vf21`-`vf24` | the light/normal matrix rows, from data qwords **16..19** (or `TOP+14..TOP+17` when `vi3 != 0`). | **[verified]** |
@@ -185,15 +207,15 @@ This is the whole reason entry 0 is a good first native handler: it is a pure fu
 
 **Live-out — what the native version must reproduce exactly:**
 
-| kind | set |
-|---|---|
-| integer registers written | `vi1` (= `TOP & 0x3ff`), `vi3` (= `header.x`), `vi5` (= `header.w`), `vi7` and `vi8` (= `vi1 + 14` on the title path), `vi9` (= `vi5 & 1`), `vi11` (= `header.y`) |
-| integer registers *not* written | `vi2`, `vi4`, `vi6`, `vi10`, `vi12`, `vi13`, `vi14`, `vi15` — a native version must **leave these alone**, not zero them |
-| float registers written | `vf1`..`vf28` (all of them). `vf0` is the hardwired `(0,0,0,1)`. `vf29`, `vf30`, `vf31` must be left alone. |
-| VU data memory | exactly qwords 0, 1, 2, 3, 30, 31, 32, 33, 34, 35, 36, 327, 328 |
-| pipeline state | `ACC = bef01fd3,80000000,80000000,00000000`; `mac = 0x087`; `status = 0x0c3`; `clip`, `Q`, `P`, `R`, `I` untouched |
-| GIF | no packet, no `XGKICK` |
-| end | `pc = 0x1b50`, program ended (E bit taken at `0x1b40`) |
+| kind | set | marking |
+|---|---|---|
+| integer registers written | `vi1` (= `TOP & 0x3ff`), `vi3` (= `header.x`), `vi5` (= `header.w`), `vi7` and `vi8` (= `vi1 + 14` on the title path), `vi9` (= `vi5 & 1`), `vi11` (= `header.y`) | **[verified]** — the end-state `vi` line of the scrambled run keeps garbage in exactly the complementary set |
+| integer registers *not* written | `vi2`, `vi4`, `vi6`, `vi10`, `vi12`, `vi13`, `vi14`, `vi15` — a native version must **leave these alone**, not zero them | **[verified]** (same run) |
+| float registers written | `vf1`..`vf28` (all of them). `vf0` is the hardwired `(0,0,0,1)`. `vf29`, `vf30`, `vf31` must be left alone. | **[verified]** (same run: only `vf29`-`vf31` keep the scrambled values) |
+| VU data memory | exactly qwords 0, 1, 2, 3, 30, 31, 32, 33, 34, 35, 36, 327, 328 | **[verified]** — 1024-qword poison sweep, run twice (real data and an all-zero buffer), same 13 both times |
+| pipeline state | `ACC = bef01fd3,80000000,80000000,00000000`; `mac = 0x087`; `status = 0x0c3`; `clip`, `Q`, `P`, `R`, `I` untouched | **[verified]** for `ACC`/`mac`/`status` (identical in both runs); "untouched" for `clip`/`Q`/`P`/`R`/`I` is **[verified]** from the 82-pair listing containing no op that writes them |
+| GIF | no packet, no `XGKICK` | **[verified]** (150/150 dumps, 0 packets) |
+| end | `pc = 0x1b50`, program ended (E bit taken at `0x1b40`) | **[verified]** (150/150 dumps; `--trace` reports `ended=1`) |
 
 Because the *next* title run is also entry 0 and has no live-in, none of the live-out registers
 are actually consumed on the title screen — but in-game the other handlers read `vf1..vf4`
@@ -353,8 +375,14 @@ selected by command word `2n`. §(a) named slots; this section names command wor
 `dist/vu1_replay.exe --pchist logs/vu1entry0/dispatch4_hist.bin <the 83 dumps>`
 → 722 distinct instruction pairs executed, 1,020,981 pair-executions.
 Contiguous ranges split at jump-table targets (`logs/vu1entry0/dispatch4_handlers.txt`), in
-execution-frequency order. "entered" is the count at the range's first pc; for a jump-table
-handler that equals its dispatch count.
+execution-frequency order. "entered" is the count at the range's first pc. For most jump-table
+handlers that equals the dispatch count, but **not always** — three exceptions in this table:
+row 7 (`0x1780`, also tail-jumped into by handler `0x30`), row 23 (`0x1b50`, reached once per
+program by the EE's `MSCAL`, not by a dispatch — command `0x44` was never dispatched here) and
+row 24 (`0x1b40`, reached once per program by a handler's `B 0x1b40` as well as by command
+`0x42`, which accounts for only 50 of the 83). The per-command dispatch counts in
+`logs/vu1entry0/dispatch4_cmds.txt` are read from the jump-table slots themselves and are the
+authority for "how many times was this command issued".
 
 | rank | pc range | pairs | pair-execs | entered | command word | what it is | marking |
 |---|---|---|---|---|---|---|---|
@@ -364,7 +392,7 @@ handler that equals its dispatch count.
 | 4 | `0x1440-0x15a8` | 46 | 55,512 | 46 | **`0x18`** | lighting (research/07) — reads `vf9..vf11` and qword 27 | **[string-match to research/07]**, prologue **[verified]** |
 | 5 | `0x1980-0x1a70` | 31 | 47,825 | 935 | — (`B 0x1980` from `0x1b30`) | shared packet-flush tail; contains `XGKICK vi6` at `0x1a48` and `XGKICK vi5` at `0x1a58` | **[verified]** range; name **[guess]** |
 | 6 | `0x1b60-0x1b98` | 8 | 42,200 | **5275** | `0x4a` | **the dispatcher body itself** — 5275 commands over 83 programs = 63.6 commands per program | **[verified]** |
-| 7 | `0x1780-0x1960` | 61 | 41,046 | 54 | **`0x28`** | triangle assembly → GIF packet → `XGKICK vi2` at `0x1920` | **[verified]** |
+| 7 | `0x1780-0x1960` | 61 | 41,046 | 54 (50 dispatched) | **`0x28`** | triangle assembly → GIF packet → `XGKICK vi2` at `0x1920`. Entered 54 times but dispatched only 50: handler `0x30` (`0x22a0`, dispatched 4 times) sets `vi6 = 752` at `0x22b0` and tail-jumps in with `JR vi6` at `0x23a0`. 50 + 4 = 54. | **[verified]** |
 | 8 | `0x1f70-0x20c0` | 43 | 32,217 | 33 | **`0x02`** | world-object setup; `BAL vi15, 0x3618` at `0x2070`; hands back with `B 0x1b60` between primitives | **[verified]** |
 | 9 | `0x0b20-0x0c58` | 40 | 29,758 | **83** | **`0x68`** | int→float vertex unpack — **the first command of every list in the corpus** | **[verified]** |
 | 10 | `0x1638-0x1768` | 39 | 21,916 | 33 | **`0x06`** | backface cull (research/07); reads the eye at qword 30 | **[verified]** prologue |
@@ -380,8 +408,8 @@ handler that equals its dispatch count.
 | 20 | `0x23b0-0x23d0` | 5 | 895 | 179 | `0x32` | — | **[guess]** |
 | 21 | `0x2280-0x2298` | 4 | 732 | 183 | `0x74` | — | **[guess]** |
 | 22 | `0x2268-0x2278` | 3 | 549 | 183 | `0x72` | — | **[guess]** |
-| 23 | `0x1b50-0x1b58` | 2 | 166 | 83 | `0x44` | the `XTOP` half of the dispatcher — runs exactly once per program | **[verified]** |
-| 24 | `0x1b40-0x1b48` | 2 | 166 | 83 | `0x42` | the E-bit end — runs exactly once per program | **[verified]** |
+| 23 | `0x1b50-0x1b58` | 2 | 166 | 83 (0 dispatched) | — (slot 34, cmd `0x44`) | the `XTOP` half of the dispatcher — entered once per program by the EE's `MSCAL 0x1b50`; command `0x44` is never issued by a list in this corpus | **[verified]** |
+| 24 | `0x1b40-0x1b48` | 2 | 166 | 83 (50 dispatched) | `0x42` | the E-bit end — runs once per program; 50 of those arrive via command `0x42`, the other 33 via a handler's own `B 0x1b40` (`0x2100`) | **[verified]** |
 
 Per-command dispatch counts are in `logs/vu1entry0/dispatch4_cmds.txt`. 41 of the 61 table slots
 are never used by this corpus, including **command word `0x00` — entry 0 is never reached through
@@ -458,11 +486,13 @@ Sweep run on seven dumps covering all seven list shapes; the union is the set ab
 This is exactly the register set **entry 0 leaves behind**, and it is the reason entry 0 must
 still be executed (or emulated) before a dispatcher run:
 
-| register | produced by entry 0 as | consumed here by |
-|---|---|---|
-| `vf1`-`vf4` | `M(q4..q7) × M(TOP+1..TOP+4)` — the local→clip matrix | command `0x08` (`0xdf8`), the transform inner loop |
-| `vf5`-`vf7` | `M(q16..q19) × M(TOP+1..TOP+4)` — the normal/light matrix | lighting and the `0x3618` subroutine |
-| `vf9`-`vf12` | reloaded by entry 0 from data qwords **20..23** (the colour block) | lighting (`0x1440`: `MULy vf13, vf9, vf31y` …) |
+| register | produced by entry 0 as | consumed here by | marking |
+|---|---|---|---|
+| `vf1`-`vf4` | `M(q4..q7) × M(TOP+1..TOP+4)` — the local→clip matrix | command `0x08` (`0xdf8`), the transform inner loop — the only handler in the corpus that mentions `vf1..vf4` | **[verified]** (perturbation sweep + `0x0ec0`-`0x0ed8`) |
+| `vf5`-`vf7` | `M(q16..q19) × M(TOP+1..TOP+4)` — the normal/light matrix | lighting, command `0x18` (`0x1440`) — the only handler that mentions `vf5..vf7` | **[verified]** (perturbation sweep + a register scan of every executed handler range) |
+| `vf9`-`vf12` | reloaded by entry 0 from data qwords **20..23** (the colour block) | lighting, command `0x18` (`0x1440`: `MULy vf13, vf9, vf31y` …) | **[verified]** (same) |
+| `vf8` | `MOVE vf24` = data qword 19 = `(0,0,0,1)` | nothing — perturbing it never changes the output | **[verified]** (perturbation sweep; "never read" is the weaker **[guess]**, since a read whose result is discarded would look the same) |
+| `vf13`-`vf16` | `M(q8..q11) × M(TOP+1..TOP+4)` — the local→view matrix | nothing: `0x1440` and `0x3618` both *write* `vf13..vf16` before use, so they are not live-in | **[verified]** (perturbation sweep + `0x1460`-`0x1470`, `0x3630`-`0x3650`) |
 
 `vf13`-`vf16` (entry 0's local→view matrix) are **not** live-in at `0x1b50` — `0x3618` recomputes
 them. **[verified]** (perturbing `vf13..vf16` changes nothing.)
@@ -479,17 +509,22 @@ from `0x1b60` with at least:
 
 Beyond that, **family A's handlers are mutually independent** — each recomputes every pointer it
 needs — so a native implementation may hand back between any two of them with only `vi1`,
-`vi14` and the `vf` set correct. **Family B's `0x02`/`0x4c` pair is not**: `0x1f70` leaves
-`vi12` (primitive counter), `vi15` (index-list pointer) and `vi5/vi6/vi7` (the three vertex
-indices) live across its `B 0x1b60`, and `0x20c8` reads them. **[verified]** from the
-disassembly at `0x1f70`, `0x2060-0x2108`.
+`vi14` and the `vf` set correct.
+
+**Family B's `0x02`/`0x4c` pair is not**, and the reason is exactly one register: **`vi12`**, the
+primitive counter. `0x1f70` sets it (`ILW.w vi12, 2(vi1)` at `0x1f78`) and leaves it live across
+its `B 0x1b60`; `0x20c8` decrements it (`IADDI vi12, vi12, -1`) and branches on it. Nothing else
+crosses that boundary: at `0x20d0` **`vi15` is written**, not read (`ILW.z vi15, 329(vi0)`), and
+`vi5`/`vi6`/`vi7` are not touched anywhere in `0x20c8-0x2108` — they are re-read from
+`0(vi15)` after `0x20f0` branches back to `0x1f98`. **[verified]** from the disassembly at
+`0x1f70`, `0x1f98`, `0x2060-0x2108` (an earlier draft of this note claimed `0x20c8` read `vi15`
+and `vi5/vi6/vi7`; it does not).
 
 **Hand-back rule for `0x1b50` (extends §(e)).** A native program may stop only immediately before
 a `ILW.x vi5, 340(vi14)` read, i.e. with `vu.m_state.pc = 0x1b60` and `vi1`/`vi14` set as the
 microprogram would have them, or at the program end (`pc = 0x1b50`, ended). Handing back at
-`0x1b60` in the middle of a **family-B** list additionally requires reproducing `vi12`, `vi15`
-and `vi5/vi6/vi7`; the safe boundaries there are the start of the list (`vi14 = 0`) and the
-program end. Registers the microprogram does not write must be left untouched, not zeroed.
+`0x1b60` in the middle of a **family-B** list additionally requires reproducing `vi12`; the safe
+boundaries there are the start of the list (`vi14 = 0`) and the program end. Registers the microprogram does not write must be left untouched, not zeroed.
 
 ## f.4 — The two most-executed handlers, in implementation detail
 
@@ -499,12 +534,12 @@ the VIF input block at `vi1 = TOP`:
 | location | field | marking |
 |---|---|---|
 | `TOP+1` | **GIFtag template** for this list. In the corpus: `00008044 303dc000 00000412 00000000` = EOP=1, NLOOP=0x44, NREG=3, REGS = `ST, RGBAQ, XYZF2`. Command `0x28` copies it to qwords 290 and 300 and patches NLOOP to 3. | **[verified]** |
-| `TOP+2.x` | byte offset (in qwords, added to `vi1`) of the **triangle index list** | **[verified]** |
+| `TOP+2.x` | **qword** offset (added to `vi1`) of the **triangle index list** | **[verified]** |
 | `TOP+2.z` | **vertex count** (`0x44` = 68 in both sampled dumps) — read by `0x0b20`, `0x0df8`, `0x0f90`, `0x05d8`, `0x1440` as `ILW.z 2(vi1)` | **[verified]** |
 | `TOP+2.w` | **triangle/primitive count** (`0x2a` = 42, `0x2c` = 44) — read by `0x1638`, `0x1780`, `0x1f70` as `ILW.w 2(vi1)` | **[verified]** |
 | `TOP+3` | position bias added by `0x0b20` (`0,0,0,1` in the corpus) | **[verified]** |
 | `TOP+4 …` | raw vertex records, 6 qwords per vertex for `0x0b20`'s integer form | **[verified]** |
-| qwords **40 … 40+3N-1** | **the staging array**: 3 qwords per vertex — `[0]` = position/misc, `[1]` = colour/ST template, `[2]` = transformed XY + fog | **[verified]** by the poison sweep: qwords **40-243** (68 vertices × 3 = 204) plus the fill-loop overshoot at **245** are exactly the qwords the program overwrites |
+| qwords **40 … 40+3N-1** | **the staging array**: 3 qwords per vertex, laid out in the GIFtag's `REGS` order — `[0]` = **ST** (perspective-correct: `0x0df8` stores `uv * 1/w` there, with `Q` in `.w`), `[1]` = **RGBAQ** (written by `0x0df8` from the source colour, overwritten wholesale by the template fill `0x54` from qword 327, scaled by lighting `0x18`), `[2]` = **XYZF2** (screen XYZ from the perspective divide; its `.w` is the **F** fog field, and that is the single lane command `0x10` writes) | **[verified]** — `0x1780` loads `40(vin)`→REG0, `41(vin)`→REG1, `42(vin)`→REG2 against `REGS = ST, RGBAQ, XYZF2`; `0x0df8` stores `vf31/vf24/vf26` to `+0/+1/+2`; `0x05d8` stores to `+1` of every vertex; `0x0f90`'s `SQ.w` targets resolve to qwords 42 and 45, i.e. `+2`. The poison sweep confirms the extent: qwords **40-243** (68 vertices × 3 = 204) plus the fill-loop overshoot at **245** |
 | qwords **290-299** and **300-309** | the two ping-pong GIF packet buffers (10 qwords: tag + 3 vertices × 3 regs). Their base addresses live in qword **329** (`x` = 300, `y` = 290) and are swapped per triangle. | **[verified]** (poison sweep marks 290-309 as written; `0x17e0`/`0x17e8` read `329.x`/`329.y`) |
 
 Poison sweep on `logs/vu1dump4/vu1_prog_5.bin` (`logs/vu1entry0/dispatch4_poison_prog5.txt`):
@@ -534,7 +569,7 @@ two vertices deep (the `LQ` for vertex *k+1* issues in vertex *k*'s slots), so a
 that processes one vertex at a time is fine as long as the arithmetic order per vertex is kept.
 **[verified]** from the disassembly; 34 pairs, 1167 pair-executions per dispatch.
 
-### Command `0x10` → `0xf90` — per-vertex distance fade (writes only the `w` lane)
+### Command `0x10` → `0xf90` — per-vertex distance fade (writes only the fog lane, `XYZF2.w`)
 
 ```
 vi9 = ILW.z 2(vi1)            ; vertex count
@@ -546,18 +581,21 @@ loop (0x1008..0x10e8), TWO vertices per iteration, vi9 -= 2:
     vf22 = vf20 - vf17 ; vf23 = vf21 - vf17           ; delta from the reference point
     vf26 = vf22 * vf18 ; vf27 = vf23 * vf18           ; scale
     vf26.w = vf26.x + vf26.y + vf26.z                 ; MULAx.w/MADDAy.w/MADDz.w against vf0
-    vf14.w = vf30.w * vf18.w + vf17.w                 ; base alpha
+    vf14.w = vf30.w * vf18.w + vf17.w                 ; base fog value
     vf14.w = min(vf14.w, 255.0) ; max(.,0)            ; LOI 255 then MAXx.w vf0
     vf26.w = min(vf26.w, 1.0)   ; max(.,0)            ; LOI 1.0
-    vf14.w = vf14.w * vf28.w                          ; alpha * fade
+    vf14.w = vf14.w * vf28.w                          ; base fog * distance fade
     SQ.w vf14 -> (staging quad -4) ; SQ.w vf15 -> (staging quad -1)
     vi3 += 6 ; vi4 += 6
 B 0x1b60
 ```
 It touches **only the `w` component** of two staging quads per iteration — `SQ.w`, not `SQ.xyzw` —
-so a native version must do a masked store. Odd vertex counts exit through the `IBLTZ vi9,
-0x10f8` at `0x10d0` after storing only the first of the pair. **[verified]**; 47 pairs, 1558
-pair-executions per dispatch — the single most expensive jump-table handler in the corpus.
+so a native version must do a masked store. The two targets are `-4(vi4)` and `-1(vi4)` *after*
+`vi4` has advanced by 6, i.e. qwords 42 and 45 on the first iteration: **slot `+2` of each of the
+two vertices**, which is the `XYZF2` quad, so the lane being written is the GS **F (fog)** field —
+not RGBAQ alpha. Odd vertex counts exit through the `IBLTZ vi9, 0x10f8` at `0x10d0` after storing
+only the first of the pair. **[verified]**; 47 pairs, 1558 pair-executions per dispatch — the
+single most expensive jump-table handler in the corpus.
 
 ### The GIF packet template (command `0x28` → `0x1780`, `XGKICK` at `0x1920`)
 
@@ -586,6 +624,22 @@ per triangle:
 ```
 One `XGKICK` **per triangle**, which is why `0x1920` fired 858 times over 83 dumps while command
 `0x28` was dispatched only 50 times. **[verified]**
+
+### What is still missing for a native family-A path
+
+This section documents **`0x08`/`0xdf8`** and **`0x10`/`0xf90`** (the two most-executed handlers)
+and **`0x28`/`0x1780`** (the packet builder) to a level an engineer can implement from. The
+remaining three commands of the family-A chain are described **in one line each** and are **not
+implementable from this note yet**:
+
+| command | handler | what this note says today | what is still needed |
+|---|---|---|---|
+| `0x68` | `0x0b20` | "int→float vertex unpack"; reads `vi9 = ILW.z 2(vi1)`, `vf27 = LQ 3(vi1)` (position bias), 6 source qwords per vertex from `vi1+4`, and converts with `ITOF4.xyz` / `ITOF15.w` / `ITOF12.xy` | the full per-vertex field layout of the 6-qword source record, which converted value lands in which staging slot, and the loop's store offsets |
+| `0x54` | `0x05d8` | "template fill": `SQ.xyzw vf28` (= data qword **327**) into `+1` of every vertex slot, 3 vertices per iteration from base 40, `vi9 = ILW.z 2(vi1)`, overshoots to the next multiple of 3 | nothing beyond a careful transcription — this one is small; the overshoot behaviour (it writes up to qword 245 for 68 vertices) must be reproduced exactly |
+| `0x18` | `0x1440` | "lighting"; reads `vf31 = LQ 27(vi0)` and the live-in `vf5`-`vf7`, `vf9`-`vf12`; stores `vf26`/`vf27` to `-11(vi4)` / `-8(vi4)` | the full loop body: how the four light/colour matrices combine, the per-vertex normal source, and the clamp constants |
+
+A complete native family-A path therefore needs these three documented to the same level as
+`0xdf8`/`0xf90` before Task 7 can implement the chain end to end. **[gap — follow-up work]**
 
 ## f.5 — UI-quad lists versus world-object lists
 
