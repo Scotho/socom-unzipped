@@ -6,6 +6,11 @@
 // register file and VU data memory exactly as the microcode leaves them
 // (verified by `vu1_replay --verify --native`, --regs all).
 //
+// Sprint-2 addition: PS2X_VU1_HOST_DRAW=1 makes command 0x28 draw each assembled triangle through
+// GS::submitHostTriangle instead of XGKICKing its packet (see submitHostTriangleFromPacket). The
+// packet is still assembled byte for byte, so the contract above is unchanged with the knob on --
+// only the kick is replaced. `vu1_replay --vram-diff` compares the two renderings pixel for pixel.
+//
 // What runs natively: command lists whose linear decode from data qword 340 contains only the
 // family-A command words and terminates on 0x42 (END). Every other list -- family B (world
 // objects: 0x02/0x0a/0x12/0x1a/0x2a/0x4c and the 0x3618 subroutine) and family C (0x64/0x30/0x32)
@@ -41,6 +46,8 @@
 #define private public
 #include "../ps2_vu1_ops.h"
 #undef private
+
+#include "runtime/gs/gs_frontend.h"
 
 #include <atomic>
 #include <cstdint>
@@ -932,6 +939,131 @@ namespace
         constexpr uint8_t kFlags = 12, kGate = 3, kForce = 9, kScratch = 11;
     }
 
+    // ---- PS2X_VU1_HOST_DRAW=1: draw the assembled triangle instead of kicking it ------------
+    //
+    // The packet is still built qword for qword -- every data-memory write, the ping-pong swap and
+    // vi2/vi8 happen exactly as before, so the goldens stay green with the knob on -- but instead
+    // of XGKICKing it, the ten qwords are decoded the way GS::writeRegisterPacked decodes them and
+    // handed to GS::submitHostTriangle. The one thing the hook does NOT take from the packet is
+    // the screen position: it gets the floats the microcode held before FTOI4, so the host
+    // rasteriser keeps the fraction the GIF path has to truncate to 1/16 of a pixel.
+    //
+    // Anything the hook cannot reproduce one for one -- a tag that is not this list's PACKED
+    // (ST, RGBAQ, XYZF2) x 3 template with PRE set, a primitive that is not a triangle, a vertex
+    // with the ADC bit set (which suppresses the draw), or no GS at all -- falls back to the real
+    // XGKICK, so the knob can only ever change how a triangle is drawn, never whether it is.
+    bool hostDrawEnabled()
+    {
+        static const bool enabled = []() {
+            const char *value = std::getenv("PS2X_VU1_HOST_DRAW");
+            return value != nullptr && std::atoi(value) != 0;
+        }();
+        return enabled;
+    }
+
+    // The GIFtag's PRIM field (bits 47-57), decoded exactly like gs_frontend.cpp's
+    // decodePrimRegister -- the same bits the GIF path feeds to the PRIM register through PRE.
+    GSPrimReg primFromGifTag(uint64_t tagLo)
+    {
+        const uint64_t value = (tagLo >> 47) & 0x7FFu;
+        GSPrimReg prim{};
+        prim.type = static_cast<GSPrimType>(value & 0x7u);
+        prim.iip = ((value >> 3) & 1u) != 0u;
+        prim.tme = ((value >> 4) & 1u) != 0u;
+        prim.fge = ((value >> 5) & 1u) != 0u;
+        prim.abe = ((value >> 6) & 1u) != 0u;
+        prim.aa1 = ((value >> 7) & 1u) != 0u;
+        prim.fst = ((value >> 8) & 1u) != 0u;
+        prim.ctxt = ((value >> 9) & 1u) != 0u;
+        prim.fix = ((value >> 10) & 1u) != 0u;
+        return prim;
+    }
+
+    float loadPacketFloat(const uint8_t *p)
+    {
+        float value;
+        std::memcpy(&value, p, sizeof(value));
+        return value;
+    }
+
+    uint32_t loadPacketWord(const uint8_t *p)
+    {
+        uint32_t value;
+        std::memcpy(&value, p, sizeof(value));
+        return value;
+    }
+
+    uint64_t loadPacketDword(const uint8_t *p)
+    {
+        uint64_t value;
+        std::memcpy(&value, p, sizeof(value));
+        return value;
+    }
+
+    // Returns false when the packet is not the shape the hook can reproduce; the caller then kicks.
+    bool submitHostTriangleFromPacket(Ctx &c, int32_t packetQword, const float screenXY[3][2])
+    {
+        GS *gs = c.vu.activeGs();
+        if (gs == nullptr)
+            return false;
+
+        const uint8_t *tagBytes = c.qwordBytes(packetQword);
+        const uint64_t tagLo = loadPacketDword(tagBytes);
+        const uint64_t tagHi = loadPacketDword(tagBytes + 8);
+        if ((tagLo & 0x7FFFu) != 3u ||          // NLOOP: three vertices
+            ((tagLo >> 46) & 1u) == 0u ||       // PRE: the tag carries the PRIM field
+            ((tagLo >> 58) & 3u) != 0u ||       // FLG: PACKED
+            ((tagLo >> 60) & 0xFu) != 3u ||     // NREG
+            (tagHi & 0xFFFu) != 0x412u)         // REGS: ST, RGBAQ, XYZF2
+            return false;
+
+        const GSPrimReg prim = primFromGifTag(tagLo);
+        if (prim.type != GS_PRIM_TRIANGLE)
+            return false;
+
+        GSVertex vertices[3];
+        for (int i = 0; i < 3; ++i)
+        {
+            const uint8_t *st = c.qwordBytes(packetQword + 1 + i * 3);
+            const uint8_t *rgbaq = c.qwordBytes(packetQword + 2 + i * 3);
+            const uint8_t *xyzf = c.qwordBytes(packetQword + 3 + i * 3);
+            GSVertex &v = vertices[i];
+
+            // PACKED ST (0x02): S = lo[0:32], T = lo[32:64], Q = hi[0:32]; a zero Q reads as 1.0.
+            v.s = loadPacketFloat(st);
+            v.t = loadPacketFloat(st + 4);
+            v.q = loadPacketFloat(st + 8);
+            if (v.q == 0.0f)
+                v.q = 1.0f;
+
+            // PACKED RGBAQ (0x01): the low byte of each of the four words.
+            v.r = rgbaq[0];
+            v.g = rgbaq[4];
+            v.b = rgbaq[8];
+            v.a = rgbaq[12];
+
+            // PACKED XYZF2 (0x04): Z = hi[4:28], F = hi[36:44], ADC = hi[47]. FTOI4 put X/Y/Z/F
+            // in 1/16 units, which is why the GS reads Z and F four bits up.
+            const uint32_t zWord = loadPacketWord(xyzf + 8);
+            const uint32_t fWord = loadPacketWord(xyzf + 12);
+            if (((fWord >> 15) & 1u) != 0u)
+                return false;
+            v.z = static_cast<double>((zWord >> 4) & 0xFFFFFFu);
+            v.fog = static_cast<uint8_t>((fWord >> 4) & 0xFFu);
+
+            // X/Y in XYOFFSET space: the packet words are (uint16)(xy * 16) and the GIF path reads
+            // them back as word / 16, so these floats are the same coordinate without the truncation.
+            v.x = screenXY[i][0];
+            v.y = screenXY[i][1];
+        }
+
+        // The tag's PRE bit writes PRIM before the vertices; do the same so the GS register state
+        // a host-drawn triangle leaves behind is the state a kicked packet would have left.
+        gs->writeRegister(GS_REG_PRIM, (tagLo >> 47) & 0x7FFu);
+        gs->submitHostTriangle(prim, vertices[0], vertices[1], vertices[2]);
+        return true;
+    }
+
     bool cmdBuildPacket(Ctx &c)
     {
         using namespace packet;
@@ -939,6 +1071,10 @@ namespace
         using vu1ops::ArithMadd;
         using vu1ops::ArithSub;
         __m128 up;
+
+        // Read once per run (hostDrawEnabled caches the env), and only meaningful while a GS is
+        // attached -- activeGs() is valid for the length of this execute()/resume() call.
+        const bool hostDraw = hostDrawEnabled() && c.vu.activeGs() != nullptr;
 
         loadQword<kBias, kXYZW>(c, 38);                          // 0x1780
         loadQword<kGifTag, kXYZW>(c, c.vi(1) + 1);               // 0x1788: TOP+1
@@ -1005,6 +1141,21 @@ namespace
                 loadQword<kSt0, kXYZW>(c, c.vi(kVertex0) + 40);
                 writeVf<kRgba2, kXYZW>(c, up);
 
+                // The three XYZF2 quads are loaded and not yet converted: this is the last point
+                // at which the screen position is still the float the perspective divide produced.
+                // PS2X_VU1_HOST_DRAW hands those floats to the GS instead of the FTOI4 words.
+                float screenXY[3][2] = {};
+                if (hostDraw)
+                {
+                    const float(*vf)[4] = c.vu.m_state.vf;
+                    screenXY[0][0] = vf[kXyz0][0];
+                    screenXY[0][1] = vf[kXyz0][1];
+                    screenXY[1][0] = vf[kXyz1][0];
+                    screenXY[1][1] = vf[kXyz1][1];
+                    screenXY[2][0] = vf[kXyz2][0];
+                    screenXY[2][1] = vf[kXyz2][1];
+                }
+
                 // 0x1898-0x18c0: to fixed point (XYZF2 with 4 fractional bits, RGBAQ with none),
                 // while the ST quads load and the two packet buffers swap roles.
                 up = ftoi<4, kXyz0>(c);
@@ -1038,9 +1189,12 @@ namespace
 
                 // 0x1920: XGKICK vi2. The interpreter's default model copies the whole packet at
                 // kick time, so this is a complete GIF submission (the entry check refuses the
-                // cycle-exact model, under which back-to-back kicks would drop packets).
+                // cycle-exact model, under which back-to-back kicks would drop packets). With
+                // PS2X_VU1_HOST_DRAW=1 the packet is drawn through the host hook instead; the
+                // counter counts the triangle either way so [vu1-stats] stays comparable.
                 g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
-                c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kPacket))));
+                if (!hostDraw || !submitHostTriangleFromPacket(c, c.vi(kPacket), screenXY))
+                    c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kPacket))));
             }
 
             // 0x1930-0x1940: next triangle.

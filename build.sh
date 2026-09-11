@@ -52,7 +52,7 @@ test_step() {
   ( cd "$RTBUILD/ps2xTest" && ./ps2x_tests.exe )
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
-  # Four verify runs over the two fixture sets. The native registry is ON by default
+  # Four verify runs over the two fixture sets, then the two host-draw checks. The native registry is ON by default
   # (kVu1NativeDefault), so the path a run takes has to be selected explicitly: --no-native forces
   # the generated/interpreted path, --native forces the registry. Both flags must follow the golden
   # path -- --verify consumes the next argument. Every run prints
@@ -70,6 +70,14 @@ test_step() {
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --no-native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --native "$ROOT"/tests/fixtures/vu1/title/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  # 5: the same set with PS2X_VU1_HOST_DRAW=1 (command 0x28 draws through GS::submitHostTriangle
+  #    instead of kicking its packet). There are no packets to compare then, so this run checks end
+  #    pc, VU data memory and the register file -- the knob must not change any of them.
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --host-draw "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  # 6: and what the two paths actually draw, pixel for pixel, into a 640x448 framebuffer. The host
+  #    path keeps the sub-1/16-pixel fraction the GIF path truncates, so edge and gouraud-rounding
+  #    pixels differ by design; anything past the tolerance means a wrong lane or a wrong context.
+  "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   echo "tests: ok"
 }
 

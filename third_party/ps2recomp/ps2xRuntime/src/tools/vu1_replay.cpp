@@ -4,6 +4,7 @@
 //   vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]
 //   vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...
 //   vu1_replay --gen <out.cpp> [--pchist hist.bin] <dump.bin>...   (VU1 image -> known-program C++)
+//   vu1_replay --vram-diff <outdir> [--vram-tol pct] <dump.bin>... (GIF kick vs host draw, per pixel)
 //
 // Dump layout: uint32 startPc, top, itop, codeSize; 16 KB code; 16 KB data; int32 vi[16]; float
 // vf[32][4] (the register file at program start — VU registers persist across MSCALs, so the dump
@@ -14,6 +15,17 @@
 // dump (packet count/bytes/FNV hash, cycles, end pc, every register as hex, VU data memory hash) —
 // the "golden" used to verify a faster execution path packet-for-packet and register-for-register.
 // --repeat N runs every program N times (fresh data memory each time) and reports host ns/cycle.
+//
+// --host-draw sets PS2X_VU1_HOST_DRAW=1 for this process (the native VU1 programs read it once),
+// which makes them draw through GS::submitHostTriangle instead of kicking their GIF packets. With
+// it on there are no packets to compare, so --verify then checks only end pc, VU data memory and
+// (with --regs all) the register file.
+//
+// --vram-diff <outdir> renders every dump twice into a fresh 640x448 framebuffer — once through
+// the GIF path, once through the host hook — and prints one VRAMDIFF line per dump with the number
+// of differing pixels; it exits 1 if any dump exceeds --vram-tol (default 1.0 %). Because the knob
+// is a read-once static inside the native program, the two renderings run in two child processes
+// (argv[0] re-executed with --vram-dump), which leave <outdir>/<dump>.{gif,host}.rgba behind.
 #include <atomic>
 #include <algorithm>
 #include <chrono>
@@ -162,9 +174,12 @@ namespace
 
     // Returns the number of mismatching fields; prints one MISMATCH line per field.
     int compareState(const std::string &name, const std::map<std::string, std::string> &golden,
-                     const std::map<std::string, std::string> &got, bool regs)
+                     const std::map<std::string, std::string> &got, bool regs, bool packetFields)
     {
-        std::vector<const char *> fields = {"packets", "bytes", "hash", "endpc", "data"};
+        std::vector<const char *> fields = {"endpc", "data"};
+        if (packetFields)
+            for (const char *f : {"packets", "bytes", "hash"})
+                fields.push_back(f);
         if (regs)
             for (const char *f : {"vi", "vf", "acc", "q", "p", "i", "mac", "status", "clip", "r"})
                 fields.push_back(f);
@@ -182,6 +197,162 @@ namespace
         }
         return bad;
     }
+
+    // ---- --vram-dump / --vram-diff ---------------------------------------------------------
+    //
+    // A VU1 dump carries no GS context: the FRAME/SCISSOR/XYOFFSET/TEX0 registers a UI list draws
+    // against are written by the game over PATH3, long before the MSCAL. vu1_replay's GS has
+    // therefore never seen one, and with an all-zero context every triangle would be scissored
+    // away at (0,0). So both renderings get the same synthetic context below — a 640x448 PSMCT32
+    // framebuffer at fbp 0, an XYOFFSET that centres it in the GS's 4096x4096 primitive space
+    // (which is where these lists put their vertices), the z test forced to ALWAYS with z writes
+    // masked, and a 1x1 0x80808080 texture parked outside the framebuffer so that the UI
+    // lists' TME=1 MODULATE is the identity (their real textures are PATH3 uploads a dump does not
+    // contain, and sampling the framebuffer itself would feed one triangle's pixels into the next).
+    // It is the *same* state for both passes, which is all the comparison needs.
+    constexpr uint32_t kFrameWidth = 640u;
+    constexpr uint32_t kFrameHeight = 448u;
+    constexpr uint32_t kFrameBufferWidth = kFrameWidth / 64u; // FRAME.FBW
+    constexpr uint32_t kTextureBlock = 0x2000u;               // 2 MB in, clear of the 1.1 MB frame
+
+    void setupReplayGsContext(GS &gs)
+    {
+        const uint64_t frame = (static_cast<uint64_t>(kFrameBufferWidth) << 16) |
+                               (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+        const uint64_t zbuf = (1ull << 32); // ZMSK: no z writes
+        const uint64_t scissor = (static_cast<uint64_t>(kFrameWidth - 1u) << 16) |
+                                 (static_cast<uint64_t>(kFrameHeight - 1u) << 48);
+        const uint64_t xyoffset = static_cast<uint64_t>((2048u - kFrameWidth / 2u) * 16u) |
+                                  (static_cast<uint64_t>((2048u - kFrameHeight / 2u) * 16u) << 32);
+        const uint64_t test = 0x30000ull; // ZTE = 1, ZTST = ALWAYS
+        const uint64_t tex0 = static_cast<uint64_t>(kTextureBlock) | (1ull << 14) |
+                              (static_cast<uint64_t>(GS_PSM_CT32) << 20); // 1x1, TCC = RGB, MODULATE
+        for (uint8_t context = 0; context < 2u; ++context)
+        {
+            // The _2 register of every pair is the _1 register plus one.
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_FRAME_1 + context), frame);
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_ZBUF_1 + context), zbuf);
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_SCISSOR_1 + context), scissor);
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_XYOFFSET_1 + context), xyoffset);
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_TEST_1 + context), test);
+            gs.writeRegister(static_cast<uint8_t>(GS_REG_TEX0_1 + context), tex0);
+        }
+        gs.WriteVram(GS_PSM_CT32, kTextureBlock, 1u, 0u, 0u, 0x80808080u);
+    }
+
+    // The framebuffer as a linear RGBA8888 image (PSMCT32 is swizzled in VRAM; ReadVram undoes it).
+    std::vector<uint8_t> readFrameRgba(const GS &gs)
+    {
+        std::vector<uint8_t> frame(static_cast<size_t>(kFrameWidth) * kFrameHeight * 4u, 0u);
+        for (uint32_t y = 0; y < kFrameHeight; ++y)
+            for (uint32_t x = 0; x < kFrameWidth; ++x)
+            {
+                const uint32_t pixel = gs.ReadVram(GS_PSM_CT32, 0u, kFrameBufferWidth, x, y);
+                std::memcpy(frame.data() + (static_cast<size_t>(y) * kFrameWidth + x) * 4u, &pixel, 4);
+            }
+        return frame;
+    }
+
+    bool writeFile(const std::string &path, const std::vector<uint8_t> &bytes)
+    {
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        const bool ok = std::fwrite(bytes.data(), 1, bytes.size(), fp) == bytes.size();
+        std::fclose(fp);
+        return ok;
+    }
+
+    bool readFile(const std::string &path, std::vector<uint8_t> &bytes)
+    {
+        FILE *fp = std::fopen(path.c_str(), "rb");
+        if (!fp)
+            return false;
+        std::fseek(fp, 0, SEEK_END);
+        const long size = std::ftell(fp);
+        std::fseek(fp, 0, SEEK_SET);
+        bytes.assign(size > 0 ? static_cast<size_t>(size) : 0u, 0u);
+        const bool ok = size > 0 && std::fread(bytes.data(), 1, bytes.size(), fp) == bytes.size();
+        std::fclose(fp);
+        return ok;
+    }
+
+    std::string vramDumpPath(const std::string &dir, const std::string &dumpPath, bool hostDraw)
+    {
+        return dir + "/" + baseName(dumpPath) + (hostDraw ? ".host.rgba" : ".gif.rgba");
+    }
+
+    // PS2X_VU1_HOST_DRAW is read once into a static inside the native program, so one process can
+    // only ever render one of the two ways: re-run this executable with the same arguments (minus
+    // --vram-diff) plus --vram-dump, once without and once with --host-draw, then compare.
+    int runVramDiff(int argc, char **argv, const std::string &outDir, double tolerancePct,
+                    const std::vector<std::string> &inputs)
+    {
+        CreateDirectoryA(outDir.c_str(), nullptr);
+
+        for (int pass = 0; pass < 2; ++pass)
+        {
+            const bool hostDraw = pass == 1;
+            std::string command = "\"" + std::string(argv[0]) + "\"";
+            for (int i = 1; i < argc; ++i)
+            {
+                if (!std::strcmp(argv[i], "--vram-diff") || !std::strcmp(argv[i], "--vram-tol"))
+                {
+                    ++i; // and its value
+                    continue;
+                }
+                if (!std::strcmp(argv[i], "--host-draw"))
+                    continue;
+                command += " \"" + std::string(argv[i]) + "\"";
+            }
+            command += " --vram-dump \"" + outDir + "\"";
+            if (hostDraw)
+                command += " --host-draw";
+            // cmd.exe strips one layer of quotes from the whole command line.
+            const int rc = std::system(("\"" + command + "\"").c_str());
+            if (rc != 0)
+            {
+                std::fprintf(stderr, "--vram-diff: %s pass failed (%d): %s\n",
+                             hostDraw ? "host" : "gif", rc, command.c_str());
+                return 1;
+            }
+        }
+
+        bool failed = false;
+        for (const std::string &input : inputs)
+        {
+            const std::string name = baseName(input);
+            std::vector<uint8_t> gif, host;
+            if (!readFile(vramDumpPath(outDir, input, false), gif) ||
+                !readFile(vramDumpPath(outDir, input, true), host) ||
+                gif.size() != host.size() || gif.empty())
+            {
+                std::printf("VRAMDIFF %s missing or mismatched frame dumps\n", name.c_str());
+                failed = true;
+                continue;
+            }
+            const size_t pixels = gif.size() / 4u;
+            size_t differing = 0, drawn = 0;
+            for (size_t p = 0; p < pixels; ++p)
+            {
+                uint32_t a = 0, b = 0;
+                std::memcpy(&a, gif.data() + p * 4u, 4);
+                std::memcpy(&b, host.data() + p * 4u, 4);
+                if (a != b)
+                    ++differing;
+                if (a != 0u || b != 0u)
+                    ++drawn;
+            }
+            const double pct = pixels ? 100.0 * static_cast<double>(differing) / static_cast<double>(pixels) : 0.0;
+            // drawn = pixels either pass wrote: a pair of blank frames would otherwise read as a pass.
+            std::printf("VRAMDIFF %s differing=%zu of %zu (%.3f%%) drawn=%zu\n",
+                        name.c_str(), differing, pixels, pct, drawn);
+            if (pct > tolerancePct)
+                failed = true;
+        }
+        std::printf("%s: vram diff against %.2f%% tolerance\n", failed ? "FAIL" : "PASS", tolerancePct);
+        return failed ? 1 : 0;
+    }
 }
 
 int main(int argc, char **argv)
@@ -190,7 +361,8 @@ int main(int argc, char **argv)
     {
         std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]\n"
                              "       vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...\n"
-                             "       vu1_replay --verify <golden.txt> [--regs all|none] [--native|--no-native] <dump.bin>...\n");
+                             "       vu1_replay --verify <golden.txt> [--regs all|none] [--native|--no-native] [--host-draw] <dump.bin>...\n"
+                             "       vu1_replay --vram-diff <outdir> [--vram-tol pct] <dump.bin>...\n");
         return 2;
     }
     std::string outPath = "vu1_packets.bin";
@@ -204,6 +376,10 @@ int main(int argc, char **argv)
     bool bailHist = false;
     bool trace = false;
     bool printStateFlag = false;
+    bool hostDraw = false;
+    std::string vramDiffDir;
+    std::string vramDumpDir;
+    double vramTolerancePct = 1.0;
     int repeat = 1;
     std::vector<std::string> inputs;
     for (int i = 1; i < argc; ++i)
@@ -232,6 +408,14 @@ int main(int argc, char **argv)
             verifyPath = argv[++i];
         else if (!std::strcmp(argv[i], "--regs") && i + 1 < argc)
             verifyRegs = std::strcmp(argv[++i], "none") != 0;
+        else if (!std::strcmp(argv[i], "--host-draw"))
+            hostDraw = true;
+        else if (!std::strcmp(argv[i], "--vram-diff") && i + 1 < argc)
+            vramDiffDir = argv[++i];
+        else if (!std::strcmp(argv[i], "--vram-dump") && i + 1 < argc)
+            vramDumpDir = argv[++i];
+        else if (!std::strcmp(argv[i], "--vram-tol") && i + 1 < argc)
+            vramTolerancePct = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--native"))
             _putenv("PS2X_VU1_NATIVE=1");
         else if (!std::strcmp(argv[i], "--no-native"))
@@ -247,6 +431,12 @@ int main(int argc, char **argv)
     if (repeat < 1)
         repeat = 1;
 
+    if (!vramDiffDir.empty())
+        return runVramDiff(argc, argv, vramDiffDir, vramTolerancePct, inputs);
+
+    // Always explicit, so a stale PS2X_VU1_HOST_DRAW in the environment cannot decide which path a
+    // run takes (and so the --vram-diff children do not inherit their parent's setting).
+    _putenv(hostDraw ? "PS2X_VU1_HOST_DRAW=1" : "PS2X_VU1_HOST_DRAW=0");
     _putenv("PS2X_GS_BACKEND=cpu");
     if (trace)
         _putenv("PS2X_TRACE_VU=0");
@@ -278,6 +468,10 @@ int main(int argc, char **argv)
             std::fprintf(stderr, "--verify: no lines read from %s\n", verifyPath.c_str());
             return 2;
         }
+        if (hostDraw)
+            std::printf("[vu1_replay] --host-draw: comparing end pc, VU data memory%s "
+                        "(the packets are drawn through the host hook, not kicked)\n",
+                        verifyRegs ? " and the register file" : "");
     }
 
     GS gs;
@@ -289,6 +483,16 @@ int main(int argc, char **argv)
         std::fprintf(stderr, "PS2Memory::initialize failed\n");
         return 1;
     }
+    // --vram-dump: give the GS somewhere to draw. Outside that mode nothing rasterises — the GS
+    // here has no VRAM and the GIF packets only ever reach the callback below.
+    std::vector<uint8_t> vram;
+    const bool renderToVram = !vramDumpDir.empty();
+    if (renderToVram)
+    {
+        vram.assign(PS2_GS_VRAM_SIZE, 0u);
+        gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+    }
+
     std::vector<uint8_t> packets;
     uint32_t packetCount = 0;
     memory.setGifPacketCallback([&](const uint8_t *p, uint32_t n) {
@@ -296,6 +500,10 @@ int main(int argc, char **argv)
         packets.insert(packets.end(), reinterpret_cast<const uint8_t *>(&len), reinterpret_cast<const uint8_t *>(&len) + 4);
         packets.insert(packets.end(), p, p + n);
         ++packetCount;
+        // Kicked packets have to reach the GS too, or the GIF pass of --vram-diff would draw
+        // nothing and the host pass would be compared against a blank frame.
+        if (renderToVram)
+            gs.processGIFPacket(p, n);
     });
 
     VU1Interpreter vu(VU1Interpreter::Unit::VU1);
@@ -391,6 +599,13 @@ int main(int argc, char **argv)
         {
             packets.clear();
             packetCount = 0;
+            if (renderToVram)
+            {
+                // Fresh VRAM and a fresh context per dump, so one dump's pixels never reach another's.
+                std::fill(vram.begin(), vram.end(), static_cast<uint8_t>(0u));
+                gs.reset();
+                setupReplayGsContext(gs);
+            }
             uint8_t *code = memory.getVU1Code();
             uint8_t *vuData = memory.getVU1Data();
             if (std::memcmp(code, d.code.data(), PS2_VU1_CODE_SIZE) != 0)
@@ -416,6 +631,19 @@ int main(int argc, char **argv)
             data.assign(vuData, vuData + PS2_VU1_DATA_SIZE);
         }
 
+        if (renderToVram)
+        {
+            const std::string path = vramDumpPath(vramDumpDir, input, hostDraw);
+            if (!writeFile(path, readFrameRgba(gs)))
+            {
+                std::fprintf(stderr, "cannot write %s\n", path.c_str());
+                return 1;
+            }
+            std::fprintf(stderr, "[vu1_replay] %s: %u packets kicked -> %s\n",
+                         baseName(input).c_str(), packetCount, path.c_str());
+            continue;
+        }
+
         if (!verifyPath.empty())
         {
             const std::string base = baseName(input);
@@ -429,7 +657,9 @@ int main(int argc, char **argv)
             }
             else
             {
-                const int bad = compareState(base, g->second, got, verifyRegs);
+                // --host-draw replaces the XGKICK with a host draw, so there are no packets to
+                // compare; what the knob must not change is the VU state it leaves behind.
+                const int bad = compareState(base, g->second, got, verifyRegs, !hostDraw);
                 mismatches += bad;
                 if (bad == 0) std::printf("OK %s\n", base.c_str());
             }
