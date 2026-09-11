@@ -21,8 +21,10 @@ GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")       
 # drive.py stdout (not the game's own run log) is what carries `matched=True`; this run reached the HUD.
 GOOD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")    # known reached HUD (STATUS 2026-09-09 13:30)
 BAD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")         # known FAIL: HUD never matched
-CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "first", "transition")  # 6 black-screen frames, all black
-NATIVE_ON_TRANSITION = os.path.join(ROOT, "logs", "parity", "gate", "native_on", "transition")  # 4 black-screen frames, all black
+CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
+# Pre-fix run: the probe stalled on the "save to memory card?" dialog, so it has black frames
+# from the boot and none at/after its burst step (gate.py TRANSITION_MIN_FRAMES).
+STALLED_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "wcap2", "transition")
 
 
 class WaitCaptures(unittest.TestCase):
@@ -137,25 +139,31 @@ class TransitionScoring(unittest.TestCase):
 
     def test_fixture_run_passes(self):
         """tests/fixtures/gate/transition/: five near-black 320x224 frames from a real run
-        (logs/parity/gate/wcap2/transition -- one step capture and four wait captures, all
-        peak 0). Five is exactly gate.TRANSITION_MIN_FRAMES, so this also pins the floor."""
+        (logs/parity/gate/tfix4/transition -- four of the 5 fps burst frames of the fade into the
+        briefing and one wait capture after it, all peak 0). Every name is s11_*/w13_*, at or
+        after the probe's burst step, so the scorer examines all five; five is exactly
+        gate.TRANSITION_MIN_FRAMES, so this also pins the floor."""
         ok, detail = gate.score_transition(TRANSITION_FIXTURE_RUN)
         self.assertTrue(ok, detail)
         self.assertIn("5 black-screen frames examined", detail)
+        self.assertIn("at/after the burst step", detail)
 
-    @unittest.skipUnless(os.path.isdir(CLEAN_TRANSITION_RUN), "needs logs/parity/gate/first/transition")
+    @unittest.skipUnless(os.path.isdir(CLEAN_TRANSITION_RUN), "needs logs/parity/gate/tfix3/transition")
     def test_known_clean_run_passes(self):
         ok, detail = gate.score_transition(CLEAN_TRANSITION_RUN)
         self.assertTrue(ok, detail)
+        self.assertIn("18 black-screen frames examined", detail)
 
     def test_wait_frames_count_toward_transition(self):
         """Task 8: drive.py captures a frame every 1.0 s of every settle wait as
         w<NN>_<kkk>.png, so the ~1 s fade can no longer fall between two step captures.
         black_rows.py must examine those alongside the s*.png step captures -- three wait
-        frames plus two step frames is five examined, enough for TRANSITION_MIN_FRAMES = 5."""
+        frames plus two step frames is five examined, enough for TRANSITION_MIN_FRAMES = 5.
+        The names are s11/w13 because the scorer only examines frames at/after the probe's
+        burst step."""
         with tempfile.TemporaryDirectory() as run:
-            for name in ("w00_000.png", "w00_001.png", "w00_002.png",
-                         "s00_none.png", "s01_none.png"):
+            for name in ("w13_000.png", "w13_001.png", "w13_002.png",
+                         "s11_burst_000.png", "s12_none.png"):
                 Image.new("RGB", (640, 448), (0, 0, 0)).save(os.path.join(run, name))
             ok, detail = gate.score_transition(run)
         self.assertTrue(ok, detail)
@@ -184,15 +192,27 @@ class TransitionScoring(unittest.TestCase):
         self.assertIn("NOT BLACK", detail)
         self.assertIn(victim, detail)
 
-    @unittest.skipUnless(os.path.isdir(NATIVE_ON_TRANSITION), "needs logs/parity/gate/native_on/transition")
-    def test_pre_wait_capture_run_is_below_the_floor(self):
-        """Negative control for the 2026-09-11 recalibration. This run predates the wait
-        captures: its only black frames are the four burst frames that happened to overlap the
-        fade, so it is short of the restored floor of 5. Every frame in it is black (peak 0) --
-        it fails on evidence, not on rendering, which is what the floor is there to catch."""
-        ok, detail = gate.score_transition(NATIVE_ON_TRANSITION)
+    def test_black_frames_before_the_burst_step_do_not_pass_the_gate(self):
+        """The bug this whole enforcement exists for, at the scorer level: twenty black
+        frames from the boot (s00..s09, w00..w09) are not a transition. Before --from-step they
+        were twenty "black-screen frames examined" and a green gate; now they are zero."""
+        with tempfile.TemporaryDirectory() as run:
+            for i in range(10):
+                Image.new("RGB", (640, 448), (0, 0, 0)).save(os.path.join(run, "s%02d_CROSS.png" % i))
+                Image.new("RGB", (640, 448), (0, 0, 0)).save(os.path.join(run, "w%02d_000.png" % i))
+            ok, detail = gate.score_transition(run)
         self.assertFalse(ok, detail)
-        self.assertIn("4 black-screen frames examined", detail)
+        self.assertIn("0 black-screen frames examined", detail)
+
+    @unittest.skipUnless(os.path.isdir(STALLED_TRANSITION_RUN), "needs logs/parity/gate/wcap2/transition")
+    def test_stalled_pre_fix_run_now_fails(self):
+        """The real article: logs/parity/gate/wcap2 passed this gate on 2026-09-11 with 13
+        black-screen frames, every one of them from the boot -- the probe stalled on the
+        "save to memory card?" dialog and never reached the briefing. Under the enforced scorer
+        it FAILs with 0. Same for famb, famc, hostdraw_on and hostdraw_fix (see gate.py)."""
+        ok, detail = gate.score_transition(STALLED_TRANSITION_RUN)
+        self.assertFalse(ok, detail)
+        self.assertIn("0 black-screen frames examined", detail)
 
 
 class BurstStepFiltering(unittest.TestCase):
@@ -202,8 +222,10 @@ class BurstStepFiltering(unittest.TestCase):
 
     def test_first_burst_step_of_the_transition_probe(self):
         """transition_probe.txt: nine `next` steps (s00..s08, the boot screens through the rank
-        screen) and then the first `burst`. Captures from that step on are named s09_*/w09_*."""
-        self.assertEqual(gate.first_burst_step(), 9)
+        screen), the two ifref guards for the "save to memory card?" dialog (s09/s10), then the
+        burst that starts on the NO press and captures the fade. Captures from it on are named
+        s11_*; the gate examines those and nothing earlier."""
+        self.assertEqual(gate.first_burst_step(), 11)
 
     def test_first_burst_step_ignores_comments_and_blank_lines(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -228,9 +250,9 @@ class BurstStepFiltering(unittest.TestCase):
         self.assertEqual(black_rows.step_index("final.png"), -1)   # not a step capture
 
     def test_frames_before_the_burst_step_do_not_count(self):
-        """The point of --from-step: eight black frames from the boot (s00..s07) plus two from
-        the burst step is ten frames of which only two can be the transition. Unrestricted,
-        black_rows.py examines all ten; --from-step 8 examines the two."""
+        """The point of --from-step, at the black_rows.py level: eight black frames from the
+        boot (s00..s07) plus two from the burst step is ten frames of which only two can be the
+        transition. Unrestricted, black_rows.py examines all ten; --from-step 8 examines the two."""
         with tempfile.TemporaryDirectory() as run:
             names = ["s%02d_CROSS.png" % i for i in range(8)] + ["s08_burst_000.png", "w08_000.png"]
             for name in names:

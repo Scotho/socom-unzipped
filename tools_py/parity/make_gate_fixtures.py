@@ -3,9 +3,10 @@ positive cases run on a fresh clone (no logs/ dir required).
 
 Sources (all git-ignored, kept locally from real runs -- see STATUS 2026-09-10/09-09):
   title:      logs/parity/runs/vr_title/s00_none.png .. s15_none.png  (known clean, 19/23 >= 90.0)
-  transition: five frames of logs/parity/gate/wcap2/transition (one step capture and four wait
-              captures, all peak 0 in black_rows.py's rows 396-448 band, confirmed by running
-              black_rows.py on that run; gate.TRANSITION_MIN_FRAMES is 5)
+  transition: five frames of logs/parity/gate/tfix4/transition taken from AT OR AFTER that run's
+              first burst step (gate.first_burst_step() = 11), i.e. real frames of the black
+              screen before the mission briefing rather than of the boot; all peak 0 in
+              black_rows.py's rows 396-448 band; gate.TRANSITION_MIN_FRAMES is 5
   mission:    logs/parity/drive_gameplay_probe5.txt (HUD matched=True, known good) and
               logs/parity/vr_gameplay.drive.log (HUD matched=False, known bad)
 
@@ -35,7 +36,7 @@ import shutil
 
 from PIL import Image
 
-from tools_py.parity import compare
+from tools_py.parity import black_rows, compare, gate
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "gate")
@@ -44,14 +45,16 @@ TITLE_REF = os.path.join(ROOT, "scripts", "parity", "ref_main_menu_ours.png")
 TITLE_SRC_DIR = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")
 TITLE_NAMES = ["s%02d_none.png" % i for i in range(16)]  # s00..s15: the TITLE_MIN_MATCHES floor
 
-TRANSITION_SRC_DIR = os.path.join(ROOT, "logs", "parity", "gate", "wcap2", "transition")
+TRANSITION_SRC_DIR = os.path.join(ROOT, "logs", "parity", "gate", "tfix4", "transition")
 # (source name in that run, fixture name) -- all confirmed peak 0 in black_rows.py's default band.
-# Five frames, because gate.TRANSITION_MIN_FRAMES is 5; taken from wcap2 rather than the older
-# `first` run so the fixture is a real slice of a post-Task-8 run: one settled step capture and
-# four of the w<step>_<k>.png frames drive.py now takes during its settle waits (the fade into
-# the briefing shows up almost entirely in those). Names are kept as they were in the run.
-TRANSITION_PAIRS = [(n, n) for n in ("s02_CROSS.png", "w00_000.png", "w00_001.png",
-                                     "w01_001.png", "w03_000.png")]
+# Five frames, because gate.TRANSITION_MIN_FRAMES is 5, so the fixture test also pins the floor.
+# Every one is at or after tfix4's first burst step (11), which is what score_transition examines:
+# four of the 5 fps burst frames spread across the fade and one of the 1 Hz w<step>_<k>.png wait
+# captures that follow it. Names are kept as they were in the run -- the step index in the name is
+# load-bearing now, a fixture named s02_* would be filtered out as boot. build_transition_fixtures
+# re-checks that below and refuses to write a fixture from before the burst step.
+TRANSITION_PAIRS = [(n, n) for n in ("s11_burst_002.png", "s11_burst_006.png",
+                                     "s11_burst_010.png", "s11_burst_015.png", "w13_000.png")]
 
 MISSION_GOOD_SRC = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")
 MISSION_BAD_SRC = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")
@@ -106,10 +109,23 @@ def build_title_fixtures():
 def build_transition_fixtures():
     out_dir = os.path.join(FIXTURES, "transition")
     os.makedirs(out_dir, exist_ok=True)
+    # The fixture has to be able to pass the gate it is a fixture for, and the gate only examines
+    # frames from the burst step on, so a fixture from before it would be silently filtered out
+    # and the "5 frames examined" assertion would fail with no explanation. Check it here instead.
+    burst = gate.first_burst_step()
+    early = [n for n, _ in TRANSITION_PAIRS
+             if burst is not None and black_rows.step_index(n) < burst]
+    if early:
+        raise SystemExit("transition fixtures %s are before the probe's burst step (%s): "
+                         "score_transition would not examine them" % (early, burst))
+    for name in os.listdir(out_dir):        # drop fixtures of a previous, differently-named set
+        if name.endswith(".png") and name not in {d for _, d in TRANSITION_PAIRS}:
+            os.remove(os.path.join(out_dir, name))
     for src_name, dst_name in TRANSITION_PAIRS:
         with Image.open(os.path.join(TRANSITION_SRC_DIR, src_name)) as im:
             im.convert("RGB").resize((320, 224), Image.BOX).save(os.path.join(out_dir, dst_name))
-    print("transition: %d fixtures at 320x224 (from %s)" % (len(TRANSITION_PAIRS), TRANSITION_SRC_DIR))
+    print("transition: %d fixtures at 320x224, all at/after burst step %s (from %s)"
+          % (len(TRANSITION_PAIRS), burst, TRANSITION_SRC_DIR))
 
 
 def build_mission_fixtures():

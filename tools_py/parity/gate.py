@@ -19,7 +19,7 @@ import time
 
 from PIL import Image
 
-from tools_py.parity import black_rows, compare
+from tools_py.parity import compare
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
@@ -33,28 +33,29 @@ TITLE_MIN_SCORE = 90.0      # compare.score of a capture vs the main-menu refere
 TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on a clean run, then the attract movie)
 HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
-# What this floor counts, exactly: black-screen frames ANYWHERE in the run -- every capture whose
-# rows above the band are black. It is NOT a count of transition frames. A boot sequence supplies
-# ten or more black frames before the run has left the memory-card screens, so on a run that never
-# reaches the briefing the floor is still cleared by the boot alone. Measured 2026-09-11 with
-# black_rows.py --from-step 9 (9 = the first `burst` step of transition_probe.txt, i.e. the first
-# step past the rank screen): logs/parity/gate/wcap1 examines 10 frames over the whole run and 0
-# from step 9 on; wcap2 examines 13 and 0. Both "PASS" entirely on boot black screens. Same for
-# famb, famc and hostdraw_on (11, 10, 11 frames; 0 from step 9). Older runs did measure the
-# transition: gate/first examined 6 of which 5 are from step 9, gate/native_on 4 of 4,
-# runs/gl_transition 8 of which 7. The difference is the controller-configuration "save to memory
-# card?" dialog, which transition_probe.txt (unlike gameplay_probe.txt) has no ifref guard for:
-# since it started appearing the probe stalls there and never reaches the fade. Restricting the
-# count to the burst step therefore cannot be calibrated from the stored runs (both give 0) -- the
-# probe script has to answer that dialog first. Tracked as a Sprint 3 item; black_rows.py
-# --from-step and first_burst_step() below are in place for it, and score_transition reports the
-# restricted count on every run so the gap is visible in the summary, not implied by a green line.
+# What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
+# (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
+# between the controller-configuration screens and the mission briefing. It deliberately does not
+# count the rest of the run: a boot supplies ten or more black frames of its own before the probe
+# has left the memory-card screens, and counting those makes the gate green on a run that never
+# reached the briefing at all.
 #
-# The floor itself stays 5, calibrated 2026-09-11 on the two capture-cadence runs above (wcap1
-# examined 10, wcap2 13, every frame peak 0): under it, a run lost its captures outright.
-# black_rows.py exits 0 when it examines nothing (empty dir, missing dir, a run with no
-# black-screen frame), so the exit code alone is a vacuous pass and the count is part of the
-# verdict.
+# That is not hypothetical -- it is what this gate did between `wcap1` (2026-09-11) and this fix.
+# The controller-configuration "save to memory card?" dialog started appearing on boot;
+# gameplay_probe.txt guards it with ifref pairs and transition_probe.txt did not, so the probe
+# stalled on the dialog. Every run since examined 0 frames at/after its burst step and passed on
+# boot black screens alone: wcap1 10 frames / 0 after, wcap2 13 / 0, famb 11 / 0, famc 10 / 0,
+# hostdraw_on 11 / 0, hostdraw_fix 9 / 0. Runs from before the dialog did measure the transition
+# (gate/first 6 / 5, gate/native_on 4 / 4, runs/gl_transition 8 / 7), which is why the floor of 5
+# looked calibrated. All of the stalled runs FAIL under the scorer as it now stands; that is the
+# honest record, not a regression.
+#
+# transition_probe.txt now carries those guards and puts its burst on the NO press, so the fade is
+# captured at 5 fps. Calibrated 2026-09-11 on two consecutive clean runs of the fixed probe:
+# logs/parity/gate/tfix3 examined 18 frames at/after the burst step and tfix4 17, every frame
+# peak 0. Both clear 5 by more than 3x, so the floor stays 5: under it, a run either did not reach
+# the fade or lost its captures. black_rows.py exits 0 when it examines nothing, so the exit code
+# alone is a vacuous pass and the count is part of the verdict.
 TRANSITION_MIN_FRAMES = 5
 
 GATES = {
@@ -92,8 +93,10 @@ def first_burst_step(script_path=None):
 
     drive.py numbers steps by their position among the non-blank, non-comment lines of the script
     (drive.parse), and names each capture `s<NN>_*` / `w<NN>_*` after that index. In
-    transition_probe.txt the first burst is the step that follows the rank screen, so frames from
-    it on are the ones that could show the fade into the briefing; everything before it is boot."""
+    transition_probe.txt the first burst is the step that starts on the "save to memory card?"
+    NO press, which is what takes the game to the black screen before the briefing -- so frames
+    from it on are the transition and everything before it is boot. score_transition examines
+    only the former."""
     path = script_path or os.path.join(ROOT, GATES["transition"]["script"])
     try:
         with open(path, encoding="utf-8") as f:
@@ -111,33 +114,34 @@ def first_burst_step(script_path=None):
     return None
 
 
-def score_transition(run_dir):
+def score_transition(run_dir, script_path=None):
     """black_rows.py prints one "<file>  black screen, rows <y0>-<y1>: peak <n>" line per frame it
     actually examines and exits 1 only when one of them is not black. Zero examined frames also
     exits 0, so the count is part of the verdict, not just the exit code.
 
-    The verdict is taken over the whole run (see TRANSITION_MIN_FRAMES). How many of those frames
-    are at or after the first burst step -- the only ones that can be the transition rather than
-    the boot -- is measured and reported, but does not gate: on the current probe script that
-    number is 0 on every recent run, and the fix is the probe, not the floor."""
-    r = subprocess.run([sys.executable, "tools_py/parity/black_rows.py", run_dir], capture_output=True, text=True)
+    Only frames at or after the probe script's first burst step are examined (--from-step): those
+    are the transition, everything before them is the boot. A run that never reaches the fade now
+    scores 0 and FAILs instead of passing on its boot black screens."""
+    burst = first_burst_step(script_path)
+    scope = "" if burst is None else " at/after the burst step (s%02d)" % burst
+    cmd = [sys.executable, "tools_py/parity/black_rows.py", run_dir]
+    if burst is not None:
+        cmd += ["--from-step", str(burst)]
+    r = subprocess.run(cmd, capture_output=True, text=True)
     examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
     bad = [ln for ln in examined if "NOT BLACK" in ln]
     peaks = [int(m.group(1)) for m in (re.search(r"peak\s+(\d+)", ln) for ln in examined) if m]
     # One check, not two: "examined nothing" and "examined fewer than the floor" are the same
     # condition -- a separate `if not examined` above this was unreachable.
     if len(examined) < TRANSITION_MIN_FRAMES:
-        return False, ("transition not captured (%d black-screen frames examined, need %d)"
-                       " in %s" % (len(examined), TRANSITION_MIN_FRAMES, run_dir))
+        return False, ("transition not captured (%d black-screen frames examined%s, need %d)"
+                       " in %s" % (len(examined), scope, TRANSITION_MIN_FRAMES, run_dir))
     if bad or r.returncode != 0:
-        return False, "%d black-screen frames examined; non-black band: %s" % (
-            len(examined), "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])
-    burst = first_burst_step()
-    after = sum(1 for ln in examined
-                if black_rows.step_index(ln.split()[0]) >= burst) if burst is not None else None
-    note = "" if after is None else "; %d at/after the burst step (s%02d)" % (after, burst)
-    return True, "%d black-screen frames examined, rows 396-447 peak %d%s" % (
-        len(examined), max(peaks, default=0), note)
+        return False, "%d black-screen frames examined%s; non-black band: %s" % (
+            len(examined), scope,
+            "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])
+    return True, "%d black-screen frames examined%s, rows 396-447 peak %d" % (
+        len(examined), scope, max(peaks, default=0))
 
 
 def score_mission_log(drive_log):
