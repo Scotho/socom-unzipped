@@ -2257,6 +2257,22 @@ namespace
         return inlineBlockPass(c);                               // falls into 0x22c0
     }
 
+    // ---- command 0x32 -> 0x23b0: 0x30 on the family-B staging array ------------------------
+    //
+    // Four instructions and then `B 0x22c0`: the same inline-block walk over the 150-base staging
+    // array that the clipped-polygon shims fill, ending in 0x1a78 (command 0x2a's flush) rather
+    // than 0x1780. The vertex count is the clipped one in vi10, which reaches here across the
+    // hand-back from 0x02's clipper (research/13 6.2).
+    bool cmdInlineBlockOverB(Ctx &c)
+    {
+        using namespace inlineBlock;
+        c.vi(kSrcCursor) = 150;                                  // 0x23b0
+        c.vi(kDstCursor) = 150;                                  // 0x23b8
+        c.vi(kReturnPc) = kFlushPacketPc;                        // 0x23c0
+        c.vi(kRemaining) = vi16(c.vi(10));                       // 0x23d0: the B 0x22c0 delay slot
+        return inlineBlockPass(c);                               // 0x23c8
+    }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -2305,6 +2321,8 @@ namespace
             return fromHandler(cmdDrawGateOn(c));
         case kCmdInlineBlockOverA:
             return fromHandler(cmdInlineBlockOverA(c));
+        case kCmdInlineBlockOverB:
+            return fromHandler(cmdInlineBlockOverB(c));
         default:
             return Outcome::NotImplemented;
         }
