@@ -534,6 +534,140 @@ namespace
         }
     }
 
+    // ---- command 0x10 -> 0x0f90: per-vertex distance fade ----------------------------------
+    //
+    // Writes one lane and one lane only: the F (fog) field of each vertex's XYZF2 staging quad.
+    // Per vertex, with the reference point at data qword 28 and the per-axis scale at qword 29:
+    //   fog   = clamp((ST.w * scale.w) + reference.w, 0, 255)      ST.w is the clip w
+    //   fade  = clamp(dot((position - reference).xyz * scale.xyz, (1,1,1)), 0, 1)
+    //   XYZF2.w = fog * fade
+    // Two vertices per iteration ("a" and "b"); an odd vertex count leaves after storing a only.
+    //
+    // The two loads of the XYZF2 quads themselves (vf24/vf25) are dead -- nothing reads them, the
+    // fog lane is written with a masked SQ.w -- but they are kept because the register file they
+    // leave behind is compared.
+    namespace fade
+    {
+        constexpr uint8_t kRef = 17;   // data qword 28: reference point, .w = the fog offset
+        constexpr uint8_t kScale = 18; // data qword 29: per-axis scale, .w = the fog scale
+        constexpr uint8_t kPosA = 20, kPosB = 21;     // source positions (TOP+4 + 3k)
+        constexpr uint8_t kStA = 30, kStB = 31;       // staging +0 (ST); only .w, the clip w, is used
+        constexpr uint8_t kDeadA = 24, kDeadB = 25;   // staging +2 loaded and never read
+        constexpr uint8_t kDeltaA = 22, kDeltaB = 23; // position - reference
+        constexpr uint8_t kDistA = 26, kDistB = 27;   // scaled delta, then its .w = x + y + z
+        constexpr uint8_t kFogA = 14, kFogB = 15;     // the fog value being built, in .w
+        constexpr uint8_t kFadeA = 28, kFadeB = 29;   // the clamped distance factor, in .w
+        constexpr uint8_t kSrcCursor = 3;             // vi3, stride 6 (two vertices)
+        constexpr uint8_t kStageCursor = 4;           // vi4, stride 6
+        constexpr uint8_t kRemaining = 9;             // vi9
+    }
+
+    bool cmdDistanceFade(Ctx &c)
+    {
+        using namespace fade;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x0f90: TOP+2.z, the vertex count
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x0f98
+        c.vi(kStageCursor) = 40;                                 // 0x0fa0
+        loadQword<kRef, kXYZW>(c, 28);                           // 0x0fa8
+        loadQword<kScale, kXYZW>(c, 29);                         // 0x0fb0
+
+        // 0x0fb8-0x1000: the first pair's inputs, and the two fog values started from the clip w
+        // the transform left in the ST quads.
+        loadQword<kPosA, kXYZW>(c, c.vi(kSrcCursor) + 0);
+        loadQword<kPosB, kXYZW>(c, c.vi(kSrcCursor) + 3);
+        loadQword<kDeadA, kXYZW>(c, c.vi(kStageCursor) + 2);
+        loadQword<kDeadB, kXYZW>(c, c.vi(kStageCursor) + 5);
+        loadQword<kStA, kXYZW>(c, c.vi(kStageCursor) + 0);
+        loadQword<kStB, kXYZW>(c, c.vi(kStageCursor) + 3);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, kPosA, kRef>(c);  writeVf<kDeltaA, kXYZ>(c, up);
+        up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, kPosB, kRef>(c);  writeVf<kDeltaB, kXYZ>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kStA, kScale>(c);   writeVf<kFogA, kW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kStB, kScale>(c);   writeVf<kFogB, kW>(c, up);
+
+        for (;;)
+        {
+            // 0x1008-0x1020: scale the deltas, finish the fog bases, prefetch the next positions.
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kDeltaA, kScale, false, false, true>(c);
+            c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 6);
+            writeVf<kDistA, kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kDeltaB, kScale, false, false, true>(c);
+            c.vi(kStageCursor) = vi16(c.vi(kStageCursor) + 6);
+            writeVf<kDistB, kXYZ>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kW, kFogA, kRef, false, false, true>(c);
+            loadQword<kPosA, kXYZW>(c, c.vi(kSrcCursor) + 0);
+            writeVf<kFogA, kW>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kW, kFogB, kRef, false, false, true>(c);
+            loadQword<kPosB, kXYZW>(c, c.vi(kSrcCursor) + 3);
+            writeVf<kFogB, kW>(c, up);
+
+            // 0x1028-0x1038: vertex a's distance = x + y + z of the scaled delta, in .w.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDistA, false, false, false>(c);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDistA, false, false, false>(c);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDistA, false, false, false>(c);
+            writeVf<kDistA, kW>(c, up);
+            loadImmediate(c, 0x437f0000u); // 255.0f
+
+            // 0x1040-0x1060: clamp both fog values to 255, then vertex b's distance.
+            up = minmax<false, Vu1Gen::MmI, 0, kFogA, 0>(c);
+            loadQword<kDeadA, kXYZW>(c, c.vi(kStageCursor) + 2);
+            writeVf<kFogA, kW>(c, up);
+            up = minmax<false, Vu1Gen::MmI, 0, kFogB, 0>(c);
+            loadQword<kDeadB, kXYZW>(c, c.vi(kStageCursor) + 5);
+            writeVf<kFogB, kW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDistB, false, false, false>(c);
+            loadQword<kStA, kXYZW>(c, c.vi(kStageCursor) + 0);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDistB, false, false, false>(c);
+            loadQword<kStB, kXYZW>(c, c.vi(kStageCursor) + 3);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDistB, false, false, false>(c);
+            writeVf<kDistB, kW>(c, up);
+            loadImmediate(c, 0x3f800000u); // 1.0f
+
+            // 0x1068-0x1090: clamp the distances to [0,1] and the fog values to >= 0.
+            up = minmax<false, Vu1Gen::MmI, 0, kDistA, 0>(c);          writeVf<kDistA, kW>(c, up);
+            up = minmax<true, Vu1Gen::MmBc, 0, kFogA, 0>(c);           writeVf<kFogA, kW>(c, up);
+            up = minmax<true, Vu1Gen::MmBc, 0, kFogB, 0>(c);           writeVf<kFogB, kW>(c, up);
+            up = minmax<false, Vu1Gen::MmI, 0, kDistB, 0>(c);          writeVf<kDistB, kW>(c, up);
+            up = minmax<true, Vu1Gen::MmBc, 0, kDistA, 0>(c);          writeVf<kFadeA, kW>(c, up);
+            up = minmax<true, Vu1Gen::MmBc, 0, kDistB, 0>(c);          writeVf<kFadeB, kW>(c, up);
+
+            // 0x1098-0x10b0: start the next pair's deltas, then fog *= fade.
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, kPosA, kRef>(c);  writeVf<kDeltaA, kXYZ>(c, up);
+            up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, kPosB, kRef>(c);
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 2);
+            writeVf<kDeltaB, kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kFogA, kFadeA, false, false, false>(c);
+            writeVf<kFogA, kW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kFogB, kFadeB, false, false, false>(c);
+            writeVf<kFogB, kW>(c, up);
+
+            // 0x10c8-0x10d0: vertex a's fog lane; an odd vertex count leaves here.
+            storeQword<kFogA, kW>(c, c.vi(kStageCursor) - 4);
+            if (c.vi(kRemaining) < 0)
+                return true;
+
+            // 0x10e0-0x10f0: vertex b's fog lane, then the next pair's fog bases (0x10f0 is the
+            // branch's delay slot and runs on both paths).
+            storeQword<kFogB, kW>(c, c.vi(kStageCursor) - 1);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kStA, kScale>(c);
+            const bool more = c.vi(kRemaining) > 0;
+            writeVf<kFogA, kW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kStB, kScale>(c);
+            writeVf<kFogB, kW>(c, up);
+            if (!more)
+                return true;                                           // 0x10f8: B 0x1b60
+        }
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -544,6 +678,8 @@ namespace
             return cmdUnpackVertices(c);
         case kCmdTransform:
             return cmdTransformDivide(c);
+        case kCmdFade:
+            return cmdDistanceFade(c);
         default:
             return false;
         }
