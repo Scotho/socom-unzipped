@@ -1,9 +1,10 @@
 // SOCOM II VU1 image d418194495c25213, entry pc 0x1b50: the command dispatcher and the handlers
-// its "family A" (UI quad / 2D) and "family B" (clipped world objects) command lists use.
+// its "family A" (UI quad / 2D), "family B" (clipped world objects) and "family C" (either of
+// those plus an inline GIF block and a second draw pass) command lists use.
 //
 // Structure, command encoding, register roles and the hand-back rules: docs/research/12-vu1-entry0-ui-path.md
-// section (f) for family A, docs/research/13-vu1-family-b-world-objects.md for family B, the
-// 0x3618 clipper and the shared packet-flush tail. Contract: emit exactly the GIF packets the
+// section (f) for family A, docs/research/13-vu1-family-b-world-objects.md for families B and C,
+// the 0x3618 clipper and the shared packet-flush tail. Contract: emit exactly the GIF packets the
 // microcode emits and leave the register file and VU data memory exactly as the microcode leaves
 // them (verified by `vu1_replay --verify --native`, --regs all).
 //
@@ -12,13 +13,18 @@
 // packet is still assembled byte for byte, so the contract above is unchanged with the knob on --
 // only the kick is replaced. `vu1_replay --vram-diff` compares the two renderings pixel for pixel.
 //
-// What runs natively: command lists whose linear decode from data qword 340 contains only command
-// words this file implements and terminates on 0x42 (END) -- all seven family-A commands and all
-// seven family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the
-// 0x1980 flush tail behind them). Family C still hands back WHOLE at 0x1b50 before this file
-// touches any state, so the generated microcode translation runs it exactly as before: its
-// 0x30/0x32/0x34 embed GIF packets in the command list itself and rewrite vi14 past them, and its
-// 0x64/0x72/0x74 are unimplemented.
+// What runs natively: command lists whose decode from data qword 340 contains only command words
+// this file implements and terminates on 0x42 (END) -- all seven family-A commands, all seven
+// family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the 0x1980
+// flush tail behind them) and five of family C's six (0x64, 0x72, 0x74, 0x30, 0x32). "Decode" is
+// not "linear decode" any more: 0x30 and 0x32 embed eight-qword GIF packets in the list itself and
+// advance vi14 past them, so the pre-scan applies that rewrite as it walks (scanCommandList).
+//
+// The one command still missing is 0x34, the eleven-qword-block variant of 0x30, whose per-vertex
+// maths (an ERLENG normalise over five VU-only parameter qwords) research/13 4.8 documents only as
+// [partial] and which was dispatched once in the whole 48-dump corpus. A list containing it hands
+// back WHOLE at 0x1b50 before this file touches any state, so the generated microcode translation
+// runs it exactly as before.
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
 // vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
@@ -74,8 +80,15 @@ namespace
     // ---- command list ---------------------------------------------------------------------
     constexpr int32_t kCommandListQword = 340;
     // The longest list in the corpus is 10 commands; a list that does not terminate inside this
-    // many qwords is stale data, not a list this file may run.
+    // many dispatches is stale data, not a list this file may run.
     constexpr uint32_t kMaxCommands = 32u;
+    // ... and this many qwords, which is not the same bound: a family-C list also contains the
+    // inline GIF blocks 0x30/0x32/0x34 skip, and those are qwords the scan steps over without
+    // ever dispatching. The longest list in the corpus is 18 qwords.
+    constexpr uint32_t kMaxListQwords = 64u;
+    // The qwords one inline block occupies in the list -- 0x30 and 0x32 advance vi14 by eight per
+    // block. (0x34's variant is eleven, and is not implemented here.)
+    constexpr uint32_t kInlineBlockQwords = 8u;
 
     // ---- the family-A work ceiling ---------------------------------------------------------
     // Every family-A handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest
@@ -148,13 +161,6 @@ namespace
     // For family B the static decode is NOT the executed order -- 0x4c rewrites vi14 and the
     // 0x0a..0x4c run repeats once per primitive -- but it still visits every command word in the
     // list, which is all this scan has to establish.
-    //
-    // Family C is deliberately absent. Its extra commands (0x64, 0x30, 0x32, 0x34, 0x72, 0x74)
-    // are not implemented, and 0x30/0x32/0x34 embed an 8- or 11-qword GIF packet in the list
-    // itself, whose qwords are not commands. That is safe to scan past only because the command
-    // introducing a block always precedes it, so the scan stops on a real command word before it
-    // can ever misread a packet qword as one -- and in every C shape in the corpus an even
-    // earlier 0x64 stops it first (research/13 3.2).
     bool isFamilyBCommand(uint32_t command)
     {
         switch (command)
@@ -166,6 +172,28 @@ namespace
         case kCmdClippedLight:
         case kCmdFlushPacket:
         case kCmdLoopBack:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // ... and the ones family C adds: `68 06 02 0a 64 12 2a 32 <block> 72 74 4c 42` (C over B) and
+    // `68 06 64 08 10 28 30 <block> 72 74 42` (C over A).
+    //
+    // 0x34 -- the eleven-qword-block variant of 0x30, dispatched once in the whole 48-dump corpus
+    // -- is deliberately absent: its per-vertex maths (an ERLENG normalise over five VU-only
+    // parameter qwords) is only [partial] in research/13 4.8. A list containing it hands back
+    // whole, exactly as every family-C list did before this.
+    bool isFamilyCCommand(uint32_t command)
+    {
+        switch (command)
+        {
+        case kCmdKickRenderState:
+        case kCmdDrawGateOff:
+        case kCmdDrawGateOn:
+        case kCmdInlineBlockOverA:
+        case kCmdInlineBlockOverB:
             return true;
         default:
             return false;
@@ -415,31 +443,137 @@ namespace
         return value & 0xFFFFu;
     }
 
-    // True when this run is one this file may take over: a command list built only from commands
-    // that are implemented here, terminated by a literal 0x42 within the bound, and a header
-    // whose vertex and primitive counts keep the work inside kMaxVertices / kMaxTriangles. Called
-    // before anything is written, so a "no" is a clean whole-program hand-back.
+    // The z field of a list qword: 0x30/0x32/0x34 read it as the number of inline blocks that
+    // follow the command (research/13 3.1). Read like the scan's command words, without touching
+    // a register.
+    int32_t peekBlockCount(Ctx &c, uint32_t index)
+    {
+        return c.loadWord(kCommandListQword + static_cast<int32_t>(index), 2);
+    }
+
+    // How many qwords of an embedded block its GIFtag hands to the GS: one for the tag plus the
+    // payload NLOOP/NREG/FLG describe. The scan uses it only to check that the tag's packet is
+    // contained inside the block, i.e. that the qwords it is about to step over really are one
+    // GIF packet and not a truncated one running into the commands after it. (A corpus block is
+    // NLOOP = 6, NREG = 1, FLG = PACKED -> seven of the block's eight qwords; 0x34's is five and
+    // one of eleven.)
+    uint32_t gifTagQwords(Ctx &c, int32_t qword)
+    {
+        uint64_t tagLo = 0u;
+        std::memcpy(&tagLo, c.qwordBytes(qword), sizeof(tagLo));
+        const uint64_t nloop = tagLo & 0x7FFFu;
+        const uint32_t flg = static_cast<uint32_t>((tagLo >> 58) & 0x3u);
+        uint64_t nreg = (tagLo >> 60) & 0xFu;
+        if (nreg == 0u)
+            nreg = 16u; // the GIF reads NREG = 0 as sixteen registers
+
+        uint64_t payload = nloop;                       // FLG 2/3: IMAGE, one qword per loop
+        if (flg == 0u)                                  // PACKED: one qword per register
+            payload = nloop * nreg;
+        else if (flg == 1u)                             // REGLIST: two registers per qword
+            payload = (nloop * nreg + 1u) / 2u;
+        payload += 1u;                                  // the tag itself
+        return payload > 0xFFFFu ? 0xFFFFu : static_cast<uint32_t>(payload);
+    }
+
+    // What the scan below learned about a list, for the work bounds isNativeRun applies after it.
+    struct ListFacts
+    {
+        bool hasWorldObject = false; // 0x02 -- the only command that puts a clipped count in vi10
+        bool hasInlineOverA = false; // 0x30 -- its vertex count is TOP+2.z
+        bool hasInlineOverB = false; // 0x32 -- its vertex count is vi10
+    };
+
+    // Walks the command list the way the dispatcher and the handlers walk it, and says whether
+    // every command it visits is one this file implements.
+    //
+    // For families A and B a linear walk is enough: 0x4c does rewrite vi14, but backwards, over
+    // qwords the walk has already visited. Family C is different -- 0x30 and 0x32 advance vi14 by
+    // eight qwords per inline block, and those qwords are a GIF packet, not commands. So the walk
+    // applies that rewrite itself: on 0x30/0x32 it reads the block count N out of the command's
+    // own z word exactly as the handler does, checks each block's GIFtag fits inside its eight
+    // qwords, and resumes the walk after the last block. The command that introduces a block
+    // always precedes it, so the walk reaches the count before it could mistake a packet qword
+    // for a command word.
+    //
+    // A "no" from here is a clean whole-program hand-back: the caller runs before anything is
+    // written. (Handing back mid-list at 0x1b60 would in fact also be safe, since this file
+    // reproduces the whole register file and all of VU data memory -- including the vi14 that
+    // 0x30/0x32 rewrote -- but the walk makes that a safety net rather than the plan.)
+    bool scanCommandList(Ctx &c, ListFacts &facts)
+    {
+        uint32_t index = 0u;
+        for (uint32_t step = 0; step < kMaxCommands; ++step)
+        {
+            if (index >= kMaxListQwords)
+                return false;
+            const uint32_t command = peekCommand(c, index);
+            if (command == kCmdEnd)
+                return true;
+            if (!isFamilyACommand(command) && !isFamilyBCommand(command) && !isFamilyCCommand(command))
+                return false;
+
+            if (command == kCmdWorldObject)
+                facts.hasWorldObject = true;
+            const bool introducesBlocks =
+                command == kCmdInlineBlockOverA || command == kCmdInlineBlockOverB;
+            if (command == kCmdInlineBlockOverA)
+                facts.hasInlineOverA = true;
+            if (command == kCmdInlineBlockOverB)
+                facts.hasInlineOverB = true;
+
+            const int32_t blockCount = introducesBlocks ? peekBlockCount(c, index) : 0;
+            ++index;
+            if (!introducesBlocks)
+                continue;
+
+            // The handler's outer loop decrements N and tests `!= 0`, so N = 0 means 65536 blocks
+            // and a vi14 that wraps: not a list this file runs. N > 1 is accepted and implemented
+            // but was never dispatched in the corpus (research/13 8.1).
+            if (blockCount < 1)
+                return false;
+            for (int32_t block = 0; block < blockCount; ++block)
+            {
+                if (index + kInlineBlockQwords > kMaxListQwords)
+                    return false;
+                if (gifTagQwords(c, kCommandListQword + static_cast<int32_t>(index)) > kInlineBlockQwords)
+                    return false;
+                index += kInlineBlockQwords;
+            }
+        }
+        return false; // no 0x42 inside the dispatch bound
+    }
+
+    // True when this run is one this file may take over: a list scanCommandList accepts, plus a
+    // header whose counts keep the work inside kMaxVertices / kMaxTriangles.
     bool isNativeRun(Ctx &c, int32_t top)
     {
-        bool terminated = false;
-        for (uint32_t index = 0; index < kMaxCommands && !terminated; ++index)
-        {
-            const uint32_t command = peekCommand(c, index);
-            if (!isFamilyACommand(command) && !isFamilyBCommand(command))
-                return false;
-            terminated = command == kCmdEnd;
-        }
-        if (!terminated)
+        ListFacts facts;
+        if (!scanCommandList(c, facts))
             return false;
 
         // The two header words the handlers read as their loop counts: TOP+2.z is the vertex
-        // count (0x68, 0x08, 0x10, 0x54, 0x18) and TOP+2.w the primitive count (0x06, 0x28, and
-        // family B's vi12). The clipper's own work is bounded by construction -- a stage emits at
-        // most two vertices per input edge, so from a triangle the five stages run at most
+        // count (0x68, 0x08, 0x10, 0x54, 0x18, 0x30) and TOP+2.w the primitive count (0x06, 0x28,
+        // and family B's vi12). The clipper's own work is bounded by construction -- a stage emits
+        // at most two vertices per input edge, so from a triangle the five stages run at most
         // 3 + 6 + 12 + 24 + 48 edge tests -- so bounding the primitive count bounds the list.
         const int32_t vertices = c.loadWord(top + 2, 2);  // TOP+2.z
         const int32_t triangles = c.loadWord(top + 2, 3); // TOP+2.w
-        return vertices >= 0 && vertices <= kMaxVertices && triangles >= 0 && triangles <= kMaxTriangles;
+        if (vertices < 0 || vertices > kMaxVertices || triangles < 0 || triangles > kMaxTriangles)
+            return false;
+
+        // 0x30 and 0x32 end their rescale loop on `vi9 != 0`, not `vi9 > 0`, so a zero count walks
+        // 65536 staging triples instead of none -- bounded, but not a run to start uninterruptibly.
+        // 0x30's count is TOP+2.z, which therefore has to be at least one; 0x32's is vi10, which
+        // is only a count at all when 0x02 put it there (0x02 hands back only with vi10 != 0, and
+        // the clipper cannot leave more than the twelve vertex slots its buffers hold), so a list
+        // using 0x32 without 0x02 is refused rather than run on whatever vi10 the previous program
+        // left behind.
+        if (facts.hasInlineOverA && vertices < 1)
+            return false;
+        if (facts.hasInlineOverB && !facts.hasWorldObject)
+            return false;
+        return true;
     }
 
     // The interpreter's XGKICK model, read the way ps2_vu1_core.cpp's startXgkick reads it: the
@@ -2177,7 +2311,6 @@ namespace
         constexpr uint8_t kScale = 30;     // vf30: .x = the scale from the block's eighth qword
 
         constexpr int32_t kScratchQword = 339;
-        constexpr int32_t kBlockQwords = 8;
         constexpr int32_t kBuildPacketPc = 752; // 0x1780 / 8
         constexpr int32_t kFlushPacketPc = 847; // 0x1a78 / 8
     }
@@ -2199,7 +2332,7 @@ namespace
             // 0x22e0-0x2308: this block's address, the vi14 rewrite, and the three pointers read
             // back out of the scratch qword.
             c.vi(kBlock) = vi16(c.vi(14) + kCommandListQword);
-            c.vi(14) = vi16(c.vi(14) + kBlockQwords);
+            c.vi(14) = vi16(c.vi(14) + static_cast<int32_t>(kInlineBlockQwords));
             c.vi(kSrcCursor) = c.loadWord(kScratchQword, 0);
             c.vi(kDstCursor) = c.loadWord(kScratchQword, 1);
             c.vi(kRemaining) = c.loadWord(kScratchQword, 2);
