@@ -8,8 +8,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "gate")   # committed: runs on a fresh clone
 TITLE_FIXTURE_RUN = os.path.join(FIXTURES, "title")
 TRANSITION_FIXTURE_RUN = os.path.join(FIXTURES, "transition")
-GOOD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "good.drive.log")
-BAD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "bad.drive.log")
+GOOD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "good.drive.txt")
+BAD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "bad.drive.txt")
 
 # git-ignored real-run logs, kept locally: extra coverage when present, but never required.
 GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")               # known clean (STATUS 2026-09-10 17:40)
@@ -40,7 +40,7 @@ class TitleScoring(unittest.TestCase):
 
 class MissionScoring(unittest.TestCase):
     def test_fixture_good_log_passes(self):
-        """tests/fixtures/gate/mission/good.drive.log: the untilref(...matched=True) line and
+        """tests/fixtures/gate/mission/good.drive.txt: the untilref(...matched=True) line and
         the >= 3 sNN_hold lines score_mission_log reads, trimmed from drive_gameplay_probe5.txt."""
         ok, detail = gate.score_mission_log(GOOD_MISSION_FIXTURE)
         self.assertTrue(ok, detail)

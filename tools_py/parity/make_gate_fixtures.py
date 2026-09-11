@@ -8,6 +8,11 @@ Sources (all git-ignored, kept locally from real runs -- see STATUS 2026-09-10/0
   mission:    logs/parity/drive_gameplay_probe5.txt (HUD matched=True, known good) and
               logs/parity/vr_gameplay.drive.log (HUD matched=False, known bad)
 
+Mission fixtures are written as good.drive.txt / bad.drive.txt, not *.drive.log: .gitignore has
+a blanket "*.log" rule, and a .log fixture would silently fail to be picked up by a plain
+`git add` on a future regeneration (it would need `git add -f` every time). .txt is not
+git-ignored, so a plain `git add tests/fixtures/gate/mission` just works.
+
 Title and transition images are resized to 320x224 with Image.BOX -- compare.score (compare.py)
 resizes to that size anyway, so storing at that size costs it nothing. Resized title PNGs still
 ran ~80-95 KB each (16 of them blew the 1 MB budget) because the menu art doesn't compress well
@@ -106,11 +111,11 @@ def build_mission_fixtures():
     os.makedirs(out_dir, exist_ok=True)
     good = _trim_mission_log(MISSION_GOOD_SRC)
     bad = _trim_mission_log(MISSION_BAD_SRC)
-    with open(os.path.join(out_dir, "good.drive.log"), "w", newline="\n", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "good.drive.txt"), "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(good) + "\n")
-    with open(os.path.join(out_dir, "bad.drive.log"), "w", newline="\n", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "bad.drive.txt"), "w", newline="\n", encoding="utf-8") as f:
         f.write("\n".join(bad) + "\n")
-    print("mission: good.drive.log (%d lines, from %s), bad.drive.log (%d lines, from %s)"
+    print("mission: good.drive.txt (%d lines, from %s), bad.drive.txt (%d lines, from %s)"
           % (len(good), MISSION_GOOD_SRC, len(bad), MISSION_BAD_SRC))
 
 
