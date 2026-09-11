@@ -1,23 +1,15 @@
->>> The 2026-09-08 data-loss incident is RESOLVED (game/ and tools/ restored, see STATUS). The
->>> section below is the current pick-up; everything under "The vision" is background.
+# Handoff — SOCOM II PC recompilation
 
-# Handoff — SOCOM II PC recompilation (2026-09-09 03:40)
+## START HERE
+Read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays,
+and where Sprint 1 stands; then the sprint plan
+(`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`); then the run
+recipes and history below.
 
-## START HERE (2026-09-10 17:45) — goal 1 in gameplay on our exe; the section below is the previous pick-up (recipes still current)
+## Reference: run recipes and history
 
-**State (all on `develop`, last 841a6fc/7bf0160; STATUS 2026-09-10 17:40):**
-- Build: VU1 register-file work landed (841a6fc). Gates on it: title clean (vr_title), main menu
-  59 syncv/s. gameplay_probe.txt now survives the controller-config "save to memory card?" prompt
-  (ifref step, 7bf0160) — re-run it once for the mission gate on this build.
-- **Two instances of our exe are in an online match in gameplay** (logs/parity/ours_match_play5:
-  HUD, round timer, compass, A fires, B moves; 19-21 syncv/s each with both running). Recipe:
-  Horizon up (`server/start-servers.ps1`), then a detached script like logs/run_match_play5.sh
-  (PowerShell `Start-Process bash.exe <script>` — the harness kills long background shells) and
-  wait for its `.done` marker; the driver's stdout is block-buffered until exit.
-- Known: A's "walk forward" bursts walk it into a wall (identical A_play frames); B moves. The
-  driver's "B_TIMEOUT waiting for persona" line was spurious (B continued).
+### Open items, in order, each with its first step (2026-09-10 17:45)
 
-**Open items, in order, each with its first step:**
 0. **THE ONLINE MATCH IS FROZEN AT ROUND START (STATUS 2026-09-10 20:10).** Both instances sit at
    "STARTING ROUND 1 OF 11": only camera pitch (RY), fire and stance respond; RX/LX/LY do nothing.
    Peer UDP (A 3658 <-> B 3660) is one 22/32-byte packet per second each way = a handshake that
@@ -63,25 +55,8 @@
 4. Mission gate on this build (gameplay_probe.txt) and the items below (ground height, parity
    report).
 
-## START HERE (2026-09-09 03:40) — state after the overnight loop; the section below it is the previous pick-up and still describes the run recipes
+### Previous open items (2026-09-09 03:40)
 
-**Landed tonight (all on `develop`, last 0a154aa; read STATUS 2026-09-09 entries top-down):**
-- 47ffc73 **VU0 macro-mode FMAC ops now set the MAC/STATUS flags** (they never did; only CTC2
-  wrote them) and VCLIP uses the manual's bit order against |w|. The EE's camera-frustum box
-  test (FUN_00290c30) read those flags, called everything "fully inside" and sent near objects
-  through the no-clip VU1 list (word 8 of FUN_003b5f20's command list instead of word 2). The
-  giant sky polygons are gone; the mission intro renders like the golden run (mission_s16,
-  dump run s17: 0/3164 vertices with q<0, was 108/1878). Lesson: when the EE chooses a render
-  path, check the VU0 flag registers (CFC2 of STATUS/MAC/CLIP) before the VU1 side.
-- 48e285d/dc99469 diagnostics: `PS2X_CALL_TRACE_DUMP="Name:a1[+off][*]:words"` prints guest
-  words behind a traced call's argument after it returns; `PS2X_GS_TRACE_PAGES=0xPAGE:count`
-  logs every VRAM-page event in the GL backend; `PS2X_GIF_TRACE=<n>` logs GIF submissions;
-  `tools_py/parity/probe_poll.py` and `state_poll.py` poll PCSX2 memory at a savestate over
-  PINE; `tools_py/parity/p2s_extract.py` pulls eeMemory.bin/Scratchpad.bin out of a .p2s.
-  New PCSX2 savestate slot 6 = the title screen (logs/parity/title_pcsx2.rdram is its EE
-  memory); slot 8 = spawn, slot 7 = post-load.
-
-**Open items, in order, each with its first step:**
 1. **DONE 2026-09-09 02:15 — title labels** (STATUS 02:15): VIF1 now stalls on i-bit VIFcodes until
    FBRST.STC and every MMIO store width drains pending IRQs; the texture-set marker protocol
    (0x4887c0 render queue, FUN_0033c010 handler) is in sync with the console. Verify the title
@@ -129,35 +104,8 @@ directories; the poller scripts leave pcsx2-qt.exe running if killed early (driv
 refuses to start — `taskkill /F /IM pcsx2-qt.exe`); timed RDRAM dumps miss the spawn when the
 boot drifts — prefer `PS2X_RDRAM_DUMP_AT=<path>:<TracedName>#<n>` or a late fixed time (400 s).
 
-## Previous pick-up (written 2026-09-08 23:30) — run recipes below are still current
+### Previous open items (2026-09-08 23:30)
 
-**Mandate.** The user is away and wants in-game visual parity with PCSX2 for the single-player
-mission ("lots of menus, little actual game"), worked autonomously in bounded steps: one hypothesis
--> one build -> one run -> read the evidence -> commit -> STATUS entry. Online play (M5) is the
-long-term priority but is already reached; do not regress it. The user watches the TITLE SCREEN
-closely: every run passes it, so look at s05/s06 of each run sheet before trusting a build.
-
-**Where it stands (all committed on `develop`, last 692100e).**
-- EE side now matches PCSX2 in the mission: actors, collision grid, camera path and the camera
-  object's world / view-projection / projection / screen matrices (`*(0x488de8)` +0x2f0 / +0x330 /
-  +0x370 / +0x3b0) equal PCSX2's to 4 decimals. Fixes behind that: SQRT.S source register
-  (c9da469), EE/VU0 saturation (75dcadd), game thread rounds toward zero like the EE FPU (c57dccc).
-- Object geometry renders (trees, bushes, road) since XGKICK packets are copied at kick time
-  (089516b). mission_s13's last frame is the golden run's road-through-trees scene.
-- The picture is still mostly covered by giant sky-coloured polygons. They are ONE object at the
-  player's position (8 triangles, two 8-bit texture passes, tbp0 0x3621/0x3661), drawn through
-  the VU1 command-list entry 0x1b50 with commands b20 -> 1638 (backface test on MAC flags) -> 4a8
-  -> df8 (transform, DIV Q=1/w, NO near-plane clipping) -> f90 -> 1780 (emit) -> 22a0. Verified by
-  offline replay of 150 dumped programs: 108/1878 kicked vertices have q<0, all from that object
-  (4 consecutive frames); the 119 pc=0 world programs and the other 0x1b50 object are clean. The
-  VU1 flag pipeline behaves per the manual. So the console must not feed this object in this
-  state: the EE either culls it (bounding test) or gives it other data.
-- Related EE divergence: our player stands at y=-132.9 at spawn, PCSX2 at -126.26 (x/z equal):
-  ground height from the collision grid differs by 6.6 units.
-- Frame rate: VU1 interpreter 158 -> 111 ns/cycle (4960120) but still ~0.7 s host per second at
-  ~5 M cycles/s; the game runs at a few frames per second in the mission (`PS2X_VU_STATS=1`).
-
-**Next tasks, in order, each with its first step.**
 1. Identify the no-clip object and why the console does not draw it like this.
    a. Find the EE code that builds that command list: the VU reads command words at `340(vi14)`
       and jumps through the table at 0x1ba0 (index = word; b20 is entry 52, 1638 is 3, 4a8 is 50,
@@ -181,7 +129,9 @@ closely: every run passes it, so look at s05/s06 of each run sheet before trusti
    `PS2X_HOST_PROF=1`, copy logs/hostprof.txt before the mission and diff (STATUS 17:30).
 4. Then the parity report for the mission path, worst screen first (see "The grade").
 
-**The run you will repeat.** One game instance at a time (drive.py refuses otherwise); never build
+### The run you will repeat
+
+One game instance at a time (drive.py refuses otherwise); never build
 during a run; delete `logs/parity/latest_frame.png(.tmp)` before a run.
 ```
 PS2X_MC_DIR=game/disc/mc0_parity PS2X_PC_SAMPLER=1 PS2X_PEEK="*0x488de8+0x320:3,0x416054:3" \
@@ -197,12 +147,16 @@ timestamps). Offline: `dist/vu1_replay.exe logs/vu1dump2/vu1_prog_N.bin --out p.
 (frames every 6 s after the movie skip; the title is s06). CPU reference rasterizer:
 `PS2X_GS_BACKEND=cpu` — use it to tell GS-input bugs from GL texture-cache effects.
 
-**Build.** `./build.sh runtime` (3 min; a header change forces the 500-batch generated-code
+### Build
+
+`./build.sh runtime` (3 min; a header change forces the 500-batch generated-code
 rebuild, ~10 min, and editing a header mid-build breaks the PCH — rebuild from scratch). Replay
 tool: `cmake --build third_party/ps2recomp/build-clang --target vu1_replay` then copy the exe
 into dist/ (it needs the DLLs there). `./build.sh all` after any recompiler change.
 
-**Gotchas learned today.** Boot flow drifts run to run (intro/location cinematics may or may not
+### Gotchas (2026-09-08)
+
+Boot flow drifts run to run (intro/location cinematics may or may not
 play): scripts navigate by screen state (`long`, `idle`, `until(x0,y0,x1,y1)` modes in drive.py),
 never by press counts. C++ patches: Edit tool or a Python script written with the Write tool
 (bash heredocs mangle backslashes; a failed assert writes nothing). Python subprocess needs
@@ -211,7 +165,6 @@ root (own repo, remote github.com/Scotho/socom-unzipped), never `git add -A`; le
 unstaged; trailers `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
 `Claude-Session: <session url>`. Update docs/STATUS.md (newest entry on top) and the memory
 file after each milestone.
-
 
 Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
 written so a fresh agent can continue **autonomously** toward the project vision without asking.

@@ -2,16 +2,23 @@
 
 You are continuing the SOCOM II PC static-recompilation project at C:/projects/socom_pc
 autonomously. The user (Craig) is away and has given full authority to use best judgement;
-plans are suggestions. Ordered goals (user, 2026-09-09):
+plans are suggestions.
 
-1. A playable ONLINE MATCH on our native exe (highest priority; PCSX2 clients already play a
-   match on the local Horizon stack; ours reaches SELECT UNIVERSE).
-2. System-native frame rate (the VU1 interpreter runs the mission at a few fps — this blocks
-   every "playable" goal, mission and online alike).
-3. 90-95% visual match with the original (docs/parity/REPORT.md is the grade; the user watches
-   the TITLE SCREEN closely — its labels must be clean in every build).
-4. Playable first mission (Albania 5-1).
-Long term: a full PC-native recreation.
+Ordered goals (user, 2026-09-10, Sprint 1 — see
+docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md and the plan in
+docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
+
+1. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
+   before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
+2. FROZEN: emulator speed work (VU1/VU0 interpreter, scheduler batching, GS/GL caching or upload
+   performance). 36-42 fps single instance is enough for this sprint. The two-instance frame
+   rate is a test-rig concern: run the second client of the acceptance test in PCSX2.
+3. Native render path: the VU1 command dispatcher (entry pc 0x1b50 of image d418194495c25213)
+   hand-written in third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/, verified with
+   `dist/vu1_replay.exe --verify --native` on tests/fixtures/vu1/title and
+   tests/fixtures/vu1/dispatch_0x1b50 and by the title gate.
+4. The first-kill acceptance test (tools_py/parity/online_match_ours.py) continues unchanged.
+Long term: N64-recomp model — game logic stays recompiled, renderer/audio/input/network native.
 
 Acceptance for "playable" (user, 2026-09-09): visual accuracy of the game itself (not just the
 shell) AND an automated test that drives a two-instance online match to its END by one player
@@ -26,8 +33,9 @@ hypothesis->build->run->evidence step.
    another; only one game instance and no builds during runs. Wait for the next firing.
 2. Read `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md` entries; `git log -5`.
 3. Pick the top open item that advances goal 1 or 2 (then 3, 4). Work in bounded steps: one
-   hypothesis -> one build -> one run -> read the evidence -> commit -> STATUS entry (newest on
-   top) -> refresh the "START HERE" section of HANDOFF.md when the pick-up changes.
+   hypothesis -> one build -> one run -> read the evidence -> commit -> `./build.sh test` and
+   `gate` green -> STATUS entry (newest on top) -> refresh the "START HERE" section of
+   HANDOFF.md when the pick-up changes.
 4. Subagents are welcome for offline/static work (decomp reading, VU1 fast-path/recompiler work
    verified with `dist/vu1_replay.exe` against the interpreter, server-side Horizon checks) but
    builds of the runtime and game runs are SERIAL: take `logs/.loop_lock` first.
