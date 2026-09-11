@@ -10,6 +10,8 @@ docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
 
 1. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
    before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
+   `./build.sh runtime` MUST precede the gate: the gate launches `dist/socom2.exe`, and
+   `./build.sh test` does not rebuild it -- Task 8 lost 25 minutes to a stale exe.
 2. FROZEN: emulator speed work (VU1/VU0 interpreter, scheduler batching, GS/GL caching or upload
    performance). 36-42 fps single instance is enough for this sprint. The two-instance frame
    rate is a test-rig concern: run the second client of the acceptance test in PCSX2.
@@ -32,10 +34,11 @@ hypothesis->build->run->evidence step.
    a start time under 20 minutes old — or a running `socom2*.exe`/`pcsx2-qt.exe`), do NOT start
    another; only one game instance and no builds during runs. Wait for the next firing.
 2. Read `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md` entries; `git log -5`.
-3. Pick the top open item that advances goal 1 or 2 (then 3, 4). Work in bounded steps: one
-   hypothesis -> one build -> one run -> read the evidence -> commit -> `./build.sh test` and
-   `gate` green -> STATUS entry (newest on top) -> refresh the "START HERE" section of
-   HANDOFF.md when the pick-up changes.
+3. Pick the top open item that advances goal 1 or 3 (goal 2 is a constraint, goal 4 is
+   untouched). Work in bounded steps, in this order: one hypothesis -> one build -> one run ->
+   read the evidence -> `./build.sh test` and (after `./build.sh runtime`) `gate` green ->
+   commit -> push -> STATUS entry (newest on top) -> refresh the "START HERE" section of
+   HANDOFF.md when the pick-up changes. Tests and the gate come BEFORE the commit (goal 1).
 4. Subagents are welcome for offline/static work (decomp reading, native VU1 handler work under
    third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ verified with `dist/vu1_replay.exe
    --verify --native` on both fixture sets, server-side Horizon checks) but builds of the

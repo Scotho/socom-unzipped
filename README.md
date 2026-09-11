@@ -4,10 +4,13 @@ Goal: a `socom2.exe` that runs the US retail game (SCUS_972.75, r0001) natively 
 Windows without a PS2 emulator, with controller support and online play against a server we
 host, structured so it can be extended later. The user supplies their own disc image.
 
-**Start here if you are a new agent:** read `docs/STATUS.md` (what works, what is next, how
-to resume), then `docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` (the
-design and milestones) and `docs/superpowers/plans/2026-09-04-implementation-plan.md` (the
-task list). `docs/research/` holds the reverse-engineering and research write-ups.
+**Start here if you are a new agent:** read the "Current state" section at the top of
+`docs/STATUS.md` (what works, what is next, how to resume), then the design and the task list:
+`docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` +
+`docs/superpowers/plans/2026-09-04-implementation-plan.md` for the project as a whole, and
+`docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md` +
+`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md` for the current
+sprint. `docs/research/` holds the reverse-engineering and research write-ups.
 
 ## How it works (one paragraph)
 The retail ELF is only a loader; the game is two Metrowerks overlays that the loader decrypts
@@ -23,7 +26,7 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ## Layout
 | Path | What |
 |---|---|
-| `build.sh`, `run.sh` | Build (`recomp`, `runtime`, `all`) and run (`./run.sh <seconds>`) — Git Bash |
+| `build.sh`, `run.sh` | Build (`tools`, `recomp`, `runtime`, `test`, `all`) and run (`./run.sh <seconds>`) — Git Bash |
 | `recomp/` | Recompiler config (`socom2.toml`), Ghidra function map (`socom2_ghidra.csv`), forced entry points (`extra_functions.txt`), generated C++ in `output/` (ignored) |
 | `third_party/ps2recomp/` | Vendored PS2Recomp fork (our changes are committed in place; see `git log -- third_party`) |
 | `tools_py/` | Python tooling: Unicorn EE harness, APACHE00 decryptor, DNAS self-decryptor, ELF builder, Ghidra CSV fixers, screenshot helper |
@@ -39,6 +42,11 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ```
 ./build.sh recomp      # regenerate ELF, normalize the function map, run ps2_recomp (~10 s)
 ./build.sh runtime     # cmake+ninja, clang, LTO off (~15 min from scratch, ~3 min runtime-only)
+./build.sh test        # ps2x_tests + vu1_replay (builds both, copies vu1_replay to dist/) and
+                       # replays the VU1 fixtures against their goldens, native path on and off
+python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
+                       # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
+                       # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up

@@ -34,6 +34,10 @@
 // kick clears whatever is still in flight; this program never advances m_cycle, so command 0x28's
 // back-to-back per-triangle kicks would silently drop packets. That mode therefore hands back
 // whole as well.
+//
+// A consequence of never advancing m_cycle: a natively-run list consumes zero VU cycles, so to
+// DMAC/VIF timing VU1 appears to finish instantaneously, and the cycles/s field of [vu1-stats]
+// under-reports by whatever those lists would have cost on the microcode path.
 #define private public
 #include "../ps2_vu1_ops.h"
 #undef private

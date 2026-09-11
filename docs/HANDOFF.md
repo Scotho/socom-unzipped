@@ -150,9 +150,10 @@ timestamps). Offline: `dist/vu1_replay.exe logs/vu1dump2/vu1_prog_N.bin --out p.
 ### Build
 
 `./build.sh runtime` (3 min; a header change forces the 500-batch generated-code
-rebuild, ~10 min, and editing a header mid-build breaks the PCH — rebuild from scratch). Replay
-tool: `cmake --build third_party/ps2recomp/build-clang --target vu1_replay` then copy the exe
-into dist/ (it needs the DLLs there). `./build.sh all` after any recompiler change.
+rebuild, ~10 min, and editing a header mid-build breaks the PCH — rebuild from scratch). `./build.sh test`
+builds ps2x_tests and the replay tool, copies vu1_replay.exe into dist/ (it needs the DLLs
+there) and runs both fixture sets against their goldens. `./build.sh all` after any recompiler
+change.
 
 ### Gotchas (2026-09-08)
 

@@ -190,7 +190,7 @@ int main(int argc, char **argv)
     {
         std::fprintf(stderr, "usage: vu1_replay <dump.bin> [--out packets.bin] [--trace] [--state]\n"
                              "       vu1_replay --batch <outdir> [--repeat N] [--state] <dump.bin>...\n"
-                             "       vu1_replay --verify <golden.txt> [--regs all|none] [--native] <dump.bin>...\n");
+                             "       vu1_replay --verify <golden.txt> [--regs all|none] [--native|--no-native] <dump.bin>...\n");
         return 2;
     }
     std::string outPath = "vu1_packets.bin";
@@ -234,6 +234,8 @@ int main(int argc, char **argv)
             verifyRegs = std::strcmp(argv[++i], "none") != 0;
         else if (!std::strcmp(argv[i], "--native"))
             _putenv("PS2X_VU1_NATIVE=1");
+        else if (!std::strcmp(argv[i], "--no-native"))
+            _putenv("PS2X_VU1_NATIVE=0");
         else
             inputs.push_back(argv[i]);
     }

@@ -2408,7 +2408,8 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
     static const bool s_genEnv = std::getenv("PS2X_VU1_GEN") == nullptr || std::atoi(std::getenv("PS2X_VU1_GEN")) != 0;
     // Hand-written native programs (src/lib/vu/native) replace a microprogram entry point on
     // both the fast and the cycle-exact path: what they produce does not depend on how the
-    // microcode would have been interpreted. Off by default; PS2X_VU1_NATIVE=1 selects them.
+    // microcode would have been interpreted. On by default (kVu1NativeDefault);
+    // PS2X_VU1_NATIVE=0 reverts to the generated/interpreted path.
     static const bool s_nativeEnv = std::getenv("PS2X_VU1_NATIVE") ? std::atoi(std::getenv("PS2X_VU1_NATIVE")) != 0 : kVu1NativeDefault;
     // Both registries are keyed by the FNV-1a hash of the 16 KB code image, rehashed only when
     // the VIF MPG generation counter changes.
@@ -2774,7 +2775,7 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                 const uint64_t nativeEntered = g_vu1NativeEntered.load(std::memory_order_relaxed);
                 const uint64_t nativeEnded = g_vu1NativeEnded.load(std::memory_order_relaxed);
                 const uint64_t nativeHandBacks = g_vu1NativeHandBacks.load(std::memory_order_relaxed);
-                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu native-entered/s=%llu ended/s=%llu handbacks/s=%llu\n",
+                std::fprintf(stderr, "[vu1-stats] programs/s=%llu cycles/s=%llu host=%.0f ms/s (%.1f ns/cycle) flips/s=%.1f syncv/s=%.1f thread=%.0f ms/s proc=%.0f ms/s interp-programs/s=%llu handbacks/s=%llu vu0/s=%llu native-entered/s=%llu native-ended/s=%llu native-handbacks/s=%llu\n",
                              (unsigned long long)s_programs, (unsigned long long)s_cycles, s_hostMs,
                              s_cycles ? s_hostMs * 1e6 / static_cast<double>(s_cycles) : 0.0,
                              static_cast<double>(flips - s_lastFlips) / seconds, static_cast<double>(syncs - s_lastSyncV) / seconds,

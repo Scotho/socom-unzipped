@@ -1,4 +1,4 @@
-# Project status — updated 2026-09-11 00:40
+# Project status — updated 2026-09-11 00:45
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify); gates `python -m tools_py.parity.gate`.
@@ -6,6 +6,50 @@
 - Sprint 1 (2026-09-10 →): Tasks 1-8 done (tests, verify fixtures, gate command, rules, research, native registry, dispatcher program, gate+default on).
 - Native VU1: dispatcher (entry 0x1b50) family-A lists 76/76 native across dump2/3/4 (family B/C hand back whole), gate green with PS2X_VU1_NATIVE on, default on (PS2X_VU1_NATIVE=0 reverts)
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
+
+## 2026-09-11 00:45 (local) — Sprint 1 landed: the project is testable (`./build.sh test` + one gate command) and the first hand-written native VU1 program (the 0x1b50 dispatcher) is on by default
+Sprint `2026-09-10-sprint-1-hygiene-and-native-render`, branch `sprint-1`, Tasks 1-8 plus this
+review/fix wave. What exists now:
+
+- **Own repo.** The project is its own git repo, remote `github.com/Scotho/socom-unzipped`.
+- **Unit tests.** `ps2x_tests` links and runs under llvm-mingw (`-Wl,--stack`, SOCOM runner link
+  stubs): **428/428 pass**, run by `./build.sh test`.
+- **VU1 fixture verification.** `dist/vu1_replay.exe --verify <golden> [--native|--no-native]`
+  replays committed dumps and compares packets *and* the whole register/data-memory state against
+  a golden file. Two fixture sets: `tests/fixtures/vu1/title` (12 title-screen dumps, entry pc 0)
+  and `tests/fixtures/vu1/dispatch_0x1b50`. `./build.sh test` runs both sets on both paths.
+- **One gate command.** `python -m tools_py.parity.gate` drives the three screenshot scripts and
+  scores them numerically: **title / transition / mission, each PASS or FAIL**, non-zero exit on
+  any FAIL. It launches `dist/socom2.exe`, so `./build.sh runtime` must precede it — `./build.sh
+  test` does not rebuild the exe.
+- **Freeze rules.** Emulator speed work (VU1/VU0 interpreter, scheduler batching, GS/GL caching
+  and upload performance) is FROZEN for this sprint; 36-42 fps single instance is enough, and the
+  two-instance frame rate is a test-rig concern (run the second client in PCSX2). Recorded in
+  `docs/LOOP_PROMPT.md` (goal 2) and `docs/HANDOFF.md`.
+- **research/12.** `docs/research/12-vu1-entry0-ui-path.md` plus its §f dispatcher addendum:
+  microcode **entry 0 is a trivial upload stub**; the program that actually draws is the command
+  dispatcher at **entry pc 0x1b50** of image `d418194495c25213`. §f documents the command
+  encoding, register roles, the staging array and the hand-back rules.
+- **Native registry + the 0x1b50 program.** A registry keyed by (microcode FNV hash, entry pc)
+  sits in front of the generated-code dispatch; `socom2_dispatch_0x1b50.cpp` implements the
+  dispatcher and all seven **family-A** (UI quad / 2D) handlers natively: **76/76 family-A lists
+  run native across dump2/3/4, bit-exact** (packets, registers and VU data memory identical to
+  the interpreter). Family B and C lists hand back whole at 0x1b50. It is **on by default**
+  (`kVu1NativeDefault`); `PS2X_VU1_NATIVE=0` reverts to the generated/interpreted path.
+- **Gate green with native on**: title PASS (19/23 menu captures over threshold), transition PASS,
+  mission PASS; in-game `[vu1-stats]` shows `native-ended/s` ~3-9k during gameplay.
+
+Open items carried out of the sprint:
+- **Family B/C handlers → Sprint 2.** Family B keeps vi12 (the primitive counter) live across the
+  dispatcher back-edge, so mid-list hand-back is unsafe (research/12 §f.3); family C is untouched.
+- **The transition gate only captures during drive.py's bursts**, so how many black-screen frames
+  a run yields is capture luck, not rendering — the floor is 1. Durable fix: capture during the
+  settle waits in drive.py.
+- **Intro-cinematic freeze seen once** (mission gate run `mission3`: identical frames s29-s41, no
+  fault in the game log; `mission4` played it). 1 in 2 runs. Investigate under goal 3.
+- **Flaky VSync scheduler-stop test** (`ps2_runtime_interrupt_tests.cpp`, 80 ms wall-clock
+  `waitUntil`) made `./build.sh test` non-deterministic; the budget is now 2000 ms, assertions
+  unchanged.
 
 ## 2026-09-10 20:35 (local) — peer packets decoded (probe10): the peer transport is ALIVE (acked, sequenced 22-byte packets, ~1/s), not SCERT-framed and not encrypted; the freeze is above the transport
 Run ours_match_probe10 (net trace with `udp peer send/recv` hex). Every peer packet has the same

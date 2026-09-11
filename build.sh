@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [recomp|runtime|test|all]   (default all)
+# Usage: ./build.sh [tools|recomp|runtime|test|all]   (default all)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
@@ -52,12 +52,22 @@ test_step() {
   ( cd "$RTBUILD/ps2xTest" && ./ps2x_tests.exe )
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
-  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" "$ROOT"/tests/fixtures/vu1/title/*.bin
-  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
-  # Same two sets again with the hand-written native programs (src/lib/vu/native) selected. Note
-  # --native must follow the golden path: --verify consumes the next argument. The run prints
-  # "[vu1_replay] native entered=.. ended=.. handbacks=..", which is how these two lines are told
-  # apart from the two above (which report entered=0).
+  # Four verify runs over the two fixture sets. The native registry is ON by default
+  # (kVu1NativeDefault), so the path a run takes has to be selected explicitly: --no-native forces
+  # the generated/interpreted path, --native forces the registry. Both flags must follow the golden
+  # path -- --verify consumes the next argument. Every run prints
+  # "[vu1_replay] native entered=.. ended=.. handbacks=..", which says which path actually ran.
+  #
+  #   1-2 (--no-native): the generated/interpreted path over both sets; both report entered=0.
+  #   3   (--native):    the title set enters at pc 0, which no native program claims, so it is a
+  #                      no-op for the registry and also reports entered=0 -- this line is a
+  #                      regression check that the native programs do NOT intercept the title set,
+  #                      not native coverage.
+  #   4   (--native):    the 0x1b50 dispatcher set is the one with native coverage; it reports a
+  #                      non-zero entered=.. (entered = ended + handbacks) and must still match the
+  #                      same golden packets and registers as run 2.
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --no-native "$ROOT"/tests/fixtures/vu1/title/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --no-native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" --native "$ROOT"/tests/fixtures/vu1/title/*.bin
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   echo "tests: ok"

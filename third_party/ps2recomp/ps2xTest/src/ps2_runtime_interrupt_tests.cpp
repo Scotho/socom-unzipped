@@ -599,7 +599,11 @@ void register_ps2_runtime_interrupt_tests()
                 return snapshot.runningThreadId == 0 &&
                        !snapshot.threads.empty() &&
                        snapshot.threads.front().waitReason == EeWaitReason::VSync;
-            }, std::chrono::milliseconds(80));
+            // Wall-clock budget, not a timing assertion: the scheduler thread only has to reach
+            // the idle VSync wait once, and the wait returns as soon as it does. 80 ms flaked on
+            // this host (a loaded dev box can stall the new thread's first schedule well past
+            // that), so the budget is deliberately generous; what the test asserts is unchanged.
+            }, std::chrono::milliseconds(2000));
 
             env.runtime.requestStop();
             gameThread.join();

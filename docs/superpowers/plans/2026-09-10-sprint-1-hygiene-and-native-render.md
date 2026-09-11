@@ -159,7 +159,7 @@ mkdir -p tests/fixtures/vu1/title
 for n in 0 12 24 36 48 60 72 84 96 108 120 132; do cp logs/vu1dump_title/vu1_prog_$n.bin tests/fixtures/vu1/title/; done
 ls -la tests/fixtures/vu1/title | wc -l   # expect 14 lines (., .., 12 files)
 ```
-Each dump is 32,848 bytes; the set is ~385 KB. `logs/vu1dump_title` holds 150 dumps of the title screen, all entry pc 0, image FNV `d418194495c25213`, alternating `top` 424/724 (verified 2026-09-10). If `logs/vu1dump_title` is missing, regenerate it: `mkdir -p logs/vu1dump_title` then a title run with `PS2X_VU1_DUMP=logs/vu1dump_title:150 PS2X_VU1_DUMP_AFTER=60` through `drive.py --script scripts/parity/title_only.txt` (lock required).
+Each dump is 33,360 bytes; the set is ~385 KB. `logs/vu1dump_title` holds 150 dumps of the title screen, all entry pc 0, image FNV `d418194495c25213`, alternating `top` 424/724 (verified 2026-09-10). If `logs/vu1dump_title` is missing, regenerate it: `mkdir -p logs/vu1dump_title` then a title run with `PS2X_VU1_DUMP=logs/vu1dump_title:150 PS2X_VU1_DUMP_AFTER=60` through `drive.py --script scripts/parity/title_only.txt` (lock required).
 
 - [x] **Step 2: Refactor `printState` into a string builder**
 
@@ -1009,7 +1009,7 @@ Check `m_activeVuData` is the member name the interpreter uses for the data poin
 
 Build (`./build.sh runtime`, .cpp only) and verify:
 ```bash
-PS2X_VU1_NATIVE=1 dist/vu1_replay.exe --verify --native tests/fixtures/vu1/title/golden.txt tests/fixtures/vu1/title/*.bin | tail -1
+dist/vu1_replay.exe --verify tests/fixtures/vu1/title/golden.txt --native tests/fixtures/vu1/title/*.bin | tail -1
 ```
 Expected: `PASS: 0 mismatching field(s)`; `[vu1-stats]`-style counters (print them at the end of `vu1_replay` in `--native` mode: `native entered=12 ended=0 handbacks=12`). Commit: `git commit -m "vu1(native): socom2 entry-0 skeleton registered; hands back immediately (verify green)"`.
 

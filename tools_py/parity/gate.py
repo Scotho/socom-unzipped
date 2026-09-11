@@ -81,12 +81,11 @@ def score_transition(run_dir):
     examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
     bad = [ln for ln in examined if "NOT BLACK" in ln]
     peaks = [int(m.group(1)) for m in (re.search(r"peak\s+(\d+)", ln) for ln in examined) if m]
-    if not examined:
-        return False, ("transition not captured (0 black-screen frames examined; timing) in %s"
-                       % run_dir)
+    # One check, not two: the floor is 1, so "examined nothing" and "examined fewer than the
+    # floor" are the same condition -- a separate `if not examined` above this was unreachable.
     if len(examined) < TRANSITION_MIN_FRAMES:
-        return False, ("only %d black-screen frames examined in %s, need %d"
-                       % (len(examined), run_dir, TRANSITION_MIN_FRAMES))
+        return False, ("transition not captured (%d black-screen frames examined, need %d; timing)"
+                       " in %s" % (len(examined), TRANSITION_MIN_FRAMES, run_dir))
     if bad or r.returncode != 0:
         return False, "%d black-screen frames examined; non-black band: %s" % (
             len(examined), "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])
