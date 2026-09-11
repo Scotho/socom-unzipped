@@ -53,6 +53,7 @@ test_step() {
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/vu1_replay.exe" "$ROOT/dist/vu1_replay.exe"
   "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/title/golden.txt" "$ROOT"/tests/fixtures/vu1/title/*.bin
+  "$ROOT/dist/vu1_replay.exe" --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   echo "tests: ok"
 }
 
