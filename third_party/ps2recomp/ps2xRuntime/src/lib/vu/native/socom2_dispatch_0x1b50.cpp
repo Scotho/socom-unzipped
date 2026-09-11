@@ -118,6 +118,8 @@ namespace
         kCmdKickRenderState = 0x64u, // 0x04a8 XGKICK the render-state packet at data qword 330
         kCmdDrawGateOff = 0x72u,     // 0x2268 data qword 39.w := 0
         kCmdDrawGateOn = 0x74u,      // 0x2280 data qword 39.w := 2
+        kCmdInlineBlockOverA = 0x30u, // 0x22a0 inline GIF block, S/T rescale, then JR 0x1780
+        kCmdInlineBlockOverB = 0x32u, // 0x23b0 the same on the 150 base, then JR 0x1a78
     };
 
     // The command words a family-A list is allowed to contain. A list built only from these is
@@ -2141,6 +2143,120 @@ namespace
         return true;                                             // 0x2290: B 0x1b60
     }
 
+    // ---- command 0x30 -> 0x22a0: inline GIF block, S/T rescale, second draw pass -----------
+    //
+    // The family-C mechanism with teeth. The command's own list qword carries a block count N in
+    // its z word (research/13 3.1 -- vi14 is already one past the command, so `ILW.z 339(vi14)`
+    // addresses the command itself), and the N eight-qword blocks that follow it *in the command
+    // list* are GIF packets rather than commands: each block's first qword is a real GIFtag and
+    // is XGKICKed (NLOOP = 6, NREG = 1, REGS = A+D in the corpus, so six GS register writes reach
+    // the GS), and the block's eighth qword holds, in .x, a float that every staging S and T is
+    // multiplied by. vi14 advances by 8 per block, so the list resumes after the last one.
+    //
+    // **This is the handler that rewrites vi14**, and the reason a linear decode of a family-C
+    // list is wrong (research/13 3.3): the qwords it skips would otherwise be read as commands.
+    //
+    // Then `JR vi6` tail-jumps into a *draw* handler -- 0x1780 (command 0x28's body) for 0x30,
+    // 0x1a78 (command 0x2a's) for 0x32 -- which redraws the same geometry with the rescaled UVs
+    // and the GS state the block just installed. Those handlers end at their own `B 0x1b60`, so
+    // the command still hands back to the dispatcher like every other one.
+    //
+    // Data qword 339 -- the one immediately below the command list at 340, written by nothing
+    // else -- is the handler's scratch: vi3/vi4/vi9 go into its x/y/z before the outer loop and
+    // come back out at the head of every iteration, which is what makes a second block start from
+    // the staging base again rather than from where the first one left off.
+    namespace inlineBlock
+    {
+        constexpr uint8_t kSrcCursor = 3;  // vi3, stride 3: the staging quad being rescaled
+        constexpr uint8_t kDstCursor = 4;  // vi4, stride 3: where it goes back -- the same array
+        constexpr uint8_t kBlock = 5;      // vi5: the embedded block's first qword
+        constexpr uint8_t kReturnPc = 6;   // vi6: the draw handler to tail-jump into, as pc / 8
+        constexpr uint8_t kBlocks = 7;     // vi7: N
+        constexpr uint8_t kRemaining = 9;  // vi9: the vertex count
+        constexpr uint8_t kQuad = 25;      // vf25: the staging ST quad
+        constexpr uint8_t kScale = 30;     // vf30: .x = the scale from the block's eighth qword
+
+        constexpr int32_t kScratchQword = 339;
+        constexpr int32_t kBlockQwords = 8;
+        constexpr int32_t kBuildPacketPc = 752; // 0x1780 / 8
+        constexpr int32_t kFlushPacketPc = 847; // 0x1a78 / 8
+    }
+
+    // The shared body at 0x22c0. Entered with vi3 and vi4 at the staging base, vi9 the vertex
+    // count and vi6 the draw handler to end in.
+    bool inlineBlockPass(Ctx &c)
+    {
+        using namespace inlineBlock;
+        using vu1ops::ArithMul;
+
+        storeIntWord<kX>(c, kScratchQword, c.vi(kSrcCursor));     // 0x22c0
+        storeIntWord<kY>(c, kScratchQword, c.vi(kDstCursor));     // 0x22c8
+        storeIntWord<kZ>(c, kScratchQword, c.vi(kRemaining));     // 0x22d0
+        c.vi(kBlocks) = c.loadWord(kScratchQword + c.vi(14), 2);  // 0x22d8: N
+
+        for (;;)
+        {
+            // 0x22e0-0x2308: this block's address, the vi14 rewrite, and the three pointers read
+            // back out of the scratch qword.
+            c.vi(kBlock) = vi16(c.vi(14) + kCommandListQword);
+            c.vi(14) = vi16(c.vi(14) + kBlockQwords);
+            c.vi(kSrcCursor) = c.loadWord(kScratchQword, 0);
+            c.vi(kDstCursor) = c.loadWord(kScratchQword, 1);
+            c.vi(kRemaining) = c.loadWord(kScratchQword, 2);
+            c.vi(kBlocks) = vi16(c.vi(kBlocks) - 1);
+
+            // 0x2310: the block's own GIFtag decides how much of it reaches the GS.
+            g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+            c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kBlock))));
+
+            loadQword<kQuad, kXYZW>(c, c.vi(kSrcCursor));         // 0x2320
+            loadQword<kScale, kX>(c, c.vi(kBlock) + 7);           // 0x2328
+
+            for (;;)
+            {
+                // 0x2330-0x2350: S and T only. The quad's .z (Q) and .w (the clip-space w that
+                // 0x08/0x0a left there for the distance fade) are not touched.
+                __m128 up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXY, kQuad, kScale>(c);
+                writeVf<kQuad, kXY>(c, up);
+                c.vi(kRemaining) = vi16(c.vi(kRemaining) - 1);
+                c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+                storeQword<kQuad, kXY>(c, c.vi(kDstCursor));
+
+                // 0x2370: the next quad, which on the last iteration is one triple past the end
+                // -- the microcode's own over-read, and vf25 is a compared register.
+                loadQword<kQuad, kXYZW>(c, c.vi(kSrcCursor));
+
+                // 0x2380 `IBNE vi9, vi0, 0x2330`, with the destination step in its delay slot.
+                // The test is "!= 0", not "> 0": a zero vertex count would walk 65536 triples
+                // rather than none, which is why the pre-scan insists on at least one.
+                const bool more = static_cast<int16_t>(c.vi(kRemaining)) != 0;
+                c.vi(kDstCursor) = vi16(c.vi(kDstCursor) + 3);
+                if (!more)
+                    break;
+            }
+
+            // 0x2390 `IBNE vi7, vi0, 0x22e0`: the next inline block. N was 1 in all 187 corpus
+            // dispatches (research/13 8.1), so this loop is transcribed from the disassembly and
+            // the generated C++ at L_0x22e0 and has never been exercised by a dump.
+            if (static_cast<int16_t>(c.vi(kBlocks)) == 0)
+                break;
+        }
+
+        // 0x23a0 `JR vi6`. Only two values can reach here, because 0x30 and 0x32 are the only
+        // ways in and each writes vi6 itself.
+        return c.vi(kReturnPc) == kBuildPacketPc ? cmdBuildPacket(c) : cmdFlushPacket(c);
+    }
+
+    bool cmdInlineBlockOverA(Ctx &c)
+    {
+        using namespace inlineBlock;
+        c.vi(kSrcCursor) = 40;                                   // 0x22a0: the family-A staging
+        c.vi(kDstCursor) = 40;                                   // 0x22a8: array, rescaled in place
+        c.vi(kReturnPc) = kBuildPacketPc;                        // 0x22b0
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x22b8: TOP+2.z
+        return inlineBlockPass(c);                               // falls into 0x22c0
+    }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -2187,6 +2303,8 @@ namespace
             return fromHandler(cmdDrawGateOff(c));
         case kCmdDrawGateOn:
             return fromHandler(cmdDrawGateOn(c));
+        case kCmdInlineBlockOverA:
+            return fromHandler(cmdInlineBlockOverA(c));
         default:
             return Outcome::NotImplemented;
         }
