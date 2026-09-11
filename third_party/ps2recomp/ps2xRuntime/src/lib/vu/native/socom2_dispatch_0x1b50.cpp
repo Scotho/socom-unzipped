@@ -87,6 +87,7 @@ namespace
         kCmdTransform = 0x08u,     // 0x0df8 transform by the clip matrix + perspective divide
         kCmdClippedTransform = 0x0au, // 0x0f08 family-B shim: XGKICK 423, then 0x08's kernel
         kCmdFade = 0x10u,          // 0x0f90 per-vertex distance fade (the XYZF2 fog lane)
+        kCmdClippedFade = 0x12u,   // 0x1108 family-B shim: 0x10's fade on the 150 base
         kCmdLight = 0x18u,         // 0x1440 lighting
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
         kCmdEnd = 0x42u,           // 0x1b40 E bit
@@ -667,7 +668,11 @@ namespace
         constexpr uint8_t kRemaining = 9;             // vi9
     }
 
-    bool cmdDistanceFade(Ctx &c)
+    // 0x0fa8 onward -- the loop proper, entered with vi3 = the source records, vi4 = the staging
+    // base and vi9 = the vertex count already set. Command 0x10 sets them to TOP+4 / 40 /
+    // TOP+2.z; command 0x12 (family B, 0x1108) to the clipped polygon / 150 / vi10
+    // (research/13 4.5).
+    bool distanceFadeLoop(Ctx &c)
     {
         using namespace fade;
         using vu1ops::ArithAdd;
@@ -676,9 +681,6 @@ namespace
         using vu1ops::ArithSub;
         __m128 up;
 
-        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x0f90: TOP+2.z, the vertex count
-        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x0f98
-        c.vi(kStageCursor) = 40;                                 // 0x0fa0
         loadQword<kRef, kXYZW>(c, 28);                           // 0x0fa8
         loadQword<kScale, kXYZW>(c, 29);                         // 0x0fb0
 
@@ -771,6 +773,29 @@ namespace
             if (!more)
                 return true;                                           // 0x10f8: B 0x1b60
         }
+    }
+
+    bool cmdDistanceFade(Ctx &c)
+    {
+        using namespace fade;
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x0f90: TOP+2.z, the vertex count
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x0f98
+        c.vi(kStageCursor) = 40;                                 // 0x0fa0
+        return distanceFadeLoop(c);
+    }
+
+    // ---- command 0x12 -> 0x1108: 0x10's fade over the clipped polygon ----------------------
+    //
+    // Four instructions (research/13 4.5). Note that the fog base this loop reads is the staging
+    // ST quad's .w -- the clip-space w command 0x0a stored there -- so 0x12 only ever runs after
+    // 0x0a has filled the 150-base array.
+    bool cmdClippedFade(Ctx &c)
+    {
+        using namespace fade;
+        c.vi(kSrcCursor) = vi16(c.vi(8));                        // 0x1108: vi3 = vi8
+        c.vi(kStageCursor) = 150;                                // 0x1110
+        c.vi(kRemaining) = vi16(c.vi(10));                       // 0x1120: the B 0xfa8 delay slot
+        return distanceFadeLoop(c);                              // 0x1118
     }
 
     // ---- command 0x54 -> 0x05d8: template fill ---------------------------------------------
@@ -1375,6 +1400,8 @@ namespace
             return cmdClippedTransform(c);
         case kCmdFade:
             return cmdDistanceFade(c);
+        case kCmdClippedFade:
+            return cmdClippedFade(c);
         case kCmdTemplateFill:
             return cmdTemplateFill(c);
         case kCmdClippedTemplateFill:
