@@ -3,7 +3,7 @@
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify); gates `python -m tools_py.parity.gate`.
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
-- Sprint 1 (2026-09-10 →): hygiene done up to Task N of docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md; emulator speed work frozen.
+- Sprint 1 (2026-09-10 →): Tasks 1-4 done (tests, verify fixtures, gate command, rules); Tasks 5-8 (research, native registry, dispatcher program, gate+default) in progress.
 - Native VU1: dispatcher (entry 0x1b50) program status: not started (registry + verify harness landing in Sprint 1 Tasks 6-7).
 - Open user reports: black 16x16 squares on the intro movie (goal-3 item, not a gate).
 

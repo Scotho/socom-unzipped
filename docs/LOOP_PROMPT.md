@@ -36,9 +36,10 @@ hypothesis->build->run->evidence step.
    hypothesis -> one build -> one run -> read the evidence -> commit -> `./build.sh test` and
    `gate` green -> STATUS entry (newest on top) -> refresh the "START HERE" section of
    HANDOFF.md when the pick-up changes.
-4. Subagents are welcome for offline/static work (decomp reading, VU1 fast-path/recompiler work
-   verified with `dist/vu1_replay.exe` against the interpreter, server-side Horizon checks) but
-   builds of the runtime and game runs are SERIAL: take `logs/.loop_lock` first.
+4. Subagents are welcome for offline/static work (decomp reading, native VU1 handler work under
+   third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ verified with `dist/vu1_replay.exe
+   --verify --native` on both fixture sets, server-side Horizon checks) but builds of the
+   runtime and game runs are SERIAL: take `logs/.loop_lock` first.
 5. Commit from the repo root C:\projects\socom_pc (its own git repo, remote
    github.com/Scotho/socom-unzipped; never `git add -A`; leave `server/config/simulated.db`
    unstaged), then `git push`; trailers
