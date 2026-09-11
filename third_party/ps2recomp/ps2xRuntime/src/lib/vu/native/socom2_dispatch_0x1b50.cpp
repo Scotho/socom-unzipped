@@ -39,6 +39,17 @@
 // microcode reads the next command word -- and the microcode resumes from exact state. With every
 // A and B command implemented that path is a safety net rather than a live one.
 //
+// An asymmetry in how the pre-scan treats that vi10: it requires 0x02 to have been walked before
+// 0x2a, 0x4c or 0x32, but NOT before the four shims 0x0a, 0x12, 0x56 and 0x1a, which read vi10
+// just as much. That is historical -- Task 5 added the requirement for the commands that end a
+// primitive and Task 6 for 0x32, and this task made both order-based -- and it is left alone
+// deliberately: on a list without 0x02 the shims are exactly what the microcode would run, on
+// whatever vi10 the previous program left, and reproducing that is the contract. What was missing
+// was a bound on the work, not a bound on the shape, and the vi10 clamps supply it: those loops
+// exit on `> 0` or `!= 0` against a 16-bit register, so kMaxClippedVertices is what keeps a stale
+// vi10 from being 65535 iterations. 0x2a and 0x4c keep their shape requirement because a stale
+// vi10 there means a stale *packet* kicked at the GS, not just wasted work.
+//
 // Once a list is taken over it runs to its E bit: `budgetEnd` and `m_stopRequested` are ignored,
 // because 0x1b60 is the only pc this program could legally stop at and stopping there buys
 // nothing. That is only defensible while a list's work is bounded, and the counts that bound it
@@ -116,12 +127,13 @@ namespace
 
     // ---- command list ---------------------------------------------------------------------
     constexpr int32_t kCommandListQword = 340;
-    // The longest list in the corpus is 10 commands; a list that does not terminate inside this
-    // many dispatches is stale data, not a list this file may run.
+    // Two bounds on the same walk, because a family-C list also contains the inline GIF blocks
+    // 0x30/0x32/0x34 skip and those are qwords the scan steps over without ever dispatching: at
+    // most this many dispatches, and at most this many list qwords. The longest list in the
+    // corpus is 10 commands and 18 qwords (a C-over-A list: 10 commands with one eight-qword
+    // block between them). A list that does not terminate inside both bounds is stale data, not a
+    // list this file may run.
     constexpr uint32_t kMaxCommands = 32u;
-    // ... and this many qwords, which is not the same bound: a family-C list also contains the
-    // inline GIF blocks 0x30/0x32/0x34 skip, and those are qwords the scan steps over without
-    // ever dispatching. The longest list in the corpus is 18 qwords.
     constexpr uint32_t kMaxListQwords = 64u;
     // The qwords one inline block occupies in the list -- 0x30 and 0x32 advance vi14 by eight per
     // block. (0x34's variant is eleven, and is not implemented here.)
@@ -540,11 +552,7 @@ namespace
     }
 
     // How many qwords of an embedded block its GIFtag hands to the GS: one for the tag plus the
-    // payload NLOOP/NREG/FLG describe. The scan uses it only to check that the tag's packet is
-    // contained inside the block, i.e. that the qwords it is about to step over really are one
-    // GIF packet and not a truncated one running into the commands after it. (A corpus block is
-    // NLOOP = 6, NREG = 1, FLG = PACKED -> seven of the block's eight qwords; 0x34's is five and
-    // one of eleven.)
+    // payload NLOOP/NREG/FLG describe.
     uint32_t gifTagQwords(Ctx &c, int32_t qword)
     {
         uint64_t tagLo = 0u;
@@ -564,6 +572,31 @@ namespace
         return payload > 0xFFFFu ? 0xFFFFu : static_cast<uint32_t>(payload);
     }
 
+    // Is the block starting at `qword` exactly one complete GIF packet, contained in the eight
+    // qwords 0x30/0x32 will step over? Two conditions, and EOP is the one Task 6 left out:
+    //
+    //   * the tag's own packet fits inside the block -- otherwise the qwords the scan steps over
+    //     are a truncated packet running into the commands after it, and
+    //   * the tag sets EOP. Without it the GIF reads the qword after this packet as ANOTHER
+    //     GIFtag and keeps going, so "these eight qwords are one packet" would be false even
+    //     though the size check passed: the kick would run off the end of the block and into the
+    //     rest of the command list.
+    //
+    // Every one of the 16 inline blocks in the three dispatcher dump sets is NLOOP = 6, NREG = 1,
+    // FLG = PACKED, EOP = 1 -- seven of the block's eight qwords, and self-terminating -- so both
+    // conditions do real work rather than passing trivially. (0x34's block is five of eleven, and
+    // 0x34 is not implemented here.) This is a soundness heuristic, not microcode behaviour: the
+    // microcode kicks whatever the tag says. A list whose block failed either check hands back
+    // whole rather than running natively.
+    bool inlineBlockIsOnePacket(Ctx &c, int32_t qword)
+    {
+        uint64_t tagLo = 0u;
+        std::memcpy(&tagLo, c.qwordBytes(qword), sizeof(tagLo));
+        if (((tagLo >> 15) & 1u) == 0u) // EOP
+            return false;
+        return gifTagQwords(c, qword) <= kInlineBlockQwords;
+    }
+
     // What the scan below learned about a list, for the work bounds isNativeRun applies after it.
     struct ListFacts
     {
@@ -578,8 +611,9 @@ namespace
     // qwords the walk has already visited. Family C is different -- 0x30 and 0x32 advance vi14 by
     // eight qwords per inline block, and those qwords are a GIF packet, not commands. So the walk
     // applies that rewrite itself: on 0x30/0x32 it reads the block count N out of the command's
-    // own z word exactly as the handler does, checks each block's GIFtag fits inside its eight
-    // qwords, and resumes the walk after the last block. The command that introduces a block
+    // own z word exactly as the handler does, checks each block's GIFtag is one complete,
+    // EOP-terminated packet inside its eight qwords (inlineBlockIsOnePacket), and resumes the walk
+    // after the last block. The command that introduces a block
     // always precedes it, so the walk reaches the count before it could mistake a packet qword
     // for a command word.
     //
@@ -637,7 +671,7 @@ namespace
             {
                 if (index + kInlineBlockQwords > kMaxListQwords)
                     return false;
-                if (gifTagQwords(c, kCommandListQword + static_cast<int32_t>(index)) > kInlineBlockQwords)
+                if (!inlineBlockIsOnePacket(c, kCommandListQword + static_cast<int32_t>(index)))
                     return false;
                 index += kInlineBlockQwords;
             }
@@ -2564,9 +2598,21 @@ namespace
                 break;
         }
 
-        // 0x23a0 `JR vi6`. Only two values can reach here, because 0x30 and 0x32 are the only
-        // ways in and each writes vi6 itself.
-        return c.vi(kReturnPc) == kBuildPacketPc ? cmdBuildPacket(c) : cmdFlushPacket(c);
+        // 0x23a0 `JR vi6`. Only two values can reach here: 0x30 and 0x32 are the only ways in,
+        // each writes vi6 itself (0x22b0 / 0x23c0), and nothing between there and here touches
+        // vi6 -- the loop above uses vi3/vi4/vi5/vi7/vi9. Any other value is a jump this file
+        // cannot reconstruct, so it gets its own branch rather than falling into 0x1a78 by
+        // default. The hand-back it takes is NOT a clean one -- the inline block has been kicked
+        // and the staging array rescaled, so the microcode would redo both -- but there is no
+        // clean stop left at this point and running the wrong draw handler is worse. Dead code.
+        // (`false` rather than handBackAtNextCommand: vi14 has been advanced by 8*N by now, so the
+        // dispatcher's own NotImplemented path -- which restores vi14 to this command's index --
+        // is the one that gets the re-dispatch right.)
+        if (c.vi(kReturnPc) == kBuildPacketPc)
+            return cmdBuildPacket(c);
+        if (c.vi(kReturnPc) == kFlushPacketPc)
+            return cmdFlushPacket(c);
+        return false;
     }
 
     bool cmdInlineBlockOverA(Ctx &c)
