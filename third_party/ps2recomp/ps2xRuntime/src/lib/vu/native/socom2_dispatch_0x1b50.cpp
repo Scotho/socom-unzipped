@@ -135,5 +135,43 @@ bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t /*budgetEnd*/)
     if (!vu.m_activeVuData || vu.m_activeVuDataSize < 16u * 1024u || !isFamilyAList(c))
         return false; // whole-program hand-back: pc is still 0x1b50 and nothing has been touched
 
-    return false; // no handler implemented yet -- hand back whole as well
+    // 0x1b50: XTOP vi1 -- the VIF double-buffered input base every handler derives its pointers
+    // from. 0x1b58: the command index starts at 0.
+    c.vi(1) = static_cast<int32_t>(vu.m_state.top & 0x3FFu);
+    c.vi(14) = 0;
+
+    for (;;)
+    {
+        // 0x1b60-0x1b90: read the command word, form the jump-table address, jump.
+        //   vi5 = data[340 + vi14].x (low 16)   vi4 = 884 (= 0x1ba0 / 8, the jump table)
+        //   vi14 += 1                           vi3 = vi5 + vi4 -> JR
+        // The jump-table slot is a `B <handler>` pair, so handler pc = 0x1ba0 + 8 * command.
+        const int32_t index = c.vi(14);
+        const uint32_t command = static_cast<uint32_t>(c.loadWord(kCommandListQword + index, 0)) & 0xFFFFu;
+
+        // The dispatcher's own register writes, in microcode order and before the handler runs.
+        c.vi(5) = static_cast<int32_t>(static_cast<int16_t>(command));
+        c.vi(4) = 884;
+        c.vi(14) = static_cast<int32_t>(static_cast<int16_t>(index + 1));
+        c.vi(3) = static_cast<int32_t>(static_cast<int16_t>(c.vi(5) + c.vi(4)));
+
+        if (command == kCmdEnd)
+        {
+            // 0x1b40's E bit: one more pair, then the program ends leaving pc = 0x1b50.
+            vu.m_viBranchBackupValid = false;
+            vu.m_state.pc = kProgramEndPc;
+            return true;
+        }
+
+        if (!runCommand(c, command))
+        {
+            // Not implemented: give the microcode the command back. vi14 has to name this command
+            // again, because 0x1b60 re-reads and 0x1b70 re-increments it; vi3/vi4/vi5 are written
+            // by 0x1b60-0x1b80 before any use, so their value here does not matter.
+            c.vi(14) = index;
+            vu.m_viBranchBackupValid = false;
+            vu.m_state.pc = kNextCommandPc;
+            return false;
+        }
+    }
 }
