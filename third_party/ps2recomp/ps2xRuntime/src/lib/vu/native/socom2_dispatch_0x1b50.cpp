@@ -15,8 +15,17 @@
 // hand back in the middle of such a list (research/12 f.3).
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
-// vi1), so a command this file does not implement yet hands back at 0x1b60 -- the pc at which the
+// vi1), so a command this file does not implement hands back at 0x1b60 -- the pc at which the
 // microcode reads the next command word -- with vi1 and vi14 set as the microcode would have them.
+// As of Sprint 1 all seven family-A commands are implemented, so that path is a safety net rather
+// than a live one.
+//
+// Two liberties this program takes with the interpreter's contract, both bounded by family A's
+// shape (at most 68 vertices and 44 triangles per list, no back-edge that can spin):
+//   * `budgetEnd` is ignored -- a list runs to its E bit rather than stopping mid-way, because
+//     0x1b60 is the only pc it could legally stop at and stopping there buys nothing;
+//   * `m_stopRequested` after an XGKICK is ignored for the same reason (the microcode translation
+//     bails there; this one finishes the list, at most a few dozen more packets).
 #define private public
 #include "../ps2_vu1_ops.h"
 #undef private
@@ -77,7 +86,6 @@ namespace
         VU1Interpreter &vu;
 
         int32_t &vi(uint32_t r) { return vu.m_state.vi[r]; }
-        float *vf(uint32_t r) { return vu.m_state.vf[r]; }
         // VU1 data memory is 16 KB and every access wraps inside it, exactly like the microcode's
         // address arithmetic (Vu1Gen::dataAddress).
         uint8_t *qwordBytes(int32_t qword) { return vu.m_activeVuData + Vu1Gen::dataAddress(qword); }
