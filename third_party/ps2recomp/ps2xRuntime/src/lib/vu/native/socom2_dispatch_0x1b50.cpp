@@ -85,6 +85,7 @@ namespace
     {
         kCmdCull = 0x06u,          // 0x1638 backface cull
         kCmdTransform = 0x08u,     // 0x0df8 transform by the clip matrix + perspective divide
+        kCmdClippedTransform = 0x0au, // 0x0f08 family-B shim: XGKICK 423, then 0x08's kernel
         kCmdFade = 0x10u,          // 0x0f90 per-vertex distance fade (the XYZF2 fog lane)
         kCmdLight = 0x18u,         // 0x1440 lighting
         kCmdBuildPacket = 0x28u,   // 0x1780 triangle assembly -> GIF packet -> XGKICK per triangle
@@ -509,7 +510,11 @@ namespace
         constexpr uint8_t kRemaining = 9;   // vi9
     }
 
-    bool cmdTransformDivide(Ctx &c)
+    // 0x0e10 onward -- the loop proper, entered with vi3 = the source records, vi4 = the staging
+    // base and vi9 = the vertex count already set. Command 0x08 sets them to TOP+4 / 40 / TOP+2.z;
+    // command 0x0a (family B, 0x0f08) sets them to the clipped polygon / 150 / the clipped vertex
+    // count and branches straight here. One kernel, two bases (research/13 4.5).
+    bool transformDivideLoop(Ctx &c)
     {
         using namespace transform;
         using vu1ops::ArithAdd;
@@ -517,9 +522,6 @@ namespace
         using vu1ops::ArithMul;
         __m128 up;
 
-        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                  // 0x0df8
-        c.vi(kStageCursor) = 40;                               // 0x0e00
-        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);         // 0x0e08: TOP+2.z, the vertex count
         loadQword<kSrcPos, kXYZW>(c, c.vi(kSrcCursor) + 0);    // 0x0e10
         loadQword<kSrcTex, kXY>(c, c.vi(kSrcCursor) + 1);      // 0x0e18
 
@@ -605,6 +607,35 @@ namespace
             if (!more)
                 return true;                                          // 0x0ef8: B 0x1b60
         }
+    }
+
+    bool cmdTransformDivide(Ctx &c)
+    {
+        using namespace transform;
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                  // 0x0df8
+        c.vi(kStageCursor) = 40;                               // 0x0e00
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);         // 0x0e08: TOP+2.z, the vertex count
+        return transformDivideLoop(c);
+    }
+
+    // ---- command 0x0a -> 0x0f08: flush tag, then 0x08's kernel on the clipped polygon --------
+    //
+    // Four instructions plus an XGKICK (research/13 4.5): kick the NLOOP=0/EOP=1 terminator tag at
+    // data qword 423, then point 0x08's loop at the polygon the clipper left (vi8) and the
+    // family-B staging array at 150, with the clipped vertex count (vi10) as the loop count.
+    bool cmdClippedTransform(Ctx &c)
+    {
+        using namespace transform;
+
+        c.vi(4) = 423;                                         // 0x0f08
+        // 0x0f10: XGKICK vi4. Same model as command 0x28's kick -- the whole packet is copied at
+        // kick time, which the entry check guarantees.
+        g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+        c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(4))));
+        c.vi(kSrcCursor) = vi16(c.vi(8));                      // 0x0f20: vi3 = vi8
+        c.vi(kStageCursor) = 150;                              // 0x0f28
+        c.vi(kRemaining) = vi16(c.vi(10));                     // 0x0f38: the B 0xe10 delay slot
+        return transformDivideLoop(c);                         // 0x0f30
     }
 
     // ---- command 0x10 -> 0x0f90: per-vertex distance fade ----------------------------------
@@ -1313,6 +1344,8 @@ namespace
             return cmdBackfaceCull(c);
         case kCmdTransform:
             return cmdTransformDivide(c);
+        case kCmdClippedTransform:
+            return cmdClippedTransform(c);
         case kCmdFade:
             return cmdDistanceFade(c);
         case kCmdTemplateFill:
