@@ -699,6 +699,144 @@ namespace
         }
     }
 
+    // ---- command 0x18 -> 0x1440: lighting --------------------------------------------------
+    //
+    // Modulates every vertex's RGBAQ staging quad by a lit colour. The per-list light parameters
+    // are data qword 27; the matrices are the two entry 0 leaves live in the register file: the
+    // normal/light matrix in vf5-vf7 and the colour block in vf9-vf12.
+    //
+    // Once per command:
+    //   light[0..2] = vf9/vf10/vf11 * params.y,  light[3] = vf12 * params.z
+    // then per vertex, from the record's qwords 0 and 1 (position and texture quads):
+    //   normal  = max(vf5 * record0.w + vf6 * record1.z + vf7 * record1.w, 0) on xyz
+    //   lit     = light[0]*normal.x + light[1]*normal.y + light[2]*normal.z + light[3] (xyz),
+    //             with the w lane taken from the staging RGBAQ quad instead
+    //   staging +1 = record2 * lit
+    // Two vertices per iteration, and the loop runs the next pair's normals before storing this
+    // pair's colours.
+    namespace lighting
+    {
+        constexpr uint8_t kParams = 31;                 // data qword 27
+        constexpr uint8_t kLight0 = 13, kLight1 = 14, kLight2 = 15, kLight3 = 16;
+        constexpr uint8_t kPosA = 20, kTexA = 21;       // source record qwords 0 and 1, vertex a
+        constexpr uint8_t kPosB = 22, kTexB = 23;       // ... vertex b
+        constexpr uint8_t kNormalA = 29, kNormalB = 30; // clamped to >= 0 on xyz
+        constexpr uint8_t kRgbaA = 17, kRgbaB = 28;     // the staging +1 quads being modulated
+        constexpr uint8_t kSrcColourA = 18, kSrcColourB = 19; // the record's qword 2
+        constexpr uint8_t kLitA = 24, kLitB = 25;
+        constexpr uint8_t kOutA = 26, kOutB = 27;
+        constexpr uint8_t kSrcCursor = 3; // vi3, stride 6
+        constexpr uint8_t kStageCursor = 4; // vi4, stride 6
+        constexpr uint8_t kRemaining = 9; // vi9
+    }
+
+    bool cmdLighting(Ctx &c)
+    {
+        using namespace lighting;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        __m128 up;
+
+        loadQword<kParams, kXYZW>(c, 27);                        // 0x1440
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x1448
+        c.vi(kStageCursor) = 40;                                 // 0x1450
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x1458: TOP+2.z
+
+        // 0x1460-0x1478: scale the colour block into this list's light matrix, and load the first
+        // pair of source records.
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 1, kXYZW, 9, kParams>(c);
+        loadQword<kPosA, kXYZW>(c, c.vi(kSrcCursor) + 0);
+        writeVf<kLight0, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 1, kXYZW, 10, kParams>(c);
+        loadQword<kTexA, kXYZW>(c, c.vi(kSrcCursor) + 1);
+        writeVf<kLight1, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 1, kXYZW, 11, kParams>(c);
+        loadQword<kPosB, kXYZW>(c, c.vi(kSrcCursor) + 3);
+        writeVf<kLight2, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 2, kXYZW, 12, kParams>(c);
+        loadQword<kTexB, kXYZW>(c, c.vi(kSrcCursor) + 4);
+        writeVf<kLight3, kXYZW>(c, up);
+
+        // 0x1480-0x14c8: the first pair's normals, clamped to >= 0.
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZW, 5, kPosA>(c);   writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 6, kTexA>(c);  writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 7, kTexA>(c);  writeVf<kNormalA, kXYZW>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZW, 5, kPosB>(c);   writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 6, kTexB>(c);  writeAcc<kXYZW>(c, up);
+        up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 7, kTexB>(c);  writeVf<kNormalB, kXYZW>(c, up);
+        c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 6);
+        c.vi(kStageCursor) = vi16(c.vi(kStageCursor) + 6);
+        up = minmax<true, Vu1Gen::MmBc, 0, kNormalA, 0>(c);          writeVf<kNormalA, kXYZ>(c, up);
+        up = minmax<true, Vu1Gen::MmBc, 0, kNormalB, 0>(c);          writeVf<kNormalB, kXYZ>(c, up);
+
+        for (;;)
+        {
+            // 0x14d0-0x1510: vertex a -- light the normal, keep the staging quad's own w, and
+            // modulate the record's colour by the result.
+            loadQword<kRgbaA, kXYZW>(c, c.vi(kStageCursor) - 5);
+            loadQword<kRgbaB, kXYZW>(c, c.vi(kStageCursor) - 2);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, kLight0, kNormalA, false, true, false>(c);
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 2);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, kLight1, kNormalA, false, true, false>(c);
+            loadQword<kSrcColourA, kXYZW>(c, c.vi(kSrcCursor) - 4);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, kLight2, kNormalA, false, true, false>(c);
+            loadQword<kSrcColourB, kXYZW>(c, c.vi(kSrcCursor) - 1);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZ, kLight3, 0, false, true, false>(c);
+            loadQword<kPosA, kXYZW>(c, c.vi(kSrcCursor) + 0);
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, 0, false, false, false>(c);
+            loadQword<kTexA, kXYZW>(c, c.vi(kSrcCursor) + 1);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, kRgbaA, 0, false, true, false>(c);
+            loadQword<kPosB, kXYZW>(c, c.vi(kSrcCursor) + 3);
+            writeVf<kLitA, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZW, kSrcColourA, kLitA, false, true, false>(c);
+            loadQword<kTexB, kXYZW>(c, c.vi(kSrcCursor) + 4);
+            writeVf<kOutA, kXYZW>(c, up);
+
+            // 0x1518-0x1548: vertex b, the same way.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, kLight0, kNormalB, false, true, false>(c);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, kLight1, kNormalB, false, true, false>(c);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, kLight2, kNormalB, false, true, false>(c);
+            c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 6);
+            writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZ, kLight3, 0, false, true, false>(c);
+            c.vi(kStageCursor) = vi16(c.vi(kStageCursor) + 6);
+            writeAcc<kXYZ>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, 0, false, false, false>(c);
+            writeAcc<kW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, kRgbaB, 0, false, true, false>(c);
+            writeVf<kLitB, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZW, kSrcColourB, kLitB, false, true, false>(c);
+            writeVf<kOutB, kXYZW>(c, up);
+
+            // 0x1550-0x1578: the next pair's normals, before this pair's colours are stored.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZW, 5, kPosA>(c);   writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 6, kTexA>(c);  writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 7, kTexA>(c);  writeVf<kNormalA, kXYZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZW, 5, kPosB>(c);   writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 6, kTexB>(c);  writeAcc<kXYZW>(c, up);
+            up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 7, kTexB>(c);  writeVf<kNormalB, kXYZW>(c, up);
+
+            // 0x1580-0x1598: store both colours and clamp the new normals (0x1598 is the branch's
+            // delay slot and runs on both paths).
+            storeQword<kOutA, kXYZW>(c, c.vi(kStageCursor) - 11);
+            storeQword<kOutB, kXYZW>(c, c.vi(kStageCursor) - 8);
+            up = minmax<true, Vu1Gen::MmBc, 0, kNormalA, 0>(c);
+            const bool more = c.vi(kRemaining) > 0;
+            writeVf<kNormalA, kXYZ>(c, up);
+            up = minmax<true, Vu1Gen::MmBc, 0, kNormalB, 0>(c);
+            writeVf<kNormalB, kXYZ>(c, up);
+            if (!more)
+                return true;                                            // 0x15a0: B 0x1b60
+        }
+    }
+
     // Runs one command. Returns false when the command is not implemented yet: the caller then
     // hands back to the microcode at 0x1b60 with vi1/vi14 already set for this command's re-read.
     bool runCommand(Ctx &c, uint32_t command)
@@ -713,6 +851,8 @@ namespace
             return cmdDistanceFade(c);
         case kCmdTemplateFill:
             return cmdTemplateFill(c);
+        case kCmdLight:
+            return cmdLighting(c);
         default:
             return false;
         }
