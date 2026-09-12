@@ -183,6 +183,11 @@ second is smaller, candidate 1 is proven and the fix is to mark the rect from `e
 (or on the transfer's completion regardless of how its bytes arrived) rather than from the byte
 accumulator.
 
+**That count was taken in Sprint 4 task 1 — see section 9. It came out 12 205 741 against
+12 201 993, so the second is indeed smaller, but candidate 1's mechanism is disproved (zero
+partially delivered rectangles) and the real cause is a data race on `m_currentTransfer`.
+Sections 5 and 7 are kept as written for the record; section 9 supersedes them.**
+
 ## 8. Tooling
 
 Throwaway scripts live in the session scratchpad; the recipe is the part worth keeping:
@@ -195,3 +200,121 @@ Throwaway scripts live in the session scratchpad; the recipe is the part worth k
   mirror failures (`gpu`) in one shot — the dump is taken after `refreshDirtyRows` and before the
   present blit, so its `gpu` layer is exactly what the window shows;
 - the `MPEG.cpp` census probe was temporary and is not in the tree.
+
+## 9. Sprint 4, task 1 — the count, and what it found: a data race on `m_currentTransfer`
+
+Section 7's next step was carried out. The count says candidate 1 is **half right and wrong about
+the mechanism**: refreshes really are fewer than 16×16 transfers, but not one of the missing ones
+is a "rectangle whose bytes have not all arrived". The loss is a cross-thread race on
+`GSGlBackend::m_currentTransfer`.
+
+### 9.1 The check: `tools_py/parity/movie_blocks.py`
+
+Written before any runtime change, and it is the permanent form of section 8's recipe:
+
+```
+python -m tools_py.parity.movie_blocks <dumpdir> [--ref game/disc/RUN/MOVIES/INTRO_2.PSS]
+```
+
+Per `PS2X_GS_DUMP_DISPLAY` present, it reports `mask_gpu & ~mask_shadow` over 16×16 blocks —
+black on the GL target, not black in shadow VRAM — prints the coordinates, never an absolute black
+count, and exits 1 on any hit. It needs no reference decode: section 3 proved the decode clean and
+section 4 measured 0/48 dropped blocks in the shadow, so **the shadow layer is the reference for
+the mirror stage**. `--ref` only labels each present with its INTRO_2 picture number.
+
+Because a drawn screen legitimately disagrees with the shadow, presents are split by how many
+blocks are byte-identical in both layers: ≥ 90% is a movie present (tested, counted, decides the
+exit code), 20–90% is the title menu's movie background under drawn panels (a block there is
+looked at only when most of its 8 neighbours are byte-identical, and it is reported as `note`, not
+counted), below 20% mirrors nothing and is skipped.
+
+Validation: run against Sprint 3's stored capture it reproduces section 4 exactly —
+
+```
+$ python -m tools_py.parity.movie_blocks logs/parity/mb10_dispdump
+display_195s_fbp000  movie 99.7%  MISSING 3: (48, 48) (48, 80) (192, 416)
+display_199s_fbp000  movie 99.8%  MISSING 2: (432, 368) (272, 400)
+display_211s_fbp000  movie 99.8%  MISSING 2: (384, 144) (384, 160)
+presents=108 tested=46 advisory=61
+MISSING blocks=7 pictures=3
+```
+
+— the same three presents, the same seven blocks, nothing on the other 105.
+
+### 9.2 The count
+
+A temporary `PS2X_GS_COUNT_MB` counter (removed before the commit) over a full `title_menu.txt`
+run on the pre-fix binary, 2026-09-12:
+
+| quantity | count |
+|---|---|
+| `executeTransfer` calls with `trxreg.rrw == trxreg.rrh == 16` | **12 205 741** |
+| `refreshRenderTargetsFromShadow` calls from `executeUpload` for such a transfer | **12 201 993** |
+| deficit | **3 748** (0.03%) |
+| 16×16 transfers whose bytes reached shadow VRAM with no refresh | **0** |
+| 16×16 transfers that received no image data at all | **0** |
+| 16×16 transfers that received a byte count other than their expected 1024 | **0** |
+
+The deficit is real, so by section 7's rule candidate 1 "passes" — but its **mechanism is
+disproved**: there is never a partially delivered rectangle. Every 16×16 transfer that received
+bytes received exactly 1024 of them and the completion branch fired. The fix section 7 proposed
+(refresh the previous rectangle when bytes are outstanding) would have been a no-op.
+
+### 9.3 What the deficit actually is
+
+`executeUpload` decides *which* rectangle to mark by reading `m_currentTransfer`. That member was
+written in two places:
+
+- `GSGlBackend::executeTransfer` — render thread, immediately before the upload it belongs to;
+- `GSGlBackend::BeginTransfer` — **game thread**, which queues commands and runs ahead of the
+  render thread.
+
+So the game thread could overwrite the member between the render thread's `executeTransfer` and
+its `executeUpload`, and the upload then marked a rectangle belonging to some *later* transfer.
+A second temporary counter compared the game thread's value with the render thread's at every
+upload:
+
+```
+[gs-mb] frame=669 t16=1187 r16=1187 missed16=0 drop16=0 race=1272 race16=1187 tAll=1273
+```
+
+**1187 of 1187** — on a movie frame the value was stale for *every single block*, and 504 959 of
+504 979 (100.0%) over the whole run. The deficit of 3 748 is only the visible tail of it: `r16`
+counts a refresh only when the *read-back* transfer is also 16×16, so the 0.03% are the cases
+where the stale value happened to be a differently shaped transfer. The other 99.97% marked a
+wrong 16×16 rectangle, which is invisible to that counter and just as wrong.
+
+Why the screen was mostly right anyway: the wrong rectangle was almost always another block of the
+same movie frame, so the union of the marked rectangles still covered nearly the whole picture.
+The blocks that fall out are the ones at the trailing edge of the lag window — the last blocks
+uploaded before the present, at the end of the DSAX-outer loop. That is why section 2 found
+columns 38–39 taking 33 of 55 dropped blocks, and why the Sprint 4 before-capture's nine blocks
+all sit at x = 528/544/560.
+
+Everything else section 4 measured follows: the shadow is untouched by the race (`GSCpuBackend`
+keeps its own `m_transfer` under its own mutex, so `UploadImage` always writes the right address),
+positions vary run to run because thread scheduling does, and vertically adjacent losses are
+consecutive transfers in one scheduling window.
+
+### 9.4 The fix
+
+One line, in `GSGlBackend::BeginTransfer`: the game-thread write is deleted. Nothing on the game
+thread reads `m_currentTransfer`, so no second member is needed; the header now says the member is
+render-thread-only and why. `m_uploadExpectedBytes` and `m_uploadReceivedBytes` were already
+touched only on the render thread.
+
+### 9.5 Before and after, same script, same 16×16 upload path
+
+| | before (HEAD of `sprint-4`) | after |
+|---|---|---|
+| `movie_blocks.py` on a `title_menu.txt` capture | `MISSING blocks=9 pictures=1` (present `display_198s_fbp000`, INTRO_2 picture 1640 at distance 0.00, blocks (528,320) (528,352) (544,352) (544,368) (560,368) (544,384) (544,400) (528,416) (544,416)) | `MISSING blocks=0 pictures=0` over 61 movie presents (and `note blocks=0` on the menu background, which had 6 before) |
+| 16×16 transfers vs refreshes | 12 205 741 vs 12 201 993 | 504 979 vs 504 979, deficit 0 |
+
+### 9.6 Two incidental findings
+
+- `scripts/parity/title_only.txt` no longer reaches the title screen: its blind `CROSS` presses
+  answer YES to the controller-configuration "save this configuration?" prompt and the run parks on
+  the "Select MEMORY CARD slot" dialog for the rest of its 420 s. `scripts/parity/title_menu.txt`
+  (`untilref`) clears it. Captures for this note were taken with the latter.
+- The attract intro movie starts about 110 s after the main menu settles, so a capture needs the
+  game alive for ~160 s past the menu — `drive.py --tail` keeps it there after the script ends.

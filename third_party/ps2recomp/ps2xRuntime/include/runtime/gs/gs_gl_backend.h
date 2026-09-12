@@ -331,7 +331,11 @@ private:
     std::vector<uint8_t> m_presentPixels;   // filled only when a frame dump is requested
     bool m_presentPixelsRequested = false;
 
-    // transfer bookkeeping for readback decisions (game thread)
+    // The transfer whose image data executeUpload is taking. RENDER THREAD ONLY: written by
+    // executeTransfer, read by executeUpload, both on the render thread. The game thread must not
+    // write it -- it queues ahead of the render thread, so a game-thread write makes executeUpload
+    // mark the wrong rectangle dirty and the block never reaches the GL texture (research/16
+    // section 9).
     GSTransferCommand m_currentTransfer{};
     std::string m_blendLog;
     std::string m_stateLog;

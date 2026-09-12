@@ -685,7 +685,25 @@ void GSGlBackend::Submit(const GSPrimitiveBatch &batch)
 
 void GSGlBackend::BeginTransfer(const GSTransferCommand &command)
 {
-    m_currentTransfer = command;
+    // This used to run `m_currentTransfer = command;`, and that was the intro-movie macroblock bug
+    // (research/16 section 9). m_currentTransfer is what executeUpload reads to decide which
+    // rectangle of the render target to mark dirty; executeTransfer sets it on the RENDER thread
+    // immediately before the upload it belongs to. This function runs on the GAME thread, which
+    // queues ahead of the render thread -- so a write here landed between the render thread's
+    // executeTransfer and its executeUpload, and the upload marked a rectangle belonging to some
+    // later transfer. The shadow VRAM was unaffected (GSCpuBackend keeps its own m_transfer under
+    // its own mutex), so the block sat in shadow VRAM and never reached the GL texture, which kept
+    // whatever it held: the reported flickering black 16x16 rectangles.
+    //
+    // Counted with PS2X_GS_COUNT_MB over a title_menu.txt run (research/16 section 9): of
+    // 12 205 741 16x16 transfers, 3 748 never reached refreshRenderTargetsFromShadow, and ZERO of
+    // those came from the partial-delivery path the note first suspected. On the fixed build the
+    // same counter says 12 240 952 of 12 241 344 uploads (100.0%) would have read a
+    // m_currentTransfer that was not the rectangle the render thread had begun, and the deficit
+    // is 0. movie_blocks.py over the same capture goes from MISSING blocks=9 to 0.
+    //
+    // Nothing on the game thread reads m_currentTransfer, so the write is deleted outright rather
+    // than duplicated into a second member.
     // Local->host and local->local read GS memory: make sure GPU-drawn pages are downloaded first.
     if (command.direction == 1u || command.direction == 2u)
     {
