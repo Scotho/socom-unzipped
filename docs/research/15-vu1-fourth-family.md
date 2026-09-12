@@ -70,6 +70,15 @@ register roles, the staging array, the hand-back rules) and research/13 (familie
    the program, and its correctness spans two `MSCAL`s (§4.5); `0x66` is never dispatched from
    `0x1b50` at all, so the corpus cannot verify it. `0x34` is outside Task 7's scope.
 
+9. **Task 8 landed `0x34` natively and bit-exactly.** `cmdSphereMapBlock` in
+   `socom2_dispatch_0x1b50.cpp` reproduces `0x2690`–`0x2948` and tail-calls `cmdBuildPacket`;
+   `logs/vu1dump3/vu1_prog_27.bin` runs native with `PASS: 0 mismatching field(s)` under
+   `--verify … --native --regs all`, taking `logs/vu1dump3` from `entered=52 ended=47
+   handbacks=5` to `52 / 48 / 4` and the corpus from 161/166 to **162/166**. The EFU is modelled
+   by committing `P` immediately (`erlengP`), which is exact here because every `MFP` in this
+   handler is past its `ERLENG`'s latency (§6.3). `N != 1` is refused (§6.2 correction).
+   **[verified]**
+
 ---
 
 ## 1. Corpus, selection and histogram
@@ -622,7 +631,8 @@ the generated C++; the `N > 1` path is **[guess]** throughout.
 0x2730  vf20.x = vf17.w ; vf20.y = vf18.w ; vf20.z = vf19.w  ; the EYE position
 0x2740  vi14 += 11                          ; <-- ELEVEN list qwords consumed
 0x2748  vf30.x = vf27.w ; vf20.w = LQ.w 2(vi3)               ; vertex colour quad's w
-        vf24 = LQ 0(vi3) ; vf25 = LQ 1(vi3)
+        (the first vertex's other two qwords are the LOWER halves of 0x2730 and 0x2738:
+         vf24 = LQ 0(vi3) at 0x2730, vf25 = LQ 1(vi3) at 0x2738)
 ------- inner loop, head 0x2758, vi9 times (§6.2) -------
 0x2928  IBNE vi9, vi0, 0x2758
 0x2938  IBNE vi7, vi0, 0x26d8
@@ -722,11 +732,20 @@ Key points, all **[verified]**:
   `TOP+2.z`. Same scratch slot `0x30`/`0x32` use. Note `339(vi14)` (the command qword) and
   `339(vi0)` (the scratch slot) only alias if `vi14 == 0`, which the dispatcher's pre-increment
   makes impossible. **[verified]**
-* **Latent `N > 1` bug**, carried over from research/13 §4.8: `vi5` is computed at `0x26b0`,
-  *outside* the outer loop, so a second outer iteration would re-kick the same block and re-read
-  the same parameters, while `vi14` would still advance by another 11. `0x30`/`0x32` recompute
-  `vi5` each iteration. Untested — `N` was 1. **[verified]** from the disassembly; the consequence
-  is **[guess]**.
+* **Latent `N > 1` bug**, worse than research/13 §4.8's version of it: `vi5` is computed at
+  `0x26b0`, *outside* the outer loop — `0x30`/`0x32` recompute theirs at `0x22e0`, every
+  iteration — **and the inner loop then overwrites `vi5` with the constant `32` at `0x2848`**, the
+  `FMAND` mask. So a second outer iteration does **not** re-kick the same block: it `XGKICK`s data
+  qword **32** and re-reads its five parameters from qwords 38–42, while `vi14` advances by
+  another 11 regardless. Untested — `N` was 1. **[verified]** from the disassembly and the
+  generated C++ (`L_0x26b0`, `L_0x2848`, `L_0x26f8`).
+
+  > **Corrected by Task 8.** This bullet previously said a second iteration "would re-kick the
+  > same block and re-read the same parameters", which ignores the `0x2848` write to `vi5`. The
+  > consequence for a native handler is concrete: the kick target of any iteration after the first
+  > is **not a qword in the command list**, so the pre-scan's "this block is one complete,
+  > EOP-terminated GIF packet" check cannot cover it. `cmdSphereMapBlock` therefore accepts
+  > `N == 1` and refuses everything else, in the pre-scan and again at the handler.
 
 ### 6.3 EFU semantics the interpreter models
 
@@ -844,7 +863,7 @@ about, with a direct scan of the dumps.
 |---|---|---|---|---|---|
 | `0x70` | vertex count | `ILW.z 2(vi1)` at `0x0cc0` | `IBLTZ` / `IBGTZ` — **0 is safe** | **73** (`vu1_prog_59.bin`) over the 38 | **[verified]** |
 | `0x40` | triangle count | `ILW.w 2(vi1)` at `0x17d0` | `IBGTZ` — **0 is safe** | **73** (`vu1_prog_102.bin`) over the 38 | **[verified]** |
-| `0x34` outer | `N` | `ILW.z 339(vi14)` — the command qword's `z` | `IBNE vi7, vi0` — **0 means 65536 and a wrapping `vi14`; must be >= 1** | **1** (the only dispatch) | **[verified]** |
+| `0x34` outer | `N` | `ILW.z 339(vi14)` — the command qword's `z` | `IBNE vi7, vi0` — **0 means 65536 and a wrapping `vi14`; must be >= 1** — and Task 8 narrows this to **exactly 1**, because iteration 2 kicks data qword 32 (§6.2) | **1** (the only dispatch) | **[verified]** |
 | `0x34` inner | vertex count | `ILW.z 2(vi1)` at `0x26a8` | `IBNE vi9, vi0` — **0 means 65536; must be >= 1** | **53** (`vu1_prog_27.bin`) | **[verified]** |
 | `0x66` | triangle count | `ILW.w 2(vi1)` at `0x2e40` | `IBGTZ` — **0 is safe** | **38** (`vu1_prog_141.bin`, at the `0x33c8` entry) | **[verified]** |
 | `0x52` | vertex count | `ILWR.w vi10, (vi4)` at `0x3138`, `vi4 = vi1 + 4` — i.e. `TOP+4.w` | `IBNE vi10, vi0` — **0 means 65536; must be >= 1** | **49** (`vu1_prog_145.bin`) over the four | **[verified]** |
@@ -916,10 +935,12 @@ dead here.
 
 ## 9. What is still a guess, and what Task 7/8 should watch out for
 
-1. **The `N > 1` path of `0x34`** is unexercised, and the `vi5`-outside-the-loop scheduling means
-   the microcode's behaviour there is probably not what the author intended. Whoever implements
-   `0x34` should refuse `N != 1` (the existing pre-scan already refuses `N < 1` for `0x30`/`0x32`
-   and would need a `kInlineBlockQwords = 11` variant for `0x34` anyway). **[guess]**
+1. **The `N > 1` path of `0x34`** is unexercised, and the `vi5`-outside-the-loop scheduling —
+   compounded by the `vi5 = 32` at `0x2848`, see the correction in §6.2 — means the microcode's
+   behaviour there is probably not what the author intended. Whoever implements `0x34` should
+   refuse `N != 1`. **[guess]** — **done in Task 8**: `scanCommandList` refuses `N != 1` for
+   `0x34` (and steps over `kSphereMapBlockQwords = 11` per block, checking the GIFtag against that
+   bound rather than against eight), and `cmdSphereMapBlock` re-checks it at the handler.
 
 2. **`0x40`'s inherited `vf20`** is the single highest-risk item in this note. It is verified, but
    it makes `0x40` the first handler in this project that is *not* self-contained in the family-A

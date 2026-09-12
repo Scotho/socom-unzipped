@@ -20,17 +20,16 @@
 // What runs natively: command lists whose decode from data qword 340 contains only command words
 // this file implements and terminates on 0x42 (END) -- all seven family-A commands, all seven
 // family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the 0x1980
-// flush tail behind them), five of family C's six (0x64, 0x72, 0x74, 0x30, 0x32) and, of the
+// flush tail behind them), all six of family C's (0x64, 0x72, 0x74, 0x30, 0x32, 0x34) and, of the
 // fourth family, 0x70 and 0x40 (research/15) -- which makes its two drawing shapes
 // `70 06 08 40 42` and `70 08 40 42` fully native. "Decode" is
 // not "linear decode" any more: 0x30 and 0x32 embed eight-qword GIF packets in the list itself and
-// advance vi14 past them, so the pre-scan applies that rewrite as it walks (scanCommandList).
+// 0x34 an eleven-qword one, and all three advance vi14 past them, so the pre-scan applies that
+// rewrite as it walks (scanCommandList).
 //
-// Three command words are still missing, and a list containing any of them hands back WHOLE at
+// Two command words are still missing, and a list containing either of them hands back WHOLE at
 // 0x1b50 before this file touches any state, so the generated microcode translation runs it
-// exactly as before. Over the 166-run dispatcher corpus that residual is five programs:
-//   * 0x34 (0x2690), the eleven-qword-block variant of 0x30: sphere-map ST plus a rim-alpha ramp
-//     over an ERLENG normalise, dispatched once in the whole corpus (research/15 6).
+// exactly as before. Over the 166-run dispatcher corpus that residual is four programs:
 //   * 0x52 (0x3100) and 0x66 (0x2e28), the skinning half of the fourth family, four programs.
 //     Both are scope decisions with reasons, not gaps waiting to be filled -- see
 //     isFamilyDCommand.
@@ -58,7 +57,8 @@
 // Once a list is taken over it runs to its E bit: `budgetEnd` and `m_stopRequested` are ignored,
 // because 0x1b60 is the only pc this program could legally stop at and stopping there buys
 // nothing. That is only defensible while a list's work is bounded, and the counts that bound it
-// (TOP+2.z vertices, TOP+2.w triangles, the latter also family B's primitive counter) are guest
+// (TOP+2.z vertices, TOP+2.w triangles, the latter also family B's primitive counter, plus 0x34's
+// block count N) are guest
 // data, not something the microcode validates -- a header with z = 32767 would mean ~11k
 // template-fill iterations and up to 32767 uninterruptible XGKICKs. So the pre-scan checks them
 // too, against a ceiling with plenty of margin over the corpus maxima: see kMaxVertices /
@@ -67,9 +67,9 @@
 //
 // THE PER-HANDLER CLAMPS. The pre-scan's header check is not the only place those bounds are
 // enforced. Every handler re-checks the count it is about to loop on, as its first statement,
-// against kMaxVertices (TOP+2.z: 0x0b28, 0x0e08, 0x0f90, 0x05e0, 0x1458, 0x22b8), kMaxTriangles
-// (TOP+2.w: 0x1640, 0x17d0, 0x1f78) or kMaxClippedVertices (vi10: 0x0f38, 0x1120, 0x0650, 0x15d0,
-// 0x1a98, 0x23d0). A violation hands the command back to the microcode at 0x1b60 with vi14 naming
+// against kMaxVertices (TOP+2.z: 0x0b28, 0x0e08, 0x0f90, 0x05e0, 0x1458, 0x22b8, 0x26a8),
+// kMaxTriangles (TOP+2.w: 0x1640, 0x17d0, 0x1f78) or kMaxClippedVertices (vi10: 0x0f38, 0x1120,
+// 0x0650, 0x15d0, 0x1a98, 0x23d0). A violation hands the command back to the microcode at 0x1b60 with vi14 naming
 // it again -- the same clean hand-back a command with no handler gets, which is why every clamp
 // sits before its handler has written a register, stored a qword or kicked anything.
 //   * For family A that is a hand-back research/12 already licenses at any command boundary.
@@ -83,11 +83,12 @@
 //     escape hatch the brief's other option would need -- finishing the primitive and stopping at
 //     the 0x4c boundary -- is not taken, because 6.3 does not license that boundary either; the
 //     list is refused before it starts instead (see the family-B clauses in isNativeRun).
-//   * Commands 0x30 and 0x32 check *both* their own rescale count and the count of the draw
-//     handler they tail-jump into, at their own entry, because after their first XGKICK a
-//     hand-back would replay the inline block. 0x32's check is two-sided: its rescale loop ends
-//     on `!= 0`, so a vi10 of zero is 65536 wrapping stores, and a 0x4c back edge can reach a
-//     0x32 with the zero the clipper's "clipped away entirely" path leaves.
+//   * Commands 0x30, 0x32 and 0x34 check *both* their own per-vertex count and the count of the
+//     draw handler they tail-jump into, at their own entry, because after their first XGKICK a
+//     hand-back would replay the inline block. 0x32's and 0x34's checks are two-sided: their
+//     per-vertex loops end on `!= 0`, so a count of zero is 65536 wrapping stores, and a 0x4c back
+//     edge can reach a 0x32 with the zero the clipper's "clipped away entirely" path leaves.
+//     0x34 additionally refuses any block count but 1 (cmdSphereMapBlock).
 //
 // On real data a clamp cannot fire, because the pre-scan reads the same two header words first
 // and vi10 is bounded by the clipper that produced it. That is a property of the data, not of the
@@ -123,6 +124,7 @@
 #include "runtime/gs/gs_frontend.h"
 
 #include <atomic>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -150,8 +152,9 @@ namespace
     constexpr uint32_t kMaxCommands = 32u;
     constexpr uint32_t kMaxListQwords = 64u;
     // The qwords one inline block occupies in the list -- 0x30 and 0x32 advance vi14 by eight per
-    // block. (0x34's variant is eleven, and is not implemented here.)
+    // block, 0x34 by eleven (six kicked plus five VU-only parameter qwords: research/15 6.1).
     constexpr uint32_t kInlineBlockQwords = 8u;
+    constexpr uint32_t kSphereMapBlockQwords = 11u;
 
     // ---- the header work ceiling -----------------------------------------------------------
     // Every handler loops over TOP+2.z vertices or TOP+2.w triangles, both of them guest data.
@@ -164,9 +167,10 @@ namespace
     //     kicks <= 3 * kMaxTriangles          the draw commands -- one per triangle from 0x28
     //                                         (family A), or three per primitive for family B
     //                                         (423 from 0x0a, then 423 and 112 from 0x2a)
-    //           +  kMaxListQwords / 8         one per inline GIF block from 0x30/0x32, and the
-    //                                         blocks are eight list qwords each, so the list-qword
-    //                                         bound caps how many a list can carry (8)
+    //           +  kMaxListQwords / 8         one per inline GIF block from 0x30/0x32/0x34, and
+    //                                         the blocks are eight list qwords each (eleven for
+    //                                         0x34), so the list-qword bound caps how many a list
+    //                                         can carry (8)
     //           +  kMaxCommands               one per 0x64, which kicks the render-state packet
     // i.e. at most 768 + 8 + 32 = 808 XGKICKs for any list this file will run, against 32767 for
     // an unbounded header. Each of the three terms is bounded by a constant here, none by data.
@@ -244,6 +248,8 @@ namespace
         kCmdDrawGateOn = 0x74u,      // 0x2280 data qword 39.w := 2
         kCmdInlineBlockOverA = 0x30u, // 0x22a0 inline GIF block, S/T rescale, then JR 0x1780
         kCmdInlineBlockOverB = 0x32u, // 0x23b0 the same on the 150 base, then JR 0x1a78
+        kCmdSphereMapBlock = 0x34u,   // 0x2690 the eleven-qword-block variant: sphere-map ST and a
+                                      //        rim-alpha ramp per vertex, then JR 0x1780
     };
 
     // The command words a family-A list is allowed to contain. A list built only from these is
@@ -289,13 +295,9 @@ namespace
         }
     }
 
-    // ... and the ones family C adds: `68 06 02 0a 64 12 2a 32 <block> 72 74 4c 42` (C over B) and
-    // `68 06 64 08 10 28 30 <block> 72 74 42` (C over A).
-    //
-    // 0x34 -- the eleven-qword-block variant of 0x30, dispatched once in the whole 48-dump corpus
-    // -- is deliberately absent: its per-vertex maths (an ERLENG normalise over five VU-only
-    // parameter qwords) is only [partial] in research/13 4.8. A list containing it hands back
-    // whole, exactly as every family-C list did before this.
+    // ... and the ones family C adds: `68 06 02 0a 64 12 2a 32 <block> 72 74 4c 42` (C over B),
+    // `68 06 64 08 10 28 30 <block> 72 74 42` (C over A) and, with 0x34,
+    // `68 06 64 08 10 28 72 34 <block> 74 42` -- the one sphere-map list in the corpus.
     bool isFamilyCCommand(uint32_t command)
     {
         switch (command)
@@ -305,6 +307,7 @@ namespace
         case kCmdDrawGateOn:
         case kCmdInlineBlockOverA:
         case kCmdInlineBlockOverB:
+        case kCmdSphereMapBlock:
             return true;
         default:
             return false;
@@ -519,6 +522,53 @@ namespace
         c.vu.m_state.status = (c.vu.m_state.status & 0xFCFu) | statusDi | (statusDi << 6);
     }
 
+    // ERLENG P, vfs -- the EFU's reciprocal length, committed immediately instead of after its
+    // 24-cycle latency. Three pieces of the interpreter are mirrored here, and all three are
+    // KEEP IN SYNC targets:
+    //   * the ERLENG case (opcode 0x73) of VU1Interpreter::execLower (ps2_vu1_lower.cpp) -- the
+    //     normalizeOperand of each of the three lanes, and the `len != 0 ? 1/len : len` rule that
+    //     makes a zero-length input yield P = 0 rather than an infinity;
+    //   * VU1Interpreter::queueP (ps2_vu1_core.cpp) -- which normalizeResult()s the value BEFORE
+    //     it enters the pipeline, so the normalisation is part of the stored result, not of the
+    //     commit;
+    //   * the EFU half of VU1Interpreter::fastCommit (ps2_vu1_core.cpp) -- `m_state.p =
+    //     oldest->value` over the entries whose readyCycle has passed, newest last.
+    // Collapsing the three is exact for this microcode because every MFP that reads an ERLENG in
+    // it is far enough downstream that fastCommit has already landed the value: the first ERLENG
+    // (0x2768) is read 26 pairs later at 0x2838 against a latency of 24, and the second (0x2880)
+    // has an explicit WAITP in front of its MFP (research/15 6.3). A native handler whose MFP sat
+    // inside the latency window would need the pipeline, not this.
+    template <uint8_t Fs>
+    void erlengP(Ctx &c)
+    {
+        const float(*vf)[4] = c.vu.m_state.vf;
+        const float x = VU1Interpreter::normalizeOperand(vf[Fs][0]);
+        const float y = VU1Interpreter::normalizeOperand(vf[Fs][1]);
+        const float z = VU1Interpreter::normalizeOperand(vf[Fs][2]);
+        const float len = std::sqrt(x * x + y * y + z * z);
+        uint32_t ignored = 0u;
+        c.vu.m_state.p = c.vu.normalizeResult(len != 0.0f ? 1.0f / len : len, ignored);
+    }
+
+    // MFP.<dest> vft, P -- opcode 0x64 of execLower, which reads m_state.p as it stands and
+    // stalls on nothing.
+    template <uint8_t Vf, uint8_t Dest>
+    void moveFromP(Ctx &c)
+    {
+        const float p = c.vu.m_state.p;
+        float result[4] = {p, p, p, p};
+        VU1Interpreter::applyDest(c.vu.m_state.vf[Vf], result, Dest);
+    }
+
+    // MR32.<dest> vft, vfs -- the lanes rotated up by one (x <- y, y <- z, z <- w, w <- x).
+    template <uint8_t Vf, uint8_t Fs, uint8_t Dest>
+    void moveRotate32(Ctx &c)
+    {
+        const float *source = c.vu.m_state.vf[Fs];
+        float result[4] = {source[1], source[2], source[3], source[0]};
+        VU1Interpreter::applyDest(c.vu.m_state.vf[Vf], result, Dest);
+    }
+
     // FMAND: an integer register masked with a MAC flag register value.
     int32_t fmandWith(uint32_t mac, int32_t mask)
     {
@@ -694,8 +744,9 @@ namespace
         return payload > 0xFFFFu ? 0xFFFFu : static_cast<uint32_t>(payload);
     }
 
-    // Is the block starting at `qword` exactly one complete GIF packet, contained in the eight
-    // qwords 0x30/0x32 will step over? Two conditions, and EOP is the one Task 6 left out:
+    // Is the block starting at `qword` exactly one complete GIF packet, contained in the
+    // `blockQwords` the command will step over (eight for 0x30/0x32, eleven for 0x34)? Two
+    // conditions, and EOP is the one Task 6 left out:
     //
     //   * the tag's own packet fits inside the block -- otherwise the qwords the scan steps over
     //     are a truncated packet running into the commands after it, and
@@ -704,19 +755,20 @@ namespace
     //     though the size check passed: the kick would run off the end of the block and into the
     //     rest of the command list.
     //
-    // Every one of the 16 inline blocks in the three dispatcher dump sets is NLOOP = 6, NREG = 1,
-    // FLG = PACKED, EOP = 1 -- seven of the block's eight qwords, and self-terminating -- so both
-    // conditions do real work rather than passing trivially. (0x34's block is five of eleven, and
-    // 0x34 is not implemented here.) This is a soundness heuristic, not microcode behaviour: the
-    // microcode kicks whatever the tag says. A list whose block failed either check hands back
-    // whole rather than running natively.
-    bool inlineBlockIsOnePacket(Ctx &c, int32_t qword)
+    // Every one of the 16 eight-qword blocks in the three dispatcher dump sets is NLOOP = 6,
+    // NREG = 1, FLG = PACKED, EOP = 1 -- seven of the block's eight qwords, and self-terminating
+    // -- so both conditions do real work rather than passing trivially. 0x34's single block is
+    // NLOOP = 5, NREG = 1, PACKED, EOP = 1: six of its eleven qwords reach the GS and the other
+    // five are VU-only parameters the handler loads with LQ. This is a soundness heuristic, not
+    // microcode behaviour: the microcode kicks whatever the tag says. A list whose block failed
+    // either check hands back whole rather than running natively.
+    bool inlineBlockIsOnePacket(Ctx &c, int32_t qword, uint32_t blockQwords)
     {
         uint64_t tagLo = 0u;
         std::memcpy(&tagLo, c.qwordBytes(qword), sizeof(tagLo));
         if (((tagLo >> 15) & 1u) == 0u) // EOP
             return false;
-        return gifTagQwords(c, qword) <= kInlineBlockQwords;
+        return gifTagQwords(c, qword) <= blockQwords;
     }
 
     // What the scan below learned about a list, for the work bounds isNativeRun applies after it.
@@ -724,6 +776,7 @@ namespace
     {
         bool hasFamilyB = false;     // any of 0x02 0x0a 0x12 0x56 0x1a 0x2a 0x4c
         bool hasInlineOverA = false; // 0x30 -- its vertex count is TOP+2.z
+        bool hasSphereMap = false;   // 0x34 -- likewise, and its loop also ends on `!= 0`
     };
 
     // Walks the command list the way the dispatcher and the handlers walk it, and says whether
@@ -785,28 +838,42 @@ namespace
                 !seenWorldObject)
                 return false;
 
-            const bool introducesBlocks =
-                command == kCmdInlineBlockOverA || command == kCmdInlineBlockOverB;
+            const bool introducesBlocks = command == kCmdInlineBlockOverA ||
+                                          command == kCmdInlineBlockOverB ||
+                                          command == kCmdSphereMapBlock;
             if (command == kCmdInlineBlockOverA)
                 facts.hasInlineOverA = true;
+            if (command == kCmdSphereMapBlock)
+                facts.hasSphereMap = true;
 
             const int32_t blockCount = introducesBlocks ? peekBlockCount(c, index) : 0;
+            const uint32_t blockQwords =
+                command == kCmdSphereMapBlock ? kSphereMapBlockQwords : kInlineBlockQwords;
             ++index;
             if (!introducesBlocks)
                 continue;
 
             // The handler's outer loop decrements N and tests `!= 0`, so N = 0 means 65536 blocks
-            // and a vi14 that wraps: not a list this file runs. N > 1 is accepted and implemented
-            // but was never dispatched in the corpus (research/13 8.1).
+            // and a vi14 that wraps: not a list this file runs. For 0x30/0x32, N > 1 is accepted
+            // and implemented but was never dispatched in the corpus (research/13 8.1).
             if (blockCount < 1)
+                return false;
+            // 0x34 is the exception: it accepts N == 1 and nothing else. Its outer loop does NOT
+            // recompute vi5 -- and its inner loop overwrites vi5 with the FMAND mask 32 at pc
+            // 0x2848 -- so a second outer iteration would XGKICK data qword 32, a GIFtag that is
+            // not in the command list and that this scan therefore never validated. Refusing N
+            // != 1 keeps every kick this file makes one the scan has checked. Corpus maximum is 1
+            // (research/15 7); see cmdSphereMapBlock for the same clamp at the handler.
+            if (command == kCmdSphereMapBlock && blockCount != 1)
                 return false;
             for (int32_t block = 0; block < blockCount; ++block)
             {
-                if (index + kInlineBlockQwords > kMaxListQwords)
+                if (index + blockQwords > kMaxListQwords)
                     return false;
-                if (!inlineBlockIsOnePacket(c, kCommandListQword + static_cast<int32_t>(index)))
+                if (!inlineBlockIsOnePacket(c, kCommandListQword + static_cast<int32_t>(index),
+                                            blockQwords))
                     return false;
-                index += kInlineBlockQwords;
+                index += blockQwords;
             }
         }
         return false; // no 0x42 inside the dispatch bound
@@ -843,8 +910,9 @@ namespace
         // 65536 staging triples instead of none -- bounded, but not a run to start uninterruptibly.
         // 0x30's count is TOP+2.z, which therefore has to be at least one. 0x32's is vi10, which
         // is only a count at all when 0x02 has run: that is the scan's order-based 0x02 check
-        // above, and 0x02 itself hands back to 0x32 only with vi10 != 0.
-        if (facts.hasInlineOverA && vertices < 1)
+        // above, and 0x02 itself hands back to 0x32 only with vi10 != 0. 0x34's per-vertex loop
+        // ends the same way (`IBNE vi9, vi0` at 0x2928) on the same TOP+2.z.
+        if ((facts.hasInlineOverA || facts.hasSphereMap) && vertices < 1)
             return false;
         return true;
     }
@@ -3018,6 +3086,300 @@ namespace
         return inlineBlockPass(c);                               // 0x23c8
     }
 
+    // ---- command 0x34 -> 0x2690: sphere-map ST + rim alpha over an eleven-qword block -------
+    //
+    // The third inline-block command, and the only one that computes rather than rescales
+    // (research/15 6). Its block is ELEVEN list qwords, not eight: a six-qword GIF packet the
+    // handler kicks (a PACKED A+D tag plus five GS register writes -- ALPHA_1, TEX1_1, TEX0_1,
+    // TEST_1, CLAMP_1) followed by five qwords that never reach the GS and are read with LQ as
+    // per-object parameters:
+    //     +6..+8  three basis rows (vf17/vf18/vf19), whose .w lanes are the EYE position
+    //     +9      the base colour (vf27), whose .w seeds the alpha
+    //     +10     (UV scale, rim offset, -, rim slope) -> vf23, loaded .xyw only
+    //
+    // Per vertex, over the SAME three-qword records 0x68/0x70 unpack and the same 40-based
+    // staging array the rest of family A writes:
+    //     V  = position - eye                      R  = V - 2 dot(V, N) N          (N = the
+    //     R' = R in the (vf17, vf18, vf19) basis        packed normal, (pos.w, uv.z, uv.w))
+    //     ST = R'.xy * (1/|R'|) * scale + 0.5, then * Q          -> staging[+0].xy
+    //     A  = (1 + block[9].w) * colour.w/128 * ramp(R'.z)      -> staging[+1] (whole RGBAQ)
+    // and nothing else: XYZF2 (+2) and the ST quad's .z/.w come from the 0x08 that always
+    // precedes it. The 1/|V| and 1/|R'| are EFU ERLENGs (erlengP above); the ramp is skipped
+    // entirely, reusing 1/|V|, when the MADDz at 0x2838 leaves the Sz MAC bit clear, i.e. when
+    // R'.z >= 0.
+    //
+    // Two things in here are decided by the code rather than by the algebra:
+    //
+    // * THE SAME-LANE WRITE CONFLICT AT pc 0x2760. That pair is
+    //       upper  ADDx.w vf27, vf0, vf30x   ->  vf27.w = 1.0f + vf30.x
+    //       lower  MR32.w  vf27, vf30        ->  vf27.w = vf30.x
+    //   -- both halves writing vf27.w, one 1.0f apart. The UPPER WINS: the interpreter's pair
+    //   decoder sets decoded.suppressedLowerVf when the lower's vf write names the upper's
+    //   destination register, and `hasLowerWrite` then drops the lower's queueVfWrite entirely
+    //   (ps2_vu1_core.cpp); the generated translation's L_0x2760 emits the ADDx.w and no
+    //   execLower at all. research/15 6.4 also separates the two hypotheses by experiment -- with
+    //   block[9].w patched to 0 the measured alpha is non-zero, which only the upper produces.
+    //   So this handler emits the FMAC and no MR32. The suppression is register-granular, not
+    //   lane-granular, so there is deliberately no lane merge here.
+    //
+    // * N > 1 IS REFUSED, by the pre-scan and again below. vi5 holds the block's base address
+    //   for the XGKICK at 0x26f8, is computed ONCE at 0x26b0 outside the outer loop, and is then
+    //   overwritten with the constant 32 at 0x2848 -- the FMAND mask -- on the first pass through
+    //   the inner loop. A second outer iteration would therefore kick data qword 32 and read its
+    //   five parameter qwords from 38..42, not re-kick the block. (research/15 6.2's last bullet
+    //   says it would "re-kick the same block"; that is wrong, and the note is corrected in the
+    //   same commit as this handler.) Since that target is not in the command list, the scan can
+    //   never have validated its GIFtag, so N != 1 hands the list back whole. N was 1 in the only
+    //   dispatch in the corpus (research/15 7).
+    //
+    // Ends with `JR vi6` at 0x2948 to pc 0x1780 -- command 0x28's FULL body, including its
+    // `LQ vf20, 38(vi0)` and `LQ vf19, 1(vi1)` -- so unlike 0x40 there is no inherited vf20 here,
+    // and the draw is the ordinary textured/fogged one. vi6 is loaded with 752 at 0x26a0 and
+    // nothing between there and the jump writes it (the loops use vi3/vi4/vi5/vi7/vi9/vi13/vi14),
+    // so the tail target is a constant and cmdBuildPacket is called directly.
+    namespace sphereMap
+    {
+        constexpr uint8_t kSrcCursor = 3;  // vi3, stride 3: the source vertex record
+        constexpr uint8_t kDstCursor = 4;  // vi4, stride 3: the staging triple it feeds
+        constexpr uint8_t kBlock = 5;      // vi5: the block's first qword -- until 0x2848 reuses
+                                           //      it as the FMAND mask (see above)
+        constexpr uint8_t kReturnPc = 6;   // vi6: the tail-jump target, as pc / 8
+        constexpr uint8_t kBlocks = 7;     // vi7: N
+        constexpr uint8_t kRemaining = 9;  // vi9: vertices left
+        constexpr uint8_t kSign = 13;      // vi13: the Sz MAC bit of the 0x2838 MADDz
+
+        constexpr uint8_t kBasis0 = 17, kBasis1 = 18, kBasis2 = 19; // .xyz basis, .w = eye
+        constexpr uint8_t kEye = 20;       // vf20: .xyz the eye, .w the vertex colour's w
+        constexpr uint8_t kDot = 21;       // vf21: .xyz V*N lanewise, .w -2 dot(V, N)
+        constexpr uint8_t kScaledN = 22;   // vf22: -2 dot(V, N) N
+        constexpr uint8_t kParams = 23;    // vf23: .x UV scale, .y rim offset, .z ramp, .w slope
+        constexpr uint8_t kPos = 24;       // vf24: the vertex position, then its clip-space form
+        constexpr uint8_t kUv = 25;        // vf25: the vertex UV quad (.zw = normal.y/z)
+        constexpr uint8_t kReflect = 26;   // vf26: R, then R' in the basis, then the final ST
+        constexpr uint8_t kColour = 27;    // vf27: the staged RGBAQ
+        constexpr uint8_t kView = 28;      // vf28: V = position - eye
+        constexpr uint8_t kNormal = 29;    // vf29: (pos.w, uv.z, uv.w)
+        constexpr uint8_t kAlphaSeed = 30; // vf30: .x = block[9].w
+        constexpr uint8_t kConst = 31;     // vf31: .y = 0.5, .w = the EFU reciprocal length
+
+        constexpr int32_t kScratchQword = 339; // the same slot 0x30/0x32 use
+    }
+
+    bool cmdSphereMapBlock(Ctx &c)
+    {
+        using namespace sphereMap;
+        using vu1ops::ArithAdd;
+        using vu1ops::ArithMadd;
+        using vu1ops::ArithMul;
+        using vu1ops::ArithSub;
+        __m128 up;
+
+        // Clamps, all three of them here at the entry, before a register is written or the block
+        // is kicked -- after the XGKICK at 0x26f8 a hand-back would kick the block twice.
+        //   * the per-vertex count (TOP+2.z, read at 0x26a8): 0x2928's `IBNE vi9, vi0` makes zero
+        //     65536 iterations, so it is two-sided, like 0x32's vi10;
+        //   * the triangle count (TOP+2.w) of the 0x1780 body this tail-jumps into, exactly as
+        //     0x30 checks the body it jumps into;
+        //   * N, which must be 1 -- see the note above; the pre-scan refuses the list first, so
+        //     this is defence in depth against a count read from somewhere it cannot see.
+        if (!withinBounds(c.loadWord(c.vi(1) + 2, 2), 1, vertexCeiling()) ||
+            !withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()) ||
+            c.loadWord(kScratchQword + c.vi(14), 2) != 1)
+            return handBackAtNextCommand(c);
+
+        c.vi(kSrcCursor) = vi16(c.vi(1) + 4);                    // 0x2690
+        c.vi(kDstCursor) = 40;                                   // 0x2698
+        c.vi(kReturnPc) = inlineBlock::kBuildPacketPc;           // 0x26a0: 752 = 0x1780 / 8
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);           // 0x26a8: TOP+2.z
+        c.vi(kBlock) = vi16(c.vi(14) + kCommandListQword);       // 0x26b0: the qword after the
+                                                                 //         command -- and NOT
+                                                                 //         recomputed per block
+        storeIntWord<kX>(c, kScratchQword, c.vi(kSrcCursor));    // 0x26b8
+        storeIntWord<kY>(c, kScratchQword, c.vi(kDstCursor));    // 0x26c0
+        storeIntWord<kZ>(c, kScratchQword, c.vi(kRemaining));    // 0x26c8
+        c.vi(kBlocks) = c.loadWord(kScratchQword + c.vi(14), 2); // 0x26d0: N, from the command's
+                                                                 //         own list qword
+        for (;;)
+        {
+            // 0x26d8-0x26f0: the three pointers back out of the scratch qword, so a second block
+            // would start from the staging base again.
+            c.vi(kSrcCursor) = c.loadWord(kScratchQword, 0);
+            c.vi(kDstCursor) = c.loadWord(kScratchQword, 1);
+            c.vi(kRemaining) = c.loadWord(kScratchQword, 2);
+            c.vi(kBlocks) = vi16(c.vi(kBlocks) - 1);
+
+            // 0x26f8: the block's own GIFtag decides how much of it reaches the GS -- six qwords
+            // of the eleven for the one block in the corpus.
+            g_xgkickDecoded.fetch_add(1, std::memory_order_relaxed);
+            c.vu.startXgkick(static_cast<uint32_t>(static_cast<uint16_t>(c.vi(kBlock))));
+
+            // 0x2708-0x2728: the five VU-only parameter qwords. vf23 is .xyw only -- its .z is
+            // the ramp the per-vertex body computes, and the block's .z is never read.
+            loadQword<kBasis0, kXYZW>(c, c.vi(kBlock) + 6);
+            loadQword<kBasis1, kXYZW>(c, c.vi(kBlock) + 7);
+            loadQword<kBasis2, kXYZW>(c, c.vi(kBlock) + 8);
+            loadQword<kColour, kXYZW>(c, c.vi(kBlock) + 9);
+            loadQword<kParams, kXY | kW>(c, c.vi(kBlock) + 10);
+
+            // 0x2730-0x2748: the eye position out of the three basis rows' .w lanes, vi14 past
+            // the whole eleven-qword block, and the first vertex's three qwords -- the prologue
+            // of a loop pipelined one vertex deep.
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kX, 0, kBasis0, false, false, true>(c);
+            loadQword<kPos, kXYZW>(c, c.vi(kSrcCursor));
+            writeVf<kEye, kX>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kY, 0, kBasis1, false, false, true>(c);
+            loadQword<kUv, kXYZW>(c, c.vi(kSrcCursor) + 1);
+            writeVf<kEye, kY>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kZ, 0, kBasis2, false, false, true>(c);
+            c.vi(14) = vi16(c.vi(14) + static_cast<int32_t>(kSphereMapBlockQwords));
+            writeVf<kEye, kZ>(c, up);
+            up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kX, 0, kColour, false, false, true>(c);
+            loadQword<kEye, kW>(c, c.vi(kSrcCursor) + 2);
+            writeVf<kAlphaSeed, kX>(c, up);
+
+            for (;;)
+            {
+                // 0x2758: V = position - eye, and the normal's y/z out of the UV quad's z/w.
+                up = fmac<ArithSub, Vu1Gen::SrcVt, 0, kXYZ, kPos, kEye, false, true, false>(c);
+                moveRotate32<kNormal, kUv, kY | kZ>(c);
+                writeVf<kView, kXYZ>(c, up);
+
+                // 0x2760: the same-lane conflict. The upper wins and the lower `MR32.w vf27,
+                // vf30` is dropped, so this is 1.0f + vf30.x, not vf30.x. See the note above.
+                up = fmac<ArithAdd, Vu1Gen::SrcBc, 0, kW, 0, kAlphaSeed, false, false, false>(c);
+                writeVf<kColour, kW>(c, up);
+
+                // 0x2768: the normal's x lane, and the first ERLENG -- 1/|V|, read 26 pairs later
+                // at 0x2838 with no WAITP in between (research/15 6.3).
+                up = fmac<ArithAdd, Vu1Gen::SrcBc, 3, kX, 0, kPos, false, false, true>(c);
+                erlengP<kView>(c);
+                writeVf<kNormal, kX>(c, up);
+
+                // 0x2770-0x2788: the position into clip space through entry 0's vf1..vf4.
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZW, 1, kPos, false, true, true>(c);
+                writeAcc<kXYZW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZW, 2, kPos, false, true, true>(c);
+                writeAcc<kXYZW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZW, 3, kPos, false, true, true>(c);
+                writeAcc<kXYZW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 3, kXYZW, 4, 0, false, true, false>(c);
+                writeVf<kPos, kXYZW>(c, up);
+
+                // 0x2790-0x27a8: dot(V, N) in vf21.w, and Q = 1 / w_clip.
+                up = fmac<ArithMul, Vu1Gen::SrcVt, 0, kXYZ, kView, kNormal, false, false, true>(c);
+                writeVf<kDot, kXYZ>(c, up);
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kW, 0, kDot, false, false, false>(c);
+                writeAcc<kW>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kW, 0, kDot, false, false, false>(c);
+                writeAcc<kW>(c, up);
+                loadImmediate(c, 0x3c000000u);                   // 0x27a0: 1/128
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kW, 0, kDot, false, false, false>(c);
+                divQ<0, 3, kPos, 3>(c);
+                writeVf<kDot, kW>(c, up);
+
+                // 0x27b0-0x27e0: the colour scale, -2 dot(V, N), and the 0.5 the ST lands on.
+                up = fmac<ArithMul, Vu1Gen::SrcI, 0, kW, kEye, 0, false, true, false>(c);
+                writeVf<kEye, kW>(c, up);
+                loadImmediate(c, 0xc0000000u);                   // 0x27b8: -2
+                up = fmac<ArithMul, Vu1Gen::SrcI, 0, kW, kDot, 0, false, false, false>(c);
+                writeVf<kDot, kW>(c, up);
+                loadImmediate(c, 0x3f000000u);                   // 0x27d0: 0.5
+                up = fmac<ArithAdd, Vu1Gen::SrcI, 0, kY, 0, 0, false, false, false>(c);
+                writeVf<kConst, kY>(c, up);
+
+                // 0x27e8-0x2800: -2 dot(V, N) N, the cursors, and the read-ahead of the NEXT
+                // vertex's position -- the last iteration reads one record past the end, which is
+                // the microcode's own over-read and part of the compared register state.
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, kNormal, kDot, false, true, false>(c);
+                c.vi(kRemaining) = vi16(c.vi(kRemaining) - 1);
+                writeVf<kScaledN, kXYZ>(c, up);
+                c.vi(kSrcCursor) = vi16(c.vi(kSrcCursor) + 3);
+                c.vi(kDstCursor) = vi16(c.vi(kDstCursor) + 3);
+                loadQword<kPos, kXYZW>(c, c.vi(kSrcCursor));
+
+                // 0x2808-0x2818: R = V - 2 dot(V, N) N, and the ramp's default of 1.0.
+                up = fmac<ArithAdd, Vu1Gen::SrcVt, 0, kXYZ, kScaledN, kView, false, false,
+                          false>(c);
+                writeVf<kReflect, kXYZ>(c, up);
+                loadImmediate(c, 0x3f800000u);                   // 0x2810: 1.0
+                up = fmac<ArithAdd, Vu1Gen::SrcI, 0, kZ, 0, 0, false, false, false>(c);
+                writeVf<kParams, kZ>(c, up);
+
+                // 0x2828-0x2838: R into the basis, and the first ERLENG's 1/|V| into vf31.w. The
+                // MADDz's MAC is what the FMAND four pairs later reads.
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXYZ, kBasis0, kReflect, false, true,
+                          false>(c);
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 1, kXYZ, kBasis1, kReflect, false, true,
+                          false>(c);
+                writeAcc<kXYZ>(c, up);
+                up = fmac<ArithMadd, Vu1Gen::SrcBc, 2, kXYZ, kBasis2, kReflect, false, true,
+                          false>(c);
+                moveFromP<kConst, kW>(c);
+                writeVf<kReflect, kXYZ>(c, up);
+
+                // 0x2848-0x2860: mask 32 = MAC bit 5 = Sz, i.e. "is R'.z negative?". This is the
+                // pair that destroys vi5's block base; nothing reads it as an address again.
+                c.vi(kBlock) = 32;
+                loadImmediate(c, 0x3f000000u);                   // 0x2850: 0.5
+                c.vi(kSign) = fmand(c, c.vi(kBlock));
+                if (static_cast<int16_t>(c.vi(kSign)) != 0)
+                {
+                    // 0x2870-0x2890: the rim block. R'.z is clamped to >= 0 before the second
+                    // ERLENG, whose WAITP at 0x2888 makes it synchronous.
+                    up = fmac<ArithAdd, Vu1Gen::SrcBc, 1, kZ, kReflect, kParams, false, false,
+                              true>(c);
+                    writeVf<kParams, kZ>(c, up);
+                    writeVf<kReflect, kZ>(c, minmax<true, Vu1Gen::MmBc, 1, kReflect, 0>(c));
+                    loadImmediate(c, 0x40000000u);               // 0x2878: 2.0
+                    erlengP<kReflect>(c);                        // 0x2880, then 0x2888 WAITP
+                    up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kZ, kParams, kParams, false, false,
+                              true>(c);
+                    moveFromP<kConst, kW>(c);
+                    writeVf<kParams, kZ>(c, up);
+                }
+
+                // 0x28b0-0x2910: normalise R'.xy, ramp the alpha, scale and bias the ST, and
+                // perspective-correct it. The three read-aheads of the next vertex sit in the
+                // lower halves, so they run on the already-incremented vi3.
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXY, kReflect, kConst, false, false,
+                          true>(c);
+                writeVf<kReflect, kXY>(c, up);
+                writeVf<kParams, kZ>(c, minmax<true, Vu1Gen::MmBc, 1, kParams, 0>(c));
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kW, kColour, kEye, false, false, false>(c);
+                writeVf<kColour, kW>(c, up);
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 0, kXY, kReflect, kParams, false, false,
+                          true>(c);
+                loadQword<kUv, kXYZW>(c, c.vi(kSrcCursor) + 1);
+                writeVf<kReflect, kXY>(c, up);
+                up = fmac<ArithMul, Vu1Gen::SrcBc, 2, kW, kColour, kParams, false, false,
+                          false>(c);
+                writeVf<kColour, kW>(c, up);
+                up = fmac<ArithAdd, Vu1Gen::SrcBc, 1, kXY, kReflect, kConst, false, false,
+                          false>(c);
+                writeVf<kReflect, kXY>(c, up);
+                loadQword<kEye, kW>(c, c.vi(kSrcCursor) + 2);
+                up = fmac<ArithMul, Vu1Gen::SrcQ, 0, kXY, kReflect, 0, false, false, false>(c);
+                writeVf<kReflect, kXY>(c, up);
+
+                // 0x2920-0x2928: the whole RGBAQ at +1 and the ST's xy ONLY at +0. XYZF2 (+2) and
+                // the ST quad's z/w are left exactly as the earlier 0x08 wrote them. The second
+                // store is the branch's delay slot, so it runs whichever way the test goes.
+                storeQword<kColour, kXYZW>(c, c.vi(kDstCursor) - 2);
+                const bool more = static_cast<int16_t>(c.vi(kRemaining)) != 0;
+                storeQword<kReflect, kXY>(c, c.vi(kDstCursor) - 3);
+                if (!more)
+                    break;
+            }
+
+            if (static_cast<int16_t>(c.vi(kBlocks)) == 0)        // 0x2938
+                break;
+        }
+
+        // 0x2948 `JR vi6` -> pc 0x1780, command 0x28's full body, which ends at its own B 0x1b60.
+        return cmdBuildPacket(c);
+    }
+
     Outcome fromHandler(bool reachedNextCommand)
     {
         return reachedNextCommand ? Outcome::NextCommand : Outcome::NotImplemented;
@@ -3072,6 +3434,8 @@ namespace
             return fromHandler(cmdInlineBlockOverA(c));
         case kCmdInlineBlockOverB:
             return fromHandler(cmdInlineBlockOverB(c));
+        case kCmdSphereMapBlock:
+            return fromHandler(cmdSphereMapBlock(c));
         default:
             return Outcome::NotImplemented;
         }
