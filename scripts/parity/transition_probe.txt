@@ -15,12 +15,17 @@
 # briefing -- and because black_rows.py counted black frames from anywhere in the run, the
 # transition gate went on passing on the boot's black screens (STATUS 2026-09-11).
 #
-# Step 11 is the burst this script exists for. Answering NO at step 10 takes the game straight
-# to the black screen before the mission briefing, so the burst starts on the NO press and
-# captures that screen at 5 fps (runs tfix1/tfix2: the fade is at t=54..70 s, w11/w12, 4 frames
-# at 1 Hz -- the burst turns those into tens). gate.first_burst_step() finds this step by name
-# and score_transition counts ONLY frames from it on, so the boot's black screens cannot stand
-# in for the transition.
+# THE TRANSITION -- the black screen between the dialog and the mission briefing -- is what this
+# script exists to capture, at 5 fps. Answering NO takes the game straight to it, so the burst has
+# to start on the NO press. It used to be a plain `burst` pinned to step 11, immediately after the
+# FIRST guard pair; when the boot was longer and the dialog landed on a later pair the burst fired
+# on a controller-configuration screen instead and the fade was left to the 1 Hz wait captures
+# (logs/parity/gate/s4_mb, 2026-09-12: matched at steps 13/14, gate FAIL "4 black-screen frames
+# examined, need 5"). So each guard pair now carries its own `ifburst`, which fires only when the
+# ifref immediately above it matched -- exactly one does, wherever the dialog lands, and the burst
+# is always on the NO press. gate.observed_burst_step() reads the step back off the
+# `sNN_burst_*.png` the run wrote, and score_transition counts ONLY frames from it on, so neither
+# the boot's black screens nor the controller-configuration screens can stand in for the fade.
 next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
 next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
 next+1.0:CROSS      # card notice -> CONTINUE
@@ -32,13 +37,15 @@ next+2.0:CROSS      # main menu -> NEW GAME
 next+2.0:CROSS      # select rank
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
-burst+12.0:NONE     # THE TRANSITION: the black screen before the mission briefing, at 5 fps
+ifburst+12.0:NONE   # THE TRANSITION, if the dialog was answered just above
 next+2.0:CROSS      # black / cinematic -> skip
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+ifburst+12.0:NONE   # THE TRANSITION, if the dialog was answered just above
 next+2.0:CROSS      # controller presets (2) / briefing
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
 ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+ifburst+12.0:NONE   # THE TRANSITION, if the dialog was answered just above
 next+2.0:CROSS      # briefing
 next+2.0:CROSS      # briefing
 burst+8.0:NONE      # the briefing settled

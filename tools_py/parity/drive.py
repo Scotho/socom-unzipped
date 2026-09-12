@@ -191,6 +191,9 @@ def main():
 
 
 def run_steps(a, steps, proc, hwnd, t0, last, manifest):
+    # Whether the most recent `ifref` step matched its reference, i.e. whether the dialog it
+    # guards was actually on screen and answered. `ifburst` reads it; nothing else does.
+    ifref_matched = False
     for i, (mode, delay, buttons) in enumerate(steps):
         stable, waited = (True, 0.0)
         held = "none"
@@ -268,18 +271,30 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
             dist = float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean())
             matched = dist < thresh
+            ifref_matched = matched
             print(f"ifref({parts[0]}): dist={dist:.1f} matched={matched}", flush=True)
             if not matched:
                 buttons = []
-        elif mode == "burst":
-            # burst+<seconds>:NONE � capture a frame every 0.2 s for <seconds> (transition flashes
+        elif mode in ("burst", "ifburst"):
+            # burst+<seconds>:NONE - capture a frame every 0.2 s for <seconds> (transition flashes
             # that a single per-step capture misses), saved as sNN_burst_<k>.png.
-            t_b = time.time()
-            k = 0
-            while time.time() - t_b < delay:
-                winshot.grab(hwnd).save(os.path.join(a.out, f"s{i:02d}_burst_{k:03d}.png"))
-                k += 1
-                time.sleep(0.2)
+            #
+            # ifburst+<seconds>:NONE - the same, but only when the most recent `ifref` step
+            # matched; otherwise the step does nothing (no frames, no delay) and says so. This is
+            # how a burst follows a dialog that moves: put an ifburst after every ifref guard pair
+            # and exactly the one whose pair answered the dialog fires, wherever in the run that
+            # lands. A fixed `burst` index instead captures whatever screen happens to sit there
+            # (gate.py score_transition / observed_burst_step).
+            if mode == "burst" or ifref_matched:
+                t_b = time.time()
+                k = 0
+                while time.time() - t_b < delay:
+                    winshot.grab(hwnd).save(os.path.join(a.out, f"s{i:02d}_burst_{k:03d}.png"))
+                    k += 1
+                    time.sleep(0.2)
+                print(f"{mode}: s{i:02d}_burst_*, {k} frames over {delay:.1f}s", flush=True)
+            else:
+                print(f"ifburst: s{i:02d} skipped (the preceding ifref did not match)", flush=True)
             delay = 0.0
         elif mode == "hold":
             # hold+<seconds>:BTN � hold the key(s) down for <seconds> (stick directions W/A/S/D,

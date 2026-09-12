@@ -1,3 +1,4 @@
+import argparse
 import os
 import shutil
 import subprocess
@@ -5,6 +6,7 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
 from PIL import Image
 
 from tools_py.parity import black_rows, drive, gate
@@ -243,6 +245,16 @@ class BurstStepFiltering(unittest.TestCase):
             self.assertIsNone(gate.first_burst_step(path))
             self.assertIsNone(gate.first_burst_step(os.path.join(tmp, "no_such_script.txt")))
 
+    def test_first_burst_step_accepts_ifburst(self):
+        """The transition probe's transition burst is an `ifburst` (one after every "save to
+        memory card?" guard pair, only the answered pair's fires). The static fallback has to
+        recognise that form, or it would skip past all three and point at the briefing burst."""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "probe.txt")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("next+1.0:CROSS\nifburst+12.0:NONE\nburst+8.0:NONE\n")
+            self.assertEqual(gate.first_burst_step(path), 1)
+
     def test_step_index_of_capture_names(self):
         self.assertEqual(black_rows.step_index("s09_burst_003.png"), 9)
         self.assertEqual(black_rows.step_index("w10_001.png"), 10)
@@ -267,6 +279,148 @@ class BurstStepFiltering(unittest.TestCase):
             self.assertEqual(sorted(examined("--from-step", "8")),
                              ["s08_burst_000.png", "w08_000.png"])
             self.assertEqual(examined("--from-step", "9"), [])
+
+
+class MovedDialog(unittest.TestCase):
+    """The 2026-09-12 defect: the "save to memory card?" dialog lands on a step index that moves
+    with how many controller-configuration screens the boot shows, so a burst pinned to a fixed
+    index stops being the transition. logs/parity/gate/s4_mb matched the dialog at steps 13/14
+    instead of 9/10; the step-11 burst captured a configuration screen and the scorer was left
+    four 1 Hz wait frames ("4 black-screen frames examined, need 5"), three runs in a row."""
+
+    @staticmethod
+    def _black(path):
+        Image.new("RGB", (640, 448), (0, 0, 0)).save(path)
+
+    def _late_dialog_run(self, tmp):
+        """A run shaped like s4_mb under the fixed probe: boot black screens through step 10, the
+        first guard pair not matching (so its ifburst fires nothing), the dialog answered at
+        steps 13/14, and the burst firing at step 15 on the fade."""
+        run = os.path.join(tmp, "transition")
+        os.makedirs(run)
+        for i in range(11):                       # boot: black, but not the transition
+            self._black(os.path.join(run, "s%02d_CROSS.png" % i))
+            self._black(os.path.join(run, "w%02d_000.png" % i))
+        for name in ("s12_CROSS.png", "s13_RIGHT.png", "s14_CROSS.png"):
+            Image.new("RGB", (640, 448), (200, 200, 200)).save(os.path.join(run, name))
+        for k in range(4):                        # the burst that actually fired, on the NO press
+            self._black(os.path.join(run, "s15_burst_%03d.png" % k))
+        self._black(os.path.join(run, "w16_000.png"))
+        return run
+
+    def test_observed_burst_step_reads_the_burst_that_fired(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._late_dialog_run(tmp)
+            self.assertEqual(gate.observed_burst_step(run), 15)
+        # ... and the script's static answer, which the old scorer used, is the wrong one.
+        self.assertEqual(gate.first_burst_step(), 11)
+
+    def test_observed_burst_step_is_none_without_burst_captures(self):
+        with tempfile.TemporaryDirectory() as run:
+            self._black(os.path.join(run, "s00_CROSS.png"))
+            self.assertIsNone(gate.observed_burst_step(run))
+        self.assertIsNone(gate.observed_burst_step(os.path.join(ROOT, "logs", "no_such_run")))
+
+    def test_observed_burst_step_takes_the_first_burst_not_the_briefing_one(self):
+        """The probe ends with a second, unconditional burst on the settled briefing. The scorer
+        must count from the transition burst, not from that one."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._late_dialog_run(tmp)
+            self._black(os.path.join(run, "s22_burst_000.png"))
+            self.assertEqual(gate.observed_burst_step(run), 15)
+
+    def test_late_dialog_run_is_scored_from_the_no_press(self):
+        """The property the fix has to hold: the frames counted are the frames after the NO
+        press, wherever it landed. Twenty-two boot black frames sit in this run and none of them
+        count; the five frames from the fired burst on do, which is exactly the floor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._late_dialog_run(tmp)
+            ok, detail = gate.score_transition(run)
+        self.assertTrue(ok, detail)
+        self.assertIn("5 black-screen frames examined", detail)
+        self.assertIn("(s15, fired)", detail)
+
+    def test_late_dialog_run_would_have_failed_on_the_fixed_index(self):
+        """Same run, scored the old way (from the script's fixed burst step): the fade is at
+        s15/w16 and the three configuration screens at s12..s14 are not black, so a from-step-11
+        count sees only the five real frames -- but with the burst firing at 11 instead, as it
+        did on s4_mb, those five would have been four 1 Hz wait captures. Pin the difference the
+        cheap way: the fixed index and the observed one are not the same number."""
+        with tempfile.TemporaryDirectory() as tmp:
+            run = self._late_dialog_run(tmp)
+            self.assertNotEqual(gate.observed_burst_step(run), gate.first_burst_step())
+
+    def test_run_that_fired_no_burst_still_fails(self):
+        """Falling back to the script must not become a way to pass: a run whose probe never
+        answered the dialog has no burst captures, falls back to the static step, and counts
+        nothing at or after it."""
+        with tempfile.TemporaryDirectory() as run:
+            for i in range(11):
+                self._black(os.path.join(run, "s%02d_CROSS.png" % i))
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("0 black-screen frames examined", detail)
+        self.assertIn("no burst fired; script", detail)
+
+    def test_probe_pairs_an_ifburst_with_every_guard_pair(self):
+        """Structural guard on scripts/parity/transition_probe.txt: every `ifref` guard pair that
+        can answer the dialog is immediately followed by an `ifburst`, so whichever pair matches,
+        the burst is on its NO press. A pinned `burst` after only the first pair is the defect."""
+        path = os.path.join(ROOT, "scripts", "parity", "transition_probe.txt")
+        with open(path, encoding="utf-8") as f:
+            modes = [ln.split("#", 1)[0].strip().split("+", 1)[0]
+                     for ln in f if ln.split("#", 1)[0].strip()]
+        pairs = [i for i in range(len(modes) - 1)
+                 if modes[i].startswith("ifref(") and modes[i + 1].startswith("ifref(")]
+        self.assertEqual(len(pairs), 3, modes)
+        for i in pairs:
+            self.assertEqual(modes[i + 2], "ifburst", "no ifburst after the pair at step %d" % i)
+        self.assertNotIn("burst", modes[:max(pairs) + 2])   # no unconditional burst before them
+
+
+class ConditionalBurst(unittest.TestCase):
+    """drive.py `ifburst`: a burst that fires only when the ifref step above it matched. Driven
+    without a game window by stubbing the frame grab, the settle wait and the key presses."""
+
+    REF = "scripts/parity/ref_save_prompt_ours.png"   # relative: drive.parse splits the line on ':'
+
+    def _run(self, script):
+        saved = (drive.frame, drive.wait_stable, drive.winshot.grab, drive.keys.press)
+        drive.frame = lambda hwnd: np.zeros((112, 160), dtype=np.float32)
+        drive.wait_stable = lambda *a, **k: (True, 0.0)
+        drive.winshot.grab = lambda hwnd: Image.new("RGB", (64, 64), (0, 0, 0))
+        drive.keys.press = lambda *a, **k: None
+        try:
+            with tempfile.TemporaryDirectory() as out:
+                a = argparse.Namespace(out=out, settle=1.5, maxwait=40.0, target="ours", tail=0.0)
+                drive.run_steps(a, drive.parse(script), None, None, 0.0, None, [])
+                return sorted(os.listdir(out))
+        finally:
+            drive.frame, drive.wait_stable, drive.winshot.grab, drive.keys.press = saved
+
+    def _script(self, thresh_first, thresh_second):
+        # A huge threshold always matches the stubbed all-zero frame, a zero threshold never does.
+        return ("ifref(%s,47,62,36,125,%s)+0.0:CROSS\nifburst+0.4:NONE\n"
+                "ifref(%s,47,62,36,125,%s)+0.0:CROSS\nifburst+0.4:NONE\n"
+                "burst+0.4:NONE\n" % (self.REF, thresh_first, self.REF, thresh_second))
+
+    def test_ifburst_fires_only_after_the_matching_pair(self):
+        """First ifref does not match, second does: the burst that fires is the second one, at
+        the step index the dialog actually landed on -- which is the whole fix."""
+        names = self._run(self._script("0", "100000"))
+        self.assertFalse([n for n in names if n.startswith("s01_burst_")], names)
+        self.assertTrue([n for n in names if n.startswith("s03_burst_")], names)
+
+    def test_ifburst_fires_on_the_first_pair_when_that_is_where_the_dialog_is(self):
+        names = self._run(self._script("100000", "0"))
+        self.assertTrue([n for n in names if n.startswith("s01_burst_")], names)
+        self.assertFalse([n for n in names if n.startswith("s03_burst_")], names)
+
+    def test_plain_burst_is_unconditional(self):
+        """The briefing burst at the end of the probe must keep firing regardless of the guards."""
+        names = self._run(self._script("0", "0"))
+        self.assertFalse([n for n in names if "_burst_" in n and not n.startswith("s04_")], names)
+        self.assertTrue([n for n in names if n.startswith("s04_burst_")], names)
 
 
 if __name__ == "__main__":

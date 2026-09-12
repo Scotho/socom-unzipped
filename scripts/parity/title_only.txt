@@ -1,11 +1,15 @@
-# Boot to the title screen only (A/B checks of the main-menu rendering); frames every 6 s after the movie skip.
-next+1.0:CROSS      # loading logo
-next+1.0:CROSS      # memory card slot
-next+1.0:CROSS      # card notice
-next+1.0:CROSS      # SCEA
-next+1.0:CROSS      # developed by
-next+1.0:CROSS      # intro / warning
-next+1.0:CROSS      # intro movie -> skip
+# Boot to the title screen only (A/B checks of the main-menu rendering); frames every 6 s once the
+# menu is up.
+#
+# This used to be seven blind `next+CROSS` presses through the boot screens. That broke when the
+# controller-configuration "save this configuration?" dialog started appearing on boot: a blind
+# CROSS answers YES and the run parks on "Select MEMORY CARD slot" for its whole length -- no
+# title screen, no attract movie, no presents to capture (task-1 report, 2026-09-12; research/16
+# section 9.6). The `untilref` form below is title_menu.txt's, verbatim: it presses CROSS on each
+# settled screen until the frame matches the main-menu reference, which clears the dialog whatever
+# step it lands on and stops pressing the moment the menu is up. Task 1 took every capture in
+# research/16 through it.
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS
 wait+6.0:NONE
 wait+6.0:NONE
 wait+6.0:NONE
