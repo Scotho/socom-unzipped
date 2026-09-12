@@ -291,6 +291,49 @@ void main()
 }
 )GLSL";
 
+    // PS2X_GS_SCALE_FILTER=point|box -- how a host-scale render target is resolved down to its
+    // native GS extent for the reads the guest can observe. `point` (the default) is a GL_NEAREST
+    // glBlitFramebuffer: each native pixel takes one host texel, so a readback carries exactly the
+    // bytes some host texel holds. `box` averages the SxS host texels behind each native pixel with
+    // the fullscreen-triangle pass below. Both are unreachable until PS2X_GS_SCALE > 1 (S3-c): at
+    // scale 1 nativeView() returns the colour texture without ever calling the resolve.
+    bool resolveFilterIsBox()
+    {
+        static const bool s_box = []
+        {
+            const char *const e = std::getenv("PS2X_GS_SCALE_FILTER");
+            return e != nullptr && std::strcmp(e, "box") == 0;
+        }();
+        return s_box;
+    }
+
+    // Fullscreen triangle from gl_VertexID alone: no attributes, no vertex buffer.
+    const char *const kResolveVertexShader = R"GLSL(#version 330 core
+void main()
+{
+    vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+    gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}
+)GLSL";
+
+    // Drawn into the native-sized mirror, so gl_FragCoord.xy IS the native pixel: the SxS host
+    // texels behind it start at (native * scale) and the average of them is the box filter.
+    const char *const kResolveFragmentShader = R"GLSL(#version 330 core
+uniform sampler2D uSrc;
+uniform int uScaleX;
+uniform int uScaleY;
+out vec4 oColor;
+void main()
+{
+    ivec2 base = ivec2(gl_FragCoord.xy) * ivec2(uScaleX, uScaleY);
+    vec4 sum = vec4(0.0);
+    for (int y = 0; y < uScaleY; ++y)
+        for (int x = 0; x < uScaleX; ++x)
+            sum += texelFetch(uSrc, base + ivec2(x, y), 0);
+    oColor = sum / float(uScaleX * uScaleY);
+}
+)GLSL";
+
     uint32_t compileShader(GLenum type, const char *source)
     {
         const GLuint shader = glCreateShader(type);
@@ -899,6 +942,10 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             {
                 glDeleteFramebuffers(1, &rt.fbo);
                 glDeleteTextures(1, &rt.color);
+                if (rt.mirrorFbo != 0u)
+                    glDeleteFramebuffers(1, &rt.mirrorFbo);
+                if (rt.mirrorTexture != 0u)
+                    glDeleteTextures(1, &rt.mirrorTexture);
             }
             m_renderTargets.clear();
             for (DepthTarget &dt : m_depthTargets)
@@ -1194,6 +1241,11 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     rects.swap(rt.dirtyRects);
     rt.dirtyRows = false;
     rt.dirtyMask = 0u;
+    // The glTexSubImage2D calls below write the host colour texture just as a draw does, so the
+    // native mirror must be re-resolved before the next read (brief names executeSubmit and
+    // executeClear; this is the third writer of the same texture and would silently serve a stale
+    // mirror to a download that follows an upload).
+    rt.dirtySinceResolve = true;
     const uint32_t w = std::min<uint32_t>(rt.nativeWidth, rt.fbw * 64u);
     if (w == 0u)
         return;
@@ -1289,6 +1341,7 @@ void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
     glClear(GL_COLOR_BUFFER_BIT);
     rt->gpuDirty = true;
     rt->shadowStale = true;
+    rt->dirtySinceResolve = true;   // the clear wrote the host colour texture: the native mirror is stale
     rt->usedHeight = std::max(rt->usedHeight, std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(context.scissor.y1) + 1u));
     noteGpuRows(*rt, static_cast<uint32_t>(std::max<int>(0, context.scissor.y0)), std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(context.scissor.y1) + 1u));
 }
@@ -1322,11 +1375,178 @@ void GSGlBackend::noteGpuRows(RenderTarget &rt, uint32_t y0, uint32_t y1)
     }
 }
 
+// ---------------------------------------------------------------------------------------------
+// Native view (S3-b)
+// ---------------------------------------------------------------------------------------------
+// Everything the guest can observe must see a render target at its NATIVE GS extent, whatever
+// extent the GL texture the backend actually draws into happens to have. nativeView() is the one
+// place that promise is kept: it hands back a GL texture that is nativeWidth x nativeHeight.
+//
+// At scale 1 -- every build until S3-c introduces PS2X_GS_SCALE -- host == native, so the colour
+// texture already IS the native view: the early return costs two integer compares, allocates
+// nothing, copies nothing, and the whole resolve machinery below is unreachable. Above scale 1 the
+// host texture is resolved into a per-target native mirror, at most once per target between draws
+// (dirtySinceResolve), and the mirror is returned instead.
+uint32_t GSGlBackend::nativeView(RenderTarget &rt)
+{
+    if (rt.hostWidth == rt.nativeWidth && rt.hostHeight == rt.nativeHeight)
+        return rt.color;
+    if (rt.dirtySinceResolve || rt.mirrorTexture == 0u)
+    {
+        resolveToMirror(rt);
+        rt.dirtySinceResolve = false;
+    }
+    return rt.mirrorTexture;
+}
+
+// The same view for readers that need a framebuffer to glReadPixels out of rather than a texture
+// to sample. Identical to rt.fbo at scale 1, so those readers keep binding exactly what they bind
+// today.
+uint32_t GSGlBackend::nativeViewFbo(RenderTarget &rt)
+{
+    return nativeView(rt) == rt.color ? rt.fbo : rt.mirrorFbo;
+}
+
+bool GSGlBackend::ensureResolveProgram()
+{
+    if (m_resolveProgram != 0u)
+        return true;
+    if (m_resolveProgramFailed)
+        return false;
+    const uint32_t vs = compileShader(GL_VERTEX_SHADER, kResolveVertexShader);
+    const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, kResolveFragmentShader);
+    if (!vs || !fs)
+    {
+        if (vs)
+            glDeleteShader(vs);
+        if (fs)
+            glDeleteShader(fs);
+        m_resolveProgramFailed = true;
+        return false;
+    }
+    m_resolveProgram = glCreateProgram();
+    glAttachShader(m_resolveProgram, vs);
+    glAttachShader(m_resolveProgram, fs);
+    glLinkProgram(m_resolveProgram);
+    GLint ok = 0;
+    glGetProgramiv(m_resolveProgram, GL_LINK_STATUS, &ok);
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+    if (!ok)
+    {
+        char log[2048];
+        glGetProgramInfoLog(m_resolveProgram, sizeof(log), nullptr, log);
+        std::fprintf(stderr, "[gs-gl] scale-resolve program link failed: %s\n", log);
+        glDeleteProgram(m_resolveProgram);
+        m_resolveProgram = 0u;
+        m_resolveProgramFailed = true;
+        return false;
+    }
+    m_resolveUSrc = glGetUniformLocation(m_resolveProgram, "uSrc");
+    m_resolveUScaleX = glGetUniformLocation(m_resolveProgram, "uScaleX");
+    m_resolveUScaleY = glGetUniformLocation(m_resolveProgram, "uScaleY");
+    glGenVertexArrays(1, &m_resolveVao);
+    return true;
+}
+
+// Resolve the host-scale colour texture down into the target's native mirror. Unreachable at scale
+// 1 (nativeView returns before calling this), so no scale-1 run allocates the mirror, compiles the
+// box program or issues either pass.
+void GSGlBackend::resolveToMirror(RenderTarget &rt)
+{
+    // The callers run in the middle of a draw batch (resolveTexture is called from setupDrawState
+    // after glUseProgram, and the downloads from the texture path), so this pass restores every
+    // piece of GL state it touches rather than assuming the next caller re-establishes it. The
+    // capture has to come before the lazy allocation below, which binds an FBO of its own.
+    GLint prevFbo = 0, prevProgram = 0, prevVao = 0, prevActive = 0, prevTex = 0, prevViewport[4] = {0, 0, 0, 0};
+    GLboolean prevMask[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+    glGetBooleanv(GL_COLOR_WRITEMASK, prevMask);
+    const GLboolean wasScissor = glIsEnabled(GL_SCISSOR_TEST);
+
+    if (rt.mirrorTexture == 0u)
+    {
+        GLint prevTexAlloc = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexAlloc);
+        glGenTextures(1, &rt.mirrorTexture);
+        glBindTexture(GL_TEXTURE_2D, rt.mirrorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(rt.nativeWidth), static_cast<GLsizei>(rt.nativeHeight),
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexAlloc));
+        // Exactly one texture and one FBO per render target, for the life of that target: the
+        // native extent is kMaxRtWidth x kRtHeight for every target and is never rewritten, so
+        // there is no resize path that could leak a second pair. Both are deleted beside rt.fbo /
+        // rt.color when the targets are dropped (CmdType::Reset).
+        glGenFramebuffers(1, &rt.mirrorFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, rt.mirrorFbo);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt.mirrorTexture, 0);
+    }
+
+    glDisable(GL_SCISSOR_TEST);
+    // glBlitFramebuffer and a fragment shader both honour the colour mask; a batch that set one
+    // would otherwise leave channels of the mirror untouched.
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    const GLint hostW = static_cast<GLint>(rt.hostWidth), hostH = static_cast<GLint>(rt.hostHeight);
+    const GLint natW = static_cast<GLint>(rt.nativeWidth), natH = static_cast<GLint>(rt.nativeHeight);
+    if (resolveFilterIsBox() && ensureResolveProgram())
+    {
+        glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+        glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActive);
+        glActiveTexture(GL_TEXTURE0);
+        glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+        const GLboolean wasBlend = glIsEnabled(GL_BLEND), wasDepth = glIsEnabled(GL_DEPTH_TEST), wasCull = glIsEnabled(GL_CULL_FACE);
+        glDisable(GL_BLEND);
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glBindFramebuffer(GL_FRAMEBUFFER, rt.mirrorFbo);
+        glViewport(0, 0, natW, natH);
+        glUseProgram(m_resolveProgram);
+        glUniform1i(m_resolveUSrc, 0);
+        glUniform1i(m_resolveUScaleX, hostW / natW);
+        glUniform1i(m_resolveUScaleY, hostH / natH);
+        glBindTexture(GL_TEXTURE_2D, rt.color);
+        glBindVertexArray(m_resolveVao);
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glBindVertexArray(static_cast<GLuint>(prevVao));
+        glUseProgram(static_cast<GLuint>(prevProgram));
+        glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
+        glActiveTexture(static_cast<GLenum>(prevActive));
+        if (wasBlend)
+            glEnable(GL_BLEND);
+        if (wasDepth)
+            glEnable(GL_DEPTH_TEST);
+        if (wasCull)
+            glEnable(GL_CULL_FACE);
+    }
+    else
+    {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, rt.fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, rt.mirrorFbo);
+        glBlitFramebuffer(0, 0, hostW, hostH, 0, 0, natW, natH, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
+
+    glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    glColorMask(prevMask[0], prevMask[1], prevMask[2], prevMask[3]);
+    if (wasScissor)
+        glEnable(GL_SCISSOR_TEST);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
+}
+
 // Download a render target (GPU) into the shadow VRAM so texture decoding sees the drawn pixels.
 void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
 {
+    // Native throughout: `h` is a native row count, the buffer stride and the glReadPixels rect
+    // below are native pixels, and the source is nativeViewFbo() rather than rt.fbo -- which is
+    // rt.fbo itself at scale 1 (research/14 section 8.1 item 1).
     const uint32_t h = std::min<uint32_t>(rt.usedHeight, rt.nativeHeight);
-    std::vector<uint32_t> pixels(static_cast<size_t>(rt.hostWidth) * h);
+    std::vector<uint32_t> pixels(static_cast<size_t>(rt.nativeWidth) * h);
     {
         // PS2X_GS_TRACE_PRESENT: log the downloads after the trace point (layout the shadow is written with).
         const long s_dlSkip = traceSkip("PS2X_GS_TRACE_PRESENT");
@@ -1344,9 +1564,9 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
     // the staging buffer instead of the display buffer whenever the two were laid out that way).
     GLint prevFbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, rt.fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, nativeViewFbo(rt));
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glReadPixels(0, 0, rt.hostWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glReadPixels(0, 0, rt.nativeWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     const uint32_t base = rt.fbp << 5;
     // Only rows the GPU drew since the last sync (see noteGpuRows); nothing else is stale.
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;
@@ -1375,7 +1595,7 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
         // rows 64..96 of the same target — a seam at x=384 on every movie frame).
         for (uint32_t x = 0; x < xEnd; ++x)
         {
-            uint32_t p = pixels[static_cast<size_t>(y) * rt.hostWidth + x];
+            uint32_t p = pixels[static_cast<size_t>(y) * rt.nativeWidth + x];
             if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
                 p = rgba8888To5551(p);
             writeVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y, p);
@@ -1389,16 +1609,17 @@ void GSGlBackend::downloadRenderTargetToShadow(RenderTarget &rt)
 // Download into the game thread's authoritative VRAM (guest reads GS memory).
 void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
 {
+    // Native throughout; see downloadRenderTargetToShadow.
     const uint32_t h = std::min<uint32_t>(rt.usedHeight, rt.nativeHeight);
-    std::vector<uint32_t> pixels(static_cast<size_t>(rt.hostWidth) * h);
+    std::vector<uint32_t> pixels(static_cast<size_t>(rt.nativeWidth) * h);
     // Called from the texture path in the middle of a draw batch: restore the batch target's
     // FBO afterwards, or the draw lands in this target (SOCOM II's movie copy sprite went into
     // the staging buffer instead of the display buffer whenever the two were laid out that way).
     GLint prevFbo = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, rt.fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, nativeViewFbo(rt));
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
-    glReadPixels(0, 0, rt.hostWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+    glReadPixels(0, 0, rt.nativeWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
     const uint32_t base = rt.fbp << 5;
     const uint32_t yStart = rt.gpuRows ? std::min(h, rt.gpuRowFirst) : 0u;   // see downloadRenderTargetToShadow
     const uint32_t yEnd = rt.gpuRows ? std::min(h, rt.gpuRowLast) : 0u;
@@ -1421,7 +1642,7 @@ void GSGlBackend::downloadRenderTargetToCpu(RenderTarget &rt)
         // rows 64..96 of the same target — a seam at x=384 on every movie frame).
         for (uint32_t x = 0; x < xEnd; ++x)
         {
-            uint32_t p = pixels[static_cast<size_t>(y) * rt.hostWidth + x];
+            uint32_t p = pixels[static_cast<size_t>(y) * rt.nativeWidth + x];
             if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
                 p = rgba8888To5551(p);
             m_cpu->WriteVram(rt.psm, base, rt.fbw, x, y, p);
@@ -1542,10 +1763,13 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
             if (elapsed >= s_next && elapsed < s_t1)
             {
                 s_next = elapsed + 2.0;
+                // The "gpu" PPM is compared pixel-for-pixel with the "shadow" and "cpu" PPMs, which
+                // are read out of native VRAM: read the native view so all three have the same
+                // extent at any scale (research/14 section 8.1 item 3).
                 const uint32_t w = std::min<uint32_t>(640u, rt->nativeWidth), h = std::min<uint32_t>(448u, rt->nativeHeight);
-                std::vector<uint32_t> gpu(static_cast<size_t>(rt->hostWidth) * h);
-                glBindFramebuffer(GL_READ_FRAMEBUFFER, rt->fbo);
-                glReadPixels(0, 0, rt->hostWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, gpu.data());
+                std::vector<uint32_t> gpu(static_cast<size_t>(rt->nativeWidth) * h);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER, nativeViewFbo(*rt));
+                glReadPixels(0, 0, rt->nativeWidth, h, GL_RGBA, GL_UNSIGNED_BYTE, gpu.data());
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
                 const uint32_t base = rt->fbp << 5;
                 auto writePpm = [&](const char *tag, auto fetch)
@@ -1565,7 +1789,7 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
                         }
                     std::fclose(f);
                 };
-                writePpm("gpu", [&](uint32_t x, uint32_t y) { return gpu[static_cast<size_t>(y) * rt->hostWidth + x]; });
+                writePpm("gpu", [&](uint32_t x, uint32_t y) { return gpu[static_cast<size_t>(y) * rt->nativeWidth + x]; });
                 writePpm("shadow", [&](uint32_t x, uint32_t y) { return readVramRaw(m_shadowMemory.data(), rt->psm, base, rt->fbw, x, y); });
                 writePpm("cpu", [&](uint32_t x, uint32_t y) { return m_cpu->ReadVram(rt->psm, base, rt->fbw, x, y); });
                 std::fprintf(stderr, "[gs-gl dump-display] t=%.1f frame=%llu fbp=%03x -> %s\n", elapsed, (unsigned long long)m_frameCounter, rt->fbp, s_dir.c_str());
@@ -1964,12 +2188,20 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                 if (width > rt.nativeWidth || height > rt.nativeHeight)
                     continue;
                 refreshDirtyRows(rt);
-                outWidth = rt.hostWidth;
-                outHeight = rt.hostHeight;
+                // The draw samples this target with the same native texel coordinates it would use
+                // for a decoded texture, so it must be handed a native-sized view -- rt.color
+                // itself at scale 1, the resolved mirror above it -- and uTexSize (outWidth /
+                // outHeight) must match that view. Sampling a host-scale texture with native texel
+                // coordinates is the third failure mode in research/14 section 8.1 item 5; going
+                // through nativeView() settles the uTexSize half of that hand-off as *native*
+                // whichever design S3-c picks for appendVertex/uRtSize.
+                const uint32_t view = nativeView(rt);
+                outWidth = rt.nativeWidth;
+                outHeight = rt.nativeHeight;
                 if (tracePagesHit(pageStart, pageCount))
                     std::fprintf(stderr, "[gs-pages] frame=%llu texture tbp0=%05x sampled from rt fbp=%03x (%ux%u) directly\n",
                                  (unsigned long long)m_frameCounter, tex.tbp0, rt.fbp, rt.nativeWidth, rt.nativeHeight);
-                return rt.color;
+                return view;
             }
         }
     }
@@ -2200,6 +2432,7 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     noteGpuRows(*rt, static_cast<uint32_t>(std::max<int>(0, ctx.scissor.y0)), std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     rt->gpuDirty = true;
     rt->shadowStale = true;
+    rt->dirtySinceResolve = true;   // this batch draws into the host colour texture (see nativeView)
 
     {
         char tag[64];

@@ -110,6 +110,19 @@ private:
         uint32_t usedHeight = 32;
         uint32_t fbo = 0;
         uint32_t color = 0;
+        // S3-b native view. At scale 1 (hostWidth == nativeWidth) these stay 0 forever: nativeView()
+        // hands back `color` itself, so a 1x run allocates no mirror and copies nothing. Above 1x
+        // they are a nativeWidth x nativeHeight RGBA8 texture plus the FBO it is attached to, and
+        // every guest-observable read (the two downloads, the RT-as-texture sample, the display
+        // dump) resolves the host-scale colour texture into them first. Allocated once per target
+        // -- the native extent is kMaxRtWidth x kRtHeight and never changes -- and freed with the
+        // target's own fbo/color.
+        uint32_t mirrorTexture = 0;
+        uint32_t mirrorFbo = 0;
+        // The colour texture was written (draw, clear, or a shadow->GPU row refresh) since the
+        // mirror was last resolved, so the next nativeView() must re-resolve. Starts true: a fresh
+        // target is cleared on allocation.
+        bool dirtySinceResolve = true;
         uint32_t attachedDepth = 0;
         bool gpuDirty = false;
         bool shadowStale = false;   // shadow VRAM does not hold the GPU contents
@@ -215,6 +228,16 @@ private:
     DepthTarget *getDepthTarget(uint32_t zbp, uint32_t fbw, uint32_t width, uint32_t height);
     uint32_t resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight);
     uint32_t decodeTexture(const GSDrawState &state, const TextureKey &key, uint32_t width, uint32_t height, uint32_t pageStart, uint32_t pageCount);
+    // A GL texture holding the target's contents at its NATIVE GS extent, for anything the guest
+    // can observe. Returns rt.color unchanged (no copy, no allocation) while host == native;
+    // otherwise resolves host -> mirror when the target has been drawn since the last resolve and
+    // returns the mirror. nativeViewFbo() is the same thing for readers that need a framebuffer to
+    // glReadPixels from. (uint32_t, not GLuint: this header does not pull in glad; they are the
+    // same type, and every other GL name in the class is uint32_t for the same reason.)
+    uint32_t nativeView(RenderTarget &rt);
+    uint32_t nativeViewFbo(RenderTarget &rt);
+    void resolveToMirror(RenderTarget &rt);
+    bool ensureResolveProgram();
     void downloadRenderTargetToShadow(RenderTarget &rt);
     void downloadRenderTargetToCpu(RenderTarget &rt);
     void refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer);
@@ -261,6 +284,16 @@ private:
     uint32_t m_program = 0;
     uint32_t m_vao = 0;
     uint32_t m_vbo = 0;
+    // PS2X_GS_SCALE_FILTER=box only: fullscreen-triangle box-average resolve (host -> native
+    // mirror). Compiled lazily on the first box resolve, so `point` (the default) and every scale-1
+    // run never create it. m_resolveVao is a dedicated empty VAO -- the shader reads gl_VertexID
+    // and no attributes, and binding m_vao here would source 3 vertices out of m_vbo.
+    uint32_t m_resolveProgram = 0;
+    uint32_t m_resolveVao = 0;
+    bool m_resolveProgramFailed = false;
+    int m_resolveUSrc = -1;
+    int m_resolveUScaleX = -1;
+    int m_resolveUScaleY = -1;
     struct Uniforms
     {
         int rtSize = -1, tex = -1, texSize = -1, tme = -1, tfx = -1, tcc = -1, fst = -1, wrapU = -1, wrapV = -1;

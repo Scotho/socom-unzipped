@@ -387,3 +387,107 @@ others are perf, diagnostics, or a loud failure.
    `(x1-x0+1)*S`, `(y1-y0+1)*S`; §2.2 marks the off-by-one there as semantic-adjacent, since a
    scissor that leaks a draw into the next row leaks it into the rows a download later writes into
    VRAM.
+
+## 9. S3-b — the native view (2026-09-12)
+
+S3-a left the two extents named but every reader still pointed at whichever one it happened to
+need. S3-b adds the single place that turns a host-scale target back into something the guest may
+look at, and routes every guest-observable read through it. Nothing is scaled yet (`kScale` is
+still `constexpr 1`), so on this commit the whole mechanism is an early return: **the diff is a
+refactor of four readers plus dormant resolve code.** Line numbers below are
+`src/lib/gs/gs_gl_backend.cpp` at the S3-b commit; they are a *third* frame — do not carry them
+across the §8 boundary either.
+
+### 9.1 The `nativeView` contract
+
+```
+uint32_t GSGlBackend::nativeView(RenderTarget &rt);      // 1390 — a texture, nativeWidth x nativeHeight
+uint32_t GSGlBackend::nativeViewFbo(RenderTarget &rt);   // 1405 — the FBO that texture is attached to
+```
+
+* `hostWidth == nativeWidth && hostHeight == nativeHeight` → returns `rt.color` / `rt.fbo`
+  unchanged. **No copy, no allocation, no GL call.** This is the only path a scale-1 build ever
+  takes, which is why S3-b can claim byte-identical output.
+* otherwise → `resolveToMirror(rt)` (1455) if `rt.dirtySinceResolve`, then returns
+  `rt.mirrorTexture` / `rt.mirrorFbo`.
+
+`nativeViewFbo` is `nativeView(rt) == rt.color ? rt.fbo : rt.mirrorFbo` — one resolve
+implementation, two shapes of answer, because `resolveTexture` wants a texture to sample and the
+three readback sites want a framebuffer to `glReadPixels` out of.
+
+**`dirtySinceResolve`** (declared in `RenderTarget`, starts `true`) is set wherever the *host colour
+texture* is written and cleared only in `nativeView` after a resolve:
+
+| set at | writer |
+|---|---|
+| 2431 | `setupDrawState` — the draw the `executeSubmit` batch flushes into the target |
+| 1344 | `executeClear` |
+| 1248 | `refreshDirtyRows` — the shadow→GPU `glTexSubImage2D` row upload |
+
+The brief named only the first two. `refreshDirtyRows` is the third writer of the same texture: a
+download that follows an image upload with no draw in between would otherwise be served a mirror
+that predates the upload. It is free at scale 1 like the rest.
+
+### 9.2 The resolve pass (unreachable on this commit)
+
+`resolveToMirror` (1455) allocates, on first use only, a `nativeWidth x nativeHeight` RGBA8
+`mirrorTexture` plus the `mirrorFbo` it is attached to — **one pair per render target for the life
+of that target**. There is no resize path to leak a second pair through: every target's native
+extent is `kMaxRtWidth x kRtHeight` and is never rewritten after `getRenderTarget` allocates it.
+Both objects are deleted beside `rt.fbo` / `rt.color` in the `CmdType::Reset` teardown, the only
+place targets are destroyed.
+
+`PS2X_GS_SCALE_FILTER` (read once, 300) picks the filter:
+
+* **`point`** (default, and the fallback if the box program fails to build) — one
+  `glBlitFramebuffer(0,0,host, 0,0,native, GL_NEAREST)` (1528). Each native pixel is exactly some
+  host texel, so a readback still carries bytes a draw actually wrote.
+* **`box`** — a fullscreen triangle (`gl_VertexID`, no attributes, its own empty VAO) into the
+  mirror; `gl_FragCoord.xy` is the native pixel, so the shader `texelFetch`es the `SxS` host texels
+  at `native * scale` and averages them.
+
+The pass saves and restores every piece of GL state it touches (FBO, viewport, colour mask, scissor
+enable, and for the box path also the program, VAO, active unit + 2D binding, blend/depth/cull
+enables), because both entry points run mid-batch: `resolveTexture` is called from `setupDrawState`
+*after* `glUseProgram(m_program)`, and the downloads are called from the texture path between a
+batch's setup and its draw.
+
+### 9.3 The four readers, and what each reads now
+
+| reader | line | reads |
+|---|---|---|
+| `downloadRenderTargetToShadow` | 1563 | `nativeViewFbo(rt)`, buffer + `glReadPixels` rect + loop stride all `nativeWidth` |
+| `downloadRenderTargetToCpu` | 1616 | as above |
+| `resolveTexture` (RT sampled as a texture) | 2194 | `nativeView(rt)` as the sampled texture; `outWidth/outHeight` (→ `uTexSize`) = `nativeWidth/nativeHeight` |
+| `PS2X_GS_DUMP_DISPLAY` | 1767 | `nativeViewFbo(*rt)`, `nativeWidth` buffer/rect/stride |
+
+### 9.4 What this does to §8.1's hand-offs (items are NOT renumbered)
+
+* **Item 1 (both downloads) — closed.** The `h`-native / width-host straddle is gone: every one of
+  the four reads named there is `native*` again, and the downsample lives in the resolve rather than
+  in the readback. §2.5/§2.6's blocker is answered.
+* **Item 3 (`PS2X_GS_DUMP_DISPLAY`) — closed**, not left wrong-at-S>1 after all; the "gpu" PPM now
+  has the same extent as the "shadow" and "cpu" PPMs it is compared against at any scale.
+* **Item 5 — half decided, half still open and still the dangerous half.** The `uTexSize` side is
+  now settled as **native**, unconditionally and under *either* design, because the texture handed
+  to the sampler is guaranteed native-sized (it is the mirror, or `rt.color` at scale 1). The two
+  uniforms are therefore no longer a pair: **S3-c owns only `uRtSize` (2302 in §8's frame) and the
+  `appendVertex` premultiply, and must still change those two together.** No `uTexScale` on `tc`,
+  `wrapCoord` or `uRegion` is needed for the RT-as-texture path — the mirror is what removes it.
+  Note the consequence S3-c should state out loud: an RT sampled as a texture is sampled at native
+  resolution, so a full-screen display copy does not gain detail from the scale; only the draws
+  that rasterise into the target do.
+* **Items 2, 4 and 6 — untouched, still S3-c's.**
+
+### 9.5 The readback S3-b deliberately did not route
+
+`executePresent`'s `m_presentPixelsRequested` block (1938-1951) — the harness frame capture that
+feeds `HostFramePixels`/the parity captures — still does `glBindFramebuffer(rt->fbo)` and
+`glReadPixels(0, 0, m_presentWidth, m_presentHeight, ...)`. It is a fifth guest-visible-ish read and
+at `S > 1` it would grab the top-left `1/S` corner, but it is **item 2's territory, not item 1's**:
+item 2 requires `m_presentWidth/Height` to become host-scaled (`min(display_w, native) * kScale`),
+and routing this site through the native mirror now would put it at cross purposes with that
+decision. S3-c must resolve the two together — either scale `m_presentWidth` per item 2 *and* leave
+this reading `rt->fbo`, or keep it native *and* point it at `nativeViewFbo`. Doing one without the
+other gives a capture that is a corner of the frame or a frame at the wrong size, and the `>= 99`
+title bar is what would catch it.
