@@ -222,24 +222,60 @@ count, and exits 1 on any hit. It needs no reference decode: section 3 proved th
 section 4 measured 0/48 dropped blocks in the shadow, so **the shadow layer is the reference for
 the mirror stage**. `--ref` only labels each present with its INTRO_2 picture number.
 
-Because a drawn screen legitimately disagrees with the shadow, presents are split by how many
-blocks are byte-identical in both layers: ≥ 90% is a movie present (tested, counted, decides the
-exit code), 20–90% is the title menu's movie background under drawn panels (a block there is
-looked at only when most of its 8 neighbours are byte-identical, and it is reported as `note`, not
-counted), below 20% mirrors nothing and is skipped.
+A drawn screen legitimately disagrees with the shadow, so presents have to be classified — and the
+obvious classifier is a trap. Splitting on "how much of the frame is byte-identical" is **not
+monotonic**: dropping blocks lowers it, so a 5% drop fails the run while a 50% drop falls under the
+bar and is silently demoted. The check would then pass hardest exactly when the bug is worst. Three
+rules avoid it:
 
-Validation: run against Sprint 3's stored capture it reproduces section 4 exactly —
+- `content` — blocks non-black in the **shadow**; below 10% the shadow holds no picture and there
+  is nothing to find. Skipped.
+- `visible` — blocks non-black in the **gpu** layer; below 5% the target shows essentially nothing
+  and is indistinguishable from a 100% drop. Skipped **loudly**, and counted in the summary.
+- `agree` — of the shadow's non-black blocks, the fraction whose gpu block is *either*
+  byte-identical *or* pure black. A dropped block counts as agreeing, so the number does not move
+  as drops accumulate. ≥ 0.95 is a movie present (counted, decides the exit code); 0.20–0.95 is the
+  title menu's movie background under drawn panels (a block there is looked at only when most of
+  its 8 neighbours are byte-identical, and it is reported as `note`, not counted); below 0.20 is
+  not a mirror.
+
+**A run with no counted present exits 2, not 0.** "Zero missing blocks out of nothing" is not a
+pass, and a capture that never reached the movie is the most likely way to produce one.
+
+Validation. Against Sprint 3's stored capture it reproduces section 4 exactly —
 
 ```
 $ python -m tools_py.parity.movie_blocks logs/parity/mb10_dispdump
-display_195s_fbp000  movie 99.7%  MISSING 3: (48, 48) (48, 80) (192, 416)
-display_199s_fbp000  movie 99.8%  MISSING 2: (432, 368) (272, 400)
-display_211s_fbp000  movie 99.8%  MISSING 2: (384, 144) (384, 160)
-presents=108 tested=46 advisory=61
-MISSING blocks=7 pictures=3
+display_040s_fbp000  SKIP (GL target shows nothing: 0% of blocks non-black against the shadow's 89%)
+display_195s_fbp000  movie agree=1.000 visible=93%  MISSING 3: (48, 48) (48, 80) (192, 416)
+display_199s_fbp000  movie agree=1.000 visible=93%  MISSING 2: (432, 368) (272, 400)
+display_211s_fbp000  movie agree=1.000 visible=90%  MISSING 2: (384, 144) (384, 160)
+presents=108 tested=45 advisory=59 skipped=4 (dark=3 blank=1 not-mirror=0)
+note blocks=36 pictures=5  (partly-mirrored presents, not counted)
+STALE blocks=0
+MISSING blocks=7 pictures=3        (exit 1)
 ```
 
-— the same three presents, the same seven blocks, nothing on the other 105.
+— the same three presents, the same seven blocks, and no counted hit anywhere else. The 36 `note`
+blocks over 5 presents are the title menu's movie background, reported and deliberately not counted.
+`display_040s` is the whole-frame case the `visible` rule exists for: the GL target was entirely
+black against a shadow holding 89% content, which no per-block statement can describe.
+
+And against synthetic mutations of one clean movie present (`display_193s_fbp000`), which is how
+the monotonicity and the vacuous-pass hole were pinned down:
+
+| mutation | result | exit |
+|---|---|---|
+| none | `tested=1 MISSING blocks=0` | 0 |
+| 5% of blocks blacked out | `agree=1.000 visible=88% MISSING blocks=50` | 1 |
+| 50% blacked out | `agree=1.000 visible=46% MISSING blocks=523` | 1 |
+| 90% blacked out | `agree=1.000 visible=9% MISSING blocks=941` | 1 |
+| both layers all black | `tested=0 … NOT A PASS` | 2 |
+| 10% left holding the previous picture (stale, not black) | `tested=0 … NOT A PASS` | 2 |
+
+The three drop rows are the point: 50 → 523 → 941, all still counted. The last two rows are the
+false passes an earlier draft of this tool produced (exit 0 on an all-black capture with a non-zero
+`tested=`, and exit 0 on a 50–90% drop demoted out of the counted tier); both now exit non-zero.
 
 ### 9.2 The count
 
@@ -271,18 +307,40 @@ written in two places:
 
 So the game thread could overwrite the member between the render thread's `executeTransfer` and
 its `executeUpload`, and the upload then marked a rectangle belonging to some *later* transfer.
-A second temporary counter compared the game thread's value with the render thread's at every
-upload:
+
+That the window is open is what the deficit shows on its own, and it is the claim that survives
+without any instrumentation: **3 748 refreshes went missing with zero partial deliveries to
+explain them, and after the fix the deficit is 0.** A block can only lose its refresh here by
+`executeUpload` reading a transfer that is not the one whose bytes it just took.
+
+A second temporary counter sized the exposure while the fix was in flight. It kept the value the
+game thread had last written and compared it, at every upload, with the transfer the render thread
+had actually begun:
 
 ```
 [gs-mb] frame=669 t16=1187 r16=1187 missed16=0 drop16=0 race=1272 race16=1187 tAll=1273
 ```
 
-**1187 of 1187** — on a movie frame the value was stale for *every single block*, and 504 959 of
-504 979 (100.0%) over the whole run. The deficit of 3 748 is only the visible tail of it: `r16`
-counts a refresh only when the *read-back* transfer is also 16×16, so the 0.03% are the cases
-where the stale value happened to be a differently shaped transfer. The other 99.97% marked a
-wrong 16×16 rectangle, which is invisible to that counter and just as wrong.
+**1187 of 1187** on a movie frame, and **12 240 952 of 12 241 344 (100.0%)** over the run.
+Read it for what it is, and no more:
+
+- it is an **in-flight** measurement. The harness was removed before the commit (correctly — it is
+  instrumentation, not product), so the exact definition of `race` cannot be reconstructed from
+  the tree, only from this note;
+- it counts **exposure, not proven stale reads**. It says the game thread had already advanced past
+  the transfer being uploaded, which over-counts: a game-thread write that lands *before* the
+  render thread's `executeTransfer` is harmless, because `executeTransfer` then overwrites it with
+  the right value. What it establishes is that the window was open essentially always, not that
+  every upload read through it.
+
+The deficit of 3 748 is the part that is visible without any of that: `r16` counts a refresh only
+when the *read-back* transfer is also 16×16, so those 0.03% are the reads where the stale value
+happened to be a differently shaped transfer. A stale read that lands on another 16×16 transfer is
+invisible to that counter and marks a wrong rectangle just the same.
+
+`refreshRenderTargetsFromShadow` derives its exact `dirtyRects` entry from the transfer it is
+passed, so a stale value does two things at once: it pushes some *other* block's rectangle, and the
+real block's rectangle is never pushed at all.
 
 Why the screen was mostly right anyway: the wrong rectangle was almost always another block of the
 same movie frame, so the union of the marked rectangles still covered nearly the whole picture.
@@ -308,7 +366,7 @@ touched only on the render thread.
 | | before (HEAD of `sprint-4`) | after |
 |---|---|---|
 | `movie_blocks.py` on a `title_menu.txt` capture | `MISSING blocks=9 pictures=1` (present `display_198s_fbp000`, INTRO_2 picture 1640 at distance 0.00, blocks (528,320) (528,352) (544,352) (544,368) (560,368) (544,384) (544,400) (528,416) (544,416)) | `MISSING blocks=0 pictures=0` over 61 movie presents (and `note blocks=0` on the menu background, which had 6 before) |
-| 16×16 transfers vs refreshes | 12 205 741 vs 12 201 993 | 504 979 vs 504 979, deficit 0 |
+| 16×16 transfers vs refreshes | 12 205 741 vs 12 201 993, deficit 3 748 | 12 241 344 vs 12 241 344, deficit 0 |
 
 ### 9.6 Two incidental findings
 

@@ -697,10 +697,12 @@ void GSGlBackend::BeginTransfer(const GSTransferCommand &command)
     //
     // Counted with PS2X_GS_COUNT_MB over a title_menu.txt run (research/16 section 9): of
     // 12 205 741 16x16 transfers, 3 748 never reached refreshRenderTargetsFromShadow, and ZERO of
-    // those came from the partial-delivery path the note first suspected. On the fixed build the
-    // same counter says 12 240 952 of 12 241 344 uploads (100.0%) would have read a
-    // m_currentTransfer that was not the rectangle the render thread had begun, and the deficit
-    // is 0. movie_blocks.py over the same capture goes from MISSING blocks=9 to 0.
+    // those came from the partial-delivery path the note first suspected. After this change the
+    // deficit is 0, and movie_blocks.py over the same capture goes from MISSING blocks=9 to 0.
+    // Those two numbers are the evidence. The same run also measured that the game thread had
+    // already advanced past the transfer being uploaded on 12 240 952 of 12 241 344 uploads --
+    // exposure, not proven stale reads, from instrumentation that is no longer in the tree;
+    // research/16 section 9.3 says what it does and does not establish.
     //
     // Nothing on the game thread reads m_currentTransfer, so the write is deleted outright rather
     // than duplicated into a second member.

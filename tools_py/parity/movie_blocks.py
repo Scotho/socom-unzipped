@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Find 16x16 movie blocks that are black on the GPU but not black in shadow VRAM.
+"""Find 16x16 movie blocks the GL render target is missing but shadow VRAM has.
 
 This is the check for the intro-movie macroblock defect (docs/research/16). The runtime's
 `PS2X_GS_DUMP_DISPLAY=<dir>:<t0>:<t1>` writes the displayed buffer three ways at each sampled
@@ -22,35 +22,61 @@ which is strictly stronger than research/16's ffmpeg recipe:
   after run and reads exactly like a deterministic bug. It is not one; that trap cost the Sprint 3
   spike a false positive (research/16 section 0). Only the differential is sound.
 
+Blocks that differ from the shadow WITHOUT being black are reported too, as `stale` -- a mirror
+that kept the previous frame's pixels instead of black is the same failure with a different
+leftover, and `gpu != shadow` is the stronger signal wherever the layers are supposed to agree.
+
+HOW A PRESENT IS CLASSIFIED, and why it is done this way
+--------------------------------------------------------
 The test only means something where the GL target really is a mirror of the shadow. Where the GPU
 draws -- the menu's text and panels, a briefing -- the shadow holds whatever was last uploaded to
-those addresses and the target holds what was drawn; the two have no reason to agree, and
-`gpu black & shadow not black` there says nothing about the mirror. So presents are sorted by how
-much of the frame the two layers agree on, byte for byte, per 16x16 block:
+those addresses and the target holds what was drawn; the two have no reason to agree. But a naive
+"how much of the frame is byte-identical?" gate is NOT safe, because dropping blocks lowers it:
+a 5% drop stays above the bar and fails the run, a 50% drop falls below it and is silently demoted,
+so the check would pass hardest exactly when the bug is worst. Three rules avoid that:
 
-* >= --mirror-frac (default 0.90): a movie present -- the attract intro movie fills the screen, and
-  on a clean one *every* block is identical (research/16 section 2: clean frames match the offline
-  decode at dist 0.00). Tested, counted, and it decides the exit code.
-* >= --advisory-min (default 0.20): partly mirrored -- the title menu's movie background covers
-  about 57% of the frame with drawn panels over the rest. Here a block is looked at only when at
-  least --neighbour-frac of its existing 8 neighbours are byte-identical (a local mirror test that
-  still tolerates a run of adjacent dropped blocks -- research/16's own (384,144)+(384,160) pair are
-  each other's neighbour). Reported as `note`, NOT counted and NOT part of the exit code: these
-  presents also carry legitimate layer differences, so a hit here is a lead, not a measurement.
-* below that: the target mirrors nothing (a cleared or freshly switched buffer). Skipped.
+* `content`  -- the fraction of blocks that are non-black in the SHADOW. Below --min-content the
+  shadow holds no picture, so there is nothing this check could find. Skipped.
+* `visible`  -- the fraction of blocks that are non-black in the GPU layer. Below --min-visible the
+  target is showing essentially nothing (a cleared or freshly switched buffer, or a whole-frame
+  loss) and is indistinguishable from a 100% drop; no per-block statement is possible. Skipped,
+  and listed in the summary so it can never be mistaken for a pass.
+* `agree`    -- of the blocks that are non-black in the shadow, the fraction whose GPU block is
+  EITHER byte-identical OR pure black. Dropped blocks are counted as agreeing, so this number does
+  not move when more blocks are dropped: 5%, 50% and 90% drops all keep agree = 1.00 and all land
+  in the counted tier, reporting 5%, 50% and 90% of the blocks as missing. Drawn content is
+  neither identical nor black, so a menu present sits near its mirrored fraction (~0.57) instead.
+
+  >= --mirror-frac : a movie present. Counted; decides the exit code.
+  >= --advisory-min: partly mirrored, e.g. the title menu's movie background under drawn panels.
+                     A block there is looked at only when at least --neighbour-frac of its existing
+                     8 neighbours are byte-identical (a local mirror test that still tolerates a
+                     run of adjacent dropped blocks -- research/16's own (384,144)+(384,160) pair
+                     are each other's neighbour). Reported as `note`, NOT counted: these presents
+                     also carry legitimate layer differences, so a hit is a lead, not a measurement.
+  below            : not a mirror. Skipped.
+
+A run that produces NO counted present exits non-zero. "Zero missing blocks out of nothing" is not
+a pass, and a capture that never reached the movie is the most likely way to get one.
 
     python -m tools_py.parity.movie_blocks logs/mb_s4
     python -m tools_py.parity.movie_blocks logs/mb_s4 --ref game/disc/RUN/MOVIES/INTRO_2.PSS
 
-Prints one line per picture and a final `MISSING blocks=<n> pictures=<n>`; exits 1 when any tested
-block is black on the GPU and not black in the shadow. `--ref` is optional and changes no verdict:
-it decodes the named movie (or reads a directory of frames) and labels each present with the
-nearest reference picture, so a report can be cross-referenced with research/16's picture numbering
-(965, 1085, 1447).
+Prints one line per present and a final `MISSING blocks=<n> pictures=<n>`. `--ref` is optional and
+changes no verdict: it decodes the named movie (or reads a directory of frames) and labels each
+present with the nearest reference picture, so a report can be cross-referenced with research/16's
+picture numbering (965, 1085, 1447).
 
-Validated against Sprint 3's stored capture: `movie_blocks.py logs/parity/mb10_dispdump` reports
-exactly the three divergences research/16 section 4 names, with exactly their block coordinates,
-and nothing on the other 105 presents.
+Exit codes: 0 clean, 1 blocks missing or stale, 2 nothing measurable (no counted present, or no
+dumps at all).
+
+Known limit: `agree` treats a block that differs without being black as disagreement, so a present
+whose mirror failed by leaving large amounts of stale NON-black content is demoted out of the
+counted tier. It cannot become a false pass -- demoting every present empties `tested=` and the run
+exits 2 -- but the blocks are reported as `note` rather than counted. Black is the leftover the
+measured defect actually produces (the GL texture starts cleared), and the `stale` count catches
+the other flavour on presents that still qualify. Measured: a synthetic 10% stale-content present
+gives `tested=0 ... exit 2`, while 5/50/90% black drops give MISSING 50/523/941, all exit 1.
 """
 import argparse
 import glob
@@ -90,6 +116,14 @@ def read_ppm(path):
     pos += 1   # exactly one whitespace byte separates the header from the raster
     px = np.frombuffer(data, dtype=np.uint8, count=w * h * 3, offset=pos)
     return px.reshape(h, w, 3)
+
+
+def write_ppm(path, img):
+    """Write an (h, w, 3) uint8 array as a binary P6 PPM (used by the tool's own tests)."""
+    h, w = img.shape[:2]
+    with open(path, "wb") as f:
+        f.write(b"P6\n%d %d\n255\n" % (w, h))
+        f.write(np.ascontiguousarray(img, dtype=np.uint8).tobytes())
 
 
 def blocks(img):
@@ -163,35 +197,48 @@ def pairs(dumpdir):
     return out
 
 
-def coords(lost):
-    rows, cols = np.nonzero(lost)
-    return int(len(rows)), " ".join("(%d, %d)" % (c * BLOCK, r * BLOCK) for r, c in zip(rows, cols))
+def coords(mask, limit=24):
+    rows, cols = np.nonzero(mask)
+    n = int(len(rows))
+    shown = " ".join("(%d, %d)" % (c * BLOCK, r * BLOCK) for r, c in list(zip(rows, cols))[:limit])
+    if n > limit:
+        shown += " ... +%d more" % (n - limit)
+    return n, shown
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("dumpdir", help="directory written by PS2X_GS_DUMP_DISPLAY")
-    ap.add_argument("--ref", help="optional: movie file or frame directory, to label pictures only")
-    ap.add_argument("--mirror-frac", type=float, default=0.90,
-                    help="fraction of blocks that must be byte-identical for a present to be a "
-                         "movie present, i.e. tested and counted (default 0.90)")
+    ap.add_argument("--ref", help="optional: movie file or frame directory, to label presents only")
+    ap.add_argument("--mirror-frac", type=float, default=0.95,
+                    help="`agree` at or above which a present is a movie present: counted, and it "
+                         "decides the exit code (default 0.95)")
     ap.add_argument("--advisory-min", type=float, default=0.20,
-                    help="below --mirror-frac and at or above this, a present is reported but not "
-                         "counted; below it the target mirrors nothing and is skipped (default 0.20)")
+                    help="`agree` at or above which a present is reported but not counted; below "
+                         "it the target is not a mirror at all and is skipped (default 0.20)")
     ap.add_argument("--neighbour-frac", type=float, default=0.6,
                     help="on an advisory present, the fraction of a block's existing 8 neighbours "
                          "that must be byte-identical for it to be looked at (default 0.6)")
+    ap.add_argument("--min-content", type=float, default=0.10,
+                    help="fraction of blocks that must be non-black in the SHADOW for the present "
+                         "to hold a picture worth checking (default 0.10)")
+    ap.add_argument("--min-visible", type=float, default=0.05,
+                    help="fraction of blocks that must be non-black in the GPU layer; below it the "
+                         "target shows essentially nothing and no per-block statement is possible "
+                         "(default 0.05)")
     ap.add_argument("--verbose", action="store_true", help="also print the skipped presents")
     args = ap.parse_args(argv)
 
     items = pairs(args.dumpdir)
     if not items:
         print("no display_*_{gpu,shadow}.ppm pairs in %s" % args.dumpdir)
+        print("MISSING blocks=0 pictures=0   (NOT A PASS: nothing to measure)")
         return 2
 
     ref = load_reference(args.ref) if args.ref else None
-    missing_blocks = missing_pictures = tested = 0
+    missing_blocks = missing_pictures = stale_blocks = tested = 0
     note_blocks = note_pictures = advisory = 0
+    blank = dark = notmirror = 0
 
     for name, gpu_path, shadow_path in items:
         gpu, shadow = read_ppm(gpu_path), read_ppm(shadow_path)
@@ -199,40 +246,83 @@ def main(argv=None):
             print("%s  SKIP layers differ in size %s vs %s" % (name, gpu.shape, shadow.shape))
             continue
         same = identical_mask(gpu, shadow)
-        frac = float(same.mean())
-        if frac < args.advisory_min:
-            if args.verbose:
-                print("%s  skip (mirrors nothing, %.1f%% of blocks identical)" % (name, 100 * frac))
-            continue
+        gpu_black, shadow_black = black_mask(gpu), black_mask(shadow)
+        content = float((~shadow_black).mean())
+        visible = float((~gpu_black).mean())
         label = ""
         if ref is not None:
             dist = np.abs(ref - thumb(shadow)).mean(axis=(1, 2))
             label = " picture=%d(d%.2f)" % (int(np.argmin(dist)), float(dist.min()))
-        lost = black_mask(gpu) & ~black_mask(shadow)
-        if frac >= args.mirror_frac:
-            tested += 1
-            n, where = coords(lost)
-            if n:
-                missing_pictures += 1
-                missing_blocks += n
-                print("%s  movie %.1f%%%s  MISSING %d: %s" % (name, 100 * frac, label, n, where))
-            else:
-                print("%s  movie %.1f%%%s  ok" % (name, 100 * frac, label))
+
+        if content < args.min_content:
+            dark += 1
+            if args.verbose:
+                print("%s  skip%s (shadow holds no picture, %.0f%% of blocks non-black)"
+                      % (name, label, 100 * content))
             continue
+        if visible < args.min_visible:
+            # Indistinguishable from a 100% drop: say so loudly rather than count it either way.
+            blank += 1
+            print("%s  SKIP%s (GL target shows nothing: %.0f%% of blocks non-black against the "
+                  "shadow's %.0f%% -- cleared/switched buffer or a whole-frame loss)"
+                  % (name, label, 100 * visible, 100 * content))
+            continue
+
+        # `agree` over the shadow's non-black blocks; a dropped block counts as agreeing, so more
+        # drops never demote a present out of the counted tier (see the module docstring).
+        interesting = ~shadow_black
+        agree = float((same | gpu_black)[interesting].mean())
+
+        if agree >= args.mirror_frac:
+            tested += 1
+            lost = gpu_black & ~shadow_black
+            stale = ~same & ~gpu_black & ~shadow_black
+            n_lost, where = coords(lost)
+            n_stale, where_stale = coords(stale)
+            if n_lost or n_stale:
+                missing_pictures += 1
+                missing_blocks += n_lost
+                stale_blocks += n_stale
+                parts = []
+                if n_lost:
+                    parts.append("MISSING %d: %s" % (n_lost, where))
+                if n_stale:
+                    parts.append("STALE %d: %s" % (n_stale, where_stale))
+                print("%s  movie agree=%.3f visible=%.0f%%%s  %s"
+                      % (name, agree, 100 * visible, label, "; ".join(parts)))
+            else:
+                print("%s  movie agree=%.3f visible=%.0f%%%s  ok" % (name, agree, 100 * visible, label))
+            continue
+
+        if agree < args.advisory_min:
+            notmirror += 1
+            if args.verbose:
+                print("%s  skip%s (not a mirror, agree=%.3f)" % (name, label, agree))
+            continue
+
         advisory += 1
-        n, where = coords(lost & (neighbour_identical_frac(same) >= args.neighbour_frac))
+        testable = neighbour_identical_frac(same) >= args.neighbour_frac
+        n, where = coords(testable & gpu_black & ~shadow_black)
         if n:
             note_pictures += 1
             note_blocks += n
-            print("%s  partial %.1f%%%s  note %d (not counted): %s" % (name, 100 * frac, label, n, where))
+            print("%s  partial agree=%.3f%s  note %d (not counted): %s" % (name, agree, label, n, where))
         elif args.verbose:
-            print("%s  partial %.1f%%%s  ok" % (name, 100 * frac, label))
+            print("%s  partial agree=%.3f%s  ok" % (name, agree, label))
 
-    print("presents=%d tested=%d advisory=%d" % (len(items), tested, advisory))
+    print("presents=%d tested=%d advisory=%d skipped=%d (dark=%d blank=%d not-mirror=%d)"
+          % (len(items), tested, advisory, dark + blank + notmirror, dark, blank, notmirror))
     print("note blocks=%d pictures=%d  (partly-mirrored presents, not counted)"
           % (note_blocks, note_pictures))
+    print("STALE blocks=%d" % stale_blocks)
     print("MISSING blocks=%d pictures=%d" % (missing_blocks, missing_pictures))
-    return 1 if missing_blocks else 0
+    if tested == 0:
+        print("NOT A PASS: no present qualified as a movie present, so nothing was measured "
+              "(%d dark, %d blank, %d not a mirror, %d advisory)" % (dark, blank, notmirror, advisory))
+        return 2
+    if missing_blocks or stale_blocks:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
