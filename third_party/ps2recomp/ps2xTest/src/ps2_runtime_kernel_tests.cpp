@@ -9,6 +9,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cmath>
 #include <cstring>
 #include <sstream>
 #include <thread>
@@ -1057,6 +1058,165 @@ void register_ps2_runtime_kernel_tests()
             ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
             t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(0x0807DC72),
                      "the unregistered fallback should run the same generator");
+        });
+
+        tc.Run("the soft-double libm stubs take $a0 and return $v0, not $f12/$f0", [](TestCase &t)
+        {
+            // SOCOM II binds sin/cos/tan/fabs/floor at 0x1B3000/0x1B2C88/0x1B3138/0x1B2DB0/
+            // 0x1B2DE8. Those five are the *double soft-float* routines: the argument is a
+            // 64-bit IEEE-754 bit pattern in $a0 and the result comes back in $v0. Not one of
+            // them contains a single cop1/lwc1/swc1 instruction. The defect this test exists
+            // for is the previous implementation, which read $f12 and wrote $f0 -- so it never
+            // touched $v0 and all 22 live call sites consumed whatever the previous call had
+            // left in that register.
+            const auto bits = [](double v) {
+                uint64_t b = 0u;
+                std::memcpy(&b, &v, sizeof(b));
+                return b;
+            };
+            const auto asDouble = [](uint64_t b) {
+                double v = 0.0;
+                std::memcpy(&v, &b, sizeof(v));
+                return v;
+            };
+
+            // A sentinel in $v0 and poison in $f12/$f0. If a stub still used the FPU path,
+            // $v0 would come back holding kSentinel, which is exactly the old failure.
+            constexpr uint64_t kSentinel = 0xDEADBEEFCAFEF00DULL;
+            constexpr float kPoison = 1234.5f;
+            const auto call = [&](void (*stub)(uint8_t *, R5900Context *, PS2Runtime *),
+                                  TestEnv &env, uint64_t argBits) {
+                SET_GPR_U64(&env.ctx, 4, argBits);   // $a0
+                SET_GPR_U64(&env.ctx, 2, kSentinel); // $v0
+                env.ctx.f[12] = kPoison;
+                env.ctx.f[0] = kPoison;
+                stub(env.rdram.data(), &env.ctx, &env.runtime);
+                return static_cast<uint64_t>(GPR_U64((&env.ctx), 2));
+            };
+
+            {
+                TestEnv env;
+
+                // fabs is the clearest case: the guest is one sign-bit clear on the pattern.
+                t.Equals(call(&ps2_stubs::fabs, env, bits(-2.5)), bits(2.5),
+                         "fabs should read the double pattern from $a0 and return it in $v0");
+                t.Equals(env.ctx.f[0], kPoison,
+                         "fabs must not answer through $f0 -- the guest never touches the FPU");
+                t.Equals(call(&ps2_stubs::fabs, env, bits(2.5)), bits(2.5),
+                         "fabs of a positive value should be unchanged");
+                t.Equals(call(&ps2_stubs::fabs, env, 0x8000000000000000ULL), 0x0000000000000000ULL,
+                         "fabs(-0.0) should be +0.0, bit for bit");
+                t.Equals(call(&ps2_stubs::fabs, env, 0xFFF0000000000000ULL), 0x7FF0000000000000ULL,
+                         "fabs(-inf) should be +inf");
+                t.Equals(call(&ps2_stubs::fabs, env, 0xFFF8000000000123ULL), 0x7FF8000000000123ULL,
+                         "fabs should clear the sign bit and keep the NaN payload intact");
+
+                // The precision half of the defect: a double argument truncated through a
+                // float would lose the low mantissa bits. 1 + 2^-40 is representable as a
+                // double and is exactly 1.0f as a float.
+                const uint64_t nearOne = bits(1.0 + std::ldexp(1.0, -40));
+                t.Equals(call(&ps2_stubs::fabs, env, nearOne), nearOne,
+                         "fabs should preserve double precision, not round through a float");
+            }
+
+            {
+                TestEnv env;
+
+                t.Equals(call(&ps2_stubs::floor, env, bits(2.5)), bits(2.0),
+                         "floor should read $a0 and return the result in $v0");
+                t.Equals(env.ctx.f[0], kPoison,
+                         "floor must not answer through $f0");
+                t.Equals(call(&ps2_stubs::floor, env, bits(-2.5)), bits(-3.0),
+                         "floor should round toward negative infinity");
+                t.Equals(call(&ps2_stubs::floor, env, bits(-0.5)), bits(-1.0),
+                         "floor(-0.5) should be -1.0");
+                t.Equals(call(&ps2_stubs::floor, env, 0x8000000000000000ULL), 0x8000000000000000ULL,
+                         "floor(-0.0) should keep the sign of zero");
+                t.Equals(call(&ps2_stubs::floor, env, bits(1.0e300)), bits(1.0e300),
+                         "floor of a value already integral should be unchanged");
+                t.Equals(call(&ps2_stubs::floor, env, 0x7FF0000000000000ULL), 0x7FF0000000000000ULL,
+                         "floor(+inf) should be +inf");
+                // The guest falls through to `x + x` for a NaN, which quietens a signalling
+                // NaN and leaves a quiet one alone.
+                t.Equals(call(&ps2_stubs::floor, env, 0x7FF8000000000123ULL), 0x7FF8000000000123ULL,
+                         "floor should return a quiet NaN unchanged");
+                t.Equals(call(&ps2_stubs::floor, env, 0x7FF0000000000123ULL), 0x7FF8000000000123ULL,
+                         "floor should quieten a signalling NaN, as the guest's x+x does");
+
+                // A float round trip would collapse this to 2^24; a double must not.
+                const uint64_t bigOdd = bits(16777217.0); // 2^24 + 1
+                t.Equals(call(&ps2_stubs::floor, env, bigOdd), bigOdd,
+                         "floor should preserve integers beyond float precision");
+            }
+
+            {
+                TestEnv env;
+
+                // Exactly-defined points first, as bit patterns.
+                t.Equals(call(&ps2_stubs::sin, env, bits(0.0)), bits(0.0),
+                         "sin should read $a0 and return sin(+0.0) = +0.0 in $v0");
+                t.Equals(env.ctx.f[0], kPoison, "sin must not answer through $f0");
+                t.Equals(call(&ps2_stubs::cos, env, bits(0.0)), bits(1.0),
+                         "cos should read $a0 and return cos(+0.0) = 1.0 in $v0");
+                t.Equals(env.ctx.f[0], kPoison, "cos must not answer through $f0");
+                t.Equals(call(&ps2_stubs::tan, env, bits(0.0)), bits(0.0),
+                         "tan should read $a0 and return tan(+0.0) = +0.0 in $v0");
+                t.Equals(env.ctx.f[0], kPoison, "tan must not answer through $f0");
+
+                // ... then a non-trivial argument, to the tolerance a double promises. A
+                // float-ABI stub reading the poisoned $f12 would have returned sin(1234.5).
+                constexpr double kTol = 1.0e-15;
+                const double x = 0.5;
+                t.IsTrue(std::fabs(asDouble(call(&ps2_stubs::sin, env, bits(x))) - 0.479425538604203) < kTol,
+                         "sin(0.5) should be computed in double precision");
+                t.IsTrue(std::fabs(asDouble(call(&ps2_stubs::cos, env, bits(x))) - 0.8775825618903728) < kTol,
+                         "cos(0.5) should be computed in double precision");
+                t.IsTrue(std::fabs(asDouble(call(&ps2_stubs::tan, env, bits(x))) - 0.5463024898437905) < kTol,
+                         "tan(0.5) should be computed in double precision");
+
+                // Odd/even symmetry, which a stale-$v0 stub could never produce.
+                t.IsTrue(asDouble(call(&ps2_stubs::sin, env, bits(-x))) ==
+                             -asDouble(call(&ps2_stubs::sin, env, bits(x))),
+                         "sin should be odd");
+                t.IsTrue(asDouble(call(&ps2_stubs::cos, env, bits(-x))) ==
+                             asDouble(call(&ps2_stubs::cos, env, bits(x))),
+                         "cos should be even");
+            }
+        });
+
+        tc.Run("the soft-double stubs answer the argument, not the previous call's $v0", [](TestCase &t)
+        {
+            // The shape of the 22 live call sites is `t = softfloat_op(..); t = fabs(t);`.
+            // With the old $f12/$f0 stub, $v0 survived the call untouched, so fabs silently
+            // degenerated to the identity and floor/tan returned an unrelated register.
+            // Drive that exact sequence: seed $v0 with the value a preceding dpadd would have
+            // left, hand the stub a *different* argument in $a0, and require the answer to
+            // follow $a0.
+            TestEnv env;
+
+            const auto bits = [](double v) {
+                uint64_t b = 0u;
+                std::memcpy(&b, &v, sizeof(b));
+                return b;
+            };
+
+            SET_GPR_U64(&env.ctx, 2, bits(7.25)); // what the previous call returned
+            SET_GPR_U64(&env.ctx, 4, bits(-3.5)); // the argument this call was given
+            ps2_stubs::fabs(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(static_cast<uint64_t>(GPR_U64((&env.ctx), 2)), bits(3.5),
+                     "fabs must answer its $a0 argument, not pass through the previous $v0");
+
+            SET_GPR_U64(&env.ctx, 2, bits(7.25));
+            SET_GPR_U64(&env.ctx, 4, bits(-3.5));
+            ps2_stubs::floor(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(static_cast<uint64_t>(GPR_U64((&env.ctx), 2)), bits(-4.0),
+                     "floor must answer its $a0 argument, not pass through the previous $v0");
+
+            SET_GPR_U64(&env.ctx, 2, bits(7.25));
+            SET_GPR_U64(&env.ctx, 4, bits(0.0));
+            ps2_stubs::tan(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(static_cast<uint64_t>(GPR_U64((&env.ctx), 2)), bits(0.0),
+                     "tan must answer its $a0 argument, not pass through the previous $v0");
         });
 
         tc.Run("ReleaseAlarm aliases CancelAlarm and cache toggles succeed", [](TestCase &t)

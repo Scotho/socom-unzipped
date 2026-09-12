@@ -45,6 +45,64 @@ namespace ps2_stubs
             return (offset < PS2_RAM_SIZE) ? (PS2_RAM_SIZE - offset) : 0u;
         }
 
+        // ---- soft-float double ABI -------------------------------------------------
+        //
+        // SOCOM II's libm ships two families. The `*f` routines are genuine float code and
+        // pass their argument in $f12 (they are full of cop1/lwc1 -- see __kernel_sinf at
+        // 0x1B28F8). The unsuffixed routines are the *double soft-float* family: the
+        // argument arrives as a 64-bit IEEE-754 bit pattern in $a0, the result leaves in
+        // $v0, and they touch no FPU register at all. Disassembly of all five addresses
+        // this file binds (cos 0x1B2C88, fabs 0x1B2DB0, floor 0x1B2DE8, sin 0x1B3000,
+        // tan 0x1B3138) contains zero cop1/lwc1/swc1 instructions; fabs is literally
+        //
+        //     daddu v0,a0,zero ; dsra32 v0,v0,0 ; and v0,v0,0x7fffffff
+        //     and a0,a0,0xffffffff ; dsll32 v0,v0,0 ; or a0,a0,v0 ; daddu v0,a0,zero
+        //
+        // i.e. clear the sign bit of a 64-bit pattern. A stub that reads $f12 and writes
+        // $f0 therefore leaves $v0 untouched and every caller consumes whatever the
+        // previous call happened to leave there.
+        //
+        // The helpers beneath these five (dpadd 0x1A0B58, dpdiv 0x1A0EA0, fptodp
+        // 0x1A0720, dptofp 0x1A12D8, __kernel_sin/cos/tan, __ieee754_rem_pio2) are NOT
+        // stubbed -- they run as recompiled guest code and already honour this ABI, so
+        // the pattern in $a0 is a real double and the pattern we put in $v0 is consumed
+        // as one.
+        inline uint64_t softDoubleArgBits(const R5900Context *ctx, int reg)
+        {
+            return GPR_U64(ctx, reg);
+        }
+
+        inline double bitsToDouble(uint64_t bits)
+        {
+            double value;
+            std::memcpy(&value, &bits, sizeof(value));
+            return value;
+        }
+
+        inline uint64_t doubleToBits(double value)
+        {
+            uint64_t bits;
+            std::memcpy(&bits, &value, sizeof(bits));
+            return bits;
+        }
+
+        inline void setSoftDoubleReturn(R5900Context *ctx, uint64_t bits)
+        {
+            // The guest returns the whole pattern in $v0 and writes nothing else that a
+            // caller may rely on, so do exactly that -- do not also poke $v1.
+            SET_GPR_U64(ctx, 2, bits);
+        }
+
+        constexpr uint64_t kDoubleSignMask = 0x8000000000000000ull;
+        constexpr uint64_t kDoubleExpMask = 0x7FF0000000000000ull;
+        constexpr uint64_t kDoubleMantMask = 0x000FFFFFFFFFFFFFull;
+        constexpr uint64_t kDoubleQuietBit = 0x0008000000000000ull;
+
+        inline bool isDoubleNanBits(uint64_t bits)
+        {
+            return (bits & kDoubleExpMask) == kDoubleExpMask && (bits & kDoubleMantMask) != 0ull;
+        }
+
     }
 
     void malloc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -916,16 +974,23 @@ namespace ps2_stubs
         setReturnS32(ctx, ret);
     }
 
+    // WARNING: the $f12/$f0 maths stubs below (sqrt, atan, atan2, pow, exp, log, log10,
+    // ceil) are NOT bound by recomp/socom2.toml -- those addresses run as recompiled guest
+    // code. Before binding any of them, disassemble the target and check which family it
+    // is: SOCOM II's unsuffixed libm routines are double soft-float and pass in $a0/$v0
+    // (see the note in the anonymous namespace above), and a $f12/$f0 stub on one of those
+    // silently hands every caller a stale $v0. Only the `*f` routines use the FPU.
     void sqrt(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         float arg = ctx->f[12];
         ctx->f[0] = ::sqrtf(arg);
     }
 
+    // sin @ 0x1B3000 -- double sin(double): 64-bit pattern in $a0, result in $v0.
     void sin(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        float arg = ctx->f[12];
-        ctx->f[0] = ::sinf(arg);
+        const uint64_t bits = softDoubleArgBits(ctx, 4); // $a0
+        setSoftDoubleReturn(ctx, doubleToBits(std::sin(bitsToDouble(bits))));
     }
 
     void __kernel_sinf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -936,10 +1001,11 @@ namespace ps2_stubs
         ctx->f[0] = ::sinf(x + (iy != 0 ? y : 0.0f));
     }
 
+    // cos @ 0x1B2C88 -- double cos(double): 64-bit pattern in $a0, result in $v0.
     void cos(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        float arg = ctx->f[12];
-        ctx->f[0] = ::cosf(arg);
+        const uint64_t bits = softDoubleArgBits(ctx, 4); // $a0
+        setSoftDoubleReturn(ctx, doubleToBits(std::cos(bitsToDouble(bits))));
     }
 
     void __kernel_cosf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -972,10 +1038,11 @@ namespace ps2_stubs
         setReturnS32(ctx, n);
     }
 
+    // tan @ 0x1B3138 -- double tan(double): 64-bit pattern in $a0, result in $v0.
     void tan(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        float arg = ctx->f[12];
-        ctx->f[0] = ::tanf(arg);
+        const uint64_t bits = softDoubleArgBits(ctx, 4); // $a0
+        setSoftDoubleReturn(ctx, doubleToBits(std::tan(bitsToDouble(bits))));
     }
 
     void atan2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -1016,16 +1083,30 @@ namespace ps2_stubs
         ctx->f[0] = ::ceilf(arg);
     }
 
+    // floor @ 0x1B2DE8 -- double floor(double): 64-bit pattern in $a0, result in $v0.
+    // std::floor is IEEE-754 roundToIntegralTowardNegative, which is exactly what newlib's
+    // bit-twiddling version computes for every finite and infinite input, signed zero
+    // included. The one place the two could part company is a NaN argument: the guest
+    // falls through to `return x + x` (dpadd 0x1A0B58), i.e. it quietens a signalling NaN
+    // and returns a quiet one unchanged. Reproduce that rather than deferring to the host.
     void floor(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        float arg = ctx->f[12];
-        ctx->f[0] = ::floorf(arg);
+        const uint64_t bits = softDoubleArgBits(ctx, 4); // $a0
+        if (isDoubleNanBits(bits))
+        {
+            setSoftDoubleReturn(ctx, bits | kDoubleQuietBit);
+            return;
+        }
+        setSoftDoubleReturn(ctx, doubleToBits(std::floor(bitsToDouble(bits))));
     }
 
+    // fabs @ 0x1B2DB0 -- double fabs(double): 64-bit pattern in $a0, result in $v0.
+    // Done on the bit pattern, exactly as the guest does it, so that NaN payloads, signed
+    // zero and infinities come back bit-identical instead of going through a host double.
     void fabs(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        float arg = ctx->f[12];
-        ctx->f[0] = ::fabsf(arg);
+        const uint64_t bits = softDoubleArgBits(ctx, 4); // $a0
+        setSoftDoubleReturn(ctx, bits & ~kDoubleSignMask);
     }
     void abs(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
