@@ -114,6 +114,14 @@ So: the decoded picture is complete, the guest strip buffer is complete, the GS 
 shadow VRAM complete, and the GL texture that gets presented is missing individual 16×16 blocks.
 **The divergence is in the shadow→GPU mirror.**
 
+The dumps and the window captures are independent instruments and do not share a picture — the
+dump fires every 2 s, the burst captures every 0.2 s (every sixth picture), and no burst frame
+landed on pictures 965, 1085 or 1447. They agree on rate, which is the corroboration that they are
+watching the same thing: 3 of 48 sampled presents (6.3%) against 14 of 311 captured frames (4.5%),
+and 1–3 blocks per affected dump against 1–4 per affected capture. The code path ties them
+together — the dump is taken inside `executePresent` after `refreshDirtyRows` and before the
+present blit, off the same texture the blit reads, so the `gpu` layer *is* what the window shows.
+
 ## 5. Where in that mirror (candidates, in order of fit)
 
 The mirror is three functions in `third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`:
