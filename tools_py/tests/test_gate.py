@@ -351,16 +351,58 @@ class MovedDialog(unittest.TestCase):
             self.assertNotEqual(gate.observed_burst_step(run), gate.first_burst_step())
 
     def test_run_that_fired_no_burst_still_fails(self):
-        """Falling back to the script must not become a way to pass: a run whose probe never
-        answered the dialog has no burst captures, falls back to the static step, and counts
-        nothing at or after it."""
+        """A run whose probe never answered the dialog has no transition burst, so nothing marks
+        where the transition begins and there is no window to fall back to."""
         with tempfile.TemporaryDirectory() as run:
             for i in range(11):
                 self._black(os.path.join(run, "s%02d_CROSS.png" % i))
             ok, detail = gate.score_transition(run)
         self.assertFalse(ok, detail)
         self.assertIn("0 black-screen frames examined", detail)
-        self.assertIn("no burst fired; script", detail)
+        self.assertIn("no transition burst fired", detail)
+
+    def test_only_the_trailing_briefing_burst_is_not_a_transition(self):
+        """Review finding, 2026-09-12, and the quiet pass this scorer exists to prevent.
+
+        The probe ends with an UNCONDITIONAL `burst+8.0:NONE` on the settled briefing (step 22).
+        A run that answered no dialog -- it never appeared, or the wrong-answer loop recovered --
+        but still reached that burst has `s22_burst_*` as its only burst captures. Taking a plain
+        min() over every burst capture reports 22, and the scorer then counts whatever sits at the
+        end of the run and calls it the transition: a PASS if that region reads black, on a run
+        that captured no fade at all. Only steps the script marks `ifburst` may count."""
+        with tempfile.TemporaryDirectory() as run:
+            for i in range(20):                     # boot / menus, black, and not the transition
+                self._black(os.path.join(run, "s%02d_CROSS.png" % i))
+            for k in range(8):                      # the trailing briefing burst, and nothing else
+                self._black(os.path.join(run, "s22_burst_%03d.png" % k))
+            self.assertEqual(min(black_rows.step_index(n) for n in os.listdir(run)
+                                 if "_burst_" in n), 22)      # what a plain min() would have said
+            self.assertIsNone(gate.observed_burst_step(run))
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("0 black-screen frames examined", detail)
+        self.assertIn("no transition burst fired", detail)
+
+    def test_conditional_burst_steps_of_the_transition_probe(self):
+        """One ifburst behind each of the three guard pairs, and the briefing burst is not one."""
+        self.assertEqual(gate.conditional_burst_steps(), {11, 15, 19})
+
+    def test_a_script_with_no_ifburst_counts_every_burst(self):
+        """An older probe whose bursts are all unconditional has no conditional set to restrict
+        to; every burst it fired is the only thing such a run can mean (this is what keeps
+        archived runs from before the ifburst rework scorable)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            script = os.path.join(tmp, "probe.txt")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write("next+1.0:CROSS\nburst+5.0:NONE\nburst+5.0:NONE\n")
+            self.assertEqual(gate.conditional_burst_steps(script), set())
+            run = os.path.join(tmp, "run")
+            os.makedirs(run)
+            self._black(os.path.join(run, "s01_burst_000.png"))
+            self._black(os.path.join(run, "s02_burst_000.png"))
+            self.assertEqual(gate.observed_burst_step(run, script), 1)
+            # ... and under the real probe, neither of those steps is a transition burst.
+            self.assertIsNone(gate.observed_burst_step(run))
 
     def test_probe_pairs_an_ifburst_with_every_guard_pair(self):
         """Structural guard on scripts/parity/transition_probe.txt: every `ifref` guard pair that

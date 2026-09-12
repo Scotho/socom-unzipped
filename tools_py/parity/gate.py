@@ -57,7 +57,10 @@ MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the pro
 # FAIL, "4 black-screen frames examined, need 5", three runs running. The burst is now `ifburst`
 # (drive.py): one after every guard pair, and only the pair that answered the dialog fires its
 # own. score_transition reads the step back off the captures the run wrote (observed_burst_step),
-# so the scored frames are the frames after the NO press wherever that press landed.
+# so the scored frames are the frames after the NO press wherever that press landed. Only bursts at
+# a step the script marks `ifburst` count: the probe also ends with an unconditional burst on the
+# settled briefing, and a run that answered no dialog but still reached that burst would otherwise
+# have it read as "the transition" and pass quietly on it (found in review, 2026-09-12).
 #
 # transition_probe.txt carries those guards and puts its burst on the NO press, so the fade is
 # captured at 5 fps. Calibrated 2026-09-11 on two consecutive clean runs of the fixed probe:
@@ -100,47 +103,71 @@ def score_title(run_dir):
 BURST_CAPTURE_RE = re.compile(r"^s(\d+)_burst_")
 
 
-def first_burst_step(script_path=None):
-    """Index of the first `burst`/`ifburst` step of a drive.py step script, or None.
+def _script_step_modes(script_path=None):
+    """The head mode of every step of a drive.py step script, in drive.parse order.
 
     drive.py numbers steps by their position among the non-blank, non-comment lines of the script
-    (drive.parse), and names each capture `s<NN>_*` / `w<NN>_*` after that index. In
-    transition_probe.txt the first burst-family step is the one that starts on the "save to memory
-    card?" NO press, which is what takes the game to the black screen before the briefing -- so
-    frames from it on are the transition and everything before it is boot.
-
-    This is the *static* answer: where the earliest burst could fire. Since the probe's bursts are
-    `ifburst` (they fire only after the guard pair that actually answered the dialog), the real
-    answer for a given run is observed_burst_step() below; this one is the fallback for a run that
-    fired no burst at all, which must still FAIL rather than count the boot."""
+    and names each capture `s<NN>_*` / `w<NN>_*` after that index, so the list index here is the
+    step index there."""
     path = script_path or os.path.join(ROOT, GATES["transition"]["script"])
     try:
         with open(path, encoding="utf-8") as f:
             text = f.read()
     except OSError:
-        return None
-    step = 0
+        return []
+    modes = []
     for raw in text.splitlines():
         line = raw.split("#", 1)[0].strip()
-        if not line:
-            continue
-        if line.split("+", 1)[0].split(":", 1)[0].strip() in ("burst", "ifburst"):
+        if line:
+            modes.append(line.split("+", 1)[0].split(":", 1)[0].strip())
+    return modes
+
+
+def first_burst_step(script_path=None):
+    """Index of the first `burst`/`ifburst` step of a drive.py step script, or None.
+
+    In transition_probe.txt the first burst-family step is the one that starts on the "save to
+    memory card?" NO press, which is what takes the game to the black screen before the briefing.
+    This is the *static* answer -- where the earliest burst could fire. The probe's transition
+    bursts are `ifburst` (they fire only behind the guard pair that actually answered the dialog),
+    so the answer for a given run is observed_burst_step(); this one is used by
+    make_gate_fixtures.py to check that a candidate fixture frame is one the gate would examine."""
+    for step, mode in enumerate(_script_step_modes(script_path)):
+        if mode in ("burst", "ifburst"):
             return step
-        step += 1
     return None
 
 
-def observed_burst_step(run_dir):
-    """Step index of the first burst that actually fired in a captured run, or None.
+def conditional_burst_steps(script_path=None):
+    """The step indices a script marks `ifburst`, i.e. the ones that can only fire on a matched
+    "save to memory card?" guard pair -- the transition bursts, and nothing else.
+
+    This set is what keeps the probe's TRAILING unconditional `burst` (the settled briefing, step
+    22) from being mistaken for a transition. Without it, a run that answered no dialog at all but
+    still reached the briefing would have `s22_burst_*` as its only burst captures, observed_burst
+    _step would report 22, and the scorer would count whatever is at the end of the run and call it
+    the transition -- a quiet pass if that region happened to read black. Found in review,
+    2026-09-12; it is the same failure class this whole enforcement exists to remove."""
+    return {step for step, mode in enumerate(_script_step_modes(script_path)) if mode == "ifburst"}
+
+
+def observed_burst_step(run_dir, script_path=None):
+    """Step index of the first *transition* burst that actually fired in a captured run, or None.
 
     drive.py writes a burst's frames as `s<NN>_burst_<k>.png`, so the run directory records where
     the burst happened even though the step script only says where it *may* happen. The transition
-    probe's bursts are conditional on the "save to memory card?" guard pair matching (drive.py
-    `ifburst`), and that dialog moves with how many controller-configuration screens the boot
-    shows -- 2026-09-12 it landed on steps 13/14 instead of 9/10, which put the old fixed burst on
-    a screen that was not the transition and left the scorer four 1 Hz wait frames to count
-    (logs/parity/gate/s4_mb). Reading the index back off the captures is what makes the scored
-    frames "the frames after the NO press" wherever that press landed."""
+    probe's transition bursts are conditional on the guard pair matching (drive.py `ifburst`), and
+    that dialog moves with how many controller-configuration screens the boot shows -- 2026-09-12
+    it landed on steps 13/14 instead of 9/10, which put the old fixed burst on a screen that was
+    not the transition and left the scorer four 1 Hz wait frames to count (logs/parity/gate/s4_mb).
+    Reading the index back off the captures is what makes the scored frames "the frames after the
+    NO press" wherever that press landed.
+
+    Only bursts at a step the script marks `ifburst` count (conditional_burst_steps). A script that
+    marks none -- an older probe whose bursts are all unconditional -- falls back to every burst it
+    finds, which is what such a run means. `None` means no transition burst fired: score_transition
+    FAILs on that outright rather than picking some other window."""
+    conditional = conditional_burst_steps(script_path)
     steps = []
     try:
         names = os.listdir(run_dir)
@@ -148,7 +175,7 @@ def observed_burst_step(run_dir):
         return None
     for name in names:
         m = BURST_CAPTURE_RE.match(name)
-        if m:
+        if m and (not conditional or int(m.group(1)) in conditional):
             steps.append(int(m.group(1)))
     return min(steps) if steps else None
 
@@ -158,21 +185,20 @@ def score_transition(run_dir, script_path=None):
     actually examines and exits 1 only when one of them is not black. Zero examined frames also
     exits 0, so the count is part of the verdict, not just the exit code.
 
-    Only frames at or after the run's first burst step are examined (--from-step): those are the
+    Only frames at or after the run's transition burst are examined (--from-step): those are the
     transition, everything before them is the boot. The step is taken from the captures the run
-    actually wrote (observed_burst_step) and only falls back to the script's earliest burst-family
-    step when the run fired none -- so a probe whose dialog landed late is still scored from its
-    NO press, and a run that never reached the fade scores 0 and FAILs instead of passing on its
-    boot black screens."""
-    burst = observed_burst_step(run_dir)
-    origin = "fired"
+    actually wrote (observed_burst_step), so a probe whose dialog landed late is still scored from
+    its NO press. There is deliberately no fallback window: a run that fired no transition burst
+    never answered the dialog, so nothing marks where the transition begins and the only honest
+    verdict is FAIL. Falling back to a step index would let the run's later black frames -- the
+    boot's, or the trailing briefing burst's -- stand in for a fade that was never captured."""
+    burst = observed_burst_step(run_dir, script_path)
     if burst is None:
-        burst = first_burst_step(script_path)
-        origin = "no burst fired; script"
-    scope = "" if burst is None else " at/after the burst step (s%02d, %s)" % (burst, origin)
-    cmd = [sys.executable, "tools_py/parity/black_rows.py", run_dir]
-    if burst is not None:
-        cmd += ["--from-step", str(burst)]
+        return False, ('transition not captured (0 black-screen frames examined: no transition '
+                       'burst fired, so the probe never answered the "save to memory card?" '
+                       'dialog and nothing marks where the transition begins) in %s' % run_dir)
+    scope = " at/after the burst step (s%02d, fired)" % burst
+    cmd = [sys.executable, "tools_py/parity/black_rows.py", run_dir, "--from-step", str(burst)]
     r = subprocess.run(cmd, capture_output=True, text=True)
     examined = [ln for ln in r.stdout.splitlines() if "black screen, rows " in ln]
     bad = [ln for ln in examined if "NOT BLACK" in ln]
