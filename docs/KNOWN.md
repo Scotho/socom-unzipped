@@ -25,13 +25,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | Five soft-double stubs were bound with the wrong ABI, and were **identity** at 19 of 22 sites (the 3 garbage sites are unreachable) | `db7a992`; delay-slot analysis of every call site |
 | The intro-movie macroblocks were a cross-thread race on `m_currentTransfer`, not a byte-accumulator bug | `4a701f1`; deficit 3,748 → 0, MISSING 9 → 0 |
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
-| **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 82. **Under review** |
+| **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 82 (review recounts 65/80). Movement verified against pad state: 1.3 units at neutral vs 28-38 per hold, starting on the hold frame, axes orthogonal. **Review APPROVED** |
 
 ## 2. Believed, unconfirmed — with the experiment that would settle it
 
 | What | What would settle it |
 |---|---|
-| Whether `rxBytes()` feeds the counter densely enough to hold the scale at 1.0 through a quiet match moment (reload, long walk, hiding) — the window is 1.5 s | A minute-long `actor+0x1368` trace across a quiet stretch, not just a busy one |
+| Whether `rxBytes()` feeds densely enough through a genuinely quiet match moment (reload, long walk, hiding). The real cliff is **idle > 5500 ms**, not the 1.5 s I first wrote — measured cadence 1.10 s mean, worst gap 2.7 s, so ~2× margin. A decay past 5.5 s is honest console behaviour, not a defect | A minute-long `actor+0x1368` trace across a quiet stretch, not a busy one |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
 | The intro-cinematic freeze (seen once, Sprint 1) is a real defect | Not reproduced since |
@@ -80,5 +80,9 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **This harness costs about two runs per result.** Four of Task 6's runs failed to reach gameplay,
   three of them consecutively; each had written a full set of convincing screenshots first. Budget
   for it when planning, and never skip the liveness check.
+- **An instrument that emits zero rows is a failed run, not a quiet one.** Task 6's idle-ms trace
+  logged nothing for a whole session because it pointed at `0x30be80` while the guest calls the
+  thunk at `0x30cd80` — inside the very task that wrote the warning about checks attesting to
+  nothing.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.

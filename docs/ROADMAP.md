@@ -192,7 +192,8 @@ copies `actor[0x8f/0x90/0x91] = ctrl[4]/[2]/[3]` and multiplies **exactly those 
 true. Pitch is never copied through there — it lives in `ctrl[0x4c]` — which is why RY survives:
 the asymmetry, properly explained. The scale is `clamp((5000 − (msSinceNetActivity − 1500)) × 0.001,
 0.0, 1.0)` (constants at `0x650640`/`0x650648`): full movement while the network has been heard
-from in the last 1.5 s, decaying to nothing over the next 5 s — the console's own lag freeze.
+from in the last 1.5 s, holding at full until idle exceeds 5500 ms and reaching zero at 6500 ms
+— the console's own lag freeze.
 `msSinceNetActivity` resets only when libnetb's `sceInetInterfaceControl(code 0x200)` returns a
 **changing** word, and ours returns a constant (`socom2_libnetb.cpp:384`, `case 0x200: r(3, 0u)`,
 with `DAT_00458090` BSS-zero). The bypass, `FUN_003045b0(0x44fe10)` = `"ComeFromLan"`, is false
@@ -284,7 +285,7 @@ captured. **Not reached.** What stands between here and there, in order:
 2. **Movement calibrated enough to steer** (S2): pad injection exists and is proven; steering A
    toward B from two position peeks needs a turn-rate calibration against the compass. Cheap once
    movement works — with one caveat: the scale that pins movement is *time-varying by design*
-   (full for 1.5 s after the last network activity, gone 5 s later), so the calibration must be
+   (full until 5500 ms after the last network activity, gone at 6500 ms), so the calibration must be
    done with the counter feeding at match rate and the scale peeked at 1.0, or it will measure
    the lag freeze instead of the turn rate.
 3. **Kill and round-end readout** (S3): per-player health/kills near the actor, and the round-end
@@ -403,7 +404,8 @@ both instances should show `+0x1368` rising to 1.0 within a frame or two of traf
 there; then the pad-injection probe with `PS2X_PEEK` x changing during LX/LY holds on both sides.
 Two things to check that the draft does not yet: **what the counter counts** — the console's word
 was the smap interface's statistic, i.e. *all* traffic, and the peer channel alone runs at roughly
-a datagram every couple of seconds (finding 5), which against a 1.5 s full-scale window would make
+a datagram every couple of seconds (finding 5), which against the real 5500 ms cliff leaves ~2x margin
+(measured cadence 1.10 s mean, worst gap 2.7 s) rather than the risk a 1.5 s window would have made
 movement sag if only the peer channel fed it — so trace `+0x1368` for a full minute and it must sit
 at 1.0, any sag names the feed rate as a residual; and **a unit test that the value moves** — a
 test that calls the control code twice around a delivered packet and asserts the words differ.
