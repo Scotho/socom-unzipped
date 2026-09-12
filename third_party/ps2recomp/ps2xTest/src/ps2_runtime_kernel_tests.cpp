@@ -1033,6 +1033,24 @@ void register_ps2_runtime_kernel_tests()
             t.Equals(readState(), static_cast<uint64_t>(0x0807DC721521C106ULL),
                      "rand should continue from a seed written by srand");
 
+            // A corrupt _impure_ptr must fail the lookup rather than be masked into RDRAM:
+            // getMemPtr() would fold 0x40000000 down to offset 0 and write the state there.
+            // 0x400000a8 resolves to physical offset 0 under ps2ResolveGuestPointer, so the guard
+            // goes at offset 0 -- that is where the masked write would have landed.
+            const uint64_t guard = 0x0123456789ABCDEFULL;
+            std::memcpy(env.rdram.data(), &guard, sizeof(guard));
+            writeGuestU32(env.rdram.data(), kImpurePtrAddr, 0x40000000u);
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            uint64_t afterGuard = 0u;
+            std::memcpy(&afterGuard, env.rdram.data(), sizeof(afterGuard));
+            t.Equals(afterGuard, guard, "an unmapped _impure_ptr must not be masked into low RDRAM");
+
+            // Nor may an 8-byte access start inside the last 7 bytes of the 32 MB buffer.
+            writeGuestU32(env.rdram.data(), kImpurePtrAddr, PS2_RAM_SIZE - 4u - kRandNextOffset);
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(env.rdram[PS2_RAM_SIZE - 1u], static_cast<uint8_t>(0),
+                     "a _rand_next straddling the end of RDRAM must be rejected");
+
             // With no registered guest state the pair still works off an internal state.
             ps2_stubs::setLibcRandState(0u, 0u);
             ps2_stubs::srand(env.rdram.data(), &env.ctx, &env.runtime);

@@ -1111,30 +1111,65 @@ namespace ps2_stubs
     //    initialiser is, so the generic runtime still behaves.
     namespace
     {
+        // g_randMutex serialises the stub against itself. It does NOT serialise it against the
+        // guest: srand() is not stubbed (recomp/socom2.toml), so the recompiled FUN_00197728 writes
+        // the same word with no lock at all. That is harmless while EE code runs on one host thread,
+        // which is the case today -- but if EE execution is ever parallelised, this word has two
+        // writers and only one of them takes the mutex.
         std::mutex g_randMutex;
         uint32_t g_randImpurePtrAddr = 0u;   // guest address OF THE POINTER to struct _reent
         uint32_t g_randNextOffset = 0u;      // offset of _rand_next within struct _reent
         uint64_t g_randNextFallback = 1u;    // newlib's static initialiser for _rand_next
 
-        // Host pointer to the guest's _rand_next, or nullptr when it cannot be resolved.
-        uint8_t *guestRandNextSlot(uint8_t *rdram)
+        // Bounds-checked guest->host translation for a small fixed-size access.
+        //
+        // getMemPtr() cannot be used for this: it *masks* rather than rejects (ps2_memory.h, `phys
+        // &= PS2_RAM_MASK` plus a `phys = 0` fall-through), so an address in 0x40000000-0x7FFFFFFF
+        // resolves to offset 0 and an address in the last 7 bytes of the 32 MB buffer would let an
+        // 8-byte access run off the end. _rand_next is reached through a pointer read out of guest
+        // memory, so a corrupt _impure_ptr must fail the lookup, not silently write somewhere else.
+        uint8_t *guestFixedSlot(uint8_t *rdram, uint32_t addr, uint32_t bytes)
         {
-            if (rdram == nullptr || g_randImpurePtrAddr == 0u)
+            if (rdram == nullptr)
             {
                 return nullptr;
             }
-            const uint8_t *impurePtr = getConstMemPtr(rdram, g_randImpurePtrAddr);
+            uint32_t phys = addr;
+            if ((addr >= 0x20000000u && addr < 0x40000000u) ||
+                (addr >= 0x80000000u && addr < 0xC0000000u))
+            {
+                phys = addr & 0x1FFFFFFFu;   // KSEG0/KSEG1 and the uncached mirror
+            }
+            else if (addr >= 0x20000000u)
+            {
+                return nullptr;              // scratchpad, MMIO or unmapped: struct _reent is in RDRAM
+            }
+            if (phys > PS2_RAM_SIZE - bytes)
+            {
+                return nullptr;
+            }
+            return rdram + phys;
+        }
+
+        // Host pointer to the guest's _rand_next, or nullptr when it cannot be resolved.
+        uint8_t *guestRandNextSlot(uint8_t *rdram)
+        {
+            if (g_randImpurePtrAddr == 0u)
+            {
+                return nullptr;
+            }
+            const uint8_t *impurePtr = guestFixedSlot(rdram, g_randImpurePtrAddr, sizeof(uint32_t));
             if (impurePtr == nullptr)
             {
                 return nullptr;
             }
             uint32_t reentAddr = 0u;
             std::memcpy(&reentAddr, impurePtr, sizeof(reentAddr));
-            if (reentAddr == 0u)
+            if (reentAddr == 0u || reentAddr > 0xFFFFFFFFu - g_randNextOffset)
             {
                 return nullptr;
             }
-            return getMemPtr(rdram, reentAddr + g_randNextOffset);
+            return guestFixedSlot(rdram, reentAddr + g_randNextOffset, sizeof(uint64_t));
         }
 
         uint64_t loadRandNext(uint8_t *slot)
