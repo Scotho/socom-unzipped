@@ -4,11 +4,11 @@ You are continuing the SOCOM II PC static-recompilation project at C:/projects/s
 autonomously. The user (Craig) is away and has given full authority to use best judgement;
 plans are suggestions.
 
-Ordered goals (user, 2026-09-11, Sprint 2 — see
-docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md and the plan in
-docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md; Sprint 1 is history:
-docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md and
-docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
+Ordered goals (user, 2026-09-11; the most recent sprint is Sprint 3 — see
+docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md and the plan in
+docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md; Sprints 1 and 2 are
+history, the `2026-09-10-sprint-1-hygiene-and-native-render` and
+`2026-09-11-sprint-2-host-render-and-family-b` spec/plan pairs in the same two directories):
 
 1. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
    before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
@@ -19,14 +19,21 @@ docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md):
    rate is a test-rig concern: run the second client of the acceptance test in PCSX2.
 3. Native render path: the VU1 command dispatcher (entry pc 0x1b50 of image d418194495c25213)
    hand-written in third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ now runs families A, B
-   and C natively (123/166 lists across dump2/3/4, bit-exact `--regs all`); residual is one
-   dump3 list using 0x34 (EFU maths + same-lane write conflict) and 42 dump3 lists using a
-   fourth, unimplemented command family (0x70/0x52/0x66/0x40 -- Sprint 3 research). The native
-   0x28 handler can also draw host-space triangles straight through `GS::submitHostTriangle`
-   behind `PS2X_VU1_HOST_DRAW` (default off; the GIF path is unchanged and still what every
-   golden verifies). Verified with `dist/vu1_replay.exe --verify --native` on
-   tests/fixtures/vu1/title and tests/fixtures/vu1/dispatch_0x1b50, `--vram-diff` for the
-   host-draw knob, and by the title gate.
+   and C (including 0x34's sphere-map/EFU handler) plus the fourth family's 0x70 and 0x40
+   natively -- 162/166 lists across dump2/3/4, bit-exact `--regs all` (entered/ended/handbacks:
+   dump2 31/31/0, dump3 52/48/4, dump4 83/83/0). The residual is 4 dump3 programs, all the
+   `52 66 08 40 42` shape, and it is a deliberate documented ruling, not open work: 0x52 emits no
+   GIF packets, ends the program and its correctness spans two MSCALs; 0x66 is never dispatched
+   from 0x1b50 in the corpus, so a handler for it could not be verified (docs/research/15). The
+   native 0x28 handler can also draw host-space triangles straight through
+   `GS::submitHostTriangle` behind `PS2X_VU1_HOST_DRAW` (default off; the GIF path is unchanged
+   and still what every golden verifies), and `PS2X_GS_SCALE=1..4` (default 1) rasterises every
+   draw into render targets S times their native GS extent while everything the guest can read
+   back stays native -- S=2 is verified on both draw paths and sharpens 3D geometry only, not the
+   HUD/menus/title (docs/STATUS.md, 2026-09-12). Verified with `dist/vu1_replay.exe --verify
+   --native` on tests/fixtures/vu1/title and tests/fixtures/vu1/dispatch_0x1b50, `--vram-diff`
+   for the host-draw knob (checked=14 skipped=0, family C and the fourth family included), and by
+   the gates.
 4. The first-kill acceptance test (tools_py/parity/online_match_ours.py) continues unchanged.
 Long term: N64-recomp model — game logic stays recompiled, renderer/audio/input/network native.
 

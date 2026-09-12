@@ -1,11 +1,138 @@
-# Project status — updated 2026-09-11 03:45
+# Project status — updated 2026-09-12
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
-- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests + vu1 fixture verify + `--vram-diff` equivalence check, `PS2X_TEST_REPEAT=N` for repeated runs — deterministic, 5/5 green); gates `python -m tools_py.parity.gate` (fresh-clone fixtures committed under `tests/fixtures/gate`, `python -m unittest tools_py.tests.test_gate`, 17 tests).
+- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 431/431 + vu1 fixture verify + `--vram-diff` equivalence check at `checked=14 skipped=0`, whose texture-in-blank-region warning now fails the suite instead of scrolling past, `PS2X_TEST_REPEAT=N` for repeated runs — deterministic, 3/3 green at Sprint 3 close-out); gates `python -m tools_py.parity.gate` (fresh-clone fixtures committed under `tests/fixtures/gate`, `python -m unittest tools_py.tests.test_gate`, 24 tests).
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
-- Sprint 2 (2026-09-11): Tasks 1-11 landed — `GS::submitHostTriangle` + `VU1Interpreter::activeGs()`; the native 0x28 handler draws host-space triangles through it when `PS2X_VU1_HOST_DRAW=1` (default off, GIF path untouched, `vu1_replay --host-draw`/`--no-native`/`--vram-diff <outdir>`); render-target scale (`PS2X_GS_SCALE`) is a NO-GO this sprint (docs/research/14-gs-render-target-scale-spike.md — 15 touch points, both readbacks need a content-altering downsample); families B and C native; gate hardening.
-- Native VU1: dispatcher (entry 0x1b50) 162/166 lists native across dump2/3/4 (dump2 31/0, dump3 48/4, dump4 83/0 ended/handbacks) — families A, B and C complete (0x34's sphere-map/EFU handler landed in Sprint 3) plus the fourth family's 0x70/0x40, bit-exact (`--regs all`); residual 4 hand-backs: the dump3 lists using 0x52/0x66 — 0x52 ends the program at 0x33c8 and its correctness spans two MSCALs, 0x66 is never dispatched from 0x1b50 so the corpus cannot verify it (docs/research/15); `PS2X_VU1_NATIVE=0` reverts. Per-handler loop-count clamps land with a synthetic hand-back test.
-- Gates: last full run PASS 3/3 (stamps `hostdraw_on`, `famb`, `famc`). Known open (goal-3, not gates): host-draw's `--vram-diff` now compares 14/14 fixtures with 0 SKIPs — family C and the fourth family's untextured PRIM 0x4B included (Sprint 3 Task 9) — but its two by-design buckets (delta <= 1, and coverage-mask boundaries) are calibrated for opaque draws, so family C's alpha-blended dumps score 0.68-1.49% and `vu1dump4_prog_182` is held out of the fixture set until they are widened; mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; black 16x16 squares on the intro movie; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 5 runs.
+- Sprint 3 (2026-09-12): Tasks 1-11 landed — `PS2X_GS_SCALE=1..4` (default **1**, clamped) allocates every render target at that multiple of its native GS extent and rasterises every draw into it, while VRAM addressing, page/row bookkeeping and everything the guest can read back stay native (a GPU-resolved native mirror, `PS2X_GS_SCALE_FILTER=point|box`, `point` default). **S=2 sharpens 3D rasterisation and does NOT sharpen the HUD, menus or title** — they are textured quads drawn at native texel density, so scaling the render target cannot add detail (measured: 3D-region gradient 5.88 -> 3.98 with anti-aliasing fraction 0.133 -> 0.423; the HUD glyph raster is identical at 4x zoom). S=3 and S=4 are admitted by the clamp but **deliberately untested** (at S=4 a colour target is 67 MB and `getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP). `PS2X_PRESENT_FILTER=linear|integer|point` (default `linear`, unchanged) is inert at the 640x448 window the desktop build opens — the fit scale is exactly 1.0, so all three modes are the same 1:1 blit and **none of the perceived softness is presentation**. `PS2X_VU1_HOST_DRAW` default stays off.
+- Native VU1: dispatcher (entry 0x1b50) runs **162/166** lists native across dump2/3/4 (entered/ended/handbacks: dump2 31/31/0, dump3 52/48/4, dump4 83/83/0), bit-exact against exact-interpreter goldens (`--regs all`) — families A, B and C complete (including `0x34`'s sphere-map/EFU handler) plus the fourth family's `0x70` and `0x40`. **Residual: 4 programs**, all the `52 66 08 40 42` shape and all in dump3 — `0x52` emits no GIF packets, ends the program (E bit at `0x33b8`, end pc `0x33c8`) and its correctness spans two `MSCAL`s, and `0x66` is never dispatched from `0x1b50` in the whole corpus so a handler for it could not be verified (docs/research/15). That residual is deliberate and documented, not unfinished. `PS2X_VU1_NATIVE=0` reverts the dispatcher; per-handler loop-count clamps hand back cleanly and are covered by synthetic tests.
+- Gates: last full runs PASS 3/3 at the default knobs (`s3c_1x_final`, on the `219ab9c` binary — the later `466918b` changes only `PS2X_GS_SCALE_SELFTEST` code and a trace format string) and at `PS2X_GS_SCALE=2 PS2X_VU1_HOST_DRAW=1` (`s3d_2x_host`, on the final binary); at 2x with host-draw off the GIF path is green on all three legs but **across two stamps** (`s3d_2x_gif` title + mission, `s3d_2x_gif_t2` transition after a save-dialog probe flake) — it has not passed 3/3 in one run. Two known transition-gate intermittencies and a 1x-vs-2x harness caveat are in the Sprint 3 entry below. Known open (goal-3, not gates): intro-movie black macroblocks, now localised — the MPEG decode is clean and the loss is in the shadow-VRAM -> GL mirror (docs/research/16), no fix; `--vram-diff`'s `hard` bucket misclassifies two by-design differences on alpha-blended draws, so `vu1dump4_prog_182` (1.488%) is held out until the buckets are widened (Sprint 4); mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 3 `PS2X_TEST_REPEAT` runs at close-out.
+
+## 2026-09-12 (local) — Sprint 3 landed: `PS2X_GS_SCALE` integer render-target scale (default 1), the fourth VU1 command family and `0x34` (162/166 native), family-C + fourth-family `--vram-diff` coverage, the intro-movie macroblocks localised
+
+Sprint `2026-09-11-sprint-3-render-scale-and-fourth-family`, branch `sprint-3`, Tasks 1-11, each
+implemented, independently reviewed, fixed and re-reviewed. Task 5's own S3-d verification entry is
+immediately below this one and carries the 2x measurements in full; this entry is the sprint around
+it and does not repeat them. What exists now:
+
+- **`PS2X_PRESENT_FILTER=linear|integer|point`** (Task 1, `ps2_runtime.cpp` present block). **Verdict:
+  at the 640x448 window the desktop build opens the fit scale is exactly 1.0, so all three modes are
+  the same 1:1 blit and none of the perceived softness is presentation.** The default stays `linear`
+  and is byte for byte the pre-knob behaviour on both the host and CPU present paths. The knob only
+  bites on a stretched window, where it measures real (at 1818x1132: `linear` softest, `point`
+  crispest but uneven, `integer` between them) — `python -m tools_py.parity.resize_window <w> <h>`
+  was committed for driving that comparison. Gate stamps `pf2_linear` / `pf2_integer` / `pf2_point`,
+  all PASS; sheet `logs/pf_runs/s05_sheet.png` (three identical pictures, as the arithmetic predicts).
+- **Render-target scale, in four independently shipped stages (Tasks 2-5).**
+  *S3-a:* `RenderTarget`'s single size field split into `nativeWidth/nativeHeight` and
+  `hostWidth/hostHeight`, with all **37 read sites / 50 field references** classified site by site in
+  `docs/research/14-gs-render-target-scale-spike.md` §8 and **seven** native/host hand-offs recorded
+  in §8.1 for the later stages. The audit caught research/14 §3 classifying `getDepthTarget`'s size
+  as native: following that would have given an incomplete FBO and a black screen at S > 1.
+  *S3-b:* a per-target native mirror plus a GPU resolve behind `nativeView()` / `nativeViewFbo()`,
+  with `PS2X_GS_SCALE_FILTER=point|box` (`point` = a `GL_NEAREST` blit, `box` = an SxS average);
+  inert at 1x by an early return, so it allocates and copies nothing there.
+  *S3-c:* **`PS2X_GS_SCALE`, default 1, clamped 1..4**, every `* S` site listed in research/14 §10.2.
+  *S3-d:* verification (the entry below).
+  **At 1x nothing observable changed at any stage:** a full gate PASS 3/3 after every one of them,
+  and every title capture 99.8-100.0 run-vs-run against the pre-scale S3-a baseline
+  `logs/parity/gate/s3a` — against a bar of >= 99, and with no capture anywhere in the sprint's 1x
+  gates below 99.7 (the attract-movie captures s20-s22 are exempt: they are playback-phase dependent
+  and span 85.5-100.0 between any two runs, modified or not). The one number
+  that argued otherwise — a transition `rows 396-447 peak 7` — was settled by a ten-run interleaved
+  A/B of the parent and scaled binaries: the artefact is run-to-run variance present on the
+  **pre-scale** binary too (see the flake list below), and the three peak-7 `w13_001.png` captures
+  are byte-identical PNGs across a Task 3 binary and the S3-c binary.
+  **At 2x:** `s3d_2x_host` GATE PASS 3/3; the GIF path green on all three legs but **across two
+  stamps** — `s3d_2x_gif` (title + mission) and `s3d_2x_gif_t2` (transition, re-run after a
+  documented save-dialog probe flake) — so it has *not* passed 3/3 in a single run. The resolve path
+  itself was checked directly with `PS2X_GS_SCALE_SELFTEST=1` on full gameplay runs, because no gate
+  capture at any scale goes through it: **0 stale mirror reads** under each filter (11,704 reads
+  served from an already-clean mirror across the two runs) and 0 of 229,376 x 24 content samples
+  outside their host block, `point` `logs/run_20260912_074912.log` and `box`
+  `logs/run_20260912_075604.log`.
+  **The headline, stated precisely: 2x gives sharper 3D rasterisation and does NOT sharpen the HUD,
+  menus or title.** Those are textured quads drawn from native-resolution textures (`uTexSize` stays
+  native by design), so scaling the render target cannot add detail to them. Measured on a matched
+  mission frame: 3D-region gradient **5.88 -> 3.98** with anti-aliasing fraction **0.133 -> 0.423**,
+  against a flat HUD whose glyph raster is identical at 4x zoom. Do not write "2x is sharper"
+  unqualified.
+  **`S=3` and `S=4` are deliberately untested.** The clamp admits them, but at S=4 a colour target is
+  67 MB and `getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP. Documented as a known limit, not
+  as tested behaviour.
+  Sheets and stamps: `logs/parity/gate/s3c_1x_final/mission_sheet.png` (1x, the default-knob gate),
+  `logs/parity/gate/s3d_2x_host/mission_sheet.png` and `logs/parity/gate/s3d_2x_gif/mission_sheet.png`
+  (2x), transition from `logs/parity/gate/s3d_2x_gif_t2/`.
+- **The VU1 dispatcher went 123/166 -> 162/166 native (Tasks 6-8).** `docs/research/15-vu1-fourth-family.md`
+  decodes the fourth command family (`0x70`, `0x52`, `0x66`, `0x40`) and `0x34` to implementation
+  level; then native handlers for `0x70` and `0x40` (dump3 `ended` 9 -> 47) and for `0x34`'s
+  sphere-map ST and rim alpha (-> 48), each bit-exact against exact-interpreter goldens with
+  `--regs all`. Per dump set, entered/ended/handbacks: **dump2 31/31/0, dump3 52/48/4, dump4 83/83/0**.
+  **The residual is 4 programs**, all the `52 66 08 40 42` shape: `0x52` emits no GIF packets, ends
+  the program (E bit `0x33b8`, end pc `0x33c8`) and its correctness spans two `MSCAL`s, and `0x66` is
+  never dispatched from `0x1b50` anywhere in the corpus, so a handler for it could not be verified and
+  shipping an unverifiable handler inside the dispatcher was judged the larger risk. That residual is
+  a deliberate, documented ruling, not an unfinished task. Gate `fam4` PASS 3/3 after the fourth-family
+  handlers; `0x34` needed no gate (no shared path changes behaviour, proven by the unchanged counts).
+- **`--vram-diff` went from `checked=10 skipped=2` to `checked=14 skipped=0` (Task 9)**, covering
+  family C **and** the fourth family. Diagnosis: the family-C lists' own render-state packets point
+  `TEX0` at a texture the dump does not carry, so every texel read back 0 and their `ALPHA_1 = 0x44`
+  (`(Cs - Cd) * As + Cd`, `As = 0`) left the framebuffer untouched — the draws happened and wrote
+  nothing distinguishable from "not drawn". `vu1_replay` now neutral-fills VRAM outside the frame and
+  z buffers, gives the z buffer its own pages, `static_assert`s that the parked texel stays above the
+  zeroed region, and warns when a kicked packet points `TEX0` inside it. **`./build.sh test` now fails
+  on that warning** instead of letting it scroll past. All ten pre-existing `VRAMDIFF` lines are
+  numerically identical before and after. One dump, `vu1dump4_prog_182` (1.488 %), is held out with
+  pixel evidence: `hard` misclassifies blend-amplified gouraud rounding (delta 2, not 1) and one-pixel
+  shifts of *interior* seams; widening those two buckets — then adding the dump — is a Sprint 4
+  follow-up, deliberately not done here because it changes what the check scores.
+- **The intro-movie black macroblocks are localised** (Task 10, `docs/research/16-intro-movie-macroblocks.md`),
+  at 4-5 % of movie frames with 1-4 blocks each. **The MPEG decode is clean**: 2067 consecutive decoded
+  pictures have exactly the black-macroblock census of an offline libavcodec decode of the same file
+  (mean |count diff| 0.000), and the guest strip write has no skip path. The loss is in the shadow-VRAM
+  -> GL-render-target mirror — `executeUpload` -> `refreshRenderTargetsFromShadow` -> `refreshDirtyRows`
+  in `gs_gl_backend.cpp` — with three-layer `PS2X_GS_DUMP_DISPLAY` triples showing shadow 0/48 presents
+  affected against the GL target's 3/48, and the exact pictures and block coordinates named in the note.
+  **No fix**, correctly under the spike's decision rule: the candidate sits in the file the scale work
+  was rewriting, and confirming it needs a transfer-vs-refresh count first.
+
+**Known flakes and harness notes, new this sprint.**
+
+- **Transition gate, intermittency 1 — measured.** Roughly **1 in 5** `--only transition` runs FAIL on
+  a one-frame dim residual strip at rows 396-447 in an otherwise black sequence. It is **pre-existing
+  and not a scale regression**: a five-pair interleaved A/B of the pre-scale parent binary and the
+  scaled branch failed once on each side, the **parent's** instance being the worse of the two
+  (parent peak 36, scaled branch peak 18), and counting every stamp on record the rates are
+  indistinguishable (Fisher exact p ~ 0.6).
+- **Transition gate, intermittency 1's cause — a hypothesis, with no isolation test behind it.** It is
+  attributed to `refreshDirtyRows` / `executeClear` ordering because that is the class of artefact the
+  ordering fix exists to suppress. Nothing has been run to isolate it; treat the attribution as
+  unproven and the ~1-in-5 rate as the measured part.
+- **Transition gate, intermittency 2 — the already-known save-dialog probe flake.** `transition_probe.txt`'s
+  `ifref` guards match several steps late, the burst runs before the dialog is answered, and the leg
+  FAILs for too few frames *examined* with every examined frame at peak 0. Distinguish the two by the
+  band peak: **peak 0 with too few frames is (2); a non-zero band peak is (1)**.
+- **Harness: 1x and 2x frames must be matched by content, never by step name.** At 2x the mission-load
+  `untilref` press loop needs one extra press, which shifts every later step by ~21 s; every step up to
+  that point lands within 0.3 s across scales. Comparing `sNN` to `sNN` across scales compares different
+  moments and manufactures a spurious regression.
+- **The title gate can be silently degraded by a window resize from outside the process** (seen twice in
+  Task 1, once taking a 19/23 run to 16/23 — one step off a red gate with a green binary): `drive.py`'s
+  `untilref`/`ifref` references are 640x448 frames and never match a pillarboxed window. Cropping to the
+  non-black rectangle before the 160x112 resize would fix it.
+
+**Where reality diverged from the plan.**
+
+- Plan Task 7 was scoped as "the fourth-family handlers" generally; the controller ruled it down to
+  **`0x70` and `0x40` only**, leaving `0x52` and `0x66` as the documented residual above (research/15
+  §9.3). Plan Task 8's `0x34` then landed, so the residual is 4 programs rather than the 5 Task 7 left.
+- **The spec's "sharper HUD" expectation was wrong.** Plan Task 5 Step 1 asked for "the HUD text and
+  squad panel must be visibly sharper" at 2x. They are not, and cannot be: `uTexSize` stays native, so
+  a screen-aligned textured quad is magnified from a native texture and minified straight back. Task 4
+  predicted this before it was measured; Task 5 measured it. The gain is in rasterisation only.
+- research/14's headline "15 touch points" (quoted in the Sprint 2 entry below) is superseded: the
+  authoritative figure for the refactor is **37 read sites / 50 field references**, in research/14 §8.
+- Task 10's PCSX2 comparison run was never made (the lock was taken and this task had lowest priority);
+  the offline libavcodec decode is a stricter reference and is what the conclusion rests on.
 
 ## 2026-09-12 (local) — Sprint 3, Task 5 (S3-d): `PS2X_GS_SCALE=2` verified on both draw paths — sharper geometry, unchanged HUD, **default stays 1**
 
@@ -141,7 +268,7 @@ What exists now:
 
 - **Host-space draw hook.** `GS::submitHostTriangle(const GSPrimReg&, const GSVertex&, const GSVertex&, const GSVertex&)` (gs_frontend.h/.cpp) fills draw state from the live GS context exactly as `buildDrawBatch` does (shared `fillDrawState`) and submits the caller's float vertices straight to the backend; `VU1Interpreter::activeGs()` exposes the GS the dispatcher is running against. Unit tests prove it draws the same pixels as three XYZ2 kicks and honours `prim.ctxt` (Task 1).
 - **`PS2X_VU1_HOST_DRAW`.** The native `0x28` packet builder in `socom2_dispatch_0x1b50.cpp` submits each triangle through the hook instead of packing/kicking it when the knob is set (default off — GIF packets still built and kicked otherwise, so every existing golden keeps proving the GIF path); every data-memory write and register update the GIF path performs still happens, so `--regs all` stays identical with the knob on. `vu1_replay --host-draw` sets the env for offline verification; `vu1_replay --no-native` forces the interpreted path for comparison; `vu1_replay --vram-diff <outdir> [--vram-tol <pct>]` re-execs itself once per mode per dump (two processes, since the knob is a read-once static) and diffs the rendered VRAM region, with SKIP accounting for dumps that draw nothing (drawn=0). `./build.sh test` runs the vram-diff check on the dispatch_0x1b50 fixtures (Tasks 2, 7).
-- **Render-target scale: NO-GO this sprint.** `docs/research/14-gs-render-target-scale-spike.md` enumerates 15 places the GL backend assumes GS pixels are 1:1 with GL texels; both readback paths (RT-to-shadow-VRAM and the title-label texture-set page copies) need a content-altering downsample filter, so `PS2X_GS_SCALE` is deferred to Sprint 3 (RenderTarget size refactor first, a presentation-upscale filter as the cheap win in the meantime) (Task 3).
+- **Render-target scale: NO-GO this sprint.** `docs/research/14-gs-render-target-scale-spike.md` enumerates 15 places the GL backend assumes GS pixels are 1:1 with GL texels (**corrected by Sprint 3 Task 2: the authoritative count is 37 read sites / 50 field references, research/14 §8 — the "15" was never reproducible from the document and is superseded**); both readback paths (RT-to-shadow-VRAM and the title-label texture-set page copies) need a content-altering downsample filter, so `PS2X_GS_SCALE` is deferred to Sprint 3 (RenderTarget size refactor first, a presentation-upscale filter as the cheap win in the meantime) (Task 3).
 - **Family B and C native.** `docs/research/13-vu1-family-b-world-objects.md` documents the `0x3618` primitive subroutine and every family-B/C handler. The dispatcher now runs 123/166 lists native across dump2/3/4 (dump2 31/0, dump3 9/43, dump4 83/0 ended/handbacks), bit-exact against the exact-interpreter goldens (`--regs all`). Residual: one 0x34 list (EFU maths plus a same-lane write conflict) and 42 dump3 lists using commands this dispatcher does not implement at all (0x70/0x52/0x66/0x40 — a fourth command family, left for Sprint 3 research) (Tasks 4-6).
 - **Per-handler clamps.** Every handler that reads a loop count from the header or the primitive-index list clamps against the measured header maxima (`tools_py/vu1_headers.py`: dump2 50/31, dump3 78/73, dump4 76/44, all well under the 256/256 ceilings) and hands back safely on violation; a synthetic test (`TOP+2.z` rewritten to 300) proves the hand-back matches an exact golden of the modified dump, run by `./build.sh test` (Task 7).
 - **Gate hardening.** `drive.py` captures `w{i:02d}_{k:03d}.png` every second during settle waits (not just during scripted bursts); `black_rows.py` counts them alongside `s*.png`. `tests/fixtures/gate/{title,transition,mission}` are committed (title 16 frames, transition 5, mission good/bad `.drive.txt`), so `python -m unittest tools_py.tests.test_gate` (24 tests) runs its positive cases on a fresh clone with no prior run needed. `PS2X_TEST_REPEAT=N ./build.sh test` runs the unit suite N times (5/5 green; no flake reproduced) (Tasks 8-10).

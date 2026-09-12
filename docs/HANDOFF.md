@@ -1,14 +1,17 @@
 # Handoff — SOCOM II PC recompilation
 
 ## START HERE
-Read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays,
-and where Sprint 2 stands; then the current sprint spec and plan
-(`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`); then the run
-recipes and history below. Sprint 1 is history -- read it for how the VU1 native path and the
-gates got here, not for what to do next:
+Read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays, and where
+Sprint 3 landed; then the most recent sprint spec and plan
+(`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
+`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md` — its "Outcome"
+section at the foot says what actually happened and where reality diverged); then the run
+recipes and history below. Sprints 1 and 2 are history -- read them for how the VU1 native path,
+the host-draw hook and the gates got here, not for what to do next:
 `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
-`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`.
+`docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`,
+`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
+`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`.
 
 ## Reference: run recipes and history
 

@@ -8,10 +8,10 @@ host, structured so it can be extended later. The user supplies their own disc i
 `docs/STATUS.md` (what works, what is next, how to resume), then the design and the task list:
 `docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` +
 `docs/superpowers/plans/2026-09-04-implementation-plan.md` for the project as a whole, and
-`docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md` +
-`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md` for the current
-sprint (previous: `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`
-+ `docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`).
+`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md` +
+`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md` for the most
+recent sprint (previous: the `2026-09-11-sprint-2-host-render-and-family-b` and
+`2026-09-10-sprint-1-hygiene-and-native-render` spec/plan pairs in the same two directories).
 `docs/research/` holds the reverse-engineering and research write-ups.
 
 ## How it works (one paragraph)
@@ -46,17 +46,27 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 ./build.sh runtime     # cmake+ninja, clang, LTO off (~15 min from scratch, ~3 min runtime-only)
 ./build.sh test        # ps2x_tests + vu1_replay (builds both, copies vu1_replay to dist/) and
                        # replays the VU1 fixtures against their goldens, native path on and off,
-                       # plus a --vram-diff equivalence check; PS2X_TEST_REPEAT=N runs the unit
-                       # suite N times (determinism check)
+                       # plus a --vram-diff equivalence check (checked=14 skipped=0; a
+                       # [vu1_replay] WARNING about a texture inside the replay's blanked
+                       # framebuffer/z region fails the suite); PS2X_TEST_REPEAT=N runs the
+                       # unit suite N times (determinism check)
 python -m tools_py.parity.gate   # in-game gate: title / transition / mission, PASS or FAIL.
                        # Run `./build.sh runtime` first -- the gate launches dist/socom2.exe and
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
-Knobs: `PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
+Knobs (the behaviour-changing ones; everything else under `getenv("PS2X_` in
+`third_party/ps2recomp/ps2xRuntime/` is tracing or a dump path):
+`PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
 `GS::submitHostTriangle` in host space instead of building/kicking a GIF packet (default off, GIF
-path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path;
-`PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a determinism check.
+path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path
+(it runs 162 of the corpus's 166 lists natively, bit-exact; the residual 4 are documented in
+`docs/research/15-vu1-fourth-family.md`); `PS2X_VU1_FAST=0` and `PS2X_VU1_GEN=0` drop to the exact
+interpreter, which with `--no-native` is how `vu1_replay` goldens are made;
+`PS2X_GS_BACKEND=cpu` picks the CPU rasteriser (anything else, including unset, is the GL backend;
+`build.sh test` and `vu1_replay` force `cpu`); setting `PS2X_SOCOM2_PAD` (to any value) enables the
+host input path the parity harness drives, `PS2X_SOCOM2_MOUSE=1` adds mouse look; `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
+determinism check.
 `PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native
 dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach
 the refusal path on the normal fixtures -- test-only, never set them for a real run. `vu1_replay
@@ -87,9 +97,13 @@ frame). Memory cost is S^2 per colour and depth target. `PS2X_GS_SCALE_SELFTEST=
 every native-view read, that the mirror is not stale by a batch and that each native pixel lies
 inside its host block -- diagnostics only. The CPU backend (`PS2X_GS_BACKEND=cpu`, which
 `build.sh test` and `vu1_replay` force) ignores both knobs and always rasterises at 1x.
-`S=2` is verified on both draw paths (gate stamps `s3d_2x_host`, `s3d_2x_gif` + `s3d_2x_gif_t2`)
-and sharpens geometry but **not** the HUD, menus or title, which are textured quads; `S=3` and
-`S=4` are untested. See the 2026-09-12 Task 5 entry in `docs/STATUS.md`.
+The value is read once and clamped into 1..4, so anything out of range silently becomes the nearest
+end. `S=2` is verified on both draw paths (gate stamps `s3d_2x_host` for host-draw; `s3d_2x_gif`
+title + mission and `s3d_2x_gif_t2` transition for the GIF path) and sharpens geometry but **not**
+the HUD, menus or title, which are textured quads drawn at native texel density; `S=3` and `S=4`
+are admitted by the clamp and **untested** — at `S=4` a colour target is 67 MB and
+`getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP. See the 2026-09-12 Sprint 3 and Task 5
+entries in `docs/STATUS.md`.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.

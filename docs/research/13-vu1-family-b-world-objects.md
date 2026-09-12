@@ -726,6 +726,14 @@ outer loop (whose head is `0x26d8`), so with `N > 1` it would re-kick the same b
 `0x32` recompute `vi5` each iteration. Untested — `N` was 1. **[verified]** from the
 disassembly; consequence **[guess]**.
 
+> **Superseded by `docs/research/15-vu1-fourth-family.md` §6.2 (Sprint 3 Task 8).** The guessed
+> consequence is wrong: the *inner* loop overwrites `vi5` with the constant `32` at `0x2848` (the
+> `FMAND` mask), and nothing on the back edge restores it, so a second outer iteration would
+> `XGKICK` **data qword 32** — not the same block — and read its parameters from qwords 38-42.
+> That is why the native `0x34` handler refuses `N != 1` rather than implementing it: the kick
+> target of any iteration past the first is not a qword in the command list, so the pre-scan's
+> "this block is one complete EOP-terminated GIF packet" check could never have covered it.
+
 ---
 
 ## 5. Executed command order
