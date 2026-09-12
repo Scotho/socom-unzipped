@@ -1,0 +1,315 @@
+# 17 — "Ground height": the player is at the right height; the third-person camera is 5.4 low
+
+Sprint 4, Task 4. Research note. The only code change made for this note is none — see §7.
+
+**Headline:** `mover+0x90` is not the player's position, it is the **camera** position, and the
+player's body is at the *right* ground height on ours (`y = -145.875` vs the console's `-145.867`).
+The whole 14.7-vs-20.1 divergence is one number: the player actor's **skeleton root node Y
+translation** (`actor+0x2e8` → `+0x04`), which is `5.50391` on the console and `0.0` on ours.
+`FUN_0029a950` (the third-person camera's local offset, `0x29a950`) turns that number into the
+camera height with a ramp whose zero case is a hard-coded `10.0`, so ours lands on the engine's own
+"there is no root node" fallback. A live trace shows *why* our value is 0: the SEALs' skeleton
+override nodes are blended toward an **all-zero transform**, and the root's Y slides from the bind
+value 11.4845 straight through the console's 5.50391 down to 0 in ~1.4 s and stays. Every figure
+below is reproduced to four decimal places from measured data on both sides.
+
+---
+
+## 0. Corrections to the STATUS 01:30 / 02:10 model
+
+| STATUS said | Actually |
+| --- | --- |
+| the "mover" at actor `+0xc0`, vtable `0x6694b0` | class **`CSealCtrl`** (RTTI name at `0x65c680`, size `0x250` at `0x65c6b4`) — the player's control/view object, not a mover |
+| `mover+0x90` is the position | `CSealCtrl+0x80..+0xa4` is a **camera block**: `+0x80` = f, `+0x84` = f·aspect, `+0x88` = 25.0, `+0x8c` = 1/f, **`+0x90` = eye position**, `+0x9c` = view direction. Written by `FUN_005c9520` (`CSealCtrl` vtable `+0xa8`) / `FUN_005c9400`, which **copy** it from the global camera |
+| the actor rests 14.7 above the hit vs 20.1 | that is the **camera**. The player's own world position (`actor+0x28` → matrix row 3) is `y = -145.8750` on ours vs `-145.8672` on the console — **0.008 apart** |
+| `mover+0x5c` = 4.0 vs 6.3338 is a capsule radius / step height | it is a `rand()` draw (`base 4.0 + range 3.0 × rand()·2⁻³¹`) and is unrelated to height — but it *is* a real bug, see §6 |
+| `actor+0x2bc..` holds a cached ground point | `(939.241, -145.875, 856.391)` = the actor's own position copy, also at `+0x1c` and `+0xb0` |
+
+The `+0x84 = +0x68 × +0xa8` and `+0x8c = 1/+0x80` identities in `FUN_005c9400` match the dumped
+object exactly (`0.8391 × 807.5 = 677.573`; `1/807.5 = 0.00123839`), which is what pins
+`0x1785ee0` to that code.
+
+---
+
+## 1. The measured numbers (both sides)
+
+Ours: `logs/parity/rest_ours.rdram` (mission_s21, 400 s, at rest). Console:
+`logs/parity/spawn_pcsx2.rdram` (PCSX2 spawn image). Player actor `0x1a5e4b0` / `0x1713ce0`,
+`CSealCtrl` `0x1785ee0` / `0x170d510`, global camera `[0x415ff0]` → `0xd5f920` / `0xfd5cb0`.
+
+| quantity | ours | console | Δ |
+| --- | --- | --- | --- |
+| player world position (actor matrix row 3) | `939.2407, -145.8750, 856.3910` | `939.4391, -145.8672, 857.0661` | y: **0.008** |
+| camera look-at target (`cam+0x38`) | `939.241, -135.875, 857.665` | `939.439, -130.489, 858.341` | y: **5.386** |
+| camera eye (`cam+0x2c`) | `939.241, -131.770, 832.225` | `939.439, -126.384, 832.900` | y: **5.386** |
+| camera eye, smoothed (`cam+0xd8` = `CSealCtrl+0x90`) | `939.241, -131.725, 831.951` | `939.439, -126.264, 832.160` | y: **5.461** |
+| target height above the player | **10.0000** | **15.3782** | **5.3782** |
+| **player skeleton root node Y** (`actor+0x2e8` → `+0x04`) | **0.00000** | **5.50391** | **5.50391** |
+
+All console figures in this table are **measured** from `spawn_pcsx2.rdram`. The only inferred
+console figure anywhere in this note is the statement that the console's rest height equals its
+spawn height, which comes from STATUS 01:30 ("PCSX2 never drops").
+
+---
+
+## 2. The writer chain of `CSealCtrl+0x90`
+
+```
+FUN_00296f10   (camera mode 3rd-person; traced live as "CamC", called every frame)
+  ├─ FUN_0029a950(&eyeLocal, camera, &targetLocal, &dist)      <-- THE DIVERGENCE IS HERE
+  │     └─ FUN_002869d0(actor+0x170, actor+0x2e8, 0, &p, 0)    <-- reads the skeleton ROOT node
+  ├─ FUN_00297410(dt, camera, &eyeLocal, &targetLocal, &target) ("CamD")
+  │     └─ FUN_00308640(actorMatrix, ..., 1)                    local -> world
+  ├─ FUN_0029bf70(dt, camera, &target, &eye, &eye)              camera collision (4 segment probes,
+  │                                                             the 0x416050.. records STATUS saw)
+  └─ FUN_0029bc90(camera, &eye, &target, outMatrix)   ("CamPlace")
+        └─ writes the view matrix and  camera+0xd8..+0xe0 = eye
+FUN_005c9520 (CSealCtrl vtable +0xa8)
+  └─ copies  *(cam+0xb4) row 3  ->  CSealCtrl+0x90 , and the third row -> CSealCtrl+0x9c
+```
+
+Verified live: in `logs/run_20260912_120411.log` (`PS2X_CALL_TRACE="…0x296f10:CamC,0x297410:CamD,
+0x29bc90:CamPlace"`, `scripts/parity/gameplay_probe.txt`) the per-frame order is
+`CamPlace ← CamD ← CamC`, `ra=0x297314` and `ra=0x296f68`;
+`FUN_00295b00`/`FUN_00295f20`/`FUN_0029ae50` never fire in gameplay (they are the other camera
+modes and the *other* anchor helper — `FUN_0029ae50` looks like the right function and is not on
+the live path; don't trace it).
+
+---
+
+## 3. `FUN_0029a950` — where the 5.38 is created
+
+```c
+iVar6 = camera[0xc8];
+if (iVar6 != actor[0x2e8]) iVar6 = actor[0x2e8];        // the actor's skeleton ROOT node
+FUN_002869d0(actor + 0x170, iVar6, 0, &fStack_10, 0);   // fStack_10.. = (x, rootY, z) local
+
+fVar9 = 10.0;                                           // <-- the "no root node" fallback
+if (fStack_c != 0.0) {                                  // rootY != 0
+    fVar9 = 1.0;
+    if (fStack_c < 5.6) {                               // below standing: ramp down
+        fVar9 = (fStack_c - 2.169155) * 0.2914734;      // 2.169 -> 0 , 5.601 -> 1
+        clamp(fVar9, 0, 1);
+    }
+    fVar9 = fVar9 * 4.5 + 5.5;                          // -> 5.5 .. 10.0
+}
+...
+fStack_8 = fStack_8 + 28.0;                             // 28 units behind
+pfVar7[1] = fStack_c + fVar9;                           // CAMERA HEIGHT = rootY + fVar9
+```
+
+Substituting the two measured root-node values:
+
+* **console** `rootY = 5.50391` → `(5.50391 − 2.169155) × 0.2914734 = 0.971928` →
+  `fVar9 = 0.971928 × 4.5 + 5.5 = 9.873676` → height `= 5.50391 + 9.873676 = ` **`15.37759`**.
+  Measured console target height above the player: **15.3782**.
+* **ours** `rootY = 0.0` → the `!= 0.0` test fails → `fVar9 = 10.0` → height `= 0 + 10.0 = ` **`10.0`**.
+  Measured ours: **10.0000**.
+
+Both to 4 decimals. That is the whole defect: we take the engine's *own* "there is no root node"
+branch. The residual difference between the target Δ (5.378) and the eye Δ (5.461) comes from the
+camera-collision pass `FUN_0029bf70` and the boom, not from another bug.
+
+---
+
+## 4. The real divergence: the SEALs' skeleton root node
+
+Node layout (confirmed by `FUN_0028e370` / `FUN_0028e040`):
+`+0x00` vec3 local translation, `+0x0c` derived-matrix ptr, `+0x10` saved translation,
+`+0x1c` parent, `+0x20` quat, `+0x30` saved quat, `+0x40` u16 node index, `+0x42` u16 flags.
+The actor's node handles live at `actor+0x2e8..+0x354`; `+0x2e8` is the root (index 0).
+
+Scanning every actor (vtable `0x6691a0`; 37 in each image) for `actor+0x2e8 → +0x04`:
+
+| | ours (`rest_ours.rdram`) | console (`spawn_pcsx2.rdram`) |
+| --- | --- | --- |
+| the 4 SEALs (player + squad, around (939,856)) | **0.00000** ×4, root quat `(0.321,−0.455,−0.458,0.693)` (non-identity, same on all four) | **5.50391 / 4.70703 / 5.03125 / 5.03125**, root quat identity |
+| the other 33 actors | 11.48438 / 11.37109 (bind), quat identity | 11.48438 / 11.37109 / 11.0855 / 11.3498 / 11.535, quat identity |
+
+`11.48438` is the untouched bind value on both sides — it is not the bug. Every one of these
+values is `k/256`, i.e. 8.8 fixed point out of the compressed animation data.
+
+Two more ours dumps for stability: `rest_ours_gq.rdram` (same run, GroundQuery #350) has the four
+SEALs at `11.205 / 11.463 / 11.479 / 11.484` — i.e. **still at bind**, never in the 4.7–5.6 band
+the console uses; `spawn_ours3.rdram` and `postload_ours.rdram` match the console's pre-spawn state
+(`11.48 / 11.62`), so the divergence appears only once the SEALs start animating.
+
+### 4.1 Live trace — the root node decays to zero and stops there
+
+Second run, `logs/run_20260912_121304.log` / `logs/task4_camoff.drive.log`:
+
+```
+PS2X_CALL_TRACE="0x29a950:CamOff,0x29bc90:CamPlace"  PS2X_CALL_TRACE_EVERY=120
+PS2X_CALL_TRACE_DUMP="CamOff:a0:3,CamOff:a2:3,CamOff:a1+0xbc*+0x2e8*:8,CamOff:a1+0xbc*+0x1c:3"
+```
+
+(`a0` = eye local out, `a2` = target local out, third = the player's root node, fourth = the
+player's position.) Extract, `rootY` = the root node's `+0x04`:
+
+| t (s) | # | rootY | target local (a2) | eye local (a0) | player y |
+| --- | --- | --- | --- | --- | --- |
+| 211.5 | 0 | 11.4845 | (1.460, **21.485**, −1.273) | (2.808, 25.452, 23.315) | −145.605 |
+| 301.9 | 3 | 11.4651 | (1.282, 21.465, −1.273) | (2.465, 25.450, 23.418) | −145.539 |
+| 302.1 | 6 | 10.0623 | (0.510, 20.062, −1.274) | (0.980, 24.120, 23.868) | −145.551 |
+| 302.2 | 9 | 6.5996 | (0.005, 16.600, −1.274) | (0.010, 20.705, 24.163) | −145.766 |
+| **302.5** | **13** | **5.5039** | (0.000, **15.378**, −1.274) | (0.000, 19.483, 24.166) | −145.852 |
+| 302.8 | 17 | 3.7458 | (0.000, 11.314, −1.274) | (0.000, 15.419, 24.166) | −145.852 |
+| 303.1 | 23 | 0.1118 | (0.000, 5.612, −1.274) | (0.000, 9.717, 24.166) | −145.852 |
+| 303.2 | 24 | 0.0000 | (0.000, **5.500**, −1.274) | (0.000, 9.605, 24.166) | −145.852 |
+| 303.4 | 25 | 0.0000 | (0.000, **10.000**, −1.274) | (0.000, **14.105**, 24.166) | −145.852 |
+| … 304.6 | 48 | 0.0000 | (0.000, 10.000, −1.274) | (0.000, 14.105, 24.166) | −145.852 |
+
+Read that table twice. The root node's Y **decays monotonically from the bind value 11.4845 to
+exactly 0 over about 1.4 s of game time and then stays at 0 forever**. On the way down it passes
+through **5.5039 at sample #13 — the console's resting value to four decimals — and does not stop
+there**; the target height at that sample is **15.378**, the console's number exactly. One frame
+after it reaches 0 the `rootY != 0.0` test flips and the height jumps from 5.500 to the hard-coded
+**10.0** (the little 5.5→10.0 step between #24 and #25 in the table is that branch firing). The
+final eye height above the player, **14.105**, is the 14.7 STATUS measured.
+
+The node's *saved* copy (`+0x10`) decays with it, and the root quaternion goes to all-zero as well
+(dumped words 4..7 of the node are `0 0 0 0` at rest against a unit quat on the console). The other
+nodes in the same per-SEAL handle list (`FUN_005765f0`'s twenty handles, `actor+0x2e8..+0x354`)
+show the same signature in the RDRAM image: non-unit or zero quaternions where the console has
+unit ones, while the bone *translations* still match the console to 4–10 ulps.
+
+So the statement of the bug is:
+
+> **The SEAL actors' skeleton override nodes — the twenty handles at `actor+0x2e8..+0x354`,
+> `+0x2e8` being the root — are blended toward an all-zero transform instead of toward the
+> standing pose. The root's Y slides from the bind value 11.4845 through the console's 5.50391 and
+> settles at exactly 0.0, with a zero quaternion.** `FUN_0029a950` then takes its `rootY == 0`
+> fallback (`fVar9 = 10.0`) and places the camera 5.38 low.
+
+Corroborating (RDRAM image, walking up the chain from `actor+0x308` to the root): the player's bone
+quaternions on ours are **not unit** — magnitudes `0.916, 1.000, 0.000, 0.930, 0.756, 0.000, 1.000`
+against the console's `1.000` for all seven, two of them exactly zero — while the bone
+*translations* match the console to within 4–10 ulps. Translations (static model data) load
+correctly; rotations and the root translation (animation output) do not. That points at the
+animation sampling/blending on `actor+0x170`, not at the camera and not at collision.
+
+The per-SEAL machinery to look at first (all three operate on exactly that twenty-handle list):
+`FUN_005765f0` snapshots current → saved (`FUN_0028e370`: node `+0x00..+0x08` → `+0x10`,
+`+0x20..+0x2c` → `+0x30`); `FUN_00576700` blends saved → current with weight `actor+0x10d0`
+(`FUN_0028e040`: `FUN_001c0768` for the translation, `FUN_00306ae0` for the quaternion);
+`FUN_00576860` drives the two blend timers `actor+0x10d0` and `actor+0x178` down by `actor+0x2e0`
+and, when either hits 0, flips the per-node enable bit (`FUN_0028dfc0` → node `+0x42` bit 0). A
+blend whose destination is an all-zero pose, or a weight that runs past 1, produces exactly the
+observed monotonic slide to zero.
+
+---
+
+## 5. What this rules out
+
+* **Not the collision probe** — STATUS 01:30 already showed hit `y = -146.371` identical to PCSX2.
+* **Not the player's ground height** — the player's world y matches to 0.008 (§1).
+* **Not the seal tuning table** — `0x44c250..0x44c3d8` (`gravity`, `ground_touch_distance`,
+  `step_height`, `max_slope`, `cam_back_height`, `min_stand_height`, … 96 words) is **identical**
+  between the two images except 16 one-ulp float differences and `+0x11c`. So the config data
+  (`FUN_0059ba80`, named lookups through `FUN_0032ea80`) loads correctly. The names and offsets of
+  that table are listed in §8 for whoever needs them next.
+* **Not `CSealCtrl+0x5c`** — see §6.
+
+One incidental find in that comparison, **worth its own ticket — the soft-double routines are
+broken**. `param+0x11c = 1/(exp_lut(throt_exp) − 1)` is `0.0344864` on ours vs `0.581809` on the
+console, i.e. `FUN_00309370` (a LUT lerp over the 257-entry table at `0x451090`, scale
+`DAT_003df340 = 25.6`) returns ≈ **30.0** for input 1.0 where the console returns ≈ **e**. Dumping
+the table itself from both images:
+
+```
+i        0        1        2        3        4        5        6        7        8        9
+ours  1.00000  1.03984 -3.17809  0.86499  1.16912  1.21569  0.72590 -3.73796  1.23116  8.19356
+pcsx2 1.00000  1.03984  1.08126  1.12433  1.16912  1.21569  1.26412  1.31448  1.36684  1.42129
+```
+
+— and it only gets worse (entry 28 is `-1189.6` on ours). The builder is `FUN_00309420`, one loop
+that fills three tables: the **`sinf`/`cosf`** tables at `0x4514a0`/`0x4518b0` (single precision,
+stubbed as `sinf@0x001B3720`/`cosf@0x001B3548`) come out **bit-correct**, while the `exp` table —
+the only one that goes through the EE soft-double chain `FUN_001a1150` (litodp) → `FUN_001a0c18`
+(dpmul) → `FUN_001a0ea0` (dpdiv) → `FUN_001b3880` (exp) → `FUN_001a12d8` (dptofp) — is garbage from
+entry 2 on. Those five are *named* in `recomp/socom2.toml` but have no `ps2_stubs::` implementation,
+so they run as recompiled EE integer code; the defect is therefore in our 64-bit integer
+recompilation, not in a stub. It feeds the movement throttle curve (`throt_exp`) and anything else
+that touches a double.
+
+---
+
+## 6. `CSealCtrl+0x5c` = 4.0 vs 6.3338 — a `rand()` range bug, not a height
+
+The constructor `FUN_00598280` contains this idiom three times (at `+0x54/+0x58/+0x5c`,
+`+0x1b8/+0x1bc/+0x1c0`, `+0x22c/+0x230/+0x234`):
+
+```c
+if (range == 0.0) v = base;
+else { int r = FUN_00197740(); v = base + range * (float)r * 4.656613e-10; }   // 2^-31
+```
+
+`FUN_00197740` is newlib `rand()` (`FUN_0019eb18` 64×64 multiply by `0x5851f42d4c957f2d`,
+returns `(uint)(state >> 32) & 0x7fffffff`) — a **31-bit** value, which is why the game scales by
+`2⁻³¹`. In `recomp/socom2.toml` line 97 it is stubbed as `rand@0x00197740`, and the stub
+(`third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/LibC.cpp:1083`) is
+
+```cpp
+void rand(...) { setReturnS32(ctx, std::rand() & 0x7FFF); }   // 15 bits, 65536x too small
+```
+
+Measured proof: our dumped `+0x5c` is `0x4080002d = 4.00002146`, i.e. `4.0 + 3.0·r` with
+`r = 7.153e-6` ⇒ the guest saw `rand() = 15361` — inside `[0, 32767]`. The console's `6.3338`
+needs `r = 0.77793` ⇒ `rand() ≈ 1.67e9`. **Every `rand()`-derived float in the game is pinned to
+its minimum**: the decomp has **249** sites multiplying a `rand()` by `4.656613e-10`.
+
+Fix (not applied here — see §7): either return a 31-bit value from the stub, or better, drop
+`rand@0x00197740` from `recomp/socom2.toml`'s stub list so the guest's own LCG runs and the
+sequence matches the console's. The latter needs a re-recompile.
+
+This is **not** the ground/camera height: `+0x54/+0x58/+0x5c` sits among camera FOV constants
+(`+0x50`/`+0x60` = 0.349066 = 20°, `+0x64` = 1.39626 = 80°, `+0x6c` = cos 40°) and behaves like a
+jitter/blink timer. It is reported here because this task is where it was found and because it has
+a 249-site blast radius.
+
+---
+
+## 7. Why no fix was landed
+
+Task 4's fix gate is "one hypothesis, one build, one `gameplay_probe.txt` run showing the rest
+height at ~20.1". The localisation lands the defect in the **SEAL skeleton-override blend**
+(`FUN_005765f0` / `FUN_00576700` / `FUN_00576860` over `actor+0x2e8..+0x354`, through
+`FUN_0028e370` / `FUN_0028e040` / `FUN_0028dfc0`) — not in the camera, not in collision, and not in
+anything this task was scoped to touch. Finding which of those is wrong needs its own trace round;
+guessing a clamp into `FUN_0029a950` would paper over the real defect and still leave the SEALs'
+override bones zeroed. Per the brief, the note is the deliverable and no speculative change was
+made.
+
+Two bounded fixes *were* found (§6 `rand()` 15-bit stub, §5 soft-double routines). Neither moves the
+camera height, and the `rand()` one changes every random draw in the game (enemy behaviour, weapon
+spread, timers), so both belong to a task that can run a full gate rather than to this one.
+
+## 8. Handles for the follow-up
+
+* **Reproduce the measurement in one run** (this is what §4.1 is):
+  `PS2X_CALL_TRACE="0x29a950:CamOff"`,
+  `PS2X_CALL_TRACE_DUMP="CamOff:a0:3,CamOff:a2:3,CamOff:a1+0xbc*+0x2e8*:8,CamOff:a1+0xbc*+0x1c:3"`,
+  `PS2X_CALL_TRACE_EVERY=120`, `scripts/parity/gameplay_probe.txt`. Script:
+  `logs/run_task4_camoff.sh`. The number to watch is word 1 of the third dump (the root node's Y);
+  it must settle near **5.5**, not 0. `a2[1]` is the camera height and must settle near **15.38**.
+  Camera height formula: `FUN_0029a950` @ `0x29a950`.
+* Root node: `actor+0x2e8`, node index 0 of the skeleton instance at `actor+0x170`
+  (node array ptr at `+0x64`, count at `+0x60`). Save/restore helpers: `FUN_0028e370` (current →
+  saved), `FUN_0028e040` (saved → current with a blend), `FUN_0028dfc0` (flag bit 0 at node `+0x42`).
+  SEAL-level wrappers: `FUN_005765f0`, `FUN_00576700`, `FUN_00576860`.
+* Other readers of the root Y (they will all be wrong too): `actor+0x20 + node[0].y` is the AI aim
+  point (decomp lines 416880, 465173, 465209) and `node[0].y < 9.0` is a stance test (line 444146).
+* Seal tuning table at `0x44c250` (loaded by `FUN_0059ba80` through the by-name getter
+  `FUN_0032ea80`): `+0x00 gravity` 235, `+0x04 DamageToNewtons` 360, `+0x08 jump_factor` 0.85,
+  `+0x0c land_fall_rate` 40, `+0x10 land_hard_fall_rate` 115, `+0x14 ground_touch_distance` 8,
+  `+0x18 max_slope` 0.642788, `+0x1c step_height` 6.5, `+0x20 vertical_blast_boost` 3,
+  `+0x24/0x28/0x2c FALLING_DAMAGE_LIGHT/HEAVY/DEATH`, `+0x3c stand_turn_factor`,
+  `+0x40 turn_maxrate`, `+0x44..0x50` accel limits, `+0x54..0x70` aim limits (radians),
+  `+0x74..0x90` look/blink limits, `+0xc4..0xd8` zoom aim limits, `+0xf4..0x104` throttle curves,
+  `+0x108 min_water_factor`, `+0x10c water_factor_slope`, `+0x110 fb_accel`, `+0x114 lr_accel`,
+  `+0x118 throt_exp`, `+0x120 camera_roll`, `+0x124 zoom_factor`, `+0x128 zoom_rate`,
+  `+0x12c..0x158` the `cam_back/side/first/peekl/peekr` side/height/dist triples,
+  `+0x15c cam_tether_stiff`, `+0x160 cam_look_dwell`, `+0x164 cam_net_pos_smooth`,
+  `+0x168 cam_net_release_rad`, `+0x16c cam_peek_decay_rate`, `+0x170/0x174` min running
+  reload/chgweapon speed, `+0x178/0x17c/0x180` low/med/high `climb_height`,
+  `+0x184 min_stand_height`, `+0x188 min_jump_height`.
