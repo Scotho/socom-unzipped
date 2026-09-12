@@ -1012,9 +1012,12 @@ namespace
     // Diffing the full 40 pairs of 0x0b20-0x0c58 against 0x0cb8-0x0df0 gives 30 identical and 10
     // differing: the eight substitution sites above, the prologue's `IADDIU vi3, vi3, 6` two pairs
     // earlier, and the relocated loop head (0x0bd0 -> 0x0d68). The cursor move is scheduling only
-    // and is transcribed at its real position below for the sake of the disassembly line numbers:
-    // neither multiply reads vi3, and every LQ that does still follows it, so the two orders are
-    // the same program.
+    // and is transcribed at its real position below for the sake of the disassembly line numbers.
+    // The invariant that makes it inert is NOT "every LQ that uses vi3 follows it" -- the prologue
+    // loads at 0x0cd0-0x0cf8 precede it, in this handler and in 0x68 -- it is that NOTHING between
+    // the two candidate positions reads vi3 at all: the increment sits at 0x0d18 here and at
+    // 0x0b98's counterpart 0x0d30 in 0x68's schedule, and the pairs in between (0x0d20's ITOF0 and
+    // the two MULw.xyz) touch only vf registers. So the two orders are the same program.
     //
     // Only TOP+3's .w lane is read here -- poisoning .x or .y changes nothing, poisoning .w changes
     // the packets -- but the whole quad is loaded, because vf27 is compared state.

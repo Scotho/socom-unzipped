@@ -56,6 +56,14 @@ register roles, the staging array, the hand-back rules) and research/13 (familie
    `PASS: 0 mismatching field(s)`, exit 0. Task 7's job is to move them from generated to native
    without changing a bit; that same command is the regression check. **[verified]**
 
+   **Correction (Task 7).** The golden this compares against must be taken with `--no-native`
+   (or `PS2X_VU1_NATIVE=0`), not with `PS2X_VU1_FAST=0 PS2X_VU1_GEN=0` alone: those two knobs
+   disable the fast and generated paths and **leave the native registry on**, so a `--batch`
+   run with only them prints a non-zero `native entered=..` and the native path becomes its own
+   oracle for every already-implemented list. It happened not to matter for these particular 43,
+   which the native dispatcher refused whole, but it silently invalidates a golden taken over any
+   wider set — see §9.8. **[verified]** (Task 7, and reproduced independently by its reviewer.)
+
 8. **Settled scope (controller ruling, §9.3): Task 7 implements `0x70` and `0x40`. `0x52` and
    `0x66` stay unimplemented and are a documented residual — 4 dumps of 166.** `0x70` and `0x40`
    are 38 dispatches each and ordinary hand-back-at-`0x1b60` handlers. `0x52` emits nothing, ends
@@ -170,9 +178,16 @@ The ten are
 
 * 4 × `ITOF4.xyz` → `ITOF15.xyz` (the position conversion: two in the prologue, two in the loop),
 * 4 × `ADD.xyz vfOut, vfOut, vf27` → `MULw.xyz vfOut, vfOut, vf27w` (same two/two split),
-* 1 prologue `IADDIU vi3, vi3, 6` moved two pairs earlier — scheduling only, every `LQ` that uses
-  `vi3` still precedes it in both, and the native path never advances `m_cycle` anyway, so this
-  one is inert for an implementation,
+* 1 prologue `IADDIU vi3, vi3, 6` moved two pairs earlier — scheduling only, so this one is inert
+  for an implementation. **Correction (Task 7):** the reason is *not* "every `LQ` that uses `vi3`
+  still precedes it", which is false as worded in both handlers — `0x70`'s prologue loads at
+  `0x0cd0`–`0x0cf8` and `0x68`'s at `0x0b38`–`0x0b60` precede the increment, and the loads that
+  follow it read the *next* pair of records, which is the point of the prefetch. The real
+  invariant is that **nothing between the two candidate positions reads `vi3` at all**: the
+  increment sits at `0x0d18` in `0x70` and at `0x0b98`'s counterpart `0x0d30` in `0x68`'s
+  schedule, and the pairs in between (`0x0d20` `ITOF0.xyzw vf23`, `0x0d28`/`0x0d30` the two
+  `MULw.xyz`) touch only `vf` registers. The native path never advances `m_cycle` either, so
+  there is no timing to match,
 * 1 relocated loop-head target, `IBGTZ vi9, 0xbd0` → `IBGTZ vi9, 0xd68`.
 
 **[verified]**
@@ -864,7 +879,9 @@ Three clamp notes Task 7 must not miss:
 ## 8. Live-in / live-out summary and the hand-back rules
 
 Per-register perturbation sweeps (each of `vf1..vf31` and `vi1..vi15` replaced in turn with a
-distinct value, re-run, compared against an exact `PS2X_VU1_FAST=0 PS2X_VU1_GEN=0` golden —
+distinct value, re-run, compared against an exact `PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 --no-native`
+golden (the `--no-native` is the §0.7 correction; it was not needed for these dumps, which the
+native dispatcher refused, but it is what makes the recipe safe in general) —
 packets for the drawing shapes, packets **plus cycles, end pc and the VU-data hash** for
 `0x52`, which emits nothing):
 
@@ -945,6 +962,23 @@ dead here.
    four as "not applicable" rather than "out of range".
 
 8. **Tool caveats found while doing this work:**
+   * **`PS2X_VU1_FAST=0 PS2X_VU1_GEN=0` does NOT disable the native dispatcher.** They turn off
+     the fast interpreter path and the generated translation; the native registry is separate and
+     defaults on (`kVu1NativeDefault`), so a golden taken with only those two knobs is produced by
+     the very code it is supposed to check for every list the native dispatcher already implements.
+     A `--batch` run over the 166-dump corpus with exactly that command prints a **non-zero**
+     `[vu1_replay] native entered=166 ended=.. handbacks=..` (123/43 before Task 7, 161/5 after).
+     Add **`--no-native`** (or `PS2X_VU1_NATIVE=0`); a correct golden run prints
+     `entered=0 ended=0 handbacks=0`, and that line is the check that the golden is a golden.
+     **[verified]** — added by Task 7; §0.7 and §10 are corrected accordingly.
+   * **Dump basenames collide across the three dump sets, and `--batch`/`--verify` key on the
+     basename.** 23 of them do (`vu1_prog_13.bin`, `vu1_prog_143.bin`, …), so a single `--batch`
+     directory over `logs/vu1dump2` + `3` + `4` writes one `state.txt` whose lines `--verify` then
+     matches to the *wrong* programs. On a completely unmodified tree that reports
+     `FAIL: 247 mismatching field(s)` — and it does so with `--no-native` too, i.e. the interpreter
+     failing against its own golden, which is proof it is a keying artefact and not a code defect.
+     **Build and verify goldens per dump set.** This is the caveat most likely to look like a
+     regression that is not one. **[verified]** — added by Task 7, confirmed by its reviewer.
    * `vu1_replay.exe` does **not** accept absolute `C:/...` dump paths through this shell — it
      reports `cannot open …` for a file that demonstrably exists. Run it with `cwd` at the repo
      root and relative paths. **[verified]**
@@ -989,8 +1023,10 @@ PS2X_TRACE_VU_STEPS=4000000 dist/vu1_replay.exe --trace logs/vu1dump3/vu1_prog_3
 python <pc two steps after each 0x1b90 -> jump-table slot -> command word>
 
 # exact goldens, and the regression check for Task 7
-PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch <dir> <the 43 dumps>
-dist/vu1_replay.exe --verify <dir>/state.txt <the 43 dumps>     # PASS today
+# ... note --no-native: FAST/GEN do NOT disable the native registry (section 9.8), and goldens
+# must be built PER DUMP SET, because basenames collide across vu1dump2/3/4 (section 9.8).
+PS2X_VU1_FAST=0 PS2X_VU1_GEN=0 dist/vu1_replay.exe --batch <dir> --no-native <that set's dumps>
+dist/vu1_replay.exe --verify <dir>/state.txt --native --regs all <that set's dumps>
 
 # poison tests (patch one data qword of a COPY, re-batch, compare the .pk byte for byte)
 #   q26 / q38 / TOP+3.w / q327.w        -> 0x40's tag source and 0x70's scale
