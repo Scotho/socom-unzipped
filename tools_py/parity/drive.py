@@ -62,8 +62,24 @@ def highlighted(hwnd, box):
     return float(mean[1] - mean[0]) > 25.0
 
 
+def crop_to_content(im, thresh=8):
+    """Crop a captured frame to its non-black content rect before thumbnailing. A window that is
+    not exactly the game's 640x448 -- because something resized it -- pillarboxes or letterboxes
+    the capture with black bars, which shifts every reference comparison and degrades the title
+    score smoothly instead of failing it. Computes a per-row and per-column max over the greyscale
+    frame and crops to the first/last index above `thresh`. An all-black frame has no index above
+    threshold and is returned unchanged -- the transition gate scores black frames on purpose, and
+    cropping one away would break it."""
+    arr = np.asarray(im.convert("L"), dtype=np.float32)
+    rows = np.where(arr.max(axis=1) > thresh)[0]
+    cols = np.where(arr.max(axis=0) > thresh)[0]
+    if rows.size == 0 or cols.size == 0:
+        return im
+    return im.crop((int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1))
+
+
 def frame(hwnd):
-    return np.asarray(winshot.grab(hwnd).convert("L").resize((160, 112)), dtype=np.float32)
+    return np.asarray(crop_to_content(winshot.grab(hwnd).convert("L")).resize((160, 112)), dtype=np.float32)
 
 
 def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3,
@@ -220,7 +236,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
             max_loops = int(nums[4]) if len(nums) >= 5 else 12
             thresh = nums[5] if len(nums) >= 6 else 14.0
-            ref_im = np.asarray(Image.open(ref_path).convert("L").resize((160, 112)), dtype=np.float32)
+            ref_im = np.asarray(crop_to_content(Image.open(ref_path).convert("L")).resize((160, 112)), dtype=np.float32)
 
             def at_ref():
                 return float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean()) < thresh
@@ -248,7 +264,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             r0, r1 = (int(nums[0]), int(nums[1])) if len(nums) >= 2 else (8, 62)
             c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
             thresh = nums[4] if len(nums) >= 5 else 14.0
-            ref_im = np.asarray(Image.open(parts[0]).convert("L").resize((160, 112)), dtype=np.float32)
+            ref_im = np.asarray(crop_to_content(Image.open(parts[0]).convert("L")).resize((160, 112)), dtype=np.float32)
             wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
             dist = float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean())
             matched = dist < thresh
