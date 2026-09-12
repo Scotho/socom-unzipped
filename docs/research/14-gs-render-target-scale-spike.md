@@ -9,10 +9,16 @@ All bare `NNN` line references below are `gs_gl_backend.cpp` at commit `2c89aac`
 
 **NO-GO for step 3b in Sprint 2.** Both halves of the brief's rule fail:
 
-* **Touch points: 15 edit sites across 9 subsystems** (rule: ≤ 8), and that count *understates*
-  the work, because `RenderTarget::width/height` is a single field that today means both "GL texel
-  size" and "native GS pixel bound" and is read at ~22 sites (§3). Splitting it is a mechanical but
-  wide refactor of exactly the code that owns the page/row semantics the game depends on.
+* **Touch points: 30 edit rows across 9 subsystems** (rule: ≤ 8), on top of **37 read sites** of
+  `RenderTarget::width/height` — a single field that today means both "GL texel size" and "native
+  GS pixel bound" (§3). Splitting it is a mechanical but wide refactor of exactly the code that
+  owns the page/row semantics the game depends on.
+  *(Count corrected 2026-09-12 by S3-a, which audited every site — see §8. The "15" originally
+  written here and the "~22" in §3 were both undercounts, and they were counting two different
+  things: 15/30 is the number of §2 table rows whose "Change for S" is not "unchanged"; 37 is the
+  number of source lines that read `rt.width`/`rt.height`, which is the number that governed the
+  S3-a refactor. **37 read sites / 50 field references is the authoritative figure**; 30 is the
+  honest recount of §2's own change rows. `docs/STATUS.md` still carries the old 15.)*
 * **Two readback paths need a downsample**, and one of them is precisely the page-copy path the
   brief names as the danger: `downloadRenderTargetToShadow` (1305) feeds `decodeTexture`, which is
   how SOCOM II's title labels are produced (STATUS 2026-09-09 02:15/12:10). The other,
@@ -161,9 +167,14 @@ The field pair is used in two incompatible senses and the compiler cannot tell t
 * **GL texel size** — 959, 1261, 1328, 1380, 1527, 1566, 1626, 2169, 2281, plus the
   `pixels[y * rt.width + x]` strides at 1357 and 1403;
 * **native GS extent** — 1176, 1194, 1217, 1307, 1333, 1371, 1384, 1524, 1556-1557, 1632-1633,
-  1943, 2163.
+  1943, ~~2163~~ (**2163 is host** — the depth texture must match the colour attachment's GL size
+  or the FBO is incomplete; §2.1's own row for it already said "pass the host size". Corrected by
+  the S3-a audit, §8).
 
-That is ~22 read sites, of which the 12 "native extent" ones become wrong the moment the field is
+That is ~22 read sites (**the audit in §8 found 37** — the lists above miss the pixel-buffer
+allocations at 1308/1372/1525, the present-copy texture bookkeeping at 1558/1571-1572/1618, the PPM
+stride at 1547, the two trace `fprintf`s at 1693/1950, and `resolveTexture`'s `outWidth/outHeight`
+at 1946-1947), of which the "native extent" ones become wrong the moment the field is
 scaled — and four of them (1176, 1333, 1384, plus 1194/1217) are the clamps that exist *because* of
 previously-fixed VRAM corruption bugs (the x=384 movie seam; the stale-band overwrite). Doing this
 safely means splitting the field into `nativeWidth/nativeHeight` and `hostWidth/hostHeight` and
@@ -243,3 +254,80 @@ one-evening experiment that changes nothing the guest can observe.
 * `getRenderTarget` keys targets by base page and takes the maximum stride (938-956). At S>1 a
   target whose FBW changes mid-frame still maps correctly, but the host rect for uploads/downloads
   is derived from `fbw * 64 * S`; that deserves an explicit test in S3-c.
+
+## 8. S3-a audit — every `RenderTarget` size read, classified (2026-09-12)
+
+`RenderTarget::width/height` is now `nativeWidth/nativeHeight` (the extent in native GS pixels —
+VRAM addressing, page/row bookkeeping, DISPLAY and FBW clamps) and `hostWidth/hostHeight` (the
+extent of the GL colour texture in texels, `= native * kScale`). `kScale` is a `constexpr uint32_t
+1u` in `gs_gl_backend.cpp`; `getRenderTarget` asserts `host == native * kScale` on every lookup and
+`std::abort()`s if the two ever drift. S3-c replaces `kScale` with `PS2X_GS_SCALE`.
+
+**37 read sites, 50 field references** — 15 sites native, 22 host. Line numbers are
+`src/lib/gs/gs_gl_backend.cpp` *after* the split (commit of this task); the "was" column is the
+pre-split line so the §3 lists above can be cross-checked.
+
+| was | now | context | chose | why |
+|---|---|---|---|---|
+| 955-956 | 973-976 | `getRenderTarget` allocation (now writes both pairs + `checkScale`) | both | the one place the two sizes are tied together |
+| 959 | 980 | `glTexImage2D` colour texture | **host** | the GL allocation *is* the host texel size |
+| 1176 | 1197 | `refreshDirtyRows`: `w = min(rt.*, fbw*64)` | **native** | bug-scar clamp against a page-row width in GS pixels (the x=384 movie seam) |
+| 1194 | 1215 | `refreshDirtyRows`: `y1 = min(r.y1, rt.*)` (exact rect) | **native** | bug-scar band clamp; `dirtyRects` are native rows |
+| 1217 | 1238 | `refreshDirtyRows`: `y1 = min(end*32, rt.*)` (band) | **native** | 32-row dirty bands are native rows |
+| 1261 | 1282 | `executeClear`: `glViewport` | **host** | a GL viewport is in texels |
+| 1307 | 1328 | `downloadRenderTargetToShadow`: `h = min(usedHeight, rt.*)` | **native** | `usedHeight` comparison |
+| 1308 | 1329 | readback buffer `pixels(rt.* * h)` | **host** | must match the `glReadPixels` rect that fills it |
+| 1328 | 1349 | `glReadPixels(0,0,rt.*,h)` | **host** | a GL readback rect is in texels |
+| 1333 | 1354 | `xEnd = min(rt.*, fbw*64)` | **native** | bug-scar clamp; `xEnd` indexes `writeVramRaw` in GS pixels |
+| 1357 | 1378 | `pixels[y*rt.* + x]` | **host** | stride of the buffer `glReadPixels` filled |
+| 1371 | 1392 | `downloadRenderTargetToCpu`: `h = min(usedHeight, rt.*)` | **native** | `usedHeight` comparison |
+| 1372 | 1393 | readback buffer | **host** | as 1308 |
+| 1380 | 1401 | `glReadPixels` | **host** | as 1328 |
+| 1384 | 1405 | `xEnd = min(rt.*, fbw*64)` | **native** | bug-scar clamp; feeds `m_cpu->WriteVram` in GS pixels |
+| 1403 | 1424 | `pixels[y*rt.* + x]` | **host** | as 1357 |
+| 1524 | 1545 | `PS2X_GS_DUMP_DISPLAY`: `w=min(640,rt.*)`, `h=min(448,rt.*)` | **native** | the PPM extent must match the shadow/CPU PPMs, which are read from native VRAM |
+| 1525 | 1546 | dump readback buffer | **host** | must match the `glReadPixels` rect |
+| 1527 | 1548 | dump `glReadPixels` | **host** | GL readback rect |
+| 1547 | 1568 | dump `gpu[y*rt.* + x]` | **host** | stride of that buffer |
+| 1556 | 1577 | `m_presentWidth = min(display_w, rt.*)` | **native** | DISPLAY width is a native GS extent, so the clamp must be native |
+| 1557 | 1578 | `m_presentHeight = min(display_h, rt.*)` | **native** | as 1556 |
+| 1558 | 1579 | `m_presentTexWidth/Height != rt.*` (realloc test) | **host** | compares against the texture allocated at 1566 |
+| 1566 | 1587 | present-copy `glTexImage2D` | **host** | GL allocation |
+| 1571-1572 | 1592-1593 | `m_presentTexWidth/Height = rt.*` | **host** | records that GL allocation |
+| 1618 | 1639 | circuit-2 realloc test | **host** | as 1558 |
+| 1626 | 1647 | circuit-2 `glTexImage2D` | **host** | GL allocation |
+| 1632 | 1653 | `w2 = min(m_presentWidth, rt2->*)` | **native** | clamps a native present width against the second target's extent |
+| 1633 | 1654 | `h2 = min(m_presentHeight, rt2->*)` | **native** | as 1632 |
+| 1693 | 1714 | `PS2X_GS_TRACE_PRESENT` `fprintf` | **native** | diagnostic printed beside `usedHeight` and the present rect, all native |
+| 1943 | 1964 | `resolveTexture`: `if (width > rt.* \|\| height > rt.*) continue;` | **native** | compares native TW/TH against the target's extent |
+| 1946-1947 | 1967-1968 | `outWidth/outHeight = rt.*` → `uTexSize` | **host** | the fragment shader divides texel coords by `uTexSize` to address the GL texture |
+| 1950 | 1971 | `[gs-pages] sampled from rt` `fprintf` | **native** | diagnostic beside the native guard at 1943 |
+| 2163 | 2184 | `getDepthTarget(zbp, fbw, rt.*, rt.*)` | **host** | the depth texture is an attachment of the same FBO: its GL size must equal the colour texture's or the FBO is incomplete. **§3 lists 2163 under "native GS extent"; that is an error in the spike** — §2.1's own row for it already says "pass the host size" |
+| 2169 | 2190 | `setupDrawState`: `glViewport` | **host** | GL viewport |
+| 2281 | 2302 | `uRtSize` uniform | **host** | the vertex shader normalises to clip space against the GL target size |
+
+### 8.1 Notes for S3-b / S3-c (no ambiguous sites, but four hand-offs)
+
+None of the 37 sites was unclassifiable, so none is marked `[ambiguous]`. Four carry a native/host
+straddle that S3-a deliberately leaves as it stands (at `kScale == 1` every one of them is a no-op):
+
+1. **Both download paths (1328-1349, 1392-1401).** `h` is native rows and the width is host texels,
+   so at `S > 1` the buffer and the `glReadPixels` rect would cover only the top `1/S` of the used
+   rows, and the `pixels[y*hostWidth + x]` loop would index host texels with native `x`/`y`. This is
+   exactly the §2.5/§2.6 blocker. **S3-b's native mirror is what fixes it**: once the resolve runs,
+   both downloads read a native-sized rect out of the mirror and every one of these four reads
+   becomes `native*` again. Do not "fix" them by scaling `h` — that only moves the downsample.
+2. **`m_presentWidth/Height` (1577-1578, 1653-1654).** Chosen native, but *every* consumer is a host
+   GL rect (`glBlitFramebuffer` at 1602/1664, the probe `glReadPixels` at 1685/1691, the frame-dump
+   `glReadPixels` at 1723, and the `srcRect` handed to `HostFrameTexture`, which is paired with the
+   host-sized `m_presentTexWidth`). S3-c must therefore write
+   `m_presentWidth = min(display_w, rt->nativeWidth) * kScale`, which is identically
+   `min(display_w * S, rt->hostWidth)` from §2.9 — the two formulations agree, so either reading of
+   §3 lands in the same place.
+3. **`PS2X_GS_DUMP_DISPLAY` (1545-1568).** Native PPM extent over a host readback: at `S > 1` the
+   "gpu" PPM would show the top-left `1/S` corner instead of the frame. §2.10 already flagged this;
+   it is diagnostics-only and is left wrong-at-S>1 rather than fixed here.
+4. **`DepthTarget::width/height`** keeps its single name. It is unconditionally a GL texture size
+   (fed from `rt->hostWidth/hostHeight` at 2184) and has no native meaning, so there is nothing to
+   split; leaving it unsplit is the reason the `getDepthTarget` call at 2184 had to be resolved
+   correctly rather than mechanically following §3's (wrong) native classification.

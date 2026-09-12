@@ -96,8 +96,17 @@ private:
         uint32_t fbp = 0;   // pages
         uint32_t fbw = 0;   // 64-pixel units
         uint32_t psm = 0;
-        uint32_t width = 0;
-        uint32_t height = 0;
+        // The target's extent in NATIVE GS pixels. This is VRAM addressing, not rasterisation:
+        // page/row bookkeeping, the FBW*64 page-row clamps, usedHeight and the DISPLAY rectangle
+        // are all expressed in these units and never scale (research/14 section 3).
+        uint32_t nativeWidth = 0;
+        uint32_t nativeHeight = 0;
+        // The extent of the GL colour texture in texels == native * kScale (kScale is a constexpr
+        // 1 today; PS2X_GS_SCALE makes it a knob). Everything that names a GL object -- the
+        // glTexImage2D allocation, glViewport, glReadPixels rects, uRtSize/uTexSize, and the
+        // strides of the pixel buffers those readbacks fill -- uses these.
+        uint32_t hostWidth = 0;
+        uint32_t hostHeight = 0;
         uint32_t usedHeight = 32;
         uint32_t fbo = 0;
         uint32_t color = 0;
