@@ -52,9 +52,14 @@ namespace ps2_stubs
     {
         const uint32_t nAddr = GPR_U32(ctx, 4);
         const uint32_t dAddr = GPR_U32(ctx, 5);
-        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), kSocom2RsaN, sizeof(kSocom2RsaN));
-        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), kSocom2RsaD, sizeof(kSocom2RsaD));
-        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key" << std::endl;
+        // PS2X_SOCOM2_RSA_KEY=b selects the second precomputed pair: two instances of the exe on
+        // one host otherwise publish the *same* public key in their DME 0x18 client record, while
+        // two PCSX2 clients publish distinct random keys (server/logs/console-DME.log).
+        const char *keyEnv = std::getenv("PS2X_SOCOM2_RSA_KEY");
+        const bool keyB = keyEnv && (*keyEnv == 'b' || *keyEnv == 'B' || *keyEnv == '1');
+        std::memcpy(rdram + (nAddr & PS2_RAM_MASK), keyB ? kSocom2RsaNb : kSocom2RsaN, sizeof(kSocom2RsaN));
+        std::memcpy(rdram + (dAddr & PS2_RAM_MASK), keyB ? kSocom2RsaDb : kSocom2RsaD, sizeof(kSocom2RsaD));
+        std::cout << "[socom2] rt_crypt RSA key pair -> fixed precomputed key " << (keyB ? "B" : "A") << std::endl;
         ctx->pc = GPR_U32(ctx, 31);
     }
 
@@ -1100,6 +1105,66 @@ namespace
         std::cout << "[call-trace] tracing " << g_callTraceCount << " guest functions" << std::endl;
     }
 
+    // ------------------------------------------------------------------------------------------
+    // PS2X_SOCOM2_UDP_SHIFT and the guest's OWN port number.
+    //
+    // A second instance on the same host cannot bind the game's fixed peer UDP ports (3658/3659),
+    // so socom2_libnetb::doCreate shifts the host bind. That shift was invisible to the guest:
+    // rt_net FUN_00620648 writes the base port 3658 into its config object at +0xC and the client
+    // publishes THAT value as the internal address of its DME 0x18 client record -- so instance B
+    // advertised 127.0.0.1/192.168.2.10:3658 (A's port) internally while its external slot said
+    // :3660. PCSX2's client B carries :3660 in BOTH slots, because its pnach
+    // (patch=1,EE,20620678,extended,24040E4C) rewrites the same constant in the guest.
+    // This wrapper does what the pnach does: after the original ran, rewrite the base port field.
+    // ------------------------------------------------------------------------------------------
+    int32_t socom2UdpShift()
+    {
+        static const int32_t s_shift = [] {
+            const char *e = std::getenv("PS2X_SOCOM2_UDP_SHIFT");
+            return e ? static_cast<int32_t>(std::atoi(e)) : 0;
+        }();
+        return s_shift;
+    }
+
+    PS2Runtime::RecompiledFunction g_rtNetCfgOriginal = nullptr;
+
+    void socom2_RtNetConfigInit(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t obj = GPR_U32(ctx, 4);
+        if (g_rtNetCfgOriginal)
+            g_rtNetCfgOriginal(rdram, ctx, runtime);
+        if (obj == 0)
+            return;
+        const uint32_t field = (obj + 0xCu) & PS2_RAM_MASK;
+        if (field + 4u > PS2_RAM_SIZE)
+            return;
+        uint32_t port = 0;
+        std::memcpy(&port, rdram + field, 4);
+        if (port != 3658u)
+            return;                                  // not the base-port field we know
+        port = static_cast<uint32_t>(3658 + socom2UdpShift());
+        std::memcpy(rdram + field, &port, 4);
+        static bool s_said = false;
+        if (!s_said)
+        {
+            s_said = true;
+            std::cout << "[socom2] rt_net base peer UDP port -> " << port << " (PS2X_SOCOM2_UDP_SHIFT)" << std::endl;
+        }
+    }
+
+    void installRtNetPortShift(PS2Runtime &runtime)
+    {
+        if (socom2UdpShift() == 0)
+            return;
+        if (!runtime.hasFunction(0x00620648u))
+        {
+            std::cout << "[socom2] no function at 0x620648; peer UDP port shift stays host-side only" << std::endl;
+            return;
+        }
+        g_rtNetCfgOriginal = runtime.lookupFunction(0x00620648u);
+        runtime.replaceFunction(0x00620648u, socom2_RtNetConfigInit);
+    }
+
     void installCrashHandler(PS2Runtime &runtime)
     {
         g_runtimeForCrash = &runtime;
@@ -1147,6 +1212,8 @@ namespace
         runtime.replaceFunction(0x00247bd8u, socom2_libnetb::exConnected);
         runtime.replaceFunction(0x00248350u, socom2_libnetb::exStartAsync);
         runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
+        installRtNetPortShift(runtime);
+
         ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
         // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).
         runtime.replaceFunction(0x0062b948u, socom2_crypto::rsaBlock);

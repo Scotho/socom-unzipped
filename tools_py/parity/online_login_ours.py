@@ -31,7 +31,12 @@ OSK_ACCENT_BOX = (20, 396, 96, 428)   # accent-toggle key: accented "aei" in nor
 INSTANCES = {
     "A": {"PS2X_WINDOW_TITLE": "SOCOM-A", "PS2X_SOCOM2_INPUT_FILE": os.path.abspath("logs/pad_A.txt")},
     "B": {"PS2X_WINDOW_TITLE": "SOCOM-B", "PS2X_MC_DIR": os.path.abspath("game/disc/mc0_b"), "PS2X_SOCOM2_UDP_SHIFT": "2",
-          "PS2X_SOCOM2_INPUT_FILE": os.path.abspath("logs/pad_B.txt")},
+          "PS2X_SOCOM2_INPUT_FILE": os.path.abspath("logs/pad_B.txt"),
+          # PS2X_SOCOM2_RSA_KEY: instance B may carry the second precomputed key pair so the two
+          # clients do not publish the same RSA public key in their DME 0x18 records (PCSX2's two
+          # clients publish distinct random keys). Set PS2X_SOCOM2_RSA_KEY_B=b in the environment
+          # to turn it on for a run; unset keeps the historical behaviour.
+          "PS2X_SOCOM2_RSA_KEY": os.environ.get("PS2X_SOCOM2_RSA_KEY_B", "")},
 }
 
 

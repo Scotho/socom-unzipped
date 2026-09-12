@@ -55,6 +55,7 @@ def main():
     ap.add_argument("--sweep-hold", type=float, default=0.5)
     ap.add_argument("--host-switch", action="store_true", help="A (host) switches team after B joined (the joiner is auto-assigned opposite the host; the joiner's lobby cursor does not move)")
     ap.add_argument("--probe", action="store_true", help="gameplay: A tries every stick direction and the stance buttons with screens after each (input probe)")
+    ap.add_argument("--probe-both", action="store_true", help="with --probe: drive the same stick sequence on B as well, so local control is proven on both sides")
     ap.add_argument("--turn-key", default="L", help="L = right stick right (Precision Shooter look), D = left stick right (Sure Shot turn)")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
@@ -118,10 +119,12 @@ def main():
             # dropped); the position rows ([peek] @416054, 1/s) give the displacement per key.
             for i, (key, secs) in enumerate([("K", 3.0), ("I", 3.0), ("J", 3.0), ("L", 3.0), ("W", 3.0), ("S", 3.0), ("A", 3.0), ("D", 3.0)] * 2):
                 A.sh.hold(key, secs)
+                if a.probe_both:
+                    B.sh.hold(key, secs)
                 A.sh.log(f"probe {i:02d} {key} {secs}s")
                 time.sleep(2.0)
                 A.sh.shot(f"probe{i:02d}_{key}")
-                B.sh.shot(f"probe{i:02d}")
+                B.sh.shot(f"probe{i:02d}_{key}")
         if a.sweep:
             # Same-team kill probe: A rotates in place (right stick) and fires a burst at every
             # step; B stands where it spawned (a few metres from A when both are SEALs).

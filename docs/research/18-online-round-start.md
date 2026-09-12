@@ -233,3 +233,187 @@ payloads out of the DME slice, and answer two questions — does B still adverti
 against `:3660` externally, and are the two RSA blobs still identical? Whichever is still true is
 the defect to chase; the PCSX2 pair is now a working reference for what both fields should look
 like.
+
+---
+
+## 3. S1 — what the peer channel actually carries, and the two measured divergences (2026-09-12)
+
+### 3.0 The condition
+
+> **The SCE-RT peer session is fully established and stays healthy for the whole match, but neither
+> instance ever queues a single application-data message on it: over a ~10 minute match each client
+> sends 600 UDP datagrams in total (~1/s), of which ~290 are peer packets and every one of those is
+> SCE-RT *control* traffic — the app-0 JOIN/ping/pong retry and a 1 Hz clock-sync ping/pong (types
+> 3/4) on the game app — and not one is a player-state update. The round does not fail to start
+> because a "go" never arrives; it fails because the local player actor is never handed local
+> control, so the game produces nothing to send.**
+>
+> Evidence: `logs/run_20260912_135813.log` (A) / `logs/run_20260912_135819.log` (B), 583 and 582
+> decoded peer packets, `udp peer send/recv #n … ra=…` lines; last counters `udp send #600` /
+> `udp recv #600` on both. The input trace in the same logs shows `lx=00` / `lx=ff` / `ly=…`
+> reaching the guest on every hold (`[socom2-input] state buttons=0000 rx=80 ry=80 lx=00 ly=80`),
+> so the pad values arrive and are ignored above the pad layer.
+
+The part of the sentence S1 could **not** fill in is the "because Y never fires": which flag the
+game tests before it lets the local actor move. That is what S2 would have to find, and it is why
+this task closes `DONE_WITH_CONCERNS`.
+
+### 3.1 The peer protocol, decoded from the guest
+
+The 22/32-byte peer datagrams are SCE-RT `rt_net` datagrams built by `FUN_0063eba0`
+(guest `socom2_game.elf`; `game/analysis/socom2_game.elf.decomp.c`). Layout, little-endian:
+
+```
+ 0  u8    0
+ 1  u8    version (1)
+ 2  u16   body length
+ 4  8 bytes zero                      <- FUN_0063eba0 memsets 12 bytes and fills 0..3
+12  u8    type | 0x80                 <- FUN_00624be0; the receiver clears 0x80 (FUN_00610c20)
+13  u8    app id of the sending app   (0 = the SCE-RT control app)
+14  u16   payload length              (checked against total-8 by the receiver)
+16  u16   sender peer id              (0 = A/host, 1 = B; a packet whose id is my own is dropped)
+18  u16   per-sender sequence
+20  …     payload
+```
+
+Types seen, with the guest function that produces/consumes each:
+
+| type | meaning | sender |
+|---|---|---|
+| 1 / 2 | PING / PONG, payload = the sender's current app id | `FUN_00624dc0` (per-app keepalive, 1.5 s) |
+| 3 / 4 | clock-sync PING / PONG, 8-byte payload `0000000 <u32 timebase>` | `FUN_00624dc0` tail |
+| 5 | app membership record, 12 bytes `0c 00 0a 00 03 00 00 00 <peer> 00 00 00` | `FUN_00624f…` |
+| 8 / 12 / 15 | peer connect / accept / list-complete | `FUN_00625690` cases 8, 0xc, 0xf |
+| 9 | **JOIN app N** (payload = N) — `FUN_00611938`, which sets `client+0x98 = N` on success | |
+| 10 | LEAVE app N — `FUN_00611a40` | |
+
+`FUN_00624dc0` is the per-app tick: for every peer in state 2 that has not been heard from in
+1500 ms it sends a type-1 ping (payload `client+0x98`), and if the app has **no** connected peer at
+all it re-sends the type-9 JOIN every 3 s.
+
+### 3.2 What a frozen match looks like on the wire (run 1, `ours_task6_run1`)
+
+Decoded from the two run logs (`tools_py`-free; the decoder is 20 lines of Python over the
+`udp peer` lines):
+
+- **App 10 — the game app — comes up cleanly and stays up.** type 8 → type 12 → 9 × type 15 and
+  11/9 × type 5 in each direction, then an uninterrupted 1 Hz type-3/type-4 clock-sync ping/pong
+  for the entire match (≈85 exchanges), every single one answered with the identical timebase word.
+  Nothing about this link is broken.
+- **App 0 — the control app — loops forever.** A re-JOINs app `1` 69 times and B re-JOINs app `5`
+  75 times, each with its own type-1/2 ping/pong at 1.5 s. That is `FUN_00624dc0`'s "this app has
+  no connected peers" retry, and for a 1-v-1 match with one player on each team it is *expected*:
+  A and B are on opposite teams, each alone in its own team app. It is not the defect.
+- **No application data, ever.** Not one packet on app 10 other than the control/clock types above.
+  A playing match has to stream player transforms here (or over the DME aux-UDP channel); neither
+  channel carries anything but keepalives (`udp send #600` over ~10 minutes, on both instances).
+
+So the freeze is *above* SCE-RT, exactly as the 2026-09-10 20:35 STATUS entry concluded from the
+first 16 packets — this run confirms it over a whole match instead of an opening exchange.
+
+### 3.3 (b) The advertised port — **real, fixed, and not the cause**
+
+Re-measured on the current build, as §2 asked. The `PS2X_SOCOM2_SERVER` fix corrected the **IP**
+(`01-00-00-7F` → `0A-02-A8-C0`) but **not** the port: client B still advertised internal
+`192.168.2.10:3658` (`4A-0E`) against external `192.168.2.10:3660` (`4C-0E`)
+(`server/logs/console-DME.log`, the `00-18` payloads before line 3588).
+
+Cause, in one line: `PS2X_SOCOM2_UDP_SHIFT` shifted only the **host** bind inside
+`socom2_libnetb::doCreate`, so the guest never learned about it. rt_net `FUN_00620648` writes the
+base peer port 3658 into its config object at `+0xC` (instruction `0x620678`,
+`addiu $a0, $zero, 0xE4A`) and the client publishes *that* value as its internal NetAddress —
+which is A's port. PCSX2's client B does not have this problem because its pnach
+(`patch=1,EE,20620678,extended,24040E4C`) rewrites the same constant inside the guest.
+
+**Fix (attempt 1, landed):** `game_overrides_socom2.cpp` now wraps `FUN_00620648` and rewrites the
+base-port field to `3658 + PS2X_SOCOM2_UDP_SHIFT` after the original runs — the pnach, done in the
+runtime — and `doCreate`'s shift is narrowed to the unshifted base ports so it cannot double-shift.
+
+**Result:** the record is now identical in shape to PCSX2's —
+`…-00-00-0A-02-A8-C0-4C-0E-00-00-0A-02-A8-C0-4C-0E-…` for B and `4A-0E`/`4A-0E` for A
+(`server/logs/console-DME.log` after line 3588) — and A no longer sends its first peer packet to
+its own port (run 1's `udp peer send #1` and `#2` both go to `:3660`; the pre-fix run
+`logs/run_20260910_191157.log` sent `#16` to `:3658`, i.e. to itself).
+**The match behaves exactly as before: LX/LY/RX still do nothing.** So (b) was a real divergence
+and is worth keeping fixed, but it was not the blocker — consistent with the guest dropping
+self-addressed packets on its own (`FUN_00610c20`: `if (sender == client+0x78) return 0`).
+
+### 3.4 (a) The shared RSA keypair — **real, fixed, and not the cause either**
+
+Confirmed on the current build: both instances published `89-AA-07-C4-C9-84-F3-C3…` (the
+`kSocom2RsaN` limbs of `socom2_rsa_key.h`, little-endian) in their `0x18` client record, because
+the `socom2_RsaGenerateKeyPair` recomp stub writes one fixed pair for every process.
+
+**Fix (attempt 2, landed):** a second precomputed pair (`kSocom2RsaNb`/`kSocom2RsaDb`, seed
+`0x42434f4d`, e = 17, full 512-bit N) selected by `PS2X_SOCOM2_RSA_KEY=b`; the two-instance driver
+passes it to instance B when `PS2X_SOCOM2_RSA_KEY_B=b` is in the environment.
+
+**Result:** the wire now shows two distinct public keys — A `89-AA-07-C4-…`, B `45-3D-B0-AE-…`
+(`server/logs/console-DME.log` after line 3920) — the same shape as PCSX2's `0D-9E-BC-50…` /
+`D9-A7-74-2C…`. **The match is unchanged.** The peer profile of run 2b is identical to run 1's,
+packet type for packet type (604 peer packets each side: 72/75 × type 9, 63/66 × type 1/2 on
+app 0, 39 × type 3/4 clock sync on app 10, 11 × type 5, 10 × type 15 — and, again, zero application
+data), and the player still does not move.
+
+This closes the oldest open hypothesis in the project (STATUS 2026-09-10 20:10 hypothesis (1)) by
+observation rather than by argument, and it agrees with the 20:35 reading of the packets: there is
+no crypto anywhere on the peer channel, so a shared keypair could not have gated it.
+
+### 3.5 Measuring "the player does not move" reliably
+
+The screenshot path is **not** a reliable movement probe in these runs: `Shell.shot` repeatedly
+captured a stale frame (in run 1, 10 of A's 16 probe screens were byte-identical to the previous
+one and the HUD timer did not advance between them). Use `PS2X_PC_SAMPLER=1` together with
+`PS2X_PEEK=0x416054:3` instead — that prints the camera-orbit position once a second, and it is the
+measurement that settles the question:
+
+- run 2b, instance A, over the whole 8-probe × 2 sequence: **x is constant at 538.684 for every one
+  of 579 samples**; y and z move only while the RY (K/I) holds are applied. No yaw, no translation.
+- instance B: same picture — x/y/z move together during the RY holds and are frozen at all other
+  times (573 samples).
+
+`PS2X_SOCOM2_INPUT_TRACE=1` in the same logs proves the pad values arrive
+(`[socom2-input] state buttons=0000 rx=80 ry=80 lx=00 ly=80` for each `A`/`D` hold), so the loss is
+above the pad HLE.
+
+### 3.6 Run recipe (both fixes are on by default; nothing here needs a code change to reproduce)
+
+```
+bash scripts/loop_lock.sh wait task6 40
+./build.sh runtime
+bash logs/s4_task6_run2.sh          # detached; poll logs/task6_run2b.done
+```
+with `PS2X_SOCOM2_SERVER=192.168.2.10 PS2X_SOCOM2_NET_TRACE=1 PS2X_SOCOM2_NET_TRACE_PEERS=400
+PS2X_SOCOM2_INPUT_TRACE=1 PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3 PS2X_SOCOM2_RSA_KEY_B=b` and
+`online_match_ours --existing-b --hold 60 --probe --probe-both`. The Horizon stack must be up
+(`powershell -NoProfile -File server/start-servers.ps1 -Status`). Regression checks, in order of
+cost: (1) the `00-18` payloads in `server/logs/console-DME.log` must show `4A-0E` twice for A and
+`4C-0E` twice for B and two different RSA blobs; (2) the peer profile must contain application
+data on app 10, not only types 1/2/3/4/5/9/15 — that is the pass condition a working round start
+would produce; (3) `[peek] @416054` x must change during the `A`/`D`/`W`/`S` holds.
+
+### 3.7 Where S2 should start
+
+Both of S0's divergences are now closed and neither was the blocker, so the next layer is the one
+the 2026-09-10 20:35 entry called (b): **the local control gate**, not the network. The evidence
+that points there:
+
+- Everything that does *not* touch the player actor's transform works online (camera pitch, fire,
+  stance, the HUD round timer); everything that does (LX, LY translation and RX yaw) is ignored,
+  while the same build moves the player 137 units in 8 s in single player.
+- The SCE-RT session above which the game would publish that transform is healthy and idle. The
+  game is not waiting for a packet — it has nothing to say.
+
+So the question for S2 is a single-process one and does not need a two-instance match to *start*:
+find the branch that the multiplayer path takes and the single-player path does not before applying
+the left stick to the player. `DAT_0045a0c1` is the game's multiplayer flag (it selects the
+multiplayer arms of `FUN_001fb420`, the round init that posts the "STARTING ROUND %d OF %d" banner
+at `0x3e3520`, and of `FUN_001fb790`); the actor's think/controller path branches on the same kind
+of flag. `PS2X_CALL_TRACE` on the movement entry points with `PS2X_CALL_TRACE_DUMP` on the actor
+object, compared between an online spawn and a single-player spawn, is the cheapest discriminator —
+and, unlike everything in this note, it does not cost a 12-minute two-instance run per iteration.
+
+One caveat to carry forward: "STARTING ROUND 1 OF 11" is **not** a persistent banner on ours
+either. `logs/parity/ours_match_probe10/A_hold05.png` (the pre-S1 frozen run) and
+`logs/parity/ours_task6_run1/A_hold05.png` both show the clean gameplay HUD one minute in. The
+symptom to quote from here on is "the player never moves online", not "the banner never clears".
