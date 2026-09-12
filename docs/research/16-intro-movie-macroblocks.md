@@ -234,10 +234,23 @@ rules avoid it:
   and is indistinguishable from a 100% drop. Skipped **loudly**, and counted in the summary.
 - `agree` — of the shadow's non-black blocks, the fraction whose gpu block is *either*
   byte-identical *or* pure black. A dropped block counts as agreeing, so the number does not move
-  as drops accumulate. ≥ 0.95 is a movie present (counted, decides the exit code); 0.20–0.95 is the
-  title menu's movie background under drawn panels (a block there is looked at only when most of
-  its 8 neighbours are byte-identical, and it is reported as `note`, not counted); below 0.20 is
-  not a mirror.
+  as drops accumulate. ≥ 0.95 is a movie present: every block checked, counted, decides the exit
+  code. Below that the present is **demoted** — the title menu's movie background under drawn
+  panels sits at ~0.57 — and is checked only where it is *locally* mirrored, a block counting when
+  most of its 8 neighbours are byte-identical.
+
+**Every present prints a line, always**, demoted ones included, with `agree`, `visible`, the size
+of their locally mirrored region and every block found in it — black (`note-MISSING`) or stale
+(`note-STALE`). A demoted present **fails the run** when those notes exceed 10% of its locally
+mirrored region. Presence alone cannot be the rule: the real title-menu presents each carry 11–12
+stale notes at *the same eleven coordinates on every present* — (64,32) (560,32) (64,128) (560,128)
+(160,208) (464,208) (400,336) (160,400) (464,400) (160,416) (464,416), symmetric x pairs, i.e.
+drawn menu decoration small enough to sit isolated inside the mirrored background. That is 1.8% of
+the mirrored region, and the worst present in the capture (the fade into the attract movie) reaches
+5.2%; a synthetic 50% stale corruption reaches 46%. Nothing separates them per block; the density
+does. The cost is a sensitivity floor near 10% for *scattered non-black* corruption. Black drops
+have no floor — they keep `agree` at 1.000 and are reported one block at a time, which is the
+flavour this defect produces, because the GL texture starts cleared.
 
 **A run with no counted present exits 2, not 0.** "Zero missing blocks out of nothing" is not a
 pass, and a capture that never reached the movie is the most likely way to produce one.
@@ -247,19 +260,24 @@ Validation. Against Sprint 3's stored capture it reproduces section 4 exactly �
 ```
 $ python -m tools_py.parity.movie_blocks logs/parity/mb10_dispdump
 display_040s_fbp000  SKIP (GL target shows nothing: 0% of blocks non-black against the shadow's 89%)
+display_048s_fbp000  partial agree=0.568 visible=100% locally-mirrored=619  (2.1% of the mirrored
+                     region)  note-MISSING 2: (480, 288) (480, 320); note-STALE 11: (64, 32) ...
 display_195s_fbp000  movie agree=1.000 visible=93%  MISSING 3: (48, 48) (48, 80) (192, 416)
 display_199s_fbp000  movie agree=1.000 visible=93%  MISSING 2: (432, 368) (272, 400)
 display_211s_fbp000  movie agree=1.000 visible=90%  MISSING 2: (384, 144) (384, 160)
-presents=108 tested=45 advisory=59 skipped=4 (dark=3 blank=1 not-mirror=0)
-note blocks=36 pictures=5  (partly-mirrored presents, not counted)
+presents=108 tested=45 demoted=59 skipped=4 (dark=3 blank=1)
+note blocks=693 pictures=59 (black=36 stale=657)  -- on demoted presents; a floor, not a measurement
+DEMOTED-FAIL blocks=0 pictures=0  (notes denser than 10% of the mirrored region)
 STALE blocks=0
 MISSING blocks=7 pictures=3        (exit 1)
 ```
 
-— the same three presents, the same seven blocks, and no counted hit anywhere else. The 36 `note`
-blocks over 5 presents are the title menu's movie background, reported and deliberately not counted.
-`display_040s` is the whole-frame case the `visible` rule exists for: the GL target was entirely
-black against a shadow holding 89% content, which no per-block statement can describe.
+— the same three presents, the same seven blocks, and no counted hit anywhere else (all 108
+presents print; the excerpt drops the 99 `ok` lines). The 693 note blocks over 59 demoted presents
+are the title menu's movie background and its drawn decoration; none reaches the 10% density bar,
+so the run fails on exactly the 7 real ones. `display_040s` is the whole-frame case the `visible`
+rule exists for: the GL target entirely black against a shadow holding 89% content, which no
+per-block statement can describe.
 
 And against synthetic mutations of one clean movie present (`display_193s_fbp000`), which is how
 the monotonicity and the vacuous-pass hole were pinned down:
@@ -271,11 +289,13 @@ the monotonicity and the vacuous-pass hole were pinned down:
 | 50% blacked out | `agree=1.000 visible=46% MISSING blocks=523` | 1 |
 | 90% blacked out | `agree=1.000 visible=9% MISSING blocks=941` | 1 |
 | both layers all black | `tested=0 … NOT A PASS` | 2 |
-| 10% left holding the previous picture (stale, not black) | `tested=0 … NOT A PASS` | 2 |
+| 10% left holding the previous picture (stale, not black) | `FAIL (10.1% of the mirrored region) note-STALE 113` | 1 |
+| one clean present + one 50% stale-corrupted | `FAIL (46.0% of the mirrored region) note-STALE 202`, `tested=1` | 1 |
 
-The three drop rows are the point: 50 → 523 → 941, all still counted. The last two rows are the
-false passes an earlier draft of this tool produced (exit 0 on an all-black capture with a non-zero
-`tested=`, and exit 0 on a 50–90% drop demoted out of the counted tier); both now exit non-zero.
+The three drop rows are the point: 50 → 523 → 941, all still counted. The last three rows are the
+false passes earlier drafts of this tool produced — exit 0 on an all-black capture with a non-zero
+`tested=`; exit 0 on a 50–90% drop demoted out of the counted tier; and exit 0 on a mixed capture
+whose corrupted present was demoted and never printed at all. All three now exit non-zero.
 
 ### 9.2 The count
 

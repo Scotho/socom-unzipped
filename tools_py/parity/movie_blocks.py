@@ -47,17 +47,42 @@ so the check would pass hardest exactly when the bug is worst. Three rules avoid
   in the counted tier, reporting 5%, 50% and 90% of the blocks as missing. Drawn content is
   neither identical nor black, so a menu present sits near its mirrored fraction (~0.57) instead.
 
-  >= --mirror-frac : a movie present. Counted; decides the exit code.
-  >= --advisory-min: partly mirrored, e.g. the title menu's movie background under drawn panels.
-                     A block there is looked at only when at least --neighbour-frac of its existing
-                     8 neighbours are byte-identical (a local mirror test that still tolerates a
-                     run of adjacent dropped blocks -- research/16's own (384,144)+(384,160) pair
-                     are each other's neighbour). Reported as `note`, NOT counted: these presents
-                     also carry legitimate layer differences, so a hit is a lead, not a measurement.
-  below            : not a mirror. Skipped.
+  >= --mirror-frac : a movie present. Every block is checked, and the result decides the exit code.
+  below            : DEMOTED. Partly mirrored (the title menu's movie background under drawn
+                     panels, agree ~0.57) or not a mirror at all. A demoted present cannot be
+                     measured block-for-block, so it is checked only where it is locally mirrored:
+                     a block counts when at least --neighbour-frac of its existing 8 neighbours are
+                     byte-identical -- a local test that still tolerates a run of adjacent bad
+                     blocks, since research/16's own (384,144)+(384,160) pair are each other's
+                     neighbour. Anything found there -- black OR stale -- is printed as a `note`.
+                     A demoted present FAILS the run when those notes are more than --note-frac of
+                     its locally-mirrored region; below that they are printed and not fatal. That
+                     density rule is not a fudge, it is the only thing that separates the two:
+                     see below.
+
+EVERY present prints a line, always, and every demoted present prints why it was demoted and what
+was found on it. That is deliberate. Two rounds of review removed two ways this check could report
+success by looking away: silence is the failure mode a regression test must not have. In
+particular a present demoted through NON-black corruption used to be invisible -- the demoted path
+only ever looked for black blocks -- so a capture of one clean present plus one 50%-corrupted
+present printed nothing at all about the corruption and exited 0.
+
+Why the density rule, and why a bare "any note fails" does not work. Real title-menu presents carry
+11-12 stale notes each, and they are the SAME ELEVEN COORDINATES on every present of the capture --
+(64,32) (560,32) (64,128) (560,128) (160,208) (464,208) (400,336) (160,400) (464,400) (160,416)
+(464,416), symmetric x pairs: drawn menu decoration small enough to sit isolated inside the mirrored
+background, which no local rule can tell from a mirror miss. They are 11 of ~619 locally-mirrored
+blocks, 1.8%; the worst real present in that whole capture -- the fade into the attract movie --
+reaches 5.2%. A 50% stale corruption is 202 of 439, 46%. Nothing separates them per block; the
+density does. So isolated notes are printed and survive, and a present whose mirrored region is
+more than --note-frac wrong fails. Be honest about what that buys: with the default 0.10 the bar
+sits at roughly twice the worst real content, and the sensitivity floor for SCATTERED NON-BLACK
+corruption is about a tenth of the mirrored region (a synthetic 10% stale present measures 10.1%
+and does fail). Black drops have no such floor -- they stay in the counted tier and are reported
+one block at a time, which is the flavour this defect produces.
 
 A run that produces NO counted present exits non-zero. "Zero missing blocks out of nothing" is not
-a pass, and a capture that never reached the movie is the most likely way to get one.
+a pass, and a capture that never reached the movie is the most likely way to produce one.
 
     python -m tools_py.parity.movie_blocks logs/mb_s4
     python -m tools_py.parity.movie_blocks logs/mb_s4 --ref game/disc/RUN/MOVIES/INTRO_2.PSS
@@ -67,16 +92,23 @@ changes no verdict: it decodes the named movie (or reads a directory of frames) 
 present with the nearest reference picture, so a report can be cross-referenced with research/16's
 picture numbering (965, 1085, 1447).
 
-Exit codes: 0 clean, 1 blocks missing or stale, 2 nothing measurable (no counted present, or no
-dumps at all).
+Exit codes: 0 clean, 1 anything found (missing, stale, or a note on a demoted present), 2 nothing
+measurable (no counted present and nothing found, or no dumps at all).
 
-Known limit: `agree` treats a block that differs without being black as disagreement, so a present
-whose mirror failed by leaving large amounts of stale NON-black content is demoted out of the
-counted tier. It cannot become a false pass -- demoting every present empties `tested=` and the run
-exits 2 -- but the blocks are reported as `note` rather than counted. Black is the leftover the
-measured defect actually produces (the GL texture starts cleared), and the `stale` count catches
-the other flavour on presents that still qualify. Measured: a synthetic 10% stale-content present
-gives `tested=0 ... exit 2`, while 5/50/90% black drops give MISSING 50/523/941, all exit 1.
+Known limit, stated precisely. `agree` treats a block that differs without being black as
+disagreement, so heavy NON-black corruption demotes a present out of the counted tier: its blocks
+are then judged by the neighbour rule instead of block-for-block, which under-reports when the
+corruption is dense enough that bad blocks neighbour each other. It cannot pass silently -- the
+present prints, the notes fail the run -- but the count is a floor, not a measurement. Black is the
+leftover this defect actually produces (the GL texture starts cleared), which is why the counted
+tier is built around it.
+
+Measured, on mutations of one clean present: 5/50/90% black drops give MISSING 50/523/941, all
+exit 1; an all-black pair exits 2; a 10% stale-content present exits 1 on its notes; and a mixed
+capture of one clean present plus one 50% stale-corrupted present exits 1 with the corrupted
+present printed (it exited 0, silently, before this was fixed). On the real Sprint 3 capture the
+menu's 657 isolated stale notes stay non-fatal and the run still fails on its 7 genuinely missing
+blocks -- the intended outcome in both directions.
 """
 import argparse
 import glob
@@ -213,12 +245,18 @@ def main(argv=None):
     ap.add_argument("--mirror-frac", type=float, default=0.95,
                     help="`agree` at or above which a present is a movie present: counted, and it "
                          "decides the exit code (default 0.95)")
-    ap.add_argument("--advisory-min", type=float, default=0.20,
-                    help="`agree` at or above which a present is reported but not counted; below "
-                         "it the target is not a mirror at all and is skipped (default 0.20)")
+    ap.add_argument("--partial-min", type=float, default=0.20,
+                    help="`agree` at or above which a demoted present is called partly mirrored "
+                         "rather than not a mirror at all; both are checked and printed either "
+                         "way, this only labels the line (default 0.20)")
     ap.add_argument("--neighbour-frac", type=float, default=0.6,
-                    help="on an advisory present, the fraction of a block's existing 8 neighbours "
-                         "that must be byte-identical for it to be looked at (default 0.6)")
+                    help="on a demoted present, the fraction of a block's existing 8 neighbours "
+                         "that must be byte-identical for the block to be checked (default 0.6)")
+    ap.add_argument("--note-frac", type=float, default=0.10,
+                    help="a demoted present fails the run when its notes are more than this "
+                         "fraction of its locally-mirrored region; isolated notes below it are "
+                         "printed and not fatal (default 0.10 -- a real menu present sits at "
+                         "0.018, a 50%% stale corruption at 0.46)")
     ap.add_argument("--min-content", type=float, default=0.10,
                     help="fraction of blocks that must be non-black in the SHADOW for the present "
                          "to hold a picture worth checking (default 0.10)")
@@ -226,7 +264,6 @@ def main(argv=None):
                     help="fraction of blocks that must be non-black in the GPU layer; below it the "
                          "target shows essentially nothing and no per-block statement is possible "
                          "(default 0.05)")
-    ap.add_argument("--verbose", action="store_true", help="also print the skipped presents")
     args = ap.parse_args(argv)
 
     items = pairs(args.dumpdir)
@@ -237,8 +274,9 @@ def main(argv=None):
 
     ref = load_reference(args.ref) if args.ref else None
     missing_blocks = missing_pictures = stale_blocks = tested = 0
-    note_blocks = note_pictures = advisory = 0
-    blank = dark = notmirror = 0
+    note_blocks = note_black = note_stale = note_pictures = 0
+    fail_blocks = fail_pictures = 0
+    demoted = blank = dark = 0
 
     for name, gpu_path, shadow_path in items:
         gpu, shadow = read_ppm(gpu_path), read_ppm(shadow_path)
@@ -256,9 +294,8 @@ def main(argv=None):
 
         if content < args.min_content:
             dark += 1
-            if args.verbose:
-                print("%s  skip%s (shadow holds no picture, %.0f%% of blocks non-black)"
-                      % (name, label, 100 * content))
+            print("%s  skip%s (shadow holds no picture: %.0f%% of blocks non-black)"
+                  % (name, label, 100 * content))
             continue
         if visible < args.min_visible:
             # Indistinguishable from a 100% drop: say so loudly rather than count it either way.
@@ -294,34 +331,54 @@ def main(argv=None):
                 print("%s  movie agree=%.3f visible=%.0f%%%s  ok" % (name, agree, 100 * visible, label))
             continue
 
-        if agree < args.advisory_min:
-            notmirror += 1
-            if args.verbose:
-                print("%s  skip%s (not a mirror, agree=%.3f)" % (name, label, agree))
-            continue
-
-        advisory += 1
+        # Demoted: not measurable block-for-block, so check where it is LOCALLY mirrored -- and say
+        # so on every one of them, black or stale. A demoted present that printed nothing is the
+        # hole review round 2 found: a 50% non-black corruption landed here and vanished.
+        demoted += 1
+        kind = "partial" if agree >= args.partial_min else "not-a-mirror"
         testable = neighbour_identical_frac(same) >= args.neighbour_frac
-        n, where = coords(testable & gpu_black & ~shadow_black)
-        if n:
+        n_b, where_b = coords(testable & gpu_black & ~shadow_black)
+        n_s, where_s = coords(testable & ~same & ~gpu_black & ~shadow_black)
+        head = "%s  %s agree=%.3f visible=%.0f%% locally-mirrored=%d%s" % (
+            name, kind, agree, 100 * visible, int(testable.sum()), label)
+        if n_b or n_s:
             note_pictures += 1
-            note_blocks += n
-            print("%s  partial agree=%.3f%s  note %d (not counted): %s" % (name, agree, label, n, where))
-        elif args.verbose:
-            print("%s  partial agree=%.3f%s  ok" % (name, agree, label))
+            note_blocks += n_b + n_s
+            note_black += n_b
+            note_stale += n_s
+            density = (n_b + n_s) / max(1, int(testable.sum()))
+            parts = []
+            if n_b:
+                parts.append("note-MISSING %d: %s" % (n_b, where_b))
+            if n_s:
+                parts.append("note-STALE %d: %s" % (n_s, where_s))
+            verdict = "FAIL" if density > args.note_frac else "note"
+            if verdict == "FAIL":
+                fail_pictures += 1
+                fail_blocks += n_b + n_s
+            print("%s  %s(%.1f%% of the mirrored region)  %s"
+                  % (head, verdict + " " if verdict == "FAIL" else "", 100 * density,
+                     "; ".join(parts)))
+        else:
+            print("%s  ok" % head)
 
-    print("presents=%d tested=%d advisory=%d skipped=%d (dark=%d blank=%d not-mirror=%d)"
-          % (len(items), tested, advisory, dark + blank + notmirror, dark, blank, notmirror))
-    print("note blocks=%d pictures=%d  (partly-mirrored presents, not counted)"
-          % (note_blocks, note_pictures))
+    print("presents=%d tested=%d demoted=%d skipped=%d (dark=%d blank=%d)"
+          % (len(items), tested, demoted, dark + blank, dark, blank))
+    print("note blocks=%d pictures=%d (black=%d stale=%d)  -- on demoted presents; a floor, not a "
+          "measurement" % (note_blocks, note_pictures, note_black, note_stale))
+    print("DEMOTED-FAIL blocks=%d pictures=%d  (notes denser than %.0f%% of the mirrored region)"
+          % (fail_blocks, fail_pictures, 100 * args.note_frac))
     print("STALE blocks=%d" % stale_blocks)
     print("MISSING blocks=%d pictures=%d" % (missing_blocks, missing_pictures))
+    if missing_blocks or stale_blocks or fail_blocks:
+        if tested == 0:
+            print("NOTE: nothing qualified as a movie present either -- %d dark, %d blank, %d demoted"
+                  % (dark, blank, demoted))
+        return 1
     if tested == 0:
         print("NOT A PASS: no present qualified as a movie present, so nothing was measured "
-              "(%d dark, %d blank, %d not a mirror, %d advisory)" % (dark, blank, notmirror, advisory))
+              "(%d dark, %d blank, %d demoted)" % (dark, blank, demoted))
         return 2
-    if missing_blocks or stale_blocks:
-        return 1
     return 0
 
 
