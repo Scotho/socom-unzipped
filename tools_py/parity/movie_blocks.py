@@ -49,16 +49,12 @@ so the check would pass hardest exactly when the bug is worst. Three rules avoid
 
   >= --mirror-frac : a movie present. Every block is checked, and the result decides the exit code.
   below            : DEMOTED. Partly mirrored (the title menu's movie background under drawn
-                     panels, agree ~0.57) or not a mirror at all. A demoted present cannot be
-                     measured block-for-block, so it is checked only where it is locally mirrored:
-                     a block counts when at least --neighbour-frac of its existing 8 neighbours are
-                     byte-identical -- a local test that still tolerates a run of adjacent bad
-                     blocks, since research/16's own (384,144)+(384,160) pair are each other's
-                     neighbour. Anything found there -- black OR stale -- is printed as a `note`.
-                     A demoted present FAILS the run when those notes are more than --note-frac of
-                     its locally-mirrored region; below that they are printed and not fatal. That
-                     density rule is not a fudge, it is the only thing that separates the two:
-                     see below.
+                     panels, agree ~0.57) or not a mirror at all. Part of such a present is a
+                     mirror and part is GPU-drawn, and the two are separated by the FURNITURE MAP
+                     (see furniture_map below): blocks that differ from the shadow in present after
+                     present are drawn furniture, blocks that differ in one present are a mirror
+                     miss. Every differing block outside the furniture map is a finding -- black or
+                     stale -- and findings fail the run.
 
 EVERY present prints a line, always, and every demoted present prints why it was demoted and what
 was found on it. That is deliberate. Two rounds of review removed two ways this check could report
@@ -67,19 +63,20 @@ particular a present demoted through NON-black corruption used to be invisible -
 only ever looked for black blocks -- so a capture of one clean present plus one 50%-corrupted
 present printed nothing at all about the corruption and exited 0.
 
-Why the density rule, and why a bare "any note fails" does not work. Real title-menu presents carry
-11-12 stale notes each, and they are the SAME ELEVEN COORDINATES on every present of the capture --
-(64,32) (560,32) (64,128) (560,128) (160,208) (464,208) (400,336) (160,400) (464,400) (160,416)
-(464,416), symmetric x pairs: drawn menu decoration small enough to sit isolated inside the mirrored
-background, which no local rule can tell from a mirror miss. They are 11 of ~619 locally-mirrored
-blocks, 1.8%; the worst real present in that whole capture -- the fade into the attract movie --
-reaches 5.2%. A 50% stale corruption is 202 of 439, 46%. Nothing separates them per block; the
-density does. So isolated notes are printed and survive, and a present whose mirrored region is
-more than --note-frac wrong fails. Be honest about what that buys: with the default 0.10 the bar
-sits at roughly twice the worst real content, and the sensitivity floor for SCATTERED NON-BLACK
-corruption is about a tenth of the mirrored region (a synthetic 10% stale present measures 10.1%
-and does fail). Black drops have no such floor -- they stay in the counted tier and are reported
-one block at a time, which is the flavour this defect produces.
+Why not a local rule, and why this one is temporal. Two earlier drafts tried to find the mirrored
+part of a demoted present from the present itself -- the fraction of the frame that is identical,
+then the fraction of each block's 8 neighbours that are identical. Both failed the same way, in the
+shape that matters most: clustered bad blocks disqualify EACH OTHER, so a contiguous patch scored
+far below the same number of blocks scattered, and real macroblock drops are contiguous runs. On
+identical fixtures the neighbour gate reported 100 corrupted blocks as 90/544 = 16.5% when
+scattered but 8/522 = 1.5% when contiguous, and 300 blocks as 47.3% scattered against 1.5%
+contiguous -- an 11x and a 32x hole in the direction of the real bug. The furniture map reports
+15.6% / 15.6% and 47.0% / 47.0% on the same four fixtures.
+
+A single present cannot do better, and the data says why: in `logs/parity/mb10_dispdump` the title
+menu's drawn graphic is ONE large centred blob of differing blocks enclosed by mirrored background
+on every side -- geometrically identical to a contiguous patch of dropped blocks. Nothing about a
+frozen frame separates them. What separates them is time.
 
 A run that produces NO counted present exits non-zero. "Zero missing blocks out of nothing" is not
 a pass, and a capture that never reached the movie is the most likely way to produce one.
@@ -92,23 +89,29 @@ changes no verdict: it decodes the named movie (or reads a directory of frames) 
 present with the nearest reference picture, so a report can be cross-referenced with research/16's
 picture numbering (965, 1085, 1447).
 
-Exit codes: 0 clean, 1 anything found (missing, stale, or a note on a demoted present), 2 nothing
-measurable (no counted present and nothing found, or no dumps at all).
+Exit codes: 0 clean, 1 anything found (missing or stale, on a counted or a demoted present), 2
+nothing measurable (no counted present and nothing found, or no dumps at all).
 
-Known limit, stated precisely. `agree` treats a block that differs without being black as
-disagreement, so heavy NON-black corruption demotes a present out of the counted tier: its blocks
-are then judged by the neighbour rule instead of block-for-block, which under-reports when the
-corruption is dense enough that bad blocks neighbour each other. It cannot pass silently -- the
-present prints, the notes fail the run -- but the count is a floor, not a measurement. Black is the
-leftover this defect actually produces (the GL texture starts cleared), which is why the counted
-tier is built around it.
+Known limits, stated precisely.
 
-Measured, on mutations of one clean present: 5/50/90% black drops give MISSING 50/523/941, all
-exit 1; an all-black pair exits 2; a 10% stale-content present exits 1 on its notes; and a mixed
-capture of one clean present plus one 50% stale-corrupted present exits 1 with the corrupted
-present printed (it exited 0, silently, before this was fixed). On the real Sprint 3 capture the
-menu's 657 isolated stale notes stay non-fatal and the run still fails on its 7 genuinely missing
-blocks -- the intended outcome in both directions.
+* The furniture map needs --furniture-min demoted presents before it can tell furniture from a
+  miss. Below that it is empty and EVERY differing block on a demoted present is reported, which
+  fails loudly rather than quietly -- the right way round, but noisy on a short capture.
+* Corruption that recurs at the same coordinates in most presents of a capture is, by construction,
+  indistinguishable from furniture and will be absorbed. That is the price of the only signal that
+  works, and it is the right trade here: research/16 section 2 measured that the dropped positions
+  vary run to run and are not content-driven, and the capture agrees -- 116 of the 118 transient
+  coordinates appear in exactly one present.
+* `agree` treats a block that differs without being black as disagreement, so heavy NON-black
+  corruption demotes a present out of the counted tier. It is still measured block-for-block there,
+  just against the furniture map instead of the full frame.
+
+Measured. 5/50/90% black drops give MISSING 50/523/941, all exit 1; an all-black pair exits 2; a
+10% stale-content present exits 1; a mixed capture of one clean plus one 50% stale-corrupted
+present exits 1 with the corrupted present printed (it exited 0, silently, two rounds ago). 100 and
+300 corrupted blocks injected into one of 20 real menu presents give 99/635 and 299/636 when
+scattered and 99/636 and 299/636 when contiguous -- the arrangement no longer matters. The stored
+capture still reports exactly research/16 section 4's three presents and seven blocks.
 """
 import argparse
 import glob
@@ -174,20 +177,46 @@ def identical_mask(a, b):
     return (blocks(a) == blocks(b)).all(axis=(2, 3, 4))
 
 
-def neighbour_identical_frac(same):
-    """Per block, the fraction of its existing 8 neighbours that are byte-identical."""
-    h, w = same.shape
-    pad = np.pad(same.astype(np.float32), 1)
-    ones = np.pad(np.ones((h, w), dtype=np.float32), 1)
-    hits = np.zeros((h, w), dtype=np.float32)
-    count = np.zeros((h, w), dtype=np.float32)
-    for dy in (-1, 0, 1):
-        for dx in (-1, 0, 1):
-            if dy == 0 and dx == 0:
-                continue
-            hits += pad[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
-            count += ones[1 + dy:1 + dy + h, 1 + dx:1 + dx + w]
-    return hits / np.maximum(count, 1.0)
+def furniture_map(diff_masks, min_presents, frac):
+    """Blocks the GPU draws over on this screen, learned from the capture instead of guessed.
+
+    A demoted present is part mirror and part GPU-drawn, and WITHIN ONE PRESENT the two are not
+    separable: `logs/parity/mb10_dispdump`'s menu graphic is a single large centred blob of blocks
+    that differ from the shadow, enclosed by mirrored background on every side -- geometrically
+    indistinguishable from a contiguous patch of dropped blocks. No local rule can tell them apart,
+    and the one this tool used to use (a block counts only if most of its 8 neighbours are
+    byte-identical) was actively harmful: clustered bad blocks disqualify each other, so a
+    contiguous patch scored LOWER than the same number of blocks scattered.
+
+    What does separate them is that they behave differently over time. Drawn furniture is at the
+    same coordinates in present after present; a mirror miss wanders (research/16 section 2: the
+    dropped positions vary run to run and are not content-driven). Measured on that capture: 484
+    blocks differ in more than half of the 62 demoted presents, and with those excluded the median
+    present has ZERO findings left.
+
+    So a block is furniture when it differs in at least `frac` of the demoted presents. The
+    decision is per block and uses no neighbours at all, which is what makes the result independent
+    of how the bad blocks are arranged.
+
+    The threshold is not delicate, and that is the point of measuring it. On
+    `logs/parity/mb10_dispdump` the per-coordinate recurrence over 59 demoted presents is sharply
+    bimodal: 116 coordinates differ in exactly ONE present and 2 in two presents, then nothing at
+    all until 25, 51, 52, 55, 57, 58 and 59. Anything between 3 and 25 gives the same answer. The
+    default sits at a tenth of the presents (6 of 59) -- three times above the transient cluster and
+    four times below the persistent one. The transient cluster is the mirror misses, which is what
+    research/16 section 2 independently says they do: their positions vary run to run and are not
+    content-driven.
+
+    Needs `min_presents` demoted presents to say anything. Below that there is no evidence either
+    way and the map is empty, so every differing block is reported -- conservative on purpose.
+    """
+    if len(diff_masks) < min_presents:
+        return np.zeros(diff_masks[0].shape, dtype=bool) if diff_masks else None
+    counts = np.stack(diff_masks).sum(axis=0)
+    # Fraction of the presents, but never fewer than min_presents of them: on a short capture a
+    # fraction alone would call a single difference furniture and hide everything.
+    need = max(min_presents, int(np.ceil(frac * len(diff_masks))))
+    return counts >= need
 
 
 def thumb(img):
@@ -249,14 +278,14 @@ def main(argv=None):
                     help="`agree` at or above which a demoted present is called partly mirrored "
                          "rather than not a mirror at all; both are checked and printed either "
                          "way, this only labels the line (default 0.20)")
-    ap.add_argument("--neighbour-frac", type=float, default=0.6,
-                    help="on a demoted present, the fraction of a block's existing 8 neighbours "
-                         "that must be byte-identical for the block to be checked (default 0.6)")
-    ap.add_argument("--note-frac", type=float, default=0.10,
-                    help="a demoted present fails the run when its notes are more than this "
-                         "fraction of its locally-mirrored region; isolated notes below it are "
-                         "printed and not fatal (default 0.10 -- a real menu present sits at "
-                         "0.018, a 50%% stale corruption at 0.46)")
+    ap.add_argument("--furniture-frac", type=float, default=0.10,
+                    help="a block that differs from the shadow in at least this fraction of the "
+                         "demoted presents (never fewer than --furniture-min of them) is GPU-drawn "
+                         "furniture, not a mirror miss (default 0.10; the measured gap it sits in "
+                         "runs from 2 presents to 25, so anything in 3..25 behaves the same)")
+    ap.add_argument("--furniture-min", type=int, default=3,
+                    help="demoted presents needed before furniture can be told from a miss at all; "
+                         "below this every differing block is reported (default 3)")
     ap.add_argument("--min-content", type=float, default=0.10,
                     help="fraction of blocks that must be non-black in the SHADOW for the present "
                          "to hold a picture worth checking (default 0.10)")
@@ -273,15 +302,14 @@ def main(argv=None):
         return 2
 
     ref = load_reference(args.ref) if args.ref else None
-    missing_blocks = missing_pictures = stale_blocks = tested = 0
-    note_blocks = note_black = note_stale = note_pictures = 0
-    fail_blocks = fail_pictures = 0
-    demoted = blank = dark = 0
 
+    # Pass 1: classify every present and keep its block masks (1120 bools each, nothing large).
+    seen = []
     for name, gpu_path, shadow_path in items:
         gpu, shadow = read_ppm(gpu_path), read_ppm(shadow_path)
         if gpu.shape != shadow.shape:
-            print("%s  SKIP layers differ in size %s vs %s" % (name, gpu.shape, shadow.shape))
+            seen.append(dict(name=name, kind="badsize",
+                             text="SKIP layers differ in size %s vs %s" % (gpu.shape, shadow.shape)))
             continue
         same = identical_mask(gpu, shadow)
         gpu_black, shadow_black = black_mask(gpu), black_mask(shadow)
@@ -291,26 +319,50 @@ def main(argv=None):
         if ref is not None:
             dist = np.abs(ref - thumb(shadow)).mean(axis=(1, 2))
             label = " picture=%d(d%.2f)" % (int(np.argmin(dist)), float(dist.min()))
-
+        rec = dict(name=name, label=label, same=same, gpu_black=gpu_black,
+                   shadow_black=shadow_black, content=content, visible=visible)
         if content < args.min_content:
+            rec["kind"] = "dark"
+        elif visible < args.min_visible:
+            rec["kind"] = "blank"
+        else:
+            interesting = ~shadow_black
+            rec["agree"] = float((same | gpu_black)[interesting].mean())
+            rec["kind"] = "movie" if rec["agree"] >= args.mirror_frac else "demoted"
+        seen.append(rec)
+
+    demoted_diffs = [r["same"] for r in seen if r.get("kind") == "demoted"]
+    demoted_diffs = [~m for m in demoted_diffs]
+    furniture = furniture_map(demoted_diffs, args.furniture_min, args.furniture_frac)
+    if furniture is None:
+        furniture = np.zeros((HEIGHT // BLOCK, WIDTH // BLOCK), dtype=bool)
+    n_furniture = int(furniture.sum())
+    measurable = int((~furniture).sum())
+
+    missing_blocks = missing_pictures = stale_blocks = tested = 0
+    note_blocks = note_black = note_stale = note_pictures = 0
+    demoted = blank = dark = 0
+
+    for r in seen:
+        kind = r.get("kind")
+        if kind == "badsize":
+            print("%s  %s" % (r["name"], r["text"]))
+            continue
+        name, label = r["name"], r["label"]
+        if kind == "dark":
             dark += 1
             print("%s  skip%s (shadow holds no picture: %.0f%% of blocks non-black)"
-                  % (name, label, 100 * content))
+                  % (name, label, 100 * r["content"]))
             continue
-        if visible < args.min_visible:
+        if kind == "blank":
             # Indistinguishable from a 100% drop: say so loudly rather than count it either way.
             blank += 1
             print("%s  SKIP%s (GL target shows nothing: %.0f%% of blocks non-black against the "
                   "shadow's %.0f%% -- cleared/switched buffer or a whole-frame loss)"
-                  % (name, label, 100 * visible, 100 * content))
+                  % (name, label, 100 * r["visible"], 100 * r["content"]))
             continue
-
-        # `agree` over the shadow's non-black blocks; a dropped block counts as agreeing, so more
-        # drops never demote a present out of the counted tier (see the module docstring).
-        interesting = ~shadow_black
-        agree = float((same | gpu_black)[interesting].mean())
-
-        if agree >= args.mirror_frac:
+        same, gpu_black, shadow_black = r["same"], r["gpu_black"], r["shadow_black"]
+        if kind == "movie":
             tested += 1
             lost = gpu_black & ~shadow_black
             stale = ~same & ~gpu_black & ~shadow_black
@@ -326,51 +378,44 @@ def main(argv=None):
                 if n_stale:
                     parts.append("STALE %d: %s" % (n_stale, where_stale))
                 print("%s  movie agree=%.3f visible=%.0f%%%s  %s"
-                      % (name, agree, 100 * visible, label, "; ".join(parts)))
+                      % (name, r["agree"], 100 * r["visible"], label, "; ".join(parts)))
             else:
-                print("%s  movie agree=%.3f visible=%.0f%%%s  ok" % (name, agree, 100 * visible, label))
+                print("%s  movie agree=%.3f visible=%.0f%%%s  ok"
+                      % (name, r["agree"], 100 * r["visible"], label))
             continue
 
-        # Demoted: not measurable block-for-block, so check where it is LOCALLY mirrored -- and say
-        # so on every one of them, black or stale. A demoted present that printed nothing is the
-        # hole review round 2 found: a 50% non-black corruption landed here and vanished.
+        # Demoted: part mirror, part drawn. Judge every differing block that is not furniture, one
+        # block at a time and with no reference to its neighbours, so the verdict does not depend
+        # on how the bad blocks happen to be arranged.
         demoted += 1
-        kind = "partial" if agree >= args.partial_min else "not-a-mirror"
-        testable = neighbour_identical_frac(same) >= args.neighbour_frac
-        n_b, where_b = coords(testable & gpu_black & ~shadow_black)
-        n_s, where_s = coords(testable & ~same & ~gpu_black & ~shadow_black)
-        head = "%s  %s agree=%.3f visible=%.0f%% locally-mirrored=%d%s" % (
-            name, kind, agree, 100 * visible, int(testable.sum()), label)
+        bad = ~same & ~furniture
+        n_b, where_b = coords(bad & gpu_black & ~shadow_black)
+        n_s, where_s = coords(bad & ~gpu_black & ~shadow_black)
+        head = "%s  demoted agree=%.3f visible=%.0f%% measurable=%d%s" % (
+            name, r["agree"], 100 * r["visible"], measurable, label)
         if n_b or n_s:
             note_pictures += 1
             note_blocks += n_b + n_s
             note_black += n_b
             note_stale += n_s
-            density = (n_b + n_s) / max(1, int(testable.sum()))
             parts = []
             if n_b:
-                parts.append("note-MISSING %d: %s" % (n_b, where_b))
+                parts.append("MISSING %d: %s" % (n_b, where_b))
             if n_s:
-                parts.append("note-STALE %d: %s" % (n_s, where_s))
-            verdict = "FAIL" if density > args.note_frac else "note"
-            if verdict == "FAIL":
-                fail_pictures += 1
-                fail_blocks += n_b + n_s
-            print("%s  %s(%.1f%% of the mirrored region)  %s"
-                  % (head, verdict + " " if verdict == "FAIL" else "", 100 * density,
-                     "; ".join(parts)))
+                parts.append("STALE %d: %s" % (n_s, where_s))
+            print("%s  FAIL %s" % (head, "; ".join(parts)))
         else:
             print("%s  ok" % head)
 
     print("presents=%d tested=%d demoted=%d skipped=%d (dark=%d blank=%d)"
           % (len(items), tested, demoted, dark + blank, dark, blank))
-    print("note blocks=%d pictures=%d (black=%d stale=%d)  -- on demoted presents; a floor, not a "
-          "measurement" % (note_blocks, note_pictures, note_black, note_stale))
-    print("DEMOTED-FAIL blocks=%d pictures=%d  (notes denser than %.0f%% of the mirrored region)"
-          % (fail_blocks, fail_pictures, 100 * args.note_frac))
+    print("furniture blocks=%d of %d (learned from %d demoted presents; %d measurable)"
+          % (n_furniture, furniture.size, demoted, measurable))
+    print("demoted findings blocks=%d pictures=%d (black=%d stale=%d)"
+          % (note_blocks, note_pictures, note_black, note_stale))
     print("STALE blocks=%d" % stale_blocks)
     print("MISSING blocks=%d pictures=%d" % (missing_blocks, missing_pictures))
-    if missing_blocks or stale_blocks or fail_blocks:
+    if missing_blocks or stale_blocks or note_blocks:
         if tested == 0:
             print("NOTE: nothing qualified as a movie present either -- %d dark, %d blank, %d demoted"
                   % (dark, blank, demoted))

@@ -239,18 +239,31 @@ rules avoid it:
   panels sits at ~0.57 — and is checked only where it is *locally* mirrored, a block counting when
   most of its 8 neighbours are byte-identical.
 
-**Every present prints a line, always**, demoted ones included, with `agree`, `visible`, the size
-of their locally mirrored region and every block found in it — black (`note-MISSING`) or stale
-(`note-STALE`). A demoted present **fails the run** when those notes exceed 10% of its locally
-mirrored region. Presence alone cannot be the rule: the real title-menu presents each carry 11–12
-stale notes at *the same eleven coordinates on every present* — (64,32) (560,32) (64,128) (560,128)
-(160,208) (464,208) (400,336) (160,400) (464,400) (160,416) (464,416), symmetric x pairs, i.e.
-drawn menu decoration small enough to sit isolated inside the mirrored background. That is 1.8% of
-the mirrored region, and the worst present in the capture (the fade into the attract movie) reaches
-5.2%; a synthetic 50% stale corruption reaches 46%. Nothing separates them per block; the density
-does. The cost is a sensitivity floor near 10% for *scattered non-black* corruption. Black drops
-have no floor — they keep `agree` at 1.000 and are reported one block at a time, which is the
-flavour this defect produces, because the GL texture starts cleared.
+**Every present prints a line, always**, demoted ones included, and every differing block on a
+demoted present that is not *furniture* is a finding that fails the run.
+
+Furniture is learned from the capture, not guessed from the frame. A demoted present is part mirror
+and part GPU-drawn, and **within one present the two cannot be separated**: the menu's drawn
+graphic is one large centred blob of differing blocks enclosed by mirrored background on every
+side, geometrically identical to a contiguous patch of dropped blocks. Two local rules were tried
+and both failed the same way — clustered bad blocks disqualify each other, so a contiguous patch
+scored far *below* the same number scattered, which is backwards, because real macroblock drops are
+contiguous runs. On identical fixtures the neighbour-agreement rule scored 100 injected blocks at
+16.5% scattered against 1.5% contiguous, and 300 blocks at 47.3% against 1.5%.
+
+What does separate them is time. Drawn furniture sits at the same coordinates present after
+present; a mirror miss wanders — which is what §2 measured independently (positions vary run to run,
+not content-driven). The capture says the same thing very sharply: over its 59 demoted presents the
+per-coordinate recurrence is bimodal, **116 coordinates differ in exactly one present and 2 in two
+presents, then nothing until 25, 51, 52, 55, 57, 58, 59**. So a block that differs in at least a
+tenth of the demoted presents (6 of 59, sitting in a gap that runs from 2 to 25 — any threshold in
+3..25 gives the same answer) is furniture; everything else is a finding. The decision is per block
+and uses no neighbours, so the verdict does not depend on how the bad blocks are arranged: the same
+injections now score 15.6% / 15.6% and 47.0% / 47.0% scattered against contiguous.
+
+The cost, stated: corruption that recurs at the same coordinates across most of a capture is
+absorbed as furniture by construction, and a capture with fewer than 3 demoted presents has no
+furniture map at all and reports every differing block.
 
 **A run with no counted present exits 2, not 0.** "Zero missing blocks out of nothing" is not a
 pass, and a capture that never reached the movie is the most likely way to produce one.
@@ -260,24 +273,24 @@ Validation. Against Sprint 3's stored capture it reproduces section 4 exactly �
 ```
 $ python -m tools_py.parity.movie_blocks logs/parity/mb10_dispdump
 display_040s_fbp000  SKIP (GL target shows nothing: 0% of blocks non-black against the shadow's 89%)
-display_048s_fbp000  partial agree=0.568 visible=100% locally-mirrored=619  (2.1% of the mirrored
-                     region)  note-MISSING 2: (480, 288) (480, 320); note-STALE 11: (64, 32) ...
+display_048s_fbp000  demoted agree=0.568 visible=100% measurable=635  FAIL MISSING 2: (480, 288)
+                     (480, 320)
 display_195s_fbp000  movie agree=1.000 visible=93%  MISSING 3: (48, 48) (48, 80) (192, 416)
 display_199s_fbp000  movie agree=1.000 visible=93%  MISSING 2: (432, 368) (272, 400)
 display_211s_fbp000  movie agree=1.000 visible=90%  MISSING 2: (384, 144) (384, 160)
 presents=108 tested=45 demoted=59 skipped=4 (dark=3 blank=1)
-note blocks=693 pictures=59 (black=36 stale=657)  -- on demoted presents; a floor, not a measurement
-DEMOTED-FAIL blocks=0 pictures=0  (notes denser than 10% of the mirrored region)
+furniture blocks=485 of 1120 (learned from 59 demoted presents; 635 measurable)
+demoted findings blocks=120 pictures=5 (black=35 stale=85)
 STALE blocks=0
 MISSING blocks=7 pictures=3        (exit 1)
 ```
 
 — the same three presents, the same seven blocks, and no counted hit anywhere else (all 108
-presents print; the excerpt drops the 99 `ok` lines). The 693 note blocks over 59 demoted presents
-are the title menu's movie background and its drawn decoration; none reaches the 10% density bar,
-so the run fails on exactly the 7 real ones. `display_040s` is the whole-frame case the `visible`
-rule exists for: the GL target entirely black against a shadow holding 89% content, which no
-per-block statement can describe.
+presents print; the excerpt drops the `ok` lines). 485 of the 1120 blocks are learned as the menu's
+drawn furniture, leaving 635 measurable, and the 120 findings left on demoted presents are the
+one-off differences in the title menu's movie background — the second half of the user's report.
+`display_040s` is the whole-frame case the `visible` rule exists for: the GL target entirely black
+against a shadow holding 89% content, which no per-block statement can describe.
 
 And against synthetic mutations of one clean movie present (`display_193s_fbp000`), which is how
 the monotonicity and the vacuous-pass hole were pinned down:
@@ -289,13 +302,18 @@ the monotonicity and the vacuous-pass hole were pinned down:
 | 50% blacked out | `agree=1.000 visible=46% MISSING blocks=523` | 1 |
 | 90% blacked out | `agree=1.000 visible=9% MISSING blocks=941` | 1 |
 | both layers all black | `tested=0 … NOT A PASS` | 2 |
-| 10% left holding the previous picture (stale, not black) | `FAIL (10.1% of the mirrored region) note-STALE 113` | 1 |
-| one clean present + one 50% stale-corrupted | `FAIL (46.0% of the mirrored region) note-STALE 202`, `tested=1` | 1 |
+| 10% left holding the previous picture (stale, not black) | `demoted findings blocks=113` | 1 |
+| one clean present + one 50% stale-corrupted | `demoted findings blocks=544`, `tested=1` | 1 |
+| 100 blocks injected into 1 of 20 real menu presents, **scattered** | `99/635` findings | 1 |
+| the same 100 blocks, **contiguous** | `99/636` findings | 1 |
+| 300 blocks, scattered / contiguous | `299/636` / `299/636` | 1 |
 
-The three drop rows are the point: 50 → 523 → 941, all still counted. The last three rows are the
-false passes earlier drafts of this tool produced — exit 0 on an all-black capture with a non-zero
-`tested=`; exit 0 on a 50–90% drop demoted out of the counted tier; and exit 0 on a mixed capture
-whose corrupted present was demoted and never printed at all. All three now exit non-zero.
+The three drop rows are the point: 50 → 523 → 941, all still counted. Rows 5–7 are the false passes
+earlier drafts produced — exit 0 on an all-black capture with a non-zero `tested=`; exit 0 on a
+50–90% drop demoted out of the counted tier; exit 0 on a mixed capture whose corrupted present was
+demoted and never printed at all. The last three rows are the arrangement test: with the old
+neighbour rule those same fixtures scored 16.5% scattered against 1.5% contiguous, and 47.3%
+against 1.5% — a contiguous patch, which is the shape the real defect takes, hid by being a patch.
 
 ### 9.2 The count
 
