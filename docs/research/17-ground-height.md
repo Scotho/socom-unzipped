@@ -8,10 +8,11 @@ The whole 14.7-vs-20.1 divergence is one number: the player actor's **skeleton r
 translation** (`actor+0x2e8` → `+0x04`), which is `5.50391` on the console and `0.0` on ours.
 `FUN_0029a950` (the third-person camera's local offset, `0x29a950`) turns that number into the
 camera height with a ramp whose zero case is a hard-coded `10.0`, so ours lands on the engine's own
-"there is no root node" fallback. A live trace shows *why* our value is 0: the SEALs' skeleton
-override nodes are blended toward an **all-zero transform**, and the root's Y slides from the bind
-value 11.4845 straight through the console's 5.50391 down to 0 in ~1.4 s and stays. Every figure
-below is reproduced to four decimal places from measured data on both sides.
+"there is no root node" fallback. A live trace shows *why* our value is 0, and names the primitive:
+the node's **saved** copy holds the console's `5.50391` exactly, while `FUN_0028e040`'s weighted
+blend walks **current** away from it to 0 along a clean `saved × (1 − w)` curve — i.e.
+`FUN_001c0768`, a two-term VU0 macro-mode weighted sum, is producing only one of its two terms.
+Every figure below is measured on both sides.
 
 ---
 
@@ -28,6 +29,25 @@ below is reproduced to four decimal places from measured data on both sides.
 The `+0x84 = +0x68 × +0xa8` and `+0x8c = 1/+0x80` identities in `FUN_005c9400` match the dumped
 object exactly (`0.8391 × 807.5 = 677.573`; `1/807.5 = 0.00123839`), which is what pins
 `0x1785ee0` to that code.
+
+### 0.1 Where 14.7 and 20.1 actually came from
+
+The two numbers everyone has been quoting are not wrong measurements — they are **camera eye minus
+collision hit**, and their own source says so. `docs/STATUS.md:809` reads "PCSX2 20.11
+(y = −126.264), ours 14.69 (y = −131.68)", and those two y values are `CSealCtrl+0x90` /
+`camera+0xd8`, the camera eye:
+
+```
+console:  -126.264 - (-146.371)  =  20.107     <- "20.1"
+ours:     -131.68  - (-146.371)  =  14.691     <- "14.7"
+```
+
+The player stands at `-145.867` (console) / `-145.875` (ours), not at the hit, so the actor's own
+clearance above the hit is `0.504` / `0.496` on the two sides — matching to 0.008, not differing by
+5.4. Everything the project has recorded as "the actor rests 14.7 above the ground" has in fact been
+"the camera eye sits 14.7 above the ground the camera stands over". `docs/HANDOFF.md:99` and
+`docs/STATUS.md:809` are therefore known-wrong framings; correcting them is the close-out task's
+job, not this note's.
 
 ---
 
@@ -82,7 +102,10 @@ the live path; don't trace it).
 ```c
 iVar6 = camera[0xc8];
 if (iVar6 != actor[0x2e8]) iVar6 = actor[0x2e8];        // the actor's skeleton ROOT node
-FUN_002869d0(actor + 0x170, iVar6, 0, &fStack_10, 0);   // fStack_10.. = (x, rootY, z) local
+if (camera[0xc0] == 0 || iVar6 == 0)                    // early-out: no followed actor / no node
+    fStack_10 = fStack_c = fStack_8 = 0.0;              //   -> rootY is 0 here too (see below)
+else
+    FUN_002869d0(actor + 0x170, iVar6, 0, &fStack_10, 0);   // fStack_10.. = (x, rootY, z) local
 
 fVar9 = 10.0;                                           // <-- the "no root node" fallback
 if (fStack_c != 0.0) {                                  // rootY != 0
@@ -93,10 +116,15 @@ if (fStack_c != 0.0) {                                  // rootY != 0
     }
     fVar9 = fVar9 * 4.5 + 5.5;                          // -> 5.5 .. 10.0
 }
-...
+fStack_10 += (DAT_004161c0 < 0) ? DAT_004161c0 * 2.5    // lean/peek offset, x only
+                                : DAT_004161c0 * 2.8;
 fStack_8 = fStack_8 + 28.0;                             // 28 units behind
 pfVar7[1] = fStack_c + fVar9;                           // CAMERA HEIGHT = rootY + fVar9
 ```
+
+Note there are **two** routes to `fVar9 = 10.0`: the early-out above (no followed actor, or the
+actor has no root-node handle), and a root node whose Y is genuinely `0.0`. Ours is the second —
+the live trace in §4.1 dumps the node itself and it exists, with `+0x04 == 0.0`.
 
 Substituting the two measured root-node values:
 
@@ -106,13 +134,15 @@ Substituting the two measured root-node values:
 * **ours** `rootY = 0.0` → the `!= 0.0` test fails → `fVar9 = 10.0` → height `= 0 + 10.0 = ` **`10.0`**.
   Measured ours: **10.0000**.
 
-Both to 4 decimals. That is the whole defect: we take the engine's *own* "there is no root node"
-branch. The residual difference between the target Δ (5.378) and the eye Δ (5.461) comes from the
-camera-collision pass `FUN_0029bf70` and the boom, not from another bug.
+Ours is exact; the console agrees to three decimals (`15.37759` computed vs `15.3782` measured —
+the 0.0006 is the constants as Ghidra renders them). That is the whole defect: we take the engine's
+*own* "there is no root node" branch. The residual difference between the target Δ (5.378) and the
+eye Δ (5.461) comes from the camera-collision pass `FUN_0029bf70` and the boom, not from another
+bug.
 
 ---
 
-## 4. The real divergence: the SEALs' skeleton root node
+## 4. The real divergence: the SEALs' skeleton root node, and the primitive behind it
 
 Node layout (confirmed by `FUN_0028e370` / `FUN_0028e040`):
 `+0x00` vec3 local translation, `+0x0c` derived-matrix ptr, `+0x10` saved translation,
@@ -123,7 +153,7 @@ Scanning every actor (vtable `0x6691a0`; 37 in each image) for `actor+0x2e8 → 
 
 | | ours (`rest_ours.rdram`) | console (`spawn_pcsx2.rdram`) |
 | --- | --- | --- |
-| the 4 SEALs (player + squad, around (939,856)) | **0.00000** ×4, root quat `(0.321,−0.455,−0.458,0.693)` (non-identity, same on all four) | **5.50391 / 4.70703 / 5.03125 / 5.03125**, root quat identity |
+| the 4 SEALs (player + squad, around (939,856)) | **0.00000** ×4, root quat `(0.321,−0.455,−0.458,0.693)` — unit, but non-identity, and the same on all four | **5.50391 / 4.70703 / 5.03125 / 5.03125**, root quat identity |
 | the other 33 actors | 11.48438 / 11.37109 (bind), quat identity | 11.48438 / 11.37109 / 11.0855 / 11.3498 / 11.535, quat identity |
 
 `11.48438` is the untouched bind value on both sides — it is not the bug. Every one of these
@@ -161,41 +191,109 @@ player's position.) Extract, `rootY` = the root node's `+0x04`:
 
 Read that table twice. The root node's Y **decays monotonically from the bind value 11.4845 to
 exactly 0 over about 1.4 s of game time and then stays at 0 forever**. On the way down it passes
-through **5.5039 at sample #13 — the console's resting value to four decimals — and does not stop
-there**; the target height at that sample is **15.378**, the console's number exactly. One frame
-after it reaches 0 the `rootY != 0.0` test flips and the height jumps from 5.500 to the hard-coded
-**10.0** (the little 5.5→10.0 step between #24 and #25 in the table is that branch firing). The
-final eye height above the player, **14.105**, is the 14.7 STATUS measured.
+through **5.5039 at sample #13 — the console's resting value to five significant figures — and does
+not stop there**; the target height at that sample is **15.378**, the console's number exactly. One
+frame after it reaches 0 the `rootY != 0.0` test flips and the height jumps from 5.500 to the
+hard-coded **10.0** (the little 5.5→10.0 step between #24 and #25 in the table is that branch
+firing). The final eye height above the player, **14.105**, is the 14.7 STATUS measured.
 
-The node's *saved* copy (`+0x10`) decays with it, and the root quaternion goes to all-zero as well
-(dumped words 4..7 of the node are `0 0 0 0` at rest against a unit quat on the console). The other
-nodes in the same per-SEAL handle list (`FUN_005765f0`'s twenty handles, `actor+0x2e8..+0x354`)
-show the same signature in the RDRAM image: non-unit or zero quaternions where the console has
-unit ones, while the bone *translations* still match the console to 4–10 ulps.
+### 4.2 The same dump also names the broken primitive
+
+The 8-word node dump covers `+0x00..+0x1c`, so word 1 is the **current** translation Y and word 5
+the **saved** translation Y (`+0x14`). Putting the two side by side across the decay:
+
+| # | current `+0x04` | saved `+0x14` | current / 5.50391 |
+| --- | --- | --- | --- |
+| 0…9 | 11.4845 → 6.5996 | 11.4844 (frozen) | — |
+| 10 | 6.00808 | 6.00808 | — |
+| 11 | 5.66299 | 5.66299 | — |
+| 12 | 5.53185 | 5.53185 | — |
+| **13** | **5.50391** | **5.50391** | 1.0000 |
+| 14 | 5.39402 | 5.50391 | 0.9800 |
+| 15 | 5.06438 | 5.50391 | 0.9201 |
+| 16 | 4.51497 | 5.50391 | 0.8203 |
+| 17 | 3.74579 | 5.50391 | 0.6806 |
+| 18 | 2.75685 | 5.50391 | 0.5009 |
+| 19 | 1.76595 | 5.50391 | 0.3209 |
+| 20 | 0.99482 | 5.50391 | 0.1808 |
+| 21 | 0.60282 | 5.50391 | 0.1095 |
+| 22 | 0.30850 | 5.50391 | 0.0561 |
+| 23 | 0.11185 | 5.50391 | 0.0203 |
+| 24 | 0.00001 | 5.50391 | 0.0000 |
+| 25+ | 0 | 0 (re-snapshotted) | — |
+
+Two things fall out of that, and they are the whole finding:
+
+1. **The snapshot captured the right value.** At #10..#13 `FUN_0028e370` runs (saved tracks
+   current) and parks `saved = 5.50391` — *the console's resting value* — where it then stays,
+   frozen, for the next eleven frames. So the blend's source data is correct; nothing upstream of
+   the blend is wrong about 5.50391.
+2. **The blend then walks away from it.** From #13 both endpoints of the blend are `5.50391`
+   (current == saved), and **any** convex combination of two equal values is that value. Ours
+   reaches 0. The observed curve is exactly `current = saved × (1 − w)` with `w` tracing a clean
+   symmetric smoothstep 0→1 (1 − ratio: 0.020, 0.080, 0.180, 0.319, 0.499, 0.681, 0.819, 0.891,
+   0.944, 0.980, 1.000) — i.e. **only one of the two terms of the lerp survives; the other is
+   dropped**.
+
+`FUN_0028e040` is the blend. Register-exact, from its disassembly at `0x28e040`:
+
+```
+a0 = skeleton (actor+0x170), a1 = handle node, f12 = weight
+a1 = lh [a1+0x40]                     ; the handle's node index
+s0 = [ [a0+0x64] + index*4 ]          ; THE NODE ACTUALLY WRITTEN (indirection through the array)
+if (s0 && ([s0+0x42] & 1)) {
+    f20 = lwc1 [s0+0x0c]                              ; save the matrix ptr word
+    jal FUN_001c0768   a0=s0, a1=s0+0x10, a2=s0       ; translation, weight still in f12
+    swc1 f20 -> [s0+0x0c]                             ; restore it
+    jal FUN_00306ae0   a0=s0+0x20, a1=s0+0x30, a2=s0+0x20, f12=f21 ; quaternion
+}
+```
+
+`FUN_001c0768` is VU0 macro-mode (`vmulabc` / `vmaddbc` against `vf0`) — a two-term weighted sum —
+which is exactly the shape of instruction the recompiler has already been caught mishandling once
+on this project (STATUS 2026-09-09 00:10, VU0 macro-mode MAC/STATUS flags never written). The
+weight comes from `actor+0x10d0`, counted down by `actor+0x2e0` per frame in `FUN_00576860` (with a
+second timer at `actor+0x178`).
 
 So the statement of the bug is:
 
-> **The SEAL actors' skeleton override nodes — the twenty handles at `actor+0x2e8..+0x354`,
-> `+0x2e8` being the root — are blended toward an all-zero transform instead of toward the
-> standing pose. The root's Y slides from the bind value 11.4845 through the console's 5.50391 and
-> settles at exactly 0.0, with a zero quaternion.** `FUN_0029a950` then takes its `rootY == 0`
-> fallback (`fVar9 = 10.0`) and places the camera 5.38 low.
+> **`FUN_0028e040`'s weighted blend loses one of its two terms.** Its source data is right — the
+> snapshot at `node+0x10` holds `5.50391`, the console's value — but the result walks from
+> `saved × 1` to `saved × 0` as the weight ramps, instead of staying at `saved`. Applied to the
+> player actor's skeleton root node (`actor+0x2e8`), that drives `rootY` to exactly `0.0`,
+> whereupon `FUN_0029a950` takes its `rootY == 0` fallback (`fVar9 = 10.0`) and places the camera
+> 5.38 low.
 
-Corroborating (RDRAM image, walking up the chain from `actor+0x308` to the root): the player's bone
-quaternions on ours are **not unit** — magnitudes `0.916, 1.000, 0.000, 0.930, 0.756, 0.000, 1.000`
-against the console's `1.000` for all seven, two of them exactly zero — while the bone
-*translations* match the console to within 4–10 ulps. Translations (static model data) load
-correctly; rotations and the root translation (animation output) do not. That points at the
-animation sampling/blending on `actor+0x170`, not at the camera and not at collision.
+`FUN_005765f0` / `FUN_00576700` / `FUN_00576860` are pure dispatch wrappers over the twenty handles
+at `actor+0x2e8..+0x354` — they contain no arithmetic and are the subsystem's address, not the
+defect. The defect is in `FUN_001c0768` (and, if it shares the primitive, `FUN_00306ae0`).
 
-The per-SEAL machinery to look at first (all three operate on exactly that twenty-handle list):
-`FUN_005765f0` snapshots current → saved (`FUN_0028e370`: node `+0x00..+0x08` → `+0x10`,
-`+0x20..+0x2c` → `+0x30`); `FUN_00576700` blends saved → current with weight `actor+0x10d0`
-(`FUN_0028e040`: `FUN_001c0768` for the translation, `FUN_00306ae0` for the quaternion);
-`FUN_00576860` drives the two blend timers `actor+0x10d0` and `actor+0x178` down by `actor+0x2e0`
-and, when either hits 0, flips the per-node enable bit (`FUN_0028dfc0` → node `+0x42` bit 0). A
-blend whose destination is an all-zero pose, or a weight that runs past 1, produces exactly the
-observed monotonic slide to zero.
+**Confirming experiment for the follow-up:** one `gameplay_probe.txt` run —
+
+```
+PS2X_CALL_TRACE="0x28e040:Blend"   PS2X_CALL_TRACE_EVERY=20
+PS2X_CALL_TRACE_DUMP="Blend:a0+0x64**:16"
+```
+
+The `[call]` line already prints **`f12` — that is the blend weight**, no extra dump needed.
+`a0+0x64**` is `nodeArray[0]`, i.e. the root node, and 16 words covers `+0x00..+0x3c`: current
+translation (0..2), saved translation (4..6), current quat (8..11), saved quat (12..15). (The
+handle in `a1` is *not* the node written — `FUN_0028e040` indexes the array by `a1+0x40`; for the
+root that index is 0, which is why `**` works. Use `Blend:a1:2` alongside if you need to tell the
+twenty handles apart.) Read it as: if `f12` is sane (0→1 across the blend) while current leaves
+saved, the defect is inside `FUN_001c0768`; if `f12` runs past 1 or inverts, it is the timer in
+`FUN_00576860`. The quaternion words tell you in the same run whether `FUN_00306ae0` shares the
+fault.
+
+Corroborating, and possibly the *same* bug rather than a second one (RDRAM image, walking up the
+chain from `actor+0x308` to the root): the player's bone quaternions on ours are **not unit** —
+magnitudes `0.916, 1.000, 0.000, 0.930, 0.756, 0.000, 1.000` against the console's `1.000` for all
+seven, two of them exactly zero — while the bone *translations* match the console to within
+4–10 ulps. A two-term weighted sum that loses a term produces exactly that: shortened quaternions,
+collapsing to zero at `w = 1`. (The root node's own quaternion at `+0x20` is **not** zero — the
+RDRAM image gives it as `(0.321, −0.455, −0.458, 0.693)`, a unit quat; the zeros are on two of the
+other override nodes. The 8-word live dump does not reach `+0x20` at all, so it says nothing about
+quaternions either way.)
 
 ---
 
@@ -247,7 +345,7 @@ else { int r = FUN_00197740(); v = base + range * (float)r * 4.656613e-10; }   /
 `FUN_00197740` is newlib `rand()` (`FUN_0019eb18` 64×64 multiply by `0x5851f42d4c957f2d`,
 returns `(uint)(state >> 32) & 0x7fffffff`) — a **31-bit** value, which is why the game scales by
 `2⁻³¹`. In `recomp/socom2.toml` line 97 it is stubbed as `rand@0x00197740`, and the stub
-(`third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/LibC.cpp:1083`) is
+(the mask is at `third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/LibC.cpp:1085`) is
 
 ```cpp
 void rand(...) { setReturnS32(ctx, std::rand() & 0x7FFF); }   // 15 bits, 65536x too small
@@ -255,8 +353,13 @@ void rand(...) { setReturnS32(ctx, std::rand() & 0x7FFF); }   // 15 bits, 65536x
 
 Measured proof: our dumped `+0x5c` is `0x4080002d = 4.00002146`, i.e. `4.0 + 3.0·r` with
 `r = 7.153e-6` ⇒ the guest saw `rand() = 15361` — inside `[0, 32767]`. The console's `6.3338`
-needs `r = 0.77793` ⇒ `rand() ≈ 1.67e9`. **Every `rand()`-derived float in the game is pinned to
-its minimum**: the decomp has **249** sites multiplying a `rand()` by `4.656613e-10`.
+needs `r = 0.77793` ⇒ `rand() ≈ 1.67e9`.
+
+This is not "our draw happened to be low". With the 15-bit mask the field's **maximum possible**
+value is `4.0 + 3.0 × 32767 × 2⁻³¹ = 4.0000458`: under our stub, `6.3338` is **unreachable by
+construction**, so the capsule-radius / step-height reading of STATUS 02:10 is dead on arithmetic
+alone. **Every `rand()`-derived float in the game is pinned to within 1/65536 of its minimum**:
+`grep -c 4.656613e-10` over the decomp gives **249** sites.
 
 Fix (not applied here — see §7): either return a 31-bit value from the stub, or better, drop
 `rand@0x00197740` from `recomp/socom2.toml`'s stub list so the guest's own LCG runs and the
@@ -272,13 +375,12 @@ a 249-site blast radius.
 ## 7. Why no fix was landed
 
 Task 4's fix gate is "one hypothesis, one build, one `gameplay_probe.txt` run showing the rest
-height at ~20.1". The localisation lands the defect in the **SEAL skeleton-override blend**
-(`FUN_005765f0` / `FUN_00576700` / `FUN_00576860` over `actor+0x2e8..+0x354`, through
-`FUN_0028e370` / `FUN_0028e040` / `FUN_0028dfc0`) — not in the camera, not in collision, and not in
-anything this task was scoped to touch. Finding which of those is wrong needs its own trace round;
-guessing a clamp into `FUN_0029a950` would paper over the real defect and still leave the SEALs'
-override bones zeroed. Per the brief, the note is the deliverable and no speculative change was
-made.
+height at ~20.1". The localisation lands the defect in **`FUN_0028e040`'s weighted blend — in
+`FUN_001c0768`, and probably `FUN_00306ae0` with it** — not in the camera, not in collision, and not
+in anything this task was scoped to touch. Whether the missing term is a VU0 macro-mode
+recompilation bug or a bad weight is one trace away (§4.2) but is not something to guess at, and a
+clamp bolted into `FUN_0029a950` would paper over it while still leaving the SEALs' override bones
+shrinking to zero. Per the brief, the note is the deliverable and no speculative change was made.
 
 Two bounded fixes *were* found (§6 `rand()` 15-bit stub, §5 soft-double routines). Neither moves the
 camera height, and the `rand()` one changes every random draw in the game (enemy behaviour, weapon
@@ -293,10 +395,17 @@ spread, timers), so both belong to a task that can run a full gate rather than t
   `logs/run_task4_camoff.sh`. The number to watch is word 1 of the third dump (the root node's Y);
   it must settle near **5.5**, not 0. `a2[1]` is the camera height and must settle near **15.38**.
   Camera height formula: `FUN_0029a950` @ `0x29a950`.
+* **Start here:** `FUN_001c0768` @ `0x1c0768` — the two-term VU0 macro-mode weighted sum
+  (`out = a·w + b·(1−w)`, args `a0` = out, `a1` = a, `a2` = b, weight in `f12`) whose result loses a
+  term. Its quaternion sibling is `FUN_00306ae0` @ `0x306ae0`. Both are called only from
+  `FUN_0028e040` @ `0x28e040`; the trace recipe is in §4.2.
 * Root node: `actor+0x2e8`, node index 0 of the skeleton instance at `actor+0x170`
-  (node array ptr at `+0x64`, count at `+0x60`). Save/restore helpers: `FUN_0028e370` (current →
-  saved), `FUN_0028e040` (saved → current with a blend), `FUN_0028dfc0` (flag bit 0 at node `+0x42`).
-  SEAL-level wrappers: `FUN_005765f0`, `FUN_00576700`, `FUN_00576860`.
+  (node array ptr at `+0x64`, count at `+0x60`); `FUN_0028e040` writes
+  `nodeArray[handle->[0x40]]`, not the handle itself. Save/restore helpers: `FUN_0028e370`
+  (current → saved), `FUN_0028e040` (the blend), `FUN_0028dfc0` (flag bit 0 at node `+0x42`, which
+  gates the blend). Weights/timers: `actor+0x10d0`, `actor+0x178`, decremented by `actor+0x2e0`.
+  SEAL-level dispatch wrappers over the twenty handles (no arithmetic in them — the subsystem's
+  address, not the defect): `FUN_005765f0`, `FUN_00576700`, `FUN_00576860`.
 * Other readers of the root Y (they will all be wrong too): `actor+0x20 + node[0].y` is the AI aim
   point (decomp lines 416880, 465173, 465209) and `node[0].y < 9.0` is a stance test (line 444146).
 * Seal tuning table at `0x44c250` (loaded by `FUN_0059ba80` through the by-name getter
