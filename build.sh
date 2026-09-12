@@ -124,7 +124,36 @@ test_step() {
   #    buckets for blended draws, and then adding prog_182, is Sprint 4 follow-up (so is a
   #    patterned rather than uniform neutral fill, which is what a uniform texel cannot cover:
   #    any ST/UV/Q divergence between the two paths is invisible against a constant texture).
-  "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
+  #    The run also has to be read, not just exited: vu1_replay warns on stderr when a fixture's
+  #    TEX0 resolves below the zeroed framebuffer/z region (see warnIfTextureInBlankRegion), which
+  #    degrades that dump's comparison silently -- it can go back to drawing nothing and SKIPping,
+  #    which is the one failure mode --vram-diff cannot score. Nothing in the fixture set trips it
+  #    today, so the check below costs nothing now and turns that into a hard stop the day a
+  #    fixture's texture lands in the blank region. Same shape as expect_native: capture, print,
+  #    then assert on the output rather than trusting the exit code alone.
+  vram_diff_check() {
+    local out status=0
+    out="$("$@" 2>&1)" || status=$?
+    printf '%s\n' "$out"
+    if [ "$status" -ne 0 ]; then
+      echo "vram diff: FAILED (exit $status)" >&2
+      return "$status"
+    fi
+    if printf '%s\n' "$out" | grep -qF '[vu1_replay] WARNING'; then
+      printf '%s\n' "$out" | grep -F '[vu1_replay] WARNING' >&2
+      cat >&2 <<'MSG'
+vram diff: the dump named above has a TEX0 that resolves below the zeroed framebuffer/z region,
+so it samples 0 and that dump's GIF-vs-host comparison is degraded -- at the limit it draws
+nothing and SKIPs, which is exactly the blank-frame hole this check exists to keep closed.
+Fix the layout, not this assertion: revisit setupReplayGsContext in
+third_party/ps2recomp/ps2xRuntime/src/tools/vu1_replay.cpp and move the replay framebuffer and z
+buffer (kZBufferPage / kBlankBytes, and kTextureBlock with them, which the static_assert ties
+together) so that the fixture's texture lands in the neutral fill above them.
+MSG
+      return 1
+    fi
+  }
+  vram_diff_check "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 7: the work-ceiling refusal path. tests/fixtures/vu1/clamp holds vu1dump4_prog_11 with TOP+2.z
   #    rewritten from 76 to 300 -- above kMaxVertices -- and a golden taken from the microcode path
   #    on that patched dump (which runs 5.6M cycles to produce nothing, i.e. exactly the runaway
