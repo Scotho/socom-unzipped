@@ -261,9 +261,23 @@ tenth of the demoted presents (6 of 59, sitting in a gap that runs from 2 to 25 
 and uses no neighbours, so the verdict does not depend on how the bad blocks are arranged: the same
 injections now score 15.6% / 15.6% and 47.0% / 47.0% scattered against contiguous.
 
-The cost, stated: corruption that recurs at the same coordinates across most of a capture is
-absorbed as furniture by construction, and a capture with fewer than 3 demoted presents has no
-furniture map at all and reports every differing block.
+The map is learned **per screen**, not per capture. One global map under-reports on a capture's
+minority screens: applied to everything, the map learned mostly from the 58 menu presents masked
+153 of the 267 differing blocks of `display_163s_fbp08c`, the fade into the attract movie. Keying
+on the display buffer does not help (the fade shares `fbp08c` with the menu); what identifies a
+screen is its difference mask, and those separate cleanly — Jaccard 0.99–1.00 among the 58 menu
+presents, 0.25 for the fade, nothing between. With per-screen maps the fade is its own group of
+one, below the minimum, so it reports all 267.
+
+The cost, stated as the bar that actually applies rather than a paraphrase: a block becomes
+furniture at `max(3, ceil(0.35 × presents of that screen))` — **3 presents, or 35% of that screen's
+presents, whichever is larger** — so corruption repeating at the same coordinates that many times
+is absorbed. On a healed 23-present fixture (20 demoted, bar 7), the same 100-block patch dropped
+in k presents gives 98/196/294/490 findings and exit 1 for k = 1/2/3/5, and **0 findings, exit 0**
+at k = 10. Two things keep that visible: the per-screen line prints how many furniture blocks sit
+within one present of the bar, and `--furniture-baseline` fails on any block that is furniture now
+and was not in a saved map — on that k=10 case the map grows 484 → 582 and the run exits 1 again.
+A furniture map that grows run over run is the signature of corruption being learned as furniture.
 
 **A run with no counted present exits 2, not 0.** "Zero missing blocks out of nothing" is not a
 pass, and a capture that never reached the movie is the most likely way to produce one.
@@ -279,16 +293,20 @@ display_195s_fbp000  movie agree=1.000 visible=93%  MISSING 3: (48, 48) (48, 80)
 display_199s_fbp000  movie agree=1.000 visible=93%  MISSING 2: (432, 368) (272, 400)
 display_211s_fbp000  movie agree=1.000 visible=90%  MISSING 2: (384, 144) (384, 160)
 presents=108 tested=45 demoted=59 skipped=4 (dark=3 blank=1)
-furniture blocks=485 of 1120 (learned from 59 demoted presents; 635 measurable)
-demoted findings blocks=120 pictures=5 (black=35 stale=85)
+screen #0: 58 presents, furniture=485 blocks (bar=21 presents, 0 of them at the bar +/-1)
+screen #1: 1 presents, furniture=0 blocks -- too few presents, nothing masked
+furniture blocks=485 of 1120 (union over 2 screens)
+demoted findings blocks=273 pictures=5 (black=81 stale=192)
 STALE blocks=0
 MISSING blocks=7 pictures=3        (exit 1)
 ```
 
 — the same three presents, the same seven blocks, and no counted hit anywhere else (all 108
-presents print; the excerpt drops the `ok` lines). 485 of the 1120 blocks are learned as the menu's
-drawn furniture, leaving 635 measurable, and the 120 findings left on demoted presents are the
-one-off differences in the title menu's movie background — the second half of the user's report.
+presents print; the excerpt drops the `ok` lines). The 58 menu presents form one screen whose
+furniture is 485 of the 1120 blocks; the fade is a screen of its own, too small for a map, so all
+267 of its differing blocks are reported. The 273 findings on demoted presents are the one-off
+differences in the title menu's movie background plus that fade — the second half of the user's
+report.
 `display_040s` is the whole-frame case the `visible` rule exists for: the GL target entirely black
 against a shadow holding 89% content, which no per-block statement can describe.
 

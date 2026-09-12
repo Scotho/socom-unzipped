@@ -53,8 +53,9 @@ so the check would pass hardest exactly when the bug is worst. Three rules avoid
                      mirror and part is GPU-drawn, and the two are separated by the FURNITURE MAP
                      (see furniture_map below): blocks that differ from the shadow in present after
                      present are drawn furniture, blocks that differ in one present are a mirror
-                     miss. Every differing block outside the furniture map is a finding -- black or
-                     stale -- and findings fail the run.
+                     miss. The map is learned PER SCREEN (see screen_groups). Every differing block
+                     outside this present's screen map is a finding -- black or stale -- and
+                     findings fail the run.
 
 EVERY present prints a line, always, and every demoted present prints why it was demoted and what
 was found on it. That is deliberate. Two rounds of review removed two ways this check could report
@@ -92,29 +93,49 @@ picture numbering (965, 1085, 1447).
 Exit codes: 0 clean, 1 anything found (missing or stale, on a counted or a demoted present), 2
 nothing measurable (no counted present and nothing found, or no dumps at all).
 
-Known limits, stated precisely.
+Known limits, with the bar that actually applies rather than a comfortable paraphrase.
 
-* The furniture map needs --furniture-min demoted presents before it can tell furniture from a
-  miss. Below that it is empty and EVERY differing block on a demoted present is reported, which
-  fails loudly rather than quietly -- the right way round, but noisy on a short capture.
-* Corruption that recurs at the same coordinates in most presents of a capture is, by construction,
-  indistinguishable from furniture and will be absorbed. That is the price of the only signal that
-  works, and it is the right trade here: research/16 section 2 measured that the dropped positions
-  vary run to run and are not content-driven, and the capture agrees -- 116 of the 118 transient
-  coordinates appear in exactly one present.
+* THE ABSORPTION BAR IS LOW, and it is not "most of the capture". A block becomes furniture at
+  `max(--furniture-min, ceil(--furniture-frac x presents of THAT SCREEN))` -- with the defaults,
+  **3 presents, or 35% of the screen's presents, whichever is larger**. Corruption that repeats at
+  the same coordinates that many times is absorbed, by construction, and the run can then pass.
+  Measured on a healed 23-present fixture (20 demoted presents of one screen, bar = 7), the same
+  100-block patch dropped in k of them:
+
+      k =  0 -> 0 findings, exit 0        k = 3 -> 294 findings, exit 1
+      k =  1 -> 98 findings, exit 1       k = 5 -> 490 findings, exit 1
+      k =  2 -> 196 findings, exit 1      k = 10 -> 0 findings, EXIT 0  <-- absorbed
+
+  Two things make that visible rather than silent. The per-screen line prints how many furniture
+  blocks sit within one present of the bar, which is what corruption that only just cleared it
+  looks like; and `--furniture-baseline` compares the learned map with a saved one and fails on any
+  block that is furniture now and was not then. On the k=10 case above the map grows 484 -> 582 and
+  the baseline check turns exit 0 into exit 1. A map that grows run over run is the signature.
+* The map needs --furniture-min presents OF THE SAME SCREEN before it can tell furniture from a
+  miss. Below that it is empty and EVERY differing block on that present is reported, which fails
+  loudly rather than quietly -- the right way round, but noisy on a short capture.
 * `agree` treats a block that differs without being black as disagreement, so heavy NON-black
   corruption demotes a present out of the counted tier. It is still measured block-for-block there,
-  just against the furniture map instead of the full frame.
+  just against the screen's furniture map instead of the full frame.
+
+The trade behind all of this: research/16 section 2 measured that this defect's dropped positions
+vary run to run and are not content-driven, and the capture agrees -- 116 of the 118 transient
+coordinates appear in exactly one present. Corruption that repeats identically is a different
+defect from the one this tool was built to catch, and the baseline check is how you would notice
+it.
 
 Measured. 5/50/90% black drops give MISSING 50/523/941, all exit 1; an all-black pair exits 2; a
 10% stale-content present exits 1; a mixed capture of one clean plus one 50% stale-corrupted
-present exits 1 with the corrupted present printed (it exited 0, silently, two rounds ago). 100 and
-300 corrupted blocks injected into one of 20 real menu presents give 99/635 and 299/636 when
-scattered and 99/636 and 299/636 when contiguous -- the arrangement no longer matters. The stored
-capture still reports exactly research/16 section 4's three presents and seven blocks.
+present exits 1 with the corrupted present printed. 100 and 300 corrupted blocks injected into one
+of 20 real menu presents give 99 and 299 findings whether scattered or contiguous -- the
+arrangement does not matter. The stored capture still reports exactly research/16 section 4's three
+presents and seven blocks, and with the per-screen map its odd screen out, the fade
+`display_163s_fbp08c`, now reports all 267 of its differing blocks instead of the 114 a single
+global map left after masking 153 of them with the title menu's furniture.
 """
 import argparse
 import glob
+import io
 import os
 import re
 import subprocess
@@ -177,6 +198,36 @@ def identical_mask(a, b):
     return (blocks(a) == blocks(b)).all(axis=(2, 3, 4))
 
 
+def screen_groups(diff_masks, similar):
+    """Group demoted presents by which SCREEN they are, using their own difference masks.
+
+    A furniture map learned from one screen must not be applied to another: on
+    `logs/parity/mb10_dispdump` a single global map, learned mostly from 58 title-menu presents,
+    masked 153 of the 267 differing blocks of `display_163s_fbp08c` -- the fade into the attract
+    movie, a different screen that happens to share a display buffer with the menu. Keying on the
+    buffer (the `fbpNNN` in the file name) does not fix it, because that is where the screen was
+    drawn, not which screen it is.
+
+    What identifies the screen is the difference mask itself: which blocks the GPU draws over. The
+    separation is not marginal. Jaccard similarity of every demoted mask in that capture against a
+    typical menu present: 58 of them score 0.99-1.00 and the fade scores 0.25, with nothing in
+    between -- any threshold in (0.25, 0.99) gives the same grouping.
+
+    Single-pass greedy grouping against each group's first mask; returns a list of index lists.
+    """
+    groups = []
+    for i, m in enumerate(diff_masks):
+        for g in groups:
+            a, b = diff_masks[g[0]], m
+            union = int((a | b).sum())
+            if union == 0 or (a & b).sum() / union >= similar:
+                g.append(i)
+                break
+        else:
+            groups.append([i])
+    return groups
+
+
 def furniture_map(diff_masks, min_presents, frac):
     """Blocks the GPU draws over on this screen, learned from the capture instead of guessed.
 
@@ -194,29 +245,42 @@ def furniture_map(diff_masks, min_presents, frac):
     blocks differ in more than half of the 62 demoted presents, and with those excluded the median
     present has ZERO findings left.
 
-    So a block is furniture when it differs in at least `frac` of the demoted presents. The
-    decision is per block and uses no neighbours at all, which is what makes the result independent
-    of how the bad blocks are arranged.
+    So a block is furniture when it differs in at least `frac` of this screen's demoted presents,
+    and never in fewer than `min_presents` of them. The decision is per block and uses no
+    neighbours at all, which is what makes the result independent of how the bad blocks are
+    arranged.
 
     The threshold is not delicate, and that is the point of measuring it. On
-    `logs/parity/mb10_dispdump` the per-coordinate recurrence over 59 demoted presents is sharply
-    bimodal: 116 coordinates differ in exactly ONE present and 2 in two presents, then nothing at
-    all until 25, 51, 52, 55, 57, 58 and 59. Anything between 3 and 25 gives the same answer. The
-    default sits at a tenth of the presents (6 of 59) -- three times above the transient cluster and
-    four times below the persistent one. The transient cluster is the mirror misses, which is what
-    research/16 section 2 independently says they do: their positions vary run to run and are not
-    content-driven.
+    `logs/parity/mb10_dispdump` the per-coordinate recurrence over the menu screen's presents is
+    sharply bimodal: 116 coordinates differ in exactly ONE present and 2 in two presents, then
+    nothing at all until 25, 51, 52, 55, 57, 58 and 59. Anything between 3 and 25 gives the same
+    answer. The transient cluster is the mirror misses, which is what research/16 section 2
+    independently says they do: their positions vary run to run and are not content-driven.
 
-    Needs `min_presents` demoted presents to say anything. Below that there is no evidence either
-    way and the map is empty, so every differing block is reported -- conservative on purpose.
+    Needs `min_presents` presents OF THIS SCREEN to say anything. Below that there is no evidence
+    either way and the map is empty, so every differing block is reported -- conservative on
+    purpose.
+
+    Returns (map, support, need). `support` is the per-block count of presents it differed in, so
+    callers can see how close each furniture block sat to the bar.
     """
+    shape = diff_masks[0].shape
     if len(diff_masks) < min_presents:
-        return np.zeros(diff_masks[0].shape, dtype=bool) if diff_masks else None
-    counts = np.stack(diff_masks).sum(axis=0)
-    # Fraction of the presents, but never fewer than min_presents of them: on a short capture a
-    # fraction alone would call a single difference furniture and hide everything.
+        return np.zeros(shape, dtype=bool), np.zeros(shape, dtype=int), 0
+    support = np.stack(diff_masks).sum(axis=0)
     need = max(min_presents, int(np.ceil(frac * len(diff_masks))))
-    return counts >= need
+    return support >= need, support, need
+
+
+def read_mask(path):
+    rows = [ln.rstrip("\n") for ln in io.open(path, encoding="utf-8") if ln.strip()]
+    return np.array([[ch == "#" for ch in r] for r in rows], dtype=bool)
+
+
+def write_mask(path, mask):
+    with io.open(path, "w", encoding="utf-8") as f:
+        for r in mask:
+            f.write("".join("#" if v else "." for v in r) + "\n")
 
 
 def thumb(img):
@@ -278,11 +342,24 @@ def main(argv=None):
                     help="`agree` at or above which a demoted present is called partly mirrored "
                          "rather than not a mirror at all; both are checked and printed either "
                          "way, this only labels the line (default 0.20)")
-    ap.add_argument("--furniture-frac", type=float, default=0.10,
+    ap.add_argument("--furniture-frac", type=float, default=0.35,
                     help="a block that differs from the shadow in at least this fraction of the "
                          "demoted presents (never fewer than --furniture-min of them) is GPU-drawn "
-                         "furniture, not a mirror miss (default 0.10; the measured gap it sits in "
-                         "runs from 2 presents to 25, so anything in 3..25 behaves the same)")
+                         "furniture, not a mirror miss (default 0.35). The measured gap it sits "
+                         "in runs from 2 of 59 presents to 25 of 59, i.e. 0.034..0.42; 0.35 is as "
+                         "high inside that gap as the evidence allows, which is what sets how many "
+                         "repeats of the same corruption get absorbed")
+    ap.add_argument("--screen-frac", type=float, default=0.5,
+                    help="Jaccard similarity of two presents' difference masks at or above which "
+                         "they are the same screen and share a furniture map (default 0.5; the "
+                         "measured gap runs from 0.25 to 0.99, so the value is not delicate)")
+    ap.add_argument("--write-furniture", metavar="PATH",
+                    help="write the learned furniture map (union over screens) as a 28x40 mask")
+    ap.add_argument("--furniture-baseline", metavar="PATH",
+                    help="compare the learned furniture map against this saved one; any block that "
+                         "is furniture now and was not then is reported and fails the run. A map "
+                         "that grows run over run is what corruption being learned as furniture "
+                         "looks like")
     ap.add_argument("--furniture-min", type=int, default=3,
                     help="demoted presents needed before furniture can be told from a miss at all; "
                          "below this every differing block is reported (default 3)")
@@ -331,13 +408,28 @@ def main(argv=None):
             rec["kind"] = "movie" if rec["agree"] >= args.mirror_frac else "demoted"
         seen.append(rec)
 
-    demoted_diffs = [r["same"] for r in seen if r.get("kind") == "demoted"]
-    demoted_diffs = [~m for m in demoted_diffs]
-    furniture = furniture_map(demoted_diffs, args.furniture_min, args.furniture_frac)
-    if furniture is None:
-        furniture = np.zeros((HEIGHT // BLOCK, WIDTH // BLOCK), dtype=bool)
-    n_furniture = int(furniture.sum())
-    measurable = int((~furniture).sum())
+    # Furniture is learned PER SCREEN. One global map applied to every demoted present under-reports
+    # on a capture's minority screens: on logs/parity/mb10_dispdump a global map, learned mostly
+    # from 58 title-menu presents, masked 153 of the 267 differing blocks of display_163s_fbp08c
+    # (the fade into the attract movie -- a different screen sharing a display buffer with the
+    # menu, so keying on fbp does not help either).
+    demoted_idx = [i for i, r in enumerate(seen) if r.get("kind") == "demoted"]
+    demoted_diffs = [~seen[i]["same"] for i in demoted_idx]
+    blank_map = np.zeros((HEIGHT // BLOCK, WIDTH // BLOCK), dtype=bool)
+    groups = screen_groups(demoted_diffs, args.screen_frac) if demoted_diffs else []
+    group_info = []
+    for gi, g in enumerate(groups):
+        fmap, support, need = furniture_map([demoted_diffs[j] for j in g],
+                                            args.furniture_min, args.furniture_frac)
+        marginal = int(((support >= need) & (support <= need + 1)).sum()) if need else 0
+        group_info.append(dict(size=len(g), fmap=fmap, need=need, marginal=marginal,
+                               names=[seen[demoted_idx[j]]["name"] for j in g]))
+        for j in g:
+            seen[demoted_idx[j]]["fmap"] = fmap
+            seen[demoted_idx[j]]["group"] = gi
+    union = blank_map.copy()
+    for gi in group_info:
+        union |= gi["fmap"]
 
     missing_blocks = missing_pictures = stale_blocks = tested = 0
     note_blocks = note_black = note_stale = note_pictures = 0
@@ -388,11 +480,15 @@ def main(argv=None):
         # block at a time and with no reference to its neighbours, so the verdict does not depend
         # on how the bad blocks happen to be arranged.
         demoted += 1
-        bad = ~same & ~furniture
+        fmap = r.get("fmap", blank_map)
+        bad = ~same & ~fmap
         n_b, where_b = coords(bad & gpu_black & ~shadow_black)
         n_s, where_s = coords(bad & ~gpu_black & ~shadow_black)
-        head = "%s  demoted agree=%.3f visible=%.0f%% measurable=%d%s" % (
-            name, r["agree"], 100 * r["visible"], measurable, label)
+        head = "%s  demoted agree=%.3f visible=%.0f%% screen=%s measurable=%d%s" % (
+            name, r["agree"], 100 * r["visible"],
+            ("#%d/%d" % (r.get("group", -1), group_info[r["group"]]["size"])
+             if "group" in r else "?"),
+            int((~fmap).sum()), label)
         if n_b or n_s:
             note_pictures += 1
             note_blocks += n_b + n_s
@@ -409,13 +505,32 @@ def main(argv=None):
 
     print("presents=%d tested=%d demoted=%d skipped=%d (dark=%d blank=%d)"
           % (len(items), tested, demoted, dark + blank, dark, blank))
-    print("furniture blocks=%d of %d (learned from %d demoted presents; %d measurable)"
-          % (n_furniture, furniture.size, demoted, measurable))
+    for gi, info in enumerate(group_info):
+        print("screen #%d: %d presents, furniture=%d blocks (bar=%d presents, %d of them at the "
+              "bar +/-1)%s" % (gi, info["size"], int(info["fmap"].sum()), info["need"],
+                               info["marginal"],
+                               "" if info["need"] else "  -- too few presents, nothing masked"))
+    print("furniture blocks=%d of %d (union over %d screens)"
+          % (int(union.sum()), union.size, len(group_info)))
+    grown = 0
+    if args.write_furniture:
+        write_mask(args.write_furniture, union)
+        print("furniture map written to %s" % args.write_furniture)
+    if args.furniture_baseline:
+        base = read_mask(args.furniture_baseline)
+        if base.shape != union.shape:
+            print("FURNITURE BASELINE shape %s != %s -- cannot compare" % (base.shape, union.shape))
+            grown = 1
+        else:
+            new_blocks = union & ~base
+            grown, where = coords(new_blocks)
+            print("furniture vs baseline %s: %d blocks are furniture now and were not then%s"
+                  % (args.furniture_baseline, grown, (": " + where) if grown else ""))
     print("demoted findings blocks=%d pictures=%d (black=%d stale=%d)"
           % (note_blocks, note_pictures, note_black, note_stale))
     print("STALE blocks=%d" % stale_blocks)
     print("MISSING blocks=%d pictures=%d" % (missing_blocks, missing_pictures))
-    if missing_blocks or stale_blocks or note_blocks:
+    if missing_blocks or stale_blocks or note_blocks or grown:
         if tested == 0:
             print("NOTE: nothing qualified as a movie present either -- %d dark, %d blank, %d demoted"
                   % (dark, blank, demoted))
