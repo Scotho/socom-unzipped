@@ -3,6 +3,7 @@
 #include "ps2_runtime_macros.h"
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
+#include "Kernel/Stubs/LibC.h"
 #include "runtime/ee_scheduler.h"
 
 #include <array>
@@ -975,6 +976,69 @@ void register_ps2_runtime_kernel_tests()
             SET_GPR_S64(&env.ctx, 5, 2);
             ps2_stubs::__divdi3(env.rdram.data(), &env.ctx, &env.runtime);
             t.Equals(getRegS32(env.ctx, 2), -4, "__divdi3 should divide signed 64-bit values");
+        });
+
+        tc.Run("rand/srand reproduce newlib's 31-bit generator over the guest _rand_next", [](TestCase &t)
+        {
+            TestEnv env;
+
+            // newlib: _rand_next = _rand_next * 6364136223846793005 + 1;
+            //         rand() returns (int)((_rand_next >> 32) & 0x7fffffff).
+            // The state lives in the guest's struct _reent, reached through _impure_ptr.
+            constexpr uint32_t kImpurePtrAddr = 0x6000u;   // holds the pointer to struct _reent
+            constexpr uint32_t kReentAddr = 0x6100u;
+            constexpr uint32_t kRandNextOffset = 0xA8u;
+            constexpr uint32_t kRandNextAddr = kReentAddr + kRandNextOffset;
+
+            writeGuestU32(env.rdram.data(), kImpurePtrAddr, kReentAddr);
+            ps2_stubs::setLibcRandState(kImpurePtrAddr, kRandNextOffset);
+
+            const auto readState = [&]() {
+                uint64_t state = 0u;
+                std::memcpy(&state, env.rdram.data() + kRandNextAddr, sizeof(state));
+                return state;
+            };
+            const auto writeState = [&](uint64_t state) {
+                std::memcpy(env.rdram.data() + kRandNextAddr, &state, sizeof(state));
+            };
+
+            writeState(1u);   // newlib's static initialiser
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(1481765933),
+                     "rand should return newlib's first draw from seed 1");
+            t.Equals(readState(), static_cast<uint64_t>(0x5851F42D4C957F2EULL),
+                     "rand should advance the guest _rand_next in place");
+
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(1085377743),
+                     "rand should return newlib's second draw from seed 1");
+
+            // The defect this test exists for: the old stub returned `std::rand() & 0x7FFF`, i.e.
+            // 15 bits, while the guest promises 31 (SOCOM II scales every draw by 2^-31).
+            uint32_t seen = 0u;
+            for (int i = 0; i < 64; ++i)
+            {
+                ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+                const int32_t draw = getRegS32(env.ctx, 2);
+                t.IsTrue(draw >= 0 && draw <= 0x7FFFFFFF, "rand should stay inside newlib's RAND_MAX");
+                seen |= static_cast<uint32_t>(draw);
+            }
+            t.Equals(seen, 0x7FFFFFFFu, "rand should exercise all 31 bits of newlib's RAND_MAX");
+
+            setRegU32(env.ctx, 4, 12345u);
+            ps2_stubs::srand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(readState(), static_cast<uint64_t>(12345u),
+                     "srand should store the seed zero-extended in the guest _rand_next");
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(readState(), static_cast<uint64_t>(0x0807DC721521C106ULL),
+                     "rand should continue from a seed written by srand");
+
+            // With no registered guest state the pair still works off an internal state.
+            ps2_stubs::setLibcRandState(0u, 0u);
+            ps2_stubs::srand(env.rdram.data(), &env.ctx, &env.runtime);
+            ps2_stubs::rand(env.rdram.data(), &env.ctx, &env.runtime);
+            t.Equals(getRegS32(env.ctx, 2), static_cast<int32_t>(0x0807DC72),
+                     "the unregistered fallback should run the same generator");
         });
 
         tc.Run("ReleaseAlarm aliases CancelAlarm and cache toggles succeed", [](TestCase &t)

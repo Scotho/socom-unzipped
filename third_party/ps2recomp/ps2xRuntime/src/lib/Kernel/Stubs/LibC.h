@@ -56,6 +56,12 @@ namespace ps2_stubs
     void memchr(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void rand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void srand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
+    // Point rand()/srand() at the guest's own newlib `struct _reent._rand_next` so the stub pair
+    // and the game's recompiled srand() share one state: `impurePtrAddr` is the guest address of
+    // the pointer to struct _reent (newlib's _impure_ptr) and `randNextOffset` the offset of
+    // _rand_next inside it.  Both are game-specific; a game override calls this (see
+    // game_overrides_socom2.cpp).  Unregistered, the stubs keep an internal state instead.
+    void setLibcRandState(uint32_t impurePtrAddr, uint32_t randNextOffset);
     void strcasecmp(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void vfprintf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void vsprintf(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

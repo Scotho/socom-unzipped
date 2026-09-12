@@ -1080,15 +1080,106 @@ namespace ps2_stubs
         setReturnU32(ctx, 0u);
     }
 
+    // --- newlib rand()/srand() --------------------------------------------------------------
+    //
+    // These replace the guest's own newlib routines, so they must be the SAME generator over the
+    // SAME state, not "some randomness".  The guest pair is
+    //
+    //   srand(u):  _rand_next = (unsigned)u;
+    //   rand():    _rand_next = _rand_next * 6364136223846793005ULL + 1;
+    //              return (int)((_rand_next >> 32) & 0x7fffffff);      // newlib RAND_MAX, 31 bits
+    //
+    // Two things this has to get right that the previous implementation did not:
+    //
+    // 1. WIDTH.  It used to be `std::rand() & 0x7FFF`.  RAND_MAX is 0x7FFF on llvm-mingw (verified
+    //    on this toolchain), so that mask was a no-op and the stub returned 15 bits where newlib
+    //    promises 31.  SOCOM II turns a draw into a 0..1 float with `(float)rand() * 4.656613e-10`
+    //    (2^-31) at 249 call sites, so every random value in the game was pinned to the bottom
+    //    1/65536 of its range -- e.g. CSealCtrl+0x5c, `4.0 + 3.0*r`, could not exceed 4.0000458
+    //    against the console's 6.3338 (docs/research/17-ground-height.md section 6).  Widening by
+    //    shifting a 15-bit host draw left by 16 would be a different wrong answer (zeroed low
+    //    bits, 32768 distinct values); the generator itself is reproduced instead.
+    //
+    // 2. STATE.  srand() is NOT stubbed in recomp/socom2.toml -- it runs recompiled and writes
+    //    `_rand_next` in guest memory -- and SOCOM II calls `srand(<RTC-derived>); srand(rand());`
+    //    at boot.  A stub with private state would ignore that seeding entirely (which is exactly
+    //    what happened: our RDRAM images show _rand_next frozen at 41, the host CRT's first draw,
+    //    written back by the guest's own srand(rand())).  So the state is read from and written to
+    //    the guest's `struct _reent._rand_next`, reached through the game's _impure_ptr; the two
+    //    addresses are game-specific and are registered by the game override (setLibcRandState).
+    //    With no registration the stub keeps an internal state seeded the way newlib's static
+    //    initialiser is, so the generic runtime still behaves.
+    namespace
+    {
+        std::mutex g_randMutex;
+        uint32_t g_randImpurePtrAddr = 0u;   // guest address OF THE POINTER to struct _reent
+        uint32_t g_randNextOffset = 0u;      // offset of _rand_next within struct _reent
+        uint64_t g_randNextFallback = 1u;    // newlib's static initialiser for _rand_next
+
+        // Host pointer to the guest's _rand_next, or nullptr when it cannot be resolved.
+        uint8_t *guestRandNextSlot(uint8_t *rdram)
+        {
+            if (rdram == nullptr || g_randImpurePtrAddr == 0u)
+            {
+                return nullptr;
+            }
+            const uint8_t *impurePtr = getConstMemPtr(rdram, g_randImpurePtrAddr);
+            if (impurePtr == nullptr)
+            {
+                return nullptr;
+            }
+            uint32_t reentAddr = 0u;
+            std::memcpy(&reentAddr, impurePtr, sizeof(reentAddr));
+            if (reentAddr == 0u)
+            {
+                return nullptr;
+            }
+            return getMemPtr(rdram, reentAddr + g_randNextOffset);
+        }
+
+        uint64_t loadRandNext(uint8_t *slot)
+        {
+            if (slot == nullptr)
+            {
+                return g_randNextFallback;
+            }
+            uint64_t state = 0u;
+            std::memcpy(&state, slot, sizeof(state));
+            return state;
+        }
+
+        void storeRandNext(uint8_t *slot, uint64_t state)
+        {
+            if (slot == nullptr)
+            {
+                g_randNextFallback = state;
+                return;
+            }
+            std::memcpy(slot, &state, sizeof(state));
+        }
+    }
+
+    void setLibcRandState(uint32_t impurePtrAddr, uint32_t randNextOffset)
+    {
+        std::lock_guard<std::mutex> lock(g_randMutex);
+        g_randImpurePtrAddr = impurePtrAddr;
+        g_randNextOffset = randNextOffset;
+    }
+
     void rand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        setReturnS32(ctx, std::rand() & 0x7FFF);
+        std::lock_guard<std::mutex> lock(g_randMutex);
+        uint8_t *slot = guestRandNextSlot(rdram);
+        const uint64_t state = loadRandNext(slot) * 6364136223846793005ULL + 1ULL;
+        storeRandNext(slot, state);
+        setReturnS32(ctx, static_cast<int32_t>((state >> 32) & 0x7FFFFFFFu));
     }
 
     void srand(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        std::srand(getRegU32(ctx, 4));
-        setReturnS32(ctx, 0);
+        // newlib stores the unsigned 32-bit argument zero-extended and returns void.
+        std::lock_guard<std::mutex> lock(g_randMutex);
+        storeRandNext(guestRandNextSlot(rdram), static_cast<uint64_t>(getRegU32(ctx, 4)));
     }
 
     void strcasecmp(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

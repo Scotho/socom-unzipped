@@ -8,6 +8,7 @@
 // update path by "not found".  See docs/research/05-code-package-and-harness.md.
 #include "game_overrides.h"
 #include "ps2_stubs.h"
+#include "Kernel/Stubs/LibC.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
@@ -1121,6 +1122,11 @@ namespace
             for (int i = 0; p && i < 24 && p[i]; ++i) s.push_back(static_cast<char>(p[i]));
             std::cout << "[socom2] mem@0x3e5c60 = \"" << s << "\"" << std::endl;
         }
+        // newlib rand()/srand() share `struct _reent._rand_next`: _impure_ptr lives at 0x001cc750
+        // and points at 0x001cc460, _rand_next is at +0xa8 (SCUS_972.75 FUN_00197728/FUN_00197740).
+        // rand() is stubbed (recomp/socom2.toml) but srand() is not, and the game boots with
+        // `srand(<RTC>); srand(rand());` -- both halves have to write the same word.
+        ps2_stubs::setLibcRandState(0x001CC750u, 0xA8u);
         configureCdImage();
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);

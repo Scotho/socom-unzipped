@@ -397,6 +397,13 @@ This is **not** the ground/camera height: `+0x54/+0x58/+0x5c` sits among camera 
 jitter/blink timer. It is reported here because this task is where it was found and because it has
 a 249-site blast radius.
 
+**Fixed in Sprint 4 Task 4b** (stub route, no re-recompile): `ps2_stubs::rand` now runs newlib's own
+LCG over the guest's `_rand_next` (`_impure_ptr` `0x001cc750` → `+0xa8`), which `srand` — never
+stubbed — was already writing. `+0x5c` re-measured at 400 s on the same probe: **5.5314**
+(`0x40b10150`, implied `rand()` = 1 096 226 133) against the old build's 4.000021 and its 4.0000458
+ceiling; the field's range is now the full 4.0 .. 7.0 that the console's 6.3338 needs. Gate
+`s4_rand` PASS 3/3. See `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/task-4b-report.md`.
+
 ---
 
 ## 7. Why no fix was landed
