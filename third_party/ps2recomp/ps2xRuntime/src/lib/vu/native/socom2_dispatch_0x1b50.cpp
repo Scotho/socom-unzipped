@@ -21,15 +21,19 @@
 // this file implements and terminates on 0x42 (END) -- all seven family-A commands, all seven
 // family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the 0x1980
 // flush tail behind them), five of family C's six (0x64, 0x72, 0x74, 0x30, 0x32) and, of the
-// fourth family, 0x70 (research/15). "Decode" is
+// fourth family, 0x70 and 0x40 (research/15) -- which makes its two drawing shapes
+// `70 06 08 40 42` and `70 08 40 42` fully native. "Decode" is
 // not "linear decode" any more: 0x30 and 0x32 embed eight-qword GIF packets in the list itself and
 // advance vi14 past them, so the pre-scan applies that rewrite as it walks (scanCommandList).
 //
-// The one command still missing is 0x34, the eleven-qword-block variant of 0x30, whose per-vertex
-// maths (an ERLENG normalise over five VU-only parameter qwords) research/13 4.8 documents only as
-// [partial] and which was dispatched once in the whole 48-dump corpus. A list containing it hands
-// back WHOLE at 0x1b50 before this file touches any state, so the generated microcode translation
-// runs it exactly as before.
+// Three command words are still missing, and a list containing any of them hands back WHOLE at
+// 0x1b50 before this file touches any state, so the generated microcode translation runs it
+// exactly as before. Over the 166-run dispatcher corpus that residual is five programs:
+//   * 0x34 (0x2690), the eleven-qword-block variant of 0x30: sphere-map ST plus a rim-alpha ramp
+//     over an ERLENG normalise, dispatched once in the whole corpus (research/15 6).
+//   * 0x52 (0x3100) and 0x66 (0x2e28), the skinning half of the fourth family, four programs.
+//     Both are scope decisions with reasons, not gaps waiting to be filled -- see
+//     isFamilyDCommand.
 //
 // Within a family-A list the handlers are mutually independent (each re-derives its pointers from
 // vi1). Family B is not: vi8 and vi10 (the clipped polygon and its vertex count, set inside
@@ -175,12 +179,18 @@ namespace
     //     dump3 (48 of 52)        vertices  78   triangles  73
     //     dump4 (83 lists)        vertices  76   triangles  44
     //
-    // so the ceiling keeps a factor of 3.3 over the worst list this file will run. The four dump3
-    // lists left out of that row are the `52 66 08 40 42` shape -- the fourth family, whose 0x52 /
-    // 0x66 / 0x40 have no handlers here -- and they are also the only lists in the corpus whose
-    // header is outside the ceiling at all (vertices 12384, -21943 x2, -22066; triangles 0). They
-    // are refused on their first command word, before any header check runs, so no list in the
-    // corpus is refused *by* these ceilings. Re-run the scan if the corpus grows.
+    // so the ceiling keeps a factor of 3.3 over the worst list this file will run. The fourth
+    // family's drawing shapes are inside that row and move neither number: their maxima are 73
+    // vertices (0x70) and 73 triangles (0x40) over the 38 dispatches of each (research/15 7).
+    //
+    // The four dump3 lists left out of that row are the `52 66 08 40 42` shape, whose 0x52 / 0x66
+    // have no handlers here, and they are also the only lists in the corpus whose header is
+    // outside the ceiling at all (vertices 12384, -21943 x2, -22066; triangles 0). That is not a
+    // header at all: for a 0x52 list TOP+0..TOP+3 are a bone matrix, and reading TOP+2 as ILW
+    // words reads matrix floats (research/15 4.1). They are refused on their first command word,
+    // before any header check runs, so no list in the corpus is refused *by* these ceilings --
+    // and if 0x52 is ever implemented, this ceiling has to be skipped for lists that start with
+    // it or it will refuse every one of them. Re-run the scan if the corpus grows.
     constexpr int32_t kMaxVertices = 256;
     constexpr int32_t kMaxTriangles = 256;
 
@@ -323,6 +333,7 @@ namespace
         switch (command)
         {
         case kCmdUnpackScaled:
+        case kCmdDrawUntextured:
             return true;
         default:
             return false;
@@ -1875,7 +1886,13 @@ namespace
         return true;
     }
 
-    bool cmdBuildPacket(Ctx &c)
+    // The body from 0x1790 on, entered with vf19 holding the GIFtag template and vf20 the quad
+    // the RGBAQ bias is taken from. Command 0x28 (0x1780) loads both, from data qword 38 and
+    // TOP+1. Command 0x40 (0x1968) loads only the tag, from data qword 26, and branches here --
+    // i.e. it enters TWO PAIRS PAST 0x28's head and runs on an INHERITED vf20. That is the whole
+    // difference between the two commands, and the reason this split exists rather than a flag:
+    // see cmdDrawUntexturedTriangles.
+    bool buildPacketBody(Ctx &c)
     {
         using namespace packet;
         using vu1ops::ArithAdd;
@@ -1886,9 +1903,6 @@ namespace
         // Read once per run (hostDrawEnabled caches the env), and only meaningful while a GS is
         // attached -- activeGs() is valid for the length of this execute()/resume() call.
         const bool hostDraw = hostDrawEnabled() && c.vu.activeGs() != nullptr;
-
-        loadQword<kBias, kXYZW>(c, 38);                          // 0x1780
-        loadQword<kGifTag, kXYZW>(c, c.vi(1) + 1);               // 0x1788: TOP+1
 
         // 0x1790-0x1798: ACC holds the fixed-point rounding term the RGBAQ MADDs add; it is set
         // once and never rewritten inside this command.
@@ -2019,6 +2033,57 @@ namespace
         storeIntWord<kX>(c, 329, c.vi(kPacket));
         storeIntWord<kY>(c, 329, c.vi(kOtherPacket));
         return true;                                             // 0x1958: B 0x1b60
+    }
+
+    bool cmdBuildPacket(Ctx &c)
+    {
+        using namespace packet;
+        loadQword<kBias, kXYZW>(c, 38);                          // 0x1780: (1, 1, 1, 0.5)
+        loadQword<kGifTag, kXYZW>(c, c.vi(1) + 1);               // 0x1788: TOP+1
+        return buildPacketBody(c);                               // falls into 0x1790
+    }
+
+    // ---- command 0x40 -> 0x1968: the same triangles again, untextured ----------------------
+    //
+    // Three pairs (research/15 3): load the GIFtag template from data qword 26 and branch into
+    // 0x28's body at 0x1790. So 0x40 draws the same index list from the same staging array as
+    // 0x28, and differs from it in exactly two ways.
+    //
+    // One is the tag. Qword 26 is `00008000 3025c000 00000412 00000000` in all 38 dumps -- the
+    // same PACKED (ST, RGBAQ, XYZF2) x 3 with PRE set that 0x28's TOP+1 template carries, and the
+    // same NLOOP patch to 3 -- except that its PRIM is 0x4B rather than 0x7B: TME 0 and FGE 0,
+    // i.e. untextured and unfogged.
+    //
+    // The other is the trap. 0x40 enters PAST 0x1780's `LQ vf20, 38(vi0)`, so the RGBAQ
+    // computation that 0x1790's ADDAw and 0x1880's MADD perform runs on a vf20 INHERITED from
+    // whatever handler ran before it -- there is no vf20 of 0x40's own. In all 38 dispatches that
+    // handler is 0x08, whose software-pipelined loop exits with vf20 holding one qword past the
+    // end of the vertex block, data[TOP+4 + 3*(TOP+2.z + 2)]; in every one of the 38 that lands
+    // inside the index list, on four small integers which reinterpreted as floats are denormals,
+    // which the VU flushes to zero. Hence ACC.xyz = 0, R' = G' = B' = 0, and A' = A * qword 327.w:
+    // 798 packets, 2394 vertices, exactly one distinct (R,G,B) triple in the whole corpus, (0,0,0).
+    //
+    // None of that is hardcoded here, deliberately. The inheritance is reproduced instead -- this
+    // handler does not load vf20, and buildPacketBody computes ACC.xyz from the inherited vf20.w
+    // before 0x17d8 overwrites vf20.w from qword 327, exactly as the microcode does -- because
+    // "RGB comes out black" is a property of this corpus's data, not of the microcode, and the
+    // first list that puts a different handler in front of 0x40 would break a shortcut. The
+    // denormal flush is the interpreter's own: fmac normalises its vft operand through
+    // vu1ops::normalize4, the same normalizeOperand semantics the microcode path uses, so the
+    // zeros are produced rather than assumed.
+    //
+    // Everything else -- the index walk, the two visibility gates, the 290/300 ping-pong and its
+    // write-back to qword 329, one XGKICK per surviving triangle -- is 0x28's, unchanged.
+    bool cmdDrawUntexturedTriangles(Ctx &c)
+    {
+        using namespace packet;
+        // Clamp: 0x17d0's triangle count, read before the shim's LQ, so the hand-back is clean.
+        // The loop exits on `IBGTZ`, so zero is safe and only the ceiling matters; the corpus
+        // maximum over the 38 dispatches is 73, inside kMaxTriangles = 256 (research/15 7).
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 3), triangleCeiling()))
+            return handBackAtNextCommand(c);
+        loadQword<kGifTag, kXYZW>(c, 26);                        // 0x1968
+        return buildPacketBody(c);                               // 0x1970: B 0x1790
     }
 
     // Clamp wrapper for 0x28 as a *dispatched* command: 0x17d0's triangle count, checked before
@@ -2970,6 +3035,8 @@ namespace
             return fromHandler(cmdUnpackVertices(c));
         case kCmdUnpackScaled:
             return fromHandler(cmdUnpackScaledVertices(c));
+        case kCmdDrawUntextured:
+            return fromHandler(cmdDrawUntexturedTriangles(c));
         case kCmdCull:
             return fromHandler(cmdBackfaceCull(c));
         case kCmdTransform:
