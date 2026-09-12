@@ -377,7 +377,16 @@ void main()
     void scaleSelfTestCheck(uint32_t fbp, uint32_t mirrorFbo, uint32_t hostFbo,
                             uint32_t natW, uint32_t natH, uint32_t hostW, uint32_t hostH, bool resolvedNow)
     {
-        static uint64_t s_reads = 0, s_stale = 0, s_content = 0, s_clean = 0;
+        // s_contentLit* are budgets for windows that actually have content: a first cut spent all
+        // 24 on the first 24 reads and every one of them landed on an all-black window served by a
+        // read that had just re-resolved, so "0 samples outside the host block range" was true and
+        // near-vacuous. The budget is now charged only when the window is lit (nonBlack > 0), and
+        // split by resolved-now so the shape that a stale mirror can actually corrupt -- a read
+        // served from an ALREADY-CLEAN mirror -- gets its own half and cannot be crowded out.
+        // s_contentTried caps the readbacks themselves, since an unlit window still costs two
+        // glReadPixels to discover.
+        static uint64_t s_reads = 0, s_stale = 0, s_clean = 0;
+        static uint64_t s_contentLitDirty = 0, s_contentLitClean = 0, s_contentTried = 0, s_contentDark = 0;
         const ScaleSerial &ser = scaleSerials()[fbp];
         ++s_reads;
         if (!resolvedNow)
@@ -393,28 +402,41 @@ void main()
             std::fprintf(stderr, "[gs-scale-selftest] %llu native-view reads (%llu served from an already-clean mirror), %llu stale; fbp=%03x writes=%llu\n",
                          (unsigned long long)s_reads, (unsigned long long)s_clean, (unsigned long long)s_stale,
                          fbp, (unsigned long long)ser.written);
-        if (s_content >= 24u || natW == 0u || natH == 0u)
+        const uint64_t litBudget = resolvedNow ? s_contentLitDirty : s_contentLitClean;
+        if (litBudget >= 12u || s_contentTried >= 3000u || natW == 0u || natH == 0u)
             return;
-        ++s_content;
+        ++s_contentTried;
         const uint32_t sx = hostW / natW, sy = hostH / natH;
         if (sx == 0u || sy == 0u)
             return;
         const uint32_t w = std::min<uint32_t>(256u, natW), h = std::min<uint32_t>(224u, natH);
-        std::vector<uint8_t> nat(static_cast<size_t>(w) * h * 4u);
-        std::vector<uint8_t> host(static_cast<size_t>(w) * sx * static_cast<size_t>(h) * sy * 4u);
         GLint prevRead = 0;
         glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevRead);
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        // Read the native mirror first and count lit pixels in it. A dark window cannot tell a
+        // correct mirror from a stale or a mis-addressed one, so it is skipped BEFORE the host
+        // readback (which is SxS times larger) and without charging the budget -- that keeps the
+        // cost of hunting for a lit frame down to one 256x224 readback per attempt.
+        std::vector<uint8_t> nat(static_cast<size_t>(w) * h * 4u);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, mirrorFbo);
         glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h), GL_RGBA, GL_UNSIGNED_BYTE, nat.data());
+        uint64_t nonBlack = 0;
+        for (size_t i = 0; i < static_cast<size_t>(w) * h; ++i)
+            if (nat[i * 4u] != 0u || nat[i * 4u + 1u] != 0u || nat[i * 4u + 2u] != 0u)
+                ++nonBlack;
+        if (nonBlack == 0u)
+        {
+            ++s_contentDark;
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevRead));
+            return;
+        }
+        std::vector<uint8_t> host(static_cast<size_t>(w) * sx * static_cast<size_t>(h) * sy * 4u);
         glBindFramebuffer(GL_READ_FRAMEBUFFER, hostFbo);
         glReadPixels(0, 0, static_cast<GLsizei>(w * sx), static_cast<GLsizei>(h * sy), GL_RGBA, GL_UNSIGNED_BYTE, host.data());
         glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevRead));
-        uint64_t bad = 0, samples = 0, nonBlack = 0;
+        uint64_t bad = 0, samples = 0;
         for (uint32_t y = 0; y < h; ++y)
             for (uint32_t x = 0; x < w; ++x)
-            {
-                bool lit = false;
                 for (uint32_t c = 0; c < 4u; ++c)
                 {
                     int lo = 255, hi = 0;
@@ -425,21 +447,22 @@ void main()
                             lo = std::min(lo, v);
                             hi = std::max(hi, v);
                         }
-                    if (c < 3u && hi != 0)
-                        lit = true;
                     const int got = nat[(static_cast<size_t>(y) * w + x) * 4u + c];
                     ++samples;
                     if (got < lo - 1 || got > hi + 1)
                         ++bad;
                 }
-                if (lit)
-                    ++nonBlack;
-            }
-        std::fprintf(stderr, "[gs-scale-selftest] content fbp=%03x read#%llu resolved-now=%d writes=%llu resolved-at=%llu filter=%s scale=%ux%u window=%ux%u: %llu/%llu channel samples outside the host block range, %llu/%u non-black native pixels\n",
+        if (resolvedNow)
+            ++s_contentLitDirty;
+        else
+            ++s_contentLitClean;
+        std::fprintf(stderr, "[gs-scale-selftest] content fbp=%03x read#%llu resolved-now=%d writes=%llu resolved-at=%llu filter=%s scale=%ux%u window=%ux%u: %llu/%llu channel samples outside the host block range, %llu/%u non-black native pixels (lit windows checked: %llu after a resolve, %llu served clean; %llu dark windows skipped of %llu tried)\n",
                      fbp, (unsigned long long)s_reads, resolvedNow ? 1 : 0,
                      (unsigned long long)ser.written, (unsigned long long)ser.resolved,
                      resolveFilterIsBox() ? "box" : "point", sx, sy, w, h,
-                     (unsigned long long)bad, (unsigned long long)samples, (unsigned long long)nonBlack, w * h);
+                     (unsigned long long)bad, (unsigned long long)samples, (unsigned long long)nonBlack, w * h,
+                     (unsigned long long)s_contentLitDirty, (unsigned long long)s_contentLitClean,
+                     (unsigned long long)s_contentDark, (unsigned long long)s_contentTried);
     }
 
     // Fullscreen triangle from gl_VertexID alone: no attributes, no vertex buffer.
@@ -2166,7 +2189,8 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
         {
             if (!changed)
                 ++s_logged;
-            std::fprintf(stderr, "[gs-gl present] frame=%llu dispfb fbp=%03x fbw=%u psm=%02x display=%ux%u smode2=%llx rt=%ux%u used=%u -> present %ux%u\n",
+            // display/rt/used are NATIVE GS extents; present is the HOST rect (native * scale).
+            std::fprintf(stderr, "[gs-gl present] frame=%llu dispfb fbp=%03x fbw=%u psm=%02x display(native)=%ux%u smode2=%llx rt(native)=%ux%u used(native)=%u -> present(host)=%ux%u\n",
                          (unsigned long long)m_frameCounter, display.fbp, display.fbw, display.psm, width, height,
                          (unsigned long long)request.smode2, rt->nativeWidth, rt->nativeHeight, rt->usedHeight, m_presentHostWidth, m_presentHostHeight);
         }

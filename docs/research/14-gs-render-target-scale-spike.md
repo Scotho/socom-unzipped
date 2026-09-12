@@ -604,12 +604,24 @@ return the mirror without re-resolving:
   `resolved < written` at the next read.
 * **content** — the mirror pixel must lie inside the per-channel `[min, max]` of the `SxS` host
   texels behind it. Point picks one member of that block, box averages them, so one rule covers
-  both filters.
+  both filters. The budget is spent only on **lit** windows (the window is read from the mirror
+  first and a dark one is skipped without charging it — an all-black window cannot tell a correct
+  mirror from a stale or a mis-addressed one), and it is **split by whether the read re-resolved**,
+  12 each, so the clean-served case — the only shape a stale read can take — has guaranteed
+  coverage. A first cut charged the budget by read order instead and spent 47 of 48 windows on
+  all-black frames, every one of them just re-resolved: true, and near-vacuous.
 
-Measured at `PS2X_GS_SCALE=2`, both filters, on a title run with `PS2X_GS_DUMP_DISPLAY` forcing the
-reads: 13 native-view reads each, **0 stale**, **0 of 229,376 channel samples per read outside the
-host block range**, with 8,000-12,000 host-texture writes between consecutive reads. The "gpu" PPM
-the display dump writes out of the mirror is a complete, correctly sized 640x448 frame.
+Measured at `PS2X_GS_SCALE=2`, one `gameplay_probe.txt` run per filter (gameplay, not the title —
+see §10.5):
+
+| filter | native-view reads | served from an already-clean mirror | stale | lit windows checked | of which clean-served | samples outside the host block range |
+|---|---|---|---|---|---|---|
+| `point` | 31,500+ | 5,102 | **0** | 24 | 12 | **0** of 229,376 x 24 |
+| `box` | 39,000+ | 6,352 | **0** | 24 | 12 | **0** of 229,376 x 24 |
+
+Lit windows ran 24,230-57,344 of 57,344 native pixels; 95 dark windows were skipped of 119 tried.
+Separately, on a title run with `PS2X_GS_DUMP_DISPLAY` forcing the reads, the "gpu" PPM the display
+dump writes out of the mirror is a complete, correctly sized 640x448 frame -- not a `1/S` corner.
 
 ### 10.5 A finding worth recording: the title screen performs no guest-visible RT read
 
@@ -619,3 +631,26 @@ the shadow-download fallback) does not change that. The resolve path only runs o
 when `PS2X_GS_DUMP_DISPLAY` asks for it. §2.5's claim that the title labels come out of
 `downloadRenderTargetToShadow` does not hold on this build. Anything that wants to exercise the
 resolve under load needs a gameplay scene, not the title.
+
+Generalised (review round 1): **no gate capture at any scale goes through the resolve at all.** The
+parity captures are `LoadImageFromScreen()` window screenshots (`ps2_runtime.cpp:2727`), not
+`m_presentPixels`, so the `nativeViewFbo` capture §10.3 routes is reached only under
+`PS2X_FRAME_DUMP`, which no harness sets. A 2x gate therefore validates the presentation path and
+nothing of the mirror; validating the mirror means `PS2X_GS_SCALE_SELFTEST=1` on a mission run.
+
+### 10.6 `rows 396-447 peak 7` is not a scale artefact
+
+The transition gate's black-band peak is 7 on some runs and 0 on others, and the difference is
+run-to-run capture timing on **one** frame, `w13_001.png`, in every run that shows it. Three runs of
+the *same* S3-b binary gave 7 (`s3b`), 7 (`s3b2`) and 0 (`s3b3`); S3-c's `s3c_1x_final` gave 7 and
+its `w13_001.png` is **byte-identical** (md5 `fdf6977...`) to `s3b`'s and `s3b2`'s. The frame is the
+fade itself caught one settle-frame early — the whole frame peaks at 7, rows 0-396 included, not
+just the band — and 7 is under `black_rows.py`'s `--max 8`, which is why every such run passes.
+
+Confirmed by A/B rather than by argument: the parent commit's binary (`1059bcf`) and S3-c's
+(`219ab9c`), built side by side and alternated over five `--only transition` gates each, both
+produce peak 0 and peak 7 runs, and **both fail once in five** on the separate residual-strip
+signature (a one-frame dim strip at rows 396-447 in the middle of an otherwise black sequence) —
+parent `s11_burst_015.png` peak 36, S3-c `w13_000.png` peak 18. That strip is a pre-existing
+intermittent 1x artefact of the `refreshDirtyRows` / `executeClear` ordering, at ~1 gate in 5 on
+both binaries; the scale neither causes nor worsens it, and it is not in STATUS's flake list.
