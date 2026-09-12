@@ -8,11 +8,13 @@ The whole 14.7-vs-20.1 divergence is one number: the player actor's **skeleton r
 translation** (`actor+0x2e8` → `+0x04`), which is `5.50391` on the console and `0.0` on ours.
 `FUN_0029a950` (the third-person camera's local offset, `0x29a950`) turns that number into the
 camera height with a ramp whose zero case is a hard-coded `10.0`, so ours lands on the engine's own
-"there is no root node" fallback. A live trace shows *why* our value is 0, and names the primitive:
-the node's **saved** copy holds the console's `5.50391` exactly, while `FUN_0028e040`'s weighted
-blend walks **current** away from it to 0 along a clean `saved × (1 − w)` curve — i.e.
-`FUN_001c0768`, a two-term VU0 macro-mode weighted sum, is producing only one of its two terms.
-Every figure below is measured on both sides.
+"there is no root node" fallback. A live trace shows *why* our value is 0 and narrows the search to
+one function's two calls: the node's **saved** copy holds the console's `5.50391` exactly, while the
+node's end-of-frame value walks away from it to 0 along a clean `saved × (1 − w)` curve as
+`FUN_0028e040`'s blend weight ramps. **Two candidates remain and the evidence does not separate
+them** — the lerp primitive `FUN_001c0768` dropping its `a·w` term, or a correct blend followed by a
+second writer clobbering the node; §4.3 gives the one-run experiment that decides. Every figure
+below is measured on both sides.
 
 ---
 
@@ -142,7 +144,7 @@ bug.
 
 ---
 
-## 4. The real divergence: the SEALs' skeleton root node, and the primitive behind it
+## 4. The real divergence: the SEALs' skeleton root node, and where it is written
 
 Node layout (confirmed by `FUN_0028e370` / `FUN_0028e040`):
 `+0x00` vec3 local translation, `+0x0c` derived-matrix ptr, `+0x10` saved translation,
@@ -197,7 +199,7 @@ frame after it reaches 0 the `rootY != 0.0` test flips and the height jumps from
 hard-coded **10.0** (the little 5.5→10.0 step between #24 and #25 in the table is that branch
 firing). The final eye height above the player, **14.105**, is the 14.7 STATUS measured.
 
-### 4.2 The same dump also names the broken primitive
+### 4.2 The same dump narrows it to one function's two calls
 
 The 8-word node dump covers `+0x00..+0x1c`, so word 1 is the **current** translation Y and word 5
 the **saved** translation Y (`+0x14`). Putting the two side by side across the decay:
@@ -222,18 +224,20 @@ the **saved** translation Y (`+0x14`). Putting the two side by side across the d
 | 24 | 0.00001 | 5.50391 | 0.0000 |
 | 25+ | 0 | 0 (re-snapshotted) | — |
 
-Two things fall out of that, and they are the whole finding:
+Two things fall out of that:
 
 1. **The snapshot captured the right value.** At #10..#13 `FUN_0028e370` runs (saved tracks
    current) and parks `saved = 5.50391` — *the console's resting value* — where it then stays,
    frozen, for the next eleven frames. So the blend's source data is correct; nothing upstream of
    the blend is wrong about 5.50391.
-2. **The blend then walks away from it.** From #13 both endpoints of the blend are `5.50391`
-   (current == saved), and **any** convex combination of two equal values is that value. Ours
-   reaches 0. The observed curve is exactly `current = saved × (1 − w)` with `w` tracing a clean
+2. **The node's end-of-frame value then walks away from it.** From #13 both endpoints of the blend
+   are `5.50391` (current == saved), and **any** convex combination of two equal values is that
+   value. Ours reaches 0, along exactly `current = saved × (1 − w)` with `w` tracing a clean
    symmetric smoothstep 0→1 (1 − ratio: 0.020, 0.080, 0.180, 0.319, 0.499, 0.681, 0.819, 0.891,
-   0.944, 0.980, 1.000) — i.e. **only one of the two terms of the lerp survives; the other is
-   dropped**.
+   0.944, 0.980, 1.000).
+
+That says the corruption is on `nodeArray[0]` somewhere between the snapshot and the next frame's
+read. It does **not** by itself say the blend is what corrupts it — see §4.3.
 
 `FUN_0028e040` is the blend. Register-exact, from its disassembly at `0x28e040`:
 
@@ -250,47 +254,70 @@ if (s0 && ([s0+0x42] & 1)) {
 ```
 
 `FUN_001c0768` is VU0 macro-mode (`vmulabc` / `vmaddbc` against `vf0`) — a two-term weighted sum —
-which is exactly the shape of instruction the recompiler has already been caught mishandling once
-on this project (STATUS 2026-09-09 00:10, VU0 macro-mode MAC/STATUS flags never written). The
-weight comes from `actor+0x10d0`, counted down by `actor+0x2e0` per frame in `FUN_00576860` (with a
-second timer at `actor+0x178`).
+which is the shape of instruction the recompiler has already been caught mishandling once on this
+project (STATUS 2026-09-09 00:10, VU0 macro-mode MAC/STATUS flags never written). That is a motive,
+not a conviction: §4.3 sets out what is actually proven and what is not. The weight comes from
+`actor+0x10d0`, counted down by `actor+0x2e0` per frame in `FUN_00576860` (with a second timer at
+`actor+0x178`).
 
-So the statement of the bug is:
+### 4.3 What the evidence proves, and the two candidates it does *not* separate
 
-> **`FUN_0028e040`'s weighted blend loses one of its two terms.** Its source data is right — the
-> snapshot at `node+0x10` holds `5.50391`, the console's value — but the result walks from
-> `saved × 1` to `saved × 0` as the weight ramps, instead of staying at `saved`. Applied to the
-> player actor's skeleton root node (`actor+0x2e8`), that drives `rootY` to exactly `0.0`,
-> whereupon `FUN_0029a950` takes its `rootY == 0` fallback (`fVar9 = 10.0`) and places the camera
-> 5.38 low.
+**Proved.** `rootY` on `nodeArray[0]` of the player actor ends every frame at `saved × (1 − w)`
+with `saved` frozen at the console's `5.50391` and `w` ramping 0→1, so the node's end-of-frame
+value walks from `saved` to `0`. The snapshot data is right; something between it and the next
+frame's read is not. Nothing here is inferred — every number is in the trace.
+
+**Not proved: *which* something.** All samples are taken at `FUN_0029a950`, i.e. once per frame,
+well after `FUN_0028e040` has returned. Two mechanisms produce the identical per-frame series:
+
+1. **The lerp primitive drops a term.** If `FUN_001c0768` computes `out = a·w + b·(1−w)` and the
+   `a·w` term is lost with `b` = the surviving input, the result is exactly `b·(1−w)`. Which of
+   `a1`(=`node+0x10`) / `a2`(=`node`) feeds which term is *not* established — that assignment is
+   assumed, not measured, and the VU0 macro-mode shape (`vmulabc` / `vmaddbc` against `vf0`) only
+   makes it plausible, not proven.
+2. **The blend is correct and a second writer clobbers the node afterwards.** If
+   `FUN_0028e040` leaves `node+0x00` at `5.50391` and some later per-frame writer scales or
+   overwrites it before anything reads it, the once-per-frame sample looks the same. Nothing in
+   this note's data excludes that, and `FUN_001c0768` would then be innocent.
+
+There is a third, cheaper possibility folded into both: the weight `f12` itself could be wrong
+(running past 1, or inverted) even with a correct lerp. The trace below reads it directly.
+
+**The experiment that separates them — read the node on return from the blend, and again later in
+the same frame.** One `gameplay_probe.txt` run:
+
+```
+PS2X_CALL_TRACE="0x28e040:Blend,0x29a950:CamOff"   PS2X_CALL_TRACE_EVERY=20
+PS2X_CALL_TRACE_DUMP="Blend:a0+0x64**:16,Blend:a1:2,CamOff:a1+0xbc*+0x2e8*:8"
+```
+
+`Blend`'s dump is taken **on return from `FUN_0028e040`**; `CamOff`'s is the same node **later in
+the same frame**. Then, per frame:
+
+* value already wrong on return from the blend → **candidate 1** (or a bad weight — check `f12`,
+  which the `[call]` line prints for free: if it runs past 1 or inverts, it is the timer in
+  `FUN_00576860`, not the lerp);
+* value **correct** on return (`5.50391`) and wrong at `CamOff` → **candidate 2**; the next step is
+  then to find the second writer, not to audit a VU macro-mode primitive.
+
+Dump layout: `a0+0x64**` is `nodeArray[0]`, the root node, and 16 words covers `+0x00..+0x3c` —
+current translation (0..2), saved translation (4..6), current quat (8..11), saved quat (12..15), so
+the same run also says whether `FUN_00306ae0` shares the fault. (The handle in `a1` is *not* the
+node written — `FUN_0028e040` indexes the array by `a1+0x40`; for the root that index is 0, which is
+why `**` works. `Blend:a1:2` tells the twenty handles apart.)
 
 `FUN_005765f0` / `FUN_00576700` / `FUN_00576860` are pure dispatch wrappers over the twenty handles
 at `actor+0x2e8..+0x354` — they contain no arithmetic and are the subsystem's address, not the
-defect. The defect is in `FUN_001c0768` (and, if it shares the primitive, `FUN_00306ae0`).
-
-**Confirming experiment for the follow-up:** one `gameplay_probe.txt` run —
-
-```
-PS2X_CALL_TRACE="0x28e040:Blend"   PS2X_CALL_TRACE_EVERY=20
-PS2X_CALL_TRACE_DUMP="Blend:a0+0x64**:16"
-```
-
-The `[call]` line already prints **`f12` — that is the blend weight**, no extra dump needed.
-`a0+0x64**` is `nodeArray[0]`, i.e. the root node, and 16 words covers `+0x00..+0x3c`: current
-translation (0..2), saved translation (4..6), current quat (8..11), saved quat (12..15). (The
-handle in `a1` is *not* the node written — `FUN_0028e040` indexes the array by `a1+0x40`; for the
-root that index is 0, which is why `**` works. Use `Blend:a1:2` alongside if you need to tell the
-twenty handles apart.) Read it as: if `f12` is sane (0→1 across the blend) while current leaves
-saved, the defect is inside `FUN_001c0768`; if `f12` runs past 1 or inverts, it is the timer in
-`FUN_00576860`. The quaternion words tell you in the same run whether `FUN_00306ae0` shares the
-fault.
+defect. That narrowing stands under either candidate; what is still open is only whether the
+corruption happens *inside* `FUN_0028e040`'s two calls or *after* them.
 
 Corroborating, and possibly the *same* bug rather than a second one (RDRAM image, walking up the
 chain from `actor+0x308` to the root): the player's bone quaternions on ours are **not unit** —
 magnitudes `0.916, 1.000, 0.000, 0.930, 0.756, 0.000, 1.000` against the console's `1.000` for all
 seven, two of them exactly zero — while the bone *translations* match the console to within
-4–10 ulps. A two-term weighted sum that loses a term produces exactly that: shortened quaternions,
-collapsing to zero at `w = 1`. (The root node's own quaternion at `+0x20` is **not** zero — the
+4–10 ulps. Both candidates predict that: a weighted sum that loses a term shortens the quaternion
+toward zero as `w → 1`, and so does a second writer scaling the node. Either way it is one bug
+rather than several. (The root node's own quaternion at `+0x20` is **not** zero — the
 RDRAM image gives it as `(0.321, −0.455, −0.458, 0.693)`, a unit quat; the zeros are on two of the
 other override nodes. The 8-word live dump does not reach `+0x20` at all, so it says nothing about
 quaternions either way.)
@@ -375,12 +402,24 @@ a 249-site blast radius.
 ## 7. Why no fix was landed
 
 Task 4's fix gate is "one hypothesis, one build, one `gameplay_probe.txt` run showing the rest
-height at ~20.1". The localisation lands the defect in **`FUN_0028e040`'s weighted blend — in
-`FUN_001c0768`, and probably `FUN_00306ae0` with it** — not in the camera, not in collision, and not
-in anything this task was scoped to touch. Whether the missing term is a VU0 macro-mode
-recompilation bug or a bad weight is one trace away (§4.2) but is not something to guess at, and a
-clamp bolted into `FUN_0029a950` would paper over it while still leaving the SEALs' override bones
-shrinking to zero. Per the brief, the note is the deliverable and no speculative change was made.
+height at ~20.1". The localisation lands the defect on the **player actor's skeleton root node
+(`nodeArray[0]`), written once per frame by `FUN_0028e040`** — not in the camera, not in collision,
+and not in anything this task was scoped to touch. But there is no single hypothesis to build
+against yet, because the evidence supports **two**:
+
+1. the lerp primitive `FUN_001c0768` (and its quaternion sibling `FUN_00306ae0`) drops its `a·w`
+   term, so the blend itself writes `saved × (1 − w)`; or
+2. the blend is correct and a **second writer** overwrites the node later in the frame, before
+   anything reads it.
+
+Every sample in §4.1 is taken once per frame at `FUN_0029a950`, long after `FUN_0028e040` returns,
+so it cannot tell the two apart — and picking one blind would send the next person to audit a VU0
+macro-mode primitive that may be innocent. §4.3 gives the single `gameplay_probe.txt` run that
+decides it: dump the node **on return from the blend** and **again later in the same frame**; wrong
+already on return ⇒ candidate 1 (or a bad weight — `f12` is printed for free), correct on return and
+wrong later ⇒ candidate 2. A clamp bolted into `FUN_0029a950` would paper over either while still
+leaving the SEALs' override bones shrinking to zero. Per the brief, the note is the deliverable and
+no speculative change was made.
 
 Two bounded fixes *were* found (§6 `rand()` 15-bit stub, §5 soft-double routines). Neither moves the
 camera height, and the `rand()` one changes every random draw in the game (enemy behaviour, weapon
@@ -395,10 +434,13 @@ spread, timers), so both belong to a task that can run a full gate rather than t
   `logs/run_task4_camoff.sh`. The number to watch is word 1 of the third dump (the root node's Y);
   it must settle near **5.5**, not 0. `a2[1]` is the camera height and must settle near **15.38**.
   Camera height formula: `FUN_0029a950` @ `0x29a950`.
-* **Start here:** `FUN_001c0768` @ `0x1c0768` — the two-term VU0 macro-mode weighted sum
-  (`out = a·w + b·(1−w)`, args `a0` = out, `a1` = a, `a2` = b, weight in `f12`) whose result loses a
-  term. Its quaternion sibling is `FUN_00306ae0` @ `0x306ae0`. Both are called only from
-  `FUN_0028e040` @ `0x28e040`; the trace recipe is in §4.2.
+* **Start here — but run §4.3's experiment before auditing anything.** The node whose value is
+  wrong is written by `FUN_0028e040` @ `0x28e040` through `FUN_001c0768` @ `0x1c0768` (the two-term
+  VU0 macro-mode weighted sum, `out = a·w + b·(1−w)`, args `a0` = out, `a1` = a, `a2` = b, weight in
+  `f12`) and `FUN_00306ae0` @ `0x306ae0` (its quaternion sibling); those are the only two callers of
+  the primitives. Whether the corruption happens inside them or in a later writer to the same node
+  is **not** settled by this note — §4.3's single run settles it, and guessing wrong costs a day
+  auditing a VU macro-mode primitive that may be innocent.
 * Root node: `actor+0x2e8`, node index 0 of the skeleton instance at `actor+0x170`
   (node array ptr at `+0x64`, count at `+0x60`); `FUN_0028e040` writes
   `nodeArray[handle->[0x40]]`, not the handle itself. Save/restore helpers: `FUN_0028e370`
