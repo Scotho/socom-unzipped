@@ -300,16 +300,24 @@ pre-split line so the §3 lists above can be cross-checked.
 | 1633 | 1654 | `h2 = min(m_presentHeight, rt2->*)` | **native** | as 1632 |
 | 1693 | 1714 | `PS2X_GS_TRACE_PRESENT` `fprintf` | **native** | diagnostic printed beside `usedHeight` and the present rect, all native |
 | 1943 | 1964 | `resolveTexture`: `if (width > rt.* \|\| height > rt.*) continue;` | **native** | compares native TW/TH against the target's extent |
-| 1946-1947 | 1967-1968 | `outWidth/outHeight = rt.*` → `uTexSize` | **host** | the fragment shader divides texel coords by `uTexSize` to address the GL texture |
+| 1946-1947 | 1967-1968 | `outWidth/outHeight = rt.*` → `uTexSize` | **host** | the fragment shader divides texel coords by `uTexSize` to address the GL texture — **conditional on the premultiply design; see §8.1 item 5** |
 | 1950 | 1971 | `[gs-pages] sampled from rt` `fprintf` | **native** | diagnostic beside the native guard at 1943 |
 | 2163 | 2184 | `getDepthTarget(zbp, fbw, rt.*, rt.*)` | **host** | the depth texture is an attachment of the same FBO: its GL size must equal the colour texture's or the FBO is incomplete. **§3 lists 2163 under "native GS extent"; that is an error in the spike** — §2.1's own row for it already says "pass the host size" |
 | 2169 | 2190 | `setupDrawState`: `glViewport` | **host** | GL viewport |
-| 2281 | 2302 | `uRtSize` uniform | **host** | the vertex shader normalises to clip space against the GL target size |
+| 2281 | 2302 | `uRtSize` uniform | **host** | the vertex shader normalises to clip space against the GL target size — **conditional on the premultiply design; see §8.1 item 5** |
 
-### 8.1 Notes for S3-b / S3-c (no ambiguous sites, but four hand-offs)
+Not in the table, because the rename could not reach them: the **`kRtHeight` constant clamps** at
+459, 1111, 1117, 1132, 1138, 1167, 1292-1293 and 2199-2200. Every one of them bounds a *native* row
+count (`usedHeight`, `pageSpan`, the 32-row dirty bands, `noteGpuRows`), so all eight stay correct
+as written at any scale — **S3-c must not scale `kRtHeight`**, and must not scale these clamps
+either; they are the native bookkeeping §2.3 says survives a scale untouched.
 
-None of the 37 sites was unclassifiable, so none is marked `[ambiguous]`. Four carry a native/host
-straddle that S3-a deliberately leaves as it stands (at `kScale == 1` every one of them is a no-op):
+### 8.1 Notes for S3-b / S3-c (no ambiguous sites, but six hand-offs)
+
+None of the 37 sites was unclassifiable, so none is marked `[ambiguous]`. Six carry a native/host
+straddle that S3-a deliberately leaves as it stands (at `kScale == 1` every one of them is a no-op).
+**Read item 5 before writing a line of S3-c: it is the one that silently corrupts at S=2** — the
+others are perf, diagnostics, or a loud failure.
 
 1. **Both download paths (1328-1349, 1392-1401).** `h` is native rows and the width is host texels,
    so at `S > 1` the buffer and the `glReadPixels` rect would cover only the top `1/S` of the used
@@ -331,3 +339,43 @@ straddle that S3-a deliberately leaves as it stands (at `kScale == 1` every one 
    (fed from `rt->hostWidth/hostHeight` at 2184) and has no native meaning, so there is nothing to
    split; leaving it unsplit is the reason the `getDepthTarget` call at 2184 had to be resolved
    correctly rather than mechanically following §3's (wrong) native classification.
+5. **The two shader size uniforms are host *only under the premultiply design* (2302, 1967-1968).**
+   `uRtSize` (2302) and `uTexSize` (1967-1968, via `resolveTexture`'s `outWidth/outHeight`) are
+   classified **host** in §8. That is correct **if and only if** S3-c follows the design §2 lays
+   out, in which the *coordinates* fed to those uniforms are scaled to match:
+
+   * `appendVertex` (2023-2024) premultiplies `out.x/out.y` by `S` after the `xyoffset >> 4`
+     subtraction, so `aPos` arrives in host pixels and `gl_Position = aPos / uRtSize * 2 - 1`
+     (207-211) needs `uRtSize` in host texels;
+   * a new `uTexScale` multiplies `tc` in the fragment shader (240-246) **and** `uRegion`
+     (2330-2331, REGION_CLAMP bounds being native texels), so the `texture(uTex, vec2(u,v) /
+     uTexSize)` divide (246) needs `uTexSize` in host texels.
+
+   Under the **simpler alternative** — leave `appendVertex` and the texel coordinates in native
+   units and let the host `glViewport` do the scaling on its own — **both of these sites must flip
+   back to `nativeWidth/nativeHeight`**. Today `aPos` *is* in native GS pixels and `u,v` *are* in
+   native texels, so at S3-a the native reading is the one the shaders actually describe; host is
+   right only once the premultiply lands.
+
+   This is the hand-off that fails quietly, and it fails three different ways:
+
+   * `uRtSize` host while `appendVertex` is still native (the premultiply forgotten or half-done):
+     `aPos / uRtSize` is `S` times too small, so the whole frame shrinks into one `1/S x 1/S`
+     corner of the target;
+   * `uRtSize` native while `appendVertex` premultiplies: `S` times too large, so most of the
+     frame is scissored away off the edge;
+   * `uTexSize` on the wrong side of the same choice: every render-target-as-texture draw (the
+     full-screen display copies — the path that produces SOCOM II's title labels, §2.5) samples
+     the wrong `1/S^2` of its source.
+
+   None of the three throws, none trips `checkScale`, and the `≥ 99` title bar does not apply at
+   S=2 by construction (§6, stage S3-d), so the harness will not catch them either. **S3-c must
+   state which of the two designs it is implementing before it touches either uniform**, and change
+   both sites together — they are a pair, and splitting them gives a frame that looks nearly right.
+6. **The viewport and the scissor disagree in units** at `executeClear` (host `glViewport` at 1282,
+   native `glScissor` at 1284-1287 straight from `context.scissor`) and again in `setupDrawState`
+   (2190 / 2196-2198). Pre-existing, harmless at `kScale == 1`, and already named in §2.2 — but
+   recorded here because §8.1 is where S3-c will look. Both scissors need `x0*S`, `y0*S`,
+   `(x1-x0+1)*S`, `(y1-y0+1)*S`; §2.2 marks the off-by-one there as semantic-adjacent, since a
+   scissor that leaks a draw into the next row leaks it into the rows a download later writes into
+   VRAM.
