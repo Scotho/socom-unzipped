@@ -634,7 +634,16 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
    sixteen-screenshot lobby-keyboard run had **zero**, and nothing else in its output said so.
 2. **Never conclude anything from this harness's screenshots alone.** They go stale (§3.5) and they
    are written whether or not the match launched. They are illustration, not evidence.
-3. **Release the loop lock in a `finally`, and check for an orphan before you wait on it.**
+3. **An instrument that emits zero rows is a FAILED run, not a quiet one.** Before reading any
+   trace, count its lines; if a `PS2X_CALL_TRACE` target logged nothing, assume the target is wrong
+   until proven otherwise. This task shipped a `NetIdleMs` trace on `FUN_0030be80` (`0x30be80`) that
+   produced **zero** rows for four runs and was never noticed — the guest calls the thunk at
+   `0x30cd80`, so idle-ms was simply never measured while the note implied it had been. That is
+   exactly the failure this section exists to warn about, landing inside the section that warns
+   about it. `PS2X_CALL_TRACE` prints `[call-trace] tracing <n> guest functions` at startup and a
+   wrong-but-resolvable address still counts as traced, so that line is **not** evidence the right
+   function was hooked.
+4. **Release the loop lock in a `finally`, and check for an orphan before you wait on it.**
    `scripts/loop_lock.sh` has no reaper: an agent that finishes, crashes or is interrupted without
    `release` leaves the lock held, and the next agent blocks on it until the 45-minute staleness
    window expires. One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
@@ -733,6 +742,11 @@ no translation. The soft-double fix is not the cause and is not part of the stor
 > `actor[0x8f]`, `actor[0x90]`, `actor[0x91]` — by it. Pitch is not one of the three (it lives in
 > `ctrl[0x4c]`), which is why RY is the one control that survives.**
 >
+> One qualification the first draft of this section dropped: the multiply is **not unconditional**.
+> It is guarded by `if (controller->vtbl[0x2c]() != 0)`. That slot must be returning non-zero online,
+> or scaling could not have been what pinned the player — but "unconditional in multiplayer" was an
+> overstatement and is withdrawn.
+>
 > **And the scale is zero because of us.** `FUN_00594cf0` computes it as
 > `clamp((5000 - (FUN_0030be80() - 1500)) * 0.001, 0.0, 1.0)`, and `FUN_0030be80` returns
 > "milliseconds since the interface activity counter last **changed**":
@@ -766,20 +780,80 @@ genuinely lost network activity, and neutering it would have hidden the defect r
 `logs/s4_task6_fix.sh`, run `logs/parity/ours_task6_fix2`, both instances in gameplay (**210
 in-game `[peek] @416054` rows each** — §3.10 step 0 checked before any screenshot was believed):
 
-| | before (every prior run) | after |
+| | before | after |
 |---|---|---|
-| `FUN_00553dc0` scale (`f12`) | not measurable — pinned | **1.0 on all 332 / 331 logged calls** |
-| instance A, distinct `@416054` x | **1** (538.684, 210 rows) | **73** — 539.7 → 337.9, z 1481.8 → 1299.9 |
-| instance B, distinct x | 63, all RY tails | **82** — 1145.3 → 1040.5, z 77.7 → 225.6 |
+| `FUN_00553dc0` scale (`f12`) | pinned at 0.0 | **1.0 on all 332 / 331 logged calls** |
+| instance A, distinct `@416054` x over 210 in-game rows | **1** (538.684) | **65** — x 539.68 → 471.01 (range 337.97–557.30), z 1481.79 → 1299.81 |
+| instance B, distinct x | 63, all RY tails | **80** — x 1145.28 → 981.87 (range 980.96–1200.65), z 77.68 → 225.61 |
+
+(First → last, with the range in brackets; an earlier draft quoted the min/max as if they were the
+endpoints, and counted 73/82 distinct x instead of 65/80. These are the numbers to quote.)
 
 Hundreds of units of displacement on both sides, against a camera-orbit radius of ~27 units, under
 `--probe --probe-both` pad injection. `logs/parity/ours_task6_fix2/A_probe12_W.png` shows the player
 several buildings away from the spawn the earlier runs were pinned at.
 
+**The motion is stick-aligned, not drift.** Correlating `[peek] @416054` against the
+`[socom2-input]` pad rows: mean displacement **1.3–1.4 units per sample at neutral** over 161
+samples against **28–38 units on every LX/LY hold** and 22–25 on RX; motion starts on the frame a
+hold starts and stops one sample after release; sixty consecutive zero rows precede the first probe;
+LY moves z with x frozen, LX moves x with z frozen, and RY moves z with x *exactly* constant. Largest
+single-sample jump 47–50 units, so nothing teleports.
+
+**And the fix is stronger than "the scale is 1.0".** All 332/331 traced `FUN_00553dc0` calls carry
+`ra=0x595028` — the **literal-1.0** call site, reached only when `idle - 1500 <= 0`. The game never
+entered the clamped-decay branch at all. `DAT_00458090` and `DAT_00458098` now take 191 and 187
+distinct values across the match where both were `0` for every sample before, which is the mechanism
+proved directly rather than inferred.
+
 **The online round start is unblocked: both instances move under LX/LY/RX.**
+
+### The timing, corrected
+
+The "1.5 s window" framing used while this was being chased is **wrong** and should not be repeated.
+The scale holds at exactly **1.0 until idle exceeds 5500 ms**, and reaches 0 only at **6500 ms**;
+1500 ms is merely the boundary between the literal-1.0 call site and the clamped one. The measured
+reset cadence with the fix is **1.10 s mean with a worst observed gap of 2.7 s**, so `rxBytes()` has
+roughly 2× margin against the real cliff.
+
+The residual is worth stating plainly: a genuinely quiet stretch longer than 5.5 s would still decay
+the scale. **That is honest console behaviour, not a defect** — it is what the scale is for — and it
+is not something to "fix".
 
 ### Regression check
 
 Re-run `logs/s4_task6_fix.sh`. It must show `MoveScale f12 = 1.0` and more than ~50 distinct
 `@416054` x values per instance. `PS2X_SOCOM2_NET_STATS=0` reproduces the defect exactly (scale 0.0,
 a single x value), which makes this an A/B with no rebuild.
+
+### 3.12a The same-binary A/B (2026-09-12)
+
+The first verification compared a fixed build against runs made on a binary two hours older, and
+`PS2X_SOCOM2_NET_STATS=0` — the knob the note claimed "reproduces the defect exactly" — had never
+been executed, so the fallback was untested code and the claim was an assertion. Both are now closed
+by one run that carries **both legs of the A/B in the same match, on the same binary, one frame
+apart**: instance A with the fix on, instance B with `PS2X_SOCOM2_NET_STATS_B=0`
+(`logs/s4_task6_ab.sh`, `logs/parity/ours_task6_ab`, both instances with 210 in-game
+`[peek] @416054` rows).
+
+| | A — fix ON (`run_20260912_191727`) | B — `NET_STATS=0` (`run_20260912_191733`) |
+|---|---|---|
+| `FUN_00553dc0` scale (`f12`) | **1.0** on all 330 calls | **0.0** on all 339 calls |
+| `thunk_FUN_0030be80` idle ms | 0 … **1490** (never reaches the 1500 boundary) | 0 … **504 210** (~8.4 min — the whole uptime) |
+| `DAT_00458090` distinct values | **192** | **1** |
+| `DAT_00458098` distinct values | **192** | **1** (never written) |
+| distinct `@416054` x over 210 rows | **89** (538.90 → 507.51, range 387.41–556.94) | **6** (1144.48 → 1144.94 — a span of **0.46 units**) |
+
+So the knob does reproduce the defect exactly, the fallback path executes, and every link of §3.12's
+chain is now measured on one binary: constant counter → `DAT_00458090`/`DAT_00458098` frozen → idle
+grows without bound → scale 0.0 → player pinned; real counter → both globals advance ~190 times →
+idle capped at 1490 ms → scale 1.0 → player moves.
+
+Note the idle figures against §3.12's corrected timing: with the fix, idle never exceeds 1490 ms, so
+the game only ever reaches the **literal-1.0** call site and never the clamped one — which matches
+the review's observation that all traced `FUN_00553dc0` calls carry `ra=0x595028`.
+
+**This run also fixed the instrument.** The earlier `NetIdleMs` trace pointed at `FUN_0030be80`
+(`0x30be80`) and logged **zero** rows across four runs without anyone noticing; the guest calls
+`thunk_FUN_0030be80` at **`0x30cd80`**. Every idle-ms number above comes from the thunk. See §3.10
+rule 3 — an instrument that emits zero rows is a failed run, not a quiet one.

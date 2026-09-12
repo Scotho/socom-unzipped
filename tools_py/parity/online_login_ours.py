@@ -36,7 +36,10 @@ INSTANCES = {
           # clients do not publish the same RSA public key in their DME 0x18 records (PCSX2's two
           # clients publish distinct random keys). Set PS2X_SOCOM2_RSA_KEY_B=b in the environment
           # to turn it on for a run; unset keeps the historical behaviour.
-          "PS2X_SOCOM2_RSA_KEY": os.environ.get("PS2X_SOCOM2_RSA_KEY_B", "")},
+          "PS2X_SOCOM2_RSA_KEY": os.environ.get("PS2X_SOCOM2_RSA_KEY_B", ""),
+          # PS2X_SOCOM2_NET_STATS_B=0 turns the interface-statistics fix OFF for instance B only,
+          # so one run carries both legs of the A/B on a single binary: A moves, B is pinned.
+          "PS2X_SOCOM2_NET_STATS": os.environ.get("PS2X_SOCOM2_NET_STATS_B", "")},
 }
 
 

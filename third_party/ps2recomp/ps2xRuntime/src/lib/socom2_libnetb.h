@@ -1,6 +1,20 @@
 // SOCOM II libnetb (SCE-RT network layer) HLE: answers the msifrpc service 0x80001201 and
 // replaces the libnetb_ex ring-buffer path on the EE with direct host socket calls.
 // Contract: docs/research/10-libnetb-rpc.md.
+//
+// Environment knobs answered here (one rule: unset or empty = default; "0"/"false"/"off" = off):
+//   PS2X_SOCOM2_NET_TRACE        any value  enable the netcode trace (counters + peer hex)
+//   PS2X_SOCOM2_NET_TRACE_PEERS  <n>        how many datagrams to hex-dump per direction (default 16)
+//   PS2X_SOCOM2_NET_TRACE_ALL    default off  hex-dump EVERY datagram, not just ports < 10000
+//   PS2X_SOCOM2_UDP_SHIFT        <n>        shift this instance's peer UDP ports by n
+//   PS2X_SOCOM2_NET_STATS        default ON   sceInetInterfaceControl code 0x200 returns a real RX
+//                                            byte count. Setting it to 0 restores the old constant
+//                                            and REPRODUCES the online movement defect: the guest's
+//                                            "ms since network activity" never resets, the
+//                                            multiplayer movement scale decays to 0 and the local
+//                                            player cannot move (docs/research/18 section 3.12).
+//                                            Kept as an opt-out so the fix can be A/B'd on one
+//                                            binary without a rebuild.
 #pragma once
 #include <cstdint>
 
