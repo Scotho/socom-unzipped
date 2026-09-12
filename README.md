@@ -67,9 +67,11 @@ pixels offline; `vu1_replay --no-native` forces the interpreted path for compari
 `point` samples it nearest straight to the window, and `integer` point-samples it into an
 off-screen stage at floor(fit scale) times its size first and then fits that stage with linear
 filtering. Presentation only -- it changes no rendering, and the title gate is green in all three.
-The window opens at 640x448, exactly the presented frame, so at the default size the fit scale is
-1.0 and all three modes are the same 1:1 blit; the knob only bites on a resized window (see the
-2026-09-12 entry in `docs/STATUS.md`).
+The desktop window opens at 640x448, the frame the menus present, so at the default size the fit
+scale is 1.0 and all three modes are the same 1:1 blit; the knob bites on a resized window (or the
+960x544 Vita build). `python -m tools_py.parity.resize_window <w> <h>` resizes a running instance
+for that comparison -- captures only, the title gate cannot score a pillarboxed window. See the
+2026-09-12 entry in `docs/STATUS.md`.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.

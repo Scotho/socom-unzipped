@@ -2608,12 +2608,22 @@ void PS2Runtime::run()
         //             remaining scale/k (in [1,2)) into the window with linear filtering.
         static const std::string s_presentFilter = [] {
             const char *e = std::getenv("PS2X_PRESENT_FILTER");
-            return std::string(e ? e : "linear");
+            std::string v(e ? e : "linear");
+            if (v != "linear" && v != "integer" && v != "point")
+            {
+                // Falling back to the default is the safe direction, but say so: otherwise a typo
+                // is indistinguishable from "the knob did nothing".
+                std::cerr << "[present] PS2X_PRESENT_FILTER=\"" << v
+                          << "\" is not linear|integer|point; presenting as linear" << std::endl;
+                v = "linear";
+            }
+            return v;
         }();
         const bool integerPresent = (s_presentFilter == "integer");
+        const bool pointSampled = integerPresent || (s_presentFilter == "point");
         // Only touch sampler state off the default path, so that "linear" is byte for byte what
         // the code did before this knob existed on both the host and the CPU present path.
-        if (integerPresent || s_presentFilter == "point")
+        if (pointSampled)
             SetTextureFilter(presentTex, TEXTURE_FILTER_POINT);
         // Both branches draw the read circuits the same way, only into a different target:
         // circuit 1 unblended, because the GS frame's alpha channel is game data (often 0), and
@@ -2632,6 +2642,11 @@ void PS2Runtime::run()
                 {
                     Texture2D presentTex2 = presentTex;
                     presentTex2.id = tex2;
+                    // The overlay is its own GL texture and the backend creates it GL_LINEAR, so
+                    // it needs the mode's filter as well: otherwise circuit 1 samples nearest and
+                    // the overlay linear on exactly the frames where the two are composited.
+                    if (pointSampled)
+                        SetTextureFilter(presentTex2, TEXTURE_FILTER_POINT);
                     DrawTexturePro(presentTex2, srcRect, dst, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
                     rlDrawRenderBatchActive();
                 }
@@ -2640,31 +2655,54 @@ void PS2Runtime::run()
         if (integerPresent)
         {
             static RenderTexture2D s_integerStage{};
+            static bool s_integerStageFailed = false;
             // scale is positive, so the truncation is the floor; k >= 1 keeps a window smaller
             // than the frame working (the stage is then 1:1 and the fit draw shrinks it).
             const int k = std::max(1, static_cast<int>(scale));
             const int stageW = static_cast<int>(srcWidth) * k;
             const int stageH = static_cast<int>(srcHeight) * k;
-            if (s_integerStage.texture.width != stageW || s_integerStage.texture.height != stageH)
+            if (!s_integerStageFailed &&
+                (s_integerStage.texture.width != stageW || s_integerStage.texture.height != stageH))
             {
                 if (s_integerStage.id != 0u)
                     UnloadRenderTexture(s_integerStage);
                 s_integerStage = LoadRenderTexture(stageW, stageH);
-                SetTextureFilter(s_integerStage.texture, TEXTURE_FILTER_BILINEAR);
+                if (s_integerStage.id == 0u)
+                {
+                    // A failed load hands back {0}, whose width never matches: latch instead of
+                    // retrying every frame, and present directly rather than letting
+                    // BeginTextureMode(0) draw the stage into the window.
+                    s_integerStageFailed = true;
+                    std::cerr << "[present] LoadRenderTexture(" << stageW << "x" << stageH
+                              << ") failed; PS2X_PRESENT_FILTER=integer falls back to the direct draw"
+                              << std::endl;
+                }
+                else
+                {
+                    SetTextureFilter(s_integerStage.texture, TEXTURE_FILTER_BILINEAR);
+                }
             }
-            BeginTextureMode(s_integerStage);
-            ClearBackground(BLACK);
-            drawCircuits(Rectangle{0.0f, 0.0f, static_cast<float>(stageW), static_cast<float>(stageH)});
-            EndTextureMode();
-            // raylib render textures are y-flipped, hence the negative source height. The merged
-            // frame still carries the GS alpha, so this draw is unblended like circuit 1 above.
-            rlDrawRenderBatchActive();
-            rlDisableColorBlend();
-            DrawTexturePro(s_integerStage.texture,
-                           Rectangle{0.0f, 0.0f, static_cast<float>(stageW), -static_cast<float>(stageH)},
-                           dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
-            rlDrawRenderBatchActive();
-            rlEnableColorBlend();
+            if (s_integerStage.id != 0u)
+            {
+                BeginTextureMode(s_integerStage);
+                ClearBackground(BLACK);
+                drawCircuits(Rectangle{0.0f, 0.0f, static_cast<float>(stageW), static_cast<float>(stageH)});
+                EndTextureMode();
+                // raylib render textures are y-flipped, hence the negative source height. The
+                // merged frame still carries the GS alpha, so this draw is unblended like
+                // circuit 1 above.
+                rlDrawRenderBatchActive();
+                rlDisableColorBlend();
+                DrawTexturePro(s_integerStage.texture,
+                               Rectangle{0.0f, 0.0f, static_cast<float>(stageW), -static_cast<float>(stageH)},
+                               dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+                rlDrawRenderBatchActive();
+                rlEnableColorBlend();
+            }
+            else
+            {
+                drawCircuits(dstRect);
+            }
         }
         else
         {

@@ -20,13 +20,19 @@ frame's alpha is game data) and the optional PMODE circuit 2 alpha-blended over 
 different target; the `integer` branch's final stage-to-window draw is unblended for the same
 reason circuit 1 is.
 
-**Verdict.** At the shipped window size the knob cannot change a pixel and none of the perceived
-softness is presentation. The host window is created at `HOST_WINDOW_WIDTH x HOST_WINDOW_HEIGHT` =
-640x448, exactly the presented frame, so the aspect-fit scale is 1.0, k = 1, and all three modes
-reduce to the same 1:1 identity blit. The measurements agree: title gates `pf_linear`,
+**Verdict.** At the window the desktop build opens, and for as long as the game presents a full
+frame, the knob cannot change a pixel and none of the perceived softness is presentation. The
+desktop window is created at `HOST_WINDOW_WIDTH x HOST_WINDOW_HEIGHT` = 640x448
+(`ps2_runtime.cpp:45-56`), exactly the frame the title screens present, so the aspect-fit scale is
+1.0, k = 1 and all three modes reduce to the same 1:1 identity blit. Two edges to that statement:
+`PLATFORM_VITA` opens 960x544, where the scale is 1.21 and the knob does bite; and the fit is
+computed from `presentWidth/presentHeight`, which come from the live host texture, so a game state
+that presents a rect smaller than 640x448 is also being scaled. Both are outside what the title
+gate exercises -- the claim is measured for the desktop build on the screens the gate reaches, not
+proved for every frame the game can produce. The measurements agree: title gates `pf_linear`,
 `pf_integer` and `pf_point` are all PASS 19/23 with per-capture scores equal to within run noise,
-and the three-mode s05 sheet is three identical pictures. The softness at 640x448 is the render
-resolution itself, which is what `PS2X_GS_SCALE` (Tasks 2-5) attacks — this experiment does not
+and the three-mode s05 sheet is three identical pictures. The softness on those screens is the
+render resolution itself, which is what `PS2X_GS_SCALE` (Tasks 2-5) attacks — this experiment does not
 buy any of it back. The knob only bites on a stretched window, and there it measures real: the
 same screen captured in all three modes at a 1818x1132 window (fit scale 2.53, k = 2) shows
 `linear` softest (every glyph edge a 2-3 pixel ramp), `point` crispest but visibly uneven (a
@@ -46,7 +52,11 @@ confirmed by eye). The stretched-window captures come from `pfwin_linear` / `pfw
 `pfwin_point`, which FAIL the title gate for a harness reason, not a rendering one: `drive.py`'s
 `untilref`/`ifref` references are 640x448 frames, and a pillarboxed 1818x1132 window never matches
 them at 160x112, so the probe stalls on the controller-configuration "select memory card slot"
-dialog and captures that screen 23 times. **Open, worth a look:** the window is resizable and one
+dialog and captures that screen 23 times. `python -m tools_py.parity.resize_window <w> <h>` is
+that helper, kept for whoever revisits this. After the review fixes (the PMODE overlay texture now
+takes the mode's filter too, a guard on a failed stage allocation, a warning on an unrecognised
+value) the three title gates were re-run as `pf2_linear` / `pf2_integer` / `pf2_point`, all PASS
+19/23, and `pf2_linear`'s menu captures still score 99.7-99.9 against `hostdraw_fix/title`. **Open, worth a look:** the window is resizable and one
 run (`pf_point_stuck`) came up at 1818x1132 with nothing in the run asking for it, and so failed
 the title gate the same way; the re-run at the default size passed. A gate that can be silently
 defeated by a window resize is a gate weakness.
