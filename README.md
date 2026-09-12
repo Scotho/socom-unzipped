@@ -87,6 +87,9 @@ frame). Memory cost is S^2 per colour and depth target. `PS2X_GS_SCALE_SELFTEST=
 every native-view read, that the mirror is not stale by a batch and that each native pixel lies
 inside its host block -- diagnostics only. The CPU backend (`PS2X_GS_BACKEND=cpu`, which
 `build.sh test` and `vu1_replay` force) ignores both knobs and always rasterises at 1x.
+`S=2` is verified on both draw paths (gate stamps `s3d_2x_host`, `s3d_2x_gif` + `s3d_2x_gif_t2`)
+and sharpens geometry but **not** the HUD, menus or title, which are textured quads; `S=3` and
+`S=4` are untested. See the 2026-09-12 Task 5 entry in `docs/STATUS.md`.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.

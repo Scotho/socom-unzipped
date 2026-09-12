@@ -7,6 +7,80 @@
 - Native VU1: dispatcher (entry 0x1b50) 162/166 lists native across dump2/3/4 (dump2 31/0, dump3 48/4, dump4 83/0 ended/handbacks) — families A, B and C complete (0x34's sphere-map/EFU handler landed in Sprint 3) plus the fourth family's 0x70/0x40, bit-exact (`--regs all`); residual 4 hand-backs: the dump3 lists using 0x52/0x66 — 0x52 ends the program at 0x33c8 and its correctness spans two MSCALs, 0x66 is never dispatched from 0x1b50 so the corpus cannot verify it (docs/research/15); `PS2X_VU1_NATIVE=0` reverts. Per-handler loop-count clamps land with a synthetic hand-back test.
 - Gates: last full run PASS 3/3 (stamps `hostdraw_on`, `famb`, `famc`). Known open (goal-3, not gates): host-draw's `--vram-diff` now compares 14/14 fixtures with 0 SKIPs — family C and the fourth family's untextured PRIM 0x4B included (Sprint 3 Task 9) — but its two by-design buckets (delta <= 1, and coverage-mask boundaries) are calibrated for opaque draws, so family C's alpha-blended dumps score 0.68-1.49% and `vu1dump4_prog_182` is held out of the fixture set until they are widened; mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; black 16x16 squares on the intro movie; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 5 runs.
 
+## 2026-09-12 (local) — Sprint 3, Task 5 (S3-d): `PS2X_GS_SCALE=2` verified on both draw paths — sharper geometry, unchanged HUD, **default stays 1**
+
+`PS2X_GS_SCALE=2` was run through the full gate twice on the S3-c binary (`466918b`, no source
+change in this task) and through the resolve self-test twice, once per filter.
+
+**Gates.** `s3d_2x_host` (`PS2X_GS_SCALE=2 PS2X_VU1_HOST_DRAW=1 PS2X_VU_STATS=1`) — **GATE PASS
+3/3**: title 19/23, transition 17 frames examined at/after the burst step with rows 396-447 peak 0,
+mission HUD reached with 6 hold steps. `s3d_2x_gif` (`PS2X_GS_SCALE=2`, host-draw off, i.e. scaled
+rasterisation of GIF-path triangles) — title PASS, mission PASS, transition FAIL on the **documented
+save-dialog probe flake** (4 frames examined, need 5; `ref_save_prompt_ours.png` matched at s12/s13
+instead of s08/s09, and every examined frame peak 0 — the probe arrived late, nothing was drawn into
+the band). Re-run of that leg alone, `s3d_2x_gif_t2`: **PASS** — 17 frames examined, rows 396-447
+peak 0, the save-dialog `ifref` matching at the early position again. **So the GIF path is green
+on all three legs across two stamps** (`s3d_2x_gif` title + mission, `s3d_2x_gif_t2` transition);
+it did not pass 3/3 in one go, `s3d_2x_host` did. The two 2x runs agree with each other —
+same step, same scene, `compare.score` 99.8 / mad 0.0043 — so the two draw paths rasterise the same
+picture at 2x.
+
+**Presentation is inert.** Each 2x title capture scored against its 1x twin in `s3c_1x_final/title`:
+s00-s19 **99.6-99.9** (host-draw) and **99.8-99.9** (GIF). The title screen is a render-target-as-
+texture display copy sampled at native resolution, so it neither gains nor loses at 2x; research/14
+§10.5 also records that a 2x title run performs **no** guest-visible render-target read at all, so
+the title leg is a presentation-and-inertness check and proves nothing about the mirror.
+
+**The resolve path, checked directly** (`PS2X_GS_SCALE_SELFTEST=1`, full `gameplay_probe.txt` runs,
+because no gate capture at any scale goes through the resolve — the parity captures are
+`LoadImageFromScreen()` window screenshots):
+
+| filter | run log | native-view reads | served from an already-clean mirror | STALE | lit content windows (after a resolve / served clean) | samples outside the host block range |
+|---|---|---|---|---|---|---|
+| `point` | `logs/run_20260912_074912.log` | 39,000+ | 6,352 | **0** | 24 (12 / 12) | **0** of 229,376 x 24 |
+| `box` | `logs/run_20260912_075604.log` | 33,000+ | 5,352 | **0** | 24 (12 / 12) | **0** of 229,376 x 24 |
+
+**Sharpness, measured and looked at.** The >= 99 title bar does not apply at 2x, so: mean gradient
+energy (`grad`, the Sprint-3 review's metric) plus an anti-aliasing fraction (`aa` — of the pixels
+on a real edge, the fraction that are partially covered rather than a hard step; supersampling
+raises it). On the matched mission-start frame (1x `s3c_1x_final/mission/s28_none.png` vs 2x
+`s3d_2x_host/mission/s29_none.png`), over the 3D region: grad **5.88 -> 3.98**, aa **0.133 ->
+0.423**. Same direction on a genuinely identical cutscene frame (grad 7.69 -> 5.79, aa 0.267 ->
+0.402), and at population level every 2x gameplay capture scores aa >= 0.419 while 13 of 14 1x
+captures score <= 0.32. By eye at 4x zoom the difference is obvious: 1x foliage is stippled with
+isolated pixels and hard alpha-test staircases, 2x foliage has continuous edges.
+
+**But the HUD is not sharper, and that is the honest half of the result.** Over the squad panel and
+the ammo panel — opaque-backed, fixed-position, directly comparable — grad moves 19.37 -> 20.04 and
+10.04 -> 9.54 and aa moves +0.03, i.e. nothing; at 4x zoom the glyphs are the same raster with the
+same stair-steps. `uTexSize` stays native by design, so a screen-aligned textured quad is magnified
+from a native texture into the 2x target and minified straight back at present. **2x buys
+rasterisation, and SOCOM II's HUD, menus, briefings and title are not rasterisation.** (Beware the
+radar crop: it appears to improve a lot, but the improvement is the 3D foliage behind the
+translucent ring, not the ring.)
+
+**Verdict: `PS2X_GS_SCALE=2` works, is worth having for gameplay, and the default stays 1.** Sheets:
+`logs/parity/gate/s3d_2x_host/mission_sheet.png` and `logs/parity/gate/s3d_2x_gif/mission_sheet.png`
+against `logs/parity/gate/s3c_1x_final/mission_sheet.png` (structurally identical; sheet tiles are
+~60 px and cannot show aliasing — the sharpness judgement is on full-size frames). `S=3` and `S=4`
+remain deliberately untested. 1x is unchanged and is `s3c_1x_final`, GATE PASS 3/3, cited not re-run.
+
+**Two gate intermittencies, recorded here for the first time**, both scale-independent and neither
+in the flake list until now: (a) the **save-dialog probe flake** — `transition_probe.txt`'s `ifref`
+guard matches several steps late, the burst runs before the dialog is answered, and the leg FAILs
+for too few frames *examined* (seen at 1x in Task 4's `s3c_1x`, and here in `s3d_2x_gif`); (b) the
+**residual-strip artefact** — a one-frame dim strip at rows 396-447 in an otherwise black sequence,
+~1 transition gate in 5 on **both** the S3-b parent binary (peak 36) and the S3-c binary (peak 18),
+attributed to `refreshDirtyRows` / `executeClear` ordering. (b) did not fire in any of this task's
+transition legs. A FAIL with peak 0 is (a); a FAIL with a non-zero band peak is (b).
+
+**Also measured, because it will confuse the next person:** scripted probes drift at 2x. Every step
+through s27 lands within 0.3 s of the 1x run; the mission-load `untilref` then needs 4 presses at 2x
+instead of 3, which shifts everything after it by ~21 s (s34 at 216.0-217.7 s vs 196.1 s at 1x —
+inside the 196.1-218.3 s band 1x runs already show). The same scripted inputs therefore land later
+in game time and both 2x mission runs ended in MISSION FAILURE where the 1x run's last capture was
+already showing "Leaving designated mission area". Match 1x and 2x frames by content, never by `sNN`.
+
 ## 2026-09-12 (local) — Sprint 3, Task 1 (S3-0): `PS2X_PRESENT_FILTER` — the presentation stretch is not where the softness comes from at the shipped window size
 
 `PS2X_PRESENT_FILTER=linear|integer|point` (read once, `ps2_runtime.cpp` present block) picks how
