@@ -312,7 +312,9 @@ Decoded from the two run logs (`tools_py`-free; the decoder is 20 lines of Pytho
   counter logs only #1–20 and every 200th, with no hex. So "neither channel carries anything but
   keepalives" was only ever "600 datagrams in 572 s is far too slow to be a game-state stream".
   `PS2X_SOCOM2_NET_TRACE_ALL=1` (added 2026-09-12, review) lifts the `port < 10000` condition on the
-  hex dump and closes that gap; any future run investigating this must set it.
+  hex dump and closes that gap; any future run investigating this must set it. (Its first version
+  tested only `getenv() != nullptr`, so `=0` also enabled it; it now treats `0` and the empty string
+  as off, as documented.)
 
 So the freeze is *above* SCE-RT, exactly as the 2026-09-10 20:35 STATUS entry concluded from the
 first 16 packets — this run confirms it over a whole match instead of an opening exchange.
@@ -405,6 +407,13 @@ measurement that settles the question:
 above the pad HLE.
 
 ### 3.6 Run recipe (both fixes are on by default; nothing here needs a code change to reproduce)
+
+**Step 0, before anything else — the liveness check (§3.10).** Run with `PS2X_PC_SAMPLER=1` and
+`PS2X_PEEK=0x416054:3`, and when the run ends count the `[peek] @416054` rows that are **not**
+`00000000(0) 00000000(0) 00000000(0)`. A real gameplay window is ~210 of them. **If that count is
+zero the run never reached gameplay — discard it, whatever its screenshots show.** One run in this
+task drove all sixteen stick probes and wrote sixteen screenshots against a lobby keyboard; nothing
+except this count said so. Also `bash scripts/loop_lock.sh check` first: the lock has no reaper.
 
 ```
 bash scripts/loop_lock.sh wait task6 40
@@ -500,19 +509,45 @@ the same clock by the position-apply path (`FUN_005794d0`: `piVar1[0x108] = DAT_
 "no position updates arrive ⇒ the actor is snapped back to its last one every frame" was the obvious
 candidate. **It is wrong.**
 
-### Exclusion 1 — the outer control guard is entered in BOTH paths
+### 3.9a Exclusion 1 — the outer control guard resolves the same way in BOTH paths
 
 `PS2X_CALL_TRACE="0x551ec0:ActorUpd,0x594cf0:PlayerUpd"`, same build, same instrument:
 
-| run | ActorUpd calls logged | PlayerUpd calls logged |
-|---|---|---|
-| single player, `logs/run_20260912_152755.log` | 656 | 308 |
-| online A, `logs/run_20260912_153438.log` | 325 | 312 |
-| online B, `logs/run_20260912_153444.log` | 328 | 313 |
+**Do not compare "calls logged".** `PS2X_CALL_TRACE_EVERY=240` logs the first ~300 calls and then
+every 240th, so the logged-line counts (656/325/328) are a sampling artifact and say nothing about
+rates — the *true* totals are single player **85,680** ActorUpd against online **6,240**/**6,960**,
+because single player updates 37 actors and an online 1-v-1 updates 2. The two numbers that do
+carry the argument:
 
-(Both online instances reached gameplay: 210 non-zero `[peek] @416054` rows each, `@45a0c1 = 0x01`
-so the multiplayer flag is set.) The controller runs and the actor update runs online. **The branch
-that decides whether to read the input at all is not the gate.**
+| run | ActorUpd total | PlayerUpd total | PlayerUpd rate | PlayerUpd `ra` |
+|---|---|---|---|---|
+| single player, `logs/run_20260912_152755.log` | 85,680 | 2,160 over 159.7 s | **13.5/s** | `0x552108`, every call |
+| online A, `logs/run_20260912_153438.log` | 6,240 | 3,120 over 209.3 s | **14.9/s** | `0x552108`, every call |
+| online B, `logs/run_20260912_153444.log` | 6,960 | 3,360 over 203.7 s | **16.5/s** | `0x552108`, every call |
+
+`0x552108` is inside `FUN_00551ec0`, so the caller is the actor update itself, and the per-player
+rate is the same in both paths. (Both online instances reached gameplay: 210 non-zero
+`[peek] @416054` rows each, `@45a0c1 = 0x01` so the multiplayer flag is set.)
+
+**The guard's three operands, measured on the local actor in both paths** (dumps of `a0+0x174`,
+`a0+0xfcc`, `a0+0x105c` from `logs/s4_task6_cmp.sh`):
+
+| run | `actor+0x174` low16 | `actor+0xfcf` | `actor+0x1061` bit `0x20` |
+|---|---|---|---|
+| single player `…152755` | {0, 1} | 0 | clear |
+| online A `…153438` | {0, 1} | 0 | clear |
+| online B `…153444` | {0, 1} | 0 | clear |
+
+**All three disjuncts are false in both paths** — the `== 8` state never appears, `0xfcf` is never
+set, and the `0x1061` bit tested is `0x20`, which is never set. So the guard body never runs in
+either path and both take the `else` arm. Identical. Not the gate, in either direction.
+
+**And the arm matters.** `FUN_00594cf0` is not `actor->vtbl[0x8c]` as first written here — the
+vtable dump (§3.9a) gives `actor->vtbl[0x8c] = FUN_00547350`, and `FUN_00594cf0` is called with the
+**controller** in `a0`, from `controller->vtbl[0xc]` in the guard's **`else`** arm. So the player
+takes the `else` arm in *both* paths, and the guard's true arm is the one that never runs. That is
+consistent with the operands (§3.9a) and it is why `PlayerUpd` fires with all three disjuncts false.
+**The guard is not the gate, in either direction.**
 
 ### Exclusion 2 — the multiplayer snap-back never fires
 
@@ -520,21 +555,38 @@ that decides whether to read the input at all is not the gate.**
 nearest preceding clock sample (`logs/run_20260912_154530.log`, `logs/run_20260912_154536.log`):
 
 ```
-A: 294 paired samples, DAT_004365c0 - actor[0x420] in [-0.683, 0.000], mean -0.322, >0.6: 0 (0%)
-B: 308 paired samples,                                in [-0.699, 0.000], mean -0.312, >0.6: 0 (0%)
+A: 294 paired samples, DAT_004365c0 - actor[0x420] in [-0.683, 0.000], max 0.000
+B: 308 paired samples,                                in [-0.699, 0.000], max 0.000
 ```
 
-The threshold is 0.6 and the difference never reaches it — `actor[0x420]` tracks the clock for the
-whole match. **The snap-back branch is never taken, so it is not the gate either.** Anyone tempted
-by this hypothesis again (it is a good one on paper) should re-run that one dump before spending a
-fix attempt on it.
+**Read that as "max 0.000", not as the range.** Peek rows are ~0.67 s apart and dumps ~7 s apart, so
+pairing a dump with the *preceding* clock sample systematically understates the difference by
+0–0.68 s — the negative spread and the −0.32 mean **are** that artifact, not a measurement. What
+survives the artifact is the maximum: over 602 samples across both instances the difference never
+exceeds 0.000, so the true difference is ≈ 0 and never anywhere near the 0.6 threshold.
+`actor[0x420]` is a real timestamp tracking the clock for the whole match — at dump #6960 it reads
+126.351 against a clock of 126.385.
+
+One coverage gap to state honestly: the probe holds are 3.0 s and the dump stride is ~7 s, so **no
+dump is guaranteed to land inside a stick hold**. The exclusion does not rest on that; it rests on
+`actor[0x420]` tracking the clock continuously, which cannot be true only between holds.
+
+**The snap-back branch is never taken, so it is not the gate either.** Anyone tempted by this
+hypothesis again (it is a good one on paper) should re-run that one dump before spending a fix
+attempt on it.
 
 ### What the same dump did show
 
-`actor+0x400..0x408` is **frozen for the entire match** — `(538.68, 158.492, 1457.58)` on A over all
-328 dumps from the second one onwards — and `538.68` is exactly the x that `[peek] @416054` reports
-for the whole match. The stored position and the player agree, and neither moves. So the actor's
-position genuinely never advances; nothing downstream is "moving it back", it is never moved.
+`actor+0x400..0x408` settles at `(538.68, 158.492, 1457.58)` on A and does not move again. **State
+that carefully** — the first version of this paragraph was wrong twice. The run's 328 dumps span
+**two** actors (178 at `@17945d0`, the local player; 150 at `@17a9220`, the remote avatar at
+`(1126.53, 63.48, 95.71)`), and the local actor's first **16** dumps do move — 539.76 → 540.80 →
+538.75 — before pinning at `538.68` from dump #32 onward.
+
+The claim that the player never moves rests on **§3.5**, not on these dumps: 210 in-game
+`[peek] @416054` rows with x ≡ 538.684 and no change during any stick hold. What the dumps add is
+that the stored position agrees with it — `538.68` in both — so the actor's position genuinely never
+advances after the opening moments; nothing downstream is "moving it back", it is never moved.
 
 ### Where that leaves the condition
 
@@ -562,15 +614,91 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
   with a clean raylib shutdown ("Window closed successfully"), before SCE-RT init. The driver
   carried on and reported `A_game window not found` only at the host-game step, minutes later.
 - **A lobby flake that still runs the whole probe.** `logs/parity/ours_task6_mp`: the on-screen
-  keyboard entered accent mode, the game name came out as `eq4P--`, the match never launched — and
-  the driver went on to execute all 16 stick probes and write 16 screenshots anyway. Read on its own
-  the screenshot set looks like a gameplay probe. The only thing that gave it away was
-  `[peek] @416054` being all-zero for every one of the run's rows.
+  keyboard entered accent mode (`logs/parity/drive_task6_mp.txt`,
+  "A_keyboard in accent mode -> toggling"), the game name came out as `eq4P--` — visible only in the
+  screenshot `logs/parity/ours_task6_mp/A_probe12_W.png`, it appears in **no** log — and the match
+  never launched, yet the driver executed all 16 stick probes and wrote 16 screenshots and 84 files
+  anyway. Read on its own that set looks like a gameplay probe. The only thing that gave it away:
+  `logs/run_20260912_151558.log` and `…151604.log` contain 596 and 590 `[peek]` rows and **zero** of
+  them are non-zero at `@416054`.
 - **Stale screenshots.** In run 1, 10 of A's 16 probe screens were byte-identical to their
   predecessor with the HUD timer not advancing between them (§3.5).
 
-So: **never conclude anything from this harness's screenshots alone.** Verify liveness first —
-`PS2X_PC_SAMPLER=1` with `PS2X_PEEK=0x416054:3` and a check that the in-game rows are non-zero costs
-nothing and distinguishes "reached gameplay" from "ran the probe against a menu". This is the same
-class of defect the sprint has been closing in the gate all day: a check that can quietly attest to
-nothing.
+### Do this, every time
+
+1. **Verify `peek @416054` is non-zero before believing any movement claim from this harness.**
+   Run with `PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3`, count the rows that are not
+   `00000000(0) 00000000(0) 00000000(0)`, and if that count is zero the run never reached gameplay —
+   **discard it**, whatever its screenshots show. A real gameplay window is ~210 non-zero rows; the
+   sixteen-screenshot lobby-keyboard run had **zero**, and nothing else in its output said so.
+2. **Never conclude anything from this harness's screenshots alone.** They go stale (§3.5) and they
+   are written whether or not the match launched. They are illustration, not evidence.
+3. **Release the loop lock in a `finally`, and check for an orphan before you wait on it.**
+   `scripts/loop_lock.sh` has no reaper: an agent that finishes, crashes or is interrupted without
+   `release` leaves the lock held, and the next agent blocks on it until the 45-minute staleness
+   window expires. One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
+   check` prints the holder and the age — if the age is large and the owner is a task that has
+   plainly finished, it is an orphan.
+
+This is the same class of defect the sprint has been closing in the gate all day: a check that can
+quietly attest to nothing. The online harness has it too, and now it is written down.
+
+---
+
+## 3.11 The gate, named (2026-09-12)
+
+> ### The condition
+>
+> **`X` = the local player's three movement axes hold their pad values for a frame.
+> `X` never becomes true online because `Y` = `FUN_00594cf0`'s `cVar7 == 0` arm, which is guarded by
+> `if (DAT_0045a0c1 != 0)` and therefore runs in multiplayer only, fires on every frame and calls
+> `controller->vtbl[0x20]` (`0x00567340`) three times with axis indices 0, 1 and 2 — zeroing them.
+> Three axes, not four: LX, LY and RX are dead online, and RY, the fourth, still moves the camera.**
+
+That last sentence is the reason to believe this one. Every previous candidate explained "the player
+does not move"; this is the first that also explains, without being asked to, *why camera pitch is
+the one control that survives*.
+
+### The chain, and what is measured at each link
+
+| # | link | how it is established |
+|---|---|---|
+| 1 | `FUN_00551ec0` takes its **`else`** arm in **both** paths | measured — §3.9a: all three disjuncts false on the local actor in single player and on both online instances |
+| 2 | that arm calls `controller->vtbl[0xc]` | `game/disc/socom2_game.elf`, vtable `0x6694b0` `+0xc` → `0x00594cf0`; and every `PlayerUpd` call carries `ra=0x552108` (inside `FUN_00551ec0`) with the **controller** in `a0` |
+| 3 | the controller class is the same in both paths | measured — actor vtable `0x6691a0`, controller vtable `0x6694b0`, slots `0x10..0x1c` and `0x88..0x94` byte-identical in `logs/run_20260912_162216.log` (SP) and `…162848`/`…162854` (online) |
+| 4 | `cVar7 = controller->vtbl[0x8c]` (`FUN_00566940`) returns **0** | measured in **both** paths — online 374 + 345 logged calls, **every one `v0=0x0`** (`logs/run_20260912_164055.log`, `…164049.log`); single player 305 calls, every one `v0=0x0` (`logs/run_20260912_165209.log`) |
+| 5 | it returns 0 because `controller+0x170 & 0x03 == 0` | source (`FUN_00566940`'s entry test) + measured: SP dump of `controller+0x170` reads `0x…20` on 305 of 305 samples — bits `0x01` and `0x02` clear |
+| 6 | **the `cVar7 == 0` arm is multiplayer-exclusive** | source — `if (cVar7 == '\0') { if (DAT_0045a0c1 != '\0') { … } }`, and `@45a0c1 = 0x01` is measured on both online instances |
+| 7 | that arm zeroes axes 0, 1, 2 | source — `controller->vtbl[0x20](0, actor, 0)`, `(…, 1)`, `(…, 2)`; slot `0x20` resolves to `0x00567340` in the ELF |
+
+**Links 1–5 are measurements; 6 and 7 are read from the decompilation.** Step 4 is the one that
+surprises: the controller's input method returns 0 in *single player too*. So the discriminator is
+**not** the return value — it is what the two builds do with it. Single player ignores a zero;
+multiplayer takes it as "no input this frame" and actively clears the axes.
+
+### What is NOT yet established — do these before spending a fix attempt
+
+1. **`0x00567340` was not disassembled.** It is called as `(0, actor, axis)` three times with
+   consecutive indices, which reads as "set axis *n* to 0", but that is inference from the call
+   shape. Ghidra did not split it as its own function (it falls inside the listing's
+   `FUN_00566dc0`), so it needs a look.
+2. **`DAT_0045a1ca` was not read at runtime.** The three calls sit inside `if (DAT_0045a1ca == 0)`.
+   If that byte is non-zero online the arm does something else and this whole section is wrong.
+   `PS2X_PEEK=0x45a1ca:1` answers it in one run, and any fix attempt should carry that peek.
+3. **The axis indices were not mapped to LX/LY/RX.** Three indices and three dead controls is
+   suggestive, not proof.
+
+All three are cheap and all three are *reads*. Whoever takes the fix should confirm them in the same
+run that tests it, so a green result cannot be a coincidence.
+
+### Move 2: the soft-double ABI fix is not involved
+
+Every Task 6 run before this one used `dist/socom2.exe` stamped 15:07:37 — **before** `db7a992`
+(the soft-double `sin/cos/tan/fabs/floor` ABI fix) landed at 15:28. Since a broken `floor` breaks
+`__kernel_rem_pio2` and the matrix-to-Euler gimbal guard, "dead yaw and dead translation with live
+pitch" was a plausible shape for broken yaw trigonometry, so the online probe was re-run on a fresh
+build (`dist/socom2.exe` 16:40, `logs/build_task6_move2.log`, `buildexit=0`).
+
+**The symptom is unchanged.** `logs/run_20260912_164049.log`: 211 in-game `[peek] @416054` rows,
+x takes two values 538.775 / 538.705 across the whole probe sequence — still pinned, still no yaw and
+no translation. The soft-double fix is not the cause and is not part of the story.
