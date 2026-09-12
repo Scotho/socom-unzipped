@@ -20,7 +20,8 @@
 // What runs natively: command lists whose decode from data qword 340 contains only command words
 // this file implements and terminates on 0x42 (END) -- all seven family-A commands, all seven
 // family-B ones (0x02, 0x0a, 0x12, 0x56, 0x1a, 0x2a, 0x4c, with the 0x3618 clipper and the 0x1980
-// flush tail behind them) and five of family C's six (0x64, 0x72, 0x74, 0x30, 0x32). "Decode" is
+// flush tail behind them), five of family C's six (0x64, 0x72, 0x74, 0x30, 0x32) and, of the
+// fourth family, 0x70 (research/15). "Decode" is
 // not "linear decode" any more: 0x30 and 0x32 embed eight-qword GIF packets in the list itself and
 // advance vi14 past them, so the pre-scan applies that rewrite as it walks (scanCommandList).
 //
@@ -221,6 +222,12 @@ namespace
         kCmdClippedTemplateFill = 0x56u, // 0x0640 family-B shim: 0x54's fill on the 150 base
         kCmdUnpack = 0x68u,        // 0x0b20 int->float vertex unpack
 
+        // The fourth family (research/15).
+        kCmdUnpackScaled = 0x70u,  // 0x0cb8 scaled int->float vertex unpack: 0x68 with ITOF15
+                                   //        positions and a multiply by TOP+3.w
+        kCmdDrawUntextured = 0x40u, // 0x1968 a three-pair shim into 0x28's body at 0x1790: the
+                                    //        same triangles again, untextured and unfogged
+
         // Family C.
         kCmdKickRenderState = 0x64u, // 0x04a8 XGKICK the render-state packet at data qword 330
         kCmdDrawGateOff = 0x72u,     // 0x2268 data qword 39.w := 0
@@ -288,6 +295,34 @@ namespace
         case kCmdDrawGateOn:
         case kCmdInlineBlockOverA:
         case kCmdInlineBlockOverB:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    // ... and the fourth family's, whose three shapes are `70 06 08 40 42` (30 lists of the 166),
+    // `70 08 40 42` (8) and `52 66 08 40 42` (4) -- research/15 1.1. Like family A these are
+    // linear: neither command rewrites vi14 and both end at their own `B 0x1b60`.
+    //
+    // The family's other two command words are deliberately absent, and that is a scope decision
+    // rather than an omission (research/15 9.3):
+    //   * 0x52 (0x3100, the weighted-skinning accumulator) never hands back to the dispatcher at
+    //     all. It emits no GIF packet and falls into the E bit at 0x33b8, ending the program at
+    //     pc 0x33c8 -- where the EE issues a SECOND MSCAL that reads vi5, vi9 and vi14 (and, on
+    //     its accumulate path, vi2/vi3/vi4 and vf23-vf26) straight out of whatever the handler
+    //     left behind. Its correctness condition spans two programs, which is not a contract this
+    //     file can state, let alone one --verify over single programs can check.
+    //   * 0x66 (0x2e28, the per-triangle face-normal rebuild) is dispatched from 0x1b50 exactly
+    //     ZERO times in the 166-run corpus; its only three dispatches come from that 0x33c8 entry.
+    //     A native 0x66 could only ever fire behind a native 0x52, so nothing here could verify it.
+    // The four `52 66 08 40 42` lists therefore still hand back whole on their first command word,
+    // a documented residual of 4 dumps.
+    bool isFamilyDCommand(uint32_t command)
+    {
+        switch (command)
+        {
+        case kCmdUnpackScaled:
             return true;
         default:
             return false;
@@ -726,7 +761,8 @@ namespace
             const uint32_t command = peekCommand(c, index);
             if (command == kCmdEnd)
                 return true;
-            if (!isFamilyACommand(command) && !isFamilyBCommand(command) && !isFamilyCCommand(command))
+            if (!isFamilyACommand(command) && !isFamilyBCommand(command) &&
+                !isFamilyCCommand(command) && !isFamilyDCommand(command))
                 return false;
 
             if (isFamilyBCommand(command))
@@ -835,6 +871,11 @@ namespace
         constexpr uint8_t kOutB0 = 25, kOutB1 = 17, kOutB2 = 23;
         constexpr uint8_t kCursor = 3;    // vi3: the record cursor, in qwords
         constexpr uint8_t kRemaining = 9; // vi9: vertices left, decremented by two per iteration
+
+        // Command 0x70 (0x0cb8) reuses this whole allocation register for register. The only
+        // difference is what TOP+3 means there: a per-object scale whose .w lane multiplies the
+        // position, rather than an offset whose .xyz lanes are added to it (research/15 2.1).
+        constexpr uint8_t kScale = kBias;
     }
 
     bool cmdUnpackVertices(Ctx &c)
@@ -935,6 +976,144 @@ namespace
             writeVf<kOutA2, kXYZW>(c, up);
 
             // 0x0c40 `IBGTZ vi9, 0x0bd0`, delay slot 0x0c48; falling through is 0x0c50 `B 0x1b60`.
+            up = itof<0, kRawB2>(c);
+            const bool more = c.vi(kRemaining) > 0;
+            writeVf<kOutB2, kXYZW>(c, up);
+            loadQword<kRawB1, kXYZW>(c, c.vi(kCursor) + 4);
+            if (!more)
+                return true;
+        }
+    }
+
+    // ---- command 0x70 -> 0x0cb8: scaled int -> float vertex unpack --------------------------
+    //
+    // 0x68 with two instructions changed (research/15 0.1 and 2.1). Same 40-pair body, same
+    // software-pipelined two-vertices-per-iteration loop, same in-place stores over the three-qword
+    // records at TOP+4, same thirteen registers. Only the position conversion differs:
+    //
+    //   0x68   record[0] -> (ITOF4 (.xyz) + TOP+3.xyz, ITOF15(.w))   12.4 local coords + an offset
+    //   0x70   record[0] -> (ITOF15(.xyz) * TOP+3.w,   ITOF15(.w))   1.15 coords * an object scale
+    //
+    // record[1] (ITOF12 on .xy, ITOF15 on .zw) and record[2] (ITOF0) are byte-identical to 0x68's.
+    // Note the position's .w lane is ITOF15 in BOTH and is written after the multiply, so it is
+    // never scaled -- it carries the vertex normal's x (research/15 4.4).
+    //
+    // Diffing the full 40 pairs of 0x0b20-0x0c58 against 0x0cb8-0x0df0 gives 30 identical and 10
+    // differing: the eight substitution sites above, the prologue's `IADDIU vi3, vi3, 6` two pairs
+    // earlier, and the relocated loop head (0x0bd0 -> 0x0d68). The cursor move is scheduling only
+    // and is transcribed at its real position below for the sake of the disassembly line numbers:
+    // neither multiply reads vi3, and every LQ that does still follows it, so the two orders are
+    // the same program.
+    //
+    // Only TOP+3's .w lane is read here -- poisoning .x or .y changes nothing, poisoning .w changes
+    // the packets -- but the whole quad is loaded, because vf27 is compared state.
+    //
+    // Like 0x68 this reads one pair of records past the end of the array and leaves their
+    // conversion in the register file on exit. That is not an accident of the transcription: nine
+    // of the thirteen registers hold that over-read pair at the hand-back, and `--regs all`
+    // compares every one of them.
+    bool cmdUnpackScaledVertices(Ctx &c)
+    {
+        using namespace unpack;
+        using vu1ops::ArithMul;
+        __m128 up;
+
+        // Clamp: 0x0cc0's vertex count, read before the handler touches anything. The loop exits
+        // on `IBLTZ` / `IBGTZ`, so zero is safe -- it is the ceiling that matters, and the corpus
+        // maximum over the 38 dispatches is 73 (research/15 7).
+        if (!withinCeiling(c.loadWord(c.vi(1) + 2, 2), vertexCeiling()))
+            return handBackAtNextCommand(c);
+
+        c.vi(kCursor) = vi16(c.vi(1) + 4);                   // 0x0cb8
+        c.vi(kRemaining) = c.loadWord(c.vi(1) + 2, 2);       // 0x0cc0: TOP+2.z, the vertex count
+        loadQword<kScale, kXYZW>(c, c.vi(1) + 3);            // 0x0cc8: TOP+3, the position scale
+
+        // 0x0cd0-0x0d20: load the first pair of records and convert them.
+        loadQword<kRawA0, kXYZW>(c, c.vi(kCursor) + 0);
+        loadQword<kRawA1, kXYZW>(c, c.vi(kCursor) + 1);
+        loadQword<kRawA2, kXYZW>(c, c.vi(kCursor) + 2);
+        loadQword<kRawB0, kXYZW>(c, c.vi(kCursor) + 3);
+        loadQword<kRawB1, kXYZW>(c, c.vi(kCursor) + 4);
+        up = itof<15, kRawA0>(c);
+        loadQword<kRawB2, kXYZW>(c, c.vi(kCursor) + 5);
+        writeVf<kOutA0, kXYZ>(c, up);
+        up = itof<15, kRawA1>(c); writeVf<kOutA1, kZW>(c, up);
+        up = itof<0, kRawA2>(c);  writeVf<kOutA2, kXYZW>(c, up);
+        up = itof<15, kRawB0>(c); writeVf<kOutB0, kXYZ>(c, up);
+        up = itof<15, kRawB1>(c);
+        c.vi(kCursor) = vi16(c.vi(kCursor) + 6);             // 0x0d18's lower half
+        writeVf<kOutB1, kZW>(c, up);
+        up = itof<0, kRawB2>(c);  writeVf<kOutB2, kXYZW>(c, up);
+
+        // 0x0d28-0x0d60: scale both positions by TOP+3.w, then prefetch the next pair's
+        // record[0]/record[1] (its record[2] is fetched inside the loop).
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, kOutA0, kScale, false, false, true>(c);
+        writeVf<kOutA0, kXYZ>(c, up);
+        up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, kOutB0, kScale, false, false, true>(c);
+        writeVf<kOutB0, kXYZ>(c, up);
+        up = itof<15, kRawB0>(c); writeVf<kOutB0, kW>(c, up);
+        up = itof<12, kRawB1>(c); writeVf<kOutB1, kXY>(c, up);
+        up = itof<15, kRawA0>(c);
+        loadQword<kRawA0, kXYZW>(c, c.vi(kCursor) + 0);
+        writeVf<kOutA0, kW>(c, up);
+        up = itof<12, kRawA1>(c);
+        loadQword<kRawA1, kXYZW>(c, c.vi(kCursor) + 1);
+        writeVf<kOutA1, kXY>(c, up);
+        loadQword<kRawB0, kXYZW>(c, c.vi(kCursor) + 3);
+        loadQword<kRawB1, kXYZW>(c, c.vi(kCursor) + 4);
+
+        for (;;)
+        {
+            c.vi(kRemaining) = vi16(c.vi(kRemaining) - 2);   // 0x0d68
+
+            // 0x0d70-0x0d78: store vertex a's first two quads while converting the next pair's.
+            up = itof<15, kRawA0>(c);
+            storeQword<kOutA0, kXYZW>(c, c.vi(kCursor) - 6);
+            writeVf<kOutA0, kXYZ>(c, up);
+            up = itof<15, kRawA1>(c);
+            storeQword<kOutA1, kXYZW>(c, c.vi(kCursor) - 5);
+            writeVf<kOutA1, kZW>(c, up);
+
+            // 0x0d80 `IBLTZ vi9, 0x1b60`, with vertex a's third quad in the delay slot: an odd
+            // vertex count leaves here, having stored vertex a only.
+            const bool oddVertexLeft = c.vi(kRemaining) < 0;
+            storeQword<kOutA2, kXYZW>(c, c.vi(kCursor) - 4);
+            if (oddVertexLeft)
+                return true;
+
+            // 0x0d90-0x0da0: vertex b's three quads, and the next pair's positions scaled.
+            up = itof<15, kRawB0>(c);
+            storeQword<kOutB0, kXYZW>(c, c.vi(kCursor) - 3);
+            writeVf<kOutB0, kXYZ>(c, up);
+            up = itof<15, kRawB1>(c);
+            storeQword<kOutB1, kXYZW>(c, c.vi(kCursor) - 2);
+            writeVf<kOutB1, kZW>(c, up);
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, kOutA0, kScale, false, false, true>(c);
+            storeQword<kOutB2, kXYZW>(c, c.vi(kCursor) - 1);
+            writeVf<kOutA0, kXYZ>(c, up);
+
+            // 0x0da8-0x0dd0: step the cursor, then fetch and convert the pair after the one now
+            // in flight.
+            up = fmac<ArithMul, Vu1Gen::SrcBc, 3, kXYZ, kOutB0, kScale, false, false, true>(c);
+            c.vi(kCursor) = vi16(c.vi(kCursor) + 6);
+            writeVf<kOutB0, kXYZ>(c, up);
+            up = itof<15, kRawB0>(c);
+            loadQword<kRawA2, kXYZW>(c, c.vi(kCursor) - 4);
+            writeVf<kOutB0, kW>(c, up);
+            up = itof<12, kRawB1>(c);
+            loadQword<kRawB2, kXYZW>(c, c.vi(kCursor) - 1);
+            writeVf<kOutB1, kXY>(c, up);
+            up = itof<15, kRawA0>(c);
+            loadQword<kRawA0, kXYZW>(c, c.vi(kCursor) + 0);
+            writeVf<kOutA0, kW>(c, up);
+            up = itof<12, kRawA1>(c);
+            loadQword<kRawA1, kXYZW>(c, c.vi(kCursor) + 1);
+            writeVf<kOutA1, kXY>(c, up);
+            up = itof<0, kRawA2>(c);
+            loadQword<kRawB0, kXYZW>(c, c.vi(kCursor) + 3);
+            writeVf<kOutA2, kXYZW>(c, up);
+
+            // 0x0dd8 `IBGTZ vi9, 0x0d68`, delay slot 0x0de0; falling through is 0x0de8 `B 0x1b60`.
             up = itof<0, kRawB2>(c);
             const bool more = c.vi(kRemaining) > 0;
             writeVf<kOutB2, kXYZW>(c, up);
@@ -2789,6 +2968,8 @@ namespace
             return cmdPrimitiveLoopBack(c);
         case kCmdUnpack:
             return fromHandler(cmdUnpackVertices(c));
+        case kCmdUnpackScaled:
+            return fromHandler(cmdUnpackScaledVertices(c));
         case kCmdCull:
             return fromHandler(cmdBackfaceCull(c));
         case kCmdTransform:
