@@ -304,12 +304,28 @@ Decoded from the two run logs (`tools_py`-free; the decoder is 20 lines of Pytho
   75 times, each with its own type-1/2 ping/pong at 1.5 s. That is `FUN_00624dc0`'s "this app has
   no connected peers" retry, and for a 1-v-1 match with one player on each team it is *expected*:
   A and B are on opposite teams, each alone in its own team app. It is not the defect.
-- **No application data, ever.** Not one packet on app 10 other than the control/clock types above.
-  A playing match has to stream player transforms here (or over the DME aux-UDP channel); neither
-  channel carries anything but keepalives (`udp send #600` over ~10 minutes, on both instances).
+- **No application data on the peer channel.** Not one packet on app 10 other than the control/clock
+  types above — this part *is* content-inspected, every peer datagram was decoded.
+- **For the other channels this is a rate bound, not an observation.** Of the ~600 datagrams each
+  instance sent, only ~300 were peer packets; the remaining ~300 went to the DME aux-UDP port
+  (50000/50001) and the NAT service (10070) and were **never content-inspected** — the generic
+  counter logs only #1–20 and every 200th, with no hex. So "neither channel carries anything but
+  keepalives" was only ever "600 datagrams in 572 s is far too slow to be a game-state stream".
+  `PS2X_SOCOM2_NET_TRACE_ALL=1` (added 2026-09-12, review) lifts the `port < 10000` condition on the
+  hex dump and closes that gap; any future run investigating this must set it.
 
 So the freeze is *above* SCE-RT, exactly as the 2026-09-10 20:35 STATUS entry concluded from the
 first 16 packets — this run confirms it over a whole match instead of an opening exchange.
+
+**The inbound DME side looks like a *playing* match, and that matters.** The TCP trace on cid 3
+carries 31 inbound records over the match: the join/spawn exchange (`03 …` APP_SINGLE frames
+carrying the `0x16`, `0x15`, `0x18`, two `0x0f` player records and two `0x04`/`SealObject` spawn
+records — e.g. B's `00-18` at `logs/run_20260912_142201.log:5190` and B's `SealObject` at `:6523`)
+and then **21 ECHO keepalives and nothing else**. That is the same shape S0 measured on the *playing*
+PCSX2 pair. So this is not a session that never started: the records arrive, the round runs (see
+§3.8), and the open question is whether we then *mishandle* one of them. Do not read §3.2 as "the
+game has nothing to say" — "the game receives the record that should enable control and does not act
+on it" is equally consistent with everything here, and §3.9 is evidence for exactly that reading.
 
 ### 3.3 (b) The advertised port — **real, fixed, and not the cause**
 
@@ -328,6 +344,10 @@ which is A's port. PCSX2's client B does not have this problem because its pnach
 **Fix (attempt 1, landed):** `game_overrides_socom2.cpp` now wraps `FUN_00620648` and rewrites the
 base-port field to `3658 + PS2X_SOCOM2_UDP_SHIFT` after the original runs — the pnach, done in the
 runtime — and `doCreate`'s shift is narrowed to the unshifted base ports so it cannot double-shift.
+*Caveat (review):* that narrowing is `localPort >= 3658 && localPort < 3658 + shift`, which is only
+correct for **shift ≥ 2**. At `shift = 1` the range covers 3658 alone, so 3659 would stay unshifted
+and collide with instance A's second socket. The driver uses 2 and nothing else sets it, but a
+future shift of 1 would be silently wrong.
 
 **Result:** the record is now identical in shape to PCSX2's —
 `…-00-00-0A-02-A8-C0-4C-0E-00-00-0A-02-A8-C0-4C-0E-…` for B and `4A-0E`/`4A-0E` for A
@@ -347,6 +367,10 @@ the `socom2_RsaGenerateKeyPair` recomp stub writes one fixed pair for every proc
 **Fix (attempt 2, landed):** a second precomputed pair (`kSocom2RsaNb`/`kSocom2RsaDb`, seed
 `0x42434f4d`, e = 17, full 512-bit N) selected by `PS2X_SOCOM2_RSA_KEY=b`; the two-instance driver
 passes it to instance B when `PS2X_SOCOM2_RSA_KEY_B=b` is in the environment.
+*Caveat (review):* `online_login_ours.py` sets instance B's `PS2X_SOCOM2_RSA_KEY` to `""` when
+`PS2X_SOCOM2_RSA_KEY_B` is unset, which **overrides** a globally exported `PS2X_SOCOM2_RSA_KEY=b`
+for B only — so exporting the key variable directly silently does nothing for the instance it
+matters for. Use `PS2X_SOCOM2_RSA_KEY_B`.
 
 **Result:** the wire now shows two distinct public keys — A `89-AA-07-C4-…`, B `45-3D-B0-AE-…`
 (`server/logs/console-DME.log` after line 3920) — the same shape as PCSX2's `0D-9E-BC-50…` /
@@ -367,10 +391,14 @@ one and the HUD timer did not advance between them). Use `PS2X_PC_SAMPLER=1` tog
 `PS2X_PEEK=0x416054:3` instead — that prints the camera-orbit position once a second, and it is the
 measurement that settles the question:
 
-- run 2b, instance A, over the whole 8-probe × 2 sequence: **x is constant at 538.684 for every one
-  of 579 samples**; y and z move only while the RY (K/I) holds are applied. No yaw, no translation.
-- instance B: same picture — x/y/z move together during the RY holds and are frozen at all other
-  times (573 samples).
+- run 2b, instance A: 579 `[peek]` rows, of which **369 are all-zero pre-gameplay rows**. Over the
+  **210 in-game rows** x is constant at 538.684; y and z move only while the RY (K/I) holds are
+  applied. No yaw, no translation.
+- instance B: x is **not** constant — 63 distinct values from 1125.04 to 1144.78 over its 210
+  in-game rows. Every change follows an **RY** hold and then decays asymptotically, and the rx/lx/ly
+  holds show only the tail of the preceding RY move, so the reading is the same; but "x is constant"
+  would have been false for B and the sample count is 210, not 579. (Both corrections from review,
+  2026-09-12 — quote these numbers, not the first ones.)
 
 `PS2X_SOCOM2_INPUT_TRACE=1` in the same logs proves the pad values arrive
 (`[socom2-input] state buttons=0000 rx=80 ry=80 lx=00 ly=80` for each `A`/`D` hold), so the loss is
@@ -392,7 +420,7 @@ cost: (1) the `00-18` payloads in `server/logs/console-DME.log` must show `4A-0E
 data on app 10, not only types 1/2/3/4/5/9/15 — that is the pass condition a working round start
 would produce; (3) `[peek] @416054` x must change during the `A`/`D`/`W`/`S` holds.
 
-### 3.7 Where S2 should start
+### 3.7 Where S2 should start (superseded in part by §3.9 — read that first)
 
 Both of S0's divergences are now closed and neither was the blocker, so the next layer is the one
 the 2026-09-10 20:35 entry called (b): **the local control gate**, not the network. The evidence
@@ -413,7 +441,136 @@ of flag. `PS2X_CALL_TRACE` on the movement entry points with `PS2X_CALL_TRACE_DU
 object, compared between an online spawn and a single-player spawn, is the cheapest discriminator —
 and, unlike everything in this note, it does not cost a 12-minute two-instance run per iteration.
 
-One caveat to carry forward: "STARTING ROUND 1 OF 11" is **not** a persistent banner on ours
-either. `logs/parity/ours_match_probe10/A_hold05.png` (the pre-S1 frozen run) and
-`logs/parity/ours_task6_run1/A_hold05.png` both show the clean gameplay HUD one minute in. The
-symptom to quote from here on is "the player never moves online", not "the banner never clears".
+### 3.8 Retraction: the round DOES start, and the banner is not the symptom
+
+**"STARTING ROUND 1 OF 11" is not a persistent banner on ours, and the round is not stalled at the
+start.** The sprint spec, `docs/HANDOFF.md` and several STATUS entries describe the defect that way;
+all of those descriptions are wrong and should be corrected at close-out.
+
+Evidence: `logs/parity/ours_task6_run1/A_hold05.png` and `logs/parity/ours_match_probe10/A_hold05.png`
+(the pre-S1 "frozen" run) both show the clean gameplay HUD one minute in, with **the round timer
+counting down — 05:25 on the first** — the banner already gone. A stalled round would not have a
+running timer. S0 established the same thing from the other side: the banner is a transient ~6 s
+message on the console-accurate reference too.
+
+So the shared mental model of this bug — "frozen at the round-start banner waiting for a go" — is
+wrong twice over. The symptom to quote from here on is: **the round runs, and the local player
+cannot move.**
+
+---
+
+## 3.9 The online-vs-single-player comparison (2026-09-12, diagnosis only)
+
+Authorised as one bounded diagnostic after the two fix attempts were spent. **It did not name the
+gate. It excluded the two strongest candidates and narrowed the search to one layer.** Both of those
+exclusions are measurements, not arguments, and both are cheap to re-check.
+
+### The path, from the decompilation
+
+`FUN_00551ec0(float dt, actor *a)` is the player actor's per-frame update, and it is where the
+input path is switched on or off:
+
+```c
+controller = a[0x30];                                   // actor+0xC0
+if (controller != 0) {
+    if ( (short)a[0x5d] == 8                            // actor+0x174: the "controllable" state
+      || (a[0x1061] & 0x20)                             // an actor flag bit
+      || (DAT_0045a0c1 && a[0xfcf] != 0) )              // multiplayer-only enable byte
+    {
+        controller->vtbl_0x14(dt, controller);          // run the controller = read the input
+        ...
+        a->vtbl_0x8c(dt, a);                            // = FUN_00594cf0, the actor update
+    } else { ... }
+}
+```
+
+`FUN_00594cf0(float dt, controller *c)` (`actor = c[1]`) then runs the controller's input method and,
+**in multiplayer only**, can throw the result away:
+
+```c
+cVar7 = c->vtbl_0x8c(dt, c);                            // the input result
+if (DAT_0045a0c1 && 0.6 < DAT_004365c0 - (float)actor[0x108]) {   // actor+0x420 = a timestamp
+    SetPosition(actor, actor[0x100..0x102], actor+0x50);          // actor+0x400..0x408
+    cVar7 = 1;                                                    // "input handled"
+}
+```
+
+That override is the only multiplayer-exclusive thing on the path, and `actor[0x108]` is stamped from
+the same clock by the position-apply path (`FUN_005794d0`: `piVar1[0x108] = DAT_004365c0;`), so
+"no position updates arrive ⇒ the actor is snapped back to its last one every frame" was the obvious
+candidate. **It is wrong.**
+
+### Exclusion 1 — the outer control guard is entered in BOTH paths
+
+`PS2X_CALL_TRACE="0x551ec0:ActorUpd,0x594cf0:PlayerUpd"`, same build, same instrument:
+
+| run | ActorUpd calls logged | PlayerUpd calls logged |
+|---|---|---|
+| single player, `logs/run_20260912_152755.log` | 656 | 308 |
+| online A, `logs/run_20260912_153438.log` | 325 | 312 |
+| online B, `logs/run_20260912_153444.log` | 328 | 313 |
+
+(Both online instances reached gameplay: 210 non-zero `[peek] @416054` rows each, `@45a0c1 = 0x01`
+so the multiplayer flag is set.) The controller runs and the actor update runs online. **The branch
+that decides whether to read the input at all is not the gate.**
+
+### Exclusion 2 — the multiplayer snap-back never fires
+
+`PS2X_CALL_TRACE_DUMP="ActorUpd:a0+0x400:10"` plus `PS2X_PEEK=0x4365c0:1`, pairing each dump with the
+nearest preceding clock sample (`logs/run_20260912_154530.log`, `logs/run_20260912_154536.log`):
+
+```
+A: 294 paired samples, DAT_004365c0 - actor[0x420] in [-0.683, 0.000], mean -0.322, >0.6: 0 (0%)
+B: 308 paired samples,                                in [-0.699, 0.000], mean -0.312, >0.6: 0 (0%)
+```
+
+The threshold is 0.6 and the difference never reaches it — `actor[0x420]` tracks the clock for the
+whole match. **The snap-back branch is never taken, so it is not the gate either.** Anyone tempted
+by this hypothesis again (it is a good one on paper) should re-run that one dump before spending a
+fix attempt on it.
+
+### What the same dump did show
+
+`actor+0x400..0x408` is **frozen for the entire match** — `(538.68, 158.492, 1457.58)` on A over all
+328 dumps from the second one onwards — and `538.68` is exactly the x that `[peek] @416054` reports
+for the whole match. The stored position and the player agree, and neither moves. So the actor's
+position genuinely never advances; nothing downstream is "moving it back", it is never moved.
+
+### Where that leaves the condition
+
+The sentence in §3.0 stands, and this narrows its missing half by one layer without closing it:
+
+> the controller's input method runs every frame online (`FUN_00551ec0`'s guard is satisfied and
+> `FUN_00594cf0` is dispatched, 312/313 times per instance), nothing multiplayer-specific discards
+> its result (the one override that could, never fires), and the actor's position still never
+> changes — so the loss is **inside the controller's input method or in how its movement command is
+> applied to the actor**, below both branches that were suspected.
+
+S2's first move should be `controller->vtbl_0x14` and `controller->vtbl_0x8c`: resolve those two
+slots from the controller object's vtable pointer in an online run and in a single-player run, and
+compare. If the vtable differs, the multiplayer controller is a different class and the answer is
+which one; if it is the same, trace the resolved function and diff its output (the movement command)
+between the two paths. That is the same instrument used here, one level down, and it is still a
+single-process question on the single-player side.
+
+## 3.10 The harness is not trustworthy without a liveness check (finding, not an aside)
+
+Three of the six two-instance runs in this task produced nothing usable, in two different ways, and
+**both failure modes can masquerade as data**:
+
+- **Silent instance loss.** `logs/run_20260912_141257.log`: instance A exited ~40 s after launch
+  with a clean raylib shutdown ("Window closed successfully"), before SCE-RT init. The driver
+  carried on and reported `A_game window not found` only at the host-game step, minutes later.
+- **A lobby flake that still runs the whole probe.** `logs/parity/ours_task6_mp`: the on-screen
+  keyboard entered accent mode, the game name came out as `eq4P--`, the match never launched — and
+  the driver went on to execute all 16 stick probes and write 16 screenshots anyway. Read on its own
+  the screenshot set looks like a gameplay probe. The only thing that gave it away was
+  `[peek] @416054` being all-zero for every one of the run's rows.
+- **Stale screenshots.** In run 1, 10 of A's 16 probe screens were byte-identical to their
+  predecessor with the HUD timer not advancing between them (§3.5).
+
+So: **never conclude anything from this harness's screenshots alone.** Verify liveness first —
+`PS2X_PC_SAMPLER=1` with `PS2X_PEEK=0x416054:3` and a check that the in-game rows are non-zero costs
+nothing and distinguishes "reached gameplay" from "ran the probe against a menu". This is the same
+class of defect the sprint has been closing in the gate all day: a check that can quietly attest to
+nothing.
