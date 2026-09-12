@@ -111,6 +111,14 @@ there, but it means any RT region the game re-uploads loses the S× draw beneath
 | 1355-1362 `pixels[y*rt.width+x]` -> `writeVramRaw(..., x, y, p)` | GS pixel `(x,y)` == texel `(x,y)` | **needs a downsample**: box-average or point-decimate the `S x S` block at `(x*S, y*S)` into one native texel | **semantic + content-altering.** This is the path that produces the title labels: the game draws into a buffer and the buffer's pages are later decoded as a texture. A box filter changes those bytes versus native; point decimation is exact only when the `S x S` blocks are uniform, which holds for axis-aligned native-resolution blits but *not* for the hooked VU1 host triangles the scale exists to sharpen. |
 | 1342-1349 dirty-row skip | native rows | unchanged | none |
 
+> **Superseded by §10.5 below.** The claim above that this path (1355-1362) "produces the title
+> labels" does not hold on this build: a 2x title run logs zero `nativeView()` calls, neither
+> download fires, and `PS2X_GS_RT_TEXTURE=0` (which forces this exact shadow-download fallback)
+> does not change that. The title screen performs no guest-visible render-target read at all. This
+> row's downsample-risk analysis still applies wherever the path *is* reached (a gameplay scene
+> under load); it is only the title-labels attribution that is wrong. Start from §10.5 before
+> relying on this row for the Sprint 4 downsample follow-up.
+
 ### 2.6 GPU -> CPU readback (`downloadRenderTargetToCpu`, 1369) — **the second blocker**
 
 The same five issues as §2.5 at 1371-1372, 1380, 1384, 1401-1408, with a harder consequence: this

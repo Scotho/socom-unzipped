@@ -55,8 +55,16 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
-Knobs (the behaviour-changing ones; everything else under `getenv("PS2X_` in
-`third_party/ps2recomp/ps2xRuntime/` is tracing or a dump path):
+Knobs (the behaviour-changing ones documented in full below; this is not the complete list --
+other behaviour-changing knobs exist under `getenv("PS2X_` in `third_party/ps2recomp/ps2xRuntime/`
+without a full entry here, grouped roughly by area: GS (`PS2X_GS_NO_ZTEST`,
+`PS2X_GS_NO_DIRTY_REFRESH`, `PS2X_GS_RT_TEXTURE`, `PS2X_GS_TEX_FROM_CPU`), VU
+(`PS2X_VU1_XGKICK_CYCLE_EXACT`, `PS2X_VU1_XGKICK_IMMEDIATE`, `PS2X_VU0_FAST`,
+`PS2X_VU1_FMAC_CHECK`), EE/GIF/VIF (`PS2X_EE_ROUND`, `PS2X_GIF_PRIORITY_SORT`,
+`PS2X_VIF1_NO_IRQ_STALL`), build-time/IOP (`PS2X_ENABLE_DEBUG_UI`, `PS2X_IOP_ENABLE_PLUGINS`), and
+paths/networking (`PS2X_MC_DIR`, `PS2X_DEFAULT_BOOT_ELF`, `PS2X_SOCOM2_SERVER`,
+`PS2X_SOCOM2_HOSTS`, the `PS2X_SOCOM2_INPUT_*` family). Their exact effect is read at each knob's
+`getenv` use site, not written up here:
 `PS2X_VU1_HOST_DRAW=1` draws the native VU1 dispatcher's triangles through
 `GS::submitHostTriangle` in host space instead of building/kicking a GIF packet (default off, GIF
 path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/interpreted VU1 path
@@ -89,7 +97,8 @@ bookkeeping and every byte the guest can read back stay native. Anything the gue
 the two VRAM downloads, a render target sampled as a texture, the display dump, the frame capture
 -- goes through a native-sized mirror first, and `PS2X_GS_SCALE_FILTER=point|box` picks how that
 mirror is produced (`point`, the default, is a `GL_NEAREST` blit; `box` averages the SxS host
-texels behind each native pixel). Two consequences worth knowing: textures are still decoded at
+texels behind each native pixel). Any value other than the exact string `box` (including a typo,
+or the variable unset) silently selects `point` -- there is no warning. Two consequences worth knowing: textures are still decoded at
 native resolution, so an RT sampled as a texture (the full-screen display copies) gains no detail
 from the scale; and an image upload into a render target only ever carries native pixels, so it
 destroys the sub-native detail in the rows it covers (the movie path re-uploads a full frame every

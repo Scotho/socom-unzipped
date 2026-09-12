@@ -1733,8 +1733,7 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
     // otherwise write only some channels of the mirror. A glBlitFramebuffer does NOT honour it --
     // GL 3.3 section 18.3.1: a blit is affected by pixel ownership, the scissor and sRGB, and
     // nothing else -- so for the blit path this reset is merely harmless, not load-bearing. (The
-    // present copy further down claims the opposite next to its own blit; that comment is
-    // pre-existing and wrong. Do not reason from it.)
+    // present copy's blit further down is the same case; its comment states this correctly.)
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     const GLint hostW = static_cast<GLint>(rt.hostWidth), hostH = static_cast<GLint>(rt.hostHeight);
@@ -2074,8 +2073,10 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_presentCopyFbo);
     glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_presentCopyTexture, 0);
     glDisable(GL_SCISSOR_TEST);
-    // glBlitFramebuffer honours the colour mask: a frame that ends with an FBMSK-masked draw
-    // would otherwise leave the copy black while the render target itself is fine.
+    // glBlitFramebuffer is NOT affected by the colour mask (GL 3.3 section 18.3.1: a blit is
+    // affected only by pixel ownership, the scissor and sRGB). This reset is therefore harmless
+    // here, not load-bearing -- see resolveToMirror above, whose box path is the case where the
+    // mask is real.
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glBlitFramebuffer(0, 0, static_cast<GLint>(m_presentHostWidth), static_cast<GLint>(m_presentHostHeight),
                       0, 0, static_cast<GLint>(m_presentHostWidth), static_cast<GLint>(m_presentHostHeight),
