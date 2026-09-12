@@ -5,7 +5,7 @@ artefact settles them, **retired** when they stop mattering, and **retracted** l
 turn out false. Every proven entry names the artefact that proves it; every believed entry names
 the experiment that would settle it. If an entry cannot do that, it does not belong here.
 
-Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 6's fix landed (Sprint 4, mid-flight).
+Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 6 closed (Sprint 4, mid-flight; Task 7 running).
 
 ---
 
@@ -25,7 +25,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | Five soft-double stubs were bound with the wrong ABI, and were **identity** at 19 of 22 sites (the 3 garbage sites are unreachable) | `db7a992`; delay-slot analysis of every call site |
 | The intro-movie macroblocks were a cross-thread race on `m_currentTransfer`, not a byte-accumulator bug | `4a701f1`; deficit 3,748 → 0, MISSING 9 → 0 |
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
-| **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 82 (review recounts 65/80). Movement verified against pad state: 1.3 units at neutral vs 28-38 per hold, starting on the hold frame, axes orthogonal. **Review APPROVED** |
+| **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 80. **Same-binary A/B** (`5ed29ca`, one match, both legs a frame apart): fix ON f12 = 1.0 on 330/330, idle max 1490 ms, activity globals 192/192 distinct, 89 distinct x; fix OFF f12 = 0.0 on 339/339, idle 504,210 ms, globals never written, **0.46 units** of travel. Movement tracks the stick — 1.3 units at neutral vs 28-38 per hold, starting on the hold frame, axes orthogonal. Review verified every figure to 3 dp |
 
 ## 2. Believed, unconfirmed — with the experiment that would settle it
 
