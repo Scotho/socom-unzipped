@@ -7,6 +7,50 @@
 - Native VU1: dispatcher (entry 0x1b50) 123/166 lists native across dump2/3/4 (dump2 31/0, dump3 9/43, dump4 83/0 ended/handbacks) — families A, B and C native, bit-exact (`--regs all`); residual 43 hand-backs: one dump3 list using 0x34 (EFU maths + same-lane write conflict) and 42 dump3 lists using unhandled commands 0x70/0x52/0x66/0x40 (a fourth command family, Sprint 3 research); `PS2X_VU1_NATIVE=0` reverts. Per-handler loop-count clamps land with a synthetic hand-back test.
 - Gates: last full run PASS 3/3 (stamps `hostdraw_on`, `famb`, `famc`). Known open (goal-3, not gates): host-draw has no family-C coverage in `--vram-diff` (blank-frame SKIPs); mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; black 16x16 squares on the intro movie; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 5 runs.
 
+## 2026-09-12 (local) — Sprint 3, Task 1 (S3-0): `PS2X_PRESENT_FILTER` — the presentation stretch is not where the softness comes from at the shipped window size
+
+`PS2X_PRESENT_FILTER=linear|integer|point` (read once, `ps2_runtime.cpp` present block) picks how
+the presented PS2 frame reaches the window: `linear` is the default and byte for byte what the
+code did before the knob (one aspect-fit `DrawTexturePro` per read circuit, sampler state left as
+whoever created the texture set it — GL_LINEAR for the host render-target copy, GL_NEAREST for the
+CPU fallback); `point` samples nearest straight to the window; `integer` point-samples the frame
+into an off-screen stage at k = floor(fit scale) times its size and then fits that stage with
+linear filtering. Both branches draw the read circuits identically — circuit 1 unblended (the GS
+frame's alpha is game data) and the optional PMODE circuit 2 alpha-blended over it — only into a
+different target; the `integer` branch's final stage-to-window draw is unblended for the same
+reason circuit 1 is.
+
+**Verdict.** At the shipped window size the knob cannot change a pixel and none of the perceived
+softness is presentation. The host window is created at `HOST_WINDOW_WIDTH x HOST_WINDOW_HEIGHT` =
+640x448, exactly the presented frame, so the aspect-fit scale is 1.0, k = 1, and all three modes
+reduce to the same 1:1 identity blit. The measurements agree: title gates `pf_linear`,
+`pf_integer` and `pf_point` are all PASS 19/23 with per-capture scores equal to within run noise,
+and the three-mode s05 sheet is three identical pictures. The softness at 640x448 is the render
+resolution itself, which is what `PS2X_GS_SCALE` (Tasks 2-5) attacks — this experiment does not
+buy any of it back. The knob only bites on a stretched window, and there it measures real: the
+same screen captured in all three modes at a 1818x1132 window (fit scale 2.53, k = 2) shows
+`linear` softest (every glyph edge a 2-3 pixel ramp), `point` crispest but visibly uneven (a
+source pixel lands on 2 or 3 window pixels, so stroke widths wobble and letterforms stair-step),
+and `integer` between them — 1-pixel edges with even stroke weight, `point`'s crispness (edge
+gradient energy 1.058 vs `linear`'s 1.007, `point`'s 1.057) without its unevenness, 0.44/255 mean
+absolute difference from `linear` over the whole frame. **The default stays `linear`**: it is
+identical to `integer` at the size the game actually opens at, and the sprint's render-target
+scale is the change that matters. `integer` is the one to reach for the moment the window is bigger than the frame -- which is
+one drag away, since the window already carries `FLAG_WINDOW_RESIZABLE`.
+
+Gate stamps: `pf_linear` / `pf_integer` / `pf_point`, each `--only title`, each GATE PASS;
+`pf_linear`'s menu captures s00..s19 score 99.7-99.9 against `hostdraw_fix/title` (its three
+attract-movie captures s20..s22 score 85.5-88.6, inside the 85.5-100.0 band that any two
+unmodified runs of this gate show on those frames — the movie is at a different playback phase,
+confirmed by eye). The stretched-window captures come from `pfwin_linear` / `pfwin_integer` /
+`pfwin_point`, which FAIL the title gate for a harness reason, not a rendering one: `drive.py`'s
+`untilref`/`ifref` references are 640x448 frames, and a pillarboxed 1818x1132 window never matches
+them at 160x112, so the probe stalls on the controller-configuration "select memory card slot"
+dialog and captures that screen 23 times. **Open, worth a look:** the window is resizable and one
+run (`pf_point_stuck`) came up at 1818x1132 with nothing in the run asking for it, and so failed
+the title gate the same way; the re-run at the default size passed. A gate that can be silently
+defeated by a window resize is a gate weakness.
+
 ## 2026-09-11 03:45 (local) — Sprint 2 landed: host-space triangle draw behind a knob, family B and C native (123/166), gates hardened and deterministic on a fresh clone
 Sprint `2026-09-11-sprint-2-host-render-and-family-b`, branch `sprint-2`, Tasks 1-11, all reviewed.
 What exists now:

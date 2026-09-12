@@ -62,6 +62,14 @@ dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.s
 the refusal path on the normal fixtures -- test-only, never set them for a real run. `vu1_replay
 --vram-diff <outdir> [--vram-tol <pct>]` proves the host-draw and GIF paths render the same
 pixels offline; `vu1_replay --no-native` forces the interpreted path for comparison.
+`PS2X_PRESENT_FILTER=linear|integer|point` picks how the PS2 frame is stretched to the window:
+`linear` (default) is the single aspect-fit draw with the render target's own linear sampling,
+`point` samples it nearest straight to the window, and `integer` point-samples it into an
+off-screen stage at floor(fit scale) times its size first and then fits that stage with linear
+filtering. Presentation only -- it changes no rendering, and the title gate is green in all three.
+The window opens at 640x448, exactly the presented frame, so at the default size the fit scale is
+1.0 and all three modes are the same 1:1 blit; the knob only bites on a resized window (see the
+2026-09-12 entry in `docs/STATUS.md`).
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.

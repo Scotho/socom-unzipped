@@ -2597,24 +2597,78 @@ void PS2Runtime::run()
             (screenHeight - dstHeight) * 0.5f,
             dstWidth,
             dstHeight};
-        // The GS frame's alpha channel is game data (often 0): present it opaque, never blended.
-        rlDrawRenderBatchActive();
-        rlDisableColorBlend();
-        DrawTexturePro(presentTex, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
-        rlDrawRenderBatchActive();
-        rlEnableColorBlend();
-        // PMODE merge of two read circuits (movies letterbox over a black buffer this way): the
-        // backend hands back circuit 2 with alpha = its weight; standard alpha blending does
-        // C2*w + C1*(1-w).
-        if (hostTex != 0u)
-        {
-            if (const uint32_t tex2 = gs().hostFrameTexture2())
+        // PS2X_PRESENT_FILTER (read once) selects how the PS2 frame is stretched to the window:
+        //   linear  - default, today's behaviour: one aspect-fit draw per read circuit, sampler
+        //             state left exactly as whoever created the texture set it (the GL
+        //             render-target copy is GL_LINEAR, the CPU fallback texture GL_NEAREST).
+        //   point   - nearest sampling straight to the window: hard pixel edges, but the fit
+        //             scale is fractional so the source pixels land on uneven numbers of texels.
+        //   integer - point-sample the frame into an off-screen stage at k = floor(fit scale)
+        //             times its size (exact pixel replication), then stretch that stage the
+        //             remaining scale/k (in [1,2)) into the window with linear filtering.
+        static const std::string s_presentFilter = [] {
+            const char *e = std::getenv("PS2X_PRESENT_FILTER");
+            return std::string(e ? e : "linear");
+        }();
+        const bool integerPresent = (s_presentFilter == "integer");
+        // Only touch sampler state off the default path, so that "linear" is byte for byte what
+        // the code did before this knob existed on both the host and the CPU present path.
+        if (integerPresent || s_presentFilter == "point")
+            SetTextureFilter(presentTex, TEXTURE_FILTER_POINT);
+        // Both branches draw the read circuits the same way, only into a different target:
+        // circuit 1 unblended, because the GS frame's alpha channel is game data (often 0), and
+        // the optional circuit 2 alpha-blended over it -- the PMODE merge of two read circuits
+        // (movies letterbox over a black buffer this way), where the backend hands back circuit 2
+        // with alpha = its weight so that standard alpha blending does C2*w + C1*(1-w).
+        const auto drawCircuits = [&](const Rectangle &dst) {
+            rlDrawRenderBatchActive();
+            rlDisableColorBlend();
+            DrawTexturePro(presentTex, srcRect, dst, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+            rlDrawRenderBatchActive();
+            rlEnableColorBlend();
+            if (hostTex != 0u)
             {
-                Texture2D presentTex2 = presentTex;
-                presentTex2.id = tex2;
-                DrawTexturePro(presentTex2, srcRect, dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
-                rlDrawRenderBatchActive();
+                if (const uint32_t tex2 = gs().hostFrameTexture2())
+                {
+                    Texture2D presentTex2 = presentTex;
+                    presentTex2.id = tex2;
+                    DrawTexturePro(presentTex2, srcRect, dst, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+                    rlDrawRenderBatchActive();
+                }
             }
+        };
+        if (integerPresent)
+        {
+            static RenderTexture2D s_integerStage{};
+            // scale is positive, so the truncation is the floor; k >= 1 keeps a window smaller
+            // than the frame working (the stage is then 1:1 and the fit draw shrinks it).
+            const int k = std::max(1, static_cast<int>(scale));
+            const int stageW = static_cast<int>(srcWidth) * k;
+            const int stageH = static_cast<int>(srcHeight) * k;
+            if (s_integerStage.texture.width != stageW || s_integerStage.texture.height != stageH)
+            {
+                if (s_integerStage.id != 0u)
+                    UnloadRenderTexture(s_integerStage);
+                s_integerStage = LoadRenderTexture(stageW, stageH);
+                SetTextureFilter(s_integerStage.texture, TEXTURE_FILTER_BILINEAR);
+            }
+            BeginTextureMode(s_integerStage);
+            ClearBackground(BLACK);
+            drawCircuits(Rectangle{0.0f, 0.0f, static_cast<float>(stageW), static_cast<float>(stageH)});
+            EndTextureMode();
+            // raylib render textures are y-flipped, hence the negative source height. The merged
+            // frame still carries the GS alpha, so this draw is unblended like circuit 1 above.
+            rlDrawRenderBatchActive();
+            rlDisableColorBlend();
+            DrawTexturePro(s_integerStage.texture,
+                           Rectangle{0.0f, 0.0f, static_cast<float>(stageW), -static_cast<float>(stageH)},
+                           dstRect, Vector2{0.0f, 0.0f}, 0.0f, WHITE);
+            rlDrawRenderBatchActive();
+            rlEnableColorBlend();
+        }
+        else
+        {
+            drawCircuits(dstRect);
         }
         // PS2X_HOST_SCREENSHOT_LATEST=<file.png>: keep rewriting the current frame (GL readback,
         // every ~150 ms, atomic rename) so the parity harness can read it instead of PrintWindow,
