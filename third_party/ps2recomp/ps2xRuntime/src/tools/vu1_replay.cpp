@@ -257,8 +257,14 @@ namespace
     constexpr uint32_t kFramePages = kFrameBytes / kGsPageBytes;
     constexpr uint32_t kZBufferPage = kFramePages;                    // ZBUF.ZBP
     constexpr uint32_t kBlankBytes = 2u * kFramePages * kGsPageBytes; // frame + z, kept at zero
-    // The parked texel, in blocks of 256 bytes: 2.25 MB in, above both buffers.
+    constexpr uint32_t kGsBlockBytes = 256u; // the unit of TEX0.TBP0 and TEX0.CBP
+    // The parked texel, in blocks: 2.25 MB in, above both buffers. The relationship is the point,
+    // not the number -- a parked texel inside the zeroed region would read 0 and every family-A
+    // dump would go back to drawing nothing -- so assert it rather than leaving it to arithmetic
+    // done once in a comment.
     constexpr uint32_t kTextureBlock = 0x2400u;
+    static_assert(kTextureBlock * kGsBlockBytes >= kBlankBytes,
+                  "the parked 1x1 texel must sit above the zeroed framebuffer and z buffer");
     constexpr uint8_t kNeutralTexelByte = 0x80u;
 
     // One dump's VRAM: the framebuffer and the z buffer blank, every other byte the neutral
@@ -268,6 +274,60 @@ namespace
         std::fill(vram.begin(), vram.end(), kNeutralTexelByte);
         const size_t blank = std::min<size_t>(vram.size(), kBlankBytes);
         std::fill(vram.begin(), vram.begin() + blank, static_cast<uint8_t>(0u));
+    }
+
+    // The neutral fill only helps a texture that lives ABOVE the zeroed region. Every family-C
+    // TEX0 and CLUT in today's three dump sets does (3.2-4.0 MB, against a blank region that ends
+    // at 2293760), but that is a property of the corpus, not of the design: a dump whose texture
+    // fell inside the framebuffer or the z buffer would sample 0 again and silently go back to
+    // `SKIP (nothing drawn)` with nothing to say why. So every kicked packet's A+D writes to
+    // TEX0_1/TEX0_2 are checked, and the first offender in a dump says so on stderr. A warning,
+    // not a failure: the replay framebuffer's address is this tool's choice to change, and the
+    // checked=0 FAIL rule is still the backstop if it ever costs the run its last drawn pixel.
+    void warnIfTextureInBlankRegion(const uint8_t *packet, uint32_t bytes, const std::string &dump,
+                                    bool &warned)
+    {
+        if (warned || bytes < 16u)
+            return;
+        uint64_t tagLo = 0u, tagHi = 0u;
+        std::memcpy(&tagLo, packet, sizeof(tagLo));
+        std::memcpy(&tagHi, packet + 8, sizeof(tagHi));
+        if (((tagLo >> 58) & 3u) != 0u) // FLG: only PACKED carries A+D descriptors
+            return;
+        const uint64_t nloop = tagLo & 0x7FFFu;
+        uint64_t nreg = (tagLo >> 60) & 0xFu;
+        if (nreg == 0u)
+            nreg = 16u; // the GIF reads NREG = 0 as sixteen registers
+        const uint64_t qwords = nloop * nreg;
+        if ((qwords + 1u) * 16u > bytes) // truncated or not the shape the tag claims: not ours
+            return;
+        for (uint64_t i = 0; i < qwords; ++i)
+        {
+            if (((tagHi >> (4u * (i % nreg))) & 0xFu) != 0x0Eu) // A+D
+                continue;
+            uint64_t value = 0u, addr = 0u;
+            std::memcpy(&value, packet + (i + 1u) * 16u, sizeof(value));
+            std::memcpy(&addr, packet + (i + 1u) * 16u + 8, sizeof(addr));
+            const uint8_t reg = static_cast<uint8_t>(addr & 0xFFu);
+            if (reg != GS_REG_TEX0_1 && reg != GS_REG_TEX0_2)
+                continue;
+            const uint32_t tbp0 = static_cast<uint32_t>(value & 0x3FFFu);        // TEX0.TBP0
+            const uint32_t cbp = static_cast<uint32_t>((value >> 37) & 0x3FFFu); // TEX0.CBP
+            const bool loadsClut = ((value >> 61) & 0x7u) != 0u;                 // TEX0.CLD
+            const bool textureLow = tbp0 * kGsBlockBytes < kBlankBytes;
+            const bool clutLow = loadsClut && cbp * kGsBlockBytes < kBlankBytes;
+            if (!textureLow && !clutLow)
+                continue;
+            std::fprintf(stderr,
+                         "[vu1_replay] WARNING %s: a kicked GIF packet points TEX0 at %s inside "
+                         "the zeroed framebuffer/z region (TBP0 0x%04x, CBP 0x%04x; the neutral "
+                         "fill starts at byte %u). It will sample 0, so this dump can draw "
+                         "nothing and SKIP -- move the replay framebuffer/z buffer rather than "
+                         "ignoring this.\n",
+                         dump.c_str(), textureLow ? "a texture" : "a CLUT", tbp0, cbp, kBlankBytes);
+            warned = true;
+            return;
+        }
     }
 
     void setupReplayGsContext(GS &gs)
@@ -651,6 +711,9 @@ int main(int argc, char **argv)
 
     std::vector<uint8_t> packets;
     uint32_t packetCount = 0;
+    // Set per dump, for warnIfTextureInBlankRegion's message and its once-per-dump latch.
+    std::string currentDump;
+    bool warnedTextureInBlankRegion = false;
     memory.setGifPacketCallback([&](const uint8_t *p, uint32_t n) {
         const uint32_t len = n;
         packets.insert(packets.end(), reinterpret_cast<const uint8_t *>(&len), reinterpret_cast<const uint8_t *>(&len) + 4);
@@ -659,7 +722,10 @@ int main(int argc, char **argv)
         // Kicked packets have to reach the GS too, or the GIF pass of --vram-diff would draw
         // nothing and the host pass would be compared against a blank frame.
         if (renderToVram)
+        {
+            warnIfTextureInBlankRegion(p, n, currentDump, warnedTextureInBlankRegion);
             gs.processGIFPacket(p, n);
+        }
     });
 
     VU1Interpreter vu(VU1Interpreter::Unit::VU1);
@@ -742,6 +808,8 @@ int main(int argc, char **argv)
         Dump d;
         if (!loadDump(input.c_str(), d))
             return 1;
+        currentDump = baseName(input);
+        warnedTextureInBlankRegion = false;
         entryPcs.insert(d.hdr[0]);
         if (firstCode.empty())
             firstCode = d.code;

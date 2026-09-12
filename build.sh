@@ -114,11 +114,16 @@ test_step() {
   #    Known gap, and why vu1dump4_prog_182 (the fourth C-over-A dump in the corpus, 1.488%) is
   #    NOT in this set: both by-design buckets are calibrated for opaque draws, and family C's
   #    render state turns alpha blending on. A one-step gouraud difference then comes out of the
-  #    blend as two steps (max delta 2, alpha 127 vs 128) instead of one, and a one-pixel shift of
+  #    blend as two steps (max delta 2, alpha 127 vs 128) instead of one -- and note for whoever
+  #    calibrates the buckets: that class is partly an artifact of this synthetic context, not of
+  #    the game's blend alone, because Cd = 0 on a first write and the neutral texel's At = 128
+  #    reduce (Cs - Cd) * As + Cd to Cv * Av >> 7. And a one-pixel shift of
   #    an *interior* seam between two adjacent triangles -- drawn in both renderings, so not a
   #    coverage boundary -- shows up as a 7..22-step delta. Every hard pixel on prog_177, prog_252
   #    and prog_182 is one of those two (pixel dumps in the Task 9 report). Widening the two
-  #    buckets for blended draws, and then adding prog_182, is follow-up work.
+  #    buckets for blended draws, and then adding prog_182, is Sprint 4 follow-up (so is a
+  #    patterned rather than uniform neutral fill, which is what a uniform texel cannot cover:
+  #    any ST/UV/Q divergence between the two paths is invisible against a constant texture).
   "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 7: the work-ceiling refusal path. tests/fixtures/vu1/clamp holds vu1dump4_prog_11 with TOP+2.z
   #    rewritten from 76 to 300 -- above kMaxVertices -- and a golden taken from the microcode path
