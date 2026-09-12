@@ -530,3 +530,92 @@ decision. S3-c must resolve the two together — either scale `m_presentWidth` p
 this reading `rt->fbo`, or keep it native *and* point it at `nativeViewFbo`. Doing one without the
 other gives a capture that is a corner of the frame or a frame at the wrong size, and the `>= 99`
 title bar is what would catch it.
+
+## 10. S3-c — `PS2X_GS_SCALE` (2026-09-12)
+
+`kScale` is gone; `renderScale()` (`gs_gl_backend.cpp`, the anonymous namespace at the top) reads
+`PS2X_GS_SCALE` once, clamps it to 1..4 and defaults to 1. `PS2X_GS_SCALE_FILTER` keeps S3-b's
+meaning. The CPU backend ignores both. Line numbers below are the S3-c commit's.
+
+### 10.1 The design, stated out loud (§8.1 item 5)
+
+**Premultiply.** `appendVertex` multiplies `out.x`/`out.y` by `S` *after* the `xyoffset >> 4`
+subtraction, so `aPos` arrives in host pixels and **`uRtSize` is the host extent**. `uTexSize`
+stays **native** unconditionally — S3-b's `nativeView()` hands the sampler a native-sized mirror,
+so §9.4's half of the hand-off is unchanged and no `uTexScale` on `tc`/`wrapCoord`/`uRegion`
+exists. The two sites §8.1 item 5 names as a pair (the premultiply and `uRtSize`) changed together
+in one commit.
+
+The consequence §9.4 asks to be said out loud is real and measured: a render target sampled as a
+texture is sampled at *native* resolution, so a full-screen display copy gains nothing from the
+scale. SOCOM II's title screen is exactly that, and its 2x captures score 99.8-99.9 against the 1x
+baseline — visually identical, as designed. The scale buys sharper *rasterisation*, and the title
+screen barely rasterises.
+
+### 10.2 Every `* S` site
+
+| # | site | what is scaled |
+|---|---|---|
+| 1 | `getRenderTarget` (`rt.hostWidth/hostHeight = native * renderScale()`) | the colour texture allocation; `glTexImage2D`, the depth attachment via `getDepthTarget(rt->hostWidth, rt->hostHeight)` and `uRtSize` all follow it with no second multiply |
+| 2 | `appendVertex` (`out.x`, `out.y`) | the vertex premultiply, after the `xyoffset >> 4` subtraction |
+| 3 | `executeClear` `glScissor` | `x0*S, y0*S, (x1-x0+1)*S, (y1-y0+1)*S` |
+| 4 | `setupDrawState` `glScissor` | the same rect |
+| 5 | `refreshDirtyRows`'s `uploadScaled` lambda | destination `(x0*S, y0*S)` sized `(w*S, h*S)`, with each native pixel nearest-expanded into an `SxS` block on the CPU; `S == 1` keeps the original single `glTexSubImage2D` |
+| 6 | `executePresent` (`m_presentHostWidth/Height`, and circuit 2's `w2`/`h2`) | the presented rectangle |
+
+Unchanged on purpose: `kRtHeight` and its eight clamps, `usedHeight`, `noteGpuRows`, `pageSpan`,
+the dirty bands and `dirtyRects`, the `fbw * 64` page-row clamps, and the point/line/sprite
+expansion in `executeSubmit` (it runs on `GSVertex`, i.e. pre-premultiply, so a 1-native-pixel line
+still covers `S` host pixels).
+
+### 10.3 §8.1 item 2, settled by naming (and §9.5 with it)
+
+`m_presentWidth/m_presentHeight` are renamed rather than multiplied in place:
+
+* **`m_presentHostWidth/Height`** = `min(display, native) * S` — host texels, which is what every
+  GL consumer of the old name wanted: both present-copy `glBlitFramebuffer` rects, the
+  `PS2X_GS_TRACE_PRESENT` probes, and the `srcRect` `HostFrameTexture` hands `ps2_runtime` beside
+  the host-sized `m_presentTexWidth/Height`. `ps2_runtime` aspect-fits that rect, so scaling all
+  four together changes the aspect ratio not at all and simply gives raylib a sharper texture to
+  minify — which is where the scale is actually visible.
+* **`m_presentNativeWidth/Height`** = `min(display, native)` — native pixels, with exactly one
+  consumer: the `m_presentPixelsRequested` capture §9.5 left unrouted. It is settled **native** and
+  now reads `nativeViewFbo(*rt)`, because `m_presentPixels` is a fixed 640x512 `kHostFrame` buffer
+  that the parity harness and the CPU backend both speak in native GS pixels. Scaling it would hand
+  the harness either the top-left `1/S` corner or a frame it cannot compare. At scale 1
+  `nativeViewFbo()` *is* `rt->fbo`, so the capture is byte-for-byte the call it was.
+
+`min(display, native) * S` is identically `min(display * S, host)`, so this lands where §2.9 and
+§8.1 item 2 both point.
+
+Items 3 and 4 need nothing (S3-b closed item 3; `DepthTarget` still has no native meaning). Item 6
+is site 3/4 above. Item 7 is site 5.
+
+### 10.4 What the resolve path was actually made to do
+
+S3-b's resolve had never executed. `PS2X_GS_SCALE_SELFTEST=1` (new, diagnostics only, one cached
+`getenv` when off) checks two things on **every** `nativeView()` call, including the calls that
+return the mirror without re-resolving:
+
+* **freshness** — a write serial is bumped at each of the three host-texture writers (the
+  `flushBatch` draw, `executeClear`, `refreshDirtyRows`) and stamped into the mirror at each
+  resolve. It is bumped at the *draw*, independently of where `dirtySinceResolve` is set, so a
+  writer that forgot the flag — §9.1's "stale by exactly one batch" bug — shows up as
+  `resolved < written` at the next read.
+* **content** — the mirror pixel must lie inside the per-channel `[min, max]` of the `SxS` host
+  texels behind it. Point picks one member of that block, box averages them, so one rule covers
+  both filters.
+
+Measured at `PS2X_GS_SCALE=2`, both filters, on a title run with `PS2X_GS_DUMP_DISPLAY` forcing the
+reads: 13 native-view reads each, **0 stale**, **0 of 229,376 channel samples per read outside the
+host block range**, with 8,000-12,000 host-texture writes between consecutive reads. The "gpu" PPM
+the display dump writes out of the mirror is a complete, correctly sized 640x448 frame.
+
+### 10.5 A finding worth recording: the title screen performs no guest-visible RT read
+
+With the default knobs, a 2x title run logs **zero** `nativeView()` calls: neither download fires,
+`resolveTexture`'s RT-as-texture fast path does not match, and `PS2X_GS_RT_TEXTURE=0` (which forces
+the shadow-download fallback) does not change that. The resolve path only runs on the title screen
+when `PS2X_GS_DUMP_DISPLAY` asks for it. §2.5's claim that the title labels come out of
+`downloadRenderTargetToShadow` does not hold on this build. Anything that wants to exercise the
+resolve under load needs a gameplay scene, not the title.

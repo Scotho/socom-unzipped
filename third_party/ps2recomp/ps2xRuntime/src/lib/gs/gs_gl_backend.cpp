@@ -21,10 +21,34 @@ namespace
 {
     constexpr uint32_t kMaxRtWidth = 1024u;
     constexpr uint32_t kRtHeight = 1024u;
-    // Integer render scale: every render target's GL texture is kScale times its native GS
-    // extent. Fixed at 1 in S3-a (this is a rename-plus-audit, no behaviour change); S3-c turns
-    // it into a knob read from PS2X_GS_SCALE.
-    constexpr uint32_t kScale = 1u;
+    // Integer render scale (S3-c): every render target's GL colour texture is renderScale()
+    // times its native GS extent, and every draw rasterises into it at that scale. Read once from
+    // PS2X_GS_SCALE and clamped to 1..4; 1 (the default) is the identity -- host == native, so
+    // nativeView() never copies, appendVertex multiplies by 1.0f and every rect below is the rect
+    // it was before S3-c. The CPU backend ignores this knob entirely and stays 1x.
+    //
+    // DESIGN (research/14 section 8.1 item 5): this is the *premultiply* design. appendVertex
+    // multiplies out.x/out.y by S after the xyoffset >> 4 subtraction, so aPos arrives in host
+    // pixels and uRtSize must be the HOST size. uTexSize stays NATIVE unconditionally, because
+    // S3-b's nativeView() hands the sampler a native-sized mirror -- so an RT sampled as a texture
+    // is sampled at native resolution and a full-screen display copy gains no detail from the
+    // scale; only the draws that rasterise into the target do. Point/line/sprite expansion in
+    // executeSubmit happens on GSVertex, i.e. pre-scale, so a 1-native-pixel line still covers S
+    // host pixels.
+    uint32_t renderScale()
+    {
+        static const uint32_t s_scale = []
+        {
+            const char *const e = std::getenv("PS2X_GS_SCALE");
+            long v = (e != nullptr && *e != 0) ? std::strtol(e, nullptr, 0) : 1L;
+            if (v < 1L)
+                v = 1L;
+            if (v > 4L)
+                v = 4L;
+            return static_cast<uint32_t>(v);
+        }();
+        return s_scale;
+    }
     constexpr uint32_t kHostFrameWidth = 640u;
     constexpr uint32_t kHostFrameHeight = 512u;
 
@@ -307,6 +331,117 @@ void main()
         return s_box;
     }
 
+    // PS2X_GS_SCALE_SELFTEST=1 -- the S3-c verification harness for the S3-b resolve path. Off by
+    // default; when off the whole thing is one cached getenv and a branch that is never taken.
+    //
+    // It answers the two questions a screenshot cannot. (a) FRESHNESS: is the mirror a view of the
+    // host texture as of the LAST write to it, or is it short one batch? research/14 section 9.1
+    // describes exactly that bug -- resolveTexture can clear dirtySinceResolve between a batch's
+    // setup and its draw -- and it is invisible in a frame that still "keeps its shape". A write
+    // serial is bumped at every one of the three host-texture writers and stamped into the mirror
+    // at every resolve; nativeView() then checks the two are equal on EVERY read, including the
+    // reads that return the mirror without re-resolving (which are the only reads a stale mirror
+    // can be served from). (b) CONTENT: is each native pixel actually the SxS host block behind
+    // it? Both filters put the mirror pixel inside the per-channel [min, max] of its block --
+    // point picks one member of the block, box averages them -- so one rule checks both, and a
+    // stale mirror fails it wherever the frame changed.
+    bool scaleSelfTest()
+    {
+        static const bool s_on = []
+        {
+            const char *const e = std::getenv("PS2X_GS_SCALE_SELFTEST");
+            return e != nullptr && *e != 0 && *e != '0';
+        }();
+        return s_on;
+    }
+
+    struct ScaleSerial
+    {
+        uint64_t written = 0;    // host colour texture writes (draw / clear / row upload)
+        uint64_t resolved = 0;   // the write count the mirror was last resolved at
+    };
+
+    std::unordered_map<uint32_t, ScaleSerial> &scaleSerials()
+    {
+        static std::unordered_map<uint32_t, ScaleSerial> s_map;
+        return s_map;
+    }
+
+    // Called from every site that sets dirtySinceResolve. Render-thread only, like the map.
+    void scaleNoteHostWrite(uint32_t fbp)
+    {
+        if (scaleSelfTest())
+            ++scaleSerials()[fbp].written;
+    }
+
+    void scaleSelfTestCheck(uint32_t fbp, uint32_t mirrorFbo, uint32_t hostFbo,
+                            uint32_t natW, uint32_t natH, uint32_t hostW, uint32_t hostH, bool resolvedNow)
+    {
+        static uint64_t s_reads = 0, s_stale = 0, s_content = 0, s_clean = 0;
+        const ScaleSerial &ser = scaleSerials()[fbp];
+        ++s_reads;
+        if (!resolvedNow)
+            ++s_clean;   // served from an already-clean mirror: the only shape a stale read can take
+        if (ser.resolved != ser.written)
+        {
+            ++s_stale;
+            std::fprintf(stderr, "[gs-scale-selftest] STALE fbp=%03x read#%llu resolved-now=%d: mirror resolved at write %llu, %llu writes have landed\n",
+                         fbp, (unsigned long long)s_reads, resolvedNow ? 1 : 0,
+                         (unsigned long long)ser.resolved, (unsigned long long)ser.written);
+        }
+        if (s_reads % 500u == 0u)
+            std::fprintf(stderr, "[gs-scale-selftest] %llu native-view reads (%llu served from an already-clean mirror), %llu stale; fbp=%03x writes=%llu\n",
+                         (unsigned long long)s_reads, (unsigned long long)s_clean, (unsigned long long)s_stale,
+                         fbp, (unsigned long long)ser.written);
+        if (s_content >= 24u || natW == 0u || natH == 0u)
+            return;
+        ++s_content;
+        const uint32_t sx = hostW / natW, sy = hostH / natH;
+        if (sx == 0u || sy == 0u)
+            return;
+        const uint32_t w = std::min<uint32_t>(256u, natW), h = std::min<uint32_t>(224u, natH);
+        std::vector<uint8_t> nat(static_cast<size_t>(w) * h * 4u);
+        std::vector<uint8_t> host(static_cast<size_t>(w) * sx * static_cast<size_t>(h) * sy * 4u);
+        GLint prevRead = 0;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevRead);
+        glPixelStorei(GL_PACK_ALIGNMENT, 4);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, mirrorFbo);
+        glReadPixels(0, 0, static_cast<GLsizei>(w), static_cast<GLsizei>(h), GL_RGBA, GL_UNSIGNED_BYTE, nat.data());
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, hostFbo);
+        glReadPixels(0, 0, static_cast<GLsizei>(w * sx), static_cast<GLsizei>(h * sy), GL_RGBA, GL_UNSIGNED_BYTE, host.data());
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevRead));
+        uint64_t bad = 0, samples = 0, nonBlack = 0;
+        for (uint32_t y = 0; y < h; ++y)
+            for (uint32_t x = 0; x < w; ++x)
+            {
+                bool lit = false;
+                for (uint32_t c = 0; c < 4u; ++c)
+                {
+                    int lo = 255, hi = 0;
+                    for (uint32_t by = 0; by < sy; ++by)
+                        for (uint32_t bx = 0; bx < sx; ++bx)
+                        {
+                            const int v = host[((static_cast<size_t>(y) * sy + by) * (static_cast<size_t>(w) * sx) + (static_cast<size_t>(x) * sx + bx)) * 4u + c];
+                            lo = std::min(lo, v);
+                            hi = std::max(hi, v);
+                        }
+                    if (c < 3u && hi != 0)
+                        lit = true;
+                    const int got = nat[(static_cast<size_t>(y) * w + x) * 4u + c];
+                    ++samples;
+                    if (got < lo - 1 || got > hi + 1)
+                        ++bad;
+                }
+                if (lit)
+                    ++nonBlack;
+            }
+        std::fprintf(stderr, "[gs-scale-selftest] content fbp=%03x read#%llu resolved-now=%d writes=%llu resolved-at=%llu filter=%s scale=%ux%u window=%ux%u: %llu/%llu channel samples outside the host block range, %llu/%u non-black native pixels\n",
+                     fbp, (unsigned long long)s_reads, resolvedNow ? 1 : 0,
+                     (unsigned long long)ser.written, (unsigned long long)ser.resolved,
+                     resolveFilterIsBox() ? "box" : "point", sx, sy, w, h,
+                     (unsigned long long)bad, (unsigned long long)samples, (unsigned long long)nonBlack, w * h);
+    }
+
     // Fullscreen triangle from gl_VertexID alone: no attributes, no vertex buffer.
     const char *const kResolveVertexShader = R"GLSL(#version 330 core
 void main()
@@ -373,6 +508,10 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
     m_gpuDirtyPages.fill(0u);
     m_shadowPageGeneration.fill(0u);
     std::fprintf(stderr, "[gs-gl] OpenGL backend active (PS2X_GS_BACKEND=cpu for the rasterizer)\n");
+    // The CPU backend (PS2X_GS_BACKEND=cpu, used by the unit tests and vu1_replay) ignores
+    // PS2X_GS_SCALE and always rasterises at 1x; this banner only ever prints from the GL path.
+    std::fprintf(stderr, "[gs-gl] PS2X_GS_SCALE=%u (render targets %ux native, resolve filter %s)\n",
+                 renderScale(), renderScale(), resolveFilterIsBox() ? "box" : "point");
 }
 
 void GSGlBackend::Reset()
@@ -739,8 +878,11 @@ bool GSGlBackend::HostRenderFrame()
 
 uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight)
 {
-    width = m_presentWidth;
-    height = m_presentHeight;
+    // Host texels, paired with the host-sized m_presentTexWidth/Height: ps2_runtime builds its
+    // srcRect out of these four and aspect-fits the result, so scaling all four together leaves the
+    // aspect ratio alone and simply hands raylib a sharper texture to minify.
+    width = m_presentHostWidth;
+    height = m_presentHostHeight;
     textureWidth = m_presentTexWidth;
     textureHeight = m_presentTexHeight;
     return m_presentTexture;
@@ -991,16 +1133,16 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     // Targets are keyed by base page only: the game addresses the same buffer with different
     // FRAME widths (1024-wide at boot, 640-wide in the shell) and draws must land in one texture.
     // Allocate the maximum stride so pixel coordinates map directly regardless of FBW.
-    // S3-a invariant: the GL texture is exactly kScale times the native GS extent. Every site in
-    // the backend now names one or the other (research/14 section 3); if the two ever drift apart
-    // the GL rects and the VRAM addressing disagree silently, which is the failure mode this
-    // split exists to prevent -- so fail loudly instead.
+    // S3-a invariant, load-bearing from S3-c on: the GL texture is exactly renderScale() times
+    // the native GS extent, and every site in the backend names one or the other (research/14
+    // section 3). If the two ever drift apart the GL rects and the VRAM addressing disagree
+    // silently, which is the failure mode this split exists to prevent -- so fail loudly instead.
     auto checkScale = [](const RenderTarget &t)
     {
-        if (t.hostWidth != t.nativeWidth * kScale || t.hostHeight != t.nativeHeight * kScale)
+        if (t.hostWidth != t.nativeWidth * renderScale() || t.hostHeight != t.nativeHeight * renderScale())
         {
             std::fprintf(stderr, "[gs-gl] FATAL render target fbp=%03x host %ux%u != native %ux%u * scale %u\n",
-                         t.fbp, t.hostWidth, t.hostHeight, t.nativeWidth, t.nativeHeight, kScale);
+                         t.fbp, t.hostWidth, t.hostHeight, t.nativeWidth, t.nativeHeight, renderScale());
             std::abort();
         }
     };
@@ -1019,8 +1161,11 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     rt.psm = psm;
     rt.nativeWidth = kMaxRtWidth;
     rt.nativeHeight = kRtHeight;
-    rt.hostWidth = rt.nativeWidth * kScale;
-    rt.hostHeight = rt.nativeHeight * kScale;
+    // [* S site 1 -- allocation] the GL colour texture is the native extent times the scale; the
+    // depth attachment follows it via getDepthTarget(rt->hostWidth, rt->hostHeight) in
+    // setupDrawState, and the native mirror stays nativeWidth x nativeHeight.
+    rt.hostWidth = rt.nativeWidth * renderScale();
+    rt.hostHeight = rt.nativeHeight * renderScale();
     checkScale(rt);
     glGenTextures(1, &rt.color);
     glBindTexture(GL_TEXTURE_2D, rt.color);
@@ -1246,12 +1391,50 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     // executeClear; this is the third writer of the same texture and would silently serve a stale
     // mirror to a download that follows an upload).
     rt.dirtySinceResolve = true;
+    scaleNoteHostWrite(rt.fbp);
     const uint32_t w = std::min<uint32_t>(rt.nativeWidth, rt.fbw * 64u);
     if (w == 0u)
         return;
     const uint32_t base = rt.fbp << 5;
     glBindTexture(GL_TEXTURE_2D, rt.color);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    // [* S site 5 -- shadow->GPU upload] Both uploads below produce a buffer of NATIVE pixels at a
+    // NATIVE destination rect (every clamp feeding them -- `w`, both `y1`s -- stays native, per
+    // research/14 section 8's audit). This is the one place that turns them into the host rect they
+    // have to write: destination (x0*S, y0*S) sized (w*S, h*S), each native pixel nearest-expanded
+    // into an SxS block on the CPU. Without it an unscaled glTexSubImage2D writes a native-sized
+    // patch into the top-left corner of the host-sized region it meant to cover (section 8.1 item 7).
+    //
+    // The consequence is intended and is NOT a bug to fix: the shadow only ever holds native
+    // pixels, so an upload DESTROYS sub-native detail in the rows it covers -- any region the game
+    // re-uploads (the movie path re-uploads a full frame every frame) loses the Sx draw beneath it.
+    const uint32_t uploadScale = renderScale();
+    auto uploadScaled = [&](const std::vector<uint32_t> &src, uint32_t sw, uint32_t sh, uint32_t dx, uint32_t dy)
+    {
+        if (uploadScale == 1u)
+        {
+            glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(dx), static_cast<GLint>(dy),
+                            static_cast<GLsizei>(sw), static_cast<GLsizei>(sh), GL_RGBA, GL_UNSIGNED_BYTE, src.data());
+            return;
+        }
+        const size_t stride = static_cast<size_t>(sw) * uploadScale;
+        std::vector<uint32_t> big(stride * sh * uploadScale);
+        for (uint32_t y = 0; y < sh; ++y)
+        {
+            uint32_t *const row0 = big.data() + static_cast<size_t>(y) * uploadScale * stride;
+            for (uint32_t x = 0; x < sw; ++x)
+            {
+                const uint32_t px = src[static_cast<size_t>(y) * sw + x];
+                for (uint32_t sx = 0; sx < uploadScale; ++sx)
+                    row0[static_cast<size_t>(x) * uploadScale + sx] = px;
+            }
+            for (uint32_t sy = 1u; sy < uploadScale; ++sy)
+                std::memcpy(row0 + static_cast<size_t>(sy) * stride, row0, stride * sizeof(uint32_t));
+        }
+        glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(dx * uploadScale), static_cast<GLint>(dy * uploadScale),
+                        static_cast<GLsizei>(sw * uploadScale), static_cast<GLsizei>(sh * uploadScale),
+                        GL_RGBA, GL_UNSIGNED_BYTE, big.data());
+    };
     auto convert = [&](uint32_t p) -> uint32_t
     {
         if (rt.psm == GS_PSM_CT16 || rt.psm == GS_PSM_CT16S)
@@ -1271,7 +1454,7 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
         for (uint32_t y = y0; y < y1; ++y)
             for (uint32_t x = x0; x < x1; ++x)
                 px[static_cast<size_t>(y - y0) * (x1 - x0) + (x - x0)] = convert(readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y));
-        glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(x0), static_cast<GLint>(y0), static_cast<GLsizei>(x1 - x0), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, px.data());
+        uploadScaled(px, x1 - x0, y1 - y0, x0, y0);
         rt.usedHeight = std::max(rt.usedHeight, y1);
     }
     // Re-read each run of dirty 32-row bands on its own; bands nobody uploaded into keep the
@@ -1309,7 +1492,7 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
                     p |= 0x80000000u;
                 pixels[static_cast<size_t>(y - y0) * w + x] = p;
             }
-        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, static_cast<GLint>(y0), static_cast<GLsizei>(w), static_cast<GLsizei>(y1 - y0), GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        uploadScaled(pixels, w, y1 - y0, 0u, y0);
         rt.usedHeight = std::max(rt.usedHeight, y1);
     }
 }
@@ -1333,15 +1516,23 @@ void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
     glViewport(0, 0, rt->hostWidth, rt->hostHeight);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(context.scissor.x0, context.scissor.y0,
-              std::max<int>(0, context.scissor.x1 - context.scissor.x0 + 1),
-              std::max<int>(0, context.scissor.y1 - context.scissor.y0 + 1));
+    // [* S site 3 -- clear scissor] SCISSOR is in native GS pixels and the viewport above is host,
+    // so the rect must be scaled as a whole: x0*S, y0*S, (x1-x0+1)*S, (y1-y0+1)*S. research/14
+    // section 2.2 marks an off-by-one here semantic-adjacent -- a scissor that leaks a draw into
+    // the next native row leaks it into rows a later download writes back into guest VRAM.
+    {
+        const int cs = static_cast<int>(renderScale());
+        glScissor(static_cast<int>(context.scissor.x0) * cs, static_cast<int>(context.scissor.y0) * cs,
+                  std::max<int>(0, context.scissor.x1 - context.scissor.x0 + 1) * cs,
+                  std::max<int>(0, context.scissor.y1 - context.scissor.y0 + 1) * cs);
+    }
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
     glClearColor((rgba & 0xFFu) / 255.0f, ((rgba >> 8) & 0xFFu) / 255.0f, ((rgba >> 16) & 0xFFu) / 255.0f, ((rgba >> 24) & 0xFFu) / 255.0f);
     glClear(GL_COLOR_BUFFER_BIT);
     rt->gpuDirty = true;
     rt->shadowStale = true;
     rt->dirtySinceResolve = true;   // the clear wrote the host colour texture: the native mirror is stale
+    scaleNoteHostWrite(rt->fbp);
     rt->usedHeight = std::max(rt->usedHeight, std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(context.scissor.y1) + 1u));
     noteGpuRows(*rt, static_cast<uint32_t>(std::max<int>(0, context.scissor.y0)), std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(context.scissor.y1) + 1u));
 }
@@ -1391,11 +1582,19 @@ uint32_t GSGlBackend::nativeView(RenderTarget &rt)
 {
     if (rt.hostWidth == rt.nativeWidth && rt.hostHeight == rt.nativeHeight)
         return rt.color;
+    bool resolvedNow = false;
     if (rt.dirtySinceResolve || rt.mirrorTexture == 0u)
     {
         resolveToMirror(rt);
         rt.dirtySinceResolve = false;
+        resolvedNow = true;
+        if (scaleSelfTest())
+            scaleSerials()[rt.fbp].resolved = scaleSerials()[rt.fbp].written;
     }
+    // Deliberately outside the branch above: a stale mirror is only ever *served* by the path that
+    // skips the resolve, so checking inside the branch would check the one case that cannot fail.
+    if (scaleSelfTest())
+        scaleSelfTestCheck(rt.fbp, rt.mirrorFbo, rt.fbo, rt.nativeWidth, rt.nativeHeight, rt.hostWidth, rt.hostHeight, resolvedNow);
     return rt.mirrorTexture;
 }
 
@@ -1822,8 +2021,16 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     }
     // Copy the presented rectangle into a dedicated texture: the render target keeps being drawn
     // into (the next frame's clear lands on it while it is on screen), which showed as flicker.
-    m_presentWidth = std::min<uint32_t>(width, rt->nativeWidth);
-    m_presentHeight = std::min<uint32_t>(height, rt->nativeHeight);
+    // [* S site 6 -- presentation] research/14 section 8.1 item 2: the DISPLAY rectangle is a
+    // native GS extent (so the clamp against nativeWidth/Height is native), but every GL consumer
+    // of it is a host rect. Settled by naming the two rather than by a bare * kScale at each use:
+    // m_presentNative* is the clamped native rectangle, m_presentHost* the same rectangle in host
+    // texels. min(display, native) * S is identically min(display * S, host), so this agrees with
+    // section 2.9's formulation too.
+    m_presentNativeWidth = std::min<uint32_t>(width, rt->nativeWidth);
+    m_presentNativeHeight = std::min<uint32_t>(height, rt->nativeHeight);
+    m_presentHostWidth = m_presentNativeWidth * renderScale();
+    m_presentHostHeight = m_presentNativeHeight * renderScale();
     if (m_presentCopyTexture == 0u || m_presentTexWidth != rt->hostWidth || m_presentTexHeight != rt->hostHeight)
     {
         if (m_presentCopyTexture != 0u)
@@ -1847,8 +2054,8 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
     // glBlitFramebuffer honours the colour mask: a frame that ends with an FBMSK-masked draw
     // would otherwise leave the copy black while the render target itself is fine.
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glBlitFramebuffer(0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
-                      0, 0, static_cast<GLint>(m_presentWidth), static_cast<GLint>(m_presentHeight),
+    glBlitFramebuffer(0, 0, static_cast<GLint>(m_presentHostWidth), static_cast<GLint>(m_presentHostHeight),
+                      0, 0, static_cast<GLint>(m_presentHostWidth), static_cast<GLint>(m_presentHostHeight),
                       GL_COLOR_BUFFER_BIT, GL_NEAREST);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     m_presentTexture = m_presentCopyTexture;
@@ -1898,8 +2105,10 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
                 }
-                const uint32_t w2 = std::min<uint32_t>(m_presentWidth, rt2->nativeWidth);
-                const uint32_t h2 = std::min<uint32_t>(m_presentHeight, rt2->nativeHeight);
+                // Clamp in native units against the second circuit's native extent, then scale:
+                // both framebuffers in the blit below are host-sized.
+                const uint32_t w2 = std::min<uint32_t>(m_presentNativeWidth, rt2->nativeWidth) * renderScale();
+                const uint32_t h2 = std::min<uint32_t>(m_presentNativeHeight, rt2->nativeHeight) * renderScale();
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, rt2->fbo);
                 glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_presentCopyFbo2);
                 glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_presentCopyTexture2, 0);
@@ -1930,18 +2139,18 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
             ++s_printed;
             uint8_t px[4] = {0, 0, 0, 0};
             glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentCopyFbo);
-            glReadPixels(static_cast<GLint>(m_presentWidth / 2u), static_cast<GLint>(m_presentHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
+            glReadPixels(static_cast<GLint>(m_presentHostWidth / 2u), static_cast<GLint>(m_presentHostHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
             uint8_t px2[4] = {0, 0, 0, 0};
             if (m_presentTexture2 != 0u)
             {
                 glBindFramebuffer(GL_READ_FRAMEBUFFER, m_presentCopyFbo2);
-                glReadPixels(static_cast<GLint>(m_presentWidth / 2u), static_cast<GLint>(m_presentHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px2);
+                glReadPixels(static_cast<GLint>(m_presentHostWidth / 2u), static_cast<GLint>(m_presentHostHeight / 2u), 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, px2);
                 glBindFramebuffer(GL_FRAMEBUFFER, 0);
             }
             std::fprintf(stderr, "[gs-gl present-trace] frame=%llu en1=%d en2=%d pmode=%llx fbp=%03x fbp2=%03x rt#fbo=%u %ux%u copy=%u centre=%02x%02x%02x%02x tex2=%u centre2=%02x%02x%02x%02x glerr=0x%x\n",
                          (unsigned long long)m_frameCounter, en1 ? 1 : 0, en2 ? 1 : 0, (unsigned long long)request.pmode, display.fbp, display2.fbp, rt->fbo,
-                         m_presentWidth, m_presentHeight, m_presentCopyTexture, px[0], px[1], px[2], px[3],
+                         m_presentHostWidth, m_presentHostHeight, m_presentCopyTexture, px[0], px[1], px[2], px[3],
                          m_presentTexture2, px2[0], px2[1], px2[2], px2[3], glGetError());
         }
     }
@@ -1959,22 +2168,32 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
                 ++s_logged;
             std::fprintf(stderr, "[gs-gl present] frame=%llu dispfb fbp=%03x fbw=%u psm=%02x display=%ux%u smode2=%llx rt=%ux%u used=%u -> present %ux%u\n",
                          (unsigned long long)m_frameCounter, display.fbp, display.fbw, display.psm, width, height,
-                         (unsigned long long)request.smode2, rt->nativeWidth, rt->nativeHeight, rt->usedHeight, m_presentWidth, m_presentHeight);
+                         (unsigned long long)request.smode2, rt->nativeWidth, rt->nativeHeight, rt->usedHeight, m_presentHostWidth, m_presentHostHeight);
         }
     }
 
     if (m_presentPixelsRequested)
     {
-        std::vector<uint32_t> pixels(static_cast<size_t>(m_presentWidth) * m_presentHeight);
-        glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
+        // The fifth guest-visible-ish read, deliberately left unrouted by S3-b (research/14
+        // section 9.5) because it is item 2's territory. Settled NATIVE: m_presentPixels is a fixed
+        // kHostFrameWidth x kHostFrameHeight (640x512) buffer that the parity harness and the CPU
+        // backend both speak in native GS pixels, so scaling this capture would either hand back
+        // the top-left 1/S corner of the frame (reading a host rect into a native buffer) or a
+        // frame at a size the harness cannot compare. Reading the native mirror keeps
+        // PS2X_FRAME_DUMP and every parity capture identical in shape at any scale -- and at scale
+        // 1 nativeViewFbo() IS rt->fbo, so this is the same call it was.
+        const uint32_t dumpW = m_presentNativeWidth, dumpH = m_presentNativeHeight;
+        std::vector<uint32_t> pixels(static_cast<size_t>(dumpW) * dumpH);
+        glBindFramebuffer(GL_FRAMEBUFFER, nativeViewFbo(*rt));
         glPixelStorei(GL_PACK_ALIGNMENT, 4);
-        glReadPixels(0, 0, m_presentWidth, m_presentHeight, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        glReadPixels(0, 0, dumpW, dumpH, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
         std::lock_guard<std::mutex> lock(m_queueMutex);
         m_presentPixels.assign(static_cast<size_t>(kHostFrameWidth) * kHostFrameHeight * 4u, 0u);
-        for (uint32_t y = 0; y < m_presentHeight && y < kHostFrameHeight; ++y)
+        for (uint32_t y = 0; y < dumpH && y < kHostFrameHeight; ++y)
             std::memcpy(m_presentPixels.data() + static_cast<size_t>(y) * kHostFrameWidth * 4u,
-                        pixels.data() + static_cast<size_t>(y) * m_presentWidth,
-                        std::min<uint32_t>(m_presentWidth, kHostFrameWidth) * 4u);
+                        pixels.data() + static_cast<size_t>(y) * dumpW,
+                        std::min<uint32_t>(dumpW, kHostFrameWidth) * 4u);
     }
 }
 
@@ -2297,8 +2516,14 @@ void GSGlBackend::appendVertex(const GSVertex &v, const GSDrawState &state, bool
 {
     const auto &ctx = state.context;
     GlVertex out{};
-    out.x = v.x - static_cast<float>(ctx.xyoffset.ofx >> 4);
-    out.y = v.y - static_cast<float>(ctx.xyoffset.ofy >> 4);
+    // [* S site 2 -- vertex premultiply] AFTER the xyoffset subtraction: XYOFFSET is a native
+    // 1/16-pixel origin, so the subtraction happens in native space and only the result is scaled.
+    // This is the premultiply half of research/14 section 8.1 item 5; its pair is the uRtSize
+    // uniform in setupDrawState, which must therefore be the HOST size. Changing one without the
+    // other gives a frame shrunk into a 1/S corner or one scissored off the edge.
+    const float scale = static_cast<float>(renderScale());
+    out.x = (v.x - static_cast<float>(ctx.xyoffset.ofx >> 4)) * scale;
+    out.y = (v.y - static_cast<float>(ctx.xyoffset.ofy >> 4)) * scale;
     out.z = static_cast<float>(std::min<double>(v.z, 4294967295.0) / 4294967296.0);
     if (state.prim.fst)
     {
@@ -2449,9 +2674,13 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     // whose second vertex lies above/left of the first — all of the UI's text glyphs.
     glDisable(GL_CULL_FACE);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(ctx.scissor.x0, ctx.scissor.y0,
-              std::max<int>(0, ctx.scissor.x1 - ctx.scissor.x0 + 1),
-              std::max<int>(0, ctx.scissor.y1 - ctx.scissor.y0 + 1));
+    // [* S site 4 -- draw scissor] as executeClear: native SCISSOR rect into a host viewport.
+    {
+        const int ds = static_cast<int>(renderScale());
+        glScissor(static_cast<int>(ctx.scissor.x0) * ds, static_cast<int>(ctx.scissor.y0) * ds,
+                  std::max<int>(0, ctx.scissor.x1 - ctx.scissor.x0 + 1) * ds,
+                  std::max<int>(0, ctx.scissor.y1 - ctx.scissor.y0 + 1) * ds);
+    }
     rt->usedHeight = std::max(rt->usedHeight, std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     noteGpuRows(*rt, static_cast<uint32_t>(std::max<int>(0, ctx.scissor.y0)), std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     rt->gpuDirty = true;
@@ -2557,6 +2786,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     }
 
     glUseProgram(m_program);
+    // HOST, and that is not a free choice: aPos arrives premultiplied by S from appendVertex, so
+    // gl_Position = aPos / uRtSize * 2 - 1 needs the host extent (research/14 section 8.1 item 5).
     glUniform2f(m_u.rtSize, static_cast<float>(rt->hostWidth), static_cast<float>(rt->hostHeight));
     glUniform1i(m_u.tme, state.prim.tme ? 1 : 0);
     glUniform1i(m_u.fge, state.prim.fge ? 1 : 0);
@@ -2684,6 +2915,7 @@ void GSGlBackend::flushBatch()
         // next setup/clear/upload on the target, and every read in that window (executeReadback,
         // another batch sampling it, the display dump) would be short one whole batch.
         m_batchRt->dirtySinceResolve = true;
+        scaleNoteHostWrite(m_batchRt->fbp);
     }
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);

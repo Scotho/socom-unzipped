@@ -101,10 +101,11 @@ private:
         // are all expressed in these units and never scale (research/14 section 3).
         uint32_t nativeWidth = 0;
         uint32_t nativeHeight = 0;
-        // The extent of the GL colour texture in texels == native * kScale (kScale is a constexpr
-        // 1 today; PS2X_GS_SCALE makes it a knob). Everything that names a GL object -- the
-        // glTexImage2D allocation, glViewport, glReadPixels rects, uRtSize/uTexSize, and the
-        // strides of the pixel buffers those readbacks fill -- uses these.
+        // The extent of the GL colour texture in texels == native * renderScale() (S3-c: read
+        // once from PS2X_GS_SCALE, clamped 1..4, default 1). Everything that names a GL object --
+        // the glTexImage2D allocation, glViewport, glScissor, glReadPixels rects, uRtSize, and the
+        // strides of the pixel buffers those readbacks fill -- uses these. (uTexSize is the one
+        // exception: an RT sampled as a texture goes through nativeView(), so it is native.)
         uint32_t hostWidth = 0;
         uint32_t hostHeight = 0;
         uint32_t usedHeight = 32;
@@ -308,8 +309,17 @@ private:
 
     // presentation
     uint32_t m_presentTexture = 0;
-    uint32_t m_presentWidth = 0;
-    uint32_t m_presentHeight = 0;
+    // S3-c settles research/14 section 8.1 item 2 by renaming rather than by an in-place * S.
+    // m_presentHost* is the displayed rectangle in HOST texels (= native * renderScale()) and is
+    // what every GL consumer wants: the present-copy glBlitFramebuffer rects, the trace probes'
+    // glReadPixels, and the srcRect handed to HostFrameTexture beside the host-sized
+    // m_presentTexWidth/Height. m_presentNative* is the same rectangle in native GS pixels and has
+    // exactly one consumer: the PS2X_FRAME_DUMP capture, which reads nativeViewFbo() into the
+    // fixed 640x512 kHostFrame buffer the parity harness and the CPU backend both speak.
+    uint32_t m_presentHostWidth = 0;
+    uint32_t m_presentHostHeight = 0;
+    uint32_t m_presentNativeWidth = 0;
+    uint32_t m_presentNativeHeight = 0;
     uint32_t m_presentFbp = 0;
     uint32_t m_presentCopyTexture = 0;
     uint32_t m_presentCopyFbo = 0;

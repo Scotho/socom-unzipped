@@ -72,6 +72,21 @@ scale is 1.0 and all three modes are the same 1:1 blit; the knob bites on a resi
 960x544 Vita build). `python -m tools_py.parity.resize_window <w> <h>` resizes a running instance
 for that comparison -- captures only, the title gate cannot score a pillarboxed window. See the
 2026-09-12 entry in `docs/STATUS.md`.
+`PS2X_GS_SCALE=1..4` (GL backend only, default 1) is the integer render-target scale: every
+render target's GL texture is allocated at that multiple of its native GS extent and every draw
+rasterises into it at that scale, so geometry is sharper while VRAM addressing, page/row
+bookkeeping and every byte the guest can read back stay native. Anything the guest can observe --
+the two VRAM downloads, a render target sampled as a texture, the display dump, the frame capture
+-- goes through a native-sized mirror first, and `PS2X_GS_SCALE_FILTER=point|box` picks how that
+mirror is produced (`point`, the default, is a `GL_NEAREST` blit; `box` averages the SxS host
+texels behind each native pixel). Two consequences worth knowing: textures are still decoded at
+native resolution, so an RT sampled as a texture (the full-screen display copies) gains no detail
+from the scale; and an image upload into a render target only ever carries native pixels, so it
+destroys the sub-native detail in the rows it covers (the movie path re-uploads a full frame every
+frame). Memory cost is S^2 per colour and depth target. `PS2X_GS_SCALE_SELFTEST=1` checks, on
+every native-view read, that the mirror is not stale by a batch and that each native pixel lies
+inside its host block -- diagnostics only. The CPU backend (`PS2X_GS_BACKEND=cpu`, which
+`build.sh test` and `vu1_replay` force) ignores both knobs and always rasterises at 1x.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.
