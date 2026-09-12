@@ -110,15 +110,27 @@ test_step() {
   #        coverage boundary fires. It is recognised as each rendering's colour at the pixel
   #        appearing within 2 on a DRAWN pixel of the other rendering's eight neighbours, in both
   #        directions (a seam that moved swaps the two sides' colours) and never the centre pixel
-  #        (matching the centre would silently mean "delta <= 2 is always fine").
-  #    What is left on a clean build is 0 on all fifteen dumps. The +8 px experiment still fails
-  #    every dump it can move: 7.07-55.32% over the nine dumps whose host path it shifts, against
-  #    7.07-56.19% for the same renders under the pre-widening buckets (the other six never enter
-  #    the host-draw hook, so their two renderings stay identical at +8 too). The widening is not
-  #    free -- on the five dumps Sprint 3 measured its 29.4-54.9% on, the same experiment now
-  #    scores 19.6-38.4% -- and essentially all of that cost is the interior-seam rule, which is
-  #    also the only rule that recognises prog_182's 8/12/14-delta pixels. Read those numbers as
-  #    the price of the wider buckets, and re-measure them if either bucket is widened again.
+  #        (matching the centre would silently mean "delta <= 2 is always fine"). That clause is
+  #        BUDGETED at 1% of drawn and reported as seam=N on the VRAMDIFF line: a real seam is a
+  #        few pixels along one edge, but a UNIFORM one-pixel offset of the whole drawing
+  #        satisfies it EVERYWHERE, so past the budget every pixel it accepted goes back to hard
+  #        and the line says OVER-BUDGET. On a clean build the clause is used on three dumps only
+  #        -- 4 px on prog_11 (0.12%), 3 on prog_177 (0.24%), 3 on prog_182 (0.50%) -- so the
+  #        thinnest margin to the budget is 2x. Thin, and deliberately visible.
+  #    What is left on a clean build is 0 on all fifteen dumps. Sensitivity, measured by shifting
+  #    the host path inside the hook (dumps over the 1% tolerance, of fifteen, and their range):
+  #        +1 px x   8 fail, 1.64-11.65%        +1 px y   6 fail, 1.42-16.74%
+  #        +2 px x   7 fail, 1.64-19.01%        +8 px x   9 fail, 7.07-55.48%
+  #    The six that never fail are the six whose host path the hook never takes -- their two
+  #    renderings are already bit-identical -- so no offset can move them. The +8 px column is
+  #    within 0.7 points of what the pre-widening buckets score on the same renders (7.07-56.19%).
+  #    Read the +-1 px column as the reason the budget exists: WITHOUT it, the seam clause scores
+  #    those same +-1 px renders at 0.00-0.08% and fails NOTHING, and the +8 px experiment alone
+  #    would never have shown that -- a systematic one-pixel offset (a wrong XYOFFSET constant, an
+  #    off-by-one in the >>4 truncation, a wrong lane feeding x) would have been invisible
+  #    corpus-wide. If either bucket is widened again, re-measure +-1 px FIRST: it is the tightest
+  #    of these by an order of magnitude. Dropped geometry, colour errors of 4 steps or more and
+  #    shifts of 3 px and up are not close calls -- they fail by 7x-84x either way.
   #
   #    Family C (vu1dump4_prog_165 over B, prog_177 and prog_252 over A) used to SKIP here: its
   #    0x64 / 0x30 / 0x32 render-state packets point TEX0 at a texture the dump does not carry, so

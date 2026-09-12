@@ -34,7 +34,10 @@
 //     truncated ones do not; and, when both passes drew the pixel, an *interior* seam between two
 //     adjacent triangles that sits one pixel over -- both sides drawn, so no coverage boundary --
 //     recognised as each rendering's colour at the pixel appearing (within 2) on a drawn pixel of
-//     the other rendering's eight neighbours.
+//     the other rendering's eight neighbours. That last clause is BUDGETED at 1 % of drawn and
+//     reported as seam=N: a real seam is a few pixels along one edge, whereas a uniform one-pixel
+//     offset of the whole drawing satisfies it everywhere, so past the budget every pixel it
+//     accepted goes back to hard and the line says OVER-BUDGET.
 // It exits 1 if any dump exceeds --vram-tol (default 1.0 %). differing / rounding / edge
 // and the whole-frame percentage are printed alongside as context: a frame-relative score cannot
 // fail on dumps that paint a few hundred of 286720 pixels. A dump whose two passes both drew
@@ -357,10 +360,6 @@ namespace
             uint64_t nreg = (tagLo >> 60) & 0xFu;
             if (nreg == 0u)
                 nreg = 16u; // the GIF reads NREG = 0 as sixteen registers
-            const bool pre = ((tagLo >> 46) & 1u) != 0u;
-            const uint64_t prim = (tagLo >> 47) & 0x7FFu;
-            if (pre && ((prim >> 6) & 1u) != 0u)
-                return true;
             uint64_t payload = 0u;
             if (flg == 0u)
                 payload = nloop * nreg * 16u; // PACKED: one qword per register per loop
@@ -368,8 +367,15 @@ namespace
                 payload = (nloop * nreg * 8u + 15u) & ~static_cast<uint64_t>(15u); // REGLIST
             else
                 payload = nloop * 16u; // IMAGE / disabled: nloop qwords of data
+            // The fit check comes FIRST, before any field of this tag is believed: a truncated or
+            // misaligned tag's bits are garbage, and believing its PRE/PRIM would set abe = 1,
+            // which WIDENS the buckets. Nothing here may guess in the loosening direction.
             if (static_cast<uint64_t>(offset) + 16u + payload > bytes)
                 return false;
+            const bool pre = ((tagLo >> 46) & 1u) != 0u;
+            const uint64_t prim = (tagLo >> 47) & 0x7FFu;
+            if (pre && ((prim >> 6) & 1u) != 0u)
+                return true;
             if (flg == 0u)
             {
                 for (uint64_t i = 0; i < nloop * nreg; ++i)
@@ -637,9 +643,22 @@ namespace
                 return false;
             };
 
+            // The seam clause is the loosest rule here, and measurably so: it is what makes a
+            // UNIFORM one-pixel screen-space offset invisible, because every pixel of a rigidly
+            // shifted drawing finds its own colour one pixel over in both directions. A real
+            // interior seam is a handful of pixels along one edge; a systematic offset -- a wrong
+            // XYOFFSET constant, an off-by-one in the >>4 truncation, a wrong lane feeding x --
+            // moves the whole drawing. So the clause gets a budget: on the fixture set it accepts
+            // 0 pixels on twelve dumps and 0.12 / 0.24 / 0.50 % of drawn on prog_11 / prog_177 /
+            // prog_182, while a +-1 px shift needs 1.44-11.65 %. Above the budget every
+            // seam-accepted pixel goes back to hard, which is what keeps the check able to fail on
+            // a one-pixel offset. seam= on the VRAMDIFF line reports the usage either way, so the
+            // rule can never quietly carry a dump.
+            constexpr double kSeamBudgetPct = 1.0;
+
             // Split the differing pixels into the two kinds the two paths produce by design and the
             // remainder, which is the only kind a wrong lane or a wrong context shows up as.
-            size_t rounding = 0, edge = 0, hard = 0;
+            size_t rounding = 0, edge = 0, seam = 0, hard = 0;
             for (size_t y = 0; y < kFrameHeight; ++y)
                 for (size_t x = 0; x < kFrameWidth; ++x)
                 {
@@ -664,10 +683,19 @@ namespace
                     else if (drawnGif[p] && drawnHost[p] &&
                              colourNearby(gif, host, drawnHost, x, y) &&
                              colourNearby(host, gif, drawnGif, x, y))
-                        ++edge;       // the same coverage difference at an interior seam
+                        ++seam;       // the same coverage difference at an interior seam
                     else
                         ++hard;
                 }
+
+            // Over budget, the seam clause is not describing a seam any more: it is describing a
+            // drawing that moved. Everything it accepted goes back to hard.
+            const bool seamOverBudget =
+                static_cast<double>(seam) * 100.0 > kSeamBudgetPct * static_cast<double>(drawn);
+            if (seamOverBudget)
+                hard += seam;
+            else
+                edge += seam;
 
             // The score is hard / drawn, not differing / whole frame: these dumps paint a few
             // hundred pixels of a 286720-pixel frame, so a frame-relative percentage cannot reach
@@ -675,8 +703,9 @@ namespace
             const double pct = 100.0 * static_cast<double>(hard) / static_cast<double>(drawn);
             const double framePct = 100.0 * static_cast<double>(differing) / static_cast<double>(pixels);
             std::printf("VRAMDIFF %s hard=%zu of drawn=%zu (%.3f%%) [differing=%zu: rounding=%zu "
-                        "edge=%zu hard=%zu; %.4f%% of the %zu-pixel frame; abe=%d]\n",
-                        name.c_str(), hard, drawn, pct, differing, rounding, edge, hard, framePct,
+                        "edge=%zu seam=%zu%s hard=%zu; %.4f%% of the %zu-pixel frame; abe=%d]\n",
+                        name.c_str(), hard, drawn, pct, differing, rounding, edge, seam,
+                        seamOverBudget ? " OVER-BUDGET(->hard)" : "", hard, framePct,
                         pixels, blendEnabled ? 1 : 0);
             ++checked;
             if (pct > tolerancePct)
