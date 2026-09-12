@@ -36,6 +36,11 @@ namespace socom2_hostnet
         };
 
         std::mutex g_mutex;
+        // Total bytes received on every socket this table owns. The PS2 inet stack exposes
+        // interface statistics through sceInetInterfaceControl, and SOCOM II uses one of them as a
+        // "has anything arrived lately" tick (see rxBytes() in the header). Guarded by g_mutex,
+        // which every receive path already holds.
+        uint64_t g_rxBytes = 0;
         std::array<Entry, kMaxSockets> g_table;
         bool g_initialized = false;
         std::string g_lastError;
@@ -299,6 +304,8 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         const int n = ::recv(e->s, static_cast<char *>(data), static_cast<int>(size), 0);
+        if (n > 0)
+            g_rxBytes += static_cast<uint64_t>(n);
         return n >= 0 ? n : mapError();
     }
 
@@ -326,6 +333,8 @@ namespace socom2_hostnet
                                  reinterpret_cast<sockaddr *>(&a), &len);
         if (n < 0)
             return mapError();
+        if (n > 0)
+            g_rxBytes += static_cast<uint64_t>(n);
         if (remote)
             *remote = fromAddr(a);
         return n;
@@ -430,6 +439,12 @@ namespace socom2_hostnet
         const uint32_t ip = ntohl(reinterpret_cast<sockaddr_in *>(res->ai_addr)->sin_addr.s_addr);
         freeaddrinfo(res);
         return ip;
+    }
+
+    uint64_t rxBytes()
+    {
+        std::lock_guard<std::mutex> lock(g_mutex);
+        return g_rxBytes;
     }
 
     uint32_t localIp()

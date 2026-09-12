@@ -592,8 +592,9 @@ advances after the opening moments; nothing downstream is "moving it back", it i
 
 The sentence in §3.0 stands, and this narrows its missing half by one layer without closing it:
 
-> the controller's input method runs every frame online (`FUN_00551ec0`'s guard is satisfied and
-> `FUN_00594cf0` is dispatched, 312/313 times per instance), nothing multiplayer-specific discards
+> the controller's input method runs every frame online (`FUN_00551ec0` dispatches `FUN_00594cf0`
+> at a per-player rate of 14.9/s and 16.5/s online against 13.5/s in single player — **not** the
+> "312/313" logged-line counts, which are the `CALL_TRACE_EVERY` artifact), nothing discards
 > its result (the one override that could, never fires), and the actor's position still never
 > changes — so the loss is **inside the controller's input method or in how its movement command is
 > applied to the actor**, below both branches that were suspected.
@@ -645,9 +646,22 @@ quietly attest to nothing. The online harness has it too, and now it is written 
 
 ---
 
-## 3.11 The gate, named (2026-09-12)
+## 3.11 The gate, named — **RETRACTED 2026-09-12; see §3.12 for the real one**
 
-> ### The condition
+> ### RETRACTED — this names the wrong routine. §3.12 has the real gate; keep this section only as
+> ### the record of how it was falsified.
+>
+> Three things killed it, none needing a run: `0x00567340` is a **generic** indexed axis setter
+> (`*(float*)(this + 8 + 4*idx) = f12`) used in the same "clear 0,1,2" idiom in about a dozen places,
+> not a multiplayer routine; `DAT_0045a1ca` is **1** online (measured, §3.12) because its only writer
+> is the "network cable is disconnected" monitor and our own IOP module
+> (`ps2xIOP/src/modules/eznetcnf.cpp`, fno 3) hardcodes link-up, so that arm cannot fire; and it is
+> **self-refuting** — the arm it blames `return 1`s *before* `FUN_005966a0`, which is where all
+> **four** axes including RY are written, so if it fired RY would be dead too.
+> **"Three calls, three dead axes" was a coincidence of counts.** The asymmetry was the right thread
+> to pull; this was not the mechanism producing it.
+>
+> ### The claim as originally written
 >
 > **`X` = the local player's three movement axes hold their pad values for a frame.
 > `X` never becomes true online because `Y` = `FUN_00594cf0`'s `cVar7 == 0` arm, which is guarded by
@@ -668,13 +682,16 @@ the one control that survives*.
 | 3 | the controller class is the same in both paths | measured — actor vtable `0x6691a0`, controller vtable `0x6694b0`, slots `0x10..0x1c` and `0x88..0x94` byte-identical in `logs/run_20260912_162216.log` (SP) and `…162848`/`…162854` (online) |
 | 4 | `cVar7 = controller->vtbl[0x8c]` (`FUN_00566940`) returns **0** | measured in **both** paths — online 374 + 345 logged calls, **every one `v0=0x0`** (`logs/run_20260912_164055.log`, `…164049.log`); single player 305 calls, every one `v0=0x0` (`logs/run_20260912_165209.log`) |
 | 5 | it returns 0 because `controller+0x170 & 0x03 == 0` | source (`FUN_00566940`'s entry test) + measured: SP dump of `controller+0x170` reads `0x…20` on 305 of 305 samples — bits `0x01` and `0x02` clear |
-| 6 | **the `cVar7 == 0` arm is multiplayer-exclusive** | source — `if (cVar7 == '\0') { if (DAT_0045a0c1 != '\0') { … } }`, and `@45a0c1 = 0x01` is measured on both online instances |
-| 7 | that arm zeroes axes 0, 1, 2 | source — `controller->vtbl[0x20](0, actor, 0)`, `(…, 1)`, `(…, 2)`; slot `0x20` resolves to `0x00567340` in the ELF |
+| 6 | ~~the `cVar7 == 0` arm is multiplayer-exclusive~~ | **WRONG** — the arm is entered only when `DAT_0045a1ca == 0`, and that byte is **1** online (§3.12). Labelled "source" here, but the source says the opposite once the inner guard is read. |
+| 7 | ~~that arm zeroes axes 0, 1, 2~~ | **WRONG** — `0x00567340` is a *generic* indexed axis setter (`*(float*)(this + 8 + 4*idx) = f12`) used in the same idiom in about a dozen places, and the arm `return 1`s before the code that writes any axis from the pad. |
 
-**Links 1–5 are measurements; 6 and 7 are read from the decompilation.** Step 4 is the one that
-surprises: the controller's input method returns 0 in *single player too*. So the discriminator is
-**not** the return value — it is what the two builds do with it. Single player ignores a zero;
-multiplayer takes it as "no input this frame" and actively clears the axes.
+**Links 1–5 are measurements; links 6 and 7 were labelled "read from the decompilation" and are
+simply WRONG — see the two struck rows above.** Step 4 is the one that should have stopped this:
+the controller's input method returns 0 in *single player too*. That should have been read as "the
+question is wrong", not as "so the difference must be downstream". `cVar7` is `FUN_00566940`'s
+"a scripted auto-move consumed this frame" result, driven by bits 0 and 1 of `controller+0x170`,
+and **0 is simply the normal case in both paths**. *Why is `cVar7` 0 online?* was never the right
+question, and chasing it cost a round trip.
 
 ### What is NOT yet established — do these before spending a fix attempt
 
@@ -702,3 +719,67 @@ build (`dist/socom2.exe` 16:40, `logs/build_task6_move2.log`, `buildexit=0`).
 **The symptom is unchanged.** `logs/run_20260912_164049.log`: 211 in-game `[peek] @416054` rows,
 x takes two values 538.775 / 538.705 across the whole probe sequence — still pinned, still no yaw and
 no translation. The soft-double fix is not the cause and is not part of the story.
+
+
+---
+
+## 3.12 THE GATE, and the fix that landed (2026-09-12)
+
+> ### The condition, completed and verified
+>
+> **`X` = the local player's LX/LY/RX survive the frame that reads them. `X` never becomes true
+> online because `Y` = the multiplayer movement scale `actor+0x1368` is clamped to **0.0** from the
+> first frame, and `FUN_00551ec0` multiplies exactly the three fields it feeds from the controller —
+> `actor[0x8f]`, `actor[0x90]`, `actor[0x91]` — by it. Pitch is not one of the three (it lives in
+> `ctrl[0x4c]`), which is why RY is the one control that survives.**
+>
+> **And the scale is zero because of us.** `FUN_00594cf0` computes it as
+> `clamp((5000 - (FUN_0030be80() - 1500)) * 0.001, 0.0, 1.0)`, and `FUN_0030be80` returns
+> "milliseconds since the interface activity counter last **changed**":
+>
+> ```c
+> if (0 < DAT_00457b04 && sceInetInterfaceControl(id, 0x200, &v, 4) == 0 && DAT_00458090 != v) {
+>     DAT_00458098 = now();  DAT_00458090 = v;          // reset the last-activity timestamp
+> }
+> return now() - DAT_00458098;
+> ```
+>
+> **`socom2_libnetb.cpp` answered code `0x200` with a hardcoded `0`.** `DAT_00458090` is BSS-zero, so
+> `DAT_00458090 != v` is false on the very first call and for ever after; `DAT_00458098` is never
+> written; the function returns the full uptime; the scale clamps to 0.0 on frame one and stays
+> there. The `ComeFromLan` bypass (`FUN_003045b0(0x44fe10)`) is false for a Medius match, so nothing
+> rescues it.
+
+### The fix
+
+`sceInetInterfaceControl` code `0x200` now returns a **real monotonic count of bytes received** on
+every socket the table owns (`socom2_hostnet::rxBytes()`, incremented in `recv()` and `recvFrom()`),
+which is what the PS2 interface-statistics API actually reports. `PS2X_SOCOM2_NET_STATS=0` restores
+the old constant so the defect can be reproduced without a rebuild.
+
+This is a correctness fix to **our HLE of a PS2 network API** — the right layer. It is emphatically
+*not* a patch to `FUN_00594cf0`: that scale-down is real console behaviour for a client that has
+genuinely lost network activity, and neutering it would have hidden the defect rather than fixed it.
+
+### Verified
+
+`logs/s4_task6_fix.sh`, run `logs/parity/ours_task6_fix2`, both instances in gameplay (**210
+in-game `[peek] @416054` rows each** — §3.10 step 0 checked before any screenshot was believed):
+
+| | before (every prior run) | after |
+|---|---|---|
+| `FUN_00553dc0` scale (`f12`) | not measurable — pinned | **1.0 on all 332 / 331 logged calls** |
+| instance A, distinct `@416054` x | **1** (538.684, 210 rows) | **73** — 539.7 → 337.9, z 1481.8 → 1299.9 |
+| instance B, distinct x | 63, all RY tails | **82** — 1145.3 → 1040.5, z 77.7 → 225.6 |
+
+Hundreds of units of displacement on both sides, against a camera-orbit radius of ~27 units, under
+`--probe --probe-both` pad injection. `logs/parity/ours_task6_fix2/A_probe12_W.png` shows the player
+several buildings away from the spawn the earlier runs were pinned at.
+
+**The online round start is unblocked: both instances move under LX/LY/RX.**
+
+### Regression check
+
+Re-run `logs/s4_task6_fix.sh`. It must show `MoveScale f12 = 1.0` and more than ~50 distinct
+`@416054` x values per instance. `PS2X_SOCOM2_NET_STATS=0` reproduces the defect exactly (scale 0.0,
+a single x value), which makes this an A/B with no rebuild.

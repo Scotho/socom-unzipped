@@ -48,6 +48,12 @@ namespace socom2_hostnet
 
     // Hostname -> IPv4 (host byte order); 0 on failure.
     uint32_t resolve(const std::string &name);
+    // Monotonic count of bytes received on every socket in this table. SOCOM II polls
+    // sceInetInterfaceControl code 0x200 once a frame and only cares whether the word CHANGED
+    // since last time: FUN_0030be80 resets its "last network activity" timestamp when it does, and
+    // the multiplayer movement scale (FUN_00553dc0 -> actor+0x1368) decays to zero when that
+    // timestamp goes stale. A constant here therefore pins the local player in place.
+    uint64_t rxBytes();
     uint32_t localIp();                            // the address the host would use for outbound
     std::string ipToString(uint32_t ip);
     const char *lastError();
