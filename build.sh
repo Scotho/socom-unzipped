@@ -91,17 +91,34 @@ test_step() {
   #    The score is hard / drawn, NOT differing / whole frame: these dumps paint 26..3291 pixels of
   #    a 286720-pixel frame, so a frame-relative score tops out at 0.32% here and could not fail at
   #    1% however wrong the drawing was (measured: forcing the host path +8 px in x leaves 9 of the
-  #    10 dumps at 0.0000-0.2570% of frame).
+  #    10 dumps that existed then at 0.0000-0.2570% of frame).
   #    "hard" excludes the two differences the two paths produce by design, both measured on this
   #    fixture set rather than assumed:
   #      - rounding: max channel delta <= 1. 174/179, 897/922, 67/69, 122/134 and 63/66 of each
   #        dump's differing pixels are exactly this -- one step of gouraud interpolation.
   #      - edge: a differing pixel whose 3x3 neighbourhood is not uniformly drawn in one of the two
   #        renderings, i.e. sub-pixel coverage at a triangle edge (delta 127/128 = drawn vs blank).
-  #    What is left on a clean build is 0, 4, 0, 0 and 1 pixel: 0.000% of drawn on eight dumps,
-  #    0.122% on prog_11 and 0.806% on prog_6 (1 pixel of 124 drawn -- the smallest dump, so the
-  #    least headroom under the 1.00% default). The +8 px experiment scores 29.4-54.9%, so the
-  #    check does fail when the drawing is wrong.
+  #    What is left on a clean build is 0 on ten of the fourteen dumps, 0.122% on prog_11 (4 of
+  #    3291), 0.680% on prog_252 (1 of 147), 0.786% on prog_177 (10 of 1272) and 0.806% on prog_6
+  #    (1 of 124 drawn -- the smallest dump, so the least headroom under the 1.00% default). The
+  #    +8 px experiment scores 29.4-54.9%, so the check does fail when the drawing is wrong.
+  #
+  #    Family C (vu1dump4_prog_165 over B, prog_177 and prog_252 over A) used to SKIP here: its
+  #    0x64 / 0x30 / 0x32 render-state packets point TEX0 at a texture the dump does not carry, so
+  #    every texel read back 0 and the ALPHA_1 = 0x44 those packets also set -- (Cs - Cd) * As + Cd
+  #    with As = 0 -- left the framebuffer untouched. vu1_replay now fills VRAM outside the frame
+  #    and z buffers with 0x80808080 (so any TEX0 samples a neutral texel, the same identity
+  #    MODULATE family A already got from its parked 1x1) and gives the z buffer its own pages
+  #    (those packets also switch TEST from ALWAYS to GEQUAL). vu1dump3_prog_31 is the fourth
+  #    family, whose 0x40 draws through the host hook with an untextured PRIM 0x4B.
+  #    Known gap, and why vu1dump4_prog_182 (the fourth C-over-A dump in the corpus, 1.488%) is
+  #    NOT in this set: both by-design buckets are calibrated for opaque draws, and family C's
+  #    render state turns alpha blending on. A one-step gouraud difference then comes out of the
+  #    blend as two steps (max delta 2, alpha 127 vs 128) instead of one, and a one-pixel shift of
+  #    an *interior* seam between two adjacent triangles -- drawn in both renderings, so not a
+  #    coverage boundary -- shows up as a 7..22-step delta. Every hard pixel on prog_177, prog_252
+  #    and prog_182 is one of those two (pixel dumps in the Task 9 report). Widening the two
+  #    buckets for blended draws, and then adding prog_182, is follow-up work.
   "$ROOT/dist/vu1_replay.exe" --vram-diff "$ROOT/logs/vramdiff_fixtures" "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
   # 7: the work-ceiling refusal path. tests/fixtures/vu1/clamp holds vu1dump4_prog_11 with TOP+2.z
   #    rewritten from 76 to 300 -- above kMaxVertices -- and a golden taken from the microcode path
@@ -127,13 +144,15 @@ test_step() {
   #    finishes the list from, so the end state must be the microcode's to the last register.
   #
   #    8: PS2X_VU1_NATIVE_TEST_CEILING=2 trips cmdUnpackVertices' clamp at 0x0b28 (TOP+2.z is 8..76
-  #       across the set) on the FIRST command of all twelve lists, every one of which starts 68.
+  #       across the set) on the FIRST command of all fourteen lists, thirteen of which start
+  #       68 and one (the fourth family) 70, whose 0x0cb8 unpack clamps on the same count.
   #    9: PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 leaves every family-A count alone and trips
   #       cmdClippedTransform's clamp at 0x0f38 (vi10) MID-LIST on the six lists that contain
   #       family-B commands -- after 68/06/02 have run and the clipper has written qwords 40-111,
   #       112 and 329.z and left vi8/vi10/vi12/vi15 live. That is the hand-back research/13 6.3
   #       calls the inside of an indivisible unit, and the one this file's whole-state
-  #       reproduction is what makes safe; the other six (family A and C-over-A) still run to
+  #       reproduction is what makes safe; the other eight (family A, C-over-A and the fourth
+  #       family) still run to
   #       their E bit, which is what makes the run a two-sided check rather than a blanket refusal.
   expect_native() { # $1 = the exact counts to require, then the command
     local want="$1"; shift
@@ -147,11 +166,11 @@ test_step() {
     fi
     printf '%s\n' "$out" | grep -q '^PASS' || { echo "clamp check: verify did not PASS" >&2; return 1; }
   }
-  expect_native "entered=12 ended=0 handbacks=12" \
+  expect_native "entered=14 ended=0 handbacks=14" \
     env PS2X_VU1_NATIVE_TEST_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
       --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
       "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
-  expect_native "entered=12 ended=6 handbacks=6" \
+  expect_native "entered=14 ended=8 handbacks=6" \
     env PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
       --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
       "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin

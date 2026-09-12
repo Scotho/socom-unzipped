@@ -220,16 +220,62 @@ namespace
     // lists' TME=1 MODULATE is the identity (their real textures are PATH3 uploads a dump does not
     // contain, and sampling the framebuffer itself would feed one triangle's pixels into the next).
     // It is the *same* state for both passes, which is all the comparison needs.
+    //
+    // Two of those synthetic choices are only enough for a list that never touches the GS context
+    // itself. A family-C list does: 0x64 kicks the render-state packet at data qword 330 and
+    // 0x30/0x32 kick an inline block, and in this corpus both are A+D writes to ALPHA_1, TEX1_1,
+    // TEX0_1, TEST_1, CLAMP_1 (+ MIPTBP1_1). Two of those writes land on top of the synthetic
+    // state:
+    //
+    //   * TEX0_1 stops pointing at the parked 1x1 texel and starts pointing at the game's own
+    //     texture -- e.g. vu1dump4_prog_252's PSMT8 128x128 at TBP0 0x3d05 with its CLUT at CBP
+    //     0x31c2, and TCC = 1 so the texture carries alpha. That upload is a PATH3 transfer the
+    //     dump does not contain, so every texel index read back is 0 and the CLUT entry it selects
+    //     is 0: the MODULATE gives RGBA (0,0,0,0), and the ALPHA_1 = 0x44 the same packet sets is
+    //     (Cs - Cd) * As + Cd with As = 0, i.e. Cd. The framebuffer is left exactly as it was, so
+    //     both passes read back a blank frame and the dump SKIPped for want of a drawn pixel.
+    //     The fix is the same idea as the parked texel, applied to the whole of VRAM: every byte
+    //     outside the framebuffer and the z buffer is 0x80, so whatever TEX0 an inline packet
+    //     picks -- direct or through a CLUT, CT32 or PSMT8 -- samples a uniform neutral texel and
+    //     the MODULATE stays the identity it already is for family A.
+    //   * TEST_1 stops being ZTST = ALWAYS and becomes ZTE = 1, ZTST = GEQUAL. With the z buffer
+    //     at ZBP 0 -- harmless while nothing ever tested z -- that reads the colours this frame
+    //     just drew as depth. So the z buffer moves to its own pages directly above the frame and
+    //     stays blank (ZMSK = 1 masks writes), which makes GEQUAL pass everywhere: the check
+    //     measures where the two paths put pixels, not a z pipeline neither path implements.
+    //
+    // Both changes are context, not scoring: they are applied identically to the GIF pass and the
+    // host pass, and they leave the family-A/B dumps' pixels bit-identical (their TEX0 is still
+    // the parked texel and their TEST is still ALWAYS).
     constexpr uint32_t kFrameWidth = 640u;
     constexpr uint32_t kFrameHeight = 448u;
     constexpr uint32_t kFrameBufferWidth = kFrameWidth / 64u; // FRAME.FBW
-    constexpr uint32_t kTextureBlock = 0x2000u;               // 2 MB in, clear of the 1.1 MB frame
+    constexpr uint32_t kGsPageBytes = 8192u;                  // one GS page; the unit of FBP/ZBP
+    // 640x448 PSMCT32 is 140 whole pages, so the frame is VRAM bytes [0, 1146880) and the z buffer
+    // the next 140 pages above it, [1146880, 2293760).
+    constexpr uint32_t kFrameBytes = kFrameWidth * kFrameHeight * 4u;
+    constexpr uint32_t kFramePages = kFrameBytes / kGsPageBytes;
+    constexpr uint32_t kZBufferPage = kFramePages;                    // ZBUF.ZBP
+    constexpr uint32_t kBlankBytes = 2u * kFramePages * kGsPageBytes; // frame + z, kept at zero
+    // The parked texel, in blocks of 256 bytes: 2.25 MB in, above both buffers.
+    constexpr uint32_t kTextureBlock = 0x2400u;
+    constexpr uint8_t kNeutralTexelByte = 0x80u;
+
+    // One dump's VRAM: the framebuffer and the z buffer blank, every other byte the neutral
+    // 0x80808080 an unmapped texture fetch has to read for the MODULATE above to be the identity.
+    void resetReplayVram(std::vector<uint8_t> &vram)
+    {
+        std::fill(vram.begin(), vram.end(), kNeutralTexelByte);
+        const size_t blank = std::min<size_t>(vram.size(), kBlankBytes);
+        std::fill(vram.begin(), vram.begin() + blank, static_cast<uint8_t>(0u));
+    }
 
     void setupReplayGsContext(GS &gs)
     {
         const uint64_t frame = (static_cast<uint64_t>(kFrameBufferWidth) << 16) |
                                (static_cast<uint64_t>(GS_PSM_CT32) << 24);
-        const uint64_t zbuf = (1ull << 32); // ZMSK: no z writes
+        // ZBP in pages, PSM 0 = PSMZ32, ZMSK: no z writes.
+        const uint64_t zbuf = static_cast<uint64_t>(kZBufferPage) | (1ull << 32);
         const uint64_t scissor = (static_cast<uint64_t>(kFrameWidth - 1u) << 16) |
                                  (static_cast<uint64_t>(kFrameHeight - 1u) << 48);
         const uint64_t xyoffset = static_cast<uint64_t>((2048u - kFrameWidth / 2u) * 16u) |
@@ -712,7 +758,7 @@ int main(int argc, char **argv)
             if (renderToVram)
             {
                 // Fresh VRAM and a fresh context per dump, so one dump's pixels never reach another's.
-                std::fill(vram.begin(), vram.end(), static_cast<uint8_t>(0u));
+                resetReplayVram(vram);
                 gs.reset();
                 setupReplayGsContext(gs);
             }
