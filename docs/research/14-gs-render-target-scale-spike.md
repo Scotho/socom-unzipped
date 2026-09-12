@@ -267,6 +267,13 @@ extent of the GL colour texture in texels, `= native * kScale`). `kScale` is a `
 `src/lib/gs/gs_gl_backend.cpp` *after* the split (commit of this task); the "was" column is the
 pre-split line so the §3 lists above can be cross-checked.
 
+**Frame warning.** Every line number in §8 and §8.1 is post-split; every bare line number in §1-§7
+is the spike's own frame (the header names `2c89aac`; the commit that actually matches those
+numbers is `dd5fca8`). The two frames differ by enough to land in unrelated code — `appendVertex`'s
+premultiply site is 2023-2024 in the spike's frame and **2044-2045** post-split, and 2023-2024
+post-split is a texture-cache eviction loop. Do not carry a number across the §7/§8 boundary
+without re-deriving it.
+
 | was | now | context | chose | why |
 |---|---|---|---|---|
 | 955-956 | 973-976 | `getRenderTarget` allocation (now writes both pairs + `checkScale`) | both | the one place the two sizes are tied together |
@@ -326,7 +333,7 @@ others are perf, diagnostics, or a loud failure.
    both downloads read a native-sized rect out of the mirror and every one of these four reads
    becomes `native*` again. Do not "fix" them by scaling `h` — that only moves the downsample.
 2. **`m_presentWidth/Height` (1577-1578, 1653-1654).** Chosen native, but *every* consumer is a host
-   GL rect (`glBlitFramebuffer` at 1602/1664, the probe `glReadPixels` at 1685/1691, the frame-dump
+   GL rect (`glBlitFramebuffer` at 1602/1660, the probe `glReadPixels` at 1685/1691, the frame-dump
    `glReadPixels` at 1723, and the `srcRect` handed to `HostFrameTexture`, which is paired with the
    host-sized `m_presentTexWidth`). S3-c must therefore write
    `m_presentWidth = min(display_w, rt->nativeWidth) * kScale`, which is identically
@@ -344,12 +351,13 @@ others are perf, diagnostics, or a loud failure.
    classified **host** in §8. That is correct **if and only if** S3-c follows the design §2 lays
    out, in which the *coordinates* fed to those uniforms are scaled to match:
 
-   * `appendVertex` (2023-2024) premultiplies `out.x/out.y` by `S` after the `xyoffset >> 4`
-     subtraction, so `aPos` arrives in host pixels and `gl_Position = aPos / uRtSize * 2 - 1`
-     (207-211) needs `uRtSize` in host texels;
-   * a new `uTexScale` multiplies `tc` in the fragment shader (240-246) **and** `uRegion`
-     (2330-2331, REGION_CLAMP bounds being native texels), so the `texture(uTex, vec2(u,v) /
-     uTexSize)` divide (246) needs `uTexSize` in host texels.
+   * `appendVertex` (declared 2040; the `out.x`/`out.y` assignments to premultiply are
+     **2044-2045**) multiplies by `S` after the `xyoffset >> 4` subtraction, so `aPos` arrives in
+     host pixels and `gl_Position = aPos / uRtSize * 2 - 1` (211, with `uRtSize` declared at 205)
+     needs `uRtSize` in host texels;
+   * a new `uTexScale` multiplies `tc` in the fragment shader (`tc` at 247, the two `wrapCoord`
+     calls at 248-249) **and** `uRegion` (2330-2331, REGION_CLAMP bounds being native texels), so
+     the `texture(uTex, vec2(u, v) / uTexSize)` divide (**250**) needs `uTexSize` in host texels.
 
    Under the **simpler alternative** — leave `appendVertex` and the texel coordinates in native
    units and let the host `glViewport` do the scaling on its own — **both of these sites must flip
