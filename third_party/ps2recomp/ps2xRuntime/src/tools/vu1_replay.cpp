@@ -23,11 +23,19 @@
 //
 // --vram-diff <outdir> renders every dump twice into a fresh 640x448 framebuffer - once through
 // the GIF path, once through the host hook - and prints one VRAMDIFF line per dump. The score is
-// `hard / drawn`: drawn = pixels either pass wrote, hard = differing pixels that are neither a
-// one-step gouraud rounding difference (max channel delta <= 1) nor on a coverage boundary (a
-// 3x3 neighbourhood that is not uniformly drawn in one of the two renderings, i.e. where the
-// host path's un-truncated 1/16-pixel coordinates put an edge the GIF path's truncated ones do
-// not). It exits 1 if any dump exceeds --vram-tol (default 1.0 %). differing / rounding / edge
+// `hard / drawn`: drawn = pixels either pass wrote, hard = differing pixels that are neither
+// rounding nor a coverage difference. Each of those two by-design buckets has an opaque form and
+// a form that only appears once the draw is blended or the seam is interior:
+//   rounding - max channel delta <= 1 (one step of gouraud interpolation); and, when the dump's
+//     draws set PRIM.ABE and both passes drew the pixel, max channel delta <= 2, because a blend
+//     turns a one-step source difference into a two-step destination difference.
+//   edge - a 3x3 neighbourhood that is not uniformly drawn in one of the two renderings, i.e.
+//     where the host path's un-truncated 1/16-pixel coordinates put an edge the GIF path's
+//     truncated ones do not; and, when both passes drew the pixel, an *interior* seam between two
+//     adjacent triangles that sits one pixel over -- both sides drawn, so no coverage boundary --
+//     recognised as each rendering's colour at the pixel appearing (within 2) on a drawn pixel of
+//     the other rendering's eight neighbours.
+// It exits 1 if any dump exceeds --vram-tol (default 1.0 %). differing / rounding / edge
 // and the whole-frame percentage are printed alongside as context: a frame-relative score cannot
 // fail on dumps that paint a few hundred of 286720 pixels. A dump whose two passes both drew
 // nothing prints `SKIP <name> (nothing drawn)` and does not count as a pass - two blank frames
@@ -330,6 +338,57 @@ namespace
         }
     }
 
+    // Does a kicked GIF packet turn alpha blending on? The bit is PRIM.ABE (bit 6), which reaches
+    // the GS two ways: the GIFtag's own PRIM field (bits 47-57) when PRE (bit 46) is set -- how
+    // every triangle in this corpus sets it -- or an A+D descriptor writing the PRIM register.
+    // Walks the tag chain; anything whose payload does not fit the bytes the tag claims ends the
+    // walk rather than guessing (the answer is then "no blending seen", which only ever narrows
+    // the by-design buckets).
+    bool gifPacketEnablesBlend(const uint8_t *packet, uint32_t bytes)
+    {
+        uint32_t offset = 0u;
+        while (offset + 16u <= bytes)
+        {
+            uint64_t tagLo = 0u, tagHi = 0u;
+            std::memcpy(&tagLo, packet + offset, sizeof(tagLo));
+            std::memcpy(&tagHi, packet + offset + 8, sizeof(tagHi));
+            const uint64_t nloop = tagLo & 0x7FFFu;
+            const uint64_t flg = (tagLo >> 58) & 3u;
+            uint64_t nreg = (tagLo >> 60) & 0xFu;
+            if (nreg == 0u)
+                nreg = 16u; // the GIF reads NREG = 0 as sixteen registers
+            const bool pre = ((tagLo >> 46) & 1u) != 0u;
+            const uint64_t prim = (tagLo >> 47) & 0x7FFu;
+            if (pre && ((prim >> 6) & 1u) != 0u)
+                return true;
+            uint64_t payload = 0u;
+            if (flg == 0u)
+                payload = nloop * nreg * 16u; // PACKED: one qword per register per loop
+            else if (flg == 1u)
+                payload = (nloop * nreg * 8u + 15u) & ~static_cast<uint64_t>(15u); // REGLIST
+            else
+                payload = nloop * 16u; // IMAGE / disabled: nloop qwords of data
+            if (static_cast<uint64_t>(offset) + 16u + payload > bytes)
+                return false;
+            if (flg == 0u)
+            {
+                for (uint64_t i = 0; i < nloop * nreg; ++i)
+                {
+                    if (((tagHi >> (4u * (i % nreg))) & 0xFu) != 0x0Eu) // A+D
+                        continue;
+                    uint64_t value = 0u, addr = 0u;
+                    const uint8_t *qword = packet + offset + 16u + i * 16u;
+                    std::memcpy(&value, qword, sizeof(value));
+                    std::memcpy(&addr, qword + 8, sizeof(addr));
+                    if (static_cast<uint8_t>(addr & 0xFFu) == GS_REG_PRIM && ((value >> 6) & 1u) != 0u)
+                        return true;
+                }
+            }
+            offset += static_cast<uint32_t>(16u + payload);
+        }
+        return false;
+    }
+
     void setupReplayGsContext(GS &gs)
     {
         const uint64_t frame = (static_cast<uint64_t>(kFrameBufferWidth) << 16) |
@@ -398,6 +457,24 @@ namespace
         return dir + "/" + baseName(dumpPath) + (hostDraw ? ".host.rgba" : ".gif.rgba");
     }
 
+    // The two renderings happen in child processes that hand back nothing but a framebuffer, and
+    // one of the buckets below needs to know something about how that framebuffer was drawn:
+    // whether the dump's draws had alpha blending on. Each child writes it next to its .rgba.
+    std::string vramMetaPath(const std::string &dir, const std::string &dumpPath, bool hostDraw)
+    {
+        return dir + "/" + baseName(dumpPath) + (hostDraw ? ".host.meta" : ".gif.meta");
+    }
+
+    // Missing or unreadable reads as "no blending", which only ever narrows the by-design buckets.
+    bool readBlendFlag(const std::string &path)
+    {
+        std::vector<uint8_t> bytes;
+        if (!readFile(path, bytes))
+            return false;
+        const std::string text(bytes.begin(), bytes.end());
+        return text.find("abe=1") != std::string::npos;
+    }
+
     // PS2X_VU1_HOST_DRAW is read once into a static inside the native program, so one process can
     // only ever render one of the two ways: re-run this executable with the same arguments (minus
     // --vram-diff) plus --vram-dump, once without and once with --host-draw, then compare.
@@ -412,6 +489,8 @@ namespace
         {
             std::remove(vramDumpPath(outDir, input, false).c_str());
             std::remove(vramDumpPath(outDir, input, true).c_str());
+            std::remove(vramMetaPath(outDir, input, false).c_str());
+            std::remove(vramMetaPath(outDir, input, true).c_str());
         }
 
         for (int pass = 0; pass < 2; ++pass)
@@ -456,6 +535,11 @@ namespace
                 failed = true;
                 continue;
             }
+            // Both children write one; only the GIF pass sees the triangle packets (the host pass
+            // draws them through the hook instead of kicking them), so the two are OR'd rather
+            // than required to agree.
+            const bool blendEnabled = readBlendFlag(vramMetaPath(outDir, input, false)) ||
+                                      readBlendFlag(vramMetaPath(outDir, input, true));
             const size_t pixels = gif.size() / 4u;
             if (pixels != static_cast<size_t>(kFrameWidth) * kFrameHeight)
             {
@@ -510,6 +594,49 @@ namespace
                 return anySet && !allSet;
             };
 
+            // The other half of the coverage story. A colour seam between two adjacent triangles
+            // can sit one pixel over while BOTH sides are drawn: the 3x3 is uniformly drawn, so
+            // boundaryAt never fires, yet the difference is the same sub-pixel coverage effect --
+            // the host path's un-truncated vertex puts the seam one pixel from where the GIF
+            // path's truncated one does. The signature is that the colour each rendering has at
+            // the pixel is a colour the other rendering has right next to it. Tolerance 2, not an
+            // exact match, because the two sides of the seam are themselves gouraud-interpolated
+            // and blended, so the neighbour that carries the colour carries it a step or two off.
+            // The centre is deliberately excluded: including it would match host[p] against gif[p]
+            // and silently turn this into "delta <= 2 is always fine", which is exactly the
+            // blanket pass the blend widening above is gated on ABE to avoid. The neighbour must
+            // itself be drawn, so an undrawn (zero) neighbour cannot stand in for a dark colour.
+            // Both directions are required, not either: a seam that moved one pixel swaps the two
+            // sides' colours, so each rendering's colour is next door in the other. Measured on
+            // every hard pixel of prog_11/177/182 -- all of them satisfy both directions -- and
+            // the one-directional form scores materially worse on the +8 px sanity experiment.
+            constexpr int kSeamTolerance = 2;
+            auto colourNearby = [&](const std::vector<uint8_t> &src, const std::vector<uint8_t> &other,
+                                    const std::vector<uint8_t> &drawnOther, size_t x, size_t y) {
+                const size_t p = y * kFrameWidth + x;
+                for (int dy = -1; dy <= 1; ++dy)
+                    for (int dx = -1; dx <= 1; ++dx)
+                    {
+                        if (dx == 0 && dy == 0)
+                            continue;
+                        const long nx = static_cast<long>(x) + dx;
+                        const long ny = static_cast<long>(y) + dy;
+                        if (nx < 0 || ny < 0 || nx >= static_cast<long>(kFrameWidth) ||
+                            ny >= static_cast<long>(kFrameHeight))
+                            continue;
+                        const size_t q = static_cast<size_t>(ny) * kFrameWidth + static_cast<size_t>(nx);
+                        if (!drawnOther[q])
+                            continue;
+                        int d = 0;
+                        for (int c = 0; c < 4; ++c)
+                            d = std::max(d, std::abs(static_cast<int>(src[p * 4u + c]) -
+                                                     static_cast<int>(other[q * 4u + c])));
+                        if (d <= kSeamTolerance)
+                            return true;
+                    }
+                return false;
+            };
+
             // Split the differing pixels into the two kinds the two paths produce by design and the
             // remainder, which is the only kind a wrong lane or a wrong context shows up as.
             size_t rounding = 0, edge = 0, hard = 0;
@@ -525,8 +652,19 @@ namespace
                         continue;
                     if (delta <= 1)
                         ++rounding;   // gouraud interpolation rounding: one step in one channel
+                    // With ABE = 1 the one step above comes out of the blend as two: the measured
+                    // cases are alpha 127 on one side and 128 on the other. Gated on the dump
+                    // actually blending, because on an opaque draw a delta of 2 is a real
+                    // difference, and on both passes having drawn the pixel, because a step
+                    // against a pixel only one pass wrote is not rounding at all.
+                    else if (delta <= 2 && blendEnabled && drawnGif[p] && drawnHost[p])
+                        ++rounding;
                     else if (boundaryAt(drawnGif, x, y) || boundaryAt(drawnHost, x, y))
                         ++edge;       // sub-pixel coverage difference at a triangle edge
+                    else if (drawnGif[p] && drawnHost[p] &&
+                             colourNearby(gif, host, drawnHost, x, y) &&
+                             colourNearby(host, gif, drawnGif, x, y))
+                        ++edge;       // the same coverage difference at an interior seam
                     else
                         ++hard;
                 }
@@ -537,8 +675,9 @@ namespace
             const double pct = 100.0 * static_cast<double>(hard) / static_cast<double>(drawn);
             const double framePct = 100.0 * static_cast<double>(differing) / static_cast<double>(pixels);
             std::printf("VRAMDIFF %s hard=%zu of drawn=%zu (%.3f%%) [differing=%zu: rounding=%zu "
-                        "edge=%zu hard=%zu; %.4f%% of the %zu-pixel frame]\n",
-                        name.c_str(), hard, drawn, pct, differing, rounding, edge, hard, framePct, pixels);
+                        "edge=%zu hard=%zu; %.4f%% of the %zu-pixel frame; abe=%d]\n",
+                        name.c_str(), hard, drawn, pct, differing, rounding, edge, hard, framePct,
+                        pixels, blendEnabled ? 1 : 0);
             ++checked;
             if (pct > tolerancePct)
                 failed = true;
@@ -714,6 +853,8 @@ int main(int argc, char **argv)
     // Set per dump, for warnIfTextureInBlankRegion's message and its once-per-dump latch.
     std::string currentDump;
     bool warnedTextureInBlankRegion = false;
+    // Set by the packet callback, reset per dump, written next to the .rgba for --vram-diff.
+    bool blendSeenThisDump = false;
     memory.setGifPacketCallback([&](const uint8_t *p, uint32_t n) {
         const uint32_t len = n;
         packets.insert(packets.end(), reinterpret_cast<const uint8_t *>(&len), reinterpret_cast<const uint8_t *>(&len) + 4);
@@ -724,6 +865,7 @@ int main(int argc, char **argv)
         if (renderToVram)
         {
             warnIfTextureInBlankRegion(p, n, currentDump, warnedTextureInBlankRegion);
+            blendSeenThisDump |= gifPacketEnablesBlend(p, n);
             gs.processGIFPacket(p, n);
         }
     });
@@ -810,6 +952,7 @@ int main(int argc, char **argv)
             return 1;
         currentDump = baseName(input);
         warnedTextureInBlankRegion = false;
+        blendSeenThisDump = false;
         entryPcs.insert(d.hdr[0]);
         if (firstCode.empty())
             firstCode = d.code;
@@ -863,6 +1006,16 @@ int main(int argc, char **argv)
                 std::fprintf(stderr, "cannot write %s\n", path.c_str());
                 return 1;
             }
+            // What --vram-diff's parent cannot see from the framebuffer alone.
+            const std::string metaPath = vramMetaPath(vramDumpDir, input, hostDraw);
+            FILE *meta = std::fopen(metaPath.c_str(), "w");
+            if (meta == nullptr)
+            {
+                std::fprintf(stderr, "cannot write %s\n", metaPath.c_str());
+                return 1;
+            }
+            std::fprintf(meta, "abe=%d\n", blendSeenThisDump ? 1 : 0);
+            std::fclose(meta);
             std::fprintf(stderr, "[vu1_replay] %s: %u packets kicked -> %s\n",
                          baseName(input).c_str(), packetCount, path.c_str());
             continue;

@@ -93,15 +93,32 @@ test_step() {
   #    1% however wrong the drawing was (measured: forcing the host path +8 px in x leaves 9 of the
   #    10 dumps that existed then at 0.0000-0.2570% of frame).
   #    "hard" excludes the two differences the two paths produce by design, both measured on this
-  #    fixture set rather than assumed:
-  #      - rounding: max channel delta <= 1. 174/179, 897/922, 67/69, 122/134 and 63/66 of each
-  #        dump's differing pixels are exactly this -- one step of gouraud interpolation.
+  #    fixture set rather than assumed. Each has an opaque form and a form that only appears once
+  #    the draw is blended or the seam is interior (Sprint 4 task 3 widened both; before that,
+  #    vu1dump4_prog_182 scored 1.488% and was held out of this set):
+  #      - rounding: max channel delta <= 1 -- one step of gouraud interpolation -- which is
+  #        174/179, 897/922, 67/69 and 63/66 of those dumps' differing pixels. Plus, on a dump
+  #        whose kicked packets set PRIM.ABE and only where BOTH passes drew the pixel, max channel
+  #        delta <= 2: the blend turns that one source step into two destination steps (the
+  #        measured cases are alpha 127 against 128). Gated on ABE because on an opaque draw a
+  #        delta of 2 is a real difference -- though note that every dump in this corpus kicks
+  #        PRIM 0x7b (prog_31: 0x4b), i.e. ABE = 1, so the gate does not discriminate here yet.
   #      - edge: a differing pixel whose 3x3 neighbourhood is not uniformly drawn in one of the two
   #        renderings, i.e. sub-pixel coverage at a triangle edge (delta 127/128 = drawn vs blank).
-  #    What is left on a clean build is 0 on ten of the fourteen dumps, 0.122% on prog_11 (4 of
-  #    3291), 0.680% on prog_252 (1 of 147), 0.786% on prog_177 (10 of 1272) and 0.806% on prog_6
-  #    (1 of 124 drawn -- the smallest dump, so the least headroom under the 1.00% default). The
-  #    +8 px experiment scores 29.4-54.9%, so the check does fail when the drawing is wrong.
+  #        Plus the interior form of the same thing: a colour seam between two adjacent triangles
+  #        that sits one pixel over with both sides drawn, so the 3x3 is uniformly drawn and no
+  #        coverage boundary fires. It is recognised as each rendering's colour at the pixel
+  #        appearing within 2 on a DRAWN pixel of the other rendering's eight neighbours, in both
+  #        directions (a seam that moved swaps the two sides' colours) and never the centre pixel
+  #        (matching the centre would silently mean "delta <= 2 is always fine").
+  #    What is left on a clean build is 0 on all fifteen dumps. The +8 px experiment still fails
+  #    every dump it can move: 7.07-55.32% over the nine dumps whose host path it shifts, against
+  #    7.07-56.19% for the same renders under the pre-widening buckets (the other six never enter
+  #    the host-draw hook, so their two renderings stay identical at +8 too). The widening is not
+  #    free -- on the five dumps Sprint 3 measured its 29.4-54.9% on, the same experiment now
+  #    scores 19.6-38.4% -- and essentially all of that cost is the interior-seam rule, which is
+  #    also the only rule that recognises prog_182's 8/12/14-delta pixels. Read those numbers as
+  #    the price of the wider buckets, and re-measure them if either bucket is widened again.
   #
   #    Family C (vu1dump4_prog_165 over B, prog_177 and prog_252 over A) used to SKIP here: its
   #    0x64 / 0x30 / 0x32 render-state packets point TEX0 at a texture the dump does not carry, so
@@ -111,19 +128,16 @@ test_step() {
   #    MODULATE family A already got from its parked 1x1) and gives the z buffer its own pages
   #    (those packets also switch TEST from ALWAYS to GEQUAL). vu1dump3_prog_31 is the fourth
   #    family, whose 0x40 draws through the host hook with an untextured PRIM 0x4B.
-  #    Known gap, and why vu1dump4_prog_182 (the fourth C-over-A dump in the corpus, 1.488%) is
-  #    NOT in this set: both by-design buckets are calibrated for opaque draws, and family C's
-  #    render state turns alpha blending on. A one-step gouraud difference then comes out of the
-  #    blend as two steps (max delta 2, alpha 127 vs 128) instead of one -- and note for whoever
-  #    calibrates the buckets: that class is partly an artifact of this synthetic context, not of
-  #    the game's blend alone, because Cd = 0 on a first write and the neutral texel's At = 128
-  #    reduce (Cs - Cd) * As + Cd to Cv * Av >> 7. And a one-pixel shift of
-  #    an *interior* seam between two adjacent triangles -- drawn in both renderings, so not a
-  #    coverage boundary -- shows up as a 7..22-step delta. Every hard pixel on prog_177, prog_252
-  #    and prog_182 is one of those two (pixel dumps in the Task 9 report). Widening the two
-  #    buckets for blended draws, and then adding prog_182, is Sprint 4 follow-up (so is a
-  #    patterned rather than uniform neutral fill, which is what a uniform texel cannot cover:
-  #    any ST/UV/Q divergence between the two paths is invisible against a constant texture).
+  #    vu1dump4_prog_182 (the fourth C-over-A dump in the corpus) is in this set as of Sprint 4
+  #    task 3. It used to score 1.488% because both by-design buckets were calibrated on opaque,
+  #    edge-only differences: 6 of its 9 hard pixels were the blend-amplified delta-2 class and 3
+  #    were interior seams at 8, 12 and 14 steps. Note for whoever calibrates the buckets again:
+  #    the delta-2 class is partly an artifact of this synthetic context, not of the game's blend
+  #    alone, because Cd = 0 on a first write and the neutral texel's At = 128 reduce
+  #    (Cs - Cd) * As + Cd to Cv * Av >> 7.
+  #    Still a known gap: a patterned rather than uniform neutral fill, which is what a uniform
+  #    texel cannot cover -- any ST/UV/Q divergence between the two paths is invisible against a
+  #    constant texture.
   #    The run also has to be read, not just exited: vu1_replay warns on stderr when a fixture's
   #    TEX0 resolves below the zeroed framebuffer/z region (see warnIfTextureInBlankRegion), which
   #    degrades that dump's comparison silently -- it can go back to drawing nothing and SKIPping,
@@ -178,14 +192,14 @@ MSG
   #    finishes the list from, so the end state must be the microcode's to the last register.
   #
   #    8: PS2X_VU1_NATIVE_TEST_CEILING=2 trips cmdUnpackVertices' clamp at 0x0b28 (TOP+2.z is 8..76
-  #       across the set) on the FIRST command of all fourteen lists, thirteen of which start
+  #       across the set) on the FIRST command of all fifteen lists, fourteen of which start
   #       68 and one (the fourth family) 70, whose 0x0cb8 unpack clamps on the same count.
   #    9: PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 leaves every family-A count alone and trips
   #       cmdClippedTransform's clamp at 0x0f38 (vi10) MID-LIST on the six lists that contain
   #       family-B commands -- after 68/06/02 have run and the clipper has written qwords 40-111,
   #       112 and 329.z and left vi8/vi10/vi12/vi15 live. That is the hand-back research/13 6.3
   #       calls the inside of an indivisible unit, and the one this file's whole-state
-  #       reproduction is what makes safe; the other eight (family A, C-over-A and the fourth
+  #       reproduction is what makes safe; the other nine (family A, C-over-A and the fourth
   #       family) still run to
   #       their E bit, which is what makes the run a two-sided check rather than a blanket refusal.
   expect_native() { # $1 = the exact counts to require, then the command
@@ -200,11 +214,11 @@ MSG
     fi
     printf '%s\n' "$out" | grep -q '^PASS' || { echo "clamp check: verify did not PASS" >&2; return 1; }
   }
-  expect_native "entered=14 ended=0 handbacks=14" \
+  expect_native "entered=15 ended=0 handbacks=15" \
     env PS2X_VU1_NATIVE_TEST_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
       --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
       "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
-  expect_native "entered=14 ended=8 handbacks=6" \
+  expect_native "entered=15 ended=9 handbacks=6" \
     env PS2X_VU1_NATIVE_TEST_CLIP_CEILING=2 "$ROOT/dist/vu1_replay.exe" \
       --verify "$ROOT/tests/fixtures/vu1/dispatch_0x1b50/golden.txt" --native --regs all \
       "$ROOT"/tests/fixtures/vu1/dispatch_0x1b50/*.bin
