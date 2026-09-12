@@ -387,6 +387,20 @@ others are perf, diagnostics, or a loud failure.
    `(x1-x0+1)*S`, `(y1-y0+1)*S`; §2.2 marks the off-by-one there as semantic-adjacent, since a
    scissor that leaks a draw into the next row leaks it into the rows a download later writes into
    VRAM.
+7. **The shadow -> GPU upload in `refreshDirtyRows` (1197, 1215, 1238 and the two
+   `glTexSubImage2D` calls at 1222 / 1260).** Added by S3-b, for the reason item 6 gives for its own
+   existence: this is where S3-c will look, and this site is not otherwise in §8's *read* audit as a
+   hand-off -- §8's three `refreshDirtyRows` rows classify its clamps, not the upload itself.
+   **§2.4 already tabulates it in full** (destination rect `*S`; the pixel buffer nearest-expanded to
+   `S x S` per native pixel, or uploaded 1x into a staging texture and blit-upscaled; the `w` and
+   `y1` clamps staying native) **together with the consequence that matters** -- an upload *destroys*
+   sub-native detail in the rows it covers, because the shadow only ever holds native pixels, so any
+   region the game re-uploads loses the `S x` draw beneath it. Go and read §2.4; it is not restated
+   here. What S3-b adds is only this: `refreshDirtyRows` is now also a `dirtySinceResolve` writer
+   (§9.1), so at `S > 1` it correctly forces a re-resolve -- but the flag does not make the upload
+   itself scale-correct, and at `S > 1` an unscaled `glTexSubImage2D` writes a native-sized patch
+   into the top-left corner of the host-sized region it was meant to cover. That is a loud,
+   structural failure rather than a quiet one, which is why it is last in this list.
 
 ## 9. S3-b — the native view (2026-09-12)
 
@@ -420,13 +434,24 @@ texture* is written and cleared only in `nativeView` after a resolve:
 
 | set at | writer |
 |---|---|
-| 2431 | `setupDrawState` — the draw the `executeSubmit` batch flushes into the target |
+| 2686 | `flushBatch`, at the `glDrawArrays` — the draw the `executeSubmit` batch flushes |
 | 1344 | `executeClear` |
 | 1248 | `refreshDirtyRows` — the shadow→GPU `glTexSubImage2D` row upload |
 
 The brief named only the first two. `refreshDirtyRows` is the third writer of the same texture: a
 download that follows an image upload with no draw in between would otherwise be served a mirror
 that predates the upload. It is free at scale 1 like the rest.
+
+**The draw's flag must be set at the draw, not in `setupDrawState` beside `gpuDirty`** — S3-b's
+first cut did the latter and it was wrong. `resolveTexture` runs between batch setup and the draw,
+and its RT-as-texture fast path deliberately `continue`s past the target being drawn into (the
+feedback case), which routes that target into the shadow-download loop underneath — and *that* loop
+does not skip it. So `downloadRenderTargetToShadow(m_batchRt)` → `nativeViewFbo` → resolves the
+**pre-draw** contents and marks the mirror clean; the batch then draws and nothing re-resolves until
+the next `setupDrawState` / `executeClear` / `refreshDirtyRows` on that target. At `S > 1` every
+read in that window — `executeReadback` → `downloadRenderTargetToCpu`, another batch sampling the
+target, the display dump — would be short one entire batch, intermittently and content-dependently.
+It is a logic bug, not a GL-state bug, so no amount of state auditing or 1× re-gating finds it.
 
 ### 9.2 The resolve pass (unreachable on this commit)
 
@@ -446,11 +471,25 @@ place targets are destroyed.
   mirror; `gl_FragCoord.xy` is the native pixel, so the shader `texelFetch`es the `SxS` host texels
   at `native * scale` and averages them.
 
-The pass saves and restores every piece of GL state it touches (FBO, viewport, colour mask, scissor
-enable, and for the box path also the program, VAO, active unit + 2D binding, blend/depth/cull
-enables), because both entry points run mid-batch: `resolveTexture` is called from `setupDrawState`
-*after* `glUseProgram(m_program)`, and the downloads are called from the texture path between a
-batch's setup and its draw.
+The pass saves and restores every piece of GL state it touches (the **READ and DRAW framebuffer
+bindings separately** — the blit path binds them to different framebuffers, so restoring
+`GL_FRAMEBUFFER` alone would force a caller's read binding to equal its draw binding; plus viewport,
+colour mask, scissor enable, and for the box path the program, VAO, active unit + 2D binding and the
+blend/depth/cull enables), because both entry points run mid-batch: `resolveTexture` is called from
+`setupDrawState` *after* `glUseProgram(m_program)`, and the downloads are called from the texture
+path between a batch's setup and its draw. Every reader today keeps READ and DRAW equal, but
+`executePresent` does not, and this is the pass a later reader gets routed through.
+
+Allocation ends in a `glCheckFramebufferStatus` and `std::abort()` on anything but
+`GL_FRAMEBUFFER_COMPLETE`, on the same reasoning as `checkScale`: a silently failed allocation
+leaves `mirrorTexture == 0`, and `nativeViewFbo` would then hand both downloads **framebuffer 0**,
+the default framebuffer — `glReadPixels` copying the host window into guest VRAM, which would read
+as a scaling artefact rather than as the catastrophe it is.
+
+One correction to an easy misreading: resetting the colour mask before the resolve is load-bearing
+for the **box** path only. `glBlitFramebuffer` does *not* honour the colour mask (GL 3.3 §18.3.1: a
+blit is affected by pixel ownership, the scissor and sRGB, and nothing else). The comment beside the
+present copy's own blit says otherwise and is wrong; it is pre-existing and was left alone.
 
 ### 9.3 The four readers, and what each reads now
 

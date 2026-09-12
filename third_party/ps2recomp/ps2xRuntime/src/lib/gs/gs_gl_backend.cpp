@@ -1458,9 +1458,15 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
     // after glUseProgram, and the downloads from the texture path), so this pass restores every
     // piece of GL state it touches rather than assuming the next caller re-establishes it. The
     // capture has to come before the lazy allocation below, which binds an FBO of its own.
-    GLint prevFbo = 0, prevProgram = 0, prevVao = 0, prevActive = 0, prevTex = 0, prevViewport[4] = {0, 0, 0, 0};
+    // READ and DRAW are captured separately: the blit path below binds them to different
+    // framebuffers, so restoring GL_FRAMEBUFFER (which would force the caller's read binding to
+    // equal its draw binding) is only correct for a caller that happens to keep the two the same.
+    // Every reader today does, but executePresent does not, and this is the pass a later reader
+    // will be routed through.
+    GLint prevReadFbo = 0, prevDrawFbo = 0, prevProgram = 0, prevVao = 0, prevActive = 0, prevTex = 0, prevViewport[4] = {0, 0, 0, 0};
     GLboolean prevMask[4] = {GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE};
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &prevReadFbo);
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevDrawFbo);
     glGetIntegerv(GL_VIEWPORT, prevViewport);
     glGetBooleanv(GL_COLOR_WRITEMASK, prevMask);
     const GLboolean wasScissor = glIsEnabled(GL_SCISSOR_TEST);
@@ -1485,11 +1491,28 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
         glGenFramebuffers(1, &rt.mirrorFbo);
         glBindFramebuffer(GL_FRAMEBUFFER, rt.mirrorFbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt.mirrorTexture, 0);
+        // Fail loudly, on the same reasoning as checkScale in getRenderTarget. If the allocation or
+        // the attachment did not take, nativeView would hand the RT-as-texture path texture 0, and
+        // -- far worse -- nativeViewFbo would hand both downloads framebuffer 0, the default
+        // framebuffer, so glReadPixels would copy the host window straight into guest VRAM. A
+        // corrupt frame buffer that looks like a scaling artefact is exactly what this must not be.
+        const GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+        if (status != GL_FRAMEBUFFER_COMPLETE || rt.mirrorTexture == 0u || rt.mirrorFbo == 0u)
+        {
+            std::fprintf(stderr, "[gs-gl] FATAL native mirror for fbp=%03x is incomplete: status=0x%04x tex=%u fbo=%u native %ux%u host %ux%u\n",
+                         rt.fbp, static_cast<unsigned>(status), rt.mirrorTexture, rt.mirrorFbo,
+                         rt.nativeWidth, rt.nativeHeight, rt.hostWidth, rt.hostHeight);
+            std::abort();
+        }
     }
 
     glDisable(GL_SCISSOR_TEST);
-    // glBlitFramebuffer and a fragment shader both honour the colour mask; a batch that set one
-    // would otherwise leave channels of the mirror untouched.
+    // The box path's fragment shader honours the colour mask, so a batch that left one set would
+    // otherwise write only some channels of the mirror. A glBlitFramebuffer does NOT honour it --
+    // GL 3.3 section 18.3.1: a blit is affected by pixel ownership, the scissor and sRGB, and
+    // nothing else -- so for the blit path this reset is merely harmless, not load-bearing. (The
+    // present copy further down claims the opposite next to its own blit; that comment is
+    // pre-existing and wrong. Do not reason from it.)
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 
     const GLint hostW = static_cast<GLint>(rt.hostWidth), hostH = static_cast<GLint>(rt.hostHeight);
@@ -1536,7 +1559,8 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
     glColorMask(prevMask[0], prevMask[1], prevMask[2], prevMask[3]);
     if (wasScissor)
         glEnable(GL_SCISSOR_TEST);
-    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(prevReadFbo));
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, static_cast<GLuint>(prevDrawFbo));
 }
 
 // Download a render target (GPU) into the shadow VRAM so texture decoding sees the drawn pixels.
@@ -2432,7 +2456,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     noteGpuRows(*rt, static_cast<uint32_t>(std::max<int>(0, ctx.scissor.y0)), std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     rt->gpuDirty = true;
     rt->shadowStale = true;
-    rt->dirtySinceResolve = true;   // this batch draws into the host colour texture (see nativeView)
+    // NOT dirtySinceResolve: that is set in flushBatch at the glDrawArrays, not here. See the
+    // comment there -- resolveTexture runs between this point and the draw and can clear it.
 
     {
         char tag[64];
@@ -2647,7 +2672,19 @@ void GSGlBackend::flushBatch()
         }
     }
     if (m_batchRt)
+    {
         glBindFramebuffer(GL_FRAMEBUFFER, m_batchRt->fbo);   // the texture path may have rebound another target
+        // The draw below is the write; the native mirror is stale from here (see nativeView).
+        // This has to be marked at the draw and not up in setupDrawState beside gpuDirty, because
+        // resolveTexture runs in between and can clear the flag on this very target: its
+        // RT-as-texture fast path deliberately skips the target being drawn into (the feedback
+        // case), which routes that target into the shadow-download loop below it, and
+        // downloadRenderTargetToShadow -> nativeViewFbo resolves the *pre-draw* contents and marks
+        // the mirror clean. The batch would then draw into a mirror nothing re-resolves until the
+        // next setup/clear/upload on the target, and every read in that window (executeReadback,
+        // another batch sampling it, the display dump) would be short one whole batch.
+        m_batchRt->dirtySinceResolve = true;
+    }
     glBindVertexArray(m_vao);
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);
