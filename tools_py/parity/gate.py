@@ -12,7 +12,8 @@ Refuses to start (exit 3) when C: has less than RUN_MIN_FREE_GB (default 4) free
 a launch or a gate run must not be the thing that fills a drive already near capacity. `free_gb()` is
 the injectable seam for tests (mock.patch.object(gate, "free_gb", ...)); RUN_FREE_GB_CMD overrides the
 query itself with a shell command whose last stdout line is the free space in GB, the same override
-scripts/run_detached.sh honours for its own disk refusal.
+scripts/run_detached.sh honours for its own disk refusal. `--score-title`/`--score-mission` (re-score
+an existing run, no game launch, nothing large written) are exempt.
 """
 import argparse
 import glob
@@ -356,12 +357,9 @@ def main(argv=None):
     ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
     args = ap.parse_args(argv)
 
-    min_free = float(os.environ.get("RUN_MIN_FREE_GB", DEFAULT_MIN_FREE_GB))
-    free = free_gb()
-    if free < min_free:
-        print("gate: refusing to start: %.2f GB free on C: < RUN_MIN_FREE_GB=%.2f GB" % (free, min_free))
-        return 3
-
+    # --score-title/--score-mission re-score an existing run: no game launch, nothing large written
+    # -- exempt from the disk refusal (review round 1 item 3, 2026-09-13), and checked first so
+    # free_gb() is never even called on this path.
     if args.score_title:
         ok, detail = score_title(args.score_title)
         print("%s title (%s)" % ("PASS" if ok else "FAIL", detail))
@@ -370,6 +368,12 @@ def main(argv=None):
         ok, detail = score_mission_log(args.score_mission, args.mission_frames)
         print("%s mission (%s)" % ("PASS" if ok else "FAIL", detail))
         return 0 if ok else 1
+
+    min_free = float(os.environ.get("RUN_MIN_FREE_GB", DEFAULT_MIN_FREE_GB))
+    free = free_gb()
+    if free < min_free:
+        print("gate: refusing to start: %.2f GB free on C: < RUN_MIN_FREE_GB=%.2f GB" % (free, min_free))
+        return 3
 
     # Make the output root before taking the lock: a makedirs failure must not leak the lock.
     out_root = os.path.join("logs", "parity", "gate", args.stamp)

@@ -15,8 +15,11 @@
 #     renew loop watches the job, never the caller, whose shell dies when its tool call returns;
 #   - QUIET MARKER (R46/A8: "no build.sh test, sims, unittest suites... while it exists"): while the
 #     job runs, if --purpose (or the lock's default purpose) starts with "launch", or --quiet is given,
-#     writes RUN_QUIET_MARKER (default <repo root>/logs/.quiet) as one line "<owner> <pid> <start
-#     epoch>"; removed on every exit path (normal, failure, or signalled);
+#     writes RUN_QUIET_MARKER (default <repo root>/logs/.quiet) as one line "<owner> <winpid> <start
+#     epoch> <msys pid>" -- the pid field is the WINDOWS pid (via /proc/<msys pid>/winpid), because
+#     check_quiet_gate.sh and any other host-side liveness probe (tasklist, Get-Process) work in
+#     that domain, not MSYS's; removed on every exit path (normal, failure, or signalled) EXCEPT a
+#     SIGKILL of this wrapper itself, which no trap can catch -- see "Known limitations" below;
 #   - HOST CPU SAMPLER: while the job runs (unless RUN_CPU_SAMPLER=0), a background PowerShell loop
 #     appends one row per second to "<marker>.cpu.csv": timestamp, total % Processor Time, and a
 #     "name=pct" list for every running socom2* process (Get-Counter's per-instance suffixing). Killed
@@ -39,6 +42,13 @@
 # (gate.py's own included) are NESTED no-ops: LOOP_LOCK_HELD is exported to the job.
 # A pre-existing <marker> is deleted before launch. Environment: as loop_lock.sh (LOOP_LOCK_PATH, ...),
 # plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_QUIET_MARKER, RUN_CPU_SAMPLER above.
+#
+# KNOWN LIMITATIONS
+#   - A SIGKILL of the --_child wrapper itself (as opposed to TERM/HUP/INT, which the trap handles)
+#     cannot be caught: the quiet marker and the CPU sampler process are both leaked -- the marker
+#     goes stale (check_quiet_gate.sh's age check is what recovers a build from it after
+#     QUIET_GATE_MAX_AGE_S) and the orphaned sampler keeps a powershell.exe running and appending to
+#     "<marker>.cpu.csv" until killed by hand or the machine reboots. Not otherwise guarded against.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 LOCKSH="$HERE/loop_lock.sh"
@@ -99,8 +109,21 @@ if [ "$1" = "--_child" ]; then
     cpu_pid=$(_start_cpu_sampler "$marker.cpu.csv")
   fi
   if [ "${_RUN_DETACHED_QUIET:-0}" = "1" ]; then
+    # The marker's pid must be in the WINDOWS pid domain: check_quiet_gate.sh (and any real host
+    # tool) probes it with `tasklist`, which knows nothing about MSYS pids ($job here) -- writing
+    # $job silently disabled the whole gate (review round 1 Critical, 2026-09-13: bash pid 41367 /
+    # winpid 34264, tasklist found nothing, exit 0 against a running launch). /proc/<pid>/winpid is
+    # usually populated by the time the job has forked/exec'd; retry briefly for the rare race where
+    # it isn't yet. The MSYS pid is kept as a fourth field (unused by check_quiet_gate.sh) since it
+    # is what this script's own kill/on_signal path needs.
+    job_winpid=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+      job_winpid=$(cat "/proc/$job/winpid" 2>/dev/null)
+      [ -n "$job_winpid" ] && break
+      sleep 0.2
+    done
     mkdir -p "$(dirname "$QUIET_MARKER")"
-    printf '%s %s %s\n' "$owner" "$job" "$(date +%s)" > "$QUIET_MARKER"
+    printf '%s %s %s %s\n' "$owner" "${job_winpid:-$job}" "$(date +%s)" "$job" > "$QUIET_MARKER"
   fi
 
   finish() {

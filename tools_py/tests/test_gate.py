@@ -693,10 +693,18 @@ class ConditionalBurst(unittest.TestCase):
 
 
 class TestGateDiskRefusal(unittest.TestCase):
-    """Sprint 5 R46/A5: gate.py refuses to start below RUN_MIN_FREE_GB (default 4) free on C:, exit 3.
-    `gate.free_gb()` is the injectable seam (mock.patch.object) so no test touches the real disk;
-    RUN_FREE_GB_CMD is a second seam (a shell command whose last stdout line is the GB figure),
-    shared in spirit with scripts/run_detached.sh's own RUN_FREE_GB_CMD override."""
+    """Sprint 5 R46/A5: gate.py refuses to start a real run below RUN_MIN_FREE_GB (default 4) free
+    on C:, exit 3. `gate.free_gb()` is the injectable seam (mock.patch.object) so no test touches
+    the real disk; RUN_FREE_GB_CMD is a second seam (a shell command whose last stdout line is the
+    GB figure), shared in spirit with scripts/run_detached.sh's own RUN_FREE_GB_CMD override.
+
+    --score-title/--score-mission (re-scoring an existing run, no game launch, nothing large
+    written) are exempt (review round 1 item 3, 2026-09-13) -- those tests use the real fixture
+    scoring path deliberately, to prove the exemption reaches all the way through, not just the
+    branch check.
+
+    The real-run path is tested with `_lock` mocked to report BUSY: that proves execution reached
+    past the disk-refusal point (which runs before out_root/lock setup) without spawning drive.py."""
 
     def setUp(self):
         self._env = dict(os.environ)
@@ -704,6 +712,9 @@ class TestGateDiskRefusal(unittest.TestCase):
     def tearDown(self):
         os.environ.clear()
         os.environ.update(self._env)
+
+    def _busy_lock(self, cmd, owner):
+        return subprocess.CompletedProcess(args=["fake"], returncode=1, stdout="BUSY: fake\n")
 
     def test_free_gb_reads_run_free_gb_cmd_override(self):
         os.environ["RUN_FREE_GB_CMD"] = "echo ignored && echo 12.5"
@@ -713,32 +724,52 @@ class TestGateDiskRefusal(unittest.TestCase):
     def test_refuses_below_default_threshold(self):
         os.environ.pop("RUN_MIN_FREE_GB", None)
         os.environ.pop("RUN_FREE_GB_CMD", None)
-        with mock.patch.object(gate, "free_gb", return_value=3.9):
-            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        with mock.patch.object(gate, "free_gb", return_value=3.9), \
+             mock.patch.object(gate, "_lock") as lock:
+            rc = gate.main(["--stamp", "diskrefusal_test"])
         self.assertEqual(rc, 3)
+        lock.assert_not_called()
 
     def test_proceeds_above_default_threshold(self):
         os.environ.pop("RUN_MIN_FREE_GB", None)
         os.environ.pop("RUN_FREE_GB_CMD", None)
-        with mock.patch.object(gate, "free_gb", return_value=4.1):
-            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
-        self.assertNotEqual(rc, 3)
+        with mock.patch.object(gate, "free_gb", return_value=4.1), \
+             mock.patch.object(gate, "_lock", side_effect=self._busy_lock):
+            rc = gate.main(["--stamp", "diskrefusal_test"])
+        # Got past the disk check into the real-run path, which then found the (mocked) lock busy.
+        self.assertEqual(rc, 2)
 
     def test_threshold_moves_with_run_min_free_gb(self):
         os.environ["RUN_MIN_FREE_GB"] = "10"
-        with mock.patch.object(gate, "free_gb", return_value=9.0):
-            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        with mock.patch.object(gate, "free_gb", return_value=9.0), \
+             mock.patch.object(gate, "_lock") as lock:
+            rc = gate.main(["--stamp", "diskrefusal_test"])
         self.assertEqual(rc, 3)
+        lock.assert_not_called()
 
     def test_refusal_message_names_the_shortfall(self):
         os.environ["RUN_MIN_FREE_GB"] = "4"
         with mock.patch.object(gate, "free_gb", return_value=1.0):
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+                rc = gate.main(["--stamp", "diskrefusal_test"])
         self.assertEqual(rc, 3)
         self.assertIn("1.0", buf.getvalue())
         self.assertIn("4", buf.getvalue())
+
+    def test_score_title_is_exempt_from_disk_refusal(self):
+        os.environ["RUN_MIN_FREE_GB"] = "4"
+        with mock.patch.object(gate, "free_gb", return_value=0.1) as free_gb_fn:
+            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        self.assertNotEqual(rc, 3)
+        free_gb_fn.assert_not_called()
+
+    def test_score_mission_is_exempt_from_disk_refusal(self):
+        os.environ["RUN_MIN_FREE_GB"] = "4"
+        with mock.patch.object(gate, "free_gb", return_value=0.1) as free_gb_fn:
+            rc = gate.main(["--score-mission", GOOD_MISSION_FIXTURE])
+        self.assertNotEqual(rc, 3)
+        free_gb_fn.assert_not_called()
 
 
 if __name__ == "__main__":

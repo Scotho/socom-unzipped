@@ -22,6 +22,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 SCRIPTS = os.environ.get("LOOP_LOCK_TEST_SCRIPTS") or os.path.join(ROOT, "scripts")
 LOCK_SH = os.path.join(SCRIPTS, "loop_lock.sh").replace("\\", "/")
 DETACHED_SH = os.path.join(SCRIPTS, "run_detached.sh").replace("\\", "/")
+QUIET_GATE_SH = os.path.join(SCRIPTS, "check_quiet_gate.sh").replace("\\", "/")
 KILL_PS1 = os.path.join(SCRIPTS, "kill_stale_drivers.ps1")
 POWERSHELL = (shutil.which("powershell.exe") or shutil.which("powershell")) if os.name == "nt" else None
 SLOW = os.environ.get("LOOP_LOCK_SLOW_TESTS") == "1"
@@ -918,6 +919,43 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(self._wait_marker(marker, 60).strip(), "exit=143")
         time.sleep(0.5)
         self.assertFalse(os.path.exists(quiet), "signalled exit must also remove the quiet marker")
+
+    @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
+    def test_quiet_marker_pid_is_real_and_check_quiet_gate_refuses_against_it_no_mocks(self):
+        # Review round 1 Critical, 2026-09-13: run_detached.sh wrote the MSYS bash pid ($job) into
+        # the .quiet marker, but check_quiet_gate.sh (and any real host tool) probes Windows pids
+        # via tasklist -- those are different numbers, so the gate never found the job and always
+        # proceeded, silently disabling R46/A8 while a launch ran. No env fakes here: a real job,
+        # the script's own default RUN_QUIET_MARKER-overridden-to-temp-file, and the REAL
+        # tasklist.exe (no QUIET_GATE_TASKLIST_CMD override).
+        quiet = os.path.join(self.tmp, "quiet_marker")
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 6\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_QUIET_MARKER=fwd(quiet), RUN_CPU_SAMPLER=0)
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "integ", "--purpose", "launch_integ",
+                            fwd(job), fwd(marker)], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        deadline = time.time() + 10
+        while not os.path.exists(quiet) and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(quiet), "quiet marker never appeared")
+
+        # No QUIET_GATE_TASKLIST_CMD: this hits the real tasklist.exe against the real marker pid.
+        check_env = dict(os.environ)
+        check_env.pop("QUIET_GATE_TASKLIST_CMD", None)
+        while_alive = subprocess.run([BASH, QUIET_GATE_SH, fwd(quiet)], capture_output=True, text=True,
+                                     env=check_env, timeout=30)
+        self.assertEqual(while_alive.returncode, 3, "check_quiet_gate did not refuse against a "
+                         "running launch (real tasklist output follows): " +
+                         while_alive.stdout + while_alive.stderr)
+
+        self._wait_marker(marker, 20)
+        time.sleep(0.5)
+        after_exit = subprocess.run([BASH, QUIET_GATE_SH, fwd(quiet)], capture_output=True, text=True,
+                                    env=check_env, timeout=30)
+        self.assertEqual(after_exit.returncode, 0, after_exit.stdout + after_exit.stderr)
 
     def test_cpu_sampler_disabled_by_env_writes_no_csv(self):
         job = os.path.join(self.tmp, "job.sh")

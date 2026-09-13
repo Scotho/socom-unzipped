@@ -80,6 +80,11 @@ else
   echo "pin_harness: WARNING -- game exe not found at $exe; EXE_BUILD has no mtime/sha256" >&2
 fi
 
+# Note: this command line contains "tools_py.parity", which is exactly what loop_lock.sh's own
+# busy-list regex matches on a `python` process (scripts/loop_lock.sh's busy_list()) -- so a
+# concurrent `take`/reap glancing at the process list while this runs would see it as busy. It is
+# sub-second, so in practice this never lines up with a stale-break window, but it is the same class
+# of process as the one the busy list exists to protect against.
 check=$(PYTHONPATH="$harness" PYTHONSAFEPATH=1 python -c \
   "import tools_py.parity.online_match_ours as m; print(m.__file__)" 2>&1)
 norm_harness=$(printf '%s' "$harness" | tr '\\' '/')
