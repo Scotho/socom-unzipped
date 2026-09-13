@@ -222,6 +222,7 @@ class TestPreRegisteredBars(unittest.TestCase):
         self.assertEqual(vr.KILLS_STEP, 1)
         self.assertEqual(vr.AITEAM_DROP, 1)
         self.assertEqual(vr.INSTANT_S, 0.5)
+        self.assertEqual(vr.ALIVE_LEAVE_S, 2.0)
         self.assertEqual(vr.ACTOR_DESTROYED_S, 2.0)
         self.assertEqual(vr.FREEZE_RATE_MAX, 0.25)
         self.assertEqual(vr.FREEZE_MIN_HOST_S, 1.0)
@@ -551,6 +552,24 @@ class TestSyntheticFreeze(unittest.TestCase):
 
 
 class TestSyntheticSemantics(unittest.TestCase):
+    # R58: +0xF7A passes when an INTACT victim row reads != 1 within [death row, death row + 2 s host].
+    # The death row is host 40.125 (rows at .125 + k/4).
+    def test_alive_byte_lagging_health_by_one_row_is_kill(self):
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 40.25 else 0))        # first 0 at 40.375 (+0.25)
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_alive_byte_leaving_1_at_plus_1_9s_is_kill(self):
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 42.025 else 0))       # first 0 at 42.125 (+2.0)
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_alive_byte_leaving_1_at_plus_2_1s_is_kill_semantics(self):
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 42.225 else 0))       # first 0 at 42.375 (+2.25)
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
+    def test_alive_byte_leaving_1_only_on_a_non_intact_row_is_kill_semantics(self):
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 41.0 else 0, b_word0=lambda t: VTABLE if t < 41.0 else 0x004061C0))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
     def test_alive_byte_stays_1(self):
         v = score(kill_sides(b_alive=lambda t: 1))
         self.assertEqual((v.word, v.reason, v.exit_code), (vr.KILL_SEMANTICS, "+0xF7A", 1), v.text())

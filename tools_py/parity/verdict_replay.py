@@ -91,12 +91,14 @@ SELF_GRENADE_WINDOW_S = 10.0
 # exactly one on both.
 KILLS_STEP = 1
 AITEAM_DROP = 1
-# Instantaneous clauses (§5.1.1): the killer's +0x1044 > 0 and the victim's +0xF7A != 1 are read at
-# the row nearest the victim's death row, +-0.5 s host. Read here as: the victim's +0xF7A on its
-# death row itself (the nearest row; the nearest intact row within 0.5 s only when the death row
-# lacks the byte), and the killer's +0x1044 on EVERY killer row within 0.5 s (a killer at <= 0 anywhere
-# in that half-second is a trade). Both are the stricter readings.
+# Instantaneous clauses (§5.1.1, amended R58): the killer's +0x1044 > 0 on EVERY intact killer row
+# within +-0.5 s host of the victim's death row (a killer at <= 0 anywhere in that half-second is a
+# trade); the victim's +0xF7A passes when an INTACT victim row reads != 1 within [death row, death row
+# + 2 s host] -- Goal 2's "leaves 1 within 2 s", so a one-row lag behind +0x1044 is not a surprise.
+# +0xF7A still 1 on every intact row through that window -> KILL-SEMANTICS +0xF7A. Blind: a byte that
+# leaves 1 for a reason other than the death inside those 2 s.
 INSTANT_S = 0.5
+ALIVE_LEAVE_S = 2.0
 # Actor destroyed at death (§5.1.1): word 0 leaves the vtable within 2 s after an intact row whose
 # +0x1044 < 1.0, kill valves stepping, no intact row reading <= 0 -> KILL-SEMANTICS actor-destroyed.
 ACTOR_DESTROYED_S = 2.0
@@ -857,18 +859,17 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     clauses.append(("valve-timing", kills_ok and v_team_ok and k_team_ok,
                     "within each instance <= %g guest s of its own reference row: %s death guest %.2f; %s kill row guest %s"
                     % (VALVE_WINDOW_GUEST_S, vt, gV, kt, _fmt(K.guest_at(kill_t)) if kill_t is not None else "n/a")))
-    # the alive byte, instantaneous at the death row
+    # the alive byte: an intact row reading != 1 within [death row, death row + 2 s host] (R58)
     if kind == "intact":
-        al = drow.actor.alive
-        if al is None:
-            ni = [i for i in V.rows_between(d_sh - INSTANT_S, d_sh + INSTANT_S, lambda x: _intact(x) and x.actor.alive is not None)]
-            if ni:
-                al = V.rows[min(ni, key=lambda i: abs(V.t[i] - d_sh))].actor.alive
-        if al is None:
-            nodata.append("%s:alive-byte-at-death" % vt)
+        ai = V.rows_between(d_sh, d_sh + ALIVE_LEAVE_S, lambda x: _intact(x) and x.actor.alive is not None)
+        if not ai:
+            nodata.append("%s:alive-byte-after-death" % vt)
         else:
-            clauses.append(("+0xF7A", al != 1, "%s alive byte %d on the death row" % (vt, al)))
-            if al == 1:
+            left = next((i for i in ai if V.rows[i].actor.alive != 1), None)
+            clauses.append(("+0xF7A", left is not None, "%s alive byte over %d intact row(s) in %.2f..%.2f: %s"
+                            % (vt, len(ai), d_sh, d_sh + ALIVE_LEAVE_S,
+                               "%d at %+.2f s" % (V.rows[left].actor.alive, V.t[left] - d_sh) if left is not None else "1 throughout")))
+            if left is None:
                 semantics.append("+0xF7A")
     else:
         clauses.append(("+0xF7A", None, "%s block destroyed: not read" % vt))
