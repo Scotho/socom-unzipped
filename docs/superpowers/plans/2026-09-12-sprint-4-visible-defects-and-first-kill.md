@@ -294,21 +294,25 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Produces: `--until-kill` — the run ends when B's death or the round end is observed, with both instances' screens captured at that moment and a single line printed stating which signal fired (guest memory or server log) and at what time.
 
 - [ ] **Step 1: Find the health/kills record.** With both instances in gameplay, fire at B and watch candidate offsets near the actor for a value that changes on damage and reaches zero on death. Confirm across two separate kills before believing it.
-  > **Partial.** `actor+0x204` (1.0) / `+0x208` (100000.0) are the candidates and read the same in every image, our own and the console's — but the brief's bar is confirmation across **two separate kills** and this sprint got **zero**. They stay in `KNOWN.md` §2, not §1.
+  > **Partial.** ~~`actor+0x204` (1.0) / `+0x208` (100000.0) are the candidates and read the same in every image, our own and the console's~~ — but the brief's bar is confirmation across **two separate kills** and this sprint got **zero**. ~~They stay in `KNOWN.md` §2, not §1.~~
+  >
+  > **Superseded 2026-09-13 by `docs/research/19` F1: `+0x204`/`+0x208` are NOT health — retracted in `KNOWN.md` §3.** Health is `actor+0x1044` (float, 1.0 full, `<= 0` dead) with an alive byte at `actor+0xF7A`, sourced from two community memory tools and confirmed against the decomp's damage-threshold compares. Still never read live online, so the box stays open: the *sourcing* moved; the *two-kill confirmation* did not happen.
 - [x] **Step 2: Cross-check against the server.** The DME log should show the same event; if the two disagree, prefer the server's and say why in the note.
 - [x] **Step 3: Implement `--until-kill`** with a timeout, so a failed match ends as a clean FAIL rather than hanging.
 - [ ] **Step 4: Run the acceptance test end to end** — one command, A kills B, both screens captured, exit 0. Record the command and the artefact paths; this is the sprint's headline evidence.
-  > **In flight at the time of this close-out**; the box is left open deliberately rather than ticked on an expectation.
+  > ~~**In flight at the time of this close-out**; the box is left open deliberately rather than ticked on an expectation.~~
+  > **Not met (Task 9b, 2026-09-13).** The test is one command (`online_match_ours.py --until-kill`) and it ran end to end on two maps; A never killed B. **Medley** (`ours_task8_kill2`): both players walked, closest true 3-D separation **50.0 units**, 0 % of rows inside any contact gate, rifles fired, no kill. **Frostfire**, the default map from 2026-09-13 (`ours_task8_frost1`): **neither player moved** — the move path ran 18 calls in 0.6 s at round start and never again. `RESULT PASS` is now reserved for a kill and cannot print until the health readout is confirmed. The first kill is Sprint 5's.
 - [x] **Step 5: Commit.**
 
 ---
 
 ### Task 9: Docs and close
 
-- [ ] `docs/STATUS.md` "Current state" (five lines) + one dated Sprint 4 entry with the artefact paths; `README.md` knobs; `docs/LOOP_PROMPT.md` goals 3 and 4 (goal 4's text changes materially if the acceptance test now runs); `docs/HANDOFF.md` "START HERE"; tick this plan's boxes and note where reality diverged.
-- [ ] Record what did **not** land with the reason (especially if Wave 2 stopped at S0 or S1) — the spec's definition of done requires the sprint to say why.
+- [x] `docs/STATUS.md` "Current state" (five lines) + one dated Sprint 4 entry with the artefact paths; `README.md` knobs; `docs/LOOP_PROMPT.md` goals 3 and 4 (goal 4's text changes materially if the acceptance test now runs); `docs/HANDOFF.md` "START HERE"; tick this plan's boxes and note where reality diverged.
+- [x] Record what did **not** land with the reason (especially if Wave 2 stopped at S0 or S1) — the spec's definition of done requires the sprint to say why.
 - [ ] `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0; a final full gate at the defaults (`--stamp s4_head_1x`) PASS 3/3 with title s00–s19 ≥ 99 against `logs/parity/gate/s3_head_1x/title`.
-- [ ] Commit and push. **The controller runs the merge**, not this task.
+  > **Half done.** `PS2X_TEST_REPEAT=3 ./build.sh test`: **exit 0** — 434 passed / 0 failed on each of the 3 passes, `--vram-diff` `checked=15 skipped=0` (Task 9b, under the loop lock). **The `s4_head_1x` gate was not run** — close-out was barred from runtime builds and game runs while Task 8 held the harness. The current `dist/socom2.exe` (the 19:17 build of `5ed29ca`) last passed a full gate 3/3 at `logs/parity/gate/20260912_192900`, and no runtime source has changed since; the run-vs-run ≥ 99 title comparison against `s3_head_1x` is the part that has no evidence. Left open rather than ticked on that inference.
+- [x] Commit and push. **The controller runs the merge**, not this task.
 
 ---
 
@@ -323,8 +327,9 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 
 ## Outcome — what actually happened, and where reality diverged from this plan
 
-Written at close-out (Task 9a, 2026-09-13). The boxes above are ticked against reality, not
-against intent; the three still open are open on purpose and say why inline. Headline facts live
+Written at close-out (Task 9a, finished by Task 9b once Task 8 settled, 2026-09-13). The boxes
+above are ticked against reality, not against intent; the four still open (Task 7 Step 4, Task 8
+Steps 1 and 4, Task 9's gate box) are open on purpose and say why inline. Headline facts live
 in `docs/KNOWN.md`; the sprint's carried findings are at `docs/STATUS.md` 2026-09-13,
 `docs/research/16` §9.1.1 and `docs/research/17` §5.1 / §6.1.
 
@@ -405,8 +410,19 @@ block.** A plan that quotes a prior belief should quote it as a belief.
   > where it is written** — the same discipline a false sentence gets. A number carries no
   > visible sign of being stale, which makes it the more dangerous of the two.
 
-  The health record is a *candidate*, not a fact: the brief's bar is two separate kills and the
-  sprint got zero, so `actor+0x204`/`+0x208` stay in `KNOWN.md` §2.
+  ~~The health record is a *candidate*, not a fact: the brief's bar is two separate kills and the
+  sprint got zero, so `actor+0x204`/`+0x208` stay in `KNOWN.md` §2.~~ **Superseded the same day by
+  `docs/research/19` F1** (applying the rule in the blockquote above to this section's own
+  sentence): `+0x204`/`+0x208` were never health and are retracted. Health is `actor+0x1044` with
+  alive byte `actor+0xF7A` — sourced, confirmed statically, **not yet read live**.
+
+  **And then the map changed.** On the owner's decision the default test map became **Frostfire**
+  (spawns 692 units apart against Medley's 1485). The one Frostfire run reached gameplay on both
+  instances with the pad arriving and the movement scale at 1.0 — and **neither player moved**:
+  the move path `FUN_00553dc0` ran 18 calls in 0.6 s at round start and never again. Task 6's fix
+  is proven on Medley and not in question; this is a second cause. Its lead (`research/19` F3) is
+  uninitialised bytes in the `CZNetGame` round-state object at `*0x437ce8` — `0xAF` on ours,
+  `0x00` on the console — including the "you are a ghost" flag `+0xd2`.
 
 ### 5. What the plan did not budget for at all
 
@@ -420,3 +436,22 @@ block.** A plan that quotes a prior belief should quote it as a belief.
 - **KNOWN.md did not exist when this plan was written.** It was created mid-sprint (`2d9f73a`) at
   the user's request and is now the live proven / believed / retracted list, audited after every
   task. A future plan should name it as an output, not discover the need for it.
+
+### 6. How the sprint ended (Task 9b, once Task 8 settled)
+
+- **The spec's definition of done is not met on its headline.** The acceptance test exists, runs
+  end to end from one command, and has never printed `PASS`, because no kill has happened on either
+  map. That is recorded as a failure of the goal, not rounded to "nearly".
+- **What it did deliver is the premise Sprint 5 stands on:** the movement blocker fixed and A/B'd,
+  a position readout that is the actor's own coordinates rather than a reconstruction, contact
+  measured in 3-D, a `PASS` that can only mean a kill, a verified map selection, and — from the
+  research wave commissioned at the end of the sprint — a sourced health field and round-state
+  object that make the kill readable without screenshots.
+- **The sprint's last finding reversed its own map assumption.** Everything in Wave 2 was measured on
+  Medley; the owner's switch to Frostfire exposed a second, unrelated control failure within one
+  run. "The movement fix works" is true and map-scoped, and every movement claim from this sprint
+  should be read with "on Medley" attached.
+- **Handed to Sprint 5** (`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`,
+  `ee10842`): Frostfire control handover, confirming `actor+0x1044`/`+0xF7A` live, an online harness
+  that cannot spend a match proving nothing, the HLE and heap liveness audit, the engagement ladder,
+  and the acceptance run. Also handed over unrun: this plan's `s4_head_1x` gate (Task 9's open box).

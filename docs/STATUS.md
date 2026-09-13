@@ -1,11 +1,156 @@
-# Project status — updated 2026-09-12
+# Project status — updated 2026-09-13
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
-- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 431/431 + vu1 fixture verify + `--vram-diff` equivalence check at `checked=14 skipped=0`, whose texture-in-blank-region warning now fails the suite instead of scrolling past, `PS2X_TEST_REPEAT=N` for repeated runs — deterministic, 3/3 green at Sprint 3 close-out); gates `python -m tools_py.parity.gate` (fresh-clone fixtures committed under `tests/fixtures/gate`, `python -m unittest tools_py.tests.test_gate`, 24 tests).
-- Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps, two-instance online match reaches gameplay on local Horizon.
-- Sprint 3 (2026-09-12): Tasks 1-11 landed — `PS2X_GS_SCALE=1..4` (default **1**, clamped) allocates every render target at that multiple of its native GS extent and rasterises every draw into it, while VRAM addressing, page/row bookkeeping and everything the guest can read back stay native (a GPU-resolved native mirror, `PS2X_GS_SCALE_FILTER=point|box`, `point` default). **S=2 sharpens 3D rasterisation and does NOT sharpen the HUD, menus or title** — they are textured quads drawn at native texel density, so scaling the render target cannot add detail (measured: 3D-region gradient 5.88 -> 3.98 with anti-aliasing fraction 0.133 -> 0.423; the HUD glyph raster is identical at 4x zoom). S=3 and S=4 are admitted by the clamp but **deliberately untested** (at S=4 a colour target is 67 MB and `getDepthTarget`'s zero-fill is a 67 MB one-off per ZBP). `PS2X_PRESENT_FILTER=linear|integer|point` (default `linear`, unchanged) is inert at the 640x448 window the desktop build opens — the fit scale is exactly 1.0, so all three modes are the same 1:1 blit and **none of the perceived softness is presentation**. `PS2X_VU1_HOST_DRAW` default stays off.
-- Native VU1: dispatcher (entry 0x1b50) runs **162/166** lists native across dump2/3/4 (entered/ended/handbacks: dump2 31/31/0, dump3 52/48/4, dump4 83/83/0), bit-exact against exact-interpreter goldens (`--regs all`) — families A, B and C complete (including `0x34`'s sphere-map/EFU handler) plus the fourth family's `0x70` and `0x40`. **Residual: 4 programs**, all the `52 66 08 40 42` shape and all in dump3 — `0x52` emits no GIF packets, ends the program (E bit at `0x33b8`, end pc `0x33c8`) and its correctness spans two `MSCAL`s, and `0x66` is never dispatched from `0x1b50` in the whole corpus so a handler for it could not be verified (docs/research/15). That residual is deliberate and documented, not unfinished. `PS2X_VU1_NATIVE=0` reverts the dispatcher; per-handler loop-count clamps hand back cleanly and are covered by synthetic tests.
-- Gates: last full runs PASS 3/3 at the default knobs (`s3c_1x_final`, on the `219ab9c` binary — the later `466918b` changes only `PS2X_GS_SCALE_SELFTEST` code and a trace format string) and at `PS2X_GS_SCALE=2 PS2X_VU1_HOST_DRAW=1` (`s3d_2x_host`, on the final binary); at 2x with host-draw off the GIF path is green on all three legs but **across two stamps** (`s3d_2x_gif` title + mission, `s3d_2x_gif_t2` transition after a save-dialog probe flake) — it has not passed 3/3 in one run. Two known transition-gate intermittencies and a 1x-vs-2x harness caveat are in the Sprint 3 entry below. Known open (goal-3, not gates): intro-movie black macroblocks, now localised — the MPEG decode is clean and the loss is in the shadow-VRAM -> GL mirror (docs/research/16), no fix; `--vram-diff`'s `hard` bucket misclassifies two by-design differences on alpha-blended draws, so `vu1dump4_prog_182` (1.488%) is held out until the buckets are widened (Sprint 4); mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 3 `PS2X_TEST_REPEAT` runs at close-out.
+- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 434/434 + vu1 fixture verify + `--vram-diff` at `checked=15 skipped=0`, with `vu1dump4_prog_182` back in the set and a one-pixel offset failing again; `PS2X_TEST_REPEAT=3` green (3 of 3 passes, 0 failed) at Sprint 4 close-out). **It runs zero Python tests** — `tools_py/tests` is run by hand (`python -m unittest discover -s tools_py/tests -t .`) until Sprint 5 Task 0 wires it in. Gate `python -m tools_py.parity.gate`: the title leg crops pillarboxing before scoring and the transition burst follows the save dialog instead of a fixed step; last full run PASS 3/3 `logs/parity/gate/20260912_192900` on the current `dist/socom2.exe` (no runtime source has changed since).
+- Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps. Online, two instances on local Horizon reach gameplay; **the round runs on both maps tried, and whether the local player can move depends on the map.** Medley: both players move (the `sceInetInterfaceControl(0x200)` fix) and have met, closest 50.0 units true 3-D. **Frostfire, the default test map since 2026-09-13: neither player moves** — the move path runs 18 calls in 0.6 s at round start and never again. **No kill has ever been observed**, and `--until-kill` cannot print `PASS` without one.
+- Sprint 4 (2026-09-13, entry below): intro-movie macroblocks fixed at the root (a cross-thread race on `m_currentTransfer`), the gate's silent-failure paths closed, `--vram-diff` 15/15, `rand()` 31-bit over the guest's own seed, soft-double ABI stubs re-bound, "ground height" reframed as the third-person camera (localised, not fixed), the online movement blocker fixed and A/B-proven on Medley, the acceptance test built and not passed.
+- Next — Sprint 5 (`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` + plan): Frostfire control handover, whose lead is uninitialised `CZNetGame` bytes (`*0x437ce8`) reading `0xAF` on ours and `0x00` on the console, including the "you are a ghost" flag `+0xd2`; confirm the sourced kill readout (`actor+0x1044` health, `actor+0xF7A` alive byte, `docs/research/19`), never yet read live online; then the first kill. `docs/KNOWN.md` is the live proven/believed/retracted list and wins over this block.
+- Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. Known open: the camera's skeleton-root decay (two candidates, one run apart, `docs/research/17` §4.3); intro-cinematic freeze seen once (Sprint 1); the transition residual strip ~1 in 5 runs; `movie_blocks.py` in no automation.
+
+## 2026-09-13 (local) — Sprint 4 landed: the online movement blocker fixed, the acceptance test built and NOT passed, Frostfire loses control at round start, and the first kill is Sprint 5's
+
+Sprint `2026-09-12-sprint-4-visible-defects-and-first-kill`, branch `sprint-4`, Tasks 1-9 plus
+2b, 4b and 4c added mid-sprint; each implemented, independently reviewed, fixed and re-reviewed.
+Where reality diverged from the plan is in the plan's own `## Outcome` section; the findings that
+outlive the sprint are in the 2026-09-13 "carried findings" entry immediately below; the headline
+facts, and every retraction, are in `docs/KNOWN.md`. This entry is the outcome, stated without
+flattery.
+
+### The two sentences that matter
+
+1. **The two-week online movement blocker is fixed.** Our HLE answered
+   `sceInetInterfaceControl(0x200)` with a **constant**, so the guest's "ms since network activity"
+   never reset and the multiplayer movement scale clamped to 0.0 on frame one; pitch survived only
+   because it is not one of the three scaled axes (`abf35bb`). Proven by a **same-binary A/B in one
+   match** (`5ed29ca`, `PS2X_SOCOM2_NET_STATS_B=0` turning the fix off for instance B only): fix ON,
+   movement scale 1.0 on **330/330** calls and **89** distinct player positions; fix OFF, 0.0 on
+   **339/339** and **0.46 units** of travel in the whole match. Proven **on Medley only**.
+2. **The acceptance test did not reach a kill.** On the corrected measurement — the actor's own
+   x/y/z, not the camera+facing reconstruction, which mis-placed players by up to ~50 units — the
+   closest true 3-D separation the two players ever reached was **50.0 units**; over the last 400
+   rows the median was **67.9** at **43.3°** of elevation, and **0 %** of rows were inside any
+   contact gate (45 units in 3-D, 25, or within 10 of each other's height). The rifles fired (96 R1
+   injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle) and hit nothing, because
+   the players were never in range. **Whether damage was dealt is unknown**: the offsets watched at
+   the time (`actor+0x204/+0x208`) were not health.
+
+Not "frozen at round start". That description was retracted this sprint and must not come back:
+**the round runs and the local player cannot move** — and on the two maps tried it has had two
+different causes, one fixed and one open.
+
+### What landed, in order
+
+**Wave 1 — visible defects and a gate that cannot go quiet.**
+- **Intro-movie black macroblocks: fixed at the root** (Task 1, `4a701f1`). Not the byte-accumulator
+  case the plan predicted — the count it mandated measured that at zero — but a **cross-thread race
+  on `m_currentTransfer`**: the game thread overwrote the transfer the GL mirror was about to mark,
+  so the mirror refreshed someone else's rectangle and the real 16×16 block was never pushed. One
+  deleted line. Transfer/refresh deficit **3,748 → 0**; `movie_blocks.py` `MISSING` **9 → 0**. The
+  new check (`tools_py/parity/movie_blocks.py`, `docs/research/16` §9) went through four review
+  rounds because each version could pass harder as the bug got worse; its remaining limits are in
+  §9.1.1, and it is wired into nothing.
+- **The gate's silent-failure paths closed.** `drive.py` crops the non-black rect before scoring
+  (Task 2, `193ed92`, `a6f3cc4`): a deliberately pillarboxed run's title score went **0/23 → 18/23**
+  instead of degrading quietly. The transition probe's burst now **follows the save dialog** instead
+  of sitting at step 11 (Task 2b, `99c1865`, new `ifburst` script step): a late dialog used to leave
+  the burst firing before the transition — too few frames examined, peak 0.
+- **`--vram-diff` 15/15** (Task 3, `fc9f185`, `6c017c2`). Blend-amplified rounding and interior
+  seams are classified by-design, `vu1dump4_prog_182` rejoins the fixture set at 0.000 %, and the
+  seam clause is **budgeted** after review showed the unbudgeted widening made the oracle blind to a
+  uniform one-pixel offset (+1 px x now fails 8/15, +1 px y 6/15; `seam=N` printed every run).
+- **`rand()` is 31-bit over the guest's own seed** (Task 4b, `ede2096`, `60a19f2`). The stub had
+  returned 15 host bits over a `_rand_next` frozen at 41, pinning every `rand`-derived float in the
+  game (249 sites) within 1/65536 of its minimum. `docs/research/17` §6.1, including why a fixed
+  clock would pin the seed and not the stream.
+- **The soft-double ABI stubs re-bound** (Task 4c, `db7a992`): `sin`/`cos`/`tan`/`fabs`/`floor`
+  take `$a0` and return `$v0`. A **latent** defect — identity at 19 of 22 sites, the 3 garbage
+  sites unreachable — with three live divergences (`FUN_00308020`'s gimbal guard, `FUN_00294070`'s
+  projection matrix, `FUN_003C7280`'s `tan`). `docs/research/17` §5.1.
+- **"Ground height" reframed as the camera** (Task 4, `docs/research/17`). There is no ground-height
+  defect: the player's feet match the console to **0.008**, and the 14.7/20.1 figures were
+  camera-eye minus collision-hit. The third-person camera sits ~5.4 low because the player actor's
+  skeleton root node decays 11.4845 → 0 while its saved copy holds the console's 5.50391.
+  **Localised, not fixed**: two candidates (a lerp dropping its `a·w` term, or a second writer)
+  that `research/17` §4.3's single run separates.
+
+**Wave 2 — the online round.**
+- **S0 (Task 5, `docs/research/18` §1): runtime implicated.** Two PCSX2 instances against **our own**
+  Horizon stack play a full round and advance to round 2. The "PCSX2 golden is frozen too" belief
+  that had pointed two weeks of work at the server was two stills of a match with no input sent.
+- **S1 (Task 6): fixed**, per sentence 1 above, after five hypotheses were falsified by measurement
+  — two of them real divergences whose fixes reached the wire and moved nothing (the advertised peer
+  port and a shared RSA keypair, `acb603e`; both fixes kept).
+- **S2 (Task 7, `research/18` §3.13): honest partial.** Movement and look calibrated; `--walk-to-b`
+  steers and does not arrive — one mover cannot close Medley inside a round (38.6 % closure
+  efficiency, ~450 s needed against a ~360 s round). It measured the aim floor: the harness sends
+  only full stick deflection, so the shortest usable hold sweeps 35-40° against a body subtending
+  15-20° at contact range (the pad file itself accepts 0-255 — a harness limit, not the runtime's).
+- **S3 (Task 8, `research/18` §4): honest partial.** Both players walk (`--converge`, then
+  `--until-kill`): **1485.5 → 50.0 units in ~127 s**, the first time two online players have been
+  in the same place, and no kill (sentence 2). Review found the loop's own distance wrong by tens of
+  units, rebuilt contact as 3-D plus height, and **reserved `RESULT PASS` for a kill**: a round
+  ending on its clock prints `ROUND-END (unattributed -- NOT a kill)` and exits non-zero, and an
+  armed health watch that read nothing fails the run. With no confirmed health offset,
+  `--until-kill` **cannot currently print PASS** — the honest state of the instrument.
+
+### Frostfire — the default test map, and neither player moved
+
+The owner set the default test map to **Frostfire** on 2026-09-13 (`--map frostfire`, verified
+against a reference crop of the highlighted row before CROSS is pressed; the harness previously
+blind-pressed whatever was highlighted, which was Medley). Frostfire's spawns are **692 units
+apart** against Medley's **1485**, with a 42-unit height difference. One run, `ours_task8_frost1`:
+gameplay reached on both instances, pad reaching the guest, movement scale 1.0, round clock running
+— and **neither player moved** (A's record spanned 2.5 units, B's 0.0, over 240 s). The move path
+`FUN_00553dc0` ran **18 calls in 0.6 s** at round start and never again across 2634 sampler rows,
+where Medley runs it ~18.9/s. That reads as **control never being handed over**, not as a slow map.
+(A first reading of the same log said "about one a second": `PS2X_CALL_TRACE` logs the first 300
+calls unconditionally, so dividing a short trace's line count by `EVERY` overstated it ~20×.)
+
+**The movement fix above is proven on Medley and is not in question here; Frostfire is a second,
+different cause.** One run cannot separate a map-specific defect from a match that never handed over
+control, and nothing about the cause is proven yet.
+
+### research/19 — community and engine resources
+
+A research wave over community memory tools, reCOM and other recompilation/HLE projects
+(`docs/research/19-community-and-engine-resources.md`, `7e81197`). Every address pinned to
+SCUS_972.75 r0001:
+- **Health is `actor+0x1044`** (float, 1.0 full, `<= 0` dead) and **`actor+0xF7A` is the alive
+  byte** (1 = alive) — two independent community tools, one explicitly r0001, confirmed against our
+  decomp's `<= 0.0` / `< 0.2` / `< 0.5` compares. **This retracts `+0x204/+0x208`.** Read in every
+  image, ours and the console's; **not yet read live in an online match.**
+- **The multiplayer round state is the `CZNetGame` object at `*0x437ce8`**: `total_mp_kills`,
+  `mp_round_count`, `mp_game_over`, rounds won and alive per team, and the major/minor/"my"
+  round-state bytes at `+0x113..+0x115` — a kill and round-end readout that needs no screenshot.
+- **Bytes the game never initialises in that object read `0xAF` on ours and `0x00` on the
+  console** — among them `+0xd2`, the flag behind "You are a ghost. You will play the next round as
+  a real player", tested by five online routines. The object is allocated per map from our
+  replacement heap, so the garbage can differ by map. **This is Sprint 5's first lead for
+  Frostfire.** The divergence is measured; the causation is inference.
+- Our valve pool sits **0x20 lower** than the console's, so community absolute addresses are right
+  for PCSX2 and wrong for us — resolve through the pointer.
+
+It also widens the carried HLE hazard below: a wrong value need not come from a stub at all —
+memory the game never initialised, filled differently by our heap, is the same class.
+
+### Not done, and why
+
+- **No kill**, on either map (above). Sprint 5 is built on it.
+- **The camera height is not fixed** — localised to one run's distance, deliberately not guessed.
+- **The plan's final gate with run-vs-run title scores against `s3_head_1x` was not run** at
+  close-out, which was barred from builds and game runs. The current binary's last full gate is PASS
+  3/3 (`20260912_192900`); no runtime source changed after it.
+- **`build.sh test` still runs no Python tests**, and `movie_blocks.py` is in no automation — both
+  are Sprint 5 Task 0.
+
+### New knobs and flags (documented in README "Build and run")
+
+`PS2X_SOCOM2_NET_STATS` (default on; `0` restores the constant and reproduces the defect),
+`PS2X_SOCOM2_NET_TRACE_ALL`, `PS2X_SOCOM2_RSA_KEY=b`, `PS2X_RUN_LOG`, and the driver-side
+`PS2X_SOCOM2_NET_STATS_B` / `PS2X_SOCOM2_RSA_KEY_B` (instance B only); `online_match_ours.py`
+`--converge`, `--until-kill`, `--engage`/`--engage-dy`, `--fight-seconds`, `--kill-timeout`,
+`--map`/`--map-scan`, `--health-offset`/`--health-range`, `--no-route`; `drive.py`'s `ifburst`
+script step; `python -m tools_py.parity.movie_blocks`.
 
 ## 2026-09-13 (local) — Sprint 4 carried findings: the HLE constant-value hazard, and the online-harness rules that cost a run each to learn
 
