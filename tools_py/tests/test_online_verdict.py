@@ -669,17 +669,20 @@ class ContactTest(unittest.TestCase):
                                 self.clock() if clock is None else clock,
                                 (self.scales() if sa is None else sa, self.scales() if sb is None else sb))
 
+    # Task 5 finish: the bars are spec §5.1's (Amendment A, registered before any ladder match): band 3-D <= 45 and
+    # |dy| <= 10, contact >= 5.0 s over >= 10 rows -- a registered bar change from Goal 5(a)'s 22 units / 20 rows.
     def test_healthy_pair_inside_the_gate(self):
         r = self.score(*self.pair())
         self.assertEqual(r.contact_rows, 40)
         self.assertEqual(r.status, "ok")
+        self.assertTrue(r.ok)
 
     def test_negative_control_outside_the_gate(self):
-        self.assertEqual(self.score(*self.pair(gap=23.0)).contact_rows, 0)
+        self.assertEqual(self.score(*self.pair(gap=46.0)).contact_rows, 0)
         self.assertEqual(self.score(*self.pair(gap=5.0, dy=11.0)).contact_rows, 0)
 
     def test_monotonic_in_range(self):
-        counts = [self.score(*self.pair(gap=float(g))).contact_rows for g in (0, 10, 21, 22, 22.5, 30, 100)]
+        counts = [self.score(*self.pair(gap=float(g))).contact_rows for g in (0, 10, 44, 45, 45.5, 60, 100)]
         self.assertEqual(counts, sorted(counts, reverse=True))
         self.assertGreater(counts[0], 0)
         self.assertEqual(counts[-1], 0)
@@ -696,8 +699,8 @@ class ContactTest(unittest.TestCase):
         self.assertEqual(with_gap(1.3), 20)
 
     def test_boundary_range_and_dy(self):
-        self.assertEqual(self.score(*self.pair(gap=22.0)).contact_rows, 40)
-        self.assertEqual(self.score(*self.pair(gap=22.1)).contact_rows, 0)
+        self.assertEqual(self.score(*self.pair(gap=45.0)).contact_rows, 40)
+        self.assertEqual(self.score(*self.pair(gap=45.1)).contact_rows, 0)
         self.assertEqual(self.score(*self.pair(gap=5.0, dy=10.0)).contact_rows, 40)
         self.assertEqual(self.score(*self.pair(gap=5.0, dy=10.1)).contact_rows, 0)
 
@@ -737,7 +740,7 @@ class ContactTest(unittest.TestCase):
 
     def test_consecutive_run_is_the_longest_run(self):
         a, b = self.pair()
-        b = [(r[0], r[1] + (50.0 if 10 <= i < 12 else 0.0), r[2], r[3], 2) for i, r in enumerate(b)]
+        b = [(r[0], r[1] + (80.0 if 10 <= i < 12 else 0.0), r[2], r[3], 2) for i, r in enumerate(b)]
         r = self.score(a, b)
         self.assertEqual(r.contact_rows, 28)
         self.assertEqual(r.total_rows, 38)
@@ -806,7 +809,7 @@ class CliTest(unittest.TestCase):
         code, out = self.run_cli("contact", os.path.join(FIXTURES, "kill2_A_closest.txt"),
                                  os.path.join(FIXTURES, "kill2_B_closest.txt"),
                                  "--offset-b", str(KILL2_B_TO_A_OFFSET_S))
-        self.assertIn("LADDER contact_rows=0 rows_read=", out)
+        self.assertIn("contact_rows=0 sampler_s=", out)
         self.assertEqual(code, 2, out)               # no clock peek in Sprint 4's logs -> NO-DATA
 
 

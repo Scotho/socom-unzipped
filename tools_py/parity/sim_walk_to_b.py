@@ -730,6 +730,7 @@ def run_endgame(label="endgame", rotation_feeds=False, firing_feeds=False, micro
         "alarms": [dict(a) for a in watch.alarms], "alarms_n": watch.starvation_alarms(),
         "alarms_cleared": watch.alarms_cleared(), "watch_stop": watch.stop_reason,
         "contact_rows": contact.contact_rows, "contact_status": contact.status, "rows_read": contact.rows_read,
+        "contact_ok": contact.ok, "contact_s": contact.contact_s,
         "closest": duel.best_dist(), "closest_dy": duel.best_dy(), "truth_contact_rows": truth_run,
         "aim_err_after": aim and aim["err_after"], "aim_truth": aim_truth,
         "standing_total": sum(standing), "standing_max": max(standing, default=0.0),
@@ -743,7 +744,8 @@ def run_endgame(label="endgame", rotation_feeds=False, firing_feeds=False, micro
           f"(NetIdle rows A={res['watch_max_idle'].get('A')} B={res['watch_max_idle'].get('B')}); "
           f"starvation alarms={res['alarms_n']} cleared<=3s={res['alarms_cleared']} "
           f"causes={[a['cause'] for a in res['alarms']]}\n"
-          f"   contact rows (verdict_core)={res['contact_rows']} ({res['contact_status']}, rows read "
+          f"   contact (verdict_core, spec §5.1 band)={res['contact_ok']} {res['contact_s']:.1f}s over "
+          f"{res['contact_rows']} rows ({res['contact_status']}, rows read "
           f"{res['rows_read']}), truth rows in gate with both scales>=0.99={truth_run}; closest paired "
           f"{res['closest']} dy {res['closest_dy']}\n"
           f"   final aim err={res['aim_err_after']} truth={aim_truth}; shooter standing total="
@@ -769,7 +771,7 @@ def assert_endgame_ok(r):
         if a["cause"] == "starvation" and a["t"] <= r["out"]["t_end"] - M.ALARM_CLEAR_S:   # see assert_route_ok
             ref = a["t_move"] if a["t_move"] is not None else a["t"]
             assert a["t_clear"] is not None and a["t_clear"] - ref <= M.ALARM_CLEAR_S, ("alarm not cleared", a)
-    assert r["contact_rows"] >= ENDGAME_MIN_CONTACT_ROWS, ("contact rows", r["contact_rows"])
+    assert r["contact_ok"], ("contact per spec §5.1 (band, >= 5.0 s over >= 10 rows)", r["contact_s"], r["contact_rows"])
     assert r["truth_contact_rows"] >= ENDGAME_MIN_CONTACT_ROWS, ("truth contact rows", r["truth_contact_rows"])
     assert r["aim_err_after"] is not None and abs(r["aim_err_after"]) <= M.AIM_TOL_DEG, r["aim_err_after"]
     assert r["aim_truth"] is not None and abs(r["aim_truth"]) <= M.AIM_TOL_DEG, r["aim_truth"]
@@ -851,6 +853,7 @@ def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None
             aim_truth = M.wrap_deg(math.degrees(math.atan2(tz - me[3], tx - me[1])) - me[4])
     band_s = truth_band_seconds(wa, wb)
     res = {"label": label, "out": out, "contact_rows": contact.contact_rows, "rows_read": contact.rows_read,
+           "contact_ok": contact.ok, "contact_s": contact.contact_s,
            "band_s": band_s,
            "max_idle": dict(net.max_idle), "alarms": [dict(a) for a in watch.alarms],
            "alarms_n": watch.starvation_alarms(), "watch_stop": watch.stop_reason, "aim_truth": aim_truth,
@@ -861,7 +864,8 @@ def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None
           f"close={out['close'] and out['close']['reason']} bursts={out['bursts']} reactions={len(out['rule_moves'])} "
           f"teleport={out['teleport']}\n"
           f"   in the engagement band (truth, |dy|<=10, 3-D<=45, both scales>=0.99) {band_s:.1f}s; contact rows "
-          f"(verdict_core's 22-unit gate)={contact.contact_rows} (rows read {contact.rows_read}); closest paired "
+          f"(verdict_core, spec §5.1 band)={contact.contact_rows} over {contact.contact_s:.1f}s ok={contact.ok} "
+          f"(rows read {contact.rows_read}); closest paired "
           f"{res['closest']} dy {res['closest_dy']}; max idle ms A={net.max_idle.get('A')} B={net.max_idle.get('B')}; "
           f"alarms={res['alarms_n']} causes={[a['cause'] for a in res['alarms']]}; last in-tolerance aim "
           f"err={res['aim_err']} truth={aim_truth}; mover ends on {mw.floor}")
@@ -878,6 +882,7 @@ def assert_route_ok(r, want_reactions=False, max_idle_ms=ENDGAME_MAX_IDLE_MS):
     assert o["route"]["ok"] and o["close"]["ok"], (o["route"], o["close"])
     assert o["teleport"] is None, o["teleport"]
     assert r["band_s"] >= ROUTE_MIN_BAND_S, ("time in the engagement band", r["band_s"])
+    assert r["contact_ok"], ("verdict_core contact per spec §5.1", r["contact_s"], r["contact_rows"])
     assert o["bursts"] >= 1, o["bursts"]
     assert r["aim_truth"] is not None and abs(r["aim_truth"]) <= M.AIM_TOL_DEG, (r["aim_err"], r["aim_truth"])
     for side in ("A", "B"):

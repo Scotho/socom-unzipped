@@ -124,9 +124,14 @@ ALIVE_MAX_AGE_S = 2.0
 # samples; ng+0xde is stale when the move path is silent (then NO-DATA).
 NETIDLE_ALARM_MS = 4000
 NETIDLE_BAR_MS = 5000
-# Contact gate (spec §5 Goal 5a): 3-D <= 22 and |dy| <= 10.
-CONTACT_3D_MAX_UNITS = 22.0
+# Contact (spec §5.1, Amendment A -- registered pre-match, REPLACING Goal 5(a)'s 3-D <= 22 and >= 20 consecutive rows):
+# the engagement band is the same floor |dy| <= 10 and 3-D <= 45; contact is >= 5.0 s of qualifying time over >= 10
+# rows with row gaps <= 1.25 s, a guest-clock freeze inside the window pausing the count; the sampler period is
+# reported beside it. Blind: shots through a wall on the same floor; line of sight; aiming away.
+CONTACT_3D_MAX_UNITS = 45.0
 CONTACT_DY_MAX_UNITS = 10.0
+CONTACT_MIN_S = 5.0
+CONTACT_MIN_ROWS = 10
 CONTACT_SCALE_MIN = 0.99           # both sides' latest f12; closes the starved-pair-in-the-gate class
 # Pairing: B's row nearest A's within two 4 Hz samples. Blind: a 0.5 s misalignment at 40 u/s is 20
 # units -- the two process clocks must be aligned by the caller first (see main's --offset-b).
@@ -220,13 +225,17 @@ class StarvationVerdict:
 
 @dataclass
 class ContactResult:
-    contact_rows: int                   # longest run of consecutive qualifying rows
+    contact_rows: int                   # qualifying rows in the best run (the run with the most qualifying time)
     total_rows: int                     # qualifying rows, not necessarily consecutive
     rows_read: int
     status: str                         # ok | NO-DATA
     reason: str = ""
     closest_3d: object = None
     closest_dy: object = None
+    contact_s: float = 0.0              # qualifying host seconds of the best run, paused spans excluded
+    sampler_period_s: object = None     # median gap between A's actor rows
+    paused_rows: int = 0                # A rows inside a guest-clock pause of either instance (neither break nor count)
+    ok: bool = False                    # contact_s >= CONTACT_MIN_S and contact_rows >= CONTACT_MIN_ROWS
 
 
 def f32(word):
@@ -994,15 +1003,27 @@ def _advancing(calls, times, t):
     return max(n for _, n in calls[k0:k1]) > before
 
 
-def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
+def _paused(pauses, t):
+    return any(p[0] <= t <= p[1] for p in pauses)
+
+
+def _pause_overlap(pauses, t0, t1):
+    return sum(max(0.0, min(t1, p[1]) - max(t0, p[0])) for p in pauses)
+
+
+def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows, round_time_rows=None, round_steps=None):
     """rowsA/rowsB: actor rows (t, x, y, z, ...) on ONE clock; callsA/callsB: MoveScale [(t, n)];
-    clock_rows: [(t, string)]; scale_rows: ([(t, f12)] for A, [(t, f12)] for B).
+    clock_rows: [(t, string)]; scale_rows: ([(t, f12)] for A, [(t, f12)] for B); round_time_rows: optional
+    ([(t, 0x4365c0)] for A, for B) and round_steps ([t] for A, for B) on the same clock.
 
     Pairing: A's rows are the reference; each A row is paired with B's row nearest in time, if within
     CONTACT_PAIR_MAX_S (so one B row may serve up to two A rows). A row qualifies only if A's previous
-    row and the paired B row's previous row are each within CONTACT_ROW_MAX_GAP_S, plus the gate,
-    move-path, clock and scale clauses. contact_rows is the longest consecutive run of qualifying A
-    rows. No pair formed at all (e.g. misaligned clocks) is NO-DATA, not zero contact."""
+    row and the paired B row's previous row are each within CONTACT_ROW_MAX_GAP_S, plus the band (spec §5.1),
+    move-path, clock and scale clauses. An A row inside a guest-clock pause of EITHER instance (clock_pauses) is
+    paused: it neither breaks a run nor adds to it, and the paused span is not counted as time. A run's qualifying
+    time is the sum of the gaps between its consecutive qualifying rows, less paused spans; the best run is the one
+    with the most time, `ok` when it has >= CONTACT_MIN_S over >= CONTACT_MIN_ROWS rows. No pair formed at all (e.g.
+    misaligned clocks) is NO-DATA, not zero contact."""
     rowsA, rowsB = sorted(rowsA), sorted(rowsB)
     rows_read = len(rowsA) + len(rowsB)
     missing = [name for name, rows in (("A rows", rowsA), ("B rows", rowsB), ("A MoveScale", callsA),
@@ -1016,10 +1037,21 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
     sa, sb = sorted(scale_rows[0]), sorted(scale_rows[1])
     tsa, tsb = [s[0] for s in sa], [s[0] for s in sb]
 
+    pauses = []
+    if round_time_rows is not None:
+        steps = round_steps or ((), ())
+        for rt, st in zip(round_time_rows, steps):
+            pauses += clock_pauses(rt or [], st or ())
+    gaps = sorted(q[0] - p[0] for p, q in zip(rowsA, rowsA[1:]))
+    period = gaps[len(gaps) // 2] if gaps else None
     closest, closest_dy = None, None
-    run = best = total = pairs = 0
+    run = total = pairs = paused_rows = 0
+    run_s, last_t, best, best_s = 0.0, None, 0, 0.0
     for ia, a in enumerate(rowsA):
         t = a[0]
+        if pauses and _paused(pauses, t):
+            paused_rows += 1
+            continue
         k = bisect.bisect_left(tb, t)
         cand = [j for j in (k - 1, k) if 0 <= j < len(rowsB) and abs(rowsB[j][0] - t) <= CONTACT_PAIR_MAX_S]
         ok = False
@@ -1039,17 +1071,25 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
                   and _clock_changing(clock, tc, t)
                   and _scale_live(sa, tsa, t) and _scale_live(sb, tsb, t))
         if ok:
+            if run and last_t is not None:
+                run_s += max(0.0, t - last_t - _pause_overlap(pauses, last_t, t))
             run += 1
             total += 1
-            best = max(best, run)
+            last_t = t
+            if (run_s, run) > (best_s, best):
+                best, best_s = run, run_s
         else:
-            run = 0
+            run, run_s, last_t = 0, 0.0, None
     if missing:
-        return ContactResult(0, 0, rows_read, NO_DATA, "no " + ", no ".join(missing), closest, closest_dy)
+        return ContactResult(0, 0, rows_read, NO_DATA, "no " + ", no ".join(missing), closest, closest_dy,
+                             sampler_period_s=period)
     if pairs == 0:
         return ContactResult(0, 0, rows_read, NO_DATA,
-                             f"no A row had a B row within {CONTACT_PAIR_MAX_S:g}s (clocks misaligned?)")
-    return ContactResult(best, total, rows_read, "ok", "", closest, closest_dy)
+                             f"no A row had a B row within {CONTACT_PAIR_MAX_S:g}s (clocks misaligned?)",
+                             sampler_period_s=period)
+    return ContactResult(best, total, rows_read, "ok", "", closest, closest_dy, contact_s=best_s,
+                         sampler_period_s=period, paused_rows=paused_rows,
+                         ok=best_s >= CONTACT_MIN_S - 1e-9 and best >= CONTACT_MIN_ROWS)
 
 
 def _clock_changing(clock, tc, t):
@@ -1197,10 +1237,21 @@ def _cmd_contact(args):
     scales_a = [(t, f) for t, n, f, *_ in pa.calls.get(MOVE_SCALE_NAME, []) if f is not None]
     scales_b = [(t + off, f) for t, n, f, *_ in pb.calls.get(MOVE_SCALE_NAME, []) if f is not None]
     clock = clock_rows(pa.peek_rows) or sh(clock_rows(pb.peek_rows))
-    r = score_contact(pa.actor_rows, rows_b, calls_a, calls_b, clock, (scales_a, scales_b))
-    print(f"clock rows={len(clock)} closest_3d={_fmt(r.closest_3d)} dy_at_closest={_fmt(r.closest_dy)} "
-          f"qualifying={r.total_rows} status={r.status}{' (' + r.reason + ')' if r.reason else ''}")
-    print(f"LADDER contact_rows={r.contact_rows} rows_read={r.rows_read}")
+
+    def guest(p, off):
+        rt = [(t + off, f32(w)) for t, items in p.peek_rows for w in [row_static(items, ROUND_TIME_ADDR)] if w is not None]
+        steps = round_steps([(t + off, v) for t, v in valve_rows_by_name(p.peek_rows, "mp_round_count")])
+        return rt, steps
+    (rta, sta), (rtb, stb) = guest(pa, 0.0), guest(pb, off)
+    r = score_contact(pa.actor_rows, rows_b, calls_a, calls_b, clock, (scales_a, scales_b),
+                      round_time_rows=(rta, rtb), round_steps=(sta, stb))
+    print(f"clock rows={len(clock)} guest clock rows A={len(rta)} B={len(rtb)} closest_3d={_fmt(r.closest_3d)} "
+          f"dy_at_closest={_fmt(r.closest_dy)} qualifying={r.total_rows} paused={r.paused_rows} status={r.status}"
+          f"{' (' + r.reason + ')' if r.reason else ''}")
+    print(f"LADDER contact={'yes' if r.ok else 'no'} contact_s={r.contact_s:.2f} contact_rows={r.contact_rows} "
+          f"sampler_s={_fmt(r.sampler_period_s)} rows_read={r.rows_read} "
+          f"(band |dy|<={CONTACT_DY_MAX_UNITS:g}, 3-D<={CONTACT_3D_MAX_UNITS:g}; >= {CONTACT_MIN_S:g} s over >= "
+          f"{CONTACT_MIN_ROWS} rows)")
     return 2 if (r.status == NO_DATA or r.rows_read == 0) else 0
 
 

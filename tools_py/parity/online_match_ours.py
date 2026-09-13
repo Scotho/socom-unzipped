@@ -2857,13 +2857,12 @@ def endgame_arg_problem(a):
 
 
 # --- the LADDER line and the damage verdict ------------------------------------------------------------------
-LADDER_CONTACT_ROWS = 20         # spec §5 Goal 5(a): >= 20 consecutive rows
-
-
-def ladder_rung(controllable, contact_rows, damage):
+def ladder_rung(controllable, contact_ok, damage):
+    """0 not controllable on both; 1 no contact (spec §5.1: vc.score_contact(...).ok -- the band for >= 5.0 s over
+    >= 10 rows; None = NO-DATA); 2 contact; 3 contact and damage."""
     if tuple(controllable) != ("yes", "yes"):
         return 0
-    if contact_rows is None or contact_rows < LADDER_CONTACT_ROWS:
+    if not contact_ok:
         return 1
     return 3 if damage == "yes" else 2
 
@@ -2884,28 +2883,37 @@ def aim_iters_field(aims, t0=None, t1=None):
 
 
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
-                max_idle_ms, lagflag_rows, aim_iters=None):
-    """The brief's one-line ladder result. A field whose rows were zero reads NO-DATA (None, or 0 for a row
-    count), never 0. `aim_iters` (aim_iters_field) is appended when given."""
+                max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None):
+    """The brief's one-line ladder result, with spec §5.1's contact time and the sampler period beside the contact
+    rows. A field whose rows were zero reads NO-DATA (None, or 0 for a row count), never 0. `aim_iters`
+    (aim_iters_field) is appended when given."""
     nd = lambda v: vc.NO_DATA if v is None else str(v)
     rows = lambda v: vc.NO_DATA if not v else str(v)
-    return (f"LADDER rung={rung} controllable={','.join(controllable)} contact_rows={nd(contact_rows)} "
+    secs = lambda v: vc.NO_DATA if v is None else f"{v:.2f}"
+    return (f"LADDER rung={rung} controllable={','.join(controllable)} contact_s={secs(contact_s)} "
+            f"contact_rows={nd(contact_rows)} sampler_s={secs(sampler_s)} "
             f"rows_read={rows(rows_read)} damage={damage} kill={kill} starvation_alarms={nd(starvation_alarms)} "
             f"alarms_cleared={nd(alarms_cleared)} max_idle_ms={','.join(nd(v) for v in max_idle_ms)} "
             f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}"
             + ("" if aim_iters is None else f" aim_iters={aim_iters}"))
 
 
-def ladder_contact(tailA, tailB):
-    """verdict_core.score_contact over the two live tails (one host clock: no alignment needed)."""
+def ladder_contact(tailA, tailB, t0=None, t1=None):
+    """verdict_core.score_contact (spec §5.1: the band, >= 5.0 s, guest-clock pauses of either instance pausing the
+    count) over the two live tails (one host clock: no alignment needed), actor rows limited to [t0, t1]."""
+    inside = lambda t: (t0 is None or t >= t0) and (t1 is None or t <= t1)
+
     def take(tail):
         with tail._lock:                                # noqa: SLF001 - same module
             calls = list(tail.calls.get(MOVE_SCALE_TRACE_NAME, []))
             clock = [(t, st["clock"]) for t, st in tail.round_rows if not isinstance(st.get("clock"), vc.NoData)]
-        return ([(t, n) for t, n, _ in calls], [(t, f) for t, _, f in calls if f is not None], clock)
-    ca, sa, clk = take(tailA)
-    cb, sb, _ = take(tailB)
-    return vc.score_contact(tailA.actor_ingame(), tailB.actor_ingame(), ca, cb, clk, (sa, sb))
+        rt, steps, _, _ = tail_clock_state(tail)
+        return ([(t, n) for t, n, _ in calls], [(t, f) for t, _, f in calls if f is not None], clock, rt, steps)
+    ca, sa, clk, rta, sta = take(tailA)
+    cb, sb, clkb, rtb, stb = take(tailB)
+    return vc.score_contact([r for r in tailA.actor_ingame() if inside(r[0])],
+                            [r for r in tailB.actor_ingame() if inside(r[0])], ca, cb, clk or clkb, (sa, sb),
+                            round_time_rows=(rta, rtb), round_steps=(sta, stb))
 
 
 def _row_at(rows, t, max_age=vc.CONTACT_ROW_MAX_GAP_S):
@@ -2916,7 +2924,8 @@ def _row_at(rows, t, max_age=vc.CONTACT_ROW_MAX_GAP_S):
 def damage_verdict(victim_hist, victim_rows, shooter_rows, r1_times):
     """Spec §5 Goal 5(d) -> 'yes' | 'no' | 'unarmed' (no watch) | NO-DATA (armed, zero reads). victim_hist:
     RunLogTail.watch_hist of +0x1044 [(t, raw word, actor)]. A drop is a read below the previous alive read
-    (0 < v <= 1) on the same actor; it is damage when the pair is inside the contact gate at that time, an R1
+    (0 < v <= 1) on the same actor; it is damage when the pair is inside the engagement band (spec §5.1: |dy| <= 10,
+    3-D <= 45) at that time, an R1
     was injected in the preceding 3 s, and the victim's y did not drop > 20 units in the preceding 2 s.
     Blind: an environmental damage source coinciding with a burst at a stationary target."""
     if victim_hist is None:
@@ -3983,8 +3992,10 @@ def main():
             lag_rows = starv.lag_rows_read() if starv is not None else {
                 t: len(c.tail.lag_rows) for t, c in (("A", A), ("B", B))}
             c_rows = None if contact.status == vc.NO_DATA else contact.contact_rows
+            c_ok = None if contact.status == vc.NO_DATA else contact.ok
             ladder = ladder_line(
-                rung=ladder_rung(ctl, c_rows, damage), controllable=ctl, contact_rows=c_rows,
+                rung=ladder_rung(ctl, c_ok, damage), controllable=ctl, contact_rows=c_rows,
+                contact_s=None if c_ok is None else contact.contact_s, sampler_s=contact.sampler_period_s,
                 rows_read=contact.rows_read, damage=damage, kill="yes" if is_kill else "no",
                 starvation_alarms=starv.starvation_alarms() if starv is not None else None,
                 alarms_cleared=starv.alarms_cleared() if starv is not None else None,

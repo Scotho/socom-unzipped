@@ -23,7 +23,8 @@ class LadderLineTest(unittest.TestCase):
         line = M.ladder_line(rung=2, controllable=("yes", "yes"), contact_rows=23, rows_read=2406,
                              damage="no", kill="no", starvation_alarms=1, alarms_cleared=1,
                              max_idle_ms=(1547, 4210), lagflag_rows=(2759, 2733))
-        self.assertEqual(line, "LADDER rung=2 controllable=yes,yes contact_rows=23 rows_read=2406 damage=no "
+        self.assertEqual(line, "LADDER rung=2 controllable=yes,yes contact_s=NO-DATA contact_rows=23 sampler_s=NO-DATA "
+                               "rows_read=2406 damage=no "
                                "kill=no starvation_alarms=1 alarms_cleared=1 max_idle_ms=1547,4210 "
                                "lagflag_rows=2759,2733")
 
@@ -31,15 +32,16 @@ class LadderLineTest(unittest.TestCase):
         line = M.ladder_line(rung=1, controllable=("yes", "yes"), contact_rows=None, rows_read=0,
                              damage="unarmed", kill="no", starvation_alarms=None, alarms_cleared=None,
                              max_idle_ms=(None, 900), lagflag_rows=(0, 12))
-        self.assertIn("contact_rows=NO-DATA rows_read=NO-DATA", line)
+        self.assertIn("contact_rows=NO-DATA sampler_s=NO-DATA rows_read=NO-DATA", line)
         self.assertIn("starvation_alarms=NO-DATA alarms_cleared=NO-DATA", line)
         self.assertIn("max_idle_ms=NO-DATA,900 lagflag_rows=NO-DATA,12", line)
 
     def test_rung(self):
-        self.assertEqual(M.ladder_rung(("yes", "yes"), 25, "yes"), 3)
-        self.assertEqual(M.ladder_rung(("yes", "yes"), 25, "no"), 2)
-        self.assertEqual(M.ladder_rung(("yes", "yes"), 19, "yes"), 1)
-        self.assertEqual(M.ladder_rung(("yes", "NO-DATA"), 25, "yes"), 0)
+        # spec §5.1: the rung reads score_contact's `ok` (band, >= 5.0 s over >= 10 rows), not a row count
+        self.assertEqual(M.ladder_rung(("yes", "yes"), True, "yes"), 3)
+        self.assertEqual(M.ladder_rung(("yes", "yes"), True, "no"), 2)
+        self.assertEqual(M.ladder_rung(("yes", "yes"), False, "yes"), 1)
+        self.assertEqual(M.ladder_rung(("yes", "NO-DATA"), True, "yes"), 0)
         self.assertEqual(M.ladder_rung(("yes", "yes"), None, "no"), 1)
 
 
@@ -55,7 +57,7 @@ class DamageVerdictTest(unittest.TestCase):
             if fall and t < drop_t - 1.5:
                 vy = 130.0
             victim_rows.append((t, 0.0, vy, 0.0, 1))
-            shooter_rows.append((t, 60.0 if far else 15.0, 100.0, 0.0, 2))
+            shooter_rows.append((t, 60.0 if far else 15.0, 100.0, 0.0, 2))    # far: outside the 45-unit band
         hist = [(100.0, f2w(1.0), 1), (drop_t, f2w(0.8), 1)]
         return hist, victim_rows, shooter_rows, list(r1)
 
