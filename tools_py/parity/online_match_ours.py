@@ -1715,16 +1715,19 @@ class KillWatch(threading.Thread):
     def stop(self):
         self._stop.set()
 
-    def rearm(self):
-        """A new round (Amendment A2): the next firing signal may end it. Events are kept; a signal before this moment
-        never fires the new round. The health state is kept per actor: the respawned actor reads alive again first."""
-        self.rearmed_at = self.clock()
+    def rearm(self, t=None):
+        """A new round (Amendment A2): the next firing signal may end it. Events are kept; a signal whose ROW is older
+        than this moment (`t`, default now) never fires the new round -- even when this watch first polls it after the
+        rearm (I1, fix round: wait_next_round sees the step row before KillWatch's poll does). The health state is kept
+        per actor: the respawned actor reads alive again first."""
+        self.rearmed_at = self.clock() if t is None else t
         self.fired = None
 
     def _add(self, kind, tag, detail, firing=None):
         ev = {"kind": kind, "tag": tag, "t": self.clock(), "detail": detail,
               "firing": (kind in self.FIRING) if firing is None else firing}
-        if ev["t"] < getattr(self, "rearmed_at", float("-inf")):
+        row_t = detail.get("at") if isinstance(detail, dict) else None
+        if (ev["t"] if row_t is None else row_t) < getattr(self, "rearmed_at", float("-inf")):
             ev["firing"] = False
         self.events.append(ev)
         if self.fired is None and ev["firing"]:
@@ -1755,14 +1758,14 @@ class KillWatch(threading.Thread):
                 if d >= TELEPORT_UNITS:
                     fallback = not self.round_live(tag)
                     self._add("respawn", tag, {"jump": d, "from": [a[1], a[3]],
-                                               "to": [b[1], b[3]], "fallback": fallback},
+                                               "to": [b[1], b[3]], "fallback": fallback, "at": b[0]},
                               firing=fallback)
                 elif (self._away[tag] and spawn is not None
                       and math.hypot(b[1] - spawn[0], b[3] - spawn[1]) <= RESPAWN_RADIUS):
                     self._away[tag] = False
                     fallback = not self.round_live(tag)
                     self._add("respawn", tag, {"back_at_spawn": [b[1], b[3]],
-                                               "spawn": list(spawn), "fallback": fallback},
+                                               "spawn": list(spawn), "fallback": fallback, "at": b[0]},
                               firing=fallback)
             self._seen[tag] = len(rows)
 
@@ -2947,6 +2950,18 @@ def aim_iters_field(aims, t0=None, t1=None):
     return f"{ok}/{len(cyc)}:{','.join(marks)}"
 
 
+def record_lobby_fail(out_dir, n_rounds, exc, log, ident=""):
+    """R47: a LobbyFail (exit 4) ends a ladder launch before any round -> the LADDER-SUMMARY line (0 rounds, 0 usable,
+    stop=LOBBY-FAIL <class>) and converge.json {"lobby_fail": <class>, "rounds": [], ...}. Returns the class."""
+    cls = getattr(exc, "cls", None) or "unclassified"
+    log(online_ladder.lobby_fail_summary(n_rounds, cls, ident))
+    os.makedirs(out_dir, exist_ok=True)
+    with open(os.path.join(out_dir, "converge.json"), "w") as fh:
+        json.dump({"lobby_fail": cls, "detail": getattr(exc, "detail", ""), "rounds": [], "usable_rounds": 0,
+                   "ladder_stop": f"{online_ladder.LOBBY_FAIL} {cls}"}, fh, indent=1)
+    return cls
+
+
 def rounds_arg_problem(a):
     """--rounds needs a watched engagement (route / cooperative); converge and the control round play one."""
     n = getattr(a, "rounds", 1)
@@ -3018,10 +3033,11 @@ def rx_pulse_table(me, clock=time.time, wait=time.sleep, table=None, seconds=Non
 
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
                 max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None, round_n=None, mover=None,
-                bp_waits=None):
+                bp_waits=None, rung0=None):
     """The brief's one-line ladder result, with spec §5.1's contact time and the sampler period beside the contact
     rows. A field whose rows were zero reads NO-DATA (None, or 0 for a row count), never 0. `aim_iters`
-    (aim_iters_field) is appended when given."""
+    (aim_iters_field) is appended when given; `rung0` (round 1, online_ladder.rung0_report's token) LAST, as
+    `RUNG0 <PASS | FAIL reason | NO-DATA reason>` (R68)."""
     nd = lambda v: vc.NO_DATA if v is None else str(v)
     rows = lambda v: vc.NO_DATA if not v else str(v)
     secs = lambda v: vc.NO_DATA if v is None else f"{v:.2f}"
@@ -3033,7 +3049,8 @@ def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starv
             f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}"
             + ("" if aim_iters is None else f" aim_iters={aim_iters}")
             + ("" if bp_waits is None else f" bp_waits={','.join(nd(v) for v in bp_waits)}")
-            + ("" if mover is None else f" mover={mover}"))
+            + ("" if mover is None else f" mover={mover}")
+            + ("" if rung0 is None else f" RUNG0 {rung0}"))
 
 
 def ladder_contact(tailA, tailB, t0=None, t1=None):
@@ -4305,16 +4322,23 @@ def main():
                 live_spawns = first_actor if n == 1 else {
                     tag: (c.tail.actor_latest()[1:4] if c.tail.actor_latest() else None) for tag, c in (("A", A), ("B", B))}
 
+                def round_fired():
+                    ev = watch.fired
+                    return ev if ev and ev["t"] >= t_round - 1.0 else None
+
+                def signal_seen(ev):
+                    A.sh.log(f"KILL/ROUND-END SIGNAL round={n} {ev['kind']} on {ev['tag']} at "
+                             f"T+{ev['t'] - t_gameplay:.1f}s {json.dumps(ev['detail'], default=float)}")
+                    if not kill_shots["done"]:
+                        kill_shots["done"] = True
+                        for c in (A, B):
+                            evidence_shot(c, f"kill_r{n}", stale_shots, A.sh.log, missing_shots)
+
                 def monitor():
                     while not duel.stop.is_set():
-                        ev = watch.fired
-                        if ev and ev["t"] >= t_round - 1.0:
-                            A.sh.log(f"KILL/ROUND-END SIGNAL round={n} {ev['kind']} on {ev['tag']} at "
-                                     f"T+{ev['t'] - t_gameplay:.1f}s {json.dumps(ev['detail'], default=float)}")
-                            if not kill_shots["done"]:
-                                kill_shots["done"] = True
-                                for c in (A, B):
-                                    evidence_shot(c, f"kill_r{n}", stale_shots, A.sh.log, missing_shots)
+                        ev = round_fired()
+                        if ev:
+                            signal_seen(ev)
                             duel.stop.set()
                             return
                         if starv is not None and starv.stop_reason:
@@ -4390,6 +4414,21 @@ def main():
                              f"either player to shoot at")
                 duel.stop.set()
                 mon.join(timeout=5.0)
+                if watched_endgame and round_fired() is None and mpw.stalled is None and mpw.freeze_nodata is None:
+                    # C2 (fix round): the engagement returning is not the round ending. Both sides stand neutral while
+                    # the watches run on, until KillWatch fires (00:00, the round step, a kill) -- otherwise the next
+                    # round's 45 s wait starts with ~90-145 s of round clock left and every launch plays 1-2 rounds.
+                    A.sh.log(f"ROUND {n} engagement over at T+{time.time() - t_gameplay:.1f}s "
+                             f"({endgame and endgame.get('stop_reason')}): both sides stand neutral until the round "
+                             f"ends (by the clock string's remaining time + {online_ladder.ROUND_END_SLACK_S:g}s)")
+                    ev_end, why_end = online_ladder.wait_round_end(
+                        {"A": A.tail, "B": B.tail}, round_fired,
+                        stop=lambda: ("move path stalled" if mpw.stalled is not None else
+                                      "a freeze past FREEZE_MAX_S" if mpw.freeze_nodata is not None else None))
+                    if ev_end:
+                        signal_seen(ev_end)
+                    else:
+                        A.sh.log(f"ROUND {n} end not seen: {why_end}")
                 t_end = time.time()
                 for c in (A, B):
                     evidence_shot(c, f"final_r{n}", stale_shots, A.sh.log, missing_shots)
@@ -4444,6 +4483,15 @@ def main():
                     verdict = (f"FAIL teleport side={tp['tag']} during={tp['during']} step={tp['step']:.1f}u -- an "
                                f"actor row jumped > {TELEPORT_STEP_UNITS:g} units; the attempt was aborted")
                 rung = ladder_rung(ctl, c_ok, damage)
+                rung0_tok = None
+                if n == 1 and watched_endgame:
+                    # R68: rung 0 is recorded (round-1 LADDER line, the summary), never fatal; the rounds continue
+                    ok0, why0, f0 = rung0_check(t_end)
+                    A.sh.log("RUNG0 " + " ".join(f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+                                                 for k, v in sorted(f0.items())) + f" -> {f0.get('status')}")
+                    rung0_tok, lines0 = online_ladder.rung0_report(ok0, why0, f0, ident)
+                    for ln in lines0:
+                        A.sh.log(ln)
                 ladder = ladder_line(
                     rung=rung, controllable=ctl, contact_rows=c_rows,
                     contact_s=None if c_ok is None else contact.contact_s, sampler_s=contact.sampler_period_s,
@@ -4456,7 +4504,7 @@ def main():
                     aim_iters=aim_iters_field((sideA if mover == "A" else sideB).aims,
                                               t0=endgame and endgame.get("t_fight")),
                     round_n=n, mover=mover,
-                    bp_waits=tuple(online_ladder.bp_waits(inside(c.tail.bp_rows)) for c in (A, B)))
+                    bp_waits=tuple(online_ladder.bp_waits(inside(c.tail.bp_rows)) for c in (A, B)), rung0=rung0_tok)
                 if fired is None:
                     obs = [e["kind"] for e in events if not e.get("firing")]
                     if obs:
@@ -4479,22 +4527,16 @@ def main():
                     fatal = "move path stalled or frozen past FREEZE_MAX_S"
                 elif not watched_endgame:
                     fatal = "converge mode plays one round"
-                if n == 1 and watched_endgame:
-                    ok0, why0, f0 = rung0_check(t_end)
-                    A.sh.log("RUNG0 " + " ".join(f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
-                                                 for k, v in sorted(f0.items())) + f" -> {'PASS' if ok0 else 'FAIL'}")
-                    if not ok0:
-                        A.sh.log(f"RESULT RUNG0-FAIL {why0} {ident}")
-                        fatal = fatal or f"RUNG0-FAIL {why0}"
                 rounds_out.append({
                     "round": n, "mover": mover, "round_value": round_value, "t": [t_round, t_end], "verdict": verdict,
+                    "rung0": rung0_tok,
                     "ladder": ladder, "rung": rung, "kill": is_kill, "closest_3d_units": closest,
                     "closest_dy": duel.best_dy(), "contact": vars(contact), "events": events, "fired": fired,
                     "stale_shots": stale_shots, "missing_shots": missing_shots, "fight": fights,
                     "approach_A": sideA.result, "approach_B": sideB.result, "alarms": ralarms,
                     "endgame": None if endgame is None else {k: v for k, v in endgame.items() if k != "approach"}})
                 return online_ladder.RoundScore(n=n, mover=mover, rung=rung, verdict=verdict, kill=is_kill,
-                                                line=ladder, fatal=fatal)
+                                                line=ladder, fatal=fatal, rung0=rung0_tok)
 
             rung0_tables = {}
 
@@ -4514,12 +4556,21 @@ def main():
 
             def next_round(n):
                 prev = rounds_out[-1]["round_value"] if rounds_out else None
-                ok, reason, actors = online_ladder.wait_next_round({"A": A.tail, "B": B.tail}, prev)
+                spawns_n = {t: first_actor.get(t) or (file_spawns or {}).get(t) for t in "AB"}
+                info = {}
+                ok, reason, actors = online_ladder.wait_next_round({"A": A.tail, "B": B.tail}, prev, spawns=spawns_n,
+                                                                   info=info)
+                steps_txt = " ".join(
+                    f"{t}(step={'%.1f' % s['step'] if s['step'] else '?'} restart="
+                    f"{'%.1f' % s['restart'] if s['restart'] else '?'} spawn_d="
+                    f"{'%.1f' % s['spawn_d'] if s['spawn_d'] is not None else '?'})" for t, s in sorted(info.items()))
                 if ok:
-                    A.sh.log(f"ROUND {n} starts: mp_round_count moved past {prev}, the guest clocks run again, actors "
-                             f"re-found by vtable {ACTOR_VTABLE:#x} at "
-                             + " ".join(f"{t}={v:#x}" if v else f"{t}=?" for t, v in sorted(actors.items())))
-                return ok, reason
+                    A.sh.log(f"ROUND {n} starts: mp_round_count moved past {prev}, the guest clocks restarted and ran "
+                             f"{online_ladder.NEXT_ROUND_CLOCK_RUN_S:g}s, both sides at their spawns, actors re-found "
+                             f"by vtable {ACTOR_VTABLE:#x} at "
+                             + " ".join(f"{t}={v:#x}" if v else f"{t}=?" for t, v in sorted(actors.items()))
+                             + f" {steps_txt}")
+                return ok, (reason + f" {steps_txt}" if not ok else reason)
 
             history, ladder_stop = online_ladder.run_ladder(a.rounds if watched_endgame else 1, play_round, next_round,
                                                             A.sh.log, mover=a.mover, auto_swap=a.auto_swap)
@@ -4557,6 +4608,13 @@ def main():
                 A.sh.hold("R1", 0.4)
                 A.sh.shot(f"sweep{i:02d}")
                 B.sh.shot(f"sweep{i:02d}")
+    except L.LobbyFail as e:
+        # R47: exit 4 -- a launch whose lobby failed played no round; the launch summary says so and nothing counts
+        # toward the ladder's usable rounds or its stop rules
+        if a.converge:
+            record_lobby_fail(a.out, a.rounds if watched_endgame else 1, e,
+                              A.sh.log if A.sh is not None else (lambda m: print(m, flush=True)), ident)
+        raise
     finally:
         A.kill()
         B.kill()

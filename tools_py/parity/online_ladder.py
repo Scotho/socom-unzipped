@@ -14,6 +14,7 @@ next rounds swap the mover once; otherwise the ladder stops); two usable rounds 
 `DAMAGE-PATH-DECISION` (the ladder stops engaging; the grenade option is a later flag). A round whose verdict is
 NO-DATA (a freeze or teleport in a fire window, a spawn mismatch, a watch NO-DATA) is not usable.
 """
+import math
 import time
 from dataclasses import dataclass, field
 
@@ -25,25 +26,41 @@ DECIDE_AFTER_RUNG2_ROUNDS = 2
 NEXT_ROUND_TIMEOUT_S = 45.0      # from a round's end to the next round's first live rows: 8c took ~11 s (00:00 ->
                                  # step 5.4 s -> clock restart and reset 5.5 s later)
 NEXT_ROUND_POLL_S = 0.25
-NEXT_ROUND_CLOCK_RUN_S = 1.0     # the guest clock must advance again for this long after the step
+NEXT_ROUND_CLOCK_RUN_S = 1.0     # the guest clock must advance past its frozen value for this long AFTER the restart
+NEXT_ROUND_SPAWN_UNITS = 20.0    # ... and each side's newest actor row must be this close (ground) to its spawn
+NEXT_ROUND_FRESH_S = 1.0         # ... and that row no older than this
+NEXT_ROUND_STALL_SEEN_S = 3.0    # a boundary stall starts within this of the step (8c: on the step's own row); a clock
+                                 # that ran on through it for this long had no boundary stall to wait for
+NEXT_ROUND_STALL_S = 1.0         # the boundary stall: the guest clock standing this long (vc.FREEZE_STALL_S)
+ROUND_END_SLACK_S = 20.0         # after an engagement, the round end is waited for the clock string's remaining time
+                                 # plus this (from the string's newest change, so a freeze extends the wait)
+ROUND_END_FALLBACK_S = 420.0     # ... or this long when no clock string was read at all (a round is ~6 min)
+ROUND_END_POLL_S = 0.25
 SWAP_MOVER = "SWAP-MOVER"
 DAMAGE_PATH_DECISION = "DAMAGE-PATH-DECISION"
+LOBBY_FAIL = "LOBBY-FAIL"        # R47: online_login_ours exits 4 with `RESULT LOBBY-FAIL <class>` -- a launch that never
+                                 # reached a round: no round is played, usable or counted toward the stop rules
 
 
 @dataclass
 class RoundScore:
     n: int
     mover: str
-    rung: int = 0
+    rung: object = 0                 # 0..3, or vc.NO_DATA when contact was NO-DATA on a controllable pair
     verdict: str = vc.NO_DATA        # the round's RESULT word(s): PASS / FAIL ... / NO-DATA ...
     kill: bool = False
     line: str = ""                   # the LADDER round=<n> ... line
-    fatal: object = None             # a reason that ends the ladder after this round (RUNG0-FAIL, a stall, ...)
+    fatal: object = None             # a reason that ends the ladder after this round (a move-path stall, ...)
     fields: dict = field(default_factory=dict)
+    rung0: str = None                # round 1: "PASS" | "FAIL <reason>" | "NO-DATA <reason>" (R68: recorded, never fatal)
+
+    @property
+    def rung_n(self):
+        return self.rung if isinstance(self.rung, int) else 0
 
     @property
     def usable(self):
-        return self.rung >= 1 and not self.verdict.startswith(vc.NO_DATA)
+        return isinstance(self.rung, int) and self.rung >= 1 and not self.verdict.startswith(vc.NO_DATA)
 
 
 def stop_rule(history):
@@ -83,8 +100,9 @@ def run_ladder(n_rounds, play_round, next_round, log, mover="A", auto_swap=False
         if rule == SWAP_MOVER:
             usable = [r.n for r in history[since:] if r.usable]
             if auto_swap and not swapped and n < n_rounds:
-                log(f"{SWAP_MOVER} after usable rounds {usable} at rung 1 without rung 2: --auto-swap -- rounds "
-                    f"{n + 1}.. walk {other(mover)} (B descends via ~(652, 1230))")
+                log(f"{SWAP_MOVER} after usable rounds {usable} at rung 1 without rung 2 (mover {mover}): --auto-swap "
+                    f"-- rounds {n + 1}.. walk {other(mover)} along the route file's routes.{other(mover)}, "
+                    f"{mover} stands")
                 mover, since, swapped = other(mover), len(history), True
             else:
                 stop = f"{SWAP_MOVER} (usable rounds {usable} at rung 1 without rung 2)"
@@ -99,11 +117,33 @@ def run_ladder(n_rounds, play_round, next_round, log, mover="A", auto_swap=False
                 f"engaging: shots missing vs a damage path that does not write +0x1044 (plan Task 5 Step 4)")
             break
     usable = [r for r in history if r.usable]
+    rung0 = next((r.rung0 for r in history if r.rung0), None)
     log(f"LADDER-SUMMARY rounds={len(history)}/{n_rounds} usable={len(usable)} "
-        f"best_rung={max((r.rung for r in history), default=0)} kills={sum(1 for r in history if r.kill)} "
+        f"best_rung={max((r.rung_n for r in history), default=0)} kills={sum(1 for r in history if r.kill)} "
         f"rungs={','.join(str(r.rung) for r in history) or '-'} movers={','.join(r.mover for r in history) or '-'} "
-        f"stop={stop or 'rounds done'}")
+        f"stop={stop or 'rounds done'}" + (f" RUNG0 {rung0}" if rung0 else ""))
     return history, stop
+
+
+def lobby_fail_summary(n_rounds, cls, ident=""):
+    """R47: the launch's LADDER-SUMMARY when the lobby failed (exit 4, `RESULT LOBBY-FAIL <class>`): zero rounds played,
+    none usable, nothing toward the A1 stop rules (they count usable ROUNDS; a lobby failure is a launch, not a round)."""
+    return (f"LADDER-SUMMARY rounds=0/{n_rounds} usable=0 best_rung=0 kills=0 rungs=- movers=- "
+            f"stop={LOBBY_FAIL} {cls}" + (f" {ident}" if ident else ""))
+
+
+def rung0_report(ok, reason, fields, ident=""):
+    """R68: rung 0 is RECORDED, never fatal. -> (token for the round-1 LADDER line and the summary, lines to log).
+    PASS -> "PASS"; a failed bar -> "FAIL <reason>" and a `RUNG0 FAIL <reason>` line; a missing instrument (no GS stats
+    rows at all, no MoveScale rows at all: fields['status'] NO-DATA) -> "NO-DATA <reason>" and
+    `RESULT RUNG0-NO-DATA <reason>`. The rounds continue either way."""
+    status = fields.get("status") or ("PASS" if ok else "FAIL")
+    tail = f" {ident}" if ident else ""
+    if status == "PASS":
+        return "PASS", []
+    if status == vc.NO_DATA:
+        return f"{vc.NO_DATA} {reason}", [f"RESULT RUNG0-{vc.NO_DATA} {reason}{tail} -- the rounds continue (R68)"]
+    return f"FAIL {reason}", [f"RUNG0 FAIL {reason}{tail} -- recorded; the rounds continue (R68)"]
 
 
 def round_count(tail):
@@ -119,10 +159,74 @@ def round_count(tail):
     return rc, go
 
 
-def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeout=NEXT_ROUND_TIMEOUT_S):
+def step_time(tail, start_round):
+    """Host time of the first identified row after the last `start_round` row whose mp_round_count differs -> t | None."""
+    with tail._lock:                                    # noqa: SLF001 - the harness's own tail
+        rows = [(t, st["mp_round_count"]) for t, st in tail.round_rows
+                if not isinstance(st.get("mp_round_count"), vc.NoData)]
+    last = max((i for i, (_, v) in enumerate(rows) if v == start_round), default=-1)
+    return next((t for t, v in rows[last + 1:] if v != start_round), None)
+
+
+def clock_restart(rt, t_step):
+    """The round boundary's guest-clock restart after an mp_round_count step at `t_step`. rt: [(t, 0x4365c0)].
+    -> (frozen value, restart host time, running since restart s) | None while the boundary has not restarted.
+    The boundary stall is the first run of equal values >= NEXT_ROUND_STALL_S starting within NEXT_ROUND_STALL_SEEN_S
+    of the step (8c: 212.45 from 783.28 -- the step's own row -- to 788.88); the restart is the first row whose value
+    differs from the frozen one; `running` is how long every later row kept ADVANCING past it (a second stall resets
+    nothing but stops the count). A clock that ran through NEXT_ROUND_STALL_SEEN_S after the step with no such stall
+    restarted at the step."""
+    rows = sorted(r for r in rt if r[0] >= t_step - 0.5)
+    i = 0
+    while i < len(rows):
+        j = i
+        while j + 1 < len(rows) and rows[j + 1][1] == rows[i][1]:
+            j += 1
+        if rows[i][0] > t_step + NEXT_ROUND_STALL_SEEN_S:
+            break
+        if j == len(rows) - 1:
+            return None                                  # a run still in progress near the step: cannot tell yet
+        if rows[j][0] - rows[i][0] >= NEXT_ROUND_STALL_S:
+            frozen, t_r = rows[i][1], rows[j + 1][0]
+            return frozen, t_r, _advancing_run(rows[j + 1:], frozen, t_r)
+        i = j + 1
+    if not rows or rows[-1][0] < t_step + NEXT_ROUND_STALL_SEEN_S:
+        return None                                      # too early to say the boundary had no stall
+    base = next((v for t, v in reversed(rows) if t <= t_step), rows[0][1])
+    return base, t_step, _advancing_run([r for r in rows if r[0] > t_step], base, t_step)
+
+
+def _advancing_run(rows, frozen, t_r):
+    """Seconds from `t_r` over which every row is past `frozen` and the clock advanced row on row (equal consecutive
+    values under NEXT_ROUND_STALL_S are one 4 Hz sample, not a stall)."""
+    last_t, last_v, since = t_r, None, t_r
+    for t, v in rows:
+        if v == frozen:
+            return 0.0
+        if last_v is not None and v == last_v:
+            if t - since >= NEXT_ROUND_STALL_S:
+                return 0.0                               # stalled again: not running
+            continue
+        if last_v is not None and v < last_v:
+            return 0.0
+        last_t, last_v, since = t, v, t
+    return last_t - t_r
+
+
+def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeout=NEXT_ROUND_TIMEOUT_S, spawns=None,
+                    info=None):
     """Wait for the round after `start_round` (the mp_round_count value the finished round was played at) on every
-    tail: mp_round_count moved past it, the guest clock 0x4365c0 advanced again for NEXT_ROUND_CLOCK_RUN_S after that,
-    and a fresh actor row (the actor re-found by its vtable). -> (ok, reason, {tag: actor_addr})."""
+    tail (C1, fix round -- 8c accepted the step at 783.5 s, 5.7 s before the clock restart and the reset to spawn):
+      * mp_round_count moved past it (each tail's step time recorded);
+      * the guest clock 0x4365c0 restarted past its frozen boundary value and kept advancing for
+        NEXT_ROUND_CLOCK_RUN_S after the restart (clock_restart);
+      * the newest actor row fresh (the actor re-found by its vtable) and within NEXT_ROUND_SPAWN_UNITS (ground) of the
+        side's spawn (`spawns` {tag: (x, y, z)}; a side without one cannot pass).
+    mp_game_over != 0 ends the wait; an unread mp_round_count at round start is NO-DATA at once (no hang).
+    -> (ok, reason, {tag: actor_addr}); `info` (a dict) receives {tag: {step, restart, running, pos, spawn_d}}."""
+    info = {} if info is None else info
+    if start_round is None:
+        return False, f"{vc.NO_DATA} mp_round_count unread at round start -- the next round cannot be told", {}
     t_end = clock() + timeout
     while True:
         states, done = {}, True
@@ -130,23 +234,77 @@ def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeou
             rc, go = round_count(tail)
             if go not in (None, 0):
                 return False, f"mp_game_over={go} on {tag}: the match is over", {}
+            st = info.setdefault(tag, {"step": None, "restart": None, "running": 0.0, "pos": None, "spawn_d": None})
+            if st["step"] is None:
+                st["step"] = step_time(tail, start_round)
             with tail._lock:                            # noqa: SLF001
-                rt = list(tail.round_time_rows[-16:])
+                rt = [r for r in tail.round_time_rows if st["step"] is None or r[0] >= st["step"] - 1.0]
                 actor = tail.actor_rows[-1] if tail.actor_rows else None
             now = clock()
-            stepped = rc is not None and start_round is not None and rc != start_round
-            running = len(rt) >= 2 and rt[-1][1] != rt[0][1] and rt[-1][0] - rt[0][0] >= NEXT_ROUND_CLOCK_RUN_S and \
-                len({v for t, v in rt if t >= now - NEXT_ROUND_CLOCK_RUN_S - 0.5}) >= 2
-            fresh = actor is not None and now - actor[0] <= 1.0
-            states[tag] = (rc, stepped, running, fresh, actor[4] if actor else None)
-            done = done and stepped and running and fresh
+            running = False
+            if st["step"] is not None:
+                rs = clock_restart(rt, st["step"])
+                if rs is not None:
+                    st["restart"], st["running"] = rs[1], rs[2]
+                    running = rs[2] >= NEXT_ROUND_CLOCK_RUN_S and rt and now - rt[-1][0] <= NEXT_ROUND_FRESH_S
+            fresh = actor is not None and now - actor[0] <= NEXT_ROUND_FRESH_S
+            spawn = (spawns or {}).get(tag)
+            if fresh:
+                st["pos"] = actor[1:4]
+                st["spawn_d"] = None if spawn is None else math.hypot(actor[1] - spawn[0], actor[3] - spawn[2])
+            at_spawn = fresh and st["spawn_d"] is not None and st["spawn_d"] <= NEXT_ROUND_SPAWN_UNITS
+            states[tag] = (rc, st["step"] is not None, running, fresh, at_spawn, actor[4] if actor else None)
+            done = done and st["step"] is not None and running and at_spawn
         if done:
-            return True, "", {tag: s[4] for tag, s in states.items()}
+            return True, "", {tag: s[5] for tag, s in states.items()}
         if clock() >= t_end:
             return False, ("timed out after %gs: " % timeout) + " ".join(
-                f"{tag}(round={s[0]} stepped={s[1]} clock_running={s[2]} actor_fresh={s[3]})"
+                f"{tag}(round={s[0]} stepped={s[1]} clock_running={s[2]} actor_fresh={s[3]} "
+                f"at_spawn={s[4] if (spawns or {}).get(tag) else 'no-spawn'})"
                 for tag, s in sorted(states.items())), {}
         wait(NEXT_ROUND_POLL_S)
+
+
+def clock_string_deadline(clock_rows, slack=ROUND_END_SLACK_S):
+    """[(t, 'MM:SS')] counting down -> host time by which the round must have ended: the newest string CHANGE's time +
+    its remaining seconds + `slack` (None without a parseable string). A frozen string stops extending it."""
+    prev, change = None, None
+    for t, s in clock_rows:
+        v = _clock_seconds(s)
+        if v is None:
+            continue
+        if prev is None or v != prev:
+            change = (t, v)
+        prev = v
+    return None if change is None else change[0] + change[1] + slack
+
+
+def wait_round_end(tails, fired, clock=time.time, wait=time.sleep, stop=None, slack=ROUND_END_SLACK_S,
+                   fallback_s=ROUND_END_FALLBACK_S):
+    """C2 (fix round): after the engagement returns, both sides stand neutral while the watches keep running, until
+    `fired()` returns the round's KillWatch event (clock 00:00, the round step, a kill). The wait ends by the latest
+    clock_string_deadline over the tails (remaining time + ROUND_END_SLACK_S), or `fallback_s` from now with no
+    string read; `stop()` returning a reason ends it early (a move-path stall). -> (event | None, reason)."""
+    t0 = clock()
+    while True:
+        ev = fired()
+        if ev:
+            return ev, ""
+        why = stop() if stop is not None else None
+        if why:
+            return None, why
+        deadlines = []
+        for tail in tails.values():
+            with tail._lock:                            # noqa: SLF001
+                rows = [(t, st["clock"]) for t, st in tail.round_rows if not isinstance(st.get("clock"), vc.NoData)]
+            d = clock_string_deadline(rows, slack)
+            if d is not None:
+                deadlines.append(d)
+        deadline = max(deadlines) if deadlines else t0 + fallback_s
+        if clock() >= deadline:
+            return None, (f"no round end by the clock string's remaining time + {slack:g}s" if deadlines else
+                          f"no round end and no clock string in {fallback_s:g}s")
+        wait(ROUND_END_POLL_S)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -221,7 +379,12 @@ def rung0_verdict(sides, pauses, t0, t1):
     """sides: {tag: {"calls": [(t, n)], "clock": [(t, 'MM:SS')], "bp": [(t, waits, wait_ms, timeouts)]}} on one host
     clock; pauses: every pause of every side. -> (ok, reason, fields). A side without a clock string (the joiner may
     have none) is not judged on it; the host's must exist."""
-    fields = {}
+    fields = {"status": "FAIL"}
+    blind = ([f"[gs-gl stats] {tag} no rows at all (PS2X_GS_STATS=1?)" for tag in sorted(sides) if not sides[tag]["bp"]]
+             + [f"MoveScale {tag} no rows at all" for tag in sorted(sides) if not sides[tag]["calls"]])
+    if blind:                                    # R68: a missing instrument is NO-DATA, not a failed bar
+        fields["status"] = vc.NO_DATA
+        return False, "; ".join(blind), fields
     win = clean_window(pauses, t0, t1)
     if win is None:
         return False, f"no {RUNG0_WINDOW_S:g} s window with both round clocks running in [{t0:.1f}, {t1:.1f}]", fields
@@ -247,4 +410,5 @@ def rung0_verdict(sides, pauses, t0, t1):
             problems.append(f"[gs-gl stats] {tag} NO-DATA (PS2X_GS_STATS=1?)")
         elif waits >= RUNG0_BP_WAITS_MAX:
             problems.append(f"back-pressure waits {tag} {waits} >= {RUNG0_BP_WAITS_MAX}")
+    fields["status"] = "FAIL" if problems else "PASS"
     return not problems, "; ".join(problems), fields

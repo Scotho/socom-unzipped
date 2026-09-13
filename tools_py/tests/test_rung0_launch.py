@@ -58,8 +58,9 @@ class Rung0VerdictTest(unittest.TestCase):
         self.assertIn("back-pressure waits A", reason)
         b = side_rows()
         b["bp"] = []
-        ok, reason, _ = LD.rung0_verdict({"A": side_rows(), "B": b}, [], 0.0, 90.0)
-        self.assertIn("[gs-gl stats] B NO-DATA", reason)
+        ok, reason, f = LD.rung0_verdict({"A": side_rows(), "B": b}, [], 0.0, 90.0)
+        self.assertIn("[gs-gl stats] B no rows at all", reason)
+        self.assertEqual(f["status"], vc.NO_DATA)                   # R68: a missing instrument, not a failed bar
 
     def test_the_window_must_avoid_pauses(self):
         pauses = [(20.0, 25.0, False, "freeze")]

@@ -65,6 +65,13 @@ FREEZE_FIXTURES = [
 # (621.0-638.3 + 5.8) and the round-1 step (A 783.3, clock still to 788.9).
 EVENT_FIXTURE = ("launch8c_starvation_events.txt", "logs/run_A_20260913_132843.log", "logs/run_B_20260913_132843.log",
                  ((495.0, 522.0), (543.0, 566.0), (612.0, 650.0), (772.0, 800.0)))
+# Sprint 5 Task 5 fix round (C1): launch 8c's round-1 -> round-2 transition as ONE timed stream of both sides' trimmed
+# lines (`<side> <t on A's clock> <line>`), for the wait_next_round replay: A's clock string 00:00 at 777.8, the
+# mp_round_count step at 783.3 on both, the guest clocks still 783.3-788.9 (A 212.45, B 225.81), the reset jumps to the
+# spawns at 788.9 (A) / 788.7 (B) and the clock restart at 789.25 (A) / 789.22 (B). Spawns (each log's first in-game
+# actor row, 418.8 s): A (539.76, 159.53, 1456.11), B (1129.76, 65.05, 96.11).
+ROUND_STREAM_FIXTURE = ("launch8c_round_transition.txt", "logs/run_A_20260913_132843.log",
+                        "logs/run_B_20260913_132843.log", (775.0, 796.0))
 STATE_CALLS = ("MoveScale", "NetIdle")      # every line of these slots is kept
 ANCHOR_EVERY_S = 2.0                         # plus one other [call] line this often, for the clock
 KEEP_STATIC = ("4365c0", "45a0c0", "408f10")
@@ -137,17 +144,17 @@ def _trim_peek_state(line):
     return " ".join(parts)
 
 
-def _trim_peek_freeze(line):
+def _trim_peek_freeze(line, names=(b"mp_round_count",), statics=("4365c0",)):
     """The actor block's first 10 words, the first word of actor+0xF78, the round clock 0x4365c0, and
-    mp_round_count's value item (2 words) and name-bytes item (3 words, spelling the name) -- nothing else."""
+    mp_round_count's value item (2 words) and name-bytes item (3 words, spelling the name) -- nothing else.
+    `names` / `statics` widen it (the round-transition stream adds mp_game_over and the clock string 0x408f10)."""
     items = [(a, _TOKEN.findall(w)) for a, w in _ITEM.findall(line)]
     actor = next((int(a, 16) for a, t in items if t and t[0].lower().startswith(ACTOR_VTABLE_HEX)), None)
-    want_name = b"mp_round_count"[:12]                 # the name item holds the first 12 bytes
     name_addrs = set()
     for addr, toks in items:
         if len(toks) == 3:
             raw = b"".join(int(t[:8], 16).to_bytes(4, "little") for t in toks)
-            if raw.startswith(want_name):
+            if any(raw.startswith(n[:12]) for n in names):    # the name item holds the first 12 bytes
                 name_addrs.add(int(addr, 16))
     parts = ["[peek]"]
     for addr, toks in items:
@@ -156,7 +163,7 @@ def _trim_peek_freeze(line):
             parts.append(f"@{addr}: " + " ".join(toks[:KEEP_ACTOR_WORDS]))
         elif actor is not None and a == actor + 0xF78:
             parts.append(f"@{addr}: " + " ".join(toks[:1]))
-        elif addr.lower() == "4365c0" or a in name_addrs:
+        elif addr.lower() in statics or a in name_addrs:
             parts.append(f"@{addr}: " + " ".join(toks))
         elif len(toks) == 2 and int(toks[0][:8], 16) in name_addrs:
             parts.append(f"@{addr}: " + " ".join(toks))
@@ -237,6 +244,51 @@ def make_events(name, src_a, src_b, windows):
         f.write(f"# launch 8c StarvationWatch events: A={src_a} B={src_b} B+{offset['B']}s windows={list(windows)}\n")
         f.write("\n".join(f"{s} {t:.3f} {k}" for t, s, k in ev) + "\n")
     return len(ev), os.path.getsize(os.path.join(OUT, name))
+
+
+def make_round_stream(name, src_a, src_b, window):
+    """Both sides' lines over `window` (A's clock) as `<side> <t> <line>`, sorted by time: peek rows trimmed to the
+    actor block, the alive word, 0x4365c0, the clock string and mp_round_count / mp_game_over (value + name bytes), on
+    verdict_core.parse_log's clock of their own log; MoveScale / NetIdle [call] lines at their own stamp and their
+    [ret] at the call's. B is shifted onto A's clock by the MoveScale #0 difference (+5.8 s)."""
+    import sys
+    sys.path.insert(0, ROOT)
+    from tools_py.parity import verdict_core as vc
+    names, statics = (b"mp_round_count", b"mp_game_over"), ("4365c0", "408f10")
+    out, first = [], {}
+    for side, src in (("A", src_a), ("B", src_b)):
+        with open(os.path.join(ROOT, src), "r", errors="replace") as f:
+            lines = f.read().split("\n")
+        p = vc.parse_log(lines)
+        first[side] = next(t for t, n, *_ in p.calls["MoveScale"] if n == 0)
+        off = 0.0 if side == "A" else round(first["A"] - first[side], 2)
+        peek_t = iter([t for t, _ in p.peek_rows])
+        call_t = {}
+        for line in lines:
+            line = line.rstrip("\r")
+            if line.startswith("[peek]"):
+                t = next(peek_t) + off
+                if window[0] <= t <= window[1]:
+                    out.append((t, side, _trim_peek_freeze(line, names, statics)))
+                continue
+            m = re.match(r"^\[call\] ([\d.]+)s (MoveScale|NetIdle) #(\d+)", line)
+            if m:
+                t = float(m.group(1)) + off
+                call_t[(m.group(2), m.group(3))] = t
+                if window[0] <= t <= window[1]:
+                    out.append((t, side, line))
+                continue
+            m = re.match(r"^\[ret\] (MoveScale|NetIdle) #(\d+)", line)
+            if m and (m.group(1), m.group(2)) in call_t:
+                t = call_t[(m.group(1), m.group(2))]
+                if window[0] <= t <= window[1]:
+                    out.append((t + 1e-6, side, line))
+    out.sort(key=lambda e: (e[0], e[1]))
+    with open(os.path.join(OUT, name), "w", newline="\n") as f:
+        f.write(f"# launch 8c round transition: A={src_a} B={src_b} (B + {round(first['A'] - first['B'], 2)} s) "
+                f"window={list(window)}\n")
+        f.write("\n".join(f"{s} {t:.4f} {ln}" for t, s, ln in out) + "\n")
+    return len(out), os.path.getsize(os.path.join(OUT, name))
 
 
 def make(name, src, t0, t1):

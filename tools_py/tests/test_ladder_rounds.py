@@ -111,12 +111,13 @@ class WaitNextRoundTest(unittest.TestCase):
         tails = {g: tail(c, g) for g in "AB"}
         rt = self.feed(c, tails, 2.0, rc=0)
         rt = self.feed(c, tails, 5.5, rc=1, running=False, rt=rt)          # the round boundary: stepped, clock still
+        spawns = {g: (100.0, 50.0, 200.0) for g in "AB"}                # peek()'s default position
         ok, reason, _ = LD.wait_next_round(tails, 0, clock=c, wait=lambda s: self.feed(c, tails, s, rc=1, running=False,
-                                                                                      rt=rt), timeout=3.0)
+                                                                                      rt=rt), timeout=3.0, spawns=spawns)
         self.assertFalse(ok)
         self.assertIn("clock_running=False", reason)
         ok, reason, actors = LD.wait_next_round(tails, 0, clock=c, wait=lambda s: self.feed(c, tails, s, rc=1, rt=rt),
-                                                timeout=5.0)
+                                                timeout=5.0, spawns=spawns)
         self.assertTrue(ok, reason)
         self.assertEqual(set(actors), {"A", "B"})
 
