@@ -118,7 +118,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   ~32° B on pure-forward holds with no `rx` in the prior 2.5 s, vs 1.57° SP at rest); straightness and turn
   filters explain only part of it (wall deflection believed). Aim from the matrix while stationary.
 
-- **The gate's mission stage has scored the intro cinematic since 2026-09-12 14:33** (Task 2 review, confirmed on
+- ~~**The gate's mission stage has scored the intro cinematic since 2026-09-12 14:33**~~ **Fixed `69e2a9d`/`d2eb932`** (HUD wait requires lit bands; the scorer requires ≥ 2 moving gameplay hold pairs, mean diff ≥ 3.0, and capture count = logged holds; hold steps log `STALE FRAME`). Saved runs re-scored: s3a, famb, native_on, s3d_2x_host PASS; mission4, s5_gatefix, s5_gatefix2, s5_task1_vf0, s5_task4_dbuff FAIL. **The gate mission stage now FAILS on the current tree**: the single-player game nearly stops presenting after gameplay start (33–43 frame exports vs ~1400 live; all holds stale; working set ~15 GB reported by hand, not captured) — under investigation. Kept for the record: (Task 2 review, confirmed on
   `s5_task4_dbuff`): `drive.py`'s `untilref(ref_hud_ours.png, 92,112,125,160,40,30)` compares after
   `crop_to_content` strips the letterbox bars, so the letterboxed cinematic matches (distance 23–29 < 30) with 0
   presses, and the hold captures (s30…) are the cinematic. **"PASS mission" proves the mission loaded and the
