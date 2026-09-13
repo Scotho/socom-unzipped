@@ -4,9 +4,21 @@ Written for the project owner returning after four autonomous sprints. Sources: 
 `docs/HANDOFF.md`, the four sprint spec/plan pairs, research notes 12–18, the Sprint 4 ledger and
 task reports (gitignored, will be deleted at close-out — everything durable from them is in here),
 and the run logs on disk, revised the same evening after the online hunt reached its answer.
-Sprint 4 is **not finished**: its close-out task has not run, its headline online task has a named
+~~Sprint 4 is **not finished**: its close-out task has not run, its headline online task has a named
 cause with one measurement run and one fix still to land, and branch `sprint-4` is not yet merged
-into `develop`.
+into `develop`.~~
+
+> **Superseded 2026-09-13 — the end of Sprint 4.** Sprint 4 is finished (close-out ran; a
+> whole-branch review and one fix wave followed). The movement blocker named below was **fixed**
+> (`abf35bb`) and **proven by a same-binary A/B in one match** (`5ed29ca`: fix ON, movement scale
+> 1.0 on 330/330 calls and 89 distinct player positions; fix OFF, 0.0 on 339/339 and 0.46 units of
+> travel) — on Medley. **No kill was reached**: the acceptance test ran end to end, closest true
+> 3-D separation 50.0 units on Medley. **Frostfire, the default test map since 2026-09-13, is a
+> second, open cause**: neither player moves after round start there. The live facts are in
+> `docs/KNOWN.md`; the next sprint is
+> `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`. The
+> summary below is kept as written on 2026-09-12; its "predicted, not confirmed" and "one
+> measurement run and one fix" no longer hold.
 
 The short version: the renderer work of Sprints 1–3 is done and solid; Sprint 4 fixed every visible
 render defect it set out to fix, made the gates unable to pass quietly, and — the part that matters
@@ -74,7 +86,14 @@ with HUD and a running round timer. **Online, the local player cannot move** (LX
 camera pitch, fire and stance work). That is the one blocker between here and the acceptance test,
 and as of this evening it has a named cause (§3.6): our `sceInetInterfaceControl(0x200)` returns a
 constant, so the game's network-activity timestamp never resets and the multiplayer movement scale
-it drives sits at 0.0. Predicted, not yet measured; a candidate fix is drafted in the working tree.
+it drives sits at 0.0. ~~Predicted, not yet measured; a candidate fix is drafted in the working tree.~~
+
+> **Superseded 2026-09-13.** Measured and fixed: the `0x200` fix landed (`abf35bb`) and a
+> same-binary A/B proved it (`5ed29ca`) on Medley, where both players now move and met at 50.0
+> units without a kill. On **Frostfire neither player moves** after round start — a second, open
+> cause (Sprint 5). The last full gate is PASS 3/3 at `logs/parity/gate/20260912_192900` on the
+> binary Sprint 4 ends on, title s00–s19 99.8–100.0 run-vs-run against `s3_head_1x`; the `s4_abi`
+> figures below are from the earlier run.
 
 ### What the test and gate infrastructure can prove, and what it cannot
 
@@ -109,7 +128,16 @@ render defect is open: the macroblocks are fixed at the root (see §3), the menu
 fixed in an earlier session, and the transition residual strip is a ~1-in-5 one-frame flake with an
 **unproven** attribution to `refreshDirtyRows`/`executeClear` ordering.
 
-### Sprint 4 so far (branch `sprint-4`, 22 commits on top of the plan)
+### ~~Sprint 4 so far (branch `sprint-4`, 22 commits on top of the plan)~~ Sprint 4 at its end
+
+> **Superseded 2026-09-13.** Every task ran: 1–9 plus 2b, 4b and 4c, each reviewed. Task 6's fix
+> landed on a third, separately authorised attempt (`abf35bb`) and was A/B-proven (`5ed29ca`);
+> Tasks 7 and 8 ran and are honest partials (calibration works; two movers closed Medley to 50.0
+> units; no kill; Frostfire loses control at round start); Task 9 closed out, and the required
+> retractions below were made in the tree. The outcome, task by task, is the Sprint 4 plan's
+> `## Outcome`; STATUS's 2026-09-13 entry is the dated record. The paragraph below is the
+> 2026-09-12 snapshot: its "drafted fix … unbuilt", "Not run: Tasks 7 and 8" and "Uncommitted in
+> the tree" are all stale.
 
 Complete and reviewed: Tasks 1 (macroblocks), 2 and 2b (gate trust), 3 (vram-diff calibration),
 4 (ground height — research only, by design), 4b (rand), 4c (soft-double ABI stubs), 5 (S0, the
@@ -118,8 +146,9 @@ is named") describes a candidate that the gate-naming review then **rejected** �
 now a retraction target — and the review found the real cause in the same function (§3.6). The
 ruling on the table is one measurement run, then the fix. Uncommitted in the tree: research/18
 edits (being brought in line with the review, concurrently), the `PS2X_SOCOM2_NET_TRACE_ALL`
-parsing fix, and the **drafted fix itself** — `socom2_libnetb.cpp`'s `case 0x200` now answers a
-host RX-byte counter from a new `socom2_hostnet::rxBytes()`, unbuilt and unverified. Not run:
+parsing fix, and ~~the **drafted fix itself**~~ — `socom2_libnetb.cpp`'s `case 0x200` now answers a
+host RX-byte counter from a new `socom2_hostnet::rxBytes()`, ~~unbuilt and unverified~~ (built,
+committed as `abf35bb` and A/B-proven by `5ed29ca`). Not run:
 Tasks 7 and 8 (movement calibration, kill detection — gated on S1 by design) and Task 9
 (close-out). The close-out carries a list of **required retractions** in STATUS/HANDOFF (§3
 below); if Sprint 4 closes without Task 9, they become Sprint 5's first task.
@@ -195,18 +224,26 @@ the asymmetry, properly explained. The scale is `clamp((5000 − (msSinceNetActi
 from in the last 1.5 s, holding at full until idle exceeds 5500 ms and reaching zero at 6500 ms
 — the console's own lag freeze.
 `msSinceNetActivity` resets only when libnetb's `sceInetInterfaceControl(code 0x200)` returns a
-**changing** word, and ours returns a constant (`socom2_libnetb.cpp:384`, `case 0x200: r(3, 0u)`,
-with `DAT_00458090` BSS-zero). The bypass, `FUN_003045b0(0x44fe10)` = `"ComeFromLan"`, is false
+**changing** word, and ours returned a constant (`socom2_libnetb.cpp`, `sceInetInterfaceControl`'s
+`case 0x200: r(3, 0u)` as of 2026-09-12 — replaced by a live RX-byte counter in `abf35bb`; with
+`DAT_00458090` BSS-zero). The bypass, `FUN_003045b0(0x44fe10)` = `"ComeFromLan"`, is false
 for a Medius match. So the scale pins at 0.0 from the first frame, every movement input is
 multiplied by nothing, the camera still works, and `hud+0xde=1`. Guest-side, ours-only, the exact
 symptom — **and the defect is in our HLE of a PS2 network API, not in the game.**
 
-**Status: predicted, not confirmed.** The ruling is one measurement run first — `PS2X_PEEK=
+> **Superseded 2026-09-13: confirmed and fixed.** The fix landed as `abf35bb` (code `0x200`
+> returns `socom2_hostnet::rxBytes()`; `PS2X_SOCOM2_NET_STATS=0` restores the constant) and was
+> proven by a same-binary A/B in one match, `5ed29ca`: fix ON, `MoveScale f12 = 1.0` on 330/330
+> calls and 89 distinct player x; fix OFF, 0.0 on 339/339 and 0.46 units of travel
+> (research/18 §3.12). Proven on Medley only; on Frostfire neither player moves, a separate open
+> cause. The status paragraph below is the 2026-09-12 text.
+
+~~**Status: predicted, not confirmed.**~~ The ruling was one measurement run first — `PS2X_PEEK=
 0x45a1ca:1` and `0x45a1c0:1` plus `actor+0x1368`, prediction 1 and 0.0, stop if either reads
 otherwise — then the fix: make code `0x200` return a real monotonic counter (host RX packets or
 bytes) so the timestamp resets. That is a correctness fix at the right layer, and the opposite of
-patching `FUN_00594cf0`, which would make the player move and teach us nothing. A draft of the
-fix is in the working tree, unbuilt.
+patching `FUN_00594cf0`, which would make the player move and teach us nothing. ~~A draft of the
+fix is in the working tree, unbuilt.~~
 
 **7. "Ground height" was never the ground.** The 14.7-vs-20.1 number quoted for weeks is the
 **camera eye** minus the collision hit; the player's feet are correct to 0.008 units. The whole
@@ -314,6 +351,10 @@ could honestly say.
 ---
 
 ## 5. How the plan should change
+
+> **Partly superseded 2026-09-13.** "Land the movement fix" is done (`abf35bb`, A/B `5ed29ca`), so
+> goal (2) now reads: Frostfire control, the kill readout, then the acceptance test — in the order
+> the Sprint 5 spec gives. The HLE audit and the rest of this section stand.
 
 **Reorder the standing goals.** `LOOP_PROMPT.md` still lists native render (goal 3) as the thing to
 advance and the acceptance test (goal 4) as "untouched". After Sprint 4 that is backwards. The
@@ -469,16 +510,25 @@ the snap-back never fires; `FUN_00566940` returns 0 on every logged call in **bo
 the soft-double fix (Move 2); the `cVar7 == 0` arm cannot be the gate (generic setter, guard
 unwritable under our IOP link-up hardcode, returns before the four-axis write — three static
 reads, each sufficient); our `sceInetInterfaceControl(0x200)` returns the constant 0 (our own
-source, `socom2_libnetb.cpp:384`); the guest resets its network-activity timestamp only on a
+source, `socom2_libnetb.cpp` `sceInetInterfaceControl` `case 0x200` as of 2026-09-12 — since
+fixed, `abf35bb`); the guest resets its network-activity timestamp only on a
 change of that word and `FUN_00551ec0` multiplies exactly the three movement axes by the scale
 that timestamp drives (disassembly, cited to the instruction); the player's feet are at the right
 height and the root node decays to 0; rand was 15-bit; the macroblock race is closed (deficit 0);
 the five ABI stubs were identity at 19 of 22 sites.
 
-Believed, untested, and marked as such: **that `DAT_0045a1ca` reads 1 and `actor+0x1368` reads
+> **Superseded 2026-09-13.** This checklist is the 2026-09-12 snapshot and is out of date in both
+> directions: the movement fix it lists as believed is **proven** (same-binary A/B, `5ed29ca`, on
+> Medley), and the end of Sprint 4 added open items it lacks (no kill; Frostfire loses control at
+> round start; the health readout `actor+0x1044` / alive byte `actor+0xF7A` is sourced by
+> research/19 and never read live online; `actor+0x204`/`+0x208` retracted). **Do not work from
+> this list — `docs/KNOWN.md` is the live one.**
+
+Believed, untested, and marked as such: ~~**that `DAT_0045a1ca` reads 1 and `actor+0x1368` reads
 0.0 at runtime online** (the prediction; Sprint 5 Task 1); **that a changing `0x200` word makes
 the local player move** (the fix; Task 2); that the counter's feed rate at match traffic keeps
-the scale at 1.0 rather than sagging (Task 2's minute-long trace); which of the two skeleton
+the scale at 1.0 rather than sagging (Task 2's minute-long trace);~~ (settled by Sprint 4's A/B —
+see KNOWN.md); which of the two skeleton
 candidates is real; that the transition residual strip is a refresh/clear ordering artefact; that
 the intro-cinematic freeze is a real defect; the peer UDP packet rate on a playing PCSX2 pair
 (never measured — no capture tool); that the DME aux-UDP channel carries nothing (rate bound only,
@@ -489,6 +539,9 @@ Retired this evening: "`controller+0x170 & 3` is the gate" (it is the auto-move 
 paths); "the `cVar7 == 0` arm zeroes the three axes online" (`4114ad4`, rejected on review);
 "the missing half of the condition is one writer away" (there was no condition to complete).
 
-Known wrong in the committed docs until close-out fixes them: HANDOFF's open items 0 and 2, the 2026-09-09 01:30 STATUS entry,
+~~Known wrong in the committed docs until close-out fixes them: HANDOFF's open items 0 and 2, the 2026-09-09 01:30 STATUS entry,
 every "frozen at STARTING ROUND" description, the Sprint 4 spec's own §1 last bullet, and the
-gate claim in `4114ad4`'s commit message (research/18 is being corrected concurrently).
+gate claim in `4114ad4`'s commit message (research/18 is being corrected concurrently).~~
+**Done 2026-09-13:** close-out (Task 9a/9b) and the final fix wave marked those superseded in
+place; a commit message cannot be edited, so `4114ad4`'s gate claim stands retracted in research/18
+§3.11 and `docs/KNOWN.md`.

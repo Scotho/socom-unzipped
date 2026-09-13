@@ -138,7 +138,11 @@ actor-position readout and the Frostfire default, and must not be run as written
    > `017941d0`; `@17941d0` word0 = `006691a0` (the actor vtable); `*(actor+0xc0)` = the mover,
    > vtable `006694b0`. The actor's own world x/y/z are words **7/8/9** — use them, do not
    > reconstruct a position from camera + facing (that mis-places a player by up to two orbit
-   > radii, ~50 units). Health/max-health candidates are `actor+0x204` / `actor+0x208`.
+   > radii, ~50 units). ~~Health/max-health candidates are `actor+0x204` / `actor+0x208`.~~
+   > **RETRACTED 2026-09-13 (`docs/research/19-community-and-engine-resources.md` F1, `KNOWN.md`
+   > §3):** `+0x204`/`+0x208` are not health. Health is the float at **`actor+0x1044`** (1.0 full,
+   > `<= 0.0` dead) and the alive byte is **`actor+0xF7A`** (1 = alive) — research-sourced, not yet
+   > read live in an online match (Sprint 5 Task 2).
    >
    > **RETRACTED: `*0x488de8+0xbc` is not the route to the player actor.** `0x488de8` is the
    > *camera* singleton and `+0xbc` is its follow pointer — null in the spawn images (STATUS

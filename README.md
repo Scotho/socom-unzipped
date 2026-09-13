@@ -144,8 +144,10 @@ reference crop is made); `--health-offset <byte offset from the actor base>` wit
 `--health-range lo:hi` arms the health watch -- unset, the health signal is off and the run says so,
 and an armed watch that reads nothing fails the run. `docs/research/19` sources health at
 `0x1044` (alive byte `0xF7A`); it has not yet been read live online, and until it is, `--until-kill`
-cannot print `PASS`. (The flag's own `--help` text still names the retracted `+0x204`/`+0x208`
-candidates.) As of Sprint 4's close, **on Frostfire neither player moves** after round start and
+cannot print `PASS`. A health death counts only as a transition -- the same actor address must
+read alive (`0 < v <= 1`) before a dead-range read, so a first read of `0.0` or of uninitialised
+heap is not a kill (`tools_py/tests/test_kill_watch.py`). Map references are committed for
+Frostfire and Medley. As of Sprint 4's close, **on Frostfire neither player moves** after round start and
 on Medley no kill has been observed -- see `docs/STATUS.md` and `docs/KNOWN.md`. Harness pieces:
 `drive.py` scripts gain an `ifburst` step (fire a capture burst only if the preceding `ifref`
 matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY`
