@@ -112,6 +112,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The lobby now verifies two dropped-press classes and fails fast** (`74f221c`, `a0bca51`, R47/R69): map CROSS
+  (SELECTED MAPS panel diff 0.00 dropped vs 8.95 taken) and READY (label edge 48 vs 82) are re-sent up to 3 times on
+  fresh frames; **READY is a toggle**, so it is re-sent only when two frames ~1 s apart both read not-ready. Every lobby
+  stage times out at 180 s → `RESULT LOBBY-FAIL <class>`, exit 4. Unobserved: what a second map CROSS does on an
+  already-selected map; pre-login failures (window, main menu) still exit 1 without a class.
+
 - **The acceptance scorer `verdict_replay.py` is pinned to pre-registered bars** (spec §5.1 + §5.1.1, R50–R63, `faa7a8c`):
   two adversarial reviews found 11 false-KILL/false-FAIL holes before any ladder match (stale kill steps, cross-round
   windows, fragmented freezes, an alive byte never read as 1, a destroyed killer, and — the one that would have
