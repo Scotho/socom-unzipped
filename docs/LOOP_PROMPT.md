@@ -48,12 +48,18 @@ hypothesis->build->run->evidence step.
 1. If a game run or build is in progress (check `logs/.loop_lock` — a file with the owner and
    a start time under 20 minutes old — or a running `socom2*.exe`/`pcsx2-qt.exe`), do NOT start
    another; only one game instance and no builds during runs. Wait for the next firing.
-2. Read `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md` entries; `git log -5`.
+2. Read `docs/KNOWN.md` (the live proven / believed / retracted list — it is the fastest way to
+   avoid re-deriving a dead hypothesis, and its §3 is what the other docs used to state as fact),
+   then `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md` entries; `git log -5`.
 3. Pick the top open item that advances goal 1 or 3 (goal 2 is a constraint, goal 4 is
    untouched). Work in bounded steps, in this order: one hypothesis -> one build -> one run ->
    read the evidence -> `./build.sh test` and (after `./build.sh runtime`) `gate` green ->
-   commit -> push -> STATUS entry (newest on top) -> refresh the "START HERE" section of
+   commit -> push -> STATUS entry (newest on top) -> **audit `docs/KNOWN.md`: promote, retire or
+   retract the entries this step touched** -> refresh the "START HERE" section of
    HANDOFF.md when the pick-up changes. Tests and the gate come BEFORE the commit (goal 1).
+   **If you find a committed sentence is false, correct it in the same hour, where it is written**
+   (a `> Superseded by …` blockquote, never a silent delete) — do not queue it for a close-out that
+   may never arrive. `docs/process-audit.md` has the rule and the two weeks it cost.
 4. Subagents are welcome for offline/static work (decomp reading, native VU1 handler work under
    third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ verified with `dist/vu1_replay.exe
    --verify --native` on both fixture sets, server-side Horizon checks) but builds of the

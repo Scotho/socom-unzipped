@@ -491,6 +491,12 @@ The 4-program VU1 residual stays closed unless a new dump set dispatches `0x66` 
 
 ## 7. What is proven and what is still believed (a checklist for the next model)
 
+> **`docs/KNOWN.md` is the live copy of this checklist.** It is audited after every task —
+> promoted, retired, retracted — and it names the artefact for every proven entry and the
+> experiment that would settle every believed one. Read it first. What follows is this sprint's
+> snapshot, kept for the narrative; **where the two disagree, KNOWN.md wins**, and a duplicated
+> list is one that goes stale.
+
 Proven by measurement, with the artefact named: PCSX2 plays on our server (research/18 §1, tracked
 contact sheet); the peer channel carries zero app data (every datagram decoded); the port and RSA
 divergences were real and their fixes reached the wire; the player-update guard runs online and

@@ -77,29 +77,31 @@
 - Consumes: research/16 §7 (the counting step) and §8 (the capture-diff recipe); `PS2X_GS_DUMP_DISPLAY=<dir>:<t0>:<t1>` writing `shadow`/`gpu`/`cpu` PPM triples after `refreshDirtyRows` and before the present blit; `scripts/parity/title_only.txt`.
 - Produces: `python -m tools_py.parity.movie_blocks <dumpdir> --ref <reference.mp4|dir>` printing one line per picture and a final `MISSING blocks=<n> pictures=<n>`, exit 1 when any block is missing from the `gpu` layer but present in `shadow`.
 
-- [ ] **Step 1: Write the check first (it must fail on today's binary)**
+- [x] **Step 1: Write the check first (it must fail on today's binary)**
 
 `movie_blocks.py` reads the `PS2X_GS_DUMP_DISPLAY` triples, and for each picture computes the 16×16 pure-black block mask of the `gpu` layer and of the `shadow` layer, then reports `mask_gpu & ~mask_shadow` — blocks black on the GPU but not black in shadow VRAM. This is strictly stronger than research/16's ffmpeg recipe and needs no reference decode: the shadow layer *is* the reference for the mirror stage, and research/16 already proved the decode clean. Print block coordinates, never an absolute black count (the movie genuinely contains black blocks — this trap cost the Sprint 3 spike a false positive).
 
-- [ ] **Step 2: Capture and confirm the check fails**
+- [x] **Step 2: Capture and confirm the check fails**
 
 Detached `title_only.txt` run with `PS2X_GS_DUMP_DISPLAY=logs/mb_s4:<t0>:<t1>` over the intro seconds. Run the check. Expected: a non-zero `MISSING` count naming blocks at multiples of 16 — the same signature research/16 recorded (pictures 965, 1085, 1447).
 
-- [ ] **Step 3: Do the count that decides candidate 1**
+- [x] **Step 3: Do the count that decides candidate 1**
+  > **Done, and it said NO.** The count that was supposed to prove candidate 1 measured the predicted byte-accumulator case at **zero** — see the Outcome section.
 
 Add a temporary counter (stderr, env-gated, removed before the commit) or use `PS2X_GS_TRACE_PAGES`: per movie frame, count `executeTransfer` calls with `command.trxreg.rrw == 16 && command.trxreg.rrh == 16` against `refreshRenderTargetsFromShadow` calls made from `executeUpload`. Record both numbers in your report.
 
-- [ ] **Step 4: Fix, if the count proves it**
+- [x] **Step 4: Fix, if the count proves it**
+  > **A fix landed, for a different cause.** Candidate 1 was disproved; the defect was a cross-thread race on `m_currentTransfer` (`4a701f1`).
 
 If refreshes are fewer than 16×16 transfers, candidate 1 is proven: `executeUpload` refreshes only when `m_uploadReceivedBytes >= m_uploadExpectedBytes` (line ~1280), and `executeTransfer` resets `m_uploadReceivedBytes = 0` and overwrites `m_currentTransfer` (lines ~1264-1266) — so any rectangle whose bytes did not complete before the next transfer began is written into shadow VRAM and **never mirrored to the GL texture**. Fix: before `executeTransfer` overwrites `m_currentTransfer`, if the previous transfer left `m_uploadExpectedBytes != 0 && m_uploadReceivedBytes != 0` (a partially-delivered rectangle), refresh the render targets for the *previous* rectangle first. Keep the change surgical and comment it with the counted evidence.
 
 If the count *disproves* candidate 1 (refreshes match transfers), **do not guess**: record the numbers in research/16, name the next candidate, and report `DONE_WITH_CONCERNS` with no runtime change.
 
-- [ ] **Step 5: Prove the fix**
+- [x] **Step 5: Prove the fix**
 
 `./build.sh runtime`, re-capture, and re-run `movie_blocks.py`: expected `MISSING blocks=0`. Then `./build.sh test` exit 0 and a detached full gate (`--stamp s4_mb`) PASS 3/3 with title s00–s19 ≥ 99 against `logs/parity/gate/s3_head_1x/title`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 `git add tools_py/parity/movie_blocks.py third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp docs/research/16-intro-movie-macroblocks.md && git commit -m "gs-gl: mirror a movie block whose upload was cut short by the next transfer (the blocks were in shadow VRAM, never on the GPU)" && git push`
 
@@ -115,7 +117,7 @@ If the count *disproves* candidate 1 (refreshes match transfers), **do not guess
 - Consumes: `winshot.grab(hwnd)` returning a PIL Image of the window client area.
 - Produces: `drive.crop_to_content(im, thresh=8)` → PIL Image with uniformly-black border rows/columns removed (returns the input unchanged when nothing is black-bordered, and when the whole frame is black); `frame()` and both reference-thumbnail builders call it before `.resize((160, 112))`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```python
 # tools_py/tests/test_drive_crop.py
@@ -149,23 +151,23 @@ def test_near_black_content_is_not_cropped_away():
     assert np.asarray(crop_to_content(_img(a))).shape[1] == 80
 ```
 
-- [ ] **Step 2: Run them and watch them fail**
+- [x] **Step 2: Run them and watch them fail**
 
 `python -m unittest tools_py.tests.test_drive_crop -v` → FAIL, `ImportError: cannot import name 'crop_to_content'`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 `crop_to_content` computes a per-row and per-column max over the greyscale frame, finds the first and last index above `thresh`, and crops to that box; if no index is above the threshold (an all-black frame) it returns the image unchanged — **the transition gate scores black frames on purpose, and cropping them away would break it.**
 
-- [ ] **Step 4: Tests pass, and the gate's own suite still passes**
+- [x] **Step 4: Tests pass, and the gate's own suite still passes**
 
 `python -m unittest tools_py.tests.test_drive_crop -v` → 5 passed. `python -m unittest tools_py.tests.test_gate` → 24 passed.
 
-- [ ] **Step 5: Prove it on a real pillarboxed run**
+- [x] **Step 5: Prove it on a real pillarboxed run**
 
 Use `tools_py/parity/resize_window.py` (committed in Sprint 3 for exactly this) to drive a title run at a stretched window, then score it run-vs-run against `logs/parity/gate/s3_head_1x/title`. Before this task such a run fell to the 16/23 pass floor (Sprint 3 measured 66.4 on one capture); after it, the scores must land in the normal band. Record both numbers.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 `git add tools_py/parity/drive.py tools_py/tests/test_drive_crop.py && git commit -m "parity(drive): score the content rect, not the window -- a resized window degraded the title score smoothly to the pass floor instead of failing" && git push`
 
@@ -181,25 +183,25 @@ Use `tools_py/parity/resize_window.py` (committed in Sprint 3 for exactly this) 
 - Consumes: the existing `boundaryAt(mask, x, y)` helper, the `drawnGif`/`drawnHost` masks, and the per-pixel `delta` loop.
 - Produces: two widened buckets — `rounding` also accepts `delta <= 2` when **both** renderings drew the pixel and the dump's draws had alpha blending enabled (`ABE=1`); `edge` also accepts an *interior* pixel whose value appears within tolerance 2 in the other rendering's 3×3 neighbourhood. `hard` keeps its meaning: a wrong lane or a wrong context.
 
-- [ ] **Step 1: Record the baseline**
+- [x] **Step 1: Record the baseline**
 
 Run `dist/vu1_replay.exe --vram-diff <outdir> tests/fixtures/vu1/dispatch_0x1b50/*.bin` and save every `VRAMDIFF` line. These are the numbers the widening must not disturb for the 14 currently-passing dumps.
 
-- [ ] **Step 2: Implement the two widenings**
+- [x] **Step 2: Implement the two widenings**
 
 Blend-amplified rounding: at `ABE=1` a one-step source difference becomes a two-step destination difference, so `delta <= 2` is rounding *only* when `drawnGif[p] && drawnHost[p]` and the dump drew with blending on. Interior seams: a colour seam between two adjacent triangles can sit one pixel over while both sides are drawn, so `boundaryAt` never fires; accept it as `edge` when the pixel's RGBA appears within tolerance 2 somewhere in the other rendering's 3×3 neighbourhood. **The tolerance must be ≥ 2 — an exact-match lookup misses two of `prog_182`'s six large-delta pixels** (measured in Sprint 3).
 
-- [ ] **Step 3: Prove the widening is not a blanket pass**
+- [x] **Step 3: Prove the widening is not a blanket pass**
 
 The `+8 px` sanity experiment from Sprint 3 (deliberately offsetting one rendering by 8 pixels) must still score 29–55 %, i.e. the buckets still catch a real divergence. Run it and quote the number. Then re-run Step 1's 14 dumps: every number must be unchanged or lower, and none may newly fail.
 
-- [ ] **Step 4: Add the held-out dump**
+- [x] **Step 4: Add the held-out dump**
 
 Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its golden line (regenerate the fixture golden with `--no-native`, checking the run prints `native entered=0 ended=0 handbacks=0`). It scored 1.488 % against the 1 % tolerance before the widening; report its new number. All four `./build.sh test` verify invocations (`--no-native`, `--native --regs all`, `--native --host-draw --regs all`) must pass with it present.
 
-- [ ] **Step 5: `./build.sh test` exit 0** with `checked=15 skipped=0` and no `[vu1_replay] WARNING`.
+- [x] **Step 5: `./build.sh test` exit 0** with `checked=15 skipped=0` and no `[vu1_replay] WARNING`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 `git add third_party/ps2recomp/ps2xRuntime/src/tools/vu1_replay.cpp tests/fixtures/vu1/dispatch_0x1b50 build.sh && git commit -m "vu1_replay(--vram-diff): blend-amplified rounding and interior seams are by-design, not hard -- prog_182 rejoins the fixture set" && git push`
 
@@ -215,9 +217,10 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Consumes: STATUS 2026-09-09 01:30/02:10 — the vertical collision probe is identical to PCSX2's (hit y = -146.371, same normal) but the actor rests **14.7** above it on ours vs **20.1** on the console; mover vtable `0x6694b0`, actor vtable `0x6691a0` (mover at actor `+0xc0`); mover `+0x5c` = 4.0 vs 6.3338, `+0x70..+0x7c` differ; actor `+0x10` state `0x00080502` vs `0x2`; actor `+0x2bc..` holds a cached ground point on ours. Tools: `PS2X_CALL_TRACE="0xADDR:name"`, `PS2X_CALL_TRACE_DUMP="<Name>:a<k>[+0xOFF][*[+0xOFF]]:<words>"`, `PS2X_CALL_TRACE_EVERY`, `PS2X_PEEK` + `PS2X_TRIGGER`, `PS2X_RDRAM_DUMP_AT`.
 - Produces: the note, naming the writer of `mover+0x90.y`, the value it writes, and where ours diverges from the console.
 
-- [ ] **Step 1: Find the writer.** Trace the mover's update method with `PS2X_CALL_TRACE_DUMP` on the mover object during `scripts/parity/gameplay_probe.txt`, dumping `+0x5c`, `+0x70..+0x7c` and `+0x90` per call. Identify which call changes `+0x90.y` and what it reads first.
-- [ ] **Step 2: Compare against the console.** The same trace under PCSX2 is not available, so use the captured console values (STATUS 01:30/02:10) as the reference and state explicitly which console numbers are measured and which are inferred. If the divergence is a *constant* (4.0 vs 6.3338 smells like a capsule radius or a step height), find where that constant is loaded on ours.
-- [ ] **Step 3: Fix only if bounded** — one hypothesis, one build, one `gameplay_probe.txt` run showing the rest height at ~20.1 with the mission gate still green. Otherwise write the note with the exact divergence and stop. **Commit either way** (note always; code if fixed).
+- [x] **Step 1: Find the writer.** Trace the mover's update method with `PS2X_CALL_TRACE_DUMP` on the mover object during `scripts/parity/gameplay_probe.txt`, dumping `+0x5c`, `+0x70..+0x7c` and `+0x90` per call. Identify which call changes `+0x90.y` and what it reads first.
+- [x] **Step 2: Compare against the console.** The same trace under PCSX2 is not available, so use the captured console values (STATUS 01:30/02:10) as the reference and state explicitly which console numbers are measured and which are inferred. If the divergence is a *constant* (4.0 vs 6.3338 smells like a capsule radius or a step height), find where that constant is loaded on ours.
+- [x] **Step 3: Fix only if bounded** — one hypothesis, one build, one `gameplay_probe.txt` run showing the rest height at ~20.1 with the mission gate still green. Otherwise write the note with the exact divergence and stop. **Commit either way** (note always; code if fixed).
+  > **Note branch taken, deliberately.** No fix: Task 4 *reframed its own defect* (it is the camera, not the ground) rather than fixing it, and the localisation left two candidates a single run apart. See the Outcome section.
 
 ---
 
@@ -231,11 +234,11 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Consumes: `tools/pcsx2/` (one install — a second instance needs its own portable/config directory; `tools/pcsx2_b` from earlier sprints is gone and must be recreated as a copy), the local Horizon server under `server/` (`horizon-docker/` brings it up), `PS2X_SOCOM2_SERVER`-style host redirection for PCSX2 (PCSX2 has no such env knob — redirect via the host machine's hosts file or the server's own DNS/config, and record exactly what you did), `scripts/parity/` login scripts for reference on the click path.
 - Produces: a recorded verdict — **runtime implicated** (PCSX2 reaches playable gameplay against our server) or **runtime exonerated** (PCSX2 freezes at "STARTING ROUND 1 OF 11" exactly as ours does) — with both instances' screens at the freeze point and the server-side log slice covering the same seconds.
 
-- [ ] **Step 1: Stand up two PCSX2 instances.** Copy `tools/pcsx2` to a second directory with its own config/memcard so two can run at once. Verify both boot the game to the main menu before involving the server.
-- [ ] **Step 2: Drive both to a match.** Follow the same click path `online_match_ours.py` uses (A hosts, B joins, `--same-team` equivalent so both spawn together). Capture screens each second from the lobby through 60 s past round start.
-- [ ] **Step 3: Read the verdict.** Frozen at "STARTING ROUND 1 OF 11" with only camera pitch responding → runtime exonerated, S1 goes server-side. Playable (the player walks) → runtime implicated, S1 goes guest-side. **Anything ambiguous is reported as ambiguous** — do not round toward the convenient answer.
-- [ ] **Step 4: Capture the server's view.** Slice `server/logs/console-DME.log` and `console-Medius.log` over the same seconds and include what the server did or did not send after both players readied.
-- [ ] **Step 5: Write §1 of research/18** with the verdict, the evidence, and the exact recipe (the note must let someone else re-run this). No runtime code, no commit by the implementer — the controller commits the note.
+- [x] **Step 1: Stand up two PCSX2 instances.** Copy `tools/pcsx2` to a second directory with its own config/memcard so two can run at once. Verify both boot the game to the main menu before involving the server.
+- [x] **Step 2: Drive both to a match.** Follow the same click path `online_match_ours.py` uses (A hosts, B joins, `--same-team` equivalent so both spawn together). Capture screens each second from the lobby through 60 s past round start.
+- [x] **Step 3: Read the verdict.** Frozen at "STARTING ROUND 1 OF 11" with only camera pitch responding → runtime exonerated, S1 goes server-side. Playable (the player walks) → runtime implicated, S1 goes guest-side. **Anything ambiguous is reported as ambiguous** — do not round toward the convenient answer.
+- [x] **Step 4: Capture the server's view.** Slice `server/logs/console-DME.log` and `console-Medius.log` over the same seconds and include what the server did or did not send after both players readied.
+- [x] **Step 5: Write §1 of research/18** with the verdict, the evidence, and the exact recipe (the note must let someone else re-run this). No runtime code, no commit by the implementer — the controller commits the note.
 
 ---
 
@@ -249,11 +252,11 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Consumes: S0's verdict; the decoded peer protocol (22-byte reliable-channel packets, little-endian `00 01 0a 00 | 0 | 0 | T 00 02 00 | S 00 Q 00 | P 00`, T ∈ {0x81, 0x82, 0x89}, S = sender index, Q = per-sender sequence, P = payload word; acked both ways at ~1/s); `PS2X_SOCOM2_NET_TRACE=1` (udp counters plus hex of the first 16 peer packets); `PS2X_SOCOM2_SERVER=192.168.2.10` (without it the exe advertises 127.0.0.1 as its own address); `PS2X_CALL_TRACE` on `FUN_00247fe8` / `exUdpRecv`; the SCERT ids in `RT.Common/Types.cs` (CLIENT_CONNECT_AUX_UDP 0x16, SERVER_CONNECT_ACCEPT_AUX_UDP 0x19, CLIENT_HELLO 0x24, SERVER_HELLO 0x25, UDP_APP 0x0c, ECHO 0x05).
 - Produces: either both instances leaving "STARTING ROUND 1 OF 11" with local control enabled (LX/LY/RX moving the player, proven by `PS2X_SOCOM2_INPUT_FILE` injection and screens), or §2 of the note naming the exact condition that never becomes true.
 
-- [ ] **Step 1: Read the state machine on the implicated side.** Guest-side: trace the callers of the UDP send/recv on **both** instances simultaneously (`PS2X_CALL_TRACE` + `_DUMP` on the receiver's buffer) and reconstruct who waits for what. Server-side: find where the DME/Medius plugin decides a world is ready to start and what it broadcasts, and diff that against what `server/logs` shows it actually sent.
-- [ ] **Step 2: Name the condition.** One sentence of the form "X never becomes true because Y never arrives / never fires", with the evidence line beside it. Write it into §2 before attempting any fix — a fix without this sentence is a guess.
-- [ ] **Step 3: Fix if bounded.** One hypothesis → one build/server change → one two-instance run. Success is both instances in gameplay with the player moving under pad injection on both sides. **Two attempts maximum**; if the second fails, stop, finish the note, and report `DONE_WITH_CONCERNS` — S2 and S3 then do not run and the sprint says so plainly.
-- [ ] **Step 4: Guard the regression.** If a fix lands, capture the working state as a run recipe in the note so a later change that re-freezes the round is caught by re-running it.
-- [ ] **Step 5: Commit** the note and any code/server change together.
+- [x] **Step 1: Read the state machine on the implicated side.** Guest-side: trace the callers of the UDP send/recv on **both** instances simultaneously (`PS2X_CALL_TRACE` + `_DUMP` on the receiver's buffer) and reconstruct who waits for what. Server-side: find where the DME/Medius plugin decides a world is ready to start and what it broadcasts, and diff that against what `server/logs` shows it actually sent.
+- [x] **Step 2: Name the condition.** One sentence of the form "X never becomes true because Y never arrives / never fires", with the evidence line beside it. Write it into §2 before attempting any fix — a fix without this sentence is a guess.
+- [x] **Step 3: Fix if bounded.** One hypothesis → one build/server change → one two-instance run. Success is both instances in gameplay with the player moving under pad injection on both sides. **Two attempts maximum**; if the second fails, stop, finish the note, and report `DONE_WITH_CONCERNS` — S2 and S3 then do not run and the sprint says so plainly.
+- [x] **Step 4: Guard the regression.** If a fix lands, capture the working state as a run recipe in the note so a later change that re-freezes the round is caught by re-running it.
+- [x] **Step 5: Commit** the note and any code/server change together.
 
 ---
 
@@ -269,11 +272,12 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Consumes: `PS2X_SOCOM2_INPUT_FILE` pad injection (drivers write `logs/pad_A.txt` / `logs/pad_B.txt`), `PS2X_SOCOM2_INPUT_TRACE=1` to prove inputs reached the guest, `PS2X_PEEK="0x416054:3"` printing each instance's position once per second, the existing `--sweep`/`--sweep-hold`/`--turn-key` flags (`L` = right stick right / Precision Shooter look, `D` = left stick right / Sure Shot turn).
 - Produces: `--walk-to-b` — A reads both positions, computes the bearing to B, turns by a timed hold using the measured degrees-per-second, walks until within a set distance, and stops; the measured constants recorded in the note and as named constants in the module (no magic numbers at call sites).
 
-- [ ] **Step 1: Calibrate the turn.** Hold the turn key for a fixed time from a known heading, read the compass in the captured frames, and derive degrees per second for both `L` and `D`. Repeat three times; report the spread, not just the mean.
-- [ ] **Step 2: Calibrate the walk.** Same method for forward movement using the two `0x416054` position peeks: units per second.
-- [ ] **Step 3: Implement `--walk-to-b`** using those constants, with a hard step cap so a mis-calibration cannot run the match forever.
+- [x] **Step 1: Calibrate the turn.** Hold the turn key for a fixed time from a known heading, read the compass in the captured frames, and derive degrees per second for both `L` and `D`. Repeat three times; report the spread, not just the mean.
+- [x] **Step 2: Calibrate the walk.** Same method for forward movement using the two `0x416054` position peeks: units per second.
+- [x] **Step 3: Implement `--walk-to-b`** using those constants, with a hard step cap so a mis-calibration cannot run the match forever.
 - [ ] **Step 4: Prove it.** One run where A ends within the set distance of B, shown by the position rows, with the frames captured.
-- [ ] **Step 5: Commit.**
+  > **Not met by Task 7.** The approach loop works and is calibrated, but a single mover cannot close the map inside a round (39 % closure efficiency, ~450 s needed against a ~360 s round). Two movers, in Task 8, closed 1392 units in ~127 s.
+- [x] **Step 5: Commit.**
 
 ---
 
@@ -290,10 +294,12 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - Produces: `--until-kill` — the run ends when B's death or the round end is observed, with both instances' screens captured at that moment and a single line printed stating which signal fired (guest memory or server log) and at what time.
 
 - [ ] **Step 1: Find the health/kills record.** With both instances in gameplay, fire at B and watch candidate offsets near the actor for a value that changes on damage and reaches zero on death. Confirm across two separate kills before believing it.
-- [ ] **Step 2: Cross-check against the server.** The DME log should show the same event; if the two disagree, prefer the server's and say why in the note.
-- [ ] **Step 3: Implement `--until-kill`** with a timeout, so a failed match ends as a clean FAIL rather than hanging.
+  > **Partial.** `actor+0x204` (1.0) / `+0x208` (100000.0) are the candidates and read the same in every image, our own and the console's — but the brief's bar is confirmation across **two separate kills** and this sprint got **zero**. They stay in `KNOWN.md` §2, not §1.
+- [x] **Step 2: Cross-check against the server.** The DME log should show the same event; if the two disagree, prefer the server's and say why in the note.
+- [x] **Step 3: Implement `--until-kill`** with a timeout, so a failed match ends as a clean FAIL rather than hanging.
 - [ ] **Step 4: Run the acceptance test end to end** — one command, A kills B, both screens captured, exit 0. Record the command and the artefact paths; this is the sprint's headline evidence.
-- [ ] **Step 5: Commit.**
+  > **In flight at the time of this close-out**; the box is left open deliberately rather than ticked on an expectation.
+- [x] **Step 5: Commit.**
 
 ---
 
@@ -312,3 +318,90 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - **Placeholders:** Task 2 carries its full test code; Tasks 1 and 3 name exact functions, line ranges and the decision rule; Tasks 5-8 are procedural by necessity (their content is the previous stage's output) but each carries its own stop rule and a named deliverable, as the macroblock spike did successfully in Sprint 3.
 - **Type consistency:** `crop_to_content(im, thresh=8)` (Task 2) is the only new Python helper and is called from three sites named in the file map; `movie_blocks.py`'s CLI contract (Task 1) is used only by Task 1 and Task 9's evidence; `--walk-to-b` (Task 7) is consumed by `--until-kill` (Task 8); the bucket names `rounding`/`edge`/`hard` (Task 3) match the existing printout.
 - **Known risk, stated in the plan not just the spec:** Task 6 has a two-attempt cap and an explicit "S2/S3 do not run" consequence, so the sprint cannot silently become an open-ended investigation.
+
+---
+
+## Outcome — what actually happened, and where reality diverged from this plan
+
+Written at close-out (Task 9a, 2026-09-13). The boxes above are ticked against reality, not
+against intent; the three still open are open on purpose and say why inline. Headline facts live
+in `docs/KNOWN.md`; the sprint's carried findings are at `docs/STATUS.md` 2026-09-13,
+`docs/research/16` §9.1.1 and `docs/research/17` §5.1 / §6.1.
+
+**The plan's shape held. Its predictions mostly did not.** Wave 1's four bounded fixes stayed
+bounded; Wave 2's decisive-experiment-first sequencing (S0 before S1) was the single best call in
+the document and is the reason the sprint ended with a fix rather than another protocol decode.
+What follows is where the text was wrong.
+
+### 1. Three tasks were added mid-sprint and are not in this plan at all
+
+| task | what it was | why it was not planned |
+|---|---|---|
+| **2b** | `drive.py` `ifburst` step — fire only if the preceding reference match succeeded (`99c1865`) | fell out of Task 2's review; the acceptance test needed it |
+| **4b** | `rand()` re-implemented as newlib's LCG over the guest's own `_rand_next` (`ede2096`) | Task 4 found the 15-bit stub while diffing the mover, and the blast radius (249 sites) made deferring it worse than doing it |
+| **4c** | five soft-double routines re-bound (`db7a992`) | same: found by Task 4 as an incidental in a table diff |
+
+Both 4b and 4c came out of the *one task that was told not to fix anything*. That is not an
+accident of scoping — a careful diff of two memory images is a high-yield instrument, and this plan
+budgeted it as a single investigation step inside a task whose fix gate it could never meet.
+
+### 2. Task 1's fix was **not** the cause this plan predicted
+
+The plan committed to candidate 1 in advance: "count `executeTransfer` calls with `rrw == rrh == 16`
+against `refreshRenderTargetsFromShadow` calls from `executeUpload`. If the second is smaller,
+candidate 1 is proven and the fix is to mark the dirty rect from the transfer itself … rather than
+from the byte accumulator."
+
+The count ran and **measured the predicted byte-accumulator case at zero**. The real defect was a
+**cross-thread race on `m_currentTransfer`** (`4a701f1`); the deficit went 3,748 → 0 and
+`MISSING` 9 → 0. The plan was right that a count would decide it and wrong about what it would
+decide — which is the good failure mode, and only because the step was written as *do the count*
+rather than *apply the fix*. A step phrased as "make the change candidate 1 implies" would have
+shipped a no-op and closed the ticket.
+
+### 3. Task 4 **reframed its own defect** instead of fixing it
+
+Task 4 was scoped as "ground height: make the actor rest at ~20.1". It established that there is
+no ground-height defect at all: the player's feet match the console to **0.008**, and the 14.7 /
+20.1 figures this plan quotes in its own Interfaces block are **camera-eye minus collision-hit**,
+reconstructible from `STATUS.md`'s own recorded camera y values. The defect is the third-person
+camera, ~5.4 low, localised to the player actor's skeleton root node decaying 11.4845 → 0
+(`research/17` §4). No fix landed, deliberately: the evidence supports two candidates that one run
+separates, and guessing sends the next reader to audit a VU0 macro-mode primitive that may be
+innocent.
+
+**The plan inherited the wrong frame from HANDOFF and restated it as fact in its Interfaces
+block.** A plan that quotes a prior belief should quote it as a belief.
+
+### 4. Wave 2 ran further than the plan's own risk note allowed for — and stopped short of a kill
+
+- **Task 5 (S0)** reversed the project's documented world model: PCSX2 against **our** server plays
+  a full round and advances to round 2. The "golden" that had said otherwise was two stills of a
+  match with no input ever sent. Verdict: **runtime implicated**.
+- **Task 6 (S1)** fixed it inside the two-attempt cap: `sceInetInterfaceControl(0x200)` returned a
+  constant, so `msSinceNetActivity` never reset and the movement scale clamped to 0.0 on frame one
+  (`abf35bb`, then a same-binary A/B in one match, `5ed29ca`). Five hypotheses were falsified by
+  measurement first — including two real divergences (advertised port, shared RSA keypair) whose
+  fixes reached the wire and **moved nothing**.
+- **Task 7 (S2)** is an honest partial. Calibration works; a single mover cannot close the map
+  inside a round (39 % closure efficiency; ~450 s needed against a ~360 s round). It also measured
+  the aim floor: `PAD_AXIS` injects only full deflection, so the shortest usable hold sweeps 35-40°
+  against a body subtending 15-20° at contact range.
+- **Task 8 (S3)** is an honest partial. Two movers closed 1392 units in ~127 s — **the first time
+  two online players have met** — the rifles fired (96 R1 injections, ammo 30/30 → 0/30, impacts on
+  the wall ahead of the muzzle), and **nobody died**: the players were ~90 units apart with 29-44°
+  of elevation between them, and the sweep covered yaw only. The health record is a *candidate*,
+  not a fact; the brief's bar is two separate kills and the sprint got zero.
+
+### 5. What the plan did not budget for at all
+
+- **The harness costs about two runs per result**, and the online lobby flow reaches gameplay about
+  four times in ten. Four of Task 6's runs failed to reach gameplay, three consecutively, each
+  having written a full set of convincing screenshots first.
+- **Retractions.** The plan folded them into Task 9, so four sentences known to be false stayed in
+  the files every fresh session is told to read first — for a day, and in one case for two weeks.
+  `docs/process-audit.md` now carries the rule: a review finding a committed sentence false
+  produces a same-hour edit, and close-out *verifies* retractions rather than performing them.
+- **KNOWN.md did not exist when this plan was written.** It was created mid-sprint (`2d9f73a`) at
+  the user's request and is now the live proven / believed / retracted list, audited after every
+  task. A future plan should name it as an output, not discover the need for it.
