@@ -69,10 +69,14 @@ LOOK_DEG_PER_S = 104.9           # steady-state deg/s of a look hold. Least squa
 TURN_HOLD_LEAD_S = 0.44          # dead time of a look hold before the facing moves (46.45/104.86)
 LOOK_RIGHT_SIGN = 1.0            # MEASURED: LOOK_RIGHT_KEY sweeps POSITIVE (L +171/+155/+168 deg
                                  # over 2 s, LOOK_LEFT_KEY -173 over 2 s: symmetric)
-WALK_UNITS_PER_S = 21.6          # units/s of a 2 s forward hold: mean of three repeats, but the
-                                 # spread is 8.0..29.1 -- this one did NOT converge, see §3.13
-WALK_UNITS_PER_S_LONG = 40.0     # units/s of the 4 s forward hold. Burst sizing uses this, not the
-                                 # 2 s figure: under-estimating the speed overshoots B at the end
+# NOT a speed, and deliberately named so nobody can use it as one: the three 2 s forward repeats
+# came out 8.01 / 27.55 / 29.14 units/s (ptp 21.1 on a mean of 21.6) because the record is the
+# trailing camera and two of the three holds ran into something. Kept only so the failure is on the
+# record next to the number that replaced it. No call site reads it. See research/18 §3.13.
+WALK_2S_HOLD_OBSERVED_NOT_A_SPEED = 21.6
+WALK_UNITS_PER_S_LONG = 40.0     # units/s of the 4 s forward hold, corroborated by 20 unobstructed
+                                 # bursts in the proving runs at 33..46. THIS is the forward rate:
+                                 # burst sizing and the progress test both use it
 WALK_BACK_UNITS_PER_S = 25.3     # units/s of a 2 s backward hold (25.0..25.6 -- tight)
 LATERAL_UNITS_PER_S = 42.5       # units/s of a 2 s strafe hold (39.6..45.6). MEASURED: the left
                                  # stick STRAFES on this preset, it does not turn -- the three A
@@ -513,7 +517,7 @@ def walk_to_b(A, B, tailA, tailB, arrive, max_steps, max_seconds, shots=True):
     the match forever."""
     t_start = time.time()
     A.sh.log(f"walk-to-b: arrive<={arrive} units, <={max_steps} steps, <={max_seconds}s, "
-             f"look={LOOK_DEG_PER_S}deg/s walk={WALK_UNITS_PER_S}u/s R={CAMERA_ORBIT_RADIUS}")
+             f"look={LOOK_DEG_PER_S}deg/s walk={WALK_UNITS_PER_S_LONG}u/s R={CAMERA_ORBIT_RADIUS}")
     facing_b, mb = facing_probe(B.sh, tailB, label="B_facing")
     if facing_b is None:
         A.sh.log("walk-to-b: B's facing probe moved nothing -- falling back to the raw record "
