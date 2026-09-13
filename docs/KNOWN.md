@@ -44,6 +44,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 |---|---|
 | `actor+0x204` (1.0) and `actor+0x208` (100000.0) are the player's health and max health — **weakly** believed: the word before them, `actor+0x200`, is `0000ff00`, which reads as much like a packed RGBA as like a header, and in that reading they are a scale and a far clip distance | Watch them across **two separate kills** — the brief's rule, and this task got zero. `--until-kill --health-offset 0x208` arms the watch once confirmed (a byte offset from the ACTOR BASE, never an item index); unset, the run says the signal is off |
 | Which of `I`/`K` (right stick up/down) raises the muzzle | One timed pitch hold measured against the elevation of a target of known height difference. The engagement sweeps both ways precisely because this is unknown |
+| **On Frostfire the local move path ran for 0.6 s at round start and never ticked again** — 18 calls between t=371.4 and t=372.0 s while 2634 peek rows kept arriving, with the pad reaching the guest, the movement scale at 1.0 and the round clock running. Reads as control never being handed over, not as a slow map. One run | One relaunch with `PS2X_CALL_TRACE_EVERY=1`, a trace on the **caller** of `0x553dc0`, and the `0x200` idle counter |
 | Whether a parked opponent starving the mover matches **console** behaviour, or is an artefact of feeding the counter from RX bytes only (the game's own source may be richer) | A PCSX2 pair with one player parked and the other walking, same `actor+0x1368` measurement |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
@@ -200,5 +201,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **Striking a claim's headline leaves its consequences standing** — and the consequences are the
   half a skimming reader acts on. `HANDOFF`'s ground-height item had three live restatements of a
   frame whose headline had already been struck.
+- **`PS2X_CALL_TRACE` logs the first 300 calls unconditionally, then 1-in-`EVERY`.** A short
+  trace never reaches the sampling regime, so dividing its line count by `EVERY` over-states the
+  rate — it made an 18-call, 0.6-second burst read as "about one a second for six minutes".
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
