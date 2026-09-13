@@ -310,8 +310,10 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 
 - [x] `docs/STATUS.md` "Current state" (five lines) + one dated Sprint 4 entry with the artefact paths; `README.md` knobs; `docs/LOOP_PROMPT.md` goals 3 and 4 (goal 4's text changes materially if the acceptance test now runs); `docs/HANDOFF.md` "START HERE"; tick this plan's boxes and note where reality diverged.
 - [x] Record what did **not** land with the reason (especially if Wave 2 stopped at S0 or S1) — the spec's definition of done requires the sprint to say why.
-- [ ] `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0; a final full gate at the defaults (`--stamp s4_head_1x`) PASS 3/3 with title s00–s19 ≥ 99 against `logs/parity/gate/s3_head_1x/title`.
-  > **Half done.** `PS2X_TEST_REPEAT=3 ./build.sh test`: **exit 0** — 434 passed / 0 failed on each of the 3 passes, `--vram-diff` `checked=15 skipped=0` (Task 9b, under the loop lock). **The `s4_head_1x` gate was not run** — close-out was barred from runtime builds and game runs while Task 8 held the harness. The current `dist/socom2.exe` (the 19:17 build of `5ed29ca`) last passed a full gate 3/3 at `logs/parity/gate/20260912_192900`, and no runtime source has changed since; the run-vs-run ≥ 99 title comparison against `s3_head_1x` is the part that has no evidence. Left open rather than ticked on that inference.
+- [x] `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0; a final full gate at the defaults (`--stamp s4_head_1x`) PASS 3/3 with title s00–s19 ≥ 99 against `logs/parity/gate/s3_head_1x/title`.
+  > ~~**Half done.**~~ `PS2X_TEST_REPEAT=3 ./build.sh test`: **exit 0** — 434 passed / 0 failed on each of the 3 passes, `--vram-diff` `checked=15 skipped=0` (Task 9b, under the loop lock). **The `s4_head_1x` gate was not run** — close-out was barred from runtime builds and game runs while Task 8 held the harness. The current `dist/socom2.exe` (the 19:17 build of `5ed29ca`) last passed a full gate 3/3 at `logs/parity/gate/20260912_192900`, and no runtime source has changed since; the run-vs-run ≥ 99 title comparison against `s3_head_1x` is the part that has no evidence. ~~Left open rather than ticked on that inference.~~
+  >
+  > **Closed with evidence, 2026-09-13 (final fix wave).** The missing comparison was computed offline rather than inferred: `logs/parity/gate/20260912_192900/title` s00–s19 scored run-vs-run against `logs/parity/gate/s3_head_1x/title` with `compare.score` (golden = `s3_head_1x`) gives **99.8–100.0** on all twenty (block 0.0 on every one; s19 = 100.0). That gate is PASS 3/3 (title, transition, mission — its `summary.txt`) on the same `dist/socom2.exe` the sprint ends on, and nothing under the runtime has changed since `5ed29ca` (`git diff 5ed29ca..HEAD` touches `run.sh`'s log path only, outside the exe). The evidence therefore sits under the stamp **`20260912_192900`**, not a directory named `s4_head_1x`; no new gate was run for the name alone.
 - [x] Commit and push. **The controller runs the merge**, not this task.
 
 ---
@@ -321,7 +323,7 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - **Spec coverage:** §2.1 → Task 1; §2.2 → Task 2; §2.3 → Task 3; §2.4 → Task 4; §2.5 → Task 5; §2.6 → Task 6; §2.7 → Task 7; §2.8 → Task 8; §4 DoD → Tasks 1-8 plus Task 9's "what did not land" requirement; §5's sequencing → Tasks 5-8 are gated on each other explicitly, Tasks 1-4 are marked file-disjoint.
 - **Placeholders:** Task 2 carries its full test code; Tasks 1 and 3 name exact functions, line ranges and the decision rule; Tasks 5-8 are procedural by necessity (their content is the previous stage's output) but each carries its own stop rule and a named deliverable, as the macroblock spike did successfully in Sprint 3.
 - **Type consistency:** `crop_to_content(im, thresh=8)` (Task 2) is the only new Python helper and is called from three sites named in the file map; `movie_blocks.py`'s CLI contract (Task 1) is used only by Task 1 and Task 9's evidence; `--walk-to-b` (Task 7) is consumed by `--until-kill` (Task 8); the bucket names `rounding`/`edge`/`hard` (Task 3) match the existing printout.
-- **Known risk, stated in the plan not just the spec:** Task 6 has a two-attempt cap and an explicit "S2/S3 do not run" consequence, so the sprint cannot silently become an open-ended investigation.
+- **Known risk, stated in the plan not just the spec:** Task 6 has a two-attempt cap (in the event a third, separately authorised attempt landed the fix — see Outcome §4) and an explicit "S2/S3 do not run" consequence, so the sprint cannot silently become an open-ended investigation.
 
 ---
 
@@ -383,7 +385,7 @@ block.** A plan that quotes a prior belief should quote it as a belief.
 - **Task 5 (S0)** reversed the project's documented world model: PCSX2 against **our** server plays
   a full round and advances to round 2. The "golden" that had said otherwise was two stills of a
   match with no input ever sent. Verdict: **runtime implicated**.
-- **Task 6 (S1)** fixed it inside the two-attempt cap: `sceInetInterfaceControl(0x200)` returned a
+- **Task 6 (S1)** fixed it — ~~inside the two-attempt cap~~ **on a third fix attempt**, authorised by the controller as a separate decision after the plan's two attempts were spent and a bounded diagnostic (research/18 §3.9) had narrowed the layer: `sceInetInterfaceControl(0x200)` returned a
   constant, so `msSinceNetActivity` never reset and the movement scale clamped to 0.0 on frame one
   (`abf35bb`, then a same-binary A/B in one match, `5ed29ca`). Five hypotheses were falsified by
   measurement first — including two real divergences (advertised port, shared RSA keypair) whose
@@ -454,4 +456,4 @@ block.** A plan that quotes a prior belief should quote it as a belief.
 - **Handed to Sprint 5** (`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`,
   `ee10842`): Frostfire control handover, confirming `actor+0x1044`/`+0xF7A` live, an online harness
   that cannot spend a match proving nothing, the HLE and heap liveness audit, the engagement ladder,
-  and the acceptance run. Also handed over unrun: this plan's `s4_head_1x` gate (Task 9's open box).
+  and the acceptance run. ~~Also handed over unrun: this plan's `s4_head_1x` gate (Task 9's open box).~~ That box was closed with offline evidence in the final fix wave (title s00–s19 99.8–100.0 vs `s3_head_1x`; see Task 9).
