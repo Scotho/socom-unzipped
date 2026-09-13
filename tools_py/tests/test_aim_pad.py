@@ -200,7 +200,9 @@ class AimYawTest(unittest.TestCase):
         c.wait(1.0)
         sh = AimShell(w)
         me = M.Side("A", sh, w.tail)
-        before, after = M.aim_yaw(me, target_xz, NoCameraTail(w.tail), sh, clock=c, wait=c.wait)
+        # the at-rest loop at the brief's fixed 6 deg (aim_yaw's defaults became pulse reads and the §5.1 tolerance)
+        before, after = M.aim_yaw(me, target_xz, NoCameraTail(w.tail), sh, clock=c, wait=c.wait, read="rest",
+                                  tol=M.AIM_TOL_DEG)
         return w, sh, me, before, after
 
     def test_converges_within_tolerance_despite_wrong_gain_and_dead_zone(self):
@@ -245,7 +247,7 @@ class AimYawTest(unittest.TestCase):
         sh = AimShell(w)
         me = M.Side("A", sh, w.tail)
         with self.assertRaises(M.TeleportAbort) as cm:
-            M.aim_yaw(me, (0.0, 100.0), w.tail, sh, clock=c, wait=c.wait)
+            M.aim_yaw(me, (0.0, 100.0), w.tail, sh, clock=c, wait=c.wait, read="rest", tol=M.AIM_TOL_DEG)
         self.assertEqual((cm.exception.tag, cm.exception.during), ("A", "aim"))
         self.assertGreater(cm.exception.step, M.TELEPORT_STEP_UNITS)
         self.assertEqual(me.aim_teleports, 1)
@@ -257,7 +259,8 @@ class AimYawTest(unittest.TestCase):
         c.wait(1.0)
         sh = AimShell(w)
         me = M.Side("A", sh, w.tail)
-        before, after = M.aim_yaw(me, target, NoCameraTail(w.tail), sh, clock=c, wait=c.wait, read="pulse")
+        before, after = M.aim_yaw(me, target, NoCameraTail(w.tail), sh, clock=c, wait=c.wait, read="pulse",
+                                  tol=M.AIM_TOL_DEG)
         return w, sh, me, before, after
 
     def test_pulse_mode_reads_the_heading_half_a_second_after_each_pulse(self):
@@ -265,7 +268,10 @@ class AimYawTest(unittest.TestCase):
         self.assertLessEqual(abs(after), M.AIM_TOL_DEG, sh.lines)
         holds = me.aims[-1]["holds"]
         self.assertTrue(holds)
-        self.assertTrue(all(h["s"] <= M.AIM_PULSE_MAX_S + 1e-9 for h in holds), holds)
+        # a pulse is capped at AIM_PULSE_MAX_S unless its turn is large (Task 5 finish: longer pulses, <= 6 of them)
+        self.assertTrue(all(h["s"] <= M.pulse_hold_max(h["err"], h["gain"]) + 1e-3 for h in holds), holds)
+        self.assertTrue(all(h["s"] <= M.AIM_PULSE_MAX_S + 1e-3 for h in holds
+                            if abs(h["err"]) <= M.AIM_PULSE_LONG_ERR_DEG * h["gain"]), holds)
         for r in me.aims[-1]["reads"]:
             if r["after_rx"] is not None:
                 self.assertGreaterEqual(r["t"] - r["after_rx"], M.AIM_PULSE_READ_S - 1e-6, r)
@@ -295,7 +301,7 @@ class AimYawTest(unittest.TestCase):
             t._line(peek(x=1.0, z=1.0))                 # actor rows without a matrix
         sh = AimShell(AimWorld(Clock()))
         me = M.Side("A", sh, t)
-        before, after = M.aim_yaw(me, (50.0, 0.0), t, sh, clock=c, wait=c.wait)
+        before, after = M.aim_yaw(me, (50.0, 0.0), t, sh, clock=c, wait=c.wait, read="rest")
         self.assertIsNone(before)
         self.assertIsNone(after)
         self.assertTrue(any("NO-DATA" in m for m in sh.lines))
@@ -315,7 +321,7 @@ class AimYawTest(unittest.TestCase):
                 c.wait(0.3)
                 return True
             return False
-        M.aim_yaw(me, (0.0, 100.0), w.tail, sh, clock=c, wait=c.wait, fidget=fidget)
+        M.aim_yaw(me, (0.0, 100.0), w.tail, sh, clock=c, wait=c.wait, fidget=fidget, read="rest", tol=M.AIM_TOL_DEG)
         self.assertGreaterEqual(len(calls), 1)
 
 

@@ -176,11 +176,13 @@ class Shell:
         problem the whole of Task 8 was fighting."""
         axes = pad_axes(sticks, axes)
         write_pad_file(self.pad_file, buttons, axes)
-        if abort is None:
-            time.sleep(seconds)
-        else:
-            abort.wait(seconds)
-        write_pad_file(self.pad_file)
+        try:
+            if abort is None:
+                time.sleep(seconds)
+            else:
+                abort.wait(seconds)
+        finally:
+            write_pad_file(self.pad_file)        # an interrupted hold must not leave a stick held (slice (b) review)
 
     def diff(self, name, im=None, arr=None):
         """Normalised, shift-tolerant distance of the screen's reference band: both crops are

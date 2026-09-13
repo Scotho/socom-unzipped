@@ -1367,8 +1367,15 @@ AIM_POLL_S = 0.25                # one 4 Hz peek row
 # The owner-requested review's default aim: SHORT pulses, the heading read AIM_PULSE_READ_S after each (research/22:
 # at rest the matrix changed only on rx holds). aim_yaw(read="pulse").
 AIM_PULSE_READ_S = 0.5
-AIM_PULSE_MAX_S = 0.6            # a pulse never exceeds this (lead 0.4 s + 0.2 s of turn)
-AIM_PULSE_MAX_ITER = 12          # more, shorter pulses than the at-rest loop's AIM_MAX_ITER holds
+AIM_PULSE_MAX_S = 0.6            # a pulse for a small error never exceeds this (lead 0.4 s + 0.2 s of turn) ...
+AIM_PULSE_LONG_ERR_DEG = 25.0    # ... but an error whose turn (err / gain) is larger than this gets a LONGER pulse,
+AIM_PULSE_LONG_MAX_S = 1.6       # up to this (1.2 s of turn at 127 = ~153 deg), still read 0.5 s after it ends: at
+                                 # <= 0.6 s a 179 deg error took 11 pulses (slice (b) review, lead 0.47 s)
+AIM_PULSE_MAX_ITER = 6           # Amendment A3's bar: tolerance in <= 6 iterations on >= 80 % of aim cycles
+AIM_DEAD_DELIVERED_DEG = 0.5     # a pulse that turned less than this (predicted >= AIM_GAIN_MIN_CMD_DEG) was DEAD ...
+AIM_ESCALATE_DEFLECTION = 16     # ... so the side's deflection floor steps up by this (and the next hold by
+AIM_ESCALATE_HOLD_S = 0.15       # this longer than the dead one) -- never the identical pulse again (slice (b) review
+                                 # I2: a dead rx band, or a lead longer than AIM_LEAD_S)
 AIM_GAIN_ALPHA = 0.5             # EMA of delivered/predicted sweep; the sim's world turns at 0.6-0.7x the table
 AIM_GAIN_MIN, AIM_GAIN_MAX = 0.2, 3.0
 AIM_GAIN_MIN_CMD_DEG = 2.0       # a predicted sweep below this is too small to estimate a gain from
@@ -1398,23 +1405,33 @@ def yaw_rate_deg_s(deflection):
     return YAW_TABLE[-1][1]
 
 
-def aim_plan(err_deg, gain, hold_max=None):
+def aim_plan(err_deg, gain, hold_max=None, min_deflection=None, min_hold=0.0):
     """-> (rx, seconds, predicted_deg): the rx value and hold length for a yaw error of `err_deg` given the
-    side's measured gain (delivered / table). The smallest deflection >= AIM_MIN_DEFLECTION whose turn fits
-    in the hold cap; `predicted_deg` is what the TABLE says that hold sweeps (|err| / gain when it fits).
+    side's measured gain (delivered / table). The smallest deflection >= `min_deflection` (AIM_MIN_DEFLECTION, or
+    a side's escalated floor) whose turn fits in the hold cap; the hold is at least `min_hold`; `predicted_deg` is
+    what the TABLE says that hold sweeps (|err| / gain when it fits).
     Positive error -> rx right (LOOK_RIGHT_SIGN: rx right sweeps positive)."""
     want = abs(err_deg) / min(max(gain, AIM_GAIN_MIN), AIM_GAIN_MAX)
     turn_max = (AIM_HOLD_MAX_S if hold_max is None else hold_max) - AIM_LEAD_S
-    levels = list(range(AIM_MIN_DEFLECTION, 127, AIM_DEFLECTION_STEP)) + [127]
+    floor = min(127, AIM_MIN_DEFLECTION if min_deflection is None else max(AIM_MIN_DEFLECTION, min_deflection))
+    levels = [lv for lv in range(AIM_MIN_DEFLECTION, 127, AIM_DEFLECTION_STEP) if lv >= floor] + [127]
     d = levels[-1]
     for lv in levels:
         if want / yaw_rate_deg_s(lv) <= turn_max:
             d = lv
             break
-    turn = min(want / yaw_rate_deg_s(d), turn_max)
+    turn = min(max(want / yaw_rate_deg_s(d), min_hold - AIM_LEAD_S, 0.0), max(turn_max, min_hold - AIM_LEAD_S))
     sign = 1 if err_deg * LOOK_RIGHT_SIGN > 0 else -1
     rx = max(0, min(255, vc.PAD_NEUTRAL + sign * d))
     return rx, AIM_LEAD_S + turn, yaw_rate_deg_s(d) * turn
+
+
+def pulse_hold_max(err_deg, gain):
+    """The pulse cap for this error: AIM_PULSE_MAX_S, or up to AIM_PULSE_LONG_MAX_S when the turn is large."""
+    want = abs(err_deg) / min(max(gain, AIM_GAIN_MIN), AIM_GAIN_MAX)
+    if want <= AIM_PULSE_LONG_ERR_DEG:
+        return AIM_PULSE_MAX_S
+    return min(AIM_PULSE_LONG_MAX_S, max(AIM_PULSE_MAX_S, AIM_LEAD_S + want / yaw_rate_deg_s(127)))
 
 
 def _rest_heading(rows, since):
@@ -1486,45 +1503,58 @@ class TeleportAbort(RuntimeError):
         self.tag, self.during, self.step, self.t = tag, during, step, t
 
 
-def teleport_step(rows, t0, t1, limit=TELEPORT_STEP_UNITS):
+def teleport_step(rows, t0, t1, limit=TELEPORT_STEP_UNITS, walking=True):
     """The first row in [t0, t1 + one peek period] whose ground step from the previous row of the SAME actor exceeds
-    `limit` and TELEPORT_SPEED_FACTOR x walking speed over the gap -> (t, step) | None. Blind: a jump that lands
-    within 30 units; a respawn onto a new actor block (the kill readout's)."""
+    `limit` and, when `walking`, TELEPORT_SPEED_FACTOR x walking speed over the gap -> (t, step) | None. A STATIONARY
+    window (an aim, a burst) gets no walking credit: on a 1.08 s/row sampler the credit hid a 43-unit jump (slice (b)
+    review I3). Blind: a jump that lands within 30 units; a respawn onto a new actor block (the kill readout's)."""
     prev = None
     for r in sorted(r for r in rows if r[1] or r[2] or r[3]):
         if r[0] > t1 + PEEK_LEAD_S:
             break
         if prev is not None and r[0] >= t0 and prev[4] == r[4]:
             step = math.hypot(r[1] - prev[1], r[3] - prev[3])
-            if step > limit and step > TELEPORT_SPEED_FACTOR * WALK_UNITS_PER_S_LONG * (r[0] - prev[0]):
+            if step > limit and (not walking or step > TELEPORT_SPEED_FACTOR * WALK_UNITS_PER_S_LONG * (r[0] - prev[0])):
                 return r[0], step
         prev = r
     return None
 
 
-def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=None, on_poll=None, read="rest",
+def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=None, on_poll=None, read="pulse",
             tol=None, max_iter=None):
     """Closed-loop yaw onto `target_xz` -> (err_before, err_after), degrees (None when no heading could be read).
 
-    Each iteration reads the heading from the ACTOR MATRIX (never the camera: KNOWN §4) -- `read="rest"`: 2 unchanged
-    rows after any rx (wait_rest_heading); `read="pulse"`: AIM_PULSE_READ_S after each short pulse and after the call
-    starts (wait_pulse_heading) -- computes the bearing from the actor's own x/z, and stops inside `tol`
-    (AIM_TOL_DEG); otherwise it offers `fidget()` a chance to move first (a True return re-reads), then holds rx
-    at a partial deflection from aim_plan (pulses capped at AIM_PULSE_MAX_S) and learns the side's gain from what
-    the next read says the hold delivered. At most `max_iter` holds (AIM_MAX_ITER / AIM_PULSE_MAX_ITER). An actor
-    row step > TELEPORT_STEP_UNITS inside a hold raises TeleportAbort (counted on `me.aim_teleports`). Every read
-    is recorded on `me.aims`. `on_poll()` is polled while waiting to read: a True return means it moved the player."""
+    Each iteration reads the heading from the ACTOR MATRIX (never the camera: KNOWN §4) -- `read="pulse"` (the
+    Amendment A default): AIM_PULSE_READ_S after each pulse and after the call starts (wait_pulse_heading);
+    `read="rest"`: 2 unchanged rows after any rx (wait_rest_heading) -- computes the bearing from the actor's own x/z,
+    and stops inside `tol` (default: spec §5.1's min(AIM_TOL_DEG, 0.8 atan(3.4 / d)) at the read's ground range d);
+    otherwise it offers `fidget()` a chance to move first (a True return re-reads), then holds rx at a partial
+    deflection from aim_plan and learns the side's gain from what the next read says the hold delivered. Pulses are
+    capped at pulse_hold_max (a longer pulse for a large turn). A pulse that delivered nothing raises the side's
+    deflection floor (`me.aim_floor`, kept across calls) and the next hold, so a dead pulse is never repeated
+    identically. At most `max_iter` holds (AIM_PULSE_MAX_ITER = 6 / AIM_MAX_ITER). An actor row step >
+    TELEPORT_STEP_UNITS between two reads raises TeleportAbort (counted on `me.aim_teleports`) -- with walking credit
+    only if the player was moved in between (fidget / on_poll). Every read is recorded on `me.aims`. `on_poll()` is
+    polled while waiting to read: a True return means it moved the player."""
     pulse = read == "pulse"
-    tol = AIM_TOL_DEG if tol is None else tol
     max_iter = (AIM_PULSE_MAX_ITER if pulse else AIM_MAX_ITER) if max_iter is None else max_iter
     rec = {"tag": me.tag, "t0": clock(), "target": list(target_xz), "reads": [], "holds": [],
-           "err_before": None, "err_after": None, "teleports": 0, "read": read}
+           "err_before": None, "err_after": None, "teleports": 0, "read": read, "tol": tol, "dead": 0}
     me.aims.append(rec)
+    moved = [False]
+
+    def poll():
+        m = on_poll() if on_poll is not None else False
+        if m:
+            moved[0] = True
+        return m
     since, rx_end, holds, fidgets = (clock() if pulse else None), None, 0, 0
-    pending = None                                      # (heading before, predicted deg, sign, hold start) of the last hold
+    last_read_t, escalate_hold = rec["t0"], None
+    pending = None                                      # (heading before, predicted deg, sign, (rx, secs)) of the last hold
+    last_dead = None
     while True:
-        r = (wait_pulse_heading(tail, since, clock, wait, on_poll=on_poll) if pulse
-             else wait_rest_heading(tail, since, clock, wait, on_poll=on_poll))
+        r = (wait_pulse_heading(tail, since, clock, wait, on_poll=poll) if pulse
+             else wait_rest_heading(tail, since, clock, wait, on_poll=poll))
         if r is None:
             sh.log(f"AIM {me.tag} NO-DATA: no {'post-pulse' if pulse else 'at-rest'} actor-matrix heading within "
                    f"{AIM_REST_TIMEOUT_S:g}s ({len(rec['reads'])} reads, {holds} holds) -- not aiming from a guess")
@@ -1532,41 +1562,62 @@ def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=No
             return rec["err_before"], None
         t_r, h, x, z = r
         rec["reads"].append({"t": t_r, "heading": h, "x": x, "z": z, "after_rx": rx_end})
+        hit = teleport_step(tail.actor_ingame(), last_read_t, t_r, walking=moved[0])
+        if hit is not None:
+            me.aim_teleports += 1
+            rec["teleports"] += 1
+            sh.log(f"AIM {me.tag} TELEPORT: an actor row stepped {hit[1]:.1f} units during the aim "
+                   f"({'moved' if moved[0] else 'stationary: no walking credit'}; research/22 §3.1) -- the attempt "
+                   f"is aborted")
+            raise TeleportAbort(me.tag, "aim", hit[1], hit[0])
+        last_read_t, moved[0] = t_r, False
         if pending is not None:
-            h0, predicted, sign, t_hold = pending
+            h0, predicted, sign, plan = pending
             pending = None
-            hit = teleport_step(tail.actor_ingame(), t_hold, t_r)
-            if hit is not None:
-                me.aim_teleports += 1
-                rec["teleports"] += 1
-                sh.log(f"AIM {me.tag} TELEPORT: an actor row stepped {hit[1]:.1f} units during an rx pulse "
-                       f"(research/22 §3.1) -- the attempt is aborted")
-                raise TeleportAbort(me.tag, "aim", hit[1], hit[0])
             delivered = wrap_deg(h - h0)
-            if predicted >= AIM_GAIN_MIN_CMD_DEG and delivered * sign > 0:
+            escalate_hold = None
+            if predicted >= AIM_GAIN_MIN_CMD_DEG and abs(delivered) < AIM_DEAD_DELIVERED_DEG:
+                escalate_hold = plan[1] + AIM_ESCALATE_HOLD_S
+                rec["dead"] += 1
+                last_dead = plan
+                me.aim_floor = min(127, max(getattr(me, "aim_floor", AIM_MIN_DEFLECTION),
+                                            abs(plan[0] - vc.PAD_NEUTRAL)) + AIM_ESCALATE_DEFLECTION)
+                sh.log(f"AIM {me.tag} dead pulse rx={plan[0]} {plan[1]:.2f}s (turned {delivered:+.2f} deg of "
+                       f"{predicted:.1f}) -- deflection floor now {me.aim_floor}")
+            elif predicted >= AIM_GAIN_MIN_CMD_DEG and delivered * sign > 0:
                 g = min(AIM_GAIN_MAX, max(AIM_GAIN_MIN, abs(delivered) / predicted))
                 me.yaw_gain = (1.0 - AIM_GAIN_ALPHA) * me.yaw_gain + AIM_GAIN_ALPHA * g
+        d = math.hypot(target_xz[0] - x, target_xz[1] - z)
+        tol_r = aim_tol_deg(d) if tol is None else tol
         err = wrap_deg(math.degrees(math.atan2(target_xz[1] - z, target_xz[0] - x)) - h)
         if rec["err_before"] is None:
             rec["err_before"] = err
-        rec["err_after"] = err
-        if abs(err) <= tol or holds >= max_iter:
+        rec["err_after"], rec["tol"] = err, tol_r
+        if abs(err) <= tol_r or holds >= max_iter:
             break
         if fidget is not None and fidgets < 2 * max_iter and fidget():
             fidgets += 1
+            moved[0] = True
             since = clock()
             continue
-        rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=AIM_PULSE_MAX_S if pulse else None)
+        cap = pulse_hold_max(err, me.yaw_gain) if pulse else None
+        floor = getattr(me, "aim_floor", AIM_MIN_DEFLECTION)
+        rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=cap, min_deflection=floor,
+                                       min_hold=escalate_hold or 0.0)
+        if last_dead is not None and (rx, round(secs, 3)) == (last_dead[0], round(last_dead[1], 3)):
+            me.aim_floor = min(127, floor + AIM_ESCALATE_DEFLECTION)
+            rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=cap, min_deflection=me.aim_floor,
+                                           min_hold=secs + AIM_ESCALATE_HOLD_S)
         t_hold = clock()
         sh.pad(secs, axes={"rx": rx})
         rx_end = since = clock()
         holds += 1
-        rec["holds"].append({"t": rx_end, "rx": rx, "s": round(secs, 3), "err": err, "predicted": predicted,
-                             "gain": me.yaw_gain})
-        pending = (h, predicted, 1 if err > 0 else -1, t_hold)
+        rec["holds"].append({"t": rx_end, "t_start": t_hold, "rx": rx, "s": round(secs, 3), "err": err,
+                             "predicted": predicted, "gain": me.yaw_gain})
+        pending = (h, predicted, 1 if err > 0 else -1, (rx, secs))
     sh.log(f"AIM {me.tag} err {rec['err_before']:+.1f} -> {rec['err_after']:+.1f} deg in {holds} "
            f"{'pulses' if pulse else 'holds'} gain={me.yaw_gain:.2f} "
-           f"({'ok' if abs(rec['err_after']) <= tol else 'NOT within'} {tol:g})")
+           f"({'ok' if abs(rec['err_after']) <= rec['tol'] else 'NOT within'} {rec['tol']:.2f})")
     return rec["err_before"], rec["err_after"]
 
 
@@ -2817,16 +2868,32 @@ def ladder_rung(controllable, contact_rows, damage):
     return 3 if damage == "yes" else 2
 
 
+def aim_iters_field(aims, t0=None, t1=None):
+    """Amendment A3's reported aim bar, one token: `<ok>/<cycles>:<n>,<n>!,...` -- per aim cycle (an aim_yaw call that
+    started in [t0, t1]) its iteration count, `!` when it ended outside its tolerance; `ok` counts cycles inside
+    tolerance in <= AIM_PULSE_MAX_ITER. NO-DATA without cycles."""
+    cyc = [a for a in aims if (t0 is None or a["t0"] >= t0) and (t1 is None or a["t0"] <= t1)]
+    if not cyc:
+        return vc.NO_DATA
+    marks, ok = [], 0
+    for a in cyc:
+        good = a["err_after"] is not None and a.get("tol") is not None and abs(a["err_after"]) <= a["tol"]
+        ok += good and len(a["holds"]) <= AIM_PULSE_MAX_ITER
+        marks.append(f"{len(a['holds'])}{'' if good else '!'}")
+    return f"{ok}/{len(cyc)}:{','.join(marks)}"
+
+
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
-                max_idle_ms, lagflag_rows):
+                max_idle_ms, lagflag_rows, aim_iters=None):
     """The brief's one-line ladder result. A field whose rows were zero reads NO-DATA (None, or 0 for a row
-    count), never 0."""
+    count), never 0. `aim_iters` (aim_iters_field) is appended when given."""
     nd = lambda v: vc.NO_DATA if v is None else str(v)
     rows = lambda v: vc.NO_DATA if not v else str(v)
     return (f"LADDER rung={rung} controllable={','.join(controllable)} contact_rows={nd(contact_rows)} "
             f"rows_read={rows(rows_read)} damage={damage} kill={kill} starvation_alarms={nd(starvation_alarms)} "
             f"alarms_cleared={nd(alarms_cleared)} max_idle_ms={','.join(nd(v) for v in max_idle_ms)} "
-            f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}")
+            f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}"
+            + ("" if aim_iters is None else f" aim_iters={aim_iters}"))
 
 
 def ladder_contact(tailA, tailB):
@@ -3033,6 +3100,20 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
             return {"ok": False, "reason": "stuck closing", "legs": legs, "d3": d3}
 
 
+def fire_window_teleport(out, sides, t0, t1, log):
+    """Amendment A3: a teleport of either player inside a fire window [t0, t1] (the burst and its gap, no walking
+    credit -- both stand) makes the round NO-DATA. Sets out['fire_teleport'] / out['stop_reason'] -> True on a hit."""
+    for side in sides:
+        hit = teleport_step(side.tail.actor_ingame(), t0, t1, walking=False)
+        if hit is not None:
+            out["fire_teleport"] = {"tag": side.tag, "step": hit[1], "t": hit[0], "window": [t0, t1]}
+            out["stop_reason"] = (f"NO-DATA teleport in a fire window side={side.tag} step={hit[1]:.1f}u -- the round "
+                                  f"is not scored (Amendment A3)")
+            log(f"ENDGAME {out['stop_reason']}")
+            return True
+    return False
+
+
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
                   wait=time.sleep):
     """The default engagement -> result dict. The stander stands (it moves only when the StarvationWatch asks it: one
@@ -3046,7 +3127,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     fight_s = ENDGAME_FIGHT_S if fight_s is None else fight_s
     route = route if route is not None else route_for(map_name, mover)
     out = {"mode": "route", "mover": shooter.tag, "stander": stander.tag, "route": None, "close": None,
-           "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "t_fight": None, "t_end": None}
+           "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "fire_teleport": None,
+           "t_fight": None, "t_end": None}
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(stander.tag, stander.tail)
     log(f"ENDGAME BANNER mode=route mover={shooter.tag} stander={stander.tag} (stands at its spawn) "
@@ -3119,10 +3201,13 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 out["stop_reason"] = "aim NO-DATA"
                 return
             if abs(err) <= tol and not stop.is_set():
-                shooter.r1_times.append(clock())
+                t_b = clock()
+                shooter.r1_times.append(t_b)
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
                 out["bursts"] += 1
                 wait(ENDGAME_BURST_GAP_S)
+                if fire_window_teleport(out, (shooter, stander), t_b, clock(), log):
+                    return
 
     ts = threading.Thread(target=stander_loop, daemon=True)
     ts.start()
@@ -3204,7 +3289,7 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     route = route if route is not None else route_for(map_name, mover)
     out = {"mode": "cooperative", "shooter": shooter.tag, "victim": victim.tag, "standing": [], "rule_moves": [],
            "micro_strafes": 0, "victim_legs": 0, "stop_reason": None, "t_fight": None, "t_end": None,
-           "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None}
+           "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None, "fire_teleport": None}
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(victim.tag, victim.tail)
     log(f"ENDGAME BANNER mode=cooperative shooter={shooter.tag} victim={victim.tag} "
@@ -3265,7 +3350,7 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
 
     def aim(centre):
         return aim_yaw(shooter, (centre[0], centre[2]), shooter.tail, shooter.sh, clock=clock, wait=wait,
-                       fidget=rule_move, on_poll=on_poll)
+                       fidget=rule_move, on_poll=on_poll, read="rest", tol=AIM_TOL_DEG)
 
     def walk(key_axes, seconds):
         t = clock()
@@ -3342,10 +3427,13 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
                 return
             if abs(err) <= AIM_TOL_DEG and not stop.is_set() and not (
                     rule and watch is not None and watch.request_event(shooter.tag).is_set()):
-                shooter.r1_times.append(clock())
+                t_b = clock()
+                shooter.r1_times.append(t_b)
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
                 out["bursts"] += 1
                 wait(ENDGAME_BURST_GAP_S)
+                if fire_window_teleport(out, (shooter,), t_b, clock(), log):
+                    return
             if micro_strafe:
                 strafe(SHOOTER_STRAFE_S, OSC_DEFLECTION)
                 out["micro_strafes"] += 1
@@ -3900,7 +3988,9 @@ def main():
                 rows_read=contact.rows_read, damage=damage, kill="yes" if is_kill else "no",
                 starvation_alarms=starv.starvation_alarms() if starv is not None else None,
                 alarms_cleared=starv.alarms_cleared() if starv is not None else None,
-                max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]))
+                max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]),
+                aim_iters=aim_iters_field((sideA if a.mover == "A" else sideB).aims,
+                                          t0=endgame and endgame.get("t_fight")))
             summary["ladder"] = ladder
             summary["closest_dy"] = duel.best_dy()
             summary["endgame"] = None if endgame is None else {
@@ -3908,7 +3998,11 @@ def main():
             summary["starvation"] = None if starv is None else starv.alarms
             with open(os.path.join(a.out, "converge.json"), "w") as fh:
                 json.dump(summary, fh, indent=1, default=str)
-            if endgame is not None and endgame.get("teleport") and not is_kill:
+            if endgame is not None and endgame.get("fire_teleport") and not is_kill:
+                ft = endgame["fire_teleport"]
+                verdict = (f"NO-DATA teleport-in-fire-window side={ft['tag']} step={ft['step']:.1f}u -- an actor row "
+                           f"jumped during a burst; the round is not scored")
+            elif endgame is not None and endgame.get("teleport") and not is_kill:
                 tp = endgame["teleport"]
                 verdict = (f"FAIL teleport side={tp['tag']} during={tp['during']} step={tp['step']:.1f}u -- an actor "
                            f"row jumped > {TELEPORT_STEP_UNITS:g} units; the attempt was aborted")
