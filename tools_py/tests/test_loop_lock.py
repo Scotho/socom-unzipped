@@ -1,13 +1,16 @@
-"""scripts/loop_lock.sh and scripts/run_detached.sh, driven through bash with fakes.
+"""scripts/loop_lock.sh, scripts/run_detached.sh and scripts/kill_stale_drivers.ps1, with fakes.
 
 No game, no build, and never the real lock: every test points LOOP_LOCK_PATH at a temp dir and
-LOOP_LOCK_PS_CMD at a fake process list (a file the test writes), and back-dates heartbeats by writing
-the record directly.
+LOOP_LOCK_PS_CMD at a fake process list (a file the test writes, "pid|ppid|name|cmdline" per line),
+and back-dates heartbeats by writing the record directly.
 
-The real-scale renewal test (`run -- sleep 130`, 60 s renew, heartbeat < 70 s throughout) costs ~135 s;
-test_run_renews_heartbeat_scaled is the same property at a 2 s interval.
+The real-scale renewal test (`run -- sleep 130`, 60 s renew, heartbeat < 70 s throughout, ~135 s) runs
+only with LOOP_LOCK_SLOW_TESTS=1; test_run_renews_heartbeat_scaled is the same property at 1/30 scale.
+LOOP_LOCK_TEST_SCRIPTS=<dir> points the suite at another copy of the scripts (used to show a test is
+red against the previous version).
 """
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -16,11 +19,13 @@ import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-LOCK_SH = os.path.join(ROOT, "scripts", "loop_lock.sh").replace("\\", "/")
-DETACHED_SH = os.path.join(ROOT, "scripts", "run_detached.sh").replace("\\", "/")
-KILL_PS1 = os.path.join(ROOT, "scripts", "kill_stale_drivers.ps1")
+SCRIPTS = os.environ.get("LOOP_LOCK_TEST_SCRIPTS") or os.path.join(ROOT, "scripts")
+LOCK_SH = os.path.join(SCRIPTS, "loop_lock.sh").replace("\\", "/")
+DETACHED_SH = os.path.join(SCRIPTS, "run_detached.sh").replace("\\", "/")
+KILL_PS1 = os.path.join(SCRIPTS, "kill_stale_drivers.ps1")
+POWERSHELL = (shutil.which("powershell.exe") or shutil.which("powershell")) if os.name == "nt" else None
 
-IDLE = ["explorer.exe|C:\\Windows\\explorer.exe", "bash.exe|bash"]
+IDLE = ["4|0|System|", "900|4|explorer.exe|C:\\Windows\\explorer.exe", "901|900|bash.exe|bash"]
 
 
 def find_bash():
@@ -43,11 +48,21 @@ def fwd(path):
     return path.replace("\\", "/")
 
 
+def processes_with(marker):
+    """Windows processes whose command line contains marker (excluding the query itself)."""
+    q = ("Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*%s*' -and "
+         "$_.Name -notlike 'powershell*' } | ForEach-Object { $_.ProcessId }" % marker)
+    out = subprocess.run([POWERSHELL, "-NoProfile", "-Command", q], capture_output=True, text=True, timeout=60)
+    return [l for l in out.stdout.split() if l.strip()]
+
+
 @unittest.skipUnless(BASH, "bash not found")
 class LockTestBase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="loop_lock_test_")
         self.lock = os.path.join(self.tmp, "lk")
+        self.lockd = self.lock + ".d"
+        self.rec = os.path.join(self.lockd, "record")
         self.procs = os.path.join(self.tmp, "procs.txt")
         self.set_procs(IDLE)
 
@@ -60,7 +75,8 @@ class LockTestBase(unittest.TestCase):
 
     def env(self, **extra):
         env = dict(os.environ)
-        env.pop("LOOP_LOCK_HELD", None)     # this suite may itself run under `loop_lock.sh run`
+        for k in ("LOOP_LOCK_HELD", "LOOP_LOCK_SELF_WINPID"):
+            env.pop(k, None)     # this suite may itself run under `loop_lock.sh run`
         env["LOOP_LOCK_PATH"] = fwd(self.lock)
         env["LOOP_LOCK_PS_CMD"] = "cat '%s'" % fwd(self.procs)
         env.update({k: str(v) for k, v in extra.items()})
@@ -71,27 +87,30 @@ class LockTestBase(unittest.TestCase):
                            env=env or self.env(), timeout=timeout)
         return p.returncode, p.stdout + p.stderr
 
-    def write_record(self, owner, epoch_age_s, hb_age_s=None, purpose="", with_dir=True, legacy=False):
+    def write_record(self, owner, epoch_age_s, hb_age_s=None, purpose="", legacy=False):
         now = int(time.time())
-        if with_dir:
-            os.makedirs(self.lock + ".d", exist_ok=True)
-        with open(self.lock, "w", newline="\n") as f:
-            if legacy:
+        hb = now - (hb_age_s if hb_age_s is not None else epoch_age_s)
+        if legacy:
+            with open(self.lock, "w", newline="\n") as f:
                 f.write("%s %d\n" % (owner, now - epoch_age_s))
-            else:
-                f.write("%s %d %d %s\n" % (owner, now - epoch_age_s, now - (hb_age_s if hb_age_s is not None else epoch_age_s), purpose))
+            return
+        os.makedirs(self.lockd, exist_ok=True)
+        with open(self.rec, "w", newline="\n") as f:
+            f.write("%s %d %d %s\n" % (owner, now - epoch_age_s, hb, purpose))
 
     def record(self):
-        with open(self.lock) as f:
-            return f.read().split()
+        return _read(self.rec).split()
 
     def history(self):
         path = os.path.join(self.tmp, ".loop_lock_history")
         return _read(path) if os.path.exists(path) else ""
 
+    def is_free(self):
+        return self.sh("check")[1].strip() == "FREE"
+
 
 class TestTakeReapBreak(LockTestBase):
-    def test_free_take_writes_four_field_record(self):
+    def test_free_take_writes_four_field_record_inside_the_claim_dir(self):
         rc, out = self.sh("take", "alice", "--purpose", "two words")
         self.assertEqual(rc, 0, out)
         self.assertIn("TAKEN by alice", out)
@@ -99,7 +118,8 @@ class TestTakeReapBreak(LockTestBase):
         self.assertEqual(rec[0], "alice")
         self.assertEqual(rec[1], rec[2])
         self.assertEqual(rec[3:], ["two", "words"])
-        self.assertTrue(os.path.isdir(self.lock + ".d"))
+        self.assertFalse(os.path.exists(self.lock), "the record lives inside the claim dir")
+        self.assertEqual(self.sh("id")[1].strip(), "alice " + rec[1])
 
     def test_held_lock_is_busy_even_for_its_owner(self):
         self.assertEqual(self.sh("take", "alice")[0], 0)
@@ -123,28 +143,85 @@ class TestTakeReapBreak(LockTestBase):
             "python3.13.exe|python -m tools_py.parity.drive --target ours",
             "cmake.exe|cmake --build",
             "clang++.exe|clang++ -c x.cpp",
+            "ld.exe|ld",
             "ld.lld.exe|ld.lld",
+            "lld-link.exe|lld-link",
             "pcsx2-qt.exe|pcsx2-qt.exe",
             "ps2_recomp.exe|ps2_recomp.exe cfg",
             "ps2x_tests.exe|ps2x_tests.exe",
             "socom2_b.exe|socom2_b.exe",
         ]
-        for line in busy_cases:
+        for i, line in enumerate(busy_cases):
             with self.subTest(proc=line):
                 self.write_record("worker", 3600, hb_age_s=20 * 60)
-                self.set_procs(IDLE + [line])
+                self.set_procs(IDLE + ["%d|901|%s" % (5000 + i, line)])
                 rc, out = self.sh("take", "bob")
                 self.assertEqual(rc, 1, out)
-                self.assertIn("BUSY", out)
                 self.assertIn("not reaped", out)
                 self.assertEqual(self.record()[0], "worker")
         self.assertEqual(self.history(), "")
 
+    def test_names_merely_starting_with_ld_are_not_busy(self):
+        for name in ("ldap_helper.exe", "ldconfig.exe"):
+            with self.subTest(name=name):
+                self.write_record("ghost", 3600, hb_age_s=20 * 60)
+                self.set_procs(IDLE + ["5000|901|%s|%s" % (name, name)])
+                rc, out = self.sh("take", "bob")
+                self.assertEqual(rc, 0, out)
+                self.sh("release", "bob")
+
     def test_python_without_parity_or_unittest_is_not_busy(self):
         self.write_record("ghost", 3600, hb_age_s=20 * 60)
-        self.set_procs(IDLE + ["python.exe|python -m http.server"])
+        self.set_procs(IDLE + ["5000|901|python.exe|python -m http.server"])
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 0, out)
+
+    def test_caller_ancestor_is_not_busy_against_itself(self):
+        # gate.py (python -m tools_py.parity.gate) takes the lock: it and `python -m unittest` above it are
+        # the caller's own ancestors and must not block its reap.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        chain = IDLE + ["6000|901|python.exe|python -m unittest discover",
+                        "6001|6000|python3.13.exe|python -m tools_py.parity.gate --stamp x",
+                        "6002|6001|bash.exe|bash scripts/loop_lock.sh take gate",
+                        "6003|6002|powershell.exe|powershell -Command Get-CimInstance"]
+        self.set_procs(chain)
+        rc, out = self.sh("take", "gate", env=self.env(LOOP_LOCK_SELF_WINPID=6003))
+        self.assertEqual(rc, 0, out)
+        self.assertIn("REAPED ghost", out)
+
+    def test_non_ancestor_with_the_same_command_line_still_counts(self):
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        chain = IDLE + ["6000|901|python.exe|python -m unittest discover",
+                        "6001|6000|python3.13.exe|python -m tools_py.parity.gate --stamp x",
+                        "6002|6001|bash.exe|bash scripts/loop_lock.sh take gate",
+                        "6003|6002|powershell.exe|powershell -Command Get-CimInstance",
+                        "7001|900|python3.13.exe|python -m tools_py.parity.gate --stamp x"]
+        self.set_procs(chain)
+        rc, out = self.sh("take", "gate", env=self.env(LOOP_LOCK_SELF_WINPID=6003))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("stale break REFUSED", out)
+        self.assertIn("7001", out)
+        self.assertNotIn("6001", out)
+
+    @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
+    def test_real_process_list_excludes_this_python(self):
+        # This process runs under `python -m unittest` (a busy-list command line); through the real CIM query
+        # the busy list it sees must not contain itself.
+        env = self.env()
+        env.pop("LOOP_LOCK_PS_CMD")
+        marker = "s5t0_busy_sibling_%d" % os.getpid()
+        sibling = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)", "unittest", marker])
+        try:
+            time.sleep(1.0)
+            code = ("import subprocess,sys; r=subprocess.run(sys.argv[2:], capture_output=True, text=True); "
+                    "print(r.stdout)")
+            p = subprocess.run([sys.executable, "-c", code, "unittest_ancestor_" + marker, BASH, LOCK_SH, "busy"],
+                               capture_output=True, text=True, env=env, timeout=90)
+            self.assertIn(marker, p.stdout, "the non-ancestor sibling must be listed")
+            self.assertNotIn("unittest_ancestor_" + marker, p.stdout, "the caller's own ancestor was listed")
+        finally:
+            sibling.kill()
+            sibling.wait(timeout=10)
 
     def test_unreadable_process_list_counts_as_busy(self):
         self.write_record("ghost", 3600, hb_age_s=20 * 60)
@@ -163,7 +240,7 @@ class TestTakeReapBreak(LockTestBase):
 
     def test_stale_break_refused_while_game_runs(self):
         self.write_record("worker", 3600, hb_age_s=50 * 60)
-        self.set_procs(IDLE + ["socom2.exe|dist\\socom2.exe"])
+        self.set_procs(IDLE + ["5000|900|socom2.exe|dist\\socom2.exe"])
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 1, out)
         self.assertIn("stale break REFUSED", out)
@@ -171,27 +248,27 @@ class TestTakeReapBreak(LockTestBase):
         self.assertEqual(self.record()[0], "worker")
 
     def test_old_two_field_record_is_read(self):
-        # Pre-Sprint-5 record, no claim dir: heartbeat = epoch, purpose empty.
-        self.write_record("old", 5 * 60, with_dir=False, legacy=True)
+        # Pre-Sprint-5 lock: the plain file with "<owner> <epoch>", no claim dir. heartbeat = epoch.
+        self.write_record("old", 5 * 60, legacy=True)
         rc, out = self.sh("check")
         self.assertIn("HELD: old", out)
         self.assertIn("heartbeat 5 min", out)
         self.assertEqual(self.sh("take", "bob")[0], 1)
         self.assertTrue(os.path.exists(self.lock))
-        self.assertFalse(os.path.isdir(self.lock + ".d"), "a BUSY take must not leave a claim dir")
+        self.assertFalse(os.path.isdir(self.lockd), "a BUSY take must not leave a claim dir")
         rc, out = self.sh("renew", "old")
         self.assertEqual(rc, 0, out)
-        rec = self.record()
-        self.assertEqual(len(rec), 3)
+        rec = _read(self.lock).split()
         self.assertLessEqual(int(time.time()) - int(rec[2]), 5)
         self.assertEqual(self.sh("release", "old")[0], 0)
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertTrue(self.is_free())
 
     def test_old_two_field_stale_record_is_reaped(self):
-        self.write_record("old", 20 * 60, with_dir=False, legacy=True)
+        self.write_record("old", 20 * 60, legacy=True)
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 0, out)
         self.assertIn("REAPED old", out)
+        self.assertFalse(os.path.exists(self.lock))
 
     def test_non_holder_release_exits_1(self):
         self.assertEqual(self.sh("take", "alice")[0], 0)
@@ -202,13 +279,31 @@ class TestTakeReapBreak(LockTestBase):
         rc, _ = self.sh("release", "alice")
         self.assertEqual(rc, 0)
         self.assertFalse(os.path.exists(self.lock))
-        self.assertFalse(os.path.exists(self.lock + ".d"))
+        self.assertFalse(os.path.exists(self.lockd))
         self.assertEqual(self.sh("release", "alice")[0], 1)
+
+    def test_release_with_stale_held_id_refuses(self):
+        # Minor 2: the lock was reaped and retaken under the same owner name; a release carrying the old
+        # id must not remove the new holder's lock.
+        self.write_record("worker", 60, hb_age_s=0)
+        epoch = self.record()[1]
+        rc, out = self.sh("release", "worker", env=self.env(LOOP_LOCK_HELD="worker 12345"))
+        self.assertEqual(rc, 1, out)
+        self.assertEqual(self.record()[1], epoch)
 
     def test_renew_by_non_holder_fails(self):
         self.write_record("alice", 600, hb_age_s=600)
         rc, out = self.sh("renew", "bob")
         self.assertEqual(rc, 1, out)
+
+    def test_renew_never_creates_the_claim_dir(self):
+        # Minor 3: a renew racing a reap must not re-create the dir the reaper just moved away. The legacy
+        # file with a matching id and no dir is the state a renewer saw mid-reap in the old layout.
+        now = int(time.time())
+        with open(self.lock, "w", newline="\n") as f:
+            f.write("w %d %d p\n" % (now - 60, now - 60))
+        rc, out = self.sh("renew", "w", env=self.env(LOOP_LOCK_HELD="w %d" % (now - 60)))
+        self.assertFalse(os.path.isdir(self.lockd), out)
 
     def test_wait_times_out_then_succeeds(self):
         self.write_record("worker", 60, hb_age_s=0)
@@ -221,23 +316,53 @@ class TestTakeReapBreak(LockTestBase):
 
 
 class TestRaces(LockTestBase):
-    def _race(self, n=2):
+    def _race(self, n, env):
         procs = [subprocess.Popen([BASH, LOCK_SH, "take", "racer%d" % i], stdout=subprocess.PIPE,
-                                  stderr=subprocess.STDOUT, text=True, env=self.env()) for i in range(n)]
-        return [p.communicate(timeout=60)[0] for p in procs]
+                                  stderr=subprocess.STDOUT, text=True, env=env) for i in range(n)]
+        return [p.communicate(timeout=120)[0] for p in procs]
+
+    def _holder(self):
+        return self.sh("id")[1].split()[0]
 
     def test_two_racing_takes_one_wins(self):
         for _ in range(6):
-            outs = self._race()
+            outs = self._race(2, self.env())
             self.assertEqual(sum("TAKEN" in o for o in outs), 1, outs)
-            self.sh("release", self.record()[0])
+            self.sh("release", self._holder())
 
-    def test_two_racing_reapers_one_wins(self):
-        for _ in range(4):
-            self.write_record("ghost", 3600, hb_age_s=30 * 60)
-            outs = self._race()
-            self.assertEqual(sum("TAKEN" in o for o in outs), 1, outs)
-            self.sh("release", self.record()[0])
+    def test_racing_reapers_with_slow_process_list_one_wins(self):
+        # Critical 1: a stale ghost, 4 concurrent reapers, and a process list with 0-2 s of latency (what
+        # PowerShell costs). Exactly one TAKEN per round and exactly one history line per ghost.
+        env = self.env(LOOP_LOCK_PS_CMD="sleep $((RANDOM %% 3)); cat '%s'" % fwd(self.procs))
+        self.counts = []
+        for rnd in range(6):
+            ghost = "ghost%d" % rnd
+            self.write_record(ghost, 3600, hb_age_s=30 * 60)
+            outs = self._race(4, env)
+            taken = sum("TAKEN" in o for o in outs)
+            reaps = len(re.findall(r'REAPED "%s ' % ghost, self.history()))
+            self.counts.append((taken, reaps))
+            self.assertEqual(taken, 1, outs)
+            self.assertEqual(reaps, 1, self.history())
+            self.assertEqual(self.sh("release", self._holder())[0], 0)
+            self.assertTrue(self.is_free())
+        print("\n[race] per-round (TAKEN, history lines):", self.counts, file=sys.stderr)
+
+    def test_release_never_shows_a_recordless_lock(self):
+        # Minor 4: while a holder takes and releases in a loop, a concurrent observer must never see a
+        # claim dir without its record ("<no record>").
+        stop = os.path.join(self.tmp, "stop")
+        obs_script = ("while [ ! -f '%s' ]; do bash '%s' check; done" % (fwd(stop), LOCK_SH))
+        observer = subprocess.Popen([BASH, "-c", obs_script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                    text=True, env=self.env())
+        try:
+            for _ in range(25):
+                self.sh("take", "cycler")
+                self.sh("release", "cycler")
+        finally:
+            open(stop, "w").close()
+        out = observer.communicate(timeout=60)[0]
+        self.assertNotIn("<no record>", out)
 
 
 class TestRun(LockTestBase):
@@ -246,12 +371,12 @@ class TestRun(LockTestBase):
         self.assertEqual(rc, 1, out)
         self.assertIn("TAKEN by runner", out)
         self.assertIn("RELEASED", out)
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertTrue(self.is_free())
 
     def test_run_returns_command_exit_code(self):
         rc, out = self.sh("run", "runner", "--purpose", "rc test", "--", "bash", "-c", "exit 7")
         self.assertEqual(rc, 7, out)
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertTrue(self.is_free())
 
     def test_run_on_busy_lock_does_not_run_command(self):
         self.write_record("worker", 60, hb_age_s=0)
@@ -263,12 +388,13 @@ class TestRun(LockTestBase):
 
     def test_nested_take_and_release_under_run(self):
         # gate.py takes and releases the lock itself; inside `run` that must not be BUSY.
-        inner = "bash '%s' take gate && bash '%s' release gate && cat \"$LOOP_LOCK_PATH\"" % (LOCK_SH, LOCK_SH)
+        inner = "bash '%s' take gate && bash '%s' release gate && bash '%s' check" % (LOCK_SH, LOCK_SH, LOCK_SH)
         rc, out = self.sh("run", "outer", "--", "bash", "-c", inner)
         self.assertEqual(rc, 0, out)
         self.assertIn("NESTED under outer", out)
         self.assertIn("outer keeps the lock", out)
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertIn("HELD: outer", out)
+        self.assertTrue(self.is_free())
 
     def test_stale_held_env_is_not_nested(self):
         self.write_record("outer", 60, hb_age_s=0)
@@ -281,12 +407,11 @@ class TestRun(LockTestBase):
                              env=self.env(LOOP_LOCK_RENEW_SEC=renew_s))
         ages = []
         deadline = time.time() + 30
-        while not os.path.exists(self.lock) and time.time() < deadline:
+        while not os.path.exists(self.rec) and time.time() < deadline:
             time.sleep(0.1)
         while p.poll() is None:
             try:
-                with open(self.lock) as f:
-                    rec = f.read().split()
+                rec = _read(self.rec).split()
                 if len(rec) >= 3:
                     ages.append(time.time() - int(rec[2]))
             except (OSError, ValueError):
@@ -301,15 +426,16 @@ class TestRun(LockTestBase):
         self.assertEqual(rc, 0, out)
         self.assertGreater(len(ages), 8, out)
         self.assertLess(max(ages), 3.5, ages)
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertTrue(self.is_free())
 
+    @unittest.skipUnless(os.environ.get("LOOP_LOCK_SLOW_TESTS") == "1", "set LOOP_LOCK_SLOW_TESTS=1 (~135 s)")
     def test_run_sleep_130_real_scale(self):
         rc, out, ages = self._run_and_sample(130, 60)
         self.assertEqual(rc, 0, out)
         self.assertGreater(len(ages), 100, out)
         self.assertGreater(max(ages), 55, "the sampler never saw a heartbeat age near the interval")
         self.assertLess(max(ages), 70, max(ages))
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
+        self.assertTrue(self.is_free())
 
 
 class TestRunDetached(LockTestBase):
@@ -337,9 +463,8 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(rec[0], "det")
         self.assertGreater(int(rec[2]), epoch, "heartbeat not renewed while the job ran")
         self.assertEqual(self._wait_marker(marker).strip(), "exit=4")
-        self.assertEqual(self.sh("check")[1].strip(), "FREE")
-        log = _read(marker + ".log")
-        self.assertIn("NESTED under det", log)
+        self.assertTrue(self.is_free())
+        self.assertIn("NESTED under det", _read(marker + ".log"))
 
     def test_detached_on_busy_lock_writes_marker_and_does_not_launch(self):
         self.write_record("worker", 60, hb_age_s=0)
@@ -355,31 +480,67 @@ class TestRunDetached(LockTestBase):
         time.sleep(1)
         self.assertFalse(os.path.exists(ran))
 
-
-@unittest.skipUnless(os.name == "nt" and (shutil.which("powershell.exe") or shutil.which("powershell")),
-                     "Windows PowerShell not available")
-class TestKillStaleDrivers(unittest.TestCase):
-    def test_kills_only_the_marked_decoy(self):
-        marker = "s5t0_kill_decoy_%d" % os.getpid()
-        decoy = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)", marker])
-        bystander = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)", "bystander"])
+    @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
+    def test_signal_kills_the_job_tree_then_releases(self):
+        # Minor 1: TERM to the detached wrapper must take the job's children with it, not just its bash.
+        marker_word = "s5t0_detached_grandchild_%d" % os.getpid()
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("'%s' -c 'import time; time.sleep(120)' %s\n" % (fwd(sys.executable), marker_word))
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "sig", fwd(job), fwd(marker)],
+                           capture_output=True, text=True, env=self.env(), timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        pid = re.search(r"DETACHED pid=(\d+)", p.stdout).group(1)
         try:
+            deadline = time.time() + 30
+            while not processes_with(marker_word) and time.time() < deadline:
+                time.sleep(0.5)
+            self.assertTrue(processes_with(marker_word), "the job never started")
+            subprocess.run([BASH, "-c", "kill -TERM %s" % pid], timeout=30)
+            self.assertEqual(self._wait_marker(marker, 60).strip(), "exit=143")
             time.sleep(1.0)
-            ps = shutil.which("powershell.exe") or shutil.which("powershell")
-            dry = subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", KILL_PS1, "-DryRun",
-                                  "-CommandLineMarker", marker, "-ExeNamePattern", "no_such_exe_*.exe"],
+            self.assertEqual(processes_with(marker_word), [], "the job's child survived the signal")
+            self.assertTrue(self.is_free())
+        finally:
+            for wp in processes_with(marker_word):
+                subprocess.run(["taskkill", "/F", "/PID", wp], capture_output=True)
+
+
+@unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
+class TestKillStaleDrivers(unittest.TestCase):
+    def ps(self, *args):
+        return [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", KILL_PS1] + list(args)
+
+    def test_kills_drivers_spares_scorers_and_its_own_ancestors(self):
+        marker = "s5t0_kill_decoy_%d" % os.getpid()
+        sleep = "import time; time.sleep(120)"
+        driver = subprocess.Popen([sys.executable, "-c", sleep, "-m", "tools_py.parity.drive", marker])
+        scorer = subprocess.Popen([sys.executable, "-c", sleep, "-m", "tools_py.parity.verdict_core", marker])
+        bystander = subprocess.Popen([sys.executable, "-c", sleep, "-m", "tools_py.parity.drive", "bystander"])
+        try:
+            time.sleep(1.5)
+            dry = subprocess.run(self.ps("-DryRun", "-OnlyCommandLineContaining", marker,
+                                         "-ExeNamePattern", "no_such_exe_*.exe"),
                                  capture_output=True, text=True, timeout=60)
             self.assertIn("WOULD KILL", dry.stdout)
-            self.assertIsNone(decoy.poll())
-            real = subprocess.run([ps, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", KILL_PS1,
-                                   "-CommandLineMarker", marker, "-ExeNamePattern", "no_such_exe_*.exe"],
-                                  capture_output=True, text=True, timeout=60)
-            self.assertEqual(real.returncode, 0, real.stdout)
-            self.assertIn("KILLED", real.stdout)
-            decoy.wait(timeout=10)
-            self.assertIsNone(bystander.poll(), "killed a process without the marker")
+            self.assertIsNone(driver.poll())
+            # The killer runs as a child of a python that itself looks like a driver (a gate calling it):
+            # that ancestor must survive.
+            code = ("import subprocess,sys; r=subprocess.run(sys.argv[4:], capture_output=True, text=True); "
+                    "print(r.stdout); sys.exit(r.returncode)")
+            real = subprocess.run([sys.executable, "-c", code, "-m", "tools_py.parity.gate", marker]
+                                  + self.ps("-OnlyCommandLineContaining", marker, "-ExeNamePattern", "no_such_exe_*.exe"),
+                                  capture_output=True, text=True, timeout=90)
+            self.assertEqual(real.returncode, 0, real.stdout + real.stderr)
+            self.assertRegex(real.stdout, r"KILLED .*tools_py\.parity\.drive")
+            self.assertRegex(real.stdout, r"SKIPPED .*verdict_core.*\(not a driver module\)")
+            self.assertRegex(real.stdout, r"SKIPPED .*tools_py\.parity\.gate.*\(ancestor of this script\)")
+            driver.wait(timeout=10)
+            self.assertIsNone(scorer.poll(), "killed a lock-free scorer")
+            self.assertIsNone(bystander.poll(), "killed a process outside the test's marker")
         finally:
-            for p in (decoy, bystander):
+            for p in (driver, scorer, bystander):
                 if p.poll() is None:
                     p.kill()
                 p.wait(timeout=10)

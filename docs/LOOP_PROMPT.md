@@ -109,9 +109,11 @@ between two tool calls is not renewed, and the calling shell dies when its tool 
   (gate.py's own take/release are NESTED no-ops inside a run).
 - Detached (game runs): `bash scripts/run_detached.sh --owner <owner> <script> <marker>` takes the
   lock, launches the script under nohup, renews every 5 min while the script's PID lives, releases
-  and then writes `exit=<code>` to `<marker>`. Poll the marker; run
+  and then writes `exit=<code>` to `<marker>`. The script must keep its work in the foreground (the
+  lock lives as long as the script's PID). Poll the marker; run
   `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1` before every
-  launch (a finished drive.py taskkills the next run's game).
+  launch while you hold the lock (a finished drive.py taskkills the next run's game; it kills only
+  driver modules and `socom2*.exe`, never lock-free scorers or its own callers).
 - A lock is live while its **heartbeat** is fresh, not by how long ago it was taken. A take on a
   held lock reaps it only when the heartbeat is >= 15 min old **and** nothing on the busy list runs
   (games, PCSX2, cmake/ninja/clang/ld, ps2_recomp, ps2x_tests, vu1_replay, python running
