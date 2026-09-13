@@ -110,6 +110,17 @@ ACTOR_DESTROYED_S = 2.0
 # overall rate stays >= 25 %.
 FREEZE_RATE_MAX = 0.25
 FREEZE_MIN_HOST_S = 1.0
+# A kill that ends the round (§5.1.1 R60): the guest clock freezes from each mp_round_count step to the
+# clock restart (8c: 783.34-788.88 / 783.32-788.72, restart ~5.6 s after the step). That stall is the
+# round boundary, not a freeze; forward windows end at the death round's own step; kill-valve steps up
+# to that step, or within 20 s host after the death even if after it, still belong to the death's round.
+# A stall is a boundary when it starts within BOUNDARY_TOL_S of an mp_round_count step on that instance
+# and ends by the next clock restart (either instance) + ROW_MAX_GAP_S, at most ROUND_BOUNDARY_MAX_S
+# after the step (instruments, not bars). Blind: a real freeze that starts with the round step and ends
+# before the restart is read as the boundary.
+BOUNDARY_TOL_S = 0.5
+ROUND_BOUNDARY_MAX_S = 10.0
+# Freeze overlap is strict (R60): a stall that only touches a window's edge does not overlap it.
 # --shooter defaults to the host (§5.1.1); a kill by B scores only with --shooter B.
 DEFAULT_SHOOTER = "A"
 # Pad bits (online_login_ours PAD_BUTTON): R1 = 11. The grenade button is NOT calibrated (plan A7):
@@ -357,6 +368,7 @@ class Series:
         self.g_rows = [(self.t[i], r.guest) for i, r in enumerate(self.rows) if r.guest is not None]
         self.g_t = [x for x, _ in self.g_rows]
         self.stalls = self._stalls()
+        self.boundaries = []                                   # [(round step t, latest stall end)], set by score_runs
 
     def _stalls(self):
         """Merged stalls (§5.1.1): runs of stalled row pairs, merged across <= one advancing pair,
@@ -381,18 +393,25 @@ class Series:
                 merged.append(r)
         return [(pairs[a][0], pairs[b][1]) for a, b in merged if pairs[b][1] - pairs[a][0] >= FREEZE_MIN_HOST_S]
 
+    def is_boundary(self, st):
+        a, b = st
+        return any(abs(a - t) <= BOUNDARY_TOL_S and b <= end_max for t, end_max in self.boundaries)
+
     def freeze(self, t0, t1):
-        """A description of the freeze overlapping [t0, t1], or None (§5.1.1: merged stall, or the
-        window's own guest-clock rate below FREEZE_RATE_MAX)."""
-        st = next(((a, b) for a, b in self.stalls if a <= t1 and b >= t0), None)
+        """A description of the freeze overlapping [t0, t1], or None (§5.1.1: a merged stall strictly
+        overlapping the window, or the window's own guest-clock rate below FREEZE_RATE_MAX). Round-boundary
+        stalls (R60) are neither: they are left out of both tests."""
+        real = [st for st in self.stalls if not self.is_boundary(st)]
+        st = next(((a, b) for a, b in real if a < t1 and b > t0), None)
         if st is not None:
             return "stall-%.1f-%.1f" % st
-        if t1 - t0 >= FREEZE_MIN_HOST_S:
+        span = (t1 - t0) - sum(max(0.0, min(b, t1) - max(a, t0)) for a, b in self.stalls if self.is_boundary((a, b)))
+        if span >= FREEZE_MIN_HOST_S:
             g0, g1 = self.guest_at(t0), self.guest_at(t1)
             if g0 is None or g1 is None:
                 return "guest-clock-unreadable-%.1f-%.1f" % (t0, t1)
-            if g1 - g0 < FREEZE_RATE_MAX * (t1 - t0):
-                return "rate-%.2f-over-%.1f-%.1f" % ((g1 - g0) / (t1 - t0), t0, t1)
+            if g1 - g0 < FREEZE_RATE_MAX * span:
+                return "rate-%.2f-over-%.1f-%.1f" % ((g1 - g0) / span, t0, t1)
         return None
 
     def guest_at(self, t):
@@ -597,7 +616,8 @@ def _pos(r):
 def _score_event(V, K, di, kind, ctx, clauses, out):
     """One candidate death (victim instance V, its row index di). Raises _Decided, or returns the
     victim guest clock of a KILL. Clauses are appended as they are measured; the first decisive clause
-    decides. `out` receives the round index as soon as it is read."""
+    decides. `out` receives the round index as soon as it is read. The kill-valve steps this death
+    pairs with are selected and CONSUMED before any clause is judged (§5.1.1 R60)."""
     vt, kt = V.tag, K.tag
     drow = V.rows[di]
     d_sh = V.t[di]
@@ -609,6 +629,14 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
         clauses.append(("victim-death", None, "%s +0x1044=%s read only from a block whose word 0 left the vtable"
                         % (vt, _fmt(drow.actor.hp, 3))))
         raise _Decided(NO_DATA, "%s:actor-word0-at-death" % vt)
+    if kind == "intact":
+        prior = [t for t, rr in ctx["intact_deaths"][vt] if rr == r
+                 and not any(t < st <= d_sh for st, _, _ in V.steps("mp_round_count"))]
+        ctx["intact_deaths"][vt].append((d_sh, r))
+        if prior:
+            clauses.append(("victim-death", False, "%s second intact death in round %d (first at %.2f, no round step between)"
+                            % (vt, r + 1, prior[-1])))
+            raise _Decided(NO_DATA, "double-death")
     gV = drow.guest
     if gV is None:
         raise _Decided(NO_DATA, "%s:guest-clock-at-death" % vt)
@@ -624,7 +652,7 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
         clauses.append(("victim-death", True, "%s +0x1044=%.3f word0=%08x at shared %.2f guest %.2f"
                         % (vt, drow.actor.hp, ACTOR_VTABLE, d_sh, gV)))
 
-    # --- round: same round on both instances, round start, round-end signals --------------------
+    # --- round: start, the death round's own step on each instance ----------------------------
     rK = K.valve_at("mp_round_count", d_sh)
     if rK is None:
         raise _Decided(NO_DATA, "%s:mp_round_count-at-death" % kt)
@@ -632,6 +660,55 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     step_t = max(into, default=-math.inf)
     restarts = [t for X in (V, K) for t in X.round_starts() if step_t <= t <= d_sh]
     rs = max(restarts, default=step_t)
+    # R60: every forward window ends at the death round's own mp_round_count step on that instance
+    end_of = {X.tag: min([t for t, b, aft in X.steps("mp_round_count") if b == r and t > d_sh], default=math.inf)
+              for X in (V, K)}
+
+    # --- team and the pairing selection (consumed here, whatever the verdict) --------------------
+    v_team = V.valve_at("player_team", d_sh)
+    k_team = K.valve_at("player_team", d_sh)
+    if v_team is None or k_team is None:
+        raise _Decided(NO_DATA, "%s:player_team-at-death" % (vt if v_team is None else kt))
+    if v_team not in TEAM_VALVE:
+        raise _Decided(NO_DATA, "%s:player_team-value-%d" % (vt, v_team))
+    team_valve = TEAM_VALVE[v_team]
+    other_valve = next(n for tm, n in TEAM_VALVE.items() if tm != v_team)
+    k_lo, k_hi = d_sh - KILL_STEP_BEFORE_DEATH_S, d_sh + CROSS_INSTANCE_MAX_S
+    used = ctx["consumed"]
+
+    def member(X, t):
+        # R60: a kill step belongs to the death's round up to that round's step, or within 20 s host
+        # after the death even if after the step
+        val = X.valve_at("mp_round_count", t)
+        return val == r or (val == r + 1 and d_sh < t <= k_hi)
+
+    def kill_steps(X, lo, hi):
+        return sorted([(t, "total_mp_kills", b, aft) for t, b, aft in X.steps("total_mp_kills") if aft > b and lo <= t <= hi] +
+                      [(t, team_valve, b, aft) for t, b, aft in X.steps(team_valve) if aft < b and lo <= t <= hi])
+
+    k_cands = [c for c in kill_steps(K, k_lo, k_hi) if member(K, c[0]) and (kt, c[1], c[0]) not in used]
+    k_late = [c for c in kill_steps(K, k_hi + 1e-6, math.inf)
+              if K.valve_at("mp_round_count", c[0]) == r and (kt, c[1], c[0]) not in used]
+    k_sel = {}
+    for c in k_cands:
+        k_sel.setdefault(c[1], c)
+    kill_t = k_cands[0][0] if k_cands else None
+    v_sel, v_unreadable = {}, []
+    lo_v = rs if rs > -math.inf else -math.inf
+    for c in kill_steps(V, lo_v, k_hi):
+        if c[1] in v_sel or not member(V, c[0]) or (vt, c[1], c[0]) in used:
+            continue
+        g = V.guest_at(c[0])
+        if g is None:
+            v_unreadable.append(c)
+            continue
+        if abs(g - gV) <= VALVE_WINDOW_GUEST_S:
+            v_sel[c[1]] = c + (g - gV,)
+    for tag, sel in ((kt, k_sel), (vt, v_sel)):
+        for c in sel.values():
+            used.add((tag, c[1], c[0]))
+
+    # --- round-end signals before the death ----------------------------------------------------
     ended = []
     if rK != r:
         ended.append("%s mp_round_count %d at the death, %s %d" % (kt, rK, vt, r))
@@ -645,9 +722,10 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     ci = {X.tag: X.last_row_at(d_sh, lambda x: x.clock_string is not None) for X in (V, K)}
     clock_txt = "; ".join("%s clock %s" % (X.tag, X.rows[ci[X.tag]].clock_string if ci[X.tag] is not None else "absent")
                           for X in (V, K))
-    clauses.append(("round-state", not ended, "round %d (mp_round_count %d on both needed) start %s; %s; %s"
-                    % (r + 1, r, _fmt(rs if rs > -math.inf else None), "; ".join(ended) or "no step, no 00:00, no game over",
-                       clock_txt)))
+    clauses.append(("round-state", not ended, "round %d (mp_round_count %d on both needed) start %s, ends %s; %s; %s"
+                    % (r + 1, r, _fmt(rs if rs > -math.inf else None),
+                       ", ".join("%s %s" % (tg, _fmt(e if e < math.inf else None)) for tg, e in sorted(end_of.items())),
+                       "; ".join(ended) or "no step, no 00:00, no game over", clock_txt)))
     if ended:
         raise _Decided(NO_KILL, R_ROUND_ENDED)
 
@@ -665,9 +743,9 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
 
     c_self, cl_self = clip(V.shared_of_guest(gV - SELF_GRENADE_WINDOW_S, d_sh), "%s:rows-before-self-window" % vt)
     c_fall, cl_fall = clip(V.shared_of_guest(gV - FALL_WINDOW_S, d_sh), "%s:rows-before-fall-window" % vt)
-    c_v0, _ = clip(V.shared_of_guest(gV - VALVE_WINDOW_GUEST_S, d_sh), "%s:rows-before-valve-window" % vt)
     v1 = V.shared_of_guest(gV + VALVE_WINDOW_GUEST_S, d_sh, forward=True)
-    if v1 is None:
+    v1 = min(v1 if v1 is not None else math.inf, end_of[vt])
+    if v1 == math.inf:
         raise _Decided(NO_DATA, "%s:rows-after-valve-window" % vt)
     c_attr, cl_attr = clip(K.shared_of_guest(gK - ATTRIBUTION_WINDOW_S, d_sh), "%s:rows-before-attribution-window" % kt)
     fz_v = V.freeze(c_self, v1)
@@ -707,7 +785,15 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     if ctx["shooter"] != kt:
         clauses.append(("killer", False, "%s is not the shooter (--shooter %s)" % (kt, ctx["shooter"])))
         raise _Decided(NO_KILL, R_UNATTRIBUTED)
-    near = K.rows_between(d_sh - INSTANT_S, d_sh + INSTANT_S, lambda x: _intact(x) and x.actor.hp is not None)
+    k_gone = [t for t in ctx["destroyed"][kt] if d_sh - INSTANT_S <= t <= d_sh + INSTANT_S]
+    if k_gone:
+        clauses.append(("killer-alive", False, "%s actor block destroyed at %.2f after an intact +0x1044 < 1.0 (R60)"
+                        % (kt, k_gone[0])))
+        raise _Decided(NO_KILL, R_UNATTRIBUTED)
+    k_hp_row = lambda x: _intact(x) and x.actor.hp is not None
+    if not K.covered(d_sh - INSTANT_S, d_sh + INSTANT_S, k_hp_row):
+        raise _Decided(NO_DATA, "%s:intact-rows-not-covering-the-death" % kt)
+    near = K.rows_between(d_sh - INSTANT_S, d_sh + INSTANT_S, k_hp_row)
     if not near:
         raise _Decided(NO_DATA, "%s:actor-rows-at-death" % kt)
     k_hp = min(K.rows[i].actor.hp for i in near)
@@ -746,50 +832,20 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     if fp is None or not band:
         raise _Decided(NO_KILL, R_UNATTRIBUTED)
 
-    # --- team (symmetric: each instance's own valve window) ----------------------------------
-    v_team = V.valve_at("player_team", d_sh)
-    k_team = K.valve_at("player_team", d_sh)
-    if v_team is None or k_team is None:
-        raise _Decided(NO_DATA, "%s:player_team-at-death" % (vt if v_team is None else kt))
-    if v_team not in TEAM_VALVE:
-        raise _Decided(NO_DATA, "%s:player_team-value-%d" % (vt, v_team))
-    team_valve = TEAM_VALVE[v_team]
-    other_valve = next(n for tm, n in TEAM_VALVE.items() if tm != v_team)
+    # --- team: symmetric -- the other team's aiteam_* must not drop on EITHER instance in [d-3, d+20] --
     tw = drow.actor.team_word if drow.actor is not None else None
     clauses.append(("victim-team", k_team != v_team,
                     "%s player_team %d -> %s; %s player_team %d; %s +0xC8 %s (cross-check only, meaning open)"
                     % (vt, v_team, team_valve, kt, k_team, vt, "%08x" % tw if tw is not None else "not peeked")))
     if k_team == v_team:
         raise _Decided(NO_KILL, R_TEAM)
-    k_lo, k_hi = d_sh - KILL_STEP_BEFORE_DEATH_S, d_sh + CROSS_INSTANCE_MAX_S
-
-    def in_round(X, t):
-        return X.valve_at("mp_round_count", t) == r
-
-    def v_steps_of(name, up):
-        return [(t, b, aft) for t, b, aft in V.steps(name)
-                if c_v0 <= t <= v1 and ((aft > b) if up else (aft < b)) and in_round(V, t)]
-
-    def k_steps_of(name, up, lo, hi):
-        return [(t, b, aft) for t, b, aft in K.steps(name)
-                if lo <= t <= hi and ((aft > b) if up else (aft < b)) and in_round(K, t)]
-
-    other = [(vt,) + s for s in v_steps_of(other_valve, False)] + [(kt,) + s for s in k_steps_of(other_valve, False, k_lo, k_hi)]
+    other = [(X.tag, t, b, aft) for X in (V, K) for t, b, aft in X.steps(other_valve) if aft < b and k_lo <= t <= k_hi]
     if other:
-        clauses.append(("team-valve", False, "%s dropped on %s" % (other_valve, other)))
+        clauses.append(("team-valve", False, "%s dropped: %s" % (other_valve, other)))
         raise _Decided(NO_KILL, R_TEAM)
 
-    # --- valves: kill row, one-to-one pairing, timing, semantics ---------------------------------
-    used = ctx["consumed"]
-    k_cands = sorted([(t, "total_mp_kills", b, aft) for t, b, aft in k_steps_of("total_mp_kills", True, k_lo, k_hi)] +
-                     [(t, team_valve, b, aft) for t, b, aft in k_steps_of(team_valve, False, k_lo, k_hi)])
-    k_cands = [c for c in k_cands if (kt, c[1], c[0]) not in used]
-    k_late = sorted([(t, "total_mp_kills", b, aft) for t, b, aft in k_steps_of("total_mp_kills", True, k_hi + 1e-6, math.inf)] +
-                    [(t, team_valve, b, aft) for t, b, aft in k_steps_of(team_valve, False, k_hi + 1e-6, math.inf)])
-    k_late = [c for c in k_late if (kt, c[1], c[0]) not in used]
-    v_cands = {n: [s for s in v_steps_of(n, up) if (vt, n, s[0]) not in used]
-               for n, up in (("total_mp_kills", True), (team_valve, False))}
-    if kind == "destroyed" and not k_cands and not any(v_cands.values()):
+    # --- valves: timing, semantics -------------------------------------------------------------
+    if kind == "destroyed" and not k_cands and not v_sel:
         clauses.append(("kill-valves", False, "actor block lost with no kill-valve step: not a death"))
         raise _Decided(NO_KILL, R_NO_DEATH)
     if not k_cands and k_late:
@@ -800,25 +856,24 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     nodata, semantics = [], []
     if kind == "destroyed":
         semantics.append(S_ACTOR_DESTROYED)
+    for c in v_unreadable:
+        nodata.append("%s:guest-clock-at-%s-step" % (vt, c[1]))
     k_steps = {}
-    kill_t = None
     if k_cands:
-        kill_t = k_cands[0][0]
         g_kill = K.guest_at(kill_t)
         if g_kill is None:
             nodata.append("%s:guest-clock-at-kill-row" % kt)
         else:
             k0 = K.shared_of_guest(g_kill - VALVE_WINDOW_GUEST_S, kill_t)
             k1 = K.shared_of_guest(g_kill + VALVE_WINDOW_GUEST_S, kill_t, forward=True)
-            if k0 is None or k1 is None:
+            k1 = min(k1 if k1 is not None else math.inf, max(end_of[kt], kill_t))
+            if k0 is None or k1 == math.inf:
                 nodata.append("%s:rows-around-kill-row" % kt)
             else:
                 fz = K.freeze(max(k0, rs), k1)
                 if fz:
                     nodata.append("%s:guest-clock-freeze-%s" % (kt, fz))
-            for t, name, b, aft in k_cands:
-                if name in k_steps:
-                    continue
+            for name, (t, _, b, aft) in k_sel.items():
                 g = K.guest_at(t)
                 if g is None:
                     nodata.append("%s:guest-clock-at-%s-step" % (kt, name))
@@ -827,17 +882,9 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
         clauses.append(("cross-instance", True,
                         "%s kill row at %.2f = death %+.2f s host (window [-%g, +%g]), round %d on both"
                         % (kt, kill_t, kill_t - d_sh, KILL_STEP_BEFORE_DEATH_S, CROSS_INSTANCE_MAX_S, r + 1)))
-    elif K.t[-1] < k_hi and in_round(K, K.t[-1]):
+    elif K.t[-1] < k_hi and K.valve_at("mp_round_count", K.t[-1]) == r:
         nodata.append("%s:rows-end-before-the-%gs-pairing-window" % (kt, CROSS_INSTANCE_MAX_S))
-    v_steps = {}
-    for name, cands in v_cands.items():
-        if cands:
-            t, b, aft = cands[0]
-            g = V.guest_at(t)
-            if g is None:
-                nodata.append("%s:guest-clock-at-%s-step" % (vt, name))
-                continue
-            v_steps[name] = (t, b, aft, g - gV)
+    v_steps = {name: (c[0], c[2], c[3], c[4]) for name, c in v_sel.items()}
 
     def desc(d, name):
         s = d.get(name)
@@ -859,24 +906,21 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     clauses.append(("valve-timing", kills_ok and v_team_ok and k_team_ok,
                     "within each instance <= %g guest s of its own reference row: %s death guest %.2f; %s kill row guest %s"
                     % (VALVE_WINDOW_GUEST_S, vt, gV, kt, _fmt(K.guest_at(kill_t)) if kill_t is not None else "n/a")))
-    # the alive byte: an intact row reading != 1 within [death row, death row + 2 s host] (R58)
+    # the alive byte (R58 + R60): an intact row reading exactly 1 in the 2 s before the death row, and an
+    # intact row reading != 1 within [death row, death row + 2 s host], that window ending at the round step
     if kind == "intact":
-        ai = V.rows_between(d_sh, d_sh + ALIVE_LEAVE_S, lambda x: _intact(x) and x.actor.alive is not None)
-        if not ai:
-            nodata.append("%s:alive-byte-after-death" % vt)
-        else:
-            left = next((i for i in ai if V.rows[i].actor.alive != 1), None)
-            clauses.append(("+0xF7A", left is not None, "%s alive byte over %d intact row(s) in %.2f..%.2f: %s"
-                            % (vt, len(ai), d_sh, d_sh + ALIVE_LEAVE_S,
-                               "%d at %+.2f s" % (V.rows[left].actor.alive, V.t[left] - d_sh) if left is not None else "1 throughout")))
-            if left is None:
-                semantics.append("+0xF7A")
+        before = V.rows_between(d_sh - ALIVE_LEAVE_S, d_sh - 1e-6, lambda x: _intact(x) and x.actor.alive == 1)
+        a_end = min(d_sh + ALIVE_LEAVE_S, end_of[vt])
+        ai = V.rows_between(d_sh, a_end, lambda x: _intact(x) and x.actor.alive is not None)
+        left = next((i for i in ai if V.rows[i].actor.alive != 1), None)
+        ok = bool(before) and left is not None
+        clauses.append(("+0xF7A", ok, "%s alive byte: %d intact row(s) reading 1 in the %g s before; over %d intact row(s) in %.2f..%.2f: %s"
+                        % (vt, len(before), ALIVE_LEAVE_S, len(ai), d_sh, a_end,
+                           "%d at %+.2f s" % (V.rows[left].actor.alive, V.t[left] - d_sh) if left is not None else "never != 1")))
+        if not ok:
+            semantics.append("+0xF7A")
     else:
         clauses.append(("+0xF7A", None, "%s block destroyed: not read" % vt))
-    # one-to-one: whatever this death paired with cannot corroborate another death
-    for tag, d in ((vt, v_steps), (kt, k_steps)):
-        for name, s in d.items():
-            used.add((tag, name, s[0]))
     if nodata:
         raise _Decided(NO_DATA, nodata[0])
     if semantics:
@@ -884,36 +928,53 @@ def _score_event(V, K, di, kind, ctx, clauses, out):
     return gV
 
 
-def _facts(X):
-    hp = [r.actor.hp for r in X.rows if _intact(r) and r.actor.hp is not None]
-    strings = [r.clock_string for r in X.rows if r.clock_string is not None]
-    return {"steps": {n: [(b, aft) for _, b, aft in X.steps(n)] for n in REQUIRED_VALVES},
-            "step_times": {n: [round(t, 2) for t, _, _ in X.steps(n)] for n in REQUIRED_VALVES},
-            "valve_rows": {n: sum(1 for r in X.rows if r.valves.get(n) is not None) for n in REQUIRED_VALVES},
+def _facts(X, val=None):
+    """Facts over the rows of one round value (val) or the whole run."""
+    idx = [i for i, r in enumerate(X.rows) if val is None or r.valves.get("mp_round_count") == val]
+    rows = [X.rows[i] for i in idx]
+
+    def steps(name):
+        out, prev = [], None
+        for i in idx:
+            v = X.rows[i].valves.get(name)
+            if v is None:
+                continue
+            if prev is not None and v != prev:
+                out.append((X.t[i], prev, v))
+            prev = v
+        return out
+    hp = [r.actor.hp for r in rows if _intact(r) and r.actor.hp is not None]
+    strings = [r.clock_string for r in rows if r.clock_string is not None]
+    st = {n: steps(n) for n in REQUIRED_VALVES}
+    return {"steps": {n: [(b, aft) for _, b, aft in st[n]] for n in REQUIRED_VALVES},
+            "step_times": {n: [round(t, 2) for t, _, _ in st[n]] for n in REQUIRED_VALVES},
+            "kill_steps": [(X.tag, n, round(t, 2)) for n, up in (("total_mp_kills", True), ("aiteam_00", False), ("aiteam_08", False))
+                           for t, b, aft in st[n] if (aft > b) == up],
+            "valve_rows": {n: sum(1 for r in rows if r.valves.get(n) is not None) for n in REQUIRED_VALVES},
             "hp_rows": len(hp),
             "hp_values": sorted(set(round(h, 6) for h in hp)),
             "clock_strings": (strings[0], strings[-1]) if strings else None,
-            "stalls": [(round(a, 2), round(b, 2)) for a, b in X.stalls]}
+            "stalls": [(round(a, 2), round(b, 2)) for a, b in X.stalls if val is None]}
 
 
 RANK = {KILL: 0, KILL_SEMANTICS: 1, NO_DATA: 2, NO_KILL: 3}
 
 
 def _no_death(base, facts, A, B, rnd=None):
+    f_of = {X.tag: (facts[X.tag] if rnd is None else _facts(X, rnd - 1)) for X in (A, B)}
     lines = []
     for X in (A, B):
-        f = facts[X.tag]
-        lines.append(("no-death", True, "%s +0x1044 values %s over %d rows; total_mp_kills %s; aiteam_00 %s; aiteam_08 %s; "
+        f = f_of[X.tag]
+        lines.append(("no-death", True, "%s%s +0x1044 values %s over %d rows; total_mp_kills %s; aiteam_00 %s; aiteam_08 %s; "
                       "mp_round_count %s at %s; clock %s"
-                      % (X.tag, f["hp_values"], f["hp_rows"], f["steps"]["total_mp_kills"] or "unchanged",
+                      % (X.tag, "" if rnd is None else " round %d" % rnd, f["hp_values"], f["hp_rows"],
+                         f["steps"]["total_mp_kills"] or "unchanged",
                          f["steps"]["aiteam_00"] or "unchanged", f["steps"]["aiteam_08"] or "unchanged",
                          f["steps"]["mp_round_count"] or "unchanged", f["step_times"]["mp_round_count"],
                          f["clock_strings"] or "absent")))
-    v = Verdict(NO_KILL, R_NO_DEATH, round=rnd, clauses=base + lines, facts=facts)
-    # kill-direction steps only: total_mp_kills up, aiteam_* down (aiteam_* 0 -> 1 is round start)
-    orphan = [(X.tag, n, round(t, 2)) for X in (A, B) for n, up in (("total_mp_kills", True), ("aiteam_00", False), ("aiteam_08", False))
-              for t, b, aft in X.steps(n) if (aft > b) == up
-              and (rnd is None or X.valve_at("mp_round_count", t) == rnd - 1)]
+    v = Verdict(NO_KILL, R_NO_DEATH, round=rnd, clauses=base + lines,
+                facts=facts if rnd is None else dict(facts, **{t: f for t, f in f_of.items()}))
+    orphan = f_of["A"]["kill_steps"] + f_of["B"]["kill_steps"]
     if orphan:
         v.notes.append("kill-valve steps with no actor death: %s" % orphan)
     return v
@@ -930,6 +991,12 @@ def score_runs(run_a, run_b, shooter=DEFAULT_SHOOTER, offset_b=None, grenade_mas
         off, how = None, "none"
     A = Series("A", run_a, 0.0)
     B = Series("B", run_b, off if off is not None else 0.0)
+    restarts = sorted(A.round_starts() + B.round_starts())
+    for X in (A, B):
+        for t, _, _ in X.steps("mp_round_count"):
+            nxt = next((s for s in restarts if s > t), None)
+            end_max = t + ROUND_BOUNDARY_MAX_S if nxt is None else min(nxt + ROW_MAX_GAP_S, t + ROUND_BOUNDARY_MAX_S)
+            X.boundaries.append((t, end_max))
     facts = {"A": _facts(A), "B": _facts(B), "alignment": (off, how)}
     base = [("alignment", off is not None, "B + %s s (%s); blind: round-start delivery can differ by instance"
              % (_fmt(off), how)),
@@ -942,15 +1009,19 @@ def score_runs(run_a, run_b, shooter=DEFAULT_SHOOTER, offset_b=None, grenade_mas
             if c[it] == 0:
                 return wrap(Verdict(NO_DATA, "%s:%s" % (X.tag, it), clauses=base + [
                     ("rows-read", False, "%s: %s" % (X.tag, " ".join("%s=%d" % kv for kv in c.items())))], facts=facts))
-        base.append(("rows-read", True, "%s: %s stalls>=%gs=%d" % (X.tag, " ".join("%s=%d" % kv for kv in c.items()),
-                                                                    FREEZE_MIN_HOST_S, len(X.stalls))))
+        base.append(("rows-read", True, "%s: %s stalls>=%gs=%d (round boundaries %d)"
+                     % (X.tag, " ".join("%s=%d" % kv for kv in c.items()), FREEZE_MIN_HOST_S,
+                        len(X.stalls), sum(1 for s in X.stalls if X.is_boundary(s)))))
 
-    events = sorted([(A.t[i], A, B, i, k) for i, k in _events(A)] + [(B.t[i], B, A, i, k) for i, k in _events(B)],
+    ev = {"A": _events(A), "B": _events(B)}
+    events = sorted([(A.t[i], A, B, i, k) for i, k in ev["A"]] + [(B.t[i], B, A, i, k) for i, k in ev["B"]],
                     key=lambda e: e[0])
     results = []
     if events and off is None:
         return wrap(Verdict(NO_DATA, "alignment", clauses=base, facts=facts))
-    ctx = {"shooter": shooter, "grenade_mask": grenade_mask, "consumed": set()}
+    ctx = {"shooter": shooter, "grenade_mask": grenade_mask, "consumed": set(),
+           "intact_deaths": {"A": [], "B": []},
+           "destroyed": {X.tag: [X.t[i] for i, k in ev[X.tag] if k == "destroyed"] for X in (A, B)}}
     for _, V, K, di, kind in events:
         clauses, out = [], {}
         try:

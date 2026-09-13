@@ -743,6 +743,178 @@ class TestAdversarialRegressions(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------------------------
+# fix round 2 (spec §5.1.1 R60): the re-review's cases (scratchpad rvvr2/new.py). Each failed on 95e0481.
+# ---------------------------------------------------------------------------------------------
+def rfreeze(step_t, restart, off=0.0, rate=None):
+    """Guest at GUEST_RATE frozen from the round step to the clock restart (8c's boundary shape)."""
+    r = GUEST_RATE if rate is None else rate
+    return lambda t: r * t - off if t < step_t else (r * step_t - off if t < restart else r * (t - (restart - step_t)) - off)
+
+
+def endround(step_t, restart_t, rate_a=None, rate_b=None):
+    rcv = {"mp_round_count": step(step_t, 0, 1)}
+    return dict(a_clock_string_fn=rounds_clock([restart_t]), a_guest=rfreeze(step_t, restart_t, rate=rate_a),
+                b_guest=rfreeze(step_t, restart_t, 0.2, rate=rate_b), a_valves=dict(rcv), b_valves=dict(rcv))
+
+
+class TestRoundEndingKill(unittest.TestCase):
+    """R60 'A kill that ends the round': in 1v1 every kill steps mp_round_count ~5 s later and freezes the
+    guest clock to the restart; that boundary is not a freeze, forward windows end at the step, and kill
+    steps up to 20 s after the death still belong to the death's round."""
+
+    def test_realistic_1v1_kill(self):
+        # N7f, the canonical realistic kill: rates 0.62/0.62 and 8c's measured 0.573/0.610, mp_round_count
+        # step at death + 5.3 s (8c's 00:00 -> step delay), guest frozen 5.6 s to the restart.
+        for ra, rb in ((0.62, 0.62), (0.573, 0.61)):
+            v = score(kill_sides(**endround(45.3, 50.9, ra, rb)))
+            self.assertEqual((v.word, v.killer, v.victim, v.round), (vr.KILL, "A", "B", 1), v.text())
+
+    def test_round_step_3s_after_the_death(self):
+        v = score(kill_sides(**endround(43.0, 48.6)))          # N7a
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_round_step_5s_after_the_death(self):
+        v = score(kill_sides(**endround(45.0, 50.6)))          # N7b
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_round_step_on_the_killers_aiteam_row(self):
+        v = score(kill_sides(**endround(41.0, 46.6)))          # N7e
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_killer_valves_after_the_round_step(self):
+        # N7g: the killer's valves land at death + 8.3/8.5 s (FF1's lag), after the step at death + 5.3 s
+        rcv = {"mp_round_count": step(45.3, 0, 1)}
+        v = score(kill_sides(a_clock_string_fn=rounds_clock([50.9]),
+                             a_valves=dict(rcv, total_mp_kills=step(48.3, 0, 1), aiteam_08=step(48.5, 1, 0)), b_valves=dict(rcv)))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_death_after_a_boundary_freeze_on_the_joiner_without_clock_string(self):
+        # N4a: the previous round's boundary freeze (30-35.6) only touches the new round's windows
+        rv = {"mp_round_count": step(30.0, 0, 1)}
+        v = score(kill_sides(a_clock_string_fn=rounds_clock([35.6]), a_guest=rfreeze(30, 35.6), b_guest=rfreeze(30, 35.6, 0.2),
+                             a_valves=rv, b_valves=rv))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_killer_valves_inside_the_boundary_freeze_after_the_step(self):
+        # the killer's kill row lands after the round step, inside the step->restart freeze: its +-3 guest s
+        # window spans the boundary, which is not a freeze
+        kw = endround(45.3, 50.9)
+        kw["a_valves"].update(total_mp_kills=step(48.3, 0, 1), aiteam_08=step(48.5, 1, 0))
+        v = score(kill_sides(**kw))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_real_victim_freeze_after_the_restart_is_outside_the_windows(self):
+        # the victim's valve window ends at its round step (43); a real freeze after the restart (49.5-51.5)
+        # would sit inside gV + 3 guest s if the window ran on
+        step_t, restart = 43.0, 48.6
+        def b_guest(t):
+            g = rfreeze(step_t, restart, 0.2)(t)
+            return g if t < 49.5 else (rfreeze(step_t, restart, 0.2)(49.5) if t < 51.5 else rfreeze(step_t, restart, 0.2)(t - 2.0))
+        kw = endround(step_t, restart)
+        kw["b_guest"] = b_guest
+        v = score(kill_sides(**kw))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_real_killer_freeze_after_the_restart_is_outside_the_kill_row_window(self):
+        step_t, restart = 43.0, 48.6
+        def a_guest(t):
+            g = rfreeze(step_t, restart)
+            return g(t) if t < 49.5 else (g(49.5) if t < 51.5 else g(t - 2.0))
+        kw = endround(step_t, restart)
+        kw["a_guest"] = a_guest
+        v = score(kill_sides(**kw))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+    def test_alive_window_ends_at_the_round_step(self):
+        # round step at 41.0; the alive byte leaves 1 only at 41.5 -- after the window's end
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 41.5 else 0, **endround(41.0, 46.6)))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
+    def test_real_freeze_right_after_the_death_is_still_no_data(self):
+        # a stall that does NOT start at a round step stays a freeze
+        v = score(kill_sides(b_guest=frozen_rate(41.0, 44.0, 0.2)))
+        self.assertEqual(v.word, vr.NO_DATA, v.text())
+
+
+class TestPairingAndDoubleDeath(unittest.TestCase):
+    def test_step_consumed_by_an_unattributed_death(self):
+        # N1a: death 1 at 40 (no R1 before it) takes the only valve set; death 2 at 42 cannot reuse it
+        v = score(kill_sides(b_hp=lambda t: 0.0 if 40.0 <= t < 40.5 or t >= 42.0 else 1.0, a_pad=[(40.6, R1), (41.9, 0)]))
+        self.assertNotEqual(v.word, vr.KILL, v.text())
+
+    def test_second_death_in_the_round_is_no_data_double_death(self):
+        # N1c: both deaths attributed, one valve set -> the first is the KILL, the second NO-DATA double-death
+        v = score(kill_sides(b_hp=lambda t: 0.0 if 40.0 <= t < 40.5 or t >= 42.0 else 1.0, a_pad=[(38.0, R1), (41.9, 0)]),
+                  per_round=True)
+        self.assertEqual(v[0].word, vr.KILL, v[0].text())
+        note = next(n for n in v[0].notes if "2 candidate deaths" in n)
+        self.assertIn("NO-DATA double-death", note)
+
+
+class TestPairingAcrossVictims(unittest.TestCase):
+    def test_step_consumed_by_the_other_sides_earlier_death(self):
+        # A (the shooter) reads +0x1044 = 0 at 39.0-39.3 -> a candidate death of A (unattributed: A is the
+        # shooter) that selects A's own total_mp_kills step (40.8, 1.1 guest s later) and consumes it; B's
+        # death at 40 then has no total_mp_kills step to pair -> KILL-SEMANTICS, never a KILL
+        v = score(kill_sides(a_hp=lambda t: 0.0 if 39.0 <= t < 39.3 else 1.0))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "total_mp_kills"), v.text())
+
+
+class TestAliveByteWasAlive(unittest.TestCase):
+    def test_alive_byte_never_1(self):                        # N5c
+        v = score(kill_sides(b_alive=lambda t: 0))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
+    def test_alive_byte_7_throughout(self):                  # N5d
+        v = score(kill_sides(b_alive=lambda t: 7))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
+    def test_alive_byte_left_1_long_before_the_death(self):  # N5e
+        v = score(kill_sides(b_alive=lambda t: 1 if t < 20 else 0))
+        self.assertEqual((v.word, v.reason), (vr.KILL_SEMANTICS, "+0xF7A"), v.text())
+
+
+class TestKillerDestroyedAndCoverage(unittest.TestCase):
+    def test_killer_destroyed_after_damage_is_unattributed(self):     # N6c
+        v = score(kill_sides(a_hp=lambda t: 1.0 if t < 39.9 else 0.4, a_word0=lambda t: VTABLE if t < 40.3 else 0))
+        self.assertEqual((v.word, v.reason), (vr.NO_KILL, vr.R_UNATTRIBUTED), v.text())
+
+    def test_killer_rows_not_covering_the_half_second_is_no_data(self):   # N6d
+        v = score(kill_sides(a_word0=lambda t: VTABLE if t < 40.3 else 0))
+        self.assertEqual(v.word, vr.NO_DATA, v.text())
+
+    def test_one_intact_killer_row_with_short_gaps_is_covered(self):      # N6e
+        v = score(kill_sides(a_word0=lambda t: 0 if (39.6 <= t < 40.1 or 40.2 <= t < 40.7) else VTABLE))
+        self.assertEqual(v.word, vr.KILL, v.text())
+
+
+class TestSymmetricTeamAndStrictOverlap(unittest.TestCase):
+    def test_other_team_drop_on_the_victim_outside_its_guest_window(self):   # N8
+        v = score(kill_sides(b_valves={"aiteam_00": step(45.1, 1, 0)}))
+        self.assertEqual((v.word, v.reason), (vr.NO_KILL, vr.R_TEAM), v.text())
+
+    def test_other_team_drop_on_the_victim_4s_after_at_rate_1(self):         # review 6d at rate 1.0
+        v = score(rate1_sides(b_valves={"aiteam_00": step(44.0, 1, 0)}))
+        self.assertEqual((v.word, v.reason), (vr.NO_KILL, vr.R_TEAM), v.text())
+
+    def test_stall_touching_the_window_edge_does_not_overlap(self):
+        a, b = vr.Series.__new__(vr.Series), None
+        a.stalls, a.boundaries, a.g_rows, a.g_t = [(10.0, 12.0)], [], [], []
+        self.assertIsNone(a.freeze(12.0, 12.5))
+        self.assertIsNone(a.freeze(9.5, 10.0))
+        self.assertIsNotNone(a.freeze(11.9, 12.5))
+
+
+class TestPerRoundFacts(unittest.TestCase):
+    def test_per_round_lines_print_only_their_rounds_facts(self):
+        lines = vr.score_logs(fixture("l8c_A.txt"), fixture("l8c_B.txt"), offset_b=L8C_OFFSET_B, per_round=True)
+        r1 = "\n".join(t for _, _, t in lines[0].clauses if "no-death" in t or t.startswith("A +") or t.startswith("B +"))
+        self.assertIn("mp_round_count unchanged", lines[0].text())
+        self.assertIn("mp_round_count unchanged", lines[1].text())
+        self.assertNotIn("(0, 1)", lines[0].text())
+
+
+# ---------------------------------------------------------------------------------------------
 # 14-15: independence from the other scorer
 # ---------------------------------------------------------------------------------------------
 class TestImportSet(unittest.TestCase):
