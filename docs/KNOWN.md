@@ -120,9 +120,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   stick probes and wrote sixteen screenshots against a lobby keyboard. **Verify `peek @416054` is
   non-zero before believing any movement claim from it.** Three of six runs were unusable.
 - **`build.sh test` runs zero Python tests.** `test_compare.py`, `test_pine.py` and `test_winshot.py`
-  are pytest-style and have never executed. And `movie_blocks.py` is wired into **nothing** — not
-  just its `--furniture-baseline` flag: four review rounds of hard-won properties (monotonicity,
-  arrangement-invariance, per-screen furniture) are held in place by no automation at all.
+  are pytest-style and have never executed.
 - **Nothing reaps the loop lock** when an agent exits without releasing it, and `loop_lock.sh take`
   is a non-atomic test-then-write.
 - **Task reports live in gitignored `.superpowers/sdd/`** and die with the workspace. Anything
@@ -131,8 +129,10 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   Task 4c → `research/17` §5.1; Task 4b → `research/17` §6.1; Task 1's `movie_blocks.py` limits →
   `research/16` §9.1.1. Everything else in those reports is accepted as lost.
 - **`movie_blocks.py` is wired into nothing** — not `build.sh`, not the gate, not any committed
-  script — and its `--furniture-baseline` guard, the only thing that catches corruption being
-  learned as furniture, is opt-in with no saved baseline in the repo. `research/16` §9.1.1.
+  script — so four review rounds of hard-won properties (monotonicity, arrangement-invariance,
+  per-screen furniture) are held in place by no automation at all, and its `--furniture-baseline`
+  guard, the only thing that catches corruption being learned as furniture, is opt-in with no
+  saved baseline in the repo. `research/16` §9.1.1.
 - **This harness costs about two runs per result.** Four of Task 6's runs failed to reach gameplay,
   three of them consecutively; each had written a full set of convincing screenshots first. Budget
   for it when planning, and never skip the liveness check.
