@@ -1862,8 +1862,18 @@ def _row_period(rows, t0, t1):
     return (win[-1] - win[0]) / (len(win) - 1) if len(win) > 1 else None
 
 
+def peer_freeze_label(peer, t0, t1):
+    """'freeze(<tag>)' when the peer's round clock paused (freeze or round boundary) inside (t0, t1), else ''."""
+    if peer is None:
+        return ""
+    tag, ptail = peer
+    rt, steps, _, _ = tail_clock_state(ptail)
+    p = pause_overlaps(vc.clock_pauses(rt, steps), t0, t1)
+    return "" if p is None else f"{p[3]}({tag})"
+
+
 def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
-                        max_holds=vc.PRECONDITION_MAX_HOLDS, max_attempts=PRECONDITION_MAX_ATTEMPTS):
+                        max_holds=vc.PRECONDITION_MAX_HOLDS, max_attempts=PRECONDITION_MAX_ATTEMPTS, peer=None):
     """Up to `max_holds` decisive 2 s forward holds on ACTOR rows, each preceded by 10+ s of fully
     neutral pad and, after the first, a 90 deg turn; each scored by vc.score_control (the spec's one
     bar). The side is CONTROLLABLE as soon as ANY hold passes, NO-CONTROL when every decisive hold
@@ -1873,7 +1883,9 @@ def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
     arrival by RunLogTail, i.e. up to one sampler period + the poll late. Blind: a half-decayed
     movement scale that still covers 40 units; motion in the wrong direction; a neutral-window drift
     that stays under 5 units because the player is frozen (hence the 40). The camera record
-    0x416054 is never read here (kill3 B: it froze while the actor walked 67 units)."""
+    0x416054 is never read here (kill3 B: it froze while the actor walked 67 units). `peer` = (tag, tail) of the
+    other instance: a starved hold's retry reason says freeze(<tag>) when the peer's round clock stood still in the
+    idle window behind it (R24; a frozen peer sends nothing, so the scale falls)."""
     events = [_pad_event(clock())]
     sh.pad(0.0)                                   # the file says neutral from here on
     verdicts, decisive = [], 0
@@ -1900,9 +1912,11 @@ def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
             # (the silent move path, Frostfire) is not starvation evidence: the FAIL stands.
             starved = n_s > 0 and not ok_s and v.status == "FAIL"
             if starved:
+                fz = peer_freeze_label(peer, t0 - SCALE_ALARM_IDLE_MS / 1000.0, t1 + PRECONDITION_SETTLE_S)
                 v = vc.ControlVerdict(False, v.net_units, v.snapback_units, v.drift_units, vc.NO_DATA,
-                                      f"scale {lo_s} < 1.0 around the hold (starved, not a control "
-                                      f"verdict); was FAIL: {v.reason}", v.hold)
+                                      f"scale {lo_s} < 1.0 around the hold (starved"
+                                      f"{', ' + fz if fz else ''}, not a control verdict); was FAIL: {v.reason}",
+                                      v.hold)
         verdicts.append(v)
         period = _row_period(rows, t0 - vc.CONTROL_DRIFT_WINDOW_S, t1 + vc.CONTROL_SNAPBACK_AFTER_RELEASE_S)
         scale = ""
@@ -1947,8 +1961,9 @@ def run_precondition(clients):
     """assert_controllable on every client at once (each on its own instance). -> (result, sides)."""
     sides, threads = {}, []
     for tag, c in clients.items():
-        t = threading.Thread(target=lambda tg=tag, cl=c: sides.__setitem__(
-            tg, assert_controllable(tg, cl.tail, cl.sh)))
+        peer = next(((pt, pc.tail) for pt, pc in clients.items() if pt != tag), None)
+        t = threading.Thread(target=lambda tg=tag, cl=c, pr=peer: sides.__setitem__(
+            tg, assert_controllable(tg, cl.tail, cl.sh, peer=pr)))
         t.start()
         threads.append(t)
     for t in threads:
@@ -2129,6 +2144,10 @@ class MovePathWatch(threading.Thread):
         self.verdicts = {}
         self.history = []
         self.stalled = None
+        # Task 5 finish (review I2): a freeze longer than FREEZE_MAX_S is NO-DATA, not an endless disarm -- the first
+        # (tag, verdict, host now) that went NO-DATA that way; the run ends on it like on a stall
+        self.freeze_nodata = None
+        self._noted = set()
         self._stop_ev = threading.Event()
 
     def check(self, now=None):
@@ -2142,17 +2161,28 @@ class MovePathWatch(threading.Thread):
                 rounds = [(t - t0, st["mp_round_count"]) for t, st in tail.round_rows
                           if not isinstance(st["mp_round_count"], vc.NoData)]
                 items = tail.latest_items
-                round_time = [(t - t0, v) for t, v in getattr(tail, "round_time_rows", [])]
+                round_time = [(t - t0, v) for t, v in getattr(tail, "round_time_rows", [])
+                              if t - t0 >= now - PAUSE_LOOKBACK_S]
+                n_rows = len(tail.round_rows)
+            note_clock_missing(tag, n_rows, round_time, self._noted, self.log)
             v = vc.score_move_path(calls, alive, rounds, now)
             if v.status == "stalled":
                 # Sprint 5 Task 5 freeze tolerance (launch 8c): while this instance's round clock 0x4365c0 stands
-                # still the guest is frozen, not stalled -- and the stall clock restarts when the freeze ends.
-                fe = last_freeze_end(round_time, now)
-                if fe is not None and now - fe < vc.MOVE_STALL_S:
-                    frozen = frozen_now(round_time, now)
+                # still the guest is frozen, not stalled -- and the stall clock restarts when the freeze ends. A
+                # freeze longer than FREEZE_MAX_S is NO-DATA (nothing after it is evidence either).
+                eps = freeze_episodes(round_time, now, round_steps=vc.round_steps(rounds))
+                fe = eps[-1][1] if eps else None
+                if eps and eps[-1][2] and now - eps[-1][0] > FREEZE_MAX_S:
+                    v = vc.MovePathVerdict(vc.NO_DATA, v.since,
+                                           v.detail + f"; freeze: round clock 0x4365c0 still since {eps[-1][0]:.1f}, "
+                                           f"{now - eps[-1][0]:.1f}s > FREEZE_MAX_S {FREEZE_MAX_S:g}s")
+                    if self.freeze_nodata is None:
+                        self.freeze_nodata = (tag, v, now + t0)
+                elif fe is not None and now - fe < vc.MOVE_STALL_S:
+                    frozen = eps[-1][2]
                     v = vc.MovePathVerdict("disarmed", v.since,
                                            v.detail + (f"; freeze: round clock 0x4365c0 still since "
-                                                       f"{freeze_episodes(round_time, now)[-1][0]:.1f}" if frozen else
+                                                       f"{eps[-1][0]:.1f}" if frozen else
                                                        f"; freeze: round clock 0x4365c0 ran again at {fe:.1f}, "
                                                        f"re-armed {vc.MOVE_STALL_S:g}s after"))
             prev = self.verdicts.get(tag)
@@ -2222,39 +2252,61 @@ class PairedRange:
 # 3.3-17.3 s, main thread parked at 0x3b00a4). Its move path is silent (the live 10 s rule fired three times)
 # and it sends nothing, so the OTHER instance's NetIdle alarms (peaks 8217 / 10338 ms). Neither is a defect of
 # the side that reports it.
-FREEZE_CLOCK_STILL_S = 2.0       # research/21 §9.8's definition: the clock stops for >= 2 s while rows continue
-                                 # (at 4 Hz a running clock changes every row; 2 s is 8 identical rows)
+# Task 5 finish (slice (a) review): the definition is spec §5.1.1's, in verdict_core.clock_pauses -- a stall >= 1.0 s
+# after merging stalls around one advancing row, or a clock rate < 25 % over a window; the pause from an mp_round_count
+# step to the clock restart is a ROUND boundary, not a freeze.
+FREEZE_CLOCK_STILL_S = vc.FREEZE_STALL_S
 FREEZE_MAX_S = 20.0              # the longest freeze tolerated before it counts as NO-DATA (8c's worst: 17.3 s)
-FREEZE_ATTRIBUTION_S = 6.0       # an alarm starting within this long of the other side's freeze end is the
-                                 # freeze's (idle counts on for the alarm's 4 s, plus two 1 s rows of lag)
+PAUSE_LOOKBACK_S = 120.0         # the live watches judge pauses over this much recent clock history (bounded work)
+LAG_FLAG_IDLE_MS = 4501          # ng+0xde is set at idle >= 4501 ms: a flag alarm's idle window is at least this long
+SCALE_ALARM_IDLE_MS = 5500       # f12 < 1.0 needs idle > 5500 ms
 
 
-def freeze_episodes(rows, now=None, still_s=FREEZE_CLOCK_STILL_S):
-    """rows: [(t, round clock)] -> [(t_first, t_last, ongoing)] for every run of identical clock values lasting
-    >= still_s BY ROW TIME -- the clock standing still while the sampler keeps writing rows; rows that stop
-    arriving altogether are not a freeze of the clock (the watches' NO-DATA rules own that). The newest run is
-    flagged ongoing (the clock has not moved since). `now` is accepted for symmetry and not used. No rows -> []."""
-    eps, start, val, last = [], None, None, None
-    for t, v in rows:
-        if start is None or v != val:
-            if start is not None and last - start >= still_s:
-                eps.append((start, last, False))
-            start, val = t, v
-        last = t
-    if start is not None and last - start >= still_s:
-        eps.append((start, last, True))
-    return eps
+def freeze_episodes(rows, now=None, still_s=None, round_steps=()):
+    """rows: [(t, round clock)] -> [(t_first, t_last, ongoing)] of the FREEZES (vc.clock_pauses kind 'freeze'; round
+    boundaries excluded when `round_steps` are given). `now` is accepted for symmetry and not used. No rows -> []."""
+    return [(a, b, g) for a, b, g, k in vc.clock_pauses(rows, round_steps, still_s or FREEZE_CLOCK_STILL_S)
+            if k == "freeze"]
 
 
-def frozen_now(rows, now):
-    eps = freeze_episodes(rows, now)
+def frozen_now(rows, now, round_steps=()):
+    eps = freeze_episodes(rows, now, round_steps=round_steps)
     return bool(eps and eps[-1][2])
 
 
-def last_freeze_end(rows, now):
+def last_freeze_end(rows, now, round_steps=()):
     """The last row time of the newest freeze episode (ongoing or not), or None."""
-    eps = freeze_episodes(rows, now)
+    eps = freeze_episodes(rows, now, round_steps=round_steps)
     return eps[-1][1] if eps else None
+
+
+def tail_clock_state(tail, since=None):
+    """(round clock rows, mp_round_count step times, alive rows, peek rows seen) of a tail, clock rows from `since`."""
+    with tail._lock:                                    # noqa: SLF001 - same module
+        rt = [r for r in getattr(tail, "round_time_rows", []) if since is None or r[0] >= since]
+        rounds = [(t, st["mp_round_count"]) for t, st in getattr(tail, "round_rows", [])
+                  if not isinstance(st.get("mp_round_count"), vc.NoData)]
+        alive = list(getattr(tail, "alive_rows", [])[-8:])
+        n_rows = len(getattr(tail, "round_rows", []))
+    return rt, vc.round_steps(rounds), alive, n_rows
+
+
+CLOCK_MISSING_ROWS = 8           # peek rows seen with no 0x4365c0 in any of them before the watches say they are blind
+
+
+def note_clock_missing(tag, n_rows, rt, noted, log):
+    """Log ONCE per side that 0x4365c0 is absent from its peek rows (freezes then read as stalls or starvation)."""
+    if rt or n_rows < CLOCK_MISSING_ROWS or tag in noted:
+        return
+    noted.add(tag)
+    log(f"FREEZE-DETECTION {tag} blind: 0x4365c0 is not in {n_rows} peek rows -- a guest freeze cannot be told from "
+        f"a stall or from starvation on this side (add 0x4365c0:1 to PS2X_PEEK)")
+
+
+def pause_overlaps(pauses, t0, t1):
+    """The newest pause strictly overlapping (t0, t1) -> (t_first, t_last, ongoing, kind) | None."""
+    hit = [p for p in pauses if p[0] < t1 and p[1] > t0]
+    return hit[-1] if hit else None
 
 
 # --- the starvation watch (spec §5 Goal 5(c), both instances) -----------------------------------------------
@@ -2268,18 +2320,22 @@ ALARM_CLEAR_S = 3.0              # spec §5(c): every alarm clears within 3 s of
 class StarvationWatch(threading.Thread):
     """verdict_core.score_starvation on both instances, live, over each side's NEWEST NetIdle `[ret] v0` and
     ng+0xde rows (primary ng+0xde, secondary NetIdle >= 4000 ms, verdict_core's own rules -- zero lag rows
-    with a quiet NetIdle is NO-DATA, ruling R23).
+    with a quiet NetIdle is NO-DATA, ruling R23), plus MoveScale f12 < 0.99 (Amendment A).
 
-    * An alarm on side X opens an episode. If the OTHER instance is frozen (freeze_episodes on its round clock)
-      or its freeze ended within FREEZE_ATTRIBUTION_S, the cause is `freeze(Y)`: reported, not counted, and
-      nobody is asked to move (a frozen instance cannot). Otherwise the cause is starvation and it is counted;
-      the other side is asked to move (take_request / request_event) only when BOTH round clocks are advancing
-      (rows within STARVATION_NODATA_S, no ongoing freeze) -- a reaction, never a schedule: launch 3c stood ~48 s
-      both still at f12 = 1.0, and every recorded alarm was a freeze or a stuck mover. The mover reports moved().
+    * Guest-clock pauses are verdict_core.clock_pauses over each side's 0x4365c0 (spec §5.1.1): FREEZES, and the
+      ROUND boundary from an mp_round_count step to the clock restart.
+    * An alarm on side X opens an episode. Its idle window is [t - idle, t] (at least 4501 ms for an ng+0xde alarm,
+      5500 ms for f12). If that window overlaps a pause of either instance, the cause is `freeze(Y)` / `round(Y)`:
+      reported, not counted, nobody asked to move. An open starvation alarm whose window later overlaps a pause
+      is re-attributed the same way. Otherwise the cause is starvation and it is counted; the other side is asked
+      to move (take_request / request_event) only when BOTH round clocks are advancing -- a reaction, never a
+      schedule. The mover reports moved().
     * An alarm still open ALARM_CLEAR_S after its mover moved sets `stop_reason`.
-    * No fresh NetIdle row on a side (NetIdle stops with the move path) is NO-DATA and sets `stop_reason` -- unless
-      that side's own clock is frozen, for at most FREEZE_MAX_S: then it is `freeze(side)`.
-    Blind: idle peaks between NetIdle samples (0.5-0.9 s); a frozen instance whose clock string still ticks."""
+    * No fresh NetIdle row on a side (NetIdle stops with the move path) is NO-DATA and sets `stop_reason` -- except
+      during that side's own pause (a freeze for at most FREEZE_MAX_S), while its alive byte reads != 1, within
+      ROUND_STEP_DISARM_S of its round step, or within STARVATION_NODATA_S of max(its last NetIdle row, the end of
+      its last pause) -- NetIdle resumes up to 2.6 s after the clock (launch 8c).
+    Blind: idle peaks between NetIdle samples (0.5-0.9 s); a frozen instance whose clock still ticks."""
 
     def __init__(self, tails, log, clock=time.time):
         super().__init__(daemon=True)
@@ -2289,6 +2345,8 @@ class StarvationWatch(threading.Thread):
         self.status = {tag: None for tag in self.tags}
         self.alarms = []
         self.stop_reason = None
+        self.pauses = {tag: [] for tag in self.tags}
+        self._noted = set()
         self._requests = {tag: threading.Event() for tag in self.tags}
         self._stop_ev = threading.Event()
         self._lock = threading.Lock()
@@ -2296,58 +2354,87 @@ class StarvationWatch(threading.Thread):
     def _other(self, tag):
         return next(t for t in self.tags if t != tag)
 
-    def _rows(self, tag):
+    def _rows(self, tag, now=None):
         tail = self.tails[tag]
+        since = None if now is None else now - PAUSE_LOOKBACK_S
+        rt, steps, alive, n_rows = tail_clock_state(tail, since)
         with tail._lock:                                # noqa: SLF001 - same module
             idle = [(t, v) for name in vc.NET_IDLE_NAMES for t, _, v in tail.rets.get(name, [])]
             lag = list(getattr(tail, "lag_rows", []))
-            rt = list(getattr(tail, "round_time_rows", []))
             f12 = [(t, f) for t, _, f in tail.calls.get(MOVE_SCALE_TRACE_NAME, []) if f is not None]
         idle = sorted(r for r in idle if r[0] >= self.t0)
-        return idle, [r for r in lag if r[0] >= self.t0], rt, [r for r in f12 if r[0] >= self.t0]
+        return {"idle": idle, "lag": [r for r in lag if r[0] >= self.t0], "rt": rt, "steps": steps, "alive": alive,
+                "n_rows": n_rows, "f12": [r for r in f12 if r[0] >= self.t0]}
 
-    def _advancing(self, rt, now):
-        """This instance's round clock has rows within STARVATION_NODATA_S and is not frozen now."""
+    def _advancing(self, rows, pauses, now):
+        """This instance's round clock has rows within STARVATION_NODATA_S and is not paused now."""
+        rt = rows["rt"]
         if not rt or now - rt[-1][0] > STARVATION_NODATA_S:
             return False
-        eps = freeze_episodes(rt, now)
-        return not (eps and eps[-1][2])
+        return not (pauses and pauses[-1][2])
 
     def _stop(self, reason):
         if self.stop_reason is None:
             self.stop_reason = reason
             self.log(f"STARVATION-WATCH STOP: {reason}")
 
+    @staticmethod
+    def _window_s(signal, idle_ms):
+        ms = idle_ms or 0
+        if signal == "ng+0xde":
+            ms = max(ms, LAG_FLAG_IDLE_MS)
+        elif signal == "f12":
+            ms = max(ms, SCALE_ALARM_IDLE_MS)
+        return ms / 1000.0
+
+    def _attribute(self, tag, t_from, t_to, pauses):
+        """The pause (other side first) overlapping (t_from, t_to) -> 'freeze(Y)' / 'round(Y)' | None."""
+        for side in (self._other(tag), tag):
+            p = pause_overlaps(pauses[side], t_from, t_to)
+            if p is not None:
+                return f"{p[3]}({side})"
+        return None
+
+    def _no_netidle_status(self, tag, rows, pauses, now):
+        """(status, detail) for a side with no NetIdle row in the last STARVATION_NODATA_S."""
+        own = pauses[-1] if pauses and pauses[-1][2] else None
+        if own is not None:
+            if own[3] == "freeze" and now - own[0] > FREEZE_MAX_S:
+                return vc.NO_DATA, (f"no NetIdle row in the last {STARVATION_NODATA_S:g}s; frozen "
+                                    f"{now - own[0]:.1f}s > {FREEZE_MAX_S:g}s")
+            return f"{own[3]}({tag})", ""
+        alive = [r for r in rows["alive"] if now - r[0] <= vc.ALIVE_MAX_AGE_S]
+        if alive and alive[-1][1] != vc.ALIVE_VALUE:
+            return "disarmed", "+0xF7A != 1 (NetIdle stops with the move path on death)"
+        if rows["steps"] and now - rows["steps"][-1] < vc.ROUND_STEP_DISARM_S:
+            return "disarmed", f"mp_round_count stepped {now - rows['steps'][-1]:.1f}s ago"
+        ref = max([self.t0 + STARVATION_GRACE_S - STARVATION_NODATA_S]
+                  + [r[0] for r in rows["idle"][-1:]] + [p[1] for p in pauses])
+        if now - ref <= STARVATION_NODATA_S:
+            return self.status[tag], ""                  # a freeze just ended: NetIdle resumes up to 2.6 s later
+        return vc.NO_DATA, (f"no NetIdle row in the last {STARVATION_NODATA_S:g}s (NetIdle stops with the move path)"
+                            + (f"; last pause ended {now - pauses[-1][1]:.1f}s ago" if pauses else ""))
+
     def check(self, now=None):
         now = self.clock() if now is None else now
         with self._lock:
-            frozen = {}
-            rows = {tag: self._rows(tag) for tag in self.tags}
+            rows = {tag: self._rows(tag, now) for tag in self.tags}
+            pauses = {tag: vc.clock_pauses(rows[tag]["rt"], rows[tag]["steps"]) for tag in self.tags}
+            self.pauses = pauses
             for tag in self.tags:
-                eps = freeze_episodes(rows[tag][2], now)
-                frozen[tag] = eps
+                note_clock_missing(tag, rows[tag]["n_rows"], rows[tag]["rt"], self._noted, self.log)
             for tag in self.tags:
                 other = self._other(tag)
-                idle, lag, _, f12 = rows[tag]
-                fresh_idle = [r for r in idle if now - r[0] <= STARVATION_NODATA_S]
-                fresh_lag = [r for r in lag if now - r[0] <= STARVATION_NODATA_S]
-                eps = frozen[tag]
-                own_frozen = bool(eps and eps[-1][2])
+                r = rows[tag]
+                fresh_idle = [x for x in r["idle"] if now - x[0] <= STARVATION_NODATA_S]
+                fresh_lag = [x for x in r["lag"] if now - x[0] <= STARVATION_NODATA_S]
                 signal, detail = None, ""
                 if not fresh_idle:
-                    if own_frozen and now - eps[-1][0] <= FREEZE_MAX_S:
-                        status = f"freeze({tag})"
-                    elif now - self.t0 < STARVATION_GRACE_S:
-                        status = None
-                    else:
-                        status = vc.NO_DATA
-                        detail = (f"no NetIdle row in the last {STARVATION_NODATA_S:g}s (NetIdle stops with the "
-                                  f"move path)" + (f"; frozen {now - eps[-1][0]:.1f}s > {FREEZE_MAX_S:g}s"
-                                                    if own_frozen else ""))
+                    status, detail = self._no_netidle_status(tag, r, pauses[tag], now)
                 else:
                     v = vc.score_starvation(fresh_idle[-1:], fresh_lag[-1:], side=tag)
                     status, signal, detail = v.status, v.signal, v.detail
-                    fresh_f12 = [r for r in f12 if now - r[0] <= STARVATION_NODATA_S]
+                    fresh_f12 = [x for x in r["f12"] if now - x[0] <= STARVATION_NODATA_S]
                     if status == "ok" and fresh_f12 and fresh_f12[-1][1] < vc.CONTACT_SCALE_MIN:
                         # Amendment A: a scale already below 0.99 is starvation too (the ng block may be unread)
                         status, signal = "alarm", "f12"
@@ -2361,37 +2448,37 @@ class StarvationWatch(threading.Thread):
                 self.status[tag] = status
                 open_alarm = next((a for a in self.alarms if a["side"] == tag and a["t_clear"] is None), None)
                 if status == "alarm" and open_alarm is None:
-                    oeps = frozen[other]
-                    cause = "starvation"
-                    if oeps and (oeps[-1][2] or now - oeps[-1][1] <= FREEZE_ATTRIBUTION_S):
-                        cause = f"freeze({other})"
+                    idle_ms = fresh_idle[-1][1] if fresh_idle else None
+                    win = self._window_s(signal, idle_ms)
+                    cause = self._attribute(tag, now - win, now, pauses) or "starvation"
                     a = {"side": tag, "t": now, "signal": signal, "cause": cause, "mover": other, "t_move": None,
-                         "t_clear": None, "idle_ms": fresh_idle[-1][1] if fresh_idle else None, "asked": False}
+                         "t_clear": None, "idle_ms": idle_ms, "window_s": win, "asked": False}
                     self.alarms.append(a)
-                    if cause == "starvation" and self._advancing(rows[tag][2], now) and \
-                            self._advancing(rows[other][2], now):
+                    if cause == "starvation" and self._advancing(r, pauses[tag], now) and \
+                            self._advancing(rows[other], pauses[other], now):
                         a["asked"] = True
                         self._requests[other].set()
-                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms -- "
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={idle_ms}ms -- "
                                  f"{other} must move (two-sided rule)")
                     elif cause == "starvation":
-                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms -- round clocks "
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={idle_ms}ms -- round clocks "
                                  f"not both advancing (0x4365c0 unread or still): counted, nobody asked to move")
                     else:
-                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms cause={cause} "
-                                 f"-- the other instance is frozen: reported, not counted, nobody asked to move")
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={idle_ms}ms cause={cause} -- its "
+                                 f"idle window [{now - win:.1f}, {now:.1f}] overlaps that pause: reported, not "
+                                 f"counted, nobody asked to move")
                 elif status == "ok" and open_alarm is not None:
                     open_alarm["t_clear"] = now
                     self._requests[other].clear()
                     ref = open_alarm["t_move"] if open_alarm["t_move"] is not None else open_alarm["t"]
                     self.log(f"STARVATION alarm side={tag} cleared {now - open_alarm['t']:.1f}s after it opened, "
                              f"{now - ref:.1f}s after " + ("the move" if open_alarm["t_move"] else "the alarm"))
-                elif open_alarm is not None and open_alarm["cause"] == "starvation" and open_alarm["t_move"] is None:
-                    oeps = frozen[other]
-                    if oeps and oeps[-1][2] and oeps[-1][0] <= open_alarm["t"]:
-                        open_alarm["cause"] = f"freeze({other})"
+                elif open_alarm is not None and open_alarm["cause"] == "starvation":
+                    cause = self._attribute(tag, open_alarm["t"] - open_alarm["window_s"], now, pauses)
+                    if cause is not None:
+                        open_alarm["cause"] = cause
                         self._requests[other].clear()
-                        self.log(f"STARVATION alarm side={tag} re-attributed to freeze({other})")
+                        self.log(f"STARVATION alarm side={tag} re-attributed to {cause}")
                 if (open_alarm is not None and open_alarm["cause"] == "starvation"
                         and open_alarm["t_move"] is not None and now - open_alarm["t_move"] > ALARM_CLEAR_S):
                     self._stop(f"STARVATION alarm side={tag} not cleared within {ALARM_CLEAR_S:g}s of "
@@ -2424,24 +2511,27 @@ class StarvationWatch(threading.Thread):
         return sum(1 for a in self.alarms if a["cause"] == "starvation" and a["t_clear"] is not None
                    and a["t_clear"] - (a["t_move"] if a["t_move"] is not None else a["t"]) <= ALARM_CLEAR_S)
 
-    def freeze_alarms(self):
+    def freeze_alarms(self, kind="freeze"):
+        """{side: n} of the alarms attributed to that side's `kind` pause ('freeze' or 'round')."""
         out = {}
         for a in self.alarms:
-            if a["cause"].startswith("freeze("):
-                side = a["cause"][len("freeze("):-1]
+            if a["cause"].startswith(kind + "("):
+                side = a["cause"][len(kind) + 1:-1]
                 out[side] = out.get(side, 0) + 1
         return out
 
     def max_idle_ms(self):
-        return {tag: max((v for _, v in self._rows(tag)[0]), default=None) for tag in self.tags}
+        return {tag: max((v for _, v in self._rows(tag)["idle"]), default=None) for tag in self.tags}
 
     def lag_rows_read(self):
-        return {tag: len(self._rows(tag)[1]) for tag in self.tags}
+        return {tag: len(self._rows(tag)["lag"]) for tag in self.tags}
 
     def summary_line(self):
         fz = self.freeze_alarms()
+        rd = self.freeze_alarms("round")
         return (f"STARVATION-WATCH alarms={self.starvation_alarms()} cleared={self.alarms_cleared()} "
                 f"freeze_alarms={','.join(f'freeze({k})={v}' for k, v in sorted(fz.items())) or 0} "
+                f"round_alarms={','.join(f'round({k})={v}' for k, v in sorted(rd.items())) or 0} "
                 f"max_idle_ms={self.max_idle_ms()} lag_rows={self.lag_rows_read()} stop={self.stop_reason}")
 
     def run(self):
@@ -3664,6 +3754,12 @@ def main():
                         A.sh.log(f"MOVE-PATH STALL on {mpw.stalled[0]} ends the run at "
                                  f"T+{time.time() - t_gameplay:.1f}s -- nothing after this can move, "
                                  f"so nothing after this is evidence")
+                        duel.stop.set()
+                        return
+                    if mpw.freeze_nodata is not None:
+                        A.sh.log(f"MOVE-PATH NO-DATA on {mpw.freeze_nodata[0]} ends the run at "
+                                 f"T+{time.time() - t_gameplay:.1f}s -- a freeze longer than {FREEZE_MAX_S:g}s: "
+                                 f"{mpw.freeze_nodata[1].detail}")
                         duel.stop.set()
                         return
                     if time.time() - t_gameplay > a.kill_timeout:

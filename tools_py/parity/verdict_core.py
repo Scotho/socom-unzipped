@@ -652,6 +652,101 @@ def score_starvation(netidle_rows, lagflag_rows, side="?", move_path=None):
 
 
 # ---------------------------------------------------------------------------------------------
+# guest-clock pauses: freezes and round boundaries (spec §5.1.1 "Freeze detection", R53/R60)
+# ---------------------------------------------------------------------------------------------
+# DAT_004365c0 advances 0.57-0.72 guest s per host s over whole rounds and changes on every 4 Hz row while the guest
+# runs. A FREEZE is any stall >= 1.0 s after merging stalls separated by at most one advancing row (launch 8c A: 54.402
+# still 500.71-505.63, ONE row at 55.487, 55.587 still 506.13-514.07 is one freeze), or a window whose clock advance is
+# below 25 % of its host span. The pause from an mp_round_count step to the clock restart (8c: 5.54 s, starting on the
+# step's own row) is the ROUND BOUNDARY, not a freeze. Blind: a guest that runs its clock but not its world.
+FREEZE_STALL_S = 1.0
+FREEZE_RATE_MIN = 0.25
+FREEZE_RATE_WINDOW_S = 4.0         # the rate clause's window (a 1 s stall inside 4 s of normal rate stays >= 25 %)
+FREEZE_MERGE_ROWS = 2              # stalls whose rows are at most this many indices apart merge (one advancing row)
+# R63 (registered pre-match, instrument parameters): a round boundary is the mp_round_count step +-0.5 s host to the
+# clock restart + 1.25 s, at most 10 s long; a stall inside that span is the boundary, not a freeze. Blind: a genuine
+# freeze that begins exactly on a round step reads as the boundary.
+ROUND_BOUNDARY_MATCH_S = 0.5       # a pause starting within this of an mp_round_count step is that step's boundary
+ROUND_BOUNDARY_TAIL_S = 1.25       # ... and so is a stall starting within this after the boundary's clock restart
+ROUND_BOUNDARY_MAX_S = 10.0        # ... for at most this long (8c: 5.54 s); the rest of a longer pause is a freeze
+
+
+def round_steps(round_rows):
+    """[(t, mp_round_count)] -> the times at which the value changed (the row carrying the new value)."""
+    out, prev = [], None
+    for t, v in sorted(round_rows, key=lambda r: r[0]):
+        if prev is not None and v != prev:
+            out.append(t)
+        prev = v
+    return out
+
+
+def _union(spans):
+    out = []
+    for a, b, g in sorted(spans):
+        if out and a <= out[-1][1]:
+            out[-1] = (out[-1][0], max(out[-1][1], b), out[-1][2] or g)
+        else:
+            out.append((a, b, g))
+    return out
+
+
+def clock_pauses(rows, round_steps=(), stall_s=FREEZE_STALL_S):
+    """rows: [(t, guest clock)] -> [(t_first, t_last, ongoing, kind)] sorted, kind 'freeze' | 'round'. `ongoing`: the
+    newest row is inside the pause (the clock has not moved since). No rows -> []."""
+    rows = sorted(rows, key=lambda r: r[0])
+    n = len(rows)
+    if n < 2:
+        return []
+    stalls, i = [], 0
+    while i < n:
+        j = i
+        while j + 1 < n and rows[j + 1][1] == rows[i][1]:
+            j += 1
+        if j > i:
+            if stalls and i - stalls[-1][1] <= FREEZE_MERGE_ROWS:
+                stalls[-1][1] = j
+            else:
+                stalls.append([i, j])
+        i = j + 1
+    steps = sorted(round_steps)
+    pauses, span = [], None                           # span: (boundary start, latest end) of the current round boundary
+    for a, b in stalls:
+        t0, t1, ongoing = rows[a][0], rows[b][0], b == n - 1
+        if t1 - t0 < stall_s:
+            continue
+        step = next((s for s in steps if t0 - ROUND_BOUNDARY_MATCH_S <= s <= t0 + ROUND_BOUNDARY_MATCH_S), None)
+        if step is not None:
+            span = (min(t0, step), t1)
+        elif span is not None and t0 <= span[1] + ROUND_BOUNDARY_TAIL_S and t0 < span[0] + ROUND_BOUNDARY_MAX_S:
+            span = (span[0], t1)                        # a stall just after the restart is still the boundary
+        else:
+            span = None
+            pauses.append((t0, t1, ongoing, "freeze"))
+            continue
+        end = span[0] + ROUND_BOUNDARY_MAX_S
+        if t1 <= end:
+            pauses.append((t0, t1, ongoing, "round"))
+        else:
+            pauses.append((t0, end, False, "round"))
+            pauses.append((end, t1, ongoing, "freeze"))
+    rounds = [p for p in pauses if p[3] == "round"]
+    # the rate clause adds only windows no stall pause already explains (a window reaching into a stall would
+    # stretch that stall's edges by up to FREEZE_RATE_WINDOW_S)
+    slow, j = [], 0
+    for i in range(n):
+        while j < n and rows[j][0] - rows[i][0] < FREEZE_RATE_WINDOW_S:
+            j += 1
+        if j >= n:
+            break
+        span, adv = rows[j][0] - rows[i][0], rows[j][1] - rows[i][1]
+        if 0.0 <= adv < FREEZE_RATE_MIN * span and not any(p[0] <= rows[j][0] and p[1] >= rows[i][0] for p in pauses):
+            slow.append((rows[i][0], rows[j][0], j == n - 1))
+    freezes = _union([p[:3] for p in pauses if p[3] == "freeze"] + slow)
+    return sorted(rounds + [(a, b, g, "freeze") for a, b, g in freezes])
+
+
+# ---------------------------------------------------------------------------------------------
 # valves, the CZNetGame block, the clock string
 # ---------------------------------------------------------------------------------------------
 @dataclass(frozen=True)

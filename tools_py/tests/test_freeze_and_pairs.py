@@ -116,9 +116,10 @@ class FreezeTest(unittest.TestCase):
         self.assertTrue(M.frozen_now(rows, 508.0))
 
     def test_a_short_stand_is_not_a_freeze(self):
-        rows = freeze_rows(frozen=1.5)
+        # spec §5.1.1 (Task 5 finish): a stall >= 1.0 s is a freeze; 0.75 s (three repeated rows) is not
+        rows = freeze_rows(frozen=0.75)
         self.assertEqual(M.freeze_episodes(rows, now=rows[-1][0]), [])
-        self.assertLess(M.FREEZE_CLOCK_STILL_S, 3.0)
+        self.assertEqual(M.FREEZE_CLOCK_STILL_S, 1.0)
 
     def test_no_round_clock_rows_is_never_frozen(self):
         self.assertEqual(M.freeze_episodes([], now=10.0), [])

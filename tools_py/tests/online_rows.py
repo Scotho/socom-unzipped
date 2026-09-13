@@ -45,7 +45,7 @@ def matrix_words(facing_deg):
 
 
 def peek(x=100.0, y=50.0, z=200.0, facing=None, alive=1, clock="05:00", round_time=None, lag=None,
-         health=None, actor=ACTOR):
+         health=None, actor=ACTOR, round_count=0):
     block = [M.ACTOR_VTABLE] + [0] * 63
     block[7], block[8], block[9] = f2w(x), f2w(y), f2w(z)
     if facing is not None:
@@ -54,9 +54,9 @@ def peek(x=100.0, y=50.0, z=200.0, facing=None, alive=1, clock="05:00", round_ti
              item(actor + 0xF78, [(alive & 0xFF) << 16])]
     if health is not None:
         parts.append(item(actor + 0x1044, [f2w(health)]))
-    for name, ptr, value, addr in (("mp_round_count", 0x006B7F30, 0, 0x694C48),
+    for name, ptr, value, addr in (("mp_round_count", 0x006B7F30, round_count, 0x694C48),
                                    ("mp_game_over", 0x006B7F20, 0, 0x694C20)):
-        parts.append(item(addr, [ptr, 0x00010000]))
+        parts.append(item(addr, [ptr, 0x00010000 | (value & 0xFFFF)]))
         parts.append(item(ptr, name_words(name)))
     if clock is not None:
         parts.append(item(0x408F10, list(struct.unpack("<II", (clock.encode() + b"\0" * 8)[:8]))))

@@ -56,6 +56,15 @@ FREEZE_FIXTURES = [
     ("launch8c_A_freeze2.txt", "logs/run_A_20260913_132843.log", 543.0, 564.0),
     ("launch8c_B_freeze.txt", "logs/run_B_20260913_132843.log", 616.0, 642.0),
 ]
+# Sprint 5 Task 5 finish: launch 8c's TWO sides as one event stream, for the StarvationWatch replay (review of slice (a),
+# I1: the watch stopped NO-DATA at the end of every 8c freeze). Not log excerpts: the peek rows carry 64-word ng blocks
+# (~1.4 KB a row), so the fixture holds only what the watch reads -- per row the round clock 0x4365c0, ng+0xde,
+# mp_round_count and the alive byte, and every NetIdle `[ret] v0` and MoveScale `#n f12` -- each on verdict_core.parse_log's
+# clock of its own log, B shifted onto A's clock by the MoveScale #0 difference (A 418.8 s, B 413.0 s -> B + 5.8 s).
+# Windows on A's clock: both first freezes (A 500.7-514.1, B 501.5-505.9), A's second (547.9-560.2), B's 17.3 s one
+# (621.0-638.3 + 5.8) and the round-1 step (A 783.3, clock still to 788.9).
+EVENT_FIXTURE = ("launch8c_starvation_events.txt", "logs/run_A_20260913_132843.log", "logs/run_B_20260913_132843.log",
+                 ((495.0, 522.0), (543.0, 566.0), (612.0, 650.0), (772.0, 800.0)))
 STATE_CALLS = ("MoveScale", "NetIdle")      # every line of these slots is kept
 ANCHOR_EVERY_S = 2.0                         # plus one other [call] line this often, for the clock
 KEEP_STATIC = ("4365c0", "45a0c0", "408f10")
@@ -184,6 +193,52 @@ def make_state(name, src, t0, t1, trim=None):
     return len(out), os.path.getsize(os.path.join(OUT, name))
 
 
+def make_events(name, src_a, src_b, windows):
+    """One line per event, `<side> <t on A's clock> <kind> <values...>` sorted by time: `rt <clock>`, `lag <byte>`,
+    `round <mp_round_count>`, `alive <byte>` (one each per peek row that has them), `idle <#n> <v0 ms>`,
+    `ms <#n> <f12>`."""
+    import sys
+    sys.path.insert(0, ROOT)
+    from tools_py.parity import verdict_core as vc
+    parsed = {}
+    for side, src in (("A", src_a), ("B", src_b)):
+        with open(os.path.join(ROOT, src), "r", errors="replace") as f:
+            parsed[side] = vc.parse_log(f.read().split("\n"))
+    first = {s: next(t for t, n, *_ in p.calls["MoveScale"] if n == 0) for s, p in parsed.items()}
+    offset = {"A": 0.0, "B": round(first["A"] - first["B"], 2)}
+    inside = lambda t: any(a <= t <= b for a, b in windows)
+    ev = []
+    for side, p in parsed.items():
+        off = offset[side]
+        for t, items in p.peek_rows:
+            ta = t + off
+            if not inside(ta):
+                continue
+            w = vc.row_static(items, vc.ROUND_TIME_ADDR)
+            if w is not None:
+                ev.append((ta, side, f"rt {vc.f32(w):.6g}"))
+            lag = vc.ng_lagflag_rows([(t, items)])
+            if lag:
+                ev.append((ta, side, f"lag {lag[0][1]}"))
+            rc = vc.row_valve(items, "mp_round_count")
+            if not isinstance(rc, vc.NoData):
+                ev.append((ta, side, f"round {rc}"))
+            alive = vc.row_actor_field(items, vc.ACTOR_ALIVE_OFFSET, "u8")
+            if not isinstance(alive, vc.NoData):
+                ev.append((ta, side, f"alive {alive}"))
+        for t, n, v in p.rets.get("NetIdle", []):
+            if inside(t + off):
+                ev.append((t + off, side, f"idle {n} {v}"))
+        for t, n, f12, *_ in p.calls.get("MoveScale", []):
+            if inside(t + off) and f12 is not None:
+                ev.append((t + off, side, f"ms {n} {f12:g}"))
+    ev.sort(key=lambda e: (round(e[0], 4), e[1]))
+    with open(os.path.join(OUT, name), "w", newline="\n") as f:
+        f.write(f"# launch 8c StarvationWatch events: A={src_a} B={src_b} B+{offset['B']}s windows={list(windows)}\n")
+        f.write("\n".join(f"{s} {t:.3f} {k}" for t, s, k in ev) + "\n")
+    return len(ev), os.path.getsize(os.path.join(OUT, name))
+
+
 def make(name, src, t0, t1):
     with open(os.path.join(ROOT, src), "r", errors="replace") as f:
         lines = f.read().split("\n")
@@ -225,3 +280,6 @@ if __name__ == "__main__":
     for spec in FREEZE_FIXTURES:
         n, size = make_state(*spec, trim=_trim_peek_freeze)
         print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")
+    if "--events" in __import__("sys").argv:
+        n, size = make_events(*EVENT_FIXTURE)
+        print(f"{EVENT_FIXTURE[0]:<22} {n:5d} lines {size:7d} bytes  <- {EVENT_FIXTURE[1]} + {EVENT_FIXTURE[2]}")

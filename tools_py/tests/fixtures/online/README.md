@@ -64,3 +64,9 @@ Trimmed by `make_state(..., trim=_trim_peek_freeze)`: the actor block's first 10
 lines of MoveScale and NetIdle plus one other `[call]` line every 2 s. ~40 KB each. Replayed on
 `verdict_core.parse_log`'s clock by `test_freeze_and_pairs.Launch8cFreezeReplayTest`: every window reads as a freeze,
 never a stall; with the `0x4365c0` item removed the same rows stall (the negative control).
+
+## Sprint 5 Task 5 finish (i): launch 8c two-sided StarvationWatch events
+
+| fixture | source | windows (A's clock, s) | what it shows |
+|---|---|---|---|
+| `launch8c_starvation_events.txt` | `logs/run_A_20260913_132843.log` + `logs/run_B_20260913_132843.log` (B + 5.8 s: MoveScale `#0` at A 418.8, B 413.0) | 495-522, 543-566, 612-650, 772-800 | NOT an excerpt: one event per line (`<side> <t> rt|lag|round|alive|idle|ms ...`), what the StarvationWatch reads, each on `verdict_core.parse_log`'s clock -- the peek rows carry 64-word ng blocks (~1.4 KB a row). Both first freezes (A 500.7-514.1 with one advancing row at 505.88; B 501.5-505.9), A's second (547.9-560.2; B's idle peaks 10338 ms), B's 17.3 s freeze (A's idle peaks 8217 ms) and the round-1 step (A 783.3, clock still to 788.9, NetIdle silent 782.4-789.0). On the pre-fix watch every window stopped `NO-DATA starvation`. Regenerate with `make_fixtures.make_events(*EVENT_FIXTURE)` |
