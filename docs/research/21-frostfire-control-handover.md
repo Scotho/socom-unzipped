@@ -1027,3 +1027,222 @@ On both instances:
 
 This is **one** usable Frostfire run meeting the bar. Step 6 needs two to call the defect *fixed*.
 The Step 5 success condition also needs the bar on Medley.
+
+## 9. Launch 8 — Medley control (draft, 2026-09-13)
+
+**Draft, uncommitted (the controller commits).** Marks as in §6. The offline script is in the session
+scratchpad (`an8.py`) and is not tracked.
+
+### 9.1 Launches and the command
+
+| # | per-instance logs | out dir | result |
+|---|---|---|---|
+| 8a | `logs/run_[AB]_20260913_124726.log` | `logs/parity/s5_t1_launch8_medley` | **lobby failure — READY dropped**: A's READY CROSS did not register (`A_hold02.png`: row 2 still reads READY, red dot; B reads NOT READY). `LIVENESS FAILED: 0 in-game peek rows` on both |
+| 8b | `logs/run_[AB]_20260913_132036.log` | `logs/parity/s5_t1_launch8b_medley` | **lobby failure — map CROSS dropped**: the CROSS on Medley did not register. `A_15_play_list` equals `A_14b` byte for byte over the SELECTED MAPS panel (mean \|diff\| 0.00), then CREATE GAME had an empty PLAY LIST (`A_16`), and CONTINUE reopened CHOOSE GAMES. `CREATE GAME did not reach the GAME LOBBY (0.521)` |
+| 8c | **`logs/run_[AB]_20260913_132843.log`** (22.2 / 22.2 MB) | `logs/parity/s5_t1_launch8c_medley` | **usable**: precondition passed both sides; control round ran to the round end on the clock; `RESULT CONTROL-ROUND round_ended=yes`, harness exit 0 |
+
+Three launches, one usable. Launch 8 was Task 1's 8th; **8b and 8c are over the cap under Ruling R33** (2 of 2 used).
+
+**Preconditions (each launch):**
+- Horizon stack up (10071 / 10073 / 10075 / 10077 / 10078).
+- Persona B present in `game/disc/mc0_b`.
+- LAN address `192.168.2.10`.
+- 7.0–7.2 GB free on C:.
+- `scripts/kill_stale_drivers.ps1`: 0 killed.
+- Exe `dist/socom2.exe` built 11:03:57 (after `b625291`), the same exe as launch 3c.
+- `move_path_preconditions`, `peek_spec_problems`, `health_peek_problems(…, 0x1044)` and `launch_refusal_lines` all returned `[]` on the script's environment.
+
+**Harness.** `--control-round` landed for this launch in `0118c95` (`online_match_ours.py` +198 lines, `tools_py/tests/test_control_round.py`, 14 tests).
+- After the precondition, A and B alternate `lx` strafe legs of 0.5 / 0.8 / 0.6 / 0.9 s (A-left, B-left, A-right, B-right, …). No button is written.
+- It stops at the first round-end transition on either side (`mp_round_count` changes, `mp_game_over` leaves 0, or the clock string becomes `00:00`), observes 15 s more with the pad neutral, and writes `control_round.json` (per-side valve / clock / health series).
+- Steps are counted strictly before the signal. The cap is 420 s.
+
+**Command.**
+- 8 and 8b: `bash scripts/run_detached.sh --owner s5t1-launch8[b] --purpose "…" logs/s5_t1_launch8_medley.sh logs/s5_t1_launch8[b]_medley.done [logs/parity/s5_t1_launch8b_medley]`.
+- 8c: `bash scripts/run_detached.sh --owner s5t1-launch8c --purpose "…" logs/s5_t1_launch8c_medley.sh logs/s5_t1_launch8c_medley.done logs/parity/s5_t1_launch8c_medley`.
+
+The job scripts (git-ignored) carry launch 3c's `PS2X_CALL_TRACE` (25 slots), `PS2X_CALL_TRACE_DUMP` and `PS2X_PEEK` unchanged. They **drop the RDRAM dumps**: `PS2X_RDRAM_DUMP_AT{,_B}` are unset and there is no driver wrapper for them. They also unset `PS2X_GUEST_MALLOC_ZERO{,_B}`, then run:
+
+`python -m tools_py.parity.online_match_ours --existing-b --hold 30 --control-round --map medley --control-round-cap 420 --out <OUT> --seconds 1200`
+
+8c runs the same arguments through `logs/s5_t1_launch8c_driver.py` (git-ignored). It patches two checks into `online_login_ours` at import time and changes no tracked file:
+- **The map CROSS.** Re-sent through the pad file when the SELECTED MAPS panel did not change (mean |diff| < 3; 0.00 on the dropped press, 8.4–9.0 on a registered one).
+- **The READY CROSS.** Re-sent when the row-2 label's text right edge is still ≤ 55 px (READY col 48, NOT READY col 82).
+
+On 8c neither check re-sent: map panel diff 3.52; READY edge `None` on both sides, which is not retried. So 8c's lobby was not rescued by the patch [verified, transcript].
+
+```
+PS2X_SOCOM2_SERVER=192.168.2.10
+PS2X_SOCOM2_RSA_KEY_B=b
+PS2X_SOCOM2_INPUT_TRACE=1
+PS2X_PC_SAMPLER=0.25
+PS2X_HLE_STATS=1
+PS2X_CALL_TRACE_EVERY=10
+PS2X_CALL_TRACE=   (as §8.1)
+PS2X_CALL_TRACE_DUMP=   (as §8.1)
+PS2X_PEEK=   (as §8.1)
+```
+
+Everything below reads **launch 8c**. Local actors: A `0x17941d0`, B `0x17935c0` (vtable `0x6691a0`). B's clock is aligned to A's at B + 5.80 s (MoveScale `#0`).
+
+### 9.2 The map loaded [verified, screenshots]
+
+**VIGILANCE.** Medley is the playlist; its first round loads Vigilance.
+- The GAME LOBBY header reads `VIGILANCE` (`s5_t1_launch8c_medley/A_17_game_lobby_ok.png`, also 8a's `A_hold02.png`).
+- `A_hold00.png` shows `STARTING ROUND 1 OF 11` in a tiled-roof village.
+- Sprint 4's `ours_task8_kill2` lobby also reads `VIGILANCE` (`A_16_game_lobby.png`). Its `A_app00.png` is the same view (same wall, houses and crate) as 8c's A frame.
+- The spawns match: A at (539.76, 159.53, 1456.11) is KNOWN §1's `abf35bb` Medley A (x 539.68). B is at (1129.76, 65.05, 96.11).
+
+So **kill2's map was Vigilance** as well.
+
+### 9.3 Zero-rows check [verified]
+
+- **Calls A / B** (logged lines / last `#n`):
+  - MoveScale, PlayerUpd, ProbeBatch 711 `#4400` / 709 `#4380`; NetIdle 710 / 709;
+  - ActorUpd, ProbeQueue, ProbeTake, ProbeEval, GridQuery 1152 `#8810` / 1148 `#8770`;
+  - SetMajor 4/6, SetMinor 5/7, SetMyMajor 4/7, GhostSet 74/76, GhostClr 1/1, GhostClr2 1/1, SpawnGhost 1/1, SetLife 1/1.
+- **Empty on both sides, predicted negatives** (as §8.2): CtlAlt14, CtlSpec18, SpawnDead, GhostRevive, InputEnable, VoiceVu0Upload, VoiceVu0Mode, VoiceFftSel. GhostClr2 logged one call here (0 in 3c).
+- **Peek rows A / B:** 3188 / 3166; actor rows 1520 / 1521.
+- **Valves by name bytes:** all ten identified on 3160 / 3150 of 3171 / 3161 rows. The 11 NO-DATA rows per side come before the round-state block exists.
+- **ng block** `0x869360` on both sides, 3177 / 3155 rows.
+- **Pad:** 195 / 196 strafe legs logged in the input trace. **No button is written after the lobby.** Every non-zero `buttons` event comes from lobby navigation. A has none after its round start. B's last three are UP, DOWN and CROSS at 412.4–419.9: its READY selection, logged as its round loaded, and 45 s before its first control hold. None falls in the precondition or the control round.
+
+### 9.4 verdict_core [verified]
+
+`score-control`, exit 0:
+
+```
+[A] hold   470.67..  472.71 (2.04s) net= 84.19 snap=  1.52 drift=  0.00 -> PASS
+[B] hold   464.82..  466.86 (2.04s) net= 82.98 snap=  1.88 drift=  0.00 -> PASS
+RESULT CONTROLLABLE
+```
+
+`move-path` (whole log):
+
+```
+[A] MoveScale lines=711 (#0..#4400 over 418.8..800.4s) alive rows=1520 round rows=3177 now=800.6
+[A] MOVE-PATH ok since=800.4 -- #4400 at 800.4
+[B] MoveScale lines=709 (#0..#4380 over 413.0..794.5s) alive rows=1521 round rows=3155 now=795.1
+[B] MOVE-PATH ok since=794.5 -- #4380 at 794.5
+```
+
+The harness's **live** watch logged three stalls:
+- A: 10.7 s at `#1370`, 10.9 s at `#1860`;
+- B: 10.2 s at `#2870`.
+
+Each named `gap=0.000 <= 0.6`, so none is R6. Each recovered. The offline end-of-log verdict does not see stalls that recovered.
+
+`starvation` (process exit 1 = alarm):
+
+```
+[A] STARVATION alarm since=631.5325 signal=ng+0xde peak_ms=8217 bar_ok=False -- netidle rows=710 peak=8217ms lagflag rows=3177
+[B] STARVATION alarm since=504.9 signal=NetIdle peak_ms=10338 bar_ok=False -- netidle rows=709 peak=10338ms lagflag rows=3155
+```
+
+`contact`: `closest_3d=1331.89 dy_at_closest=111.52`, `LADDER contact_rows=0`. The players stayed near their spawns, by design.
+
+**Harness transcript** (`logs/parity/drive_s5_t1_launch8c_medley.txt`):
+
+```
+465.0s B_CONTROL B hold 0 2.00s net=82.98 snap=1.88 drift=0.00 rows=225 period=0.25 scale=1.0(11,1.0..1.0) -> PASS
+470.0s A_CONTROL A hold 0 2.00s net=84.19 snap=1.52 drift=0.00 rows=224 period=0.25 scale=1.0(12,1.0..1.0) -> PASS
+470.0s A_PRECONDITION controllable: A=CONTROLLABLE(1 holds) B=CONTROLLABLE(1 holds)
+773.3s A_CONTROL-ROUND round-end signal clock 00:01->00:00 on A at T+303.3s after 428 legs; observing 15s more, pad neutral
+791.4s A_STALE FRAME A_final: frame file ...latest_frame_A.png is 9.6s old (max 2s)
+794.4s A_STALE FRAME B_final: frame file ...latest_frame_B.png is 52.0s old (max 2s)
+794.5s A_RESULT CONTROL-ROUND round_ended=yes kills_stepped=0 aiteam_stepped=A:aiteam_00=0,A:aiteam_08=0,B:aiteam_00=0,B:aiteam_08=0 health_min=1,1 health_changes=0,0 signal=clock00:01->00:00 on=A
+```
+
+### 9.5 Movement bar on Medley (spec §5 Goal 1) [verified]
+
+| side | hold | net (≥ 40) | snap-back (≤ 10) | drift (≤ 5) | verdict |
+|---|---|---|---|---|---|
+| A | 470.67–472.71 (2.04 s) | **84.19** | **1.52** | **0.00** | PASS |
+| B | 464.82–466.86 (2.04 s) | **82.98** | **1.88** | **0.00** | PASS |
+
+The bar holds on Medley (Vigilance) after the vf0 fix, and every other reading agrees:
+- **Ground probe.** ProbeEval hits 1152 / 1152 (A) and 1148 / 1148 (B).
+- **Snap-back stamp.** `actor+0x420` is within 0.05 s of clock `0x4365c0` on 1492 / 1519 (A) and 1482 / 1520 (B) rows. 0 rows have a gap > 0.6 (max 0.14 / 0.08).
+- **Miss flag.** `+0x1061` bit 0x04 is set on 0 rows.
+- **Spawn-dead.** `+0x174` low 16 is 1, with 2 zero rows each at the start.
+
+**MoveScale rate.** About 11.5 calls/s (A `#4400` over 381.6 s), against 20/s on Frostfire 3c and 18.9/s on kill2.
+
+### 9.6 Valves over time (host seconds of each instance's own log)
+
+| | A (host, SEALS) | B (joiner, TERRORISTS) |
+|---|---|---|
+| `mp_round_count` | 0 → **1 at 783.3** | 0 → **1 at 777.5** (= A 783.3) |
+| `mp_game_over` | 0 all run | 0 all run |
+| `total_mp_kills` | **0 all run** | **0 all run** |
+| `aiteam_00` / `aiteam_08` | 0 → 1 at 418.1 / 418.4, then **constant** (through the round end and 17 s after it) | 0 → 1 at 412.3 / 413.3, then **constant** |
+| `player_team` | 0 | 0 → 8 at 344.4 |
+| `mp_major_game_state` | 0 → 1 (312.4) → 2 (414.1) → **4 (783.6)** | 0 → 1 (353.2) → 2 (408.3) → **4 (777.5) → 5 (782.9)** |
+| `mp_minor_game_state` | 0 → 1 → 2 → 1 → 2 (418.1) → **1 (783.6)** | 0 → 1 → 2 → 1 → 2 (412.3) → **1 (777.5)** |
+| `late_joiner`, `mission_abort` | 0 | 0 |
+| ng `+0x113/+0x114/+0x115` | 0,0,0 → 1,1,1 → 2,2,2 → 2,2,1 → 2,2,2 → **3,2,2 (419.1)** → 4,2,2 (783.3) → 4,4,1 → 5,4,1 → 3,4,1 (788.9) | 0,0,0 → 1,0,0 → 1,1,1 → 1,1,2 → 2,2,2 → 2,2,1 → 2,2,2 → **3,2,2 (413.3)** → 4,4,1 (777.5) → 3,5,1 (782.9) |
+| ng `+0xd2` | 0xAF → 0 at 415.6 | 0xAF → 0 at 409.8 |
+| `actor+0xC8` word | `0x40000001` every row | `0x80000100` every row |
+| `actor+0x1044` | **1.0 every row** (min 1.0) | **1.0 every row** |
+| `actor+0xF7A` | 1 every row | 1 every row |
+| clock `0x408f10` | `05:59` at 419.1 … `00:01` 776.9, **`00:00` 778.0**, `05:59` (round 2) 789.1 | `05:59` at 413.3 … **`00:09` at 777.5** (never read `00:00`), `05:59` 783.2 |
+
+**The round end.**
+- A's clock string reached `00:00` at 778.0.
+- `mp_round_count` stepped **5.3 s later**, at the same aligned host moment on both instances (A 783.3; B 777.5 + 5.80).
+- Major state went 2 → 4 at the same moment, and the round-2 clock started ~6 s after it.
+- B's HUD clock was 9 s behind A's at the step, having lost time in its stalls (§9.8). The round ended on the host's clock.
+- A's clock ran at real time: 358.9 s of host time for 05:59 → 00:00.
+
+`actor+0xC8`'s low byte (1 on A, 0 on B) does not by itself read as SEALS 0 / TERRORISTS 8. `player_team` does. The field's meaning is **inference, open**.
+
+### 9.7 Negative control verdict [verified]
+
+**The round ended on its clock and nothing a kill moves stepped.** On both instances:
+- `mp_round_count` stepped 0 → 1;
+- `total_mp_kills` stayed 0, and `aiteam_00` / `aiteam_08` stayed 1, before the signal (the harness: 489 / 486 sampled rows) and through the end of the logs (17 s / 18 s after the step);
+- `actor+0x1044` stayed 1.0 and `+0xF7A` stayed 1;
+- `mp_game_over` never left 0.
+
+**Two facts for `verdict_replay.py`:**
+- The **first** round-end signal on this map is the clock string's `00:00` (A only). `mp_round_count` follows 5.3 s later.
+- `mp_major_game_state` 2 → 4 coincides with the count step.
+
+`aiteam_*` does **not** reset at a clock round end within 17 s. A drop there stays kill-attributable [inference: one run].
+
+**Fixture:** `logs/run_[AB]_20260913_132843.log` plus `logs/parity/s5_t1_launch8c_medley/control_round.json`.
+
+### 9.8 Starvation during the no-fire strafes — the alarms are the peer's guest stalls [verified; cause inference]
+
+Both sides alarmed (A peak 8217 ms, B 10338 ms; `bar_ok=False`). Every alarm lies inside a stall of the **other** instance, not in a gap of the strafe schedule. The schedule's other-side leg starts were ≤ ~1.5 s apart (median 1.50 s) whenever the guest was running.
+
+The stalls are windows in which the round clock `0x4365c0` stops for ≥ 2 s while the host's peek sampler keeps writing rows (times aligned to A):
+
+| stalled instance | window (A clock) | length | the other side meanwhile |
+|---|---|---|---|
+| A | 500.7–505.6 | 4.9 s | (B stalled too, 501.5–505.9) |
+| A | 506.1–514.1 | 7.9 s | B: NetIdle 7145 ms, `ng+0xde` = 1 at 510.8–514.3, f12 0.4 → 0.0 |
+| A | 547.9–557.8 | 9.9 s | B: NetIdle **10338 ms**, `ng+0xde` = 1 at 552.4–558.2, f12 0.8 → 0.1 → 0.0 × 5 |
+| B | 621.0–624.3, 626.8–644.1 | 3.3 s, 17.3 s | A: NetIdle 6318 then **8217 ms**, `ng+0xde` = 1 at 631.5–633.8 and 640.4–644.4, f12 0.2, 0.7, 0.0, 0.0 |
+| A and B | 783.3–788.9 | 5.5 s | the round transition, both sides |
+
+During A's 506–514 stall, all 55 pc-sampler rows read `running=0`, with thread 1 parked at `pc=0x3b00a4 st=2 wait=4/0` and thread 4 at `0x1a3b68 ra=0x30c8f8 wait=2/11`. During B's 621–638 stall, 70 of 72 rows read the same thread-1 state. In ordinary play that state is ~40 % of samples, so the guest's main thread sat in one wait for the whole stall.
+
+The end-of-round evidence frames were stale (A 9.6 s, B 52.0 s; B's last export shows HUD `01:43`). That fits the runtime not presenting. KNOWN §4 records the same class for the single-player gate on the current tree ("nearly stops presenting after gameplay start"). **That the stalls are a present / vsync-wait stall is inference.** Launch 3c on Frostfire, the same exe, had no stall (max MoveScale line gap 1.10 s).
+
+**Reading:**
+- With both guests running, the two-sided strafe kept both idle counters below the alarm.
+- A guest stall on one instance starves the other within ~4 s. The two-sided rule predicts exactly that, because the stalled side sends nothing.
+- Starvation here is **not** evidence against the strafe policy. It **is** a hazard for Task 5 / 6: a 10–17 s stall of the victim takes the shooter's scale to 0.0.
+
+### 9.9 Verdict
+
+**Medley (Vigilance) control holds after the vf0 fix, and the clock round-end negative control exists.**
+- Both sides pass the movement bar (net 84.19 / 82.98, snap 1.52 / 1.88, drift 0.00).
+- The probe hits every call, and R6 never fires.
+- The round ended on its clock with `mp_round_count` 0 → 1 on both instances, while `total_mp_kills`, `aiteam_*`, `+0x1044` and `+0xF7A` did not move.
+
+**Open items:**
+- The two starvation alarms: peer guest stalls of 8–17 s, cause not established.
+- The stale evidence frames.
+- The low MoveScale rate: ~11.5 calls/s against 18.9/s on kill2.
