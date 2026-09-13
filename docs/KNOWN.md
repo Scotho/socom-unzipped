@@ -25,6 +25,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | Five soft-double stubs were bound with the wrong ABI, and were **identity** at 19 of 22 sites (the 3 garbage sites are unreachable) | `db7a992`; delay-slot analysis of every call site |
 | The intro-movie macroblocks were a cross-thread race on `m_currentTransfer`, not a byte-accumulator bug | `4a701f1`; deficit 3,748 → 0, MISSING 9 → 0 |
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
+| **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
+| **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
 | **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 80. **Same-binary A/B** (`5ed29ca`, one match, both legs a frame apart): fix ON f12 = 1.0 on 330/330, idle max 1490 ms, activity globals 192/192 distinct, 89 distinct x; fix OFF f12 = 0.0 on 339/339, idle 504,210 ms, globals never written, **0.46 units** of travel. Movement tracks the stick — 1.3 units at neutral vs 28-38 per hold, starting on the hold frame, axes orthogonal. Review verified every figure to 3 dp |
 
 ## 2. Believed, unconfirmed — with the experiment that would settle it
@@ -84,10 +86,11 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   logged nothing for a whole session because it pointed at `0x30be80` while the guest calls the
   thunk at `0x30cd80` — inside the very task that wrote the warning about checks attesting to
   nothing.
-- **A parked opponent starves the mover.** The movement scale is fed by *received* bytes, so if the
-  other player stands still the approaching player's own scale decays toward 0.0 on a long walk.
-  Observed in Task 7. Any plan of the form "walk a long way to a stationary target" is
-  structurally unreliable — keep both players generating traffic.
+- **A parked opponent starves a *stuck* mover.** The movement scale is fed by received bytes, so
+  when A is pinned on geometry and B is parked, A's own scale decays to 0.0 — 19 of 821 rows,
+  all inside two windows where A moved 2.5 units. It forbids "stall against geometry while the
+  target is parked", not long approaches as first written. Keeping both players moving removes it
+  under either causal reading.
 - **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
   defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
