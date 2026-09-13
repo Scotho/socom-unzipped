@@ -112,5 +112,76 @@ class KillWatchHealthTransition(unittest.TestCase):
         self.assertEqual(self.health_events(), [])
 
 
+def actor_line(actor_addr, health, alive):
+    """A row shaped like the Task 2 peek: the actor block (vtable), the word at +0xF78 (alive byte =
+    byte 2) and the float at +0x1044 -- three items, found by address off the vtable block."""
+    words = [0] * 16
+    words[0] = M.ACTOR_VTABLE
+    blk = " ".join(f"{w:08x}(.)" for w in words)
+    return (f"[peek] @{actor_addr:x}: {blk} @{actor_addr + 0xF78:x}: {alive << 16:08x}(.) "
+            f"@{actor_addr + 0x1044:x}: {f2raw(health):08x}(.)")
+
+
+class KillWatchArmedDefaults(unittest.TestCase):
+    """Sprint 5 Task 2 Step 6: health +0x1044 and alive +0xF7A are the harness defaults."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.tail = M.RunLogTail(os.path.join(self.tmp.name, "run.log"))
+        self.tail.watch_offset = M.DEFAULT_HEALTH_OFFSET
+        self.watch = M.KillWatch({"A": self.tail}, {}, server_log=os.path.join(self.tmp.name, "none.log"),
+                                 health=M.DEFAULT_HEALTH_OFFSET, alive=M.DEFAULT_ALIVE_OFFSET)
+
+    def feed(self, *reads):
+        for addr, health, alive in reads:
+            self.tail._line(actor_line(addr, health, alive))    # noqa: SLF001
+            self.watch._check_health()                            # noqa: SLF001
+            self.watch._check_alive()                             # noqa: SLF001
+
+    def kinds(self):
+        return [(e["kind"], e["firing"]) for e in self.watch.events]
+
+    def test_defaults_are_the_sourced_offsets(self):
+        self.assertEqual(M.DEFAULT_HEALTH_OFFSET, 0x1044)
+        self.assertEqual(M.DEFAULT_ALIVE_OFFSET, 0xF7A)
+
+    def test_death_fires_health_and_records_alive_without_firing(self):
+        self.feed((0x1F00000, 1.0, 1), (0x1F00000, 0.5, 1), (0x1F00000, 0.0, 1), (0x1F00000, 0.0, 2))
+        self.assertEqual(self.kinds(), [("health", True), ("alive", False)])
+        self.assertEqual(self.watch.fired["kind"], "health")
+        self.assertEqual(self.tail.watch_reads, 4)
+        self.assertEqual(self.tail.watch_misses, 0)
+
+    def test_alive_leaving_1_alone_never_fires(self):
+        self.feed((0x1F00000, 1.0, 1), (0x1F00000, 1.0, 3))
+        self.assertEqual(self.kinds(), [("alive", False)])
+        self.assertIsNone(self.watch.fired)
+
+    def test_alive_first_read_not_1_is_not_an_observation(self):
+        self.feed((0x1F00000, 1.0, 2), (0x1F00000, 1.0, 3))
+        self.assertEqual(self.kinds(), [])
+
+    def test_alive_on_another_actor_is_not_an_observation(self):
+        self.feed((0x1F00000, 1.0, 1), (0x1F20000, 1.0, 2))
+        self.assertEqual(self.kinds(), [])
+
+
+class ArmingCli(unittest.TestCase):
+    def test_parse_offset(self):
+        self.assertIsNone(M.parse_offset("none"))
+        self.assertIsNone(M.parse_offset("OFF"))
+        self.assertEqual(M.parse_offset("0"), 0)
+        self.assertEqual(M.parse_offset("0x1044"), 0x1044)
+
+    def test_health_peek_coverage(self):
+        self.assertEqual(M.health_peek_problems("*0x408c58+0x1044:1", 0x1044), [])
+        self.assertEqual(M.health_peek_problems("*0x408c58+0x1040:4", 0x1044), [])
+        self.assertEqual(M.health_peek_problems("*0x408c58:64,*0x408c58+0xF78:1", None), [])
+        self.assertTrue(M.health_peek_problems("*0x408c58:64,*0x408c58+0xF78:1", 0x1044))
+        self.assertEqual(M.health_peek_problems("*0x408c58+0x1000:128", 0x1044), [])
+        self.assertTrue(M.health_peek_problems("*0x408c58+0xF00:128", 0x1044))   # 64-word cap: ends at +0x1000
+
+
 if __name__ == "__main__":
     unittest.main()

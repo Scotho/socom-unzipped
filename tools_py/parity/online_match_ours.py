@@ -346,6 +346,11 @@ class RunLogTail(threading.Thread):
         self.calls = {}
         self.rets = {}
         self.alive_rows = []
+        # Which actor byte is the alive byte (--alive-offset; research/19 F1, confirmed single-player in
+        # Sprint 5 Task 2), and (t, byte, actor_addr) appended when the byte OR the actor changes -- the
+        # alive-leaves-1 observation KillWatch records beside a health death.
+        self.alive_offset = vc.ACTOR_ALIVE_OFFSET
+        self.alive_hist = []
         self.round_rows = []
         self.round_valid_t = None
         self.valve_counts = {}
@@ -450,7 +455,8 @@ class RunLogTail(threading.Thread):
     def _state_row(self, t, items):
         """Alive byte, round valves + clock string and per-valve identification counts, from one
         `[peek]` row's items (all of them, the camera record included)."""
-        alive = vc.row_actor_field(items, vc.ACTOR_ALIVE_OFFSET, "u8")
+        alive = vc.row_actor_field(items, self.alive_offset, "u8")
+        actor = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
         valves = {name: vc.row_valve(items, name) for name in vc.VALVES}
         state = {name: valves[name] for name in vc.ROUND_VALVES}
         state["clock"] = vc.row_clock_string(items)
@@ -458,6 +464,8 @@ class RunLogTail(threading.Thread):
             self.latest_items = items
             if not isinstance(alive, vc.NoData):
                 self.alive_rows.append((t, alive))
+                if not self.alive_hist or self.alive_hist[-1][1:] != (alive, actor):
+                    self.alive_hist.append((t, alive, actor))
             self.round_rows.append((t, state))
             if not any(isinstance(state[k], vc.NoData) for k in ("mp_round_count", "mp_game_over")):
                 self.round_valid_t = t
@@ -1303,10 +1311,16 @@ class KillWatch(threading.Thread):
     POLL_S = 0.25
 
     def __init__(self, tails, spawns, server_log=SERVER_LOG, health=None,
-                 health_range=(-1e9, 0.0), clock=time.time):
+                 health_range=(-1e9, 0.0), clock=time.time, alive=None):
         super().__init__(daemon=True)
         self.tails, self.spawns, self.clock = tails, spawns, clock
         self.server_log, self.health, self.health_range = server_log, health, health_range
+        # --alive-offset: the alive byte leaving ALIVE_VALUE on the actor that read alive is recorded as a
+        # NON-firing `alive` observation (spec §5 Goal 2: it leaves 1 within 2 s of the health death).
+        # It never ends a run on its own: a byte that also changes on a revive or a spectator switch is
+        # corroboration, not attribution.
+        self.alive = alive
+        self._alive_state = {}
         self.events = []
         self.fired = None
         self._stop = threading.Event()
@@ -1418,6 +1432,24 @@ class KillWatch(threading.Thread):
                     state["alive"] = None            # one death per alive stretch
             state["seen"] = len(hist)
 
+    def _check_alive(self):
+        if self.alive is None:
+            return
+        for tag, tail in self.tails.items():
+            with tail._lock:                         # noqa: SLF001 - same module
+                hist = list(getattr(tail, "alive_hist", []))
+            state = self._alive_state.setdefault(tag, {"seen": 0, "alive": None})
+            for t, v, actor in hist[state["seen"]:]:
+                if v == vc.ALIVE_VALUE:
+                    state["alive"] = (t, actor)
+                elif state["alive"] is not None and state["alive"][1] == actor:
+                    self._add("alive", tag, {"value": v, "at": t, "actor": actor, "offset": self.alive,
+                                             "alive_at": state["alive"][0]}, firing=False)
+                    state["alive"] = None
+                else:
+                    state["alive"] = None
+            state["seen"] = len(hist)
+
     def round_live(self, tag):
         """This instance's round valves (mp_round_count and mp_game_over, by name bytes) were read
         within ROUND_LIVE_MAX_AGE_S. While they are, `respawn` does not fire."""
@@ -1474,6 +1506,7 @@ class KillWatch(threading.Thread):
         while not self._stop.is_set():
             try:
                 self._check_health()
+                self._check_alive()
                 self._check_round()
                 self._check_positions()
                 self._check_server()
@@ -1510,6 +1543,8 @@ MOVE_PATH_MAX_EVERY = 20         # at ~17-27 MoveScale calls/s, EVERY <= 20 logs
                                  # 10 s stall is ~10 missing lines; at the default 500 it is one line
                                  # per ~26 s and a healthy path looks stalled (plan instrument notes)
 MOVE_PATH_POLL_S = 1.0
+DEFAULT_HEALTH_OFFSET = 0x1044   # research/19 F1; Sprint 5 Task 2 read damage steps live in SP, no death (research/22)
+DEFAULT_ALIVE_OFFSET = vc.ACTOR_ALIVE_OFFSET   # 0xF7A, same sources
 ALIVE_PEEK_BASE = 0x408C58       # *0x408c58 = the player actor
 ROUND_LIVE_MAX_AGE_S = 5.0       # valves read within this long count as live (20 rows at 4 Hz,
                                  # ~8 at kill2 B's 0.6 s/row under load)
@@ -1654,7 +1689,7 @@ def _has_item(items, item, min_words):
     return any(ch == c and words >= min_words for ch, words, _ in items)
 
 
-def move_path_preconditions(env):
+def move_path_preconditions(env, alive_offset=vc.ACTOR_ALIVE_OFFSET):
     """Why a MovePathWatch would attest to nothing under this environment ([] = it may start):
     MoveScale traced at PS2X_CALL_TRACE_EVERY <= 20, and the two disarm inputs peeked -- the actor
     block (vtable), a peek item covering actor+0xF7A, and mp_round_count's value AND name-bytes items.
@@ -1680,15 +1715,39 @@ def move_path_preconditions(env):
         m = re.fullmatch(re.escape(base) + r"(?:\+(0x[0-9a-f]+))?", ch)
         if m:
             off = int(m.group(1), 16) if m.group(1) else 0
-            if off <= vc.ACTOR_ALIVE_OFFSET < off + 4 * min(words, 64):
+            if off <= alive_offset < off + 4 * min(words, 64):
                 covered = True
     if not covered:
-        problems.append(f"PS2X_PEEK covers no actor+{vc.ACTOR_ALIVE_OFFSET:#x} (alive byte), e.g. "
+        problems.append(f"PS2X_PEEK covers no actor+{alive_offset:#x} (alive byte), e.g. "
                         f"*{ALIVE_PEEK_BASE:#x}+0xF78:1")
     rc = vc.VALVES["mp_round_count"]
     if not (_has_item(items, rc.value_item, 2) and _has_item(items, rc.name_item, 3)):
         problems.append(f"PS2X_PEEK lacks mp_round_count's {rc.value_item} and/or {rc.name_item}")
     return problems
+
+
+def parse_offset(text):
+    """--health-offset / --alive-offset: an int (0 is valid), or None for 'none'/'off'/''."""
+    if text is None or str(text).strip().lower() in ("", "none", "off"):
+        return None
+    return int(str(text), 0)
+
+
+def health_peek_problems(spec, health_offset):
+    """Why an ARMED health watch would read nothing under this PS2X_PEEK ([] = covered). The watch reads
+    actor+offset from whichever item covers it (RunLogTail), so an item chained off the actor static must
+    span it; an armed watch with zero reads is a FAIL after the match, so refuse before it."""
+    if health_offset is None:
+        return []
+    base = _canon_chain(f"*{ALIVE_PEEK_BASE:#x}")
+    for ch, words, _ in parse_peek_spec(spec):
+        m = re.fullmatch(re.escape(base) + r"(?:\+(0x[0-9a-f]+))?", ch)
+        if m:
+            off = int(m.group(1), 16) if m.group(1) else 0
+            if off <= health_offset < off + 4 * min(words, 64):
+                return []
+    return [f"health watch armed at actor+{health_offset:#x} but PS2X_PEEK covers no actor+{health_offset:#x}, "
+            f"e.g. *{ALIVE_PEEK_BASE:#x}+{health_offset:#x}:1 (or pass --health-offset none)"]
 
 
 def peek_spec_problems(spec):
@@ -1921,18 +1980,23 @@ def main():
                     help="with --only A: walk the AVAILABLE MAPS list this many DOWN presses, "
                          "capturing every screen, and stop. No match is created. This is how the "
                          "reference crop for a new map is obtained")
-    ap.add_argument("--health-offset", default=None,
-                    help="BYTE OFFSET FROM THE ACTOR BASE of the health word to watch, e.g. 0x1044. "
-                         "Not an item index: PS2X_PEEK skips items whose chain does not resolve, "
-                         "so indices shift. The candidate is research/19 F1: health is the float "
-                         "at actor+0x1044 (1.0 = full, <= 0.0 = dead), with the alive byte at "
-                         "actor+0xF7A (1 = alive; a byte, so it is NOT watchable with the float "
-                         "--health-range). Research-sourced -- two r0001 community tools, 17 decomp "
-                         "sites, 1.0 in all eight actor images -- and NOT yet read live in an "
-                         "online match; Sprint 5 Task 2 confirms it, so it is deliberately not the "
-                         "default. PS2X_PEEK must cover the offset (e.g. *0x408c58+0x1040:4) or the "
-                         "run fails with reads=0. The +0x204/+0x208 pair this help used to name is "
-                         "RETRACTED.")
+    ap.add_argument("--health-offset", default=f"{DEFAULT_HEALTH_OFFSET:#x}",
+                    help="BYTE OFFSET FROM THE ACTOR BASE of the health float to watch (default "
+                         f"{DEFAULT_HEALTH_OFFSET:#x}; 'none' disarms). Not an item index: PS2X_PEEK skips "
+                         "items whose chain does not resolve, so indices shift. research/19 F1: 1.0 = full, "
+                         "<= 0.0 = dead. ARMED BY DEFAULT since Sprint 5 Task 2. That task's single-player runs "
+                         "read it step 1.0 -> 0.978 -> 0.721 and 1.0 -> 0.392 on damage, but saw NO death "
+                         "(docs/research/22-kill-readout.md): the `<= 0` half is still sourced, not read "
+                         "live, and the first online death is its confirmation. "
+                         "PS2X_PEEK must cover it (e.g. *0x408c58+0x1044:1): a --converge run refuses to "
+                         "launch otherwise, rather than failing later with reads=0. The +0x204/+0x208 "
+                         "pair this help used to name is RETRACTED.")
+    ap.add_argument("--alive-offset", default=f"{DEFAULT_ALIVE_OFFSET:#x}",
+                    help=f"BYTE OFFSET FROM THE ACTOR BASE of the alive byte (default {DEFAULT_ALIVE_OFFSET:#x}, "
+                         "1 = alive; 'none' disarms the observation). Read for the move-path disarm and "
+                         "recorded by KillWatch as a non-firing `alive` observation when it leaves 1 on the "
+                         "actor that read alive. Sourced (research/19 F1); Task 2 saw it stay 1 through damage and "
+                         "a MISSION FAILURE, and saw no death.")
     ap.add_argument("--health-range", default="-1e9:0.0",
                     help="lo:hi -- the float range that counts as DEAD for --health-offset. The "
                          "default matches research/19's `<= 0.0 = dead`. It used to be -0.5:0.5, "
@@ -1942,6 +2006,8 @@ def main():
                          "first read alive (0 < v <= 1), so a first read of 0.0 or of "
                          "uninitialised heap (0xAFAFAFAF) is not a kill")
     a = ap.parse_args()
+    a.health_offset = parse_offset(a.health_offset)
+    a.alive_offset = parse_offset(a.alive_offset)
     if a.until_kill:
         a.converge = True
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
@@ -1957,7 +2023,9 @@ def main():
         # whose round valves cannot be identified, is a match spent proving nothing.
         for prob in peek_spec_problems(os.environ.get("PS2X_PEEK", "")):
             print(f"PEEK SPEC: {prob}", flush=True)
-        refusals = move_path_preconditions(os.environ)
+        refusals = move_path_preconditions(os.environ, alive_offset=(a.alive_offset if a.alive_offset is not None
+                                                                     else vc.ACTOR_ALIVE_OFFSET))
+        refusals += health_peek_problems(os.environ.get("PS2X_PEEK", ""), a.health_offset)
         if refusals:
             for prob in refusals:
                 print(f"MOVE-PATH WATCH REFUSES: {prob}", flush=True)
@@ -2091,7 +2159,8 @@ def main():
                      f"route={'mined(' + MINED_ROUTE_MAP + ')' if mined_ok else 'direct'} "
                      f"engage3d={a.engage} dy_tol={a.engage_dy} "
                      f"pos={'actor' if A.tail.actor_ingame() else 'camera-reconstruction'} "
-                     f"health={'armed@+0x%x' % int(a.health_offset, 0) if a.health_offset else 'disarmed'}")
+                     f"health={'armed@+0x%x' % a.health_offset if a.health_offset is not None else 'disarmed'} "
+                     f"alive={'@+0x%x' % a.alive_offset if a.alive_offset is not None else 'disarmed'}")
             sideA = Side("A", A.sh, A.tail, route=route)
             sideB = Side("B", B.sh, B.tail, route=None)   # B's half of the map has no mined track
             spawns = {}
@@ -2101,7 +2170,7 @@ def main():
                     spawns[tag] = (rows[0][1], rows[0][3])
             health = None
             if a.health_offset is not None:
-                health = int(a.health_offset, 0)   # 0 is a valid offset; every test is `is None`
+                health = a.health_offset           # 0 is a valid offset; every test is `is None`
                 for c in (A, B):
                     c.tail.watch_offset = health
                 A.sh.log(f"kill readout: health word armed at ACTOR+0x{health:x} (found through "
@@ -2112,8 +2181,11 @@ def main():
                          "reads the round end from the position records and the Medius log, and "
                          "the actor block is logged for offline confirmation")
             lo, hi = (float(v) for v in a.health_range.split(":"))
+            if a.alive_offset is not None:
+                for c in (A, B):
+                    c.tail.alive_offset = a.alive_offset
             watch = KillWatch({"A": A.tail, "B": B.tail}, spawns, health=health,
-                              health_range=(lo, hi))
+                              health_range=(lo, hi), alive=a.alive_offset)
             watch.start()
             t_gameplay = time.time()
             kill_shots = {"done": False}

@@ -1,0 +1,81 @@
+# Sprint 5 Task 2: single-player DEATH run. drive.py navigates boot -> NEW GAME -> briefing -> DEPLOY
+# -> mission until the HUD ammo panel shows (the same navigation as gameplay_probe.txt /
+# gameplay_damage.txt, which the mission gate reaches the HUD with at ~218 s), then only WAITS.
+# Every gameplay input after the HUD comes from tools_py/parity/sp_death_probe.py through the pad
+# file (PS2X_SOCOM2_INPUT_FILE), not from posted keys: the probe times the holds itself, runs the
+# yaw/pitch/heading calibrations, walks into the level and stands until killed (240 s cap). The
+# probe ends the run; the trailing waits only keep drive.py (and so the game) alive meanwhile.
+# Do not add steps after the untilref line that press anything: they would land on the calibration.
+# The untilref HUD match below is NOT proof of gameplay: on 2026-09-13 (Task 2 run 1) it matched the
+# letterboxed intro cinematic at 216 s with 0 presses. The probe therefore enters gameplay itself
+# (squad-panel HUD check, CROSS through the cinematic and HELP pop-ups, a forward hold that moves).
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # controller presets (1)
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # controller presets (2)
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+long+2.0:NONE       # briefing reached (waits out the location cinematic / typed text, up to 150 s)
+until(20,368,110,384)+1.2:DOWN   # DOWN until DEPLOY is highlighted (press count varies per run)
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+2.0:CROSS      # deploy -> load mission
+next+10.0:NONE      # mission
+untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD ammo panel shows
+wait+2.0:NONE       # HUD reached; drive.py prints 'untilref(scripts/parity/ref_hud_ours.png): N presses, matched=True'
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
+wait+30.0:NONE
