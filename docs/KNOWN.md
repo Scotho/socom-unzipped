@@ -219,5 +219,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after Task 
   exactly 0x20 lower than the console's, so an address like `0x69xxxx` from a cheat or trainer is
   right in PCSX2 and wrong for us. Always resolve through a pointer (`*0x437ce8`, `*0x408c58`), and
   record which game build and region an address was found for.
+- **A green run of a timing-dependent test is a sample, not a verdict.** The acceptance harness's
+  simulator was reported passing and then failed 2 of 2 for the next person to run it. After the
+  race fix it passes 4 of 5 full suites, with two genuine residual loop defects (players circling
+  just outside contact range; an oscillation when the only same-height ground lies away from the
+  target), parked into Sprint 5's engagement ladder. Report pass counts over repeated solo runs.
+- **A default threshold can manufacture a pass.** `--health-range` defaulted to `-0.5:0.5`, which
+  would have counted a player on 40 % health as dead and printed `PASS` — found only while editing
+  its help text. Now `-1e9:0.0`. Audit the defaults of any instrument that can declare success.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
