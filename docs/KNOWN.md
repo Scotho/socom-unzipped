@@ -233,5 +233,9 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   still looks like a death on this one signal — which is why Sprint 5's acceptance requires three
   signals from different objects and processes. Audit the defaults *and* the first-read behaviour
   of any instrument that can declare success.
+  **Two further residuals, also parked into Sprint 5**, both erring toward a false FAIL rather than a
+  false PASS: a read that is neither alive nor dead (NaN, 5000.0) between a real alive read and a
+  real death clears the alive state and suppresses that kill; and a respawn that re-points the actor
+  address at the moment of death also misses it.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
