@@ -9,6 +9,8 @@ Usage: python -m tools_py.parity.online_login_ours [--existing] [--name socomc] 
        [--instance B]   (second exe instance: own window title, memory card dir and UDP ports)
 """
 import argparse
+import contextlib
+import functools
 import json
 import os
 import subprocess
@@ -118,7 +120,177 @@ def write_pad_file(path, buttons=(), axes=None):
     os.replace(tmp, path)
 
 
+# ---------------------------------------------------------------------------
+# Lobby failure classes, per-stage timeouts, verified re-send (Sprint 5 R47, plan Amendment A6)
+# ---------------------------------------------------------------------------
+# A lobby failure is not an engagement result: it prints `RESULT LOBBY-FAIL <class>` and one
+# `LOBBY class=<class>` line, and exits LOBBY_FAIL_EXIT (online_match_ours uses 0 go, 1 FAIL,
+# 2 NO-DATA, 3 NO-CONTROL). A launch that reaches gameplay prints `LOBBY class=ok`.
+LOBBY_STAGES = ("login", "host", "join", "map_select", "ready", "launch")
+LOBBY_STAGE_TIMEOUT_S = 180.0   # kill5 and 8a spent 390-800 s waiting on a lobby that had already failed
+LOBBY_FAIL_EXIT = 4
+LOBBY_RESEND_MAX = 3
+# Frame age for a signature check. Both checked presses wait >= 3 s first, so a frame file younger
+# than this was rendered after the press (the runtime rewrites it every ~150 ms).
+LOBBY_FRAME_MAX_AGE_S = 1.0
+CLASS_OK, CLASS_MAP_CROSS, CLASS_READY = "ok", "map-cross-dropped", "ready-dropped"
+CLASS_JOIN, CLASS_HOST = "join-not-reached", "host-not-reached"
+CLASS_MAP_SEARCH, CLASS_KEYBOARD = "map-list-search", "login-keyboard"
+
+# Map CROSS signature: the SELECTED MAPS panel (x 335-625, y 110-380) is byte-identical when the
+# CROSS did not register. 8b's dropped press: mean |diff| 0.00 (A_14b vs A_15, 9 s and a SQUARE
+# apart). 8c's live check 4 s after a taken CROSS alone: 3.52 (8.95 once the SQUARE had followed).
+# The 8c driver retried below 3.0; 1.0 keeps "byte-identical" and leaves 3.5x margin to that read.
+MAP_PANEL = (slice(110, 380), slice(335, 625))
+MAP_CROSS_DROPPED_MAX_DIFF = 1.0
+# READY signature: the row-2 label's text right edge (luminance > 110, x 22-165, y 158-180) is
+# col 48 while it still reads READY and col 82-83 once NOT READY shows (8a A/B). No text at all
+# (8c: the match launched inside 3 s) or any other edge is NOT retried: a second CROSS on NOT
+# READY would un-ready.
+READY_LABEL = (slice(158, 180), slice(22, 165))
+READY_LABEL_LUMA = 110
+READY_EDGE_DROPPED_MAX = 55
+
+
+class LobbyFail(SystemExit):
+    """A classified lobby failure; a SystemExit so every existing caller exits LOBBY_FAIL_EXIT."""
+
+    def __init__(self, cls, detail=""):
+        super().__init__(LOBBY_FAIL_EXIT)
+        self.cls, self.detail = cls, detail
+
+    def __str__(self):
+        return f"LOBBY-FAIL {self.cls}" + (f" -- {self.detail}" if self.detail else "")
+
+
+def lobby_fail(sh, cls, detail=""):
+    """Log the RESULT and class lines, capture the screen when possible; returns the exception to raise."""
+    sh.log(f"RESULT LOBBY-FAIL {cls}" + (f" -- {detail}" if detail else ""))
+    sh.log(f"LOBBY class={cls}")
+    sh.stages = ()                        # the failure is decided: nothing after this re-enters the timeout
+    try:
+        sh.shot(f"lobby_fail_{cls.replace(':', '_')}")
+    except (RuntimeError, OSError) as e:  # a stale or missing frame must not hide the classification
+        sh.log(f"(no lobby-fail capture: {e})")
+    return LobbyFail(cls, detail)
+
+
+@contextlib.contextmanager
+def lobby_stage(sh, name, timeout=LOBBY_STAGE_TIMEOUT_S):
+    """Run a lobby stage under a deadline. Shell.press / pad_press / is_screen / osk_refs check it, so
+    an overrun ends as `timeout:<stage>` within one step. A nested stage keeps the outer deadline
+    running; the outermost expired stage is the one reported."""
+    if name not in LOBBY_STAGES:
+        raise ValueError(f"unknown lobby stage {name!r}")
+    prev = sh.stages
+    sh.stages = tuple(prev) + ((name, sh.clock() + timeout),)
+    try:
+        yield
+    finally:
+        sh.stages = prev
+
+
+def staged(name):
+    """Decorator: the lobby function (first argument a Shell) runs as stage `name`."""
+    def deco(fn):
+        @functools.wraps(fn)
+        def run(sh, *a, **k):
+            with lobby_stage(sh, name):
+                return fn(sh, *a, **k)
+        run.lobby_stage = name
+        return run
+    return deco
+
+
+def lobby_launch_budget(t_start, clock=time.time):
+    """Seconds left of the launch stage (READY -> gameplay rows), which both instances share."""
+    return max(1.0, LOBBY_STAGE_TIMEOUT_S - (clock() - t_start))
+
+
+def lobby_gray_of(im):
+    return np.asarray(im.convert("L"), dtype=np.float32)
+
+
+def lobby_gray(sh):
+    """A frame rendered after the press. A StaleFrameError (an instance stall) is waited out under the
+    stage deadline, never read as a dropped press."""
+    while True:
+        try:
+            return lobby_gray_of(winshot.grab(sh.hwnd, max_age=LOBBY_FRAME_MAX_AGE_S))
+        except winshot.StaleFrameError as e:
+            sh.log(f"lobby check: {e} -- waiting for a fresh frame")
+            sh.check_stage()
+
+
+def map_panel_diff(pre, post):
+    return float(np.abs(post[MAP_PANEL] - pre[MAP_PANEL]).mean())
+
+
+def map_cross_dropped(pre, post):
+    return map_panel_diff(pre, post) < MAP_CROSS_DROPPED_MAX_DIFF
+
+
+def ready_label_edge(gray):
+    cols = np.where((gray[READY_LABEL] > READY_LABEL_LUMA).any(axis=0))[0]
+    return int(cols.max()) if len(cols) else None
+
+
+def ready_dropped(gray):
+    edge = ready_label_edge(gray)
+    return edge is not None and edge <= READY_EDGE_DROPPED_MAX
+
+
+def lobby_resend_cross(sh, wait):
+    """A re-sent CROSS goes through the injected pad file when there is one (never dropped)."""
+    if sh.pad_file:
+        sh.pad_press("CROSS", wait=wait)
+    else:
+        sh.press("cross", wait)
+
+
+def verify_resend(sh, cls, dropped, resend):
+    """Check the press; re-send up to LOBBY_RESEND_MAX times; LobbyFail(cls) if it never registers.
+    Returns the number of re-sends it took."""
+    for attempt in range(1, LOBBY_RESEND_MAX + 1):
+        if not dropped():
+            return attempt - 1
+        sh.log(f"LOBBY RESEND {cls} attempt={attempt}")
+        resend()
+    if not dropped():
+        return LOBBY_RESEND_MAX
+    raise lobby_fail(sh, cls, f"still not registered after {LOBBY_RESEND_MAX} re-sends")
+
+
+def press_map_cross_verified(sh, wait=4.0):
+    """The CROSS that moves the highlighted map into SELECTED MAPS, verified on that panel."""
+    pre = lobby_gray(sh)
+    sh.press("cross", wait)
+
+    def dropped():
+        d = map_panel_diff(pre, lobby_gray(sh))
+        sh.log(f"map CROSS check: SELECTED MAPS panel mean |diff| {d:.2f}")
+        return d < MAP_CROSS_DROPPED_MAX_DIFF
+
+    return verify_resend(sh, CLASS_MAP_CROSS, dropped, lambda: lobby_resend_cross(sh, wait))
+
+
 class Shell:
+    stages = ()                  # active lobby stages ((name, deadline), ...), outermost first
+    clock = staticmethod(time.time)
+
+    def check_stage(self):
+        now = self.clock() if self.stages else None
+        for name, deadline in self.stages:
+            if now >= deadline:
+                raise lobby_fail(self, f"timeout:{name}", f"stage {name} exceeded {LOBBY_STAGE_TIMEOUT_S:.0f}s")
+
+    def stage_sleep(self, seconds):
+        """time.sleep, cut at the active stage deadline (the check then raises)."""
+        if self.stages:
+            seconds = max(0.0, min(seconds, min(d for _, d in self.stages) - self.clock()))
+        time.sleep(seconds)
+        self.check_stage()
+
     def __init__(self, hwnd, out, t0, tag="", pad_file=None):
         self.hwnd, self.out, self.t0, self.tag = hwnd, out, t0, tag
         self.pad_file = pad_file
@@ -139,8 +311,9 @@ class Shell:
         # 0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to
         # trip the UI's held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the
         # repeat reopened it, eight times in a row, 2026-09-09 play4).
+        self.check_stage()
         keys.press(self.hwnd, b, T, hold_s=0.08)
-        time.sleep(wait)
+        self.stage_sleep(wait)
 
     def hold(self, b, seconds, wait=0.3):
         """Hold a key (stick directions W/A/S/D, I/J/K/L; R1 fire) for `seconds`. With a pad file the
@@ -160,6 +333,7 @@ class Shell:
         0.09 s is ~5-6 frames at the shell's 60 fps: long enough for the pad poll to see it, short
         enough to stay under the keyboard's auto-repeat (0.15 s / 9 frames overshoots the cursor).
         """
+        self.check_stage()
         write_pad_file(self.pad_file, [b])
         time.sleep(hold_s)
         write_pad_file(self.pad_file)
@@ -227,6 +401,7 @@ class Shell:
     PROMPT_THRESH = {"write_down": 0.5, "save_card": 0.5, "card_slot": 0.5}
 
     def is_screen(self, name, thresh=None):
+        self.check_stage()
         if name == "main_menu":
             return score(self.menu, winshot.grab(self.hwnd))["score"] >= (thresh or 90.0)
         arr = np.asarray(winshot.grab(self.hwnd).convert("L").resize((320, 224)), dtype=float)
@@ -267,6 +442,7 @@ class Shell:
     def osk_refs(self):
         """Distance of the accent-toggle key to the two references: which mode the on-screen
         keyboard is in, and (by both distances being large) whether it is on screen at all."""
+        self.check_stage()
         normal = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_normal.png")).convert("L"), dtype=float)
         accent = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_accent.png")).convert("L"), dtype=float)
         cur = np.asarray(winshot.grab(self.hwnd).crop(OSK_ACCENT_BOX).convert("L"), dtype=float)
@@ -329,8 +505,9 @@ class Shell:
     def type(self, text, shots=None, tag=""):
         if not self.wait_osk():
             self.shot("osk_never_opened")
-            raise SystemExit(f"{self.tag}on-screen keyboard never opened for {text!r}: refusing to "
-                             f"type into whatever menu is on screen")
+            stage = self.stages[-1][0] if self.stages else "none"
+            raise lobby_fail(self, CLASS_KEYBOARD, f"on-screen keyboard never opened for {text!r} (stage {stage}): "
+                                                   f"refusing to type into whatever menu is on screen")
         self.osk_normal_mode()
         if self.pad_file:
             self.osk_type_pad(text, shots, tag)
@@ -406,6 +583,7 @@ def boot_to_online(sh):
     sh.shot("00_login")
 
 
+@staged("login")
 def login(sh, name, password, existing):
     """LOGIN -> universe -> persona -> password -> CONNECT -> prompts -> EULA -> lobby (news closed)."""
     sh.press_until_gone("cross", "login")                        # LOGIN
@@ -466,6 +644,7 @@ def login(sh, name, password, existing):
     sh.shot("09_lobby_no_news")
 
 
+@staged("login")
 def to_briefing_room(sh):
     sh.press("down", 2.0)
     sh.press("cross", 3.0)                                       # BRIEFING ROOMS
@@ -490,7 +669,8 @@ def require_game_lobby(sh, what):
     if sh.is_screen("game_lobby"):
         return
     sh.shot("17_game_lobby_FAILED")
-    raise SystemExit(f"{sh.tag}{what} did not reach the GAME LOBBY (game_lobby band distance "
+    raise lobby_fail(sh, CLASS_JOIN if what.startswith("JOIN") else CLASS_HOST,
+                     f"{what} did not reach the GAME LOBBY (game_lobby band distance "
                      f"{sh.diff('game_lobby'):.3f}, threshold 0.45) -- see the capture; the match "
                      f"would never have launched")
 
@@ -594,6 +774,7 @@ def map_ref_path(name):
     return os.path.join(MAP_REF_DIR, f"map_{name.lower()}.png")
 
 
+@staged("map_select")
 def choose_map(sh, name, presses=30):
     """Select `name` in AVAILABLE MAPS, VERIFYING the highlighted row before pressing CROSS.
 
@@ -617,7 +798,7 @@ def choose_map(sh, name, presses=30):
                 sh.log(f"map '{name}' highlighted at row {cur} after {k} DOWN (text-mask distance "
                        f"{d:.3f} <= {MAP_MATCH_THRESH}) -- accepting")
                 sh.shot(f"14b_map_{name.lower()}")
-                sh.press("cross", 4.0)
+                press_map_cross_verified(sh, 4.0)                # R47: re-sent while SELECTED MAPS does not move
                 return cur
             if k % 5 == 0:
                 sh.log(f"map search {k:02d}: row {cur} is not '{name}' (distance {d:.3f})")
@@ -625,7 +806,7 @@ def choose_map(sh, name, presses=30):
             sh.log(f"map search {k:02d}: no highlighted row -- pressing on")
         sh.pad_press("down", wait=0.45)
     sh.shot(f"14_map_{name.lower()}_NOT_FOUND")
-    raise SystemExit(f"{sh.tag}map '{name}' was never highlighted in {presses} presses of DOWN -- "
+    raise lobby_fail(sh, CLASS_MAP_SEARCH, f"map '{name}' was never highlighted in {presses} presses of DOWN -- "
                      f"see the capture. Accepting whatever is highlighted would put the run on an "
                      f"unknown map, and the whole point of this check is that it cannot.")
 
@@ -644,6 +825,7 @@ def open_choose_games(sh, game_name="test"):
     sh.shot("14_choose_games")
 
 
+@staged("host")
 def host_game(sh, game_name="test", game_map="frostfire"):
     # The default is the owner's default map and matches online_match_ours --map. Both Frostfire
     # and Medley have a committed reference (scripts/parity/refs/map_<name>.png); any other map
@@ -695,6 +877,7 @@ def lobby_select(sh, row, label):
     sh.log(f"lobby cursor {lobby_cursor(sh)} for {label}")
 
 
+@staged("join")
 def join_game(sh, switch=True):
     sh.press("cross", 8.0)                                       # JOIN GAME activates the list
     sh.shot("12_games_list")
@@ -711,9 +894,21 @@ def join_game(sh, switch=True):
         sh.log(f"teams after switch {lobby_teams(sh)}")
 
 
+@staged("ready")
 def ready(sh):
     lobby_select(sh, 2, "READY")                                 # menu: ARMORY, SWITCH TEAMS, READY
     sh.press("cross", 3.0)
+
+    def dropped():
+        edge = ready_label_edge(lobby_gray(sh))
+        sh.log(f"READY check: row-2 label right edge {edge} (READY ~48, NOT READY ~82)")
+        return edge is not None and edge <= READY_EDGE_DROPPED_MAX
+
+    def resend():
+        lobby_select(sh, 2, "READY")
+        lobby_resend_cross(sh, 3.0)
+
+    verify_resend(sh, CLASS_READY, dropped, resend)             # R47: re-sent while READY still shows
     sh.shot("19_ready")
 
 

@@ -4170,12 +4170,14 @@ def main():
             # research/18 §3.10 step 0, in-process: no gameplay rows, no measurement. Four of
             # eleven runs in the previous task never reached gameplay and their screenshots did
             # not say so.
-            liveA = wait_ingame(A.tail, A.sh)
-            liveB = wait_ingame(B.tail, B.sh)
+            t_launch = time.time()                               # R47: one launch-stage budget for both
+            liveA = wait_ingame(A.tail, A.sh, timeout=L.LOBBY_STAGE_TIMEOUT_S)
+            liveB = wait_ingame(B.tail, B.sh, timeout=L.lobby_launch_budget(t_launch))
             A.sh.log(f"in-game peek rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                      f"(log lines A={A.tail.lines} B={B.tail.lines})")
             if not (liveA and liveB):
-                raise SystemExit("liveness check failed: the run never reached gameplay -- discard it")
+                raise L.lobby_fail(A.sh, "timeout:launch", "liveness check failed: the run never reached gameplay")
+            A.sh.log(f"LOBBY class={L.CLASS_OK}")
         if a.calibrate:
             calibrate(A.sh, A.tail, a.out)
         if a.walk_to_b:
