@@ -142,10 +142,21 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 - **The online harness can produce complete, convincing evidence of nothing.** One run drove sixteen
   stick probes and wrote sixteen screenshots against a lobby keyboard. **Verify `peek @416054` is
   non-zero before believing any movement claim from it.** Three of six runs were unusable.
-- **`build.sh test` runs zero Python tests.** `test_compare.py`, `test_pine.py` and `test_winshot.py`
-  are pytest-style and have never executed.
-- **Nothing reaps the loop lock** when an agent exits without releasing it, and `loop_lock.sh take`
-  is a non-atomic test-then-write.
+- ~~**`build.sh test` runs zero Python tests.**~~ **Fixed Sprint 5 Task 0 (`2b7c425`):** `build.sh test`
+  runs `python -m unittest discover -s tools_py/tests -t .` first (233 tests at `b3ac62b`); the three
+  pytest-style files moved to `tools_py/tests/`; `test_test_hygiene.py` fails on a test discovery would miss.
+  **New hazard it creates:** discovery runs every `tools_py/tests/test_*.py` in the shared tree, tracked or
+  not — another agent's red TDD file fails everyone's `build.sh test`. Read a red run's failures before
+  blaming your change.
+- ~~**Nothing reaps the loop lock**, and `take` is non-atomic.~~ **Fixed Sprint 5 Task 0** (`2b7c425`,
+  `7955c10`, `884ee63`, `b3ac62b`; three review rounds each reproducing two-holder races): `mkdir` claim,
+  record inside the claim dir, every transition under a token-named mutex, heartbeat reap at 15 min with an
+  empty busy list (caller's ancestors excluded), `run`/`run_detached.sh` renew and print `LOCK LOST`.
+  **Residual, accepted:** two holders remain reachable only when a reaper stalls ≥ 30 s at a one-command
+  window (a sleeping machine), which any lease lock without kernel locking has; the loser's renew reports
+  `LOCK LOST` within one interval. Blind: a hung job whose wrapper keeps renewing is never reaped.
+- **`PS2X_PEEK` caps every item at 64 words, silently** (`game_overrides_socom2.cpp` peek loop, Task 0
+  preflight). Split longer items; an item whose chain does not resolve is skipped, so count rows.
 - **`git add X && git commit` commits the whole index, not X.** With several agents sharing one
   working tree, that sweeps another agent's staged files under your message — it happened to
   `872d8d6`, which carries five of Task 8's files under a `docs(known)` subject. Always commit
