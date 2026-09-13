@@ -137,7 +137,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   ms) and MoveScale falls to ~11.5 calls/s; the live 10 s move-path rule fired three times and would end an
   `--until-kill` match. Launch 3c on the same exe had none. Keep other heavy work off the host during launches.
 
-- **Frostfire has two floors, y ≈ 100 and y ≈ 142** (bimodal in both actors' positions, launch 3c): the
+- **Frostfire has two floors, y ≈ 100 and y ≈ 142** *(route found 2026-09-13, research/24: the spawns connect on the lower floor through an underpass under the walkway (x 705–735, z 975–1000, headroom 41.25) and up B's ramp; launch 3c's A was stuck against the walkway railing at z ≈ 1000, not a wall between spawns; `routes/frostfire_v2.json`, min clearance 11.1/10.2; wall blocking is inferred from polygons + 3c stand-off, the movement-collision routine is not decompiled; three `door_slab` models were closed in 3c)* (bimodal in both actors' positions, launch 3c): the
   closest 3-D approach was 52.42 at dy 42 — different floors — and the same-floor minimum 168.78. An approach
   that ignores level times out without same-floor contact.
 - **The harness's own `closest_3d` is not the run minimum**: `Duel.best_dist()` (`online_match_ours.py`) takes
