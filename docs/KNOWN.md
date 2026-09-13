@@ -112,6 +112,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The acceptance scorer `verdict_replay.py` is pinned to pre-registered bars** (spec §5.1 + §5.1.1, R50–R63, `faa7a8c`):
+  two adversarial reviews found 11 false-KILL/false-FAIL holes before any ladder match (stale kill steps, cross-round
+  windows, fragmented freezes, an alive byte never read as 1, a destroyed killer, and — the one that would have
+  failed the only kill it exists for — a round-ending 1v1 kill scored NO-DATA). 107 tests, 68 mutations caught.
+  The guest clock `0x4365c0` runs 0.57–0.72 guest s per host s and freezes from each `mp_round_count` step to the
+  clock restart. Do not move a bar after a kill is seen.
+
 - **The runtime is frozen at `92d30f0` for the online ladder** (R45, R61): GS back-pressure (N=3, 2 s cap, heartbeat
   latch), VBlank debt dropped on both clocks, idle guest sleeps to the later of host/cycle deadline. Known residuals,
   not fixed before the freeze: (1) a stale `m_eeCycle` can oversleep one frame after a blocking `sceInetRecv` with a
