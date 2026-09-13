@@ -487,6 +487,12 @@ MAP_HILITE_LO, MAP_HILITE_HI = 116.0, 140.0
 # 0.000 and the nearest other map (ENOWAPI) 0.510, so 0.30 has a margin of 0.21. The
 # contrast-normalised band distance `Shell.diff` uses was NOT good enough here -- it put ENOWAPI at
 # 0.317 against a 0.42 threshold, i.e. it would have accepted the wrong map.
+# The MEDLEY reference (map_medley.png) was cut the same way, from the highlighted row 0 of
+# A_mapscan_00 in that scan (2026-09-13, offline, no launch). Against the highlighted row of all 28
+# CHOOSE GAMES captures it scores 0.000 on the two Medley frames (A_mapscan_00, A_14_choose_games)
+# and >= 0.673 on every other map (Random 0.673, ENOWAPI 0.674, Frostfire 0.777, the last entry
+# THE RUINS 0.771). Caveat: an UNhighlighted Medley row scores 0.046 against it -- harmless, because
+# choose_map only ever compares the highlighted row, which map_cursor finds by luminance.
 MAP_MATCH_THRESH = 0.30
 MAP_REF_DIR = REFS
 
@@ -609,7 +615,10 @@ def open_choose_games(sh, game_name="test"):
     sh.shot("14_choose_games")
 
 
-def host_game(sh, game_name="test", game_map="medley"):
+def host_game(sh, game_name="test", game_map="frostfire"):
+    # The default is the owner's default map and matches online_match_ours --map. Both Frostfire
+    # and Medley have a committed reference (scripts/parity/refs/map_<name>.png); any other map
+    # aborts in choose_map until one is cut from a map scan.
     open_choose_games(sh, game_name)
     row = choose_map(sh, game_map)                               # VERIFIED, not a blind CROSS
     sh.log(f"map list: accepted '{game_map}' at row {row}")
@@ -687,7 +696,7 @@ def main():
     ap.add_argument("--seconds", type=int, default=500)
     ap.add_argument("--hold", type=int, default=30)
     ap.add_argument("--existing", action="store_true", help="the persona is already on the memory card")
-    ap.add_argument("--host", action="store_true", help="after the briefing room: CREATE GAME (Medley)")
+    ap.add_argument("--host", action="store_true", help="after the briefing room: CREATE GAME (Frostfire, verified)")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     a = ap.parse_args()

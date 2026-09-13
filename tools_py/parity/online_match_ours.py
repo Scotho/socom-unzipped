@@ -1,6 +1,7 @@
 """Two instances of OUR exe play a match on the local Horizon stack: A logs in and hosts a game
-(Medley), B logs in, joins it and switches team, both press READY -> the match launches
-(mirrors online_match.py, the PCSX2 two-client reference). Screens land in --out as A_*/B_*.
+(--map, default Frostfire; the choice is verified), B logs in, joins it and switches team, both
+press READY -> the match launches (mirrors online_match.py, the PCSX2 two-client reference).
+Screens land in --out as A_*/B_*.
 
 Instance B runs with its own window title, memory card dir (game/disc/mc0_b) and UDP port shift
 (see online_login_ours.INSTANCES). Personas: A = --name-a (default socomc, saved on mc0),
