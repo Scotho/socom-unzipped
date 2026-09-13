@@ -44,7 +44,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 |---|---|
 | `actor+0x204` (1.0) and `actor+0x208` (100000.0) are the player's health and max health — **weakly** believed: the word before them, `actor+0x200`, is `0000ff00`, which reads as much like a packed RGBA as like a header, and in that reading they are a scale and a far clip distance. **And `research/18` §4.2's "same in every image" is false**: in `ours_task8_frost1` instance B reads `+0x200` = 1 and `+0x204` = 1.01 on every row | Watch them across **two separate kills** — the brief's rule, and this task got zero. `--until-kill --health-offset 0x208` arms the watch once confirmed (a byte offset from the ACTOR BASE, never an item index); unset, the run says the signal is off |
 | Which of `I`/`K` (right stick up/down) raises the muzzle | One timed pitch hold measured against the elevation of a target of known height difference. The engagement sweeps both ways precisely because this is unknown |
-| **On Frostfire the local move path ran for 0.6 s at round start and never ticked again** — 18 calls between t=371.4 and t=372.0 s while 2634 peek rows kept arriving, with the pad reaching the guest, the movement scale at 1.0 and the round clock running. Reads as control never being handed over, not as a slow map. **Two leads from the same logs:** both actors read `+0xd0/+0xd4` = **1/1** and `+0x20c` = **0** for the whole run, where every Medley actor reads 8/5 and 4/7 — a *state* difference; and in `FUN_00594cf0` the move-scale call sits inside `if (cVar7 == 0)`, so the multiplayer snap-back — **excluded only on Medley** — would produce exactly this picture. reCOM names the likely state: `mp_major_game_state`, `late_joiner` (`research/11`). Frostfire spawns are 692 units apart (Medley 1485) with a 42-unit height difference. **One run; §3.12's movement fix is proven on Medley only** | A zero-launch pass mapping reCOM's round-state names onto the round-start path, then one relaunch with `PS2X_CALL_TRACE_EVERY=1`, a trace on the **caller** of `0x553dc0`, the snap-back timestamp pair, and the `0x200` idle counter |
+| **On Frostfire the local move path ran for 0.6 s at round start and never ticked again** — 18 calls (`#0`-`#17`) between t=371.4 and t=372.0 s while 2634 peek rows kept arriving (Medley's kill2 runs ~5560 calls over 293.6 s = 18.9/s), with the pad reaching the guest, the movement scale at 1.0 and the round clock running. Reads as control never being handed over, not as a slow map. **Two leads from the same logs:** both actors read `+0xd0/+0xd4` = **1/1** and `+0x20c` = **0** for the whole run, where every Medley actor reads 8/5 and 4/7 — a *state* difference; and in `FUN_00594cf0` the move-scale call sits inside `if (cVar7 == 0)`, so the multiplayer snap-back — **excluded only on Medley** — would produce exactly this picture. reCOM names the likely state: `mp_major_game_state`, `late_joiner` (`research/11`). Frostfire spawns are 692 units apart (Medley 1485) with a 42-unit height difference. **One run; §3.12's movement fix is proven on Medley only** | A zero-launch pass mapping reCOM's round-state names onto the round-start path, then one relaunch with `PS2X_CALL_TRACE_EVERY=1`, a trace on the **caller** of `0x553dc0`, the snap-back timestamp pair, and the `0x200` idle counter |
 | Whether a parked opponent starving the mover matches **console** behaviour, or is an artefact of feeding the counter from RX bytes only (the game's own source may be richer) | A PCSX2 pair with one player parked and the other walking, same `actor+0x1368` measurement |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
@@ -188,7 +188,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **Striking a claim's headline leaves its consequences standing** — and the consequences are the
   half a skimming reader acts on. `HANDOFF`'s ground-height item had three live restatements of a
   frame whose headline had already been struck.
-- **`PS2X_CALL_TRACE` logs the first 300 calls unconditionally, then 1-in-`EVERY`.** A short
+- **`PS2X_CALL_TRACE` logs the first 300 calls unconditionally, then 1-in-`EVERY`**
+  (`callTraceShouldLog`: `n < 300u || (n % every) == 0u`). A short
   trace never reaches the sampling regime, so dividing its line count by `EVERY` over-states the
   rate — it made an 18-call, 0.6-second burst read as "about one a second for six minutes".
 - **`docs/LOOP_PROMPT.md` still targets Sprint 3.** A cron firing reads it first, so an autonomous
@@ -198,5 +199,14 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   round-state machine behind Frostfire and the structures behind a kill readout — and sat unused
   for six days while four agents worked the round-start blocker. Name the relevant notes in every
   dispatch, not only the obvious ones.
+- **An ARMED instrument that reads nothing is not a quiet one.** The health watch fills only when
+  some peeked block covers `actor+offset`, so a too-narrow `PS2X_PEEK` makes "health never moved"
+  indistinguishable from "never read". The run now counts reads/misses per instance, prints them on
+  the RESULT line, and fails when an armed watch read zero.
+- **A test harness can manufacture a regression.** Twice in one hour the simulator failed in a way
+  indistinguishable from a bug in the loop under test: two suites interleaved into one fixed-name
+  temp log (`pkill` is a no-op in Git Bash, hidden by `2>/dev/null`), and the simulated world let
+  back-steps and strafes pass through walls. Name temp files per process, and check the harness
+  before the code under test.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
