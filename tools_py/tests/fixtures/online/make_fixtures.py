@@ -47,6 +47,15 @@ FIXTURES = [
 STATE_FIXTURES = [
     ("launch1c_A_movestop.txt", "logs/run_A_20260913_073548.log", 379.0, 391.8),
 ]
+# Sprint 5 Task 5: launch 8c (Vigilance), the three windows in which the LIVE move-path watch fired a 10.2-10.9 s
+# "stall" that was a guest freeze (research/21 §9.8: the round clock 0x4365c0 stood still while the sampler kept
+# writing rows): A after MoveScale #1370 (500.2 -> 514.2 s) and #1860 (547.7 -> 560.4 s), B after #2870
+# (620.6 -> 638.7 s). Trimmed with `_trim_peek_freeze` to what the move-path watch and the freeze detector read.
+FREEZE_FIXTURES = [
+    ("launch8c_A_freeze1.txt", "logs/run_A_20260913_132843.log", 496.0, 518.0),
+    ("launch8c_A_freeze2.txt", "logs/run_A_20260913_132843.log", 543.0, 564.0),
+    ("launch8c_B_freeze.txt", "logs/run_B_20260913_132843.log", 616.0, 642.0),
+]
 STATE_CALLS = ("MoveScale", "NetIdle")      # every line of these slots is kept
 ANCHOR_EVERY_S = 2.0                         # plus one other [call] line this often, for the clock
 KEEP_STATIC = ("4365c0", "45a0c0", "408f10")
@@ -119,7 +128,33 @@ def _trim_peek_state(line):
     return " ".join(parts)
 
 
-def make_state(name, src, t0, t1):
+def _trim_peek_freeze(line):
+    """The actor block's first 10 words, the first word of actor+0xF78, the round clock 0x4365c0, and
+    mp_round_count's value item (2 words) and name-bytes item (3 words, spelling the name) -- nothing else."""
+    items = [(a, _TOKEN.findall(w)) for a, w in _ITEM.findall(line)]
+    actor = next((int(a, 16) for a, t in items if t and t[0].lower().startswith(ACTOR_VTABLE_HEX)), None)
+    want_name = b"mp_round_count"[:12]                 # the name item holds the first 12 bytes
+    name_addrs = set()
+    for addr, toks in items:
+        if len(toks) == 3:
+            raw = b"".join(int(t[:8], 16).to_bytes(4, "little") for t in toks)
+            if raw.startswith(want_name):
+                name_addrs.add(int(addr, 16))
+    parts = ["[peek]"]
+    for addr, toks in items:
+        a = int(addr, 16)
+        if actor is not None and a == actor:
+            parts.append(f"@{addr}: " + " ".join(toks[:KEEP_ACTOR_WORDS]))
+        elif actor is not None and a == actor + 0xF78:
+            parts.append(f"@{addr}: " + " ".join(toks[:1]))
+        elif addr.lower() == "4365c0" or a in name_addrs:
+            parts.append(f"@{addr}: " + " ".join(toks))
+        elif len(toks) == 2 and int(toks[0][:8], 16) in name_addrs:
+            parts.append(f"@{addr}: " + " ".join(toks))
+    return " ".join(parts)
+
+
+def make_state(name, src, t0, t1, trim=None):
     with open(os.path.join(ROOT, src), "r", errors="replace") as f:
         lines = f.read().split("\n")
     idx, clock = _clock(lines)
@@ -128,7 +163,7 @@ def make_state(name, src, t0, t1):
         if not (t0 <= clock(idx[i]) <= t1):
             continue
         if line.startswith("[peek]"):
-            out.append(_trim_peek_state(line))
+            out.append((trim or _trim_peek_state)(line))
         elif line.startswith("[call]"):
             m = re.match(r"^\[call\] ([\d.]+)s (\S+) #(\d+)", line)
             if not m:
@@ -186,4 +221,7 @@ if __name__ == "__main__":
         print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")
     for spec in STATE_FIXTURES:
         n, size = make_state(*spec)
+        print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")
+    for spec in FREEZE_FIXTURES:
+        n, size = make_state(*spec, trim=_trim_peek_freeze)
         print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")

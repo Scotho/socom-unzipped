@@ -50,3 +50,17 @@ values and name bytes; also `*0x44fa90:2` and `0x408f10:2`) and the `0x4365c0` /
 statics; `[call]`/`[ret]` lines of MoveScale and NetIdle, plus one other `[call]` line every 2 s for
 the clock. 102 KB.
 
+
+## Sprint 5 Task 5 (a): launch 8c freeze fixtures
+
+| fixture | source | window (s) | what it shows |
+|---|---|---|---|
+| `launch8c_A_freeze1.txt` | `logs/run_A_20260913_132843.log` (launch 8c, Vigilance; research/21 §9.8) | 496.0-518.0 | MoveScale `#1370` at 500.2 s, then nothing until `#1380` at 514.2 s, while the round clock `0x4365c0` stands at 54.40 and the sampler keeps writing rows: the LIVE move-path watch printed `stalled` (10.7 s) here |
+| `launch8c_A_freeze2.txt` | same log | 543.0-564.0 | `#1860` at 547.7 s -> `#1870` at 560.4 s, clock still: the live watch's second `stalled` (10.9 s) |
+| `launch8c_B_freeze.txt` | `logs/run_B_20260913_132843.log` | 616.0-642.0 | `#2870` at 620.6 s -> `#2880` at 638.7 s, B's clock still: the live watch's third `stalled` (10.2 s) |
+
+Trimmed by `make_state(..., trim=_trim_peek_freeze)`: the actor block's first 10 words, the first word of
+`actor+0xF78`, the round clock `0x4365c0`, and `mp_round_count`'s value and name-bytes items; `[call]`/`[ret]`
+lines of MoveScale and NetIdle plus one other `[call]` line every 2 s. ~40 KB each. Replayed on
+`verdict_core.parse_log`'s clock by `test_freeze_and_pairs.Launch8cFreezeReplayTest`: every window reads as a freeze,
+never a stall; with the `0x4365c0` item removed the same rows stall (the negative control).

@@ -15,6 +15,7 @@ measure what an injected hold actually did.
 Usage: python -m tools_py.parity.online_match_ours [--hold 120] [--out logs/parity/ours_match]
 """
 import argparse
+import bisect
 import json
 import math
 import os
@@ -355,6 +356,10 @@ class RunLogTail(threading.Thread):
         self.round_valid_t = None
         self.valve_counts = {}
         self.latest_items = None
+        # Sprint 5 Task 5: ng+0xde (t, byte) from the CZNetGame block, found by content (vc.ng_lagflag_rows); and the
+        # round clock DAT_004365c0 (t, float), which stands still while an instance's guest is frozen (launch 8c).
+        self.lag_rows = []
+        self.round_time_rows = []
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -460,8 +465,14 @@ class RunLogTail(threading.Thread):
         valves = {name: vc.row_valve(items, name) for name in vc.VALVES}
         state = {name: valves[name] for name in vc.ROUND_VALVES}
         state["clock"] = vc.row_clock_string(items)
+        lag = vc.ng_lagflag_rows([(t, items)])
+        rt_word = vc.row_static(items, vc.ROUND_TIME_ADDR)
         with self._lock:
             self.latest_items = items
+            if lag:
+                self.lag_rows.append(lag[0])
+            if rt_word is not None:
+                self.round_time_rows.append((t, vc.f32(rt_word)))
             if not isinstance(alive, vc.NoData):
                 self.alive_rows.append((t, alive))
                 if not self.alive_hist or self.alive_hist[-1][1:] != (alive, actor):
@@ -848,6 +859,13 @@ class Duel:
         self.dist = {}
         self.contact = threading.Event()
         self.stop = threading.Event()
+        # Sprint 5 Task 5: the PAIRED actor range over the whole run (PairedRange), from the tails each side
+        # registers with observe(). best_dist() used to be min(each side's LATEST set_dist), which is
+        # neither the run minimum nor the current gap: launch 3c printed closest_3d=166.76 against a true
+        # 52.42 (dy 42), and the pre-engagement `near` gate read that number.
+        self.tails = {}
+        self.pairs = PairedRange()
+        self._pair_lock = threading.Lock()
 
     def set_facing(self, tag, f):
         with self._lock:
@@ -861,10 +879,44 @@ class Duel:
         with self._lock:
             self.dist[tag] = d
 
+    def observe(self, tag, tail):
+        with self._lock:
+            self.tails[tag] = tail
+
+    def update_pairs(self):
+        with self._lock:
+            ta, tb = self.tails.get("A"), self.tails.get("B")
+        if ta is None or tb is None:
+            return
+        with self._pair_lock:
+            self.pairs.update(ta.actor_ingame(), tb.actor_ingame())
+
     def best_dist(self):
+        """The TRUE run minimum of the paired actor-to-actor 3-D distance (verdict_core.score_contact's
+        pairing). Only a run with no paired actor rows at all (camera reconstruction) falls back to the
+        smallest distance a side published, and that fallback is not a run minimum."""
+        self.update_pairs()
+        if self.pairs.closest is not None:
+            return self.pairs.closest
         with self._lock:
             v = [d for d in self.dist.values() if d is not None]
         return min(v) if v else None
+
+    def best_dy(self):
+        """|dy| at the run minimum (None without paired rows)."""
+        self.update_pairs()
+        return self.pairs.closest_dy
+
+    def current_d3(self, now=None, max_age=None):
+        """The CURRENT paired 3-D distance -- the newest pair, if it is at most `max_age` old -- or None.
+        This, not the run minimum, is what a gate that decides what to do next may read."""
+        max_age = CURRENT_PAIR_MAX_AGE_S if max_age is None else max_age
+        self.update_pairs()
+        cur = self.pairs.current
+        now = time.time() if now is None else now
+        if cur is None or now - cur[0] > max_age:
+            return None
+        return cur[1]
 
 
 class Side:
@@ -955,6 +1007,8 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
     abort = duel.contact
     sh.log(f"approach[{me.tag}]: arrive<={arrive} engage<={engage} <={max_steps} steps, "
            f"<={max_seconds}s, route={len(me.route or [])} waypoints")
+    duel.observe(me.tag, tail)
+    duel.observe(other.tag, other.tail)
     facing = None
     for attempt in range(FACING_PROBE_TRIES):
         facing, _ = facing_probe(sh, tail, label=f"{me.tag}_facing{attempt}", abort=abort)
@@ -1845,7 +1899,19 @@ class MovePathWatch(threading.Thread):
                 rounds = [(t - t0, st["mp_round_count"]) for t, st in tail.round_rows
                           if not isinstance(st["mp_round_count"], vc.NoData)]
                 items = tail.latest_items
+                round_time = [(t - t0, v) for t, v in getattr(tail, "round_time_rows", [])]
             v = vc.score_move_path(calls, alive, rounds, now)
+            if v.status == "stalled":
+                # Sprint 5 Task 5 freeze tolerance (launch 8c): while this instance's round clock 0x4365c0 stands
+                # still the guest is frozen, not stalled -- and the stall clock restarts when the freeze ends.
+                fe = last_freeze_end(round_time, now)
+                if fe is not None and now - fe < vc.MOVE_STALL_S:
+                    frozen = frozen_now(round_time, now)
+                    v = vc.MovePathVerdict("disarmed", v.since,
+                                           v.detail + (f"; freeze: round clock 0x4365c0 still since "
+                                                       f"{freeze_episodes(round_time, now)[-1][0]:.1f}" if frozen else
+                                                       f"; freeze: round clock 0x4365c0 ran again at {fe:.1f}, "
+                                                       f"re-armed {vc.MOVE_STALL_S:g}s after"))
             prev = self.verdicts.get(tag)
             if prev is None or prev.status != v.status:
                 since = "-" if v.since is None else f"{v.since:.1f}"
@@ -1866,6 +1932,282 @@ class MovePathWatch(threading.Thread):
             except Exception as e:                    # noqa: BLE001 - a watcher must not kill the run
                 self.log(f"MOVE-PATH watch error {e!r}")
             self._stop_ev.wait(MOVE_PATH_POLL_S)
+
+    def stop(self):
+        self._stop_ev.set()
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5 Task 5 (a): the run's paired closest approach, freeze tolerance, the two-sided starvation watch
+# ---------------------------------------------------------------------------
+# --- the paired 3-D range (Duel.best_dist / current_d3) ------------------------------------------------------
+CURRENT_PAIR_MAX_AGE_S = 3.0     # a paired distance older than this is not "current"
+
+
+class PairedRange:
+    """Incremental verdict_core.score_contact pairing: each A actor row with the B row nearest in time within
+    CONTACT_PAIR_MAX_S. `closest` / `closest_dy` are the TRUE run minimum and |dy| there; `current` is the
+    newest pair (t, d3, |dy|). An A row is paired once a B row at or after its time exists, so no later B row
+    can be nearer."""
+
+    def __init__(self):
+        self.closest = self.closest_dy = self.closest_t = self.current = None
+        self.pairs = 0
+        self._ia = 0
+
+    def update(self, rowsA, rowsB):
+        if not rowsB:
+            return
+        tb = [r[0] for r in rowsB]
+        while self._ia < len(rowsA) and rowsA[self._ia][0] <= tb[-1]:
+            a = rowsA[self._ia]
+            self._ia += 1
+            k = bisect.bisect_left(tb, a[0])
+            cand = [j for j in (k - 1, k) if 0 <= j < len(rowsB) and abs(tb[j] - a[0]) <= vc.CONTACT_PAIR_MAX_S]
+            if not cand:
+                continue
+            b = rowsB[min(cand, key=lambda j: abs(tb[j] - a[0]))]
+            d3, dy = math.dist(a[1:4], b[1:4]), abs(a[2] - b[2])
+            self.pairs += 1
+            self.current = (a[0], d3, dy)
+            if self.closest is None or d3 < self.closest:
+                self.closest, self.closest_dy, self.closest_t = d3, dy, a[0]
+
+
+# --- freeze tolerance (launch 8c, research/21 §9.8) ----------------------------------------------------------
+# An instance whose guest stalls keeps writing peek rows while its round clock DAT_004365c0 stands still (8c:
+# 3.3-17.3 s, main thread parked at 0x3b00a4). Its move path is silent (the live 10 s rule fired three times)
+# and it sends nothing, so the OTHER instance's NetIdle alarms (peaks 8217 / 10338 ms). Neither is a defect of
+# the side that reports it.
+FREEZE_CLOCK_STILL_S = 2.0       # research/21 §9.8's definition: the clock stops for >= 2 s while rows continue
+                                 # (at 4 Hz a running clock changes every row; 2 s is 8 identical rows)
+FREEZE_MAX_S = 20.0              # the longest freeze tolerated before it counts as NO-DATA (8c's worst: 17.3 s)
+FREEZE_ATTRIBUTION_S = 6.0       # an alarm starting within this long of the other side's freeze end is the
+                                 # freeze's (idle counts on for the alarm's 4 s, plus two 1 s rows of lag)
+
+
+def freeze_episodes(rows, now=None, still_s=FREEZE_CLOCK_STILL_S):
+    """rows: [(t, round clock)] -> [(t_first, t_last, ongoing)] for every run of identical clock values lasting
+    >= still_s BY ROW TIME -- the clock standing still while the sampler keeps writing rows; rows that stop
+    arriving altogether are not a freeze of the clock (the watches' NO-DATA rules own that). The newest run is
+    flagged ongoing (the clock has not moved since). `now` is accepted for symmetry and not used. No rows -> []."""
+    eps, start, val, last = [], None, None, None
+    for t, v in rows:
+        if start is None or v != val:
+            if start is not None and last - start >= still_s:
+                eps.append((start, last, False))
+            start, val = t, v
+        last = t
+    if start is not None and last - start >= still_s:
+        eps.append((start, last, True))
+    return eps
+
+
+def frozen_now(rows, now):
+    eps = freeze_episodes(rows, now)
+    return bool(eps and eps[-1][2])
+
+
+def last_freeze_end(rows, now):
+    """The last row time of the newest freeze episode (ongoing or not), or None."""
+    eps = freeze_episodes(rows, now)
+    return eps[-1][1] if eps else None
+
+
+# --- the starvation watch (spec §5 Goal 5(c), both instances) -----------------------------------------------
+STARVATION_POLL_S = 0.25
+STARVATION_NODATA_S = 3.0        # no NetIdle row newer than this -> NO-DATA (EVERY=10 logs one per ~0.5 s at 20
+                                 # calls/s, ~0.9 s at 8c's 11.5/s)
+STARVATION_GRACE_S = 3.0         # rows may not exist yet when the watch starts
+ALARM_CLEAR_S = 3.0              # spec §5(c): every alarm clears within 3 s of the other side moving
+
+
+class StarvationWatch(threading.Thread):
+    """verdict_core.score_starvation on both instances, live, over each side's NEWEST NetIdle `[ret] v0` and
+    ng+0xde rows (primary ng+0xde, secondary NetIdle >= 4000 ms, verdict_core's own rules -- zero lag rows
+    with a quiet NetIdle is NO-DATA, ruling R23).
+
+    * An alarm on side X opens an episode. If the OTHER instance is frozen (freeze_episodes on its round clock)
+      or its freeze ended within FREEZE_ATTRIBUTION_S, the cause is `freeze(Y)`: reported, not counted, and
+      nobody is asked to move (a frozen instance cannot). Otherwise the cause is starvation and it is counted;
+      the other side is asked to move (take_request / request_event) only when BOTH round clocks are advancing
+      (rows within STARVATION_NODATA_S, no ongoing freeze) -- a reaction, never a schedule: launch 3c stood ~48 s
+      both still at f12 = 1.0, and every recorded alarm was a freeze or a stuck mover. The mover reports moved().
+    * An alarm still open ALARM_CLEAR_S after its mover moved sets `stop_reason`.
+    * No fresh NetIdle row on a side (NetIdle stops with the move path) is NO-DATA and sets `stop_reason` -- unless
+      that side's own clock is frozen, for at most FREEZE_MAX_S: then it is `freeze(side)`.
+    Blind: idle peaks between NetIdle samples (0.5-0.9 s); a frozen instance whose clock string still ticks."""
+
+    def __init__(self, tails, log, clock=time.time):
+        super().__init__(daemon=True)
+        self.tails, self.log, self.clock = tails, log, clock
+        self.tags = sorted(tails)
+        self.t0 = clock()
+        self.status = {tag: None for tag in self.tags}
+        self.alarms = []
+        self.stop_reason = None
+        self._requests = {tag: threading.Event() for tag in self.tags}
+        self._stop_ev = threading.Event()
+        self._lock = threading.Lock()
+
+    def _other(self, tag):
+        return next(t for t in self.tags if t != tag)
+
+    def _rows(self, tag):
+        tail = self.tails[tag]
+        with tail._lock:                                # noqa: SLF001 - same module
+            idle = [(t, v) for name in vc.NET_IDLE_NAMES for t, _, v in tail.rets.get(name, [])]
+            lag = list(getattr(tail, "lag_rows", []))
+            rt = list(getattr(tail, "round_time_rows", []))
+            f12 = [(t, f) for t, _, f in tail.calls.get(MOVE_SCALE_TRACE_NAME, []) if f is not None]
+        idle = sorted(r for r in idle if r[0] >= self.t0)
+        return idle, [r for r in lag if r[0] >= self.t0], rt, [r for r in f12 if r[0] >= self.t0]
+
+    def _advancing(self, rt, now):
+        """This instance's round clock has rows within STARVATION_NODATA_S and is not frozen now."""
+        if not rt or now - rt[-1][0] > STARVATION_NODATA_S:
+            return False
+        eps = freeze_episodes(rt, now)
+        return not (eps and eps[-1][2])
+
+    def _stop(self, reason):
+        if self.stop_reason is None:
+            self.stop_reason = reason
+            self.log(f"STARVATION-WATCH STOP: {reason}")
+
+    def check(self, now=None):
+        now = self.clock() if now is None else now
+        with self._lock:
+            frozen = {}
+            rows = {tag: self._rows(tag) for tag in self.tags}
+            for tag in self.tags:
+                eps = freeze_episodes(rows[tag][2], now)
+                frozen[tag] = eps
+            for tag in self.tags:
+                other = self._other(tag)
+                idle, lag, _, f12 = rows[tag]
+                fresh_idle = [r for r in idle if now - r[0] <= STARVATION_NODATA_S]
+                fresh_lag = [r for r in lag if now - r[0] <= STARVATION_NODATA_S]
+                eps = frozen[tag]
+                own_frozen = bool(eps and eps[-1][2])
+                signal, detail = None, ""
+                if not fresh_idle:
+                    if own_frozen and now - eps[-1][0] <= FREEZE_MAX_S:
+                        status = f"freeze({tag})"
+                    elif now - self.t0 < STARVATION_GRACE_S:
+                        status = None
+                    else:
+                        status = vc.NO_DATA
+                        detail = (f"no NetIdle row in the last {STARVATION_NODATA_S:g}s (NetIdle stops with the "
+                                  f"move path)" + (f"; frozen {now - eps[-1][0]:.1f}s > {FREEZE_MAX_S:g}s"
+                                                    if own_frozen else ""))
+                else:
+                    v = vc.score_starvation(fresh_idle[-1:], fresh_lag[-1:], side=tag)
+                    status, signal, detail = v.status, v.signal, v.detail
+                    fresh_f12 = [r for r in f12 if now - r[0] <= STARVATION_NODATA_S]
+                    if status == "ok" and fresh_f12 and fresh_f12[-1][1] < vc.CONTACT_SCALE_MIN:
+                        # Amendment A: a scale already below 0.99 is starvation too (the ng block may be unread)
+                        status, signal = "alarm", "f12"
+                        detail = f"MoveScale f12 {fresh_f12[-1][1]:g} < {vc.CONTACT_SCALE_MIN:g}; " + detail
+                    if status == vc.NO_DATA and now - self.t0 < STARVATION_GRACE_S:
+                        status = None
+                if status == vc.NO_DATA:
+                    self._stop(f"NO-DATA starvation side={tag}: {detail}")
+                if status != self.status[tag]:
+                    self.log(f"STARVATION side={tag} {status} -- {detail or signal or ''}".rstrip(" -"))
+                self.status[tag] = status
+                open_alarm = next((a for a in self.alarms if a["side"] == tag and a["t_clear"] is None), None)
+                if status == "alarm" and open_alarm is None:
+                    oeps = frozen[other]
+                    cause = "starvation"
+                    if oeps and (oeps[-1][2] or now - oeps[-1][1] <= FREEZE_ATTRIBUTION_S):
+                        cause = f"freeze({other})"
+                    a = {"side": tag, "t": now, "signal": signal, "cause": cause, "mover": other, "t_move": None,
+                         "t_clear": None, "idle_ms": fresh_idle[-1][1] if fresh_idle else None, "asked": False}
+                    self.alarms.append(a)
+                    if cause == "starvation" and self._advancing(rows[tag][2], now) and \
+                            self._advancing(rows[other][2], now):
+                        a["asked"] = True
+                        self._requests[other].set()
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms -- "
+                                 f"{other} must move (two-sided rule)")
+                    elif cause == "starvation":
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms -- round clocks "
+                                 f"not both advancing (0x4365c0 unread or still): counted, nobody asked to move")
+                    else:
+                        self.log(f"STARVATION alarm side={tag} signal={signal} idle={a['idle_ms']}ms cause={cause} "
+                                 f"-- the other instance is frozen: reported, not counted, nobody asked to move")
+                elif status == "ok" and open_alarm is not None:
+                    open_alarm["t_clear"] = now
+                    self._requests[other].clear()
+                    ref = open_alarm["t_move"] if open_alarm["t_move"] is not None else open_alarm["t"]
+                    self.log(f"STARVATION alarm side={tag} cleared {now - open_alarm['t']:.1f}s after it opened, "
+                             f"{now - ref:.1f}s after " + ("the move" if open_alarm["t_move"] else "the alarm"))
+                elif open_alarm is not None and open_alarm["cause"] == "starvation" and open_alarm["t_move"] is None:
+                    oeps = frozen[other]
+                    if oeps and oeps[-1][2] and oeps[-1][0] <= open_alarm["t"]:
+                        open_alarm["cause"] = f"freeze({other})"
+                        self._requests[other].clear()
+                        self.log(f"STARVATION alarm side={tag} re-attributed to freeze({other})")
+                if (open_alarm is not None and open_alarm["cause"] == "starvation"
+                        and open_alarm["t_move"] is not None and now - open_alarm["t_move"] > ALARM_CLEAR_S):
+                    self._stop(f"STARVATION alarm side={tag} not cleared within {ALARM_CLEAR_S:g}s of "
+                               f"{other} moving")
+
+    def take_request(self, tag):
+        """True once per request for `tag` to move -- and only while the alarm that asked is still open: an alarm
+        that cleared on its own (the side walked anyway) leaves no stale request behind."""
+        ev = self._requests[tag]
+        if not ev.is_set():
+            return False
+        ev.clear()
+        with self._lock:
+            return any(a["mover"] == tag and a["cause"] == "starvation" and a["t_clear"] is None and a["asked"]
+                       for a in self.alarms)
+
+    def request_event(self, tag):
+        return self._requests[tag]
+
+    def moved(self, tag, t):
+        with self._lock:
+            for a in self.alarms:
+                if a["mover"] == tag and a["cause"] == "starvation" and a["t_clear"] is None and a["t_move"] is None:
+                    a["t_move"] = t
+
+    def starvation_alarms(self):
+        return sum(1 for a in self.alarms if a["cause"] == "starvation")
+
+    def alarms_cleared(self):
+        return sum(1 for a in self.alarms if a["cause"] == "starvation" and a["t_clear"] is not None
+                   and a["t_clear"] - (a["t_move"] if a["t_move"] is not None else a["t"]) <= ALARM_CLEAR_S)
+
+    def freeze_alarms(self):
+        out = {}
+        for a in self.alarms:
+            if a["cause"].startswith("freeze("):
+                side = a["cause"][len("freeze("):-1]
+                out[side] = out.get(side, 0) + 1
+        return out
+
+    def max_idle_ms(self):
+        return {tag: max((v for _, v in self._rows(tag)[0]), default=None) for tag in self.tags}
+
+    def lag_rows_read(self):
+        return {tag: len(self._rows(tag)[1]) for tag in self.tags}
+
+    def summary_line(self):
+        fz = self.freeze_alarms()
+        return (f"STARVATION-WATCH alarms={self.starvation_alarms()} cleared={self.alarms_cleared()} "
+                f"freeze_alarms={','.join(f'freeze({k})={v}' for k, v in sorted(fz.items())) or 0} "
+                f"max_idle_ms={self.max_idle_ms()} lag_rows={self.lag_rows_read()} stop={self.stop_reason}")
+
+    def run(self):
+        while not self._stop_ev.is_set():
+            try:
+                self.check()
+            except Exception as e:                      # noqa: BLE001 - a watcher must not kill the run
+                self.log(f"STARVATION-WATCH error {e!r}")
+            self._stop_ev.wait(STARVATION_POLL_S)
 
     def stop(self):
         self._stop_ev.set()
@@ -2467,7 +2809,9 @@ def main():
                      f"B={sideB.result and sideB.result.get('reason')} "
                      f"best={sideB.result and sideB.result.get('best')}")
             fights = {}
-            closest_now = duel.best_dist()
+            # Sprint 5 Task 5: the gate reads the CURRENT paired distance -- not the run minimum, and not
+            # min(each side's latest), which printed 166.76 against launch 3c's true 52.42.
+            closest_now = duel.current_d3()
             near = closest_now is not None and closest_now <= a.engage * 2.5
             if (duel.contact.is_set() or near) and not duel.stop.is_set():
                 ft = []
@@ -2480,8 +2824,9 @@ def main():
                 for t in ft:
                     t.join()
             else:
-                A.sh.log(f"no contact (closest {closest_now}): the engagement phase is skipped "
-                         f"-- there is nothing in front of either player to shoot at")
+                A.sh.log(f"no contact (current paired 3-D {closest_now}, run minimum {duel.best_dist()} at "
+                         f"dy {duel.best_dy()}): the engagement phase is skipped -- there is nothing in front of "
+                         f"either player to shoot at")
             duel.stop.set()
             mon.join(timeout=5.0)
             watch.stop()
@@ -2549,7 +2894,7 @@ def main():
                    f"detail={json.dumps(ev['detail'], default=float)} " if ev else
                    f"(no signal in {a.kill_timeout}s) ")
             A.sh.log(f"RESULT {verdict} {sig}"
-                     f"closest_3d={closest} contact={duel.contact.is_set()} "
+                     f"closest_3d={closest} dy_at_closest={duel.best_dy()} contact={duel.contact.is_set()} "
                      f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                      f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
                      f"health_watch={'disarmed' if health is None else 'armed'} "

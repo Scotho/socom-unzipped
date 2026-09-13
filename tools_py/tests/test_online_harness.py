@@ -335,8 +335,16 @@ class MovePathWatchTest(unittest.TestCase):
 
     def test_stalled_while_alive_names_the_side_and_the_r6_gap(self):
         w = self.make()
-        self.feed("A", 5.0, round_time=5.0)
-        self.feed("A", 11.0, calls=False, round_time=16.0)
+        # The round clock ADVANCES with the rows, as it did on launch 1c's real stall. (It used to be fed as two
+        # constants, 5.0 then 16.0; since Sprint 5 Task 5 a clock standing still for >= 2 s is a guest FREEZE,
+        # which disarms the watch -- launch 8c.)
+        rt = 0.0
+        for _ in range(20):
+            rt += 0.25
+            self.feed("A", 0.25, round_time=rt)
+        for _ in range(44):
+            rt += 0.25
+            self.feed("A", 0.25, calls=False, round_time=rt)
         v = w.check()
         self.assertEqual(v["A"].status, "stalled")
         self.assertEqual(w.stalled[0], "A")
