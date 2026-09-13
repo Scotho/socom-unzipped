@@ -329,7 +329,10 @@ class RunLogTail(threading.Thread):
         # hazard, re-entering at exactly the point the kill readout depends on.
         self.watch_reads = 0
         self.watch_misses = 0
-        self.watch_hist = []    # (t, value) of that word, appended only when it changes
+        # (t, value, actor_addr) of that word, appended only when the value OR the actor changes.
+        # The actor address travels with every read: a death is only a death on the actor that was
+        # alive a moment ago, and the actor block can be re-pointed (respawn, a different player).
+        self.watch_hist = []
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -397,8 +400,9 @@ class RunLogTail(threading.Thread):
                                 v = raw[(want - a) // 4]
                                 self.watch_reads += 1
                                 hit = True
-                                if not self.watch_hist or self.watch_hist[-1][1] != v:
-                                    self.watch_hist.append((t, v))
+                                if (not self.watch_hist
+                                        or self.watch_hist[-1][1:] != (v, self.actor_addr)):
+                                    self.watch_hist.append((t, v, self.actor_addr))
                                 break
                         if not hit:
                             # The offset is armed but no peeked block covers it -- the PS2X_PEEK
@@ -1217,7 +1221,9 @@ class KillWatch(threading.Thread):
        --health-offset names an ACTOR-RELATIVE byte offset confirmed across two kills (never an
        item index: PS2X_PEEK skips unresolved items and the ones after them shift down, so an
        index-based guard read the wrong block entirely); the brief forbids
-       believing a candidate before that, so by default this signal is OFF and says so.
+       believing a candidate before that, so by default this signal is OFF and says so. It fires
+       only on a TRANSITION -- an alive read then a dead read on the same actor address (see
+       `_check_health`; tools_py/tests/test_kill_watch.py holds it to that).
     2. `respawn` -- the position record of either instance TELEPORTING (a jump no walk can make
        between two 4 Hz samples), or landing back within RESPAWN_RADIUS of the spawn it left. On a
        one-life round that is the round ending, which is what a kill causes.
@@ -1253,6 +1259,8 @@ class KillWatch(threading.Thread):
         # camera record is a fallback, and switching between them resets the cursor rather than
         # silently re-indexing one series against the other.
         self._src = {t: None for t in tails}
+        # Per-instance health transition state: {tag: {seen, actor, alive}} (see _check_health).
+        self._health_state = {}
         try:
             self._server_pos = os.path.getsize(server_log)
         except OSError:
@@ -1300,21 +1308,42 @@ class KillWatch(threading.Thread):
                                                "spawn": list(spawn)})
             self._seen[tag] = len(rows)
 
+    #: an ALIVE read is a health float strictly above zero and at most full (1.0). Anything else --
+    #: 0.0, NaN/inf, a heap fill such as 0xAFAFAFAF (~ -3.2e-10) or 0xD9D9D9D9, a huge value from a
+    #: word that is not health at all -- is never evidence the actor was alive.
+    ALIVE_RANGE = (0.0, 1.0)
+
     def _check_health(self):
+        """A death counts only as a TRANSITION: the same actor address must first give an alive read
+        (0 < v <= 1) and then a read inside `health_range`. State is per instance and per actor
+        address; a change of address resets it. A first read of 0.0 or of uninitialised heap is
+        therefore not a kill -- which is what this guard printed PASS for before."""
         if self.health is None:                      # 0 is a valid actor offset
             return
         lo, hi = self.health_range
+        alive_lo, alive_hi = self.ALIVE_RANGE
         for tag, tail in self.tails.items():
             with tail._lock:                         # noqa: SLF001 - same module
                 hist = list(tail.watch_hist)
-            for t, raw in hist:
+            state = self._health_state.setdefault(tag, {"seen": 0, "actor": None, "alive": None})
+            for t, raw, actor in hist[state["seen"]:]:
+                if actor != state["actor"]:
+                    state["actor"], state["alive"] = actor, None
                 v = struct.unpack("<f", struct.pack("<I", raw))[0]
-                if lo <= v <= hi:
+                if math.isfinite(v) and alive_lo < v <= alive_hi:
+                    state["alive"] = (t, raw, v)
+                elif not (math.isfinite(v) and lo <= v <= hi):
+                    # Neither alive nor dead (NaN, inf, 5000.0, a word that is not health): the
+                    # actor's last alive read no longer describes it, so it cannot be the "before".
+                    state["alive"] = None
+                elif state["alive"] is not None:
+                    prev_t, prev_raw, prev_v = state["alive"]
                     self._add("health", tag, {"raw": raw, "value": v, "at": t,
-                                              "offset": self.health})
-                    with tail._lock:                 # noqa: SLF001 - same module
-                        tail.watch_hist = []
-                    break
+                                              "offset": self.health, "actor": actor,
+                                              "alive_raw": prev_raw, "alive_value": prev_v,
+                                              "alive_at": prev_t})
+                    state["alive"] = None            # one death per alive stretch
+            state["seen"] = len(hist)
 
     def _check_server(self):
         if self._server_pos is None:
@@ -1446,7 +1475,10 @@ def main():
                     help="lo:hi -- the float range that counts as DEAD for --health-offset. The "
                          "default matches research/19's `<= 0.0 = dead`. It used to be -0.5:0.5, "
                          "which on a 1.0-full health float would have called a player at 40 %% "
-                         "health dead and printed PASS for a kill that never happened")
+                         "health dead and printed PASS for a kill that never happened. A read in "
+                         "this range counts ONLY as a transition: the same actor address must "
+                         "first read alive (0 < v <= 1), so a first read of 0.0 or of "
+                         "uninitialised heap (0xAFAFAFAF) is not a kill")
     a = ap.parse_args()
     if a.until_kill:
         a.converge = True
