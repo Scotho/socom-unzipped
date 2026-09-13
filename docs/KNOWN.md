@@ -103,6 +103,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The camera does not tell you which way the player faces.** `atan2(actor − camera 0x416054)` taken just
+  before a forward hold has p90 error **23.85°** over 9 clean at-rest holds (kill1–3, both sides), and
+  **~55°** over 117–132 holds with a looser rest gate; the big errors follow an `rx` turn 1.2–2.5 s earlier,
+  i.e. the camera is still settling (Sprint 5 Task 2 Step 1, `d0f4ccb`, review reproduced). Aim from an
+  actor-side heading or a measured displacement, never from the camera.
+
 - **The peek sampler's period is not constant under load** (Sprint 5 Task 3 Step 0, `736193c`/`afe98da`,
   measured on `run_B_20260912_231341.log`): kill2 B ran 0.25 s/row until ~620 s, then ~0.6 s/row with
   gaps to 1.08 s around the closest approach. Any row-count bar (contact ≥ 20 rows) means a different
