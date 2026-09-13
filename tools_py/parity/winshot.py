@@ -56,27 +56,53 @@ def register_frame_file(hwnd, path):
     _frame_files[hwnd] = path
 
 
-def grab(hwnd):
+class StaleFrameError(RuntimeError):
+    """The exe's frame file is older than the caller allows: the renderer stopped writing it (a hung
+    or closed instance), so a capture would be a picture of the past. Subclasses RuntimeError, which
+    the login frame loops already treat as "no frame yet". Blind: a hung renderer that keeps writing
+    new files -- the file is fresh and the picture is not."""
+
+    def __init__(self, path, age, max_age):
+        super().__init__(f"frame file {path} is {age:.1f}s old (max {max_age:g}s)")
+        self.path, self.age, self.max_age = path, age, max_age
+
+
+FRAME_RETRY_S = 3.0      # how long grab() waits for a readable (and, with max_age, fresh) frame file
+
+
+def grab(hwnd, max_age=None):
     """The harness's capture: the exe's own frame file when one is registered for the window or
     PS2X_HOST_SCREENSHOT_LATEST is set (a GL readback the runtime rewrites every ~150 ms — immune
     to windows overlapping ours), else PrintWindow. The file is renamed into place atomically;
-    retry while it is being replaced."""
+    retry while it is being replaced.
+
+    max_age (seconds): refuse a frame file whose mtime is older than this -- keep retrying for a
+    fresh one until FRAME_RETRY_S, then raise StaleFrameError. None (the default, which the gate's
+    drive.py uses) keeps the old behaviour. PrintWindow is a live capture and is not age-checked."""
     import os
     import time
     path = _frame_files.get(hwnd) or os.environ.get("PS2X_HOST_SCREENSHOT_LATEST")
     if not path:
         return capture(hwnd)
-    deadline = time.time() + 3.0
+    deadline = time.time() + FRAME_RETRY_S
     last_err = None
-    while time.time() < deadline:
+    while True:
         try:
-            with open(path, "rb") as fp:
-                im = Image.open(fp)
-                im.load()
-                return im.convert("RGB")
+            age = time.time() - os.path.getmtime(path)
+            if max_age is not None and age > max_age:
+                last_err = StaleFrameError(path, age, max_age)
+            else:
+                with open(path, "rb") as fp:
+                    im = Image.open(fp)
+                    im.load()
+                    return im.convert("RGB")
         except Exception as e:  # noqa: BLE001 - mid-rename / not yet written
             last_err = e
-            time.sleep(0.05)
+        if time.time() >= deadline:
+            break
+        time.sleep(0.05)
+    if isinstance(last_err, StaleFrameError):
+        raise last_err
     raise RuntimeError(f"no frame file at {path}: {last_err}")
 
 

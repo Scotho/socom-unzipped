@@ -1,7 +1,8 @@
 """Pure online verdict scorers: is a side controllable, is its move path alive, is it network-starved,
 is a valve read trustworthy, and how many contact rows occurred -- decided from log rows.
 
-Sprint 5 Task 3 Step 0. PURE: the parse functions take lines/strings, the scorers take rows, and
+Sprint 5 Task 3 Step 0 (Steps 1-5 added the row readers the live harness shares: valves by name bytes,
+actor fields, the R6 stall context). PURE: the parse functions take lines/strings, the scorers take rows, and
 nothing here opens a file, reads a clock or imports the live harness. Only `main()` (the CLI) does IO:
 
     python -m tools_py.parity.verdict_core score-control|move-path|contact|starvation <logs...>
@@ -59,6 +60,7 @@ ACTOR_POS_WORDS = (7, 8, 9)        # actor +0x1c/+0x20/+0x24 = x, y, z
 CAMERA_RECORD_ADDR = 0x416054      # the camera-orbit record; NOT the player (research/18 §4.1)
 MOVE_SCALE_NAME = "MoveScale"      # PS2X_CALL_TRACE="0x553dc0:MoveScale"
 NET_IDLE_NAME = "NetIdleMs"        # PS2X_CALL_TRACE="0x30cd80:NetIdleMs" (the thunk, research/18 §3.12a)
+NET_IDLE_NAMES = ("NetIdle", NET_IDLE_NAME)   # launch 1 (research/21 §6.1) and Task 5 name the slot NetIdle
 CLOCK_STRING_ADDR = 0x408F10       # round clock string (research/19 F2)
 NG_FINGERPRINT_WORD = 0x118 // 4   # CZNetGame +0x118 = 50.0f (reCOM m_pos_smooth), in all ten images
 NG_FINGERPRINT_VALUE = 0x42480000  # (research/19 F2) -- identifies the *0x437ce8:84 block by content
@@ -639,18 +641,185 @@ def score_starvation(netidle_rows, lagflag_rows, side="?", move_path=None):
 # ---------------------------------------------------------------------------------------------
 # valves, the CZNetGame block, the clock string
 # ---------------------------------------------------------------------------------------------
-def read_valve(peek_item, expected_name_ptr):
+@dataclass(frozen=True)
+class Valve:
+    name: str
+    value_item: str          # PS2X_PEEK item carrying (name pointer, value)
+    name_item: str           # PS2X_PEEK item printed AT the name pointer: the name's first 12 bytes
+    ours_name_ptr: int       # research/21 §2.1, ours only -- NEVER a PCSX2 run's (+0x20/+0x30/+0x40 there)
+
+
+# research/21 §2.1-§2.2. Identity is the NAME BYTES (platform- and heap-independent); the pointer
+# column is kept only for the pointer-mode read and the CLI's --round-name-ptr. mission_abort's
+# name item is `*0x43668c*:3`: `*0x43668c` already lands on the valve, and launch 1c's `**:3` form
+# dereferenced the name bytes themselves (@7373696d on every row, research/21 §6.2).
+VALVES = {v.name: v for v in (
+    Valve("mp_round_count", "*0x437ce8+0x0c*:2", "*0x437ce8+0x0c**:3", 0x006B7F30),
+    Valve("mp_game_over", "*0x437ce8+0x10*:2", "*0x437ce8+0x10**:3", 0x006B7F20),
+    Valve("player_team", "*0x437ce8+0x14*:2", "*0x437ce8+0x14**:3", 0x006CC9FC),
+    Valve("mp_major_game_state", "*0x437ce8+0x20*:2", "*0x437ce8+0x20**:3", 0x00694AE0),
+    Valve("mp_minor_game_state", "*0x437ce8+0x24*:2", "*0x437ce8+0x24**:3", 0x00694B08),
+    Valve("late_joiner", "*0x437ce8+0x2c*:2", "*0x437ce8+0x2c**:3", 0x006CCA14),
+    Valve("aiteam_00", "*0x437ce8+0x58*:2", "*0x437ce8+0x58**:3", 0x006CCAD4),
+    Valve("aiteam_08", "*0x437ce8+0x5c*:2", "*0x437ce8+0x5c**:3", 0x006CCAEC),
+    Valve("total_mp_kills", "*0x437ce8+0x70*:2", "*0x437ce8+0x70**:3", 0x006B7F70),
+    Valve("mission_abort", "*0x43668c:2", "*0x43668c*:3", 0x006B7FB0),
+)}
+ROUND_VALVES = ("mp_round_count", "mp_game_over", "aiteam_00", "aiteam_08")
+NAME_BYTES = 12                        # three words; aiteam_00/_08 differ only in byte 8
+
+
+def name_bytes_match(words, name):
+    """The first 12 bytes at the name pointer spell `name` (through its NUL when it is shorter).
+    Bytes after the NUL are not compared: they are whatever follows the string in the registry."""
+    if len(words) < NAME_BYTES // 4:
+        return False
+    raw = b"".join(struct.pack("<I", w & 0xFFFFFFFF) for w in words[:NAME_BYTES // 4])
+    want = (name.encode("ascii") + b"\0")[:NAME_BYTES]
+    return raw[:len(want)] == want
+
+
+def _short(words):
+    v = words[1] & 0xFFFF
+    return v - 0x10000 if v & 0x8000 else v
+
+
+def read_valve(peek_item, expected_name_ptr, name_item=None, expected_name=None):
     """peek_item: (addr, words) of `*0x437ce8+<off>*:2`. Word 0 is the name pointer; the value is the
-    signed short at +4 (low 16 bits of word 1). Wrong/missing name pointer -> NoData."""
+    signed short at +4 (low 16 bits of word 1).
+
+    Two identities:
+      * by POINTER (expected_name_ptr): word 0 must equal it. Platform-specific (research/21 §2.1).
+      * by NAME BYTES (expected_name + name_item, the `**:3` item): the name item must spell the
+        name AND be printed at the address word 0 points to. Heap-, build- and platform-independent.
+    Anything that does not hold -> NoData."""
     if peek_item is None:
         return NoData("valve item missing")
     _, words = peek_item
     if len(words) < 2:
         return NoData(f"valve item has {len(words)} word(s), need 2")
+    if expected_name is not None:
+        if name_item is None:
+            return NoData(f"no name-bytes item for {expected_name}")
+        n_addr, n_words = name_item
+        if not name_bytes_match(n_words, expected_name):
+            return NoData(f"name bytes at {n_addr:08x} do not spell {expected_name}")
+        if words[0] != n_addr:
+            return NoData(f"name pointer {words[0]:08x} != name item address {n_addr:08x}")
+        if expected_name_ptr is not None and words[0] != expected_name_ptr:
+            return NoData(f"name pointer {words[0]:08x} != {expected_name_ptr:08x}")
+        return _short(words)
     if words[0] != expected_name_ptr:
         return NoData(f"name pointer {words[0]:08x} != {expected_name_ptr:08x}")
-    v = words[1] & 0xFFFF
-    return v - 0x10000 if v & 0x8000 else v
+    return _short(words)
+
+
+def row_valve(items, name):
+    """One peek row's value of the valve called `name`, identified by its name bytes (never by
+    position or pointer): the 3-word item that spells the name, then the 2-word item whose word 0 is
+    that item's address. NoData with the reason otherwise."""
+    names = [it for it in items if len(it[1]) >= 3 and name_bytes_match(it[1], name)]
+    if not names:
+        return NoData(f"no name-bytes item spells {name}")
+    for n_item in names:
+        for it in items:
+            if len(it[1]) == 2 and it[1][0] == n_item[0]:
+                return read_valve(it, None, name_item=n_item, expected_name=name)
+    return NoData(f"no value item points at the {name} name bytes ({names[0][0]:08x})")
+
+
+def valve_rows_by_name(peek_rows, name):
+    """[(t, value)] for the rows where `row_valve` identified the valve."""
+    out = []
+    for t, items in peek_rows:
+        v = row_valve(items, name)
+        if not isinstance(v, NoData):
+            out.append((t, v))
+    return out
+
+
+def row_clock_string(items, addr=CLOCK_STRING_ADDR):
+    for a, words in items:
+        if a == addr and words:
+            raw = b"".join(struct.pack("<I", w) for w in words).split(b"\0", 1)[0]
+            if raw and all(0x20 <= c < 0x7F for c in raw):
+                return raw.decode("ascii")
+            return NoData(f"clock string at {addr:#x} is not printable")
+    return NoData(f"no {addr:#x} item")
+
+
+def row_round_state(items):
+    """{valve: value | NoData} over ROUND_VALVES, plus 'clock': the round clock string | NoData."""
+    st = {name: row_valve(items, name) for name in ROUND_VALVES}
+    st["clock"] = row_clock_string(items)
+    return st
+
+
+# ---------------------------------------------------------------------------------------------
+# actor fields (offsets from the actor base, found through the block whose word 0 is the vtable)
+# ---------------------------------------------------------------------------------------------
+ACTOR_ALIVE_OFFSET = 0xF7A         # byte, 1 = alive (research/19 F1); byte 2 of the word at +0xF78
+ACTOR_STAMP_OFFSET = 0x420         # float, the position-apply timestamp R6 compares (research/21 §6.4)
+ROUND_TIME_ADDR = 0x4365C0         # float, DAT_004365c0: round time, counts up from 0 at round start
+MP_FLAG_WORD_ADDR = 0x45A0C0       # the word holding DAT_0045a0c1 as its byte 1
+R6_GAP_S = 0.6                     # FUN_00594cf0's snap-back: 0x45a0c1 && clock - actor+0x420 > 0.6
+
+
+def row_actor_field(items, offset, kind="u8"):
+    """actor+offset from one peek row: 'u8' a byte, 'f32' a float (offset % 4 == 0). The actor is
+    the item whose word 0 is ACTOR_VTABLE; the field is read from whichever item covers that
+    actor's address + offset -- never another actor's block, never by index."""
+    actor = next((a for a, w in items if w and w[0] == ACTOR_VTABLE), None)
+    if actor is None:
+        return NoData("no actor block (vtable) in the row")
+    want = actor + offset
+    for a, words in items:
+        if a <= want < a + 4 * len(words):
+            rel = want - a                         # items need not be word-aligned with the field
+            w, shift = words[rel // 4], 8 * (rel % 4)
+            if kind == "u8":
+                return (w >> shift) & 0xFF
+            if kind == "f32" and shift == 0:
+                return f32(w)
+            return NoData(f"cannot read {kind} at actor+{offset:#x} from the item at {a:08x}")
+    return NoData(f"no peek item covers actor+{offset:#x}")
+
+
+def actor_field_rows(peek_rows, offset, kind="u8"):
+    out = []
+    for t, items in peek_rows:
+        v = row_actor_field(items, offset, kind)
+        if not isinstance(v, NoData):
+            out.append((t, v))
+    return out
+
+
+def row_static(items, addr):
+    for a, words in items:
+        if a == addr and words:
+            return words[0]
+    return None
+
+
+def stall_context(items):
+    """The R6 snap-back inputs from one (the latest) peek row, for a move-path stall line:
+    actor+0x420, the round clock DAT_004365c0, their gap and DAT_0045a0c1. Items absent -> said."""
+    parts = []
+    stamp = row_actor_field(items, ACTOR_STAMP_OFFSET, "f32")
+    clock_w = row_static(items, ROUND_TIME_ADDR)
+    flag_w = row_static(items, MP_FLAG_WORD_ADDR)
+    if not isinstance(stamp, NoData):
+        parts.append(f"actor+0x420={stamp:.3f}")
+    if clock_w is not None:
+        parts.append(f"clock@0x4365c0={f32(clock_w):.3f}")
+    if not isinstance(stamp, NoData) and clock_w is not None:
+        gap = f32(clock_w) - stamp
+        parts.append(f"gap={gap:.3f}{' > ' if gap > R6_GAP_S else ' <= '}{R6_GAP_S:g}")
+    if flag_w is not None:
+        parts.append(f"0x45a0c1={(flag_w >> 8) & 0xFF}")
+    if not parts:
+        return "R6 inputs not peeked (*0x408c58+0x400:12, 0x4365c0:1, 0x45a0c0:1)"
+    return "R6 " + " ".join(parts)
 
 
 def valve_rows(peek_rows, expected_name_ptr):
@@ -669,10 +838,26 @@ def valve_rows(peek_rows, expected_name_ptr):
 def ng_lagflag_rows(peek_rows):
     """[(t, ng+0xde byte)] from the CZNetGame block, identified by +0x118 == 50.0f."""
     wi, shift = NG_LAG_FLAG_OFFSET // 4, 8 * (NG_LAG_FLAG_OFFSET % 4)
+    fp_off = NG_FINGERPRINT_WORD * 4
     out = []
     for t, items in peek_rows:
-        for _, words in items:
-            if len(words) > max(NG_FINGERPRINT_WORD, wi) and words[NG_FINGERPRINT_WORD] == NG_FINGERPRINT_VALUE:
+        by_addr = {a: w for a, w in items}
+        for a, words in items:
+            if len(words) <= wi:
+                continue
+            # the fingerprint may sit in this item, or -- PS2X_PEEK caps items at 64 words, so launch
+            # 1 split the block as *0x437ce8:64 + *0x437ce8+0x100:21 -- in the item that starts
+            # exactly where the fingerprint's address falls, found by address, never by index
+            fp = None
+            if len(words) > NG_FINGERPRINT_WORD:
+                fp = words[NG_FINGERPRINT_WORD]
+            else:
+                for b, bw in by_addr.items():
+                    rel = a + fp_off - b
+                    if 0 < b - a <= fp_off and rel % 4 == 0 and rel // 4 < len(bw):
+                        fp = bw[rel // 4]
+                        break
+            if fp == NG_FINGERPRINT_VALUE:
                 out.append((t, (words[wi] >> shift) & 0xFF))
                 break
     return out
@@ -682,12 +867,9 @@ def clock_rows(peek_rows, addr=CLOCK_STRING_ADDR):
     """[(t, string)] from a `0x408f10:<n>` item: words little-endian, up to the first NUL, printable."""
     out = []
     for t, items in peek_rows:
-        for a, words in items:
-            if a == addr and words:
-                raw = b"".join(struct.pack("<I", w) for w in words).split(b"\0", 1)[0]
-                if raw and all(0x20 <= c < 0x7F for c in raw):
-                    out.append((t, raw.decode("ascii")))
-                break
+        s = row_clock_string(items, addr)
+        if not isinstance(s, NoData):
+            out.append((t, s))
     return out
 
 
@@ -841,13 +1023,17 @@ def _cmd_move_path(args):
         _rows_read(tag, path, p)
         calls = [(t, n) for t, n, *_ in p.calls.get(args.name, [])]
         now = p.peek_rows[-1][0] if p.peek_rows else (calls[-1][0] if calls else 0.0)
-        alive = []   # +0xF7A: not in any Sprint 4 PEEK spec; Step 1 wires the read
-        rounds = valve_rows(p.peek_rows, args.round_name_ptr) if args.round_name_ptr is not None else []
+        alive = actor_field_rows(p.peek_rows, ACTOR_ALIVE_OFFSET, "u8")
+        if args.round_name_ptr is not None:
+            rounds = valve_rows(p.peek_rows, args.round_name_ptr)
+        else:
+            rounds = valve_rows_by_name(p.peek_rows, "mp_round_count")
         v = score_move_path(calls, alive, rounds, now)
         lines = len(calls)
         span = f"#{calls[0][1]}..#{calls[-1][1]} over {calls[0][0]:.1f}..{calls[-1][0]:.1f}s" if calls else "none"
         print(f"[{tag}] {args.name} lines={lines} ({span}) alive rows={len(alive)} round rows={len(rounds)} now={now:.1f}")
-        print(f"[{tag}] MOVE-PATH {v.status} since={v.since} -- {v.detail}")
+        ctx = f"; {stall_context(p.peek_rows[-1][1])}" if (v.status == "stalled" and p.peek_rows) else ""
+        print(f"[{tag}] MOVE-PATH {v.status} since={v.since} -- {v.detail}{ctx}")
         code = {"ok": 0, "disarmed": 0, "stalled": 1}.get(v.status, 2)
         if not p.peek_rows and not calls:
             code = 2
@@ -859,13 +1045,17 @@ def _cmd_starvation(args):
     worst = 0
     for tag, path, p in _load_all(args.logs):
         _rows_read(tag, path, p)
-        idle = [(t, v) for t, _, v in p.rets.get(args.name, [])]
+        # the slot name is the launch script's choice: research/18 wrote NetIdleMs, launch 1 NetIdle
+        name = args.name or next((n for n in NET_IDLE_NAMES if p.rets.get(n)), NET_IDLE_NAMES[0])
+        idle = [(t, v) for t, _, v in p.rets.get(name, [])]
         lag = ng_lagflag_rows(p.peek_rows)
         calls = [(t, n) for t, n, *_ in p.calls.get(MOVE_SCALE_NAME, [])]
         now = p.peek_rows[-1][0] if p.peek_rows else 0.0
-        mp = score_move_path(calls, [], [], now) if calls else None   # a stall -> NO-DATA -> starvation NO-DATA
+        mp = (score_move_path(calls, actor_field_rows(p.peek_rows, ACTOR_ALIVE_OFFSET, "u8"),
+                              valve_rows_by_name(p.peek_rows, "mp_round_count"), now)
+              if calls else None)                  # a stall or NO-DATA -> starvation NO-DATA
         v = score_starvation(idle, lag, side=tag, move_path=mp)
-        print(f"[{tag}] {args.name} rows={len(idle)} ng+0xde rows={len(lag)}")
+        print(f"[{tag}] {name} rows={len(idle)} ng+0xde rows={len(lag)}")
         print(f"[{tag}] STARVATION {v.status} since={v.since} signal={v.signal} peak_ms={v.peak_ms} "
               f"bar_ok={v.bar_ok} -- {v.detail}")
         worst = max(worst, {"ok": 0, "alarm": 1}.get(v.status, 2))
@@ -919,7 +1109,8 @@ def main(argv=None):
                    help="name pointer of the mp_round_count valve (identifies its peek item)")
     s = sub.add_parser("starvation", help="ng+0xde / NetIdle (exit 0 ok / 1 alarm / 2)")
     s.add_argument("logs", nargs="+")
-    s.add_argument("--name", default=NET_IDLE_NAME)
+    s.add_argument("--name", default=None, help="NetIdle slot name (default: whichever of %s logged)"
+                   % "/".join(NET_IDLE_NAMES))
     k = sub.add_parser("contact", help="contact rows between A and B (exit 0 / 2)")
     k.add_argument("logs", nargs="+")
     k.add_argument("--offset-b", type=float, default=None, help="seconds added to B's clock")

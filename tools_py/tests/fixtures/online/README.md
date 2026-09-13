@@ -37,3 +37,16 @@ so their clock starts at 0 at the first kept row at the nominal 0.25 s/row.
 
 The contact fixtures carry no `0x408f10` clock peek (Sprint 4 never peeked it), so the contact
 scorer answers `NO-DATA` over them unless a clock is supplied.
+
+## Sprint 5 Task 3 Steps 1-5: launch 1c state fixture
+
+| fixture | source | window (s) | what it shows |
+|---|---|---|---|
+| `launch1c_A_movestop.txt` | `logs/run_A_20260913_073548.log` (launch 1c, Frostfire; research/21 §6) | 379.0-391.8 | MoveScale `#0..#15` (379.9-380.5 s) then silent while rows continue: `score_move_path` -> `stalled` with alive = 1 and `mp_round_count` = 0 read by name bytes; `actor+0x420` = 0.000 on every row, `DAT_004365c0` counting to 10.5 (R6). Nine valves identify by name bytes on every row; `mission_abort` is NO-DATA on every row (launch 1c's `*0x43668c**:3` item printed `@7373696d`) |
+
+Trimmed by `make_state` / `_trim_peek_state` (same script): the actor block's first 10 words, the
+`actor+0x400` block (12 words), the first word of `actor+0xF78`, every 2-word and 3-word item (valve
+values and name bytes; also `*0x44fa90:2` and `0x408f10:2`) and the `0x4365c0` / `0x45a0c0` / `0x408f10`
+statics; `[call]`/`[ret]` lines of MoveScale and NetIdle, plus one other `[call]` line every 2 s for
+the clock. 102 KB.
+

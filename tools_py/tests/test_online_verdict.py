@@ -589,6 +589,20 @@ class ValveTest(unittest.TestCase):
         rows = [(1.0, [(0x1BAD000, other)]), (2.0, [(0x1CE0000, block)])]
         self.assertEqual(vc.ng_lagflag_rows(rows), [(2.0, 1)])
 
+    def test_lag_flag_from_the_ng_block_split_at_the_64_word_cap(self):
+        # launch 1's spec: *0x437ce8:64 (+0x000..+0x0fc) and *0x437ce8+0x100:21 (+0x100..+0x150); the
+        # 50.0f fingerprint at +0x118 is word 6 of the SECOND item (full log: 0 lag rows before the fix)
+        head = [0] * 64
+        head[0xDC // 4] = 0x00010000
+        tail = [0] * 21
+        tail[(0x118 - 0x100) // 4] = vc.NG_FINGERPRINT_VALUE
+        decoy = [0] * 21                                   # right shape, wrong address
+        decoy[6] = vc.NG_FINGERPRINT_VALUE
+        rows = [(1.0, [(0x869360, head), (0x869460, tail)]),
+                (2.0, [(0x869360, head), (0x999460, decoy)]),
+                (3.0, [(0x869460, tail)])]
+        self.assertEqual(vc.ng_lagflag_rows(rows), [(1.0, 1)])
+
     def test_clock_string(self):
         words = list(struct.unpack("<II", b"05:19\x00\x00\x00"))
         self.assertEqual(vc.clock_rows([(1.0, [(0x408F10, words)])]), [(1.0, "05:19")])
@@ -759,6 +773,194 @@ class CliTest(unittest.TestCase):
         self.assertIn("LADDER contact_rows=0 rows_read=", out)
         self.assertEqual(code, 2, out)               # no clock peek in Sprint 4's logs -> NO-DATA
 
+
+
+# =============================================================================================
+# Task 3 Steps 1-5: valves by NAME BYTES, actor fields, round state, the R6 stall context
+# =============================================================================================
+def name_words(text):
+    raw = (text.encode("ascii") + b"\0" * 12)[:12]
+    return list(struct.unpack("<III", raw))
+
+
+# research/21 §2.2's expected name-bytes words (verified from spawn_ours3 and every row of launch 1c)
+RESEARCH21_NAME_WORDS = {
+    "mp_round_count": (0x725F706D, 0x646E756F, 0x756F635F),
+    "mp_game_over": (0x675F706D, 0x5F656D61, 0x7265766F),
+    "player_team": (0x79616C70, 0x745F7265, 0x006D6165),
+    "mp_major_game_state": (0x6D5F706D, 0x726F6A61, 0x6D61675F),
+    "mp_minor_game_state": (0x6D5F706D, 0x726F6E69, 0x6D61675F),
+    "late_joiner": (0x6574616C, 0x696F6A5F, 0x0072656E),
+    "aiteam_00": (0x65746961, 0x305F6D61, 0x00000030),
+    "aiteam_08": (0x65746961, 0x305F6D61, 0x00000038),
+    "total_mp_kills": (0x61746F74, 0x706D5F6C, 0x6C696B5F),
+    "mission_abort": (0x7373696D, 0x5F6E6F69, 0x726F6261),
+}
+# research/21 §2.1: ours and the console differ by +0x20/+0x30/+0x40
+OURS_PTR = {"mp_round_count": 0x006B7F30, "aiteam_00": 0x006CCAD4, "aiteam_08": 0x006CCAEC}
+CONSOLE_PTR = {"mp_round_count": 0x006B7F60, "aiteam_00": 0x006CCB14, "aiteam_08": 0x006CCB2C}
+
+
+def valve_items(name, ptr, value, value_addr=0x694C48):
+    """The two peek items of one valve as the exe prints them: `*<ng>+<off>*:2` (word 0 = name
+    pointer, low 16 bits of word 1 = value) and `*<ng>+<off>**:3` (printed AT the name pointer)."""
+    return [(value_addr, [ptr, 0x00010000 | (value & 0xFFFF)]), (ptr, name_words(name))]
+
+
+class ValveNameBytesTest(unittest.TestCase):
+    def test_table_matches_research21_name_words(self):
+        for name, words in RESEARCH21_NAME_WORDS.items():
+            with self.subTest(valve=name):
+                self.assertIn(name, vc.VALVES)
+                self.assertTrue(vc.name_bytes_match(list(words), name))
+
+    def test_by_name_on_ours(self):
+        items = valve_items("mp_round_count", OURS_PTR["mp_round_count"], 2)
+        self.assertEqual(vc.row_valve(items, "mp_round_count"), 2)
+
+    def test_by_name_on_the_console_pointers_too(self):
+        # the class the pointer-only read cannot separate: same valve, platform-shifted pointer
+        items = valve_items("mp_round_count", CONSOLE_PTR["mp_round_count"], 1)
+        self.assertEqual(vc.row_valve(items, "mp_round_count"), 1)
+        self.assertIsInstance(vc.read_valve(items[0], OURS_PTR["mp_round_count"]), vc.NoData)
+
+    def test_read_valve_accepts_identity_by_name_bytes(self):
+        value, name = valve_items("aiteam_08", CONSOLE_PTR["aiteam_08"], 3)
+        self.assertEqual(vc.read_valve(value, None, name_item=name, expected_name="aiteam_08"), 3)
+
+    def test_wrong_name_bytes_is_no_data(self):
+        # aiteam_00 and aiteam_08 differ only in byte 8: a name item for the other one must not do
+        value, _ = valve_items("aiteam_08", OURS_PTR["aiteam_08"], 3)
+        wrong = (OURS_PTR["aiteam_08"], name_words("aiteam_00"))
+        v = vc.read_valve(value, None, name_item=wrong, expected_name="aiteam_08")
+        self.assertIsInstance(v, vc.NoData)
+        self.assertIsInstance(vc.row_valve([value, wrong], "aiteam_08"), vc.NoData)
+
+    def test_name_item_at_a_different_pointer_is_no_data(self):
+        value, name = valve_items("mp_round_count", OURS_PTR["mp_round_count"], 2)
+        moved = (name[0] + 0x10, name[1])
+        self.assertIsInstance(vc.row_valve([value, moved], "mp_round_count"), vc.NoData)
+
+    def test_read_valve_by_name_rejects_a_value_item_pointing_elsewhere(self):
+        value, name = valve_items("mp_round_count", OURS_PTR["mp_round_count"], 2)
+        other = (value[0], [OURS_PTR["aiteam_00"], value[1][1]])
+        v = vc.read_valve(other, None, name_item=name, expected_name="mp_round_count")
+        self.assertIsInstance(v, vc.NoData)
+        self.assertEqual(vc.read_valve(value, None, name_item=name, expected_name="mp_round_count"), 2)
+
+    def test_missing_name_item_is_no_data_even_with_the_right_pointer(self):
+        value, _ = valve_items("mp_round_count", OURS_PTR["mp_round_count"], 2)
+        v = vc.row_valve([value], "mp_round_count")
+        self.assertIsInstance(v, vc.NoData)
+        self.assertIn("name", v.reason)
+
+    def test_the_double_dereferenced_mission_abort_item_is_no_data(self):
+        # launch 1c's `*0x43668c**:3` printed @7373696d (the first name word used as an address)
+        value = (0x694D88, [0x006B7FB0, 0x00010000])
+        bad = (0x7373696D, [0x00430000, 0x0042C800, 0x00000000])
+        self.assertIsInstance(vc.row_valve([value, bad], "mission_abort"), vc.NoData)
+        good = (0x006B7FB0, name_words("mission_abort"))
+        self.assertEqual(vc.row_valve([value, good], "mission_abort"), 0)
+
+    def test_negative_control_value_zero(self):
+        self.assertEqual(vc.row_valve(valve_items("mp_game_over", 0x006B7F20, 0), "mp_game_over"), 0)
+
+    def test_round_state(self):
+        items = (valve_items("mp_round_count", 0x006B7F30, 1, 0x694C48)
+                 + valve_items("mp_game_over", 0x006B7F20, 0, 0x694C20)
+                 + valve_items("aiteam_00", 0x006CCAD4, 4, 0x694C84)
+                 + [(0x408F10, list(struct.unpack("<II", b"05:47\x00\x00\x00")))])
+        st = vc.row_round_state(items)
+        self.assertEqual((st["mp_round_count"], st["mp_game_over"], st["aiteam_00"], st["clock"]),
+                         (1, 0, 4, "05:47"))
+        self.assertIsInstance(st["aiteam_08"], vc.NoData)
+
+
+class ActorFieldTest(unittest.TestCase):
+    ACTOR = 0x1583F60
+
+    def items(self, alive_word=0x000101A4, stamp=0.0):
+        block = [vc.ACTOR_VTABLE] + [0] * 9
+        b400 = [0] * 12
+        b400[8] = f2w(stamp)
+        return [(self.ACTOR, block), (self.ACTOR + 0x400, b400), (self.ACTOR + 0xF78, [alive_word])]
+
+    def test_alive_byte_is_byte_2_of_the_f78_word(self):
+        self.assertEqual(vc.row_actor_field(self.items(), vc.ACTOR_ALIVE_OFFSET, "u8"), 1)
+        self.assertEqual(vc.row_actor_field(self.items(alive_word=0x000001A4), vc.ACTOR_ALIVE_OFFSET, "u8"), 0)
+
+    def test_stamp_420_is_word_8_of_the_400_block(self):
+        self.assertAlmostEqual(vc.row_actor_field(self.items(stamp=3.5), vc.ACTOR_STAMP_OFFSET, "f32"), 3.5)
+
+    def test_uncovered_offset_is_no_data(self):
+        items = self.items()[:1]
+        self.assertIsInstance(vc.row_actor_field(items, vc.ACTOR_ALIVE_OFFSET, "u8"), vc.NoData)
+
+    def test_block_of_another_actor_is_not_read(self):
+        items = [(self.ACTOR, [vc.ACTOR_VTABLE] + [0] * 9), (0x1990000 + 0xF78, [0x00010000])]
+        self.assertIsInstance(vc.row_actor_field(items, vc.ACTOR_ALIVE_OFFSET, "u8"), vc.NoData)
+
+    def test_no_actor_block_is_no_data(self):
+        self.assertIsInstance(vc.row_actor_field([(0x1584ED8, [0x00010000])], vc.ACTOR_ALIVE_OFFSET, "u8"),
+                              vc.NoData)
+
+
+class Launch1cFixtureTest(unittest.TestCase):
+    """launch 1c A (logs/run_A_20260913_073548.log, Frostfire): the move path stopped after
+    MoveScale #15 at 380.5 s with actor+0x420 = 0.0 on every row (research/21 §6.4, R6)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.p = parsed("launch1c_A_movestop.txt")
+
+    def test_all_nine_valves_read_by_name_on_every_row(self):
+        for name in ("mp_round_count", "mp_game_over", "player_team", "mp_major_game_state",
+                     "mp_minor_game_state", "late_joiner", "aiteam_00", "aiteam_08", "total_mp_kills"):
+            with self.subTest(valve=name):
+                rows = vc.valve_rows_by_name(self.p.peek_rows, name)
+                self.assertEqual(len(rows), len(self.p.peek_rows))
+
+    def test_mission_abort_is_no_data_on_every_row_spec_defect(self):
+        self.assertEqual(vc.valve_rows_by_name(self.p.peek_rows, "mission_abort"), [])
+        self.assertEqual(vc.valve_rows(self.p.peek_rows, vc.VALVES["mission_abort"].ours_name_ptr),
+                         [(t, 0) for t, _ in self.p.peek_rows])
+
+    def test_alive_and_stamp_rows(self):
+        alive = vc.actor_field_rows(self.p.peek_rows, vc.ACTOR_ALIVE_OFFSET, "u8")
+        stamp = vc.actor_field_rows(self.p.peek_rows, vc.ACTOR_STAMP_OFFSET, "f32")
+        self.assertEqual(len(alive), len(self.p.actor_rows))
+        self.assertEqual({v for _, v in alive}, {1})
+        self.assertEqual({v for _, v in stamp}, {0.0})
+
+    def test_move_path_stalled_with_the_r6_context(self):
+        p = self.p
+        calls = [(t, n) for t, n, *_ in p.calls["MoveScale"]]
+        alive = vc.actor_field_rows(p.peek_rows, vc.ACTOR_ALIVE_OFFSET, "u8")
+        rounds = vc.valve_rows_by_name(p.peek_rows, "mp_round_count")
+        now = p.peek_rows[-1][0]
+        v = vc.score_move_path(calls, alive, rounds, now)
+        self.assertEqual(v.status, "stalled", v.detail)
+        ctx = vc.stall_context(p.peek_rows[-1][1])
+        self.assertIn("actor+0x420=0.000", ctx)
+        self.assertIn("clock@0x4365c0=10.5", ctx)
+        self.assertIn("0x45a0c1=1", ctx)
+
+    def test_stall_context_without_the_items_says_so(self):
+        self.assertIn("not peeked", vc.stall_context([]))
+
+    def test_cli_move_path_reads_alive_and_round_by_name(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = vc.main(["move-path", os.path.join(FIXTURES, "launch1c_A_movestop.txt")])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn("MOVE-PATH stalled", out.getvalue())
+        self.assertIn("actor+0x420=0.000", out.getvalue())
+
+    def test_cli_starvation_finds_the_netidle_slot_under_its_launch_name(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            vc.main(["starvation", os.path.join(FIXTURES, "launch1c_A_movestop.txt")])
+        self.assertIn("NetIdle rows=16", out.getvalue())
 
 if __name__ == "__main__":
     unittest.main()

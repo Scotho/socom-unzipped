@@ -27,6 +27,8 @@ import time
 import numpy as np
 
 from . import online_login_ours as L
+from . import verdict_core as vc
+from . import winshot
 
 # ---------------------------------------------------------------------------
 # Instruments
@@ -301,13 +303,12 @@ class RunLogTail(threading.Thread):
 
     _ITEM = re.compile(r"@([0-9a-fA-F]+):((?:\s+[0-9a-fA-F]{8}\([^)]*\))+)")
     _WORD = re.compile(r"([0-9a-fA-F]{8})\(")
-    _SCALE = re.compile(r"\[call\]\s+[\d.]+s\s+" + MOVE_SCALE_TRACE_NAME + r"\s.*?\sf12=(-?[\d.eE+]+)")
 
     POLL_S = 0.05
 
-    def __init__(self, path, addr=POSITION_ADDR):
+    def __init__(self, path, addr=POSITION_ADDR, clock=time.time):
         super().__init__(daemon=True)
-        self.path, self.addr = path, addr
+        self.path, self.addr, self.clock = path, addr, clock
         self.rows = []          # (t, x, y, z) -- every peek row, all-zero pre-gameplay rows included
         self.scales = []        # (t, f12)
         self.lines = 0
@@ -334,6 +335,21 @@ class RunLogTail(threading.Thread):
         # The actor address travels with every read: a death is only a death on the actor that was
         # alive a moment ago, and the actor block can be re-pointed (respawn, a different player).
         self.watch_hist = []
+        # Sprint 5 Task 3: the state the verdicts need, read by CONTENT through verdict_core.
+        #   calls[name] = [(t, #n, f12)] for every `[call]` slot (count calls from #n, never lines);
+        #   rets[name]  = [(t, #n, v0)];
+        #   alive_rows  = [(t, actor+0xF7A byte)];
+        #   round_rows  = [(t, {mp_round_count, mp_game_over, aiteam_00, aiteam_08, clock})], each a
+        #                 value or vc.NoData -- valves identified by their NAME BYTES, never by pointer;
+        #   valve_counts[name] = [rows identified, rows seen, last NO-DATA reason];
+        #   latest_items = the newest row's items (the R6 context of a move-path stall line).
+        self.calls = {}
+        self.rets = {}
+        self.alive_rows = []
+        self.round_rows = []
+        self.round_valid_t = None
+        self.valve_counts = {}
+        self.latest_items = None
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -363,12 +379,14 @@ class RunLogTail(threading.Thread):
 
     def _line(self, line):
         self.lines += 1
-        t = time.time()
+        t = self.clock()
         if line.startswith("[peek]"):
             blocks = []
+            all_items = []
             for idx, (addr, words) in enumerate(self._ITEM.findall(line)):
                 raw = [int(w, 16) for w in self._WORD.findall(words)]
                 a = int(addr, 16)
+                all_items.append((a, raw))
                 if a == self.addr:
                     vals = [struct.unpack("<f", struct.pack("<I", w))[0] for w in raw[:3]]
                     if len(vals) >= 3:
@@ -376,6 +394,7 @@ class RunLogTail(threading.Thread):
                             self.rows.append((t, vals[0], vals[1], vals[2]))
                     continue
                 blocks.append((idx, a, raw))
+            self._state_row(t, all_items)
             if not blocks:
                 return
             # Which block is the actor? The one whose word 0 is the class vtable. Everything else
@@ -392,7 +411,7 @@ class RunLogTail(threading.Thread):
                     if len(actor[2]) > wk:
                         xyz = [struct.unpack("<f", struct.pack("<I", actor[2][w]))[0]
                                for w in (wi, wj, wk)]
-                        self.actor_rows.append((t, xyz[0], xyz[1], xyz[2]))
+                        self.actor_rows.append((t, xyz[0], xyz[1], xyz[2], actor[1]))
                     if self.watch_offset is not None:
                         want = self.actor_addr + self.watch_offset
                         hit = False
@@ -411,11 +430,44 @@ class RunLogTail(threading.Thread):
                             # reporting silence as stability.
                             self.watch_misses += 1
             return
-        if MOVE_SCALE_TRACE_NAME in line:
-            m = self._SCALE.search(line)
+        if line.startswith("[call]"):
+            m = vc._CALL.match(line)
+            if m:
+                name, n, rest = m.group(2), int(m.group(3)), m.group(4)
+                fm = vc._F12.search(rest)
+                f12 = float(fm.group(1)) if fm else None
+                with self._lock:
+                    self.calls.setdefault(name, []).append((t, n, f12))
+                    if name == MOVE_SCALE_TRACE_NAME and f12 is not None:
+                        self.scales.append((t, f12))
+            return
+        if line.startswith("[ret]"):
+            m = vc._RET.match(line)
             if m:
                 with self._lock:
-                    self.scales.append((t, float(m.group(1))))
+                    self.rets.setdefault(m.group(1), []).append((t, int(m.group(2)), int(m.group(3), 16)))
+
+    def _state_row(self, t, items):
+        """Alive byte, round valves + clock string and per-valve identification counts, from one
+        `[peek]` row's items (all of them, the camera record included)."""
+        alive = vc.row_actor_field(items, vc.ACTOR_ALIVE_OFFSET, "u8")
+        valves = {name: vc.row_valve(items, name) for name in vc.VALVES}
+        state = {name: valves[name] for name in vc.ROUND_VALVES}
+        state["clock"] = vc.row_clock_string(items)
+        with self._lock:
+            self.latest_items = items
+            if not isinstance(alive, vc.NoData):
+                self.alive_rows.append((t, alive))
+            self.round_rows.append((t, state))
+            if not any(isinstance(state[k], vc.NoData) for k in ("mp_round_count", "mp_game_over")):
+                self.round_valid_t = t
+            for name, v in valves.items():
+                c = self.valve_counts.setdefault(name, [0, 0, None])
+                c[1] += 1
+                if isinstance(v, vc.NoData):
+                    c[2] = v.reason
+                else:
+                    c[0] += 1
 
     def stop(self):
         self._stop.set()
@@ -438,13 +490,13 @@ class RunLogTail(threading.Thread):
         """The player's OWN (t, x, y, z), or None. Preferred over `latest()` everywhere: it needs
         no facing, no orbit radius and no reconstruction."""
         rows = self.actor_ingame()
-        if rows and time.time() - rows[-1][0] <= max_age:
+        if rows and self.clock() - rows[-1][0] <= max_age:
             return rows[-1]
         return None
 
     def latest(self, max_age=4.0):
         rows = self.ingame()
-        if rows and time.time() - rows[-1][0] <= max_age:
+        if rows and self.clock() - rows[-1][0] <= max_age:
             return rows[-1]
         return None
 
@@ -1242,14 +1294,18 @@ class KillWatch(threading.Thread):
     """
 
     #: signals that may end a run. `server` is deliberately not among them (see above).
-    FIRING = ("health", "respawn")
+    #: Sprint 5 Task 3: `round` -- the round-state valves read by name bytes (mp_round_count steps,
+    #: mp_game_over leaves 0, the clock string reaches 00:00) -- is the round-end signal, and
+    #: `respawn` is DEMOTED to a fallback: it fires only while that instance's valves are NO-DATA,
+    #: and is otherwise recorded as a non-firing observation. Neither is ever a PASS (result_verdict).
+    FIRING = ("health", "round", "respawn")
 
     POLL_S = 0.25
 
     def __init__(self, tails, spawns, server_log=SERVER_LOG, health=None,
-                 health_range=(-1e9, 0.0)):
+                 health_range=(-1e9, 0.0), clock=time.time):
         super().__init__(daemon=True)
-        self.tails, self.spawns = tails, spawns
+        self.tails, self.spawns, self.clock = tails, spawns, clock
         self.server_log, self.health, self.health_range = server_log, health, health_range
         self.events = []
         self.fired = None
@@ -1262,6 +1318,18 @@ class KillWatch(threading.Thread):
         self._src = {t: None for t in tails}
         # Per-instance health transition state: {tag: {seen, actor, alive}} (see _check_health).
         self._health_state = {}
+        # Round state: rows already seen before the watch started seed the last values, so history
+        # (the lobby, a previous round) is never replayed as a transition.
+        self._round_seen, self._round_prev = {}, {}
+        for tag, tail in tails.items():
+            with tail._lock:                         # noqa: SLF001 - same module
+                rows = list(getattr(tail, "round_rows", []))
+            prev = {}
+            for _, st in rows:
+                for k, v in st.items():
+                    if not isinstance(v, vc.NoData):
+                        prev[k] = v
+            self._round_seen[tag], self._round_prev[tag] = len(rows), prev
         try:
             self._server_pos = os.path.getsize(server_log)
         except OSError:
@@ -1270,9 +1338,9 @@ class KillWatch(threading.Thread):
     def stop(self):
         self._stop.set()
 
-    def _add(self, kind, tag, detail):
-        ev = {"kind": kind, "tag": tag, "t": time.time(), "detail": detail,
-              "firing": kind in self.FIRING}
+    def _add(self, kind, tag, detail, firing=None):
+        ev = {"kind": kind, "tag": tag, "t": self.clock(), "detail": detail,
+              "firing": (kind in self.FIRING) if firing is None else firing}
         self.events.append(ev)
         if self.fired is None and ev["firing"]:
             self.fired = ev
@@ -1300,13 +1368,17 @@ class KillWatch(threading.Thread):
                 if far:
                     self._away[tag] = True
                 if d >= TELEPORT_UNITS:
+                    fallback = not self.round_live(tag)
                     self._add("respawn", tag, {"jump": d, "from": [a[1], a[3]],
-                                               "to": [b[1], b[3]]})
+                                               "to": [b[1], b[3]], "fallback": fallback},
+                              firing=fallback)
                 elif (self._away[tag] and spawn is not None
                       and math.hypot(b[1] - spawn[0], b[3] - spawn[1]) <= RESPAWN_RADIUS):
                     self._away[tag] = False
+                    fallback = not self.round_live(tag)
                     self._add("respawn", tag, {"back_at_spawn": [b[1], b[3]],
-                                               "spawn": list(spawn)})
+                                               "spawn": list(spawn), "fallback": fallback},
+                              firing=fallback)
             self._seen[tag] = len(rows)
 
     #: an ALIVE read is a health float strictly above zero and at most full (1.0). Anything else --
@@ -1346,6 +1418,40 @@ class KillWatch(threading.Thread):
                     state["alive"] = None            # one death per alive stretch
             state["seen"] = len(hist)
 
+    def round_live(self, tag):
+        """This instance's round valves (mp_round_count and mp_game_over, by name bytes) were read
+        within ROUND_LIVE_MAX_AGE_S. While they are, `respawn` does not fire."""
+        tail = self.tails[tag]
+        t = getattr(tail, "round_valid_t", None)
+        return t is not None and self.clock() - t <= ROUND_LIVE_MAX_AGE_S
+
+    def _check_round(self):
+        """`round` on a valve transition between two identified reads: mp_round_count changes,
+        mp_game_over leaves 0, or the clock string becomes 00:00. `aiteam` (non-firing) when an
+        aiteam_* count drops -- kill attribution is Task 6's, not this watch's. Blind: the valves'
+        semantics are inference (research/19 F2); the clock's 00:00 is also a round end with no kill."""
+        for tag, tail in self.tails.items():
+            with tail._lock:                         # noqa: SLF001 - same module
+                rows = list(tail.round_rows[self._round_seen[tag]:])
+            self._round_seen[tag] += len(rows)
+            prev = self._round_prev[tag]
+            for t, st in rows:
+                for name, v in st.items():
+                    if isinstance(v, vc.NoData):
+                        continue
+                    p = prev.get(name)
+                    if p is not None and v != p:
+                        if name == "mp_round_count":
+                            self._add("round", tag, {"valve": name, "from": p, "to": v, "at": t})
+                        elif name == "mp_game_over" and p == 0:
+                            self._add("round", tag, {"valve": name, "from": p, "to": v, "at": t})
+                        elif name == "clock" and v == "00:00":
+                            self._add("round", tag, {"valve": name, "from": p, "to": v, "at": t})
+                        elif name.startswith("aiteam_") and v < p:
+                            self._add("aiteam", tag, {"valve": name, "from": p, "to": v, "at": t},
+                                      firing=False)
+                    prev[name] = v
+
     def _check_server(self):
         if self._server_pos is None:
             return
@@ -1368,12 +1474,350 @@ class KillWatch(threading.Thread):
         while not self._stop.is_set():
             try:
                 self._check_health()
+                self._check_round()
                 self._check_positions()
                 self._check_server()
             except Exception as e:              # noqa: BLE001 - a watcher must not kill the run
                 self.events.append({"kind": "watch-error", "tag": "-", "t": time.time(),
                                     "detail": repr(e)})
             self._stop.wait(self.POLL_S)
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5 Task 3: a harness that cannot spend a match proving nothing
+# ---------------------------------------------------------------------------
+# Every verdict below is decided by the PURE scorers in verdict_core (one control bar, one move-path
+# rule, valves by name bytes); this section only drives the pad, reads the tails and prints.
+
+# --- the controllable precondition ------------------------------------------
+PRECONDITION_HOLD_S = 2.0        # the spec's 2 s forward hold (spec §5 Goal 1)
+# The drift clause needs the pad FULLY neutral (buttons included) over the 10 s before the hold, the
+# window ending at the last actor row before the press. 10 s + kill2 B's worst row gap under load
+# (1.08 s) + one 4 Hz row of arrival lag. Shorter, and every hold after the first is drift NO-DATA,
+# because the turn between holds lands inside the window (frost1's probes were 9 s apart).
+PRECONDITION_NEUTRAL_S = 11.5
+# Score only once release + 2 s (the snap-back window) has rows: + one row of arrival lag (0.25 s)
+# + the poll (0.05 s), rounded up.
+PRECONDITION_SETTLE_S = 2.5
+PRECONDITION_TURN_DEG = 90.0     # the heading is varied between holds: a controllable player whose
+                                 # hold ran into geometry (kill2 A's Aapp00_walk: 2.00 s -> 21.72
+                                 # units) gets a different wall, or none, on the next hold
+PRECONDITION_MAX_ATTEMPTS = 6    # up to 4 DECISIVE holds (vc.PRECONDITION_MAX_HOLDS); NO-DATA holds
+                                 # are retried, but never more than this many in total
+
+# --- the move-path watch ----------------------------------------------------
+MOVE_PATH_MAX_EVERY = 20         # at ~17-27 MoveScale calls/s, EVERY <= 20 logs >= ~1 line/s, so a
+                                 # 10 s stall is ~10 missing lines; at the default 500 it is one line
+                                 # per ~26 s and a healthy path looks stalled (plan instrument notes)
+MOVE_PATH_POLL_S = 1.0
+ALIVE_PEEK_BASE = 0x408C58       # *0x408c58 = the player actor
+ROUND_LIVE_MAX_AGE_S = 5.0       # valves read within this long count as live (20 rows at 4 Hz,
+                                 # ~8 at kill2 B's 0.6 s/row under load)
+FRAME_MAX_AGE_S = 2.0            # evidence screens (kill, final) must be fresher than this (spec Goal 6)
+
+
+def _pad_event(t, sticks=()):
+    """The pad state the harness itself wrote at host time t (PAD_AXIS full deflection, no buttons)."""
+    axes = {"rx": vc.PAD_NEUTRAL, "ry": vc.PAD_NEUTRAL, "lx": vc.PAD_NEUTRAL, "ly": vc.PAD_NEUTRAL}
+    for k in sticks:
+        name, value = L.PAD_AXIS[k.upper()]
+        axes[name] = value
+    return vc.PadEvent(t, 0, axes["rx"], axes["ry"], axes["lx"], axes["ly"])
+
+
+def _row_period(rows, t0, t1):
+    win = [r[0] for r in rows if t0 <= r[0] <= t1]
+    return (win[-1] - win[0]) / (len(win) - 1) if len(win) > 1 else None
+
+
+def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
+                        max_holds=vc.PRECONDITION_MAX_HOLDS, max_attempts=PRECONDITION_MAX_ATTEMPTS):
+    """Up to `max_holds` decisive 2 s forward holds on ACTOR rows, each preceded by 10+ s of fully
+    neutral pad and, after the first, a 90 deg turn; each scored by vc.score_control (the spec's one
+    bar). The side is CONTROLLABLE as soon as ANY hold passes, NO-CONTROL when every decisive hold
+    failed, NO-DATA when none was decisive. Returns vc.SideControl.
+
+    Pad timing is the harness's own write times (host clock); actor rows are host-timestamped on
+    arrival by RunLogTail, i.e. up to one sampler period + the poll late. Blind: a half-decayed
+    movement scale that still covers 40 units; motion in the wrong direction; a neutral-window drift
+    that stays under 5 units because the player is frozen (hence the 40). The camera record
+    0x416054 is never read here (kill3 B: it froze while the actor walked 67 units)."""
+    events = [_pad_event(clock())]
+    sh.pad(0.0)                                   # the file says neutral from here on
+    verdicts, decisive = [], 0
+    for attempt in range(max_attempts):
+        if attempt:
+            secs = turn_hold_seconds(PRECONDITION_TURN_DEG)
+            events.append(_pad_event(clock(), [LOOK_RIGHT_KEY]))
+            sh.pad(secs, sticks=[LOOK_RIGHT_KEY])
+            events.append(_pad_event(clock()))
+        wait(PRECONDITION_NEUTRAL_S)
+        t0 = clock()
+        events.append(_pad_event(t0, [WALK_FORWARD_KEY]))
+        sh.pad(PRECONDITION_HOLD_S, sticks=[WALK_FORWARD_KEY])
+        t1 = clock()
+        events.append(_pad_event(t1))
+        wait(PRECONDITION_SETTLE_S)
+        rows = tail.actor_ingame()
+        v = vc.score_control(rows, events, vc.Hold(t0, t1))
+        verdicts.append(v)
+        period = _row_period(rows, t0 - vc.CONTROL_DRIFT_WINDOW_S, t1 + vc.CONTROL_SNAPBACK_AFTER_RELEASE_S)
+        scale = ""
+        if hasattr(tail, "scale_ok"):
+            ok, n, lo, hi = tail.scale_ok(t0, t1)
+            if n == 0:
+                scale = " scale=NO-DATA(0 MoveScale lines around the hold: the move path is silent)"
+            else:
+                scale = f" scale={'1.0' if ok else 'NOT-1.0'}({n},{lo}..{hi})"
+                if v.status == "FAIL" and not ok:
+                    scale += " [blind: a starved scale fails the 40 as surely as a lost controller]"
+        fmt = lambda x: "n/a" if x is None else f"{x:.2f}"
+        sh.log(f"CONTROL {side} hold {attempt} {t1 - t0:.2f}s net={fmt(v.net_units)} "
+               f"snap={fmt(v.snapback_units)} drift={fmt(v.drift_units)} rows={len(rows)} "
+               f"period={fmt(period)}{scale} -> {v.status}{' (' + v.reason + ')' if v.reason else ''}")
+        if v.status == "PASS":
+            break
+        if v.status == "FAIL":
+            decisive += 1
+            if decisive >= max_holds:
+                break
+    if any(v.status == "PASS" for v in verdicts):
+        status = vc.CONTROLLABLE
+    elif decisive:
+        status = vc.NO_CONTROL
+    else:
+        status = vc.NO_DATA
+    sh.log(f"CONTROL {side} side {status} ({len(verdicts)} hold(s), {decisive} decisive)")
+    return vc.SideControl(status, verdicts)
+
+
+def control_exit_code(result):
+    """RESULT of the precondition -> process exit: 0 go, 3 NO-CONTROL (either form), 2 NO-DATA."""
+    if result == vc.CONTROLLABLE:
+        return 0
+    if result.startswith(vc.NO_CONTROL):
+        return 3
+    return 2
+
+
+def run_precondition(clients):
+    """assert_controllable on every client at once (each on its own instance). -> (result, sides)."""
+    sides, threads = {}, []
+    for tag, c in clients.items():
+        t = threading.Thread(target=lambda tg=tag, cl=c: sides.__setitem__(
+            tg, assert_controllable(tg, cl.tail, cl.sh)))
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join()
+    missing = [tag for tag in clients if tag not in sides]
+    for tag in missing:                         # a thread that raised is a side with no verdict
+        sides[tag] = vc.SideControl(vc.NO_DATA, [])
+    return vc.control_result(sides), sides
+
+
+# --- instrument specs -------------------------------------------------------
+def _canon_chain(chain):
+    return re.sub(r"0x[0-9a-f]+|\d+", lambda m: hex(int(m.group(0), 0)), chain.strip().lower())
+
+
+def parse_peek_spec(spec):
+    """PS2X_PEEK -> [(canonical chain, words, raw item)] (numbers normalised, e.g. `+0x0c` == `+0xc`)."""
+    out = []
+    for raw in (spec or "").split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        chain, _, w = raw.partition(":")
+        try:
+            words = int(w, 0) if w else 1
+        except ValueError:
+            words = 0
+        out.append((_canon_chain(chain), words, raw))
+    return out
+
+
+def _has_item(items, item, min_words):
+    chain, _, w = item.partition(":")
+    c = _canon_chain(chain)
+    return any(ch == c and words >= min_words for ch, words, _ in items)
+
+
+def move_path_preconditions(env):
+    """Why a MovePathWatch would attest to nothing under this environment ([] = it may start):
+    MoveScale traced at PS2X_CALL_TRACE_EVERY <= 20, and the two disarm inputs peeked -- the actor
+    block (vtable), a peek item covering actor+0xF7A, and mp_round_count's value AND name-bytes items.
+    Without the disarm inputs verdict_core answers every stall NO-DATA, so the watch would be blind."""
+    problems = []
+    names = {e.split(":", 1)[1].strip() for e in env.get("PS2X_CALL_TRACE", "").split(",") if ":" in e}
+    if MOVE_SCALE_TRACE_NAME not in names:
+        problems.append(f"PS2X_CALL_TRACE has no {MOVE_SCALE_TRACE_NAME} slot (0x553dc0:{MOVE_SCALE_TRACE_NAME})")
+    every = env.get("PS2X_CALL_TRACE_EVERY")
+    try:
+        every_n = int(every, 0) if every is not None else None
+    except ValueError:
+        every_n = None
+    if every_n is None or not 1 <= every_n <= MOVE_PATH_MAX_EVERY:
+        problems.append(f"PS2X_CALL_TRACE_EVERY={every if every is not None else 'unset (default 500)'} "
+                        f"-- the watch needs 1..{MOVE_PATH_MAX_EVERY}")
+    items = parse_peek_spec(env.get("PS2X_PEEK", ""))
+    base = _canon_chain(f"*{ALIVE_PEEK_BASE:#x}")
+    if not any(ch == base and words > max(vc.ACTOR_POS_WORDS) for ch, words, _ in items):
+        problems.append(f"PS2X_PEEK has no actor block (*{ALIVE_PEEK_BASE:#x}:10 or wider)")
+    covered = False
+    for ch, words, _ in items:
+        m = re.fullmatch(re.escape(base) + r"(?:\+(0x[0-9a-f]+))?", ch)
+        if m:
+            off = int(m.group(1), 16) if m.group(1) else 0
+            if off <= vc.ACTOR_ALIVE_OFFSET < off + 4 * min(words, 64):
+                covered = True
+    if not covered:
+        problems.append(f"PS2X_PEEK covers no actor+{vc.ACTOR_ALIVE_OFFSET:#x} (alive byte), e.g. "
+                        f"*{ALIVE_PEEK_BASE:#x}+0xF78:1")
+    rc = vc.VALVES["mp_round_count"]
+    if not (_has_item(items, rc.value_item, 2) and _has_item(items, rc.name_item, 3)):
+        problems.append(f"PS2X_PEEK lacks mp_round_count's {rc.value_item} and/or {rc.name_item}")
+    return problems
+
+
+def peek_spec_problems(spec):
+    """Lint a PS2X_PEEK spec for the ways it has produced nothing before (non-fatal; printed)."""
+    items = parse_peek_spec(spec)
+    problems = []
+    for ch, words, raw in items:
+        if words > 64:
+            problems.append(f"`{raw}` asks {words} words; PS2X_PEEK caps every item at 64 silently -- split it")
+        if ch == _canon_chain("*0x43668c**"):
+            problems.append("mission_abort: `*0x43668c**:3` dereferences the name bytes themselves "
+                            "(@7373696d, research/21 §6.2) -- use `*0x43668c*:3`")
+    for name, v in vc.VALVES.items():
+        if _has_item(items, v.value_item, 2) and not _has_item(items, v.name_item, 3):
+            problems.append(f"{name}: {v.value_item} without its name-bytes item {v.name_item} -- "
+                            f"it will read NO-DATA {name}")
+    return problems
+
+
+def requested_valves(spec):
+    items = parse_peek_spec(spec)
+    return [name for name, v in vc.VALVES.items() if _has_item(items, v.value_item, 2)]
+
+
+def valve_report(tag, tail, requested):
+    """One line per requested valve: `VALVE <name> side=<tag> ok <n>/<rows>` or `NO-DATA <name>
+    side=<tag> (<reason>)` when no row identified it by its name bytes."""
+    lines = []
+    with tail._lock:                                  # noqa: SLF001 - same module
+        counts = {k: list(v) for k, v in tail.valve_counts.items()}
+    for name in requested:
+        ok, total, reason = counts.get(name, [0, 0, None])
+        if ok == 0:
+            lines.append(f"NO-DATA {name} side={tag} ({reason or 'never seen'}; {total} rows)")
+        elif ok < total:
+            lines.append(f"VALVE {name} side={tag} ok {ok}/{total} rows (NO-DATA on {total - ok}, last: {reason})")
+        else:
+            lines.append(f"VALVE {name} side={tag} ok {ok}/{total} rows")
+    return lines
+
+
+class MovePathWatchRefused(RuntimeError):
+    """The environment would make the move-path watch attest to nothing (see move_path_preconditions)."""
+
+
+class MovePathWatch(threading.Thread):
+    """MoveScale liveness on every instance, live: vc.score_move_path over each tail's MoveScale #n,
+    alive byte and mp_round_count (by name bytes). Logs every change of verdict; a stall line carries
+    the R6 snap-back inputs (actor+0x420, DAT_004365c0, DAT_0045a0c1) when they are peeked, so the
+    stall names its gap. `stalled` is the first (tag, verdict, now) that stalled.
+
+    Refuses to START (raises MovePathWatchRefused at construction) unless MoveScale is traced at
+    PS2X_CALL_TRACE_EVERY <= 20 and the disarm inputs are peeked. Blind: a stall under 10 s; a path
+    that ticks but ignores the stick (assert_controllable's job); a tail call into MoveScale (the call
+    trace misses `J` tail calls -- KNOWN §4; its callers are `jal`, research/21 §6.2)."""
+
+    def __init__(self, tails, log, env=None, clock=time.time, name=MOVE_SCALE_TRACE_NAME):
+        super().__init__(daemon=True)
+        env = os.environ if env is None else env
+        problems = move_path_preconditions(env)
+        if problems:
+            raise MovePathWatchRefused("; ".join(problems))
+        self.tails, self.log, self.clock, self.name = tails, log, clock, name
+        self.t0 = clock()                             # times in the lines are seconds since the watch started
+        self.verdicts = {}
+        self.history = []
+        self.stalled = None
+        self._stop_ev = threading.Event()
+
+    def check(self, now=None):
+        t0 = self.t0
+        now = (self.clock() if now is None else now) - t0
+        out = {}
+        for tag, tail in self.tails.items():
+            with tail._lock:                          # noqa: SLF001 - same module
+                calls = [(t - t0, n) for t, n, _ in tail.calls.get(self.name, [])]
+                alive = [(t - t0, v) for t, v in tail.alive_rows]
+                rounds = [(t - t0, st["mp_round_count"]) for t, st in tail.round_rows
+                          if not isinstance(st["mp_round_count"], vc.NoData)]
+                items = tail.latest_items
+            v = vc.score_move_path(calls, alive, rounds, now)
+            prev = self.verdicts.get(tag)
+            if prev is None or prev.status != v.status:
+                since = "-" if v.since is None else f"{v.since:.1f}"
+                ctx = f"; {vc.stall_context(items or [])}" if v.status == "stalled" else ""
+                line = f"MOVE-PATH {tag} {v.status} since={since} -- {v.detail}{ctx}"
+                self.log(line)
+                self.history.append({"t": now, "tag": tag, "status": v.status, "line": line})
+            if v.status == "stalled" and self.stalled is None:
+                self.stalled = (tag, v, now + t0)       # host time of the first stall
+            self.verdicts[tag] = v
+            out[tag] = v
+        return out
+
+    def run(self):
+        while not self._stop_ev.is_set():
+            try:
+                self.check()
+            except Exception as e:                    # noqa: BLE001 - a watcher must not kill the run
+                self.log(f"MOVE-PATH watch error {e!r}")
+            self._stop_ev.wait(MOVE_PATH_POLL_S)
+
+    def stop(self):
+        self._stop_ev.set()
+
+
+def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), stalled=None):
+    """The one RESULT word of a --converge run -> (verdict, is_kill). PASS is reserved for a health
+    transition, and even then not from an instrument that read nothing on a side or from a kill
+    screen older than FRAME_MAX_AGE_S. `round` (valves) and `respawn` (the fallback, used only while
+    the valves are NO-DATA) end a round, which the clock does too: never a PASS."""
+    if health_armed and (not watch_reads or min(watch_reads.values()) == 0):
+        return (f"FAIL health watch armed with zero reads {watch_reads} -- 'health never moved' from an "
+                f"instrument that never looked", False)
+    kinds = {e["kind"] for e in events}
+    if fired is not None and (fired["kind"] == "health" or "health" in kinds):
+        base = "PASS" if fired["kind"] == "health" else "PASS (round end corroborated by a health transition)"
+        if stale_shots:
+            return (f"FAIL kill screen stale ({', '.join(stale_shots)}) -- the frame file is older than "
+                    f"{FRAME_MAX_AGE_S:g}s, so it is a picture of the past", False)
+        return base, True
+    if stalled is not None:
+        tag, v = stalled[0], stalled[1]
+        return f"FAIL move-path stalled side={tag} -- {v.detail}", False
+    if fired is None:
+        return "FAIL no kill or round-end signal", False
+    if fired["kind"] == "respawn":
+        return "ROUND-END (respawn fallback, the valves were NO-DATA; unattributed -- NOT a kill)", False
+    return f"ROUND-END ({fired['kind']}; unattributed -- NOT a kill)", False
+
+
+def evidence_shot(c, label, stale, log):
+    """A screen that is evidence (kill, final): refused when the frame file is stale, and recorded."""
+    try:
+        c.sh.shot(label, max_age=FRAME_MAX_AGE_S)
+    except winshot.StaleFrameError as e:
+        stale.append(f"{c.tag}_{label}")
+        log(f"STALE FRAME {c.tag}_{label}: {e}")
+    except Exception as e:                            # noqa: BLE001
+        log(f"{label} screenshot failed on {c.tag}: {e!r}")
 
 
 class Client:
@@ -1491,6 +1935,17 @@ def main():
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
         raise SystemExit("socom2.exe is already running")
+    if a.converge and not a.only:
+        # Refuse BEFORE a launch, not after: a match whose move-path watch cannot see a stall, or
+        # whose round valves cannot be identified, is a match spent proving nothing.
+        for prob in peek_spec_problems(os.environ.get("PS2X_PEEK", "")):
+            print(f"PEEK SPEC: {prob}", flush=True)
+        refusals = move_path_preconditions(os.environ)
+        if refusals:
+            for prob in refusals:
+                print(f"MOVE-PATH WATCH REFUSES: {prob}", flush=True)
+            print("RESULT NO-DATA move-path watch (not launched)", flush=True)
+            raise SystemExit(2)
     A = Client("A", a.out, a.name_a, True, a.seconds)
     B = Client("B", a.out, a.name_b, a.existing_b, a.seconds)
     failed = False
@@ -1584,6 +2039,31 @@ def main():
             A.sh.shot("wtb_final")
             B.sh.shot("wtb_final")
         if a.converge:
+            # Sprint 5 Task 3: the move path is watched from here to the end, the valves are
+            # checked by name bytes, and nobody walks until BOTH players are proven controllable.
+            mpw = MovePathWatch({"A": A.tail, "B": B.tail}, A.sh.log)
+            mpw.start()
+            valves_wanted = requested_valves(os.environ.get("PS2X_PEEK", ""))
+            for c in (A, B):
+                for line in valve_report(c.tag, c.tail, valves_wanted):
+                    A.sh.log(line)
+            control, control_sides = run_precondition({"A": A, "B": B})
+            A.sh.log("PRECONDITION controllable: " + " ".join(
+                f"{tag}={sd.status}({len(sd.holds)} holds)" for tag, sd in sorted(control_sides.items())))
+            if control != vc.CONTROLLABLE:
+                mpw.stop()
+                code = control_exit_code(control)
+                why = ("a side that cannot move cannot be engaged, and a parked side starves its partner"
+                       if code == 3 else "no hold on some side was decisive (actor rows missing?)")
+                A.sh.log(f"RESULT {control if code == 3 else 'NO-DATA control'} -- the match is not "
+                         f"spent: {why}")
+                with open(os.path.join(a.out, "control.json"), "w") as fh:
+                    json.dump({"result": control,
+                               "sides": {tag: {"status": sd.status,
+                                               "holds": [vars(v) for v in sd.holds]}
+                                         for tag, sd in control_sides.items()},
+                               "move_path": mpw.history}, fh, indent=1, default=str)
+                raise SystemExit(code)
             # Task 8 (S3): BOTH sides close, then fight, and a KillWatch decides when it is over.
             duel = Duel()
             # The mined corridor is map-specific (research/18 §4.5). On any other map it would
@@ -1621,6 +2101,8 @@ def main():
             t_gameplay = time.time()
             kill_shots = {"done": False}
 
+            stale_shots = []
+
             def monitor():
                 while not duel.stop.is_set():
                     if watch.fired:
@@ -1630,10 +2112,13 @@ def main():
                         if not kill_shots["done"]:
                             kill_shots["done"] = True
                             for c in (A, B):
-                                try:
-                                    c.sh.shot("kill")
-                                except Exception as e:          # noqa: BLE001
-                                    A.sh.log(f"kill screenshot failed on {c.tag}: {e!r}")
+                                evidence_shot(c, "kill", stale_shots, A.sh.log)
+                        duel.stop.set()
+                        return
+                    if mpw.stalled is not None:
+                        A.sh.log(f"MOVE-PATH STALL on {mpw.stalled[0]} ends the run at "
+                                 f"T+{time.time() - t_gameplay:.1f}s -- nothing after this can move, "
+                                 f"so nothing after this is evidence")
                         duel.stop.set()
                         return
                     if time.time() - t_gameplay > a.kill_timeout:
@@ -1679,12 +2164,16 @@ def main():
             duel.stop.set()
             mon.join(timeout=5.0)
             watch.stop()
-            A.sh.shot("final")
-            B.sh.shot("final")
+            mpw.stop()
+            for c in (A, B):
+                evidence_shot(c, "final", stale_shots, A.sh.log)
+            for c in (A, B):
+                for line in valve_report(c.tag, c.tail, valves_wanted):
+                    A.sh.log(line)
             closest = duel.best_dist()
             # An armed watch that never read a word is a FAILED instrument, not a quiet one: it
             # would report "health never moved" having never looked. §3.10 rule 3, applied to the
-            # one instrument the acceptance test will depend on.
+            # one instrument the acceptance test will depend on (result_verdict makes it a FAIL).
             watch_reads = {t: c.tail.watch_reads for t, c in (("A", A), ("B", B))}
             watch_misses = {t: c.tail.watch_misses for t, c in (("A", A), ("B", B))}
             watch_hist = {t: len(c.tail.watch_hist) for t, c in (("A", A), ("B", B))}
@@ -1693,9 +2182,16 @@ def main():
                          f"{watch_reads} values ({watch_misses} rows where no peeked block "
                          f"covered it). 'health never moved' from an instrument that never "
                          f"looked is not evidence -- widen PS2X_PEEK to cover that offset.")
-                failed = True
+            verdict, is_kill = result_verdict(watch.fired, watch.events, health is not None,
+                                              watch_reads, stale_shots=stale_shots,
+                                              stalled=mpw.stalled)
             ra, rb = A.tail.latest(max_age=1e9), B.tail.latest(max_age=1e9)
             summary = {
+                "control": {tag: sd.status for tag, sd in control_sides.items()},
+                "move_path": mpw.history,
+                "valves": {c.tag: valve_report(c.tag, c.tail, valves_wanted) for c in (A, B)},
+                "stale_shots": stale_shots,
+                "verdict": verdict,
                 "contact": duel.contact.is_set(),
                 "closest_3d_units": closest,
                 "best_3d_per_side": {"A": sideA.best_3d, "B": sideB.best_3d},
@@ -1715,45 +2211,30 @@ def main():
                 "ingame_rows": {"A": len(A.tail.ingame()), "B": len(B.tail.ingame())},
             }
             with open(os.path.join(a.out, "converge.json"), "w") as fh:
-                json.dump(summary, fh, indent=1, default=float)
+                json.dump(summary, fh, indent=1, default=str)
             # One line, and it names the signal. research/18 §3.10: an instrument that emits zero
-            # rows is a failed run, so the row counts are on the same line.
-            if watch.fired:
-                ev = watch.fired
-                kinds = {e["kind"] for e in watch.events}
-                # PASS is reserved for a signal only a KILL produces. `respawn` detects a ROUND
-                # END, and a round ends on its clock too -- so calling it PASS would print a pass
-                # for a test whose acceptance is a kill, which is the same defect this task caught
-                # one level up in the `server` mark. It is reported, named, and it is not a pass.
-                if ev["kind"] == "health":
-                    verdict = "PASS"
-                elif "health" in kinds:
-                    verdict = "PASS (round end corroborated by a health transition)"
-                else:
-                    verdict = "ROUND-END (unattributed -- NOT a kill)"
-                    failed = a.until_kill
-                A.sh.log(f"RESULT {verdict} signal={ev['kind']} on={ev['tag']} "
-                         f"t=T+{ev['t'] - t_gameplay:.1f}s closest_3d={closest} "
-                         f"contact={duel.contact.is_set()} "
-                         f"detail={json.dumps(ev['detail'], default=float)} "
-                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
-                         f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
-                         f"health_watch={'disarmed' if health is None else 'armed'} "
-                         f"reads={watch_reads} misses={watch_misses} changes={watch_hist}")
-            else:
+            # rows is a failed run, so the row counts are on the same line. PASS is reserved for a
+            # signal only a KILL produces (result_verdict): `round` and `respawn` end rounds, and a
+            # round ends on its clock too.
+            ev = watch.fired
+            if ev is None:
                 obs = [e["kind"] for e in watch.events if not e.get("firing")]
                 if obs:
                     A.sh.log(f"non-firing observations only: {obs} -- a MediusPlayerReport is a "
-                             f"periodic client stats report, not a round boundary")
-                A.sh.log(f"RESULT FAIL no kill or round-end signal in {a.kill_timeout}s; "
-                         f"closest_3d={closest} contact={duel.contact.is_set()} "
-                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
-                         f"actor_rows A={len(A.tail.actor_ingame())} "
-                         f"B={len(B.tail.actor_ingame())} "
-                         f"health_watch={'disarmed' if health is None else 'armed'} "
-                         f"reads={watch_reads} misses={watch_misses} changes={watch_hist}")
-                if a.until_kill:
-                    failed = True
+                             f"periodic client stats report, not a round boundary; a respawn while "
+                             f"the valves are live is not a round end")
+            sig = (f"signal={ev['kind']} on={ev['tag']} t=T+{ev['t'] - t_gameplay:.1f}s "
+                   f"detail={json.dumps(ev['detail'], default=float)} " if ev else
+                   f"(no signal in {a.kill_timeout}s) ")
+            A.sh.log(f"RESULT {verdict} {sig}"
+                     f"closest_3d={closest} contact={duel.contact.is_set()} "
+                     f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
+                     f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
+                     f"health_watch={'disarmed' if health is None else 'armed'} "
+                     f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
+                     f"stale_shots={stale_shots}")
+            if not is_kill and (a.until_kill or verdict.startswith("FAIL health")):
+                failed = True
         if a.sweep:
             # Same-team kill probe: A rotates in place (right stick) and fires a burst at every
             # step; B stands where it spawned (a few metres from A when both are SEALs).

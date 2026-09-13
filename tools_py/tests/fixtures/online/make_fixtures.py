@@ -40,6 +40,17 @@ FIXTURES = [
     ("kill3_B_probes.txt", "logs/run_B_20260912_232834.log", 440.0, 465.0),
 ]
 
+# Sprint 5 Task 3 Steps 1-5: launch 1c (Frostfire, the first instrumented launch) around the point
+# where A's move path stopped (MoveScale #0..#15 at 379.9-380.5 s, then silent). Trimmed with
+# `_trim_peek_state`: the state items the harness reads (alive byte, +0x420, the valves and their
+# name bytes, the clocks) instead of the camera record.
+STATE_FIXTURES = [
+    ("launch1c_A_movestop.txt", "logs/run_A_20260913_073548.log", 379.0, 391.8),
+]
+STATE_CALLS = ("MoveScale", "NetIdle")      # every line of these slots is kept
+ANCHOR_EVERY_S = 2.0                         # plus one other [call] line this often, for the clock
+KEEP_STATIC = ("4365c0", "45a0c0", "408f10")
+
 _ITEM = re.compile(r"@([0-9a-fA-F]+):((?:\s+[0-9a-fA-F]{8}\([^)]*\))+)")
 _TOKEN = re.compile(r"[0-9a-fA-F]{8}\([^)]*\)")
 _CALL_T = re.compile(r"^\[call\] ([\d.]+)s ")
@@ -88,6 +99,56 @@ def _trim_peek(line):
     return " ".join(parts)
 
 
+def _trim_peek_state(line):
+    """The actor block's first 10 words, actor+0x400 (12 words, +0x420 is word 8), the first word
+    of actor+0xF78 (+0xF7A is its byte 2), every 2-word (valve value) and 3-word (valve name bytes)
+    item, and the static clocks. Items are chosen by address and size, never by index."""
+    items = [(a, _TOKEN.findall(w)) for a, w in _ITEM.findall(line)]
+    actor = next((int(a, 16) for a, t in items if t and t[0].lower().startswith(ACTOR_VTABLE_HEX)), None)
+    parts = ["[peek]"]
+    for addr, toks in items:
+        a = int(addr, 16)
+        if actor is not None and a == actor:
+            parts.append(f"@{addr}: " + " ".join(toks[:KEEP_ACTOR_WORDS]))
+        elif actor is not None and a == actor + 0x400:
+            parts.append(f"@{addr}: " + " ".join(toks))
+        elif actor is not None and a == actor + 0xF78:
+            parts.append(f"@{addr}: " + " ".join(toks[:1]))
+        elif len(toks) in (2, 3) or addr.lower() in KEEP_STATIC:
+            parts.append(f"@{addr}: " + " ".join(toks))
+    return " ".join(parts)
+
+
+def make_state(name, src, t0, t1):
+    with open(os.path.join(ROOT, src), "r", errors="replace") as f:
+        lines = f.read().split("\n")
+    idx, clock = _clock(lines)
+    out, last_anchor, keep_ret = [], None, set()
+    for i, line in enumerate(lines):
+        if not (t0 <= clock(idx[i]) <= t1):
+            continue
+        if line.startswith("[peek]"):
+            out.append(_trim_peek_state(line))
+        elif line.startswith("[call]"):
+            m = re.match(r"^\[call\] ([\d.]+)s (\S+) #(\d+)", line)
+            if not m:
+                continue
+            t, slot = float(m.group(1)), m.group(2)
+            if slot in STATE_CALLS:
+                out.append(line)
+                keep_ret.add((slot, m.group(3)))
+            elif last_anchor is None or t - last_anchor >= ANCHOR_EVERY_S:
+                out.append(line)
+                last_anchor = t
+        elif line.startswith("[ret]"):
+            m = re.match(r"^\[ret\] (\S+) #(\d+)", line)
+            if m and (m.group(1), m.group(2)) in keep_ret:
+                out.append(line)
+    with open(os.path.join(OUT, name), "w", newline="\n") as f:
+        f.write("\n".join(out) + "\n")
+    return len(out), os.path.getsize(os.path.join(OUT, name))
+
+
 def make(name, src, t0, t1):
     with open(os.path.join(ROOT, src), "r", errors="replace") as f:
         lines = f.read().split("\n")
@@ -122,4 +183,7 @@ def make(name, src, t0, t1):
 if __name__ == "__main__":
     for spec in FIXTURES:
         n, size = make(*spec)
+        print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")
+    for spec in STATE_FIXTURES:
+        n, size = make_state(*spec)
         print(f"{spec[0]:<22} {n:5d} lines {size:7d} bytes  <- {spec[1]} [{spec[2]}, {spec[3]}] s")

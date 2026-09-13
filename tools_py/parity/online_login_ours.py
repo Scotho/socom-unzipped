@@ -108,8 +108,10 @@ class Shell:
     def log(self, m):
         print(f"{time.time() - self.t0:6.1f}s {self.tag}{m}", flush=True)
 
-    def shot(self, label):
-        winshot.grab(self.hwnd).save(os.path.join(self.out, f"{self.tag}{label}.png"))
+    def shot(self, label, max_age=None):
+        """Save the current frame. max_age (s): refuse a frame file older than that --
+        winshot.StaleFrameError, which evidence screens (kill, final) use; menus pass none."""
+        winshot.grab(self.hwnd, max_age=max_age).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
         # 0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to

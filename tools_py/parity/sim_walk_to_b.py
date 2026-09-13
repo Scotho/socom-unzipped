@@ -9,7 +9,7 @@ each correction overshoots or undershoots and the loop has to recover by re-meas
 what the real game does (research/18 §3.13: RMS 18 deg on an open-loop turn, and one wtb2 turn that
 asked for -72 deg and delivered -16).
 
-    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|all]
+    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|nocontrol|movepath|all]
 
 The per-scenario step counts and wall times this prints are ILLUSTRATIVE, not constants: the
 simulation is wall-clock timed and varies run to run (one `maze` took 14 steps / 102 s and another
@@ -31,6 +31,31 @@ from . import online_match_ours as M
 
 def _w(v):
     return f"{struct.unpack('<I', struct.pack('<f', v))[0]:08x}({v:g})"
+
+
+def _name_words(text):
+    raw = (text.encode("ascii") + b"\0" * 12)[:12]
+    return struct.unpack("<III", raw)
+
+
+def state_items(actor_addr, alive=1, round_count=0, game_over=0, clock="05:00"):
+    """The Sprint 5 state items as the exe prints them under launch 1's PS2X_PEEK: actor+0xF78 (the
+    alive byte is its byte 2), mp_round_count and mp_game_over (value item + name-bytes item printed
+    at the name pointer, research/21 §2.2) and the clock string."""
+    parts = [f"@{actor_addr + 0xF78:x}: {(alive & 0xFF) << 16:08x}(0)"]
+    for name, value_addr, name_ptr, value in (("mp_round_count", 0x694C48, 0x006B7F30, round_count),
+                                              ("mp_game_over", 0x694C20, 0x006B7F20, game_over)):
+        parts.append(f"@{value_addr:x}: {name_ptr:08x}(0) {0x00010000 | (value & 0xFFFF):08x}(0)")
+        parts.append(f"@{name_ptr:x}: " + " ".join(f"{w:08x}(0)" for w in _name_words(name)))
+    w0, w1 = struct.unpack("<II", (clock.encode("ascii") + b"\0" * 8)[:8])
+    parts.append(f"@408f10: {w0:08x}(0) {w1:08x}(0)")
+    return " ".join(parts)
+
+
+# The instrument environment the sim's MovePathWatch runs under: launch 1's shape (research/21 §6.1).
+SIM_ENV = {"PS2X_CALL_TRACE": "0x553dc0:MoveScale,0x30cd80:NetIdle", "PS2X_CALL_TRACE_EVERY": "10",
+           "PS2X_PEEK": "0x416054:3,*0x408c58:64,*0x408c58+0xF78:24,*0x437ce8+0x0c*:2,"
+                        "*0x437ce8+0x10*:2,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,0x408f10:2"}
 
 
 def peek_line(cx, cy, cz, actor=None, actor_addr=0x01794000):
@@ -56,8 +81,14 @@ class World:
     """One simulated player. Truth is (x, z, facing); the log carries the camera record only."""
 
     def __init__(self, path, x, z, facing, walk_u_s, look_deg_s, radius, wall=None, height=None,
-                 actor_addr=0x01794000):
+                 actor_addr=0x01794000, ignores_pad=False, valves=True):
         self.path, self.x, self.z, self.facing = path, x, z, facing
+        self.valves = valves             # write the alive/valve/clock items (launch 1's PS2X_PEEK)
+        # nocontrol: the player ignores the pad (frost1/launch 1c: rows keep coming, nothing moves)
+        self.ignores_pad = ignores_pad
+        # movepath: MoveScale stops being logged while the rows keep coming (launch 1c's R6 stop)
+        self.movescale_stopped = False
+        self.move_n = 0
         self.walk, self.look, self.r, self.wall = walk_u_s, look_deg_s, radius, wall
         self.height = height or (lambda x, z: -131.0)
         self.actor_addr = actor_addr
@@ -86,7 +117,7 @@ class World:
                 if self.teleport_at and time.time() >= self.teleport_at[0]:
                     self.x, self.z = self.teleport_at[1], self.teleport_at[2]
                     self.teleport_at = None
-                s = dict(self.state)
+                s = {} if self.ignores_pad else dict(self.state)
                 # EVERY translation is checked against the wall, not only the forward walk. The
                 # original world blocked `W` and let `S`, `A` and `D` pass straight through, so
                 # the loop's own unstick manoeuvre (a step back and a sidestep) could put the
@@ -109,10 +140,14 @@ class World:
                 y = self.height(self.x, self.z)
             n += 1
             with open(self.path, "a") as f:
-                if n % 2 == 0:
-                    f.write("[call] 400.0s MoveScale #1 a0=0x1 ra=0x595028 f12=1.0 f13=0.0 f14=1.0\n")
+                if n % 2 == 0 and not self.movescale_stopped:
+                    # #n advances as the exe's does at EVERY=10 (~19 calls/s -> ~1 line per 0.5 s)
+                    self.move_n += 10
+                    f.write(f"[call] {400.0 + n * dt:.1f}s MoveScale #{self.move_n} a0=0x1 "
+                            f"ra=0x595028 f12=1.0 f13=0.0 f14=1.0\n")
                 f.write(peek_line(cx, y + 19.7, cz, actor=(self.x, y, self.z),
-                                  actor_addr=self.actor_addr) + "\n")
+                                  actor_addr=self.actor_addr)
+                        + (" " + state_items(self.actor_addr) if self.valves else "") + "\n")
             time.sleep(dt)
 
 
@@ -143,7 +178,7 @@ class FakeClient:
 
 
 def _worlds(label, ax, az, af, bx, bz, bf, wall=None, bwall=None, look_mismatch=0.78,
-            aheight=None, bheight=None):
+            aheight=None, bheight=None, a_ignores=False, b_ignores=False, valves=True):
     # The logs are PER PROCESS. They used to be `sim_A_<label>.log` in the shared temp dir, so two
     # suites running at once -- which happened, because `pkill` is a no-op in Git Bash and the old
     # suite was never killed -- interleaved two simulated worlds into one log. The loop then read
@@ -153,10 +188,10 @@ def _worlds(label, ax, az, af, bx, bz, bf, wall=None, bwall=None, look_mismatch=
     label = f"{label}_{os.getpid()}"
     wa = World(os.path.join(d, f"sim_A_{label}.log"), ax, az, af, M.WALK_UNITS_PER_S_LONG,
                M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN * look_mismatch, 27.0, wall, aheight,
-               actor_addr=0x01794000)
+               actor_addr=0x01794000, ignores_pad=a_ignores, valves=valves)
     wb = World(os.path.join(d, f"sim_B_{label}.log"), bx, bz, bf, M.WALK_UNITS_PER_S_LONG,
                M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN / look_mismatch, 27.0, bwall, bheight,
-               actor_addr=0x017a4000)
+               actor_addr=0x017a4000, ignores_pad=b_ignores, valves=valves)
     ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
     ta.start()
     tb.start()
@@ -223,11 +258,12 @@ def run_converge(label, route=None, wall=None, bwall=None, arrive=22.0, engage=2
     return out, true_d, walked, closed
 
 
-def run_watch(label="watch"):
-    """The KillWatch's respawn signal: a player that teleports back to its spawn must fire."""
+def run_watch(label="watch", valves=True):
+    """The KillWatch's respawn signal: a player that teleports back to its spawn. With the round
+    valves peeked it is recorded and does NOT fire; without them it is the fallback and fires."""
     ax, az = M.MP51_SEAL_SPAWN
     bx, bz = M.MP51_TERROR_SPAWN
-    wa, wb, ta, tb = _worlds(label, ax, az, -60.0, bx, bz, 120.0)
+    wa, wb, ta, tb = _worlds(label, ax, az, -60.0, bx, bz, 120.0, valves=valves)
     sha = FakeShell(wa, "A_")
     time.sleep(1.5)
     spawns = {"A": (ta.ingame()[0][1], ta.ingame()[0][3]),
@@ -255,6 +291,55 @@ def run_watch(label="watch"):
     print(f"\n== {label}: fired={watch.fired and watch.fired['kind']} "
           f"events={[e['kind'] for e in watch.events]}")
     return watch
+
+
+def run_nocontrol(label="nocontrol", a_ignores=False, b_ignores=True):
+    """The controllable precondition on both instances at once, as main() runs it, against players
+    that ignore the pad. Returns (result, sides, wall seconds)."""
+    ax, az = M.MP51_SEAL_SPAWN
+    bx, bz = M.MP51_TERROR_SPAWN
+    wa, wb, ta, tb = _worlds(label, ax, az, 20.0, bx, bz, 160.0, a_ignores=a_ignores, b_ignores=b_ignores)
+    clients = {"A": FakeClient(FakeShell(wa, f"A_{label}_")), "B": FakeClient(FakeShell(wb, f"B_{label}_"))}
+    clients["A"].tail, clients["B"].tail = ta, tb
+    t0 = time.time()
+    result, sides = M.run_precondition(clients)
+    wall = time.time() - t0
+    for w in (wa, wb):
+        w.stop.set()
+    ta.stop()
+    tb.stop()
+    print(f"\n== {label}: RESULT {result} exit={M.control_exit_code(result)} "
+          + " ".join(f"{t}={sd.status}/{[v.status for v in sd.holds]}" for t, sd in sorted(sides.items()))
+          + f" wall={wall:.0f}s")
+    return result, sides, wall
+
+
+def run_movepath(label="movepath"):
+    """MovePathWatch on both instances: A's MoveScale stops being logged while its rows keep coming
+    (launch 1c's shape); B's keeps advancing. A must read `stalled`, B `ok`."""
+    ax, az = M.MP51_SEAL_SPAWN
+    bx, bz = M.MP51_TERROR_SPAWN
+    wa, wb, ta, tb = _worlds(label, ax, az, 20.0, bx, bz, 160.0)
+    shl = FakeShell(wa, "W_")
+    watch = M.MovePathWatch({"A": ta, "B": tb}, shl.log, env=SIM_ENV)
+    watch.start()
+    time.sleep(3.0)
+    t_stop = time.time()
+    with wa.lock:
+        wa.movescale_stopped = True
+    deadline = t_stop + M.vc.MOVE_STALL_S + 6.0
+    while watch.stalled is None and time.time() < deadline:
+        time.sleep(0.25)
+    verdicts = watch.check()
+    watch.stop()
+    for w in (wa, wb):
+        w.stop.set()
+    ta.stop()
+    tb.stop()
+    after = None if watch.stalled is None else watch.stalled[2] - t_stop
+    print(f"\n== {label}: stalled={watch.stalled and watch.stalled[0]} after {after if after is None else round(after, 1)}s "
+          f"A={verdicts['A'].status} B={verdicts['B'].status}")
+    return watch, verdicts, after
 
 
 def main():
@@ -330,8 +415,34 @@ def main():
         ran.append("stack")
     if which in ("watch", "all"):
         w = run_watch()
-        assert w.fired and w.fired["kind"] == "respawn", w.events
+        # The sim's worlds peek the round valves, so a teleport while they are live is only an
+        # observation (Sprint 5 Task 3: respawn is the fallback round-end signal, never a PASS).
+        assert w.fired is None, w.events
+        assert any(e["kind"] == "respawn" and not e["firing"] for e in w.events), w.events
         ran.append("watch")
+    if which in ("watch", "watch-fallback", "all"):
+        w = run_watch("watch_fallback", valves=False)
+        assert w.fired and w.fired["kind"] == "respawn" and w.fired["detail"]["fallback"], w.events
+        ran.append("watch-fallback")
+    if which in ("nocontrol", "all"):
+        # Both at once, as main() runs them: A controllable, B ignores the pad -> NO-CONTROL side=B
+        # within 4 holds (~4 x (1.3 + 11.5 + 2 + 2.5) s); then both ignore it -> NO-CONTROL, exit 3.
+        result, sides, wall = run_nocontrol("nocontrol_B", a_ignores=False, b_ignores=True)
+        assert result == "NO-CONTROL side=B", result
+        assert sides["A"].holds[0].status == "PASS", sides["A"].holds
+        assert [v.status for v in sides["B"].holds] == ["FAIL"] * 4, sides["B"].holds
+        assert all(v.drift_units is not None for v in sides["B"].holds), [v.reason for v in sides["B"].holds]
+        assert wall <= 4 * (M.turn_hold_seconds(M.PRECONDITION_TURN_DEG) + M.PRECONDITION_NEUTRAL_S
+                            + M.PRECONDITION_HOLD_S + M.PRECONDITION_SETTLE_S) + 10.0, wall
+        result, sides, _ = run_nocontrol("nocontrol_AB", a_ignores=True, b_ignores=True)
+        assert result == "NO-CONTROL" and M.control_exit_code(result) == 3, result
+        ran.append("nocontrol")
+    if which in ("movepath", "all"):
+        watch, verdicts, after = run_movepath()
+        assert watch.stalled is not None and watch.stalled[0] == "A", watch.history
+        assert verdicts["B"].status == "ok", verdicts["B"]
+        assert M.vc.MOVE_STALL_S - 1.0 <= after <= M.vc.MOVE_STALL_S + 3.0, after
+        ran.append("movepath")
     print("SIM OK " + " ".join(ran))
 
 
