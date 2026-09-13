@@ -112,6 +112,17 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **Launch hygiene is now tooling, and it has two traps** (`5cfa5bf`, `38d1f80`): `run_detached.sh --purpose launch…`
+  writes `logs/.quiet` (Windows pid — an MSYS pid made the guard a no-op until `38d1f80`) and a 1 s CPU sampler;
+  `build.sh test` refuses while it is live (`FORCE_QUIET=1` overrides). **Pinned harness runs need
+  `PYTHONSAFEPATH=1`** alongside `PYTHONPATH=<snapshot>`, or Python imports the live tree instead of the snapshot
+  (`scripts/pin_harness.sh`). A SIGKILLed wrapper leaks the marker (bounded by its 2 h / dead-pid check) and the
+  sampler (unbounded).
+- **Gates are now host-load sensitive** (back-pressure excludes wait time from guest time, R41): under a heavy
+  host process (Valheim 4 GB) the title's attract timing shifts ~12 s (s19 phase) and the mission press schedule,
+  which runs on wall clock, lands on cinematic frames (`s5_hygiene` mission FAIL, inconclusive — same exe passed
+  `s5_gsbp2c`). Run binding gates on a quiet host.
+
 - **Online instances freeze for 3–17 s under host load** (launch 8c: round clock stops, main thread parked at
   `0x3b00a4`, memory flat ~200 MB — not the GS backlog): the other side's NetIdle then alarms (peaks 8217/10338
   ms) and MoveScale falls to ~11.5 calls/s; the live 10 s move-path rule fired three times and would end an
