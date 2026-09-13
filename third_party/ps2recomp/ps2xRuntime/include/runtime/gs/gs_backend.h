@@ -35,6 +35,12 @@ public:
     // HostRenderFrame replays pending work; HostFrameTexture returns a GL texture id for the
     // last presented frame (0 = none, use the CPU pixel path).
     virtual bool HostDriven() const { return false; }
+    // Recorder-side hooks (GPU backends). GuestFrameBoundary runs on the thread that records the
+    // command stream (the EE executor), once per guest VBlankStart; a backend may block there,
+    // capped, until its replay is within a bound (GsFrameBackpressure, ruling R35).
+    // ReleaseHostBackpressure (any thread, at shutdown) wakes that wait and disables it.
+    virtual void GuestFrameBoundary() {}
+    virtual void ReleaseHostBackpressure() {}
     virtual bool HostRenderFrame() { return false; }
     // width/height = the presented rectangle (rows/cols actually displayed); textureWidth/Height =
     // the GL texture's full size (the presented rectangle is its top-left corner).

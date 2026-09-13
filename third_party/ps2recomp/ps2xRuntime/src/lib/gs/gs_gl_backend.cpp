@@ -517,6 +517,7 @@ void main()
 GSGlBackend::GSGlBackend()
     : m_cpu(std::make_unique<GSCpuBackend>()), m_shadow(std::make_unique<GSCpuBackend>())
 {
+    m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(std::getenv("PS2X_GS_MAX_PENDING_FRAMES")));
 }
 
 GSGlBackend::~GSGlBackend() = default;
@@ -535,6 +536,8 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
     // PS2X_GS_SCALE and always rasterises at 1x; this banner only ever prints from the GL path.
     std::fprintf(stderr, "[gs-gl] PS2X_GS_SCALE=%u (render targets %ux native, resolve filter %s)\n",
                  renderScale(), renderScale(), resolveFilterIsBox() ? "box" : "point");
+    std::fprintf(stderr, "[gs-gl] PS2X_GS_MAX_PENDING_FRAMES=%u (guest frames recorded ahead of replay before the EE waits; 0 = unbounded)\n",
+                 m_backpressure.maxPendingFrames());
 }
 
 void GSGlBackend::Reset()
@@ -622,12 +625,15 @@ void GSGlBackend::waitForToken(uint64_t token)
         // Called on the GL thread (debug readback): execute inline.
         CommandBuffer &buffer = m_executing;
         buffer.clear();
+        uint64_t framesTaken = 0u;
         {
             std::lock_guard<std::mutex> lock(m_queueMutex);
             buffer.commands.swap(m_pending.commands);
             buffer.data.swap(m_pending.data);
+            framesTaken = m_backpressure.recordedFrames();
         }
         executeCommands(buffer);
+        m_backpressure.framesReplayed(framesTaken);
         return;
     }
     if (!m_glReady.load(std::memory_order_acquire))
@@ -889,6 +895,33 @@ bool GSGlBackend::ensureGl()
     return true;
 }
 
+void GSGlBackend::GuestFrameBoundary()
+{
+    // Nothing replays before ensureGl(), and the GL thread never waits on itself.
+    if (!m_glReady.load(std::memory_order_acquire) || std::this_thread::get_id() == m_renderThread)
+        return;
+    if (m_backpressure.frameRecorded() != GsFrameBackpressure::WaitResult::TimedOut)
+        return;
+    // A cap hit: the GL thread made no progress for the whole cap (window drag, hang, exit). Log it
+    // at most once per 10 s; the latch means the EE does not wait again until replay progresses.
+    static uint64_t s_capHits = 0u;
+    static std::chrono::steady_clock::time_point s_lastLog{};
+    ++s_capHits;
+    const auto now = std::chrono::steady_clock::now();
+    if (s_lastLog == std::chrono::steady_clock::time_point{} || now - s_lastLog >= std::chrono::seconds(10))
+    {
+        s_lastLog = now;
+        std::fprintf(stderr, "[gs-gl] back-pressure: replay made no progress within %lld ms (N=%u, %llu frames pending, %llu cap hits); the EE runs on until it does\n",
+                     static_cast<long long>(GsFrameBackpressure::kDefaultWaitCap.count()), m_backpressure.maxPendingFrames(),
+                     static_cast<unsigned long long>(m_backpressure.pendingFrames()), static_cast<unsigned long long>(s_capHits));
+    }
+}
+
+void GSGlBackend::ReleaseHostBackpressure()
+{
+    m_backpressure.release();
+}
+
 bool GSGlBackend::HostRenderFrame()
 {
     if (!ensureGl())
@@ -897,13 +930,19 @@ bool GSGlBackend::HostRenderFrame()
     // to m_pending by the swap: no vector growth on the game thread every frame (~7% of it).
     CommandBuffer &buffer = m_executing;
     buffer.clear();
+    // The frame count is read under the same lock as the swap: GuestFrameBoundary counts a frame
+    // only after its commands were recorded (under m_queueMutex), so this is exactly the frames in
+    // `buffer`. It is reported replayed even when the buffer is empty (a frame with no GS work).
+    uint64_t framesTaken = 0u;
     {
         std::lock_guard<std::mutex> lock(m_queueMutex);
         buffer.commands.swap(m_pending.commands);
         buffer.data.swap(m_pending.data);
+        framesTaken = m_backpressure.recordedFrames();
     }
     if (!buffer.commands.empty())
         executeCommands(buffer);
+    m_backpressure.framesReplayed(framesTaken);
     // Restore raylib's expectations.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDisable(GL_SCISSOR_TEST);
@@ -1166,6 +1205,10 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      s_time[2], (unsigned long long)s_count[2], s_time[3], (unsigned long long)s_count[3],
                      s_time[4], (unsigned long long)s_count[4], s_time[5], (unsigned long long)s_count[5],
                      s_time[6], (unsigned long long)s_count[6], m_textures.size(), m_renderTargets.size());
+        const GsFrameBackpressure::Stats bp = m_backpressure.takeStats();
+        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu pending=%llu\n",
+                     m_backpressure.maxPendingFrames(), (unsigned long long)bp.frames, (unsigned long long)bp.waits, bp.waitMs,
+                     (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)m_backpressure.pendingFrames());
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }

@@ -2,6 +2,7 @@
 
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_frame_backpressure.h"
 
 #include <array>
 #include <atomic>
@@ -51,6 +52,9 @@ public:
     // Main thread: replay recorded commands. Returns true when a presentable texture exists.
     bool HostDriven() const override { return true; }
     bool HostRenderFrame() override;
+    // EE executor: bound the frames recorded but not yet replayed (PS2X_GS_MAX_PENDING_FRAMES).
+    void GuestFrameBoundary() override;
+    void ReleaseHostBackpressure() override;
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
     uint32_t HostFrameTexture2() override { return m_presentTexture2; }
 
@@ -266,6 +270,8 @@ private:
     std::atomic<uint64_t> m_executedToken{0};
     std::atomic<bool> m_glReady{false};
     std::thread::id m_renderThread{};
+    // Frames recorded (EE executor, GuestFrameBoundary) vs replayed (the swaps above): ruling R35.
+    GsFrameBackpressure m_backpressure;
 
     // GPU-dirty page tracking (written on the game thread from draw submissions)
     mutable std::mutex m_dirtyMutex;

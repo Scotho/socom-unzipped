@@ -1989,6 +1989,10 @@ void EeScheduler::processEvent(const EeEvent &event)
         requestStop();
         break;
     case EeEventType::VBlankStart:
+        // Ruling R35: a GPU backend bounds its not-yet-replayed command stream here, once per guest
+        // frame; this may block (capped, GsFrameBackpressure) until the GL thread catches up, so
+        // the guest sees the VBlank only once replay is within N frames. CPU backend: no-op.
+        m_runtime.gs().guestFrameBoundary();
         ++m_vsyncTick;
         m_runtime.memory().gs().vsyncTick.store(m_vsyncTick, std::memory_order_release);
         if ((m_vsyncTick & 1u) != 0u)

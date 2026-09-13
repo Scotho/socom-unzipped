@@ -2854,6 +2854,9 @@ void PS2Runtime::run()
         }
     }
 
+    // The GL thread no longer replays: wake a game thread waiting on GS back-pressure (R35) so
+    // the join below cannot wait out the cap.
+    gs().releaseHostBackpressure();
     requestStop();
     if (gameThread.joinable())
     {
