@@ -13,6 +13,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 | What | Artefact |
 |---|---|
+| **A clock round end is readable from the valves, and it steps no kill counter** (Task 1 Step 5b, launch 8c, map **VIGILANCE** — also kill2's map): both sides controllable after the vf0 fix (A 84.19/1.52/0.00, B 82.98/1.88/0.00); A's clock string reached `00:00`, then `mp_round_count` 0→1 and `mp_major_game_state` 2→4 on both instances at one aligned moment; `total_mp_kills` 0, `aiteam_00/08` 1, `+0x1044` 1.0, `+0xF7A` 1 throughout and after; no R1 bit in either log. Task 6's negative-control fixture | `logs/run_[AB]_20260913_132843.log`, `control_round.json`; review re-derived |
 | **The VU0 vf0 fix restores Frostfire online control** (one usable run; a second Frostfire sample and the Medley bar still owed before "fixed"): the local ground probe hits from its first call (ProbeEval 1332/1332 A, 1428/1428 B, candidates 1–3), `actor+0x420` tracks the clock within 0.05 s on every row, `+0x1061` bit 0x04 never sets, MoveScale runs at f12 = 1.0 for the whole ~302 s round; movement bar A 51.78/1.65/0.00, B 54.57/3.79/0.00; every Frostfire model gridded by world bounds; starvation peaks 1547/1441 ms. First online valve reads: `aiteam_00/08` 0→1 at round start, `mp_round_count`/`total_mp_kills`/`mp_game_over` 0, clock string counts down | Launch 3c, `logs/run_[AB]_20260913_115809.log`, `logs/parity/frost{A,B}_probe600_vf0.rdram`; review re-derived all with independent scripts |
 | **The actor's facing lives in its own transform**: quaternion `actor+0x70` → `FUN_005483d0`/`FUN_00307170` → 4×4 at `+0x80..+0xbc` (row vectors; quaternion angle = −θ of the matrix; row 3 copied from `+0xf54`, not `+0x1c`). Walk direction = (−m[+0xa0], −m[+0xa8]): p90 **1.57°** over 17 live SP forward holds (13 at the spawn heading with a ~1.4° walk bias, 4 elsewhere at 0.0–1.0°), 1.43° over 11 online holds offline. Not valid within ~2.5 s of an `rx` hold | Sprint 5 Task 2, `e685b82`; review re-derived with an independent parser (589/589 quaternion–matrix rows) |
 | PCSX2 plays a full online round against **our own** Horizon server, advancing to round 2 | `research/18` §1 + tracked contact sheet `docs/research/assets/18-s0-evidence.png` |
@@ -107,6 +108,11 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 > edit, and close-out *verifies* retractions rather than performing them.
 
 ## 4. Standing hazards — things that will bite again
+
+- **Online instances freeze for 3–17 s under host load** (launch 8c: round clock stops, main thread parked at
+  `0x3b00a4`, memory flat ~200 MB — not the GS backlog): the other side's NetIdle then alarms (peaks 8217/10338
+  ms) and MoveScale falls to ~11.5 calls/s; the live 10 s move-path rule fired three times and would end an
+  `--until-kill` match. Launch 3c on the same exe had none. Keep other heavy work off the host during launches.
 
 - **Frostfire has two floors, y ≈ 100 and y ≈ 142** (bimodal in both actors' positions, launch 3c): the
   closest 3-D approach was 52.42 at dy 42 — different floors — and the same-floor minimum 168.78. An approach
