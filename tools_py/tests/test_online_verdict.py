@@ -49,16 +49,32 @@ def pad_hold(start=HOLD_START, release=RELEASE, ly=0x00):
     return [vc.PadEvent(start, 0, 0x80, 0x80, 0x80, ly), vc.PadEvent(release, 0, 0x80, 0x80, 0x80, 0x80)]
 
 
-def rows_from(fn, t0=0.0, t1=30.0, addr=0x17941D0):
-    """4 Hz actor rows, x = fn(t) (ground plane x; z fixed at 1000, y at 50)."""
-    out, t = [], t0
-    while t <= t1 + 1e-9:
-        out.append((round(t, 6), fn(t), 50.0, 1000.0, addr))
-        t += PERIOD
+def rows_from(fn, t0=0.0, t1=30.0, addr=0x17941D0, period=PERIOD):
+    """Actor rows every `period` s (4 Hz by default), x = fn(t) (ground plane x; z 1000, y 50)."""
+    out, i = [], 0
+    while t0 + i * period <= t1 + 1e-9:
+        t = round(t0 + i * period, 6)
+        out.append((t, fn(t), 50.0, 1000.0, addr))
+        i += 1
     return out
 
 
-def walk(units_during_hold, coast=0.0, snap_at=None, snap_units=0.0, drift_per_s=0.0):
+def correction(units_during_hold, units_back, begin_after_release, duration):
+    """x(t): still before the hold, linear during it, still after release until release +
+    `begin_after_release`, then a linear correction of `units_back` over `duration` s, then still."""
+    rate = units_during_hold / HOLD_S
+
+    def x(t):
+        if t <= HOLD_START:
+            return 100.0
+        if t <= RELEASE:
+            return 100.0 + rate * (t - HOLD_START)
+        f = min(1.0, max(0.0, (t - RELEASE - begin_after_release) / duration))
+        return 100.0 + units_during_hold - f * units_back
+    return x
+
+
+def walk(units_during_hold, coast=0.0, snap_at=None, snap_units=0.0, drift_per_s=0.0, period=PERIOD):
     """x(t): neutral drift before the hold, linear motion during it, optional coast after release
     (reached one sample later), optional snap-back of `snap_units` at release + `snap_at`."""
     rate = units_during_hold / HOLD_S
@@ -68,7 +84,7 @@ def walk(units_during_hold, coast=0.0, snap_at=None, snap_units=0.0, drift_per_s
             return 100.0 + drift_per_s * (t - HOLD_START)
         if t <= RELEASE:
             return 100.0 + rate * (t - HOLD_START)
-        v = 100.0 + units_during_hold + min(1.0, (t - RELEASE) / PERIOD) * coast
+        v = 100.0 + units_during_hold + min(1.0, (t - RELEASE) / period) * coast
         if snap_at is not None and t >= RELEASE + snap_at:
             v -= snap_units
         return v
@@ -207,7 +223,7 @@ class ScoreControlTest(unittest.TestCase):
         self.assertIn(True, oks)
         self.assertIn(False, oks)
 
-    # -- fix round 1: the ±½-period pad timing must not leak hold motion into drift / snap-back --
+    # -- fix round 1: the Â±Â½-period pad timing must not leak hold motion into drift / snap-back --
     @staticmethod
     def moving(start_row_t, stop_row_t, rate=48.0):
         """stationary at 100 until the row at start_row_t, `rate` u/s until stop_row_t, then still."""
@@ -241,6 +257,36 @@ class ScoreControlTest(unittest.TestCase):
         v = self.score(walk(80.0, drift_per_s=0.51))
         self.assertEqual(v.status, "FAIL")
         self.assertAlmostEqual(v.drift_units, 5.1, places=6)
+
+    # -- fix round 2: snap-back from the peak excursion, independent of the row period --
+    def test_rubber_band_24_fails_on_snap_back_at_both_periods(self):
+        for period in (0.25, 0.6):
+            with self.subTest(period=period):
+                v = self.score(None, rows=rows_from(walk(24.0, snap_at=0.5, snap_units=24.0, period=period),
+                                                    period=period))
+                self.assertFalse(v.ok)
+                self.assertGreater(v.snapback_units, vc.CONTROL_SNAPBACK_MAX_UNITS)
+
+    def test_thirty_unit_correction_in_0_3s_fails_on_snap_back_at_both_periods(self):
+        for period in (0.25, 0.6):
+            with self.subTest(period=period):
+                v = self.score(None, rows=rows_from(correction(80.0, 30.0, 0.3, 0.3), period=period))
+                self.assertGreaterEqual(v.net_units, vc.CONTROL_NET_MIN_UNITS)     # net alone passes
+                self.assertFalse(v.ok)
+                self.assertGreater(v.snapback_units, vc.CONTROL_SNAPBACK_MAX_UNITS)
+
+    def test_coast_at_0_6s_rows_passes(self):
+        v = self.score(None, rows=rows_from(walk(80.0, coast=10.0, period=0.6), period=0.6))
+        self.assertEqual(v.status, "PASS", v)
+        self.assertLessEqual(v.snapback_units, 1e-6)
+
+    def test_torn_line_in_the_shifted_drift_window_is_no_data(self):
+        # press seen just after the 20.00 row: the drift window evaluated is [10.00, 20.00]; a tear at
+        # 10.05 lies inside it but outside [s - 10, ...] = [10.125, ...]
+        hold = vc.Hold(20.125, 22.125)
+        pads = [vc.PadEvent(hold.start, 0, 0x80, 0x80, 0x80, 0x00), vc.PadEvent(hold.release, 0, 0x80, 0x80, 0x80, 0x80)]
+        v = vc.score_control(rows_from(self.moving(20.0, 22.25)), pads, hold, unrecovered_pad_times=[10.05])
+        self.assertEqual(v.status, vc.NO_DATA)
 
     def test_boundary_snap_back(self):
         self.assertTrue(self.score(walk(80.0, snap_at=1.0, snap_units=9.9)).ok)
@@ -333,7 +379,7 @@ class ControlFixtureTest(unittest.TestCase):
 
     def test_kill3_B_FINDING_controllable_on_actor_rows(self):
         """The brief expects NO-CONTROL side=B. Under the spec's bar on ACTOR rows B's first facing
-        probe passes (net 66.93, snap 1.84, drift 0.00 as the CLI prints); Sprint 4 called B immobile from the 0x416054
+        probe passes (net 66.93, snap 1.65, drift 0.00 as the CLI prints); Sprint 4 called B immobile from the 0x416054
         camera record, which froze on B while the actor moved. Asserted as measured; reported as a
         finding for the controller, not tuned away."""
         b = self.side("kill3_B_probes.txt")
@@ -588,6 +634,17 @@ class ContactTest(unittest.TestCase):
         self.assertGreater(counts[0], 0)
         self.assertEqual(counts[-1], 0)
 
+    def test_row_gap_of_1_06s_bridges_and_1_3s_breaks(self):
+        def with_gap(gap):
+            a, b = self.pair()
+            shift = gap - PERIOD
+            a = [(r[0] + (shift if i >= 20 else 0.0), 500.0 + (r[0] + (shift if i >= 20 else 0.0) - 100.0) * 2.0,
+                  r[2], r[3], 1) for i, r in enumerate(a)]
+            b = [(100.05 + i * PERIOD, 500.0 + (i * PERIOD + 0.05) * 2.0 + 15.0, 50.0, 500.0, 2) for i in range(44)]
+            return self.score(a, b).contact_rows
+        self.assertEqual(with_gap(1.06), 40)
+        self.assertEqual(with_gap(1.3), 20)
+
     def test_boundary_range_and_dy(self):
         self.assertEqual(self.score(*self.pair(gap=22.0)).contact_rows, 40)
         self.assertEqual(self.score(*self.pair(gap=22.1)).contact_rows, 0)
@@ -608,7 +665,7 @@ class ContactTest(unittest.TestCase):
     def test_stale_b_rows_do_not_extend_the_run(self):
         a, _ = self.pair()
         b = [(tb, 500.0 + (tb - 100.0) * 2.0 + 15.0, 50.0, 500.0, 2)
-             for tb in (100.05 + i * 0.8 for i in range(13))]                  # B sampled every 0.8 s
+             for tb in (100.05 + i * 1.3 for i in range(8))]                  # B sampled every 1.3 s (> CONTACT_ROW_MAX_GAP_S)
         self.assertLess(self.score(a, b).contact_rows, 5)
 
     def test_hung_instance_rows_repeating_clock_frozen(self):

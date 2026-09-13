@@ -75,9 +75,11 @@ PAD_NEUTRAL = 0x80
 # covers 40; motion in the wrong direction (this is a distance, not a heading).
 CONTROL_NET_MIN_UNITS = 40.0
 CONTROL_NET_AFTER_RELEASE_S = 1.5
-# Position at release + 2 s within 10 of the position at release. Measured against: the record keeps
-# moving about one sample after release (§3.12: "stops one sample after release"), 1.18 / 0.72 units on
-# kill2's probes (release reference one row after release). Blind: a correction (snap-back) arriving later than 2 s.
+# Snap-back <= 10: the peak ground-plane excursion from the hold-start row over rows in [release,
+# release + 2 s], minus the excursion at release + 2 s (controller ruling, fix round 2; score_control).
+# Measured against: the record keeps moving about one sample after release (§3.12: "stops one sample
+# after release"), which raises peak and final together. Blind: a correction arriving later than 2 s;
+# a correction that begins and ends entirely between two rows.
 CONTROL_SNAPBACK_MAX_UNITS = 10.0
 CONTROL_SNAPBACK_AFTER_RELEASE_S = 2.0
 # Net drift over the preceding 10 s neutral window <= 5. Measured against: 1.3-1.4 units per sample of
@@ -122,11 +124,14 @@ CONTACT_SCALE_MIN = 0.99           # both sides' latest f12; closes the starved-
 # Pairing: B's row nearest A's within two 4 Hz samples. Blind: a 0.5 s misalignment at 40 u/s is 20
 # units -- the two process clocks must be aligned by the caller first (see main's --offset-b).
 CONTACT_PAIR_MAX_S = 0.5
-# A row counts only if its own side's previous row is at most this far back, on BOTH sides: a slow or
-# stalled sampler must not stretch one position over several rows of the other side. Three 4 Hz
-# samples. Blind: kill2 B's fight stretch ran at ~0.6 s/row (max 1.08 s) -- rows after its longer
-# gaps do not count, so a slow-but-healthy sampler under-counts contact (conservative).
-CONTACT_ROW_MAX_GAP_S = 0.75
+# A row counts only if its own side's previous row is at most this far back, on BOTH sides: a stalled
+# sampler must not stretch one position over several rows of the other side. Measured against kill2 B,
+# whose sampler slowed to ~0.6 s/row in the fight: worst gap 1.06 s (review's clock) / 1.08 s (this
+# parser's clock) at t ~ 704 s, and 0.92 s inside the closest-approach window 658-688 s -- so a slow
+# but healthy sampler still counts. The hung-instance class is guarded by the clock-changing and
+# #n-advancing clauses, not by this. Blind: a stall of <= 1.25 s is bridged (controller ruling,
+# fix round 2).
+CONTACT_ROW_MAX_GAP_S = 1.25
 # "#n advancing" at a contact row: a logged call with a higher #n inside the last 3 s. At EVERY <= 20
 # and ~17-27 calls/s that is >= 2 lines expected. Blind: a stall shorter than ~3 s.
 CONTACT_ADVANCE_WINDOW_S = 3.0
@@ -428,35 +433,40 @@ def score_control(rows, pad_events, hold, unrecovered_pad_times=()):
     if not rows:
         return ControlVerdict(False, None, None, None, NO_DATA, "no actor rows", hold)
 
+    # Pad events carry +-1/2 sampler period of timing error (parse_log puts them midway between two
+    # rows), so no position is interpolated AT an event time: the hold's start reference is the last
+    # row at or before the start event (sampled before the game saw the press), and the drift window
+    # is the 10 s ending at that row.
+    #
+    # Snap-back is measured from the PEAK excursion, independent of the row period:
+    #   snapback = max(0, max_{rows t in [release, release+2s]} |p(t) - p_start| - |p(release+2s) - p_start|)
+    # Coasting forward after release raises the peak and the final displacement together, so it does
+    # not count; a correction counts as soon as any row saw the pre-correction position. Blind: a
+    # correction that begins and ends entirely between two rows is unobservable (at 0.6 s/row, one
+    # shorter than ~0.6 s that no row straddles).
+    k_s = bisect.bisect_right(times, s) - 1
+    t_s0 = times[k_s] if k_s >= 0 else None
+    if t_s0 is not None:
+        t_drift = t_s0 - CONTROL_DRIFT_WINDOW_S
+
     torn_inside = [u for u in unrecovered_pad_times if t_drift <= u <= t_snap]
     if torn_inside:
         return ControlVerdict(False, None, None, None, NO_DATA,
                               f"unrecovered torn pad line at {torn_inside[0]:.2f}", hold)
 
-    # Pad events carry +-1/2 sampler period of timing error (parse_log puts them midway between two
-    # rows), so no position is interpolated AT an event time: the hold's start reference is the last
-    # row at or before the start event (sampled before the game saw the press), and the release
-    # reference is the first row at or after release + one row period (so one sample of legitimate
-    # coast after release is not read as a snap-back). Blind: a snap-back that completes inside that
-    # one row after release still fails the net clause only if it undoes the displacement.
-    k_s = bisect.bisect_right(times, s) - 1
-    k_after = bisect.bisect_right(times, r)
-    t_s0 = times[k_s] if k_s >= 0 else None
-    k_r = k_after + 1 if k_after + 1 < len(times) else None
-    t_ref = times[k_r] if k_r is not None else None
-    if t_s0 is not None:
-        t_drift = t_s0 - CONTROL_DRIFT_WINDOW_S
-
     after = [e for e in pad_events if r < e.t <= t_snap and not _sticks_neutral(e)]
     net = snap = drift = None
+    window_rows = [row for row in rows if r <= row[0] <= t_snap]
     if after:
         reasons.append(f"stick input {after[0].t - r:+.2f}s after release")
-    elif t_s0 is None or t_ref is None or t_ref > t_snap:
-        reasons.append("no row before the hold or after release + one row period")
+    elif t_s0 is None or not window_rows:
+        reasons.append("no row before the hold or none in release..release+2s")
     elif _window_ok(rows, times, t_s0, t_snap):
-        p_s, p_r, p_n, p_2 = (_pos_at(rows, times, t) for t in (t_s0, t_ref, t_net, t_snap))
-        if None not in (p_s, p_r, p_n, p_2):
-            net, snap = _ground(p_s, p_n), _ground(p_r, p_2)
+        p_s, p_n, p_2 = (_pos_at(rows, times, t) for t in (t_s0, t_net, t_snap))
+        if None not in (p_s, p_n, p_2):
+            net = _ground(p_s, p_n)
+            peak = max(_ground(p_s, (row[1], row[3])) for row in window_rows)
+            snap = max(0.0, peak - _ground(p_s, p_2))
     else:
         reasons.append("rows do not cover hold..release+2s")
 
