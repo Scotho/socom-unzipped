@@ -27,10 +27,10 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
 | **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
 | **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. The `*0x488de8+0xbc` route is wrong. Full chain: `@408c58` word0 = `017941d0`; `@17941d0` word0 = `006691a0`; `*(actor+0xc0)` = mover `006694b0` | Task 8, `9c28fe0`; correct route now written into `HANDOFF.md` §"Open items" item 0 |
-| **The two-instance approach closes faster than one:** 1359 units in 127 s against Task 7's 758 in 300 s. Rifles fire — 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2` (A 1171 rows, B 1055) |
-| **They fought at ~90 units, not in contact.** Median 3-D separation over the last 400 rows was 93 (min 34.9, max 138); only 3 % of rows were inside the 45-unit engage threshold in 3-D and **0 %** inside 20. Median elevation 29-44°; the quoted 77° was the single worst row. Range and elevation are co-equal causes | Review of `9c28fe0`, re-derived from both logs and two position sources across ±116 alignment offsets |
+| ~~**The two-instance approach closes faster than one:** 1359 units in 127 s against Task 7's 758 in 300 s~~ **SUPERSEDED — derived from the camera+facing reconstruction that was later proven wrong by up to 50 units. Use the actor-row generation below (1485.5 → 50.0 in ~127 s).** The rifle facts stand: 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2` |
+| ~~**They fought at ~90 units** (median 93, min 34.9, 3 % inside 45)~~ **SUPERSEDED by the actor-row generation below (min 50.0, median 67.9, 0 % inside 45).** Same conclusion, better instrument | Review of `9c28fe0`; superseded once `true_pos()` read the actor's own coordinates |
 | **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
-| **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). HANDOFF's `*0x488de8+0xbc` is **not** the route | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
+| **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). the `*0x488de8+0xbc` route is **not** it (that route is recorded in `STATUS`'s 2026-09-09 01:30 entry, not HANDOFF, and `0x488de8` is the *camera*) | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
 | **Two movers close the map four and a half times faster than one**: `ours_task8_kill2` closed the true 3-D gap **1485.5 → 50.0 units in ~127 s** (11.3 units/s) against Task 7's 757.8 in 300 s (2.5 units/s), both players walking — the first time two online players have been in the same place | `ours_task8_kill2`, `logs/run_A_20260912_231341.log` / `run_B_…` (1172 / 1055 in-game rows). Team-closed over team-walked **61.0 %** vs `wtb2`'s 38.6 %; `kill1` was **36.5 %**, i.e. no better than one mover. Per-side efficiencies double-count the same gap and must not be quoted |
 | **The bursts hit nothing because the players were never in range at all, in three dimensions**: on the ACTOR rows the minimum true 3-D separation for the whole run was **50.0 units**, the last 400 rows had a median of **67.9** and a median elevation of **43.3°**, and **0 %** of them were inside 45 units in 3-D, inside 25, or within 10 of each other's height. Range and elevation are co-equal causes; the 77° figure is the single worst row | Same run, actor positions (words 7/8/9); `actor+0x204`/`+0x208` unchanged on **both** instances throughout, so no damage was dealt either way |
 | **The loop's own distance was wrong by tens of units**, because it reconstructed each player as `camera + 24.9 * facing`: a facing wrong by tens of degrees misplaces a player by up to two orbit radii (~50 units), and placing the OTHER player needed the other side's facing | Reproduced in a **flat** simulated world: reported-best vs ground truth was 40.3/64.3, 23.4/30.7 and 157.6/204.7 before the fix, and **18.1/18.1** after `true_pos()` read the actor's own x/y/z. `research/18` §4.11 |
@@ -53,11 +53,11 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 
 ## 3. Retracted — believed, then killed by measurement
 
-- **"The PCSX2 golden match is the same frozen state"** (`HANDOFF.md:42`). False. That golden was two
+- **"The PCSX2 golden match is the same frozen state"** (`HANDOFF.md` "Open items" item 0). False. That golden was two
   stills of a match with **no input ever sent**. Weeks of server- and protocol-directed reasoning
   were aimed at the wrong body of code. *Retracted in the tree 2026-09-13 (Task 9a): `HANDOFF.md`
   item 0 and `STATUS.md` 2026-09-10 20:10.*
-- **"The actor rests 14.7 above the ground vs the console's 20.1"** (`HANDOFF.md:99`, `STATUS.md:809`).
+- **"The actor rests 14.7 above the ground vs the console's 20.1"** (`HANDOFF.md` "Open items" item 2; `STATUS.md` 2026-09-09 01:30).
   Both numbers are camera-eye minus collision-hit. The player's feet are right to 0.008.
   *Retracted in the tree 2026-09-13 (Task 9a): `HANDOFF.md` item 2 and `STATUS.md` 2026-09-09 01:30,
   which prints the two camera y values it was differencing.*
@@ -83,6 +83,9 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **`PS2X_GS_SCALE=2` will sharpen the HUD** (Sprint 3 spec DoD). It cannot: HUD, menus and title
   are textured quads at native texel density. The design doc said so before anyone measured it.
 
+> Cite **item names and dated entries, never `file:NN`** — line numbers rot the moment anyone
+> edits above them, and a dangling citation is how the actor-pointer mis-attribution happened.
+>
 > Retract **on discovery**, not at close-out. All of §3's first three were still false in the tree
 > hours after being disproved — and in the end they were retracted **at close-out anyway**
 > (2026-09-13, Task 9a), which is the outcome this note exists to prevent. The elapsed time between
