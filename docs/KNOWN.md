@@ -5,7 +5,7 @@ artefact settles them, **retired** when they stop mattering, and **retracted** l
 turn out false. Every proven entry names the artefact that proves it; every believed entry names
 the experiment that would settle it. If an entry cannot do that, it does not belong here.
 
-Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 8 closed (Sprint 4).
+Maintained by whoever is running the loop. Last audited: 2026-09-13, after Task 9b (Sprint 4 closing; Sprint 5 committed).
 
 ---
 
@@ -18,7 +18,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | The peer channel carries **zero** application data all match — every datagram decoded | `research/18` §3 |
 | The advertised-port and shared-RSA divergences were real, and their fixes reached the wire | `acb603e`; wire bytes `4C-0E` both slots, distinct keys verified by `(m^17)^d mod N == m` |
 | Neither of those fixes moved the symptom | Same runs; 3 hypotheses now falsified by measurement |
-| The player's **feet** are at the right height (−145.875 vs console −145.8672); the defect is the **camera** | `research/17` §0.1, derived from STATUS:809's own numbers |
+| The player's **feet** are at the right height (−145.875 vs console −145.8672); the defect is the **camera** | `research/17` §0.1, derived from `STATUS.md`'s 2026-09-09 01:30 entry's own camera y values |
 | The skeleton root node decays 11.4845 → 0 while its saved copy freezes at the console's 5.50391 | `research/17` §4.1, raw trace `run_20260912_121304.log:3962-6975` |
 | `rand()` returned 15 bits over a `_rand_next` frozen at 41 (host CRT's first draw) | `ede2096`; `_rand_next = 0x29` in four of our RDRAM images, live in all three PCSX2 images |
 | The disputed mover field could not exceed 4.0000458 under the old mask; console reads 6.3338 | `research/17` §6; two samples a side |
@@ -173,9 +173,9 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   player is in-game and not yet controllable. `ours_task8_kill3` lost its second mover exactly
   there: 161 in-game rows, movement scale 1.0, and the record moving **0.00** units across a
   forward hold, a turn and a second forward hold.
-- **The approach loop's distance is 2-D by construction** (the camera→player reconstruction is a
-  ground-plane rotation), so "contact at 33 units" can mean a 45-unit height difference and no line
-  of sight at all. Read `dy` before believing a range.
+- ~~**The approach loop's distance is 2-D by construction**~~ **Superseded by `d75ff33`**, which reads
+  the actor's own x/y/z and gates contact on 3-D range AND `|dy|`. Kept for the lesson it carried:
+  "contact at 33 units" once meant a 45-unit height difference and no line of sight at all.
 - **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
   defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
 - **Closure efficiency quoted per side double-counts the same gap** — kill2 recomputes to 107.6 %
@@ -201,8 +201,6 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   (`callTraceShouldLog`: `n < 300u || (n % every) == 0u`). A short
   trace never reaches the sampling regime, so dividing its line count by `EVERY` over-states the
   rate — it made an 18-call, 0.6-second burst read as "about one a second for six minutes".
-- **`docs/LOOP_PROMPT.md` still targets Sprint 3.** A cron firing reads it first, so an autonomous
-  session starts from the wrong sprint until it is repointed (Sprint 5 Task 0).
 - **Existing research notes go unread unless they are put in the dispatch.** `research/11`
   (2026-09-07) named reCOM's `MP_MAJOR_GAME_STATE` and `CZNetGame` round valves — plausibly the
   round-state machine behind Frostfire and the structures behind a kill readout — and sat unused
