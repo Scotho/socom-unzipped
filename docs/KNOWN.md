@@ -102,6 +102,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The peek sampler's period is not constant under load** (Sprint 5 Task 3 Step 0, `736193c`/`afe98da`,
+  measured on `run_B_20260912_231341.log`): kill2 B ran 0.25 s/row until ~620 s, then ~0.6 s/row with
+  gaps to 1.08 s around the closest approach. Any row-count bar (contact ≥ 20 rows) means a different
+  duration under load — report the period beside it; `verdict_core` bridges gaps ≤ 1.25 s.
+- **Offline A/B clock alignment is a method, not a fact**: kill2's closest approach reads 50.0 on the
+  Sprint 4 alignment and 45.9 (dy 43.9) aligned on MoveScale `#0`. Quote the alignment with the number.
+
 - **The gate proves regression only.** It was blind to the 15-bit `rand`, the skeleton decay and the
   soft-double chain. A green gate means "no worse than the reference", never "correct".
 - **Our HLE returning a constant where the guest expects a live value** — three for three this
