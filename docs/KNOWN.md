@@ -105,6 +105,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The online harness now refuses to spend a match proving nothing** (Sprint 5 Task 3, `24db942`/`42b1dd8`):
+  a control precondition (up to 4 two-second holds after 11.5 s neutral; exit 3 `NO-CONTROL`), a
+  move-path watch that refuses to start without MoveScale traced at `EVERY ≤ 20`, valves identified by name
+  bytes, `NO-DATA` wherever rows are missing. Consequence: a Frostfire run now **ends ~70 s after liveness**
+  — a diagnostic launch that needs the rest of the round must say so. Mutual standing is safe on kill2's map
+  (39.6 s both neutral, MoveScale f12 = 1.0 throughout).
+
 - **Guest VU memory outside `[0x11004000, 0x1100C000)` aliases into RDRAM.** `Ps2IsPhysicalSpecialAddress`
   leaves out VU0 micro memory 0x11000000–0x11003FFF and VU1 data 0x1100C000–0x1100FFFF, so recompiled
   accesses there, and every libc stub (`memcpy` via `getMemPtr`), hit `rdram[addr & 0x1FFFFFF]`. Latent in
