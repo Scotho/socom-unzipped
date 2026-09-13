@@ -31,7 +31,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 
 | What | What would settle it |
 |---|---|
-| Whether `rxBytes()` feeds densely enough through a genuinely quiet match moment (reload, long walk, hiding). The real cliff is **idle > 5500 ms**, not the 1.5 s I first wrote — measured cadence 1.10 s mean, worst gap 2.7 s, so ~2× margin. A decay past 5.5 s is honest console behaviour, not a defect | A minute-long `actor+0x1368` trace across a quiet stretch, not a busy one |
+| Whether a parked opponent starving the mover matches **console** behaviour, or is an artefact of feeding the counter from RX bytes only (the game's own source may be richer) | A PCSX2 pair with one player parked and the other walking, same `actor+0x1368` measurement |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
 | The intro-cinematic freeze (seen once, Sprint 1) is a real defect | Not reproduced since |
@@ -84,5 +84,11 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   logged nothing for a whole session because it pointed at `0x30be80` while the guest calls the
   thunk at `0x30cd80` — inside the very task that wrote the warning about checks attesting to
   nothing.
+- **A parked opponent starves the mover.** The movement scale is fed by *received* bytes, so if the
+  other player stands still the approaching player's own scale decays toward 0.0 on a long walk.
+  Observed in Task 7. Any plan of the form "walk a long way to a stationary target" is
+  structurally unreliable — keep both players generating traffic.
+- **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
+  defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
