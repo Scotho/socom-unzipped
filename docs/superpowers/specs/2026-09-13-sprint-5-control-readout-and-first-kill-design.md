@@ -207,6 +207,17 @@ Registered from the owner-requested broad review (ledger R50) **before** the fir
 - **Grenade kill** is a PASS on the same clauses with "R1 injected" read as "R1 or grenade injected by the killer".
 - Unchanged: victim `+0x1044 <= 0` with word 0 intact, killer `+0x1044 > 0`, no victim y drop > 20 in the 2 s before, no grenade on the victim's own pad in the 10 s before, both scorers agree (`verdict_replay.py` primary: valves; `KillWatch` primary: actor fields), the 8c clock round-end negative control scores `NO-KILL`.
 
+#### 5.1.1 Clarifications (registered 2026-09-13, still before any ladder match; ledger R53)
+
+Raised by `verdict_replay.py`'s implementation; each resolves a reading of §5.1 without loosening it.
+- **Guest clock units.** `0x4365c0` is mission time, measured to advance ~0.6 guest s per host s and not reset between rounds; every "within N s of the guest clock" window above is in **guest seconds** as written (3 guest s ≈ 5 host s). Round boundaries come from `mp_round_count` steps, and the clock string restart where present (the joiner may have none).
+- **Killer's kill row.** The killer instance has no death row; its reference is the **first kill-valve step** (`total_mp_kills` or the victim team's `aiteam_*`) within ±20 s host wall clock of the victim's death row, and its guest-clock window is measured from that step.
+- **"Consistent ordering" across instances** means: the same round on both instances (same `mp_round_count` value) and the victim instance's death row no later than the killer instance's kill-valve step + 20 s host wall clock.
+- **Instantaneous clauses.** The killer's `+0x1044 > 0` and the victim's `+0xF7A` are read at the row nearest the victim's death row, ±0.5 s host.
+- **Several misbehaving valves** produce `KILL-SEMANTICS <valve>[,<valve>…]`, listing all.
+- **Actor destroyed at death.** If the victim's actor block stops being identified (word 0 leaves `0x6691a0`) within 2 s after an intact row whose `+0x1044` < 1.0, with the kill valves stepping, and no intact row reads `+0x1044 <= 0`, the verdict is **`KILL-SEMANTICS actor-destroyed`** (not `NO-DATA`); like any semantics surprise, a second independent kill with the same behaviour makes it PASS.
+- **Grenade input** is uncalibrated: any non-R1 face/shoulder press on the **victim's** pad in the 10 s before counts as a possible self-grenade (`NO-KILL self`); the killer's grenade counts as a kill input only when its button mask is given (`--grenade-mask`), set by the A7 calibration before use.
+
 ## 6. Sequencing, budget, risk and realism
 
 ```
