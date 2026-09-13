@@ -331,6 +331,8 @@ public:
     void dispatchIrq(bool dmac, uint32_t cause);
     void setVSyncFlag(uint32_t flagAddress, uint32_t tickAddress);
     [[nodiscard]] uint64_t currentVSyncTick() const noexcept;
+    // Number of idle waits (waitForEvent calls) so far: tests use it to see an idle guest sleep rather than spin.
+    [[nodiscard]] uint64_t idleWaitCount() const noexcept { return m_idleWaitCount.load(std::memory_order_relaxed); }
     // Ruling R41: after a GS back-pressure wait at a VBlankStart, the host-deadline anchor of the next
     // VBlank is moved up to no earlier than one period before `now`. The time spent waiting is dropped
     // instead of being repaid by VBlanks firing back to back, so guest pacing stays real time.
@@ -443,6 +445,7 @@ private:
     uint64_t m_eventSequence = 0;
     uint64_t m_invocationSequence = 0;
     uint64_t m_vsyncTick = 0;
+    std::atomic<uint64_t> m_idleWaitCount{0};
     uint32_t m_vsyncFlagAddress = 0;
     uint32_t m_vsyncTickAddress = 0;
     uint32_t m_gsVSyncCallback = 0;

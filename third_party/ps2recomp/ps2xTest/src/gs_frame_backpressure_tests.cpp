@@ -31,6 +31,7 @@ namespace
     constexpr uint32_t kBpVSyncLoopPc = 0x0011F200u;
     std::vector<bp_clock::time_point> g_bpWakes;
     std::vector<uint64_t> g_bpWakeTicks;
+    std::vector<uint64_t> g_bpWakeIdleWaits;
 
     void bpSetRegU32(R5900Context &ctx, int reg, uint32_t value)
     {
@@ -90,6 +91,7 @@ namespace
     {
         g_bpWakes.push_back(bp_clock::now());
         g_bpWakeTicks.push_back(runtime->eeScheduler().currentVSyncTick());
+        g_bpWakeIdleWaits.push_back(runtime->eeScheduler().idleWaitCount());
         if (g_bpWakes.size() >= kBpWakes)
         {
             ctx->pc = 0u;
@@ -118,6 +120,7 @@ namespace
         runtime.gs().setRasterBackend(std::move(backend));
         g_bpWakes.clear();
         g_bpWakeTicks.clear();
+        g_bpWakeIdleWaits.clear();
         runtime.registerFunction(kBpVSyncLoopPc, bpVSyncLoop);
         R5900Context mainContext{};
         mainContext.pc = kBpVSyncLoopPc;
@@ -134,14 +137,33 @@ namespace
         t.IsTrue(first > 0 && first + 21 <= g_bpWakes.size(), "enough wakes before and after the stall");
         if (first == 0 || first + 21 > g_bpWakes.size())
             return;
+        // Every VBlank after the stall reaches the guest. A host hiccup in a loaded test run can
+        // legitimately merge two VBlanks, so the loose bound is 2 per wake; right after the
+        // re-anchor (R54, Minor 2) there must be exactly one: the re-anchored VBlank is a full
+        // period away on both clocks, not already due.
         uint64_t maxTicksPerWake = 0u;
         for (size_t k = first; k < first + 20; ++k)
             maxTicksPerWake = std::max<uint64_t>(maxTicksPerWake, g_bpWakeTicks[k + 1] - g_bpWakeTicks[k]);
         t.IsTrue(maxTicksPerWake <= 2u, "after the stall the guest must wake on every VBlank, saw up to " + std::to_string(maxTicksPerWake) + " VBlanks per wake");
+        for (size_t k = first; k <= first + 1; ++k)
+        {
+            const uint64_t wakeTicks = g_bpWakeTicks[k] - g_bpWakeTicks[k - 1];
+            t.Equals(wakeTicks, uint64_t{1}, "the wakes right after the re-anchor must each see exactly one VBlank (no immediate second VBlank), wake " + std::to_string(k - first) + " saw " + std::to_string(wakeTicks));
+        }
+
+        // R54: an idle guest sleeps between VBlanks after a wait. When the host deadline was ahead of
+        // the cycle deadline, waitForEvent returned at once and re-entered until the cycle clock caught
+        // up (a spin of thousands of idle waits per frame); a sleeping guest needs a handful.
+        uint64_t maxIdleWaitsPerWake = 0u;
+        for (size_t k = first + 1; k < first + 20; ++k)
+            maxIdleWaitsPerWake = std::max<uint64_t>(maxIdleWaitsPerWake, g_bpWakeIdleWaits[k + 1] - g_bpWakeIdleWaits[k]);
+        t.IsTrue(maxIdleWaitsPerWake <= 20u, "an idle frame after the stall must not busy-loop, saw up to " + std::to_string(maxIdleWaitsPerWake) + " idle waits per frame");
+
+        // The VBlank rate is unchanged: real time, neither repaying debt nor oversleeping.
         const double spanMs = std::chrono::duration<double, std::milli>(g_bpWakes[first + 20] - g_bpWakes[first]).count();
         const uint64_t ticks = g_bpWakeTicks[first + 20] - g_bpWakeTicks[first];
         const double rate = ticks * 1000.0 / std::max(1.0, spanMs);
-        t.IsTrue(rate < 75.0, "after the stall VBlanks run at real time (~60/s), were " + std::to_string(rate) + "/s");
+        t.IsTrue(rate < 75.0 && rate > 45.0, "after the stall VBlanks run at real time (~60/s), were " + std::to_string(rate) + "/s");
         t.IsTrue(spanMs < 1000.0, "20 wakes after the stall take about 333 ms, took " + std::to_string(spanMs) + " ms");
     }
 }
@@ -320,15 +342,15 @@ void register_gs_frame_backpressure_tests()
             t.IsTrue(msSince(t0) < 50, "after release frameRecorded returns at once");
         });
 
-        tc.Run("R41: reanchorVBlankDeadline drops deadline debt but never moves a current deadline", [](TestCase &t)
+        tc.Run("R41/R54: reanchorVBlankDeadline drops deadline debt but never moves a future deadline", [](TestCase &t)
         {
             const auto now = clock::now();
             const auto period = std::chrono::microseconds(16667);
             const auto past = now - std::chrono::seconds(30);
-            t.IsTrue(EeScheduler::reanchorVBlankDeadline(past, now) == now - period, "a deadline 30 s behind is re-anchored to now - one period");
-            t.IsTrue(EeScheduler::reanchorVBlankDeadline(past, now) + period >= now, "so the next VBlank is not scheduled in the past");
+            t.IsTrue(EeScheduler::reanchorVBlankDeadline(past, now) == now, "a deadline 30 s behind is re-anchored to now");
+            t.IsTrue(EeScheduler::reanchorVBlankDeadline(past, now) + period > now, "so the next VBlank is a full period away, not due at once");
             const auto recent = now - std::chrono::microseconds(5000);
-            t.IsTrue(EeScheduler::reanchorVBlankDeadline(recent, now) == recent, "less than one period behind: unchanged");
+            t.IsTrue(EeScheduler::reanchorVBlankDeadline(recent, now) == now, "a deadline a few ms behind is re-anchored to now too (R54)");
             const auto future = now + std::chrono::milliseconds(10);
             t.IsTrue(EeScheduler::reanchorVBlankDeadline(future, now) == future, "a future deadline is unchanged");
         });

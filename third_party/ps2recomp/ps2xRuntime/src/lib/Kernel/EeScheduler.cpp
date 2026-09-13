@@ -1396,8 +1396,7 @@ void EeScheduler::setVSyncFlag(uint32_t flagAddress, uint32_t tickAddress)
 std::chrono::steady_clock::time_point EeScheduler::reanchorVBlankDeadline(std::chrono::steady_clock::time_point deadline,
                                                                           std::chrono::steady_clock::time_point now) noexcept
 {
-    const auto floor = now - std::chrono::duration_cast<std::chrono::steady_clock::duration>(kVBlankPeriod);
-    return deadline < floor ? floor : deadline;
+    return deadline < now ? now : deadline;
 }
 
 uint64_t EeScheduler::currentVSyncTick() const noexcept
@@ -1983,8 +1982,12 @@ void EeScheduler::processDueDeadlines()
                 // by VBlanks firing back to back -- on BOTH clocks a VBlank is due on:
                 //  - the wait itself is excluded from the guest cycle clock (as a VU1 interpreter stall
                 //    is), so the guest does not observe it as elapsed time;
-                //  - the cycle clock is brought up to date and the cycle anchor moves up to one period
-                //    before it, and the host anchor moves up to one period before now.
+                //  - the cycle clock is brought up to date, and the cycle anchor moves up to it and the
+                //    host anchor up to now (R54): the next VBlank is one full period away on both clocks.
+                //    Anchoring one period behind (7448601) made that VBlank due at once (two VBlanks in
+                //    one guest wake), and since the wait is excluded from the cycle clock but was not
+                //    from the host chain, host deadlines stayed ahead of cycle deadlines for good and an
+                //    idle guest spun in waitForEvent every frame.
                 // The two clocks must be re-anchored together. With only the host anchor moved, any
                 // cycle debt (the wait, or an earlier level-load stall) left VBlanks cycle-due but not
                 // host-due; processDueDeadlines paces through those one host period apart without
@@ -2001,8 +2004,8 @@ void EeScheduler::processDueDeadlines()
                         std::memory_order_relaxed);
                     m_accountForceClock = true;
                     accountCycles(1u);
-                    if (m_eeCycle > kVBlankPeriodCycles && cycleAnchor < m_eeCycle - kVBlankPeriodCycles)
-                        cycleAnchor = m_eeCycle - kVBlankPeriodCycles;
+                    if (cycleAnchor < m_eeCycle)
+                        cycleAnchor = m_eeCycle;
                     anchor = reanchorVBlankDeadline(anchor, boundaryEnd);
                 }
                 scheduleEvent(cycleAnchor + kVBlankDurationCycles,
@@ -2156,6 +2159,7 @@ void EeScheduler::writeGuestU32(uint32_t address, uint32_t value)
 
 void EeScheduler::waitForEvent()
 {
+    m_idleWaitCount.fetch_add(1u, std::memory_order_relaxed);
     std::unique_lock lock(m_eventMutex);
     if (!m_events.empty() || m_stopRequested.load(std::memory_order_acquire))
     {
@@ -2196,7 +2200,21 @@ void EeScheduler::waitForEvent()
         }
     }
 
-    const bool signaled = m_eventCv.wait_until(lock, hostDeadline, [this]()
+    // R54: an event can be host-due before it is cycle-due (the cycle clock excludes host time the
+    // guest must not observe: back-pressure waits, the VU1 interpreter). Waiting only until the host
+    // deadline then returned at once and re-entered here until the cycle clock caught up -- a busy
+    // loop on every idle frame. Sleep for the remaining cycle time as well. (With
+    // PS2X_CYCLE_CLOCK=guest the idle wait accounts the remaining cycles itself: keep the host
+    // deadline.)
+    static const bool s_guestClock = [] { const char *e = std::getenv("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
+    auto wakeAt = hostDeadline;
+    if (!s_guestClock && deadlineCycle > m_eeCycle)
+    {
+        const auto cycleDue = std::chrono::steady_clock::now() + eeCyclesToHostDuration(deadlineCycle - m_eeCycle);
+        if (cycleDue > wakeAt)
+            wakeAt = cycleDue;
+    }
+    const bool signaled = m_eventCv.wait_until(lock, wakeAt, [this]()
                                                { return !m_events.empty() ||
                                                         m_stopRequested.load(std::memory_order_acquire); });
     if (!signaled)
@@ -2211,6 +2229,10 @@ void EeScheduler::waitForEvent()
             accountCycles(step);
             remaining -= step;
         }
+        // The idle guest's clock only advances here now that the wait sleeps through to the cycle
+        // deadline (R54): publish while it is still idle, so the rate-limited snapshot (samplers, the
+        // debug panel) can show the idle wait, as it did when this path re-entered in small steps.
+        publishSnapshot();
         m_checkpointPending.store(true, std::memory_order_release);
     }
 }
