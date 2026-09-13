@@ -2503,11 +2503,12 @@ class StarvationWatch(threading.Thread):
                     win = self._window_s(signal, idle_ms)
                     cause = self._attribute(tag, now - win, now, pauses) or "starvation"
                     a = {"side": tag, "t": now, "signal": signal, "cause": cause, "mover": other, "t_move": None,
-                         "t_clear": None, "idle_ms": idle_ms, "window_s": win, "asked": False}
+                         "t_clear": None, "idle_ms": idle_ms, "window_s": win, "asked": False, "t_ask": None,
+                         "clocks_ok": False}
                     self.alarms.append(a)
                     if cause == "starvation" and self._advancing(r, pauses[tag], now) and \
                             self._advancing(rows[other], pauses[other], now):
-                        a["asked"] = True
+                        a["asked"], a["t_ask"], a["clocks_ok"] = True, now, True
                         self._requests[other].set()
                         self.log(f"STARVATION alarm side={tag} signal={signal} idle={idle_ms}ms -- "
                                  f"{other} must move (two-sided rule)")
@@ -2526,11 +2527,22 @@ class StarvationWatch(threading.Thread):
                              f"{now - ref:.1f}s after " + ("the move" if open_alarm["t_move"] else "the alarm"))
                 elif open_alarm is not None and open_alarm["cause"] == "starvation":
                     cause = self._attribute(tag, open_alarm["t"] - open_alarm["window_s"], now, pauses)
+                    both = self._advancing(r, pauses[tag], now) and self._advancing(rows[other], pauses[other], now)
                     if cause is not None:
                         open_alarm["cause"] = cause
                         self._requests[other].clear()
                         self.log(f"STARVATION alarm side={tag} re-attributed to {cause}")
-                if (open_alarm is not None and open_alarm["cause"] == "starvation"
+                    elif not open_alarm["asked"] and both:
+                        # opened while a clock was unconfirmed: ask now, and judge the stop rule from here
+                        open_alarm["asked"], open_alarm["t_ask"], open_alarm["clocks_ok"] = True, now, True
+                        self._requests[other].set()
+                        self.log(f"STARVATION alarm side={tag} re-asked: both round clocks confirmed "
+                                 f"{now - open_alarm['t']:.1f}s after it opened -- {other} must move")
+                    elif open_alarm["asked"] and not both and open_alarm["clocks_ok"]:
+                        open_alarm["clocks_ok"] = False
+                        self.log(f"STARVATION alarm side={tag}: a round clock stopped running during the alarm -- it "
+                                 f"can no longer stop the engagement (spec §5.1: both clocks for its whole duration)")
+                if (open_alarm is not None and open_alarm["cause"] == "starvation" and open_alarm["clocks_ok"]
                         and open_alarm["t_move"] is not None and now - open_alarm["t_move"] > ALARM_CLEAR_S):
                     self._stop(f"STARVATION alarm side={tag} not cleared within {ALARM_CLEAR_S:g}s of "
                                f"{other} moving")
@@ -2851,8 +2863,8 @@ def endgame_preconditions(env):
 
 def endgame_arg_problem(a):
     if getattr(a, "endgame", None) and getattr(a, "control_round", False):
-        return ("--endgame cooperative cannot run with --control-round: the engagement fires, the negative "
-                "control requires that nobody does")
+        return (f"--endgame {a.endgame} cannot run with --control-round: every engagement mode (route, cooperative, "
+                f"converge) fires, and the negative control requires that nobody does")
     return None
 
 
@@ -2985,29 +2997,112 @@ def aim_tol_deg(d3):
     return min(AIM_TOL_DEG, 0.8 * math.degrees(math.atan2(3.4, max(d3, 1e-6))))
 
 
-def load_route_table(map_name, routes_dir=None):
-    """routes/<map>.json -> the parsed table, or None when the map has none."""
-    path = os.path.join(routes_dir or ROUTES_DIR, f"{(map_name or '').lower()}.json")
-    if not os.path.exists(path):
+# Task 5 finish (slice (c) review, controller rulings): the route FILE is an option of its own (--route), separate from
+# the in-game --map; for --map frostfire it defaults to routes/frostfire_v2.json (rw24, derived from collision geometry)
+# and the 3c-derived routes/frostfire.json stays loadable. v2 legs carry `expected_floor_y` (ramp legs rise 100 -> 142)
+# and `clearance`: arrival and the off-floor check use each leg's floor y, and a narrow leg arrives closer.
+ROUTE_DEFAULT_FILES = {"frostfire": "frostfire_v2.json"}
+ROUTE_V2_MAX_SPACING_UNITS = 60.0
+ROUTE_ARRIVE_NARROW_UNITS = 8.0  # a leg whose clearance is under ROUTE_NARROW_CLEARANCE (the 25-wide ramp mouth) arrives
+ROUTE_NARROW_CLEARANCE = 15.0    # within this; a 0.3 s minimum leg is 12 units, so an overshoot lands within 8 again
+ROUTE_FLOOR_TOL_Y = 6.0          # arrival: the actor's y within this of the leg's expected_floor_y
+ROUTE_OFF_FLOOR_Y = 12.0         # en route: y outside [prev floor, this floor] by more than this is off the route
+ROUTE_NO_PROGRESS_S = 12.0       # the best distance to the current waypoint (or the close target) must improve by
+                                 # ROUTE_PROGRESS_UNITS within this: oscillating or sliding legs trip it (review I3)
+ROUTE_TIME_FACTOR = 3.0          # a route's whole time budget: slack + this x its length at walking speed
+ROUTE_TIME_SLACK_S = 20.0
+CLOSE_MAX_S = 60.0               # a close's whole time budget (it starts <= ~45 units from the band)
+SPAWN_MISMATCH_UNITS = 20.0      # a live spawn further than this from the route file's is NO-DATA spawn-mismatch
+ROUND_RESET_SPAWN_UNITS = 20.0   # a jump landing this close to the side's spawn ...
+ROUND_RESET_STEP_S = 15.0        # ... within this of an mp_round_count step is the round-end reset (8c: 5.5 s after)
+ENDGAME_UNITS = 150.0            # the cooperative victim oscillates only while the shooter is this close (3-D)
+
+
+def default_route_path(map_name, routes_dir=None):
+    """The route file for `map_name`: ROUTE_DEFAULT_FILES, else routes/<map>.json when it exists, else None."""
+    d = routes_dir or ROUTES_DIR
+    name = (map_name or "").lower()
+    path = os.path.join(d, ROUTE_DEFAULT_FILES.get(name, f"{name}.json"))
+    return path if name and os.path.exists(path) else None
+
+
+def load_route_table(map_name=None, routes_dir=None, path=None):
+    """The parsed route file (`path`, else default_route_path(map_name)), or None when there is none."""
+    path = path or default_route_path(map_name, routes_dir)
+    if not path or not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def route_for(map_name, mover, routes_dir=None):
-    """The mover's waypoints [(x, z)] toward the other side's floor on `map_name`, or None."""
-    table = load_route_table(map_name, routes_dir)
+def route_waypoints(table, mover):
+    """-> [{x, z, y, floor_y, arrive, ramp, clearance}] of the mover's route (None without one). floor_y is the leg's
+    expected_floor_y (the leg INTO this waypoint), falling back to the waypoint's own y; arrive is
+    ROUTE_ARRIVE_NARROW_UNITS on a leg with clearance < ROUTE_NARROW_CLEARANCE."""
     if not table or mover not in table.get("routes", {}):
         return None
-    return [(w["x"], w["z"]) for w in table["routes"][mover]["waypoints"]]
+    out = []
+    for w in table["routes"][mover]["waypoints"]:
+        leg = w.get("leg_from_prev") or {}
+        fy = leg.get("expected_floor_y", w.get("y"))
+        clr = min(v for v in (w.get("clearance"), leg.get("min_clearance"), 1e9) if v is not None)
+        out.append({"x": float(w["x"]), "z": float(w["z"]), "y": None if w.get("y") is None else float(w["y"]),
+                    "floor_y": None if fy is None else float(fy), "ramp": bool(leg.get("ramp")), "clearance": clr,
+                    "arrive": ROUTE_ARRIVE_NARROW_UNITS if clr < ROUTE_NARROW_CLEARANCE else ROUTE_ARRIVE_UNITS})
+    return out
 
 
-def map_spawn(map_name, tag, routes_dir=None):
-    table = load_route_table(map_name, routes_dir)
-    if not table:
+def route_for(map_name=None, mover="A", routes_dir=None, path=None):
+    """The mover's waypoints (dicts, route_waypoints) toward the other side's floor, or None."""
+    return route_waypoints(load_route_table(map_name, routes_dir, path), mover)
+
+
+def map_spawn(map_name=None, tag="A", routes_dir=None, path=None):
+    table = load_route_table(map_name, routes_dir, path)
+    if not table or tag not in table.get("spawns", {}):
         return None
     s = table["spawns"][tag]
     return s["x"], s["y"], s["z"]
+
+
+def problems_route_file(path):
+    """Why a route file would walk nothing sound ([] = usable): missing file, a spawn or route missing, a waypoint
+    spacing over the limit (60 for a version >= 2 file, else ROUTE_MAX_SPACING_UNITS), a leg without a numeric
+    expected_floor_y (version >= 2 files, or any file whose legs carry one)."""
+    if not path or not os.path.exists(path):
+        return [f"route file {path} does not exist"]
+    try:
+        with open(path, encoding="utf-8") as f:
+            table = json.load(f)
+    except (OSError, ValueError) as e:
+        return [f"route file {path} unreadable: {e}"]
+    probs = []
+    v2 = (table.get("version") or 0) >= 2
+    limit = ROUTE_V2_MAX_SPACING_UNITS if v2 else ROUTE_MAX_SPACING_UNITS
+    for tag in ("A", "B"):
+        if tag not in table.get("spawns", {}):
+            probs.append(f"{os.path.basename(path)}: no spawn {tag}")
+        wps = table.get("routes", {}).get(tag, {}).get("waypoints")
+        if not wps:
+            probs.append(f"{os.path.basename(path)}: no route {tag}")
+            continue
+        for i, (p, q) in enumerate(zip(wps, wps[1:]), 1):
+            d = math.dist((p["x"], p["z"]), (q["x"], q["z"]))
+            if d > limit:
+                probs.append(f"{os.path.basename(path)}: route {tag} wp{i - 1}->wp{i} spacing {d:.1f} > {limit:g}")
+            fy = (q.get("leg_from_prev") or {}).get("expected_floor_y")
+            if v2 and not isinstance(fy, (int, float)):
+                probs.append(f"{os.path.basename(path)}: route {tag} leg into wp{i} has no numeric expected_floor_y")
+            elif not v2 and not isinstance(q.get("y"), (int, float)):
+                probs.append(f"{os.path.basename(path)}: route {tag} wp{i} has no y (a version-1 file's floor)")
+    return probs
+
+
+def _wp(w):
+    if isinstance(w, dict):
+        return w
+    return {"x": float(w[0]), "z": float(w[1]), "y": None, "floor_y": None, "arrive": ROUTE_ARRIVE_UNITS,
+            "ramp": False, "clearance": None}
 
 
 def _walk_leg(me, target_xz, clock, wait, log, on_poll=None, back=False, stand_off=0.0):
@@ -3040,38 +3135,83 @@ def _walk_leg(me, target_xz, clock, wait, log, on_poll=None, back=False, stand_o
     return d0, math.hypot(target_xz[0] - b[1], target_xz[1] - b[3])
 
 
+class Progress:
+    """The no-progress budget: `best` must improve by ROUTE_PROGRESS_UNITS within ROUTE_NO_PROGRESS_S."""
+
+    def __init__(self, clock):
+        self.clock, self.best, self.t = clock, None, clock()
+
+    def reset(self):
+        self.best, self.t = None, self.clock()
+
+    def stalled(self, d):
+        if self.best is None or d < self.best - ROUTE_PROGRESS_UNITS:
+            self.best, self.t = d, self.clock()
+            return None
+        idle = self.clock() - self.t
+        return idle if idle > ROUTE_NO_PROGRESS_S else None
+
+
 def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None):
-    """Walk `route` (waypoints (x, z)) with aimed legs -> {"ok", "reason", "wp", "legs"}. A waypoint counts as reached
-    inside ROUTE_ARRIVE_UNITS, and the follower skips ahead whenever the next waypoint is already the nearer one (a
-    corridor, not a rail). ROUTE_STUCK_LEGS legs in a row gaining < ROUTE_PROGRESS_UNITS fail it ("stuck at wpN").
-    TeleportAbort propagates. Reads only actor rows and the actor matrix."""
+    """Walk `route` (route_waypoints dicts, or (x, z) tuples) with aimed legs -> {"ok", "reason", "wp", "legs"}. A
+    waypoint is reached inside its `arrive` distance with the actor's y within ROUTE_FLOOR_TOL_Y of the leg's floor y;
+    the follower skips ahead whenever the next waypoint is already the nearer one (a corridor, not a rail). It fails on:
+    ROUTE_STUCK_LEGS legs in a row gaining < ROUTE_PROGRESS_UNITS ("stuck at wpN"); no ROUTE_PROGRESS_UNITS gain on
+    the best distance for ROUTE_NO_PROGRESS_S ("no progress"); the route's time budget; standing at a waypoint on the
+    wrong floor, or leaving the legs' floor band en route ("floor"). TeleportAbort propagates. Reads only actor rows and
+    the actor matrix."""
     log = log or me.sh.log
+    route = [_wp(w) for w in route]
     wp, legs, stuck = 0, 0, 0
-    log(f"ROUTE {me.tag} start: {len(route)} waypoints")
+    a = me.tail.actor_latest()
+    here0 = (a[1], a[3]) if a else (route[0]["x"], route[0]["z"])
+    length = sum(math.dist((p["x"], p["z"]), (q["x"], q["z"])) for p, q in zip(route, route[1:]))
+    length += math.dist(here0, (route[0]["x"], route[0]["z"])) if route else 0.0
+    budget = ROUTE_TIME_SLACK_S + ROUTE_TIME_FACTOR * length / WALK_UNITS_PER_S_LONG
+    t0, prog = clock(), Progress(clock)
+    log(f"ROUTE {me.tag} start: {len(route)} waypoints, {length:.0f} units, time budget {budget:.0f}s")
+    fail = lambda reason: {"ok": False, "reason": reason, "wp": wp, "legs": legs}
     while wp < len(route):
         if stop is not None and stop.is_set():
-            return {"ok": False, "reason": "stopped", "wp": wp, "legs": legs}
+            return fail("stopped")
         if legs >= ROUTE_MAX_LEGS:
-            return {"ok": False, "reason": f"leg cap {ROUTE_MAX_LEGS} at wp{wp}", "wp": wp, "legs": legs}
+            return fail(f"leg cap {ROUTE_MAX_LEGS} at wp{wp}")
+        if clock() - t0 > budget:
+            return fail(f"time budget {budget:.0f}s exceeded at wp{wp}")
         a = me.tail.actor_latest()
         if a is None:
-            return {"ok": False, "reason": "stale actor rows", "wp": wp, "legs": legs}
+            return fail("stale actor rows")
         here = (a[1], a[3])
-        while wp + 1 < len(route) and math.dist(here, route[wp + 1]) < math.dist(here, route[wp]):
+        pos = lambda w: (w["x"], w["z"])
+        while wp + 1 < len(route) and math.dist(here, pos(route[wp + 1])) < math.dist(here, pos(route[wp])):
             wp += 1
-        if math.dist(here, route[wp]) <= ROUTE_ARRIVE_UNITS:
+            prog.reset()
+        w = route[wp]
+        d = math.dist(here, pos(w))
+        if w["floor_y"] is not None and wp > 0 and route[wp - 1]["floor_y"] is not None:
+            lo = min(route[wp - 1]["floor_y"], w["floor_y"]) - ROUTE_OFF_FLOOR_Y
+            hi = max(route[wp - 1]["floor_y"], w["floor_y"]) + ROUTE_OFF_FLOOR_Y
+            if not lo <= a[2] <= hi:
+                return fail(f"off the route's floor before wp{wp} (y {a[2]:.1f} outside {lo:.0f}..{hi:.0f})")
+        if d <= w["arrive"]:
+            if w["floor_y"] is not None and abs(a[2] - w["floor_y"]) > ROUTE_FLOOR_TOL_Y:
+                return fail(f"wrong floor at wp{wp} (y {a[2]:.1f}, the leg's floor {w['floor_y']:.1f})")
             log(f"ROUTE {me.tag} wp{wp} reached at ({here[0]:.1f},{a[2]:.1f},{here[1]:.1f})")
             wp, stuck = wp + 1, 0
+            prog.reset()
             continue
-        leg = _walk_leg(me, route[wp], clock, wait, log, on_poll=on_poll)
+        idle = prog.stalled(d)
+        if idle is not None:
+            return fail(f"no progress toward wp{wp} for {idle:.1f}s (best {prog.best:.1f} units)")
+        leg = _walk_leg(me, pos(w), clock, wait, log, on_poll=on_poll)
         legs += 1
         if leg is None:
-            return {"ok": False, "reason": "NO-DATA heading or position", "wp": wp, "legs": legs}
+            return fail("NO-DATA heading or position")
         if leg[0] - leg[1] < ROUTE_PROGRESS_UNITS:
             stuck += 1
             log(f"ROUTE {me.tag} wp{wp}: leg gained {leg[0] - leg[1]:.1f} units ({stuck}/{ROUTE_STUCK_LEGS})")
             if stuck >= ROUTE_STUCK_LEGS:
-                return {"ok": False, "reason": f"stuck at wp{wp}", "wp": wp, "legs": legs}
+                return fail(f"stuck at wp{wp}")
         else:
             stuck = 0
     return {"ok": True, "reason": "arrived", "wp": wp, "legs": legs}
@@ -3081,12 +3221,12 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
              stop_d3=None, stand_off=None):
     """Walk aimed legs toward the OTHER actor's live position until it is on this floor (|dy| <= ENGAGE_DY_UNITS) and
     inside `stop_d3` (ENGAGE_BAND_STOP_UNITS), legs sized to end `stand_off` (ENGAGE_BAND_STANDOFF_UNITS) short ->
-    {"ok", "reason", "legs", "d3"}. Off the floor is a failure: the route's job was to get there. Stuck as in
-    follow_route."""
+    {"ok", "reason", "legs", "d3"}. Off the floor is a failure: the route's job was to get there. Stuck, no-progress
+    (on the best 3-D distance) and CLOSE_MAX_S budgets as in follow_route."""
     log = log or me.sh.log
     stop_d3 = ENGAGE_BAND_STOP_UNITS if stop_d3 is None else stop_d3
     stand_off = ENGAGE_BAND_STANDOFF_UNITS if stand_off is None else stand_off
-    legs, stuck = 0, 0
+    legs, stuck, t0, prog = 0, 0, clock(), Progress(clock)
     while True:
         if stop is not None and stop.is_set():
             return {"ok": False, "reason": "stopped", "legs": legs}
@@ -3100,6 +3240,12 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
             return {"ok": True, "reason": "closed", "legs": legs, "d3": d3}
         if legs >= ROUTE_MAX_LEGS:
             return {"ok": False, "reason": f"leg cap {ROUTE_MAX_LEGS}", "legs": legs, "d3": d3}
+        if clock() - t0 > CLOSE_MAX_S:
+            return {"ok": False, "reason": f"time budget {CLOSE_MAX_S:g}s exceeded closing", "legs": legs, "d3": d3}
+        idle = prog.stalled(d3)
+        if idle is not None:
+            return {"ok": False, "reason": f"no progress closing for {idle:.1f}s (best {prog.best:.1f})", "legs": legs,
+                    "d3": d3}
         leg = _walk_leg(me, (b[1], b[3]), clock, wait, log, on_poll=on_poll, stand_off=stand_off)
         legs += 1
         if leg is None:
@@ -3109,12 +3255,30 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
             return {"ok": False, "reason": "stuck closing", "legs": legs, "d3": d3}
 
 
-def fire_window_teleport(out, sides, t0, t1, log):
+def is_round_reset(hit, rows, spawn, round_steps):
+    """A teleport `hit` (t, step) that lands within ROUND_RESET_SPAWN_UNITS of `spawn` (x, y, z) within
+    ROUND_RESET_STEP_S of an mp_round_count step is the round-end reset to spawn (KNOWN §4; 8c: at the clock restart,
+    5.5 s after the step) -- a round boundary, not a FAIL teleport."""
+    if hit is None or spawn is None:
+        return False
+    land = next((r for r in reversed(rows) if r[0] == hit[0]), None)
+    if land is None or math.hypot(land[1] - spawn[0], land[3] - spawn[2]) > ROUND_RESET_SPAWN_UNITS:
+        return False
+    return any(abs(hit[0] - s) <= ROUND_RESET_STEP_S for s in round_steps)
+
+
+def fire_window_teleport(out, sides, t0, t1, log, classify=None):
     """Amendment A3: a teleport of either player inside a fire window [t0, t1] (the burst and its gap, no walking
-    credit -- both stand) makes the round NO-DATA. Sets out['fire_teleport'] / out['stop_reason'] -> True on a hit."""
+    credit -- both stand) makes the round NO-DATA. Sets out['fire_teleport'] / out['stop_reason'] -> True on a hit.
+    `classify(side, hit)` True marks the jump a round-end reset instead (out['round_end'])."""
     for side in sides:
         hit = teleport_step(side.tail.actor_ingame(), t0, t1, walking=False)
         if hit is not None:
+            if classify is not None and classify(side, hit):
+                out["round_end"] = {"tag": side.tag, "t": hit[0], "step": hit[1]}
+                out["stop_reason"] = f"ROUND-END reset to spawn side={side.tag}"
+                log(f"ENDGAME {out['stop_reason']} (a jump of {hit[1]:.1f}u within {ROUND_RESET_STEP_S:g}s of a round step)")
+                return True
             out["fire_teleport"] = {"tag": side.tag, "step": hit[1], "t": hit[0], "window": [t0, t1]}
             out["stop_reason"] = (f"NO-DATA teleport in a fire window side={side.tag} step={hit[1]:.1f}u -- the round "
                                   f"is not scored (Amendment A3)")
@@ -3123,21 +3287,81 @@ def fire_window_teleport(out, sides, t0, t1, log):
     return False
 
 
+FIRE_WINDOW_RECHECK_S = 10.0     # a freeze is only visible >= 1 s after it starts: recent fire windows are re-checked
+
+
+def fire_window_freeze(out, sides, windows, watch, log, now):
+    """spec §5.1: a guest-clock freeze of either instance overlapping a fire window, or a freeze-attributed starvation
+    alarm whose idle window overlaps one, makes the round NO-DATA. Sets out['fire_freeze'] / out['stop_reason']."""
+    recent = [w for w in windows if now - w[1] <= FIRE_WINDOW_RECHECK_S]
+    for side in sides:
+        rt, steps, _, _ = tail_clock_state(side.tail, now - PAUSE_LOOKBACK_S)
+        for p in vc.clock_pauses(rt, steps):
+            if p[3] != "freeze":
+                continue
+            w = next((w for w in recent if p[0] < w[1] and p[1] > w[0]), None)
+            if w is not None:
+                out["fire_freeze"] = {"tag": side.tag, "pause": list(p[:2]), "window": list(w)}
+                out["stop_reason"] = (f"NO-DATA freeze in a fire window side={side.tag} ({p[0]:.1f}-{p[1]:.1f}) -- the "
+                                      f"round is not scored (spec §5.1)")
+                log(f"ENDGAME {out['stop_reason']}")
+                return True
+    for a in (watch.alarms if watch is not None else []):
+        if not a["cause"].startswith("freeze("):
+            continue
+        w = next((w for w in recent if a["t"] - a.get("window_s", 0.0) < w[1] and a["t"] > w[0]), None)
+        if w is not None:
+            out["fire_freeze"] = {"alarm": a["side"], "cause": a["cause"], "window": list(w)}
+            out["stop_reason"] = (f"NO-DATA freeze-attributed alarm side={a['side']} ({a['cause']}) overlaps a fire "
+                                  f"window -- the round is not scored (spec §5.1)")
+            log(f"ENDGAME {out['stop_reason']}")
+            return True
+    return False
+
+
+def spawn_mismatch(sides, spawns, live=None):
+    """spawns: {tag: (x, y, z)} from the route file; live: {tag: (x, y, z)} (default: each tail's first actor row).
+    -> 'side=<tag> ...' for the first side whose live spawn is > SPAWN_MISMATCH_UNITS (3-D) off, else None."""
+    for tag, side in sorted(sides.items()):
+        want = (spawns or {}).get(tag)
+        if want is None:
+            continue
+        got = (live or {}).get(tag)
+        if got is None:
+            rows = side.tail.actor_ingame()
+            got = rows[0][1:4] if rows else None
+        if got is None:
+            return f"side={tag} no actor row to compare with the route file's spawn"
+        d = math.dist(got, want)
+        if d > SPAWN_MISMATCH_UNITS:
+            return (f"side={tag} live spawn ({got[0]:.1f},{got[1]:.1f},{got[2]:.1f}) is {d:.1f} units from the route "
+                    f"file's ({want[0]:.1f},{want[1]:.1f},{want[2]:.1f})")
+    return None
+
+
+def victim_should_oscillate(d3):
+    """The cooperative victim strafe-oscillates only while the shooter is inside ENDGAME_UNITS (3-D)."""
+    return d3 is not None and d3 <= ENDGAME_UNITS
+
+
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
-                  wait=time.sleep):
+                  wait=time.sleep, spawns=None, live_spawns=None, route_path=None):
     """The default engagement -> result dict. The stander stands (it moves only when the StarvationWatch asks it: one
     RULE_LEG_S strafe leg); the mover follows `route` (default: routes/<map>.json for `mover`) to the stander's floor,
     close_to()s it into the engagement band, then cycles aim_yaw(read="pulse", tol=aim_tol_deg(d3)) -> one R1 burst
     while inside the tolerance, re-closing when the band is left and reacting to StarvationWatch requests with a
-    strafe leg. A TeleportAbort ends the attempt with `teleport` set (the RESULT line says so); a failed route ends it
-    with the hint to swap the mover."""
+    strafe leg. A TeleportAbort ends the attempt with `teleport` set (the RESULT line says so) -- unless it is the
+    round-end reset to spawn (is_round_reset: `round_end`); a failed route or close ends it with the hint to swap the
+    mover. `spawns` ({tag: (x, y, z)}, the route file's): a live spawn (`live_spawns`, default each tail's first actor
+    row) further than SPAWN_MISMATCH_UNITS is `NO-DATA spawn-mismatch` before anybody walks. A teleport, or a guest
+    freeze / freeze-attributed alarm, inside a fire window makes the round NO-DATA."""
     shooter = sides[mover]
     stander = sides["B" if mover == "A" else "A"]
     fight_s = ENDGAME_FIGHT_S if fight_s is None else fight_s
-    route = route if route is not None else route_for(map_name, mover)
+    route = route if route is not None else route_for(map_name, mover, path=route_path)
     out = {"mode": "route", "mover": shooter.tag, "stander": stander.tag, "route": None, "close": None,
            "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "fire_teleport": None,
-           "t_fight": None, "t_end": None}
+           "fire_freeze": None, "round_end": None, "t_fight": None, "t_end": None, "fire_windows": []}
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(stander.tag, stander.tail)
     log(f"ENDGAME BANNER mode=route mover={shooter.tag} stander={stander.tag} (stands at its spawn) "
@@ -3147,14 +3371,29 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
         f"oscillation=OFF micro-strafe=OFF reaction=other-side-moves {RULE_LEG_S:g}s only when starved with both "
         f"round clocks running; teleport abort > {TELEPORT_STEP_UNITS:g}u per row")
     stop = duel.stop
-    sign = {"s": 1}
+    sign, sign_lock = {"s": 1}, threading.Lock()        # both side threads react: flip under a lock
+    mismatch = spawn_mismatch({shooter.tag: shooter, stander.tag: stander}, spawns, live_spawns) if spawns else None
+    if mismatch:
+        out["stop_reason"] = f"NO-DATA spawn-mismatch {mismatch} -- nobody walks a route that starts elsewhere"
+        out["t_end"] = clock()
+        log(f"ENDGAME STOP: {out['stop_reason']}")
+        return out
+
+    def classify(side, hit):
+        spawn = (spawns or {}).get(side.tag)
+        if spawn is None:
+            rows = side.tail.actor_ingame()
+            spawn = rows[0][1:4] if rows else None
+        return is_round_reset(hit, side.tail.actor_ingame(), spawn, tail_clock_state(side.tail)[1])
 
     def react(side):
         if watch is None or not watch.take_request(side.tag):
             return False
-        sign["s"] = -sign["s"]
+        with sign_lock:
+            sign["s"] = -sign["s"]
+            s = sign["s"]
         t = clock()
-        side.sh.pad(RULE_LEG_S, axes={"lx": vc.PAD_NEUTRAL + sign["s"] * RULE_LEG_DEFLECTION})
+        side.sh.pad(RULE_LEG_S, axes={"lx": vc.PAD_NEUTRAL + s * RULE_LEG_DEFLECTION})
         watch.moved(side.tag, t)
         out["rule_moves"].append({"tag": side.tag, "t": t})
         log(f"ENDGAME reaction: {side.tag} strafed {RULE_LEG_S:g}s for the starved other side")
@@ -3176,7 +3415,7 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
         r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
         out["close"] = r
         if not r["ok"]:
-            out["stop_reason"] = f"close failed: {r['reason']}"
+            out["stop_reason"] = f"close failed: {r['reason']} -- --mover {stander.tag} swaps which side walks"
             return
         out["t_fight"] = clock()
         log(f"ENDGAME band reached: {shooter.tag} at 3-D {r['d3']:.1f} from {stander.tag}")
@@ -3194,7 +3433,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
             if abs(dy) > ENGAGE_DY_UNITS or d3 > ENGAGE_BAND_3D_UNITS:
                 r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
                 if not r["ok"]:
-                    out["stop_reason"] = f"re-close failed: {r['reason']}"
+                    out["stop_reason"] = (f"re-close failed: {r['reason']} -- --mover {stander.tag} swaps which "
+                                          f"side walks")
                     return
                 continue
             if d3 < ENGAGE_TOO_CLOSE_UNITS:
@@ -3215,16 +3455,24 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
                 out["bursts"] += 1
                 wait(ENDGAME_BURST_GAP_S)
-                if fire_window_teleport(out, (shooter, stander), t_b, clock(), log):
+                out["fire_windows"].append((t_b, clock()))
+                if fire_window_teleport(out, (shooter, stander), t_b, clock(), log, classify=classify):
                     return
+            if out["fire_windows"] and fire_window_freeze(out, (shooter, stander), out["fire_windows"], watch, log,
+                                                          clock()):
+                return
 
     ts = threading.Thread(target=stander_loop, daemon=True)
     ts.start()
     try:
         mover_run()
     except TeleportAbort as e:
-        out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
-        out["stop_reason"] = str(e)
+        if classify(sides[e.tag], (e.t, e.step)):
+            out["round_end"] = {"tag": e.tag, "t": e.t, "step": e.step, "during": e.during}
+            out["stop_reason"] = f"ROUND-END reset to spawn side={e.tag} (a {e.step:.1f}u jump near a round step)"
+        else:
+            out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
+            out["stop_reason"] = str(e)
     finally:
         stop.set()
         ts.join(timeout=RULE_LEG_S + 2.0)
@@ -3281,7 +3529,7 @@ def toward_axes(me, other_xz, deflection=RULE_LEG_DEFLECTION):
 
 
 def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, fight_s=None, micro_strafe=True,
-                        rule=True, clock=time.time, wait=time.sleep, mover="A"):
+                        rule=True, clock=time.time, wait=time.sleep, mover="A", route_path=None):
     """The two-sided engagement (the first Task 5 brief): EACH side's scale is restored only by the OTHER side moving.
 
     Victim (the stander): strafe-oscillates continuously from the start (lx +-OSC_DEFLECTION, VICTIM_OSC_LEG_S legs)
@@ -3295,7 +3543,7 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     -> result dict."""
     shooter, victim = sides[mover], sides["B" if mover == "A" else "A"]
     fight_s = ENDGAME_FIGHT_S if fight_s is None else fight_s
-    route = route if route is not None else route_for(map_name, mover)
+    route = route if route is not None else route_for(map_name, mover, path=route_path)
     out = {"mode": "cooperative", "shooter": shooter.tag, "victim": victim.tag, "standing": [], "rule_moves": [],
            "micro_strafes": 0, "victim_legs": 0, "stop_reason": None, "t_fight": None, "t_end": None,
            "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None, "fire_teleport": None}
@@ -3323,6 +3571,10 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
                 watch.moved(victim.tag, t)
                 out["rule_moves"].append({"tag": victim.tag, "t": t, "axes": axes})
                 log(f"ENDGAME rule: {victim.tag} walked {RULE_LEG_S:g}s toward {shooter.tag} {axes}")
+                continue
+            a, b = shooter.tail.actor_latest(), victim.tail.actor_latest()
+            if not victim_should_oscillate(None if a is None or b is None else math.dist(a[1:4], b[1:4])):
+                wait(STARVATION_POLL_S)                 # the oscillation feeds a shooter inside ENDGAME_UNITS only
                 continue
             sign = -sign
             victim.sh.pad(VICTIM_OSC_LEG_S, axes={"lx": vc.PAD_NEUTRAL + sign * OSC_DEFLECTION})
@@ -3572,6 +3824,11 @@ def main():
                          "NetIdle traced and *0x437ce8:64, *0x437ce8+0x100:21, 0x4365c0:1 peeked (refuse otherwise)")
     ap.add_argument("--no-route", action="store_true",
                     help="ignore the mined corridor and walk the straight line (the Task 7 policy)")
+    ap.add_argument("--route", default=None,
+                    help="the route FILE of --endgame route/cooperative, separate from --map (which picks the in-game "
+                         "map). Default: tools_py/parity/routes/frostfire_v2.json for --map frostfire (rw24, from "
+                         "collision geometry), else routes/<map>.json; routes/frostfire.json is the old 3c-derived "
+                         "route. Its spawns are checked against the live spawns before anybody walks")
     ap.add_argument("--map", default="frostfire",
                     help="map to select in CHOOSE GAMES. The selection is VERIFIED against a "
                          "reference crop of the highlighted row before CROSS is pressed; a map "
@@ -3623,6 +3880,7 @@ def main():
     if a.endgame is None:
         a.endgame = "route"                     # the default engagement (owner-requested review)
     watched_endgame = a.endgame in ("route", "cooperative") and not a.control_round
+    route_path = a.route or default_route_path(a.map)
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
     # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line
     # never reached the anti-stack search. A flag that does nothing is worse than no flag.
@@ -3870,10 +4128,12 @@ def main():
             endgame = None
             if a.endgame == "cooperative":
                 endgame = endgame_cooperative({"A": sideA, "B": sideB}, duel, starv, A.sh.log, map_name=a.map,
-                                              fight_s=a.fight_seconds, mover=a.mover)
+                                              fight_s=a.fight_seconds, mover=a.mover, route_path=route_path)
             elif a.endgame == "route":
                 endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=a.mover,
-                                        fight_s=a.fight_seconds)
+                                        fight_s=a.fight_seconds, route_path=route_path,
+                                        spawns={t: map_spawn(tag=t, path=route_path) for t in "AB"
+                                                if route_path and map_spawn(tag=t, path=route_path)})
             threads = []
             for me, oth in (() if watched_endgame else ((sideA, sideB), (sideB, sideA))):
                 # arrive == engage in this mode: two separate thresholds would let both sides
@@ -4009,7 +4269,9 @@ def main():
             summary["starvation"] = None if starv is None else starv.alarms
             with open(os.path.join(a.out, "converge.json"), "w") as fh:
                 json.dump(summary, fh, indent=1, default=str)
-            if endgame is not None and endgame.get("fire_teleport") and not is_kill:
+            if endgame is not None and (endgame.get("stop_reason") or "").startswith(vc.NO_DATA) and not is_kill:
+                verdict = endgame["stop_reason"]        # a spawn mismatch, a freeze in a fire window: not scored
+            elif endgame is not None and endgame.get("fire_teleport") and not is_kill:
                 ft = endgame["fire_teleport"]
                 verdict = (f"NO-DATA teleport-in-fire-window side={ft['tag']} step={ft['step']:.1f}u -- an actor row "
                            f"jumped during a burst; the round is not scored")

@@ -802,7 +802,7 @@ ROUTE_MIN_BAND_S = 5.0            # Amendment A spec §5.1: contact is >= 5.0 s 
 ROUTE_STARVED_MAX_IDLE_MS = 6500
 
 
-def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None, fight_s=ROUTE_FIGHT_S):
+def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None, fight_s=ROUTE_FIGHT_S, awall=None):
     terrain = TwoFloorTerrain()
     net = Net(keepalive=keepalive)
     d = tempfile.gettempdir()
@@ -812,7 +812,7 @@ def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None
     ax_, az_, af_, afl = ROUTE_A_START
     bx_, bz_, bf_, bfl = ROUTE_B_START
     wa = World(os.path.join(d, f"sim_A_{tag}.log"), ax_, az_, af_, M.WALK_UNITS_PER_S_LONG, M.LOOK_DEG_PER_S, 27.0,
-               actor_addr=0x01794000, tag="A", floor=afl, **kw)
+               actor_addr=0x01794000, tag="A", floor=afl, wall=awall, **kw)
     wb = World(os.path.join(d, f"sim_B_{tag}.log"), bx_, bz_, bf_, M.WALK_UNITS_PER_S_LONG, M.LOOK_DEG_PER_S, 27.0,
                actor_addr=0x017a4000, tag="B", floor=bfl, **kw)
     ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
@@ -899,7 +899,11 @@ def assert_route_ok(r, want_reactions=False, max_idle_ms=ENDGAME_MAX_IDLE_MS):
 
 SCENARIOS = ("open", "maze", "caps", "converge", "route", "stack", "watch", "nocontrol", "movepath", "endgame",
              "endgame-negative", "endgame-rule", "engage-route", "engage-route-starved",
-             "engage-route-swap", "engage-route-teleport")
+             "engage-route-swap", "engage-route-teleport", "engage-route-blocked")
+# The review's I2: this world is IDEALISED (walls block a whole step, the ramp is a clean wedge, no doors, no slides).
+# `engage-route-blocked` puts a ring of wall around the stander, so the close can never reach the band: the follower's
+# budgets (stuck legs, no best-distance progress for ROUTE_NO_PROGRESS_S, CLOSE_MAX_S) must end it in bounded time.
+BLOCKED_RING = (700.0, 690.0, 45.0)
 
 
 def main():
@@ -1060,6 +1064,20 @@ def _run(which):
         # --mover B: B walks its route down to A's floor and shoots; A stands
         assert_route_ok(run_route_engagement("route_swap", mover="B", keepalive=True))
         ran.append("engage-route-swap")
+    if which in ("engage-route-blocked", "all"):
+        cx, cz, rad = BLOCKED_RING
+        t0 = time.time()
+        r = run_route_engagement("route_blocked", keepalive=True, fight_s=10.0,
+                                 awall=lambda x, z: math.hypot(x - cx, z - cz) < rad)
+        o = r["out"]
+        close_s = (o["t_end"] - t0)
+        print(f"   blocked: stop={o['stop_reason']!r} close={o['close']} wall {close_s:.0f}s")
+        assert o["route"]["ok"], o["route"]
+        assert (o["stop_reason"] or "").startswith("close failed"), o["stop_reason"]
+        assert any(k in o["close"]["reason"] for k in ("no progress", "stuck", "budget")), o["close"]
+        assert "--mover B" in o["stop_reason"], o["stop_reason"]
+        assert o["bursts"] == 0, o["bursts"]
+        ran.append("engage-route-blocked")
     if which in ("engage-route-teleport", "all"):
         r = run_route_engagement("route_teleport", keepalive=True, teleport_after_s=8.0)
         assert r["out"]["teleport"] is not None and r["out"]["stop_reason"].startswith("teleport"), r["out"]

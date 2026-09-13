@@ -185,15 +185,19 @@ class RouteTableTest(unittest.TestCase):
         self.assertLess(math.dist(M.map_spawn("frostfire", "A"), (795.7, 100.0, 613.6)), 2.0)
         self.assertLess(math.dist(M.map_spawn("Frostfire", "B"), (535.7, 142.9, 1253.6)), 2.0)
 
+    # routes/frostfire.json is the OLD 3c-derived route (still loadable; --map frostfire now defaults to frostfire_v2.json,
+    # tested in test_route_budgets): these two checks are specific to it
+    V1 = os.path.join(M.ROUTES_DIR, "frostfire.json")
+
     def test_the_a_route_leaves_a_spawn_and_climbs_the_ramp(self):
-        route = M.route_for("Frostfire", "A")
+        route = [(w["x"], w["z"]) for w in M.route_for(mover="A", path=self.V1)]
         self.assertLess(math.dist(route[0], (795.7, 613.6)), 10.0)
         self.assertLess(min(math.dist(p, (686.0, 938.0)) for p in route), 15.0)
         for p, q in zip(route, route[1:]):
             self.assertLessEqual(math.dist(p, q), M.ROUTE_MAX_SPACING_UNITS, (p, q))
 
     def test_the_b_route_leaves_b_spawn_and_descends_near_652_1230(self):
-        route = M.route_for("frostfire", "B")
+        route = [(w["x"], w["z"]) for w in M.route_for(mover="B", path=self.V1)]
         self.assertLess(math.dist(route[0], (535.7, 1253.6)), 10.0)
         self.assertLess(min(math.dist(p, (652.0, 1230.0)) for p in route), 15.0)
         for p, q in zip(route, route[1:]):
