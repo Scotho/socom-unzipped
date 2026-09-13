@@ -24,6 +24,7 @@ LOCK_SH = os.path.join(SCRIPTS, "loop_lock.sh").replace("\\", "/")
 DETACHED_SH = os.path.join(SCRIPTS, "run_detached.sh").replace("\\", "/")
 KILL_PS1 = os.path.join(SCRIPTS, "kill_stale_drivers.ps1")
 POWERSHELL = (shutil.which("powershell.exe") or shutil.which("powershell")) if os.name == "nt" else None
+SLOW = os.environ.get("LOOP_LOCK_SLOW_TESTS") == "1"
 
 IDLE = ["4|0||System|", "900|4||explorer.exe|C:\\Windows\\explorer.exe", "901|900||bash.exe|bash"]
 
@@ -349,7 +350,7 @@ class TestRaces(LockTestBase):
         return self.sh("id")[1].split()[0]
 
     def test_two_racing_takes_one_wins(self):
-        for _ in range(6):
+        for _ in range(6 if SLOW else 3):
             outs = self._race(2, self.env())
             self.assertEqual(sum("TAKEN" in o for o in outs), 1, outs)
             self.sh("release", self._holder())
@@ -359,7 +360,7 @@ class TestRaces(LockTestBase):
         # PowerShell costs). Exactly one TAKEN per round and exactly one history line per ghost.
         env = self.env(LOOP_LOCK_PS_CMD="sleep $((RANDOM %% 3)); cat '%s'" % fwd(self.procs))
         self.counts = []
-        for rnd in range(6):
+        for rnd in range(6 if SLOW else 3):
             ghost = "ghost%d" % rnd
             self.write_record(ghost, 3600, hb_age_s=30 * 60)
             outs = self._race(4, env)
@@ -376,9 +377,10 @@ class TestRaces(LockTestBase):
         print("\n[race] per-round (TAKEN, history lines):", self.counts, file=sys.stderr)
 
     def test_hammer_three_takers_one_holder_per_round(self):
-        # 3 takers x 100 rounds, no latency; odd rounds start free, even rounds on a stale ghost.
+        # 3 takers x 10 rounds (100 with LOOP_LOCK_SLOW_TESTS=1), no latency; odd rounds start free, even
+        # rounds on a stale ghost.
         tally = {}
-        for rnd in range(100):
+        for rnd in range(100 if SLOW else 10):
             ghost = rnd % 2 == 0
             if ghost:
                 self.write_record("ghost%d" % rnd, 3600, hb_age_s=30 * 60)
@@ -402,8 +404,10 @@ class TestRaces(LockTestBase):
         observer = subprocess.Popen([BASH, "-c", obs_script], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                     text=True, env=self.env())
         try:
-            for _ in range(25):
+            for _ in range(25 if SLOW else 8):
                 self.sh("take", "cycler")
+                self.sh("renew", "cycler")          # M-2: a record replace must not look record-less either
+                self.sh("renew", "cycler")
                 self.sh("release", "cycler")
         finally:
             open(stop, "w").close()
@@ -482,26 +486,121 @@ class TestInterleavings(LockTestBase):
         self.assertEqual(self.sh("id")[1].strip(), y_id)
         self.assertEqual(self.strays(), [])
 
-    def test_stale_mutex_is_broken_with_a_history_line(self):
+    def make_mutex(self, token_age_s, dir_age_s=0, token=True):
         mx = self.lock + ".mx"
         os.makedirs(mx)
-        open(os.path.join(mx, "t.999.1"), "w").close()
-        old = time.time() - 60
-        os.utime(mx, (old, old))
+        if token:
+            open(os.path.join(mx, "t.%d.999.1" % (int(time.time()) - token_age_s)), "w").close()
+        if dir_age_s:
+            old = time.time() - dir_age_s
+            os.utime(mx, (old, old))
+        return mx
+
+    def test_stale_mutex_is_broken_with_a_history_line(self):
+        mx = self.make_mutex(token_age_s=60)
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 0, out)
-        self.assertIn("MUTEX-BROKEN", self.history())
+        self.assertEqual(self.history().count("MUTEX-BROKEN"), 1, self.history())
         self.assertFalse(os.path.exists(mx))
+        self.assertEqual(self.strays(), [])
 
-    def test_fresh_mutex_is_waited_on_not_broken(self):
-        mx = self.lock + ".mx"
-        os.makedirs(mx)
-        open(os.path.join(mx, "t.999.1"), "w").close()
+    def test_stale_token_named_mutex_is_broken_exactly_once_by_three_takers(self):
+        self.make_mutex(token_age_s=60)
+        procs = [self.popen("take", "t%d" % i, env=self.env()) for i in range(3)]
+        outs = [p.communicate(timeout=120)[0] for p in procs]
+        self.assertEqual(sum(o.startswith("TAKEN") for o in outs), 1, outs)
+        self.assertEqual(self.history().count("MUTEX-BROKEN"), 1, self.history())
+        self.assertEqual(self.strays(), [])
+
+    def test_fresh_token_in_an_old_dir_is_not_stale(self):
+        # Staleness comes from the token's name, never from the dir's mtime.
+        mx = self.make_mutex(token_age_s=0, dir_age_s=600)
         rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=2))
         self.assertEqual(rc, 1, out)
         self.assertIn("mutex", out)
         self.assertTrue(os.path.exists(mx))
         self.assertEqual(self.history(), "")
+
+    def test_tokenless_stale_mutex_is_broken_after_two_readings(self):
+        mx = self.make_mutex(token_age_s=0, dir_age_s=60, token=False)
+        rc, out = self.sh("take", "bob")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("MUTEX-BROKEN <no token>", self.history())
+        self.assertFalse(os.path.exists(mx))
+
+    def test_release_that_cannot_get_the_mutex_says_so(self):
+        # M-5: a mutex that stays held must not be reported as "the lock no longer carries <id>".
+        rc, out = self.sh("take", "bob")
+        self.make_mutex(token_age_s=0)
+        rc, out = self.sh("release", "bob", env=self.env(LOOP_LOCK_RELEASE_WAIT_SEC=2))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("release failed: mutex busy; the lock stays held until reaped", out)
+        self.assertEqual(self.record()[0], "bob")
+
+    def test_renew_whose_mutex_is_broken_while_stalled_writes_nothing(self):
+        # I-2: a renew stalls inside the mutex after its id check; its mutex is broken (token deleted, as a
+        # breaker would) and a new holder takes over. Resumed, it must not write.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60, purpose="gp")
+        ghost_id = " ".join(self.record()[:2])
+        g = self.popen("renew", "ghost", env=self.pause_env("renew_inside_mutex", LOOP_LOCK_HELD=ghost_id))
+        self.wait_paused("renew_inside_mutex", g)
+        mx = self.lock + ".mx"
+        shutil.rmtree(mx)                                 # the break
+        rc, out = self.sh("take", "T", "--purpose", "tjob")
+        self.assertEqual(rc, 0, out)
+        t_record = _read(self.rec)
+        self.go("renew_inside_mutex")
+        gout = g.communicate(timeout=60)[0]
+        self.assertNotEqual(g.returncode, 0, gout)
+        self.assertNotIn("RENEWED", gout)
+        self.assertEqual(_read(self.rec), t_record, "the stalled renew wrote over the new holder's record")
+        self.assertEqual(self.strays(), [])
+
+    def test_reaper_whose_mutex_is_broken_while_stalled_leaves_the_new_claim(self):
+        # I-2 (reap): a reaper stalls inside the mutex after its compare matched; its mutex is broken and a
+        # second reaper reaps and claims. Resumed, the first must report BUSY and not move the new claim.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        r1 = self.popen("take", "R1", env=self.pause_env("reap_inside_mutex"))
+        self.wait_paused("reap_inside_mutex", r1)
+        shutil.rmtree(self.lock + ".mx")
+        rc, out = self.sh("take", "R2")
+        self.assertEqual(rc, 0, out)
+        r2_record = _read(self.rec)
+        self.go("reap_inside_mutex")
+        r1_out = r1.communicate(timeout=60)[0]
+        self.assertEqual(r1.returncode, 1, r1_out)
+        self.assertIn("BUSY", r1_out)
+        self.assertEqual(_read(self.rec), r2_record)
+        self.assertEqual(self.strays(), [])
+        self.assertEqual(self.sh("renew", "R2")[0], 0)
+
+    @unittest.skipUnless(SLOW, "set LOOP_LOCK_SLOW_TESTS=1")
+    def test_slow_stale_mutex_rounds_never_admit_two(self):
+        # e2b: a stale token-named mutex + a stale ghost + 3 concurrent takers, 40 rounds; a critical-section
+        # marker detects two processes inside the mutex at once.
+        cs = os.path.join(self.tmp, "cs")
+        tally = {}
+        for rnd in range(40):
+            for n in os.listdir(self.tmp):
+                if n.startswith("lk") or n == ".loop_lock_history":
+                    shutil.rmtree(os.path.join(self.tmp, n), ignore_errors=True)
+                    if os.path.exists(os.path.join(self.tmp, n)):
+                        os.remove(os.path.join(self.tmp, n))
+            shutil.rmtree(cs, ignore_errors=True)
+            os.makedirs(cs)
+            self.write_record("ghost", 3600, hb_age_s=50 * 60)
+            self.make_mutex(token_age_s=60)
+            env = self.env(LOOP_LOCK_TEST_CS_DIR=fwd(cs), LOOP_LOCK_TEST_CS_HOLD="0.2")
+            procs = [self.popen("take", "t%d" % i, env=env) for i in range(3)]
+            outs = [p.communicate(timeout=180)[0] for p in procs]
+            taken = sum(o.startswith("TAKEN") for o in outs)
+            doubles = _read(os.path.join(cs, "double.log")) if os.path.exists(os.path.join(cs, "double.log")) else ""
+            key = (taken, self.history().count("MUTEX-BROKEN"), self.history().count("REAPED"), len(doubles.splitlines()))
+            tally[key] = tally.get(key, 0) + 1
+            self.assertEqual(doubles, "", (rnd, outs))
+            self.assertEqual(taken, 1, (rnd, outs))
+            self.assertEqual(key[1:3], (1, 1), (rnd, self.history()))
+        print("\n[e2b] (TAKEN, MUTEX-BROKEN, REAPED, double entries): %s" % tally, file=sys.stderr)
 
     def test_old_graves_are_cleaned_on_take(self):
         grave = self.lock + ".d.reaped.1.2"
@@ -527,7 +626,7 @@ class TestInterleavings(LockTestBase):
 
 class TestRun(LockTestBase):
     def test_run_reports_lock_lost_and_does_not_release_the_new_holder(self):
-        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "6"], stdout=subprocess.PIPE,
+        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "4"], stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE, text=True, env=self.env(LOOP_LOCK_RENEW_SEC=1))
         deadline = time.time() + 30
         while not os.path.exists(self.rec) and time.time() < deadline:
@@ -597,13 +696,13 @@ class TestRun(LockTestBase):
 
     def test_run_renews_heartbeat_scaled(self):
         # The real-scale property (60 s renew, sleep 130, < 70 s) at 1/30 scale: 2 s renew, sleep 8, < 3.5 s.
-        rc, out, ages = self._run_and_sample(8, 2)
+        rc, out, ages = self._run_and_sample(6, 2)
         self.assertEqual(rc, 0, out)
-        self.assertGreater(len(ages), 8, out)
+        self.assertGreater(len(ages), 6, out)
         self.assertLess(max(ages), 3.5, ages)
         self.assertTrue(self.is_free())
 
-    @unittest.skipUnless(os.environ.get("LOOP_LOCK_SLOW_TESTS") == "1", "set LOOP_LOCK_SLOW_TESTS=1 (~135 s)")
+    @unittest.skipUnless(SLOW, "set LOOP_LOCK_SLOW_TESTS=1 (~135 s)")
     def test_run_sleep_130_real_scale(self):
         rc, out, ages = self._run_and_sample(130, 60)
         self.assertEqual(rc, 0, out)
@@ -644,7 +743,7 @@ class TestRunDetached(LockTestBase):
     def test_detached_reports_lock_lost_loudly(self):
         job = os.path.join(self.tmp, "job.sh")
         with open(job, "w", newline="\n") as f:
-            f.write("sleep 7\nexit 0\n")
+            f.write("sleep 5\nexit 0\n")
         marker = os.path.join(self.tmp, "job.done")
         p = subprocess.run([BASH, DETACHED_SH, "--owner", "det", fwd(job), fwd(marker)],
                            capture_output=True, text=True, env=self.env(LOOP_LOCK_DETACHED_RENEW_SEC=1), timeout=30)

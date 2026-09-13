@@ -653,7 +653,10 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
    > Superseded by Sprint 5 Task 0 (`2b7c425`; review fix rounds `7955c10` and the round-2 mutex
    > commit): hold the lock only through `loop_lock.sh run` or `run_detached.sh`, which renew a
    > heartbeat and release on exit; a take reaps a lock whose heartbeat is >= 15 min old when nothing on
-   > the busy list runs, and refuses the 45-min break while anything on it does. One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
+   > the busy list runs, and refuses the 45-min break while anything on it does (mutex hardening:
+   > `884ee63` and the round-3 commit).
+
+   One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
    check` prints the holder and the age — if the age is large and the owner is a task that has
    plainly finished, it is an orphan.
 

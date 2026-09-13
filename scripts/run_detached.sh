@@ -37,9 +37,12 @@ if [ "$1" = "--_child" ]; then
   job=$!
   finish() {
     # Release only the lock this job took (a reaped-and-retaken lock of the same owner is not ours).
-    "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1 \
-      && echo "[run_detached] RELEASED" >> "$log" \
-      || echo "[run_detached] not released: the lock no longer carries $LOOP_LOCK_HELD" >> "$log"
+    "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1
+    case $? in
+      0) echo "[run_detached] RELEASED" >> "$log";;
+      3) echo "[run_detached] release failed: mutex busy; the lock stays held until reaped" >> "$log";;
+      *) echo "[run_detached] not released: the lock no longer carries $LOOP_LOCK_HELD" >> "$log";;
+    esac
     printf 'exit=%s%s\n' "$1" "${lost:+ LOCK_LOST}" > "$marker.tmp" && mv -f "$marker.tmp" "$marker"
   }
   on_signal() {
@@ -61,7 +64,7 @@ if [ "$1" = "--_child" ]; then
       r=$("$LOCKSH" renew "$owner" 2>&1)
       case "$r" in "not held"*)
         lost=1
-        msg="[run_detached] LOCK LOST $(date -u +%Y-%m-%dT%H:%M:%SZ): $LOOP_LOCK_HELD is no longer the live lock ($("$LOCKSH" check)); renewal stopped, the job keeps running UNGUARDED"
+        msg="[run_detached] LOCK LOST $(date -u +%Y-%m-%dT%H:%M:%SZ): $LOOP_LOCK_HELD is no longer the live lock (lock now: $("$LOCKSH" check)); renewal stopped, the job keeps running UNGUARDED"
         echo "$msg" >> "$log"; echo "$msg" > "$marker.LOCK_LOST";;
       esac
     fi
