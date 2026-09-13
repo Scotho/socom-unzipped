@@ -60,6 +60,7 @@ add_library(ps2_test_lib STATIC
     src/ps2_sif_dma_tests.cpp
     src/ps2_recompiler_tests.cpp
     src/ps2_runtime_expansion_tests.cpp
+    src/socom2_libnetb_tests.cpp
 )
 
 target_include_directories(ps2_test_lib PRIVATE
@@ -101,6 +102,16 @@ add_executable(ps2x_tests
 # game_overrides_socom2.cpp, which is attached to ps2EntryRunner rather than to the
 # static library (see ps2xRuntime/CMakeLists.txt). Inert definitions satisfy the link.
 target_sources(ps2x_tests PRIVATE src/socom2_link_stubs.cpp)
+# The libnetb HLE and its host socket table are runner-only sources too; the 0x200 stats test
+# (socom2_libnetb_tests.cpp) drives them directly.
+target_sources(ps2x_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_libnetb.cpp
+    ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib/socom2_hostnet.cpp
+)
+target_include_directories(ps2x_tests PRIVATE ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib)
+if(WIN32)
+    target_link_libraries(ps2x_tests PRIVATE ws2_32)
+endif()
 
 option(PRINT_GENERATED_CODE "Print generated code in tests" OFF)
 if(PRINT_GENERATED_CODE)

@@ -26,6 +26,9 @@ namespace socom2_libnetb
     // sceSifMCallRpc payload for service 0x80001201: dispatch by function number, fill recv.
     void call(uint8_t *rdram, uint32_t fno, uint32_t send, uint32_t sendSize, uint32_t recv, uint32_t recvSize);
 
+    // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
+    void testResetKnobs();
+
     // EE function replacements (libnetb_ex path used by the SCE-RT platform layer).
     void exOpen(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);        // FUN_002472c8
     void exTcpRecv(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);     // FUN_002474f8
