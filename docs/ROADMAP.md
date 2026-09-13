@@ -463,24 +463,24 @@ health search into a confirmation. It hinges on Frostfire's handover being the u
 flag or otherwise bounded (or the Medley ruling being taken promptly), and on the engagement
 reaching contact at matched height, which has never happened; the spec's §6 says why.
 
-### Sprint 6 — the correctness bugs, the lobby, and whatever Sprint 5 left open (outline)
+### Sprint 6 — the correctness bugs, the lobby, and whatever Sprint 5 left open (revised 2026-09-13 after the Sprint 5 broad review)
 
-The HLE audit's leg three: consumer readings and fixes for Sprint 5's flagged list. The skeleton
-root decay (research/17 §4.3: dump `nodeArray[0]` on return from `FUN_0028e040` and again at
-`FUN_0029a950` in the same frame; wrong on return → the VU0 macro-mode lerp `FUN_001c0768`,
-correct on return → a second writer; acceptance root Y ≈ 5.5, camera target 15.38) — the last
-long-standing visible defect, the AI aim point and the stance test in one. The soft-double chain
-(`litodp → dpmul → dpdiv → exp → dptofp`, unit-tested against host `double` on the LUT inputs, first
-divergent function fixed). The gameplay-state probe as the gate's first correctness leg. The mixed
-match (ours against PCSX2, both directions) as a standing parity test. **Moved here from Sprint 5:**
-lobby fixed-press hardening (`host_game`/`join_game` verify-then-act — the 4-in-10 tax), the
-remaining process-audit items (1 steps 1–3: client-rect and log-scan gate preconditions; 9:
-`gate.py --baseline`; 11; 12: flake policy), and `movie_blocks.py` wiring. **Conditional on Sprint
-5's outcome:** if Frostfire was not fixed inside Sprint 5's cap, Sprint 6 opens with a PCSX2
-Frostfire pair (splits our runtime from the game/lobby configuration in one match) and the
-condition research/21 reached; if `+0x1044` was not written by network damage, it opens with an online
-object-keyed diff at contact; if no kill landed, the engagement
-ladder resumes from the highest rung reached before anything else in this list.
+*The earlier outline is superseded; its "if Frostfire was not fixed" conditional is dead (fixed by `b625291`). Order: what makes online results cheap and repeatable, then visible gameplay correctness, then the gate's blindness, then latent items. Source: `.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/broad-review.md` §C8.*
+
+0. **If no kill landed in Sprint 5:** resume the merged ladder (plan Amendment A) from the highest rung reached, before anything else.
+1. **Lobby hardening, complete** — verify-then-act on every fixed press in `host_game`/`join_game`/login, a per-launch failure-class taxonomy (B JOIN not reached, map list search, login keyboard not opened, READY dropped, map CROSS dropped), per-stage timeouts with in-place retry. At 4 in 10 every online result costs 2.5 launches; Sprint 7's N-consecutive-passes needs ≥ 8 in 10.
+2. **Online freeze root cause** — pc-sampler with `m_vsyncTick` and host time, host CPU sampler, one loaded and one quiet launch from the same exe. 3–17 s guest stops starve the peer and break timing clauses; R41 changed recovery.
+3. **Single-player teleports** — a PCSX2 run of the same `rx`-hold script first, then trace the root-motion accumulate `FUN_0028c250` → `FUN_00309280` if ours alone does it.
+4. **Skeleton root decay, re-measured first on the post-vf0 exe** (the VU0 lerp `FUN_001c0768` is a vf0 w-term site), then research/17 §4.3 if unchanged.
+5. **Gameplay-state probe as the gate's first correctness leg** — root-node Y, a rand-derived field, MoveScale `+0x1368`, the heading matrix and a teleport count against console numbers; closes the gate-evidence gap (every mission gate from 2026-09-12 to `8281254` proved at most "the mission loaded").
+6. **Math with exact oracles** — the soft-double chain (`litodp → dpmul → dpdiv → exp → dptofp`) against host `double`; a faithful `__ieee754_rem_pio2f` port against a reference.
+7. **Mixed match** (ours ↔ PCSX2, both directions) — settles on the console the starvation semantics, the damage path and `total_mp_kills` host authority.
+8. **HLE audit leg three** — consumer readings for research/20's remaining rows.
+9. **Harness and gate process items** — lock tests to a ≤ 15 s smoke by default (full behind `LOOP_LOCK_SLOW_TESTS=1`), `gate.py --baseline`, flake policy, client-rect assert, `movie_blocks.py` wiring, the sim stack/route flake (R26), the Task 0/4 parked minors, the redundant main-context vf0 line.
+10. **Replay cost measured, and the parity PNG export moved off the GL thread** (SP gameplay runs at ~82 %: 15.4 ms replay + 7.8 ms untimed per host frame) — harness cost, not product speed.
+11. **Display environment and zbp A/B against a console image** (research/20 §4.3–4.4; effect believed nil).
+12. **VU memory aliasing** (R22; latent, no reachable caller) — its own gate and vram-diff slot, last.
+13. **Disk hygiene automated** — archive old gate stamps and non-fixture run logs to `D:\socom_archive`; the < 4 GB refusals standing.
 
 ### Sprint 7 — after the kill (outline)
 

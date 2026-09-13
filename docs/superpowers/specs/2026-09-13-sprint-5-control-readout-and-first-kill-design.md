@@ -191,6 +191,22 @@ the round state.
 - **Close-out:** `PS2X_TEST_REPEAT=3 ./build.sh test`; final gate PASS 3/3, title s00–s19 ≥ 99 run-vs-run;
   `KNOWN.md` audited; Outcome section; the controller merges.
 
+### 5.1 Amendment A — pre-registered acceptance bars (2026-09-13, before any ladder launch; binding over §5 Goals 5–6 where they conflict)
+
+Registered from the owner-requested broad review (ledger R50) **before** the first ladder match is scored; `verdict_replay.py`'s tests encode them. They may not be moved after a kill is seen.
+
+- **Engagement band** (replaces Goal 5(a)'s 3-D ≤ 22): same floor `|dy|` ≤ 10 and 3-D ≤ 45; aim tolerance ≤ min(6°, 0.8·atan(3.4/d)). *Blind:* shots through a wall on the same floor.
+- **Contact** (replaces ≥ 20 rows): ≥ 5.0 s of qualifying time with ≥ 10 rows and gaps ≤ 1.25 s; a guest-clock freeze inside the window pauses the count. Report the sampler period beside it.
+- **Goal 6 attribution window** (replaces "inside the contact gate throughout"): killer's R1 injected within 3 s **of the killer instance's own guest clock** before the death with `|dy|` ≤ 10 and 3-D ≤ 60 throughout. *Blind:* an unrelated damage source during a burst from 60 units.
+- **Valve timing** (replaces "both instances within 2 s host wall clock ±0.5 s"): within each instance, the step within 3 s of **that instance's guest clock** (`0x4365c0`) of its own death/kill row; across instances, consistent ordering and ≤ 20 s host wall clock; a freeze overlapping the window → `NO-DATA`, not FAIL.
+- **`total_mp_kills`**: steps by one on **at least one** instance (both reported); shooter = host.
+- **Screens** (replaces "both screens within 2 s"): after the death row, grab each screen repeatedly for up to 20 s; PASS needs one frame per side that was ≤ 2 s old at its capture and shows the post-death state; ages and peeked clock strings recorded.
+- **Round-state clause:** `mp_round_count` not stepped before the death, read per instance; the clock string is read per instance and may be absent on the joiner.
+- **`KILL-SEMANTICS <valve>`** (new): if a round has the killer's R1 in the attribution window, a victim `+0x1044 <= 0` with word 0 intact and the round-state progression, but one valve (`total_mp_kills`, `aiteam_*`, `+0xF7A`) behaves unlike its believed semantics, the verdict is `KILL-SEMANTICS <valve>` (exit 1, logs kept). Corrected semantics can make that round PASS only if a **second** independent kill shows the same behaviour.
+- **Starvation stop rule** (Task 5 Step 4): stop only on an alarm with **both** round clocks running for its whole duration; a freeze-attributed alarm is logged and makes an overlapping fire window `NO-DATA`.
+- **Grenade kill** is a PASS on the same clauses with "R1 injected" read as "R1 or grenade injected by the killer".
+- Unchanged: victim `+0x1044 <= 0` with word 0 intact, killer `+0x1044 > 0`, no victim y drop > 20 in the 2 s before, no grenade on the victim's own pad in the 10 s before, both scorers agree (`verdict_replay.py` primary: valves; `KillWatch` primary: actor fields), the 8c clock round-end negative control scores `NO-KILL`.
+
 ## 6. Sequencing, budget, risk and realism
 
 ```
@@ -213,7 +229,7 @@ Goal 4 legs 1–2 fill lock time; PS2X_HLE_STATS rides the zero-fill build
   launches before the acceptance run would); partial deflection with a dead zone (measured first);
   starvation in the endgame (measured live in Goal 5 Step 1, modelled in the sim, watched two-sided);
   valve semantics as inference (the negative control).
-- **Realism.** A kill in Sprint 5 is **roughly even odds**: better than before research/19 because the
+- ~~**Realism.** A kill in Sprint 5 is **roughly even odds**~~ *(superseded 2026-09-13: Frostfire control fixed by `b625291`; Amendment A merges Tasks 5–6 into a 16-launch multi-round ladder — the broad review estimates ~85–95 %, per-round kill rate unmeasured)*: better than before research/19 because the
   readout no longer needs a search. It hinges on (1) Frostfire's handover being the uninitialised
   ghost flag or otherwise bounded — or the Medley ruling being taken promptly — and (2) the engagement
   reaching contact at matched height with both scales fed, which has never happened. Goals 0–4 each
