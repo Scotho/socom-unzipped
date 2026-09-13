@@ -47,6 +47,9 @@ runtime() {
 }
 
 test_step() {
+  # Python tests first: no build needed, and the whole parity gate's scorers live here. The one runner is
+  # unittest (no pytest); tools_py/tests/test_test_hygiene.py fails on a test file this line would miss.
+  ( cd "$ROOT" && python -m unittest discover -s tools_py/tests -t . -v )
   cmake --build "$RTBUILD" --target ps2x_tests vu1_replay -j "$(nproc)"
   # ps2x_tests reads ps2xRecomp/include/ps2recomp/instructions.h relative to its own directory.
   local ps2x_test_repeat="${PS2X_TEST_REPEAT:-1}"

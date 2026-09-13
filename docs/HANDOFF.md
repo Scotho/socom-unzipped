@@ -8,10 +8,13 @@
    KNOWN.md wins.
 2. **`docs/ROADMAP.md`** — why the work is ordered the way it is: what Sprint 4's results overturned
    (§3) and what each later sprint is for. Its §7 checklist defers to KNOWN.md.
-3. **The sprint in flight: Sprint 5** —
+3. **The sprint in flight: Sprint 5** (`docs/CURRENT_SPRINT.md` names its branch, spec, plan and
+   ledger) —
    `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
-   `docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` (`ee10842`). Start
-   at the plan's Task 0. Its three threads: Frostfire control handover (the default test map, where
+   `docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`. Task 0
+   (preconditions: the heartbeat loop lock with `run` and `scripts/run_detached.sh`,
+   `scripts/kill_stale_drivers.ps1`, Python tests inside `./build.sh test`) has landed; pick up at the
+   next unchecked task in the plan. Its three threads: Frostfire control handover (the default test map, where
    neither player moves), confirming the sourced kill readout (`actor+0x1044` / `actor+0xF7A`,
    `docs/research/19`), and the first kill.
 4. **`docs/STATUS.md`** — "Current state" at the top, then the 2026-09-13 "Sprint 4 landed" and

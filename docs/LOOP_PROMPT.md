@@ -4,12 +4,9 @@ You are continuing the SOCOM II PC static-recompilation project at C:/projects/s
 autonomously. The user (Craig) is away and has given full authority to use best judgement;
 plans are suggestions.
 
-Ordered goals (user, 2026-09-11; restated 2026-09-13 at Sprint 4 close-out). **The sprint in flight
-is Sprint 5** — `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
-and the plan `docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` (commit
-`ee10842`; branch `sprint-5` off `develop` once `sprint-4` is merged). Follow the plan's task order,
-starting at its Task 0 (preconditions — which also replaces this pointer with
-`docs/CURRENT_SPRINT.md`). Sprints 1-4 are history: the `2026-09-10-sprint-1-…`,
+Ordered goals (user, 2026-09-11; restated 2026-09-13 at Sprint 4 close-out). **The sprint in flight,
+its branch, spec, plan and ledger are named in `docs/CURRENT_SPRINT.md`** — read it first; this file
+carries no sprint pointer of its own. Follow that plan's task order. Sprints 1-4 are history: the `2026-09-10-sprint-1-…`,
 `2026-09-11-sprint-2-…`, `2026-09-11-sprint-3-…` and `2026-09-12-sprint-4-visible-defects-and-first-kill`
 spec/plan pairs in the same two directories; Sprint 4's plan ends with an `## Outcome` section.
 
@@ -32,9 +29,10 @@ spec/plan pairs in the same two directories; Sprint 4's plan ends with an `## Ou
      prints `ROUND-END (unattributed -- NOT a kill)` and exits non-zero.
 2. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
    before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
-   `./build.sh runtime` MUST precede the gate: the gate launches `dist/socom2.exe`, and
-   `./build.sh test` does not rebuild it. `./build.sh test` runs **no Python tests** until Sprint 5
-   Task 0 wires `tools_py/tests` in — run them by hand after touching `tools_py/`.
+   `./build.sh runtime` MUST precede the gate when the runtime changed: the gate launches
+   `dist/socom2.exe`, and `./build.sh test` does not rebuild it. `./build.sh test` runs the Python
+   tests first (`python -m unittest discover -s tools_py/tests -t .`; unittest only, no pytest —
+   `tools_py/tests/test_test_hygiene.py` fails on a test file that line would not find).
 3. FROZEN: emulator speed work (VU1/VU0 interpreter, scheduler batching, GS/GL caching or upload
    performance). 36-42 fps single instance is enough; two of our instances run a match at 19-21
    each, which the harness tolerates. A mixed match (ours against PCSX2) is Sprint 6, not now.
@@ -56,14 +54,18 @@ world state, capture the screens). Expect many gameplay issues on the way; each 
 hypothesis->build->run->evidence step.
 
 ## Every firing
-1. If a game run or build is in progress (check `logs/.loop_lock` — a file with the owner and
-   a start time under 20 minutes old — or a running `socom2*.exe`/`pcsx2-qt.exe`), do NOT start
-   another; only one game instance and no builds during runs. Wait for the next firing.
+1. `bash scripts/loop_lock.sh check`. If the lock is HELD (a live heartbeat — see "Lock protocol"),
+   or a `socom2*.exe`/`pcsx2-qt.exe` is running, do NOT start a build or a run: only one game
+   instance and no builds during runs. **Do not idle waiting for it** — pick the next lock-free
+   step of the plan (decomp reading, pure scorers and their tests, analysis of logs already on
+   disk, docs) and do that this firing.
 2. Read `docs/KNOWN.md` (the live proven / believed / retracted list — it is the fastest way to
    avoid re-deriving a dead hypothesis, and its §3 is what the other docs used to state as fact),
-   then `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md` entries; `git log -5`.
-3. Pick the next task in the Sprint 5 plan, which serves goal 1 (goals 2 and 3 are constraints,
-   goal 4 is maintenance). Work in bounded steps, in this order: one hypothesis -> one build -> one run ->
+   then `docs/CURRENT_SPRINT.md`, `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md`
+   entries; `git log -5`.
+3. Pick the next task in the plan `docs/CURRENT_SPRINT.md` names, which serves goal 1 (goals 2 and 3
+   are constraints, goal 4 is maintenance). Work in bounded steps, in this order (builds and runs
+   under the lock, through `run` / `run_detached.sh`): one hypothesis -> one build -> one run ->
    read the evidence -> `./build.sh test` and (after `./build.sh runtime`) `gate` green ->
    commit -> push -> STATUS entry (newest on top) -> **audit `docs/KNOWN.md`: promote, retire or
    retract the entries this step touched** -> refresh the "START HERE" section of
@@ -74,14 +76,15 @@ hypothesis->build->run->evidence step.
 4. Subagents are welcome for offline/static work (decomp reading, native VU1 handler work under
    third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ verified with `dist/vu1_replay.exe
    --verify --native` on both fixture sets, server-side Horizon checks) but builds of the
-   runtime and game runs are SERIAL: take `logs/.loop_lock` first.
+   runtime and game runs are SERIAL: they run under the loop lock (see "Lock protocol").
 5. Commit from the repo root C:\projects\socom_pc (its own git repo, remote
    github.com/Scotho/socom-unzipped; never `git add -A`; leave `server/config/simulated.db`
    unstaged), then `git push`. **Commit with an explicit pathspec — `git commit -m "…" -- <paths>`,**
    never a bare `git commit` after `git add`: several agents share this working tree, and a bare
    commit takes the whole index (it swept another agent's files under the wrong message on
-   2026-09-13). Trailers: follow the Sprint 5 plan's commit conventions and the attribution your
-   session is given — do not copy a trailer from an older commit or doc.
+   2026-09-13). Trailers and every other commit rule: the current plan's "Commit conventions"
+   (handoff notes) and the attribution your session is given — do not copy a trailer from an older
+   commit or doc.
 6. Never regress: title labels clean (s05/s06 of every run sheet), online reaches SELECT
    UNIVERSE, mission loads, and on Medley the online local player moves (`research/18` §3.12a is
    the regression recipe). A regression is fixed before moving on.
@@ -95,6 +98,26 @@ runtime` (3 min; header change = 10 min); `python -m tools_py.parity.drive --tar
 RDRAM dump paths must be Windows paths.
 
 ## Lock protocol
-`scripts/loop_lock.sh take <owner>` before any `./build.sh`, `run.sh` or drive.py run (BUSY even for the same owner: a second job queues with `wait`); `renew <owner>` refreshes a held lock;
-`scripts/loop_lock.sh release <owner>` after; `check` to inspect; `wait <owner> [minutes]` blocks
-until it is free (stale after 45 min). Offline tools (vu1_replay, python analysis) need no lock.
+The lock serializes every build and every game run (`scripts/loop_lock.sh`; its header is the
+reference). **Never hold it across tool calls except through `run` or `run_detached.sh`** — a gap
+between two tool calls is not renewed, and the calling shell dies when its tool call returns.
+- Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
+  takes the lock, renews its heartbeat every 60 s while `<cmd>` runs, releases on exit (also on
+  failure) and returns `<cmd>`'s exit code; exit 75 = the lock was busy and `<cmd>` did not run.
+  Wrap a build -> test -> gate sequence as ONE run, e.g.
+  `bash scripts/loop_lock.sh run main --purpose "test+gate" -- bash -c './build.sh test && python -m tools_py.parity.gate'`
+  (gate.py's own take/release are NESTED no-ops inside a run).
+- Detached (game runs): `bash scripts/run_detached.sh --owner <owner> <script> <marker>` takes the
+  lock, launches the script under nohup, renews every 5 min while the script's PID lives, releases
+  and then writes `exit=<code>` to `<marker>`. Poll the marker; run
+  `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1` before every
+  launch (a finished drive.py taskkills the next run's game).
+- A lock is live while its **heartbeat** is fresh, not by how long ago it was taken. A take on a
+  held lock reaps it only when the heartbeat is >= 15 min old **and** nothing on the busy list runs
+  (games, PCSX2, cmake/ninja/clang/ld, ps2_recomp, ps2x_tests, vu1_replay, python running
+  `tools_py.parity` or `unittest`); the 45-min stale break is refused while anything on that list
+  runs. BUSY holds for the same owner too. `check` prints the holder, purpose and heartbeat age;
+  reaps are logged to `logs/.loop_lock_history`. `take`/`renew`/`release`/`wait` still exist for old
+  scripts; do not use them across tool calls.
+- Offline analysis (python on logs already on disk) needs no lock. `vu1_replay.exe` and
+  `python -m unittest` need none either, but they are on the busy list, so a long one delays a reap.
