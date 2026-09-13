@@ -594,3 +594,217 @@ distinct return.** The list is identical across sides:
 None of them is on the move path's inputs as mapped in §3. `strrchr` never finding its character is the
 one entry worth a look [inference]. KNOWN §4's tail-call blind spot applies: the counts are lower bounds
 and zero-call rows can be false.
+
+---
+
+## 7. Launch 2 — ground probe (draft, 2026-09-13)
+
+**Draft, uncommitted (the controller commits).** Marks as in §6. The offline scripts are in the session
+scratchpad (`l2/peeks.py`, `probe.py`, `zr.py`, `walk2.py`, `cells.py`, `cells2.py`) and are not tracked.
+
+### 7.1 Launch and the command
+
+| # | per-instance logs | out dir | result |
+|---|---|---|---|
+| 2a | **`logs/run_[AB]_20260913_100624.log`** (12.5 / 12.3 MB) | `logs/parity/s5_t1_launch2` | **usable** on the first try: `A_liveness OK: 164`, `B_liveness OK: 164`; harness exit 3 `NO-CONTROL` (4 decisive holds per side) |
+
+One launch was used, which brings Task 1 to 4 of 8.
+
+**Preconditions:**
+- Horizon stack up (10071 / 10073 / 10075 / 10078).
+- Persona B present in `game/disc/mc0_b`.
+- LAN address `192.168.2.10`.
+- 7.8 GB free on C:.
+- Exe `dist/socom2.exe` built 09:44.
+
+**Command.** Run `powershell -NoProfile -File scripts/kill_stale_drivers.ps1`, then
+`bash scripts/run_detached.sh --owner s5t1-launch2 --purpose "..." logs/s5_t1_launch2.sh logs/s5_t1_launch2.done`.
+
+The job script (git-ignored) is launch 1's script with the plan's launch-2 additions and `*0x43668c*:3`. It
+unsets `PS2X_GUEST_MALLOC_ZERO{,_B}` and runs
+`python logs/s5_t1_launch2_driver.py --existing-b --hold 30 --until-kill --map frostfire --engage 22 --engage-dy 10 --max-steps 60 --max-walk-seconds 240 --fight-seconds 200 --kill-timeout 470 --out logs/parity/s5_t1_launch2 --seconds 1200`.
+
+`online_login_ours.INSTANCES` has no `_B` mapping for `PS2X_RDRAM_DUMP_AT`. The untracked driver therefore:
+- sets `INSTANCES["A"]["PS2X_RDRAM_DUMP_AT"]` from `PS2X_RDRAM_DUMP_AT`;
+- sets `INSTANCES["B"]["PS2X_RDRAM_DUMP_AT"]` from `PS2X_RDRAM_DUMP_AT_B`;
+- calls `online_match_ours.main()`.
+
+No tracked file changed. Before launch, `move_path_preconditions` and `peek_spec_problems` both returned `[]`.
+
+```
+PS2X_SOCOM2_SERVER=192.168.2.10
+PS2X_SOCOM2_RSA_KEY_B=b
+PS2X_SOCOM2_INPUT_TRACE=1
+PS2X_PC_SAMPLER=0.25
+PS2X_HLE_STATS=1
+PS2X_CALL_TRACE_EVERY=10
+PS2X_CALL_TRACE=0x553dc0:MoveScale,0x594cf0:PlayerUpd,0x592560:CtlAlt14,0x5979a0:CtlSpec18,0x551ec0:ActorUpd,0x30cd80:NetIdle,0x2a7420:SetMajor,0x2a73b0:SetMinor,0x2a7490:SetMyMajor,0x1f5e70:GhostSet,0x1f6660:GhostClr,0x2232a0:GhostClr2,0x2b7d60:SpawnGhost,0x544210:SetLife,0x543d50:SpawnDead,0x543b90:GhostRevive,0x598840:InputEnable,0x5b0840:ProbeQueue,0x5b0800:ProbeBatch,0x5b0420:ProbeTake,0x5b5d40:ProbeEval,0x31de90:GridQuery,0x252150:VoiceVu0Upload,0x251a98:VoiceVu0Mode,0x24fac0:VoiceFftSel
+PS2X_CALL_TRACE_DUMP=PlayerUpd:a0+0x170:1,PlayerUpd:a0+0x4*+0x400:9,ProbeEval:a1:19,ProbeEval:a1+0x48*:32,ProbeEval:a1+0x48*+0xc*:4,ProbeEval:a0+0x28*+0x30:3
+PS2X_PEEK=0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,*0x437ce8+0x0c*:2,*0x437ce8+0x10*:2,*0x437ce8+0x14*:2,*0x437ce8+0x20*:2,*0x437ce8+0x24*:2,*0x437ce8+0x2c*:2,*0x437ce8+0x58*:2,*0x437ce8+0x5c*:2,*0x437ce8+0x70*:2,*0x43668c:2,0x4365c0:1,0x45a0c0:1,0x3df1b0:1,0x45a1c8:1,*0x44fa90:2,0x4413d8:1,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,*0x437ce8+0x14**:3,*0x437ce8+0x20**:3,*0x437ce8+0x24**:3,*0x437ce8+0x2c**:3,*0x437ce8+0x58**:3,*0x437ce8+0x5c**:3,*0x437ce8+0x70**:3,*0x43668c*:3,0x408f10:2,0x408c58:4,*0x45c380+0x684:4,*0x45c380+0x694:1,*0x45c380+0x6b4:3,*0x45c380+0x6c0:1,*0x45c380+0x6cc:1,*0x45c380+0x778:3,0x44f070:3,0x44d588:5,0x44f354:2,0x3df1c8:1,*0x408c58+0x2c0:4,*0x408c58+0xf40:1,*0x44d588*:19,0x1d55a0:1
+PS2X_RDRAM_DUMP_AT=logs/parity/frostA_probe600.rdram:ProbeEval#600      (instance A)
+PS2X_RDRAM_DUMP_AT_B=logs/parity/frostB_probe600.rdram:ProbeEval#600    (instance B, via the driver)
+```
+
+Both dumps were written: `[rdram-dump] wrote 33554432 bytes to logs/parity/frost{A,B}_probe600.rdram at ProbeEval#600`.
+
+Call #600 is the local actor on both sides, and its `[ret] v0` is 0 on both:
+- A: ln18835, a0 `0x1583f50`, ra `0x5b0478`;
+- B: ln18479, a0 `0x1586eb0`, ra `0x5b0478`.
+
+### 7.2 Zero-rows check [verified]
+
+- **Trace count.** `[call-trace] tracing 25 guest functions` on both sides.
+- **Calls A / B.** Every slot has matching `[ret]` lines:
+  - MoveScale 17 / 19; PlayerUpd 563 / 583; ActorUpd 856 / 895; NetIdle 17 / 19;
+  - SetMajor 3 / 3; SetMinor 4 / 4; SetMyMajor 3 / 4;
+  - GhostSet 56 / 57; GhostClr 1 / 1; SpawnGhost 1 / 1; SetLife 1 / 1;
+  - **ProbeQueue 856 / 895; ProbeBatch 563 / 583; ProbeTake 856 / 895; ProbeEval 855 (856 `[ret]`) / 895; GridQuery 856 / 584.**
+- **Empty on both sides (predicted negatives).**
+  - CtlAlt14, CtlSpec18, GhostClr2, SpawnDead, GhostRevive and InputEnable, as in §6.2.
+  - **VoiceVu0Upload, VoiceVu0Mode and VoiceFftSel.** An ELF scan finds 2 `jal` and 0 `j` to `0x252150`,
+    1 `jal` to `0x251a98`, and no callers or pointer word for `0x24fac0`, so the hooks would see any call.
+- **Peek rows A / B:** 2001 / 1977.
+  - The six grid items (`*0x45c380+…`): 1988 / 1964.
+  - `0x44f070`, `0x44d588`, `0x44f354`, `0x3df1c8` and `0x1d55a0`: every row.
+  - `*0x408c58+0x2c0:4`, `*0x408c58+0xf40:1` and `*0x44d588*:19`: 436 / 436, the actor rows.
+- **Values.** `0x1d55a0` reads 0 on every row. The low byte of `0x3df1c8` is 1 on every row.
+- **`*0x43668c*:3`** now spells `mission_abor` on 1990 / 1966 rows, so the §6.2 spec defect is fixed.
+
+### 7.3 verdict_core [verified]
+
+**`score-control`** exits 3 with `RESULT NO-CONTROL`. Every hold reads `net=0.00 snap=0.00 drift=0.00 -> FAIL`:
+- A holds at 445.40, 462.90, 480.00 and 497.35;
+- B holds at 439.41, 456.62, 474.00 and 491.35.
+
+**`move-path`** exits 1:
+- A: `[A] MOVE-PATH stalled since=393.4 -- stall of 108.6s since #16 at 393.4; R6 actor+0x420=0.000 clock@0x4365c0=97.243 gap=97.243 > 0.6 0x45a0c1=1`
+- B: `[B] ... since=387.4 ... #18 ... clock@0x4365c0=103.754 ...`
+
+The launch-1 failure reproduces.
+
+### 7.4 Grid census over time [verified]
+
+Frostfire's grid is **not** M51's. It has dimension **160**, **8 × 9** cells, origin (0, 0) and pool `0x2000`.
+
+| side | grid built (tick −1) | free head settles | first actor row / MoveScale `#0` | MoveScale last | free head after |
+|---|---|---|---|---|---|
+| A (W `0xe61420`) | ln11664, t 390.5 | `0xe6836c` at ln11789, t 392.1 | ln11890 / t 392.8 | `#16` t 393.4 | `0xe6836c` on every row to t 501 |
+| B (W `0xe61430`) | ln11143, t 384.5 | `0xe6837c` at ln11267, t 386.0 | ln11377 / t 386.7 | `#18` t 387.4 | `0xe6837c` on every row to t 496 |
+
+- The free head is **never 0** and does not move after the level load.
+- The tick advances (A: 53 → 44568).
+- **Image census at ProbeEval#600, both sides:** 503 nodes + 7689 free = 8192, with 0 orphaned atoms. The
+  nodes are 72 CCells, 361 model atoms over 127 models, and 70 actor atoms over 66 actors.
+
+**The grid is healthy, and nothing drains it.**
+
+### 7.5 ProbeEval / GridQuery [verified]
+
+- **ProbeEval.** Every logged call has ra `0x5b0478`.
+  - The local actor has 705 (A) / 745 (B) records. **All read `v0=0` with candidate count (word 13) 0.**
+  - The remote avatar has 150 / 150 records, also `v0=0` with count 0.
+  - Word 13 of `*0x44d588*:19` is 0 on all 436 rows per side.
+- **Local record, A `#0`** (ln11871):
+  - type/flags `0x80050001`; origin (795.73, 112.67, 613.04);
+  - count 0, capacity 32, excluded node `0x1566d00`, mask `0xffffffff`, buffer `0x16169c0`;
+  - the buffer holds stale bytes, and its "first surface" dereferences `0x1001`.
+- **Local record, B `#0`:** origin (535.20, 154.60, 1253.57), count 0.
+- **GridQuery.** `[ret] v0=1` on every row, for all three callers, so the `0x44f078` gate is open. The
+  per-caller split below comes from 1-in-10 sampling:
+  - A: ra `0x5b0828` 150, `0x29c7d8` 705, `0x5ab6b0` 1;
+  - B: 571 / 12 / 1.
+- **Actor words:**
+  - `A+0x2cc`: `0xffffffff` (taken) 422 / 424, `0xfffffc19` (−999) 11 / 9;
+  - `+0xf40`: low byte 1, apart from single 0 rows;
+  - `A+0x1061`: 0x04 or 0x05 from the first actor row;
+  - `A+0x420`: raw `0x0022000a` (A) and `0x00000102` (B) on every row, so it is never stamped.
+
+**The grid returns nothing for the probe (count 0). No candidate is rejected.**
+
+### 7.6 Offline walk of the images [verified]
+
+**Spawn-cell walk.** research/23 §7's walker with the review's rules (first hit per model, bit-18 skip, `+0x3c`
+skip) covers the spawn cells, A (4, 3) and B (3, 7). It finds **no polygon**, which matches the game.
+
+**Whole-grid walk.** An extended walker covers **all 72 cells**. It applies each model's matrix (`node+0x00`, a
+row-vector 4×4, as `FUN_003085c0` uses it) and every gate of `FUN_002d3030`:
+- `+0x5c` bit 0 and `+0x5d` bit 4;
+- the layer mask and the self skip;
+- `*(top+0xa1) & 4` against record `+2` bit 1;
+- surface `+8` bit 0 and bit 18;
+- the model bounding box, in model space.
+
+| record | polygon under (x, z) | world y | model | registered in cell | spawn cell |
+|---|---|---|---|---|---|
+| A (795.73, 613.57) | `0x6b41c4` (mat 25), every gate passes | **100.0** (actor y 101.0) | `0x11a4e20`, type 1, translation (960, 0, 800) | **(0, 0) only** | (4, 3) |
+| B (535.73, 1253.57) | `0x6b41b0` (mat 25), every gate passes | **142.0** (actor y 142.93) | `0x11ef5b0` (image B), type 1, translation (960, 0, 800), bounds (−480, 40, 320)–(−320, 155, 480) | **(0, 2) only** | (3, 7) |
+
+Addresses are per image: the same B-spawn ground reads `0x11a9160` / surface `0x6b2ba8` in image A.
+
+The walk's other hits are the actors' own sub-models, under the excluded node. Surface bit 0 rejects them.
+
+**The terrain exists and passes every filter, but it is linked into the wrong cells.**
+- `0x11a4e20`'s bounds (`+0x40..+0x54`) are (−320, 100, −320)–(−160, 100, −160), in model space.
+- With its translation they become x 640…800, z 480…640. The insert shrinks the bounds by 1e-4 × extent on
+  each side, so the world rectangle is exactly cell (4, 3): the spawn cell. For B's `0x11ef5b0` it is exactly (3, 7).
+- It is registered where the **untranslated** bounds (w = 0 ≡ raw here) clamp: cell (0, 0).
+
+**Across the grid.** `cells2.py` counts transformed nodes whose untranslated and world cell rectangles differ. "Raw"
+below means untranslated (w = 0 ≡ raw here): the data cannot separate a dropped w from an identity matrix at insert time.
+
+| image | type-1 models | type-2 actors |
+|---|---|---|
+| `spawn_pcsx2`, `postload_pcsx2` (console, M51) | **48 registered by world bounds** | 52 world |
+| `spawn_ours`, `s4rand_ours`, `rest_ours`, `postload_ours` (ours, M51) | **48 registered by raw bounds** | 46 world / 6 raw (`spawn_ours`: 6 world, 10 raw, 36 neither) |
+| `frostA_probe600`, `frostB_probe600` | **106 raw**, 18 neither, 3 raw = world | 64 raw, 2 world |
+
+- 116 of Frostfire's type-1 models carry the level translation (960, 0, 800). The ground is among them.
+- On M51 the same defect shows in every image of ours and in none of the console's. M51 has 261 untranslated
+  type-1 terrain models and **48 translated type-1 props**, and the props are misregistered on ours. Examples:
+  - T (3827.66, −231.1, 3481.23): ours (0, 0), console (21, 19);
+  - T (4080.08, −133.54, 3052.81): ours (0, 0), console (22, 16).
+  The postload images read the same.
+- M51 works only because its ground polygons are untranslated. [verified by review]
+
+### 7.7 Why the bounds lose their translation [verified source and thread; corrected after review]
+
+1. **The insert transforms the bounds.** `FUN_002d7580` builds the eight corners of `FUN_00262550(node)` (the
+   `node+0x40` bounds) with `FUN_002a96b0`. It transforms them by the node matrix with `FUN_002a9680` →
+   `FUN_003085c0(node, c, c, 8)`, then takes min/max with `FUN_002a9550`. [verified, decomp]
+2. **The transform scales the translation by vf0.w.** `FUN_003085c0` adds the translation row with
+   **`vmaddw.xyz $vf9, $vf7, $vf0w`** (0x308608), i.e. translation × vf0.w. The recompiled line reads the w of
+   `ctx->vu0_vf[0]`. [verified, `recomp/output/FUN_003085c0_0x3085c0.cpp`]
+3. **Guest contexts other than the main one start with vf0.w = 0.** [verified, source]
+   - `R5900Context()` memsets the whole context, vf0 included (`ps2xRuntime/include/ps2_runtime.h`).
+   - `EeScheduler::startThread` resets a guest thread with `target->context = R5900Context{}`.
+   - The default contexts of `GuestThread` and `GuestInvocation` also have w = 0, so interrupt handlers, alarms
+     and HLE invocations are affected too.
+   - Only two places set (0, 0, 0, 1): the main context in `ps2_runtime.cpp`, and `copyVu0StateToContext` after
+     a normal VU0 micro-program. `seedVu0IdleSuccess` does not.
+   - Writes to vf0 are already compiled out (`ea026de`), so nothing else repairs it.
+   - The instruction at `0x308608` is `vmaddw.xyz vf9, vf7, vf0w`, recompiled as
+     `PS2_VMUL(vu0_vf[7], shuffle(vu0_vf[0], 3333))`.
+4. **The grid build runs on such a thread.** [verified by review]
+   - pc-sampler thread 7 (sp `0xe5ecb0`–`0xe603e0`) exists only in the grid-build window (A ln11663–11754,
+     B ln11142–11223) and is dormant right after, while thread 1 waits at `0x3aff80` / `0x3b00a4`.
+   - Static entry chain: `FUN_001f5e70` → `FUN_001ebba0` → `FUN_001ebca0` → CreateThread(`FUN_001ebda0`) →
+     `FUN_001ea720` → `FUN_001e91c0` → `FUN_0031d6f0` → `FUN_002d6000` → `FUN_002d7580`.
+   - The two world-registered avatars are re-inserted in-game by a thread with w = 1.
+   - **Alternative:** "inserted before placement" leaves the same image signature. It is disfavoured, not
+     excluded. The post-fix M51 census discriminates: all 48 translated props must then register by world bounds.
+5. **On real hardware vf0 is hard-wired**, so there is no per-thread value that could be wrong.
+
+### 7.8 Condition sentence
+
+*The grid is healthy (503 + 7689 = 8192, free head never 0), and the probe misses because the level translation
+(960, 0, 800) on Frostfire's ground models was dropped when they were inserted. The ground under each spawn is
+therefore linked into cells (0, 0) and (0, 2) instead of the spawn cells (4, 3) and (3, 7). The grid query returns
+0 candidates, `actor+0x420` is never stamped, and R6 suppresses MoveScale from clock 0.6 s.*
+
+Evidence:
+- §7.4: the free-head rows;
+- §7.5: ProbeEval word 13 = 0 on 1450 local records;
+- §7.6: the whole-grid walk, and the untranslated-versus-world census against the console images;
+- §7.7: the `vmaddw … vf0w` transform, the zeroed guest contexts, and the grid build on thread 7.
+
+research/23's candidate (1), "grid exhausted, chain cut", is **excluded** for Frostfire.
