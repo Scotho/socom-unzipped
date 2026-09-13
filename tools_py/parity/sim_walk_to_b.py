@@ -9,7 +9,18 @@ each correction overshoots or undershoots and the loop has to recover by re-meas
 what the real game does (research/18 §3.13: RMS 18 deg on an open-loop turn, and one wtb2 turn that
 asked for -72 deg and delivered -16).
 
-    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|nocontrol|movepath|all]
+    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|nocontrol|movepath|
+                                             endgame|endgame-negative|endgame-rule|engage-route|
+                                             engage-route-starved|engage-route-swap|engage-route-teleport|all]
+
+Sprint 5 Task 5 added the engagement's own world (`endgame`): a TWO-SIDED STARVATION MODEL (`Net`: each
+side's idle ms is reset only by the OTHER side's traffic -- translation always, rotation iff
+`rotation_feeds`, firing iff `firing_feeds`; the scale clamp((5000 - (idle - 1500)) * 0.001, 0, 1) on
+translation AND rotation; ng+0xde at idle >= 4501; `[ret] NetIdle #n v0=` and `MoveScale #n f12=` rows),
+TWO FLOORS (`TwoFloorTerrain`: y 100 and a ledge at y 142 reached by one ramp), the actor matrix at
++0x80..+0xbc (heading lagging the true facing after a turn), partial-deflection sticks with a yaw dead zone,
+a lead and a WRONG gain, and a ticking round clock. `rotation_feeds` / `firing_feeds` default False until
+Task 5 Step 1 measures them live; re-run these scenarios with the measured values afterwards.
 
 The per-scenario step counts and wall times this prints are ILLUSTRATIVE, not constants: the
 simulation is wall-clock timed and varies run to run (one `maze` took 14 steps / 102 s and another
@@ -26,7 +37,9 @@ import tempfile
 import threading
 import time
 
+from . import online_login_ours as L
 from . import online_match_ours as M
+from . import verdict_core as vc
 
 
 def _w(v):
@@ -58,7 +71,18 @@ SIM_ENV = {"PS2X_CALL_TRACE": "0x553dc0:MoveScale,0x30cd80:NetIdle", "PS2X_CALL_
                         "*0x437ce8+0x10*:2,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,0x408f10:2"}
 
 
-def peek_line(cx, cy, cz, actor=None, actor_addr=0x01794000):
+def matrix_words(facing_deg):
+    """actor +0x80..+0xbc (block words 32..47) for a walk facing: theta = facing + 90 deg (research/22 §4)."""
+    th = math.radians(facing_deg + 90.0)
+    w = ["00000000(0)"] * 16
+    w[0], w[2] = _w(math.cos(th)), _w(math.sin(th))
+    w[5] = _w(1.0)
+    w[8], w[10] = _w(-math.sin(th)), _w(math.cos(th))
+    w[15] = _w(1.0)
+    return w
+
+
+def peek_line(cx, cy, cz, actor=None, actor_addr=0x01794000, matrix_facing=None):
     """The camera record, and -- as the exe writes it when the actor chain resolves -- the ACTOR
     block beside it, with the class vtable in word 0 and the true position in words 7/8/9.
 
@@ -73,16 +97,157 @@ def peek_line(cx, cy, cz, actor=None, actor_addr=0x01794000):
         words = ["006691a0(9.41946e-39)"] + ["00000000(0)"] * 63
         for slot, v in zip(M.ACTOR_POS_WORDS, actor):
             words[slot] = _w(v)
+        if matrix_facing is not None:
+            words[32:48] = matrix_words(matrix_facing)
         line += f" @{actor_addr:x}: " + " ".join(words)
     return line
+
+
+NG_ADDR = 0x869360                    # launch 3c's CZNetGame block (research/21 §8.2)
+
+
+def ng_items(lagflag):
+    """`*0x437ce8:64` and `*0x437ce8+0x100:21` as launch 1 split them: ng+0xde in the first, the +0x118 = 50.0f
+    fingerprint in the second (verdict_core.ng_lagflag_rows finds the block by content)."""
+    ng = ["00000000(0)"] * 64
+    ng[vc.NG_LAG_FLAG_OFFSET // 4] = f"{(lagflag & 0xFF) << (8 * (vc.NG_LAG_FLAG_OFFSET % 4)):08x}(0)"
+    tail = ["00000000(0)"] * 21
+    tail[(0x118 - 0x100) // 4] = f"{vc.NG_FINGERPRINT_VALUE:08x}(50)"
+    return f"@{NG_ADDR:x}: " + " ".join(ng) + f" @{NG_ADDR + 0x100:x}: " + " ".join(tail)
+
+
+class Net:
+    """The two-sided starvation model (KNOWN §4, research/21 §9.8): side X's idle ms is the time since the
+    OTHER side's last traffic. Translation always counts; rotation iff `rotation_feeds`; firing iff
+    `firing_feeds` -- both False until Task 5 Step 1 measures them. `enabled=False` holds every idle at 0 (a
+    scripted pre-roll that is history, not the scenario)."""
+
+    TAGS = ("A", "B")
+
+    def __init__(self, rotation_feeds=False, firing_feeds=False, t0=None, keepalive=False):
+        self.rotation_feeds, self.firing_feeds, self.t0 = rotation_feeds, firing_feeds, t0
+        # keepalive: a running (unfrozen) instance feeds the other with no traffic at all -- launch 3c's pair stood
+        # ~48 s still at f12 = 1.0 (NetIdle <= 1547 ms). False is the pessimistic translation-only model.
+        self.keepalive = keepalive
+        self.last = {}
+        self.max_idle = {}
+        self.enabled = True
+        self.lock = threading.Lock()
+
+    @staticmethod
+    def scale(idle_ms):
+        """FUN_00594cf0's movement scale: 1.0 up to 5500 ms idle, 0.0 from 6500 (research/18 §3.12)."""
+        return max(0.0, min(1.0, (5000 - (idle_ms - 1500)) * 0.001))
+
+    @staticmethod
+    def lagflag(idle_ms):
+        return 1 if idle_ms >= 4501 else 0
+
+    @staticmethod
+    def other(tag):
+        return "B" if tag == "A" else "A"
+
+    def tick(self, tag, t, translated=False, rotated=False, fired=False):
+        with self.lock:
+            if self.t0 is None:
+                self.t0 = t
+            sent = (self.keepalive or translated or (rotated and self.rotation_feeds)
+                    or (fired and self.firing_feeds))
+            if sent:
+                self.last[tag] = t
+            return sent
+
+    def idle_ms(self, tag, t):
+        with self.lock:
+            if self.t0 is None:
+                self.t0 = t
+            if not self.enabled:
+                return 0
+            ms = max(0, int(round((t - self.last.get(self.other(tag), self.t0)) * 1000.0)))
+            self.max_idle[tag] = max(self.max_idle.get(tag, 0), ms)
+            return ms
+
+    def restart(self, t):
+        """Enable the model from host time t with both sides just heard from, and forget the maxima."""
+        with self.lock:
+            self.t0 = t
+            self.last = {tag: t for tag in self.TAGS}
+            self.max_idle = {}
+            self.enabled = True
+
+
+class TwoFloorTerrain:
+    """Frostfire's shape in miniature (KNOWN §4: floors at y ~100 and ~142). The lower floor is everywhere; a
+    LEDGE at y 142 covers x 600-800, z 600-780 and is reached only by a RAMP (x 670-750, z 480-600, y rising
+    100 -> 142 northward). A lower-floor walker passes UNDER the ledge; the ramp is a solid wedge from its sides
+    and from under the ledge; the ledge has railings (leaving it anywhere but down the ramp is blocked)."""
+
+    LOWER_Y, UPPER_Y = 100.0, 142.0
+    LEDGE = (600.0, 800.0, 600.0, 780.0)
+    RAMP = (670.0, 750.0, 480.0, 600.0)
+
+    def in_ledge(self, x, z):
+        x0, x1, z0, z1 = self.LEDGE
+        return x0 <= x <= x1 and z0 <= z <= z1
+
+    def in_ramp(self, x, z):
+        x0, x1, z0, z1 = self.RAMP
+        return x0 <= x <= x1 and z0 <= z < z1
+
+    def step(self, floor, x, z, nx, nz):
+        """-> (allowed, floor after the step)."""
+        rx0, rx1, rz0, rz1 = self.RAMP
+        if floor == "lower":
+            if self.in_ramp(nx, nz):
+                return (True, "ramp") if (not self.in_ramp(x, z) and z < rz0) else (False, floor)
+            return True, "lower"
+        if floor == "ramp":
+            if self.in_ramp(nx, nz):
+                return True, "ramp"
+            if self.in_ledge(nx, nz) and nz >= rz1:
+                return True, "upper"
+            if nz < rz0 and rx0 <= nx <= rx1:
+                return True, "lower"
+            return False, floor
+        if self.in_ledge(nx, nz):
+            return True, "upper"
+        if self.in_ramp(nx, nz):
+            return True, "ramp"
+        return False, floor
+
+    def y(self, floor, x, z):
+        if floor == "lower":
+            return self.LOWER_Y
+        if floor == "upper":
+            return self.UPPER_Y
+        f = max(0.0, min(1.0, (z - self.RAMP[2]) / (self.RAMP[3] - self.RAMP[2])))
+        return self.LOWER_Y + (self.UPPER_Y - self.LOWER_Y) * f
 
 
 class World:
     """One simulated player. Truth is (x, z, facing); the log carries the camera record only."""
 
     def __init__(self, path, x, z, facing, walk_u_s, look_deg_s, radius, wall=None, height=None,
-                 actor_addr=0x01794000, ignores_pad=False, valves=True):
+                 actor_addr=0x01794000, ignores_pad=False, valves=True, terrain=None, floor="lower",
+                 net=None, tag=None, yaw=None, move_dz=0, tick_clock=False, back_u_s=None):
         self.path, self.x, self.z, self.facing = path, x, z, facing
+        # Task 5: the engagement world. `yaw` = (gain, dead zone, lead s): rx turns at the harness's OWN table
+        # times a WRONG gain, nothing inside the dead zone, nothing for the first `lead` s of a hold (None: the
+        # legacy constant look rate). `move_dz`: left-stick dead zone, speed linear above it. The actor matrix
+        # heading `mf` lags the facing after a turn (halving each row, snapping inside 0.5 deg).
+        self.terrain, self.floor, self.net, self.tag = terrain, floor, net, tag
+        self.yaw, self.move_dz, self.tick_clock = yaw, move_dz, tick_clock
+        self.back = walk_u_s if back_u_s is None else back_u_s   # legacy worlds walk back at the forward rate
+        self.mf = facing
+        self.axes, self.buttons = {}, set()
+        self.rx_hold_t = None
+        self.round_t = 0.0
+        self.frozen_until = None
+        self.teleport_by = None          # (host time, dx, dz): a relative jump (the teleport-abort scenario)
+        self.idle = 0
+        self.scale = 1.0
+        self.netidle_n = 0
+        self.hist = []                   # (t, x, y, z, facing, mf, scale, idle, floor)
         self.valves = valves             # write the alive/valve/clock items (launch 1's PS2X_PEEK)
         # nocontrol: the player ignores the pad (frost1/launch 1c: rows keep coming, nothing moves)
         self.ignores_pad = ignores_pad
@@ -99,77 +264,168 @@ class World:
         open(path, "w").close()
         threading.Thread(target=self._tick, daemon=True).start()
 
-    def _try_move(self, heading_deg, dt=0.25):
+    def _try_move(self, heading_deg, dt=0.25, speed=None):
         h = math.radians(heading_deg)
-        nx = self.x + self.walk * dt * math.cos(h)
-        nz = self.z + self.walk * dt * math.sin(h)
-        if self.wall is None or not self.wall(nx, nz):
-            self.x, self.z = nx, nz
+        speed = self.walk if speed is None else speed
+        nx = self.x + speed * dt * math.cos(h)
+        nz = self.z + speed * dt * math.sin(h)
+        if self.wall is not None and self.wall(nx, nz):
+            return
+        if self.terrain is not None:
+            ok, floor = self.terrain.step(self.floor, self.x, self.z, nx, nz)
+            if not ok:
+                return
+            self.floor = floor
+        self.x, self.z = nx, nz
+
+    def y(self):
+        return self.terrain.y(self.floor, self.x, self.z) if self.terrain else self.height(self.x, self.z)
+
+    def _axis(self, dev):
+        """Stick deflection (-128..127 from neutral) -> signed speed fraction with the move dead zone."""
+        f = max(0.0, min(1.0, (abs(dev) - self.move_dz) / (127.0 - self.move_dz)))
+        return math.copysign(f, dev) if f else 0.0
 
     def camera(self):
         h = math.radians(self.facing)
         return self.x - self.r * math.cos(h), self.z - self.r * math.sin(h)
 
+    # Physics runs in SUBSTEPS per 0.25 s row. On whole 0.25 s ticks a 0.4 s strafe leg covered one tick or two
+    # depending on its phase, so an alternating oscillation random-walked by a leg's length (Task 5 endgame:
+    # the victim's centre wandered +-3 units at 13 units of range and forced re-aims the real game would not).
+    SUBSTEPS = 5
+
+    def _step(self, now, sdt, row):
+        """One physics substep of `sdt` s (lock held). `row`: this substep ends a 0.25 s row -- the matrix lag, the
+        round clock and the truth history advance per row."""
+        if self.teleport_at and now >= self.teleport_at[0]:
+            self.x, self.z = self.teleport_at[1], self.teleport_at[2]
+            self.teleport_at = None
+        if self.teleport_by and now >= self.teleport_by[0]:
+            self.x, self.z = self.x + self.teleport_by[1], self.z + self.teleport_by[2]
+            self.teleport_by = None
+        frozen = self.frozen_until is not None and now < self.frozen_until
+        # the pad: legacy key holds (`state`) and the injected axes/buttons (FakeShell.pad)
+        ax = {"rx": 0x80, "ry": 0x80, "lx": 0x80, "ly": 0x80}
+        buttons = set()
+        if not (self.ignores_pad or frozen):
+            for k, on in self.state.items():
+                if on:
+                    name, value = L.PAD_AXIS[k.upper()]
+                    ax[name] = value
+            ax.update(self.axes)
+            buttons = set(self.buttons)
+        if self.net is not None and not frozen:
+            self.idle = self.net.idle_ms(self.tag, now)
+            self.scale = Net.scale(self.idle)
+        x0, z0, f0 = self.x, self.z, self.facing
+        if not frozen:
+            # EVERY translation is checked against the wall, not only the forward walk. The
+            # original world blocked `W` and let `S`, `A` and `D` pass straight through, so
+            # the loop's own unstick manoeuvre (a step back and a sidestep) could put the
+            # player INSIDE solid geometry -- after which every forward move was blocked for
+            # good. That is what made `maze` flaky: 14, 18, 23 and 29 steps on four runs, and
+            # on a fifth a full 40-step budget spent pinned inside the wall at x~720, z~1300.
+            fwd = self._axis(0x80 - ax["ly"])
+            if fwd:
+                self._try_move(self.facing if fwd > 0 else self.facing + 180.0, dt=sdt,
+                               speed=(self.walk if fwd > 0 else self.back) * abs(fwd) * self.scale)
+            dev = ax["rx"] - 0x80
+            if dev and self.rx_hold_t is None:
+                self.rx_hold_t = now
+            elif not dev:
+                self.rx_hold_t = None
+            if self.yaw is None:
+                rate = self.look * max(-1.0, min(1.0, dev / 127.0))
+            else:
+                gain, dz, lead = self.yaw
+                rate = 0.0
+                if abs(dev) > dz and now - self.rx_hold_t >= lead - 1e-6:
+                    rate = math.copysign(M.yaw_rate_deg_s(abs(dev)), dev) * gain
+            if rate:
+                self.facing = M.wrap_deg(self.facing + rate * self.scale * sdt)
+            lat = self._axis(ax["lx"] - 0x80)
+            if lat:
+                self._try_move(self.facing - 90.0 if lat > 0 else self.facing + 90.0, dt=sdt,
+                               speed=self.walk * abs(lat) * self.scale)
+            if row:
+                d = M.wrap_deg(self.facing - self.mf)
+                self.mf = self.facing if abs(d) < 0.5 else M.wrap_deg(self.mf + 0.5 * d)
+                if self.tick_clock:
+                    self.round_t += sdt * self.SUBSTEPS
+            if self.net is not None:
+                self.net.tick(self.tag, now,
+                              translated=math.hypot(self.x - x0, self.z - z0) > 1e-6,
+                              rotated=abs(M.wrap_deg(self.facing - f0)) > 1e-6,
+                              fired="R1" in buttons)
+        if row:
+            self.hist.append((now, self.x, self.y(), self.z, self.facing, self.mf, self.scale, self.idle,
+                              self.floor))
+        return frozen
+
     def _tick(self):
         dt, n = 0.25, 0
+        sdt = dt / self.SUBSTEPS
+        next_t = time.time()
         while not self.stop.is_set():
+            for sub in range(self.SUBSTEPS):
+                with self.lock:
+                    frozen = self._step(time.time(), sdt, sub == self.SUBSTEPS - 1)
+                next_t += sdt
+                time.sleep(max(0.0, next_t - time.time()))
             with self.lock:
-                if self.teleport_at and time.time() >= self.teleport_at[0]:
-                    self.x, self.z = self.teleport_at[1], self.teleport_at[2]
-                    self.teleport_at = None
-                s = {} if self.ignores_pad else dict(self.state)
-                # EVERY translation is checked against the wall, not only the forward walk. The
-                # original world blocked `W` and let `S`, `A` and `D` pass straight through, so
-                # the loop's own unstick manoeuvre (a step back and a sidestep) could put the
-                # player INSIDE solid geometry -- after which every forward move was blocked for
-                # good. That is what made `maze` flaky: 14, 18, 23 and 29 steps on four runs, and
-                # on a fifth a full 40-step budget spent pinned inside the wall at x~720, z~1300.
-                if s.get("W"):
-                    self._try_move(self.facing)
-                if s.get("S"):
-                    self._try_move(self.facing + 180.0)
-                if s.get("L"):
-                    self.facing = M.wrap_deg(self.facing + self.look * dt)
-                if s.get("J"):
-                    self.facing = M.wrap_deg(self.facing - self.look * dt)
-                if s.get("D"):
-                    self._try_move(self.facing - 90.0)
-                if s.get("A"):
-                    self._try_move(self.facing + 90.0)
                 cx, cz = self.camera()
-                y = self.height(self.x, self.z)
+                y = self.y()
+                scale, idle, mf, round_t = self.scale, self.idle, self.mf, self.round_t
             n += 1
             with open(self.path, "a") as f:
-                if n % 2 == 0 and not self.movescale_stopped:
+                if n % 2 == 0 and not self.movescale_stopped and not frozen:
                     # #n advances as the exe's does at EVERY=10 (~19 calls/s -> ~1 line per 0.5 s)
                     self.move_n += 10
+                    f12 = "1.0" if scale == 1.0 else f"{scale:.3f}"
                     f.write(f"[call] {400.0 + n * dt:.1f}s MoveScale #{self.move_n} a0=0x1 "
-                            f"ra=0x595028 f12=1.0 f13=0.0 f14=1.0\n")
-                f.write(peek_line(cx, y + 19.7, cz, actor=(self.x, y, self.z),
-                                  actor_addr=self.actor_addr)
-                        + (" " + state_items(self.actor_addr) if self.valves else "") + "\n")
-            time.sleep(dt)
+                            f"ra=0x595028 f12={f12} f13=0.0 f14=1.0\n")
+                    if self.net is not None:
+                        self.netidle_n += 10
+                        f.write(f"[call] {400.0 + n * dt:.1f}s NetIdle #{self.netidle_n} a0=0x45a0c0 "
+                                f"ra=0x594f88 f12=0.0\n[ret] NetIdle #{self.netidle_n} v0=0x{idle:x} f0=0.6\n")
+                extra = ""
+                if self.valves:
+                    left = max(0, 359 - int(round_t)) if self.tick_clock else None
+                    extra = " " + (state_items(self.actor_addr) if left is None else
+                                   state_items(self.actor_addr, clock=f"{left // 60:02d}:{left % 60:02d}"))
+                if self.tick_clock:
+                    extra += f" @4365c0: {_w(round_t)}"
+                if self.net is not None:
+                    extra += " " + ng_items(Net.lagflag(idle))
+                f.write(peek_line(cx, y + 19.7, cz, actor=(self.x, y, self.z), actor_addr=self.actor_addr,
+                                  matrix_facing=mf if self.yaw is not None else None) + extra + "\n")
 
 
 class FakeShell:
     def __init__(self, world, tag):
         self.world, self.tag = world, tag
+        self.lines = []
 
     def log(self, m):
+        self.lines.append(m)
         print(f"{self.tag}{m}", flush=True)
 
     def shot(self, label):
         pass
 
-    def pad(self, seconds, buttons=(), sticks=(), abort=None):
+    def pad(self, seconds, buttons=(), sticks=(), axes=None, abort=None):
+        ax = L.pad_axes(sticks, axes)
         with self.world.lock:
-            self.world.state = {k.upper(): True for k in sticks}
+            self.world.state = {}
+            self.world.axes, self.world.buttons = ax, {b.upper() for b in buttons}
         if abort is None:
             time.sleep(seconds)
         else:
             abort.wait(seconds)
         with self.world.lock:
             self.world.state = {}
+            self.world.axes, self.world.buttons = {}, set()
 
 
 class FakeClient:
@@ -342,8 +598,318 @@ def run_movepath(label="movepath"):
     return watch, verdicts, after
 
 
+
+# ---------------------------------------------------------------------------------------------
+# Sprint 5 Task 5 Step 2: the endgame
+# ---------------------------------------------------------------------------------------------
+# Geometry (TwoFloorTerrain): B, the victim, spawns on the ledge and stands there (strafe-oscillating in this opt-in
+# mode); A, the shooter, spawns on the lower floor and walks this world's own recorded route (SIM_ROUTES, below) up
+# the ramp, then closes. The lines that follow describe the first version, which mined the ramp from a B pre-roll:
+# B, the victim, walks up the ramp in a scripted pre-roll -- so the run's own rows
+# hold a floor transition -- and parks on the ledge at y 142, ~90 units in from its edges. A, the shooter,
+# starts on the lower floor to the south-east; the straight line from A to B passes UNDER the ledge, so a
+# level-blind approach ends stacked at dy 42 (launch 3c's picture) and only the floor route reaches contact.
+# The world's yaw response is the harness's table x ENDGAME_YAW_GAIN with a larger dead zone and a shorter
+# lead than the harness assumes; the sticks have a dead zone of their own.
+ENDGAME_YAW = (0.65, 56, 0.30)                 # world gain vs the table, dead zone |rx-0x80|, lead s
+ENDGAME_MOVE_DZ = 40                           # |lx-0x80| below which the stick does not translate
+ENDGAME_FIGHT_S = 30.0                         # >= 8 s of aim-and-fire standing needs ~25 s of fight
+ENDGAME_MAX_IDLE_MS = 5500                     # the assertion: neither side's idle ever exceeds this
+ENDGAME_MIN_STANDING_S = 8.0                   # the scenario is only a test if the shooter stood this long
+ENDGAME_MIN_CONTACT_ROWS = 20
+
+
+def _truth_at(hist, t):
+    best = None
+    for r in hist:
+        if r[0] <= t:
+            best = r
+        else:
+            break
+    return best
+
+
+def truth_contact_run(wa, wb, gate3d=vc.CONTACT_3D_MAX_UNITS, gate_dy=vc.CONTACT_DY_MAX_UNITS, scale_min=0.99):
+    """Longest run of consecutive A ticks with the TRUE pair inside the gate AND both true scales >= scale_min."""
+    run = best = 0
+    hb = list(wb.hist)
+    tb = [r[0] for r in hb]
+    import bisect
+    for r in list(wa.hist):
+        k = bisect.bisect_left(tb, r[0])
+        cand = [j for j in (k - 1, k) if 0 <= j < len(hb) and abs(tb[j] - r[0]) <= 0.5]
+        ok = False
+        if cand:
+            b = hb[min(cand, key=lambda j: abs(tb[j] - r[0]))]
+            ok = (math.dist(r[1:4], b[1:4]) <= gate3d and abs(r[2] - b[2]) <= gate_dy
+                  and r[6] >= scale_min and b[6] >= scale_min)
+        run = run + 1 if ok else 0
+        best = max(best, run)
+    return best
+
+
+def truth_band_seconds(wa, wb, band3d=45.0, band_dy=10.0, scale_min=0.99):
+    """Amendment A's contact on TRUTH: the longest stretch (seconds, over A's 4 Hz truth rows paired with B's nearest
+    within 0.5 s) with the pair on one floor (|dy| <= band_dy), inside 3-D band3d, and both true scales >= scale_min."""
+    import bisect
+    hb = list(wb.hist)
+    tb = [r[0] for r in hb]
+    best, start, prev_t = 0.0, None, None
+    for r in list(wa.hist):
+        k = bisect.bisect_left(tb, r[0])
+        cand = [j for j in (k - 1, k) if 0 <= j < len(hb) and abs(tb[j] - r[0]) <= 0.5]
+        ok = False
+        if cand:
+            b = hb[min(cand, key=lambda j: abs(tb[j] - r[0]))]
+            ok = (math.dist(r[1:4], b[1:4]) <= band3d and abs(r[2] - b[2]) <= band_dy
+                  and r[6] >= scale_min and b[6] >= scale_min)
+        if ok:
+            start = r[0] if start is None else start
+            best = max(best, r[0] - start)
+        else:
+            start = None
+    return best
+
+
+def run_endgame(label="endgame", rotation_feeds=False, firing_feeds=False, micro_strafe=True, rule=True,
+                fight_s=ENDGAME_FIGHT_S):
+    """The Task 5 engagement against the two-sided starvation model. Returns a dict of what was measured."""
+    terrain = TwoFloorTerrain()
+    net = Net(rotation_feeds=rotation_feeds, firing_feeds=firing_feeds)
+    d = tempfile.gettempdir()
+    tag = f"{label}_{os.getpid()}"
+    kw = dict(terrain=terrain, net=net, yaw=ENDGAME_YAW, move_dz=ENDGAME_MOVE_DZ, tick_clock=True,
+              back_u_s=M.WALK_BACK_UNITS_PER_S)
+    ax_, az_, af_, afl = ROUTE_A_START
+    bx_, bz_, bf_, bfl = ROUTE_B_START
+    wa = World(os.path.join(d, f"sim_A_{tag}.log"), ax_, az_, af_, M.WALK_UNITS_PER_S_LONG,
+               M.LOOK_DEG_PER_S, 27.0, actor_addr=0x01794000, tag="A", floor=afl, **kw)
+    wb = World(os.path.join(d, f"sim_B_{tag}.log"), bx_, bz_, bf_, M.WALK_UNITS_PER_S_LONG,
+               M.LOOK_DEG_PER_S, 27.0, actor_addr=0x017a4000, tag="B", floor=bfl, **kw)
+    ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
+    ta.start()
+    tb.start()
+    sha, shb = FakeShell(wa, "A_"), FakeShell(wb, "B_")
+    time.sleep(1.5)
+    t_start = time.time()
+    net.restart(t_start)
+    lines = []
+
+    def log(m):
+        lines.append(m)
+        print(f"W_{m}", flush=True)
+    sideA, sideB = M.Side("A", sha, ta), M.Side("B", shb, tb)
+    duel = M.Duel()
+    watch = M.StarvationWatch({"A": ta, "B": tb}, log)
+    watch.start()
+    out = M.endgame_cooperative({"A": sideA, "B": sideB}, duel, watch, log, route=SIM_ROUTES["A"], fight_s=fight_s,
+                                micro_strafe=micro_strafe, rule=rule)
+    time.sleep(1.5)                            # the rows of the final strafe arrive; open alarms can clear
+    watch.check()
+    watch.stop()
+    contact = M.ladder_contact(ta, tb)
+    truth_run = truth_contact_run(wa, wb)
+    aim = sideA.aims[-1] if sideA.aims else None
+    aim_truth = None
+    if aim and aim["reads"]:
+        # the TRUE error of the final aim: the shooter's true facing and position at its last read, against the
+        # victim's true oscillation centre over the window the harness averaged (ending when the aim started)
+        t_e = aim["reads"][-1]["t"]
+        me = _truth_at(wa.hist, t_e)
+        vict = [r for r in wb.hist if aim["t0"] - M.OSC_CENTRE_WINDOW_S <= r[0] <= aim["t0"]]
+        if me and vict:
+            cx = sum(r[1] for r in vict) / len(vict)
+            cz = sum(r[3] for r in vict) / len(vict)
+            aim_truth = M.wrap_deg(math.degrees(math.atan2(cz - me[3], cx - me[1])) - me[4])
+    floors_a = [r[8] for r in wa.hist]
+    standing = [s for s in out["standing"] if s is not None]
+    res = {
+        "label": label, "rotation_feeds": rotation_feeds, "firing_feeds": firing_feeds,
+        "micro_strafe": micro_strafe, "rule": rule, "out": out,
+        "max_idle": dict(net.max_idle), "watch_max_idle": watch.max_idle_ms(),
+        "alarms": [dict(a) for a in watch.alarms], "alarms_n": watch.starvation_alarms(),
+        "alarms_cleared": watch.alarms_cleared(), "watch_stop": watch.stop_reason,
+        "contact_rows": contact.contact_rows, "contact_status": contact.status, "rows_read": contact.rows_read,
+        "closest": duel.best_dist(), "closest_dy": duel.best_dy(), "truth_contact_rows": truth_run,
+        "aim_err_after": aim and aim["err_after"], "aim_truth": aim_truth,
+        "standing_total": sum(standing), "standing_max": max(standing, default=0.0),
+        "a_reached_upper": "upper" in floors_a, "route_ok": bool(out["route"] and out["route"]["ok"]),
+        "aim_teleports": sideA.aim_teleports, "bursts": out["bursts"], "micro_strafes": out["micro_strafes"],
+        "rule_moves": len(out["rule_moves"]), "stop_reason": out["stop_reason"],
+    }
+    print(f"\n== {label}: rotation_feeds={rotation_feeds} firing_feeds={firing_feeds} micro_strafe={micro_strafe} "
+          f"rule={rule} stop={res['stop_reason']!r} watch_stop={res['watch_stop']!r}\n"
+          f"   max idle ms (truth) A={res['max_idle'].get('A')} B={res['max_idle'].get('B')} "
+          f"(NetIdle rows A={res['watch_max_idle'].get('A')} B={res['watch_max_idle'].get('B')}); "
+          f"starvation alarms={res['alarms_n']} cleared<=3s={res['alarms_cleared']} "
+          f"causes={[a['cause'] for a in res['alarms']]}\n"
+          f"   contact rows (verdict_core)={res['contact_rows']} ({res['contact_status']}, rows read "
+          f"{res['rows_read']}), truth rows in gate with both scales>=0.99={truth_run}; closest paired "
+          f"{res['closest']} dy {res['closest_dy']}\n"
+          f"   final aim err={res['aim_err_after']} truth={aim_truth}; shooter standing total="
+          f"{res['standing_total']:.1f}s max window={res['standing_max']:.1f}s; bursts={res['bursts']} "
+          f"micro_strafes={res['micro_strafes']} rule_moves={res['rule_moves']} teleports={res['aim_teleports']}; "
+          f"A route={out['route'] and out['route']['reason']} reached upper={res['a_reached_upper']}")
+    for w in (wa, wb):
+        w.stop.set()
+    ta.stop()
+    tb.stop()
+    return res
+
+
+def _captured(sh):
+    return getattr(sh, "lines", [])
+
+
+def assert_endgame_ok(r):
+    assert r["stop_reason"] is None and r["watch_stop"] is None, (r["stop_reason"], r["watch_stop"])
+    for side in ("A", "B"):
+        assert r["max_idle"].get(side, 0) <= ENDGAME_MAX_IDLE_MS, ("idle", side, r["max_idle"])
+    for a in r["alarms"]:
+        if a["cause"] == "starvation":
+            ref = a["t_move"] if a["t_move"] is not None else a["t"]
+            assert a["t_clear"] is not None and a["t_clear"] - ref <= M.ALARM_CLEAR_S, ("alarm not cleared", a)
+    assert r["contact_rows"] >= ENDGAME_MIN_CONTACT_ROWS, ("contact rows", r["contact_rows"])
+    assert r["truth_contact_rows"] >= ENDGAME_MIN_CONTACT_ROWS, ("truth contact rows", r["truth_contact_rows"])
+    assert r["aim_err_after"] is not None and abs(r["aim_err_after"]) <= M.AIM_TOL_DEG, r["aim_err_after"]
+    assert r["aim_truth"] is not None and abs(r["aim_truth"]) <= M.AIM_TOL_DEG, r["aim_truth"]
+    assert r["a_reached_upper"] and r["route_ok"], (r["a_reached_upper"], r["route_ok"])
+    assert r["standing_total"] >= ENDGAME_MIN_STANDING_S, r["standing_total"]
+
+
+
+# ---------------------------------------------------------------------------------------------
+# The DEFAULT engagement (--endgame route): the stander stands at its spawn, the mover follows a route to its floor,
+# closes, aims with pulses and fires. Same two-floor world; the route is this world's own table.
+# ---------------------------------------------------------------------------------------------
+SIM_ROUTES = {
+    "A": [(950.0, 350.0), (875.0, 385.0), (800.0, 420.0), (710.0, 440.0), (710.0, 520.0), (710.0, 580.0),
+          (710.0, 620.0)],
+    "B": [(700.0, 690.0), (710.0, 620.0), (710.0, 580.0), (710.0, 520.0), (710.0, 440.0), (800.0, 420.0),
+          (875.0, 385.0)],
+}
+ROUTE_A_START = (950.0, 350.0, 135.0, "lower")
+ROUTE_B_START = (700.0, 690.0, -90.0, "upper")
+ROUTE_FIGHT_S = 25.0
+ROUTE_MIN_BAND_S = 5.0            # Amendment A spec §5.1: contact is >= 5.0 s of qualifying time (band, both scales)
+
+
+def run_route_engagement(label, mover="A", keepalive=True, teleport_after_s=None, fight_s=ROUTE_FIGHT_S):
+    terrain = TwoFloorTerrain()
+    net = Net(keepalive=keepalive)
+    d = tempfile.gettempdir()
+    tag = f"{label}_{os.getpid()}"
+    kw = dict(terrain=terrain, net=net, yaw=ENDGAME_YAW, move_dz=ENDGAME_MOVE_DZ, tick_clock=True,
+              back_u_s=M.WALK_BACK_UNITS_PER_S)
+    ax_, az_, af_, afl = ROUTE_A_START
+    bx_, bz_, bf_, bfl = ROUTE_B_START
+    wa = World(os.path.join(d, f"sim_A_{tag}.log"), ax_, az_, af_, M.WALK_UNITS_PER_S_LONG, M.LOOK_DEG_PER_S, 27.0,
+               actor_addr=0x01794000, tag="A", floor=afl, **kw)
+    wb = World(os.path.join(d, f"sim_B_{tag}.log"), bx_, bz_, bf_, M.WALK_UNITS_PER_S_LONG, M.LOOK_DEG_PER_S, 27.0,
+               actor_addr=0x017a4000, tag="B", floor=bfl, **kw)
+    ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
+    ta.start()
+    tb.start()
+    time.sleep(1.5)
+    t_start = time.time()
+    net.restart(t_start)
+    mw = wa if mover == "A" else wb
+    if teleport_after_s is not None:
+        mw.teleport_by = (t_start + teleport_after_s, 120.0, 0.0)
+    lines = []
+
+    def log(m):
+        lines.append(m)
+        print(f"W_{m}", flush=True)
+    sides = {"A": M.Side("A", FakeShell(wa, "A_"), ta), "B": M.Side("B", FakeShell(wb, "B_"), tb)}
+    duel = M.Duel()
+    watch = M.StarvationWatch({"A": ta, "B": tb}, log)
+    watch.start()
+    out = M.endgame_route(sides, duel, watch, log, "sim-twofloor", mover=mover, route=SIM_ROUTES[mover],
+                          fight_s=fight_s)
+    time.sleep(1.5)
+    watch.check()
+    watch.stop()
+    contact = M.ladder_contact(ta, tb)
+    shooter = sides[mover]
+    aim = next((a for a in reversed(shooter.aims) if a["reads"] and a["err_after"] is not None
+                and abs(a["err_after"]) <= M.AIM_TOL_DEG), None)
+    aim_truth = None
+    if aim:
+        # the TRUE error of the last in-tolerance aim against the target it was GIVEN (the stander's newest row when
+        # the aim began): the stander may move between aims (reactions), which is target staleness, not aim error
+        t_e = aim["reads"][-1]["t"]
+        me = _truth_at(mw.hist, t_e)
+        tx, tz = aim["target"]
+        if me:
+            aim_truth = M.wrap_deg(math.degrees(math.atan2(tz - me[3], tx - me[1])) - me[4])
+    band_s = truth_band_seconds(wa, wb)
+    res = {"label": label, "out": out, "contact_rows": contact.contact_rows, "rows_read": contact.rows_read,
+           "band_s": band_s,
+           "max_idle": dict(net.max_idle), "alarms": [dict(a) for a in watch.alarms],
+           "alarms_n": watch.starvation_alarms(), "watch_stop": watch.stop_reason, "aim_truth": aim_truth,
+           "aim_err": aim and aim["err_after"], "closest": duel.best_dist(), "closest_dy": duel.best_dy(),
+           "mover_floor_end": mw.floor}
+    print(f"\n== {label}: mover={mover} keepalive={keepalive} stop={out['stop_reason']!r} watch_stop={watch.stop_reason!r} "
+          f"route={out['route'] and out['route']['reason']}/{out['route'] and out['route']['legs']} legs "
+          f"close={out['close'] and out['close']['reason']} bursts={out['bursts']} reactions={len(out['rule_moves'])} "
+          f"teleport={out['teleport']}\n"
+          f"   in the engagement band (truth, |dy|<=10, 3-D<=45, both scales>=0.99) {band_s:.1f}s; contact rows "
+          f"(verdict_core's 22-unit gate)={contact.contact_rows} (rows read {contact.rows_read}); closest paired "
+          f"{res['closest']} dy {res['closest_dy']}; max idle ms A={net.max_idle.get('A')} B={net.max_idle.get('B')}; "
+          f"alarms={res['alarms_n']} causes={[a['cause'] for a in res['alarms']]}; last in-tolerance aim "
+          f"err={res['aim_err']} truth={aim_truth}; mover ends on {mw.floor}")
+    for w in (wa, wb):
+        w.stop.set()
+    ta.stop()
+    tb.stop()
+    return res
+
+
+def assert_route_ok(r, want_reactions=False):
+    o = r["out"]
+    assert o["stop_reason"] is None and r["watch_stop"] is None, (o["stop_reason"], r["watch_stop"])
+    assert o["route"]["ok"] and o["close"]["ok"], (o["route"], o["close"])
+    assert o["teleport"] is None, o["teleport"]
+    assert r["band_s"] >= ROUTE_MIN_BAND_S, ("time in the engagement band", r["band_s"])
+    assert o["bursts"] >= 1, o["bursts"]
+    assert r["aim_truth"] is not None and abs(r["aim_truth"]) <= M.AIM_TOL_DEG, (r["aim_err"], r["aim_truth"])
+    for side in ("A", "B"):
+        assert r["max_idle"].get(side, 0) <= ENDGAME_MAX_IDLE_MS, ("idle", side, r["max_idle"])
+    for a in r["alarms"]:
+        if a["cause"] == "starvation":
+            ref = a["t_move"] if a["t_move"] is not None else a["t"]
+            assert a["t_clear"] is not None and a["t_clear"] - ref <= M.ALARM_CLEAR_S, ("alarm not cleared", a)
+    if want_reactions:
+        assert len(o["rule_moves"]) >= 1, "the pessimistic model raised no reaction -- it exercised nothing"
+
+
+SCENARIOS = ("open", "maze", "caps", "converge", "route", "stack", "watch", "nocontrol", "movepath", "endgame",
+             "endgame-negative", "endgame-rule", "engage-route", "engage-route-starved",
+             "engage-route-swap", "engage-route-teleport")
+
+
 def main():
+    """One scenario by name, or `all`: every scenario in its own try, failures collected and listed at the end (a
+    parked flake -- R26's stack/route step cap -- no longer hides every scenario after it)."""
     which = sys.argv[1] if len(sys.argv) > 1 else "all"
+    if which != "all":
+        print("SIM OK " + " ".join(_run(which)))
+        return
+    ran, failed = [], []
+    for name in SCENARIOS:
+        try:
+            ran += _run(name)
+        except AssertionError as e:
+            failed.append(name)
+            print(f"SIM FAIL {name}: {str(e)[:400]}", flush=True)
+    print("SIM OK " + " ".join(ran))
+    if failed:
+        print("SIM FAILED " + " ".join(failed))
+        sys.exit(1)
+
+
+def _run(which):
     ran = []
     if which in ("open", "all"):
         r, d = run("open", 540.0, 1480.0, 20.0, 900.0, 700.0, -160.0)
@@ -443,7 +1009,50 @@ def main():
         assert verdicts["B"].status == "ok", verdicts["B"]
         assert M.vc.MOVE_STALL_S - 1.0 <= after <= M.vc.MOVE_STALL_S + 3.0, after
         ran.append("movepath")
-    print("SIM OK " + " ".join(ran))
+    if which in ("endgame", "all"):
+        r = run_endgame("endgame")
+        assert_endgame_ok(r)
+        ran.append("endgame")
+    if which in ("endgame-negative", "all"):
+        # The identical scenario with the other-side-moves rule AND the shooter's micro-strafe removed must starve
+        # the victim past 5500 ms -- whether or not rotation feeds the counter (Step 1 has not measured it).
+        for rot in (False, True):
+            r = run_endgame(f"endgame_negative_rot{int(rot)}", rotation_feeds=rot, micro_strafe=False, rule=False)
+            assert r["out"]["t_fight"] is not None, "the negative run never reached the fight -- it proves nothing"
+            assert r["max_idle"].get("B", 0) > ENDGAME_MAX_IDLE_MS, ("negative did not starve B", rot, r["max_idle"])
+        ran.append("endgame-negative")
+    if which in ("endgame-rule", "all"):
+        # The rule alone (micro-strafe removed): every victim alarm must be answered by the shooter moving and clear.
+        r = run_endgame("endgame_rule_only", micro_strafe=False, rule=True)
+        assert r["out"]["t_fight"] is not None
+        assert r["alarms_n"] >= 1 and r["rule_moves"] >= 1, "the rule-only run moved nobody on a rule -- it exercised nothing"
+        for a in r["alarms"]:
+            if a["cause"] == "starvation":
+                # an approach-phase alarm is cleared by the approach's own next walk (no rule move, t_move None)
+                ref = a["t_move"] if a["t_move"] is not None else a["t"]
+                assert a["t_clear"] is not None and a["t_clear"] - ref <= M.ALARM_CLEAR_S, a
+        for side in ("A", "B"):
+            assert r["max_idle"].get(side, 0) <= ENDGAME_MAX_IDLE_MS, ("rule-only idle", side, r["max_idle"])
+        ran.append("endgame-rule")
+    if which in ("engage-route", "all"):
+        # the DEFAULT engagement, launch 3c's world: a still pair does not starve (keepalive)
+        assert_route_ok(run_route_engagement("route_keepalive", keepalive=True))
+        ran.append("engage-route")
+    if which in ("engage-route-starved", "all"):
+        # ... and under the pessimistic translation-only model the StarvationWatch reaction has to keep both fed
+        assert_route_ok(run_route_engagement("route_starved", keepalive=False), want_reactions=True)
+        ran.append("engage-route-starved")
+    if which in ("engage-route-swap", "all"):
+        # --mover B: B walks its route down to A's floor and shoots; A stands
+        assert_route_ok(run_route_engagement("route_swap", mover="B", keepalive=True))
+        ran.append("engage-route-swap")
+    if which in ("engage-route-teleport", "all"):
+        r = run_route_engagement("route_teleport", keepalive=True, teleport_after_s=8.0)
+        assert r["out"]["teleport"] is not None and r["out"]["stop_reason"].startswith("teleport"), r["out"]
+        assert r["out"]["teleport"]["during"] in ("walk", "aim"), r["out"]["teleport"]
+        assert r["out"]["bursts"] == 0, "the aborted attempt went on to fire"
+        ran.append("engage-route-teleport")
+    return ran
 
 
 if __name__ == "__main__":

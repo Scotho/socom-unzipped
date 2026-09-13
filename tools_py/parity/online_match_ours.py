@@ -930,6 +930,7 @@ class Side:
     def __init__(self, tag, sh, tail, route=None):
         self.tag, self.sh, self.tail, self.route = tag, sh, tail, route
         self.turn_gain = 1.0
+        self.r1_times = []           # Sprint 5 Task 5: host times of the R1 injections (the damage verdict)
         self.best_3d = None          # the 2-D best flatters a stack; keep the honest one too
         self.spawn = None
         self.result = None
@@ -1308,6 +1309,7 @@ def engage_fight(me, other, duel, seconds, shots=True):
                     sh.pad(ENGAGE_SWEEP_HOLD_S, sticks=[key])
                     time.sleep(0.15)
                 for _ in range(2):
+                    me.r1_times.append(time.time())
                     sh.pad(ENGAGE_FIRE_S, buttons=["R1"])
                     time.sleep(0.12)
             # the yaw sweep above nets one step left; put it back before the next pitch position
@@ -2683,6 +2685,609 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
     return series, end, score
 
 
+# ---------------------------------------------------------------------------
+# Sprint 5 Task 5 (c): the engagement -- the recorded route, the endgame modes, the LADDER line
+# ---------------------------------------------------------------------------
+# Every piece below is driven by the pad and read from the tails; verdicts that already have a pure scorer
+# (starvation, contact) are decided by verdict_core, so the live harness and the offline replay agree.
+
+def endgame_preconditions(env):
+    """Why the StarvationWatch / freeze tolerance would attest to nothing under this environment ([] = launch)."""
+    problems = []
+    names = {e.split(":", 1)[1].strip() for e in env.get("PS2X_CALL_TRACE", "").split(",") if ":" in e}
+    if not names & set(vc.NET_IDLE_NAMES):
+        problems.append("PS2X_CALL_TRACE has no NetIdle slot (0x30cd80:NetIdle) -- the starvation watch would be "
+                        "NO-DATA from its first poll")
+    items = parse_peek_spec(env.get("PS2X_PEEK", ""))
+    if not (_has_item(items, "*0x437ce8:64", 64) and _has_item(items, "*0x437ce8+0x100:21", 7)):
+        problems.append("PS2X_PEEK lacks the CZNetGame block *0x437ce8:64 + *0x437ce8+0x100:21 (ng+0xde, the "
+                        "primary starvation signal)")
+    if not _has_item(items, "0x4365c0:1", 1):
+        problems.append("PS2X_PEEK lacks the round clock 0x4365c0:1 -- a frozen instance could not be told from "
+                        "a starving one")
+    return problems
+
+
+def endgame_arg_problem(a):
+    if getattr(a, "endgame", None) and getattr(a, "control_round", False):
+        return ("--endgame cooperative cannot run with --control-round: the engagement fires, the negative "
+                "control requires that nobody does")
+    return None
+
+
+# --- the LADDER line and the damage verdict ------------------------------------------------------------------
+LADDER_CONTACT_ROWS = 20         # spec §5 Goal 5(a): >= 20 consecutive rows
+
+
+def ladder_rung(controllable, contact_rows, damage):
+    if tuple(controllable) != ("yes", "yes"):
+        return 0
+    if contact_rows is None or contact_rows < LADDER_CONTACT_ROWS:
+        return 1
+    return 3 if damage == "yes" else 2
+
+
+def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
+                max_idle_ms, lagflag_rows):
+    """The brief's one-line ladder result. A field whose rows were zero reads NO-DATA (None, or 0 for a row
+    count), never 0."""
+    nd = lambda v: vc.NO_DATA if v is None else str(v)
+    rows = lambda v: vc.NO_DATA if not v else str(v)
+    return (f"LADDER rung={rung} controllable={','.join(controllable)} contact_rows={nd(contact_rows)} "
+            f"rows_read={rows(rows_read)} damage={damage} kill={kill} starvation_alarms={nd(starvation_alarms)} "
+            f"alarms_cleared={nd(alarms_cleared)} max_idle_ms={','.join(nd(v) for v in max_idle_ms)} "
+            f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}")
+
+
+def ladder_contact(tailA, tailB):
+    """verdict_core.score_contact over the two live tails (one host clock: no alignment needed)."""
+    def take(tail):
+        with tail._lock:                                # noqa: SLF001 - same module
+            calls = list(tail.calls.get(MOVE_SCALE_TRACE_NAME, []))
+            clock = [(t, st["clock"]) for t, st in tail.round_rows if not isinstance(st.get("clock"), vc.NoData)]
+        return ([(t, n) for t, n, _ in calls], [(t, f) for t, _, f in calls if f is not None], clock)
+    ca, sa, clk = take(tailA)
+    cb, sb, _ = take(tailB)
+    return vc.score_contact(tailA.actor_ingame(), tailB.actor_ingame(), ca, cb, clk, (sa, sb))
+
+
+def _row_at(rows, t, max_age=vc.CONTACT_ROW_MAX_GAP_S):
+    k = bisect.bisect_right([r[0] for r in rows], t) - 1
+    return rows[k] if k >= 0 and t - rows[k][0] <= max_age else None
+
+
+def damage_verdict(victim_hist, victim_rows, shooter_rows, r1_times):
+    """Spec §5 Goal 5(d) -> 'yes' | 'no' | 'unarmed' (no watch) | NO-DATA (armed, zero reads). victim_hist:
+    RunLogTail.watch_hist of +0x1044 [(t, raw word, actor)]. A drop is a read below the previous alive read
+    (0 < v <= 1) on the same actor; it is damage when the pair is inside the contact gate at that time, an R1
+    was injected in the preceding 3 s, and the victim's y did not drop > 20 units in the preceding 2 s.
+    Blind: an environmental damage source coinciding with a burst at a stationary target."""
+    if victim_hist is None:
+        return "unarmed"
+    if not victim_hist:
+        return vc.NO_DATA
+    prev = None
+    for t, raw, actor in victim_hist:
+        v = vc.f32(raw)
+        if (prev is not None and prev[1] == actor and 0.0 < prev[0] <= 1.0 and math.isfinite(v)
+                and v < prev[0]):
+            vr, sr = _row_at(victim_rows, t), _row_at(shooter_rows, t)
+            fired = any(t - 3.0 <= r <= t for r in r1_times)
+            ys = [r[2] for r in victim_rows if t - 2.0 <= r[0] <= t]
+            fell = vr is not None and ys and max(ys) - vr[2] > 20.0
+            contact = (vr is not None and sr is not None and math.dist(vr[1:4], sr[1:4]) <= vc.CONTACT_3D_MAX_UNITS
+                       and abs(vr[2] - sr[2]) <= vc.CONTACT_DY_MAX_UNITS)
+            if fired and contact and not fell:
+                return "yes"
+        prev = (v, actor)
+    return "no"
+
+
+# --- the default engagement: a recorded route, then close, aim with pulses, fire (--endgame route) -----------------
+# Amendment A (A3, R44), from the owner-requested broad review: in launch 3c both sides stood ~48 s still at f12 = 1.0
+# (NetIdle <= 1547 ms) and every recorded alarm fell inside a peer freeze or a stuck-mover window. So the default
+# engagement is simple: the stander (B, the joiner) stands at its spawn; the mover (A, the host) follows a recorded
+# waypoint route (tools_py/parity/routes/<map>.json, source rows cited) to the stander's floor, closes into the
+# engagement band, stops, aims with short partial-rx pulses closed-loop on the actor matrix (read 0.5 s after each)
+# and fires. Nobody oscillates; a side moves for the other only as a StarvationWatch reaction.
+ROUTES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "routes")
+ENGAGE_BAND_3D_UNITS = 45.0      # spec §5.1 (Amendment A): the engagement band -- same floor |dy| <= 10 and 3-D <= 45
+ENGAGE_BAND_STOP_UNITS = 35.0    # close_to stops inside this: the band less a margin for drift while aiming
+ENGAGE_BAND_STANDOFF_UNITS = 25.0  # ... with its walk legs sized to end this far off (the tolerance is 6 deg there)
+ENGAGE_TOO_CLOSE_UNITS = 8.0     # inside this the mover backs off a leg first
+ENDGAME_FIGHT_S = 150.0
+OSC_DEFLECTION = 64              # |lx - 0x80| of every small strafe leg (reactions, the cooperative oscillation): meant
+                                 # as "the smallest deflection that moves" -- NOT MEASURED ONLINE
+RULE_LEG_S = 1.0                 # a reaction: one 1.0 s strafe leg by the side that was NOT starved
+RULE_LEG_DEFLECTION = OSC_DEFLECTION   # traffic is what feeds the counter; a full-deflection second (~42 units) would walk
+                                       # the shooter out of the band
+ENDGAME_BURST_S = ENGAGE_FIRE_S
+ENDGAME_BURST_GAP_S = 0.12
+ROUTE_MAX_SPACING_UNITS = 100.0  # no two consecutive waypoints further apart (a longer leg is an unwalked guess)
+ROUTE_ARRIVE_UNITS = 20.0        # a waypoint is reached this close (ground)
+ROUTE_AIM_TOL_DEG = 12.0         # a leg is walked once the facing is this close to the bearing (12 deg over a 60-unit
+                                 # leg is 12 units off the line; the next leg re-aims)
+ROUTE_LEG_MIN_S, ROUTE_LEG_MAX_S = 0.3, 1.5   # one walk leg: at most ~60 units, then re-read the position
+ROUTE_SETTLE_S = 2 * PEEK_LEAD_S # rows of the leg's end arrive before progress is scored
+ROUTE_PROGRESS_UNITS = 6.0       # a leg that gained less than this toward its waypoint is blocked ...
+ROUTE_STUCK_LEGS = 3             # ... and this many in a row fail the route (--mover swaps who walks)
+ROUTE_MAX_LEGS = 120             # hard cap over a whole route or close
+
+
+def aim_tol_deg(d3):
+    """spec §5.1 (Amendment A): the aim tolerance at 3-D range d3 -- min(AIM_TOL_DEG, 0.8 * atan(3.4 / d3))."""
+    return min(AIM_TOL_DEG, 0.8 * math.degrees(math.atan2(3.4, max(d3, 1e-6))))
+
+
+def load_route_table(map_name, routes_dir=None):
+    """routes/<map>.json -> the parsed table, or None when the map has none."""
+    path = os.path.join(routes_dir or ROUTES_DIR, f"{(map_name or '').lower()}.json")
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def route_for(map_name, mover, routes_dir=None):
+    """The mover's waypoints [(x, z)] toward the other side's floor on `map_name`, or None."""
+    table = load_route_table(map_name, routes_dir)
+    if not table or mover not in table.get("routes", {}):
+        return None
+    return [(w["x"], w["z"]) for w in table["routes"][mover]["waypoints"]]
+
+
+def map_spawn(map_name, tag, routes_dir=None):
+    table = load_route_table(map_name, routes_dir)
+    if not table:
+        return None
+    s = table["spawns"][tag]
+    return s["x"], s["y"], s["z"]
+
+
+def _walk_leg(me, target_xz, clock, wait, log, on_poll=None, back=False, stand_off=0.0):
+    """Aim (pulses, ROUTE_AIM_TOL_DEG) at `target_xz`, then walk one leg toward it (or, `back`, away from a target that
+    is too close) sized to the remaining ground distance less `stand_off`. -> (distance before, distance after) | None
+    when a position or heading could not be read. Raises TeleportAbort when a row steps > TELEPORT_STEP_UNITS."""
+    a = me.tail.actor_latest()
+    if a is None:
+        return None
+    d0 = math.hypot(target_xz[0] - a[1], target_xz[1] - a[3])
+    _, err = aim_yaw(me, target_xz, me.tail, me.sh, clock=clock, wait=wait, on_poll=on_poll, read="pulse",
+                     tol=ROUTE_AIM_TOL_DEG)
+    if err is None:
+        return None
+    t0 = clock()
+    if back:
+        secs = max(ROUTE_LEG_MIN_S, min(ROUTE_LEG_MAX_S, (stand_off - d0) / WALK_BACK_UNITS_PER_S))
+        me.sh.pad(secs, sticks=[WALK_BACK_KEY])
+    else:
+        secs = max(ROUTE_LEG_MIN_S, min(ROUTE_LEG_MAX_S, (d0 - stand_off) / WALK_UNITS_PER_S_LONG))
+        me.sh.pad(secs, sticks=[WALK_FORWARD_KEY])
+    wait(ROUTE_SETTLE_S)
+    hit = teleport_step(me.tail.actor_ingame(), t0, clock())
+    if hit is not None:
+        log(f"ROUTE {me.tag} TELEPORT: an actor row stepped {hit[1]:.1f} units during a walk leg -- attempt aborted")
+        raise TeleportAbort(me.tag, "walk", hit[1], hit[0])
+    b = me.tail.actor_latest()
+    if b is None:
+        return None
+    return d0, math.hypot(target_xz[0] - b[1], target_xz[1] - b[3])
+
+
+def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None):
+    """Walk `route` (waypoints (x, z)) with aimed legs -> {"ok", "reason", "wp", "legs"}. A waypoint counts as reached
+    inside ROUTE_ARRIVE_UNITS, and the follower skips ahead whenever the next waypoint is already the nearer one (a
+    corridor, not a rail). ROUTE_STUCK_LEGS legs in a row gaining < ROUTE_PROGRESS_UNITS fail it ("stuck at wpN").
+    TeleportAbort propagates. Reads only actor rows and the actor matrix."""
+    log = log or me.sh.log
+    wp, legs, stuck = 0, 0, 0
+    log(f"ROUTE {me.tag} start: {len(route)} waypoints")
+    while wp < len(route):
+        if stop is not None and stop.is_set():
+            return {"ok": False, "reason": "stopped", "wp": wp, "legs": legs}
+        if legs >= ROUTE_MAX_LEGS:
+            return {"ok": False, "reason": f"leg cap {ROUTE_MAX_LEGS} at wp{wp}", "wp": wp, "legs": legs}
+        a = me.tail.actor_latest()
+        if a is None:
+            return {"ok": False, "reason": "stale actor rows", "wp": wp, "legs": legs}
+        here = (a[1], a[3])
+        while wp + 1 < len(route) and math.dist(here, route[wp + 1]) < math.dist(here, route[wp]):
+            wp += 1
+        if math.dist(here, route[wp]) <= ROUTE_ARRIVE_UNITS:
+            log(f"ROUTE {me.tag} wp{wp} reached at ({here[0]:.1f},{a[2]:.1f},{here[1]:.1f})")
+            wp, stuck = wp + 1, 0
+            continue
+        leg = _walk_leg(me, route[wp], clock, wait, log, on_poll=on_poll)
+        legs += 1
+        if leg is None:
+            return {"ok": False, "reason": "NO-DATA heading or position", "wp": wp, "legs": legs}
+        if leg[0] - leg[1] < ROUTE_PROGRESS_UNITS:
+            stuck += 1
+            log(f"ROUTE {me.tag} wp{wp}: leg gained {leg[0] - leg[1]:.1f} units ({stuck}/{ROUTE_STUCK_LEGS})")
+            if stuck >= ROUTE_STUCK_LEGS:
+                return {"ok": False, "reason": f"stuck at wp{wp}", "wp": wp, "legs": legs}
+        else:
+            stuck = 0
+    return {"ok": True, "reason": "arrived", "wp": wp, "legs": legs}
+
+
+def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None,
+             stop_d3=None, stand_off=None):
+    """Walk aimed legs toward the OTHER actor's live position until it is on this floor (|dy| <= ENGAGE_DY_UNITS) and
+    inside `stop_d3` (ENGAGE_BAND_STOP_UNITS), legs sized to end `stand_off` (ENGAGE_BAND_STANDOFF_UNITS) short ->
+    {"ok", "reason", "legs", "d3"}. Off the floor is a failure: the route's job was to get there. Stuck as in
+    follow_route."""
+    log = log or me.sh.log
+    stop_d3 = ENGAGE_BAND_STOP_UNITS if stop_d3 is None else stop_d3
+    stand_off = ENGAGE_BAND_STANDOFF_UNITS if stand_off is None else stand_off
+    legs, stuck = 0, 0
+    while True:
+        if stop is not None and stop.is_set():
+            return {"ok": False, "reason": "stopped", "legs": legs}
+        a, b = me.tail.actor_latest(), other.tail.actor_latest()
+        if a is None or b is None:
+            return {"ok": False, "reason": "stale actor rows", "legs": legs}
+        dy, d3 = b[2] - a[2], math.dist(a[1:4], b[1:4])
+        if abs(dy) > ENGAGE_DY_UNITS:
+            return {"ok": False, "reason": f"off the target's floor (dy {dy:+.1f})", "legs": legs, "d3": d3}
+        if d3 <= stop_d3:
+            return {"ok": True, "reason": "closed", "legs": legs, "d3": d3}
+        if legs >= ROUTE_MAX_LEGS:
+            return {"ok": False, "reason": f"leg cap {ROUTE_MAX_LEGS}", "legs": legs, "d3": d3}
+        leg = _walk_leg(me, (b[1], b[3]), clock, wait, log, on_poll=on_poll, stand_off=stand_off)
+        legs += 1
+        if leg is None:
+            return {"ok": False, "reason": "NO-DATA heading or position", "legs": legs}
+        stuck = stuck + 1 if leg[0] - leg[1] < ROUTE_PROGRESS_UNITS else 0
+        if stuck >= ROUTE_STUCK_LEGS:
+            return {"ok": False, "reason": "stuck closing", "legs": legs, "d3": d3}
+
+
+def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
+                  wait=time.sleep):
+    """The default engagement -> result dict. The stander stands (it moves only when the StarvationWatch asks it: one
+    RULE_LEG_S strafe leg); the mover follows `route` (default: routes/<map>.json for `mover`) to the stander's floor,
+    close_to()s it into the engagement band, then cycles aim_yaw(read="pulse", tol=aim_tol_deg(d3)) -> one R1 burst
+    while inside the tolerance, re-closing when the band is left and reacting to StarvationWatch requests with a
+    strafe leg. A TeleportAbort ends the attempt with `teleport` set (the RESULT line says so); a failed route ends it
+    with the hint to swap the mover."""
+    shooter = sides[mover]
+    stander = sides["B" if mover == "A" else "A"]
+    fight_s = ENDGAME_FIGHT_S if fight_s is None else fight_s
+    route = route if route is not None else route_for(map_name, mover)
+    out = {"mode": "route", "mover": shooter.tag, "stander": stander.tag, "route": None, "close": None,
+           "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "t_fight": None, "t_end": None}
+    duel.observe(shooter.tag, shooter.tail)
+    duel.observe(stander.tag, stander.tail)
+    log(f"ENDGAME BANNER mode=route mover={shooter.tag} stander={stander.tag} (stands at its spawn) "
+        f"route={'%d waypoints (%s)' % (len(route), map_name) if route else 'NONE -- closing directly'} "
+        f"band=|dy|<={ENGAGE_DY_UNITS:g},3-D<={ENGAGE_BAND_3D_UNITS:g} (stop at {ENGAGE_BAND_STOP_UNITS:g}) "
+        f"aim=pulses(read {AIM_PULSE_READ_S:g}s after each, <= {AIM_PULSE_MAX_S:g}s) tol=min({AIM_TOL_DEG:g},0.8*atan(3.4/d)) "
+        f"oscillation=OFF micro-strafe=OFF reaction=other-side-moves {RULE_LEG_S:g}s only when starved with both "
+        f"round clocks running; teleport abort > {TELEPORT_STEP_UNITS:g}u per row")
+    stop = duel.stop
+    sign = {"s": 1}
+
+    def react(side):
+        if watch is None or not watch.take_request(side.tag):
+            return False
+        sign["s"] = -sign["s"]
+        t = clock()
+        side.sh.pad(RULE_LEG_S, axes={"lx": vc.PAD_NEUTRAL + sign["s"] * RULE_LEG_DEFLECTION})
+        watch.moved(side.tag, t)
+        out["rule_moves"].append({"tag": side.tag, "t": t})
+        log(f"ENDGAME reaction: {side.tag} strafed {RULE_LEG_S:g}s for the starved other side")
+        return True
+
+    def stander_loop():
+        while not stop.is_set():
+            if not react(stander):
+                wait(STARVATION_POLL_S)
+
+    def mover_run():
+        on_poll = lambda: react(shooter)
+        if route:
+            r = follow_route(shooter, route, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
+            out["route"] = r
+            if not r["ok"]:
+                out["stop_reason"] = f"route failed: {r['reason']} -- --mover {stander.tag} swaps which side walks"
+                return
+        r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
+        out["close"] = r
+        if not r["ok"]:
+            out["stop_reason"] = f"close failed: {r['reason']}"
+            return
+        out["t_fight"] = clock()
+        log(f"ENDGAME band reached: {shooter.tag} at 3-D {r['d3']:.1f} from {stander.tag}")
+        while clock() - out["t_fight"] < fight_s and not stop.is_set():
+            if watch is not None and watch.stop_reason:
+                out["stop_reason"] = watch.stop_reason
+                return
+            if react(shooter):
+                continue
+            a, b = shooter.tail.actor_latest(), stander.tail.actor_latest()
+            if a is None or b is None:
+                out["stop_reason"] = "stale actor rows in the engagement"
+                return
+            d3, dy = math.dist(a[1:4], b[1:4]), b[2] - a[2]
+            if abs(dy) > ENGAGE_DY_UNITS or d3 > ENGAGE_BAND_3D_UNITS:
+                r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
+                if not r["ok"]:
+                    out["stop_reason"] = f"re-close failed: {r['reason']}"
+                    return
+                continue
+            if d3 < ENGAGE_TOO_CLOSE_UNITS:
+                if _walk_leg(shooter, (b[1], b[3]), clock, wait, log, on_poll=on_poll, back=True,
+                             stand_off=ENGAGE_BAND_STANDOFF_UNITS) is None:
+                    out["stop_reason"] = "aim NO-DATA"
+                    return
+                continue
+            tol = aim_tol_deg(d3)
+            _, err = aim_yaw(shooter, (b[1], b[3]), shooter.tail, shooter.sh, clock=clock, wait=wait,
+                             on_poll=on_poll, read="pulse", tol=tol)
+            if err is None:
+                out["stop_reason"] = "aim NO-DATA"
+                return
+            if abs(err) <= tol and not stop.is_set():
+                shooter.r1_times.append(clock())
+                shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
+                out["bursts"] += 1
+                wait(ENDGAME_BURST_GAP_S)
+
+    ts = threading.Thread(target=stander_loop, daemon=True)
+    ts.start()
+    try:
+        mover_run()
+    except TeleportAbort as e:
+        out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
+        out["stop_reason"] = str(e)
+    finally:
+        stop.set()
+        ts.join(timeout=RULE_LEG_S + 2.0)
+        out["t_end"] = clock()
+    if out["stop_reason"]:
+        log(f"ENDGAME STOP: {out['stop_reason']}")
+    log(f"ENDGAME done: mode=route bursts={out['bursts']} reactions={len(out['rule_moves'])} "
+        f"route={out['route'] and out['route']['reason']} close={out['close'] and out['close']['reason']}")
+    return out
+
+
+# --- --endgame cooperative (opt-in; Amendment A: flags, default off) -----------------------------------------------
+# The first Task 5 brief's two-sided engagement, kept as an opt-in mode: the victim strafe-oscillates from the start
+# (feeding the shooter's counter) and the shooter micro-strafes between bursts (feeding the victim's). It reaches the
+# victim the same way the default does (the recorded route, then close_to) and then fights at contact range.
+ENDGAME_CLOSE_UNITS = 16.0       # the shooter stands this far off: the 22-unit gate minus the victim's excursion
+ENDGAME_CLOSE_SLACK = 3.0        # ... re-closing only beyond CLOSE + SLACK
+ENDGAME_TOO_CLOSE_UNITS = 12.0   # ... and backing off inside this (at 6 units a 1-unit centre error is 10 deg)
+ENDGAME_REAPPROACH_UNITS = 80.0  # beyond this (or off the floor) close_to runs again
+ENDGAME_WALK_MIN_S, ENDGAME_WALK_MAX_S = 0.15, 1.5
+VICTIM_OSC_LEG_S = 0.4           # the brief: 0.4 s per leg, excursion <= ~8 units
+SHOOTER_STRAFE_S = 0.3           # the brief: one 0.3 s lx leg between bursts, alternating
+SHOOTER_WAIT_STAND_MAX_S = 3.5   # a wait for the matrix to settle is broken by a micro-strafe past this (under the
+                                 # 4000 ms alarm). A micro-strafe INSIDE an aim moves the shooter 13 deg of bearing at
+                                 # 15 units (3.5 units in the sim) and, offered at 1.5 s, stopped every aim converging:
+                                 # the sim's endgame fired 0 bursts. So the cycle is aim -> burst -> micro-strafe.
+ENDGAME_WALK_AIM_MAX_DEG = 45.0  # a range correction walks along the current facing only when it is this close
+OSC_CENTRE_WINDOW_S = 1.6        # two full victim oscillation cycles: aim at the centre, not the swing
+
+
+def target_centre(tail, now, window=OSC_CENTRE_WINDOW_S):
+    """Mean actor position over the last `window` s (the oscillation centre) -> (x, y, z) | None."""
+    rows = [r for r in tail.actor_ingame() if now - r[0] <= window]
+    if not rows:
+        a = tail.actor_latest()
+        return None if a is None else (a[1], a[2], a[3])
+    n = float(len(rows))
+    return (sum(r[1] for r in rows) / n, sum(r[2] for r in rows) / n, sum(r[3] for r in rows) / n)
+
+
+def toward_axes(me, other_xz, deflection=RULE_LEG_DEFLECTION):
+    """Left-stick axes that walk `me` toward `other_xz` from its newest matrix heading, the larger component at
+    `deflection`; ly forward when the heading is unknown. Right-strafe = facing - 90 deg (research/18 §3.13)."""
+    with me.tail._lock:                                 # noqa: SLF001 - same module
+        rows = list(me.tail.heading_rows[-1:])
+    if not rows:
+        return {"ly": vc.PAD_NEUTRAL - deflection}
+    _, h, x, z = rows[-1]
+    rel = math.radians(wrap_deg(math.degrees(math.atan2(other_xz[1] - z, other_xz[0] - x)) - h))
+    fwd, right = math.cos(rel), -math.sin(rel)
+    k = deflection / max(abs(fwd), abs(right), 1e-6)
+    return {"ly": max(0, min(255, vc.PAD_NEUTRAL - round(k * fwd))),
+            "lx": max(0, min(255, vc.PAD_NEUTRAL + round(k * right)))}
+
+
+def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, fight_s=None, micro_strafe=True,
+                        rule=True, clock=time.time, wait=time.sleep, mover="A"):
+    """The two-sided engagement (the first Task 5 brief): EACH side's scale is restored only by the OTHER side moving.
+
+    Victim (the stander): strafe-oscillates continuously from the start (lx +-OSC_DEFLECTION, VICTIM_OSC_LEG_S legs)
+    -- feeding the shooter's counter. Shooter (`mover`): follow_route + close_to (to ENDGAME_CLOSE_UNITS), then
+    cycles of range correction -> aim_yaw (at rest) on the victim's oscillation centre -> one R1 burst -> one
+    SHOOTER_STRAFE_S micro-strafe (alternating) -- feeding the victim's counter; inside an aim only a rule move, or a
+    micro-strafe once a wait for the matrix to settle has stood SHOOTER_WAIT_STAND_MAX_S, interrupts it. `watch`
+    (StarvationWatch): victim alarms -> the shooter suspends firing and walks a RULE_LEG_S strafe leg; shooter alarms
+    -> the victim walks a RULE_LEG_S leg toward the shooter; its stop_reason ends the engagement. `micro_strafe` /
+    `rule` exist so the simulation can show that removing both starves the victim. OPT-IN (--endgame cooperative).
+    -> result dict."""
+    shooter, victim = sides[mover], sides["B" if mover == "A" else "A"]
+    fight_s = ENDGAME_FIGHT_S if fight_s is None else fight_s
+    route = route if route is not None else route_for(map_name, mover)
+    out = {"mode": "cooperative", "shooter": shooter.tag, "victim": victim.tag, "standing": [], "rule_moves": [],
+           "micro_strafes": 0, "victim_legs": 0, "stop_reason": None, "t_fight": None, "t_end": None,
+           "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None}
+    duel.observe(shooter.tag, shooter.tail)
+    duel.observe(victim.tag, victim.tail)
+    log(f"ENDGAME BANNER mode=cooperative shooter={shooter.tag} victim={victim.tag} "
+        f"victim_osc=lx+-{OSC_DEFLECTION} {VICTIM_OSC_LEG_S:g}s legs (feeds {shooter.tag}) "
+        f"shooter_micro_strafe={'lx+-%d %gs after each burst' % (OSC_DEFLECTION, SHOOTER_STRAFE_S) if micro_strafe else 'OFF'} "
+        f"(feeds {victim.tag}) alarm_source=ng+0xde(primary),NetIdle>={vc.NETIDLE_ALARM_MS}ms(secondary) "
+        f"rule={'other-side-moves %gs' % RULE_LEG_S if rule else 'OFF'} "
+        f"route={'%d waypoints' % len(route) if route else 'NONE'}")
+    stop = duel.stop
+
+    def rule_request(tag):
+        return rule and watch is not None and watch.take_request(tag)
+
+    def victim_loop():
+        sign = 1
+        while not stop.is_set():
+            if rule_request(victim.tag):
+                centre = target_centre(shooter.tail, clock())
+                t = clock()
+                axes = toward_axes(victim, (centre[0], centre[2])) if centre else {"ly": 0}
+                victim.sh.pad(RULE_LEG_S, axes=axes)
+                watch.moved(victim.tag, t)
+                out["rule_moves"].append({"tag": victim.tag, "t": t, "axes": axes})
+                log(f"ENDGAME rule: {victim.tag} walked {RULE_LEG_S:g}s toward {shooter.tag} {axes}")
+                continue
+            sign = -sign
+            victim.sh.pad(VICTIM_OSC_LEG_S, axes={"lx": vc.PAD_NEUTRAL + sign * OSC_DEFLECTION})
+            out["victim_legs"] += 1
+
+    last_move = [clock()]
+    strafe_sign = [1]
+
+    def strafe(seconds, deflection):
+        strafe_sign[0] = -strafe_sign[0]
+        t = clock()
+        out["standing"].append(t - last_move[0])
+        shooter.sh.pad(seconds, axes={"lx": vc.PAD_NEUTRAL + strafe_sign[0] * deflection})
+        last_move[0] = clock()
+        return t
+
+    def rule_move():
+        if rule_request(shooter.tag):
+            t = strafe(RULE_LEG_S, RULE_LEG_DEFLECTION)
+            watch.moved(shooter.tag, t)
+            out["rule_moves"].append({"tag": shooter.tag, "t": t})
+            log(f"ENDGAME rule: {shooter.tag} suspended firing and strafed {RULE_LEG_S:g}s")
+            return True
+        return False
+
+    def on_poll():
+        if rule_move():
+            return True
+        if micro_strafe and clock() - last_move[0] >= SHOOTER_WAIT_STAND_MAX_S:
+            strafe(SHOOTER_STRAFE_S, OSC_DEFLECTION)
+            out["micro_strafes"] += 1
+            return True
+        return False
+
+    def aim(centre):
+        return aim_yaw(shooter, (centre[0], centre[2]), shooter.tail, shooter.sh, clock=clock, wait=wait,
+                       fidget=rule_move, on_poll=on_poll)
+
+    def walk(key_axes, seconds):
+        t = clock()
+        out["standing"].append(t - last_move[0])
+        shooter.sh.pad(seconds, axes=key_axes)
+        last_move[0] = clock()
+
+    def reach():
+        r = close_to(shooter, victim, clock=clock, wait=wait, log=log, stop=stop, on_poll=rule_move,
+                     stop_d3=ENDGAME_CLOSE_UNITS + ENDGAME_CLOSE_SLACK, stand_off=ENDGAME_CLOSE_UNITS)
+        last_move[0] = clock()
+        return r
+
+    def shooter_loop():
+        if route:
+            out["route"] = follow_route(shooter, route, clock=clock, wait=wait, log=log, stop=stop,
+                                        on_poll=rule_move)
+            last_move[0] = clock()
+            if not out["route"]["ok"]:
+                out["stop_reason"] = f"route failed: {out['route']['reason']}"
+                return
+        out["close"] = reach()
+        if not out["close"]["ok"]:
+            out["stop_reason"] = f"close failed: {out['close']['reason']}"
+            return
+        out["t_fight"] = clock()
+        out["standing"], last_move[0] = [], clock()     # standing windows are counted in the fight only
+        log(f"ENDGAME contact: shooter {shooter.tag} engages (paired d3={duel.current_d3()})")
+        while clock() - out["t_fight"] < fight_s and not stop.is_set():
+            if watch is not None and watch.stop_reason:
+                out["stop_reason"] = watch.stop_reason
+                return
+            if rule_move():
+                continue
+            now = clock()
+            me = shooter.tail.actor_latest()
+            centre = target_centre(victim.tail, now)
+            if me is None or centre is None:
+                out["stop_reason"] = "stale actor rows in the engagement"
+                return
+            d3, dy = math.dist(me[1:4], centre), centre[1] - me[2]
+            log(f"ENDGAME cycle T+{now - out['t_fight']:.1f}s d3={d3:.1f} dy={dy:+.1f} "
+                f"standing={now - last_move[0]:.1f}s gain={shooter.yaw_gain:.2f}")
+            if abs(dy) > ENGAGE_DY_UNITS or d3 > ENDGAME_REAPPROACH_UNITS:
+                out["reapproaches"] += 1
+                r = reach()
+                if not r["ok"]:
+                    out["stop_reason"] = f"re-close failed: {r['reason']}"
+                    return
+                continue
+            if d3 > ENDGAME_CLOSE_UNITS + ENDGAME_CLOSE_SLACK or d3 < ENDGAME_TOO_CLOSE_UNITS:
+                # Range correction along the CURRENT facing (a walk changes range, not bearing, when the facing
+                # points at the target) -- it is also traffic for the victim. Aim first only when the newest
+                # heading row is far off the bearing.
+                with shooter.tail._lock:                # noqa: SLF001 - same module
+                    hrow = list(shooter.tail.heading_rows[-1:])
+                off = (abs(wrap_deg(math.degrees(math.atan2(centre[2] - hrow[0][3], centre[0] - hrow[0][2]))
+                                    - hrow[0][1])) if hrow else 180.0)
+                if off > ENDGAME_WALK_AIM_MAX_DEG:
+                    if aim(centre)[1] is None:
+                        out["stop_reason"] = "aim NO-DATA"
+                        return
+                    continue
+                if d3 > ENDGAME_CLOSE_UNITS:
+                    secs = (d3 - ENDGAME_CLOSE_UNITS) / WALK_UNITS_PER_S_LONG
+                    walk({"ly": 0}, max(ENDGAME_WALK_MIN_S, min(ENDGAME_WALK_MAX_S, secs)))
+                else:
+                    secs = (ENDGAME_CLOSE_UNITS - d3) / WALK_BACK_UNITS_PER_S
+                    walk({"ly": 255}, max(ENDGAME_WALK_MIN_S, min(ENDGAME_WALK_MAX_S, secs)))
+                continue
+            _, err = aim(centre)
+            if err is None:
+                out["stop_reason"] = "aim NO-DATA"
+                return
+            if abs(err) <= AIM_TOL_DEG and not stop.is_set() and not (
+                    rule and watch is not None and watch.request_event(shooter.tag).is_set()):
+                shooter.r1_times.append(clock())
+                shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
+                out["bursts"] += 1
+                wait(ENDGAME_BURST_GAP_S)
+            if micro_strafe:
+                strafe(SHOOTER_STRAFE_S, OSC_DEFLECTION)
+                out["micro_strafes"] += 1
+        if micro_strafe or rule:
+            strafe(SHOOTER_STRAFE_S, OSC_DEFLECTION)    # leave the victim fed: no alarm opens as the fight ends
+        else:
+            out["standing"].append(clock() - last_move[0])
+
+    def shooter_guarded():
+        try:
+            shooter_loop()
+        except TeleportAbort as e:
+            out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
+            out["stop_reason"] = str(e)
+
+    tv = threading.Thread(target=victim_loop, daemon=True)
+    ts = threading.Thread(target=shooter_guarded, daemon=True)
+    tv.start()
+    ts.start()
+    ts.join()
+    stop.set()
+    tv.join(timeout=RULE_LEG_S + 5.0)
+    out["t_end"] = clock()
+    if out["stop_reason"]:
+        log(f"ENDGAME STOP: {out['stop_reason']}")
+    st = [s for s in out["standing"] if s is not None]
+    log(f"ENDGAME done: mode=cooperative bursts={out['bursts']} micro_strafes={out['micro_strafes']} "
+        f"victim_legs={out['victim_legs']} rule_moves={len(out['rule_moves'])} standing_total={sum(st):.1f}s "
+        f"max_window={max(st, default=0):.1f}s aims={len(shooter.aims)} teleports={shooter.aim_teleports}")
+    return out
+
+
 class Client:
     def __init__(self, tag, out, name, existing, seconds):
         self.tag, self.out, self.name, self.existing, self.seconds = tag, out, name, existing, seconds
@@ -2765,6 +3370,19 @@ def main():
                          "ended with total_mp_kills, aiteam_* and the health word unchanged (Task 6's "
                          "negative control)")
     ap.add_argument("--control-round-cap", type=float, default=CONTROL_ROUND_CAP_S)
+    ap.add_argument("--mover", choices=["A", "B"], default="A",
+                    help="which side walks and shoots in --endgame route/cooperative (default A, the host); the other "
+                         "stands at its spawn. Swap it when the route fails")
+    ap.add_argument("--endgame", choices=["route", "cooperative", "converge"], default=None,
+                    help="the engagement of a --converge/--until-kill run. route (DEFAULT, Amendment A): the stander "
+                         "stands at its spawn; the mover follows tools_py/parity/routes/<map>.json to its floor, closes "
+                         "into the engagement band (|dy| <= 10, 3-D <= 45), aims with short partial-rx pulses read "
+                         "0.5 s after each from the actor matrix, and fires; a side moves for the other only as a "
+                         "StarvationWatch reaction (starved, both round clocks running); an actor row step > 30 units "
+                         "in a pulse or walk leg ends the attempt with RESULT FAIL teleport. cooperative (opt-in): the "
+                         "same route and close, then the victim strafe-oscillates and the shooter micro-strafes "
+                         "between bursts. converge: Sprint 4's both-approach + sweep-fire. route and cooperative need "
+                         "NetIdle traced and *0x437ce8:64, *0x437ce8+0x100:21, 0x4365c0:1 peeked (refuse otherwise)")
     ap.add_argument("--no-route", action="store_true",
                     help="ignore the mined corridor and walk the straight line (the Task 7 policy)")
     ap.add_argument("--map", default="frostfire",
@@ -2810,6 +3428,14 @@ def main():
         if problem:
             raise SystemExit(problem)
         a.converge = True
+    if a.endgame:
+        problem = endgame_arg_problem(a)
+        if problem:
+            raise SystemExit(problem)
+        a.converge = True
+    if a.endgame is None:
+        a.endgame = "route"                     # the default engagement (owner-requested review)
+    watched_endgame = a.endgame in ("route", "cooperative") and not a.control_round
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
     # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line
     # never reached the anti-stack search. A flag that does nothing is worse than no flag.
@@ -2824,6 +3450,12 @@ def main():
         for prob in peek_spec_problems(os.environ.get("PS2X_PEEK", "")):
             print(f"PEEK SPEC: {prob}", flush=True)
         lines, code = launch_refusal_lines(os.environ, a.alive_offset, a.health_offset)
+        if watched_endgame:
+            eg = endgame_preconditions(os.environ)
+            lines += [f"ENDGAME REFUSES: {p}" for p in eg]
+            if eg:
+                lines.append("RESULT NO-DATA starvation watch (not launched)")
+                code = 2
         if lines:
             for line in lines:
                 print(line, flush=True)
@@ -3002,6 +3634,10 @@ def main():
                               health_range=(lo, hi), alive=a.alive_offset)
             watch.start()
             t_gameplay = time.time()
+            # Sprint 5 Task 5: both instances' starvation, live (the engagement's other-side-moves rule reads it)
+            starv = StarvationWatch({"A": A.tail, "B": B.tail}, A.sh.log) if watched_endgame else None
+            if starv is not None:
+                starv.start()
             kill_shots = {"done": False}
 
             stale_shots = []
@@ -3019,6 +3655,11 @@ def main():
                                 evidence_shot(c, "kill", stale_shots, A.sh.log, missing_shots)
                         duel.stop.set()
                         return
+                    if starv is not None and starv.stop_reason:
+                        A.sh.log(f"STARVATION-WATCH ends the engagement at T+{time.time() - t_gameplay:.1f}s: "
+                                 f"{starv.stop_reason}")
+                        duel.stop.set()
+                        return
                     if mpw.stalled is not None:
                         A.sh.log(f"MOVE-PATH STALL on {mpw.stalled[0]} ends the run at "
                                  f"T+{time.time() - t_gameplay:.1f}s -- nothing after this can move, "
@@ -3033,8 +3674,15 @@ def main():
 
             mon = threading.Thread(target=monitor, daemon=True)
             mon.start()
+            endgame = None
+            if a.endgame == "cooperative":
+                endgame = endgame_cooperative({"A": sideA, "B": sideB}, duel, starv, A.sh.log, map_name=a.map,
+                                              fight_s=a.fight_seconds, mover=a.mover)
+            elif a.endgame == "route":
+                endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=a.mover,
+                                        fight_s=a.fight_seconds)
             threads = []
-            for me, oth in ((sideA, sideB), (sideB, sideA)):
+            for me, oth in (() if watched_endgame else ((sideA, sideB), (sideB, sideA))):
                 # arrive == engage in this mode: two separate thresholds would let both sides
                 # stop at `arrive` without ever setting contact, and then nobody would shoot.
                 t = threading.Thread(
@@ -3054,7 +3702,9 @@ def main():
             # min(each side's latest), which printed 166.76 against launch 3c's true 52.42.
             closest_now = duel.current_d3()
             near = closest_now is not None and closest_now <= a.engage * 2.5
-            if (duel.contact.is_set() or near) and not duel.stop.is_set():
+            if watched_endgame:
+                pass
+            elif (duel.contact.is_set() or near) and not duel.stop.is_set():
                 ft = []
                 for me, oth in ((sideA, sideB), (sideB, sideA)):
                     t = threading.Thread(
@@ -3072,6 +3722,9 @@ def main():
             mon.join(timeout=5.0)
             watch.stop()
             mpw.stop()
+            if starv is not None:
+                starv.stop()
+                A.sh.log(starv.summary_line())
             for c in (A, B):
                 evidence_shot(c, "final", stale_shots, A.sh.log, missing_shots)
             for c in (A, B):
@@ -3124,6 +3777,45 @@ def main():
             # rows is a failed run, so the row counts are on the same line. PASS is reserved for a
             # signal only a KILL produces (result_verdict): `round` and `respawn` end rounds, and a
             # round ends on its clock too.
+            # the LADDER line (brief Interfaces): contact by verdict_core over the live tails, damage by spec
+            # §5 Goal 5(d) -- victim B in --endgame, either direction otherwise
+            contact = ladder_contact(A.tail, B.tail)
+            ctl = tuple({vc.CONTROLLABLE: "yes", vc.NO_DATA: vc.NO_DATA}.get(control_sides[t].status, "no")
+                        for t in ("A", "B"))
+            if health is None:
+                damage = "unarmed"
+            else:
+                if watched_endgame:
+                    shooter_c, victim_c = (A, B) if a.mover == "A" else (B, A)
+                    pairs = [("victim", victim_c, shooter_c, sideA if a.mover == "A" else sideB)]
+                else:
+                    pairs = [("B", B, A, sideA), ("A", A, B, sideB)]
+                verdicts_d = [damage_verdict(list(v.tail.watch_hist) if v.tail.watch_reads else [],
+                                             v.tail.actor_ingame(), s.tail.actor_ingame(), side.r1_times)
+                              for _, v, s, side in pairs]
+                damage = ("yes" if "yes" in verdicts_d else vc.NO_DATA if vc.NO_DATA in verdicts_d else "no")
+            max_idle = starv.max_idle_ms() if starv is not None else {
+                t: max((v for _, _, v in c.tail.rets.get("NetIdle", [])), default=None) for t, c in (("A", A), ("B", B))}
+            lag_rows = starv.lag_rows_read() if starv is not None else {
+                t: len(c.tail.lag_rows) for t, c in (("A", A), ("B", B))}
+            c_rows = None if contact.status == vc.NO_DATA else contact.contact_rows
+            ladder = ladder_line(
+                rung=ladder_rung(ctl, c_rows, damage), controllable=ctl, contact_rows=c_rows,
+                rows_read=contact.rows_read, damage=damage, kill="yes" if is_kill else "no",
+                starvation_alarms=starv.starvation_alarms() if starv is not None else None,
+                alarms_cleared=starv.alarms_cleared() if starv is not None else None,
+                max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]))
+            summary["ladder"] = ladder
+            summary["closest_dy"] = duel.best_dy()
+            summary["endgame"] = None if endgame is None else {
+                k: v for k, v in endgame.items() if k not in ("approach",)}
+            summary["starvation"] = None if starv is None else starv.alarms
+            with open(os.path.join(a.out, "converge.json"), "w") as fh:
+                json.dump(summary, fh, indent=1, default=str)
+            if endgame is not None and endgame.get("teleport") and not is_kill:
+                tp = endgame["teleport"]
+                verdict = (f"FAIL teleport side={tp['tag']} during={tp['during']} step={tp['step']:.1f}u -- an actor "
+                           f"row jumped > {TELEPORT_STEP_UNITS:g} units; the attempt was aborted")
             ev = watch.fired
             if ev is None:
                 obs = [e["kind"] for e in watch.events if not e.get("firing")]
@@ -3141,7 +3833,8 @@ def main():
                      f"health_watch={'disarmed' if health is None else 'armed'} "
                      f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
                      f"stale_shots={stale_shots} missing_shots={missing_shots}")
-            if not is_kill and (a.until_kill or verdict.startswith("FAIL health")):
+            A.sh.log(ladder)
+            if not is_kill and (a.until_kill or verdict.startswith("FAIL health") or verdict.startswith("FAIL teleport")):
                 failed = True
         if a.sweep:
             # Same-team kill probe: A rotates in place (right stick) and fires a burst at every

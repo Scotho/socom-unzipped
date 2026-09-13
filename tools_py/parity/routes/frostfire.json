@@ -1,0 +1,200 @@
+{
+ "map": "frostfire",
+ "source": {
+  "run": "launch 3c (Sprint 5 Task 1; research/21 \u00a78)",
+  "A": "logs/run_A_20260913_115809.log",
+  "B": "logs/run_B_20260913_115809.log",
+  "row_t": "seconds on that instance's own verdict_core.parse_log clock (B's clock is A's - 6.00 s, MoveScale #0)",
+  "rule": "each waypoint is a place that side's actor provably stood: progress-monotone rows >= ~35 units apart toward the other side's floor, wanders dropped, and the nearest actor row is cited"
+ },
+ "spawns": {
+  "A": {
+   "x": 795.7,
+   "y": 100.0,
+   "z": 613.6,
+   "row_t": 393.12
+  },
+  "B": {
+   "x": 535.7,
+   "y": 142.9,
+   "z": 1253.6,
+   "row_t": 387.12
+  }
+ },
+ "floors_y": [
+  100.0,
+  142.0
+ ],
+ "routes": {
+  "A": {
+   "to": "B's floor (upper, y 142): A's own climb, lower (690.4, 890.7) -> upper (687.2, 978.0), mid-ramp ~(686, 938)",
+   "waypoints": [
+    {
+     "x": 795.7,
+     "y": 100.0,
+     "z": 613.6,
+     "row_t": 393.12
+    },
+    {
+     "x": 797.9,
+     "y": 100.0,
+     "z": 704.1,
+     "row_t": 451.18
+    },
+    {
+     "x": 760.2,
+     "y": 100.0,
+     "z": 716.6,
+     "row_t": 467.26
+    },
+    {
+     "x": 713.0,
+     "y": 100.0,
+     "z": 723.2,
+     "row_t": 468.32
+    },
+    {
+     "x": 687.5,
+     "y": 100.0,
+     "z": 760.4,
+     "row_t": 473.02
+    },
+    {
+     "x": 685.3,
+     "y": 100.0,
+     "z": 803.6,
+     "row_t": 473.99
+    },
+    {
+     "x": 684.5,
+     "y": 100.0,
+     "z": 842.4,
+     "row_t": 476.0
+    },
+    {
+     "x": 680.3,
+     "y": 100.0,
+     "z": 873.6,
+     "row_t": 482.63
+    },
+    {
+     "x": 690.4,
+     "y": 100.0,
+     "z": 890.7,
+     "row_t": 538.08
+    },
+    {
+     "x": 685.6,
+     "y": 123.4,
+     "z": 937.8,
+     "row_t": 542.33
+    },
+    {
+     "x": 687.2,
+     "y": 142.0,
+     "z": 978.0,
+     "row_t": 547.11
+    }
+   ]
+  },
+  "B": {
+   "to": "A's floor (lower, y 100): B's own descent, upper (600.1, 1226.6) -> lower (707.2, 1236.3) via ~(652, 1230), then south along B's lower-floor trail",
+   "waypoints": [
+    {
+     "x": 535.7,
+     "y": 142.9,
+     "z": 1253.6,
+     "row_t": 387.12
+    },
+    {
+     "x": 552.9,
+     "y": 142.0,
+     "z": 1199.0,
+     "row_t": 463.15
+    },
+    {
+     "x": 572.6,
+     "y": 142.0,
+     "z": 1194.5,
+     "row_t": 557.17
+    },
+    {
+     "x": 592.3,
+     "y": 142.0,
+     "z": 1202.9,
+     "row_t": 557.67
+    },
+    {
+     "x": 589.0,
+     "y": 142.0,
+     "z": 1210.1,
+     "row_t": 558.67
+    },
+    {
+     "x": 580.7,
+     "y": 142.0,
+     "z": 1217.7,
+     "row_t": 566.17
+    },
+    {
+     "x": 600.1,
+     "y": 142.0,
+     "z": 1226.6,
+     "row_t": 566.67
+    },
+    {
+     "x": 624.4,
+     "y": 129.8,
+     "z": 1229.2,
+     "row_t": 570.67
+    },
+    {
+     "x": 652.0,
+     "y": 116.0,
+     "z": 1230.0,
+     "row_t": 571.17
+    },
+    {
+     "x": 679.6,
+     "y": 102.2,
+     "z": 1230.9,
+     "row_t": 571.67
+    },
+    {
+     "x": 707.2,
+     "y": 100.0,
+     "z": 1236.3,
+     "row_t": 572.17
+    },
+    {
+     "x": 716.6,
+     "y": 100.0,
+     "z": 1198.5,
+     "row_t": 576.71
+    },
+    {
+     "x": 723.5,
+     "y": 100.0,
+     "z": 1156.8,
+     "row_t": 577.73
+    },
+    {
+     "x": 736.7,
+     "y": 100.0,
+     "z": 1069.2,
+     "row_t": 581.02
+    },
+    {
+     "x": 742.7,
+     "y": 100.0,
+     "z": 1032.9,
+     "row_t": 582.02
+    }
+   ]
+  }
+ },
+ "not_walked": [
+  "the upper floor between A's ramp top and B's region (A's upper rows x 624-758 z 894-994; B's x 424-608 z 1125-1265)",
+  "the lower floor between B's trail end (742.7, 1032.9) and A's ramp foot (690.4, 890.7)"
+ ]
+}
