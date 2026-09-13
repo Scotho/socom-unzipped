@@ -324,6 +324,11 @@ class RunLogTail(threading.Thread):
         # A health watch is an OFFSET IN BYTES FROM THE ACTOR BASE, not an item/word pair: the
         # item index is not stable and an index-based guard checked the wrong block entirely.
         self.watch_offset = None
+        # How many sampler rows the watch actually READ a value from. Without this, "health never
+        # moved" and "the watch never read anything" are the same observation -- the zero-rows
+        # hazard, re-entering at exactly the point the kill readout depends on.
+        self.watch_reads = 0
+        self.watch_misses = 0
         self.watch_hist = []    # (t, value) of that word, appended only when it changes
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -386,12 +391,20 @@ class RunLogTail(threading.Thread):
                         self.actor_rows.append((t, xyz[0], xyz[1], xyz[2]))
                     if self.watch_offset is not None:
                         want = self.actor_addr + self.watch_offset
+                        hit = False
                         for _, a, raw in blocks:
                             if a <= want < a + 4 * len(raw):
                                 v = raw[(want - a) // 4]
+                                self.watch_reads += 1
+                                hit = True
                                 if not self.watch_hist or self.watch_hist[-1][1] != v:
                                     self.watch_hist.append((t, v))
                                 break
+                        if not hit:
+                            # The offset is armed but no peeked block covers it -- the PS2X_PEEK
+                            # spec is too narrow. Counted, so the run can say so instead of
+                            # reporting silence as stability.
+                            self.watch_misses += 1
             return
         if MOVE_SCALE_TRACE_NAME in line:
             m = self._SCALE.search(line)
@@ -809,7 +822,7 @@ def true_pos(tail, facing=None):
     return x, r[2], z, "camera-reconstructed"
 
 
-def level_target(tail, target_y, me_xz, tol=ENGAGE_DY_UNITS,
+def level_target(tail, target_y, me_xz, tol=None,
                  max_range=LEVEL_TARGET_MAX_RANGE, min_range=LEVEL_TARGET_MIN_RANGE):
     """The nearest place THIS player has actually stood whose height matches `target_y`.
 
@@ -823,6 +836,7 @@ def level_target(tail, target_y, me_xz, tol=ENGAGE_DY_UNITS,
     within 15 units of each other's height was 321.6 units; by the time they were 12.3 units apart
     on the ground they were 36.0 apart vertically.
     """
+    tol = ENGAGE_DY_UNITS if tol is None else tol     # read at CALL time, not at import time
     best = None
     trail = tail.actor_ingame() or tail.ingame()
     for r in trail:                              # (t, x, y, z)
@@ -889,22 +903,23 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         if duel.contact.is_set():
             sh.log(f"[app {me.tag}] STOP -- the other side reached contact after {step} steps")
             return {"ok": True, "reason": "contact-other", "steps": step, "best": best,
-                    "track": track}
+                    "best_3d": me.best_3d, "track": track}
         if duel.stop.is_set():
             sh.log(f"[app {me.tag}] STOP -- the run was ended (kill signal or timeout) after "
                    f"{step} steps")
             return {"ok": False, "reason": "run-ended", "steps": step, "best": best,
-                    "track": track}
+                    "best_3d": me.best_3d, "track": track}
         if time.time() - t_start > max_seconds:
             sh.log(f"[app {me.tag}] STOP -- wall-clock cap {max_seconds}s")
-            return {"ok": False, "reason": "time-cap", "steps": step, "best": best, "track": track}
+            return {"ok": False, "reason": "time-cap", "steps": step, "best": best,
+                    "best_3d": me.best_3d, "track": track}
         pme = true_pos(tail, facing)
         poth = true_pos(other.tail, duel.get_facing(other.tag))
         if pme is None or poth is None:
             sh.log(f"[app {me.tag}] STOP -- stale position rows "
                    f"(me={pme is not None} other={poth is not None})")
             return {"ok": False, "reason": "stale-rows", "steps": step, "best": best,
-                    "track": track}
+                    "best_3d": me.best_3d, "track": track}
         mx, my, mz, src_me = pme
         opos = (poth[0], poth[2])
         src = f"{src_me}/{poth[3]}"
@@ -980,7 +995,7 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         if d3 <= arrive and level:
             sh.log(f"[app {me.tag}] ARRIVED: {dist:.2f} <= {arrive} units after {step} steps")
             return {"ok": True, "reason": "arrived", "steps": step, "dist": dist,
-                    "best": best, "track": track}
+                    "best": best, "best_3d": me.best_3d, "track": track}
         deadband = approach_deadband(d3)
         if abs(err) > deadband:
             # The open-loop turn is the unreliable link (research/18 3.13: RMS 18 deg, and wtb2's
@@ -1052,7 +1067,8 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         if detour_left > 0 and not good:
             detour_left -= 1
     sh.log(f"[app {me.tag}] STOP -- step cap {max_steps} reached, best distance {best}")
-    return {"ok": False, "reason": "step-cap", "steps": max_steps, "best": best, "track": track}
+    return {"ok": False, "reason": "step-cap", "steps": max_steps, "best": best,
+            "best_3d": me.best_3d, "track": track}
 
 
 def engage_fight(me, other, duel, seconds, shots=True):
@@ -1083,6 +1099,32 @@ def engage_fight(me, other, duel, seconds, shots=True):
             sh.log(f"[fight {me.tag}] cycle {cycle:2d} d2={dist:8.2f} d3={d3:8.2f} dy={dy:+7.2f} "
                    f"elev={elev:+6.1f}deg face={facing:7.2f} bear={bearing:7.2f} err={err:+7.2f} "
                    f"src={src_me}/{poth[3]}")
+            # The approach refuses to converge into a stack; the ENGAGEMENT has to refuse too,
+            # or `near = closest <= engage * 2.5` walks straight back into the kill2 condition --
+            # stacked, out of range, sweeping at a floor. Same mechanism: steer to a breadcrumb on
+            # this player's own trail at the other player's height, and do not fire this cycle.
+            if abs(dy) > ENGAGE_DY_UNITS:
+                lt = level_target(tail, poth[1], (mx, mz))
+                sh.log(f"[fight {me.tag}] STACKED at contact: {dist:.1f} on the ground, {dy:+.1f} "
+                       f"vertically ({elev:+.0f} deg) -- "
+                       + (f"climbing {lt[0]:.0f} units to a breadcrumb at y={lt[2]:.1f} instead of "
+                          f"firing at a floor" if lt else
+                          "no breadcrumb of mine is at that height; holding fire this cycle"))
+                if lt:
+                    bx, bz = lt[1]
+                    e = wrap_deg(math.degrees(math.atan2(bz - mz, bx - mx)) - facing)
+                    if abs(e) > TURN_DEADBAND_DEG:
+                        turn_by(sh, tail, e / max(me.turn_gain, 0.2))
+                    m = measure_hold(sh, tail, WALK_FORWARD_KEY,
+                                     max(WALK_STEP_MIN_S,
+                                         min(WALK_STEP_MAX_S,
+                                             lt[0] * 0.8 / WALK_UNITS_PER_S_LONG)),
+                                     settle=WALK_SETTLE_S, rest=WALK_REST_S,
+                                     label=f"{me.tag}fight{cycle:02d}_level")
+                    if m["heading"] is not None and m["scale_ok"]:
+                        duel.set_facing(me.tag, m["heading"])
+                cycle += 1
+                continue
             if abs(err) > TURN_DEADBAND_DEG:
                 mt = turn_by(sh, tail, err / max(me.turn_gain, 0.2))
                 if mt["kind"] == "rotation" and mt["sweep_deg"] is not None:
@@ -1179,6 +1221,10 @@ class KillWatch(threading.Thread):
         self._stop = threading.Event()
         self._seen = {t: 0 for t in tails}
         self._away = {t: False for t in tails}
+        # Which row source each tag is being read from. The actor's own position is the truth; the
+        # camera record is a fallback, and switching between them resets the cursor rather than
+        # silently re-indexing one series against the other.
+        self._src = {t: None for t in tails}
         try:
             self._server_pos = os.path.getsize(server_log)
         except OSError:
@@ -1197,7 +1243,16 @@ class KillWatch(threading.Thread):
 
     def _check_positions(self):
         for tag, tail in self.tails.items():
-            rows = tail.ingame()
+            rows = tail.actor_ingame()
+            src = "actor"
+            if not rows:
+                rows, src = tail.ingame(), "camera"
+            if self._src[tag] != src:
+                self._src[tag] = src
+                self._seen[tag] = 0
+                self._away[tag] = False
+                if rows:
+                    self.spawns[tag] = (rows[0][1], rows[0][3])
             spawn = self.spawns.get(tag)
             i = self._seen[tag]
             for j in range(max(i, 1), len(rows)):
@@ -1218,17 +1273,19 @@ class KillWatch(threading.Thread):
             self._seen[tag] = len(rows)
 
     def _check_health(self):
-        if not self.health:
+        if self.health is None:                      # 0 is a valid actor offset
             return
         lo, hi = self.health_range
         for tag, tail in self.tails.items():
-            hist = list(tail.watch_hist)
+            with tail._lock:                         # noqa: SLF001 - same module
+                hist = list(tail.watch_hist)
             for t, raw in hist:
                 v = struct.unpack("<f", struct.pack("<I", raw))[0]
                 if lo <= v <= hi:
                     self._add("health", tag, {"raw": raw, "value": v, "at": t,
                                               "offset": self.health})
-                    tail.watch_hist = []
+                    with tail._lock:                 # noqa: SLF001 - same module
+                        tail.watch_hist = []
                     break
 
     def _check_server(self):
@@ -1359,7 +1416,11 @@ def main():
     a = ap.parse_args()
     if a.until_kill:
         a.converge = True
+    # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
+    # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line
+    # never reached the anti-stack search. A flag that does nothing is worse than no flag.
     globals()["ENGAGE_DY_UNITS"] = a.engage_dy
+    globals()["ENGAGE_3D_UNITS"] = a.engage
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
         raise SystemExit("socom2.exe is already running")
@@ -1367,6 +1428,10 @@ def main():
     B = Client("B", a.out, a.name_b, a.existing_b, a.seconds)
     failed = False
     if a.only:
+        if a.until_kill:
+            raise SystemExit("--only drives ONE instance and cannot observe a kill; --until-kill "
+                             "needs both. Drop one of the two rather than getting an exit 0 and "
+                             "no RESULT line.")
         c = A if a.only == "A" else B
         try:
             c.launch()
@@ -1472,7 +1537,7 @@ def main():
                     spawns[tag] = (rows[0][1], rows[0][3])
             health = None
             if a.health_offset is not None:
-                health = int(a.health_offset, 0)
+                health = int(a.health_offset, 0)   # 0 is a valid offset; every test is `is None`
                 for c in (A, B):
                     c.tail.watch_offset = health
                 A.sh.log(f"kill readout: health word armed at ACTOR+0x{health:x} (found through "
@@ -1550,12 +1615,26 @@ def main():
             A.sh.shot("final")
             B.sh.shot("final")
             closest = duel.best_dist()
+            # An armed watch that never read a word is a FAILED instrument, not a quiet one: it
+            # would report "health never moved" having never looked. §3.10 rule 3, applied to the
+            # one instrument the acceptance test will depend on.
+            watch_reads = {t: c.tail.watch_reads for t, c in (("A", A), ("B", B))}
+            watch_misses = {t: c.tail.watch_misses for t, c in (("A", A), ("B", B))}
+            watch_hist = {t: len(c.tail.watch_hist) for t, c in (("A", A), ("B", B))}
+            if health is not None and min(watch_reads.values()) == 0:
+                A.sh.log(f"HEALTH WATCH BLIND: armed at ACTOR+0x{health:x} and read "
+                         f"{watch_reads} values ({watch_misses} rows where no peeked block "
+                         f"covered it). 'health never moved' from an instrument that never "
+                         f"looked is not evidence -- widen PS2X_PEEK to cover that offset.")
+                failed = True
             ra, rb = A.tail.latest(max_age=1e9), B.tail.latest(max_age=1e9)
             summary = {
                 "contact": duel.contact.is_set(),
                 "closest_3d_units": closest,
                 "best_3d_per_side": {"A": sideA.best_3d, "B": sideB.best_3d},
                 "actor_rows": {"A": len(A.tail.actor_ingame()), "B": len(B.tail.actor_ingame())},
+                "health_watch": {"armed_offset": health, "reads": watch_reads,
+                                 "misses": watch_misses, "changes": watch_hist},
                 "actor_addr": {"A": A.tail.actor_addr, "B": B.tail.actor_addr},
                 "final_records": {"A": ra, "B": rb},
                 "final_dy": (rb[2] - ra[2]) if (ra and rb) else None,
@@ -1591,7 +1670,9 @@ def main():
                          f"contact={duel.contact.is_set()} "
                          f"detail={json.dumps(ev['detail'], default=float)} "
                          f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
-                         f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())}")
+                         f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
+                         f"health_watch={'disarmed' if health is None else 'armed'} "
+                         f"reads={watch_reads} misses={watch_misses} changes={watch_hist}")
             else:
                 obs = [e["kind"] for e in watch.events if not e.get("firing")]
                 if obs:
@@ -1601,7 +1682,9 @@ def main():
                          f"closest_3d={closest} contact={duel.contact.is_set()} "
                          f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                          f"actor_rows A={len(A.tail.actor_ingame())} "
-                         f"B={len(B.tail.actor_ingame())}")
+                         f"B={len(B.tail.actor_ingame())} "
+                         f"health_watch={'disarmed' if health is None else 'armed'} "
+                         f"reads={watch_reads} misses={watch_misses} changes={watch_hist}")
                 if a.until_kill:
                     failed = True
         if a.sweep:

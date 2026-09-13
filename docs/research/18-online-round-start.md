@@ -1186,10 +1186,10 @@ could not arrive, and nothing in the harness could say that a player had died. T
 route to the player's own record in guest memory, what the Horizon logs do and do not carry, the
 corridor mined out of Task 7's own position rows, and what the loop does differently because of it.
 
-### 4.1 The player actor: `*0x408c58` — and the route STATUS's 02:10 entry is read as is wrong
+### 4.1 The player actor: `*0x408c58` — and the route STATUS's 01:30 entry is read as is wrong
 
 > **RETRACTION for close-out — and the attribution matters.** The wrong route is
-> `*0x488de8+0xbc`, and it comes from **`STATUS.md`'s 2026-09-09 02:10 entry**, where it is written
+> `*0x488de8+0xbc`, and it comes from **`STATUS.md`'s 2026-09-09 01:30 entry**, where it is written
 > as a warning ("Gotcha: the camera's follow pointer (`*0x488de8+0xbc`) is null in the spawn
 > images") and has since been read as a route. **It was never in `HANDOFF.md`** — `git log -S` over
 > that file matches only the close-out's own retraction commit — and `HANDOFF`'s
@@ -1204,7 +1204,7 @@ corridor mined out of Task 7's own position rows, and what the loop does differe
 > `0x415ff0`, not `0x488de8`), verified in five of our RDRAM images, **in the PCSX2 console
 > image**, and live in an online match.
 
-`STATUS.md`'s 2026-09-09 02:10 entry names the camera's follow pointer `*0x488de8+0xbc`, and it has
+`STATUS.md`'s 2026-09-09 01:30 entry names the camera's follow pointer `*0x488de8+0xbc`, and it has
 been read since as the way to the player. **It is not, and a run was spent finding that out.** `logs/run_t8probe1.log`
 (single instance, `scripts/parity/gameplay_damage.txt`, 1162 sampler rows) peeked
 `*0x488de8+0xbc*` all the way into gameplay: the chain resolved **24 times out of 1162**, and to
@@ -1215,7 +1215,9 @@ chain shows up as missing items rather than as a silent index shift in the rows 
 The route that works was found **offline, in RDRAM images this repo already had**, at the cost of no
 runs at all. Scan an image for the actor vtable `0x6691a0`; there are 37 actors; exactly one of them
 has a mover (`actor+0xc0`) whose vtable is the **player's** `0x6694b0` rather than the AI movers'
-`0x6693f0` (STATUS 2026-09-09 02:10). Then scan for words equal to that actor's address. Three
+`0x6693f0` (STATUS's **02:10 update inside the 01:30 entry** — that part is correctly attributed;
+it is the `*0x488de8+0xbc` gotcha in the 01:30 body above it that has been misread as a route).
+Then scan for words equal to that actor's address. Three
 statics hold it outright:
 
 | static | holds |
@@ -1379,6 +1381,33 @@ the loop REPORTS tracks the simulated truth:
 | `route` — the same with the mined corridor, a spawn-bowl wall and a wall in B's half | **1526.3 → 40.9 units**, 15 steps a side, 78 s, 65.1 % |
 | `stack` — A's ground falls away as it walks while B stays at one height (the kill2 failure, as a test) | the loop refuses contact and climbs its own breadcrumb trail back to B's height |
 | `watch` — a player walked 360 units away and teleported back | `KillWatch` fires `respawn` |
+
+**One property of the honest gate that Sprint 5 should know.** With the distance now measured
+rather than reconstructed, the `converge` endgame is genuinely variable: across four runs of the
+same code it reached contact in 16 steps (99 s), reached it in 38 (230 s), and **ran out its
+40-step budget circling at 25–31 units** of a 22-unit gate. The reconstruction used to hide this by
+reporting a flattering distance and stopping. The scenario now asserts the outcome that is actually
+guaranteed — the 1526-unit map closed to within two engage radii — and that the last reported range
+tracks the truth to within one burst, rather than asserting contact.
+
+**And one false alarm the simulation manufactured about itself.** During the final review round,
+`open` — green three times running at 5 steps, reported 85.24 against truth 85.24 — suddenly timed
+out having walked **1240 units away** from its target. Nothing in the code under test had changed
+along that path. The cause was the harness: the previous suite had not been killed (`pkill` is a
+no-op in Git Bash, and its `2>/dev/null` hid that), and the simulation wrote its worlds to fixed
+names in the shared temp directory, so **two suites interleaved two simulated worlds into one
+log** and the loop steered on rows from both. The logs are now named per process. Worth recording
+because the failure was indistinguishable from a regression in the loop, and the first instinct was
+to go looking for one.
+
+**And a second one, inside the simulated world itself.** With the logs isolated, `maze` then spent a
+whole 40-step budget pinned at x≈720, z≈1300 — a position **inside** its own wall
+(`z < 1400 and x < 750`). The simulated `World` only checked the wall for the forward walk `W`; back
+(`S`) and strafe (`A`/`D`) passed straight through it. So the loop's own unstick manoeuvre — a step
+back and a sidestep — could put the player inside solid geometry, and from there every forward move
+was blocked for good. That is what made `maze` flaky across the whole task (14, 18, 23 and 29 steps
+on four runs), and it had nothing to do with the loop. Every translation is now wall-checked.
+**Neither defect was in the code under test, and both looked exactly like it was.**
 
 The `converge` number is the one that decided the match was worth launching: it is not a measurement
 of the game, it is a measurement of the loop's own arithmetic against a world where the turn
@@ -1566,18 +1595,53 @@ python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_d
        --out logs/parity/ours_task8_probe --seconds 760 --tail 120
 ```
 
-### 4.10 What the next attempt should do, in order
+### 4.10 What Sprint 5 should do, in order (rewritten 2026-09-13)
 
-1. **The engagement is the open problem, not the approach.** Two movers plus the corridor get the
-   players into the same room; the third dimension is what is left. Sweep pitch (done, untested in a
-   landed engagement as of this note), put `dy` in the contact test, and prefer a stopping point
-   where the height difference is small.
-2. **Confirm `actor+0x204` / `+0x208` across two kills** and then arm `--health-item 2
-   --health-word 2` (word 1 for `+0x204`). Until then the run reads the round end, not the kill.
-3. **The lobby is still the single biggest tax** — two usable approaches cost seven launches and
-   about ninety minutes. `host_game` / `join_game` still navigate by fixed presses.
+> The first version of this section is superseded and was wrong in two places by the time it was
+> written down: it prescribed `--health-item 2 --health-word 2`, an index path that has since been
+> **removed** because its guard could never fire, and it said "sweep pitch (done)", which has since
+> been **retired on arithmetic**. Both are corrected below. This is the section that gets read
+> first, so it is the one that must not rot.
 
----
+1. **Settle Frostfire movement before anything else.** One run showed the move path entered for
+   0.6 s and never again (§4.12). Re-launch Frostfire; if it reproduces, this is a bigger finding
+   than the kill, because §3.12's movement fix was measured on mp51 and only on mp51. The threads
+   to pull are the call count of `FUN_00553dc0` and the `0x200` idle counter of §3.12.
+2. **Confirm the health offset across two kills, then arm it** with
+   `--until-kill --health-offset 0x208` (a BYTE OFFSET FROM THE ACTOR BASE — never an item index).
+   Make sure the `PS2X_PEEK` spec covers that offset: the run now prints `reads=` and `misses=` per
+   instance on the RESULT line and **fails outright** if an armed watch read nothing, so a blind
+   instrument can no longer masquerade as a stable one. Treat `+0x204`/`+0x208` as candidates only:
+   they sit behind a `0000ff00` that reads as much like packed RGBA as like a header.
+3. **Until then, `--until-kill` cannot print `PASS`, by design.** `respawn` is a round-end detector
+   and a round ends on its clock, so it prints `ROUND-END (unattributed -- NOT a kill)` and exits
+   non-zero. That is the instrument being honest, not broken.
+4. **The engagement is still the open problem, and it is a geometry problem.** In the one run that
+   reached contact the players were never inside 45 units in 3-D, let alone 22. The gate is now 3-D
+   plus a height tolerance, and both the approach and the engagement steer to a same-height
+   breadcrumb rather than converging into a stack — but see §4.13: none of that has run live.
+5. **If elevation ever has to be solved rather than avoided, measure pitch first**, and it costs no
+   match: camera-minus-actor is itself a pitch readout (kill2: ground radius 20.65, height 19.73,
+   i.e. ~44° above the player), so one timed `I` hold and one timed `K` hold in **any**
+   single-instance run give both the sign and the deg/s.
+6. **The lobby is still the tax**: two usable approaches out of eight match launches.
+   `host_game`/`join_game` still navigate by fixed presses — `choose_map` shows the shape a fix
+   takes (verify, then act; abort with a capture otherwise).
+
+### 4.13 What has NEVER run live, and must be treated as untested
+
+Sprint 5's first run will be testing all of this at once, so it should expect the first one to be
+diagnostic rather than decisive:
+
+| mechanism | status |
+|---|---|
+| the 3-D + `\|dy\|` contact gate | simulated only — `kill2` predates it, `frost1` never moved |
+| `level_target` / anti-stack steering in the **approach** | 13 of 26 steps in the `stack` simulation, **zero live** |
+| the same steering inside the **engagement** | added after `frost1`; never run at all |
+| `engage_fight`'s keep-closing step | never run |
+| the `--health-offset` watch, in any arming | unit-tested offline (4 reads / 3 changes covered, 4 misses uncovered); never armed in a match |
+| `choose_map` on any map but Frostfire | one live map, one reference image |
+| the `stack` scenario's premise | a synthetic ramp, not a real floor; the real failure was geometry we cannot simulate faithfully |
 
 ## 4.11 What the review changed, and the map switch (2026-09-13)
 
@@ -1703,10 +1767,24 @@ code would have aborted both sides — and every burst after that also moved not
   from **05:19**, `30/30 5 MAGS` and a squad marker.
 - The actor chain resolved on both instances for the whole run.
 
-**But the movement routine was barely running.** `FUN_00553dc0` produced **36 traced lines** at
-`PS2X_CALL_TRACE_EVERY=10` — about 360 calls across the whole gameplay window, roughly **one a
-second**, against the ~20 a second the mp51 runs produced. Its first call is at t=371.4 s, well
-after the round started.
+**And the movement routine was not "slow" — it stopped.** The first draft of this section read
+`PS2X_CALL_TRACE_EVERY=10` off the environment and divided, giving "about 360 calls, roughly one a
+second". That is wrong by a factor of twenty, and the tracer's own rule says why:
+`callTraceShouldLog(n)` is `n < 300u || (n % every) == 0u` — **the first 300 calls of a slot are
+logged unconditionally**, and `EVERY` only begins to thin after that. Frostfire never got near 300,
+so every call was logged:
+
+| | `[call]` lines | `[ret]` lines | actual calls | window | rate |
+|---|---|---|---|---|---|
+| `frost1` | 18 | 18 | **18** (`#0`–`#17`) | **t = 371.4 s → 372.0 s** | — |
+| `kill2` A | 826 | — | 300 + 10·526 ≈ **5560** | t = 418.5 s → 712.1 s | **18.9 / s** |
+
+So the honest shape is not a slow map. **The local move path was entered for 0.6 seconds at round
+start and then never ticked again**, while 2634 sampler rows kept arriving and the round clock kept
+running. That reads as **control never being handed to the client** — the round starts, the actor
+exists and is sampled, and the routine that would consume the stick is simply not called — rather
+than as movement being throttled. It is the same sentence §3.8 had to retract and restate once
+already, arriving on a different map.
 
 **What this is, honestly, is one run.** It has the shape of the defect this entire note exists
 about — the round runs and the local player cannot move — reappearing on a map the movement fix was
