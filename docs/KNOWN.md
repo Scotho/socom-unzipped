@@ -112,6 +112,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The runtime is frozen at `92d30f0` for the online ladder** (R45, R61): GS back-pressure (N=3, 2 s cap, heartbeat
+  latch), VBlank debt dropped on both clocks, idle guest sleeps to the later of host/cycle deadline. Known residuals,
+  not fixed before the freeze: (1) a stale `m_eeCycle` can oversleep one frame after a blocking `sceInetRecv` with a
+  timeout (one late frame, no drift); (2) a timer IRQ candidate is compared on the host clock only and can be up to one
+  period late while the host chain lags (latent — no game log registers timer causes 9–12); (3)
+  `PS2X_CYCLE_CLOCK=guest` is not an A/B of the pre-R54 path; (4) the exact-one-VBlank scheduler test can flake under
+  CPU load. Back-pressure waits are excluded from guest time, so each instance's guest clock trails wall clock by its
+  own wait total — record `waits=` per instance on every online launch.
+
 - **Launch hygiene is now tooling, and it has two traps** (`5cfa5bf`, `38d1f80`): `run_detached.sh --purpose launch…`
   writes `logs/.quiet` (Windows pid — an MSYS pid made the guard a no-op until `38d1f80`) and a 1 s CPU sampler;
   `build.sh test` refuses while it is live (`FORCE_QUIET=1` overrides). **Pinned harness runs need
