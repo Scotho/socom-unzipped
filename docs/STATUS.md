@@ -354,7 +354,27 @@ Session hygiene: the loop cron was stopped and the run lock released at the end 
 the run recipe is logs/run_match_probe10.sh (PS2X_SOCOM2_SERVER=192.168.2.10, NET_TRACE,
 INPUT_TRACE, PEEK 0x416054:3; --existing-b --hold 60).
 
-## 2026-09-10 20:10 (local) — ONLINE MATCH IS FROZEN AT ROUND START on both instances: only camera pitch and fire respond; peer UDP runs at ~1 packet/s (a handshake that never completes), not a game-state stream. Pad-state file injection replaces posted keys.
+## 2026-09-10 20:10 (local) — ~~ONLINE MATCH IS FROZEN AT ROUND START~~ (RETRACTED, see below) on both instances: only camera pitch and fire respond; peer UDP runs at ~1 packet/s (a handshake that never completes), not a game-state stream. Pad-state file injection replaces posted keys.
+
+> **Superseded by `docs/research/18-online-round-start.md` §1 and §4, and FIXED (Sprint 4 Tasks 5-6,
+> `abf35bb` + `5ed29ca`).** The match was never frozen and no peer handshake was ever missing.
+> **The round runs and the local player cannot move** — that is the whole symptom, and it is local.
+> Two facts in this very entry said so and were read past: "the HUD timer runs regardless" (line
+> below), and RY working while RX/LX/LY did not — a *transport* failure cannot deliver pitch and
+> withhold yaw.
+>
+> Cause: `sceInetInterfaceControl(0x200)` was HLE'd to a **constant**, so the guest's
+> `msSinceNetActivity` never reset and the movement scale clamped to 0.0 on frame one; pitch is not
+> one of the three scaled axes. Same-binary A/B in one match (`5ed29ca`): fix ON `MoveScale f12 =
+> 1.0` on 330/330 calls, idle max 1490 ms, 89 distinct player x; fix OFF `f12 = 0.0` on 339/339,
+> idle 504,210 ms, **0.46 units** of travel.
+>
+> Retracted with it: **"the PCSX2 golden match is the same frozen state"** (`HANDOFF.md:42`). Two
+> PCSX2 instances against our own Horizon stack play a full round and advance to round 2
+> (research/18 §1, `docs/research/assets/18-s0-evidence.png`); that "golden" was two stills of a
+> match with **no input ever sent**. The peer-packet decode, the local-IP fix and the input-delivery
+> fix below all stand — only the conclusion drawn from them is withdrawn.
+
 Runs ours_match_sweep1..3, probe4..9 (logs/parity/ours_match_*, drive logs drive_match_*.txt,
 per-instance run logs with `[peek] @416054` = the local player's camera-orbit position, 1 row/s).
 - **Input delivery fixed (2561a29):** posted WM_KEYDOWN/UP reach raylib only when the window
@@ -800,6 +820,29 @@ attract-mode idle timer). Fix direction: make the menu movie behave like the con
 running at the title) — not a GS/arbiter change.
 
 ## 2026-09-09 01:30 (local) — ground height: the collision probe is IDENTICAL to PCSX2's; the actor rests at a different height above the same hit
+
+> **Superseded by `docs/research/17-ground-height.md` §0.1 (Sprint 4 Task 4). The framing of this
+> entry is wrong, and the entry contains its own refutation.** "The actor rests 20.11 / 14.69 above
+> the hit" is neither the actor nor a height above the ground: both numbers are **camera-eye minus
+> collision-hit**, differenced from the *camera* y values this entry prints in the very next
+> clause — 20.11 = −126.264 − (−146.371), 14.69 = −131.68 − (−146.371). The **player's feet match
+> the console to 0.008** (ours −145.875, console −145.8672; and this entry's own line 829 records
+> our −145.875 as a cached ground point). What is 5.4 low is the **third-person camera**, and
+> research/17 §4 localises that to the player actor's skeleton root node decaying 11.4845 → 0
+> while its saved copy freezes at the console's 5.50391 — an animation-blend defect, not terrain,
+> not collision, not the mover.
+>
+> The cost of the wrong name: "ground height" sent three sessions at terrain, the collision grid
+> and the mover's gravity/step logic. Nothing below this line about the probe, the structures or
+> the field offsets is retracted — only the sentence that says what the difference *is*.
+>
+> Also retracted, from line 819 below: **`*0x488de8+0xbc` is the camera's follow pointer, not a
+> route to the player actor** — this entry says so correctly ("is null in the spawn images") and it
+> was read as an actor route anyway, then carried into later work. The player actor is `*0x408c58`
+> (`@408c58` word0 = `017941d0`, `@17941d0` word0 = `006691a0`, `*(actor+0xc0)` = mover
+> `006694b0`), verified in five of our RDRAM images, the PCSX2 console image and live online
+> (`9c28fe0`, research/18 §4.1).
+
 With the new tracer (`PS2X_CALL_TRACE_DUMP="GroundQuery:a1:16,GroundQuery:a1+0x48*:16"`,
 run mission_s19) every GroundQuery (FUN_002d49c0) prints its ray and hit records. The player's
 vertical probe at (939.24, 832.6) returns ONE hit at y = -146.371, normal (0.070, 0.997, 0.021)

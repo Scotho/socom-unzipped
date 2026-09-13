@@ -26,7 +26,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | The intro-movie macroblocks were a cross-thread race on `m_currentTransfer`, not a byte-accumulator bug | `4a701f1`; deficit 3,748 → 0, MISSING 9 → 0 |
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
 | **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
-| **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. `HANDOFF.md`'s `*0x488de8+0xbc` is wrong | Task 8, `9c28fe0` |
+| **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. The `*0x488de8+0xbc` route is wrong. Full chain: `@408c58` word0 = `017941d0`; `@17941d0` word0 = `006691a0`; `*(actor+0xc0)` = mover `006694b0` | Task 8, `9c28fe0`; correct route now written into `HANDOFF.md` §"Open items" item 0 |
 | **The two-instance approach closes faster than one:** 1359 units in 127 s against Task 7's 758 in 300 s. Rifles fire — 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2` (A 1171 rows, B 1055) |
 | **They fought at ~90 units, not in contact.** Median 3-D separation over the last 400 rows was 93 (min 34.9, max 138); only 3 % of rows were inside the 45-unit engage threshold in 3-D and **0 %** inside 20. Median elevation 29-44°; the quoted 77° was the single worst row. Range and elevation are co-equal causes | Review of `9c28fe0`, re-derived from both logs and two position sources across ±116 alignment offsets |
 | **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
@@ -53,14 +53,26 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 
 - **"The PCSX2 golden match is the same frozen state"** (`HANDOFF.md:42`). False. That golden was two
   stills of a match with **no input ever sent**. Weeks of server- and protocol-directed reasoning
-  were aimed at the wrong body of code.
+  were aimed at the wrong body of code. *Retracted in the tree 2026-09-13 (Task 9a): `HANDOFF.md`
+  item 0 and `STATUS.md` 2026-09-10 20:10.*
 - **"The actor rests 14.7 above the ground vs the console's 20.1"** (`HANDOFF.md:99`, `STATUS.md:809`).
   Both numbers are camera-eye minus collision-hit. The player's feet are right to 0.008.
-- **`HANDOFF.md`'s player actor at `*0x488de8+0xbc`.** Wrong; it is `*0x408c58`, verified across
-  six images including the console's.
+  *Retracted in the tree 2026-09-13 (Task 9a): `HANDOFF.md` item 2 and `STATUS.md` 2026-09-09 01:30,
+  which prints the two camera y values it was differencing.*
+- **The player actor at `*0x488de8+0xbc`.** Wrong; it is `*0x408c58`, verified across
+  six images including the console's. Retracted in place 2026-09-13 (Task 9a): the correct chain is
+  now in `HANDOFF.md` item 0 and the misreading is marked at `STATUS.md`'s 2026-09-09 01:30 entry.
+  **Attribution correction:** this was never written in `HANDOFF.md`. `0x488de8` is the *camera*
+  singleton; `STATUS.md` 2026-09-09 01:30 said `+0xbc` is "the camera's follow pointer … null in
+  the spawn images", and later work read a warning as a route. HANDOFF's own peeks use
+  `*0x488de8+0x320`, the camera position, which is correct and stays.
 - **"Frozen at STARTING ROUND 1 OF 11, waiting for a go"** (spec §1 and several STATUS entries).
   The banner is transient on ours too and the round timer runs. The true sentence is *the round
-  runs and the local player cannot move*.
+  runs and the local player cannot move* — and that is fixed (`abf35bb`, `5ed29ca`).
+  *Retracted in the tree 2026-09-13 (Task 9a): `HANDOFF.md` item 0, `STATUS.md` 2026-09-10 20:10,
+  and the Sprint 4 spec's own §1 bullet.* The entry that recorded the symptom also recorded "the HUD
+  timer runs regardless" and that RY worked while RX/LX/LY did not — a transport failure cannot
+  deliver pitch and withhold yaw. Both refutations sat in the same paragraph as the claim.
 - **The `cVar7 == 0` axis-clearing arm is the movement gate** (`4114ad4`'s commit message). Rejected:
   the routine is a generic axis setter, its guard cannot fire because our own IOP module hardcodes
   link-up, and the arm returns before all four axes are written — so pitch would have died too.
@@ -70,7 +82,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   are textured quads at native texel density. The design doc said so before anyone measured it.
 
 > Retract **on discovery**, not at close-out. All of §3's first three were still false in the tree
-> hours after being disproved.
+> hours after being disproved — and in the end they were retracted **at close-out anyway**
+> (2026-09-13, Task 9a), which is the outcome this note exists to prevent. The elapsed time between
+> "a reviewer proved this sentence false" and "the sentence stopped being read by fresh sessions"
+> was about a day for the first three and two weeks for the freeze description. The rule is in
+> `docs/process-audit.md`: a review finding that a committed sentence is false produces a same-hour
+> edit, and close-out *verifies* retractions rather than performing them.
 
 ## 4. Standing hazards — things that will bite again
 

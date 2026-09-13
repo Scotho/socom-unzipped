@@ -26,12 +26,27 @@ superpowers:subagent-driven-development.
   and the loss is in the shadow-VRAM → GL-render-target mirror (`executeUpload` →
   `refreshRenderTargetsFromShadow` → `refreshDirtyRows`), with the divergent pictures and 16×16
   block coordinates named. No fix landed: both candidates lived in the file Sprint 3 was rewriting.
-- **The online match has been frozen at round start since 2026-09-10.** Both instances sit at
+- **~~The online match has been frozen at round start since 2026-09-10.~~ RETRACTED by this
+  sprint's own Tasks 5 and 6 — see the note under this bullet.** Both instances sit at
   "STARTING ROUND 1 OF 11"; only camera pitch, fire and stance respond. The peer transport is
   decoded and alive (22-byte reliable-channel packets, sequenced and acked both ways, no SCERT
-  framing, no crypto), so the freeze is game logic above the transport. **HANDOFF records that the
-  PCSX2 golden match sits in the same frozen state**, which this sprint treats as a lead rather
+  framing, no crypto), so the freeze is game logic above the transport. **~~HANDOFF records that the
+  PCSX2 golden match sits in the same frozen state~~**, which this sprint treats as a lead rather
   than a footnote.
+
+  > **Superseded by `docs/research/18-online-round-start.md` §1 and §4 (Tasks 5-6, fixed in
+  > `abf35bb` + `5ed29ca`).** The premise this sprint was written on is false in both halves, and
+  > it is left standing here so the next spec author sees what a two-week misdescription looks
+  > like from the inside. (1) **Nothing was frozen.** The "STARTING ROUND 1 OF 11" banner is a
+  > ~6-second transient on ours too and the round timer runs; the true sentence is **"the round
+  > runs and the local player cannot move"**. (2) **The PCSX2 golden was not a match.** Two PCSX2
+  > instances driven against our own Horizon stack play a full round and advance to round 2
+  > (`docs/research/assets/18-s0-evidence.png`); the "golden" HANDOFF cited was two stills of a
+  > match with no input ever sent. Treating it as a lead was right — treating it as evidence for
+  > two weeks was not. The cause was local and entirely inside our own HLE:
+  > `sceInetInterfaceControl(0x200)` returned a constant, `msSinceNetActivity` never reset, and the
+  > movement scale clamped to 0.0 on frame one (pitch is not one of the three scaled axes, which is
+  > the whole reason RY survived).
 
 ## 2. Sprint goals, in order
 

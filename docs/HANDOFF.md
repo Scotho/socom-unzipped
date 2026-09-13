@@ -1,11 +1,19 @@
 # Handoff — SOCOM II PC recompilation
 
 ## START HERE
-Read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays, and where
-Sprint 3 landed; then the most recent sprint spec and plan
+**Read `docs/KNOWN.md` first.** It is the live proven / believed / retracted list, and its §3 is the
+list of things this file used to state as fact. Where a claim below carries a `> Superseded by …`
+blockquote, the blockquote wins.
+
+**Sprint in flight: Sprint 4** — `docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`
+and `docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the plan's
+"Outcome" section at the foot says what actually happened and where reality diverged; the spec's
+§1 opens with a retracted premise, marked in place).
+
+Then read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays, and where
+the last sprint landed; then the previous sprint spec and plan
 (`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md` — its "Outcome"
-section at the foot says what actually happened and where reality diverged); then the run
+`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`); then the run
 recipes and history below. Sprints 1 and 2 are history -- read them for how the VU1 native path,
 the host-draw hook and the gates got here, not for what to do next:
 `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
@@ -17,7 +25,33 @@ the host-draw hook and the gates got here, not for what to do next:
 
 ### Open items, in order, each with its first step (2026-09-10 17:45)
 
-0. **THE ONLINE MATCH IS FROZEN AT ROUND START (STATUS 2026-09-10 20:10).** Both instances sit at
+> **Superseded by `docs/research/18-online-round-start.md` §1 and §4, and FIXED (Sprint 4 Tasks 5
+> and 6, `abf35bb` + `5ed29ca`).** Item 0 below is wrong in two ways and is kept only so a reader
+> who remembers it sees the correction.
+>
+> 1. **"Frozen at STARTING ROUND 1 OF 11 / waiting for a go" never described what was happening.**
+>    The banner is a ~6-second transient on ours too and the round timer runs (research/18 §1, §4,
+>    and the round-init banner poster `FUN_001fb420`). The true sentence was **"the round runs and
+>    the local player cannot move"** — a purely local defect, which is why two weeks of reasoning
+>    aimed at the peer transport found nothing wrong with it.
+> 2. **"The PCSX2 golden match is the same frozen state" is false** (the sentence is still in place
+>    below, marked). Two PCSX2 instances driven against **our own** Horizon stack play a full round
+>    and advance to "STARTING ROUND 2 OF 11" in lockstep, with all eight analog directions and fire
+>    working: `docs/research/18-online-round-start.md` §1, contact sheet
+>    `docs/research/assets/18-s0-evidence.png`. That "golden" was two stills of a match with **no
+>    input ever sent**. On the strength of it, weeks of work went at the server and the protocol
+>    when the defect was ours and guest-side. If a reference has not been driven, it is not a
+>    reference.
+>
+> **The cause, and the fix:** `sceInetInterfaceControl(0x200)` was HLE'd to a constant, so the
+> guest's `msSinceNetActivity` never reset and the movement scale clamped to 0.0 on frame one.
+> Pitch is not one of the three scaled axes, which is exactly why RY survived and RX/LX/LY did not.
+> Proven same-binary A/B in one match (`5ed29ca`): fix ON `MoveScale f12 = 1.0` on 330/330 calls,
+> 89 distinct player x; fix OFF `f12 = 0.0` on 339/339 and **0.46 units** of travel.
+>
+> The rest of item 0 — the peer-packet decode, the trace knobs, the run recipe — still holds.
+
+0. **~~THE ONLINE MATCH IS FROZEN AT ROUND START~~ (STATUS 2026-09-10 20:10; RETRACTED, see above).** Both instances sit at
    "STARTING ROUND 1 OF 11": only camera pitch (RY), fire and stance respond; RX/LX/LY do nothing.
    Peer UDP (A 3658 <-> B 3660) is one 22/32-byte packet per second each way = a handshake that
    never completes; a running match streams tens of packets/s. Evidence tools: run with
@@ -39,8 +73,11 @@ the host-draw hook and the gates got here, not for what to do next:
    layout); (3) a libnetb feature on UDP sockets (poll/available/flags) answered wrongly. Decode
    the hex with the SCERT ids (CLIENT_CONNECT_AUX_UDP 0x16, SERVER_CONNECT_ACCEPT_AUX_UDP 0x19,
    CLIENT_HELLO 0x24, SERVER_HELLO 0x25, UDP_APP 0x0c, ECHO 0x05) from RT.Common/Types.cs.
-   The PCSX2 golden match is the same frozen state (movement never verified there; tools/pcsx2_b
-   is gone). A run = `logs/run_match_probe10.sh` pattern (detached, ~12 min, `.done` marker).
+   ~~The PCSX2 golden match is the same frozen state (movement never verified there; tools/pcsx2_b
+   is gone).~~ **FALSE — retracted, see the blockquote above: PCSX2 plays the round through against
+   our server (research/18 §1). The parenthesis "movement never verified there" was the tell, and it
+   sat in the same sentence as the claim for two weeks.** A run = `logs/run_match_probe10.sh`
+   pattern (detached, ~12 min, `.done` marker).
 1. **First kill / round end (the user's acceptance test)** — after item 0. Running/next: `python -m
    tools_py.parity.online_match_ours --existing-b --same-team --hold 40 --sweep 24` with
    `PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3` on both instances (logs/run_match_sweep1.sh, output
@@ -79,6 +116,21 @@ the host-draw hook and the gates got here, not for what to do next:
    log on the server side (server/logs) or guest memory — find the per-player health/kills record
    near the player actor (vtable 0x6691a0; STATUS 01:30 lists the mover fields), (c) capture the
    round-end screens on both instances. Use PS2X_SOCOM2_INPUT_TRACE=1 to prove the inputs.
+
+   > **The player actor's static route, added Sprint 4 Task 8 (`9c28fe0`) — read this before you
+   > peek anything.** The local player's actor is **`*0x408c58`** (also reachable through
+   > `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). The full chain, verified in **five** of our
+   > RDRAM images, **the PCSX2 console image**, and live in an online match: `@408c58` word0 =
+   > `017941d0`; `@17941d0` word0 = `006691a0` (the actor vtable); `*(actor+0xc0)` = the mover,
+   > vtable `006694b0`. The actor's own world x/y/z are words **7/8/9** — use them, do not
+   > reconstruct a position from camera + facing (that mis-places a player by up to two orbit
+   > radii, ~50 units). Health/max-health candidates are `actor+0x204` / `actor+0x208`.
+   >
+   > **RETRACTED: `*0x488de8+0xbc` is not the route to the player actor.** `0x488de8` is the
+   > *camera* singleton and `+0xbc` is its follow pointer — null in the spawn images (STATUS
+   > 2026-09-09 01:30 said so and was read as an actor route anyway), and live it resolved **24
+   > times in 1162 rows**, to `0xd9d9d9d9`. `*0x488de8+0x320` (the camera's position) remains
+   > correct and is what the peek recipes below use. `docs/research/18-online-round-start.md` §4.1.
 1a. **DONE 2026-09-09 12:10 — menu-video strip before the briefing** (STATUS 12:10): the GL
    backend re-reads only the exact uploaded rectangle from the shadow VRAM (dirty rects + band
    mask). Any future "stale content reappears" report: look at refreshRenderTargetsFromShadow /
@@ -95,8 +147,22 @@ the host-draw hook and the gates got here, not for what to do next:
    (HUD crisp). Next levers: VU1 register file in host registers (VU1 ~20% of the game thread at
    ~7 ns/cycle), sceMpegDemuxPssRing on the game thread (~5% in the mission), guest malloc
    emulation (unordered_map, ~2%).
-2. **Ground height** (STATUS 01:30/02:10): the vertical collision probe is identical to PCSX2's
-   (hit y=-146.371, same normal); the actor rests 14.7 above it on ours vs 20.1 on the console.
+> **Superseded by `docs/research/17-ground-height.md` §0.1 (Sprint 4 Task 4).** "The actor rests
+> 14.7 above it on ours vs 20.1 on the console" is **not the actor and not a ground height**. Both
+> numbers are **camera-eye minus collision-hit**: 20.11 = −126.264 − (−146.371) and 14.69 =
+> −131.68 − (−146.371), and the two y values being differenced are the *camera's*, recorded in
+> STATUS:809 itself. The **player's feet are correct to 0.008** (ours −145.875 against the console's
+> −145.8672). The defect is that the third-person **camera** sits ~5.4 low, and research/17 §4
+> localises it to the player actor's skeleton root node decaying 11.4845 → 0 while its saved copy
+> freezes at the console's 5.50391. The item name "ground height" is itself the misdirection: it
+> sent readers at terrain, collision and the mover for a defect in an animation blend.
+>
+> This retraction was found in our own committed records, not in a new measurement — STATUS:809 has
+> printed both camera y values since 2026-09-09.
+
+2. **~~Ground height~~ Third-person camera height** (STATUS 01:30/02:10; the sentence below is
+   RETRACTED, see above): the vertical collision probe is identical to PCSX2's
+   (hit y=-146.371, same normal); ~~the actor rests 14.7 above it on ours vs 20.1 on the console~~.
    Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
    mover +0x5c = 4.0 vs 6.3338, +0x70..+0x7c differ, actor +0x10 state 0x00080502 vs 0x2,
    actor +0x2bc.. holds a cached ground point on ours. Next: trace the mover's update method
