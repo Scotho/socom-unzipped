@@ -895,15 +895,19 @@ bool GSGlBackend::ensureGl()
     return true;
 }
 
-void GSGlBackend::GuestFrameBoundary()
+bool GSGlBackend::GuestFrameBoundary()
 {
     // Nothing replays before ensureGl(), and the GL thread never waits on itself.
     if (!m_glReady.load(std::memory_order_acquire) || std::this_thread::get_id() == m_renderThread)
-        return;
-    if (m_backpressure.frameRecorded() != GsFrameBackpressure::WaitResult::TimedOut)
-        return;
-    // A cap hit: the GL thread made no progress for the whole cap (window drag, hang, exit). Log it
-    // at most once per 10 s; the latch means the EE does not wait again until replay progresses.
+        return false;
+    const GsFrameBackpressure::WaitResult result = m_backpressure.frameRecorded();
+    if (result == GsFrameBackpressure::WaitResult::Waited)
+        return true;
+    if (result != GsFrameBackpressure::WaitResult::TimedOut)
+        return false;
+    // A cap hit: the GL thread made no progress (no heartbeat) for the whole cap (window drag in the
+    // modal pump, hang, exit). Log it at most once per 10 s; the latch means the EE does not wait
+    // again until the GL thread shows progress.
     static uint64_t s_capHits = 0u;
     static std::chrono::steady_clock::time_point s_lastLog{};
     ++s_capHits;
@@ -915,6 +919,7 @@ void GSGlBackend::GuestFrameBoundary()
                      static_cast<long long>(GsFrameBackpressure::kDefaultWaitCap.count()), m_backpressure.maxPendingFrames(),
                      static_cast<unsigned long long>(m_backpressure.pendingFrames()), static_cast<unsigned long long>(s_capHits));
     }
+    return true;
 }
 
 void GSGlBackend::ReleaseHostBackpressure()
@@ -926,6 +931,7 @@ bool GSGlBackend::HostRenderFrame()
 {
     if (!ensureGl())
         return false;
+    m_backpressure.consumerProgress(); // R40: the host loop is alive and about to replay
     // The executed buffer is a member so its capacity (commands and upload bytes) is handed back
     // to m_pending by the swap: no vector growth on the game thread every frame (~7% of it).
     CommandBuffer &buffer = m_executing;
@@ -1055,8 +1061,17 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     };
     const bool probeOn = s_probeSkip >= 0 && static_cast<long>(m_frameCounter) > s_probeSkip && static_cast<long>(m_frameCounter) <= s_probeSkip + 3;
     static int s_probe[4] = {-2, -2, -2, -2};
+    // R40 heartbeat: a live replay of a big batch must not look like a stalled consumer to the
+    // recorder's capped back-pressure wait. One lock-free bump per 64 commands (and at entry).
+    m_backpressure.consumerProgress();
+    uint32_t heartbeatCountdown = 64u;
     for (Cmd &cmd : buffer.commands)
     {
+        if (--heartbeatCountdown == 0u)
+        {
+            heartbeatCountdown = 64u;
+            m_backpressure.consumerProgress();
+        }
         const auto t0 = std::chrono::steady_clock::now();
         if (probeOn)
         {
@@ -1206,9 +1221,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      s_time[4], (unsigned long long)s_count[4], s_time[5], (unsigned long long)s_count[5],
                      s_time[6], (unsigned long long)s_count[6], m_textures.size(), m_renderTargets.size());
         const GsFrameBackpressure::Stats bp = m_backpressure.takeStats();
-        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu pending=%llu\n",
+        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu unlatched=%llu pending=%llu\n",
                      m_backpressure.maxPendingFrames(), (unsigned long long)bp.frames, (unsigned long long)bp.waits, bp.waitMs,
-                     (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)m_backpressure.pendingFrames());
+                     (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)bp.unlatched, (unsigned long long)m_backpressure.pendingFrames());
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }

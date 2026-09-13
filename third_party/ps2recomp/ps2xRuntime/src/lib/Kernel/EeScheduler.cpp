@@ -1393,6 +1393,13 @@ void EeScheduler::setVSyncFlag(uint32_t flagAddress, uint32_t tickAddress)
     }
 }
 
+std::chrono::steady_clock::time_point EeScheduler::reanchorVBlankDeadline(std::chrono::steady_clock::time_point deadline,
+                                                                          std::chrono::steady_clock::time_point now) noexcept
+{
+    const auto floor = now - std::chrono::duration_cast<std::chrono::steady_clock::duration>(kVBlankPeriod);
+    return deadline < floor ? floor : deadline;
+}
+
 uint64_t EeScheduler::currentVSyncTick() const noexcept
 {
     return m_vsyncTick;
@@ -1969,11 +1976,40 @@ void EeScheduler::processDueDeadlines()
         {
             if (scheduled.event.type == EeEventType::VBlankStart)
             {
-                scheduleEvent(scheduled.deadlineCycle + kVBlankDurationCycles,
-                              scheduled.hostDeadline + kVBlankDuration,
+                // Ruling R35: a GPU backend bounds its not-yet-replayed command stream here, once per
+                // guest frame; this may block (capped, GsFrameBackpressure) until the GL thread catches
+                // up, so the guest sees the VBlank only once replay is within N frames. CPU backend:
+                // no-op. Ruling R41: debt on the VBlank chain is dropped after such a wait, not repaid
+                // by VBlanks firing back to back -- on BOTH clocks a VBlank is due on:
+                //  - the wait itself is excluded from the guest cycle clock (as a VU1 interpreter stall
+                //    is), so the guest does not observe it as elapsed time;
+                //  - the cycle clock is brought up to date and the cycle anchor moves up to one period
+                //    before it, and the host anchor moves up to one period before now.
+                // The two clocks must be re-anchored together. With only the host anchor moved, any
+                // cycle debt (the wait, or an earlier level-load stall) left VBlanks cycle-due but not
+                // host-due; processDueDeadlines paces through those one host period apart without
+                // returning to the guest, so the time it spends becomes new cycle debt: the guest woke
+                // once per ~36 VBlanks for good (s5_gsbp2 title/mission, s5_gsbp2b mission hangs).
+                auto anchor = scheduled.hostDeadline;
+                uint64_t cycleAnchor = scheduled.deadlineCycle;
+                const auto boundaryStart = std::chrono::steady_clock::now();
+                if (m_runtime.gs().guestFrameBoundary())
+                {
+                    const auto boundaryEnd = std::chrono::steady_clock::now();
+                    ps2GuestClockExcludedNs().fetch_add(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(boundaryEnd - boundaryStart).count(),
+                        std::memory_order_relaxed);
+                    m_accountForceClock = true;
+                    accountCycles(1u);
+                    if (m_eeCycle > kVBlankPeriodCycles && cycleAnchor < m_eeCycle - kVBlankPeriodCycles)
+                        cycleAnchor = m_eeCycle - kVBlankPeriodCycles;
+                    anchor = reanchorVBlankDeadline(anchor, boundaryEnd);
+                }
+                scheduleEvent(cycleAnchor + kVBlankDurationCycles,
+                              anchor + kVBlankDuration,
                               EeEvent{EeEventType::VBlankEnd, 0, m_vsyncTick + 1u});
-                scheduleEvent(scheduled.deadlineCycle + kVBlankPeriodCycles,
-                              scheduled.hostDeadline + kVBlankPeriod,
+                scheduleEvent(cycleAnchor + kVBlankPeriodCycles,
+                              anchor + kVBlankPeriod,
                               EeEvent{EeEventType::VBlankStart, 0, 0});
             }
             processEvent(scheduled.event);
@@ -1989,10 +2025,6 @@ void EeScheduler::processEvent(const EeEvent &event)
         requestStop();
         break;
     case EeEventType::VBlankStart:
-        // Ruling R35: a GPU backend bounds its not-yet-replayed command stream here, once per guest
-        // frame; this may block (capped, GsFrameBackpressure) until the GL thread catches up, so
-        // the guest sees the VBlank only once replay is within N frames. CPU backend: no-op.
-        m_runtime.gs().guestFrameBoundary();
         ++m_vsyncTick;
         m_runtime.memory().gs().vsyncTick.store(m_vsyncTick, std::memory_order_release);
         if ((m_vsyncTick & 1u) != 0u)

@@ -53,7 +53,7 @@ public:
     bool HostDriven() const override { return true; }
     bool HostRenderFrame() override;
     // EE executor: bound the frames recorded but not yet replayed (PS2X_GS_MAX_PENDING_FRAMES).
-    void GuestFrameBoundary() override;
+    bool GuestFrameBoundary() override;
     void ReleaseHostBackpressure() override;
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
     uint32_t HostFrameTexture2() override { return m_presentTexture2; }

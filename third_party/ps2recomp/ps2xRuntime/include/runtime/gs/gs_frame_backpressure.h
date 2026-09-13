@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
@@ -13,9 +14,12 @@
 // drains a larger backlog (stall-report.md).
 //
 // Policy: after recording frame k, the recorder waits while more than maxPendingFrames frames are
-// recorded but not yet replayed. The wait is capped: a timeout latches "consumer stalled" and no
-// further frame waits until the consumer reports progress, so a stuck or exited GL thread costs
-// one cap, not one cap per frame. release() ends all waiting for good (shutdown).
+// recorded but not yet replayed. The cap bounds how long the consumer may make NO progress
+// (ruling R40): the consumer bumps a heartbeat (consumerProgress) while it executes, so a live GL
+// thread replaying a big batch keeps the recorder waiting past the cap. Only a consumer silent for
+// the whole cap (window drag in the modal pump, hang, exit) latches "consumer stalled": frames then
+// do not wait, and the latch clears on the next heartbeat or completed replay. So a stuck GL
+// thread costs one cap, not one cap per frame. release() ends all waiting for good (shutdown).
 // maxPendingFrames == 0 is unbounded (the pre-R35 behaviour); PS2X_GS_MAX_PENDING_FRAMES sets it.
 class GsFrameBackpressure
 {
@@ -27,7 +31,7 @@ public:
     {
         NotNeeded, // at or under the bound (or unbounded / released): returned at once
         Waited,    // over the bound; the consumer caught up (or release()) within the cap
-        TimedOut,  // over the bound; the cap expired (latches the stalled state)
+        TimedOut,  // over the bound; no consumer progress for a whole cap (latches the stalled state)
         Skipped,   // over the bound, but the consumer is latched stalled: no wait
     };
 
@@ -35,7 +39,8 @@ public:
     {
         uint64_t frames = 0;   // frameRecorded calls
         uint64_t waits = 0;    // Waited results
-        uint64_t timeouts = 0; // TimedOut results
+        uint64_t timeouts = 0; // TimedOut results (= latches taken)
+        uint64_t unlatched = 0; // latches cleared (heartbeat or replay after a latch)
         uint64_t skipped = 0;  // Skipped results
         double waitMs = 0.0;   // time spent inside Waited and TimedOut waits
     };
@@ -55,6 +60,9 @@ public:
     // Consumer: the number of frames recorded so far. Read it while holding the lock that takes
     // the pending command buffer, so it counts exactly the frames that buffer holds.
     uint64_t recordedFrames() const;
+    // Consumer: a heartbeat while it executes (lock-free; call per command chunk). Extends a
+    // producer's wait past the cap and clears a stalled latch.
+    void consumerProgress() { m_progress.fetch_add(1u, std::memory_order_relaxed); }
     // Consumer: every frame up to `recordedCount` (a recordedFrames() value) has been replayed.
     void framesReplayed(uint64_t recordedCount);
 
@@ -62,6 +70,7 @@ public:
     void release();
 
     uint64_t pendingFrames() const;
+    uint32_t waiters() const; // producers currently inside the wait (tests)
     Stats takeStats(); // returns and clears the counters
 
 private:
@@ -72,6 +81,9 @@ private:
     uint64_t m_recorded = 0;
     uint64_t m_replayed = 0;
     bool m_consumerStalled = false;
+    uint64_t m_progressAtLatch = 0;
+    uint32_t m_waiters = 0;
+    std::atomic<uint64_t> m_progress{0};
     bool m_released = false;
     Stats m_stats{};
 };

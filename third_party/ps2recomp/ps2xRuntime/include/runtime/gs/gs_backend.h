@@ -37,9 +37,10 @@ public:
     virtual bool HostDriven() const { return false; }
     // Recorder-side hooks (GPU backends). GuestFrameBoundary runs on the thread that records the
     // command stream (the EE executor), once per guest VBlankStart; a backend may block there,
-    // capped, until its replay is within a bound (GsFrameBackpressure, ruling R35).
+    // capped, until its replay is within a bound (GsFrameBackpressure, ruling R35). Returns true when
+    // it actually waited (the scheduler then re-anchors the VBlank deadline, ruling R41).
     // ReleaseHostBackpressure (any thread, at shutdown) wakes that wait and disables it.
-    virtual void GuestFrameBoundary() {}
+    virtual bool GuestFrameBoundary() { return false; }
     virtual void ReleaseHostBackpressure() {}
     virtual bool HostRenderFrame() { return false; }
     // width/height = the presented rectangle (rows/cols actually displayed); textureWidth/Height =

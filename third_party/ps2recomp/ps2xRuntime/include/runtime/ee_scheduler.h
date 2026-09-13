@@ -331,6 +331,11 @@ public:
     void dispatchIrq(bool dmac, uint32_t cause);
     void setVSyncFlag(uint32_t flagAddress, uint32_t tickAddress);
     [[nodiscard]] uint64_t currentVSyncTick() const noexcept;
+    // Ruling R41: after a GS back-pressure wait at a VBlankStart, the host-deadline anchor of the next
+    // VBlank is moved up to no earlier than one period before `now`. The time spent waiting is dropped
+    // instead of being repaid by VBlanks firing back to back, so guest pacing stays real time.
+    [[nodiscard]] static std::chrono::steady_clock::time_point reanchorVBlankDeadline(std::chrono::steady_clock::time_point deadline,
+                                                                                      std::chrono::steady_clock::time_point now) noexcept;
     uint32_t setGsVSyncCallback(uint32_t callback, uint32_t gp, uint32_t sp);
 
     [[noreturn]] void waitVSync(uint64_t afterTick, int fixedResult = -1, std::function<void(R5900Context &)> completion = {});

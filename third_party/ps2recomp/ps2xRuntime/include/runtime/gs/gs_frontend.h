@@ -155,7 +155,8 @@ public:
     // EE executor, once per guest VBlankStart: may block (capped) while the GL thread catches up.
     // No m_backendLifetimeMutex, for the reason hostRenderFrame takes none: the GL thread takes it
     // in latchHostPresentationFrame, so holding it across this wait would stall both threads.
-    void guestFrameBoundary() { if (m_backend) m_backend->GuestFrameBoundary(); }
+    // Returns true when the backend actually waited.
+    bool guestFrameBoundary() { return m_backend && m_backend->GuestFrameBoundary(); }
     void releaseHostBackpressure() { if (m_backend) m_backend->ReleaseHostBackpressure(); }
     uint32_t hostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight);
     uint32_t hostFrameTexture2() { return m_backend ? m_backend->HostFrameTexture2() : 0u; }
