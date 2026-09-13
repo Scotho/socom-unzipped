@@ -288,6 +288,17 @@ fresh session is told to read first, and the sprint may not reach close-out — 
 **The evidence.** Three retractions were queued across the day and **all three are still wrong in
 the tree right now**:
 
+> **Closed 2026-09-13 (Sprint 4 Task 9a) — at close-out, which is exactly what this section argues
+> against.** All three are now retracted in place, plus a fourth (the player actor's address), plus
+> the two derived restatements this section did not list: the Sprint 4 spec's own **Task 4** bullet
+> (which restated the ground-height frame as fact and sent its own task at the wrong subsystem) and
+> `ROADMAP.md` §3's "HANDOFF:99 and STATUS:809 still describe this wrongly". `HANDOFF.md`'s
+> "START HERE" now names the sprint in flight and sends the reader to `docs/KNOWN.md` first, and
+> `docs/LOOP_PROMPT.md` carries rule 1 as a step: a false committed sentence is corrected in the
+> same hour, where it is written. **The elapsed time from "a reviewer proved this false" to "fresh
+> sessions stopped reading it" was about a day for the first three and two weeks for the freeze
+> description** — the cost this section priced, paid in full.
+
 - `docs/HANDOFF.md:42` "The PCSX2 golden match is the same frozen state" — false; two PCSX2
   instances play a full round and advance to round 2. This sentence sent weeks of work at the
   server.

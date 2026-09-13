@@ -216,8 +216,10 @@ node decaying from bind pose through the console's value to 0 along a clean `sav
 while the saved copy holds 5.50391. Two candidates remain (the VU0 macro-mode lerp `FUN_001c0768`
 dropping a term, or a correct blend followed by a second writer) and research/17 §4.3 gives the one
 run that separates them. It hits all four SEALs and all twenty override handles, so the AI aim
-point and the stance test are wrong too. **Believed, not proven:** which candidate. HANDOFF:99 and
-STATUS:809 still describe this wrongly.
+point and the stance test are wrong too. **Believed, not proven:** which candidate. ~~HANDOFF:99 and
+STATUS:809 still describe this wrongly.~~ **Retracted in the tree 2026-09-13 (Task 9a):** both now
+carry a `> Superseded by …` blockquote in place, as does the Sprint 4 spec's own Task 4 bullet,
+which had restated the wrong frame as fact.
 
 **8. Two libc stubs were wrong, one of them everywhere.** `rand()` returned 15 bits where the guest
 scales by 2⁻³¹ at 249 sites, so **every random draw in the game was pinned within 1/65536 of its

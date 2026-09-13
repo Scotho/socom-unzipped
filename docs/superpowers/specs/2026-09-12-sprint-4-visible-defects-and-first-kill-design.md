@@ -66,8 +66,19 @@ superpowers:subagent-driven-development.
    counts as rounding only when the destination was written *and* ABE=1; interior seams qualify via
    a 3×3 membership test with tolerance ≥ 2 — then add the held-out `vu1dump4_prog_182` (1.488 %)
    to the fixture set. This changes the equivalence oracle and is reviewed as such.
-4. **Ground height.** The player rests 14.7 above the vertical collision point on ours against 20.1
-   on the console, with an identical collision probe (hit y = -146.371, same normal). The captured
+4. **~~Ground height.~~ RETRACTED — it is the third-person camera, and there is no ground-height
+   defect.** `docs/research/17-ground-height.md` §0.1 (this sprint's own Task 4): the two numbers
+   below are **camera-eye minus collision-hit**, reconstructible from `STATUS.md`'s own recorded
+   camera y values (20.11 = −126.264 − (−146.371)), and the **player's feet match the console to
+   0.008** (−145.875 vs −145.8672). What is ~5.4 low is the camera, localised to the player actor's
+   skeleton root node decaying 11.4845 → 0 while its saved copy freezes at the console's 5.50391 —
+   an animation blend, not terrain, not collision, not the mover. The disputed `+0x5c` = 4.0 vs
+   6.3338 below is not a capsule radius either; it was the 15-bit `rand()` stub (§6), whose ceiling
+   made 6.3338 unreachable by construction. **A spec that quotes a prior belief should quote it as a
+   belief**; this bullet stated one as fact and sent its own task at the wrong subsystem.
+
+   ~~The player rests 14.7 above the vertical collision point on ours against 20.1
+   on the console~~, with an identical collision probe (hit y = -146.371, same normal). The captured
    diff: mover (vtable `0x6694b0`) `+0x5c` = 4.0 vs 6.3338 and `+0x70..+0x7c` differ; actor (vtable
    `0x6691a0`) `+0x10` state `0x00080502` vs `0x2`; actor `+0x2bc..` holds a cached ground point on
    ours. First step is to trace the mover's update method and find the writer of `mover+0x90.y`.
