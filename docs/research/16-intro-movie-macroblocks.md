@@ -333,6 +333,38 @@ demoted and never printed at all. The last three rows are the arrangement test: 
 neighbour rule those same fixtures scored 16.5% scattered against 1.5% contiguous, and 47.3%
 against 1.5% — a contiguous patch, which is the shape the real defect takes, hid by being a patch.
 
+#### 9.1.1 What this check still cannot see — read before trusting an exit 0
+
+Three limits, stated as limits rather than as paraphrases, because every earlier draft of this
+check passed hardest exactly where it was weakest.
+
+1. **The absorption bar is real and it is the check's one remaining silent failure.** A block
+   becomes furniture at `max(--furniture-min, ceil(--furniture-frac × presents of that screen))` —
+   at the defaults, **3 presents or 35% of that screen's presents, whichever is larger**.
+   Corruption that recurs at the same coordinates that many times *is absorbed and the run exits 0*.
+   Measured on the healed 23-present fixture (20 demoted, bar 7): the same 100-block patch dropped
+   in k presents gives 98 / 196 / 294 / 490 findings and exit 1 at k = 1/2/3/5, and **0 findings,
+   exit 0** at k = 10. `--furniture-frac` was raised 0.10 → 0.35 (as high inside the measured gap as
+   the evidence allows: transient coordinates top out at 2 of 59 = 0.034, persistent ones start at
+   25 of 59 = 0.42), which triples the repeats needed — it does not remove the hole.
+2. **A screen with fewer than `--furniture-min` (3) presents gets no furniture map at all**, so
+   *every* differing block on it is reported. This is the conservative direction — loud, never
+   quiet — but it is why a mixed capture reports hundreds of findings where a single-screen capture
+   reports a handful, and why the fade `display_163s_fbp08c` (a screen of one) reports all 267 of
+   its differing blocks. Do not read that count as 267 dropped macroblocks.
+3. **`--write-furniture` / `--furniture-baseline` is the only trace left once corruption *is*
+   absorbed — and it is opt-in and wired into nothing.** It turns the k=10 case above back into
+   exit 1 (the learned map grows 484 → 582), because a furniture map that grows run over run is the
+   signature of corruption being learned as furniture. But nothing calls it: `movie_blocks.py` is
+   not in `build.sh`, not in `tools_py/parity/gate.py`, and not in any committed script — the only
+   references in the tree are its own docstring and `logs/run_mb_s4.sh`. **There is no saved
+   baseline map in the repo and no job that would compare against one.** Whoever next touches the
+   movie path has to run the check by hand, and to get limit 1 closed has to save a baseline first.
+   (`movie_blocks.py` also has no tests — `docs/KNOWN.md` §4 and `docs/process-audit.md`.)
+
+Carried out of `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/task-1-report.md`
+(gitignored) at Sprint 4 close-out; this section is the durable copy.
+
 ### 9.2 The count
 
 A temporary `PS2X_GS_COUNT_MB` counter (removed before the commit) over a full `title_menu.txt`

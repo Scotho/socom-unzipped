@@ -357,6 +357,48 @@ so they run as recompiled EE integer code; the defect is therefore in our 64-bit
 recompilation, not in a stub. It feeds the movement throttle curve (`throt_exp`) and anything else
 that touches a double.
 
+### 5.1 Settled by Sprint 4 Task 4c — a *latent* ABI defect, not the 22-site hazard it was billed as
+
+> **Correction to this note's own "worth its own ticket" framing, and to the severity it was given
+> when it was carried forward.** Task 4c (`db7a992`) found the mechanism and then had to argue its
+> own rating down. The defect was a binding ABI mismatch: five soft-double routines were bound so
+> that the stub returned a **stale register** rather than computing anything. It was rated "more
+> severe than `rand`, 22 sites consuming an uninitialised register". **That rating was overstated.**
+
+- **19 of the 22 call sites had `$a0 == $v0` at entry**, so the mis-bound stub silently behaved as
+  the **identity** — which is the correct answer for `fabs` on a non-negative input, and merely a
+  sign flip on a negative one. Settled by disassembly of every site, not by sampling: `daddu
+  a0,v0,zero` in the delay slot at 17 sites, and `daddu s2,v0,zero` / `daddu a0,v0,zero`
+  immediately before it at 2 more. (Reading only the delay slot gives 17/5; reading one instruction
+  further gives **19 identity / 3 garbage**. The delay slot is a sufficient test for identity, not
+  a necessary one — `0x00308064`'s delay slot is `daddu a0,s2,zero`.)
+- **The 3 genuine-garbage sites are unreachable.** They sit inside `__kernel_tan`
+  (`0x001B1A78`) and `__kernel_rem_pio2` (`0x001B0C50`), whose only callers are inside `tan` /
+  `__ieee754_rem_pio2` — both stubbed, so those bodies never execute.
+
+**The live divergences are exactly three, and they are worth knowing individually:**
+
+| site | what it computes | what the mis-binding did |
+|---|---|---|
+| `FUN_00308020` @ `0x00308064` | matrix → Euler angles; the gimbal-lock guard `\|sin pitch\| < 1.0` | tested `sinPitch < 1.0` instead. For `sinPitch <= -1` — the straight-down pole — the guard does not fire and the `else` branch calls `asinf` outside `[-1, 1]`. A **control-flow** divergence reached by exactly the values the guard exists to catch |
+| `FUN_00294070` | projection-matrix setup, `matrix[0] = (m470 * m290) / (m4b0 + fabs(m480))` (4 `fabs` calls at `0x00294284`/`0x002942D8`/`0x00294528`/`0x002945E8`) | denominator becomes `m4b0 + m480`, so any negative `m480` gives a different projection matrix |
+| `FUN_003C7280` @ `0x003C72C4` | the single `tan` call site | returned its own argument instead of the tangent |
+
+**The trap this leaves primed.** Those libm bodies are unreachable *because* `sin`/`cos`/`tan` are
+stubbed. The obvious follow-up — unbind the transcendentals so the guest's own libm runs — makes
+`__ieee754_rem_pio2`, `__kernel_tan` and `__kernel_rem_pio2` live, and with them the three
+genuine-garbage sites and an argument reduction that an identity `floor` collapses to exactly zero
+(`z -= floor(z*0.125)*8`). Fixing the binding removed that trap before anyone sprang it; do not
+re-introduce it by unbinding the transcendentals without re-checking these sites. Eight further
+`$f12`/`$f0` maths stubs (`sqrt`, `ceil`, …) carry the identical latent defect and none is live
+today — all eight checked.
+
+**The generalisation is in `docs/KNOWN.md` §4 and is the more useful output than any of the above:**
+this is the third instance in one sprint of *our HLE returning a constant or wrong-shaped value
+where the guest expects a live one*, and like the other two it was invisible to the parity gate.
+Full working: `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/task-4c-report.md`
+(gitignored — this section is the durable copy).
+
 ---
 
 ## 6. `CSealCtrl+0x5c` = 4.0 vs 6.3338 — a `rand()` range bug, not a height
@@ -403,6 +445,35 @@ stubbed — was already writing. `+0x5c` re-measured at 400 s on the same probe:
 (`0x40b10150`, implied `rand()` = 1 096 226 133) against the old build's 4.000021 and its 4.0000458
 ceiling; the field's range is now the full 4.0 .. 7.0 that the console's 6.3338 needs. Gate
 `s4_rand` PASS 3/3. See `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/task-4b-report.md`.
+
+### 6.1 The mechanism, and the reproducibility caveat that is easy to get wrong
+
+Carried out of Task 4b's report (gitignored) because both halves will be needed again.
+
+**The mechanism.** The stub no longer draws from the host CRT at all — it runs newlib's own LCG
+over **the guest's** `_rand_next`, in guest memory:
+
+```c
+_rand_next = _rand_next * 6364136223846793005 + 1;      // 0x5851F42D4C957F2D
+return (int)((_rand_next >> 32) & 0x7fffffff);
+```
+
+`_rand_next` lives in newlib's `struct _reent` at **`+0xA8`**, reached through **`_impure_ptr` =
+`0x001CC750`** (so the word itself is at `0x001CC508` in this build). `applySocom2` registers that
+pair; `LibC.cpp` does the arithmetic. This matters because **`srand` was never in the stub list** —
+it runs recompiled and has always written `_rand_next` in guest memory, so before the fix the game
+was seeding a generator nothing read. Measured: `_rand_next = 0x29` (41) in four of our RDRAM
+images, live in all three PCSX2 images. 41 is the host CRT's first unseeded draw, arriving through
+the game's own `srand(rand())` at boot — the game seeded correctly from `sceCdReadClock`, then
+immediately overwrote that seed with a constant.
+
+**The caveat: a fixed clock pins the *seed*, not the *stream*.** The boot seed comes from
+`sceCdReadClock`, whose stub (`Kernel/Stubs/CD.cpp`) returns the host wall clock in BCD, so it
+changes every run. The tempting fix for bit-exact console comparison — env-gate a fixed date — gives
+a **reproducible seed and still not a reproducible sequence**: what any given call returns also
+depends on *how many draws have been consumed by that point*, and that count moves with boot drift,
+frame timing and any code path that draws conditionally. Pinning the clock is necessary for
+reproducibility and nowhere near sufficient; do not quote it as "rand is now deterministic".
 
 ---
 

@@ -7,6 +7,73 @@
 - Native VU1: dispatcher (entry 0x1b50) runs **162/166** lists native across dump2/3/4 (entered/ended/handbacks: dump2 31/31/0, dump3 52/48/4, dump4 83/83/0), bit-exact against exact-interpreter goldens (`--regs all`) — families A, B and C complete (including `0x34`'s sphere-map/EFU handler) plus the fourth family's `0x70` and `0x40`. **Residual: 4 programs**, all the `52 66 08 40 42` shape and all in dump3 — `0x52` emits no GIF packets, ends the program (E bit at `0x33b8`, end pc `0x33c8`) and its correctness spans two `MSCAL`s, and `0x66` is never dispatched from `0x1b50` in the whole corpus so a handler for it could not be verified (docs/research/15). That residual is deliberate and documented, not unfinished. `PS2X_VU1_NATIVE=0` reverts the dispatcher; per-handler loop-count clamps hand back cleanly and are covered by synthetic tests.
 - Gates: last full runs PASS 3/3 at the default knobs (`s3c_1x_final`, on the `219ab9c` binary — the later `466918b` changes only `PS2X_GS_SCALE_SELFTEST` code and a trace format string) and at `PS2X_GS_SCALE=2 PS2X_VU1_HOST_DRAW=1` (`s3d_2x_host`, on the final binary); at 2x with host-draw off the GIF path is green on all three legs but **across two stamps** (`s3d_2x_gif` title + mission, `s3d_2x_gif_t2` transition after a save-dialog probe flake) — it has not passed 3/3 in one run. Two known transition-gate intermittencies and a 1x-vs-2x harness caveat are in the Sprint 3 entry below. Known open (goal-3, not gates): intro-movie black macroblocks, now localised — the MPEG decode is clean and the loss is in the shadow-VRAM -> GL mirror (docs/research/16), no fix; `--vram-diff`'s `hard` bucket misclassifies two by-design differences on alpha-blended draws, so `vu1dump4_prog_182` (1.488%) is held out until the buckets are widened (Sprint 4); mid-list hand-backs are bit-exact only because no FMAND sits within four pairs of `0x1b60`; intro-cinematic freeze seen once (Sprint 1); flaky VSync scheduler-stop test not reproduced in 3 `PS2X_TEST_REPEAT` runs at close-out.
 
+## 2026-09-13 (local) — Sprint 4 carried findings: the HLE constant-value hazard, and the online-harness rules that cost a run each to learn
+
+Sprint 4's per-task reports live in `.superpowers/sdd/2026-09-12-sprint-4-visible-defects-and-first-kill/`,
+which is **gitignored and deleted at close-out**. This entry is the durable copy of the things in
+them that outlive the sprint. It is not the "what landed" entry — that is separate. Headline facts
+are in `docs/KNOWN.md`; the retractions are marked in place at `HANDOFF.md` item 0 / item 2, the
+2026-09-10 20:10 and 2026-09-09 01:30 entries below, and the Sprint 4 spec §1.
+
+### The cross-cutting finding: our HLE returns a constant where the guest expects a live value
+
+**This is the most valuable thing in the sprint and it is a standing hazard, not an anecdote.**
+Three defects found independently in three different subsystems turned out to be the same shape —
+an HLE boundary handing the guest a value that does not move when the thing it represents moves:
+
+| the HLE | what it returned | what the guest did with it |
+|---|---|---|
+| `rand()` (`0x00197740`) | `std::rand() & 0x7FFF` — 15 bits, from the **host** CRT, over a guest `_rand_next` frozen at **41** | every `rand`-derived float pinned to within 1/65536 of its minimum, at **249** sites (`grep -c 4.656613e-10` over the decomp). `+0x5c` could not exceed 4.0000458 where the console reads 6.3338 |
+| `sceInetInterfaceControl(0x200)` | a constant | `msSinceNetActivity` never reset → the movement scale clamped to **0.0 on frame one**. This is the two-week "the online match is frozen" blocker; pitch survived only because it is not one of the three scaled axes |
+| five soft-double routines (litodp/dpmul/dpdiv/exp/dptofp) | a **stale register** — the ABI binding returned `$v0` as it stood | identity at 19 of 22 sites and therefore invisible; genuinely wrong at three live ones, including a gimbal-lock guard that became a control-flow divergence (research/17 §5.1) |
+
+Two properties make this worth a rule rather than three bug entries:
+
+- **Each was invisible to the parity gate.** A frozen seed, a frozen clock and a stale register all
+  render perfectly. The gate proves *no worse than the reference*; it has never proved *correct*.
+- **Each presented as a game bug**, in a subsystem that had nothing to do with the real cause: a
+  capsule radius, a peer-transport handshake, a movement throttle curve. Three sessions, a week of
+  server work and a protocol decode were spent inside those wrong subsystems.
+
+**The rule.** Presume remaining gameplay wrongness is this shape until shown otherwise. When a guest
+value looks wrong, ask *what feeds it across an HLE boundary, and does that thing change?* before
+reading any guest code. The cheap test is the one that caught all three: dump the suspect word from
+several of our RDRAM images and from the PCSX2 console image — **a value identical across all of
+ours and different on the console's is the signature**, and it costs no run at all. An HLE that
+returns a constant is a defect even when nothing visibly breaks today, because the thing that
+eventually reads it will be in a different subsystem from the stub.
+
+### Harness rules from Tasks 6-8 — each of these cost at least one run
+
+The online harness is expensive (budget ~two runs per result; the lobby flow reaches gameplay about
+four times in ten) and it is very good at producing complete, convincing evidence of nothing.
+
+- **Verify `peek @416054` is non-zero before believing any screenshot or any movement claim.** One
+  run drove sixteen stick probes and wrote sixteen screenshots against a **lobby keyboard**; three
+  of six runs in that task were unusable. Note the weaker form of the same rule: the liveness check
+  counts *non-zero* position rows, not *distinct* ones, so it passes while the player is in-game and
+  not yet controllable — `ours_task8_kill3` had 161 in-game rows, movement scale 1.0, and moved
+  **0.00** units across a forward hold, a turn and a second forward hold.
+- **An instrument that emits zero rows is a FAILED run, not a quiet one.** Task 6's idle-ms trace
+  logged nothing for a whole session because it pointed at `0x30be80` while the guest calls the
+  thunk at `0x30cd80` — inside the very task that had just written the warning about checks
+  attesting to nothing. Zero rows means the instrument is wrong until proven otherwise.
+- **A `MediusPlayerReport` in the Medius log is NOT a round end.** It is a periodic client stats
+  report. In `ours_task8_kill1` exactly one arrived, at T+156.7 s, with the two players **603 units
+  apart**, both still walking and no respawn in either position record — and the harness printed
+  `RESULT PASS signal=server` for it. Any round-end signal must require something only a real round
+  end produces; `KillWatch` now records the report and never fires on it.
+- **A finished `drive.py` taskkills the NEXT run's game.** Its cleanup runs
+  `taskkill /F /IM socom2.exe`, so an earlier driver reaching its own end takes down whatever is
+  running now: `run_t8probe2` died 66 s in, its log froze at 127 sampler rows, and `drive.py` went
+  on screenshotting a dead game for four more minutes. Kill the previous *driver*, not just the
+  game, before starting anything.
+- **One script per run.** The corollary of the above: overlapping drivers do not merely skew timing,
+  they silently void each other's evidence, and the voided run still writes a full set of
+  screenshots.
+
+`docs/KNOWN.md` §4 carries these alongside the rest of the standing hazards.
+
 ## 2026-09-12 (local) — Sprint 3 landed: `PS2X_GS_SCALE` integer render-target scale (default 1), the fourth VU1 command family and `0x34` (162/166 native), family-C + fourth-family `--vram-diff` coverage, the intro-movie macroblocks localised
 
 Sprint `2026-09-11-sprint-3-render-scale-and-fourth-family`, branch `sprint-3`, Tasks 1-11, each

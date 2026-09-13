@@ -95,7 +95,11 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   soft-double chain. A green gate means "no worse than the reference", never "correct".
 - **Our HLE returning a constant where the guest expects a live value** — three for three this
   sprint (`rand` over a frozen seed; `0x200` never advancing; stale-register math returns). Presume
-  remaining gameplay wrongness is this shape until shown otherwise.
+  remaining gameplay wrongness is this shape until shown otherwise. The cheap test that caught all
+  three costs no run: dump the suspect word from several of our RDRAM images **and** the PCSX2
+  console image — identical across all of ours and different on the console's is the signature.
+  Written up in full at `STATUS.md` 2026-09-13, with the per-defect detail in `research/17` §5.1
+  (soft doubles) and §6.1 (`rand`).
 - **The title gate passes at 16 of 23.** A pillarboxed run scores 18 — a pass with margin. The crop
   fixed silent score degradation and left the geometry itself unchecked. Assert the client rect.
 - **The online harness can produce complete, convincing evidence of nothing.** One run drove sixteen
@@ -106,7 +110,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **Nothing reaps the loop lock** when an agent exits without releasing it, and `loop_lock.sh take`
   is a non-atomic test-then-write.
 - **Task reports live in gitignored `.superpowers/sdd/`** and die with the workspace. Anything
-  durable must be copied into a tracked doc before close-out.
+  durable must be copied into a tracked doc before close-out. *Sprint 4's carry was done
+  2026-09-13 (Task 9a):* the HLE hazard and the Tasks 6-8 harness rules → `STATUS.md` 2026-09-13;
+  Task 4c → `research/17` §5.1; Task 4b → `research/17` §6.1; Task 1's `movie_blocks.py` limits →
+  `research/16` §9.1.1. Everything else in those reports is accepted as lost.
+- **`movie_blocks.py` is wired into nothing** — not `build.sh`, not the gate, not any committed
+  script — and its `--furniture-baseline` guard, the only thing that catches corruption being
+  learned as furniture, is opt-in with no saved baseline in the repo. `research/16` §9.1.1.
 - **This harness costs about two runs per result.** Four of Task 6's runs failed to reach gameplay,
   three of them consecutively; each had written a full set of convincing screenshots first. Budget
   for it when planning, and never skip the liveness check.
