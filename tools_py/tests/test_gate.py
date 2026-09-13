@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -33,6 +34,10 @@ GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")       
 GOOD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")    # known reached HUD (STATUS 2026-09-09 13:30)
 GOOD_MISSION_FRAMES = os.path.join(ROOT, "logs", "parity", "runs", "gameplay_probe5")   # its captures; holds are gameplay
 FULL_DBUFF_RUN = os.path.join(ROOT, "logs", "parity", "gate", "s5_task4_dbuff")          # full-size originals of the dbuff fixture
+# R34: runs whose hold captures are gameplay but frozen (the present loop stalled after gameplay start: 43 / 36
+# latest_frame exports after the first guest fault, against ~1400 in s3a), and live references.
+FROZEN_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s5_gatefix", "mission4")]
+LIVE_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s3a", "famb", "native_on", "s3d_2x_host")]
 BAD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")         # known FAIL: HUD never matched
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
 # Pre-fix run: the probe stalled on the "save to memory card?" dialog, so it has black frames
@@ -135,6 +140,43 @@ class MissionScoring(unittest.TestCase):
         ok, detail = gate.score_mission_log(S3A_MISSION_LOG, S3A_MISSION_RUN)
         self.assertTrue(ok, detail)
         self.assertIn("3/3 hold captures are gameplay", detail)
+        self.assertIn("2 live hold pairs", detail)
+
+    def test_frozen_gameplay_holds_fail(self):
+        """R34: gameplay on screen is not a live game. s5_gatefix and mission4 held W/R1/L over a frame the
+        runtime had stopped presenting; the band test passed every hold. Byte-identical gameplay holds
+        (the s3a s30 fixture copied over s32 and s34) must fail the liveness check."""
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("s30_holdW.png", "s32_holdR1.png", "s34_holdR1.png"):
+                shutil.copyfile(os.path.join(S3A_MISSION_RUN, "s30_holdW.png"), os.path.join(tmp, name))
+            ok, detail = gate.score_mission_log(S3A_MISSION_LOG, tmp)
+        self.assertFalse(ok, detail)
+        self.assertIn("3/3 hold captures are gameplay", detail)
+        self.assertIn("0 live hold pairs", detail)
+
+    def test_one_live_pair_is_not_enough(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for src, dst in (("s30_holdW.png", "s30_holdW.png"), ("s32_holdR1.png", "s32_holdR1.png"),
+                             ("s32_holdR1.png", "s34_holdR1.png")):
+                shutil.copyfile(os.path.join(S3A_MISSION_RUN, src), os.path.join(tmp, dst))
+            ok, detail = gate.score_mission_log(S3A_MISSION_LOG, tmp)
+        self.assertFalse(ok, detail)
+        self.assertIn("1 live hold pairs", detail)
+
+    def test_missing_captures_against_logged_holds_is_no_data(self):
+        """R34: the capture count must equal the logged hold count -- 3 captures for 6 logged holds is
+        NO-DATA, even though 3 is the gameplay floor."""
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(S3A_MISSION_LOG, encoding="utf-8") as f:
+                text = f.read()
+            log = os.path.join(tmp, "six.drive.txt")
+            with open(log, "w", encoding="utf-8") as f:
+                f.write(text + "s36_holdL                t= 224.8s\ns38_holdS                t= 235.4s\n"
+                               "s40_holdR1               t= 238.2s\n")
+            ok, detail = gate.score_mission_log(log, S3A_MISSION_RUN)
+        self.assertFalse(ok, detail)
+        self.assertIn("NO-DATA", detail)
+        self.assertIn("3 hold captures for 6 logged holds", detail)
 
     def test_dbuff_cinematic_holds_fail(self):
         """The defect R30 fixes: s5_task4_dbuff's log says HUD matched and 6 holds -- the old PASS --
@@ -170,6 +212,22 @@ class MissionScoring(unittest.TestCase):
         ok, detail = gate.score_mission_log(os.path.join(FULL_DBUFF_RUN, "mission.drive.log"))
         self.assertFalse(ok, detail)
         self.assertIn("0/6 hold captures are gameplay", detail)
+
+    def test_real_frozen_runs_fail(self):
+        runs = [r for r in FROZEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]
+        if not runs:
+            self.skipTest("needs logs/parity/gate/s5_gatefix or mission4")
+        for r in runs:
+            ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
+            self.assertFalse(ok, (r, detail))
+
+    def test_real_live_runs_pass(self):
+        runs = [r for r in LIVE_RUNS if os.path.isdir(os.path.join(r, "mission"))]
+        if not runs:
+            self.skipTest("needs logs/parity/gate/s3a, famb, native_on or s3d_2x_host")
+        for r in runs:
+            ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
+            self.assertTrue(ok, (r, detail))
 
     @unittest.skipUnless(os.path.isfile(BAD_MISSION_LOG), "needs logs/parity/vr_gameplay.drive.log")
     def test_missing_hud_fails(self):
@@ -237,13 +295,62 @@ class HudMatch(unittest.TestCase):
         matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "final.png"), lit=True)
         self.assertTrue(matched, (dist, band))
 
-    def test_mission_script_requires_lit(self):
-        """gameplay_probe.txt (the mission gate's script) must ask untilref for the band test."""
-        with open(os.path.join(ROOT, gate.GATES["mission"]["script"]), encoding="utf-8") as f:
-            lines = [ln.split("#", 1)[0] for ln in f if "ref_hud_ours.png" in ln.split("#", 1)[0]]
-        self.assertTrue(lines)
-        for ln in lines:
-            self.assertIn(",lit)", ln.replace(" ", ""))
+    def test_mission_scripts_require_lit(self):
+        """Every script that waits for the in-game HUD (the mission gate's gameplay_probe.txt, and
+        gameplay_damage.txt / gameplay_death.txt) must ask untilref for the band test (R30, R34)."""
+        for script in (gate.GATES["mission"]["script"], "scripts/parity/gameplay_damage.txt",
+                       "scripts/parity/gameplay_death.txt"):
+            with open(os.path.join(ROOT, script), encoding="utf-8") as f:
+                lines = [ln.split("#", 1)[0] for ln in f if "ref_hud_ours.png" in ln.split("#", 1)[0]]
+            self.assertTrue(lines, script)
+            for ln in lines:
+                self.assertIn(",lit)", ln.replace(" ", ""), script)
+
+
+class HoldCapture(unittest.TestCase):
+    """drive.capture_step: hold steps are captured with winshot.grab(hwnd, max_age=1.0); a stale frame file
+    prints STALE FRAME and still saves the (old) frame -- the drive goes on, the scorer decides (R34)."""
+
+    def _run(self, grab, hold):
+        real = drive.winshot.grab
+        drive.winshot.grab = grab
+        try:
+            with tempfile.TemporaryDirectory() as tmp, mock.patch("builtins.print") as out:
+                path = os.path.join(tmp, "s30_holdW.png")
+                drive.capture_step(None, path, hold)
+                saved = os.path.isfile(path)
+            return saved, " ".join(str(c.args[0]) for c in out.call_args_list if c.args)
+        finally:
+            drive.winshot.grab = real
+
+    def test_hold_capture_asks_for_a_fresh_frame(self):
+        calls = []
+
+        def grab(hwnd, max_age=None):
+            calls.append(max_age)
+            return Image.new("RGB", (64, 48))
+        saved, printed = self._run(grab, hold=True)
+        self.assertTrue(saved)
+        self.assertEqual(calls, [1.0])
+        self.assertNotIn("STALE FRAME", printed)
+
+    def test_stale_frame_is_logged_and_saved(self):
+        def grab(hwnd, max_age=None):
+            if max_age is not None:
+                raise drive.winshot.StaleFrameError("latest_frame.png", 7.5, max_age)
+            return Image.new("RGB", (64, 48))
+        saved, printed = self._run(grab, hold=True)
+        self.assertTrue(saved)
+        self.assertIn("STALE FRAME", printed)
+
+    def test_non_hold_capture_keeps_the_old_grab(self):
+        calls = []
+
+        def grab(hwnd, max_age=None):
+            calls.append(max_age)
+            return Image.new("RGB", (64, 48))
+        self._run(grab, hold=False)
+        self.assertEqual(calls, [None])
 
 
 class TransitionScoring(unittest.TestCase):

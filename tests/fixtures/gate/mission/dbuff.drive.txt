@@ -2,6 +2,3 @@ untilref(scripts/parity/ref_hud_ours.png): 0 presses, matched=True
 s30_holdW                t= 199.1s stable=True waited=0.0s
 s32_holdR1               t= 201.9s stable=True waited=0.0s
 s34_holdR1               t= 203.7s stable=True waited=0.0s
-s36_holdL                t= 210.3s stable=True waited=0.0s
-s38_holdS                t= 220.9s stable=True waited=0.0s
-s40_holdR1               t= 223.7s stable=True waited=0.0s

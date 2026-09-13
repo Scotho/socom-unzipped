@@ -105,6 +105,22 @@ def hud_match(im, ref_thumb, box, thresh, lit):
     return matched, dist, band
 
 
+def capture_step(hwnd, path, hold):
+    """Save the step capture. A hold step asks for a frame file no older than 1 s: a runtime that stopped
+    presenting leaves latest_frame.png stale while drive.py holds keys into nothing (s5_gatefix, mission4:
+    36-43 exports after gameplay start). A stale frame prints STALE FRAME and the old frame is saved anyway
+    -- the drive goes on; gate.score_mission_log's liveness check decides (R34)."""
+    if hold:
+        try:
+            im = winshot.grab(hwnd, max_age=1.0)
+        except winshot.StaleFrameError as e:
+            print(f"STALE FRAME {os.path.basename(path)}: {e}", flush=True)
+            im = winshot.grab(hwnd)
+    else:
+        im = winshot.grab(hwnd)
+    im.save(path)
+
+
 def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3,
                 on_frame=None):
     """Wait until the frame has been stable for `settle` s (at most `maxwait`). With `changed_from`
@@ -351,7 +367,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
         time.sleep(delay)
         label = f"s{i:02d}_{'+'.join(buttons) or (held if mode == 'hold' else 'none')}"
         path = os.path.join(a.out, label + ".png")
-        winshot.grab(hwnd).save(path)
+        capture_step(hwnd, path, mode == "hold")
         last = frame(hwnd)
         for b in buttons:
             keys.press(hwnd, b, a.target)

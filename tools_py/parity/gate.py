@@ -17,6 +17,7 @@ import subprocess
 import sys
 import time
 
+import numpy as np
 from PIL import Image
 
 from tools_py.parity import compare, screen_bands
@@ -37,9 +38,22 @@ MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the pro
 # (screen_bands.gameplay_band). R30, 2026-09-13: from 2026-09-12 14:33 every mission run "reached the HUD"
 # with 0 presses on the letterboxed intro cinematic and held W/R1/L/S over it -- s5_task4_dbuff's six hold
 # captures are all the cinematic -- and this scorer, which read only the drive log, passed them. Sprint 3's
-# s3a (4 presses) has 6/6 gameplay holds; famb and s3d_2x_host 5/6 (a death fade / the MISSION FAILURE
-# screen late in the run); s3b3 2/6 (it held over the "TO ABORT" flyover) FAILs, correctly.
+# s3a (4 presses) has 6/6 gameplay holds, famb 6/6, s3d_2x_host 5/6 (its rejected hold, s36, is a black
+# frame); s3b3 2/6 (it held over the "TO ABORT" flyover) FAILs, correctly. False-positive class: the band
+# test only says "not the letterbox" -- s3d_2x_host's MISSION FAILURE statistics holds (s38, s40) and dim
+# near-black fades (famb s34) read as gameplay.
 MISSION_MIN_GAMEPLAY_HOLDS = 3
+# Liveness (R34): gameplay on screen is not a live game. s5_gatefix and mission4 passed the band test on
+# every hold while the runtime had nearly stopped presenting (latest_frame.png exports after the first
+# [guest-fault] line: s5_gatefix 43, mission4 36, native_on 61, against s3a 1393, famb 1529); their holds
+# are pixel-identical, so W/R1/L/S never reached a running game. A "live pair" is two consecutive hold
+# captures that are both gameplay and differ by a mean absolute RGB difference >= MISSION_LIVE_PAIR_DIFF.
+# Measured on the full-size captures (review of 69e2a9d, re-derived here): qualifying pairs s3a 4
+# (3.67-22.9), famb 4, native_on 3, s3d_2x_host 2 -> PASS; mission4 1 (3.82), s5_gatefix 0 (max 1.60)
+# -> FAIL. Static pairs in live runs read 0.00-0.03 (the player stands still after the last hold), so 3.0
+# sits well above a frozen frame and at the bottom of real motion.
+MISSION_LIVE_PAIR_DIFF = 3.0
+MISSION_MIN_LIVE_PAIRS = 2
 # What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
 # (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
 # between the controller-configuration screens and the mission briefing. It deliberately does not
@@ -234,9 +248,11 @@ def mission_run_dir(drive_log):
 
 
 def score_mission_log(drive_log, run_dir=None):
-    """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, and >= MISSION_MIN_GAMEPLAY_HOLDS of the
-    hold captures are gameplay. A log alone proves the script ran, not what the holds were held over, so
-    missing captures are FAIL with NO-DATA, never a PASS."""
+    """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, one capture per logged hold,
+    >= MISSION_MIN_GAMEPLAY_HOLDS of the hold captures gameplay, and >= MISSION_MIN_LIVE_PAIRS live pairs
+    (consecutive gameplay captures that differ: the game was running while the holds were sent). A log alone
+    proves the script ran, not what the holds were held over, so missing captures are FAIL with NO-DATA,
+    never a PASS."""
     try:
         with open(drive_log, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -252,18 +268,29 @@ def score_mission_log(drive_log, run_dir=None):
         return False, "HUD reached; %d hold steps captured (need %d)" % (holds, MISSION_MIN_HOLDS)
     run_dir = run_dir or mission_run_dir(drive_log)
     caps = sorted(glob.glob(os.path.join(run_dir, "s[0-9][0-9]_hold*.png"))) if run_dir else []
-    if len(caps) < MISSION_MIN_GAMEPLAY_HOLDS:
-        return False, ("NO-DATA: HUD reached and %d hold steps logged, but %d hold captures to check "
-                       "(need %d) in %s" % (holds, len(caps), MISSION_MIN_GAMEPLAY_HOLDS, run_dir))
-    bands = []
+    if len(caps) != holds:
+        return False, ("NO-DATA: HUD reached, but %d hold captures for %d logged holds in %s"
+                       % (len(caps), holds, run_dir))
+    frames = []
     for p in caps:
         with Image.open(p) as im:
-            bands.append((os.path.basename(p)[:3],) + screen_bands.gameplay_band(im))
-    good = sum(1 for _, ok, _ in bands if ok)
-    detail = "HUD reached; %d hold steps; %d/%d hold captures are gameplay (need %d; bands %s)" % (
-        holds, good, len(bands), MISSION_MIN_GAMEPLAY_HOLDS,
-        " ".join("%s=%.2f" % (n, f) for n, _, f in bands))
-    return good >= MISSION_MIN_GAMEPLAY_HOLDS, detail
+            rgb = im.convert("RGB")
+            frames.append((os.path.basename(p)[:3], screen_bands.gameplay_band(rgb), rgb))
+    good = sum(1 for _, (ok, _), _ in frames if ok)
+    diffs = []
+    for (_, (ok_a, _), a), (_, (ok_b, _), b) in zip(frames, frames[1:]):
+        if b.size != a.size:
+            b = b.resize(a.size, Image.BOX)
+        d = float(np.abs(np.asarray(a, dtype=np.float32) - np.asarray(b, dtype=np.float32)).mean())
+        diffs.append((d, ok_a and ok_b and d >= MISSION_LIVE_PAIR_DIFF))
+    live = sum(1 for _, q in diffs if q)
+    detail = ("HUD reached; %d hold steps; %d/%d hold captures are gameplay (need %d; bands %s); "
+              "%d live hold pairs (need %d; diff >= %.1f: %s)" % (
+                  holds, good, len(frames), MISSION_MIN_GAMEPLAY_HOLDS,
+                  " ".join("%s=%.2f" % (n, f) for n, (_, f), _ in frames),
+                  live, MISSION_MIN_LIVE_PAIRS, MISSION_LIVE_PAIR_DIFF,
+                  " ".join("%.2f" % d for d, _ in diffs)))
+    return good >= MISSION_MIN_GAMEPLAY_HOLDS and live >= MISSION_MIN_LIVE_PAIRS, detail
 
 
 def _lock(cmd, owner):

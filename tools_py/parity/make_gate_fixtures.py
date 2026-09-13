@@ -10,7 +10,7 @@ Sources (all git-ignored, kept locally from real runs -- see STATUS 2026-09-10/0
   mission:    logs/parity/drive_gameplay_probe5.txt (HUD matched=True, known good) and
               logs/parity/vr_gameplay.drive.log (HUD matched=False, known bad)
   mission frames (gate.score_mission_log checks the hold captures, R30 2026-09-13):
-              s3a/   -- logs/parity/gate/s3a: HUD after 4 presses, s30/s36/s38 holds are gameplay
+              s3a/   -- logs/parity/gate/s3a: HUD after 4 presses, s30/s32/s34 holds are live gameplay
               dbuff/ -- logs/parity/gate/s5_task4_dbuff: HUD "matched" after 0 presses on the
                         letterboxed intro cinematic; s30/s32/s34 holds are that cinematic, and
                         final.png is gameplay behind a HELP pop-up (band test must accept it)
@@ -149,7 +149,7 @@ def build_mission_fixtures():
 MISSION_FRAME_RUNS = {
     # fixture name: (source run dir, captures to copy)
     "s3a": (os.path.join(ROOT, "logs", "parity", "gate", "s3a"),
-            ["s30_holdW.png", "s36_holdL.png", "s38_holdS.png"]),
+            ["s30_holdW.png", "s32_holdR1.png", "s34_holdR1.png"]),
     "dbuff": (os.path.join(ROOT, "logs", "parity", "gate", "s5_task4_dbuff"),
               ["s30_holdW.png", "s32_holdR1.png", "s34_holdR1.png", "final.png"]),
 }
@@ -157,13 +157,17 @@ MISSION_FRAME_RUNS = {
 
 def build_mission_frame_fixtures():
     """<name>.drive.txt (the trimmed drive log) + <name>/ (hold captures at 320x224, palette PNG)
-    for each run in MISSION_FRAME_RUNS. The band test (screen_bands.py) scales its rows with the
+    for each run in MISSION_FRAME_RUNS. The log keeps only the sNN_hold lines whose capture is copied:
+    the scorer checks the capture count against the logged hold count (R34), so a fixture that ships
+    3 of 6 captures must also log 3 holds. The band test (screen_bands.py) scales its rows with the
     frame height, and palette quantization keeps pure-black letterbox rows at 0, so the verdicts
     are checked on the saved files here rather than assumed."""
     from tools_py.parity import screen_bands
     out_root = os.path.join(FIXTURES, "mission")
     for name, (src_run, caps) in MISSION_FRAME_RUNS.items():
-        lines = _trim_mission_log(os.path.join(src_run, "mission.drive.log"))
+        kept = {c.split(".")[0] for c in caps}
+        lines = [ln for ln in _trim_mission_log(os.path.join(src_run, "mission.drive.log"))
+                 if not re.match(r"^s\d\d_hold", ln) or ln.split()[0] in kept]
         with open(os.path.join(out_root, name + ".drive.txt"), "w", newline="\n", encoding="utf-8") as f:
             f.write("\n".join(lines) + "\n")
         out_dir = os.path.join(out_root, name)

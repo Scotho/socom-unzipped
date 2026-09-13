@@ -7,7 +7,9 @@
 # probe ends the run; the trailing waits only keep drive.py (and so the game) alive meanwhile.
 # Do not add steps after the untilref line that press anything: they would land on the calibration.
 # The untilref HUD match below is NOT proof of gameplay: on 2026-09-13 (Task 2 run 1) it matched the
-# letterboxed intro cinematic at 216 s with 0 presses. The probe therefore enters gameplay itself
+# letterboxed intro cinematic at 216 s with 0 presses. Since R34 it carries `,lit` (lit letterbox bands on
+# the uncropped frame, the same band test as sp_death_probe.screen_state), which rejects the cinematic but
+# still says nothing about a live game or a HELP pop-up. The probe therefore still enters gameplay itself
 # (both letterbox bands lit, CROSS through the cinematic and through HELP pop-ups recognised by their
 # PRESS X TO CONTINUE line, a forward hold that moves the actor).
 next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
@@ -38,7 +40,7 @@ wait+1.0:NONE
 wait+1.0:NONE
 wait+2.0:CROSS      # deploy -> load mission
 next+10.0:NONE      # mission
-untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD ammo panel shows
+untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30,lit)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD shows on a full frame (lit letterbox bands, R30/R34)
 wait+2.0:NONE       # HUD reached; drive.py prints 'untilref(scripts/parity/ref_hud_ours.png): N presses, matched=True'
 wait+30.0:NONE
 wait+30.0:NONE
