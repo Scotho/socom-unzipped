@@ -204,6 +204,49 @@ class ScoreControlTest(unittest.TestCase):
     def test_monotonic_in_snap_back(self):
         oks = [self.score(walk(80.0, snap_at=1.0, snap_units=float(s))).ok for s in range(0, 40, 2)]
         self.assertEqual(oks, sorted(oks, reverse=True))
+        self.assertIn(True, oks)
+        self.assertIn(False, oks)
+
+    # -- fix round 1: the ±½-period pad timing must not leak hold motion into drift / snap-back --
+    @staticmethod
+    def moving(start_row_t, stop_row_t, rate=48.0):
+        """stationary at 100 until the row at start_row_t, `rate` u/s until stop_row_t, then still."""
+        def x(t):
+            return 100.0 + rate * (min(max(t, start_row_t), stop_row_t) - start_row_t)
+        return x
+
+    def test_start_event_just_after_a_row_does_not_leak_into_drift(self):
+        # the game saw the press just after the 20.00 row; parse_log gives the event the midpoint 20.125
+        hold = vc.Hold(20.125, 22.125)
+        pads = [vc.PadEvent(hold.start, 0, 0x80, 0x80, 0x80, 0x00), vc.PadEvent(hold.release, 0, 0x80, 0x80, 0x80, 0x80)]
+        v = vc.score_control(rows_from(self.moving(20.0, 22.25)), pads, hold)
+        self.assertAlmostEqual(v.drift_units, 0.0, places=6)
+        self.assertEqual(v.status, "PASS", v)
+
+    def test_release_reference_bounds_the_one_row_coast(self):
+        # release seen just after the 22.00 row (event at 22.125); the actor moves until the row after
+        # the next one (22.50) -- one sampler period of coast beyond the timing error, then still
+        hold = vc.Hold(20.0, 22.125)
+        pads = [vc.PadEvent(hold.start, 0, 0x80, 0x80, 0x80, 0x00), vc.PadEvent(hold.release, 0, 0x80, 0x80, 0x80, 0x80)]
+        v = vc.score_control(rows_from(self.moving(20.0, 22.5)), pads, hold)
+        self.assertLessEqual(v.snapback_units, 1e-6)
+        self.assertEqual(v.status, "PASS", v)
+
+    def test_boundary_net(self):
+        self.assertFalse(self.score(walk(39.9)).ok)
+        self.assertTrue(self.score(walk(40.0)).ok)
+
+    def test_boundary_drift(self):
+        self.assertTrue(self.score(walk(80.0, drift_per_s=0.49)).ok)
+        v = self.score(walk(80.0, drift_per_s=0.51))
+        self.assertEqual(v.status, "FAIL")
+        self.assertAlmostEqual(v.drift_units, 5.1, places=6)
+
+    def test_boundary_snap_back(self):
+        self.assertTrue(self.score(walk(80.0, snap_at=1.0, snap_units=9.9)).ok)
+        v = self.score(walk(80.0, snap_at=1.0, snap_units=10.1))
+        self.assertEqual(v.status, "FAIL")
+        self.assertAlmostEqual(v.snapback_units, 10.1, places=6)
 
     def test_no_rows_is_no_data(self):
         v = self.score(None, rows=[])
@@ -290,7 +333,7 @@ class ControlFixtureTest(unittest.TestCase):
 
     def test_kill3_B_FINDING_controllable_on_actor_rows(self):
         """The brief expects NO-CONTROL side=B. Under the spec's bar on ACTOR rows B's first facing
-        probe passes (net ~65, snap ~1, drift ~1.6); Sprint 4 called B immobile from the 0x416054
+        probe passes (net 66.93, snap 1.84, drift 0.00 as the CLI prints); Sprint 4 called B immobile from the 0x416054
         camera record, which froze on B while the actor moved. Asserted as measured; reported as a
         finding for the controller, not tuned away."""
         b = self.side("kill3_B_probes.txt")
@@ -299,6 +342,11 @@ class ControlFixtureTest(unittest.TestCase):
         self.assertGreater(first.net_units, 60.0)
         self.assertLess(first.snapback_units, 2.0)
         self.assertLess(first.drift_units, 2.0)
+
+    def test_kill3_B_pre_hold_drift_is_zero(self):
+        # the actor block is unchanged 441.5-453.39 s in the raw log; hold motion must not leak in
+        first = self.side("kill3_B_probes.txt").holds[0]
+        self.assertLess(first.drift_units, 0.01)
 
     def test_kill3_B_camera_record_froze_during_the_passing_hold(self):
         p = parsed("kill3_B_probes.txt")
@@ -360,6 +408,17 @@ class MovePathTest(unittest.TestCase):
         self.assertEqual(vc.score_move_path(self.calls(40.0), self.ALIVE, rounds, now=59.0).status, "disarmed")
         v = vc.score_move_path(self.calls(40.0), self.ALIVE, rounds, now=71.0)
         self.assertEqual(v.status, "stalled")
+
+    def test_stall_clock_restarts_at_the_end_of_the_round_disarm(self):
+        rounds = [(0.0, 1), (45.0, 2)]                             # disarm ends at 60
+        self.assertEqual(vc.score_move_path(self.calls(40.0), self.ALIVE, rounds, now=61.0).status, "disarmed")
+        v = vc.score_move_path(self.calls(40.0), self.ALIVE, rounds, now=70.5)
+        self.assertEqual(v.status, "stalled")
+        self.assertAlmostEqual(v.since, 60.0)
+
+    def test_alive_rows_only_after_now_is_no_data(self):
+        v = vc.score_move_path(self.calls(40.0), [(70.0, 1)], self.ROUND, now=55.0)
+        self.assertEqual(v.status, vc.NO_DATA)
 
     def test_never_logged_slot_is_no_data(self):
         v = vc.score_move_path([], self.ALIVE, self.ROUND, now=100.0)
@@ -526,6 +585,31 @@ class ContactTest(unittest.TestCase):
     def test_monotonic_in_range(self):
         counts = [self.score(*self.pair(gap=float(g))).contact_rows for g in (0, 10, 21, 22, 22.5, 30, 100)]
         self.assertEqual(counts, sorted(counts, reverse=True))
+        self.assertGreater(counts[0], 0)
+        self.assertEqual(counts[-1], 0)
+
+    def test_boundary_range_and_dy(self):
+        self.assertEqual(self.score(*self.pair(gap=22.0)).contact_rows, 40)
+        self.assertEqual(self.score(*self.pair(gap=22.1)).contact_rows, 0)
+        self.assertEqual(self.score(*self.pair(gap=5.0, dy=10.0)).contact_rows, 40)
+        self.assertEqual(self.score(*self.pair(gap=5.0, dy=10.1)).contact_rows, 0)
+
+    def test_no_pair_ever_formed_is_no_data(self):
+        a, b = self.pair()
+        b = [(r[0] + 100.0,) + tuple(r[1:]) for r in b]          # misaligned clocks
+        r = self.score(a, b)
+        self.assertEqual((r.status, r.contact_rows), (vc.NO_DATA, 0))
+
+    def test_a_row_gap_breaks_the_run(self):
+        a, b = self.pair()
+        a = [row for i, row in enumerate(a) if not 18 <= i < 26]  # 2.25 s without A rows
+        self.assertEqual(self.score(a, b).contact_rows, 18)
+
+    def test_stale_b_rows_do_not_extend_the_run(self):
+        a, _ = self.pair()
+        b = [(tb, 500.0 + (tb - 100.0) * 2.0 + 15.0, 50.0, 500.0, 2)
+             for tb in (100.05 + i * 0.8 for i in range(13))]                  # B sampled every 0.8 s
+        self.assertLess(self.score(a, b).contact_rows, 5)
 
     def test_hung_instance_rows_repeating_clock_frozen(self):
         a, b = self.pair()

@@ -71,22 +71,23 @@ PAD_NEUTRAL = 0x80
 # Net ground-plane displacement from hold start to release + 1.5 s. Measured against: the 40 u/s
 # forward calibration (online_match_ours WALK_UNITS_PER_S_LONG, research/18 §3.13) and 28-38 units
 # per 1 s sample during a hold (§3.12) -- a 2 s hold covers ~60-80, a live 1.5 s facing probe
-# covered 60.2 (kill2 A) and 62.1 (kill2 B) on actor rows. Blind: a half-decayed scale that still
+# covered 60.35 (kill2 A) and 64.01 (kill2 B) on actor rows. Blind: a half-decayed scale that still
 # covers 40; motion in the wrong direction (this is a distance, not a heading).
 CONTROL_NET_MIN_UNITS = 40.0
 CONTROL_NET_AFTER_RELEASE_S = 1.5
 # Position at release + 2 s within 10 of the position at release. Measured against: the record keeps
-# moving about one sample after release (§3.12: "stops one sample after release"), 3.5 / 1.2 units on
-# kill2's probes. Blind: a correction (snap-back) arriving later than 2 s.
+# moving about one sample after release (§3.12: "stops one sample after release"), 1.18 / 0.72 units on
+# kill2's probes (release reference one row after release). Blind: a correction (snap-back) arriving later than 2 s.
 CONTROL_SNAPBACK_MAX_UNITS = 10.0
 CONTROL_SNAPBACK_AFTER_RELEASE_S = 2.0
 # Net drift over the preceding 10 s neutral window <= 5. Measured against: 1.3-1.4 units per sample of
-# camera jitter at neutral (§3.12), and 0.18 / 1.94 units of actor drift before kill2's probes.
+# camera jitter at neutral (§3.12), and 0.00 / 0.00 units of actor drift before kill2's probes (window ending at
+# the last row before the press).
 # Blind: a frozen player passes it trivially -- it only means something alongside the 40.
 CONTROL_DRIFT_MAX_UNITS = 5.0
 CONTROL_DRIFT_WINDOW_S = 10.0
 # Scoring domain, not a bar: holds shorter than this are not scored. The shortest scored hold is the
-# 1.5 s facing probe (measured 1.40-1.60 s from pad events, i.e. +-1 sample); an 0.8 s engage step at
+# 1.5 s facing probe (measured 1.46-1.51 s from pad events, i.e. within +-1/2 sample); an 0.8 s engage step at
 # 40 u/s cannot cover 40 units and would read as NO-CONTROL. Blind: none added -- a skipped hold is
 # absent from the verdict, and a side with no scored hold is NO-DATA.
 FORWARD_HOLD_MIN_S = 1.25
@@ -121,6 +122,11 @@ CONTACT_SCALE_MIN = 0.99           # both sides' latest f12; closes the starved-
 # Pairing: B's row nearest A's within two 4 Hz samples. Blind: a 0.5 s misalignment at 40 u/s is 20
 # units -- the two process clocks must be aligned by the caller first (see main's --offset-b).
 CONTACT_PAIR_MAX_S = 0.5
+# A row counts only if its own side's previous row is at most this far back, on BOTH sides: a slow or
+# stalled sampler must not stretch one position over several rows of the other side. Three 4 Hz
+# samples. Blind: kill2 B's fight stretch ran at ~0.6 s/row (max 1.08 s) -- rows after its longer
+# gaps do not count, so a slow-but-healthy sampler under-counts contact (conservative).
+CONTACT_ROW_MAX_GAP_S = 0.75
 # "#n advancing" at a contact row: a logged call with a higher #n inside the last 3 s. At EVERY <= 20
 # and ~17-27 calls/s that is >= 2 lines expected. Blind: a stall shorter than ~3 s.
 CONTACT_ADVANCE_WINDOW_S = 3.0
@@ -427,12 +433,28 @@ def score_control(rows, pad_events, hold, unrecovered_pad_times=()):
         return ControlVerdict(False, None, None, None, NO_DATA,
                               f"unrecovered torn pad line at {torn_inside[0]:.2f}", hold)
 
+    # Pad events carry +-1/2 sampler period of timing error (parse_log puts them midway between two
+    # rows), so no position is interpolated AT an event time: the hold's start reference is the last
+    # row at or before the start event (sampled before the game saw the press), and the release
+    # reference is the first row at or after release + one row period (so one sample of legitimate
+    # coast after release is not read as a snap-back). Blind: a snap-back that completes inside that
+    # one row after release still fails the net clause only if it undoes the displacement.
+    k_s = bisect.bisect_right(times, s) - 1
+    k_after = bisect.bisect_right(times, r)
+    t_s0 = times[k_s] if k_s >= 0 else None
+    k_r = k_after + 1 if k_after + 1 < len(times) else None
+    t_ref = times[k_r] if k_r is not None else None
+    if t_s0 is not None:
+        t_drift = t_s0 - CONTROL_DRIFT_WINDOW_S
+
     after = [e for e in pad_events if r < e.t <= t_snap and not _sticks_neutral(e)]
     net = snap = drift = None
     if after:
         reasons.append(f"stick input {after[0].t - r:+.2f}s after release")
-    elif _window_ok(rows, times, s, t_snap):
-        p_s, p_r, p_n, p_2 = (_pos_at(rows, times, t) for t in (s, r, t_net, t_snap))
+    elif t_s0 is None or t_ref is None or t_ref > t_snap:
+        reasons.append("no row before the hold or after release + one row period")
+    elif _window_ok(rows, times, t_s0, t_snap):
+        p_s, p_r, p_n, p_2 = (_pos_at(rows, times, t) for t in (t_s0, t_ref, t_net, t_snap))
         if None not in (p_s, p_r, p_n, p_2):
             net, snap = _ground(p_s, p_n), _ground(p_r, p_2)
     else:
@@ -442,8 +464,8 @@ def score_control(rows, pad_events, hold, unrecovered_pad_times=()):
     state = _pad_state_before(pad_events, t_drift)
     if any(not _fully_neutral(e) for e in before) or (state is not None and not _fully_neutral(state)):
         reasons.append("pad not neutral over the 10 s before the hold")
-    elif _window_ok(rows, times, t_drift, s):
-        p_d, p_s = _pos_at(rows, times, t_drift), _pos_at(rows, times, s)
+    elif t_s0 is not None and _window_ok(rows, times, t_drift, t_s0):
+        p_d, p_s = _pos_at(rows, times, t_drift), _pos_at(rows, times, t_s0)
         if p_d is not None and p_s is not None:
             drift = _ground(p_d, p_s)
     else:
@@ -484,7 +506,10 @@ def score_control_side(rows, pad_events, max_holds=PRECONDITION_MAX_HOLDS, unrec
 
 
 def control_result(sides):
-    """{tag: SideControl} -> CONTROLLABLE | NO-CONTROL | NO-CONTROL side=<X> | NO-DATA."""
+    """{tag: SideControl} -> CONTROLLABLE | NO-CONTROL | NO-CONTROL side=<X> | NO-DATA.
+
+    Any side NO-DATA makes the pair NO-DATA -- including NO-CONTROL on one side plus NO-DATA on the
+    other: the side that was not measured cannot be called controllable, so the pair has no verdict."""
     if not sides:
         return NO_DATA
     if any(s.status == NO_DATA for s in sides.values()):
@@ -536,7 +561,9 @@ def score_move_path(call_indices_by_time, alive_rows, round_rows, now):
         return MovePathVerdict(NO_DATA, t_adv, stall + "; mp_round_count never read -- round change not excluded")
 
     last_alive = _latest(alive, now)
-    if last_alive is None or last_alive[1] != ALIVE_VALUE:
+    if last_alive is None:
+        return MovePathVerdict(NO_DATA, t_adv, stall + "; no +0xF7A read at or before now")
+    if last_alive[1] != ALIVE_VALUE:
         return MovePathVerdict("disarmed", t_adv, stall + "; +0xF7A != 1")
     start = t_adv
     # the stall clock restarts when the actor comes back alive...
@@ -554,6 +581,8 @@ def score_move_path(call_indices_by_time, alive_rows, round_rows, now):
             last_step = tb
     if last_step is not None and now - last_step < ROUND_STEP_DISARM_S:
         return MovePathVerdict("disarmed", t_adv, stall + f"; mp_round_count stepped at {last_step:.1f}")
+    if last_step is not None:
+        start = max(start, last_step + ROUND_STEP_DISARM_S)   # the stall clock starts when the disarm ends
     if now - start < MOVE_STALL_S:
         return MovePathVerdict("disarmed", t_adv, stall + f"; re-armed at {start:.1f}")
     return MovePathVerdict("stalled", start, stall)
@@ -667,7 +696,13 @@ def _advancing(calls, times, t):
 
 def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
     """rowsA/rowsB: actor rows (t, x, y, z, ...) on ONE clock; callsA/callsB: MoveScale [(t, n)];
-    clock_rows: [(t, string)]; scale_rows: ([(t, f12)] for A, [(t, f12)] for B)."""
+    clock_rows: [(t, string)]; scale_rows: ([(t, f12)] for A, [(t, f12)] for B).
+
+    Pairing: A's rows are the reference; each A row is paired with B's row nearest in time, if within
+    CONTACT_PAIR_MAX_S (so one B row may serve up to two A rows). A row qualifies only if A's previous
+    row and the paired B row's previous row are each within CONTACT_ROW_MAX_GAP_S, plus the gate,
+    move-path, clock and scale clauses. contact_rows is the longest consecutive run of qualifying A
+    rows. No pair formed at all (e.g. misaligned clocks) is NO-DATA, not zero contact."""
     rowsA, rowsB = sorted(rowsA), sorted(rowsB)
     rows_read = len(rowsA) + len(rowsB)
     missing = [name for name, rows in (("A rows", rowsA), ("B rows", rowsB), ("A MoveScale", callsA),
@@ -682,20 +717,24 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
     tsa, tsb = [s[0] for s in sa], [s[0] for s in sb]
 
     closest, closest_dy = None, None
-    run = best = total = 0
-    for a in rowsA:
+    run = best = total = pairs = 0
+    for ia, a in enumerate(rowsA):
         t = a[0]
         k = bisect.bisect_left(tb, t)
-        cand = [rowsB[j] for j in (k - 1, k) if 0 <= j < len(rowsB) and abs(rowsB[j][0] - t) <= CONTACT_PAIR_MAX_S]
+        cand = [j for j in (k - 1, k) if 0 <= j < len(rowsB) and abs(rowsB[j][0] - t) <= CONTACT_PAIR_MAX_S]
         ok = False
         if cand:
-            b = min(cand, key=lambda r: abs(r[0] - t))
+            pairs += 1
+            jb = min(cand, key=lambda j: abs(rowsB[j][0] - t))
+            b = rowsB[jb]
+            gaps_ok = ((ia == 0 or t - rowsA[ia - 1][0] <= CONTACT_ROW_MAX_GAP_S)
+                       and (jb == 0 or b[0] - rowsB[jb - 1][0] <= CONTACT_ROW_MAX_GAP_S))
             d3 = math.dist(a[1:4], b[1:4])
             dy = abs(a[2] - b[2])
             if closest is None or d3 < closest:
                 closest, closest_dy = d3, dy
             ok = (d3 <= CONTACT_3D_MAX_UNITS and dy <= CONTACT_DY_MAX_UNITS
-                  and not missing
+                  and gaps_ok and not missing
                   and _advancing(ca, ta_c, t) and _advancing(cb, tb_c, t)
                   and _clock_changing(clock, tc, t)
                   and _scale_live(sa, tsa, t) and _scale_live(sb, tsb, t))
@@ -707,6 +746,9 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows):
             run = 0
     if missing:
         return ContactResult(0, 0, rows_read, NO_DATA, "no " + ", no ".join(missing), closest, closest_dy)
+    if pairs == 0:
+        return ContactResult(0, 0, rows_read, NO_DATA,
+                             f"no A row had a B row within {CONTACT_PAIR_MAX_S:g}s (clocks misaligned?)")
     return ContactResult(best, total, rows_read, "ok", "", closest, closest_dy)
 
 
