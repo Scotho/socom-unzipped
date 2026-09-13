@@ -147,3 +147,100 @@ def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeou
                 f"{tag}(round={s[0]} stepped={s[1]} clock_running={s[2]} actor_fresh={s[3]})"
                 for tag, s in sorted(states.items())), {}
         wait(NEXT_ROUND_POLL_S)
+
+
+# ---------------------------------------------------------------------------------------------
+# Rung 0 (Amendment A4, R45): the runtime's own health in round 1, before the ladder can say anything about control
+# ---------------------------------------------------------------------------------------------
+# pass = MoveScale >= 17 calls/s over 60 s with both round clocks running, the clock string at real time (>= 0.95 of
+# host time), and back-pressure waits not in the hundreds over that window (PS2X_GS_STATS=1 on both instances;
+# PS2X_GS_MAX_PENDING_FRAMES=0 is the A/B knob). A RUNG0-FAIL ends the ladder: it names a runtime cause.
+RUNG0_WINDOW_S = 60.0
+RUNG0_MOVESCALE_MIN = 17.0       # calls/s (kill2 A 18.9, kill2 B 17.0, kill3 B 27.4; 8c under freezes 11.5)
+RUNG0_CLOCK_RATE_MIN = 0.95
+RUNG0_BP_WAITS_MAX = 100         # waits over the 60 s window, per instance ("not in the hundreds")
+RUNG0_PULSE_TABLE = (64, -64, 80, -80, 96, -96)
+RUNG0_PULSE_S = 0.3
+
+
+def clean_window(pauses, t0, t1, width=RUNG0_WINDOW_S):
+    """The first [w0, w0 + width] inside [t0, t1] overlapping no pause (any side) -> (w0, w1) | None."""
+    w0 = t0
+    for p in sorted(pauses):
+        if p[1] < w0:
+            continue
+        if p[0] >= w0 + width:
+            break
+        w0 = max(w0, p[1])
+    return (w0, w0 + width) if w0 + width <= t1 else None
+
+
+def movescale_rate(calls, w0, w1):
+    """MoveScale calls/s over [w0, w1] from the logged #n (1 line in EVERY): (last #n - first #n) / their time span."""
+    inside = [(t, n) for t, n in calls if w0 <= t <= w1]
+    if len(inside) < 2 or inside[-1][0] - inside[0][0] < 0.5 * (w1 - w0):
+        return None
+    return (inside[-1][1] - inside[0][1]) / (inside[-1][0] - inside[0][0])
+
+
+def _clock_seconds(s):
+    try:
+        m, sec = s.split(":")
+        return int(m) * 60 + int(sec)
+    except (ValueError, AttributeError):
+        return None
+
+
+def clock_string_rate(clock_rows, w0, w1):
+    """Real-time rate of the round clock string (MM:SS, counting down) over [w0, w1]: seconds it counted between its
+    first and last CHANGE inside the window / the host seconds between those changes. None without two changes."""
+    changes, prev = [], None
+    for t, s in clock_rows:
+        v = _clock_seconds(s)
+        if v is None:
+            continue
+        if prev is not None and v != prev[1] and w0 <= t <= w1:
+            changes.append((t, v))
+        prev = (t, v)
+    if len(changes) < 2 or changes[-1][0] - changes[0][0] <= 0:
+        return None
+    return (changes[0][1] - changes[-1][1]) / (changes[-1][0] - changes[0][0])
+
+
+def bp_waits(bp_rows, w0=None, w1=None):
+    """Sum of `[gs-gl stats] backpressure ... waits=` over the window -> int | None (no stats rows)."""
+    inside = [r for r in bp_rows if (w0 is None or r[0] >= w0) and (w1 is None or r[0] <= w1)]
+    return sum(r[1] for r in inside) if inside else None
+
+
+def rung0_verdict(sides, pauses, t0, t1):
+    """sides: {tag: {"calls": [(t, n)], "clock": [(t, 'MM:SS')], "bp": [(t, waits, wait_ms, timeouts)]}} on one host
+    clock; pauses: every pause of every side. -> (ok, reason, fields). A side without a clock string (the joiner may
+    have none) is not judged on it; the host's must exist."""
+    fields = {}
+    win = clean_window(pauses, t0, t1)
+    if win is None:
+        return False, f"no {RUNG0_WINDOW_S:g} s window with both round clocks running in [{t0:.1f}, {t1:.1f}]", fields
+    fields["window"] = win
+    problems = []
+    for tag in sorted(sides):
+        s = sides[tag]
+        rate = movescale_rate(s["calls"], *win)
+        fields[f"movescale_{tag}"] = rate
+        if rate is None:
+            problems.append(f"MoveScale {tag} NO-DATA")
+        elif rate < RUNG0_MOVESCALE_MIN:
+            problems.append(f"MoveScale {tag} {rate:.1f}/s < {RUNG0_MOVESCALE_MIN:g}")
+        crate = clock_string_rate(s["clock"], *win)
+        fields[f"clock_rate_{tag}"] = crate
+        if crate is None and tag == "A":
+            problems.append("clock string A NO-DATA")
+        elif crate is not None and crate < RUNG0_CLOCK_RATE_MIN:
+            problems.append(f"clock string {tag} {crate:.2f} < {RUNG0_CLOCK_RATE_MIN:g}")
+        waits = bp_waits(s["bp"], *win)
+        fields[f"bp_waits_{tag}"] = waits
+        if waits is None:
+            problems.append(f"[gs-gl stats] {tag} NO-DATA (PS2X_GS_STATS=1?)")
+        elif waits >= RUNG0_BP_WAITS_MAX:
+            problems.append(f"back-pressure waits {tag} {waits} >= {RUNG0_BP_WAITS_MAX}")
+    return not problems, "; ".join(problems), fields

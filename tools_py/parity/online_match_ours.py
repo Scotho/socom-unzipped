@@ -307,6 +307,7 @@ class RunLogTail(threading.Thread):
     _WORD = re.compile(r"([0-9a-fA-F]{8})\(")
 
     POLL_S = 0.05
+    _BP = re.compile(r"^\[gs-gl stats\] backpressure .*?\bwaits=(\d+) wait_ms=([\d.]+) timeouts=(\d+)")
 
     def __init__(self, path, addr=POSITION_ADDR, clock=time.time):
         super().__init__(daemon=True)
@@ -363,6 +364,10 @@ class RunLogTail(threading.Thread):
         # round clock DAT_004365c0 (t, float), which stands still while an instance's guest is frozen (launch 8c).
         self.lag_rows = []
         self.round_time_rows = []
+        # Sprint 5 Amendment A4 (rung 0): `[gs-gl stats] backpressure ... waits= wait_ms= timeouts=` rows (PS2X_GS_STATS=1,
+        # one per ~60 GL calls) as (t, waits, wait_ms, timeouts), and the `[gs-gl] back-pressure:` cap-hit lines (t)
+        self.bp_rows = []
+        self.bp_caps = []
         self._stop = threading.Event()
         self._lock = threading.Lock()
 
@@ -462,6 +467,15 @@ class RunLogTail(threading.Thread):
             if m:
                 with self._lock:
                     self.rets.setdefault(m.group(1), []).append((t, int(m.group(2)), int(m.group(3), 16)))
+            return
+        if line.startswith("[gs-gl"):
+            m = self._BP.search(line)
+            if m:
+                with self._lock:
+                    self.bp_rows.append((t, int(m.group(1)), float(m.group(2)), int(m.group(3))))
+            elif "back-pressure:" in line:
+                with self._lock:
+                    self.bp_caps.append(t)
 
     def _state_row(self, t, items):
         """Alive byte, round valves + clock string and per-valve identification counts, from one
@@ -2943,8 +2957,68 @@ def rounds_arg_problem(a):
     return None
 
 
+def harness_identity(root=None):
+    """(commit, exe sha256 prefix) of the code and binary a launch runs: HARNESS_COMMIT / EXE_BUILD of a pinned snapshot
+    (scripts/pin_harness.sh writes them at the snapshot root, which is this package's grandparent) when present;
+    otherwise the live tree's HEAD marked `-live` and dist/socom2.exe hashed here. NO-DATA when unreadable."""
+    root = root or os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    commit = exe = vc.NO_DATA
+    pinned = os.path.join(root, "HARNESS_COMMIT")
+    if os.path.exists(pinned):
+        with open(pinned) as f:
+            commit = (f.read().strip() or vc.NO_DATA)[:12]
+        build = os.path.join(root, "EXE_BUILD")
+        if os.path.exists(build):
+            with open(build) as f:
+                m = re.search(r"sha256=([0-9a-fA-F]{16})", f.read())
+            exe = m.group(1).lower() if m else vc.NO_DATA
+        return commit, exe
+    try:
+        head = subprocess.run(["git", "-C", root, "rev-parse", "HEAD"], capture_output=True, text=True, timeout=20)
+        if head.returncode == 0 and head.stdout.strip():
+            commit = head.stdout.strip()[:12] + "-live"
+    except (OSError, subprocess.SubprocessError):
+        pass
+    binary = os.path.join("dist", "socom2.exe")
+    if os.path.exists(binary):
+        import hashlib
+        h = hashlib.sha256()
+        with open(binary, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        exe = h.hexdigest()[:16]
+    return commit, exe
+
+
+def identity_tokens(root=None):
+    commit, exe = harness_identity(root)
+    return f"harness={commit} exe={exe}"
+
+
+def rx_pulse_table(me, clock=time.time, wait=time.sleep, table=None, seconds=None):
+    """Amendment A3/A4's REPORTED rung-0 table: rx pulses of +-64/+-80/+-96 for 0.3 s each from rest, the actor-matrix
+    heading read AIM_PULSE_READ_S after each -> [{"dev", "deg"}] (deg None when no heading or a row jumped). Logged
+    one line per pulse; never a gate."""
+    table = online_ladder.RUNG0_PULSE_TABLE if table is None else table
+    seconds = online_ladder.RUNG0_PULSE_S if seconds is None else seconds
+    out = []
+    r0 = wait_pulse_heading(me.tail, clock() - AIM_PULSE_READ_S, clock, wait)
+    for dev in table:
+        t_p = clock()
+        me.sh.pad(seconds, axes={"rx": vc.PAD_NEUTRAL + dev})
+        r1 = wait_pulse_heading(me.tail, clock(), clock, wait)
+        jump = teleport_step(me.tail.actor_ingame(), t_p, clock(), walking=False)
+        deg = None if (r0 is None or r1 is None or jump is not None) else wrap_deg(r1[1] - r0[1])
+        out.append({"dev": dev, "deg": deg})
+        me.sh.log(f"RUNG0 rx-table {me.tag} rx={dev:+d} {seconds:g}s -> "
+                  + ("NO-DATA" + (f" (a {jump[1]:.1f}u row jump)" if jump else "") if deg is None else f"{deg:+.2f} deg"))
+        r0 = r1
+    return out
+
+
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
-                max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None, round_n=None, mover=None):
+                max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None, round_n=None, mover=None,
+                bp_waits=None):
     """The brief's one-line ladder result, with spec §5.1's contact time and the sampler period beside the contact
     rows. A field whose rows were zero reads NO-DATA (None, or 0 for a row count), never 0. `aim_iters`
     (aim_iters_field) is appended when given."""
@@ -2958,6 +3032,7 @@ def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starv
             f"alarms_cleared={nd(alarms_cleared)} max_idle_ms={','.join(nd(v) for v in max_idle_ms)} "
             f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}"
             + ("" if aim_iters is None else f" aim_iters={aim_iters}")
+            + ("" if bp_waits is None else f" bp_waits={','.join(nd(v) for v in bp_waits)}")
             + ("" if mover is None else f" mover={mover}"))
 
 
@@ -3881,6 +3956,9 @@ def main():
                          "reset; round 1 carries the precondition, rounds 2.. engage only. One LADDER round=<n> line "
                          "each and a LADDER-SUMMARY. Stop rules (A1): 3 usable rounds at rung 1 without rung 2 -> "
                          "SWAP-MOVER; 2 usable rounds at rung 2 without rung 3 -> DAMAGE-PATH-DECISION")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="validate the arguments, the route file, the peek/trace spec and PS2X_GS_STATS, print "
+                         "DRY-RUN OK (exit 0) or DRY-RUN REFUSED lines (exit 2), and launch nothing")
     ap.add_argument("--auto-swap", action="store_true",
                     help="on SWAP-MOVER, swap --mover for the next rounds (once) instead of stopping")
     ap.add_argument("--route", default=None,
@@ -3943,6 +4021,24 @@ def main():
         raise SystemExit(problem)
     watched_endgame = a.endgame in ("route", "cooperative") and not a.control_round
     route_path = a.route or default_route_path(a.map)
+    ident = identity_tokens()
+    if a.dry_run:
+        lines, _ = launch_refusal_lines(os.environ, a.alive_offset, a.health_offset) if a.converge else ([], 0)
+        lines = [ln for ln in lines if not ln.startswith("RESULT")]
+        lines += [f"PEEK SPEC: {p}" for p in peek_spec_problems(os.environ.get("PS2X_PEEK", ""))] if a.converge else []
+        if watched_endgame:
+            lines += [f"ENDGAME REFUSES: {p}" for p in endgame_preconditions(os.environ)]
+            lines += [f"ROUTE REFUSES: {p}" for p in problems_route_file(route_path)] if route_path else \
+                [f"ROUTE REFUSES: no route file for --map {a.map} (pass --route)"]
+            if os.environ.get("PS2X_GS_STATS") != "1":
+                lines.append("RUNG0 REFUSES: PS2X_GS_STATS is not 1 -- rung 0's back-pressure waits would be NO-DATA")
+        for ln in lines:
+            print(f"DRY-RUN REFUSED {ln}", flush=True)
+        if lines:
+            raise SystemExit(2)
+        print(f"DRY-RUN OK map={a.map} endgame={a.endgame} route={route_path} rounds={a.rounds} mover={a.mover} "
+              f"auto_swap={a.auto_swap} until_kill={a.until_kill} {ident}", flush=True)
+        return
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
     # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line
     # never reached the anti-stack search. A flag that does nothing is worse than no flag.
@@ -3961,7 +4057,7 @@ def main():
             eg = endgame_preconditions(os.environ)
             lines += [f"ENDGAME REFUSES: {p}" for p in eg]
             if eg:
-                lines.append("RESULT NO-DATA starvation watch (not launched)")
+                lines.append(f"RESULT NO-DATA starvation watch (not launched) {ident}")
                 code = 2
         if lines:
             for line in lines:
@@ -4076,7 +4172,7 @@ def main():
                 code = control_exit_code(control)
                 why = ("a side that cannot move cannot be engaged, and a parked side starves its partner"
                        if code == 3 else "no hold on some side was decisive (actor rows missing?)")
-                A.sh.log(f"RESULT {control if code == 3 else 'NO-DATA control'} -- the match is not "
+                A.sh.log(f"RESULT {control if code == 3 else 'NO-DATA control'} {ident} -- the match is not "
                          f"spent: {why}")
                 with open(os.path.join(a.out, "control.json"), "w") as fh:
                     json.dump({"result": control,
@@ -4098,7 +4194,7 @@ def main():
                 json.dump({"control": {tag: sd.status for tag, sd in control_sides.items()},
                            "move_path": mpw.history, "end": end, "score": score,
                            "series": series}, fh, indent=1, default=str)
-            A.sh.log(control_round_result_line(score, end))
+            A.sh.log(control_round_result_line(score, end) + f" {ident}")
             if not control_round_ok(score, end):
                 failed = True
         if a.converge and not a.control_round:
@@ -4166,6 +4262,14 @@ def main():
                     if starv is not None:
                         starv.new_round(t_round)
                 stale_shots, missing_shots, kill_shots = [], [], {"done": False}
+                if n == 1 and watched_endgame:
+                    # rung 0's reported rx pulse table (A3/A4), both sides at once, before anybody walks
+                    tt = [threading.Thread(target=lambda sd=sd: rung0_tables.__setitem__(sd.tag, rx_pulse_table(sd)))
+                          for sd in (sideA, sideB)]
+                    for t in tt:
+                        t.start()
+                    for t in tt:
+                        t.join()
                 live_spawns = first_actor if n == 1 else {
                     tag: (c.tail.actor_latest()[1:4] if c.tail.actor_latest() else None) for tag, c in (("A", A), ("B", B))}
 
@@ -4318,7 +4422,8 @@ def main():
                     max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]),
                     aim_iters=aim_iters_field((sideA if mover == "A" else sideB).aims,
                                               t0=endgame and endgame.get("t_fight")),
-                    round_n=n, mover=mover)
+                    round_n=n, mover=mover,
+                    bp_waits=tuple(online_ladder.bp_waits(inside(c.tail.bp_rows)) for c in (A, B)))
                 if fired is None:
                     obs = [e["kind"] for e in events if not e.get("firing")]
                     if obs:
@@ -4328,7 +4433,7 @@ def main():
                 sig = (f"signal={fired['kind']} on={fired['tag']} t=T+{fired['t'] - t_gameplay:.1f}s "
                        f"detail={json.dumps(fired['detail'], default=float)} " if fired else
                        f"(no signal in {a.kill_timeout}s) ")
-                A.sh.log(f"RESULT round={n} {verdict} {sig}"
+                A.sh.log(f"RESULT round={n} {verdict} {ident} {sig}"
                          f"closest_3d={closest} dy_at_closest={duel.best_dy()} contact={duel.contact.is_set()} "
                          f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                          f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
@@ -4341,6 +4446,13 @@ def main():
                     fatal = "move path stalled or frozen past FREEZE_MAX_S"
                 elif not watched_endgame:
                     fatal = "converge mode plays one round"
+                if n == 1 and watched_endgame:
+                    ok0, why0, f0 = rung0_check(t_end)
+                    A.sh.log("RUNG0 " + " ".join(f"{k}={v:.2f}" if isinstance(v, float) else f"{k}={v}"
+                                                 for k, v in sorted(f0.items())) + f" -> {'PASS' if ok0 else 'FAIL'}")
+                    if not ok0:
+                        A.sh.log(f"RESULT RUNG0-FAIL {why0} {ident}")
+                        fatal = fatal or f"RUNG0-FAIL {why0}"
                 rounds_out.append({
                     "round": n, "mover": mover, "round_value": round_value, "t": [t_round, t_end], "verdict": verdict,
                     "ladder": ladder, "rung": rung, "kill": is_kill, "closest_3d_units": closest,
@@ -4350,6 +4462,22 @@ def main():
                     "endgame": None if endgame is None else {k: v for k, v in endgame.items() if k != "approach"}})
                 return online_ladder.RoundScore(n=n, mover=mover, rung=rung, verdict=verdict, kill=is_kill,
                                                 line=ladder, fatal=fatal)
+
+            rung0_tables = {}
+
+            def rung0_check(t_end):
+                t0 = min((c.tail.actor_ingame()[0][0] for c in (A, B) if c.tail.actor_ingame()), default=t_gameplay)
+                sides0, pauses0 = {}, []
+                for tag, c in (("A", A), ("B", B)):
+                    rt, steps, _, _ = tail_clock_state(c.tail)
+                    pauses0 += vc.clock_pauses(rt, steps)
+                    with c.tail._lock:                   # noqa: SLF001 - same module
+                        calls = [(t, n_) for t, n_, _ in c.tail.calls.get(MOVE_SCALE_TRACE_NAME, [])]
+                        clock_s = [(t, st["clock"]) for t, st in c.tail.round_rows
+                                   if not isinstance(st.get("clock"), vc.NoData)]
+                        bp = list(c.tail.bp_rows)
+                    sides0[tag] = {"calls": calls, "clock": clock_s, "bp": bp}
+                return online_ladder.rung0_verdict(sides0, pauses0, t0, t_end)
 
             def next_round(n):
                 prev = rounds_out[-1]["round_value"] if rounds_out else None
