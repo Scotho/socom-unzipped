@@ -54,11 +54,18 @@ research/19's spectator branch (`ng+0xdc == 0 || ng+0xd2 != 0`). `FUN_00551ec0` 
 respawn gate the r0001 "Enable Respawn Offline" community code nops at `0x55205C`.
 
 Inside `FUN_00594cf0` both move-scale calls sit in `if (cVar7 == '\0')`, reached only when: no early
-return on the valve `*(short *)(DAT_0043668c + 4)` ∈ {1, 2} (name unresolved) or `DAT_003df1b0 == 0`;
+return on the valve `*(short *)(DAT_0043668c + 4)` ∈ {1, 2} (`mission_abort`, written 1/2 only by the pause-menu abort `FUN_002041e0`) or `DAT_003df1b0 == 0`;
 `controller->vtbl[0x8c]` = `FUN_00566940` (auto-move) returned 0; and the multiplayer snap-back
 (`DAT_004365c0 - actor+0x420 > 0.6`, excluded on Medley only) did not fire. The `ng+0xdc && !ng+0xd2`
-test there comes **after** both calls. So a ghost silences the move path upstream (dispatch to
-`FUN_00592560`, the respawn gate, or the spectator path), not inside `FUN_00594cf0`.
+test there comes **after** both calls, and no stop condition inside `FUN_00594cf0` reads `+0xd2`.
+**Amended 2026-09-13 (Task 1 Step 1 and its review, re-derived from ELF bytes):** the guard's state is
+`(short)actor+0x174 == 8` (not `+0xc0`), and `0x55205C` is its third disjunct's online test, not a separate
+gate. A ghost silences the move path **at first spawn**: `FUN_002b7d60` (via `FUN_002b7a90`, once per player
+creation) calls `FUN_00543d50(local actor)` when `!JoinAsSpectator && ng+0xd2 != 0`, which zeroes health and
+calls `actor->vtbl[0x90](8)`, i.e. `actor+0x174 = 8`, so `FUN_00551ec0` dispatches `FUN_00592560`. The
+spectator path `FUN_005979a0` is reached only through actor `vtbl[0x58]` (death), which `FUN_00543d50` can
+also call. A second, independent way to lose control: `DAT_003df1b0` (input enabled) has one writer,
+`FUN_00598840`, called by a cinematic begin/end pair and by the `ai::STOPALL` script handler `FUN_005cf800`.
 
 ## 2. Judgement on the ROADMAP's original Sprint 5
 
