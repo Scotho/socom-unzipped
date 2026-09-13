@@ -39,7 +39,11 @@ INSTANCES = {
           "PS2X_SOCOM2_RSA_KEY": os.environ.get("PS2X_SOCOM2_RSA_KEY_B", ""),
           # PS2X_SOCOM2_NET_STATS_B=0 turns the interface-statistics fix OFF for instance B only,
           # so one run carries both legs of the A/B on a single binary: A moves, B is pinned.
-          "PS2X_SOCOM2_NET_STATS": os.environ.get("PS2X_SOCOM2_NET_STATS_B", "")},
+          "PS2X_SOCOM2_NET_STATS": os.environ.get("PS2X_SOCOM2_NET_STATS_B", ""),
+          # PS2X_GUEST_MALLOC_ZERO_B=1 zero-fills fresh guest heap blocks for instance B only; unset
+          # leaves B off even when PS2X_GUEST_MALLOC_ZERO=1 is exported for instance A, so one run on
+          # one binary carries both legs of the zero-fill A/B (Sprint 5 Task 1).
+          "PS2X_GUEST_MALLOC_ZERO": os.environ.get("PS2X_GUEST_MALLOC_ZERO_B", "")},
 }
 
 

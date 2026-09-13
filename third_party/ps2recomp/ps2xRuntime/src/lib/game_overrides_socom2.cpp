@@ -17,6 +17,7 @@
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
+#include "Kernel/HleStats.h"
 #include <cstring>
 #include <cmath>
 #include <fstream>
@@ -1227,6 +1228,9 @@ namespace
         runtime.replaceFunction(0x002cc670u, ps2_stubs::socom2_DnasTickDone);
         // _InitSys kernel-patch search (FindAddress loop over the BIOS): nothing to find here.
         ps2_game_overrides::bindAddressHandler(runtime, 0x001ac9d8u, "ret0");
+        // PS2X_HLE_STATS=1 wraps the bound stubs' table entries: last, so it wraps whatever
+        // handler each address finally carries (Kernel/HleStats.h).
+        ps2_hle_stats::installFromEnvironment(runtime);
     }
 }
 

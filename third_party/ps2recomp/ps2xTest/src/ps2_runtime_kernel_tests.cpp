@@ -4,9 +4,12 @@
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/LibC.h"
+#include "Kernel/HleStats.h"
+#include "ps2_guest_heap_policy.h"
 #include "runtime/ee_scheduler.h"
 
 #include <array>
+#include <iostream>
 #include <atomic>
 #include <cstdint>
 #include <cmath>
@@ -899,6 +902,172 @@ void register_ps2_runtime_kernel_tests()
             env.runtime.guestFree(grown);
             const uint32_t reused = env.runtime.guestMalloc(0x80u, 16u);
             t.Equals(reused, heapBase, "guestFree should make the head block reusable");
+        });
+
+        tc.Run("PS2X_GUEST_MALLOC_ZERO zero-fills recycled malloc blocks and grown realloc tails", [](TestCase &t)
+        {
+            // Determinism: the guest heap is first-fit over an address-ordered block list with
+            // neighbour coalescing, so on a freshly configured heap malloc(n) -> free -> malloc(n)
+            // returns the same address, and the test asserts that address equality before it
+            // reads a byte. The knob is toggled in-process through setZeroFillForTesting; the
+            // cached environment value is restored (-1 = re-read) at the end.
+            constexpr uint32_t kBase = 0x00200000u;
+            constexpr uint32_t kLimit = 0x00210000u;
+            const auto fill = [](PS2Runtime &rt, uint32_t addr, uint32_t size, uint8_t v)
+            { std::memset(rt.memory().getRDRAM() + (addr & PS2_RAM_MASK), v, size); };
+            const auto allAre = [](PS2Runtime &rt, uint32_t addr, uint32_t size, uint8_t v)
+            {
+                const uint8_t *p = rt.memory().getRDRAM() + (addr & PS2_RAM_MASK);
+                for (uint32_t i = 0; i < size; ++i)
+                    if (p[i] != v)
+                        return false;
+                return true;
+            };
+
+            for (int knob = 0; knob <= 1; ++knob)
+            {
+                ps2_guest_heap::setZeroFillForTesting(knob);
+                const uint8_t fresh = knob ? 0x00u : 0xAFu;  // what a recycled byte must read
+                PS2Runtime runtime;
+                t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+                runtime.configureGuestHeap(kBase, kLimit);
+
+                // 1. malloc -> dirty -> free -> malloc of the same size reuses the block.
+                const uint32_t a = runtime.guestMalloc(0x100u, 16u);
+                t.Equals(a, kBase, "first allocation lands at the heap base");
+                fill(runtime, a, 0x100u, 0xAFu);
+                runtime.guestFree(a);
+                const uint32_t again = runtime.guestMalloc(0x100u, 16u);
+                t.Equals(again, a, "first-fit hands the freed block back (test precondition)");
+                t.IsTrue(allAre(runtime, again, 0x100u, fresh),
+                         knob ? "knob on: a recycled malloc block reads zero"
+                              : "knob off: a recycled malloc block keeps the old bytes");
+
+                // memalign shape (_memalign_r binds to guestMalloc with an alignment).
+                fill(runtime, again, 0x100u, 0xAFu);
+                runtime.guestFree(again);
+                const uint32_t aligned = runtime.guestMalloc(0x40u, 64u);
+                t.Equals(aligned, a, "64-byte aligned allocation reuses the base block");
+                t.IsTrue(allAre(runtime, aligned, 0x40u, fresh),
+                         knob ? "knob on: a recycled memalign block reads zero"
+                              : "knob off: a recycled memalign block keeps the old bytes");
+                runtime.guestFree(aligned);
+
+                // 2. realloc growing IN PLACE into a freed, dirty neighbour.
+                const uint32_t p = runtime.guestMalloc(0x100u, 16u);
+                const uint32_t q = runtime.guestMalloc(0x100u, 16u);
+                t.Equals(q, p + 0x100u, "second block is adjacent (test precondition)");
+                fill(runtime, p, 0x100u, 0x11u);
+                fill(runtime, q, 0x100u, 0xAFu);
+                runtime.guestFree(q);
+                const uint32_t grown = runtime.guestRealloc(p, 0x180u, 16u);
+                t.Equals(grown, p, "realloc grows in place into the free neighbour (test precondition)");
+                t.IsTrue(allAre(runtime, grown, 0x100u, 0x11u), "in-place grow keeps the old prefix");
+                t.IsTrue(allAre(runtime, grown + 0x100u, 0x80u, fresh),
+                         knob ? "knob on: the in-place grown tail reads zero"
+                              : "knob off: the in-place grown tail keeps the neighbour's bytes");
+                runtime.guestFree(grown);
+
+                // 3. realloc that MOVES: a pinned neighbour blocks in-place growth, and a freed
+                //    dirty block further up is where first-fit puts the new copy.
+                const uint32_t m = runtime.guestMalloc(0x100u, 16u);   // kBase
+                const uint32_t pin = runtime.guestMalloc(0x100u, 16u); // kBase+0x100
+                const uint32_t far = runtime.guestMalloc(0x200u, 16u); // kBase+0x200
+                t.Equals(far, m + 0x200u, "third block follows the pin (test precondition)");
+                fill(runtime, m, 0x100u, 0x22u);
+                fill(runtime, far, 0x200u, 0xAFu);
+                runtime.guestFree(far);
+                const uint32_t moved = runtime.guestRealloc(m, 0x180u, 16u);
+                t.Equals(moved, far, "realloc moves to the freed block past the pin (test precondition)");
+                t.IsTrue(allAre(runtime, moved, 0x100u, 0x22u), "moving realloc copies the old prefix");
+                t.IsTrue(allAre(runtime, moved + 0x100u, 0x80u, fresh),
+                         knob ? "knob on: the moved block's grown tail reads zero"
+                              : "knob off: the moved block's grown tail keeps the old bytes");
+                runtime.guestFree(moved);
+                runtime.guestFree(pin);
+
+                // 4. calloc zeroes either way.
+                const uint32_t c0 = runtime.guestMalloc(0x100u, 16u);
+                fill(runtime, c0, 0x100u, 0xAFu);
+                runtime.guestFree(c0);
+                const uint32_t c = runtime.guestCalloc(4u, 0x40u, 16u);
+                t.Equals(c, c0, "calloc reuses the freed block (test precondition)");
+                t.IsTrue(allAre(runtime, c, 0x100u, 0x00u), "calloc zeroes with the knob on or off");
+                runtime.guestFree(c);
+            }
+            ps2_guest_heap::setZeroFillForTesting(-1);
+        });
+
+        tc.Run("PS2X_HLE_STATS table lists every bound stub, zero-call ones included", [](TestCase &t)
+        {
+            constexpr uint32_t kCalled = 0x00300000u;
+            constexpr uint32_t kIdle = 0x00300010u;
+            constexpr uint32_t kFloat = 0x00300020u;
+            constexpr uint32_t kMissing = 0x00300030u;
+            PS2Runtime runtime;
+            const PS2Runtime::RecompiledFunction retA0 = [](uint8_t *, R5900Context *ctx, PS2Runtime *)
+            { ::setReturnU32(ctx, ::getRegU32(ctx, 4)); };
+            const PS2Runtime::RecompiledFunction retF12 = [](uint8_t *, R5900Context *ctx, PS2Runtime *)
+            { ctx->f[0] = ctx->f[12]; };
+            runtime.registerFunction(kCalled, retA0);
+            runtime.registerFunction(kIdle, retA0);
+            runtime.registerFunction(kFloat, retF12);
+
+            std::istringstream toml(
+                "[general]\n"
+                "stubs = [\n"
+                "  \"reta0_like@0x00300000\",\n"
+                "  \"idle_stub@0x00300010\",\n"
+                "  \"__kernel_cosf@0x00300020\",\n"
+                "  \"not_in_table@0x00300030\",\n"
+                "]\n"
+                "untracked_stubs = [\n"
+                "  \"ignored@0x00300040\",\n"
+                "]\n");
+            const auto stubs = ps2_hle_stats::parseTomlStubs(toml);
+            t.Equals(static_cast<int>(stubs.size()), 4, "only the stubs array is parsed");
+            t.Equals(ps2_hle_stats::install(runtime, stubs), static_cast<size_t>(3), "three stubs have a function");
+
+            std::vector<uint8_t> rdram(64, 0);
+            R5900Context ctx{};
+            const auto call = [&](uint32_t addr) { runtime.lookupFunction(addr)(rdram.data(), &ctx, &runtime); };
+            for (uint32_t i = 0; i < 70; ++i)
+            {
+                setRegU32(ctx, 4, i < 3 ? 7u : i); // 7, 7, 7, 3, 4, ... 69: 68 distinct values
+                call(kCalled);
+            }
+            ctx.f[12] = 1.5f;
+            call(kFloat);
+
+            const std::string table = ps2_hle_stats::formatTable("test");
+            std::cout << table;
+            const auto rowOf = [&](const std::string &name) -> std::string
+            {
+                std::istringstream in(table);
+                std::string line;
+                while (std::getline(in, line))
+                    if (line.find(" " + name + " ") != std::string::npos)
+                        return line;
+                return {};
+            };
+            t.IsTrue(table.find("stubs=4 called=2 zero-call=2 unbound=1") != std::string::npos, "summary line counts");
+            const std::string idle = rowOf("idle_stub");
+            t.IsTrue(!idle.empty(), "the zero-call stub has a row");
+            t.IsTrue(idle.find(" 0 ") != std::string::npos && idle.find(" - ") != std::string::npos,
+                     "the zero-call row reads 0 calls and no return");
+            const std::string called = rowOf("reta0_like");
+            t.IsTrue(called.find(" 70 ") != std::string::npos, "calls counted");
+            t.IsTrue(called.find(">64") != std::string::npos, "distinct saturates at 64");
+            t.IsTrue(called.find("0x00000007") != std::string::npos && called.find("0x00000045") != std::string::npos,
+                     "first and last return printed");
+            t.IsTrue(rowOf("__kernel_cosf").find("f0=1.5") != std::string::npos, "float stub records $f0");
+            t.IsTrue(rowOf("not_in_table").find("unbound") != std::string::npos, "a stub with no function is listed unbound");
+
+            ps2_hle_stats::uninstall(runtime);
+            t.IsTrue(runtime.lookupFunction(kCalled) == retA0, "uninstall restores the original entry");
+            runtime.registerFunction(kCalled, nullptr);
+            runtime.registerFunction(kIdle, nullptr);
+            runtime.registerFunction(kFloat, nullptr);
         });
 
         tc.Run("memalign stubs allocate aligned guest memory", [](TestCase &t)
