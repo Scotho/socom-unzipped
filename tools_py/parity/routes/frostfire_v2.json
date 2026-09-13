@@ -1,0 +1,752 @@
+{
+ "map": "frostfire",
+ "version": 2,
+ "source": {
+  "research": "docs/research/24-frostfire-walkability.md",
+  "geometry": "logs/parity/frostA_probe600_vf0.rdram (collision polygons identical in frostB_probe600_vf0.rdram: 3318/3318)",
+  "rows": "launch 3c, logs/run_A_20260913_115809.log / logs/run_B_20260913_115809.log (verdict_core.parse_log actor rows)",
+  "A": "logs/run_A_20260913_115809.log",
+  "B": "logs/run_B_20260913_115809.log",
+  "row_t": "seconds on that instance's own verdict_core.parse_log clock (B's clock is A's - 6.00 s)",
+  "rule": "waypoints are nodes of a 5-unit height-field walkability graph (all ground hits per column, grade <= 0.5, body radius 3.5, body column y+6..y+20 clear of wall polygons), A*-routed preferring 3c-walked ground and clearance, then corrected after independent review (ramp mouth approach squared and ramp waypoints on its centreline z 1223.5; container pinch moved to x ~806); every leg re-validated on the geometry every 2 units (ground continuity, ProbeEval selection, no wall crossing). src cites the nearest 3c row within 6 units (walked) or the height-field cell and its ground polygon (unwalked).",
+  "clearance": "numeric: minimum 3-D distance from the body column (y+6..y+20) to wall polygons (bit 18 clear, |n_y| < 0.7), searched out to 60 units; leg min_clearance is sampled every 2 units",
+  "addresses": "model addresses are valid in frostA_probe600_vf0.rdram only (e.g. B's image has the door slabs at 0x122dda0 / 0x122f650 / 0x122f9a0)"
+ },
+ "spawns": {
+  "A": {
+   "x": 795.7,
+   "y": 100.0,
+   "z": 613.6,
+   "row_t": 393.12
+  },
+  "B": {
+   "x": 535.7,
+   "y": 142.9,
+   "z": 1253.6,
+   "row_t": 387.12
+  }
+ },
+ "floors_y": [
+  100.0,
+  142.0
+ ],
+ "routes": {
+  "A": {
+   "mover": "mover_A",
+   "to": "B's floor (upper, y 142) within 45 of B's spawn: A's lower trail (x ~806 past the container climb 0x1222480), to (685,830), north along x 720 under the walkway deck through the x 705-735 underpass (z 975-1000), B's lower trail, a square approach to B's ramp mouth at (705,100,1223), up the ramp on its centreline z 1223.5 to (600,142,1223.5), then (565,142,1235)",
+   "len": 864.6,
+   "walked_len": 274.2,
+   "unwalked_len": 590.4,
+   "min_clearance": 11.1,
+   "end_to_B_spawn_xz": 34.7,
+   "confidence": "medium-high",
+   "waypoints": [
+    {
+     "x": 795.7,
+     "y": 100.0,
+     "z": 613.6,
+     "row_t": 393.12,
+     "row_side": "A",
+     "src": "3c A row t=393.12 (795.7,100.0,613.6), 0.0 away",
+     "clearance": 11.4
+    },
+    {
+     "x": 806,
+     "y": 100.0,
+     "z": 665,
+     "row_t": null,
+     "src": "height-field cell (806,665): ground y 100.0 on model 0x11a4c10 surface 0 (image A address)",
+     "clearance": 16.0,
+     "leg_from_prev": {
+      "len": 52.4,
+      "walked_len": 31.1,
+      "min_clearance": 12.2,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 806,
+     "y": 100.0,
+     "z": 712,
+     "row_t": null,
+     "src": "height-field cell (806,712): ground y 100.0 on model 0x11bd410 surface 0 (image A address)",
+     "clearance": 27.2,
+     "leg_from_prev": {
+      "len": 47.0,
+      "walked_len": 0,
+      "min_clearance": 16.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 760,
+     "y": 100.0,
+     "z": 720,
+     "row_t": 467.26,
+     "row_side": "A",
+     "src": "3c A row t=467.26 (760.2,100.0,716.6), 3.4 away",
+     "clearance": 25.9,
+     "leg_from_prev": {
+      "len": 46.7,
+      "walked_len": 46.7,
+      "min_clearance": 24.4,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 745,
+     "y": 100.0,
+     "z": 720,
+     "row_t": 467.53,
+     "row_side": "A",
+     "src": "3c A row t=467.53 (749.4,100.0,718.1), 4.8 away",
+     "clearance": 30.4,
+     "leg_from_prev": {
+      "len": 15.0,
+      "walked_len": 15.0,
+      "min_clearance": 26.3,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 695,
+     "y": 100.0,
+     "z": 730,
+     "row_t": 469.62,
+     "row_side": "A",
+     "src": "3c A row t=469.62 (689.4,100.0,728.5), 5.8 away",
+     "clearance": 15.5,
+     "leg_from_prev": {
+      "len": 51.0,
+      "walked_len": 43.1,
+      "min_clearance": 15.5,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 690,
+     "y": 100.0,
+     "z": 780,
+     "row_t": 473.51,
+     "row_side": "A",
+     "src": "3c A row t=473.51 (686.4,100.0,782.0), 4.1 away",
+     "clearance": 36.0,
+     "leg_from_prev": {
+      "len": 50.2,
+      "walked_len": 30.9,
+      "min_clearance": 15.9,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 685,
+     "y": 100.0,
+     "z": 830,
+     "row_t": 475.75,
+     "row_side": "A",
+     "src": "3c A row t=475.75 (685.1,100.0,831.6), 1.6 away",
+     "clearance": 31.0,
+     "leg_from_prev": {
+      "len": 50.2,
+      "walked_len": 48.3,
+      "min_clearance": 31.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 718,
+     "y": 100.0,
+     "z": 872,
+     "row_t": null,
+     "src": "height-field cell (718,872): ground y 100.0 on model 0x11a5140 surface 1 (image A address)",
+     "clearance": 17.4,
+     "leg_from_prev": {
+      "len": 53.4,
+      "walked_len": 5.9,
+      "min_clearance": 17.4,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 915,
+     "row_t": null,
+     "src": "height-field cell (720,915): ground y 100.0 on model 0x11a5140 surface 1 (image A address)",
+     "clearance": 15.0,
+     "leg_from_prev": {
+      "len": 43.0,
+      "walked_len": 0,
+      "min_clearance": 13.8,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 960,
+     "row_t": null,
+     "src": "height-field cell (720,960): ground y 100.0 on model 0x11a5140 surface 1 (image A address)",
+     "clearance": 17.7,
+     "leg_from_prev": {
+      "len": 45.0,
+      "walked_len": 0,
+      "min_clearance": 15.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 1005,
+     "row_t": null,
+     "src": "height-field cell (720,1005): ground y 100.0 on model 0x11a8280 surface 3 (image A address)",
+     "clearance": 15.8,
+     "leg_from_prev": {
+      "len": 45.0,
+      "walked_len": 0,
+      "min_clearance": 15.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 735,
+     "y": 100.0,
+     "z": 1055,
+     "row_t": null,
+     "src": "height-field cell (735,1055): ground y 100.0 on model 0x11a8280 surface 1 (image A address)",
+     "clearance": 44.5,
+     "leg_from_prev": {
+      "len": 52.2,
+      "walked_len": 11.6,
+      "min_clearance": 16.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 1100,
+     "row_t": null,
+     "src": "height-field cell (720,1100): ground y 100.0 on model 0x11a8280 surface 2 (image A address)",
+     "clearance": 23.3,
+     "leg_from_prev": {
+      "len": 47.4,
+      "walked_len": 7.9,
+      "min_clearance": 23.3,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 715,
+     "y": 100.0,
+     "z": 1155,
+     "row_t": null,
+     "src": "height-field cell (715,1155): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 20.0,
+     "leg_from_prev": {
+      "len": 55.2,
+      "walked_len": 0,
+      "min_clearance": 16.6,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 712,
+     "y": 100.0,
+     "z": 1190,
+     "row_t": null,
+     "src": "height-field cell (712,1190): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 23.0,
+     "leg_from_prev": {
+      "len": 35.1,
+      "walked_len": 0,
+      "min_clearance": 20.2,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 705,
+     "y": 100.0,
+     "z": 1223,
+     "row_t": null,
+     "src": "height-field cell (705,1223): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 25.0,
+     "leg_from_prev": {
+      "len": 33.7,
+      "walked_len": 0,
+      "min_clearance": 23.4,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 680,
+     "y": 102.0,
+     "z": 1223.5,
+     "row_t": null,
+     "src": "height-field cell (680,1223.5): ground y 102.0 on model 0x11ae600 surface 0 (image A address)",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 25.0,
+      "walked_len": 0,
+      "min_clearance": 11.7,
+      "expected_floor_y": 102.0,
+      "ramp": true,
+      "y_range": [
+       100.0,
+       102.0
+      ]
+     }
+    },
+    {
+     "x": 640,
+     "y": 122.0,
+     "z": 1223.5,
+     "row_t": null,
+     "src": "height-field cell (640,1223.5): ground y 122.0 on model 0x11ae600 surface 0 (image A address)",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 40.0,
+      "walked_len": 0,
+      "min_clearance": 11.7,
+      "expected_floor_y": 122.0,
+      "ramp": true,
+      "y_range": [
+       102.0,
+       122.0
+      ]
+     }
+    },
+    {
+     "x": 600,
+     "y": 142.0,
+     "z": 1223.5,
+     "row_t": 566.67,
+     "row_side": "B",
+     "src": "3c B row t=566.67 (600.1,142.0,1226.6), 3.1 away",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 40.0,
+      "walked_len": 22.0,
+      "min_clearance": 11.7,
+      "expected_floor_y": 142.0,
+      "ramp": true,
+      "y_range": [
+       122.0,
+       142.0
+      ]
+     }
+    },
+    {
+     "x": 565,
+     "y": 142.0,
+     "z": 1235,
+     "row_t": null,
+     "src": "height-field cell (565,1235): ground y 142.0 on model 0x11a9160 surface 7 (image A address)",
+     "clearance": 34.3,
+     "leg_from_prev": {
+      "len": 36.8,
+      "walked_len": 11.6,
+      "min_clearance": 11.1,
+      "expected_floor_y": 142.0,
+      "ramp": false
+     }
+    }
+   ]
+  },
+  "B": {
+   "mover": "mover_B",
+   "to": "A's floor (lower, y 100) within 45 of A's spawn: down B's ramp on its centreline z 1223.5, square exit at (705,100,1223), B's lower trail south, the underpass (x 705-735, z 975-1000), south along x 720, A's lower trail, x ~806 past the container climb, to (806,100,645)",
+   "len": 856.8,
+   "walked_len": 283.2,
+   "unwalked_len": 573.5,
+   "min_clearance": 10.2,
+   "end_to_A_spawn_xz": 33.0,
+   "confidence": "medium-high",
+   "waypoints": [
+    {
+     "x": 535.7,
+     "y": 142.0,
+     "z": 1253.6,
+     "row_t": 387.12,
+     "row_side": "B",
+     "src": "3c B row t=387.12 (535.7,142.9,1253.6), 0.0 away",
+     "clearance": 21.4
+    },
+    {
+     "x": 580,
+     "y": 142.0,
+     "z": 1235,
+     "row_t": null,
+     "src": "height-field cell (580,1235): ground y 142.0 on model 0x11a9160 surface 7 (image A address)",
+     "clearance": 19.3,
+     "leg_from_prev": {
+      "len": 48.0,
+      "walked_len": 23.1,
+      "min_clearance": 19.3,
+      "expected_floor_y": 142.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 600,
+     "y": 142.0,
+     "z": 1223.5,
+     "row_t": 566.67,
+     "row_side": "B",
+     "src": "3c B row t=566.67 (600.1,142.0,1226.6), 3.1 away",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 23.1,
+      "walked_len": 7.7,
+      "min_clearance": 10.2,
+      "expected_floor_y": 142.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 640,
+     "y": 122.0,
+     "z": 1223.5,
+     "row_t": null,
+     "src": "height-field cell (640,1223.5): ground y 122.0 on model 0x11ae600 surface 0 (image A address)",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 40.0,
+      "walked_len": 20.0,
+      "min_clearance": 11.7,
+      "expected_floor_y": 122.0,
+      "ramp": true,
+      "y_range": [
+       122.0,
+       142.0
+      ]
+     }
+    },
+    {
+     "x": 680,
+     "y": 102.0,
+     "z": 1223.5,
+     "row_t": null,
+     "src": "height-field cell (680,1223.5): ground y 102.0 on model 0x11ae600 surface 0 (image A address)",
+     "clearance": 11.7,
+     "leg_from_prev": {
+      "len": 40.0,
+      "walked_len": 0,
+      "min_clearance": 11.7,
+      "expected_floor_y": 102.0,
+      "ramp": true,
+      "y_range": [
+       102.0,
+       122.0
+      ]
+     }
+    },
+    {
+     "x": 705,
+     "y": 100.0,
+     "z": 1223,
+     "row_t": null,
+     "src": "height-field cell (705,1223): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 25.0,
+     "leg_from_prev": {
+      "len": 25.0,
+      "walked_len": 0,
+      "min_clearance": 11.9,
+      "expected_floor_y": 100.0,
+      "ramp": true,
+      "y_range": [
+       100.0,
+       102.0
+      ]
+     }
+    },
+    {
+     "x": 712,
+     "y": 100.0,
+     "z": 1190,
+     "row_t": null,
+     "src": "height-field cell (712,1190): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 23.0,
+     "leg_from_prev": {
+      "len": 33.7,
+      "walked_len": 0,
+      "min_clearance": 23.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 715,
+     "y": 100.0,
+     "z": 1155,
+     "row_t": null,
+     "src": "height-field cell (715,1155): ground y 100.0 on model 0x11a8750 surface 1 (image A address)",
+     "clearance": 20.0,
+     "leg_from_prev": {
+      "len": 35.1,
+      "walked_len": 0,
+      "min_clearance": 20.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 1100,
+     "row_t": null,
+     "src": "height-field cell (720,1100): ground y 100.0 on model 0x11a8280 surface 2 (image A address)",
+     "clearance": 23.3,
+     "leg_from_prev": {
+      "len": 55.2,
+      "walked_len": 0,
+      "min_clearance": 16.6,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 735,
+     "y": 100.0,
+     "z": 1055,
+     "row_t": null,
+     "src": "height-field cell (735,1055): ground y 100.0 on model 0x11a8280 surface 1 (image A address)",
+     "clearance": 44.5,
+     "leg_from_prev": {
+      "len": 47.4,
+      "walked_len": 7.9,
+      "min_clearance": 24.2,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 728,
+     "y": 100.0,
+     "z": 1030,
+     "row_t": 586.64,
+     "row_side": "B",
+     "src": "3c B row t=586.64 (724.9,100.0,1025.0), 5.9 away",
+     "clearance": 30.8,
+     "leg_from_prev": {
+      "len": 26.0,
+      "walked_len": 2.0,
+      "min_clearance": 30.8,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 985,
+     "row_t": null,
+     "src": "height-field cell (720,985): ground y 100.0 on model 0x11a8280 surface 3 (image A address)",
+     "clearance": 15.0,
+     "leg_from_prev": {
+      "len": 45.7,
+      "walked_len": 9.9,
+      "min_clearance": 12.2,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 935,
+     "row_t": null,
+     "src": "height-field cell (720,935): ground y 100.0 on model 0x11a5140 surface 1 (image A address)",
+     "clearance": 15.0,
+     "leg_from_prev": {
+      "len": 50.0,
+      "walked_len": 0,
+      "min_clearance": 15.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 720,
+     "y": 100.0,
+     "z": 890,
+     "row_t": null,
+     "src": "height-field cell (720,890): ground y 100.0 on model 0x11a5140 surface 1 (image A address)",
+     "clearance": 12.8,
+     "leg_from_prev": {
+      "len": 45.0,
+      "walked_len": 0,
+      "min_clearance": 12.8,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 700,
+     "y": 100.0,
+     "z": 860,
+     "row_t": null,
+     "src": "height-field cell (700,860): ground y 100.0 on model 0x11a5140 surface 0 (image A address)",
+     "clearance": 28.3,
+     "leg_from_prev": {
+      "len": 36.1,
+      "walked_len": 0,
+      "min_clearance": 13.9,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 685,
+     "y": 100.0,
+     "z": 840,
+     "row_t": 476.0,
+     "row_side": "A",
+     "src": "3c A row t=476.00 (684.5,100.0,842.4), 2.4 away",
+     "clearance": 31.1,
+     "leg_from_prev": {
+      "len": 25.0,
+      "walked_len": 7.7,
+      "min_clearance": 28.6,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 690,
+     "y": 100.0,
+     "z": 790,
+     "row_t": 473.75,
+     "row_side": "A",
+     "src": "3c A row t=473.75 (685.9,100.0,792.8), 5.0 away",
+     "clearance": 36.0,
+     "leg_from_prev": {
+      "len": 50.2,
+      "walked_len": 50.2,
+      "min_clearance": 31.2,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 690,
+     "y": 100.0,
+     "z": 735,
+     "row_t": 472.54,
+     "row_side": "A",
+     "src": "3c A row t=472.54 (688.7,100.0,736.6), 2.1 away",
+     "clearance": 13.5,
+     "leg_from_prev": {
+      "len": 55.0,
+      "walked_len": 51.1,
+      "min_clearance": 13.5,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 740,
+     "y": 100.0,
+     "z": 715,
+     "row_t": 467.79,
+     "row_side": "A",
+     "src": "3c A row t=467.79 (736.6,100.0,719.9), 6.0 away",
+     "clearance": 26.9,
+     "leg_from_prev": {
+      "len": 53.9,
+      "walked_len": 39.9,
+      "min_clearance": 14.4,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 790,
+     "y": 100.0,
+     "z": 712,
+     "row_t": 462.68,
+     "row_side": "A",
+     "src": "3c A row t=462.68 (793.7,100.0,716.6), 5.9 away",
+     "clearance": 22.0,
+     "leg_from_prev": {
+      "len": 50.1,
+      "walked_len": 44.3,
+      "min_clearance": 22.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 806,
+     "y": 100.0,
+     "z": 690,
+     "row_t": null,
+     "src": "height-field cell (806,690): ground y 100.0 on model 0x11a4c10 surface 0 (image A address)",
+     "clearance": 16.0,
+     "leg_from_prev": {
+      "len": 27.2,
+      "walked_len": 19.4,
+      "min_clearance": 12.9,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    },
+    {
+     "x": 806,
+     "y": 100.0,
+     "z": 645,
+     "row_t": null,
+     "src": "height-field cell (806,645): ground y 100.0 on model 0x11a4c10 surface 0 (image A address)",
+     "clearance": 16.8,
+     "leg_from_prev": {
+      "len": 45.0,
+      "walked_len": 0,
+      "min_clearance": 16.0,
+      "expected_floor_y": 100.0,
+      "ramp": false
+     }
+    }
+   ]
+  }
+ },
+ "mover_A": {
+  "route": "routes.A",
+  "start": "A spawn (lower, y 100)",
+  "end_floor_y": 142.0,
+  "note": "documentation only: the harness reads routes.A / routes.B, not this section"
+ },
+ "mover_B": {
+  "route": "routes.B",
+  "start": "B spawn (upper, y 142)",
+  "end_floor_y": 100.0,
+  "note": "documentation only: the harness reads routes.A / routes.B, not this section"
+ },
+ "not_walked": [
+  "lower floor (685,830) -> (718,872) -> (720,1005): east of A's ramp, through the underpass under the walkway deck; never walked in 3c",
+  "lower floor (705-720, 100, 1155-1223) square approach to B's ramp mouth (short joins)",
+  "upper floor (565-580, 142, 1230-1235) next to B's spawn"
+ ],
+ "avoid": [
+  "A's ramp (x 680-705, z 891-975): leads only to the walkway deck, a dead end at y 142 (railing z 999-1000; door_slab models at (764.5,142,984.5) and (582.5,142,1117.5), closed at 3c round start; the ELF has OPEN DOOR / CLOSE DOOR, so live state is not guaranteed)",
+  "the x 705 ramp side wall: keep x >= 712 between z 880 and z 975",
+  "B's ramp mouth (z 1211.6-1235.2): approach square along z ~1223 from x >= 705; a 45-degree approach drifts onto the side walls",
+  "the container climb model 0x1222480 (walls #2/#3) near (790,690): pass at x ~806"
+ ]
+}
