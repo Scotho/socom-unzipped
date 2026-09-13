@@ -905,10 +905,17 @@ mean (23.09, ptp 2.75) is the wrong number to quote: **24.9** is.
 The sprint spec and Task 7's brief both describe `D` (left stick right) as a turn. It is not, on the
 preset this match runs (Precision Shooter). All three `A` holds travelled at a **constant world
 bearing of -170.90 / -170.94 / -171.00 deg** and all three `D` holds at **+18.48 / +10.74 / +10.80**,
-i.e. 180 deg apart and at facing -/+90 deg, **with the facing unchanged** — a lateral translation,
-the same thing S0 saw on the PCSX2 reference when `LLEFT` moved the player with the compass heading
-unchanged. Turning is the right stick (`L` / `J`) only. Anything that plans a turn with the left
-stick plans a sidestep instead.
+i.e. 180 deg apart and at facing -/+90 deg — a lateral translation, the same thing S0 saw on the
+PCSX2 reference when `LLEFT` moved the player with the compass heading unchanged. Turning is the
+right stick (`L` / `J`) only, and anything that plans a turn with the left stick plans a sidestep.
+
+**"With the facing unchanged" is an overstatement, though, and the numbers say so.** Every lateral
+hold fitted some rotation: 7–10 deg/s, i.e. **~18 deg of camera sweep per 2 s strafe** (|sweep|
+14.63 / 17.33 / 18.02 / 20.92 on the four clean holds), and **two of the six classified as
+rotations** rather than translations. The conclusion stands — the record travels a constant world
+bearing hundreds of units long, which no rotation about a 24.9-unit orbit can produce — but the
+right thing to carry forward is "a strafe also drifts the camera ~18 deg per 2 s", not "the facing
+is unchanged".
 
 ### Finding 3 — the hold response is affine, not proportional
 
@@ -919,6 +926,11 @@ A hold delivers `rate * (seconds - lead)`, not `rate * seconds`, because the rec
 |---|---|---|---|---|
 | `L` look | +171.09 / +154.63 / +168.03 deg | +380.78 deg | **108.1 deg/s** | **0.48 s** |
 | `W` walk | 55.18 / 58.36 units (and one blocked 16.05) | 160.14 units | ~51 units/s | ~0.9 s |
+
+**Those two columns are the derivation, not the shipped constants.** 108.1 / 0.48 comes from three
+2 s holds against a single 4 s hold; the loop over-turned short corrections by ~1.6x on it. The
+shipped `LOOK_DEG_PER_S` / `TURN_HOLD_LEAD_S` are the **19-hold least-squares fit below (104.9 /
+0.44)**, which includes the 0.7–1.9 s holds the loop actually uses.
 
 This is why a naive `hold = error / rate` correction of a small bearing error delivers nothing at
 all: a 20 deg correction asks for 0.19 s, which is inside the lead. `turn_hold_seconds()` adds it.
@@ -939,7 +951,14 @@ each**, A's x spanning 442.48-564.65 and z 1268.62-1489.76 over the schedule). M
 | walk `W`, units/s of a 2 s hold | 8.01 | 27.55 | 29.14 | 21.57 | **21.13** | 9.61 |
 | walk back `S`, units/s of a 2 s hold | 25.25 | 25.61 | 25.03 | **25.30** | 0.59 | 0.24 |
 | strafe `A`, units/s of a 2 s hold | 43.94 | 45.59 | 43.36 | **44.30** | 2.23 | 0.94 |
-| strafe `D`, units/s of a 2 s hold | 12.99 | 40.25 | 39.60 | — | — | — |
+| strafe `D`, units/s of a 2 s hold | *12.99* | 40.25 | 39.60 | — | — | — |
+
+*Italic = excluded as obstructed.* **The rule, stated because the first draft dropped the 12.99
+silently:** a hold whose displacement is below **half the median of its own group** is treated as
+having run into something and excluded from that group's mean. It excludes exactly two holds in this
+schedule — `D` rep 1 (12.99 against a median of 39.60) and `W` rep 1 (8.01 against 27.55) — and it is
+applied to the group means quoted here, not to the `W` row, which deliberately keeps all three
+repeats so the failure to converge is visible.
 
 Singles: `J` (look left) over 2 s = **-86.34 deg/s**, r = 24.91, residual 0.00 — symmetric with `L`
 to within 1.1 deg/s, and the sign settles that **`L` sweeps positive** in the atan2(dz, dx) plane.
@@ -961,15 +980,36 @@ hold, which agrees with §3.12's "28-38 units per 1 s sample on every LX/LY hold
 Module-level in `tools_py/parity/online_match_ours.py`, no magic numbers at the call sites:
 
 ```
-LOOK_DEG_PER_S        = 108.1   TURN_HOLD_LEAD_S      = 0.48   LOOK_RIGHT_SIGN = +1.0
-WALK_UNITS_PER_S      = 21.6    WALK_UNITS_PER_S_LONG = 40.0   WALK_BACK_UNITS_PER_S = 25.3
-LATERAL_UNITS_PER_S   = 42.5    CAMERA_ORBIT_RADIUS   = 24.9
+LOOK_DEG_PER_S                    = 104.9   TURN_HOLD_LEAD_S      = 0.44
+LOOK_RIGHT_SIGN                   = +1.0    CAMERA_ORBIT_RADIUS   = 24.9
+WALK_UNITS_PER_S_LONG             = 40.0    WALK_BACK_UNITS_PER_S = 25.3
+LATERAL_UNITS_PER_S               = 42.5
+WALK_2S_HOLD_OBSERVED_NOT_A_SPEED = 21.6    # 8.01/27.55/29.14 -- kept only as a record of the
+                                            # measurement that failed. No call site reads it.
 ```
+
+`LOOK_DEG_PER_S` / `TURN_HOLD_LEAD_S` are the **19-hold least-squares fit above (104.86, 0.443)**,
+not the 2 s-repeats-plus-one-4 s-hold fit (108.1 / 0.48) that this note quoted in its first draft and
+that the first proving run then over-turned with. **`WALK_UNITS_PER_S_LONG` is the forward rate** —
+burst sizing and the progress test both read it; there is no other forward speed constant.
 
 **These are calibrated on one map, one spawn and one round** — mp51, the Medley first round, A's SEAL
 spawn at (542.3, 1479.9) against B's terrorist spawn at (1144.8, 77.5), 1526 units apart. The look
-rate and the orbit radius are properties of the camera and should carry; the walk figure is the one
-to re-measure somewhere else before believing it.
+rate and the orbit radius are properties of the camera and should carry; the translation rates are
+the ones to re-measure somewhere else before believing them.
+
+### The aim resolution this buys, and its floor
+
+Worth stating because it decides what Task 8 can attempt. `PAD_AXIS` only ever injects **full stick
+deflection** (0 or 255, never an intermediate) — so the *only* aim control is how long the stick is
+held, and the response is affine with a 0.44 s lead. The shortest hold that turns at all therefore
+already delivers **~35–40 deg** (measured: 0.71 s → 40.24, 0.72 s → 34.38, 0.84 s → 47.70), and the
+fit's RMS of 18 deg puts a floor of roughly **±20 deg on any single open-loop aim**.
+
+That **rules out** scoped or long-range shooting, which needs a couple of degrees, and **rules in**
+close range, where a body subtends 15–20 deg. Aiming finer than that needs either partial stick
+deflection (a change to the pad injection, not to the harness) or a closed loop that fires, observes
+and corrects.
 
 ### `--walk-to-b`
 
@@ -982,16 +1022,34 @@ only known to within the orbit radius); A's comes from the burst it just walked,
 re-measured every step rather than dead-reckoned. A turn that reads as a rotation contributes its own
 fitted sweep to the facing rather than the commanded angle.
 
+A burst's heading replaces the facing **only if the burst is believed**: the scale held at 1.0, it
+covered at least `WALK_PROGRESS_FRACTION` (0.25) of `WALK_UNITS_PER_S_LONG * (hold - lead)`, and its
+straightness (net displacement / path length along the sampled rows) is at least
+`WALK_STRAIGHT_MIN` (0.70). Otherwise the dead-reckoned facing is kept and the loop detours: step
+back, sidestep `UNSTICK_LATERAL_UNITS` at the strafe rate above, and aim `DETOUR_DEG` (65) off the
+bearing for `DETOUR_STEPS` (2) steps, flipping sides after three consecutive blocked bursts. There
+is no `STUCK_UNITS` threshold — an earlier draft of this note described one, and the shipped
+mechanism is the belief test.
+
 Two hard caps, because a mis-calibration must not run the match forever: `WALK_TO_B_MAX_STEPS` (40)
-and `WALK_TO_B_MAX_SECONDS` (300, a little under one 6-minute round). A burst that moves less than
-`STUCK_UNITS` is treated as blocked: step back, sidestep `UNSTICK_LATERAL_UNITS` at the strafe rate
-above, re-probe the facing.
+and `WALK_TO_B_MAX_SECONDS` (**290** by default; the three proving runs passed `--max-walk-seconds
+300`). Both are checked at the top of every step and the function returns the best distance reached
+rather than claiming success.
 
 The loop was proved against a simulated world before it was given a match (the simulation writes the
-same `[peek]` / `MoveScale` lines into a file and the real `RunLogTail` reads them): it converges
-857 -> 71 units in 9 steps, and with the world's turn response deliberately mismatched against the
-constants it still converges, in 20 steps, by re-measuring. With the caps tightened and a wall across
-the path it stops on the cap and reports the best distance rather than claiming success.
+same `[peek]` / `MoveScale` lines into a file and the real `RunLogTail` reads them; in all three
+scenarios the simulated world's turn response is deliberately mismatched against the constants, so
+every correction overshoots and the loop has to recover by re-measuring):
+
+| scenario | result |
+|---|---|
+| open ground | converges **857 → 71 units in 9 steps**; the distance the loop reports matches the simulated truth exactly, which is what validates the camera→player reconstruction |
+| a wall across the direct line (the shape of the real failure) | converges **857 → 112 units in 14 steps** by detouring round it |
+| that wall, with the caps tightened | stops on the cap, `ok=False`, reports the best distance |
+
+(An earlier draft of this note described the second scenario as "mismatched turn response, 20 steps".
+That was the *first* version of the wall run, before the detour sign-flip bug was fixed; 14 steps is
+the shipped loop.)
 
 ### The proving runs — it steers, it does not arrive
 
@@ -1006,7 +1064,7 @@ correct and that what stops it is the map, not the calibration.
 | `ours_task7_wtb6` | (542.0, 1479.7) → (1148.2, 1018.6) | 1379 → **864** | 300 s cap |
 
 `ours_task7_wtb2` is the run to read (`logs/parity/drive_task7_wtb2.txt`,
-`logs/run_A_20260912_211009.log`: **1441 in-game `[peek] @416054` rows, 882 distinct x**, x spanning
+`logs/run_A_20260912_211009.log`: **1441 in-game `[peek] @416054` rows, 937 distinct x**, x spanning
 491.07–1118.15 and z 742.61–1482.39; frames `A_wtb00.png`…`A_wtb24.png`; the per-step track in
 `logs/parity/ours_task7_wtb2/walk_to_b.json`). A travelled **912 units** of net displacement across
 the map toward B and **more than halved** the gap. B stayed at its spawn throughout — 56 distinct x
@@ -1014,26 +1072,40 @@ over 1441 rows, x 1113.02–1145.17 — which is what the loop assumes.
 
 Three things limit it, in order of size:
 
-1. **Map geometry, not the constants.** In `wtb6` A covered 1379 → 864 units in **five steps and
-   47 s**, then spent the remaining 250 s blocked around (1090–1200, 1000–1090): the bearing to B is
-   due south (−90 deg) and something is in the way. The detour alternates sides and does not find
-   the way through. A straight-line-with-detour policy is not a navigator; the route from the SEAL
-   spawn to the terrorist spawn on this map needs one.
+1. **Steering churn first, map geometry second — and the first draft of this note had that
+   backwards.** It is comfortable to say "the calibration is fine, the map is the problem". Half of
+   that is false, and the false half is the half about my own loop. Over `wtb2`'s 24 step
+   transitions **10 lost ground**, and the biggest losses were not walls: steps 11→12, 12→13, 13→14
+   and 16→17 each walked **150–185 units at straightness 0.93–0.97** — clean, open-ground bursts —
+   *away* from B, because the detour was aiming 65 deg off the bearing and then had to come back.
+   Totals: **1960.7 units walked in bursts to close 757.8 — 38.6 % efficiency.** The `DETOUR_DEG` /
+   `DETOUR_STEPS` policy commits to detours it does not need and does not unwind them cheaply, and
+   that, not geometry, is where most of the 300 s went.
+
+   Geometry is real, but it is the *second* effect and it shows in `wtb6` rather than `wtb2`: there
+   A covered 1379 → 864 units in **five steps and 47 s**, then spent the remaining 250 s blocked
+   around (1090–1200, 1000–1090) with the bearing to B due south and something in the way. A
+   straight-line-with-detour policy is not a navigator, and the SEAL-spawn → terrorist-spawn route
+   on this map needs one. **But the cheapest win available to the next task is not a route planner —
+   it is a detour policy that stops throwing away three of every five units walked.**
+
 2. **`wtb1` failed for a different reason, now fixed, and it is worth recording.** The loop adopted
    the heading of *every* burst, including bursts that slid along a wall. Those report headings up to
    86 deg off the direction the player is pointed (step 2: the turn left A facing −55.5 deg, the
    burst reported +30.8), the loop believed them, and every bearing after that was nonsense — it
    oscillated for 21 steps and closed 117 units. With the belief test (progress fraction and
    straightness) added, the next run closed 758.
-3. **The movement scale does decay over a 300 s approach, and the check catches it.** In the
-   calibration run all 623 `f12` rows on A were 1.0. In the proving runs A's rows include **0.0**
-   (`wtb2`: 0.0/0.1/0.5/0.9/1.0 across 821 rows) while **B's are 1.0 throughout** (701 rows). The
-   asymmetry says what is happening: A's activity counter is fed by what it *receives*, B is
-   standing still and therefore sending little, and when A is also pinned against geometry the peer
-   channel goes quiet for more than the 5500 ms of §3.12. So a two-instance match in which one
-   player stands still can starve the *other* player's movement scale. This is honest console
-   behaviour (§3.12), not a defect, but the next task should expect it: **if the harness parks B, it
-   should keep B moving.**
+3. **The movement scale decays when A is STUCK — not because the approach is long.** The first
+   draft of this note said "over a 300 s approach", which mislocates the cause. In the calibration
+   run all 623 `f12` rows on A were 1.0. In `wtb2` **19 of A's 821 rows are not 1.0** (fifteen 0.0,
+   two 0.1, one 0.5, one 0.9) and all nineteen fall inside two windows in which A was pinned —
+   steps 19 and 20 moved **2.6 and 2.5 units**. **B's 701 rows are 1.0 throughout, none excepted.**
+   The asymmetry gives the mechanism: A's activity counter is fed by what it *receives*; A blocked
+   ⇒ A sends little; B parked ⇒ B sends nothing; the peer channel goes quiet for longer than the
+   5500 ms of §3.12 and A's scale decays — which keeps A stuck. A feedback trap, not a distance or
+   duration effect, and honest console behaviour (§3.12) rather than a defect. What it forbids is
+   **"stall against geometry while the target is parked"**; a long approach that keeps moving is
+   fine, and **keeping B moving removes it either way.**
 
 **So:** the calibration is good enough to steer with — A turns to the right bearing and walks along
 it — and `--walk-to-b` is worth having on the spawn it was calibrated against, as a "close the
@@ -1071,3 +1143,14 @@ not be described as one until something route-plans.
 
 Even with all four, the lobby flow reached gameplay in only **4 of 10** launches in this task. It is
 the single biggest tax on any two-instance work and the next task should budget for it.
+
+### Two conventions, and one thing this task got wrong about its own evidence
+
+- **"Distinct x" means distinct as the exe prints it** — the `%g` float in the `[peek]` line, six
+  significant figures — which is how §3.12 and §3.12a counted. The same 1441 `wtb2` rows give 937
+  that way, 882 if you round to two decimals and 1001 on the exact binary value. Quote 937.
+- **The run scripts under `logs/` were rewritten in place** (`sed -i` over `s4_task7_wtb1.sh` to make
+  `wtb2.sh`, and so on), so `s4_task7_cal2.sh`, `wtb1.sh` and `wtb2.sh` no longer exist even though
+  the runs they produced are cited throughout this section — **the exact command line of the headline
+  run is unrecoverable.** Only the surviving scripts and the drive logs under `logs/parity/` remain.
+  Every one of these runs costs twelve minutes; write a new script per run and never overwrite one.
