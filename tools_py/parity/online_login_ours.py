@@ -150,6 +150,7 @@ MAP_CROSS_DROPPED_MAX_DIFF = 1.0
 READY_LABEL = (slice(158, 180), slice(22, 165))
 READY_LABEL_LUMA = 110
 READY_EDGE_DROPPED_MAX = 55
+READY_CONFIRM_GAP_S = 1.0       # R69: the two frames a READY re-send needs are this far apart
 
 
 class LobbyFail(SystemExit):
@@ -335,9 +336,11 @@ class Shell:
         """
         self.check_stage()
         write_pad_file(self.pad_file, [b])
-        time.sleep(hold_s)
-        write_pad_file(self.pad_file)
-        time.sleep(wait)
+        try:
+            self.stage_sleep(hold_s)
+        finally:
+            write_pad_file(self.pad_file)          # a deadline inside the hold must not leave the button down
+        self.stage_sleep(wait)
 
     def pad(self, seconds, buttons=(), sticks=(), axes=None, abort=None):
         """Inject buttons (names), stick directions (W/A/S/D, I/J/K/L, full deflection) and explicit
@@ -899,10 +902,27 @@ def ready(sh):
     lobby_select(sh, 2, "READY")                                 # menu: ARMORY, SWITCH TEAMS, READY
     sh.press("cross", 3.0)
 
+    def pair():
+        """Two fresh frames READY_CONFIRM_GAP_S apart -> 'dropped' (both READY), 'taken' (neither), 'unsure'."""
+        edges = []
+        for k in range(2):
+            if k:
+                sh.stage_sleep(READY_CONFIRM_GAP_S)
+            edges.append(ready_label_edge(lobby_gray(sh)))
+        sh.log(f"READY check: row-2 label right edges {edges} (READY ~48, NOT READY ~82)")
+        flags = [e is not None and e <= READY_EDGE_DROPPED_MAX for e in edges]
+        return "dropped" if all(flags) else "taken" if not any(flags) else "unsure"
+
     def dropped():
-        edge = ready_label_edge(lobby_gray(sh))
-        sh.log(f"READY check: row-2 label right edge {edge} (READY ~48, NOT READY ~82)")
-        return edge is not None and edge <= READY_EDGE_DROPPED_MAX
+        # R69: READY is a toggle row, so a re-send on a late registration un-readies it. Press only when
+        # both frames still read READY; on disagreement wait and re-check once, never press.
+        state = pair()
+        if state == "unsure":
+            sh.stage_sleep(READY_CONFIRM_GAP_S)
+            state = pair()
+        if state == "unsure":
+            raise lobby_fail(sh, CLASS_READY, "READY label frames disagree twice -- not pressing a toggle blind")
+        return state == "dropped"
 
     def resend():
         lobby_select(sh, 2, "READY")
@@ -935,6 +955,7 @@ def main():
         if a.host:
             to_briefing_room(sh)
             host_game(sh)
+        sh.log(f"LOBBY class={CLASS_OK}")
         for n, step in enumerate(a.then.split(",") if a.then else []):
             b, w = (step.split(":") + ["2"])[:2]
             if b == "type":

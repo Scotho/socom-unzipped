@@ -42,7 +42,11 @@ class FakeShell(L.Shell):
 
     def __init__(self, pad_file="pad.txt"):          # deliberately skips Shell.__init__
         self.hwnd, self.out, self.t0, self.tag, self.pad_file = 1, tempfile.gettempdir(), 0.0, "A_", pad_file
-        self.logs, self.presses, self.shots = [], [], []
+        self.logs, self.presses, self.shots, self.sleeps = [], [], [], []
+
+    def stage_sleep(self, seconds):
+        self.sleeps.append(seconds)
+        self.check_stage()
 
     def log(self, m):
         self.logs.append(m)
@@ -159,11 +163,27 @@ class ReadyResend(unittest.TestCase):
         self.assertEqual(sel.call_count, 1)
         self.assertIn("19_ready", sh.shots)
 
-    def test_dropped_then_taken_on_the_second_attempt(self):
-        sh, sel = self.run_ready(READY_DROPPED_8A, READY_TAKEN_8A_B)
+    def test_dropped_on_both_frames_resends_then_taken(self):
+        sh, sel = self.run_ready(READY_DROPPED_8A, READY_DROPPED_8A, READY_TAKEN_8A_B)
         self.assertEqual(sh.presses, [("key", "cross"), ("pad", "CROSS")])
         self.assertEqual(sel.call_count, 2)                     # the cursor is re-checked before the re-send
         self.assertIn("LOBBY RESEND ready-dropped attempt=1", sh.logs)
+        self.assertIn(L.READY_CONFIRM_GAP_S, sh.sleeps)
+
+    def test_late_registration_is_not_resent(self):
+        # R69: frame 1 still READY, frame 2 NOT READY -- the press registered late; a re-send would un-ready
+        sh, sel = self.run_ready(READY_DROPPED_8A, READY_TAKEN_8A_B)
+        self.assertEqual(sh.presses, [("key", "cross")])
+        self.assertEqual(sel.call_count, 1)
+        self.assertFalse([m for m in sh.logs if "LOBBY RESEND" in m])
+
+    def test_alternating_frames_fail_without_an_extra_press(self):
+        frames = [READY_DROPPED_8A, READY_TAKEN_8A_B] * 10
+        with self.assertRaises(L.LobbyFail) as cm:
+            self.run_ready(*frames)
+        self.assertEqual(cm.exception.cls, "ready-dropped")
+        self.assertEqual(self.sh.presses, [("key", "cross")])
+        self.assertTrue(any(m.startswith("RESULT LOBBY-FAIL ready-dropped") for m in self.sh.logs))
 
     def test_lobby_left_is_not_resent(self):
         sh, _ = self.run_ready(READY_LEFT_8C)
@@ -243,10 +263,46 @@ class StageTimeouts(unittest.TestCase):
         self.assertEqual(cm.exception.cls, "timeout:join")
         self.assertEqual(slept, [5.0])
 
+    def test_real_pad_press_sleep_is_cut_and_the_button_released(self):
+        sh = L.Shell.__new__(L.Shell)
+        sh.hwnd, sh.t0, sh.tag, sh.pad_file = 1, 0.0, "B_", "pad_B.txt"
+        sh.log, sh.shot = (lambda m: None), (lambda *a, **k: None)
+        sh.clock = lambda: self.now[0]
+        slept, writes = [], []
+
+        def sleep(s):
+            slept.append(s)
+            self.now[0] += s
+
+        with mock.patch.object(L, "write_pad_file", lambda path, buttons=(), axes=None: writes.append(tuple(buttons))), \
+                mock.patch.object(L.time, "sleep", sleep):
+            with self.assertRaises(L.LobbyFail) as cm:
+                with L.lobby_stage(sh, "ready"):
+                    self.now[0] += L.LOBBY_STAGE_TIMEOUT_S - 0.05
+                    sh.pad_press("CROSS", wait=3.0, hold_s=0.09)
+        self.assertEqual(cm.exception.cls, "timeout:ready")
+        self.assertEqual(len(slept), 1)
+        self.assertAlmostEqual(slept[0], 0.05, places=6)
+        self.assertEqual(writes, [("CROSS",), ()])             # released even though the deadline hit mid-hold
+
     def test_launch_wait_budget_is_shared(self):
         self.assertEqual(L.lobby_launch_budget(self.now[0], clock=lambda: self.now[0] + 30.0),
                          L.LOBBY_STAGE_TIMEOUT_S - 30.0)
         self.assertEqual(L.lobby_launch_budget(self.now[0], clock=lambda: self.now[0] + 500.0), 1.0)
+
+
+class StandaloneMain(unittest.TestCase):
+    def test_success_prints_lobby_class_ok(self):
+        sh = FakeShell()
+        proc = mock.Mock()
+        argv = ["online_login_ours", "--hold", "0", "--out", tempfile.gettempdir()]
+        with mock.patch("sys.argv", argv), \
+                mock.patch.object(L.subprocess, "run", return_value=mock.Mock(stdout="")), \
+                mock.patch.object(L, "launch", return_value=(proc, "t")), \
+                mock.patch.object(L, "attach", return_value=sh), \
+                mock.patch.object(L, "boot_to_online"), mock.patch.object(L, "login"):
+            L.main()
+        self.assertIn("LOBBY class=ok", sh.logs)
 
 
 if __name__ == "__main__":
