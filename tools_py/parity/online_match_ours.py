@@ -1391,6 +1391,14 @@ AIM_DEAD_DELIVERED_DEG = 0.5     # a pulse that turned less than this (predicted
 AIM_ESCALATE_DEFLECTION = 16     # ... so the side's deflection floor steps up by this (and the next hold by
 AIM_ESCALATE_HOLD_S = 0.15       # this longer than the dead one) -- never the identical pulse again (slice (b) review
                                  # I2: a dead rx band, or a lead longer than AIM_LEAD_S)
+# I7 (fix round, rv5f1/plant4.py: dead zone 90 + lead 0.47 + ramp 0.15 at 45 units never converged): one escalation per
+# dead pulse -- the deflection floor first; the side's LEAD (and with it the hold) when the dead pulse's turn beyond
+# its lead was shorter than AIM_DEAD_SHORT_TURN_S right after a deflection escalation; every delivered pulse decays the
+# floor by AIM_DEFLECTION_STEP and the lead by AIM_LEAD_DECAY_S; a hold never plans a sweep beyond AIM_SWEEP_CAP x |err|
+AIM_DEAD_SHORT_TURN_S = 0.15
+AIM_LEAD_MAX_S = 0.85
+AIM_LEAD_DECAY_S = 0.05
+AIM_SWEEP_CAP = 1.5
 AIM_GAIN_ALPHA = 0.5             # EMA of delivered/predicted sweep; the sim's world turns at 0.6-0.7x the table
 AIM_GAIN_MIN, AIM_GAIN_MAX = 0.2, 3.0
 AIM_GAIN_MIN_CMD_DEG = 2.0       # a predicted sweep below this is too small to estimate a gain from
@@ -1420,14 +1428,16 @@ def yaw_rate_deg_s(deflection):
     return YAW_TABLE[-1][1]
 
 
-def aim_plan(err_deg, gain, hold_max=None, min_deflection=None, min_hold=0.0):
+def aim_plan(err_deg, gain, hold_max=None, min_deflection=None, min_hold=0.0, lead=None, max_sweep=None):
     """-> (rx, seconds, predicted_deg): the rx value and hold length for a yaw error of `err_deg` given the
     side's measured gain (delivered / table). The smallest deflection >= `min_deflection` (AIM_MIN_DEFLECTION, or
-    a side's escalated floor) whose turn fits in the hold cap; the hold is at least `min_hold`; `predicted_deg` is
-    what the TABLE says that hold sweeps (|err| / gain when it fits).
-    Positive error -> rx right (LOOK_RIGHT_SIGN: rx right sweeps positive)."""
+    a side's escalated floor) whose turn fits in the hold cap; the hold is `lead` (AIM_LEAD_S, or a side's escalated
+    lead) + the turn, at least `min_hold`; `predicted_deg` is what the TABLE says that hold sweeps (|err| / gain when
+    it fits). `max_sweep` caps the table sweep a `min_hold` may add (I7, fix round: an escalated hold never plans more
+    than that). Positive error -> rx right (LOOK_RIGHT_SIGN: rx right sweeps positive)."""
+    lead = AIM_LEAD_S if lead is None else lead
     want = abs(err_deg) / min(max(gain, AIM_GAIN_MIN), AIM_GAIN_MAX)
-    turn_max = (AIM_HOLD_MAX_S if hold_max is None else hold_max) - AIM_LEAD_S
+    turn_max = max((AIM_HOLD_MAX_S if hold_max is None else hold_max) - lead, 0.05)
     floor = min(127, AIM_MIN_DEFLECTION if min_deflection is None else max(AIM_MIN_DEFLECTION, min_deflection))
     levels = [lv for lv in range(AIM_MIN_DEFLECTION, 127, AIM_DEFLECTION_STEP) if lv >= floor] + [127]
     d = levels[-1]
@@ -1435,10 +1445,12 @@ def aim_plan(err_deg, gain, hold_max=None, min_deflection=None, min_hold=0.0):
         if want / yaw_rate_deg_s(lv) <= turn_max:
             d = lv
             break
-    turn = min(max(want / yaw_rate_deg_s(d), min_hold - AIM_LEAD_S, 0.0), max(turn_max, min_hold - AIM_LEAD_S))
+    turn = min(max(want / yaw_rate_deg_s(d), min_hold - lead, 0.0), max(turn_max, min_hold - lead))
+    if max_sweep is not None:
+        turn = min(turn, max(want, max_sweep) / yaw_rate_deg_s(d))
     sign = 1 if err_deg * LOOK_RIGHT_SIGN > 0 else -1
     rx = max(0, min(255, vc.PAD_NEUTRAL + sign * d))
-    return rx, AIM_LEAD_S + turn, yaw_rate_deg_s(d) * turn
+    return rx, lead + turn, yaw_rate_deg_s(d) * turn
 
 
 def pulse_hold_max(err_deg, gain):
@@ -1564,7 +1576,7 @@ def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=No
             moved[0] = True
         return m
     since, rx_end, holds, fidgets = (clock() if pulse else None), None, 0, 0
-    last_read_t, escalate_hold = rec["t0"], None
+    last_read_t = rec["t0"]
     pending = None                                      # (heading before, predicted deg, sign, (rx, secs)) of the last hold
     last_dead = None
     while True:
@@ -1590,18 +1602,38 @@ def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=No
             h0, predicted, sign, plan = pending
             pending = None
             delivered = wrap_deg(h - h0)
-            escalate_hold = None
             if predicted >= AIM_GAIN_MIN_CMD_DEG and abs(delivered) < AIM_DEAD_DELIVERED_DEG:
-                escalate_hold = plan[1] + AIM_ESCALATE_HOLD_S
+                # I7 (fix round): ONE escalation per dead pulse, never both at once -- the deflection first (a dead rx
+                # band), the lead-and-hold when the dead pulse's turn was short or the last escalation was already the
+                # deflection (a lead longer than planned), and the deflection again after a lead escalation
                 rec["dead"] += 1
                 last_dead = plan
-                me.aim_floor = min(127, max(getattr(me, "aim_floor", AIM_MIN_DEFLECTION),
-                                            abs(plan[0] - vc.PAD_NEUTRAL)) + AIM_ESCALATE_DEFLECTION)
+                dev, lead_used = abs(plan[0] - vc.PAD_NEUTRAL), plan[2]
+                floor0 = getattr(me, "aim_floor", AIM_MIN_DEFLECTION)
+                short = plan[1] - lead_used < AIM_DEAD_SHORT_TURN_S
+                if not short:                          # a long turn that delivered nothing: dead-band evidence
+                    me.aim_dead_band = max(getattr(me, "aim_dead_band", 0), dev)
+                if dev < 127 and (rec.get("escalated") != "deflection" or not short):
+                    me.aim_floor = min(127, max(floor0, dev) + AIM_ESCALATE_DEFLECTION)
+                    rec["escalated"] = "deflection"
+                else:
+                    me.aim_lead = min(AIM_LEAD_MAX_S, max(getattr(me, "aim_lead", AIM_LEAD_S), lead_used)
+                                      + AIM_ESCALATE_HOLD_S)
+                    rec["escalated"] = "lead"
                 sh.log(f"AIM {me.tag} dead pulse rx={plan[0]} {plan[1]:.2f}s (turned {delivered:+.2f} deg of "
-                       f"{predicted:.1f}) -- deflection floor now {me.aim_floor}")
-            elif predicted >= AIM_GAIN_MIN_CMD_DEG and delivered * sign > 0:
-                g = min(AIM_GAIN_MAX, max(AIM_GAIN_MIN, abs(delivered) / predicted))
-                me.yaw_gain = (1.0 - AIM_GAIN_ALPHA) * me.yaw_gain + AIM_GAIN_ALPHA * g
+                       f"{predicted:.1f}) -- escalated the {rec['escalated']}: deflection floor "
+                       f"{getattr(me, 'aim_floor', AIM_MIN_DEFLECTION)}, lead {getattr(me, 'aim_lead', AIM_LEAD_S):.2f}s")
+            elif predicted >= AIM_GAIN_MIN_CMD_DEG:
+                # a delivered pulse: the escalations decay (I7) -- the floor by one deflection step (never back into a
+                # band a LONG pulse proved dead), the lead toward AIM_LEAD_S -- so a short-lived dead read never pins
+                # every later aim at full deflection
+                me.aim_floor = max(AIM_MIN_DEFLECTION, getattr(me, "aim_dead_band", 0) + AIM_ESCALATE_DEFLECTION,
+                                   getattr(me, "aim_floor", AIM_MIN_DEFLECTION) - AIM_DEFLECTION_STEP)
+                me.aim_lead = max(AIM_LEAD_S, getattr(me, "aim_lead", AIM_LEAD_S) - AIM_LEAD_DECAY_S)
+                rec["escalated"] = None
+                if delivered * sign > 0:
+                    g = min(AIM_GAIN_MAX, max(AIM_GAIN_MIN, abs(delivered) / predicted))
+                    me.yaw_gain = (1.0 - AIM_GAIN_ALPHA) * me.yaw_gain + AIM_GAIN_ALPHA * g
         d = math.hypot(target_xz[0] - x, target_xz[1] - z)
         tol_r = aim_tol_deg(d) if tol is None else tol
         err = wrap_deg(math.degrees(math.atan2(target_xz[1] - z, target_xz[0] - x)) - h)
@@ -1617,19 +1649,22 @@ def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=No
             continue
         cap = pulse_hold_max(err, me.yaw_gain) if pulse else None
         floor = getattr(me, "aim_floor", AIM_MIN_DEFLECTION)
-        rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=cap, min_deflection=floor,
-                                       min_hold=escalate_hold or 0.0)
+        lead = getattr(me, "aim_lead", AIM_LEAD_S)
+        # I7: the hold is capped so the planned sweep stays <= AIM_SWEEP_CAP x |err| (in delivered degrees)
+        sweep_cap = AIM_SWEEP_CAP * abs(err) / min(max(me.yaw_gain, AIM_GAIN_MIN), AIM_GAIN_MAX)
+        rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=None if cap is None else cap + lead - AIM_LEAD_S,
+                                       min_deflection=floor, lead=lead, max_sweep=sweep_cap)
         if last_dead is not None and (rx, round(secs, 3)) == (last_dead[0], round(last_dead[1], 3)):
-            me.aim_floor = min(127, floor + AIM_ESCALATE_DEFLECTION)
-            rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=cap, min_deflection=me.aim_floor,
-                                           min_hold=secs + AIM_ESCALATE_HOLD_S)
+            me.aim_floor = min(127, floor + AIM_ESCALATE_DEFLECTION)       # never the identical dead pulse again
+            rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=None if cap is None else cap + lead - AIM_LEAD_S,
+                                           min_deflection=me.aim_floor, lead=lead, max_sweep=sweep_cap)
         t_hold = clock()
         sh.pad(secs, axes={"rx": rx})
         rx_end = since = clock()
         holds += 1
         rec["holds"].append({"t": rx_end, "t_start": t_hold, "rx": rx, "s": round(secs, 3), "err": err,
                              "predicted": predicted, "gain": me.yaw_gain})
-        pending = (h, predicted, 1 if err > 0 else -1, (rx, secs))
+        pending = (h, predicted, 1 if err > 0 else -1, (rx, secs, lead))
     sh.log(f"AIM {me.tag} err {rec['err_before']:+.1f} -> {rec['err_after']:+.1f} deg in {holds} "
            f"{'pulses' if pulse else 'holds'} gain={me.yaw_gain:.2f} "
            f"({'ok' if abs(rec['err_after']) <= rec['tol'] else 'NOT within'} {rec['tol']:.2f})")
@@ -1679,7 +1714,7 @@ class KillWatch(threading.Thread):
         self.tails, self.spawns, self.clock = tails, spawns, clock
         self.server_log, self.health, self.health_range = server_log, health, health_range
         # --alive-offset: the alive byte leaving ALIVE_VALUE on the actor that read alive is recorded as a
-        # NON-firing `alive` observation (spec §5 Goal 2: it leaves 1 within 2 s of the health death).
+        # NON-firing `alive` observation (spec ï¿½5 Goal 2: it leaves 1 within 2 s of the health death).
         # It never ends a run on its own: a byte that also changes on a revive or a spectator switch is
         # corroboration, not attribution.
         self.alive = alive
