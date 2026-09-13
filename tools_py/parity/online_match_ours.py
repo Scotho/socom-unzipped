@@ -3410,6 +3410,18 @@ def is_round_reset(hit, rows, spawn, round_steps):
     return any(abs(hit[0] - s) <= ROUND_RESET_STEP_S for s in round_steps)
 
 
+def round_reset_classifier(spawns=None):
+    """-> classify(side, hit): True when the jump `hit` is the round-end reset to the side's spawn (`spawns` {tag: xyz},
+    else the side's first in-game actor row) near an mp_round_count step (is_round_reset)."""
+    def classify(side, hit):
+        spawn = (spawns or {}).get(side.tag)
+        if spawn is None:
+            rows = side.tail.actor_ingame()
+            spawn = rows[0][1:4] if rows else None
+        return is_round_reset(hit, side.tail.actor_ingame(), spawn, tail_clock_state(side.tail)[1])
+    return classify
+
+
 def fire_window_teleport(out, sides, t0, t1, log, classify=None):
     """Amendment A3: a teleport of either player inside a fire window [t0, t1] (the burst and its gap, no walking
     credit -- both stand) makes the round NO-DATA. Sets out['fire_teleport'] / out['stop_reason'] -> True on a hit.
@@ -3431,6 +3443,32 @@ def fire_window_teleport(out, sides, t0, t1, log, classify=None):
 
 
 FIRE_WINDOW_RECHECK_S = 10.0     # a freeze is only visible >= 1 s after it starts: recent fire windows are re-checked
+FIRE_WINDOW_SETTLE_S = 1.25      # I3/I6 (fix round): a window's own rows (a jump in its last row, a stall >= 1 s that
+                                 # began in it) have all arrived this long after it ends -- then it is re-checked
+
+
+def settle_fire_windows(out, sides, watch, log, clock, wait=None, classify=None, final=False, teleport_sides=None,
+                        next_window=False):
+    """Re-check the fire windows whose rows have settled: each window whose end is FIRE_WINDOW_SETTLE_S old gets its
+    teleport check again (once), and the freeze check runs over the recent windows. `next_window` (a burst is about to
+    open the next window): every earlier window whose rows up to PEEK_LEAD_S after its end have arrived is due now.
+    `final` (the fight loop has exited): first wait until the LAST window is settled, then check everything. -> True when a window made the round NO-DATA
+    (out['fire_teleport'] / out['fire_freeze'] / out['round_end'] set by the checks)."""
+    windows = out.get("fire_windows") or []
+    if not windows:
+        return False
+    if final and wait is not None:
+        rest = windows[-1][1] + FIRE_WINDOW_SETTLE_S - clock()
+        if rest > 0:
+            wait(rest)
+    now = clock()
+    k = out.get("fire_settled", 0)
+    while k < len(windows) and windows[k][1] + (PEEK_LEAD_S if next_window else FIRE_WINDOW_SETTLE_S) <= now + 1e-9:
+        out["fire_settled"] = k + 1
+        if fire_window_teleport(out, teleport_sides or sides, windows[k][0], windows[k][1], log, classify=classify):
+            return True
+        k += 1
+    return fire_window_freeze(out, sides, windows, watch, log, now)
 
 
 def fire_window_freeze(out, sides, windows, watch, log, now):
@@ -3540,12 +3578,7 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
         log(f"ENDGAME STOP: {out['stop_reason']}")
         return out
 
-    def classify(side, hit):
-        spawn = (spawns or {}).get(side.tag)
-        if spawn is None:
-            rows = side.tail.actor_ingame()
-            spawn = rows[0][1:4] if rows else None
-        return is_round_reset(hit, side.tail.actor_ingame(), spawn, tail_clock_state(side.tail)[1])
+    classify = round_reset_classifier(spawns)
 
     def react(side):
         if watch is None or not watch.take_request(side.tag):
@@ -3596,6 +3629,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
             if watch is not None and watch.stop_reason:
                 out["stop_reason"] = watch.stop_reason
                 return
+            if settle_fire_windows(out, (shooter, stander), watch, log, clock, classify=classify):
+                return                                   # I6: an earlier window's late rows made the round NO-DATA
             if react(shooter):
                 continue
             a, b = shooter.tail.actor_latest(), stander.tail.actor_latest()
@@ -3623,6 +3658,9 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 out["stop_reason"] = "aim NO-DATA"
                 return
             if abs(err) <= tol and not stop.is_set():
+                if settle_fire_windows(out, (shooter, stander), watch, log, clock, classify=classify,
+                                       next_window=True):
+                    return                               # I6: the previous window, re-checked at the next one
                 t_b = clock()
                 shooter.r1_times.append(t_b)
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
@@ -3639,6 +3677,9 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     ts.start()
     try:
         mover_run()
+        if not (out["fire_teleport"] or out["fire_freeze"] or out["round_end"]):
+            # I3: the last window's rows (a late jump, a stall that began in it) arrive after the loop has exited
+            settle_fire_windows(out, (shooter, stander), watch, log, clock, wait, classify=classify, final=True)
     except TeleportAbort as e:
         if classify(sides[e.tag], (e.t, e.step)):
             out["round_end"] = {"tag": e.tag, "t": e.t, "step": e.step, "during": e.during}
@@ -3719,7 +3760,9 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     route = route if route is not None else route_for(map_name, mover, path=route_path)
     out = {"mode": "cooperative", "shooter": shooter.tag, "victim": victim.tag, "standing": [], "rule_moves": [],
            "micro_strafes": 0, "victim_legs": 0, "stop_reason": None, "t_fight": None, "t_end": None,
-           "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None, "fire_teleport": None}
+           "route": None, "close": None, "bursts": 0, "reapproaches": 0, "teleport": None, "fire_teleport": None,
+           "fire_freeze": None, "round_end": None, "fire_windows": []}
+    classify = round_reset_classifier()
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(victim.tag, victim.tail)
     log(f"ENDGAME BANNER mode=cooperative shooter={shooter.tag} victim={victim.tag} "
@@ -3861,13 +3904,20 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
                 return
             if abs(err) <= AIM_TOL_DEG and not stop.is_set() and not (
                     rule and watch is not None and watch.request_event(shooter.tag).is_set()):
+                if settle_fire_windows(out, (shooter, victim), watch, log, clock, classify=classify,
+                                       teleport_sides=(shooter,), next_window=True):
+                    return
                 t_b = clock()
                 shooter.r1_times.append(t_b)
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
                 out["bursts"] += 1
                 wait(ENDGAME_BURST_GAP_S)
-                if fire_window_teleport(out, (shooter,), t_b, clock(), log):
+                out["fire_windows"].append((t_b, clock()))
+                if fire_window_teleport(out, (shooter,), t_b, clock(), log, classify=classify):
                     return
+            if settle_fire_windows(out, (shooter, victim), watch, log, clock, classify=classify,
+                                   teleport_sides=(shooter,)):
+                return
             if micro_strafe:
                 strafe(SHOOTER_STRAFE_S, OSC_DEFLECTION)
                 out["micro_strafes"] += 1
@@ -3879,9 +3929,16 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     def shooter_guarded():
         try:
             shooter_loop()
+            if not (out["fire_teleport"] or out["fire_freeze"] or out["round_end"]):
+                settle_fire_windows(out, (shooter, victim), watch, log, clock, wait, classify=classify, final=True,
+                                    teleport_sides=(shooter,))
         except TeleportAbort as e:
-            out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
-            out["stop_reason"] = str(e)
+            if classify(sides[e.tag], (e.t, e.step)):
+                out["round_end"] = {"tag": e.tag, "t": e.t, "step": e.step, "during": e.during}
+                out["stop_reason"] = f"ROUND-END reset to spawn side={e.tag} (a {e.step:.1f}u jump near a round step)"
+            else:
+                out["teleport"] = {"tag": e.tag, "during": e.during, "step": e.step, "t": e.t}
+                out["stop_reason"] = str(e)
 
     tv = threading.Thread(target=victim_loop, daemon=True)
     ts = threading.Thread(target=shooter_guarded, daemon=True)

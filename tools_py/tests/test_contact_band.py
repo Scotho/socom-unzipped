@@ -96,10 +96,14 @@ class ContactBandTest(unittest.TestCase):
     def test_a_guest_clock_freeze_pauses_the_count(self):
         a, b = pair(n=60)                               # 100.0 .. 114.75
         still = (104.0, 108.0)                          # a 4 s freeze: both clock string and 0x4365c0 stand
-        clk = clock(still=still)
-        without = score(a, b, clk=clk)                  # no guest clock supplied: the frozen string breaks the run
-        self.assertLess(without.contact_s, 7.0)
-        r = score(a, b, clk=clk, rt=(guest(still=still), guest()))
+        # realistic resumes (launch 8c, fix round I5): the string moves again one row after the clock runs, and the
+        # MoveScale / f12 lines stop with the freeze and come back 2.3 s after it (8c A's worst)
+        clk = clock(still=(still[0], still[1] + 0.25))
+        resumed = lambda rows: [r for r in rows if not still[0] <= r[0] < still[1] + 2.3]
+        without = vc.score_contact(a, b, resumed(calls()), resumed(calls()), clk, (resumed(scales()), resumed(scales())))
+        self.assertLess(without.contact_s, 7.0)         # no guest clock supplied: the frozen string breaks the run
+        r = vc.score_contact(a, b, resumed(calls()), resumed(calls()), clk, (resumed(scales()), resumed(scales())),
+                             round_time_rows=(guest(still=still), guest()))
         self.assertTrue(r.ok, r)
         self.assertAlmostEqual(r.contact_s, 14.75 - 4.0, delta=0.6)   # the freeze's span is not counted
         self.assertGreater(r.paused_rows, 10)

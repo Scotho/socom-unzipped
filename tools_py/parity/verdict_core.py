@@ -1019,8 +1019,11 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows, round_ti
     Pairing: A's rows are the reference; each A row is paired with B's row nearest in time, if within
     CONTACT_PAIR_MAX_S (so one B row may serve up to two A rows). A row qualifies only if A's previous
     row and the paired B row's previous row are each within CONTACT_ROW_MAX_GAP_S, plus the band (spec §5.1),
-    move-path, clock and scale clauses. An A row inside a guest-clock pause of EITHER instance (clock_pauses) is
-    paused: it neither breaks a run nor adds to it, and the paused span is not counted as time. A run's qualifying
+    move-path, clock and scale clauses. An A row inside a guest-clock FREEZE of EITHER instance (clock_pauses; A's and
+    B's merged) is paused: it neither breaks a run nor adds to it, and the paused span is not counted as time; after the
+    freeze each liveness clause (MoveScale advancing on both sides, the clock string changing, f12's age) is granted its
+    own window from the freeze end (launch 8c: the string moves 0.25 s after the clock, MoveScale 0.18-2.3 s after). A
+    row inside a ROUND BOUNDARY breaks the run: contact never bridges two rounds. A run's qualifying
     time is the sum of the gaps between its consecutive qualifying rows, less paused spans; the best run is the one
     with the most time, `ok` when it has >= CONTACT_MIN_S over >= CONTACT_MIN_ROWS rows. No pair formed at all (e.g.
     misaligned clocks) is NO-DATA, not zero contact."""
@@ -1037,11 +1040,14 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows, round_ti
     sa, sb = sorted(scale_rows[0]), sorted(scale_rows[1])
     tsa, tsb = [s[0] for s in sa], [s[0] for s in sb]
 
-    pauses = []
+    freezes, boundaries = [], []
     if round_time_rows is not None:
         steps = round_steps or ((), ())
         for rt, st in zip(round_time_rows, steps):
-            pauses += clock_pauses(rt or [], st or ())
+            for p in clock_pauses(rt or [], st or ()):
+                (freezes if p[3] == "freeze" else boundaries).append(p[:3])
+    pauses = _union(freezes)                           # A's and B's freezes merged: an overlap is subtracted once
+    pause_ends = sorted(p[1] for p in pauses)
     gaps = sorted(q[0] - p[0] for p, q in zip(rowsA, rowsA[1:]))
     period = gaps[len(gaps) // 2] if gaps else None
     closest, closest_dy = None, None
@@ -1049,9 +1055,16 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows, round_ti
     run_s, last_t, best, best_s = 0.0, None, 0, 0.0
     for ia, a in enumerate(rowsA):
         t = a[0]
+        if boundaries and _paused(boundaries, t):
+            run, run_s, last_t = 0, 0.0, None           # a round boundary BREAKS the run: contact never bridges rounds
+            continue
         if pauses and _paused(pauses, t):
             paused_rows += 1
             continue
+        # I5 (fix round): after a freeze each liveness clause is granted its own window from the pause end (8c: the
+        # string changes 0.25 s after the clock runs, MoveScale resumes 0.18-2.3 s later)
+        ke = bisect.bisect_left(pause_ends, t) - 1
+        since = t - pause_ends[ke] if ke >= 0 else math.inf
         k = bisect.bisect_left(tb, t)
         cand = [j for j in (k - 1, k) if 0 <= j < len(rowsB) and abs(rowsB[j][0] - t) <= CONTACT_PAIR_MAX_S]
         ok = False
@@ -1067,9 +1080,10 @@ def score_contact(rowsA, rowsB, callsA, callsB, clock_rows, scale_rows, round_ti
                 closest, closest_dy = d3, dy
             ok = (d3 <= CONTACT_3D_MAX_UNITS and dy <= CONTACT_DY_MAX_UNITS
                   and gaps_ok and not missing
-                  and _advancing(ca, ta_c, t) and _advancing(cb, tb_c, t)
-                  and _clock_changing(clock, tc, t)
-                  and _scale_live(sa, tsa, t) and _scale_live(sb, tsb, t))
+                  and (since <= CONTACT_ADVANCE_WINDOW_S or (_advancing(ca, ta_c, t) and _advancing(cb, tb_c, t)))
+                  and (since <= CONTACT_CLOCK_WINDOW_S or _clock_changing(clock, tc, t))
+                  and _scale_live(sa, tsa, t, since <= CONTACT_SCALE_MAX_AGE_S)
+                  and _scale_live(sb, tsb, t, since <= CONTACT_SCALE_MAX_AGE_S))
         if ok:
             if run and last_t is not None:
                 run_s += max(0.0, t - last_t - _pause_overlap(pauses, last_t, t))
@@ -1098,9 +1112,11 @@ def _clock_changing(clock, tc, t):
     return len({s for _, s in clock[max(0, k0):k1]}) >= 2
 
 
-def _scale_live(scales, ts, t):
+def _scale_live(scales, ts, t, grace=False):
+    """The newest f12 at `t` is >= CONTACT_SCALE_MIN and no older than CONTACT_SCALE_MAX_AGE_S (`grace`: its age is not
+    judged -- inside that window after a freeze)."""
     k = bisect.bisect_right(ts, t) - 1
-    return k >= 0 and t - scales[k][0] <= CONTACT_SCALE_MAX_AGE_S and scales[k][1] >= CONTACT_SCALE_MIN
+    return k >= 0 and (grace or t - scales[k][0] <= CONTACT_SCALE_MAX_AGE_S) and scales[k][1] >= CONTACT_SCALE_MIN
 
 
 # ---------------------------------------------------------------------------------------------
