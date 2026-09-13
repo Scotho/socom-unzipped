@@ -223,8 +223,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   race fix it passes 4 of 5 full suites, with two genuine residual loop defects (players circling
   just outside contact range; an oscillation when the only same-height ground lies away from the
   target), parked into Sprint 5's engagement ladder. Report pass counts over repeated solo runs.
-- **A default threshold can manufacture a pass.** `--health-range` defaulted to `-0.5:0.5`, which
-  would have counted a player on 40 % health as dead and printed `PASS` — found only while editing
-  its help text. Now `-1e9:0.0`. Audit the defaults of any instrument that can declare success.
+- **A default threshold can manufacture a pass — and fixing the default was not the fix.**
+  `--health-range` defaulted to `-0.5:0.5`, counting a player on 40 % health as dead. Changing it to
+  `-1e9:0.0` did **not** close the false PASS: the check still fired on the *first* value read, so
+  an uninitialised read of `0.0` or of heap fill `0xAFAFAFAF` (≈ −3.2e-10) counted as a death. The
+  real fix (`42447e5`) counts a death only as an alive-then-dead **transition** on the same actor
+  address, locked by `tools_py/tests/test_kill_watch.py`, which fails against the pre-fix code.
+  **Residual, parked into Sprint 5:** an actor freed back to heap fill after a genuine alive read
+  still looks like a death on this one signal — which is why Sprint 5's acceptance requires three
+  signals from different objects and processes. Audit the defaults *and* the first-read behaviour
+  of any instrument that can declare success.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
