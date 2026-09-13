@@ -143,7 +143,7 @@ the round state.
   death. *Blind: another float in [0, 1] that also changes at death; single-player damage vs network
   damage (rung 3 settles the latter).*
 - **Goal 3:** `tools_py.tests.test_online_verdict` green inside `build.sh test`, over the pure scorers:
-  `frost1` → `NO-CONTROL`; `kill2` → controllable; `kill3` B → `NO-CONTROL side=B`; a 20 % snap-back
+  `frost1` → `NO-CONTROL`; `kill2` → controllable; ~~`kill3` B → `NO-CONTROL side=B`~~ `kill3` → controllable (amended 2026-09-13: B's actor moved ~65 units; the Sprint 4 reading was the frozen camera record) and `NO-CONTROL side=B` from kill2 A paired with frost1 B; a 20 % snap-back
   and a snap-back after 1.8 s → not controllable; move-scale `#n` stalled 10 s while alive → stalled,
   but not while `+0xF7A != 1` or within 15 s of an `mp_round_count` step (*blind: the watch
   legitimately fires on death or round change, hence the disarm*); a slot that never logged →

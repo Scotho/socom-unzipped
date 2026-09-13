@@ -168,10 +168,14 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   running now: `run_t8probe2` died 66 s in, the log froze at 127 sampler rows, and `drive.py` went
   on screenshotting a dead game for another four minutes. Kill the previous driver, not just the
   game, before starting anything.
-- **The liveness rule counts non-zero position rows, not DISTINCT ones**, so it passes while the
-  player is in-game and not yet controllable. `ours_task8_kill3` lost its second mover exactly
-  there: 161 in-game rows, movement scale 1.0, and the record moving **0.00** units across a
-  forward hold, a turn and a second forward hold.
+- **The liveness rule counts non-zero position rows, not DISTINCT ones.** ~~`ours_task8_kill3` lost
+  its second mover exactly there: 161 in-game rows, movement scale 1.0, and the record moving
+  **0.00** units across a forward hold, a turn and a second forward hold.~~ **Retracted 2026-09-13
+  (Sprint 5 Task 3 Step 0, `736193c`; review re-derived from `run_B_20260912_232834.log`):** B was
+  controllable. The 0.00 was the **camera record `0x416054`, which froze** at (1137.72, 80.82, 84.51)
+  from 441.5 s to 465.75 s while the **actor** (vtable `0x6691a0`, words 7/8/9) walked ~65 units on
+  the first hold and ~39 on the second. Lesson that stands: **the camera record is not a liveness or
+  movement signal — score control from actor rows only.**
 - ~~**The approach loop's distance is 2-D by construction**~~ **Superseded by `d75ff33`**, which reads
   the actor's own x/y/z and gates contact on 3-D range AND `|dy|`. Kept for the lesson it carried:
   "contact at 33 units" once meant a 45-unit height difference and no line of sight at all.

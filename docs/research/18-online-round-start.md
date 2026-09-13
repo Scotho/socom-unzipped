@@ -667,10 +667,11 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
    observation, and never believed. The DME TCP log is worse still and §1 already measured why: a
    playing match and a frozen one are byte-identical there.
 7. **The liveness rule counts non-zero position rows, not DISTINCT ones**, so it passes while the
-   player is in-game and not yet controllable. `ours_task8_kill3` lost one of its two movers there:
+   player is in-game and not yet controllable. ~~`ours_task8_kill3` lost one of its two movers there:
    161 in-game rows, movement scale 1.0, and the record moving **0.00** units across a forward
-   hold, a turn and a second forward hold. Before measuring anything, check the record actually
-   responds to a hold.
+   hold, a turn and a second forward hold.~~ **Retracted 2026-09-13 (`736193c`):** the record was the
+   camera `0x416054`, frozen while B's actor walked ~65 units; B was controllable. Before measuring
+   anything, check the record actually responds to a hold — and read the **actor**, not the camera.
 
 This is the same class of defect the sprint has been closing in the gate all day: a check that can
 quietly attest to nothing. The online harness has it too, and now it is written down.
@@ -1471,7 +1472,7 @@ budget 2.5 launches per usable match.
 | `logs/run_t8probe2.log` | the same with `*0x408c58` | **void** — the previous run's `drive.py` reached its own cleanup and ran `taskkill /F /IM socom2.exe`, which killed *this* run's exe 66 s in. The log froze at 127 sampler rows while `drive.py` kept screenshotting a dead game: §3.10's trap, from the other end |
 | `ours_task8_kill1` | the acceptance test, attempt 1 | reached contact-range arithmetic but was **stopped early by a false signal** |
 | `ours_task8_kill2` | attempt 2 | ~~closed 1392 → 33 units~~ **closed 1485.5 → 50.0 units true 3-D** (struck figure was the camera+facing reconstruction — see the correction below this table and §4.11), fired 24 bursts, **no hit** |
-| `ours_task8_kill3` | attempt 3, with a pitch sweep | reached gameplay, **lost instance B before its first step** |
+| `ours_task8_kill3` | attempt 3, with a pitch sweep | reached gameplay, ~~**lost instance B before its first step**~~ B was controllable; the camera record froze (retracted 2026-09-13, `736193c`) |
 | `ours_task8_kill4` / `kill6` / `kill7` | attempts 4, 6 and 7 | never reached gameplay (lobby band 0.521, 0.521, and the on-screen keyboard never opened) |
 | `ours_task8_kill5` | attempt 5 | reached the lobby, both READY, **match never launched** — 0 in-game rows of 2514 |
 
@@ -1590,6 +1591,10 @@ magazines; the rounds went into the geometry between them. The round clock in th
 02:09 → 01:06, so the engagement was nowhere near the round's end either.
 
 **`ours_task8_kill3`, `kill4`, `kill5` — the three that taught something and produced nothing.**
+
+> **Retracted 2026-09-13 (Sprint 5 Task 3 Step 0, `736193c`):** the kill3 B "0.00 units" below
+> measured the camera record `0x416054`, which froze while B's actor walked ~65 units on the first
+> hold. B was controllable; see `docs/KNOWN.md` standing hazards. Kept as written for the record.
 
 - `kill3` reached gameplay and then **lost one of its two movers before the first step**: instance
   B's facing probe measured **0.00 units** of travel across a 1.5 s forward hold, a 1.3 s turn and a
