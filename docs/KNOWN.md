@@ -123,6 +123,10 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   are pytest-style and have never executed.
 - **Nothing reaps the loop lock** when an agent exits without releasing it, and `loop_lock.sh take`
   is a non-atomic test-then-write.
+- **`git add X && git commit` commits the whole index, not X.** With several agents sharing one
+  working tree, that sweeps another agent's staged files under your message — it happened to
+  `872d8d6`, which carries five of Task 8's files under a `docs(known)` subject. Always commit
+  with an explicit pathspec (`git commit -- <paths>`), never a bare commit after an add.
 - **Task reports live in gitignored `.superpowers/sdd/`** and die with the workspace. Anything
   durable must be copied into a tracked doc before close-out. *Sprint 4's carry was done
   2026-09-13 (Task 9a):* the HLE hazard and the Tasks 6-8 harness rules → `STATUS.md` 2026-09-13;
