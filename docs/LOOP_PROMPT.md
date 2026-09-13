@@ -101,6 +101,8 @@ RDRAM dump paths must be Windows paths.
 The lock serializes every build and every game run (`scripts/loop_lock.sh`; its header is the
 reference). **Never hold it across tool calls except through `run` or `run_detached.sh`** — a gap
 between two tool calls is not renewed, and the calling shell dies when its tool call returns.
+**Mixed versions:** a job started under an older `loop_lock.sh` (plain `logs/.loop_lock` file, or a
+claim dir without the `logs/.loop_lock.mx` mutex) must finish before anything uses the current lock.
 - Foreground: `bash scripts/loop_lock.sh run <owner> --purpose "<what>" [--wait 40] -- <cmd...>`
   takes the lock, renews its heartbeat every 60 s while `<cmd>` runs, releases on exit (also on
   failure) and returns `<cmd>`'s exit code; exit 75 = the lock was busy and `<cmd>` did not run.

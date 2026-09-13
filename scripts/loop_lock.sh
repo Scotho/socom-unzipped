@@ -6,8 +6,8 @@
 # so nothing here is keyed on the calling shell's PID.
 #
 # Usage:
-#   loop_lock.sh take <owner> [--purpose <p>]   claim; BUSY (exit 1) when held -- even by the same owner
-#                                                (two of "main"'s chains overlapped on 2026-09-09)
+#   loop_lock.sh take <owner> [--purpose <p>] [--print-id]   claim; BUSY (exit 1) when held -- even by
+#                                                the same owner (two of "main"'s chains overlapped 2026-09-09)
 #   loop_lock.sh renew <owner>                   refresh the heartbeat of a lock <owner> holds
 #   loop_lock.sh release <owner>                 exit 1 if <owner> is not the holder
 #   loop_lock.sh check                           FREE, or HELD with the heartbeat age
@@ -16,68 +16,124 @@
 #       take (or wait up to <min> minutes), renew the heartbeat every LOOP_LOCK_RENEW_SEC (60) from a
 #       background loop while <cmd> runs, release on exit (also on failure or a signal) and return
 #       <cmd>'s exit code. If the lock cannot be taken, <cmd> does not run and the exit code is 75.
-#   loop_lock.sh id                              print "<owner> <take_epoch>" of the live record
+#       If a renew finds the lock no longer ours, it prints "LOCK LOST" to stderr and stops renewing
+#       (the command is not killed).
+#   loop_lock.sh id                              print "<owner> <take_id>" of the live record
 #   loop_lock.sh busy                            print the busy list as this caller sees it
 #
 # Layout: the claim dir "$LOCK.d" holds the record "$LOCK.d/record":
-#   <owner> <take_epoch> <heartbeat_epoch> <purpose...>
-# A claim builds a private dir with its record and renames it onto "$LOCK.d" (`mv -T`: atomic, and
-# it fails when "$LOCK.d" exists), so a claim dir never lacks its record. A pre-Sprint-5 lock -- the
-# plain file "$LOCK" holding "<owner> <epoch>" (or the four-field form), no claim dir -- is still read:
-# heartbeat = epoch, purpose empty.
+#   <owner> <take_id> <heartbeat_epoch> <purpose...>      take_id = <epoch>-<pid>x<random>
+# The take_id is unique per claim, so "<owner> <take_id>" names one holding of the lock. A pre-Sprint-5
+# lock -- the plain file "$LOCK" holding "<owner> <epoch>", no claim dir -- is still read (heartbeat =
+# epoch, purpose empty).
 #
-# A take on a held lock:
-#   - REAPS it when the heartbeat is >= LOOP_LOCK_REAP_MIN (15) minutes old AND the busy list is empty,
-#     appending the reaped record to .loop_lock_history beside the lock;
-#   - refuses the stale break (heartbeat >= LOOP_LOCK_STALE_MIN, 45 minutes) while anything on the
+# Every state transition (claim, reap, renew, release) runs under a short mutex, `mkdir "$LOCK.mx"`
+# (plus a token file inside it): acquire (bounded LOOP_LOCK_MUTEX_WAIT_SEC, 10 s), re-read the record,
+# decide, act, release. A mutex older than LOOP_LOCK_MUTEX_STALE_SEC (30 s) by mtime is broken, with a
+# history line. Readers (check, id, the first read of a take) take no mutex: the claim dir is renamed
+# into place already holding its record and renamed away whole, so a reader sees a whole lock or none.
+#
+# A take on a held lock judges it OUTSIDE the mutex (the process list costs 1-2 s):
+#   - REAP when the heartbeat is >= LOOP_LOCK_REAP_MIN (15) minutes old AND the busy list is empty;
+#     then, under the mutex, the record is re-read and deleted only if it is still the line that was
+#     judged (otherwise BUSY naming the new holder, or TAKEN if it has meanwhile become free); the reaped
+#     record is appended to .loop_lock_history beside the lock;
+#   - the stale break (heartbeat >= LOOP_LOCK_STALE_MIN, 45 minutes) is refused while anything on the
 #     busy list runs;
-#   - otherwise reports BUSY.
-# A reap captures the full record line BEFORE judging, renames the claim dir to a unique grave, and
-# goes ahead only if the grave's record is still that line; otherwise it renames the dir back and
-# reports BUSY. Renew and release act only while the record still carries the caller's id, and
-# release also goes through a grave rename, so a concurrent taker never sees a half-removed lock.
+#   - otherwise BUSY.
+# Renew and release by <owner> fix the target holding ("<owner> <take_id>", or LOOP_LOCK_HELD when set)
+# at their first read and act under the mutex only if the record still carries exactly that id.
 #
 # Busy list: socom2*.exe, pcsx2-qt.exe, cmake, ninja, clang*, ld.exe / ld.lld.exe / lld*.exe,
 # ps2_recomp.exe, ps2x_tests.exe, vu1_replay.exe, and any python whose command line contains
 # tools_py.parity or unittest -- EXCLUDING the caller's own ancestor chain (gate.py and `python -m
 # unittest` take the lock themselves and must not count as busy against themselves). The chain is
 # walked by ParentProcessId from the PowerShell process in the same CIM query (MSYS PIDs are not
-# Windows PIDs). A process list that cannot be read (empty) counts as busy.
+# Windows PIDs), stopping at a parent created after its child (a reused PID). A process list that
+# cannot be read (empty) counts as busy.
 # Blind: a hung job whose wrapper keeps renewing is never reaped -- .done markers and log growth are
 # the progress evidence.
 #
-# Nesting: `run` and run_detached.sh export LOOP_LOCK_HELD="<owner> <take_epoch>". A take, renew or
+# Nesting: `run` and run_detached.sh export LOOP_LOCK_HELD="<owner> <take_id>". A take, renew or
 # release from inside that process tree (gate.py takes the lock itself) whose LOOP_LOCK_HELD matches
 # the live record succeeds without effect (NESTED) instead of BUSY; the outer holder releases. A
 # LOOP_LOCK_HELD that does not match the live record is stale: renew and release refuse.
 #
 # Environment (tests): LOOP_LOCK_PATH (lock base path), LOOP_LOCK_PS_CMD (a shell command printing one
-# "<ProcessId>|<ParentProcessId>|<Name>|<CommandLine>" line per process), LOOP_LOCK_SELF_WINPID (the
-# Windows PID the ancestor walk starts from; the real query uses its own PowerShell PID),
-# LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (wait poll, 60), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN.
+# "<ProcessId>|<ParentProcessId>|<CreationStamp>|<Name>|<CommandLine>" line per process; the stamp is a
+# sortable number or empty), LOOP_LOCK_SELF_WINPID (the Windows PID the ancestor walk starts from),
+# LOOP_LOCK_RENEW_SEC, LOOP_LOCK_WAIT_SEC (wait poll, 60), LOOP_LOCK_REAP_MIN, LOOP_LOCK_STALE_MIN,
+# LOOP_LOCK_MUTEX_WAIT_SEC, LOOP_LOCK_MUTEX_STALE_SEC, and LOOP_LOCK_TEST_PAUSE_AT=<point>[,...] with
+# LOOP_LOCK_TEST_PAUSE_DIR: at a named point the script touches <dir>/<point>.paused and waits for
+# <dir>/<point>.go (points: reap_before_mutex, renew_before_mutex, release_before_mutex).
 LOCK="${LOOP_LOCK_PATH:-$(cd "$(dirname "$0")/.." && pwd)/logs/.loop_lock}"
 LOCKD="$LOCK.d"
 REC="$LOCKD/record"
+MX="$LOCK.mx"
 HISTORY="$(dirname "$LOCK")/.loop_lock_history"
 REAP_MIN="${LOOP_LOCK_REAP_MIN:-15}"
 STALE_MIN="${LOOP_LOCK_STALE_MIN:-45}"
 RENEW_SEC="${LOOP_LOCK_RENEW_SEC:-60}"
 WAIT_SEC="${LOOP_LOCK_WAIT_SEC:-60}"
+MX_WAIT_SEC="${LOOP_LOCK_MUTEX_WAIT_SEC:-10}"
+MX_STALE_SEC="${LOOP_LOCK_MUTEX_STALE_SEC:-30}"
 SELF="$0"
 
-now() { date +%s; }
+now() { printf '%(%s)T\n' -1; }
+stamp() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 uniq_name() { echo "$1.$$.$RANDOM$RANDOM"; }
-legacy() { [ ! -d "$LOCKD" ] && [ -f "$LOCK" ]; }
 held() { [ -d "$LOCKD" ] || [ -f "$LOCK" ]; }
 
+test_pause() {   # point
+  case ",${LOOP_LOCK_TEST_PAUSE_AT}," in *",$1,"*) ;; *) return 0;; esac
+  local d="${LOOP_LOCK_TEST_PAUSE_DIR:?}" i
+  : > "$d/$1.paused"
+  for i in $(seq 1 1200); do [ -f "$d/$1.go" ] && return 0; sleep 0.1; done
+}
+
+# ---- the mutex -------------------------------------------------------------------------------------
+MX_TOKEN=""
+mx_acquire() {
+  local deadline=$(( $(now) + MX_WAIT_SEC )) m tok
+  while :; do
+    if mkdir "$MX" 2>/dev/null; then
+      MX_TOKEN="$MX/t.$$.$RANDOM$RANDOM"
+      : > "$MX_TOKEN"
+      return 0
+    fi
+    m=$(stat -c %Y "$MX" 2>/dev/null)
+    if [ -n "$m" ] && [ $(( $(now) - m )) -gt "$MX_STALE_SEC" ]; then
+      # Break a stale mutex. Deleting its token is the exclusive step: of two breakers only one unlinks
+      # it, and only that one removes the (then empty) dir. A fresh mutex has a fresh mtime.
+      tok=$(ls -A "$MX" 2>/dev/null | head -n 1)
+      if [ -n "$tok" ]; then
+        rm "$MX/$tok" 2>/dev/null && rmdir "$MX" 2>/dev/null \
+          && printf '%s MUTEX-BROKEN %s (mtime %s s old)\n' "$(stamp)" "$tok" "$(( $(now) - m ))" >> "$HISTORY"
+      else
+        rmdir "$MX" 2>/dev/null \
+          && printf '%s MUTEX-BROKEN <empty> (mtime %s s old)\n' "$(stamp)" "$(( $(now) - m ))" >> "$HISTORY"
+      fi
+      continue
+    fi
+    [ "$(now)" -ge "$deadline" ] && return 1
+    sleep 0.05
+  done
+}
+mx_release() {
+  [ -n "$MX_TOKEN" ] && rm -f "$MX_TOKEN"
+  rmdir "$MX" 2>/dev/null
+  MX_TOKEN=""
+}
+
+# ---- records ---------------------------------------------------------------------------------------
 # The record line of a claim dir (arg) or of the legacy file; "NOREC <mtime>" for a claim dir without one.
 line_of() {   # dir-or-empty
   local line=""
   if [ -n "$1" ]; then
-    [ -f "$1/record" ] && IFS= read -r line < "$1/record"
+    [ -f "$1/record" ] && IFS= read -r line < "$1/record" 2>/dev/null
     [ -n "$line" ] || line="NOREC $(stat -c %Y "$1" 2>/dev/null)"
   else
-    [ -f "$LOCK" ] && IFS= read -r line < "$LOCK"
+    [ -f "$LOCK" ] && IFS= read -r line < "$LOCK" 2>/dev/null
   fi
   printf '%s' "$line"
 }
@@ -85,41 +141,63 @@ current_line() {
   if [ -d "$LOCKD" ]; then line_of "$LOCKD"; elif [ -f "$LOCK" ]; then line_of ""; fi
 }
 
-# Parse a record line into R_OWNER R_EPOCH R_HB R_PURPOSE (old two-field form: heartbeat = epoch).
+# Parse a record line into R_OWNER R_EPOCH (the take id) R_T (its seconds) R_HB R_PURPOSE.
 parse_line() {
   R_OWNER=""; R_EPOCH=""; R_HB=""; R_PURPOSE=""
   read -r R_OWNER R_EPOCH R_HB R_PURPOSE <<< "$1"
   [ "$R_OWNER" = NOREC ] && R_OWNER=""
-  case "$R_EPOCH" in ''|*[!0-9]*) R_EPOCH=$(now);; esac
-  case "$R_HB" in ''|*[!0-9]*) R_HB="$R_EPOCH";; esac
+  R_T="${R_EPOCH%%-*}"
+  case "$R_T" in ''|*[!0-9]*) R_T=$(now); R_EPOCH="$R_T";; esac
+  case "$R_HB" in ''|*[!0-9]*) R_HB="$R_T";; esac
 }
 id_of() { parse_line "$1"; echo "$R_OWNER $R_EPOCH"; }
 hb_age_sec() { echo $(( $(now) - R_HB )); }
 describe() {
-  echo "${R_OWNER:-<no record>} taken $(( ($(now) - R_EPOCH) / 60 )) min ago, heartbeat $(( $(hb_age_sec) / 60 )) min ($(hb_age_sec) s) old${R_PURPOSE:+, purpose: $R_PURPOSE}"
+  echo "${R_OWNER:-<no record>} taken $(( ($(now) - R_T) / 60 )) min ago, heartbeat $(( $(hb_age_sec) / 60 )) min ($(hb_age_sec) s) old${R_PURPOSE:+, purpose: $R_PURPOSE}"
 }
 
 # Replace a record file atomically (retried: on Windows a reader holding the file open can make the
 # rename fail).
 write_file() {   # path line
   local tmp i; tmp=$(uniq_name "$1.tmp")
-  printf '%s\n' "$2" > "$tmp" 2>/dev/null || return 1
+  { printf '%s\n' "$2" > "$tmp"; } 2>/dev/null || return 1
   for i in 1 2 3 4 5 6 7 8 9 10; do mv -f "$tmp" "$1" 2>/dev/null && return 0; sleep 0.2; done
-  rm -f "$tmp"; return 1
+  rm -f "$tmp" 2>/dev/null; return 1
 }
 
-# Rename with retries (a transient open handle on Windows fails a directory rename).
-mv_retry() {   # src dst
-  local i
+# Under the mutex: build a private dir with the record and rename it into place. Sets TAKEN_ID.
+claim() {   # owner purpose
+  local tmp t id i; tmp=$(uniq_name "$LOCKD.new"); t=$(now); id="$t-$$x$RANDOM$RANDOM"
+  mkdir "$tmp" 2>/dev/null || return 1
+  if ! { printf '%s %s %s %s\n' "$1" "$id" "$t" "$2" > "$tmp/record"; } 2>/dev/null; then rm -rf "$tmp"; return 1; fi
   for i in 1 2 3 4 5; do
-    mv -T "$1" "$2" 2>/dev/null && return 0
-    [ -e "$1" ] || return 1
-    [ -e "$2" ] && return 1
+    if mv -T "$tmp" "$LOCKD" 2>/dev/null; then TAKEN_ID="$1 $id"; return 0; fi
+    [ -e "$LOCKD" ] && break
     sleep 0.1
   done
-  return 1
+  rm -rf "$tmp"; return 1
 }
 
+# Under the mutex: remove the live lock (legacy file or claim dir) whole.
+remove_lock() {
+  local grave i
+  if [ -d "$LOCKD" ]; then
+    grave=$(uniq_name "$LOCKD.released")
+    for i in 1 2 3 4 5 6 7 8 9 10; do mv -T "$LOCKD" "$grave" 2>/dev/null && break; sleep 0.2; done
+    [ -d "$LOCKD" ] && return 1
+    rm -rf "$grave"
+  fi
+  rm -f "$LOCK"
+  return 0
+}
+
+# Graves of the pre-mutex version (a stranded *.reaped.* / *.released.* / *.new.* dir) older than 1 h.
+clean_old_graves() {
+  find "$(dirname "$LOCK")" -maxdepth 1 -type d -name "$(basename "$LOCK").d.*" -mmin +60 \
+    -exec rm -rf {} + 2>/dev/null
+}
+
+# ---- the busy list ---------------------------------------------------------------------------------
 # Busy-list processes (one per line, "<pid> <name>[: <cmd>]"), excluding the caller's ancestor chain.
 busy_list() {
   local out self="$LOOP_LOCK_SELF_WINPID"
@@ -127,24 +205,29 @@ busy_list() {
     out=$(bash -c "$LOOP_LOCK_PS_CMD" 2>/dev/null)
   else
     out=$(powershell.exe -NoProfile -NonInteractive -Command \
-      '"#self|$PID"; Get-CimInstance Win32_Process | ForEach-Object { "$($_.ProcessId)|$($_.ParentProcessId)|$($_.Name)|$($_.CommandLine)" }' \
+      '"#self|$PID"; Get-CimInstance Win32_Process | ForEach-Object { $c = ""; if ($_.CreationDate) { $c = $_.CreationDate.ToUniversalTime().ToString("yyyyMMddHHmmssffffff") }; "$($_.ProcessId)|$($_.ParentProcessId)|$c|$($_.Name)|$($_.CommandLine)" }' \
       2>/dev/null | tr -d '\r')
   fi
   if [ -z "$(printf '%s' "$out" | grep -v '^#self|' | tr -d '[:space:]')" ]; then
     echo "<process list unavailable>"; return
   fi
   printf '%s\n' "$out" | awk -v self="$self" '
+    function field() { i = index(line, "|"); if (i == 0) { f = line; line = ""; return f } f = substr(line, 1, i - 1); line = substr(line, i + 1); return f }
     /^#self\|/ { if (self == "") self = substr($0, 7); next }
     {
       line = $0
-      i = index(line, "|"); if (i == 0) next; pid = substr(line, 1, i - 1); line = substr(line, i + 1)
-      i = index(line, "|"); if (i == 0) next; ppid = substr(line, 1, i - 1); line = substr(line, i + 1)
-      i = index(line, "|"); if (i == 0) { nm = line; cmd = "" } else { nm = substr(line, 1, i - 1); cmd = substr(line, i + 1) }
-      n++; P[n] = pid; PP[pid] = ppid; N[n] = tolower(nm); C[n] = cmd; exists[pid] = 1
+      if (index(line, "|") == 0) next
+      pid = field(); ppid = field(); cr = field(); nm = field(); cmd = line
+      n++; P[n] = pid; PP[pid] = ppid; CR[pid] = cr; N[n] = tolower(nm); C[n] = cmd; exists[pid] = 1
     }
     END {
       cur = self; steps = 0
-      while (cur != "" && (cur in exists) && !(cur in anc) && steps < 64) { anc[cur] = 1; cur = PP[cur]; steps++ }
+      while (cur != "" && (cur in exists) && !(cur in anc) && steps < 64) {
+        anc[cur] = 1; par = PP[cur]; steps++
+        # A parent created after its child is a reused PID, not the parent: stop the walk there.
+        if ((par in CR) && CR[par] != "" && CR[cur] != "" && CR[par] > CR[cur]) break
+        cur = par
+      }
       for (k = 1; k <= n; k++) {
         if (P[k] in anc) continue
         name = N[k]; cmd = C[k]
@@ -155,9 +238,6 @@ busy_list() {
       }
     }'
 }
-
-# LOOP_LOCK_HELD matches the live record.
-nested() { [ -n "$LOOP_LOCK_HELD" ] && held && [ "$LOOP_LOCK_HELD" = "$(id_of "$(current_line)")" ]; }
 
 judge() {   # uses R_*; prints REAP or a BUSY line
   local age=$(( $(hb_age_sec) / 60 ))
@@ -172,123 +252,106 @@ judge() {   # uses R_*; prints REAP or a BUSY line
   fi
 }
 
-reap_log() {   # judged-line
-  printf '%s REAPED "%s" heartbeat_age_s=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$(hb_age_sec)" >> "$HISTORY"
-}
+# LOOP_LOCK_HELD matches the live record.
+nested() { [ -n "$LOOP_LOCK_HELD" ] && held && [ "$LOOP_LOCK_HELD" = "$(id_of "$(current_line)")" ]; }
 
-# Atomic claim: a private dir with the record, renamed onto $LOCKD. 0 = claimed.
-claim() {   # owner purpose
-  local tmp; tmp=$(uniq_name "$LOCKD.new")
-  local t; t=$(now)
-  mkdir "$tmp" 2>/dev/null || return 1
-  if ! printf '%s %s %s %s\n' "$1" "$t" "$t" "$2" > "$tmp/record"; then rm -rf "$tmp"; return 1; fi
-  if mv -T "$tmp" "$LOCKD" 2>/dev/null; then return 0; fi
-  rm -rf "$tmp"; return 1
-}
-
+# ---- verbs -----------------------------------------------------------------------------------------
+TAKEN_ID=""
 do_take() {   # owner purpose ; 0 = TAKEN (maybe NESTED/REAPED), 1 = BUSY
-  local owner="$1" purpose="$2" judged verdict attempt grave
-  if nested; then parse_line "$(current_line)"; echo "TAKEN by $owner (NESTED under $R_OWNER)"; return 0; fi
-  for attempt in 1 2 3; do
-    if legacy; then
-      # A pre-Sprint-5 lock file with no claim dir: claim the dir first (the mutex), then judge the file.
-      judged=$(line_of "")
-      claim "$owner" "$purpose" || continue
-      parse_line "$judged"; verdict=$(judge)
-      if [ "$verdict" != REAP ] || [ "$(line_of "")" != "$judged" ]; then
-        grave=$(uniq_name "$LOCKD.released"); mv_retry "$LOCKD" "$grave" && rm -rf "$grave"
-        [ "$verdict" = REAP ] && verdict="BUSY: $(describe) (legacy record changed while judging)"
-        echo "$verdict"; return 1
-      fi
-      reap_log "$judged"; rm -f "$LOCK"
-      echo "TAKEN by $owner (REAPED $R_OWNER, heartbeat $(( $(hb_age_sec) / 60 )) min old)"; return 0
+  local owner="$1" purpose="$2" line line2 verdict attempt reaped age
+  if nested; then TAKEN_ID="$LOOP_LOCK_HELD"; parse_line "$(current_line)"; echo "TAKEN by $owner (NESTED under $R_OWNER)"; return 0; fi
+  clean_old_graves
+  for attempt in 1 2 3 4 5; do
+    line=$(current_line)
+    if [ -z "$line" ]; then
+      mx_acquire || { echo "BUSY: the lock mutex $MX stayed held for ${MX_WAIT_SEC}s"; return 1; }
+      if [ -z "$(current_line)" ] && claim "$owner" "$purpose"; then mx_release; echo "TAKEN by $owner"; return 0; fi
+      mx_release; continue                      # someone claimed first: re-read and judge them
     fi
-    if [ ! -d "$LOCKD" ]; then
-      claim "$owner" "$purpose" && { echo "TAKEN by $owner"; return 0; }
-      continue
-    fi
-    judged=$(line_of "$LOCKD")
-    [ -d "$LOCKD" ] || continue            # released while we read it
-    parse_line "$judged"; verdict=$(judge)
+    parse_line "$line"; verdict=$(judge)       # outside the mutex: the process list is slow
     if [ "$verdict" != REAP ]; then echo "$verdict"; return 1; fi
-    # Reap: the rename is atomic, so of racing reapers only one moves the dir; the mover then checks it
-    # moved the record it judged (not a claim made after the judgement) and puts the dir back if not.
-    grave=$(uniq_name "$LOCKD.reaped")
-    if ! mv -T "$LOCKD" "$grave" 2>/dev/null; then
-      parse_line "$(current_line)"; echo "BUSY: $(describe) (lost a reap race)"; return 1
-    fi
-    if [ "$(line_of "$grave")" != "$judged" ]; then
-      if mv_retry "$grave" "$LOCKD"; then
-        parse_line "$(current_line)"; echo "BUSY: $(describe) (claimed during the reap)"; return 1
+    test_pause reap_before_mutex
+    mx_acquire || { echo "BUSY: the lock mutex $MX stayed held for ${MX_WAIT_SEC}s"; return 1; }
+    line2=$(current_line)
+    if [ "$line2" = "$line" ]; then
+      parse_line "$line"; reaped="$R_OWNER"; age=$(( $(hb_age_sec) / 60 ))
+      if remove_lock; then
+        printf '%s REAPED "%s" heartbeat_age_s=%s\n' "$(stamp)" "$line" "$(hb_age_sec)" >> "$HISTORY"
+        if claim "$owner" "$purpose"; then
+          mx_release; echo "TAKEN by $owner (REAPED $reaped, heartbeat $age min old)"; return 0
+        fi
       fi
-      # Could not put it back (another claim landed in the instant between): record it loudly.
-      printf '%s DISPLACED "%s" by a reap race; left in %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-        "$(line_of "$grave")" "$grave" >> "$HISTORY"
-      parse_line "$(current_line)"; echo "BUSY: $(describe) (reap race displaced a claim; see history)"; return 1
+      mx_release; parse_line "$(current_line)"; echo "BUSY: $(describe) (reap could not complete)"; return 1
     fi
-    reap_log "$judged"
-    rm -rf "$grave"
-    local reaped="$R_OWNER" age=$(( $(hb_age_sec) / 60 ))
-    if claim "$owner" "$purpose"; then echo "TAKEN by $owner (REAPED $reaped, heartbeat $age min old)"; return 0; fi
-    parse_line "$(current_line)"; echo "BUSY: $(describe) (claimed by another taker after the reap)"; return 1
+    mx_release
+    [ -z "$line2" ] && continue                 # became free while we judged: take it
+    parse_line "$line2"; echo "BUSY: $(describe) (the judged holder changed while judging)"; return 1
   done
   parse_line "$(current_line)"; echo "BUSY: $(describe) (lock changing under us)"; return 1
 }
 
-# The id a renew/release by <owner> may act on: LOOP_LOCK_HELD when set, else "<owner> <live epoch>".
-caller_matches() {   # owner line
-  parse_line "$2"
-  [ -n "$R_OWNER" ] || return 1
-  if [ -n "$LOOP_LOCK_HELD" ]; then [ "$LOOP_LOCK_HELD" = "$R_OWNER $R_EPOCH" ]; else [ "$R_OWNER" = "$1" ]; fi
+# The holding a renew/release by <owner> targets, fixed at its first read: LOOP_LOCK_HELD when set,
+# else "<owner> <take_id>" of the live record if <owner> holds it. Empty = not held.
+target_id() {   # owner
+  local line; line=$(current_line)
+  [ -n "$line" ] || return 0
+  parse_line "$line"
+  [ -n "$R_OWNER" ] || return 0
+  if [ -n "$LOOP_LOCK_HELD" ]; then
+    [ "$LOOP_LOCK_HELD" = "$R_OWNER $R_EPOCH" ] && echo "$LOOP_LOCK_HELD"
+  elif [ "$R_OWNER" = "$1" ]; then
+    echo "$R_OWNER $R_EPOCH"
+  fi
 }
 
 do_renew() {
-  local owner="$1" line target
-  if legacy; then line=$(line_of ""); target="$LOCK"; else line=$(line_of "$LOCKD"); target="$REC"; fi
-  if held && caller_matches "$owner" "$line"; then
-    # Never creates the claim dir: if it vanished since the read, the write fails and so does the renew.
-    if [ "$target" = "$REC" ] && [ ! -d "$LOCKD" ]; then echo "not held by $owner"; return 1; fi
-    write_file "$target" "$R_OWNER $R_EPOCH $(now) $R_PURPOSE" || { echo "renew: write failed"; return 1; }
-    if [ "$R_OWNER" = "$owner" ]; then echo "RENEWED by $owner"; else echo "RENEWED by $R_OWNER (NESTED $owner)"; fi
-    return 0
-  fi
-  echo "not held by $owner"; return 1
+  local owner="$1" want line
+  want=$(target_id "$owner")
+  [ -n "$want" ] || { echo "not held by $owner"; return 1; }
+  test_pause renew_before_mutex
+  mx_acquire || { echo "renew: the lock mutex stayed held for ${MX_WAIT_SEC}s"; return 1; }
+  line=$(current_line)
+  if [ -z "$line" ] || [ "$(id_of "$line")" != "$want" ]; then mx_release; echo "not held by $owner"; return 1; fi
+  parse_line "$line"
+  local target="$REC"; [ -d "$LOCKD" ] || target="$LOCK"
+  if ! write_file "$target" "$R_OWNER $R_EPOCH $(now) $R_PURPOSE"; then mx_release; echo "renew: write failed"; return 1; fi
+  mx_release
+  if [ "$R_OWNER" = "$owner" ]; then echo "RENEWED by $owner"; else echo "RENEWED by $R_OWNER (NESTED $owner)"; fi
+  return 0
 }
 
-release_id() {   # "owner epoch" -- remove the lock only if its record still carries that id
-  local want="$1" grave
-  if legacy; then
-    [ "$(id_of "$(line_of "")")" = "$want" ] && rm -f "$LOCK" && return 0
-    return 1
-  fi
-  [ -d "$LOCKD" ] || return 1
-  [ "$(id_of "$(line_of "$LOCKD")")" = "$want" ] || return 1
-  grave=$(uniq_name "$LOCKD.released")
-  mv_retry "$LOCKD" "$grave" || return 1
-  if [ "$(id_of "$(line_of "$grave")")" != "$want" ]; then mv_retry "$grave" "$LOCKD"; return 1; fi
-  rm -rf "$grave"; return 0
+release_id() {   # "owner take_id" -- remove the lock only if its record still carries that id
+  local want="$1" line
+  mx_acquire || return 1
+  line=$(current_line)
+  if [ -z "$line" ] || [ "$(id_of "$line")" != "$want" ]; then mx_release; return 1; fi
+  remove_lock; local rc=$?
+  mx_release; return $rc
 }
 
 do_release() {
-  local owner="$1" line
+  local owner="$1" want
   if nested; then parse_line "$(current_line)"; echo "RELEASED $owner (NESTED: $R_OWNER keeps the lock)"; return 0; fi
-  if held; then
-    line=$(current_line)
-    if caller_matches "$owner" "$line" && release_id "$R_OWNER $R_EPOCH"; then echo "RELEASED"; return 0; fi
-    parse_line "$line"
-    if [ -n "$LOOP_LOCK_HELD" ] && [ "$R_OWNER" = "$owner" ]; then
+  if [ -n "$LOOP_LOCK_HELD" ] && held; then
+    parse_line "$(current_line)"
+    if [ "$R_OWNER" = "$owner" ]; then
       echo "not held by $owner (stale LOOP_LOCK_HELD=\"$LOOP_LOCK_HELD\"; the live lock is $R_OWNER $R_EPOCH)"; return 1
     fi
   fi
+  want=$(target_id "$owner")
+  [ -n "$want" ] || { echo "not held by $owner"; return 1; }
+  test_pause release_before_mutex
+  if release_id "$want"; then echo "RELEASED"; return 0; fi
   echo "not held by $owner"; return 1
 }
 
-parse_opts() {   # sets PURPOSE, WAITMIN, REST (the args after --)
-  PURPOSE=""; WAITMIN=""; REST=()
+parse_opts() {   # sets PURPOSE, WAITMIN, PRINT_ID, REST (the args after --)
+  PURPOSE=""; WAITMIN=""; PRINT_ID=""; REST=()
   while [ $# -gt 0 ]; do
     case "$1" in
       --purpose) PURPOSE="$2"; shift 2;;
       --wait) WAITMIN="$2"; shift 2;;
+      --print-id) PRINT_ID=1; shift;;
       --) shift; REST=("$@"); return 0;;
       *) REST=("$@"); return 0;;
     esac
@@ -297,10 +360,13 @@ parse_opts() {   # sets PURPOSE, WAITMIN, REST (the args after --)
 
 valid_owner() { case "$1" in ''|-*|NOREC|*[[:space:]]*) echo "owner must be a non-empty word"; exit 2;; esac; }
 
-do_wait() {   # owner max_minutes purpose
-  local max="$2" i out
+do_wait() {   # owner max_minutes purpose  (sets TAKEN_ID)
+  local max="$2" i out rc
   for i in $(seq 1 "$max"); do
-    if out=$(do_take "$1" "$3"); then echo "$out after $i attempt(s)"; return 0; fi
+    out=$(do_take "$1" "$3"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
+    TAKEN_ID=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
+    out=$(printf '%s\n' "$out" | grep -v '^@@ID ')
+    if [ $rc -eq 0 ]; then echo "$out after $i attempt(s)"; return 0; fi
     [ "$i" -lt "$max" ] && sleep "$WAIT_SEC"
   done
   parse_line "$(current_line)"; echo "TIMEOUT waiting for lock: $(describe)"; return 1
@@ -308,7 +374,9 @@ do_wait() {   # owner max_minutes purpose
 
 case "$1" in
   take)
-    valid_owner "$2"; parse_opts "${@:3}"; do_take "$2" "$PURPOSE"; exit $?;;
+    valid_owner "$2"; parse_opts "${@:3}"; do_take "$2" "$PURPOSE"; rc=$?
+    [ $rc -eq 0 ] && [ -n "$PRINT_ID" ] && echo "ID: $TAKEN_ID"
+    exit $rc;;
   renew)
     valid_owner "$2"; do_renew "$2"; exit $?;;
   release)
@@ -328,12 +396,15 @@ case "$1" in
   run)
     owner="$2"; valid_owner "$owner"; parse_opts "${@:3}"
     if [ ${#REST[@]} -eq 0 ]; then echo "usage: $SELF run <owner> [--purpose <p>] [--wait <min>] -- <cmd...>"; exit 2; fi
-    if [ -n "$WAITMIN" ]; then out=$(do_wait "$owner" "$WAITMIN" "$PURPOSE"); rc=$?
-    else out=$(do_take "$owner" "$PURPOSE"); rc=$?; fi
-    echo "[loop_lock] $out"
+    if [ -n "$WAITMIN" ]; then
+      out=$(do_wait "$owner" "$WAITMIN" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
+    else
+      out=$(do_take "$owner" "$PURPOSE"; rc=$?; echo "@@ID $TAKEN_ID"; exit $rc); rc=$?
+    fi
+    held_id=$(printf '%s\n' "$out" | sed -n 's/^@@ID //p')
+    echo "[loop_lock] $(printf '%s\n' "$out" | grep -v '^@@ID ')"
     [ $rc -eq 0 ] || exit 75
     case "$out" in *NESTED*) exec "${REST[@]}";; esac
-    held_id=$(id_of "$(current_line)")
     export LOOP_LOCK_HELD="$held_id"
     main_pid=$$
     # The renewer is tied to this wrapper's PID (not the agent's shell): if the wrapper dies, renewal
@@ -345,11 +416,15 @@ case "$1" in
         sleep 1
         if [ $((SECONDS - last)) -ge "$RENEW_SEC" ]; then
           last=$SECONDS
-          # Stop only when the lock is no longer ours; a transient write failure retries next interval.
-          case "$("$SELF" renew "$owner" 2>&1)" in "not held"*) exit 0;; esac
+          # A transient failure (mutex busy, write failed) retries next interval; "not held" is final.
+          r=$("$SELF" renew "$owner" 2>&1)
+          case "$r" in "not held"*)
+            echo "[loop_lock] LOCK LOST: $held_id is no longer the live lock ($("$SELF" check)); renewal stopped, the command keeps running UNGUARDED" >&2
+            exit 0;;
+          esac
         fi
       done
-    ) </dev/null >/dev/null 2>&1 &
+    ) </dev/null >/dev/null &
     renewer=$!
     cleanup() {
       kill "$renewer" 2>/dev/null; wait "$renewer" 2>/dev/null

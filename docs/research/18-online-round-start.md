@@ -413,7 +413,10 @@ above the pad HLE.
 `00000000(0) 00000000(0) 00000000(0)`. A real gameplay window is ~210 of them. **If that count is
 zero the run never reached gameplay — discard it, whatever its screenshots show.** One run in this
 task drove all sixteen stick probes and wrote sixteen screenshots against a lobby keyboard; nothing
-except this count said so. Also `bash scripts/loop_lock.sh check` first: the lock has no reaper.
+except this count said so. Also `bash scripts/loop_lock.sh check` first: ~~the lock has no reaper.~~
+> Superseded by Sprint 5 Task 0 (`2b7c425`, hardened in its review fix rounds, `7955c10` and the round-2
+> mutex commit): the lock record carries a heartbeat, `run`/`run_detached.sh` renew it, and a take reaps a
+> lock whose heartbeat is >= 15 min old when nothing on the busy list runs.
 
 ```
 bash scripts/loop_lock.sh wait task6 40
@@ -644,9 +647,13 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
    wrong-but-resolvable address still counts as traced, so that line is **not** evidence the right
    function was hooked.
 4. **Release the loop lock in a `finally`, and check for an orphan before you wait on it.**
-   `scripts/loop_lock.sh` has no reaper: an agent that finishes, crashes or is interrupted without
+   ~~`scripts/loop_lock.sh` has no reaper: an agent that finishes, crashes or is interrupted without
    `release` leaves the lock held, and the next agent blocks on it until the 45-minute staleness
-   window expires. One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
+   window expires.~~
+   > Superseded by Sprint 5 Task 0 (`2b7c425`; review fix rounds `7955c10` and the round-2 mutex
+   > commit): hold the lock only through `loop_lock.sh run` or `run_detached.sh`, which renew a
+   > heartbeat and release on exit; a take reaps a lock whose heartbeat is >= 15 min old when nothing on
+   > the busy list runs, and refuses the 45-min break while anything on it does. One orphan had to be cleared by hand during this task. `bash scripts/loop_lock.sh
    check` prints the holder and the age — if the age is large and the owner is a task that has
    plainly finished, it is an orphan.
 

@@ -13,7 +13,10 @@
 #   - when the job exits: releases the lock, then writes "exit=<code>" to <marker> (release first, so a
 #     poller that sees the marker finds the lock free);
 #   - on TERM/HUP/INT it kills the job's whole Windows process tree (`taskkill /T /F`), releases, and
-#     writes "exit=143".
+#     writes "exit=143";
+#   - if a renew finds the lock no longer ours, it writes a "LOCK LOST" line to <log> and to
+#     <marker>.LOCK_LOST, stops renewing, and lets the job finish (the final marker line then reads
+#     "exit=<code> LOCK_LOST"). The job is not killed.
 #
 # THE JOB SCRIPT MUST KEEP ITS WORK IN THE FOREGROUND. The lock lives exactly as long as the script's
 # own PID: anything it backgrounds (`cmd &`, `nohup`, `Start-Process`) and does not wait for keeps
@@ -37,7 +40,7 @@ if [ "$1" = "--_child" ]; then
     "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1 \
       && echo "[run_detached] RELEASED" >> "$log" \
       || echo "[run_detached] not released: the lock no longer carries $LOOP_LOCK_HELD" >> "$log"
-    printf 'exit=%s\n' "$1" > "$marker.tmp" && mv -f "$marker.tmp" "$marker"
+    printf 'exit=%s%s\n' "$1" "${lost:+ LOCK_LOST}" > "$marker.tmp" && mv -f "$marker.tmp" "$marker"
   }
   on_signal() {
     local winpid
@@ -50,10 +53,18 @@ if [ "$1" = "--_child" ]; then
     finish 143; exit 143
   }
   trap on_signal TERM HUP INT
-  last=$SECONDS
+  last=$SECONDS lost=""
   while kill -0 "$job" 2>/dev/null; do
     sleep 1
-    if [ $((SECONDS - last)) -ge "$RENEW_SEC" ]; then last=$SECONDS; "$LOCKSH" renew "$owner" >/dev/null 2>&1; fi
+    if [ -z "$lost" ] && [ $((SECONDS - last)) -ge "$RENEW_SEC" ]; then
+      last=$SECONDS
+      r=$("$LOCKSH" renew "$owner" 2>&1)
+      case "$r" in "not held"*)
+        lost=1
+        msg="[run_detached] LOCK LOST $(date -u +%Y-%m-%dT%H:%M:%SZ): $LOOP_LOCK_HELD is no longer the live lock ($("$LOCKSH" check)); renewal stopped, the job keeps running UNGUARDED"
+        echo "$msg" >> "$log"; echo "$msg" > "$marker.LOCK_LOST";;
+      esac
+    fi
   done
   wait "$job"; rc=$?
   finish "$rc"
@@ -77,11 +88,13 @@ fi
 script="$1" marker="$2"; shift 2
 [ -f "$script" ] || { echo "run_detached: no such script: $script"; exit 2; }
 log="${log:-$marker.log}"
-rm -f "$marker"
+rm -f "$marker" "$marker.LOCK_LOST"
 mkdir -p "$(dirname "$marker")" "$(dirname "$log")"
 
-out=$("$LOCKSH" take "$owner" --purpose "${purpose:-detached $(basename "$script")}")
+out=$("$LOCKSH" take "$owner" --purpose "${purpose:-detached $(basename "$script")}" --print-id)
 rc=$?
+held_id=$(printf '%s\n' "$out" | sed -n 's/^ID: //p')
+out=$(printf '%s\n' "$out" | grep -v '^ID: ')
 case "$out" in
   *NESTED*)
     # The outer holder would release while this job still runs.
@@ -93,7 +106,6 @@ if [ $rc -ne 0 ]; then
   printf 'exit=75 %s\n' "$out" > "$marker"
   echo "run_detached: $out"; exit 75
 fi
-LOOP_LOCK_HELD="$("$LOCKSH" id)"
-export LOOP_LOCK_HELD
+export LOOP_LOCK_HELD="$held_id"
 nohup bash "$0" --_child "$owner" "$log" "$marker" "$script" "$@" </dev/null >/dev/null 2>&1 &
 echo "DETACHED pid=$! owner=$owner marker=$marker log=$log ($out)"

@@ -34,8 +34,12 @@ $cur = [int]$PID
 $steps = 0
 while ($byId.ContainsKey($cur) -and -not $ancestors.ContainsKey($cur) -and $steps -lt 64) {
     $ancestors[$cur] = $true
-    $cur = [int]$byId[$cur].ParentProcessId
+    $parent = [int]$byId[$cur].ParentProcessId
     $steps++
+    # A "parent" created after its child is a reused PID, not the parent: stop the walk.
+    if ($byId.ContainsKey($parent) -and $byId[$parent].CreationDate -and $byId[$cur].CreationDate -and
+        $byId[$parent].CreationDate -gt $byId[$cur].CreationDate) { break }
+    $cur = $parent
 }
 
 $killed = 0

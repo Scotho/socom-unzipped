@@ -1,7 +1,7 @@
 """scripts/loop_lock.sh, scripts/run_detached.sh and scripts/kill_stale_drivers.ps1, with fakes.
 
 No game, no build, and never the real lock: every test points LOOP_LOCK_PATH at a temp dir and
-LOOP_LOCK_PS_CMD at a fake process list (a file the test writes, "pid|ppid|name|cmdline" per line),
+LOOP_LOCK_PS_CMD at a fake process list (a file the test writes, "pid|ppid|created|name|cmdline" per line),
 and back-dates heartbeats by writing the record directly.
 
 The real-scale renewal test (`run -- sleep 130`, 60 s renew, heartbeat < 70 s throughout, ~135 s) runs
@@ -25,7 +25,7 @@ DETACHED_SH = os.path.join(SCRIPTS, "run_detached.sh").replace("\\", "/")
 KILL_PS1 = os.path.join(SCRIPTS, "kill_stale_drivers.ps1")
 POWERSHELL = (shutil.which("powershell.exe") or shutil.which("powershell")) if os.name == "nt" else None
 
-IDLE = ["4|0|System|", "900|4|explorer.exe|C:\\Windows\\explorer.exe", "901|900|bash.exe|bash"]
+IDLE = ["4|0||System|", "900|4||explorer.exe|C:\\Windows\\explorer.exe", "901|900||bash.exe|bash"]
 
 
 def find_bash():
@@ -108,6 +108,30 @@ class LockTestBase(unittest.TestCase):
     def is_free(self):
         return self.sh("check")[1].strip() == "FREE"
 
+    def strays(self):
+        """Graves, half-built claims or a leftover mutex beside the lock."""
+        return sorted(n for n in os.listdir(self.tmp) if n.startswith("lk.") and n != "lk.d")
+
+    def pause_env(self, point, **extra):
+        return self.env(LOOP_LOCK_TEST_PAUSE_AT=point, LOOP_LOCK_TEST_PAUSE_DIR=fwd(self.tmp), **extra)
+
+    def wait_paused(self, point, proc, seconds=60):
+        flag = os.path.join(self.tmp, point + ".paused")
+        deadline = time.time() + seconds
+        while not os.path.exists(flag):
+            if proc.poll() is not None:
+                self.fail("%s exited before pausing at %s: %s" % (proc.args, point, proc.communicate()[0]))
+            if time.time() > deadline:
+                self.fail("never paused at " + point)
+            time.sleep(0.1)
+
+    def go(self, point):
+        open(os.path.join(self.tmp, point + ".go"), "w").close()
+
+    def popen(self, *args, env):
+        return subprocess.Popen([BASH, LOCK_SH] + list(args), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                text=True, env=env)
+
 
 class TestTakeReapBreak(LockTestBase):
     def test_free_take_writes_four_field_record_inside_the_claim_dir(self):
@@ -116,7 +140,7 @@ class TestTakeReapBreak(LockTestBase):
         self.assertIn("TAKEN by alice", out)
         rec = self.record()
         self.assertEqual(rec[0], "alice")
-        self.assertEqual(rec[1], rec[2])
+        self.assertEqual(rec[1].split("-")[0], rec[2])
         self.assertEqual(rec[3:], ["two", "words"])
         self.assertFalse(os.path.exists(self.lock), "the record lives inside the claim dir")
         self.assertEqual(self.sh("id")[1].strip(), "alice " + rec[1])
@@ -154,7 +178,7 @@ class TestTakeReapBreak(LockTestBase):
         for i, line in enumerate(busy_cases):
             with self.subTest(proc=line):
                 self.write_record("worker", 3600, hb_age_s=20 * 60)
-                self.set_procs(IDLE + ["%d|901|%s" % (5000 + i, line)])
+                self.set_procs(IDLE + ["%d|901||%s" % (5000 + i, line)])
                 rc, out = self.sh("take", "bob")
                 self.assertEqual(rc, 1, out)
                 self.assertIn("not reaped", out)
@@ -165,14 +189,14 @@ class TestTakeReapBreak(LockTestBase):
         for name in ("ldap_helper.exe", "ldconfig.exe"):
             with self.subTest(name=name):
                 self.write_record("ghost", 3600, hb_age_s=20 * 60)
-                self.set_procs(IDLE + ["5000|901|%s|%s" % (name, name)])
+                self.set_procs(IDLE + ["5000|901||%s|%s" % (name, name)])
                 rc, out = self.sh("take", "bob")
                 self.assertEqual(rc, 0, out)
                 self.sh("release", "bob")
 
     def test_python_without_parity_or_unittest_is_not_busy(self):
         self.write_record("ghost", 3600, hb_age_s=20 * 60)
-        self.set_procs(IDLE + ["5000|901|python.exe|python -m http.server"])
+        self.set_procs(IDLE + ["5000|901||python.exe|python -m http.server"])
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 0, out)
 
@@ -180,10 +204,10 @@ class TestTakeReapBreak(LockTestBase):
         # gate.py (python -m tools_py.parity.gate) takes the lock: it and `python -m unittest` above it are
         # the caller's own ancestors and must not block its reap.
         self.write_record("ghost", 3600, hb_age_s=50 * 60)
-        chain = IDLE + ["6000|901|python.exe|python -m unittest discover",
-                        "6001|6000|python3.13.exe|python -m tools_py.parity.gate --stamp x",
-                        "6002|6001|bash.exe|bash scripts/loop_lock.sh take gate",
-                        "6003|6002|powershell.exe|powershell -Command Get-CimInstance"]
+        chain = IDLE + ["6000|901|100|python.exe|python -m unittest discover",
+                        "6001|6000|200|python3.13.exe|python -m tools_py.parity.gate --stamp x",
+                        "6002|6001|300|bash.exe|bash scripts/loop_lock.sh take gate",
+                        "6003|6002|400|powershell.exe|powershell -Command Get-CimInstance"]
         self.set_procs(chain)
         rc, out = self.sh("take", "gate", env=self.env(LOOP_LOCK_SELF_WINPID=6003))
         self.assertEqual(rc, 0, out)
@@ -191,11 +215,11 @@ class TestTakeReapBreak(LockTestBase):
 
     def test_non_ancestor_with_the_same_command_line_still_counts(self):
         self.write_record("ghost", 3600, hb_age_s=50 * 60)
-        chain = IDLE + ["6000|901|python.exe|python -m unittest discover",
-                        "6001|6000|python3.13.exe|python -m tools_py.parity.gate --stamp x",
-                        "6002|6001|bash.exe|bash scripts/loop_lock.sh take gate",
-                        "6003|6002|powershell.exe|powershell -Command Get-CimInstance",
-                        "7001|900|python3.13.exe|python -m tools_py.parity.gate --stamp x"]
+        chain = IDLE + ["6000|901|100|python.exe|python -m unittest discover",
+                        "6001|6000|200|python3.13.exe|python -m tools_py.parity.gate --stamp x",
+                        "6002|6001|300|bash.exe|bash scripts/loop_lock.sh take gate",
+                        "6003|6002|400|powershell.exe|powershell -Command Get-CimInstance",
+                        "7001|900|250|python3.13.exe|python -m tools_py.parity.gate --stamp x"]
         self.set_procs(chain)
         rc, out = self.sh("take", "gate", env=self.env(LOOP_LOCK_SELF_WINPID=6003))
         self.assertEqual(rc, 1, out)
@@ -240,7 +264,7 @@ class TestTakeReapBreak(LockTestBase):
 
     def test_stale_break_refused_while_game_runs(self):
         self.write_record("worker", 3600, hb_age_s=50 * 60)
-        self.set_procs(IDLE + ["5000|900|socom2.exe|dist\\socom2.exe"])
+        self.set_procs(IDLE + ["5000|900||socom2.exe|dist\\socom2.exe"])
         rc, out = self.sh("take", "bob")
         self.assertEqual(rc, 1, out)
         self.assertIn("stale break REFUSED", out)
@@ -344,9 +368,31 @@ class TestRaces(LockTestBase):
             self.counts.append((taken, reaps))
             self.assertEqual(taken, 1, outs)
             self.assertEqual(reaps, 1, self.history())
+            self.assertNotIn("DISPLACED", self.history())
+            self.assertEqual([l for l in self.history().splitlines() if "REAPED" not in l], [], self.history())
+            self.assertEqual(self.strays(), [])
             self.assertEqual(self.sh("release", self._holder())[0], 0)
             self.assertTrue(self.is_free())
         print("\n[race] per-round (TAKEN, history lines):", self.counts, file=sys.stderr)
+
+    def test_hammer_three_takers_one_holder_per_round(self):
+        # 3 takers x 100 rounds, no latency; odd rounds start free, even rounds on a stale ghost.
+        tally = {}
+        for rnd in range(100):
+            ghost = rnd % 2 == 0
+            if ghost:
+                self.write_record("ghost%d" % rnd, 3600, hb_age_s=30 * 60)
+            outs = self._race(3, self.env())
+            taken = sum(o.startswith("TAKEN") for o in outs)
+            key = (taken, self.history().count('REAPED "ghost%d ' % rnd) if ghost else None)
+            tally[key] = tally.get(key, 0) + 1
+            self.assertEqual(taken, 1, (rnd, outs))
+            if ghost:
+                self.assertEqual(key[1], 1, (rnd, self.history()))
+            self.assertEqual(self.sh("release", self._holder())[0], 0)
+            self.assertTrue(self.is_free())
+            self.assertEqual(self.strays(), [], rnd)
+        print("\n[hammer] (TAKEN, REAPED-lines-for-the-ghost or None on free rounds): %s" % tally, file=sys.stderr)
 
     def test_release_never_shows_a_recordless_lock(self):
         # Minor 4: while a holder takes and releases in a loop, a concurrent observer must never see a
@@ -365,7 +411,136 @@ class TestRaces(LockTestBase):
         self.assertNotIn("<no record>", out)
 
 
+class TestInterleavings(LockTestBase):
+    """Round 2: every transition under the mutex; pauses injected with LOOP_LOCK_TEST_PAUSE_AT."""
+
+    def test_late_renew_after_reap_and_reclaim_reports_not_held(self):
+        # A wrapper waking after 15+ min: its renew is paused past its first read while a reaper reaps the
+        # ghost and a new holder claims. The new record must survive; the late renew must say not held.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60, purpose="gp")
+        ghost_id = " ".join(self.record()[:2])
+        g = self.popen("renew", "ghost", env=self.pause_env("renew_before_mutex", LOOP_LOCK_HELD=ghost_id))
+        self.wait_paused("renew_before_mutex", g)
+        rc, out = self.sh("take", "T", "--purpose", "tjob")
+        self.assertEqual(rc, 0, out)
+        t_record = _read(self.rec)
+        self.go("renew_before_mutex")
+        gout = g.communicate(timeout=60)[0]
+        self.assertNotEqual(g.returncode, 0, gout)
+        self.assertIn("not held", gout)
+        self.assertEqual(_read(self.rec), t_record, "the late renew rewrote the new holder's record")
+        self.assertEqual(self.sh("renew", "T")[0], 0)
+
+    def test_reaper_whose_ghost_was_reaped_meanwhile_reports_the_new_holder(self):
+        # disp/disp.sh: B judges the ghost and pauses; A reaps and claims; C tries; B resumes.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60, purpose="p")
+        b = self.popen("take", "tB", env=self.pause_env("reap_before_mutex"))
+        self.wait_paused("reap_before_mutex", b)
+        rc, a_out = self.sh("take", "tA")
+        self.assertEqual(rc, 0, a_out)
+        self.assertIn("REAPED ghost", a_out)
+        rc, c_out = self.sh("take", "tC")
+        self.assertEqual(rc, 1, c_out)
+        self.go("reap_before_mutex")
+        b_out = b.communicate(timeout=60)[0]
+        self.assertEqual(b.returncode, 1, b_out)
+        self.assertIn("tA", b_out)
+        self.assertEqual(self.record()[0], "tA")
+        self.assertEqual(self.history().count("REAPED"), 1, self.history())
+        self.assertNotIn("DISPLACED", self.history())
+        self.assertEqual(self.strays(), [])
+        self.assertEqual(self.sh("renew", "tA")[0], 0)
+        self.assertEqual(self.sh("take", "tD")[0], 1)
+
+    def test_reaper_whose_ghost_was_released_meanwhile_takes_the_free_lock(self):
+        # Minor 2: the lock is FREE by the time the paused reaper gets the mutex -> TAKEN, not BUSY.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        b = self.popen("take", "tB", env=self.pause_env("reap_before_mutex"))
+        self.wait_paused("reap_before_mutex", b)
+        self.assertEqual(self.sh("take", "tA")[0], 0)
+        self.assertEqual(self.sh("release", "tA")[0], 0)
+        self.go("reap_before_mutex")
+        b_out = b.communicate(timeout=60)[0]
+        self.assertEqual(b.returncode, 0, b_out)
+        self.assertEqual(self.record()[0], "tB")
+
+    def test_late_release_by_name_does_not_release_a_newer_holding(self):
+        # disp/rel.sh: a manual `release main` pauses; run-cleanup releases holding X; Y takes as main;
+        # the paused release resumes. Y must still hold; nothing stranded.
+        rc, out = self.sh("take", "main", "--purpose", "X", "--print-id")
+        x_id = re.search(r"ID: (.*)", out).group(1).strip()
+        r = self.popen("release", "main", env=self.pause_env("release_before_mutex"))
+        self.wait_paused("release_before_mutex", r)
+        self.assertEqual(self.sh("_release_id", x_id)[0], 0)
+        rc, out = self.sh("take", "main", "--purpose", "Y", "--print-id")
+        self.assertEqual(rc, 0, out)
+        y_id = re.search(r"ID: (.*)", out).group(1).strip()
+        self.assertNotEqual(x_id, y_id, "two holdings in the same second must have distinct ids")
+        self.go("release_before_mutex")
+        r_out = r.communicate(timeout=60)[0]
+        self.assertEqual(r.returncode, 1, r_out)
+        self.assertEqual(self.sh("id")[1].strip(), y_id)
+        self.assertEqual(self.strays(), [])
+
+    def test_stale_mutex_is_broken_with_a_history_line(self):
+        mx = self.lock + ".mx"
+        os.makedirs(mx)
+        open(os.path.join(mx, "t.999.1"), "w").close()
+        old = time.time() - 60
+        os.utime(mx, (old, old))
+        rc, out = self.sh("take", "bob")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("MUTEX-BROKEN", self.history())
+        self.assertFalse(os.path.exists(mx))
+
+    def test_fresh_mutex_is_waited_on_not_broken(self):
+        mx = self.lock + ".mx"
+        os.makedirs(mx)
+        open(os.path.join(mx, "t.999.1"), "w").close()
+        rc, out = self.sh("take", "bob", env=self.env(LOOP_LOCK_MUTEX_WAIT_SEC=2))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("mutex", out)
+        self.assertTrue(os.path.exists(mx))
+        self.assertEqual(self.history(), "")
+
+    def test_old_graves_are_cleaned_on_take(self):
+        grave = self.lock + ".d.reaped.1.2"
+        os.makedirs(grave)
+        old = time.time() - 2 * 3600
+        os.utime(grave, (old, old))
+        fresh = self.lock + ".d.reaped.3.4"
+        os.makedirs(fresh)
+        self.assertEqual(self.sh("take", "bob")[0], 0)
+        self.assertFalse(os.path.exists(grave))
+        self.assertTrue(os.path.exists(fresh), "a grave younger than 1 h is left alone")
+
+    def test_reused_pid_parent_ends_the_ancestor_walk(self):
+        # Minor 1: 6002's recorded parent 6001 was created AFTER 6002 -> a reused PID, not an ancestor.
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        self.set_procs(IDLE + ["6001|900|500|python3.13.exe|python -m tools_py.parity.gate --stamp x",
+                               "6002|6001|300|bash.exe|bash scripts/loop_lock.sh take gate",
+                               "6003|6002|400|powershell.exe|powershell"])
+        rc, out = self.sh("take", "gate", env=self.env(LOOP_LOCK_SELF_WINPID=6003))
+        self.assertEqual(rc, 1, out)
+        self.assertIn("6001", out)
+
+
 class TestRun(LockTestBase):
+    def test_run_reports_lock_lost_and_does_not_release_the_new_holder(self):
+        p = subprocess.Popen([BASH, LOCK_SH, "run", "runner", "--", "sleep", "6"], stdout=subprocess.PIPE,
+                             stderr=subprocess.PIPE, text=True, env=self.env(LOOP_LOCK_RENEW_SEC=1))
+        deadline = time.time() + 30
+        while not os.path.exists(self.rec) and time.time() < deadline:
+            time.sleep(0.1)
+        runner_id = self.sh("id")[1].strip()
+        self.assertEqual(self.sh("_release_id", runner_id)[0], 0)
+        self.assertEqual(self.sh("take", "thief")[0], 0)
+        out, err = p.communicate(timeout=60)
+        self.assertEqual(p.returncode, 0, out + err)
+        self.assertIn("LOCK LOST", err)
+        self.assertIn("not released", out)
+        self.assertEqual(self.record()[0], "thief")
+
     def test_run_false_releases_and_exits_1(self):
         rc, out = self.sh("run", "runner", "--", "false")
         self.assertEqual(rc, 1, out)
@@ -457,7 +632,7 @@ class TestRunDetached(LockTestBase):
                            timeout=30)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertIn("DETACHED", p.stdout)
-        epoch = int(self.record()[1])
+        epoch = int(self.record()[2])
         time.sleep(4.5)
         rec = self.record()
         self.assertEqual(rec[0], "det")
@@ -465,6 +640,22 @@ class TestRunDetached(LockTestBase):
         self.assertEqual(self._wait_marker(marker).strip(), "exit=4")
         self.assertTrue(self.is_free())
         self.assertIn("NESTED under det", _read(marker + ".log"))
+
+    def test_detached_reports_lock_lost_loudly(self):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 7\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "det", fwd(job), fwd(marker)],
+                           capture_output=True, text=True, env=self.env(LOOP_LOCK_DETACHED_RENEW_SEC=1), timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        det_id = self.sh("id")[1].strip()
+        self.assertEqual(self.sh("_release_id", det_id)[0], 0)
+        self.assertEqual(self.sh("take", "thief")[0], 0)
+        self.assertEqual(self._wait_marker(marker).strip(), "exit=0 LOCK_LOST")
+        self.assertIn("LOCK LOST", _read(marker + ".LOCK_LOST"))
+        self.assertIn("LOCK LOST", _read(marker + ".log"))
+        self.assertEqual(self.record()[0], "thief")
 
     def test_detached_on_busy_lock_writes_marker_and_does_not_launch(self):
         self.write_record("worker", 60, hb_age_s=0)
