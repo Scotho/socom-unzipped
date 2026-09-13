@@ -950,10 +950,11 @@ namespace ps2_stubs
         uint32_t psm = getRegU32(ctx, 5);
         uint32_t w = getRegU32(ctx, 6);
         uint32_t h = getRegU32(ctx, 7);
-        const uint32_t ztest = readStackU32(rdram, ctx, 16);
-        const uint32_t zpsm = readStackU32(rdram, ctx, 20);
-        const uint32_t clear = readStackU32(rdram, ctx, 24);
-        (void)clear;
+        // Args 5-7 arrive in $t0-$t2 (EE ABI), as for sceGsSetDefDBuffDc; both live callers pass 2/0x3a/1.
+        const GsTrailingArgs3 trailing = decodeGsTrailingArgs3(rdram, ctx);
+        const uint32_t ztest = trailing.arg0;
+        const uint32_t zpsm = trailing.arg1;
+        const uint32_t clear = trailing.arg2;
 
         if (w == 0u)
         {
@@ -990,10 +991,18 @@ namespace ps2_stubs
         db.disp[0].bgcolor = 0u;
         db.disp[1] = db.disp[0];
 
-        db.giftag0 = {makeGiftagAplusD(14u), 0x0E0E0E0E0E0E0E0EULL};
+        const bool seedClear = clear != 0u;
+        db.giftag0 = {makeGiftagAplusD(seedClear ? 14u : 8u), 0x0E0E0E0E0E0E0E0EULL};
         seedGsDrawEnv1(db.draw0, drawWidth, drawHeight, 0u, fbw, psm, zbufAddr, zpsm, ztest, false);
         db.giftag1 = db.giftag0;
         seedGsDrawEnv1(db.draw1, drawWidth, drawHeight, 0u, fbw, psm, zbufAddr, zpsm, ztest, false);
+        if (seedClear)
+        {
+            // Guest FUN_001a1e78 -> FUN_001a1d70 twice, both in context 1, RGBAQ q = 1.0.
+            seedGsClearPacket(db.clear0, drawWidth, drawHeight, 0u, ztest, false);
+            db.clear0.rgbaq.value |= 0x3f80000000000000ULL;
+            db.clear1 = db.clear0;
+        }
 
         if (!writeGsDBuff(rdram, envAddr, db))
         {

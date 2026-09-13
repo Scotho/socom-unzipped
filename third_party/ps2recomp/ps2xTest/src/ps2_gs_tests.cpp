@@ -705,6 +705,61 @@ void register_ps2_gs_tests()
                      "sceGsSwapDBuffDc should honor a clear packet seeded from register-based trailing args");
         });
 
+        tc.Run("sceGsSetDefDBuff reads trailing args from t0-t2 and seeds the console's clear packets", [](TestCase &t)
+        {
+            // Both live callers (0x1c680c, 0x3b16c8) pass ztest/zpsm/clear = 2/0x3a/1 in $t0-$t2; the stack
+            // holds unrelated words. Expected bytes: PCSX2 logs/parity/title_pcsx2.rdram, DBuff 0x1e6410.
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            constexpr uint32_t kEnvAddr = 0x5400u;
+            constexpr uint32_t kDBuffSize = 0x230u;
+            constexpr uint32_t kStackAddr = 0xA00u;
+            const uint32_t stackGarbage[3] = {1u, 0x31u, 0u}; // what the old readStackU32(16/20/24) saw
+
+            R5900Context ctx{};
+            setRegU32(ctx, 4, kEnvAddr);
+            setRegU32(ctx, 5, 0u);
+            setRegU32(ctx, 6, 640u);
+            setRegU32(ctx, 7, 448u);
+            setRegU32(ctx, 8, 2u);
+            setRegU32(ctx, 9, 0x3au);
+            setRegU32(ctx, 10, 1u);
+            setRegU32(ctx, 29, kStackAddr);
+            std::memcpy(rdram.data() + kStackAddr + 16u, stackGarbage, sizeof(stackGarbage));
+            std::memset(rdram.data() + kEnvAddr, 0xCD, kDBuffSize);
+
+            ps2_stubs::sceGsSetDefDBuff(rdram.data(), &ctx, &runtime);
+
+            auto qword = [&](uint32_t off)
+            {
+                uint64_t v = 0u;
+                std::memcpy(&v, rdram.data() + kEnvAddr + off, sizeof(v));
+                return v;
+            };
+            const uint64_t zbuf = qword(0x70u); // zbp (low 9 bits) is excluded: sceGszbufaddr, Sprint 6
+            t.Equals(qword(0x78u), 0x4eull, "ZBUF_1 register id at +0x78");
+            t.Equals(static_cast<uint32_t>((zbuf >> 24) & 0xFu), 0xAu, "ZBUF_1 psm should be 0xa (zpsm 0x3a from $t1)");
+            t.Equals(static_cast<uint32_t>((zbuf >> 32) & 0x1u), 0u, "ZBUF_1 zmsk should be 0 (ztest GEQUAL from $t0)");
+            t.Equals(qword(0xD0u), 0x50000ull, "TEST_1 should be 0x50000 (ztst GEQUAL)");
+            t.Equals(qword(0x50u), 0x100000000000800eull, "giftag0 nloop should be 14 with the clear packet");
+
+            // title_pcsx2 +0xE0..+0x13F: TEST_1 0x30000, PRIM sprite, RGBAQ q=1.0, XYZ2 x2, TEST_1 0x50000.
+            constexpr uint64_t kClearPacket[12] = {
+                0x0000000000030000ull, 0x0000000000000047ull,
+                0x0000000000000006ull, 0x0000000000000000ull,
+                0x3f80000000000000ull, 0x0000000000000001ull,
+                0x0000000072006c00ull, 0x0000000000000005ull,
+                0x000000008e009400ull, 0x0000000000000005ull,
+                0x0000000000050000ull, 0x0000000000000047ull,
+            };
+            t.IsTrue(std::memcmp(rdram.data() + kEnvAddr + 0xE0u, kClearPacket, sizeof(kClearPacket)) == 0,
+                     "clear packet 0 (+0xE0) should be byte-identical to title_pcsx2");
+            t.IsTrue(std::memcmp(rdram.data() + kEnvAddr + 0x1D0u, kClearPacket, sizeof(kClearPacket)) == 0,
+                     "clear packet 1 (+0x1D0) should be byte-identical to title_pcsx2 (context 1, as FUN_001a1e78)");
+        });
+
         tc.Run("clearFramebufferContext clears the requested context even if another context is active", [](TestCase &t)
         {
             std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
