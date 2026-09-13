@@ -808,3 +808,222 @@ Evidence:
 - §7.7: the `vmaddw … vf0w` transform, the zeroed guest contexts, and the grid build on thread 7.
 
 research/23's candidate (1), "grid exhausted, chain cut", is **excluded** for Frostfire.
+
+---
+
+## 8. Launch 3 — after the vf0 fix (draft, 2026-09-13)
+
+**Draft, uncommitted (the controller commits).** Marks as in §6. The offline scripts are in the session
+scratchpad (`l3/an3.py`, `rv7/census.py`) and are not tracked.
+
+### 8.1 Launches and the command
+
+| # | per-instance logs | out dir | result |
+|---|---|---|---|
+| 3a | `logs/run_[AB]_20260913_114538.log` | `logs/parity/s5_t1_launch3` | **lobby failure, new class — map selection**: `A_map 'frostfire' was never highlighted in 30 presses of DOWN` (distances 0.575–0.817, two `no highlighted row` frames at presses 14 and 20). The capture ends on THE RUINS at the bottom of the list. Earlier, `A_TIMEOUT waiting for persona` (recovered) |
+| 3b | `logs/run_[AB]_20260913_115148.log` | `logs/parity/s5_t1_launch3b` | **lobby failure — login keyboard**: `A_on-screen keyboard never opened for 'socom'`; A had `TIMEOUT waiting for universe` and `for persona`, B's keyboard also failed its first three checks. `A_osk_never_opened.png` shows the **title menu** (NEW GAME highlighted) |
+| 3c | **`logs/run_[AB]_20260913_115809.log`** (20.9 / 20.9 MB) | `logs/parity/s5_t1_launch3c` | **usable**: `A_liveness OK: 163`, `B_liveness OK: 162`; control precondition passed both sides; approach ran to its time cap; no contact; harness exit 1 (`RESULT FAIL no kill`) |
+
+Three launches, one usable. Task 1 is at **7 of 8** launches; usable matches: 1c, 2a, 3c.
+
+**Preconditions:**
+- Horizon stack up (10071 / 10073 / 10075 / 10077 / 10078), not restarted.
+- Persona B present in `game/disc/mc0_b`.
+- LAN address `192.168.2.10` (`ipconfig`).
+- 7.4 GB free on C: before; dumps kept.
+- Exe `dist/socom2.exe` built 11:03:57, after the fix's source edits (10:53) in `b625291`; no runtime change since.
+- `move_path_preconditions`, `peek_spec_problems` and `health_peek_problems(…, 0x1044)` all returned `[]` on the script's environment.
+- `scripts/kill_stale_drivers.ps1`: 0 killed before every launch.
+
+**Command.** Run `powershell -NoProfile -File scripts/kill_stale_drivers.ps1`, then
+`bash scripts/run_detached.sh --owner s5t1-launch3 --purpose "…" logs/s5_t1_launch3.sh logs/s5_t1_launch3{,b,c}.done [logs/parity/s5_t1_launch3{b,c}]`.
+
+The job script `logs/s5_t1_launch3.sh` (git-ignored) is launch 2's script with only the RDRAM dump paths
+changed (`frost{A,B}_probe600_vf0.rdram`). It unsets `PS2X_GUEST_MALLOC_ZERO{,_B}` and runs
+`python logs/s5_t1_launch3_driver.py --existing-b --hold 30 --until-kill --map frostfire --engage 22 --engage-dy 10 --max-steps 60 --max-walk-seconds 240 --fight-seconds 200 --kill-timeout 470 --out logs/parity/s5_t1_launch3c --seconds 1200`.
+The driver is launch 2's (per-instance `PS2X_RDRAM_DUMP_AT`). Health and alive are armed by the harness
+defaults (`--health-offset 0x1044`, `--alive-offset 0xF7A`); the peek covers both.
+
+```
+PS2X_SOCOM2_SERVER=192.168.2.10
+PS2X_SOCOM2_RSA_KEY_B=b
+PS2X_SOCOM2_INPUT_TRACE=1
+PS2X_PC_SAMPLER=0.25
+PS2X_HLE_STATS=1
+PS2X_CALL_TRACE_EVERY=10
+PS2X_CALL_TRACE=   (as §7.1, 25 slots)
+PS2X_CALL_TRACE_DUMP=   (as §7.1)
+PS2X_PEEK=   (as §7.1)
+PS2X_RDRAM_DUMP_AT=logs/parity/frostA_probe600_vf0.rdram:ProbeEval#600      (instance A)
+PS2X_RDRAM_DUMP_AT_B=logs/parity/frostB_probe600_vf0.rdram:ProbeEval#600    (instance B, via the driver)
+```
+
+Both dumps were written (A ln20591, B ln20309).
+
+**Tree state during 3c.** Another agent had uncommitted edits in the shared tree. `online_match_ours.py`
+was modified at 11:54 (before 3c, after 3a); the diff only moves the pre-launch refusal messages into
+`launch_refusal_lines`, which returned nothing here. `drive.py` changed at 12:02, after the harness had imported it.
+Neither is believed to affect this run [inference].
+
+Everything below reads **launch 3c**. Local actors: A `0x1583fc0`, B `0x1586ef0` (vtable `0x6691a0`).
+
+### 8.2 Zero-rows check [verified]
+
+- `[call-trace] tracing 25 guest functions` on both sides.
+- **Calls A / B** (logged lines / last `#n`):
+  - MoveScale 876 `#6050` / 924 `#6530`; PlayerUpd, NetIdle and ProbeBatch the same counts;
+  - ActorUpd, ProbeTake, ProbeEval, GridQuery 1482 `#12110` / 1578 `#13070`; ProbeQueue 1481 / 1578;
+  - SetMajor 3/3, SetMinor 4/4, SetMyMajor 3/4, GhostSet 63/65, GhostClr 1/1, SpawnGhost 1/1, SetLife 1/1.
+- **Empty on both sides, predicted negatives** (callers `jal` only, §6.2 and §7.2): CtlAlt14, CtlSpec18,
+  GhostClr2, SpawnDead, GhostRevive, InputEnable, VoiceVu0Upload, VoiceVu0Mode, VoiceFftSel.
+- **Peek rows A / B:** 2770 / 2744 total. Every static item on every row. All actor items
+  (`*0x408c58:64`, `+0xc0*:32`, `+0x400`, `+0x174`, `+0xF78`, `+0x1044`, `+0x2c0`, `+0xf40`): 1204 / 1202.
+  `*0x437ce8:64` at `0x869360`: 2759 / 2733.
+- **Valves by name bytes:** all ten valves identified on 2759 / 2733 rows. The 11 NO-DATA rows per side
+  come before the round-state block exists.
+
+### 8.3 verdict_core [verified]
+
+`python -m tools_py.parity.verdict_core score-control logs/run_A_20260913_115809.log logs/run_B_20260913_115809.log`, exit 0:
+
+```
+[A] hold   445.55..  447.55 (2.00s) net= 51.78 snap=  1.65 drift=  0.00 -> PASS
+[A] side CONTROLLABLE (1 hold(s) scored)
+[B] hold   439.55..  441.55 (2.00s) net= 54.57 snap=  3.79 drift=  0.00 -> PASS
+[B] side CONTROLLABLE (1 hold(s) scored)
+RESULT CONTROLLABLE
+```
+
+`move-path`, exit 0:
+
+```
+[A] MoveScale lines=876 (#0..#6050 over 393.2..695.2s) alive rows=1204 round rows=2759 now=695.2
+[A] MOVE-PATH ok since=695.2 -- #6050 at 695.2
+[B] MoveScale lines=924 (#0..#6530 over 387.2..689.2s) alive rows=1202 round rows=2733 now=689.3
+[B] MOVE-PATH ok since=689.2 -- #6530 at 689.2
+```
+
+`starvation`, exit 0:
+
+```
+[A] STARVATION ok since=None signal=None peak_ms=1547 bar_ok=True -- netidle rows=876 peak=1547ms lagflag rows=2759
+[B] STARVATION ok since=None signal=None peak_ms=1441 bar_ok=True -- netidle rows=924 peak=1441ms lagflag rows=2733
+```
+
+`contact`, exit 0:
+
+```
+clock alignment: B + 6.00s (MoveScale #0 on both (round start)); blind: round-start delivery can differ by instance
+clock rows=1203 closest_3d= 52.42 dy_at_closest= 42.00 qualifying=0 status=ok
+LADDER contact_rows=0 rows_read=2406
+```
+
+**Harness transcript** (`logs/parity/drive_s5_t1_launch3c.txt`):
+
+```
+439.7s B_CONTROL B hold 0 2.00s net=54.57 snap=3.79 drift=0.00 rows=227 period=0.25 scale=1.0(18,1.0..1.0) -> PASS
+444.7s A_CONTROL A hold 0 2.00s net=51.78 snap=1.65 drift=0.00 rows=227 period=0.25 scale=1.0(13,1.0..1.0) -> PASS
+444.7s A_PRECONDITION controllable: A=CONTROLLABLE(1 holds) B=CONTROLLABLE(1 holds)
+688.8s A_approach done: A=time-cap best=33.87184050851717 B=time-cap best=39.59928659272257
+688.8s A_no contact (closest 166.7591018866054): the engagement phase is skipped -- there is nothing in front of either player to shoot at
+689.8s A_RESULT FAIL no kill or round-end signal (no signal in 470.0s) closest_3d=166.7591018866054 contact=False rows A=1203 B=1200 actor_rows A=1203 B=1201 health_watch=armed reads={'A': 976, 'B': 973} misses={'A': 0, 'B': 0} changes={'A': 1, 'B': 1} stale_shots=[] missing_shots=[]
+```
+
+### 8.4 The probe and the snap-back [verified]
+
+| | A | B |
+|---|---|---|
+| ProbeEval local records (ra `0x5b0478`) | 1332 | 1428 |
+| `[ret] v0 != 0` (hit) | **1332 / 1332** | **1428 / 1428** |
+| candidate count (word 13) | 1: 395, 2: 742, 3: 195 | 1: 1283, 2: 144, 1 unread |
+| hit `f0` (ground y) | 100.004 – 142.004 | 100.004 – 142.0 |
+| hit model (top) | `0x11acad0` 410, **`0x11a4e20` 351**, `0x11ad230` 84 | `0x11ef520` 759, `0x11ee640` 287, `0x11ebcc0` 114 |
+| remote-avatar records | 150, all hit, count 1 | 150, all hit, count 1 |
+| `+0x420` vs clock `0x4365c0` | within 0.05 s on **1204 / 1204** rows; 0 rows with gap > 0.6 | within 0.05 s on **1202 / 1202**; 0 rows > 0.6 |
+| clock at last row | 202.29 (`+0x420` 202.29) | 217.99 (217.99) |
+| `+0x1061` | `0x00` 1193, `0x01` 11; **bit 0x04 on 0 rows** | `0x00` 1185, `0x01` 17; bit 0x04 on 0 rows |
+| `+0x174` low 16 | 1 on every row | 1 (one 0 on the first row) |
+| MoveScale `#n` every ~30 s | 0, 660, 1280, 1890, 2510, 3140, 3730, 4330, 4920, 5480, 6050 | 0, 750, 1500, 2170, 2760, 3410, 4050, 4690, 5300, 5910, 6530 |
+| MoveScale f12 | 1.0 on all 876 | 1.0 on all 924 |
+| max gap between logged MoveScale lines | 1.10 s | 0.60 s |
+
+A's first ProbeEval (`#0`, ln11844, t 393.2) already hits: origin (795.73, 112.67, 613.04), count 1,
+`f0` = 100.004, surface model `0x11a4e20`. That is launch 2's missing ground (§7.6), now found.
+
+MoveScale ran ~20 calls/s for the whole 302 s of the round, against 0.6 s on launches 1–2. **R6 no longer fires.**
+
+### 8.5 Grid placement at ProbeEval#600 [verified]
+
+`rv7/census.py` over `frost{A,B}_probe600_vf0.rdram`. Same grid as §7.4: dimension 160, 8 × 9, origin (0, 0).
+
+| node | T | bounds (model) | registered | world rect | w = 0 rect |
+|---|---|---|---|---|---|
+| `0x11a4e20` (A spawn ground) | (960, 0, 800) | (−320, 100, −320)–(−160, 100, −160) | **(4, 3)** | (4, 3) | (0, 0) |
+| `0x11a9160` (B spawn ground, image A) | (960, 0, 800) | (−480, 40, 320)–(−320, 155, 480) | **(3, 7)** | (3, 7) | (0, 2) |
+
+| image | type-1 models | type-2 actors |
+|---|---|---|
+| `frostA_probe600` (launch 2) | 115 + 9 rot **raw**, 3 raw = world | 64 raw, 2 world |
+| `frostA_probe600_vf0` (launch 3c) | **115 + 9 rot world**, 3 raw = world | **66 world** |
+| `frostB_probe600_vf0` (launch 3c) | 115 + 9 rot world, 3 raw = world | 66 world |
+
+Every node now links where its world bounds fall. None links by raw bounds.
+
+### 8.6 Movement bar (spec §5 Goal 1) [verified]
+
+| side | hold | net (≥ 40) | snap-back (≤ 10) | drift (≤ 5) | verdict |
+|---|---|---|---|---|---|
+| A | 445.55–447.55 (2.00 s) | **51.78** | **1.65** | **0.00** | PASS |
+| B | 439.55–441.55 (2.00 s) | **54.57** | **3.79** | **0.00** | PASS |
+
+Period 0.25 s, 227 rows per window, scale 1.0 throughout. Ground path walked over the approach: A 2036.7,
+B 2965.7 (517 / 585 distinct x).
+
+**Blind class:** one hold per side is scored. The bar does not separate "controllable" from "controllable
+until a later stall". move-path (MoveScale to the end) and starvation (peak 1547 / 1441 ms) cover that.
+
+### 8.7 The match after control
+
+- **Duration.** The approach ran from t 444.7 to its 240 s cap on both sides (`time-cap`). Then
+  `no contact`, the engagement was skipped, and the harness ended at t 689.8 with the round clock at `00:57`.
+  The round did not end.
+- **Closest approach.**
+  - Actor rows aligned on MoveScale `#0` (B + 6.00 s): **52.42 in 3-D, with dy 42.0** (t 591.1). The players
+    were on different levels: Frostfire has two floors, at y ≈ 100 and ≈ 142.
+  - Closest with |dy| ≤ 10: **168.8**.
+  - `LADDER contact_rows=0`.
+  - *The harness's `closest_3d=166.76` is not the run minimum.* `Duel.best_dist()` takes the minimum over each
+    side's **latest** `set_dist`, and the `near` gate before the engagement uses the same value. [verified, source]
+- **Damage.** `+0x1044` = 1.0 on every row on both sides (min 1.0), and `+0xF7A` = 1 on every row. The harness
+  health watch read 976 / 973 times with 0 misses. **No damage was dealt, and there was no contact to deal it.**
+- **Starvation.** No alarms. NetIdle peak 1547 ms (A) and 1441 ms (B), under the 4000 ms alarm.
+- **Heading.** Actor matrix `(-m[+0xa0], -m[+0xa8])` at the hold start, against the start → release+0.5 s
+  displacement, over pure forward holds with net ≥ 20:
+  - A: n 24, median 11.97°, **p90 59.64°**;
+  - B: n 29, median 4.14°, **p90 31.65°**.
+  - With straightness ≥ 0.9: A n 11, p90 34.69°; B n 24, p90 26.21°.
+  - Adding "no rx in the 3 s before": A n 3, p90 10.04°; B n 16, p90 26.21°.
+  - Many holds read 0.3–0.8°. The large errors are believed to be walks deflected by Frostfire's walls and
+    steps [inference]. This is not Task 2's at-rest single-player measurement (p90 1.57°).
+- **Valves (first online reads with control), A / B.**
+  - `mp_round_count`, `mp_game_over`, `late_joiner`, `total_mp_kills`, `mission_abort`: 0 all run.
+  - `player_team`: A 0; B 0 → 8 (t 319.2).
+  - `mp_major_game_state` 0 → 1 → 2; `mp_minor_game_state` 0 → 1 → 2 → 1 → 2, as §6.6.
+  - `aiteam_00` / `aiteam_08`: 0 → 1 at round start (A t 392.4 / 392.6; B 386.6 / 387.4), then **constant**.
+- **Clock string `0x408f10`.** `05:59` at A t 393.4 / B t 387.4, down to `00:57` at A t 695.0 / B t 689.1:
+  303 distinct strings over 301.6 s of host time. The clock runs at real time.
+
+### 8.8 Verdict
+
+*The vf0 fix restores control on Frostfire online.*
+
+On both instances:
+- the ground probe hits from its first call;
+- `actor+0x420` tracks the clock to within 0.05 s on every row;
+- `+0x1061` bit 0x04 never sets;
+- MoveScale runs at f12 = 1.0 for the whole 302 s of the round;
+- the spec's movement bar passes;
+- the ground models are gridded in their world cells (4, 3) and (3, 7).
+
+This is **one** usable Frostfire run meeting the bar. Step 6 needs two to call the defect *fixed*.
+The Step 5 success condition also needs the bar on Medley.
