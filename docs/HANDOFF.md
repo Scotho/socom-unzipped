@@ -1,25 +1,39 @@
 # Handoff — SOCOM II PC recompilation
 
 ## START HERE
-**Read `docs/KNOWN.md` first.** It is the live proven / believed / retracted list, and its §3 is the
-list of things this file used to state as fact. Where a claim below carries a `> Superseded by …`
-blockquote, the blockquote wins.
+**First reads, in this order:**
+1. **`docs/KNOWN.md`** — the live proven / believed / retracted list, audited after every task. Its
+   §3 is the list of things this file used to state as fact; where a claim below carries a
+   `> Superseded by …` blockquote, the blockquote wins, and where anything disagrees with KNOWN.md,
+   KNOWN.md wins.
+2. **`docs/ROADMAP.md`** — why the work is ordered the way it is: what Sprint 4's results overturned
+   (§3) and what each later sprint is for. Its §7 checklist defers to KNOWN.md.
+3. **The sprint in flight: Sprint 5** —
+   `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
+   `docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` (`ee10842`). Start
+   at the plan's Task 0. Its three threads: Frostfire control handover (the default test map, where
+   neither player moves), confirming the sourced kill readout (`actor+0x1044` / `actor+0xF7A`,
+   `docs/research/19`), and the first kill.
+4. **`docs/STATUS.md`** — "Current state" at the top, then the 2026-09-13 "Sprint 4 landed" and
+   "carried findings" entries.
 
-**Sprint in flight: Sprint 4** — `docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`
-and `docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the plan's
-"Outcome" section at the foot says what actually happened and where reality diverged; the spec's
-§1 opens with a retracted premise, marked in place).
-
-Then read `docs/STATUS.md` "Current state" (top of the file) for what is built, what plays, and where
-the last sprint landed; then the previous sprint spec and plan
-(`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`); then the run
-recipes and history below. Sprints 1 and 2 are history -- read them for how the VU1 native path,
-the host-draw hook and the gates got here, not for what to do next:
+Sprint 4 is the last closed sprint:
+`docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md` and
+`docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the plan's `## Outcome`
+section at the foot says what actually happened and where reality diverged; the spec's §1 opens with
+a retracted premise, marked in place). Sprints 1-3 are history -- read them for how the VU1 native
+path, the host-draw hook, the render-target scale and the gates got here, not for what to do next:
 `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
 `docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`,
 `docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`.
+`docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`,
+`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
+`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`.
+
+**Everything below this section is reference and history.** The dated "Open items" lists are
+snapshots of what was next *on that date*; the live task list is the Sprint 5 plan. In particular
+the 2026-09-10 17:45 list's item 1 (a `--sweep` first-kill recipe) predates `--until-kill`, the
+actor-position readout and the Frostfire default, and must not be run as written.
 
 ## Reference: run recipes and history
 
@@ -249,8 +263,9 @@ never by press counts. C++ patches: Edit tool or a Python script written with th
 (bash heredocs mangle backslashes; a failed assert writes nothing). Python subprocess needs
 os.path.join paths for exes. `PS2X_PEEK` needs `PS2X_PC_SAMPLER=1`. Commit from the repo
 root (own repo, remote github.com/Scotho/socom-unzipped), never `git add -A`; leave `server/config/simulated.db`
-unstaged; trailers `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` and
-`Claude-Session: <session url>`. Update docs/STATUS.md (newest entry on top) and the memory
+unstaged; commit with an explicit pathspec (`git commit -m "…" -- <paths>`), never a bare commit
+after `git add`; trailers as given to your session (see Gotchas item 5 below — this line used to
+name a model and a session URL that are no longer current). Update docs/STATUS.md (newest entry on top) and the memory
 file after each milestone.
 
 Read this first, then `docs/STATUS.md` (newest sections at the top of each day). This file is
@@ -632,12 +647,15 @@ Rules: never savestate after network traffic (PCSX2 side); the exe needs no save
 2. Shell heredocs mangle backslashes: never write C string escapes (`\n`) through a bash
    heredoc; use the Edit tool (or Python with `newline='\n'`, checking the result).
 3. Git root is `C:\projects\socom_pc` (own repo since 2026-09-10, remote
-   github.com/Scotho/socom-unzipped): **never `git add -A`**, stage explicit paths and push.
+   github.com/Scotho/socom-unzipped): **never `git add -A`**, and **commit with an explicit
+   pathspec** (`git commit -m "…" -- <paths>`) — a bare `git commit` after `git add` takes the whole
+   shared index and swept another agent's files under the wrong message on 2026-09-13. Then push.
    Shell/py files stay LF.
 4. Don't steal desktop focus or screenshot the desktop; the raylib window screenshot
    (`PS2X_HOST_SCREENSHOT`) is fine. Pause if the user says the machine is under load.
-5. Commit trailer: the `Co-Authored-By:` line names the model you are, and `Claude-Session:` is
-   this session's URL — both are given to you at the start of the session; do not copy old ones.
+5. Commit trailers are whatever attribution your session is given at its start — as of 2026-09-13
+   that is a `Co-Authored-By:` line naming the model you are, and **no** `Claude-Session:` line.
+   Never copy a trailer from an older commit or doc.
 6. If running via cron, re-arm a one-shot ~4 h ahead when you start and point its prompt at the
    *current* blocker.
 7. **Read the sampler's thread table before chasing a "slow" function.** `[pc-sampler] live pc`
