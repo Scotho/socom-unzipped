@@ -244,15 +244,16 @@ where the guest expects a live one.**
 
 | defect | the constant | consequence | gate saw |
 |---|---|---|---|
-| `ps2_stubs::rand` (`LibC.cpp:1085`) | `std::rand() & 0x7FFF` over a guest `_rand_next` frozen at 41 | 249 call sites scaling by 2⁻³¹; the disputed field could not exceed 4.0000458 *by construction* against the console's 6.3338 | nothing |
+| `ps2_stubs::rand` (`LibC.cpp`, as of 2026-09-12; fixed in `ede2096`) | returned `std::rand() & 0x7FFF` over a guest `_rand_next` frozen at 41 | 249 call sites scaling by 2⁻³¹; the disputed field could not exceed 4.0000458 *by construction* against the console's 6.3338 | nothing |
 | five soft-double stubs (`sin/cos/tan/fabs/floor`) | read `$f12`, write `$f0`; guest ABI is `uint64 f(uint64 $a0) → $v0` | latent; degenerated to identity at 19 of 22 live sites because `$a0 == $v0` in the delay slot | nothing |
-| `socom2_libnetb.cpp:384` `case 0x200: r(3, 0u)` | a constant where the guest reads a changing word | `msSinceNetActivity` never resets → the multiplayer movement scale pins at 0.0 → **the online blocker the project has been hunting for weeks** | nothing |
+| `socom2_libnetb.cpp` `sceInetInterfaceControl` `case 0x200: r(3, 0u)` (as of 2026-09-12; fixed in `abf35bb`) | returned a constant where the guest reads a changing word | `msSinceNetActivity` never reset → the multiplayer movement scale pinned at 0.0 → **the online blocker the project had been hunting for weeks** | nothing |
 
 Three for three. This is the highest-yield defect class in the project and there is no instrument
 for it.
 
 **The change.** A tracked, repeatable audit — `tools_py/hle_constants.py` plus
-`docs/research/19-hle-liveness.md`:
+~~`docs/research/19-hle-liveness.md`~~ `docs/research/20-hle-liveness.md` (renumbered: `19` went
+to the community-resources note; the Sprint 5 plan's Task 4 carries the audit under `20`):
 
 1. Enumerate every stub bound in `recomp/socom2.toml` (4c established that only bound stubs run —
    `sqrt/ceil/atan/exp` are unbound and never execute, which is itself the kind of fact this audit

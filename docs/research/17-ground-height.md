@@ -35,7 +35,8 @@ object exactly (`0.8391 × 807.5 = 677.573`; `1/807.5 = 0.00123839`), which is w
 ### 0.1 Where 14.7 and 20.1 actually came from
 
 The two numbers everyone has been quoting are not wrong measurements — they are **camera eye minus
-collision hit**, and their own source says so. `docs/STATUS.md:809` reads "PCSX2 20.11
+collision hit**, and their own source says so. `docs/STATUS.md`'s 2026-09-09 01:30 entry (the
+collision probe) reads "PCSX2 20.11
 (y = −126.264), ours 14.69 (y = −131.68)", and those two y values are `CSealCtrl+0x90` /
 `camera+0xd8`, the camera eye:
 
@@ -47,9 +48,11 @@ ours:     -131.68  - (-146.371)  =  14.691     <- "14.7"
 The player stands at `-145.867` (console) / `-145.875` (ours), not at the hit, so the actor's own
 clearance above the hit is `0.504` / `0.496` on the two sides — matching to 0.008, not differing by
 5.4. Everything the project has recorded as "the actor rests 14.7 above the ground" has in fact been
-"the camera eye sits 14.7 above the ground the camera stands over". `docs/HANDOFF.md:99` and
-`docs/STATUS.md:809` are therefore known-wrong framings; correcting them is the close-out task's
-job, not this note's.
+"the camera eye sits 14.7 above the ground the camera stands over". `docs/HANDOFF.md`'s
+"Previous open items (2026-09-09 03:40)" item 2 and that STATUS 2026-09-09 01:30 entry were
+therefore known-wrong framings. ~~Correcting them is the close-out task's job, not this note's.~~
+Close-out (Sprint 4 Task 9a, 2026-09-13) did: both now carry a Superseded blockquote in place
+pointing here, and HANDOFF's item is renamed "Third-person camera height".
 
 ---
 
@@ -413,8 +416,9 @@ else { int r = FUN_00197740(); v = base + range * (float)r * 4.656613e-10; }   /
 
 `FUN_00197740` is newlib `rand()` (`FUN_0019eb18` 64×64 multiply by `0x5851f42d4c957f2d`,
 returns `(uint)(state >> 32) & 0x7fffffff`) — a **31-bit** value, which is why the game scales by
-`2⁻³¹`. In `recomp/socom2.toml` line 97 it is stubbed as `rand@0x00197740`, and the stub
-(the mask is at `third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/LibC.cpp:1085`) is
+`2⁻³¹`. `recomp/socom2.toml`'s stub list names it `rand@0x00197740`, and the stub as of this note
+(`ps2_stubs::rand` in `third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/LibC.cpp`; fixed
+since, see below) was
 
 ```cpp
 void rand(...) { setReturnS32(ctx, std::rand() & 0x7FFF); }   // 15 bits, 65536x too small
@@ -429,6 +433,10 @@ value is `4.0 + 3.0 × 32767 × 2⁻³¹ = 4.0000458`: under our stub, `6.3338` 
 construction**, so the capsule-radius / step-height reading of STATUS 02:10 is dead on arithmetic
 alone. **Every `rand()`-derived float in the game is pinned to within 1/65536 of its minimum**:
 `grep -c 4.656613e-10` over the decomp gives **249** sites.
+
+> **Applied 2026-09-12 (Sprint 4 Task 4b, `ede2096`, bounds check `60a19f2`):** the stub now runs
+> newlib's own 31-bit LCG over the guest's `_rand_next`. The paragraph below is the note's original
+> recommendation.
 
 Fix (not applied here — see §7): either return a 31-bit value from the stub, or better, drop
 `rand@0x00197740` from `recomp/socom2.toml`'s stub list so the guest's own LCG runs and the
