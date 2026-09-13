@@ -27,6 +27,7 @@ import time
 
 import numpy as np
 
+from . import online_ladder
 from . import online_login_ours as L
 from . import verdict_core as vc
 from . import winshot
@@ -1700,9 +1701,17 @@ class KillWatch(threading.Thread):
     def stop(self):
         self._stop.set()
 
+    def rearm(self):
+        """A new round (Amendment A2): the next firing signal may end it. Events are kept; a signal before this moment
+        never fires the new round. The health state is kept per actor: the respawned actor reads alive again first."""
+        self.rearmed_at = self.clock()
+        self.fired = None
+
     def _add(self, kind, tag, detail, firing=None):
         ev = {"kind": kind, "tag": tag, "t": self.clock(), "detail": detail,
               "firing": (kind in self.FIRING) if firing is None else firing}
+        if ev["t"] < getattr(self, "rearmed_at", float("-inf")):
+            ev["firing"] = False
         self.events.append(ev)
         if self.fired is None and ev["firing"]:
             self.fired = ev
@@ -2198,8 +2207,15 @@ class MovePathWatch(threading.Thread):
         # Task 5 finish (review I2): a freeze longer than FREEZE_MAX_S is NO-DATA, not an endless disarm -- the first
         # (tag, verdict, host now) that went NO-DATA that way; the run ends on it like on a stall
         self.freeze_nodata = None
+        self.disarm_until = None
         self._noted = set()
         self._stop_ev = threading.Event()
+
+    def rearm(self, t):
+        """A round transition (Amendment A2): the move path is legitimately silent from the round end to the reset --
+        disarm every side for ROUND_STEP_DISARM_S from host time `t`, whether or not the mp_round_count step was read."""
+        self.disarm_until = t + vc.ROUND_STEP_DISARM_S
+        self.log(f"MOVE-PATH re-armed for a new round: disarmed until +{vc.ROUND_STEP_DISARM_S:g}s")
 
     def check(self, now=None):
         t0 = self.t0
@@ -2217,6 +2233,11 @@ class MovePathWatch(threading.Thread):
                 n_rows = len(tail.round_rows)
             note_clock_missing(tag, n_rows, round_time, self._noted, self.log)
             v = vc.score_move_path(calls, alive, rounds, now)
+            if v.status == "stalled" and self.disarm_until is not None:
+                start = self.disarm_until - t0
+                if now < start or now - max(start, v.since or start) < vc.MOVE_STALL_S:
+                    v = vc.MovePathVerdict("disarmed", v.since, v.detail + f"; round transition: re-armed at "
+                                                                          f"{start:.1f}")
             if v.status == "stalled":
                 # Sprint 5 Task 5 freeze tolerance (launch 8c): while this instance's round clock 0x4365c0 stands
                 # still the guest is frozen, not stalled -- and the stall clock restarts when the freeze ends. A
@@ -2546,6 +2567,24 @@ class StarvationWatch(threading.Thread):
                         and open_alarm["t_move"] is not None and now - open_alarm["t_move"] > ALARM_CLEAR_S):
                     self._stop(f"STARVATION alarm side={tag} not cleared within {ALARM_CLEAR_S:g}s of "
                                f"{other} moving")
+
+    def new_round(self, t):
+        """A new round (Amendment A2): the stop reason and open alarms belong to the round that ended; the NO-DATA grace
+        restarts at `t`."""
+        with self._lock:
+            for a in self.alarms:
+                if a["t_clear"] is None:
+                    a["t_clear"] = t
+                    a["closed_by"] = "round end"
+            for ev in self._requests.values():
+                ev.clear()
+            self.stop_reason = None
+            self.t0 = t
+            self.status = {tag: None for tag in self.tags}
+
+    def round_alarms(self, t0, t1=None):
+        """The alarms opened in [t0, t1]."""
+        return [a for a in self.alarms if a["t"] >= t0 and (t1 is None or a["t"] <= t1)]
 
     def take_request(self, tag):
         """True once per request for `tag` to move -- and only while the alarm that asked is still open: an alarm
@@ -2894,20 +2933,32 @@ def aim_iters_field(aims, t0=None, t1=None):
     return f"{ok}/{len(cyc)}:{','.join(marks)}"
 
 
+def rounds_arg_problem(a):
+    """--rounds needs a watched engagement (route / cooperative); converge and the control round play one."""
+    n = getattr(a, "rounds", 1)
+    if not isinstance(n, int) or n < 1:
+        return f"--rounds {n}: at least 1"
+    if n > 1 and (getattr(a, "control_round", False) or getattr(a, "endgame", None) == "converge"):
+        return "--rounds > 1 needs --endgame route or cooperative (converge and --control-round play one round)"
+    return None
+
+
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
-                max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None):
+                max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None, round_n=None, mover=None):
     """The brief's one-line ladder result, with spec §5.1's contact time and the sampler period beside the contact
     rows. A field whose rows were zero reads NO-DATA (None, or 0 for a row count), never 0. `aim_iters`
     (aim_iters_field) is appended when given."""
     nd = lambda v: vc.NO_DATA if v is None else str(v)
     rows = lambda v: vc.NO_DATA if not v else str(v)
     secs = lambda v: vc.NO_DATA if v is None else f"{v:.2f}"
-    return (f"LADDER rung={rung} controllable={','.join(controllable)} contact_s={secs(contact_s)} "
+    return (f"LADDER {'' if round_n is None else f'round={round_n} '}rung={rung} controllable={','.join(controllable)} "
+            f"contact_s={secs(contact_s)} "
             f"contact_rows={nd(contact_rows)} sampler_s={secs(sampler_s)} "
             f"rows_read={rows(rows_read)} damage={damage} kill={kill} starvation_alarms={nd(starvation_alarms)} "
             f"alarms_cleared={nd(alarms_cleared)} max_idle_ms={','.join(nd(v) for v in max_idle_ms)} "
             f"lagflag_rows={','.join(rows(v) for v in lagflag_rows)}"
-            + ("" if aim_iters is None else f" aim_iters={aim_iters}"))
+            + ("" if aim_iters is None else f" aim_iters={aim_iters}")
+            + ("" if mover is None else f" mover={mover}"))
 
 
 def ladder_contact(tailA, tailB, t0=None, t1=None):
@@ -3824,6 +3875,14 @@ def main():
                          "NetIdle traced and *0x437ce8:64, *0x437ce8+0x100:21, 0x4365c0:1 peeked (refuse otherwise)")
     ap.add_argument("--no-route", action="store_true",
                     help="ignore the mined corridor and walk the straight line (the Task 7 policy)")
+    ap.add_argument("--rounds", type=int, default=online_ladder.LADDER_ROUNDS_DEFAULT,
+                    help="Amendment A2: rounds played on one lobby success (default 4). After a round end or kill the "
+                         "actor is re-found by its vtable, the move-path disarm window re-armed and per-round state "
+                         "reset; round 1 carries the precondition, rounds 2.. engage only. One LADDER round=<n> line "
+                         "each and a LADDER-SUMMARY. Stop rules (A1): 3 usable rounds at rung 1 without rung 2 -> "
+                         "SWAP-MOVER; 2 usable rounds at rung 2 without rung 3 -> DAMAGE-PATH-DECISION")
+    ap.add_argument("--auto-swap", action="store_true",
+                    help="on SWAP-MOVER, swap --mover for the next rounds (once) instead of stopping")
     ap.add_argument("--route", default=None,
                     help="the route FILE of --endgame route/cooperative, separate from --map (which picks the in-game "
                          "map). Default: tools_py/parity/routes/frostfire_v2.json for --map frostfire (rw24, from "
@@ -3879,6 +3938,9 @@ def main():
         a.converge = True
     if a.endgame is None:
         a.endgame = "route"                     # the default engagement (owner-requested review)
+    problem = rounds_arg_problem(a)
+    if problem:
+        raise SystemExit(problem)
     watched_endgame = a.endgame in ("route", "cooperative") and not a.control_round
     route_path = a.route or default_route_path(a.map)
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
@@ -4040,25 +4102,27 @@ def main():
             if not control_round_ok(score, end):
                 failed = True
         if a.converge and not a.control_round:
-            # Task 8 (S3): BOTH sides close, then fight, and a KillWatch decides when it is over.
-            duel = Duel()
+            # Task 8 (S3): BOTH sides close, then fight, and a KillWatch decides when it is over. Sprint 5 Amendment A2:
+            # a watched engagement plays up to --rounds rounds on one lobby success (online_ladder.run_ladder).
             # The mined corridor is map-specific (research/18 §4.5). On any other map it would
             # steer along a route that does not exist, so it is dropped and the banner says so.
             mined_ok = (not a.no_route) and a.map.lower() == MINED_ROUTE_MAP
             route = MP51_SEAL_ROUTE if mined_ok else None
             A.sh.log(f"RUN BANNER map={a.map} "
                      f"route={'mined(' + MINED_ROUTE_MAP + ')' if mined_ok else 'direct'} "
+                     f"route_file={route_path if watched_endgame else '-'} rounds={a.rounds} "
+                     f"auto_swap={a.auto_swap} "
                      f"engage3d={a.engage} dy_tol={a.engage_dy} "
                      f"pos={'actor' if A.tail.actor_ingame() else 'camera-reconstruction'} "
                      f"health={'armed@+0x%x' % a.health_offset if a.health_offset is not None else 'disarmed'} "
                      f"alive={'@+0x%x' % a.alive_offset if a.alive_offset is not None else 'disarmed'}")
-            sideA = Side("A", A.sh, A.tail, route=route)
-            sideB = Side("B", B.sh, B.tail, route=None)   # B's half of the map has no mined track
             spawns = {}
             for tag, c in (("A", A), ("B", B)):
                 rows = c.tail.ingame()
                 if rows:
                     spawns[tag] = (rows[0][1], rows[0][3])
+            first_actor = {tag: (c.tail.actor_ingame()[0][1:4] if c.tail.actor_ingame() else None)
+                           for tag, c in (("A", A), ("B", B))}
             health = None
             if a.health_offset is not None:
                 health = a.health_offset           # 0 is a valid offset; every test is `is None`
@@ -4083,221 +4147,245 @@ def main():
             starv = StarvationWatch({"A": A.tail, "B": B.tail}, A.sh.log) if watched_endgame else None
             if starv is not None:
                 starv.start()
-            kill_shots = {"done": False}
+            file_spawns = {t: map_spawn(tag=t, path=route_path) for t in "AB"
+                           if route_path and map_spawn(tag=t, path=route_path)}
+            rounds_out = []
+            is_kill_any = [False]
+            ctl = tuple({vc.CONTROLLABLE: "yes", vc.NO_DATA: vc.NO_DATA}.get(control_sides[t].status, "no")
+                        for t in ("A", "B"))
 
-            stale_shots = []
-            missing_shots = []
+            def play_round(n, mover):
+                t_round = time.time()
+                round_value = online_ladder.round_count(A.tail)[0]
+                duel = Duel()
+                sideA = Side("A", A.sh, A.tail, route=route if n == 1 else None)
+                sideB = Side("B", B.sh, B.tail, route=None)   # B's half of the map has no mined track
+                if n > 1:
+                    watch.rearm()
+                    mpw.rearm(t_round)
+                    if starv is not None:
+                        starv.new_round(t_round)
+                stale_shots, missing_shots, kill_shots = [], [], {"done": False}
+                live_spawns = first_actor if n == 1 else {
+                    tag: (c.tail.actor_latest()[1:4] if c.tail.actor_latest() else None) for tag, c in (("A", A), ("B", B))}
 
-            def monitor():
-                while not duel.stop.is_set():
-                    if watch.fired:
+                def monitor():
+                    while not duel.stop.is_set():
                         ev = watch.fired
-                        A.sh.log(f"KILL/ROUND-END SIGNAL {ev['kind']} on {ev['tag']} at "
-                                 f"T+{ev['t'] - t_gameplay:.1f}s {json.dumps(ev['detail'], default=float)}")
-                        if not kill_shots["done"]:
-                            kill_shots["done"] = True
-                            for c in (A, B):
-                                evidence_shot(c, "kill", stale_shots, A.sh.log, missing_shots)
-                        duel.stop.set()
-                        return
-                    if starv is not None and starv.stop_reason:
-                        A.sh.log(f"STARVATION-WATCH ends the engagement at T+{time.time() - t_gameplay:.1f}s: "
-                                 f"{starv.stop_reason}")
-                        duel.stop.set()
-                        return
-                    if mpw.stalled is not None:
-                        A.sh.log(f"MOVE-PATH STALL on {mpw.stalled[0]} ends the run at "
-                                 f"T+{time.time() - t_gameplay:.1f}s -- nothing after this can move, "
-                                 f"so nothing after this is evidence")
-                        duel.stop.set()
-                        return
-                    if mpw.freeze_nodata is not None:
-                        A.sh.log(f"MOVE-PATH NO-DATA on {mpw.freeze_nodata[0]} ends the run at "
-                                 f"T+{time.time() - t_gameplay:.1f}s -- a freeze longer than {FREEZE_MAX_S:g}s: "
-                                 f"{mpw.freeze_nodata[1].detail}")
-                        duel.stop.set()
-                        return
-                    if time.time() - t_gameplay > a.kill_timeout:
-                        A.sh.log(f"kill timeout: {a.kill_timeout}s elapsed with no signal")
-                        duel.stop.set()
-                        return
-                    time.sleep(0.25)
+                        if ev and ev["t"] >= t_round - 1.0:
+                            A.sh.log(f"KILL/ROUND-END SIGNAL round={n} {ev['kind']} on {ev['tag']} at "
+                                     f"T+{ev['t'] - t_gameplay:.1f}s {json.dumps(ev['detail'], default=float)}")
+                            if not kill_shots["done"]:
+                                kill_shots["done"] = True
+                                for c in (A, B):
+                                    evidence_shot(c, f"kill_r{n}", stale_shots, A.sh.log, missing_shots)
+                            duel.stop.set()
+                            return
+                        if starv is not None and starv.stop_reason:
+                            A.sh.log(f"STARVATION-WATCH ends round {n} at T+{time.time() - t_gameplay:.1f}s: "
+                                     f"{starv.stop_reason}")
+                            duel.stop.set()
+                            return
+                        if mpw.stalled is not None:
+                            A.sh.log(f"MOVE-PATH STALL on {mpw.stalled[0]} ends the run at "
+                                     f"T+{time.time() - t_gameplay:.1f}s -- nothing after this can move, "
+                                     f"so nothing after this is evidence")
+                            duel.stop.set()
+                            return
+                        if mpw.freeze_nodata is not None:
+                            A.sh.log(f"MOVE-PATH NO-DATA on {mpw.freeze_nodata[0]} ends the run at "
+                                     f"T+{time.time() - t_gameplay:.1f}s -- a freeze longer than {FREEZE_MAX_S:g}s: "
+                                     f"{mpw.freeze_nodata[1].detail}")
+                            duel.stop.set()
+                            return
+                        if time.time() - t_round > a.kill_timeout:
+                            A.sh.log(f"kill timeout: {a.kill_timeout}s elapsed in round {n} with no signal")
+                            duel.stop.set()
+                            return
+                        time.sleep(0.25)
 
-            mon = threading.Thread(target=monitor, daemon=True)
-            mon.start()
-            endgame = None
-            if a.endgame == "cooperative":
-                endgame = endgame_cooperative({"A": sideA, "B": sideB}, duel, starv, A.sh.log, map_name=a.map,
-                                              fight_s=a.fight_seconds, mover=a.mover, route_path=route_path)
-            elif a.endgame == "route":
-                endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=a.mover,
-                                        fight_s=a.fight_seconds, route_path=route_path,
-                                        spawns={t: map_spawn(tag=t, path=route_path) for t in "AB"
-                                                if route_path and map_spawn(tag=t, path=route_path)})
-            threads = []
-            for me, oth in (() if watched_endgame else ((sideA, sideB), (sideB, sideA))):
-                # arrive == engage in this mode: two separate thresholds would let both sides
-                # stop at `arrive` without ever setting contact, and then nobody would shoot.
-                t = threading.Thread(
-                    target=lambda m=me, o=oth: setattr(
-                        m, "result", approach(m, o, duel, a.engage, a.max_steps,
-                                              a.max_walk_seconds, engage=a.engage)))
-                t.start()
-                threads.append(t)
-            for t in threads:
-                t.join()
-            A.sh.log(f"approach done: A={sideA.result and sideA.result.get('reason')} "
-                     f"best={sideA.result and sideA.result.get('best')} "
-                     f"B={sideB.result and sideB.result.get('reason')} "
-                     f"best={sideB.result and sideB.result.get('best')}")
-            fights = {}
-            # Sprint 5 Task 5: the gate reads the CURRENT paired distance -- not the run minimum, and not
-            # min(each side's latest), which printed 166.76 against launch 3c's true 52.42.
-            closest_now = duel.current_d3()
-            near = closest_now is not None and closest_now <= a.engage * 2.5
-            if watched_endgame:
-                pass
-            elif (duel.contact.is_set() or near) and not duel.stop.is_set():
-                ft = []
-                for me, oth in ((sideA, sideB), (sideB, sideA)):
+                mon = threading.Thread(target=monitor, daemon=True)
+                mon.start()
+                endgame = None
+                if a.endgame == "cooperative":
+                    endgame = endgame_cooperative({"A": sideA, "B": sideB}, duel, starv, A.sh.log, map_name=a.map,
+                                                  fight_s=a.fight_seconds, mover=mover, route_path=route_path)
+                elif a.endgame == "route":
+                    endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=mover,
+                                            fight_s=a.fight_seconds, route_path=route_path, spawns=file_spawns,
+                                            live_spawns=live_spawns)
+                threads = []
+                for me, oth in (() if watched_endgame else ((sideA, sideB), (sideB, sideA))):
+                    # arrive == engage in this mode: two separate thresholds would let both sides
+                    # stop at `arrive` without ever setting contact, and then nobody would shoot.
                     t = threading.Thread(
-                        target=lambda m=me, o=oth: fights.__setitem__(
-                            m.tag, engage_fight(m, o, duel, a.fight_seconds)))
+                        target=lambda m=me, o=oth: setattr(
+                            m, "result", approach(m, o, duel, a.engage, a.max_steps,
+                                                  a.max_walk_seconds, engage=a.engage)))
                     t.start()
-                    ft.append(t)
-                for t in ft:
+                    threads.append(t)
+                for t in threads:
                     t.join()
-            else:
-                A.sh.log(f"no contact (current paired 3-D {closest_now}, run minimum {duel.best_dist()} at "
-                         f"dy {duel.best_dy()}): the engagement phase is skipped -- there is nothing in front of "
-                         f"either player to shoot at")
-            duel.stop.set()
-            mon.join(timeout=5.0)
+                A.sh.log(f"approach done: A={sideA.result and sideA.result.get('reason')} "
+                         f"best={sideA.result and sideA.result.get('best')} "
+                         f"B={sideB.result and sideB.result.get('reason')} "
+                         f"best={sideB.result and sideB.result.get('best')}")
+                fights = {}
+                # Sprint 5 Task 5: the gate reads the CURRENT paired distance -- not the run minimum, and not
+                # min(each side's latest), which printed 166.76 against launch 3c's true 52.42.
+                closest_now = duel.current_d3()
+                near = closest_now is not None and closest_now <= a.engage * 2.5
+                if watched_endgame:
+                    pass
+                elif (duel.contact.is_set() or near) and not duel.stop.is_set():
+                    ft = []
+                    for me, oth in ((sideA, sideB), (sideB, sideA)):
+                        t = threading.Thread(
+                            target=lambda m=me, o=oth: fights.__setitem__(
+                                m.tag, engage_fight(m, o, duel, a.fight_seconds)))
+                        t.start()
+                        ft.append(t)
+                    for t in ft:
+                        t.join()
+                else:
+                    A.sh.log(f"no contact (current paired 3-D {closest_now}, run minimum {duel.best_dist()} at "
+                             f"dy {duel.best_dy()}): the engagement phase is skipped -- there is nothing in front of "
+                             f"either player to shoot at")
+                duel.stop.set()
+                mon.join(timeout=5.0)
+                t_end = time.time()
+                for c in (A, B):
+                    evidence_shot(c, f"final_r{n}", stale_shots, A.sh.log, missing_shots)
+                closest = duel.best_dist()
+                # An armed watch that never read a word is a FAILED instrument, not a quiet one: it
+                # would report "health never moved" having never looked. §3.10 rule 3, applied to the
+                # one instrument the acceptance test will depend on (result_verdict makes it a FAIL).
+                watch_reads = {t: c.tail.watch_reads for t, c in (("A", A), ("B", B))}
+                watch_misses = {t: c.tail.watch_misses for t, c in (("A", A), ("B", B))}
+                watch_hist = {t: len(c.tail.watch_hist) for t, c in (("A", A), ("B", B))}
+                if health is not None and min(watch_reads.values()) == 0:
+                    A.sh.log(f"HEALTH WATCH BLIND: armed at ACTOR+0x{health:x} and read "
+                             f"{watch_reads} values ({watch_misses} rows where no peeked block "
+                             f"covered it). 'health never moved' from an instrument that never "
+                             f"looked is not evidence -- widen PS2X_PEEK to cover that offset.")
+                events = [e for e in watch.events if t_round - 1.0 <= e["t"] <= t_end + 1.0]
+                fired = next((e for e in events if e.get("firing")), None)
+                verdict, is_kill = result_verdict(fired, events, health is not None,
+                                                  watch_reads, stale_shots=stale_shots,
+                                                  stalled=mpw.stalled, missing_shots=missing_shots)
+                # the LADDER line (brief Interfaces): contact by verdict_core over the round's rows, damage by spec
+                # §5 Goal 5(d) -- victim = the stander in --endgame, either direction otherwise
+                contact = ladder_contact(A.tail, B.tail, t_round, t_end)
+                inside = lambda rows: [r for r in rows if t_round <= r[0] <= t_end]
+                if health is None:
+                    damage = "unarmed"
+                else:
+                    if watched_endgame:
+                        shooter_c, victim_c = (A, B) if mover == "A" else (B, A)
+                        pairs = [("victim", victim_c, shooter_c, sideA if mover == "A" else sideB)]
+                    else:
+                        pairs = [("B", B, A, sideA), ("A", A, B, sideB)]
+                    verdicts_d = [damage_verdict(inside(v.tail.watch_hist) if v.tail.watch_reads else [],
+                                                 inside(v.tail.actor_ingame()), inside(s.tail.actor_ingame()),
+                                                 side.r1_times)
+                                  for _, v, s, side in pairs]
+                    damage = ("yes" if "yes" in verdicts_d else vc.NO_DATA if vc.NO_DATA in verdicts_d else "no")
+                ralarms = starv.round_alarms(t_round, t_end) if starv is not None else None
+                max_idle = {t: max((v for tt, _, v in c.tail.rets.get("NetIdle", []) if t_round <= tt <= t_end),
+                                   default=None) for t, c in (("A", A), ("B", B))}
+                lag_rows = {t: len(inside(c.tail.lag_rows)) for t, c in (("A", A), ("B", B))}
+                c_rows = None if contact.status == vc.NO_DATA else contact.contact_rows
+                c_ok = None if contact.status == vc.NO_DATA else contact.ok
+                if endgame is not None and (endgame.get("stop_reason") or "").startswith(vc.NO_DATA) and not is_kill:
+                    verdict = endgame["stop_reason"]    # a spawn mismatch, a freeze in a fire window: not scored
+                elif endgame is not None and endgame.get("fire_teleport") and not is_kill:
+                    ftp = endgame["fire_teleport"]
+                    verdict = (f"NO-DATA teleport-in-fire-window side={ftp['tag']} step={ftp['step']:.1f}u -- an "
+                               f"actor row jumped during a burst; the round is not scored")
+                elif endgame is not None and endgame.get("teleport") and not is_kill:
+                    tp = endgame["teleport"]
+                    verdict = (f"FAIL teleport side={tp['tag']} during={tp['during']} step={tp['step']:.1f}u -- an "
+                               f"actor row jumped > {TELEPORT_STEP_UNITS:g} units; the attempt was aborted")
+                rung = ladder_rung(ctl, c_ok, damage)
+                ladder = ladder_line(
+                    rung=rung, controllable=ctl, contact_rows=c_rows,
+                    contact_s=None if c_ok is None else contact.contact_s, sampler_s=contact.sampler_period_s,
+                    rows_read=contact.rows_read, damage=damage, kill="yes" if is_kill else "no",
+                    starvation_alarms=None if ralarms is None else sum(1 for x in ralarms if x["cause"] == "starvation"),
+                    alarms_cleared=None if ralarms is None else sum(
+                        1 for x in ralarms if x["cause"] == "starvation" and x["t_clear"] is not None
+                        and x["t_clear"] - (x["t_move"] if x["t_move"] is not None else x["t"]) <= ALARM_CLEAR_S),
+                    max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]),
+                    aim_iters=aim_iters_field((sideA if mover == "A" else sideB).aims,
+                                              t0=endgame and endgame.get("t_fight")),
+                    round_n=n, mover=mover)
+                if fired is None:
+                    obs = [e["kind"] for e in events if not e.get("firing")]
+                    if obs:
+                        A.sh.log(f"non-firing observations only: {obs} -- a MediusPlayerReport is a "
+                                 f"periodic client stats report, not a round boundary; a respawn while "
+                                 f"the valves are live is not a round end")
+                sig = (f"signal={fired['kind']} on={fired['tag']} t=T+{fired['t'] - t_gameplay:.1f}s "
+                       f"detail={json.dumps(fired['detail'], default=float)} " if fired else
+                       f"(no signal in {a.kill_timeout}s) ")
+                A.sh.log(f"RESULT round={n} {verdict} {sig}"
+                         f"closest_3d={closest} dy_at_closest={duel.best_dy()} contact={duel.contact.is_set()} "
+                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
+                         f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
+                         f"health_watch={'disarmed' if health is None else 'armed'} "
+                         f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
+                         f"stale_shots={stale_shots} missing_shots={missing_shots}")
+                is_kill_any[0] = is_kill_any[0] or is_kill
+                fatal = None
+                if mpw.stalled is not None or mpw.freeze_nodata is not None:
+                    fatal = "move path stalled or frozen past FREEZE_MAX_S"
+                elif not watched_endgame:
+                    fatal = "converge mode plays one round"
+                rounds_out.append({
+                    "round": n, "mover": mover, "round_value": round_value, "t": [t_round, t_end], "verdict": verdict,
+                    "ladder": ladder, "rung": rung, "kill": is_kill, "closest_3d_units": closest,
+                    "closest_dy": duel.best_dy(), "contact": vars(contact), "events": events, "fired": fired,
+                    "stale_shots": stale_shots, "missing_shots": missing_shots, "fight": fights,
+                    "approach_A": sideA.result, "approach_B": sideB.result, "alarms": ralarms,
+                    "endgame": None if endgame is None else {k: v for k, v in endgame.items() if k != "approach"}})
+                return online_ladder.RoundScore(n=n, mover=mover, rung=rung, verdict=verdict, kill=is_kill,
+                                                line=ladder, fatal=fatal)
+
+            def next_round(n):
+                prev = rounds_out[-1]["round_value"] if rounds_out else None
+                ok, reason, actors = online_ladder.wait_next_round({"A": A.tail, "B": B.tail}, prev)
+                if ok:
+                    A.sh.log(f"ROUND {n} starts: mp_round_count moved past {prev}, the guest clocks run again, actors "
+                             f"re-found by vtable {ACTOR_VTABLE:#x} at "
+                             + " ".join(f"{t}={v:#x}" if v else f"{t}=?" for t, v in sorted(actors.items())))
+                return ok, reason
+
+            history, ladder_stop = online_ladder.run_ladder(a.rounds if watched_endgame else 1, play_round, next_round,
+                                                            A.sh.log, mover=a.mover, auto_swap=a.auto_swap)
             watch.stop()
             mpw.stop()
             if starv is not None:
                 starv.stop()
                 A.sh.log(starv.summary_line())
             for c in (A, B):
-                evidence_shot(c, "final", stale_shots, A.sh.log, missing_shots)
-            for c in (A, B):
                 for line in valve_report(c.tag, c.tail, valves_wanted):
                     A.sh.log(line)
-            closest = duel.best_dist()
-            # An armed watch that never read a word is a FAILED instrument, not a quiet one: it
-            # would report "health never moved" having never looked. §3.10 rule 3, applied to the
-            # one instrument the acceptance test will depend on (result_verdict makes it a FAIL).
-            watch_reads = {t: c.tail.watch_reads for t, c in (("A", A), ("B", B))}
-            watch_misses = {t: c.tail.watch_misses for t, c in (("A", A), ("B", B))}
-            watch_hist = {t: len(c.tail.watch_hist) for t, c in (("A", A), ("B", B))}
-            if health is not None and min(watch_reads.values()) == 0:
-                A.sh.log(f"HEALTH WATCH BLIND: armed at ACTOR+0x{health:x} and read "
-                         f"{watch_reads} values ({watch_misses} rows where no peeked block "
-                         f"covered it). 'health never moved' from an instrument that never "
-                         f"looked is not evidence -- widen PS2X_PEEK to cover that offset.")
-            verdict, is_kill = result_verdict(watch.fired, watch.events, health is not None,
-                                              watch_reads, stale_shots=stale_shots,
-                                              stalled=mpw.stalled, missing_shots=missing_shots)
-            ra, rb = A.tail.latest(max_age=1e9), B.tail.latest(max_age=1e9)
             summary = {
                 "control": {tag: sd.status for tag, sd in control_sides.items()},
                 "move_path": mpw.history,
                 "valves": {c.tag: valve_report(c.tag, c.tail, valves_wanted) for c in (A, B)},
-                "stale_shots": stale_shots,
-                "missing_shots": missing_shots,
-                "verdict": verdict,
-                "contact": duel.contact.is_set(),
-                "closest_3d_units": closest,
-                "best_3d_per_side": {"A": sideA.best_3d, "B": sideB.best_3d},
-                "actor_rows": {"A": len(A.tail.actor_ingame()), "B": len(B.tail.actor_ingame())},
-                "health_watch": {"armed_offset": health, "reads": watch_reads,
-                                 "misses": watch_misses, "changes": watch_hist},
+                "rounds": rounds_out, "ladder_stop": ladder_stop,
                 "actor_addr": {"A": A.tail.actor_addr, "B": B.tail.actor_addr},
-                "final_records": {"A": ra, "B": rb},
-                "final_dy": (rb[2] - ra[2]) if (ra and rb) else None,
-                "best_3d": {"A": sideA.best_3d, "B": sideB.best_3d},
-                "approach_A": sideA.result, "approach_B": sideB.result,
-                "fight": fights,
-                "fired": watch.fired,
-                "events": watch.events,
                 "t_gameplay": t_gameplay,
+                "events": watch.events,
+                "starvation": None if starv is None else starv.alarms,
                 "peek_item_rows": {t: dict(c.tail.item_rows) for t, c in (("A", A), ("B", B))},
                 "ingame_rows": {"A": len(A.tail.ingame()), "B": len(B.tail.ingame())},
             }
             with open(os.path.join(a.out, "converge.json"), "w") as fh:
                 json.dump(summary, fh, indent=1, default=str)
-            # One line, and it names the signal. research/18 §3.10: an instrument that emits zero
-            # rows is a failed run, so the row counts are on the same line. PASS is reserved for a
-            # signal only a KILL produces (result_verdict): `round` and `respawn` end rounds, and a
-            # round ends on its clock too.
-            # the LADDER line (brief Interfaces): contact by verdict_core over the live tails, damage by spec
-            # §5 Goal 5(d) -- victim B in --endgame, either direction otherwise
-            contact = ladder_contact(A.tail, B.tail)
-            ctl = tuple({vc.CONTROLLABLE: "yes", vc.NO_DATA: vc.NO_DATA}.get(control_sides[t].status, "no")
-                        for t in ("A", "B"))
-            if health is None:
-                damage = "unarmed"
-            else:
-                if watched_endgame:
-                    shooter_c, victim_c = (A, B) if a.mover == "A" else (B, A)
-                    pairs = [("victim", victim_c, shooter_c, sideA if a.mover == "A" else sideB)]
-                else:
-                    pairs = [("B", B, A, sideA), ("A", A, B, sideB)]
-                verdicts_d = [damage_verdict(list(v.tail.watch_hist) if v.tail.watch_reads else [],
-                                             v.tail.actor_ingame(), s.tail.actor_ingame(), side.r1_times)
-                              for _, v, s, side in pairs]
-                damage = ("yes" if "yes" in verdicts_d else vc.NO_DATA if vc.NO_DATA in verdicts_d else "no")
-            max_idle = starv.max_idle_ms() if starv is not None else {
-                t: max((v for _, _, v in c.tail.rets.get("NetIdle", [])), default=None) for t, c in (("A", A), ("B", B))}
-            lag_rows = starv.lag_rows_read() if starv is not None else {
-                t: len(c.tail.lag_rows) for t, c in (("A", A), ("B", B))}
-            c_rows = None if contact.status == vc.NO_DATA else contact.contact_rows
-            c_ok = None if contact.status == vc.NO_DATA else contact.ok
-            ladder = ladder_line(
-                rung=ladder_rung(ctl, c_ok, damage), controllable=ctl, contact_rows=c_rows,
-                contact_s=None if c_ok is None else contact.contact_s, sampler_s=contact.sampler_period_s,
-                rows_read=contact.rows_read, damage=damage, kill="yes" if is_kill else "no",
-                starvation_alarms=starv.starvation_alarms() if starv is not None else None,
-                alarms_cleared=starv.alarms_cleared() if starv is not None else None,
-                max_idle_ms=(max_idle["A"], max_idle["B"]), lagflag_rows=(lag_rows["A"], lag_rows["B"]),
-                aim_iters=aim_iters_field((sideA if a.mover == "A" else sideB).aims,
-                                          t0=endgame and endgame.get("t_fight")))
-            summary["ladder"] = ladder
-            summary["closest_dy"] = duel.best_dy()
-            summary["endgame"] = None if endgame is None else {
-                k: v for k, v in endgame.items() if k not in ("approach",)}
-            summary["starvation"] = None if starv is None else starv.alarms
-            with open(os.path.join(a.out, "converge.json"), "w") as fh:
-                json.dump(summary, fh, indent=1, default=str)
-            if endgame is not None and (endgame.get("stop_reason") or "").startswith(vc.NO_DATA) and not is_kill:
-                verdict = endgame["stop_reason"]        # a spawn mismatch, a freeze in a fire window: not scored
-            elif endgame is not None and endgame.get("fire_teleport") and not is_kill:
-                ft = endgame["fire_teleport"]
-                verdict = (f"NO-DATA teleport-in-fire-window side={ft['tag']} step={ft['step']:.1f}u -- an actor row "
-                           f"jumped during a burst; the round is not scored")
-            elif endgame is not None and endgame.get("teleport") and not is_kill:
-                tp = endgame["teleport"]
-                verdict = (f"FAIL teleport side={tp['tag']} during={tp['during']} step={tp['step']:.1f}u -- an actor "
-                           f"row jumped > {TELEPORT_STEP_UNITS:g} units; the attempt was aborted")
-            ev = watch.fired
-            if ev is None:
-                obs = [e["kind"] for e in watch.events if not e.get("firing")]
-                if obs:
-                    A.sh.log(f"non-firing observations only: {obs} -- a MediusPlayerReport is a "
-                             f"periodic client stats report, not a round boundary; a respawn while "
-                             f"the valves are live is not a round end")
-            sig = (f"signal={ev['kind']} on={ev['tag']} t=T+{ev['t'] - t_gameplay:.1f}s "
-                   f"detail={json.dumps(ev['detail'], default=float)} " if ev else
-                   f"(no signal in {a.kill_timeout}s) ")
-            A.sh.log(f"RESULT {verdict} {sig}"
-                     f"closest_3d={closest} dy_at_closest={duel.best_dy()} contact={duel.contact.is_set()} "
-                     f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
-                     f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
-                     f"health_watch={'disarmed' if health is None else 'armed'} "
-                     f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
-                     f"stale_shots={stale_shots} missing_shots={missing_shots}")
-            A.sh.log(ladder)
-            if not is_kill and (a.until_kill or verdict.startswith("FAIL health") or verdict.startswith("FAIL teleport")):
+            if not is_kill_any[0] and (a.until_kill or any(r["verdict"].startswith(("FAIL health", "FAIL teleport"))
+                                                          for r in rounds_out)):
                 failed = True
         if a.sweep:
             # Same-team kill probe: A rotates in place (right stick) and fires a burst at every
