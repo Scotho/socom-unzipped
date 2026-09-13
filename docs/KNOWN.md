@@ -27,7 +27,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
 | **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
 | **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. `HANDOFF.md`'s `*0x488de8+0xbc` is wrong | Task 8, `9c28fe0` |
-| **The two-instance approach works: 1392 → 33 units** at 57.5 %/64.7 % efficiency (73 % path efficiency from mined waypoints, against Task 7's 38.6 %). Rifles fire — 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2`, 1172 in-game rows per instance |
+| **The two-instance approach closes faster than one:** 1359 units in 127 s against Task 7's 758 in 300 s. Rifles fire — 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2` (A 1171 rows, B 1055) |
+| **They fought at ~90 units, not in contact.** Median 3-D separation over the last 400 rows was 93 (min 34.9, max 138); only 3 % of rows were inside the 45-unit engage threshold in 3-D and **0 %** inside 20. Median elevation 29-44°; the quoted 77° was the single worst row. Range and elevation are co-equal causes | Review of `9c28fe0`, re-derived from both logs and two position sources across ±116 alignment offsets |
 | **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
 | **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). HANDOFF's `*0x488de8+0xbc` is **not** the route | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
 | **Two movers plus the mined corridor close the map**: 1392 → **33.0 units** in 23 steps and ~127 s, both players walking, first time two online players have met | `ours_task8_kill2`, `logs/run_A_20260912_231341.log` / `run_B_…` (1172 in-game rows each); `research/18` §4.8. Approach efficiency 57.5 % / 64.7 % against Task 7's 38.6 % |
@@ -119,6 +120,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   of sight at all. Read `dy` before believing a range.
 - **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
   defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
+- **Closure efficiency quoted per side double-counts the same gap** — kill2 recomputes to 107.6 %
+  and 119.2 %, impossible for one mover. Use team-closed over team-walked (kill2 ≈ 58 %,
+  kill1 ≈ 33 %). A mined corridor's path efficiency is an idealised upper bound, not a closure.
+- **Camera+facing reconstruction mis-places a player by up to two orbit radii (~50 units).** The
+  actor's own x/y/z are at actor words 7/8/9 and are already peeked — use them. A sim `converge`
+  run reported best 16.1 against a simulated true 82.0 under the reconstruction.
 - **`MediusPlayerReport` is a periodic stats report, not a round end.** Task 8's acceptance test
   printed `RESULT PASS signal=server` for a round that had not ended, until it caught itself. Any
   round-end signal must require something only a real round end produces.
