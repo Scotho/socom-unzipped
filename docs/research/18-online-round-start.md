@@ -857,3 +857,217 @@ the review's observation that all traced `FUN_00553dc0` calls carry `ra=0x595028
 (`0x30be80`) and logged **zero** rows across four runs without anyone noticing; the guest calls
 `thunk_FUN_0030be80` at **`0x30cd80`**. Every idle-ms number above comes from the thunk. See §3.10
 rule 3 — an instrument that emits zero rows is a failed run, not a quiet one.
+
+---
+
+## 3.13 S2 — movement and aim calibration, and `--walk-to-b` (2026-09-12)
+
+With the movement blocker closed (§3.12), "how far does a hold move the player" is finally a
+question worth asking. This section is the answer, the method that produced it, and the two things
+the method found that the sprint's working assumptions had wrong.
+
+### The instrument
+
+`tools_py/parity/online_match_ours.py` grew a `RunLogTail`: the driver **follows each instance's own
+run log while the match is running** and host-timestamps every `[peek] @416054` row and every
+`MoveScale` `f12` row as it arrives. `run.sh` now honours `PS2X_RUN_LOG=<path>` so the driver knows
+which file is which instance's. Three consequences, all of which the previous task paid for:
+
+- **The liveness rule of §3.10 is enforced in-process**, before any hold is injected: `--calibrate`
+  and `--walk-to-b` refuse to run unless both instances have produced in-game rows. The first run of
+  this task ended in exactly that refusal instead of producing a folder of convincing screenshots of
+  a lobby.
+- **Every hold is scored against the movement scale.** `PS2X_CALL_TRACE="0x553dc0:MoveScale"` with
+  `PS2X_CALL_TRACE_EVERY=10` gives ~2 `f12` rows/s; a hold whose window does not contain scale rows
+  that are all exactly 1.0 is discarded. Zero rows counts as **not** ok — §3.10 rule 3. Across the
+  whole calibration schedule all 623 `f12` rows on A and all 616 on B were 1.0, so nothing here was
+  measured through the lag freeze.
+- `PS2X_PC_SAMPLER=0.25` gives four position rows a second. At 1 Hz a 2 s hold is three samples,
+  which is not enough to fit anything.
+
+**The heading sensor is the position rows, not the compass.** Two independent readings come out of
+one hold: fit a circle through the camera arc (`circle_fit`, Kasa) and take the swept angle; or walk
+forward and take the direction the record travelled. The compass in the captured frames is not used
+at all — screenshots go stale (§3.5) and a number read off one is not checkable later.
+
+### Finding 1 — the camera record really is the player, 24.9 units behind, and that is now checked
+
+`0x416054` is the orbiting camera, not the feet (STATUS 2026-09-10 20:10). The calibration turns it
+into a player position: **the direction from the record to the fitted circle centre is the direction
+the player walks**, measured over the three repeats as a difference of **+0.78, -8.51, -2.95 deg**.
+So `player = record + R * (cos h, sin h)` with `h` the walk heading, and the three circle fits whose
+residual is exactly **0.00** (a pure rotation with no translation mixed in) all give **R = 24.91**.
+The two fits with translation in them bias R down to 22.16 / 22.19, which is why the three-repeat
+mean (23.09, ptp 2.75) is the wrong number to quote: **24.9** is.
+
+### Finding 2 — the left stick STRAFES; it does not turn. `D` is not a "Sure Shot turn"
+
+The sprint spec and Task 7's brief both describe `D` (left stick right) as a turn. It is not, on the
+preset this match runs (Precision Shooter). All three `A` holds travelled at a **constant world
+bearing of -170.90 / -170.94 / -171.00 deg** and all three `D` holds at **+18.48 / +10.74 / +10.80**,
+i.e. 180 deg apart and at facing -/+90 deg, **with the facing unchanged** — a lateral translation,
+the same thing S0 saw on the PCSX2 reference when `LLEFT` moved the player with the compass heading
+unchanged. Turning is the right stick (`L` / `J`) only. Anything that plans a turn with the left
+stick plans a sidestep instead.
+
+### Finding 3 — the hold response is affine, not proportional
+
+A hold delivers `rate * (seconds - lead)`, not `rate * seconds`, because the record is the camera
+*trailing* the player and it takes that long to take up the slack:
+
+| key | 2 s hold (3 repeats) | 4 s hold | implied steady rate | implied lead |
+|---|---|---|---|---|
+| `L` look | +171.09 / +154.63 / +168.03 deg | +380.78 deg | **108.1 deg/s** | **0.48 s** |
+| `W` walk | 55.18 / 58.36 units (and one blocked 16.05) | 160.14 units | ~51 units/s | ~0.9 s |
+
+This is why a naive `hold = error / rate` correction of a small bearing error delivers nothing at
+all: a 20 deg correction asks for 0.19 s, which is inside the lead. `turn_hold_seconds()` adds it.
+
+### The three repeats, and the spread
+
+Run `logs/parity/ours_task7_cal3`, drive log `logs/parity/drive_task7_cal3.txt`, per-instance rows in
+`logs/run_A_20260912_202355.log` / `run_B_20260912_202355.log` (**709 in-game `[peek] @416054` rows
+each**, A's x spanning 442.48-564.65 and z 1268.62-1489.76 over the schedule). Machine-readable:
+`logs/parity/ours_task7_cal3/calibration_A_.json`.
+
+| quantity | repeat 1 | repeat 2 | repeat 3 | mean | spread (ptp) | sd |
+|---|---|---|---|---|---|---|
+| look `L`, deg/s of a 2 s hold, circle fit | 85.42 | 77.16 | 83.85 | **82.14** | 8.26 | 3.58 |
+| look `L`, deg/s of a 2 s hold, walk-heading delta | 86.31 | 88.82 | 87.42 | **87.52** | 2.51 | 1.03 |
+| camera orbit radius, units | 24.91 | 22.19 | 22.16 | 23.09 | 2.75 | 1.29 |
+| record->centre vs walk heading, deg | +0.78 | -8.51 | -2.95 | -3.56 | 9.28 | 3.81 |
+| walk `W`, units/s of a 2 s hold | 8.01 | 27.55 | 29.14 | 21.57 | **21.13** | 9.61 |
+| walk back `S`, units/s of a 2 s hold | 25.25 | 25.61 | 25.03 | **25.30** | 0.59 | 0.24 |
+| strafe `A`, units/s of a 2 s hold | 43.94 | 45.59 | 43.36 | **44.30** | 2.23 | 0.94 |
+| strafe `D`, units/s of a 2 s hold | 12.99 | 40.25 | 39.60 | — | — | — |
+
+Singles: `J` (look left) over 2 s = **-86.34 deg/s**, r = 24.91, residual 0.00 — symmetric with `L`
+to within 1.1 deg/s, and the sign settles that **`L` sweeps positive** in the atan2(dz, dx) plane.
+`L` over 4 s = 95.08 deg/s; `W` over 4 s = 39.99 units/s.
+
+**What converged and what did not.** The look rate converged: three repeats within +-5% by the circle
+fit and within +-1.5% by the walk-heading cross-check, two independent instruments agreeing to 5
+deg/s, and a left/right symmetry check. The orbit radius converged, on the three zero-residual fits.
+**The forward walk did not**: 8.01 / 27.55 / 29.14 units/s is a peak-to-peak of 21.1 on a mean of
+21.6, and the 8.01 repeat is a hold that plainly walked into something (16 units in 2 s, while the
+backward holds either side of it did their usual 50). Backward and lateral holds, which happened to
+run along open ground, repeat to better than +-3%. So **the forward number is a property of where
+the player was standing as much as of the controls**, and it is shipped as a burst-sizing heuristic,
+not as a speed. Sustained forward speed is better estimated at **~40 units/s** from the single 4 s
+hold, which agrees with §3.12's "28-38 units per 1 s sample on every LX/LY hold".
+
+### The constants, as shipped
+
+Module-level in `tools_py/parity/online_match_ours.py`, no magic numbers at the call sites:
+
+```
+LOOK_DEG_PER_S        = 108.1   TURN_HOLD_LEAD_S      = 0.48   LOOK_RIGHT_SIGN = +1.0
+WALK_UNITS_PER_S      = 21.6    WALK_UNITS_PER_S_LONG = 40.0   WALK_BACK_UNITS_PER_S = 25.3
+LATERAL_UNITS_PER_S   = 42.5    CAMERA_ORBIT_RADIUS   = 24.9
+```
+
+**These are calibrated on one map, one spawn and one round** — mp51, the Medley first round, A's SEAL
+spawn at (542.3, 1479.9) against B's terrorist spawn at (1144.8, 77.5), 1526 units apart. The look
+rate and the orbit radius are properties of the camera and should carry; the walk figure is the one
+to re-measure somewhere else before believing it.
+
+### `--walk-to-b`
+
+`python -m tools_py.parity.online_match_ours --existing-b --hold 40 --walk-to-b --arrive 120`.
+A reads **both** instances' records out of the two run logs, converts each to a player position with
+`CAMERA_ORBIT_RADIUS`, and loops: bearing to B -> if the error exceeds `TURN_DEADBAND_DEG` (12) turn
+by one timed hold of `turn_hold_seconds(error)` -> walk one burst sized at `WALK_STEP_FRACTION` (0.8)
+of the remaining gap. B's facing comes from one forward tap at the start (without it B's position is
+only known to within the orbit radius); A's comes from the burst it just walked, so the heading is
+re-measured every step rather than dead-reckoned. A turn that reads as a rotation contributes its own
+fitted sweep to the facing rather than the commanded angle.
+
+Two hard caps, because a mis-calibration must not run the match forever: `WALK_TO_B_MAX_STEPS` (40)
+and `WALK_TO_B_MAX_SECONDS` (300, a little under one 6-minute round). A burst that moves less than
+`STUCK_UNITS` is treated as blocked: step back, sidestep `UNSTICK_LATERAL_UNITS` at the strafe rate
+above, re-probe the facing.
+
+The loop was proved against a simulated world before it was given a match (the simulation writes the
+same `[peek]` / `MoveScale` lines into a file and the real `RunLogTail` reads them): it converges
+857 -> 71 units in 9 steps, and with the world's turn response deliberately mismatched against the
+constants it still converges, in 20 steps, by re-measuring. With the caps tightened and a wall across
+the path it stops on the cap and reports the best distance rather than claiming success.
+
+### The proving runs — it steers, it does not arrive
+
+**It does not reach B on mp51, and that is the honest headline.** Three matches drove `--walk-to-b`
+with `--arrive 120`; none got inside 120 units. What they do show is that the loop's *steering* is
+correct and that what stops it is the map, not the calibration.
+
+| run | A start → A end (camera record) | distance to B, start → best | stopped by |
+|---|---|---|---|
+| `ours_task7_wtb1` | (537.1, 1393.0) → wandered | 1368 → **1251** | 300 s cap |
+| `ours_task7_wtb2` | (542.2, 1479.8) → (1086.0, 744.9) | 1382 → **624** | 300 s cap |
+| `ours_task7_wtb6` | (542.0, 1479.7) → (1148.2, 1018.6) | 1379 → **864** | 300 s cap |
+
+`ours_task7_wtb2` is the run to read (`logs/parity/drive_task7_wtb2.txt`,
+`logs/run_A_20260912_211009.log`: **1441 in-game `[peek] @416054` rows, 882 distinct x**, x spanning
+491.07–1118.15 and z 742.61–1482.39; frames `A_wtb00.png`…`A_wtb24.png`; the per-step track in
+`logs/parity/ours_task7_wtb2/walk_to_b.json`). A travelled **912 units** of net displacement across
+the map toward B and **more than halved** the gap. B stayed at its spawn throughout — 56 distinct x
+over 1441 rows, x 1113.02–1145.17 — which is what the loop assumes.
+
+Three things limit it, in order of size:
+
+1. **Map geometry, not the constants.** In `wtb6` A covered 1379 → 864 units in **five steps and
+   47 s**, then spent the remaining 250 s blocked around (1090–1200, 1000–1090): the bearing to B is
+   due south (−90 deg) and something is in the way. The detour alternates sides and does not find
+   the way through. A straight-line-with-detour policy is not a navigator; the route from the SEAL
+   spawn to the terrorist spawn on this map needs one.
+2. **`wtb1` failed for a different reason, now fixed, and it is worth recording.** The loop adopted
+   the heading of *every* burst, including bursts that slid along a wall. Those report headings up to
+   86 deg off the direction the player is pointed (step 2: the turn left A facing −55.5 deg, the
+   burst reported +30.8), the loop believed them, and every bearing after that was nonsense — it
+   oscillated for 21 steps and closed 117 units. With the belief test (progress fraction and
+   straightness) added, the next run closed 758.
+3. **The movement scale does decay over a 300 s approach, and the check catches it.** In the
+   calibration run all 623 `f12` rows on A were 1.0. In the proving runs A's rows include **0.0**
+   (`wtb2`: 0.0/0.1/0.5/0.9/1.0 across 821 rows) while **B's are 1.0 throughout** (701 rows). The
+   asymmetry says what is happening: A's activity counter is fed by what it *receives*, B is
+   standing still and therefore sending little, and when A is also pinned against geometry the peer
+   channel goes quiet for more than the 5500 ms of §3.12. So a two-instance match in which one
+   player stands still can starve the *other* player's movement scale. This is honest console
+   behaviour (§3.12), not a defect, but the next task should expect it: **if the harness parks B, it
+   should keep B moving.**
+
+**So:** the calibration is good enough to steer with — A turns to the right bearing and walks along
+it — and `--walk-to-b` is worth having on the spawn it was calibrated against, as a "close the
+distance and keep facing B" primitive. It is **not** a general "go to the other player" and should
+not be described as one until something route-plans.
+
+### Three more harness defects found and fixed (all of which silently cost whole runs)
+
+§3.10's list needs these:
+
+- **The on-screen keyboard was driven by posted keys.** `osk_type` dead-reckons the keyboard cursor
+  from `OSK_START`, so one dropped press mistypes every character after it and, on the last one,
+  presses the key *next to* ENTER. Run 1 of this task typed the game name as `test;` and left the
+  keyboard open; every later press went into the keyboard, the game lobby was never created
+  (`B_teams` read `(0, 0)` instead of `(143, 144)`) and the match never launched. Same failure as the
+  `eq4P--` run in §3.10. `Shell.type` now types through the **injected pad file**.
+- **Nothing checked that the keyboard was open before typing into it.** In one run the CROSS that
+  enters CREATE GAME landed a screen late, so the CROSS meant to open the game-name keyboard entered
+  CREATE GAME instead and `type("test")` hammered the CREATE GAME menu — it set ROUND COUNT to 1 and
+  ROUND TIME to 20 minutes, left GAME NAME empty, and the lobby refused with "You must create a
+  playlist before game creation can occur". In another, a **"SELECT A CONTROLLER CONFIGURATION"**
+  screen appeared mid-login and swallowed both persona presses. `Shell.wait_osk` now waits for the
+  keyboard, escalates CROSS then BACK+CROSS, and otherwise aborts with a screenshot. It **recovered**
+  the controller-configuration case on the last run (`on-screen keyboard up after recovery 1`), which
+  would otherwise have been another twelve minutes. (Incidentally that screen confirms §3.13's
+  Finding 2 from the other side: PRECISION SHOOTER is the highlighted preset.)
+- **Nothing checked that CREATE GAME / JOIN GAME actually reached the game lobby.** `require_game_lobby`
+  now does, using the existing `game_lobby` reference, which separates the two outcomes exactly:
+  **0.287** on every run that launched a match (`ours_task6_ab`, `ours_task7_cal3/wtb1/wtb2`) against
+  **0.506–0.509** on every run that did not (`ours_task7_cal1/wtb3/wtb5`), threshold 0.45. A lobby
+  flake now costs four minutes and says what happened, instead of twelve and a liveness failure.
+- **`write_pad_file` could not survive its own press rate**: the atomic `os.replace` fails with
+  `WinError 5` while the exe has the pad file open for its 60 Hz poll. Rare at hold rates, routine at
+  keyboard rates — it crashed a run outright. It now retries for up to 200 ms.
+
+Even with all four, the lobby flow reached gameplay in only **4 of 10** launches in this task. It is
+the single biggest tax on any two-instance work and the next task should budget for it.

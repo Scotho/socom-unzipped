@@ -19,7 +19,7 @@ from PIL import Image
 
 from . import drive, keys, winshot
 from .compare import score
-from .online_login import osk_type
+from .online_login import OSK_START, osk_moves, osk_pos, osk_type
 
 T = "ours"
 REFS = os.path.join("scripts", "parity", "refs")
@@ -80,6 +80,15 @@ def write_pad_file(path, buttons=(), axes=None):
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         f.write(f"b={mask:04x} rx={a['rx']} ry={a['ry']} lx={a['lx']} ly={a['ly']}" + chr(10))
+    # The exe opens this file on every pad poll (60 Hz), and a Windows rename over a file another
+    # process has open fails with WinError 5. Rare for a hold (two writes a second or two apart),
+    # routine for a keyboard walk (two writes every 0.09 s) -- which crashed a whole run. Retry.
+    for attempt in range(40):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            time.sleep(0.005)
     os.replace(tmp, path)
 
 
@@ -112,6 +121,20 @@ class Shell:
             self.pad(seconds, [b] if b.upper() in PAD_BUTTON else (), [b] if b.upper() in PAD_AXIS else ())
         else:
             keys.press(self.hwnd, b, T, hold_s=seconds)
+        time.sleep(wait)
+
+    def pad_press(self, b, wait=0.35, hold_s=0.09):
+        """One button press through the INJECTED pad file. Posted WM_KEY messages reach raylib only
+        when the window thread pumps, so a press in a long scripted burst can be dropped (STATUS
+        2026-09-10 20:10) -- which is how a game-name ended up as "eq4P--" in one run and as "test;"
+        with the keyboard left open in another, both of which cost a whole 12-minute match.
+
+        0.09 s is ~5-6 frames at the shell's 60 fps: long enough for the pad poll to see it, short
+        enough to stay under the keyboard's auto-repeat (0.15 s / 9 frames overshoots the cursor).
+        """
+        write_pad_file(self.pad_file, [b])
+        time.sleep(hold_s)
+        write_pad_file(self.pad_file)
         time.sleep(wait)
 
     def pad(self, seconds, buttons=(), sticks=()):
@@ -204,19 +227,97 @@ class Shell:
             self.press(b, wait)
         return False
 
-    def osk_normal_mode(self):
-        crop = lambda im: np.asarray(im.crop(OSK_ACCENT_BOX).convert("L"), dtype=float)
+    def osk_refs(self):
+        """Distance of the accent-toggle key to the two references: which mode the on-screen
+        keyboard is in, and (by both distances being large) whether it is on screen at all."""
         normal = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_normal.png")).convert("L"), dtype=float)
         accent = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_accent.png")).convert("L"), dtype=float)
-        cur = crop(winshot.grab(self.hwnd))
-        if abs(cur - accent).mean() < abs(cur - normal).mean():
+        cur = np.asarray(winshot.grab(self.hwnd).crop(OSK_ACCENT_BOX).convert("L"), dtype=float)
+        return float(abs(cur - normal).mean()), float(abs(cur - accent).mean())
+
+    # Measured on logs/parity/ours_task7_cal1 (keyboard up: 39.0/43.1 and 6.3/0.0) against the
+    # screens behind it (keyboard gone: 59.9 and 74.1). Only used to LOG whether a type() left the
+    # keyboard open, so a run that flakes says so in its own drive log instead of silently
+    # spending twelve minutes driving a keyboard.
+    OSK_OPEN_MAX = 50.0
+
+    def osk_open(self):
+        return min(self.osk_refs()) < self.OSK_OPEN_MAX
+
+    def osk_normal_mode(self):
+        dn, da = self.osk_refs()
+        if da < dn:
             self.log("keyboard in accent mode -> toggling")
-            self.press("cross", 0.8)
+            if self.pad_file:
+                self.pad_press("CROSS", 0.8)
+            else:
+                self.press("cross", 0.8)
+
+    def wait_osk(self, timeout=12.0, reopen=True):
+        """Wait for the on-screen keyboard to actually be on screen before typing into it.
+
+        Without this the harness types blind: in ours_task7_wtb3 the CROSS that enters CREATE GAME
+        landed a screen late, so the CROSS meant to open the game-name keyboard entered CREATE GAME
+        instead, and `type("test")` then hammered the CREATE GAME menu -- it changed ROUND COUNT to
+        1 and ROUND TIME to 20 minutes, left GAME NAME empty, and the lobby refused to create the
+        game ("You must create a playlist before game creation can occur"). Twelve minutes, and
+        nothing in any log said what had happened.
+        """
+        def tap(b, wait):
+            if self.pad_file:
+                self.pad_press(b.upper(), wait)
+            else:
+                self.press(b, wait)
+
+        # Escalate in bounded steps: one more CROSS (the press that should have opened it was
+        # eaten by a transition), then BACK + CROSS (an unexpected screen is in the way -- in
+        # ours_task7_wtb4 a "SELECT A CONTROLLER CONFIGURATION" screen appeared mid-login and
+        # swallowed both persona presses). Then give up, loudly, with a screenshot.
+        for attempt, recovery in enumerate(([], ["cross"], ["triangle", "cross"])[:1 + (2 if reopen else 0)]):
+            for b in recovery:
+                tap(b, 2.0)
+            if recovery:
+                self.log(f"on-screen keyboard not up -> tried {'+'.join(recovery).upper()}")
+            t = time.time()
+            while time.time() - t < timeout:
+                if self.osk_open():
+                    if attempt:
+                        self.log(f"on-screen keyboard up after recovery {attempt}")
+                    return True
+                time.sleep(0.5)
+            self.log(f"on-screen keyboard still not up after {timeout:.0f}s "
+                     f"(accent-box distance {self.osk_refs()})")
+        return False
 
     def type(self, text, shots=None, tag=""):
+        if not self.wait_osk():
+            self.shot("osk_never_opened")
+            raise SystemExit(f"{self.tag}on-screen keyboard never opened for {text!r}: refusing to "
+                             f"type into whatever menu is on screen")
         self.osk_normal_mode()
-        osk_type(self.hwnd, text, shots, tag, target=T)
+        if self.pad_file:
+            self.osk_type_pad(text, shots, tag)
+        else:
+            osk_type(self.hwnd, text, shots, tag, target=T)
         time.sleep(3.0)
+        if self.osk_open():
+            self.log(f"WARNING: the on-screen keyboard is still up after typing {text!r} "
+                     f"(accent-box distance {self.osk_refs()}) -- the presses after this one go to "
+                     f"the keyboard, not to the menu")
+
+    def osk_type_pad(self, text, shots=None, tag=""):
+        """Type on the on-screen keyboard through the injected pad file rather than posted keys:
+        the cursor walk is dead-reckoned from OSK_START, so a single dropped press mistypes every
+        character after it and, on the last one, presses the key next to ENTER instead of ENTER."""
+        cur = OSK_START
+        for n, ch in enumerate(list(text) + ["ENTER"]):
+            dst = osk_pos(ch)
+            for m in osk_moves(cur, dst):
+                self.pad_press(m.upper())
+            cur = dst
+            self.pad_press("CROSS", 0.6)
+            if shots and ch != "ENTER":
+                winshot.grab(self.hwnd).save(os.path.join(shots, f"{tag}_key{n}_{ch}.png"))
 
 
 def attach(proc, title, out, tag="", pad_file=None):
@@ -338,6 +439,25 @@ def to_briefing_room(sh):
     sh.shot("11_briefing_room")
 
 
+def require_game_lobby(sh, what):
+    """Fail here, in four minutes, rather than after twelve.
+
+    host_game/join_game navigate by fixed presses, and a press that lands a screen late derails the
+    rest silently: in ours_task7_wtb5 the CROSS meant to open CHOOSE GAMES was eaten, the play list
+    stayed empty, and the lobby answered "You must create a playlist before game creation can
+    occur" -- but the driver pressed on, READY did nothing, and the run died on the liveness check
+    eight minutes later. The game_lobby reference separates the two outcomes exactly: it scores
+    0.287 on every run that launched a match (task6_ab, task7 cal3/wtb1/wtb2) and 0.506-0.509 on
+    every run that did not (task7 cal1/wtb3/wtb5).
+    """
+    if sh.is_screen("game_lobby"):
+        return
+    sh.shot("17_game_lobby_FAILED")
+    raise SystemExit(f"{sh.tag}{what} did not reach the GAME LOBBY (game_lobby band distance "
+                     f"{sh.diff('game_lobby'):.3f}, threshold 0.45) -- see the capture; the match "
+                     f"would never have launched")
+
+
 def host_game(sh, game_name="test"):
     sh.press("up", 2.0)
     sh.press("cross", 6.0)                                       # CREATE GAME
@@ -355,6 +475,7 @@ def host_game(sh, game_name="test"):
     sh.shot("16_game_lobby")
     sh.press("cross", 4.0)                                       # CONTINUE on the 30 s notice
     sh.shot("17_game_lobby_ok")
+    require_game_lobby(sh, "CREATE GAME")
 
 
 def lobby_cursor(sh):
@@ -399,6 +520,7 @@ def join_game(sh, switch=True):
     sh.shot("16_game_lobby")
     sh.press("cross", 3.0)                                       # CONTINUE
     sh.shot("17_game_lobby_ok")
+    require_game_lobby(sh, "JOIN GAME")
     sh.log(f"teams (seals, terrorists text px) {lobby_teams(sh)}")
     if switch:                                                   # a joiner is auto-assigned to the other team
         lobby_select(sh, 1, "SWITCH TEAMS")
