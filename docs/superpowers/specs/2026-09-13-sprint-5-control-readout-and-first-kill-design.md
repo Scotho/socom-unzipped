@@ -130,7 +130,7 @@ the round state.
   growth are the progress evidence.
 - **Goal 1 — movement bar** (per side, actor rows): net displacement from hold start to 1.5 s after
   release of a 2 s forward hold ≥ **40 units** (*blind: a half-decayed scale that still covers 40, or
-  motion in the wrong direction*); position 2 s after release within **10 units** of the position at
+  motion in the wrong direction; and the converse — a controllable hold blocked by geometry, hence any of up to 4 holds passes*); position 2 s after release within **10 units** of the position at
   release (*blind: a correction arriving later than 2 s*); net drift over a 10 s neutral window
   ≤ **5 units** (*blind: a frozen player passes it trivially — it only means something alongside the
   40*). Also reported: time from first in-game row to first passing hold. *Not reproduced* = the bar
@@ -163,7 +163,7 @@ the round state.
   1.0 s hold from rest; SP vs two-instance frame rate*). (c) **starvation:** primary signal the game's
   own `ng+0xde` on each instance (never 1 during a contact window); secondary NetIdle `[ret] v0`, alarm
   at **4000 ms**, bar ≤ **5000 ms** (Sprint 4's healthy worst gap was 2.7 s); every alarm clears within
-  3 s of the other side moving (*blind: peaks between ~0.5 s samples; `ng+0xde` is stale when the move
+  3 s of the other side moving (*blind: peaks between samples — 4 Hz peek, slower under load; `ng+0xde` is stale when the move
   path is silent — then `NO-DATA`*). (d) **rung 3 — damage:** the victim's `+0x1044` drops below 1.0
   during contact with the killer's R1 injected in the preceding 3 s and the victim's actor y not
   dropping > 20 units in the preceding 2 s (*blind: an environmental damage source coinciding with a
