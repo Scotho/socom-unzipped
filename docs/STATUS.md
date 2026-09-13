@@ -436,8 +436,8 @@ INPUT_TRACE, PEEK 0x416054:3; --existing-b --hold 60).
 > 1.0` on 330/330 calls, idle max 1490 ms, 89 distinct player x; fix OFF `f12 = 0.0` on 339/339,
 > idle 504,210 ms, **0.46 units** of travel.
 >
-> Retracted with it: **"the PCSX2 golden match is the same frozen state"** (`HANDOFF.md:42`). Two
-> PCSX2 instances against our own Horizon stack play a full round and advance to round 2
+> Retracted with it: **"the PCSX2 golden match is the same frozen state"** (`HANDOFF.md`'s open
+> item 0). Two PCSX2 instances against our own Horizon stack play a full round and advance to round 2
 > (research/18 §1, `docs/research/assets/18-s0-evidence.png`); that "golden" was two stills of a
 > match with **no input ever sent**. The peer-packet decode, the local-IP fix and the input-delivery
 > fix below all stand — only the conclusion drawn from them is withdrawn.
@@ -886,7 +886,7 @@ console's does not (candidates: sceMpegIsEnd/GetPicture semantics after the intr
 attract-mode idle timer). Fix direction: make the menu movie behave like the console (not
 running at the title) — not a GS/arbiter change.
 
-## 2026-09-09 01:30 (local) — ground height: the collision probe is IDENTICAL to PCSX2's; the actor rests at a different height above the same hit
+## 2026-09-09 01:30 (local) — the collision probe is IDENTICAL to PCSX2's; ~~ground height: the actor rests at a different height above the same hit~~ (RETRACTED, see below)
 
 > **Superseded by `docs/research/17-ground-height.md` §0.1 (Sprint 4 Task 4). The framing of this
 > entry is wrong, and the entry contains its own refutation.** "The actor rests 20.11 / 14.69 above

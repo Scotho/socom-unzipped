@@ -276,7 +276,7 @@ Add `vu1dump4_prog_182.bin` to `tests/fixtures/vu1/dispatch_0x1b50/` with its go
 - [x] **Step 2: Calibrate the walk.** Same method for forward movement using the two `0x416054` position peeks: units per second.
 - [x] **Step 3: Implement `--walk-to-b`** using those constants, with a hard step cap so a mis-calibration cannot run the match forever.
 - [ ] **Step 4: Prove it.** One run where A ends within the set distance of B, shown by the position rows, with the frames captured.
-  > **Not met by Task 7.** The approach loop works and is calibrated, but a single mover cannot close the map inside a round (39 % closure efficiency, ~450 s needed against a ~360 s round). Two movers, in Task 8, closed 1392 units in ~127 s.
+  > **Not met by Task 7.** The approach loop works and is calibrated, but a single mover cannot close the map inside a round (39 % closure efficiency, ~450 s needed against a ~360 s round). Two movers, in Task 8, closed 1485.5 → 50.0 units in ~127 s.
 - [x] **Step 5: Commit.**
 
 ---
@@ -387,11 +387,26 @@ block.** A plan that quotes a prior belief should quote it as a belief.
   inside a round (39 % closure efficiency; ~450 s needed against a ~360 s round). It also measured
   the aim floor: `PAD_AXIS` injects only full deflection, so the shortest usable hold sweeps 35-40°
   against a body subtending 15-20° at contact range.
-- **Task 8 (S3)** is an honest partial. Two movers closed 1392 units in ~127 s — **the first time
-  two online players have met** — the rifles fired (96 R1 injections, ammo 30/30 → 0/30, impacts on
-  the wall ahead of the muzzle), and **nobody died**: the players were ~90 units apart with 29-44°
-  of elevation between them, and the sweep covered yaw only. The health record is a *candidate*,
-  not a fact; the brief's bar is two separate kills and the sprint got zero.
+- **Task 8 (S3)** is an honest partial. Two movers closed the map — **1485.5 → 50.0 units** in
+  ~127 s, **the first time two online players have met** — the rifles fired (96 R1 injections, ammo 30/30 → 0/30, impacts on
+  the wall ahead of the muzzle), and **nobody died**: minimum separation **50.0** units, median
+  **67.9**, **43.3°** of elevation between them, **0 %** of rows inside the 45-unit engage
+  threshold in 3-D, and the sweep covered yaw only.
+
+  > **Provenance, because this close-out itself got it wrong once.** Those are the **actor-row**
+  > figures. An earlier draft of this section quoted "1392 units" and "~90 units apart with
+  > 29-44°" — both from the camera+facing reconstruction, which mis-places a player by up to
+  > two orbit radii (~50 units) and had already been superseded by the actor's own x/y/z at
+  > words 7/8/9. It was superseded **silently**: the replacement measurement was published
+  > without the one it replaced being marked, so a retracted number was written into a tracked
+  > document *by the close-out task whose job was retracting things*.
+  >
+  > **The rule this earns: when a measurement replaces another, mark the predecessor superseded
+  > where it is written** — the same discipline a false sentence gets. A number carries no
+  > visible sign of being stale, which makes it the more dangerous of the two.
+
+  The health record is a *candidate*, not a fact: the brief's bar is two separate kills and the
+  sprint got zero, so `actor+0x204`/`+0x208` stay in `KNOWN.md` §2.
 
 ### 5. What the plan did not budget for at all
 

@@ -151,24 +151,37 @@ the host-draw hook and the gates got here, not for what to do next:
 > 14.7 above it on ours vs 20.1 on the console" is **not the actor and not a ground height**. Both
 > numbers are **camera-eye minus collision-hit**: 20.11 = −126.264 − (−146.371) and 14.69 =
 > −131.68 − (−146.371), and the two y values being differenced are the *camera's*, recorded in
-> STATUS:809 itself. The **player's feet are correct to 0.008** (ours −145.875 against the console's
+> `STATUS.md`'s 2026-09-09 01:30 entry itself. The **player's feet are correct to 0.008** (ours −145.875 against the console's
 > −145.8672). The defect is that the third-person **camera** sits ~5.4 low, and research/17 §4
 > localises it to the player actor's skeleton root node decaying 11.4845 → 0 while its saved copy
 > freezes at the console's 5.50391. The item name "ground height" is itself the misdirection: it
 > sent readers at terrain, collision and the mover for a defect in an animation blend.
 >
-> This retraction was found in our own committed records, not in a new measurement — STATUS:809 has
-> printed both camera y values since 2026-09-09.
+> This retraction was found in our own committed records, not in a new measurement — that STATUS
+> entry has printed both camera y values since 2026-09-09.
+>
+> (Cited by item name and date, not `file:NN`: line-number citations dangle the moment anyone
+> inserts a line, and a dangling citation is how `*0x488de8+0xbc` became "HANDOFF's player actor".)
 
 2. **~~Ground height~~ Third-person camera height** (STATUS 01:30/02:10; the sentence below is
    RETRACTED, see above): the vertical collision probe is identical to PCSX2's
    (hit y=-146.371, same normal); ~~the actor rests 14.7 above it on ours vs 20.1 on the console~~.
-   Diff of the player's mover object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
-   mover +0x5c = 4.0 vs 6.3338, +0x70..+0x7c differ, actor +0x10 state 0x00080502 vs 0x2,
-   actor +0x2bc.. holds a cached ground point on ours. Next: trace the mover's update method
+   Diff of the player's ~~mover~~ **`CSealCtrl`** object (vtable 0x6694b0; actor vtable 0x6691a0 +0xc0) vs PCSX2's:
+   ~~mover +0x5c = 4.0 vs 6.3338~~, +0x70..+0x7c differ, actor +0x10 state 0x00080502 vs 0x2,
+   actor +0x2bc.. holds a cached ground point on ours. ~~Next: trace the mover's update method
    (writer of mover+0x90.y) with PS2X_CALL_TRACE_DUMP on the mover object; the s16 peek rows
    show the actor placed at the console height (-125.97) then dropping to -135.9 and settling
-   at -131.7, i.e. a gravity/step overshoot, not a placement error.
+   at -131.7, i.e. a gravity/step overshoot, not a placement error.~~
+   **Three more retractions in that tail, all from `research/17` §0 and §6:**
+   (a) **`+0x5c` = 4.0 vs 6.3338 is retracted *and fixed*.** It was never a capsule radius or a step
+   height — it was the 15-bit `rand()` stub, whose arithmetic ceiling of 4.0000458 made the
+   console's 6.3338 unreachable by construction. Since `ede2096` the field reads **5.5314** and its
+   range is the full 4.0 .. 7.0. (b) **The object is `CSealCtrl`, not "the mover", and `+0x90` is
+   the camera eye**, so "writer of `mover+0x90.y`" names the wrong writer of the wrong field; the
+   real writer chain is in `research/17` §2. (c) **The s16 peek rows are the camera, not the
+   actor** — −131.7 is the same camera y the blockquote above differences to get 14.69, so "a
+   gravity/step overshoot, not a placement error" describes a camera that never touches the ground.
+   **Start from `research/17` §4.3's single run**, not from this item.
 3. **Frame rate**: see 1b (VU1 fast path landed; recompiler next).
 4. Then the mission parity report (`tools_py/parity/compare`) against pcsx2_mission_g.
 

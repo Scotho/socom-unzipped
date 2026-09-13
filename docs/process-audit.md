@@ -17,7 +17,7 @@ tie-breakers applied in this order:
 
 1. **A false green outranks a slow green.** A gate that passes when it should fail writes a wrong
    belief into a committed document, and that belief is then quoted as fact for weeks by every
-   later agent. `docs/HANDOFF.md:42` ("the PCSX2 golden match is the same frozen state") is the
+   later agent. `docs/HANDOFF.md`'s open item 0 ("the PCSX2 golden match is the same frozen state") is the
    measured price of this: it was two stills of a match with no input ever sent, and it aimed
    weeks of server-side work at an exonerated component. Nothing in this list costs as much as
    that, so everything that makes a false green impossible sorts above everything that makes a
@@ -292,19 +292,21 @@ the tree right now**:
 > against.** All three are now retracted in place, plus a fourth (the player actor's address), plus
 > the two derived restatements this section did not list: the Sprint 4 spec's own **Task 4** bullet
 > (which restated the ground-height frame as fact and sent its own task at the wrong subsystem) and
-> `ROADMAP.md` §3's "HANDOFF:99 and STATUS:809 still describe this wrongly". `HANDOFF.md`'s
+> `ROADMAP.md` §3's assertion that HANDOFF and STATUS still described the ground height wrongly.
+> `HANDOFF.md`'s
 > "START HERE" now names the sprint in flight and sends the reader to `docs/KNOWN.md` first, and
 > `docs/LOOP_PROMPT.md` carries rule 1 as a step: a false committed sentence is corrected in the
 > same hour, where it is written. **The elapsed time from "a reviewer proved this false" to "fresh
 > sessions stopped reading it" was about a day for the first three and two weeks for the freeze
 > description** — the cost this section priced, paid in full.
 
-- `docs/HANDOFF.md:42` "The PCSX2 golden match is the same frozen state" — false; two PCSX2
+- `docs/HANDOFF.md` open item 0, "The PCSX2 golden match is the same frozen state" — false; two PCSX2
   instances play a full round and advance to round 2. This sentence sent weeks of work at the
   server.
-- `docs/HANDOFF.md:99` "the actor rests 14.7 above it" and `docs/STATUS.md:809` — both were
+- `docs/HANDOFF.md` open item 2, "the actor rests 14.7 above it", and the `docs/STATUS.md`
+  2026-09-09 01:30 entry — both were
   camera-eye minus collision-hit all along; the player's feet are correct to 0.008. The Task 4
-  reviewer found the clincher *in our own records*: STATUS:809's own numbers reconstruct as
+  reviewer found the clincher *in our own records*: that entry's own numbers reconstruct as
   20.11 = −126.264 − (−146.371).
 - Every "frozen at STARTING ROUND 1 OF 11 / waiting for a go" description — including the Sprint 4
   spec's own §1.
@@ -330,7 +332,7 @@ whose top item is a symptom that does not exist.
 
 **Cost.** Rules 1-2: free. The check: half a day, no build, no game run.
 
-**What it would have caught.** The three retractions would already be in the tree. HANDOFF:42
+**What it would have caught.** The three retractions would already be in the tree. HANDOFF's open item 0
 would have been corrected the hour S0 returned, instead of surviving into a ROADMAP that has to
 spend a paragraph undoing it.
 
@@ -551,7 +553,7 @@ route:**
   datagrams.
 - Task 4c's reviewer **disassembled all five routines out of the ELF** and checked the delay slot
   of every one of 22 call sites.
-- Task 4's reviewer found the clincher by **re-doing STATUS:809's arithmetic**.
+- Task 4's reviewer found the clincher by **re-doing the 2026-09-09 01:30 STATUS entry's arithmetic**.
 
 Reviews that merely read the diff found the minor items. Reviews that rebuilt the measurement found
 every single one of the eight findings that changed a conclusion.

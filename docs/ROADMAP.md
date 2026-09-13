@@ -216,8 +216,8 @@ node decaying from bind pose through the console's value to 0 along a clean `sav
 while the saved copy holds 5.50391. Two candidates remain (the VU0 macro-mode lerp `FUN_001c0768`
 dropping a term, or a correct blend followed by a second writer) and research/17 §4.3 gives the one
 run that separates them. It hits all four SEALs and all twenty override handles, so the AI aim
-point and the stance test are wrong too. **Believed, not proven:** which candidate. ~~HANDOFF:99 and
-STATUS:809 still describe this wrongly.~~ **Retracted in the tree 2026-09-13 (Task 9a):** both now
+point and the stance test are wrong too. **Believed, not proven:** which candidate. ~~HANDOFF and
+STATUS still describe this wrongly.~~ **Retracted in the tree 2026-09-13 (Task 9a):** both now
 carry a `> Superseded by …` blockquote in place, as does the Sprint 4 spec's own Task 4 bullet,
 which had restated the wrong frame as fact.
 
@@ -383,7 +383,7 @@ the path's runs are in flight.
 
 **Task 0 — Sprint 4 carry-over (only if Task 9 did not run).** Merge `sprint-4`; commit the pending
 research/18 edits and the `NET_TRACE_ALL` fix (the drafted `0x200` fix is Task 2's, not this one's);
-apply the required retractions: HANDOFF:42 ("same frozen state"), HANDOFF:99 and STATUS:809
+apply the required retractions: HANDOFF's open item 0 ("same frozen state"), HANDOFF's open item 2 and the 2026-09-09 01:30 STATUS entry
 (ground height → camera), every "frozen at the banner" sentence, the 20:10 closing bullet, and the
 claim in `4114ad4`'s message and wherever research/18 still carries it that the `cVar7 == 0` arm is
 the gate; carry the ledger's durable findings into STATUS (4c's three live divergence sites and
@@ -527,6 +527,6 @@ Retired this evening: "`controller+0x170 & 3` is the gate" (it is the auto-move 
 paths); "the `cVar7 == 0` arm zeroes the three axes online" (`4114ad4`, rejected on review);
 "the missing half of the condition is one writer away" (there was no condition to complete).
 
-Known wrong in the committed docs until close-out fixes them: HANDOFF:42, HANDOFF:99, STATUS:809,
+Known wrong in the committed docs until close-out fixes them: HANDOFF's open items 0 and 2, the 2026-09-09 01:30 STATUS entry,
 every "frozen at STARTING ROUND" description, the Sprint 4 spec's own §1 last bullet, and the
 gate claim in `4114ad4`'s commit message (research/18 is being corrected concurrently).
