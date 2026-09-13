@@ -2,16 +2,28 @@
 # Launch a long job (a game run, a build, a gate) detached from the agent's tool call, holding the loop
 # lock for exactly as long as the job's PID lives.
 #
-# Usage: scripts/run_detached.sh [--owner <o>] [--purpose <p>] [--log <path>] <script> <marker> [args...]
+# Usage: scripts/run_detached.sh [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] <script> <marker> [args...]
 #
+#   - refuses to start (exit 3, before touching the lock) when C: has less than RUN_MIN_FREE_GB
+#     (default 4) GB free -- Sprint 5 R46/A5, the host was at ~9 GB. RUN_FREE_GB_CMD overrides the
+#     free-space query (a shell command whose last stdout line is the free GB figure) for tests;
 #   - takes the loop lock as <owner> (default "detached"); if it is BUSY, writes "exit=75 BUSY ..." to
 #     <marker> and exits 75 without launching;
 #   - launches `bash <script> [args...]` under nohup, stdout+stderr to <log> (default <marker>.log), and
 #     returns at once, printing "DETACHED pid=... marker=... log=...";
 #   - renews the heartbeat every LOOP_LOCK_DETACHED_RENEW_SEC (300) while the JOB's PID lives -- the
 #     renew loop watches the job, never the caller, whose shell dies when its tool call returns;
-#   - when the job exits: releases the lock, then writes "exit=<code>" to <marker> (release first, so a
-#     poller that sees the marker finds the lock free);
+#   - QUIET MARKER (R46/A8: "no build.sh test, sims, unittest suites... while it exists"): while the
+#     job runs, if --purpose (or the lock's default purpose) starts with "launch", or --quiet is given,
+#     writes RUN_QUIET_MARKER (default <repo root>/logs/.quiet) as one line "<owner> <pid> <start
+#     epoch>"; removed on every exit path (normal, failure, or signalled);
+#   - HOST CPU SAMPLER: while the job runs (unless RUN_CPU_SAMPLER=0), a background PowerShell loop
+#     appends one row per second to "<marker>.cpu.csv": timestamp, total % Processor Time, and a
+#     "name=pct" list for every running socom2* process (Get-Counter's per-instance suffixing). Killed
+#     on exit alongside the job;
+#   - when the job exits: releases the lock, stops the CPU sampler, removes the quiet marker, then
+#     writes "exit=<code>" to <marker> (release first, so a poller that sees the marker finds the lock
+#     free);
 #   - on TERM/HUP/INT it kills the job's whole Windows process tree (`taskkill /T /F`), releases, and
 #     writes "exit=143";
 #   - if a renew finds the lock no longer ours, it writes a "LOCK LOST" line to <log> and to
@@ -25,16 +37,72 @@
 #
 # Poll the marker (`test -f <marker>`), never the caller. Inside the script, `loop_lock.sh take/release`
 # (gate.py's own included) are NESTED no-ops: LOOP_LOCK_HELD is exported to the job.
-# A pre-existing <marker> is deleted before launch. Environment: as loop_lock.sh (LOOP_LOCK_PATH, ...).
+# A pre-existing <marker> is deleted before launch. Environment: as loop_lock.sh (LOOP_LOCK_PATH, ...),
+# plus RUN_MIN_FREE_GB, RUN_FREE_GB_CMD, RUN_QUIET_MARKER, RUN_CPU_SAMPLER above.
 HERE="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$(cd "$HERE/.." && pwd)"
 LOCKSH="$HERE/loop_lock.sh"
 RENEW_SEC="${LOOP_LOCK_DETACHED_RENEW_SEC:-300}"
+QUIET_MARKER="${RUN_QUIET_MARKER:-$ROOT/logs/.quiet}"
+
+_free_gb() {
+  if [ -n "${RUN_FREE_GB_CMD:-}" ]; then
+    eval "$RUN_FREE_GB_CMD" | tail -n1
+  else
+    powershell.exe -NoProfile -Command "[math]::Round((Get-PSDrive -Name C).Free/1GB,2)" 2>/dev/null
+  fi
+}
+
+# Cheap host CPU sampler: one row/second to $1 (timestamp,total%,name=pct;name=pct) until killed.
+# Written as its own .ps1 file (not a -Command string) so it doesn't fight bash's quoting.
+_start_cpu_sampler() {
+  local csv="$1" ps1="$1.sampler.ps1"
+  cat > "$ps1" <<'PS1EOF'
+param([string]$Csv)
+while ($true) {
+  $ts = Get-Date -Format o
+  $tot = ""
+  try { $tot = [math]::Round((Get-Counter '\Processor(_Total)\% Processor Time' -ErrorAction Stop).CounterSamples[0].CookedValue, 1) } catch {}
+  $procs = ""
+  try {
+    $pc = Get-Counter '\Process(socom2*)\% Processor Time' -ErrorAction Stop
+    $procs = ($pc.CounterSamples | ForEach-Object { "{0}={1:N1}" -f $_.InstanceName, $_.CookedValue }) -join ';'
+  } catch {}
+  "$ts,$tot,$procs" | Out-File -FilePath $Csv -Append -Encoding ascii
+  Start-Sleep -Seconds 1
+}
+PS1EOF
+  powershell.exe -NoProfile -WindowStyle Hidden -File "$ps1" -Csv "$csv" </dev/null >/dev/null 2>&1 &
+  echo $!
+}
+
+_stop_cpu_sampler() {
+  local pid="$1"
+  [ -z "$pid" ] && return 0
+  local winpid
+  winpid=$(cat "/proc/$pid/winpid" 2>/dev/null)
+  if [ -n "$winpid" ] && command -v taskkill >/dev/null 2>&1; then
+    taskkill //T //F //PID "$winpid" >/dev/null 2>&1
+  else
+    kill "$pid" 2>/dev/null
+  fi
+}
 
 if [ "$1" = "--_child" ]; then
   shift
   owner="$1" log="$2" marker="$3" script="$4"; shift 4
   bash "$script" "$@" >> "$log" 2>&1 </dev/null &
   job=$!
+
+  cpu_pid=""
+  if [ "${RUN_CPU_SAMPLER:-1}" != "0" ]; then
+    cpu_pid=$(_start_cpu_sampler "$marker.cpu.csv")
+  fi
+  if [ "${_RUN_DETACHED_QUIET:-0}" = "1" ]; then
+    mkdir -p "$(dirname "$QUIET_MARKER")"
+    printf '%s %s %s\n' "$owner" "$job" "$(date +%s)" > "$QUIET_MARKER"
+  fi
+
   finish() {
     # Release only the lock this job took (a reaped-and-retaken lock of the same owner is not ours).
     "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1
@@ -43,6 +111,9 @@ if [ "$1" = "--_child" ]; then
       3) echo "[run_detached] release failed: mutex busy; the lock stays held until reaped" >> "$log";;
       *) echo "[run_detached] not released: the lock no longer carries $LOOP_LOCK_HELD" >> "$log";;
     esac
+    [ -n "$cpu_pid" ] && _stop_cpu_sampler "$cpu_pid"
+    [ "${_RUN_DETACHED_QUIET:-0}" = "1" ] && rm -f "$QUIET_MARKER"
+    rm -f "$marker.cpu.csv.sampler.ps1"
     printf 'exit=%s%s\n' "$1" "${lost:+ LOCK_LOST}" > "$marker.tmp" && mv -f "$marker.tmp" "$marker"
   }
   on_signal() {
@@ -74,19 +145,20 @@ if [ "$1" = "--_child" ]; then
   exit 0
 fi
 
-owner="detached" purpose="" log=""
+owner="detached" purpose="" log="" quiet_flag=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --owner) owner="$2"; shift 2;;
     --purpose) purpose="$2"; shift 2;;
     --log) log="$2"; shift 2;;
+    --quiet) quiet_flag=1; shift;;
     --) shift; break;;
     -*) echo "run_detached: unknown option $1"; exit 2;;
     *) break;;
   esac
 done
 if [ $# -lt 2 ]; then
-  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] <script> <marker> [args...]"; exit 2
+  echo "usage: $0 [--owner <o>] [--purpose <p>] [--log <path>] [--quiet] <script> <marker> [args...]"; exit 2
 fi
 script="$1" marker="$2"; shift 2
 [ -f "$script" ] || { echo "run_detached: no such script: $script"; exit 2; }
@@ -94,7 +166,25 @@ log="${log:-$marker.log}"
 rm -f "$marker" "$marker.LOCK_LOST"
 mkdir -p "$(dirname "$marker")" "$(dirname "$log")"
 
-out=$("$LOCKSH" take "$owner" --purpose "${purpose:-detached $(basename "$script")}" --print-id)
+min_free_gb="${RUN_MIN_FREE_GB:-4}"
+free_gb="$(_free_gb | tr -d '\r\n ')"
+if ! printf '%s' "$free_gb" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then
+  echo "run_detached: cannot read free disk space on C: (got '$free_gb'); refusing to start"
+  printf 'exit=3 REFUSED: cannot read free disk space\n' > "$marker"
+  exit 3
+fi
+if awk -v f="$free_gb" -v m="$min_free_gb" 'BEGIN{exit !(f<m)}'; then
+  msg="run_detached: REFUSED -- only ${free_gb} GB free on C: (< RUN_MIN_FREE_GB=${min_free_gb}); refusing to start"
+  echo "$msg"
+  printf 'exit=3 REFUSED: only %s GB free on C: (< RUN_MIN_FREE_GB=%s)\n' "$free_gb" "$min_free_gb" > "$marker"
+  exit 3
+fi
+
+purpose="${purpose:-detached $(basename "$script")}"
+want_quiet=$quiet_flag
+case "$purpose" in launch*) want_quiet=1;; esac
+
+out=$("$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
 rc=$?
 held_id=$(printf '%s\n' "$out" | sed -n 's/^ID: //p')
 out=$(printf '%s\n' "$out" | grep -v '^ID: ')
@@ -110,5 +200,6 @@ if [ $rc -ne 0 ]; then
   echo "run_detached: $out"; exit 75
 fi
 export LOOP_LOCK_HELD="$held_id"
+export _RUN_DETACHED_QUIET="$want_quiet"
 nohup bash "$0" --_child "$owner" "$log" "$marker" "$script" "$@" </dev/null >/dev/null 2>&1 &
 echo "DETACHED pid=$! owner=$owner marker=$marker log=$log ($out)"

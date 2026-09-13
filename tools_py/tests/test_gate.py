@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import os
 import shutil
 import subprocess
@@ -688,6 +690,55 @@ class ConditionalBurst(unittest.TestCase):
         names = self._run(self._script("0", "0"))
         self.assertFalse([n for n in names if "_burst_" in n and not n.startswith("s04_")], names)
         self.assertTrue([n for n in names if n.startswith("s04_burst_")], names)
+
+
+class TestGateDiskRefusal(unittest.TestCase):
+    """Sprint 5 R46/A5: gate.py refuses to start below RUN_MIN_FREE_GB (default 4) free on C:, exit 3.
+    `gate.free_gb()` is the injectable seam (mock.patch.object) so no test touches the real disk;
+    RUN_FREE_GB_CMD is a second seam (a shell command whose last stdout line is the GB figure),
+    shared in spirit with scripts/run_detached.sh's own RUN_FREE_GB_CMD override."""
+
+    def setUp(self):
+        self._env = dict(os.environ)
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self._env)
+
+    def test_free_gb_reads_run_free_gb_cmd_override(self):
+        os.environ["RUN_FREE_GB_CMD"] = "echo ignored && echo 12.5"
+        os.environ.pop("RUN_MIN_FREE_GB", None)
+        self.assertAlmostEqual(gate.free_gb(), 12.5)
+
+    def test_refuses_below_default_threshold(self):
+        os.environ.pop("RUN_MIN_FREE_GB", None)
+        os.environ.pop("RUN_FREE_GB_CMD", None)
+        with mock.patch.object(gate, "free_gb", return_value=3.9):
+            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        self.assertEqual(rc, 3)
+
+    def test_proceeds_above_default_threshold(self):
+        os.environ.pop("RUN_MIN_FREE_GB", None)
+        os.environ.pop("RUN_FREE_GB_CMD", None)
+        with mock.patch.object(gate, "free_gb", return_value=4.1):
+            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        self.assertNotEqual(rc, 3)
+
+    def test_threshold_moves_with_run_min_free_gb(self):
+        os.environ["RUN_MIN_FREE_GB"] = "10"
+        with mock.patch.object(gate, "free_gb", return_value=9.0):
+            rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        self.assertEqual(rc, 3)
+
+    def test_refusal_message_names_the_shortfall(self):
+        os.environ["RUN_MIN_FREE_GB"] = "4"
+        with mock.patch.object(gate, "free_gb", return_value=1.0):
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                rc = gate.main(["--score-title", TITLE_FIXTURE_RUN])
+        self.assertEqual(rc, 3)
+        self.assertIn("1.0", buf.getvalue())
+        self.assertIn("4", buf.getvalue())
 
 
 if __name__ == "__main__":

@@ -801,6 +801,161 @@ class TestRunDetached(LockTestBase):
             for wp in processes_with(marker_word):
                 subprocess.run(["taskkill", "/F", "/PID", wp], capture_output=True)
 
+    # -- Sprint 5 R46/A5: disk refusal, quiet marker, host CPU sampler --------------------------
+
+    def test_disk_refusal_below_threshold_does_not_launch(self):
+        job = os.path.join(self.tmp, "job.sh")
+        ran = os.path.join(self.tmp, "ran")
+        with open(job, "w", newline="\n") as f:
+            f.write("touch '%s'\nexit 0\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 1.0", RUN_MIN_FREE_GB=4)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 3, p.stdout + p.stderr)
+        self.assertIn("REFUSED", p.stdout)
+        self.assertIn("1.0", p.stdout)
+        self.assertTrue(_read(marker).startswith("exit=3"), _read(marker))
+        time.sleep(0.5)
+        self.assertFalse(os.path.exists(ran), "the job must not launch below the free-space floor")
+        self.assertTrue(self.is_free(), "a refused run must never take the lock")
+
+    def test_disk_refusal_threshold_moves_with_run_min_free_gb(self):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("exit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 9.0", RUN_MIN_FREE_GB=20)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 3, p.stdout + p.stderr)
+
+    def test_enough_free_space_launches_normally(self):
+        job = os.path.join(self.tmp, "job.sh")
+        ran = os.path.join(self.tmp, "ran")
+        with open(job, "w", newline="\n") as f:
+            f.write("touch '%s'\nexit 0\n" % fwd(ran))
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_MIN_FREE_GB=4)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(self._wait_marker(marker).strip(), "exit=0")
+        self.assertTrue(os.path.exists(ran))
+
+    def _quiet_env(self, quiet_marker, **extra):
+        return self.env(RUN_FREE_GB_CMD="echo 500", RUN_QUIET_MARKER=fwd(quiet_marker),
+                        RUN_CPU_SAMPLER=0, **extra)
+
+    def test_quiet_marker_written_for_launch_purpose_and_removed_on_exit(self):
+        quiet = os.path.join(self.tmp, "quiet_marker")
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 3\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self._quiet_env(quiet)
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "launcher", "--purpose", "launch1_frostfire",
+                            fwd(job), fwd(marker)], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        deadline = time.time() + 10
+        while not os.path.exists(quiet) and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(quiet), "logs/.quiet (or its override) was never written")
+        fields = _read(quiet).split()
+        self.assertEqual(fields[0], "launcher")
+        self.assertTrue(fields[1].isdigit(), fields)
+        self.assertTrue(fields[2].isdigit(), fields)
+        self.assertAlmostEqual(int(fields[2]), int(time.time()), delta=15)
+        self._wait_marker(marker)
+        time.sleep(0.5)
+        self.assertFalse(os.path.exists(quiet), "the quiet marker must be removed on exit")
+
+    def test_quiet_flag_writes_marker_even_for_a_non_launch_purpose(self):
+        quiet = os.path.join(self.tmp, "quiet_marker")
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 2\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self._quiet_env(quiet)
+        p = subprocess.run([BASH, DETACHED_SH, "--purpose", "some other work", "--quiet",
+                            fwd(job), fwd(marker)], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        deadline = time.time() + 10
+        while not os.path.exists(quiet) and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(quiet))
+        self._wait_marker(marker)
+
+    def test_no_quiet_marker_for_an_ordinary_purpose(self):
+        quiet = os.path.join(self.tmp, "quiet_marker")
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 1\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self._quiet_env(quiet)
+        p = subprocess.run([BASH, DETACHED_SH, "--purpose", "a build", fwd(job), fwd(marker)],
+                           capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self._wait_marker(marker)
+        self.assertFalse(os.path.exists(quiet))
+
+    def test_quiet_marker_removed_on_signal(self):
+        quiet = os.path.join(self.tmp, "quiet_marker")
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 30\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self._quiet_env(quiet)
+        p = subprocess.run([BASH, DETACHED_SH, "--owner", "sig2", "--purpose", "launch_sig", fwd(job),
+                            fwd(marker)], capture_output=True, text=True, env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        pid = re.search(r"DETACHED pid=(\d+)", p.stdout).group(1)
+        deadline = time.time() + 10
+        while not os.path.exists(quiet) and time.time() < deadline:
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(quiet))
+        subprocess.run([BASH, "-c", "kill -TERM %s" % pid], timeout=30)
+        self.assertEqual(self._wait_marker(marker, 60).strip(), "exit=143")
+        time.sleep(0.5)
+        self.assertFalse(os.path.exists(quiet), "signalled exit must also remove the quiet marker")
+
+    def test_cpu_sampler_disabled_by_env_writes_no_csv(self):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 2\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500", RUN_CPU_SAMPLER=0)
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self._wait_marker(marker)
+        self.assertFalse(os.path.exists(marker + ".cpu.csv"))
+
+    @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
+    def test_cpu_sampler_writes_rows_and_is_killed_on_exit(self):
+        job = os.path.join(self.tmp, "job.sh")
+        with open(job, "w", newline="\n") as f:
+            f.write("sleep 4\nexit 0\n")
+        marker = os.path.join(self.tmp, "job.done")
+        env = self.env(RUN_FREE_GB_CMD="echo 500")
+        p = subprocess.run([BASH, DETACHED_SH, fwd(job), fwd(marker)], capture_output=True, text=True,
+                           env=env, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self._wait_marker(marker)
+        csv = marker + ".cpu.csv"
+        deadline = time.time() + 10
+        while not os.path.exists(csv) and time.time() < deadline:
+            time.sleep(0.2)
+        self.assertTrue(os.path.exists(csv), "no CPU sampler csv was written")
+        rows = [l for l in _read(csv).splitlines() if l.strip()]
+        self.assertGreaterEqual(len(rows), 1, rows)
+        self.assertGreaterEqual(rows[0].count(","), 1, rows[0])
+        # It must not still be running (and thus growing) well after the job ended.
+        n = len(rows)
+        time.sleep(2.5)
+        rows_after = [l for l in _read(csv).splitlines() if l.strip()]
+        self.assertLessEqual(len(rows_after), n + 1, "sampler kept appending after the job exited")
+
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
 class TestKillStaleDrivers(unittest.TestCase):

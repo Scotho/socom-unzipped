@@ -47,6 +47,12 @@ runtime() {
 }
 
 test_step() {
+  # Sprint 5 R46/A5's launch hygiene, write side scripts/run_detached.sh: refuse the whole test step
+  # while a launch is running quiet (logs/.quiet, <2h old, live pid) unless FORCE_QUIET=1 -- a launch
+  # running for tens of minutes must not share the host with build.sh test's own CPU load.
+  if ! bash "$ROOT/scripts/check_quiet_gate.sh"; then
+    return 3
+  fi
   # Python tests first: no build needed, and the whole parity gate's scorers live here. The one runner is
   # unittest (no pytest); tools_py/tests/test_test_hygiene.py fails on a test file this line would miss.
   ( cd "$ROOT" && python -m unittest discover -s tools_py/tests -t . -v )

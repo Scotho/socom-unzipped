@@ -9,6 +9,7 @@ never executed (docs/process-audit.md item 2).
 import ast
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -87,6 +88,20 @@ class TestHygieneCheckerCatchesEachDefect(unittest.TestCase):
     def test_module_level_test_function(self):
         self.write("tests/test_f.py", "def test_x():\n    assert True\n")
         self.assertIn("module-level def test_x", " ".join(hygiene_violations(self.root)))
+
+
+class TestNoTrackedWipTests(unittest.TestCase):
+    """A `wip_test_*.py` file is invisible to `unittest discover`'s default pattern (`test_*.py`) --
+    that is the whole point while it is red (A8: "New red TDD files are wip_test_*.py until
+    green") -- but that also means a green one that never gets renamed back to `test_*.py` and
+    committed as such silently never runs again. Fail the build if one is ever tracked by git."""
+
+    def test_no_wip_test_files_are_tracked(self):
+        out = subprocess.run(["git", "-C", ROOT, "ls-files", "tools_py/tests/wip_test_*"],
+                             capture_output=True, text=True, check=True).stdout
+        tracked = [l for l in out.splitlines() if l.strip()]
+        self.assertEqual(tracked, [], "wip_test_*.py must be renamed to test_*.py (green) or removed "
+                                      "before commit, never left tracked: %s" % tracked)
 
 
 if __name__ == "__main__":

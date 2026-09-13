@@ -7,6 +7,12 @@
 
 Runs go to logs/parity/gate/<stamp>/<gate>/ with the drive log beside them and a summary.txt.
 Must be run from the repo root (drive.py uses relative paths). Takes scripts/loop_lock.sh.
+
+Refuses to start (exit 3) when C: has less than RUN_MIN_FREE_GB (default 4) free -- Sprint 5 R46/A5:
+a launch or a gate run must not be the thing that fills a drive already near capacity. `free_gb()` is
+the injectable seam for tests (mock.patch.object(gate, "free_gb", ...)); RUN_FREE_GB_CMD overrides the
+query itself with a shell command whose last stdout line is the free space in GB, the same override
+scripts/run_detached.sh honours for its own disk refusal.
 """
 import argparse
 import glob
@@ -23,6 +29,21 @@ from PIL import Image
 from tools_py.parity import compare, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DEFAULT_MIN_FREE_GB = 4.0
+
+
+def free_gb(drive_path="C:\\"):
+    """Free space on `drive_path`, in GiB. RUN_FREE_GB_CMD, if set, overrides the query with a shell
+    command whose last stdout line is the figure (used by tests, and shared with
+    scripts/run_detached.sh's own override of the same name); otherwise shutil.disk_usage. Tests
+    normally patch this function directly rather than going through RUN_FREE_GB_CMD."""
+    cmd = os.environ.get("RUN_FREE_GB_CMD")
+    if cmd:
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True).stdout
+        return float(out.strip().splitlines()[-1])
+    return shutil.disk_usage(drive_path).free / (1024.0 ** 3)
+
+
 TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
 # Calibrated 2026-09-10 on the four stored clean title runs (vr_title, rt_title, gl_title,
 # xg_title): the 19 menu captures s00..s18 score 93.2..99.4 against the reference, s19 is the
@@ -325,7 +346,7 @@ def run_gate(name, out_root):
     return score_mission_log(drive_log)
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="title,transition,mission")
     ap.add_argument("--owner", default="gate")
@@ -333,7 +354,13 @@ def main():
     ap.add_argument("--score-title")
     ap.add_argument("--score-mission")
     ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+
+    min_free = float(os.environ.get("RUN_MIN_FREE_GB", DEFAULT_MIN_FREE_GB))
+    free = free_gb()
+    if free < min_free:
+        print("gate: refusing to start: %.2f GB free on C: < RUN_MIN_FREE_GB=%.2f GB" % (free, min_free))
+        return 3
 
     if args.score_title:
         ok, detail = score_title(args.score_title)
