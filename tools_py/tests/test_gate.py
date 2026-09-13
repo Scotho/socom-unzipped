@@ -9,7 +9,7 @@ import unittest
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import black_rows, drive, gate
+from tools_py.parity import black_rows, drive, gate, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 FIXTURES = os.path.join(ROOT, "tests", "fixtures", "gate")   # committed: runs on a fresh clone
@@ -17,11 +17,22 @@ TITLE_FIXTURE_RUN = os.path.join(FIXTURES, "title")
 TRANSITION_FIXTURE_RUN = os.path.join(FIXTURES, "transition")
 GOOD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "good.drive.txt")
 BAD_MISSION_FIXTURE = os.path.join(FIXTURES, "mission", "bad.drive.txt")
+# R30 (2026-09-13): the mission verdict now reads the hold captures, not only the drive log.
+# s3a: HUD after 4 presses, holds are gameplay. dbuff (s5_task4_dbuff): the HUD untilref "matched" the
+# letterboxed intro cinematic with 0 presses; its holds are that cinematic; its final.png is gameplay
+# behind a HELP pop-up. 320x224 palette PNGs built by make_gate_fixtures.build_mission_frame_fixtures.
+S3A_MISSION_LOG = os.path.join(FIXTURES, "mission", "s3a.drive.txt")
+S3A_MISSION_RUN = os.path.join(FIXTURES, "mission", "s3a")
+DBUFF_MISSION_LOG = os.path.join(FIXTURES, "mission", "dbuff.drive.txt")
+DBUFF_MISSION_RUN = os.path.join(FIXTURES, "mission", "dbuff")
+HUD_REF = os.path.join(ROOT, "scripts", "parity", "ref_hud_ours.png")
 
 # git-ignored real-run logs, kept locally: extra coverage when present, but never required.
 GOOD_TITLE_RUN = os.path.join(ROOT, "logs", "parity", "runs", "vr_title")               # known clean (STATUS 2026-09-10 17:40)
 # drive.py stdout (not the game's own run log) is what carries `matched=True`; this run reached the HUD.
 GOOD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "drive_gameplay_probe5.txt")    # known reached HUD (STATUS 2026-09-09 13:30)
+GOOD_MISSION_FRAMES = os.path.join(ROOT, "logs", "parity", "runs", "gameplay_probe5")   # its captures; holds are gameplay
+FULL_DBUFF_RUN = os.path.join(ROOT, "logs", "parity", "gate", "s5_task4_dbuff")          # full-size originals of the dbuff fixture
 BAD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")         # known FAIL: HUD never matched
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
 # Pre-fix run: the probe stalled on the "save to memory card?" dialog, so it has black frames
@@ -107,25 +118,132 @@ class TitleScoring(unittest.TestCase):
 
 
 class MissionScoring(unittest.TestCase):
-    def test_fixture_good_log_passes(self):
-        """tests/fixtures/gate/mission/good.drive.txt: the untilref(...matched=True) line and
-        the >= 3 sNN_hold lines score_mission_log reads, trimmed from drive_gameplay_probe5.txt."""
+    def test_fixture_good_log_without_frames_is_no_data(self):
+        """tests/fixtures/gate/mission/good.drive.txt: the untilref(...matched=True) line and the >= 3
+        sNN_hold lines, trimmed from drive_gameplay_probe5.txt. Before R30 that log alone was a PASS;
+        a log proves the script ran, not that its holds were gameplay, so with no captures to look at
+        the verdict is FAIL with NO-DATA."""
         ok, detail = gate.score_mission_log(GOOD_MISSION_FIXTURE)
-        self.assertTrue(ok, detail)
+        self.assertFalse(ok, detail)
+        self.assertIn("NO-DATA", detail)
 
     def test_fixture_bad_log_fails(self):
-        ok, detail = gate.score_mission_log(BAD_MISSION_FIXTURE)
+        ok, detail = gate.score_mission_log(BAD_MISSION_FIXTURE, S3A_MISSION_RUN)
         self.assertFalse(ok)
 
-    @unittest.skipUnless(os.path.isfile(GOOD_MISSION_LOG), "needs logs/parity/drive_gameplay_probe5.txt")
-    def test_known_good_log_passes(self):
-        ok, detail = gate.score_mission_log(GOOD_MISSION_LOG)
+    def test_s3a_gameplay_holds_pass(self):
+        ok, detail = gate.score_mission_log(S3A_MISSION_LOG, S3A_MISSION_RUN)
         self.assertTrue(ok, detail)
+        self.assertIn("3/3 hold captures are gameplay", detail)
+
+    def test_dbuff_cinematic_holds_fail(self):
+        """The defect R30 fixes: s5_task4_dbuff's log says HUD matched and 6 holds -- the old PASS --
+        but every hold capture is the letterboxed intro cinematic."""
+        ok, detail = gate.score_mission_log(DBUFF_MISSION_LOG, DBUFF_MISSION_RUN)
+        self.assertFalse(ok, detail)
+        self.assertIn("0/3 hold captures are gameplay", detail)
+
+    def test_gate_layout_finds_frames_beside_the_log(self):
+        """run_gate writes <root>/mission.drive.log and <root>/mission/; the scorer finds the captures
+        from the log path alone, as --score-mission does."""
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copyfile(S3A_MISSION_LOG, os.path.join(tmp, "mission.drive.log"))
+            shutil.copytree(S3A_MISSION_RUN, os.path.join(tmp, "mission"))
+            ok, detail = gate.score_mission_log(os.path.join(tmp, "mission.drive.log"))
+        self.assertTrue(ok, detail)
+
+    def test_too_few_hold_captures_is_no_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            shutil.copyfile(os.path.join(S3A_MISSION_RUN, "s30_holdW.png"), os.path.join(tmp, "s30_holdW.png"))
+            ok, detail = gate.score_mission_log(S3A_MISSION_LOG, tmp)
+        self.assertFalse(ok, detail)
+        self.assertIn("NO-DATA", detail)
+
+    @unittest.skipUnless(os.path.isfile(GOOD_MISSION_LOG) and os.path.isdir(GOOD_MISSION_FRAMES),
+                         "needs logs/parity/drive_gameplay_probe5.txt and runs/gameplay_probe5")
+    def test_known_good_log_passes(self):
+        ok, detail = gate.score_mission_log(GOOD_MISSION_LOG, GOOD_MISSION_FRAMES)
+        self.assertTrue(ok, detail)
+
+    @unittest.skipUnless(os.path.isdir(FULL_DBUFF_RUN), "needs logs/parity/gate/s5_task4_dbuff")
+    def test_full_size_dbuff_run_fails(self):
+        ok, detail = gate.score_mission_log(os.path.join(FULL_DBUFF_RUN, "mission.drive.log"))
+        self.assertFalse(ok, detail)
+        self.assertIn("0/6 hold captures are gameplay", detail)
 
     @unittest.skipUnless(os.path.isfile(BAD_MISSION_LOG), "needs logs/parity/vr_gameplay.drive.log")
     def test_missing_hud_fails(self):
         ok, detail = gate.score_mission_log(BAD_MISSION_LOG)
         self.assertFalse(ok)
+
+
+class GameplayBands(unittest.TestCase):
+    """screen_bands.gameplay_band: the letterbox bands (rows 2-95 and 340-446 of the 640x448 frame) are
+    lit in gameplay and black through the intro cinematic. Measured on the gate's own mission captures
+    (s3a, s3b3, s3d_2x_host, famb, mission4, native_on, s5_task4_dbuff): pixels above 3 cover >= 0.86 of
+    both bands on gameplay, <= 0.57 on letterboxed frames."""
+
+    def _band(self, path):
+        with Image.open(path) as im:
+            return screen_bands.gameplay_band(im)
+
+    def test_intro_cinematic_is_not_gameplay(self):
+        ok, frac = self._band(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"))
+        self.assertFalse(ok, frac)
+
+    def test_help_popup_over_hud_is_gameplay(self):
+        ok, frac = self._band(os.path.join(DBUFF_MISSION_RUN, "final.png"))
+        self.assertTrue(ok, frac)
+
+    def test_s3a_hold_is_gameplay(self):
+        ok, frac = self._band(os.path.join(S3A_MISSION_RUN, "s30_holdW.png"))
+        self.assertTrue(ok, frac)
+
+    def test_rows_scale_with_frame_height(self):
+        a = np.full((448, 640, 3), 60, np.uint8)
+        a[:96] = 0
+        self.assertFalse(screen_bands.gameplay_band(Image.fromarray(a))[0])
+        small = Image.fromarray(a).resize((320, 224), Image.BOX)
+        self.assertFalse(screen_bands.gameplay_band(small)[0])
+        self.assertTrue(screen_bands.gameplay_band(Image.fromarray(np.full((224, 320, 3), 60, np.uint8)))[0])
+
+    @unittest.skipUnless(os.path.isdir(FULL_DBUFF_RUN), "needs logs/parity/gate/s5_task4_dbuff")
+    def test_full_size_originals(self):
+        self.assertFalse(self._band(os.path.join(FULL_DBUFF_RUN, "mission", "s30_holdW.png"))[0])
+        self.assertTrue(self._band(os.path.join(FULL_DBUFF_RUN, "mission", "final.png"))[0])
+
+
+class HudMatch(unittest.TestCase):
+    """drive.hud_match is untilref's per-frame test. The HUD reference region compared on the cropped
+    160x112 thumbnail matches the cinematic (the defect); with `lit` the band test must reject it."""
+
+    def setUp(self):
+        with Image.open(HUD_REF) as im:
+            self.ref = drive.thumb(im)
+
+    def _match(self, path, lit):
+        with Image.open(path) as im:
+            return drive.hud_match(im, self.ref, (92, 112, 125, 160), 30.0, lit)
+
+    def test_cinematic_matched_without_lit_documents_the_defect(self):
+        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=False)
+        self.assertTrue(matched, dist)
+
+    def test_cinematic_rejected_with_lit(self):
+        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=True)
+        self.assertFalse(matched, (dist, band))
+
+    def test_hud_accepted_with_lit(self):
+        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "final.png"), lit=True)
+        self.assertTrue(matched, (dist, band))
+
+    def test_mission_script_requires_lit(self):
+        """gameplay_probe.txt (the mission gate's script) must ask untilref for the band test."""
+        with open(os.path.join(ROOT, gate.GATES["mission"]["script"]), encoding="utf-8") as f:
+            lines = [ln.split("#", 1)[0] for ln in f if "ref_hud_ours.png" in ln.split("#", 1)[0]]
+        self.assertTrue(lines)
+        for ln in lines:
+            self.assertIn(",lit)", ln.replace(" ", ""))
 
 
 class TransitionScoring(unittest.TestCase):

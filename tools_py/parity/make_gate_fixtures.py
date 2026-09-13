@@ -9,6 +9,11 @@ Sources (all git-ignored, kept locally from real runs -- see STATUS 2026-09-10/0
               black_rows.py's rows 396-448 band; gate.TRANSITION_MIN_FRAMES is 5
   mission:    logs/parity/drive_gameplay_probe5.txt (HUD matched=True, known good) and
               logs/parity/vr_gameplay.drive.log (HUD matched=False, known bad)
+  mission frames (gate.score_mission_log checks the hold captures, R30 2026-09-13):
+              s3a/   -- logs/parity/gate/s3a: HUD after 4 presses, s30/s36/s38 holds are gameplay
+              dbuff/ -- logs/parity/gate/s5_task4_dbuff: HUD "matched" after 0 presses on the
+                        letterboxed intro cinematic; s30/s32/s34 holds are that cinematic, and
+                        final.png is gameplay behind a HELP pop-up (band test must accept it)
 
 Mission fixtures are written as good.drive.txt / bad.drive.txt, not *.drive.log: .gitignore has
 a blanket "*.log" rule, and a .log fixture would silently fail to be picked up by a plain
@@ -141,10 +146,43 @@ def build_mission_fixtures():
           % (len(good), MISSION_GOOD_SRC, len(bad), MISSION_BAD_SRC))
 
 
+MISSION_FRAME_RUNS = {
+    # fixture name: (source run dir, captures to copy)
+    "s3a": (os.path.join(ROOT, "logs", "parity", "gate", "s3a"),
+            ["s30_holdW.png", "s36_holdL.png", "s38_holdS.png"]),
+    "dbuff": (os.path.join(ROOT, "logs", "parity", "gate", "s5_task4_dbuff"),
+              ["s30_holdW.png", "s32_holdR1.png", "s34_holdR1.png", "final.png"]),
+}
+
+
+def build_mission_frame_fixtures():
+    """<name>.drive.txt (the trimmed drive log) + <name>/ (hold captures at 320x224, palette PNG)
+    for each run in MISSION_FRAME_RUNS. The band test (screen_bands.py) scales its rows with the
+    frame height, and palette quantization keeps pure-black letterbox rows at 0, so the verdicts
+    are checked on the saved files here rather than assumed."""
+    from tools_py.parity import screen_bands
+    out_root = os.path.join(FIXTURES, "mission")
+    for name, (src_run, caps) in MISSION_FRAME_RUNS.items():
+        lines = _trim_mission_log(os.path.join(src_run, "mission.drive.log"))
+        with open(os.path.join(out_root, name + ".drive.txt"), "w", newline="\n", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+        out_dir = os.path.join(out_root, name)
+        os.makedirs(out_dir, exist_ok=True)
+        for cap in caps:
+            dst = os.path.join(out_dir, cap)
+            with Image.open(os.path.join(src_run, "mission", cap)) as im:
+                _save_quantized(im.convert("RGB").resize((320, 224), Image.BOX), dst)
+            with Image.open(os.path.join(src_run, "mission", cap)) as full, Image.open(dst) as small:
+                print("  %s/%-16s %5.1f KB  band %.2f (full %.2f)" % (
+                    name, cap, os.path.getsize(dst) / 1024.0,
+                    screen_bands.gameplay_band(small)[1], screen_bands.gameplay_band(full)[1]))
+
+
 def main():
     build_title_fixtures()
     build_transition_fixtures()
     build_mission_fixtures()
+    build_mission_frame_fixtures()
     total = sum(os.path.getsize(os.path.join(dp, fn))
                 for dp, _, fns in os.walk(FIXTURES) for fn in fns)
     print("total fixture size: %.1f KB" % (total / 1024.0))

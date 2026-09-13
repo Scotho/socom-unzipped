@@ -22,7 +22,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import keys, winshot
+from tools_py.parity import keys, screen_bands, winshot
 
 ISO = os.path.abspath("game/SOCOM II - U.S. Navy SEALs (USA).iso")
 PCSX2 = os.path.abspath("tools/pcsx2/pcsx2-qt.exe")
@@ -78,8 +78,31 @@ def crop_to_content(im, thresh=8):
     return im.crop((int(cols[0]), int(rows[0]), int(cols[-1]) + 1, int(rows[-1]) + 1))
 
 
+def thumb(im):
+    """The 160x112 grey thumbnail every reference comparison uses (content rect, see crop_to_content)."""
+    return np.asarray(crop_to_content(im.convert("L")).resize((160, 112)), dtype=np.float32)
+
+
 def frame(hwnd):
-    return np.asarray(crop_to_content(winshot.grab(hwnd).convert("L")).resize((160, 112)), dtype=np.float32)
+    return thumb(winshot.grab(hwnd))
+
+
+def hud_match(im, ref_thumb, box, thresh, lit):
+    """untilref's per-frame test -> (matched, distance, band_fraction or None).
+
+    box = (r0, r1, c0, c1) on the 160x112 thumbnail. With `lit`, a match also needs the letterbox bands of
+    the UNCROPPED frame lit (screen_bands.gameplay_band). Without it, the cropped thumbnail of the
+    letterboxed intro cinematic (640x230 of picture stretched to 160x112) matched the HUD reference's
+    bottom-right at distance 23-29 < 30 with 0 presses, and every mission gate run from 2026-09-12 14:33
+    held its W/R1/L/S steps over the cinematic (R30)."""
+    r0, r1, c0, c1 = box
+    dist = float(np.abs(thumb(im)[r0:r1, c0:c1] - ref_thumb[r0:r1, c0:c1]).mean())
+    band = None
+    matched = dist < thresh
+    if lit:
+        ok, band = screen_bands.gameplay_band(im)
+        matched = matched and ok
+    return matched, dist, band
 
 
 def wait_stable(hwnd, settle, maxwait, thresh=1.0, changed_from=None, change_thresh=0.3,
@@ -232,17 +255,21 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             # untilref(<png>,<y0>,<y1>[,<loops>]) compares thumbnail rows y0..y1 instead (e.g. the
             # HUD band 88..112) and loops up to <loops> times (default 12).
             # Full form: untilref(<png>,<y0>,<y1>,<x0>,<x1>,<loops>,<thresh>) on the 160x112 thumbnail.
-            parts = mode[9:-1].split(",")
+            # A trailing `lit` flag -- untilref(<png>,...,lit) -- also requires the letterbox bands of
+            # the uncropped frame to be lit (hud_match): the in-game HUD, not the intro cinematic.
+            parts = [v.strip() for v in mode[9:-1].split(",")]
             ref_path = parts[0]
-            nums = [float(v) for v in parts[1:]]
+            lit = "lit" in parts[1:]
+            nums = [float(v) for v in parts[1:] if v != "lit"]
             r0, r1 = (int(nums[0]), int(nums[1])) if len(nums) >= 2 else (8, 62)
             c0, c1 = (int(nums[2]), int(nums[3])) if len(nums) >= 4 else (0, 160)
             max_loops = int(nums[4]) if len(nums) >= 5 else 12
             thresh = nums[5] if len(nums) >= 6 else 14.0
-            ref_im = np.asarray(crop_to_content(Image.open(ref_path).convert("L")).resize((160, 112)), dtype=np.float32)
+            with Image.open(ref_path) as ref_file:
+                ref_im = thumb(ref_file)
 
             def at_ref():
-                return float(np.abs(frame(hwnd)[r0:r1, c0:c1] - ref_im[r0:r1, c0:c1]).mean()) < thresh
+                return hud_match(winshot.grab(hwnd), ref_im, (r0, r1, c0, c1), thresh, lit)[0]
 
             presses = 0
             while not at_ref() and presses < max_loops:
@@ -253,7 +280,9 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
                     keys.press(hwnd, b, a.target)
                 presses += 1
                 time.sleep(delay)
-            print(f"untilref({ref_path}): {presses} presses, matched={at_ref()}", flush=True)
+            final = hud_match(winshot.grab(hwnd), ref_im, (r0, r1, c0, c1), thresh, lit)
+            band = "" if final[2] is None else f" bands={final[2]:.2f}"
+            print(f"untilref({ref_path}): {presses} presses, dist={final[1]:.1f}{band}, matched={final[0]}", flush=True)
             buttons = []
             delay = 0.5
         elif mode.startswith("ifref("):

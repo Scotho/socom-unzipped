@@ -55,6 +55,7 @@ import time
 from collections import namedtuple
 
 from tools_py.parity import verdict_core as vc
+from tools_py.parity.screen_bands import band_fraction
 
 # ---------------------------------------------------------------------------------------------
 # instruments
@@ -729,7 +730,7 @@ def screen_state(rgb):
     import numpy as np
     a = np.asarray(rgb).astype(np.float32)
     g = a.mean(axis=2)
-    band = float(min((g[2:95] > 12).mean(), (g[340:446] > 12).mean()))
+    band = band_fraction(g, 12)          # screen_bands.py: the shared letterbox-band test (rows scale with height)
     tpl = prompt_template()
     x0, x1 = PROMPT_X
     dist = min(float(np.abs((g[y:y + PROMPT_H, x0:x1] > PROMPT_LEVEL) ^ tpl).mean())

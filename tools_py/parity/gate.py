@@ -19,7 +19,7 @@ import time
 
 from PIL import Image
 
-from tools_py.parity import compare
+from tools_py.parity import compare, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
@@ -33,6 +33,13 @@ TITLE_MIN_SCORE = 90.0      # compare.score of a capture vs the main-menu refere
 TITLE_MIN_MATCHES = 16      # of the 23 captures s00..s22 (19 are at the menu on a clean run, then the attract movie)
 HUD_REF_NAME = "ref_hud_ours.png"
 MISSION_MIN_HOLDS = 3       # sNN_hold* steps after the HUD: fewer means the probe died on entry
+# ... and of their captures (sNN_hold*.png), at least this many must be gameplay by the letterbox-band test
+# (screen_bands.gameplay_band). R30, 2026-09-13: from 2026-09-12 14:33 every mission run "reached the HUD"
+# with 0 presses on the letterboxed intro cinematic and held W/R1/L/S over it -- s5_task4_dbuff's six hold
+# captures are all the cinematic -- and this scorer, which read only the drive log, passed them. Sprint 3's
+# s3a (4 presses) has 6/6 gameplay holds; famb and s3d_2x_host 5/6 (a death fade / the MISSION FAILURE
+# screen late in the run); s3b3 2/6 (it held over the "TO ABORT" flyover) FAILs, correctly.
+MISSION_MIN_GAMEPLAY_HOLDS = 3
 # What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
 # (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
 # between the controller-configuration screens and the mission briefing. It deliberately does not
@@ -216,7 +223,20 @@ def score_transition(run_dir, script_path=None):
         len(examined), scope, max(peaks, default=0))
 
 
-def score_mission_log(drive_log):
+def mission_run_dir(drive_log):
+    """run_gate writes <root>/mission.drive.log beside <root>/mission/; anything else has no known captures."""
+    suffix = ".drive.log"
+    if drive_log.endswith(suffix):
+        d = drive_log[:-len(suffix)]
+        if os.path.isdir(d):
+            return d
+    return None
+
+
+def score_mission_log(drive_log, run_dir=None):
+    """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, and >= MISSION_MIN_GAMEPLAY_HOLDS of the
+    hold captures are gameplay. A log alone proves the script ran, not what the holds were held over, so
+    missing captures are FAIL with NO-DATA, never a PASS."""
     try:
         with open(drive_log, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -228,8 +248,22 @@ def score_mission_log(drive_log):
     if m.group(1) != "True":
         return False, "HUD never matched (mission not reached)"
     holds = len(re.findall(r"^s\d\d_hold", text, re.M))
-    return holds >= MISSION_MIN_HOLDS, "HUD reached; %d hold steps captured (need %d)" % (
-        holds, MISSION_MIN_HOLDS)
+    if holds < MISSION_MIN_HOLDS:
+        return False, "HUD reached; %d hold steps captured (need %d)" % (holds, MISSION_MIN_HOLDS)
+    run_dir = run_dir or mission_run_dir(drive_log)
+    caps = sorted(glob.glob(os.path.join(run_dir, "s[0-9][0-9]_hold*.png"))) if run_dir else []
+    if len(caps) < MISSION_MIN_GAMEPLAY_HOLDS:
+        return False, ("NO-DATA: HUD reached and %d hold steps logged, but %d hold captures to check "
+                       "(need %d) in %s" % (holds, len(caps), MISSION_MIN_GAMEPLAY_HOLDS, run_dir))
+    bands = []
+    for p in caps:
+        with Image.open(p) as im:
+            bands.append((os.path.basename(p)[:3],) + screen_bands.gameplay_band(im))
+    good = sum(1 for _, ok, _ in bands if ok)
+    detail = "HUD reached; %d hold steps; %d/%d hold captures are gameplay (need %d; bands %s)" % (
+        holds, good, len(bands), MISSION_MIN_GAMEPLAY_HOLDS,
+        " ".join("%s=%.2f" % (n, f) for n, _, f in bands))
+    return good >= MISSION_MIN_GAMEPLAY_HOLDS, detail
 
 
 def _lock(cmd, owner):
@@ -271,6 +305,7 @@ def main():
     ap.add_argument("--stamp", default=time.strftime("%Y%m%d_%H%M%S"))
     ap.add_argument("--score-title")
     ap.add_argument("--score-mission")
+    ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
     args = ap.parse_args()
 
     if args.score_title:
@@ -278,7 +313,7 @@ def main():
         print("%s title (%s)" % ("PASS" if ok else "FAIL", detail))
         return 0 if ok else 1
     if args.score_mission:
-        ok, detail = score_mission_log(args.score_mission)
+        ok, detail = score_mission_log(args.score_mission, args.mission_frames)
         print("%s mission (%s)" % ("PASS" if ok else "FAIL", detail))
         return 0 if ok else 1
 
