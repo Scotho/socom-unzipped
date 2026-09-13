@@ -74,6 +74,28 @@ PAD_AXIS = {"J": ("rx", 0), "L": ("rx", 255), "I": ("ry", 0), "K": ("ry", 255),
             "A": ("lx", 0), "D": ("lx", 255), "W": ("ly", 0), "S": ("ly", 255)}
 
 
+PAD_AXIS_NAMES = ("rx", "ry", "lx", "ly")
+
+
+def pad_axes(sticks=(), axes=None):
+    """{axis: 0..255} for a pad write: stick keys (PAD_AXIS, full deflection 0/255) first, then explicit
+    `axes` -- PARTIAL deflection, the only way to aim finer than the ~35-40 deg a full-deflection hold
+    sweeps (KNOWN §1: the pad file accepts 0-255 per axis) -- overriding a stick on the same axis.
+    Anything but an int in 0..255 on rx/ry/lx/ly is refused: a bad axis silently clamped by the exe
+    would aim somewhere nobody asked for."""
+    out = {}
+    for k in sticks:
+        name, value = PAD_AXIS[k.upper()]
+        out[name] = value
+    for name, value in (axes or {}).items():
+        if name not in PAD_AXIS_NAMES:
+            raise ValueError(f"pad axis {name!r} is not one of {PAD_AXIS_NAMES}")
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 255:
+            raise ValueError(f"pad axis {name}={value!r} must be an int in 0..255")
+        out[name] = value
+    return out
+
+
 def write_pad_file(path, buttons=(), axes=None):
     """Write the injected pad state atomically (tmp + replace); buttons by name, axes {rx,ry,lx,ly}."""
     a = {"rx": 0x80, "ry": 0x80, "lx": 0x80, "ly": 0x80}
@@ -143,17 +165,16 @@ class Shell:
         write_pad_file(self.pad_file)
         time.sleep(wait)
 
-    def pad(self, seconds, buttons=(), sticks=(), abort=None):
-        """Inject buttons (names) and stick directions (W/A/S/D, I/J/K/L) together for `seconds`.
+    def pad(self, seconds, buttons=(), sticks=(), axes=None, abort=None):
+        """Inject buttons (names), stick directions (W/A/S/D, I/J/K/L, full deflection) and explicit
+        0-255 `axes` ({rx, ry, lx, ly}: partial deflection, overriding a stick on the same axis)
+        together for `seconds`, then write neutral.
 
         `abort` (a threading.Event) releases the pad the moment it is set instead of at the end of
         the hold. The two-mover approach passes the duel's contact flag: a player still walking
         after the OTHER side has called contact overshoots the engagement, which is the geometry
         problem the whole of Task 8 was fighting."""
-        axes = {}
-        for k in sticks:
-            name, value = PAD_AXIS[k.upper()]
-            axes[name] = value
+        axes = pad_axes(sticks, axes)
         write_pad_file(self.pad_file, buttons, axes)
         if abort is None:
             time.sleep(seconds)

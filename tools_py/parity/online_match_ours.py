@@ -324,6 +324,8 @@ class RunLogTail(threading.Thread):
         # an item whose chain does not resolve and the ones after it shift down.
         self.actor_rows = []
         self.actor_addr = None
+        # Sprint 5 Task 5: the actor-matrix heading (t, facing deg, x, z) -- research/22 §4, valid at rest only
+        self.heading_rows = []
         # A health watch is an OFFSET IN BYTES FROM THE ACTOR BASE, not an item/word pair: the
         # item index is not stable and an index-based guard checked the wrong block entirely.
         self.watch_offset = None
@@ -422,6 +424,9 @@ class RunLogTail(threading.Thread):
                         xyz = [struct.unpack("<f", struct.pack("<I", actor[2][w]))[0]
                                for w in (wi, wj, wk)]
                         self.actor_rows.append((t, xyz[0], xyz[1], xyz[2], actor[1]))
+                        h = heading_from_matrix(actor[2])
+                        if h is not None and (xyz[0] or xyz[1] or xyz[2]):
+                            self.heading_rows.append((t, h, xyz[0], xyz[2]))
                     if self.watch_offset is not None:
                         want = self.actor_addr + self.watch_offset
                         hit = False
@@ -928,6 +933,10 @@ class Side:
         self.best_3d = None          # the 2-D best flatters a stack; keep the honest one too
         self.spawn = None
         self.result = None
+        # Sprint 5 Task 5: partial-deflection aim state (aim_yaw)
+        self.yaw_gain = 1.0
+        self.aims = []
+        self.aim_teleports = 0
 
 
 def true_pos(tail, facing=None):
@@ -1325,6 +1334,238 @@ def engage_fight(me, other, duel, seconds, shots=True):
             duel.set_facing(me.tag, f)
         cycle += 1
     return {"cycles": cycle}
+
+
+# ---------------------------------------------------------------------------
+# Sprint 5 Task 5 (b): the actor-matrix heading, partial-deflection aim, the teleport detector
+# ---------------------------------------------------------------------------
+# --- the actor-matrix heading and partial-deflection yaw (research/22 §3-§4) ----------------------------
+ACTOR_MATRIX_ROW2_WORDS = (0xA0 // 4, 0xA8 // 4)   # actor +0xa0 / +0xa8 = matrix row 2 x / z (= -sin t, cos t)
+AIM_TOL_DEG = 6.0                # the brief's closed-loop bar; a body subtends 15-20 deg at contact range
+AIM_MAX_ITER = 6                 # rx holds per aim_yaw call, hard cap
+# research/22 §3.1, single player, 1.0 s holds from rest: peak omega per |rx - 0x80|. <= 48 is dead (+48 read
+# axis 0.000, -48 read 0.004); 64 read 8.21 / 9.22 deg/s (mean 8.7); 96 read 100.74 on both runs; 127 read
+# 128.11 (the rate law omega = 2.0 rad/s x axis, confirmed). Linear between the points is an ASSUMPTION --
+# the response is steep between 64 and 96 and was sampled at no level in between -- which is why aim_yaw
+# re-measures what each hold delivered and never trusts the table open loop. Blind: SP vs online frame rate.
+YAW_DEAD_ZONE = 48
+YAW_TABLE = ((48, 0.0), (64, 8.7), (96, 100.7), (127, 128.1))
+AIM_MIN_DEFLECTION = 64          # the smallest measured level that turns (49..63 were never sampled)
+AIM_DEFLECTION_STEP = 4
+# research/22 §3.1: +96 held 1.0 s swept 53.1-53.3 deg at a peak 100.7 deg/s, +127 swept 79.0 at 128.1 -- a
+# dead time of ~0.4-0.47 s before the rate is reached (the same shape as TURN_HOLD_LEAD_S online, 0.44 s).
+AIM_LEAD_S = 0.40
+AIM_HOLD_MAX_S = 1.0             # one hold never exceeds this: the shooter's standing budget (~2 s) needs
+                                 # the rest reads on either side of it to fit, so big turns take several holds
+AIM_REST_ROWS = 2                # "wait for 2 rows with unchanged heading after any rx": the matrix is not valid
+AIM_REST_TOL_DEG = 0.05          # within ~2.5 s of an rx hold (KNOWN §1) and drifted 0.000 deg at rest
+AIM_REST_POS_UNITS = 0.5         # ... and the player itself not moving: heading while walking reads p90 ~54 deg
+AIM_REST_TIMEOUT_S = 4.0         # no at-rest heading inside this -> NO-DATA, never a guess
+AIM_POLL_S = 0.25                # one 4 Hz peek row
+# The owner-requested review's default aim: SHORT pulses, the heading read AIM_PULSE_READ_S after each (research/22:
+# at rest the matrix changed only on rx holds). aim_yaw(read="pulse").
+AIM_PULSE_READ_S = 0.5
+AIM_PULSE_MAX_S = 0.6            # a pulse never exceeds this (lead 0.4 s + 0.2 s of turn)
+AIM_PULSE_MAX_ITER = 12          # more, shorter pulses than the at-rest loop's AIM_MAX_ITER holds
+AIM_GAIN_ALPHA = 0.5             # EMA of delivered/predicted sweep; the sim's world turns at 0.6-0.7x the table
+AIM_GAIN_MIN, AIM_GAIN_MAX = 0.2, 3.0
+AIM_GAIN_MIN_CMD_DEG = 2.0       # a predicted sweep below this is too small to estimate a gain from
+
+
+def heading_from_matrix(words):
+    """The walk facing, atan2(dz, dx) degrees, from an actor block's matrix: (-m[+0xa0], -m[+0xa8]) (research/22
+    §4). None when the block is too short or row 2 is not a unit vector (an unfilled matrix)."""
+    i, k = ACTOR_MATRIX_ROW2_WORDS
+    if len(words) <= k:
+        return None
+    a, c = vc.f32(words[i]), vc.f32(words[k])
+    if not (math.isfinite(a) and math.isfinite(c)) or abs(math.hypot(a, c) - 1.0) > 0.05:
+        return None
+    return math.degrees(math.atan2(-c, -a))
+
+
+def yaw_rate_deg_s(deflection):
+    """Table yaw rate (deg/s) for |rx - 0x80| = `deflection`: 0 inside the dead zone, piecewise linear and
+    strictly increasing above it."""
+    d = min(abs(deflection), 127)
+    if d <= YAW_DEAD_ZONE:
+        return 0.0
+    for (d0, r0), (d1, r1) in zip(YAW_TABLE, YAW_TABLE[1:]):
+        if d <= d1:
+            return r0 + (r1 - r0) * (d - d0) / (d1 - d0)
+    return YAW_TABLE[-1][1]
+
+
+def aim_plan(err_deg, gain, hold_max=None):
+    """-> (rx, seconds, predicted_deg): the rx value and hold length for a yaw error of `err_deg` given the
+    side's measured gain (delivered / table). The smallest deflection >= AIM_MIN_DEFLECTION whose turn fits
+    in the hold cap; `predicted_deg` is what the TABLE says that hold sweeps (|err| / gain when it fits).
+    Positive error -> rx right (LOOK_RIGHT_SIGN: rx right sweeps positive)."""
+    want = abs(err_deg) / min(max(gain, AIM_GAIN_MIN), AIM_GAIN_MAX)
+    turn_max = (AIM_HOLD_MAX_S if hold_max is None else hold_max) - AIM_LEAD_S
+    levels = list(range(AIM_MIN_DEFLECTION, 127, AIM_DEFLECTION_STEP)) + [127]
+    d = levels[-1]
+    for lv in levels:
+        if want / yaw_rate_deg_s(lv) <= turn_max:
+            d = lv
+            break
+    turn = min(want / yaw_rate_deg_s(d), turn_max)
+    sign = 1 if err_deg * LOOK_RIGHT_SIGN > 0 else -1
+    rx = max(0, min(255, vc.PAD_NEUTRAL + sign * d))
+    return rx, AIM_LEAD_S + turn, yaw_rate_deg_s(d) * turn
+
+
+def _rest_heading(rows, since):
+    """The newest heading row if the last AIM_REST_ROWS rows each repeat their predecessor (heading and position)
+    and both began after `since` + one peek period; else None."""
+    last = rows[-(AIM_REST_ROWS + 1):]
+    if len(last) < AIM_REST_ROWS + 1:
+        return None
+    if since is not None and any(r[0] < since + PEEK_LEAD_S for r in last[1:]):
+        return None
+    for p, q in zip(last, last[1:]):
+        if (abs(wrap_deg(q[1] - p[1])) > AIM_REST_TOL_DEG
+                or math.hypot(q[2] - p[2], q[3] - p[3]) > AIM_REST_POS_UNITS):
+            return None
+    return last[-1]
+
+
+def wait_rest_heading(tail, since, clock=time.time, wait=time.sleep, timeout=AIM_REST_TIMEOUT_S, on_poll=None):
+    """Poll `tail.heading_rows` until an at-rest heading exists (see _rest_heading) -> (t, heading, x, z) | None.
+    `on_poll()` runs at every poll; a True return means the player moved, so the rest wait starts over (the
+    two-sided rule must not wait for a matrix to settle)."""
+    t_end = clock() + timeout
+    while True:
+        with tail._lock:                                # noqa: SLF001 - same module
+            rows = tail.heading_rows[-(AIM_REST_ROWS + 1):]
+        r = _rest_heading(rows, since)
+        if r is not None:
+            return r
+        if clock() >= t_end:
+            return None
+        if on_poll is not None and on_poll():
+            since = clock()
+            t_end = since + timeout
+            continue
+        wait(AIM_POLL_S)
+
+
+def wait_pulse_heading(tail, since, clock=time.time, wait=time.sleep, timeout=AIM_REST_TIMEOUT_S, on_poll=None):
+    """The newest heading row sampled at least AIM_PULSE_READ_S after `since` (the end of the last pulse or move)
+    -> (t, heading, x, z) | None. `on_poll()` as in wait_rest_heading."""
+    t_end = clock() + AIM_PULSE_READ_S + timeout
+    while True:
+        with tail._lock:                                # noqa: SLF001 - same module
+            rows = tail.heading_rows[-1:]
+        if rows and rows[-1][0] >= since + AIM_PULSE_READ_S:
+            return rows[-1]
+        if clock() >= t_end:
+            return None
+        if on_poll is not None and on_poll():
+            since = clock()
+            t_end = since + AIM_PULSE_READ_S + timeout
+            continue
+        wait(min(AIM_POLL_S, max(0.01, since + AIM_PULSE_READ_S - clock())) if clock() < since + AIM_PULSE_READ_S
+             else AIM_POLL_S)
+
+
+# --- the teleport detector -----------------------------------------------------------------------------------
+# research/22 §3.1: in single player 45 of 47 row steps > 30 units fell inside rx holds (up to 380 units per 4 Hz row)
+# and one 86-unit step came with the pad neutral; online partial deflection has never been run. Any attempt (an aim
+# pulse, a walk leg) during which the actor's rows step further than this ABORTS with a teleport RESULT.
+TELEPORT_STEP_UNITS = 30.0       # ground (x, z) step between consecutive rows of one actor
+TELEPORT_SPEED_FACTOR = 2.0      # ... and more than twice what walking covers in that row gap: under load kill2 B ran
+                                 # 1.08 s/row, i.e. a walking 43 units between two rows
+
+
+class TeleportAbort(RuntimeError):
+    def __init__(self, tag, during, step, t):
+        super().__init__(f"teleport side={tag} during={during} step={step:.1f}u t={t:.2f}")
+        self.tag, self.during, self.step, self.t = tag, during, step, t
+
+
+def teleport_step(rows, t0, t1, limit=TELEPORT_STEP_UNITS):
+    """The first row in [t0, t1 + one peek period] whose ground step from the previous row of the SAME actor exceeds
+    `limit` and TELEPORT_SPEED_FACTOR x walking speed over the gap -> (t, step) | None. Blind: a jump that lands
+    within 30 units; a respawn onto a new actor block (the kill readout's)."""
+    prev = None
+    for r in sorted(r for r in rows if r[1] or r[2] or r[3]):
+        if r[0] > t1 + PEEK_LEAD_S:
+            break
+        if prev is not None and r[0] >= t0 and prev[4] == r[4]:
+            step = math.hypot(r[1] - prev[1], r[3] - prev[3])
+            if step > limit and step > TELEPORT_SPEED_FACTOR * WALK_UNITS_PER_S_LONG * (r[0] - prev[0]):
+                return r[0], step
+        prev = r
+    return None
+
+
+def aim_yaw(me, target_xz, tail, sh, clock=time.time, wait=time.sleep, fidget=None, on_poll=None, read="rest",
+            tol=None, max_iter=None):
+    """Closed-loop yaw onto `target_xz` -> (err_before, err_after), degrees (None when no heading could be read).
+
+    Each iteration reads the heading from the ACTOR MATRIX (never the camera: KNOWN §4) -- `read="rest"`: 2 unchanged
+    rows after any rx (wait_rest_heading); `read="pulse"`: AIM_PULSE_READ_S after each short pulse and after the call
+    starts (wait_pulse_heading) -- computes the bearing from the actor's own x/z, and stops inside `tol`
+    (AIM_TOL_DEG); otherwise it offers `fidget()` a chance to move first (a True return re-reads), then holds rx
+    at a partial deflection from aim_plan (pulses capped at AIM_PULSE_MAX_S) and learns the side's gain from what
+    the next read says the hold delivered. At most `max_iter` holds (AIM_MAX_ITER / AIM_PULSE_MAX_ITER). An actor
+    row step > TELEPORT_STEP_UNITS inside a hold raises TeleportAbort (counted on `me.aim_teleports`). Every read
+    is recorded on `me.aims`. `on_poll()` is polled while waiting to read: a True return means it moved the player."""
+    pulse = read == "pulse"
+    tol = AIM_TOL_DEG if tol is None else tol
+    max_iter = (AIM_PULSE_MAX_ITER if pulse else AIM_MAX_ITER) if max_iter is None else max_iter
+    rec = {"tag": me.tag, "t0": clock(), "target": list(target_xz), "reads": [], "holds": [],
+           "err_before": None, "err_after": None, "teleports": 0, "read": read}
+    me.aims.append(rec)
+    since, rx_end, holds, fidgets = (clock() if pulse else None), None, 0, 0
+    pending = None                                      # (heading before, predicted deg, sign, hold start) of the last hold
+    while True:
+        r = (wait_pulse_heading(tail, since, clock, wait, on_poll=on_poll) if pulse
+             else wait_rest_heading(tail, since, clock, wait, on_poll=on_poll))
+        if r is None:
+            sh.log(f"AIM {me.tag} NO-DATA: no {'post-pulse' if pulse else 'at-rest'} actor-matrix heading within "
+                   f"{AIM_REST_TIMEOUT_S:g}s ({len(rec['reads'])} reads, {holds} holds) -- not aiming from a guess")
+            rec["err_after"] = None
+            return rec["err_before"], None
+        t_r, h, x, z = r
+        rec["reads"].append({"t": t_r, "heading": h, "x": x, "z": z, "after_rx": rx_end})
+        if pending is not None:
+            h0, predicted, sign, t_hold = pending
+            pending = None
+            hit = teleport_step(tail.actor_ingame(), t_hold, t_r)
+            if hit is not None:
+                me.aim_teleports += 1
+                rec["teleports"] += 1
+                sh.log(f"AIM {me.tag} TELEPORT: an actor row stepped {hit[1]:.1f} units during an rx pulse "
+                       f"(research/22 §3.1) -- the attempt is aborted")
+                raise TeleportAbort(me.tag, "aim", hit[1], hit[0])
+            delivered = wrap_deg(h - h0)
+            if predicted >= AIM_GAIN_MIN_CMD_DEG and delivered * sign > 0:
+                g = min(AIM_GAIN_MAX, max(AIM_GAIN_MIN, abs(delivered) / predicted))
+                me.yaw_gain = (1.0 - AIM_GAIN_ALPHA) * me.yaw_gain + AIM_GAIN_ALPHA * g
+        err = wrap_deg(math.degrees(math.atan2(target_xz[1] - z, target_xz[0] - x)) - h)
+        if rec["err_before"] is None:
+            rec["err_before"] = err
+        rec["err_after"] = err
+        if abs(err) <= tol or holds >= max_iter:
+            break
+        if fidget is not None and fidgets < 2 * max_iter and fidget():
+            fidgets += 1
+            since = clock()
+            continue
+        rx, secs, predicted = aim_plan(err, me.yaw_gain, hold_max=AIM_PULSE_MAX_S if pulse else None)
+        t_hold = clock()
+        sh.pad(secs, axes={"rx": rx})
+        rx_end = since = clock()
+        holds += 1
+        rec["holds"].append({"t": rx_end, "rx": rx, "s": round(secs, 3), "err": err, "predicted": predicted,
+                             "gain": me.yaw_gain})
+        pending = (h, predicted, 1 if err > 0 else -1, t_hold)
+    sh.log(f"AIM {me.tag} err {rec['err_before']:+.1f} -> {rec['err_after']:+.1f} deg in {holds} "
+           f"{'pulses' if pulse else 'holds'} gain={me.yaw_gain:.2f} "
+           f"({'ok' if abs(rec['err_after']) <= tol else 'NOT within'} {tol:g})")
+    return rec["err_before"], rec["err_after"]
 
 
 class KillWatch(threading.Thread):
