@@ -272,6 +272,13 @@ Sprint 5 carries its first pass.
 
 ## 4. The acceptance test, honestly
 
+> **Superseded 2026-09-13 in its ordering and its "realistic reading".** Item 1 (confirm and land
+> the `0x200` fix) was done inside Sprint 4; item 2 (calibration) was done on Medley; the first kill
+> was **not** reached (closest true 3-D separation 50.0 units), movement failed on Frostfire, and
+> `PASS` cannot print until a health word is confirmed. The current distance to a kill, and the plan
+> for it, is `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
+> §1 and §6. The text below is kept as written on 2026-09-12.
+
 The user's definition of playable: an automated two-instance online match driven to its end by one
 player killing the other, with the kill read from guest memory or the server and both screens
 captured. **Not reached.** What stands between here and there, in order:
@@ -373,121 +380,76 @@ movie_blocks monotonicity, the ground-height retarget, the 4c severity).
 
 ## 6. Next sprints
 
-### Sprint 5 — land the fix, reach the first kill (proposed in detail)
+### Sprint 5 — control on the test map, a kill readout, and the first kill (revised 2026-09-13)
 
-Theme: confirm and land the `0x200` fix, then drive a two-instance match to a kill read from guest
-memory, on a harness that cannot attest to nothing — and start the audit that stops this class of
-bug arriving one symptom at a time. The sprint's reason to exist is the user's acceptance
-criterion, and everything in it is either on the path to the kill or fills the loop lock while
-the path's runs are in flight.
+> **Superseded, in full, by `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
+> and its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`).**
+> The Sprint 5 that stood here ("land the fix, reach the first kill") was written before Sprint 4's
+> Task 8 finished, and the world it planned for ended the same night. Its Tasks 0–2 were done
+> inside Sprint 4 (the retractions; the `0x200` cause measured; the fix landed with a same-binary
+> A/B), its Task 5 was done on Medley with the pitch sweep since retired, and its Task 6 rested on
+> "once the scale is 1.0 the players move", which is false on Frostfire, the owner's chosen map.
+> It also did not know that the two-mover approach arrives but has never produced a contact row
+> (minimum true 3-D separation 50.0, 0 % of rows in any gate), nor that `PASS` cannot print until a
+> health word is confirmed. What still held — the harness gating itself, the single-player health
+> search, the HLE audit's first two legs, measure-before-fix with a stop rule — is carried into the
+> revision. The spec's §2 has the item-by-item judgement.
 
-**Task 0 — Sprint 4 carry-over (only if Task 9 did not run).** Merge `sprint-4`; commit the pending
-research/18 edits and the `NET_TRACE_ALL` fix (the drafted `0x200` fix is Task 2's, not this one's);
-apply the required retractions: HANDOFF's open item 0 ("same frozen state"), HANDOFF's open item 2 and the 2026-09-09 01:30 STATUS entry
-(ground height → camera), every "frozen at the banner" sentence, the 20:10 closing bullet, and the
-claim in `4114ad4`'s message and wherever research/18 still carries it that the `cVar7 == 0` arm is
-the gate; carry the ledger's durable findings into STATUS (4c's three live divergence sites and
-latent severity, 4b's seed-not-stream caveat, Task 1's furniture-map limitations, the harness
-liveness hazard, and finding 11 in full). Half a day, and it is the difference between the next
-model starting right and starting wrong.
+**The revised Sprint 5, in order** (each of 0–4 lands value on its own):
 
-**Task 1 — Confirm the cause (one match, before any fix is built).** The authorised measurement:
-`PS2X_PEEK=0x45a1ca:1` and `0x45a1c0:1` plus `actor+0x1368` over a real gameplay window (peek row
-count as liveness), on the *unfixed* binary. Prediction: 1, and 0.0 from the first frame. **Stop
-rule:** if either reads otherwise, do not build the fix; write down what was read and the hunt
-reopens at the consumer (`FUN_00551ec0`'s multiply) with the same instruments. If it reads as
-predicted, the mechanism is proven end to end at runtime and Task 2 is a formality. Also record
-the single-player value of `+0x1368` from the same trace (the multiplayer path should be skipped
-there; if it is not, that is a second finding).
+0. **Preconditions** (no build, no run): a heartbeat lock reaper that never reaps a live build or
+   run; `build.sh test` running the Python tests; the loop prompt pointed at this sprint; a
+   stale-driver kill script; a plan preflight.
+1. **Frostfire control handover.** Zero-run first: an object-keyed heap diff and the `CZNetGame`
+   valve map (`research/19` F2/F3), and a zero-fill guest-allocation knob built before any launch.
+   Launch 1 peeks the round-state object, health/life and the clock and traces the move path
+   upstream; if the uninitialised ghost flag `ng+0xd2` is set, launch 2 is the same-binary zero-fill
+   A/B. Caps: 3 usable matches / 8 launches, then a mandatory map ruling — **Medley is the fallback**.
+2. **Confirm the sourced kill readout** (`actor+0x1044` health, `+0xF7A` alive) in one single-player
+   run, with partial-deflection yaw and pitch calibrations riding along.
+3. **An online harness that cannot spend a match on an uncontrollable or hung player**: pure
+   scorers under tests that `build.sh test` runs, the round state read from self-identifying valves.
+4. **HLE and heap liveness audit** (leg zero before Task 1's launch; census and `PS2X_HLE_STATS`).
+5. **Engagement ladder** — controllable → contact → damage — with partial-deflection aim and a
+   cooperative endgame in which both players keep generating traffic (6 usable / 14 launches).
+6. **The acceptance run**, attributed by signals from different objects and processes (the victim's
+   actor fields, the killer's `total_mp_kills`, alive counts on both instances) and two scorers with
+   different primary signals (4 usable / 10 launches).
+7. **Close-out.**
 
-**Task 2 — Land the fix.** `sceInetInterfaceControl(0x200)` returns a monotonic host RX counter
-(the draft uses bytes via `socom2_hostnet::rxBytes()`; packets would do). Build; the same peeks on
-both instances should show `+0x1368` rising to 1.0 within a frame or two of traffic and staying
-there; then the pad-injection probe with `PS2X_PEEK` x changing during LX/LY holds on both sides.
-Two things to check that the draft does not yet: **what the counter counts** — the console's word
-was the smap interface's statistic, i.e. *all* traffic, and the peer channel alone runs at roughly
-a datagram every couple of seconds (finding 5), which against the real 5500 ms cliff leaves ~2x margin
-(measured cadence 1.10 s mean, worst gap 2.7 s) rather than the risk a 1.5 s window would have made
-movement sag if only the peer channel fed it — so trace `+0x1368` for a full minute and it must sit
-at 1.0, any sag names the feed rate as a residual; and **a unit test that the value moves** — a
-test that calls the control code twice around a delivered packet and asserts the words differ.
-That test is the one that would have caught this on day one. Full gate. Commit with a message that
-says HLE, not game.
+**Realism.** A kill this sprint is roughly even odds — somewhat better since `research/19` turned the
+health search into a confirmation. It hinges on Frostfire's handover being the uninitialised ghost
+flag or otherwise bounded (or the Medley ruling being taken promptly), and on the engagement
+reaching contact at matched height, which has never happened; the spec's §6 says why.
 
-**Task 3 — Harness you can believe (independent of Tasks 1–2; do it while their matches run).**
-`online_match_ours.py` refuses to run the probe phase, and prints a hard FAIL, unless both
-instances show non-zero `[peek] @416054` rows; it detects a stale screenshot (identical bytes with
-a non-advancing HUD timer) and says so; it releases the loop lock in a `finally`, and
-`loop_lock.sh` gains a reaper for a holder whose process is gone. Unit-tested with the
-lobby-keyboard run's logs as the negative fixture. One day. Tasks 5 and 6 must not run on the
-old harness: a first kill that cannot be distinguished from sixteen screenshots of a keyboard is
-not a first kill.
+### Sprint 6 — the correctness bugs, the lobby, and whatever Sprint 5 left open (outline)
 
-**Task 4 — Kill and round-end readout.** Two halves. *Single player, today, no dependency:* find the
-player health/kills record near the actor (vtable `0x6691a0`) by getting the player killed in
-Albania under `PS2X_TRIGGER` and a peek, and commit a `--until-dead`-style reader. *Online, after
-Task 2:* confirm the same record for the remote player's actor, and find the round-end state (the
-scoreboard/"round over" flag — the round timer at `hud` is the starting point) so the harness can
-say "kill" and "round ended" from memory rather than from a screenshot. Server-side readout is
-not an option (finding 4). One to two days.
-
-**Task 5 — Movement calibration (S2), after Task 2.** Turn rate against the compass under RX
-holds; forward speed under LY; position-driven steering of A toward B from the two position peeks.
-Do it with `+0x1368` peeked at 1.0 throughout (Task 2's caveat) or it measures the lag freeze. The
-soft-double `exp` chain (finding 8) feeds the throttle curve and is still broken, so the numbers
-will not match the console's; calibrate empirically against *our* build and note the discrepancy
-rather than block on the chain. One day once movement works.
-
-**Task 6 — The first kill.** One command: two instances, the Task 3 liveness gate in front,
-Task 5's steering, fire-until-dead, Task 4's reader deciding the outcome, both screens captured at
-the kill and at round end, the run FAILing loudly if any stage cannot attest. Then the retractions
-of every "playable" claim that predates it, and a re-grade of the in-mission parity report. This
-is the acceptance test. If it lands, the next instrument the project needs is the *mixed* match
-(ours against PCSX2, both directions), which then becomes a parity test rather than a diagnostic.
-
-**Task 7 — HLE constant-return audit, legs one and two (fills lock time; §5).** The static census
-script and its tagged list; the `(entry, args, return)` trace mode over the Albania and online
-windows and the flagging script. Deliverable: a ranked list of flagged stubs with the tag and the
-call counts, committed as a research note, and the fixes for anything that is obviously wrong and
-one-line (with the moves-not-constant unit test each). Anything needing a consumer reading goes to
-Sprint 6. One to two days; independent of every other task.
-
-**Task 8 — Close-out**, with the same retraction discipline as Sprint 4, and the determinism knob
-(`PS2X_CD_CLOCK=<fixed>`, seed only) if it was needed for any A/B along the way.
-
-Ordering rationale: Task 1 before Task 2 because a fix built on an unmeasured prediction is the
-mistake `4114ad4` already made once this sprint; Tasks 3, 4a and 7 need no match and run while
-Tasks 1–2 hold the lock; Task 5 and Task 4b need Task 2; Task 6 needs everything. If Task 1's
-stop rule fires, Task 7's dynamic census becomes the *next instrument* for the hunt — it is the
-generalisation of the trace that found `0x200` — and Tasks 5–6 slip to Sprint 6. Deferred to
-Sprint 6 by design, not neglect: the skeleton root decay and the soft-double chain (both real,
-both cheaper to attack once the audit's trace mode exists and neither in the way of a kill), and
-the gameplay-state probe. Not in scope: native VU1, render scale, speed, widescreen, the
-transition residual strip (flake, not a defect), the intro-cinematic freeze (seen once, never
-reproduced).
-
-### Sprint 6 — the correctness bugs, with the audit's tools (outline)
-
-The HLE audit's leg three: consumer readings and fixes for the flagged list. The skeleton root
-decay (research/17 §4.3: dump `nodeArray[0]` on return from `FUN_0028e040` and again at
+The HLE audit's leg three: consumer readings and fixes for Sprint 5's flagged list. The skeleton
+root decay (research/17 §4.3: dump `nodeArray[0]` on return from `FUN_0028e040` and again at
 `FUN_0029a950` in the same frame; wrong on return → the VU0 macro-mode lerp `FUN_001c0768`,
 correct on return → a second writer; acceptance root Y ≈ 5.5, camera target 15.38) — the last
 long-standing visible defect, the AI aim point and the stance test in one. The soft-double chain
 (`litodp → dpmul → dpdiv → exp → dptofp`, unit-tested against host `double` on the LUT inputs, first
-divergent function fixed) — a 64-bit recompilation defect rather than a stub, but the same "our
-surface, not the game" class. The gameplay-state probe as the gate's first correctness leg. The
-mixed match as a standing parity test. If Sprint 5's Task 1 stop rule fired, Sprint 6 opens with
-the dynamic census pointed at the movement path and the mixed match as its first two tasks, and
-nothing else.
+divergent function fixed). The gameplay-state probe as the gate's first correctness leg. The mixed
+match (ours against PCSX2, both directions) as a standing parity test. **Moved here from Sprint 5:**
+lobby fixed-press hardening (`host_game`/`join_game` verify-then-act — the 4-in-10 tax), the
+remaining process-audit items (1 steps 1–3: client-rect and log-scan gate preconditions; 9:
+`gate.py --baseline`; 11; 12: flake policy), and `movie_blocks.py` wiring. **Conditional on Sprint
+5's outcome:** if Frostfire was not fixed inside Sprint 5's cap, Sprint 6 opens with a PCSX2
+Frostfire pair (splits our runtime from the game/lobby configuration in one match) and the
+condition research/21 reached; if `+0x1044` was not written by network damage, it opens with an online
+object-keyed diff at contact; if no kill landed, the engagement
+ladder resumes from the highest rung reached before anything else in this list.
 
 ### Sprint 7 — after the kill (outline)
 
-Lift the speed freeze for the two-instance case only (19–21 fps each is a test-rig problem until
-the acceptance test exists; then it is a product problem). Knob retirement (`PS2X_*` is past 80
-entries with revert layers that never retire; every knob without a test is a liability). The
-portable package (M6). Optional: a second render-target scale pass if a stretched window becomes
-the default (`integer` present filter, HUD texture upscaling — the only way the HUD gets sharper).
-The 4-program VU1 residual stays closed unless a new dump set dispatches `0x66` from `0x1b50`.
+Unchanged in intent, and still gated on the acceptance test existing: lift the speed freeze for the
+two-instance case only (19–21 fps each is a test-rig problem until then, then a product problem);
+repeatability of the acceptance test (N consecutive passes, lobby rate measured, run as a nightly
+job) — **new**, because Sprint 5's bar is one run; knob retirement (`PS2X_*` is past 80 entries with
+revert layers that never retire); the portable package (M6). Optional: a second render-target scale
+pass if a stretched window becomes the default. The 4-program VU1 residual stays closed unless a
+new dump set dispatches `0x66` from `0x1b50`.
 
 ---
 
