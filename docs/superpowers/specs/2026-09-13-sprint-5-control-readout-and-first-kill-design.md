@@ -189,7 +189,7 @@ the round state.
 ```
 Goal 0 ─┬─> Goal 4 leg 0 + Goal 3 pure control scorer (zero runs) ─> zero-fill knob build ─> Goal 1 launches (incl. Medley control) ─> ruling ─┐
         ├─> Goal 2 SP run (lock, independent) ─────────────────────────────────────────────────────────────────────────────────────────────────┤
-        └─> Goal 3 harness wiring (after Sprint 4 Task 8 lands) ───────────────────────────────────────────────────────────────────────────────┴─> Goal 5 ─> Goal 6 ─> Goal 7
+        └─> Goal 3 harness wiring (Sprint 4 Task 8 landed)  ───────────────────────────────────────────────────────────────────────────────┴─> Goal 5 ─> Goal 6 ─> Goal 7
 Goal 4 legs 1–2 fill lock time; PS2X_HLE_STATS rides the zero-fill build
 ```
 
