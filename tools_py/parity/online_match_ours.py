@@ -1974,7 +1974,7 @@ def score_control_round(series, end_t=None):
     out = {"round_ended": end_t is not None, "sides": {}}
     for tag, rows in series.items():
         side = {"steps": {}, "steps_after_end": {}, "values": {}, "health_min": None,
-                "health_changes": 0, "alive_values": []}
+                "health_changes": 0, "alive_values": [], "alive_changes": 0}
         prev = {}
         for t, st in rows:
             before = end_t is None or t < end_t
@@ -1997,8 +1997,12 @@ def score_control_round(series, end_t=None):
                     side["health_changes"] += 1
                 prev["health"] = h
             al = st.get("alive")
-            if _known(al) and before and al not in side["alive_values"]:
-                side["alive_values"].append(al)
+            if _known(al) and before:
+                if al not in side["alive_values"]:
+                    side["alive_values"].append(al)
+                if "alive" in prev and prev["alive"] != al:
+                    side["alive_changes"] += 1          # a death need not move the counters or the health word
+                prev["alive"] = al
         for name in CONTROL_ROUND_STEP_VALVES:
             side["steps"].setdefault(name, 0)
         out["sides"][tag] = side
@@ -2012,9 +2016,25 @@ def control_round_result_line(score, end):
     hmin = ",".join("n/a" if score["sides"][s]["health_min"] is None
                     else f"{score['sides'][s]['health_min']:g}" for s in sides)
     hch = ",".join(str(score["sides"][s]["health_changes"]) for s in sides)
+    ach = ",".join(str(score["sides"][s]["alive_changes"]) for s in sides)
     sig = f" signal={end[2].replace(' ', '')} on={end[1]}" if end else ""
     return (f"RESULT CONTROL-ROUND round_ended={'yes' if end else 'no'} kills_stepped={kills} "
-            f"aiteam_stepped={ai} health_min={hmin} health_changes={hch}{sig}")
+            f"aiteam_stepped={ai} health_min={hmin} health_changes={hch} alive_changed={ach}{sig}")
+
+
+def control_round_arg_problem(a):
+    """-> the refusal text when --control-round is combined with a mode that fires (R1), else None.
+    --until-kill engages, --play fires bursts, --sweep fires at every step: any of them turns the
+    negative control into a run that can kill."""
+    if not getattr(a, "control_round", False):
+        return None
+    firing = [flag for flag, on in (("--until-kill", getattr(a, "until_kill", False)),
+                                    ("--play", getattr(a, "play", 0)),
+                                    ("--sweep", getattr(a, "sweep", 0))) if on]
+    if firing:
+        return (f"--control-round cannot run with {', '.join(firing)}: those press R1, and the negative "
+                f"control requires that nobody fires")
+    return None
 
 
 def control_round_ok(score, end):
@@ -2022,7 +2042,7 @@ def control_round_ok(score, end):
     if end is None:
         return False
     for side in score["sides"].values():
-        if any(side["steps"][n] for n in CONTROL_ROUND_STEP_VALVES) or side["health_changes"]:
+        if any(side["steps"][n] for n in CONTROL_ROUND_STEP_VALVES) or side["health_changes"] or side["alive_changes"]:
             return False
     return True
 
@@ -2203,8 +2223,9 @@ def main():
     if a.until_kill:
         a.converge = True
     if a.control_round:
-        if a.until_kill:
-            raise SystemExit("--control-round and --until-kill are opposites: one fires, one must not")
+        problem = control_round_arg_problem(a)
+        if problem:
+            raise SystemExit(problem)
         a.converge = True
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
     # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line

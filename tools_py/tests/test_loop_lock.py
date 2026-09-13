@@ -695,11 +695,16 @@ class TestRun(LockTestBase):
         return p.returncode, out, ages
 
     def test_run_renews_heartbeat_scaled(self):
-        # The real-scale property (60 s renew, sleep 130, < 70 s) at 1/30 scale: 2 s renew, sleep 8, < 3.5 s.
+        # The real-scale property (60 s renew, sleep 130, < 70 s) at 1/30 scale: 2 s renew, sleep 6 (the plan wrote 8).
+        # Ruling R36: the bound is < 4.5 s (2.25x the 2 s renew). The heartbeat is whole seconds and the
+        # sampler polls every 0.5 s, so a healthy renew already peaks ~3.1-3.6 s, and under full-suite
+        # load (build.sh test) it read 3.55 and 3.58 against the old 3.5. One missed renewal peaks
+        # around 4 s; a BROKEN renew never refreshes and approaches the whole 6 s sleep, which
+        # 4.5 still fails.
         rc, out, ages = self._run_and_sample(6, 2)
         self.assertEqual(rc, 0, out)
         self.assertGreater(len(ages), 6, out)
-        self.assertLess(max(ages), 3.5, ages)
+        self.assertLess(max(ages), 4.5, ages)
         self.assertTrue(self.is_free())
 
     @unittest.skipUnless(SLOW, "set LOOP_LOCK_SLOW_TESTS=1 (~135 s)")

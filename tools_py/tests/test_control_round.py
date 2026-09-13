@@ -160,6 +160,23 @@ class ScoreTest(unittest.TestCase):
         self.assertEqual((side["health_min"], side["health_changes"]), (0.0, 1))
         self.assertFalse(M.control_round_ok(score, (2, "A", "x")))
 
+    def test_an_alive_byte_change_alone_breaks_it(self):
+        # a death that moves neither the kill counter, aiteam nor the health word still fails the control
+        rows = [(0, state()), (1, state(alive=0)), (2, state(alive=0, round_count=1))]
+        score = M.score_control_round({"A": rows}, end_t=2)
+        self.assertEqual(score["sides"]["A"]["alive_changes"], 1)
+        self.assertEqual(score["sides"]["A"]["health_changes"], 0)
+        self.assertFalse(M.control_round_ok(score, (2, "A", "mp_round_count 0->1")))
+        self.assertIn("alive_changed=1,0", M.control_round_result_line(
+            M.score_control_round({"A": rows, "B": [(0, state()), (2, state(round_count=1))]}, end_t=2),
+            (2, "A", "x")))
+
+    def test_alive_change_after_the_end_is_not_counted(self):
+        rows = [(0, state()), (1, state(round_count=1)), (2, state(round_count=1, alive=0))]
+        score = M.score_control_round({"A": rows}, end_t=1)
+        self.assertEqual(score["sides"]["A"]["alive_changes"], 0)
+        self.assertTrue(M.control_round_ok(score, (1, "A", "x")))
+
     def test_no_round_end_is_not_ok(self):
         score = M.score_control_round({"A": [(0, state())]}, end_t=None)
         self.assertFalse(M.control_round_ok(score, None))
@@ -207,6 +224,24 @@ class LoopTest(unittest.TestCase):
         self.assertIsNotNone(end)
         self.assertFalse(M.control_round_ok(score, end))
         self.assertIn("kills_stepped=2", M.control_round_result_line(score, end))
+
+
+
+class ArgGuardTest(unittest.TestCase):
+    def ns(self, **kw):
+        import argparse
+        base = dict(control_round=True, until_kill=False, play=0, sweep=0)
+        base.update(kw)
+        return argparse.Namespace(**base)
+
+    def test_control_round_refuses_every_flag_that_fires(self):
+        for kw in (dict(until_kill=True), dict(play=3), dict(sweep=4)):
+            with self.subTest(**kw):
+                self.assertIsNotNone(M.control_round_arg_problem(self.ns(**kw)))
+
+    def test_plain_control_round_and_other_modes_are_accepted(self):
+        self.assertIsNone(M.control_round_arg_problem(self.ns()))
+        self.assertIsNone(M.control_round_arg_problem(self.ns(control_round=False, play=3, until_kill=True)))
 
 
 if __name__ == "__main__":
