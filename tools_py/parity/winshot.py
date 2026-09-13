@@ -85,12 +85,12 @@ def grab(hwnd, max_age=None):
     if not path:
         return capture(hwnd)
     deadline = time.time() + FRAME_RETRY_S
-    last_err = None
+    last_err = stale_err = None
     while True:
         try:
             age = time.time() - os.path.getmtime(path)
             if max_age is not None and age > max_age:
-                last_err = StaleFrameError(path, age, max_age)
+                last_err = stale_err = StaleFrameError(path, age, max_age)
             else:
                 with open(path, "rb") as fp:
                     im = Image.open(fp)
@@ -101,8 +101,9 @@ def grab(hwnd, max_age=None):
         if time.time() >= deadline:
             break
         time.sleep(0.05)
-    if isinstance(last_err, StaleFrameError):
-        raise last_err
+    if stale_err is not None:
+        # a transient error on a later retry (mid-rename) does not un-stale the frame file
+        raise stale_err
     raise RuntimeError(f"no frame file at {path}: {last_err}")
 
 

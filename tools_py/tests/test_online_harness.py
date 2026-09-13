@@ -120,6 +120,20 @@ class FakeWorld:
         return list(self.rows)
 
 
+class ScaledWorld(FakeWorld):
+    """A FakeWorld whose MoveScale f12 reads `scale` every 0.5 s (scale=None: the slot is silent)."""
+
+    def __init__(self, clock, scale=None, **kw):
+        super().__init__(clock, **kw)
+        self.scale = scale
+
+    def scale_ok(self, t0, t1, pad=2.5):
+        if self.scale is None:
+            return False, 0, None, None
+        n = int((t1 - t0 + 2 * pad) / 0.5)
+        return self.scale == 1.0, n, self.scale, self.scale
+
+
 class FakeShell:
     def __init__(self, world, clock):
         self.world, self.clock = world, clock
@@ -138,9 +152,9 @@ class FakeShell:
         self.world.state = set()
 
 
-def run_precondition(**world_kw):
+def run_precondition(world_cls=None, **world_kw):
     clock = FakeClock()
-    world = FakeWorld(clock, **world_kw)
+    world = (world_cls or FakeWorld)(clock, **world_kw)
     clock.wait(3.0)                                   # rows exist before the precondition starts
     sh = FakeShell(world, clock)
     side = M.assert_controllable("A", world, sh, clock=clock, wait=clock.wait)
@@ -210,6 +224,24 @@ class AssertControllableTest(unittest.TestCase):
         side = M.assert_controllable("B", world, sh, clock=clock, wait=clock.wait)
         self.assertEqual(side.status, vc.NO_DATA)
         self.assertLessEqual(len(side.holds), M.PRECONDITION_MAX_ATTEMPTS)
+
+    def test_starved_scale_hold_is_no_data_and_retried(self):
+        # I-2: MoveScale logged (n > 0) with f12 < 1.0 -> the hold measured the lag freeze, not the
+        # controls: NO-DATA, retried up to PRECONDITION_MAX_ATTEMPTS, never a decisive FAIL
+        side, sh = run_precondition(world_cls=ScaledWorld, scale=0.4, responds=False)
+        self.assertEqual(side.status, vc.NO_DATA)
+        self.assertEqual([v.status for v in side.holds], [vc.NO_DATA] * M.PRECONDITION_MAX_ATTEMPTS)
+        self.assertTrue(all("scale" in v.reason for v in side.holds))
+
+    def test_silent_move_path_hold_stays_a_fail(self):
+        # the Frostfire case: zero MoveScale lines around the hold -> still decisive
+        side, sh = run_precondition(world_cls=ScaledWorld, scale=None, responds=False)
+        self.assertEqual(side.status, vc.NO_CONTROL)
+        self.assertEqual([v.status for v in side.holds], ["FAIL"] * 4)
+
+    def test_negative_control_full_scale_frozen_player_fails(self):
+        side, sh = run_precondition(world_cls=ScaledWorld, scale=1.0, responds=False)
+        self.assertEqual([v.status for v in side.holds], ["FAIL"] * 4)
 
     def test_hold_lines_are_logged_with_the_row_period(self):
         side, sh = run_precondition(responds=True)
@@ -437,6 +469,32 @@ class ResultVerdictTest(unittest.TestCase):
                                          watch_reads={"A": 900, "B": 900}, stale_shots=["B_kill"])
         self.assertTrue(verdict.startswith("FAIL"), verdict)
         self.assertFalse(kill)
+
+    def test_missing_evidence_frame_is_not_pass(self):
+        verdict, kill = M.result_verdict(self.EV_HEALTH, [self.EV_HEALTH], health_armed=True,
+                                         watch_reads={"A": 900, "B": 900}, missing_shots=["A_kill"])
+        self.assertTrue(verdict.startswith("FAIL evidence-missing"), verdict)
+        self.assertFalse(kill)
+
+    def test_evidence_shot_records_stale_and_missing(self):
+        from tools_py.parity import winshot
+
+        class Sh:
+            def __init__(self, exc):
+                self.exc = exc
+
+            def shot(self, label, max_age=None):
+                raise self.exc
+
+        class C:
+            def __init__(self, tag, exc):
+                self.tag, self.sh = tag, Sh(exc)
+
+        stale, missing, logged = [], [], []
+        M.evidence_shot(C("A", winshot.StaleFrameError("f", 9.0, 2.0)), "kill", stale, logged.append, missing)
+        M.evidence_shot(C("B", OSError("no frame file")), "kill", stale, logged.append, missing)
+        M.evidence_shot(C("B", RuntimeError("no frame file at x")), "final", stale, logged.append, missing)
+        self.assertEqual((stale, missing), (["A_kill"], ["B_kill", "B_final"]))
 
     def test_no_signal_is_fail(self):
         verdict, kill = M.result_verdict(None, [], health_armed=False, watch_reads={})

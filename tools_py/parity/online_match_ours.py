@@ -1560,6 +1560,17 @@ def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
         wait(PRECONDITION_SETTLE_S)
         rows = tail.actor_ingame()
         v = vc.score_control(rows, events, vc.Hold(t0, t1))
+        starved = False
+        if hasattr(tail, "scale_ok"):
+            ok_s, n_s, lo_s, _ = tail.scale_ok(t0, t1)
+            # Fix round 1 (I-2): MoveScale logged with f12 < 1.0 around the hold means the hold
+            # measured the lag freeze, not the controls -> NO-DATA, retried. Zero MoveScale lines
+            # (the silent move path, Frostfire) is not starvation evidence: the FAIL stands.
+            starved = n_s > 0 and not ok_s and v.status == "FAIL"
+            if starved:
+                v = vc.ControlVerdict(False, v.net_units, v.snapback_units, v.drift_units, vc.NO_DATA,
+                                      f"scale {lo_s} < 1.0 around the hold (starved, not a control "
+                                      f"verdict); was FAIL: {v.reason}", v.hold)
         verdicts.append(v)
         period = _row_period(rows, t0 - vc.CONTROL_DRIFT_WINDOW_S, t1 + vc.CONTROL_SNAPBACK_AFTER_RELEASE_S)
         scale = ""
@@ -1569,8 +1580,8 @@ def assert_controllable(side, tail, sh, clock=time.time, wait=time.sleep,
                 scale = " scale=NO-DATA(0 MoveScale lines around the hold: the move path is silent)"
             else:
                 scale = f" scale={'1.0' if ok else 'NOT-1.0'}({n},{lo}..{hi})"
-                if v.status == "FAIL" and not ok:
-                    scale += " [blind: a starved scale fails the 40 as surely as a lost controller]"
+                if starved:
+                    scale += " [starved: retried as NO-DATA]"
         fmt = lambda x: "n/a" if x is None else f"{x:.2f}"
         sh.log(f"CONTROL {side} hold {attempt} {t1 - t0:.2f}s net={fmt(v.net_units)} "
                f"snap={fmt(v.snapback_units)} drift={fmt(v.drift_units)} rows={len(rows)} "
@@ -1784,7 +1795,8 @@ class MovePathWatch(threading.Thread):
         self._stop_ev.set()
 
 
-def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), stalled=None):
+def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), stalled=None,
+                   missing_shots=()):
     """The one RESULT word of a --converge run -> (verdict, is_kill). PASS is reserved for a health
     transition, and even then not from an instrument that read nothing on a side or from a kill
     screen older than FRAME_MAX_AGE_S. `round` (valves) and `respawn` (the fallback, used only while
@@ -1795,6 +1807,8 @@ def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), sta
     kinds = {e["kind"] for e in events}
     if fired is not None and (fired["kind"] == "health" or "health" in kinds):
         base = "PASS" if fired["kind"] == "health" else "PASS (round end corroborated by a health transition)"
+        if missing_shots:
+            return (f"FAIL evidence-missing ({', '.join(missing_shots)}) -- no readable evidence frame", False)
         if stale_shots:
             return (f"FAIL kill screen stale ({', '.join(stale_shots)}) -- the frame file is older than "
                     f"{FRAME_MAX_AGE_S:g}s, so it is a picture of the past", False)
@@ -1809,15 +1823,18 @@ def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), sta
     return f"ROUND-END ({fired['kind']}; unattributed -- NOT a kill)", False
 
 
-def evidence_shot(c, label, stale, log):
-    """A screen that is evidence (kill, final): refused when the frame file is stale, and recorded."""
+def evidence_shot(c, label, stale, log, missing=None):
+    """A screen that is evidence (kill, final): a stale frame file goes to `stale`, a missing or
+    unreadable one to `missing`; either blocks a PASS (result_verdict)."""
     try:
         c.sh.shot(label, max_age=FRAME_MAX_AGE_S)
     except winshot.StaleFrameError as e:
         stale.append(f"{c.tag}_{label}")
         log(f"STALE FRAME {c.tag}_{label}: {e}")
     except Exception as e:                            # noqa: BLE001
-        log(f"{label} screenshot failed on {c.tag}: {e!r}")
+        if missing is not None:
+            missing.append(f"{c.tag}_{label}")
+        log(f"EVIDENCE MISSING {c.tag}_{label}: {e!r}")
 
 
 class Client:
@@ -2102,6 +2119,7 @@ def main():
             kill_shots = {"done": False}
 
             stale_shots = []
+            missing_shots = []
 
             def monitor():
                 while not duel.stop.is_set():
@@ -2112,7 +2130,7 @@ def main():
                         if not kill_shots["done"]:
                             kill_shots["done"] = True
                             for c in (A, B):
-                                evidence_shot(c, "kill", stale_shots, A.sh.log)
+                                evidence_shot(c, "kill", stale_shots, A.sh.log, missing_shots)
                         duel.stop.set()
                         return
                     if mpw.stalled is not None:
@@ -2166,7 +2184,7 @@ def main():
             watch.stop()
             mpw.stop()
             for c in (A, B):
-                evidence_shot(c, "final", stale_shots, A.sh.log)
+                evidence_shot(c, "final", stale_shots, A.sh.log, missing_shots)
             for c in (A, B):
                 for line in valve_report(c.tag, c.tail, valves_wanted):
                     A.sh.log(line)
@@ -2184,13 +2202,14 @@ def main():
                          f"looked is not evidence -- widen PS2X_PEEK to cover that offset.")
             verdict, is_kill = result_verdict(watch.fired, watch.events, health is not None,
                                               watch_reads, stale_shots=stale_shots,
-                                              stalled=mpw.stalled)
+                                              stalled=mpw.stalled, missing_shots=missing_shots)
             ra, rb = A.tail.latest(max_age=1e9), B.tail.latest(max_age=1e9)
             summary = {
                 "control": {tag: sd.status for tag, sd in control_sides.items()},
                 "move_path": mpw.history,
                 "valves": {c.tag: valve_report(c.tag, c.tail, valves_wanted) for c in (A, B)},
                 "stale_shots": stale_shots,
+                "missing_shots": missing_shots,
                 "verdict": verdict,
                 "contact": duel.contact.is_set(),
                 "closest_3d_units": closest,
@@ -2232,7 +2251,7 @@ def main():
                      f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
                      f"health_watch={'disarmed' if health is None else 'armed'} "
                      f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
-                     f"stale_shots={stale_shots}")
+                     f"stale_shots={stale_shots} missing_shots={missing_shots}")
             if not is_kill and (a.until_kill or verdict.startswith("FAIL health")):
                 failed = True
         if a.sweep:

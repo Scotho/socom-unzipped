@@ -92,6 +92,22 @@ class FrameFreshnessTest(unittest.TestCase):
         with self.assertRaises(self.winshot.StaleFrameError):
             self.winshot.grab(self.HWND, max_age=2.0)
 
+    def test_transient_error_on_the_last_retry_does_not_mask_a_stale_frame(self):
+        from unittest import mock
+        old = time.time() - 10.0
+        calls = {"n": 0}
+
+        def mtime(path):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                return old
+            raise OSError("mid-rename")
+
+        with mock.patch("os.path.getmtime", side_effect=mtime):
+            with self.assertRaises(self.winshot.StaleFrameError):
+                self.winshot.grab(self.HWND, max_age=2.0)
+        self.assertGreater(calls["n"], 1)
+
     def test_no_max_age_keeps_the_old_behaviour(self):
         self.age(60.0)
         self.winshot.grab(self.HWND)

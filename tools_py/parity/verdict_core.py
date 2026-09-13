@@ -113,6 +113,11 @@ MOVE_STALL_S = 10.0
 # legitimately silent on death and round change -- a real stall inside those windows is not reported.
 ROUND_STEP_DISARM_S = 15.0
 ALIVE_VALUE = 1
+# An alive read older than this at `now` no longer describes the actor (fix round 1, M-1): after a
+# death the actor block can stop being identified, and a last read of 1 would keep the watch armed
+# into a false stall. 8 rows at 4 Hz; ~3 at kill2 B's 0.6 s/row under load. Blind: a sampler slower
+# than 2 s/row reads as NO-DATA, not stalled.
+ALIVE_MAX_AGE_S = 2.0
 # NetIdle [ret] v0 (ms): alarm at 4000, bar <= 5000. Measured against: the scale holds 1.0 until idle
 # > 5500 ms (§3.12 "timing, corrected"), the game's own lag flag at >= 4501 ms, Sprint 4's healthy
 # worst gap 2.7 s and idle capped at 1490 ms in the fixed A/B (§3.12a). Blind: peaks between ~0.5 s
@@ -575,6 +580,9 @@ def score_move_path(call_indices_by_time, alive_rows, round_rows, now):
     last_alive = _latest(alive, now)
     if last_alive is None:
         return MovePathVerdict(NO_DATA, t_adv, stall + "; no +0xF7A read at or before now")
+    if now - last_alive[0] > ALIVE_MAX_AGE_S:
+        return MovePathVerdict(NO_DATA, t_adv, stall + f"; +0xF7A read stale ({now - last_alive[0]:.1f}s old "
+                                                       f"> {ALIVE_MAX_AGE_S:g}s) -- death not excluded")
     if last_alive[1] != ALIVE_VALUE:
         return MovePathVerdict("disarmed", t_adv, stall + "; +0xF7A != 1")
     start = t_adv
@@ -631,6 +639,11 @@ def score_starvation(netidle_rows, lagflag_rows, side="?", move_path=None):
     bar_ok = peak <= NETIDLE_BAR_MS
     cands = [(e[0], "ng+0xde") for e in lag_eps[:1]] + [(e[0], "NetIdle") for e in idle_eps[:1]]
     detail = f"netidle rows={len(netidle_rows)} peak={peak}ms lagflag rows={len(lagflag_rows)}"
+    if not lagflag_rows and not idle_eps:
+        # Ruling R23: ng+0xde is the PRIMARY signal (spec §5(c)). Without it a quiet NetIdle is not
+        # "healthy" -- launch 1c read 0 lag rows through a parser defect and this said ok. A NetIdle
+        # alarm is positive evidence and still alarms (below).
+        return StarvationVerdict(NO_DATA, side, None, None, peak, bar_ok, [], "ng+0xde never read; " + detail)
     if cands:
         since, signal = min(cands)
         return StarvationVerdict("alarm", side, since, signal, peak, bar_ok,

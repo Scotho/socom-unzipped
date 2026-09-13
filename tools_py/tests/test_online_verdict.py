@@ -405,8 +405,20 @@ class ControlFixtureTest(unittest.TestCase):
 
 
 # ---------------------------------------------------------------------------------------------
+def dense(changes, t_end=400.0, period=0.25):
+    """Rows every `period` s (as the 4 Hz sampler writes them) holding each (t, value) from its t."""
+    out, i = [], 0
+    while i * period <= t_end + 1e-9:
+        t = round(i * period, 6)
+        v = [val for tc, val in changes if tc <= t]
+        if v:
+            out.append((t, v[-1]))
+        i += 1
+    return out
+
+
 class MovePathTest(unittest.TestCase):
-    ALIVE = [(0.0, 1)]
+    ALIVE = dense([(0.0, 1)])
     ROUND = [(0.0, 1)]
 
     @staticmethod
@@ -438,12 +450,12 @@ class MovePathTest(unittest.TestCase):
         self.assertTrue(all(s == "stalled" for s in statuses[first:]), statuses)
 
     def test_stalled_while_dead_is_disarmed(self):
-        alive = [(0.0, 1), (41.0, 0)]
+        alive = dense([(0.0, 1), (41.0, 0)])
         v = vc.score_move_path(self.calls(40.0), alive, self.ROUND, now=55.0)
         self.assertEqual(v.status, "disarmed")
 
     def test_rearmed_after_respawn_counts_from_the_respawn(self):
-        alive = [(0.0, 1), (41.0, 0), (50.0, 1)]
+        alive = dense([(0.0, 1), (41.0, 0), (50.0, 1)])
         self.assertEqual(vc.score_move_path(self.calls(40.0), alive, self.ROUND, now=55.0).status, "disarmed")
         v = vc.score_move_path(self.calls(40.0), alive, self.ROUND, now=61.0)
         self.assertEqual(v.status, "stalled")
@@ -465,6 +477,21 @@ class MovePathTest(unittest.TestCase):
     def test_alive_rows_only_after_now_is_no_data(self):
         v = vc.score_move_path(self.calls(40.0), [(70.0, 1)], self.ROUND, now=55.0)
         self.assertEqual(v.status, vc.NO_DATA)
+
+    def test_stale_alive_read_is_no_data_not_a_stall(self):
+        # M-1: the actor block stops being identified after a death; the last read of 1 must not
+        # keep the watch armed (a false stall)
+        alive = dense([(0.0, 1)], t_end=41.0)
+        v = vc.score_move_path(self.calls(40.0), alive, self.ROUND, now=55.0)
+        self.assertEqual(v.status, vc.NO_DATA, v.detail)
+        self.assertIn("stale", v.detail)
+
+    def test_alive_read_age_boundary(self):
+        calls = self.calls(40.0)
+        alive = [(0.0, 1), (50.0 - vc.ALIVE_MAX_AGE_S + 0.1, 1)]
+        self.assertEqual(vc.score_move_path(calls, alive, self.ROUND, now=50.0).status, "stalled")
+        alive = [(0.0, 1), (50.0 - vc.ALIVE_MAX_AGE_S - 0.1, 1)]
+        self.assertEqual(vc.score_move_path(calls, alive, self.ROUND, now=50.0).status, vc.NO_DATA)
 
     def test_never_logged_slot_is_no_data(self):
         v = vc.score_move_path([], self.ALIVE, self.ROUND, now=100.0)
@@ -509,6 +536,15 @@ class StarvationTest(unittest.TestCase):
         v = vc.score_starvation(self.idle(), self.LAG0, side="A")
         self.assertEqual(v.status, "ok")
         self.assertTrue(v.bar_ok)
+
+    def test_zero_lagflag_rows_is_no_data_ruling_r23(self):
+        v = vc.score_starvation(self.idle(), [], side="A")
+        self.assertEqual(v.status, vc.NO_DATA)
+        self.assertIn("ng+0xde never read", v.detail)
+
+    def test_netidle_alarm_with_zero_lagflag_rows_still_alarms(self):
+        v = vc.score_starvation(self.idle(peak=4200.0), [], side="B")
+        self.assertEqual((v.status, v.signal), ("alarm", "NetIdle"))
 
     def test_no_netidle_rows_is_no_data(self):
         v = vc.score_starvation([], self.LAG0, side="A")
