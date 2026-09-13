@@ -126,10 +126,13 @@ class FakeShell:
     def shot(self, label):
         pass
 
-    def pad(self, seconds, buttons=(), sticks=()):
+    def pad(self, seconds, buttons=(), sticks=(), abort=None):
         with self.world.lock:
             self.world.state = {k.upper(): True for k in sticks}
-        time.sleep(seconds)
+        if abort is None:
+            time.sleep(seconds)
+        else:
+            abort.wait(seconds)
         with self.world.lock:
             self.world.state = {}
 
@@ -300,12 +303,12 @@ def main():
             "route", route=M.MP51_SEAL_ROUTE, arrive=22.0, engage=22.0, max_seconds=290.0,
             wall=lambda x, z: z < 1300.0 and x < 690.0,
             bwall=lambda x, z: z > 400.0 and x > 1200.0)
-        # Assert the OUTCOME, not the final separation. `d` is the truth when both threads have
-        # STOPPED, and the side that did not call contact can still be mid-burst when the other
-        # one does -- one run ended 50.8 apart having correctly reported a best of 13.7. The
-        # measurement accuracy is asserted in `converge`, and `open`/`maze` corroborate it
-        # (reported 85.24 vs truth 85.24, 100.82 vs 100.82).
+        # Tight again. This assertion was loosened to "contact was reached" because the side that
+        # did not call contact could still be mid-burst when the other one did (one run ended 50.8
+        # apart having correctly reported 13.7). That race is now REMOVED rather than tolerated:
+        # every approach hold is released the moment either side calls contact.
         assert any(r["reason"] in ("contact", "contact-other") for r in out.values()), out
+        assert d <= 45.0, d
         ran.append("route")
     if which in ("stack", "all"):
         # The kill2 failure, as a test. A's ground falls away as it walks south -- the mined
@@ -323,6 +326,7 @@ def main():
               f"{len(stacked)} of {len(trk)} steps steered to a same-height breadcrumb, "
               f"final |dy| {abs(trk[-1]['dy']):.1f}")
         assert any(r["reason"] in ("contact", "contact-other") for r in out.values()), out
+        assert d <= 45.0, d                              # same race, same fix, same bound
         ran.append("stack")
     if which in ("watch", "all"):
         w = run_watch()

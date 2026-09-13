@@ -1409,6 +1409,52 @@ was blocked for good. That is what made `maze` flaky across the whole task (14, 
 on four runs), and it had nothing to do with the loop. Every translation is now wall-checked.
 **Neither defect was in the code under test, and both looked exactly like it was.**
 
+**And one race that WAS in the code under test, fixed rather than tolerated.** The reviewer's own
+run of the suite failed `converge` with the loop reporting a best of **11.2** while the two
+simulated players ended **87.35** apart. The cause was already written down beside `route`'s
+assertion, which had been loosened for it: when one side calls contact, the other side is usually
+in the middle of a walk burst — up to `WALK_STEP_MAX_S`, ~240 units — and it finished that burst,
+straight through the engagement. That is not a simulator artefact. In a live match it is exactly
+the overshoot this whole task has been fighting: a player still walking after contact is called.
+**Every hold `approach()` makes — turns, walk bursts, facing probes, unstick moves, and the waits
+between them — is now released the moment either side sets `duel.contact`**, via an `abort` event
+that `Shell.pad` (and the simulated shell) honours, and a burst cut short that way is neither
+scored nor unstuck from. `route` and `stack` had their assertions put back to the tight
+`d <= 45.0` that `converge` always had.
+
+**The evidence, including what did not pass.** The race is fixed; the suite is **not** yet reliably
+green, and the two are different claims.
+
+*Fail before, pass after, identical command* (`python -m tools_py.parity.sim_walk_to_b converge`,
+one process at a time; "before" is `git archive 2eafed8`):
+
+| code | run | outcome | loop's reported best | true final distance |
+|---|---|---|---|---|
+| before | 1 | **FAIL** — contact called, other side finished its burst | 5.0 | **75.01** |
+| before | 2 | **FAIL** — the same | 9.4 | **53.84** |
+| after | 1 | pass | 5.2 | 5.17 |
+| after | 2 | **FAIL — a different defect**: no contact was ever called, zero holds released; both sides spent all 40 steps orbiting each other at 60–98 units | 26.7 | 53.69 |
+
+*Five full suites, sequential, alone, no retries* (after):
+
+| run | result | converge truth | route truth | stack truth |
+|---|---|---|---|---|
+| 1 | **FAIL in `stack`** — both sides step-capped; A cycled 21 of 40 steps between "walk to B, drop 14 below it on the ramp" and "retreat ~140 units to a level breadcrumb" | 15.74 | 5.06 | 70.23 |
+| 2 | SIM OK | 7.28 | 19.11 | 9.47 |
+| 3 | SIM OK | 18.65 | 6.45 | 5.04 |
+| 4 | SIM OK | 20.40 | 15.03 | 16.63 |
+| 5 | SIM OK | 6.36 | 10.94 | 18.19 |
+
+So: across the seven post-fix `converge` runs the contact-then-overshoot race **never recurred**
+(true distance tracked the reported one every time contact was called, and route's re-tightened
+bound held 5 of 5), against 2 of 2 before. **Two other loop defects remain, and both are real, not
+simulator artefacts**: (1) **mutual-pursuit orbiting** — two movers each steering at the other's
+latest position can circle indefinitely just outside the 3-D gate (1 of 7 converge runs); and
+(2) **an anti-stack limit cycle** — when the only same-height ground is *away* from the target, "go
+to a level breadcrumb" and "approach the player" undo each other forever (1 of 5 stack runs). Both
+want the same kind of fix — hysteresis or a role split (one side holds while the other closes) —
+and neither is done. The suite is 4 of 5 green, and it is recorded that way.
+
 The `converge` number is the one that decided the match was worth launching: it is not a measurement
 of the game, it is a measurement of the loop's own arithmetic against a world where the turn
 response is deliberately wrong.
@@ -1424,7 +1470,7 @@ budget 2.5 launches per usable match.
 | `logs/run_t8probe1.log` | single instance, no match: does `*0x488de8+0xbc*` reach the player? | **no** — 24 resolutions in 1162 rows, all `0xd9d9d9d9` |
 | `logs/run_t8probe2.log` | the same with `*0x408c58` | **void** — the previous run's `drive.py` reached its own cleanup and ran `taskkill /F /IM socom2.exe`, which killed *this* run's exe 66 s in. The log froze at 127 sampler rows while `drive.py` kept screenshotting a dead game: §3.10's trap, from the other end |
 | `ours_task8_kill1` | the acceptance test, attempt 1 | reached contact-range arithmetic but was **stopped early by a false signal** |
-| `ours_task8_kill2` | attempt 2 | **closed 1392 → 33 units**, fired 24 bursts, **no hit** |
+| `ours_task8_kill2` | attempt 2 | ~~closed 1392 → 33 units~~ **closed 1485.5 → 50.0 units true 3-D** (struck figure was the camera+facing reconstruction — see the correction below this table and §4.11), fired 24 bursts, **no hit** |
 | `ours_task8_kill3` | attempt 3, with a pitch sweep | reached gameplay, **lost instance B before its first step** |
 | `ours_task8_kill4` / `kill6` / `kill7` | attempts 4, 6 and 7 | never reached gameplay (lobby band 0.521, 0.521, and the on-screen keyboard never opened) |
 | `ours_task8_kill5` | attempt 5 | reached the lobby, both READY, **match never launched** — 0 in-game rows of 2514 |
@@ -1484,10 +1530,18 @@ block. The health watch now checks word 0 against `0x6691a0` before reading anyt
 (the first draft of this note quoted 1172 for both; the actor blocks give 1173 and 1056). With the
 deadband, the gain EMA at 0.3 and the 2.0 s probe:
 
-**A closed 1392 → 33.04 units in 23 steps and about 127 s, and B stopped at 70.8.** The two
+**~~A closed 1392 → 33.04 units in 23 steps and about 127 s, and B stopped at 70.8.~~**
+> **SUPERSEDED FIGURE — kept visible on purpose.** "1392 → 33.04" and "70.8" were produced by the
+> camera + facing reconstruction, which is wrong by up to two orbit radii (~50 units; §4.11 proves
+> it in a flat simulated world). On the actors' own positions the headline run closed **1485.5 →
+> 50.0 units true 3-D** in about 127 s; over the last 400 rows the 3-D separation had a median of
+> **67.9**, and **0 %** of those rows were inside any contact gate (the table further down).
+> Nothing below this box should be read as "the players reached 33 units".
+
+The run took 23 steps. The two
 instances met in the middle of mp51 — A's record ran (541.8, 1479.7) → (903.7, 893.6) and B's
 (1144.8, 78.2) → (927.4, 867.1). That is the first time in this project that two online players
-have been in the same place.
+have been ~~in the same place~~ near each other — 50 units apart at best, true 3-D.
 
 **Then 24 bursts hit nothing, and it is worth being exact about why.** The first reading was
 measured on the camera
@@ -1574,7 +1628,10 @@ python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill 
        --fight-seconds 120 --kill-timeout 400 \
        --out logs/parity/ours_task8_kill1 --seconds 1200 > logs/parity/drive_task8_kill1.txt 2>&1
 
-# ours_task8_kill2 -- THE HEADLINE RUN: 1392 -> 33.04 units, the same environment as above
+# ours_task8_kill2 -- THE HEADLINE RUN, the same environment as above.
+#   SUPERSEDED FIGURE: this line used to say "1392 -> 33.04 units". That was the camera+facing
+#   reconstruction (wrong by up to ~50 units, 4.11). True 3-D on the actor rows: 1485.5 -> 50.0.
+#   Also note --engage meant a GROUND distance when this ran; it is now a TRUE 3-D range.
 python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
        --arrive 60 --engage 45 --max-steps 60 --max-walk-seconds 300 \
        --fight-seconds 120 --kill-timeout 460 \
@@ -1608,11 +1665,16 @@ python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_d
    than the kill, because §3.12's movement fix was measured on mp51 and only on mp51. The threads
    to pull are the call count of `FUN_00553dc0` and the `0x200` idle counter of §3.12.
 2. **Confirm the health offset across two kills, then arm it** with
-   `--until-kill --health-offset 0x208` (a BYTE OFFSET FROM THE ACTOR BASE — never an item index).
-   Make sure the `PS2X_PEEK` spec covers that offset: the run now prints `reads=` and `misses=` per
-   instance on the RESULT line and **fails outright** if an armed watch read nothing, so a blind
-   instrument can no longer masquerade as a stable one. Treat `+0x204`/`+0x208` as candidates only:
-   they sit behind a `0000ff00` that reads as much like packed RGBA as like a header.
+   ~~`--until-kill --health-offset 0x208`~~ `--until-kill --health-offset 0x1044` (a BYTE OFFSET FROM
+   THE ACTOR BASE — never an item index). **The candidate changed:** research/19 F1 puts health at
+   the float `actor+0x1044` (1.0 = full, `<= 0.0` = dead) with the alive byte at `actor+0xF7A`,
+   from two r0001 community tools cross-checked against 17 decomp sites and all eight actor images.
+   It is research-sourced and **not yet read live in an online match**, so it is not the default.
+   The `+0x204`/`+0x208` pair this item used to name is retracted. `--health-range` now defaults to
+   `-1e9:0.0` — it used to be `-0.5:0.5`, which on a 1.0-full float would have called a player at
+   40 % health dead. Make sure `PS2X_PEEK` covers the offset (e.g. `*0x408c58+0x1040:4`, which none
+   of Task 8's run scripts did): the run prints `reads=` and `misses=` per instance on the RESULT
+   line and **fails outright** if an armed watch read nothing.
 3. **Until then, `--until-kill` cannot print `PASS`, by design.** `respawn` is a round-end detector
    and a round ends on its clock, so it prints `ROUND-END (unattributed -- NOT a kill)` and exits
    non-zero. That is the instrument being honest, not broken.
@@ -1642,6 +1704,10 @@ diagnostic rather than decisive:
 | the `--health-offset` watch, in any arming | unit-tested offline (4 reads / 3 changes covered, 4 misses uncovered); never armed in a match |
 | `choose_map` on any map but Frostfire | one live map, one reference image |
 | the `stack` scenario's premise | a synthetic ramp, not a real floor; the real failure was geometry we cannot simulate faithfully |
+| releasing the other side's in-flight hold at contact (`abort=duel.contact`) | five simulated suites; never run live -- and in the real harness it also has to beat the pad file's 60 Hz poll |
+| **mutual-pursuit orbiting** at the 3-D gate | a KNOWN FAILURE, 1 of 7 simulated converge runs; unfixed |
+| **anti-stack limit cycle** when level ground lies away from the target | a KNOWN FAILURE, 1 of 5 simulated stack runs; unfixed |
+| `--health-offset 0x1044` with the `-1e9:0.0` dead range | offline unit test only (0.4 does not fire, 0.0 does); never armed live |
 
 ## 4.11 What the review changed, and the map switch (2026-09-13)
 

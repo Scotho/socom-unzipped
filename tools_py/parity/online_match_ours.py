@@ -515,7 +515,16 @@ def spread(values):
 # ---------------------------------------------------------------------------
 # One measured hold
 # ---------------------------------------------------------------------------
-def measure_hold(sh, tail, key, seconds, settle=HOLD_SETTLE_S, rest=HOLD_REST_S, label=""):
+def _wait(abort, seconds):
+    """Sleep, unless `abort` is set -- in which case return at once (or as soon as it is set)."""
+    if abort is None:
+        time.sleep(seconds)
+    else:
+        abort.wait(seconds)
+
+
+def measure_hold(sh, tail, key, seconds, settle=HOLD_SETTLE_S, rest=HOLD_REST_S, label="",
+                 abort=None):
     """Inject one stick hold and measure what the 0x416054 record did over hold + settle.
 
     Returns both readings, because which one is meaningful depends on the key: a look hold rotates
@@ -523,11 +532,14 @@ def measure_hold(sh, tail, key, seconds, settle=HOLD_SETTLE_S, rest=HOLD_REST_S,
     translates it (take the displacement). `kind` says which the data supports.
     """
     t0 = time.time()
-    sh.pad(seconds, sticks=[key])
+    if abort is None:
+        sh.pad(seconds, sticks=[key])
+    else:
+        sh.pad(seconds, sticks=[key], abort=abort)
     t1 = time.time()
-    time.sleep(settle)
+    _wait(abort, settle)
     t2 = time.time()
-    time.sleep(rest)
+    _wait(abort, rest)
 
     before = tail.last_before(t0 + PEEK_LEAD_S)
     pts = tail.window(t0, t2 + PEEK_LEAD_S)
@@ -715,19 +727,19 @@ def turn_hold_seconds(error_deg):
     return min(abs(error_deg) / LOOK_DEG_PER_S + TURN_HOLD_LEAD_S, TURN_MAX_HOLD_S)
 
 
-def turn_by(sh, tail, error_deg):
+def turn_by(sh, tail, error_deg, abort=None):
     """Turn the facing by `error_deg` with one timed hold at the measured look rate."""
     key = LOOK_RIGHT_KEY if error_deg * LOOK_RIGHT_SIGN >= 0 else LOOK_LEFT_KEY
     secs = turn_hold_seconds(error_deg)
     m = measure_hold(sh, tail, key, secs, settle=TURN_SETTLE_S, rest=WALK_REST_S,
-                     label=f"turn{error_deg:+.0f}")
+                     label=f"turn{error_deg:+.0f}", abort=abort)
     sh.log(fmt_hold(m))
     return m
 
 
-def facing_probe(sh, tail, seconds=FACING_PROBE_S, label="facing"):
+def facing_probe(sh, tail, seconds=FACING_PROBE_S, label="facing", abort=None):
     """A short forward tap; the direction the record travels IS the player's facing."""
-    m = measure_hold(sh, tail, WALK_FORWARD_KEY, seconds, label=label)
+    m = measure_hold(sh, tail, WALK_FORWARD_KEY, seconds, label=label, abort=abort)
     sh.log(fmt_hold(m))
     if m["heading"] is None or m["dist"] < FACING_MIN_UNITS or not m["scale_ok"]:
         return None, m
@@ -871,17 +883,22 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
     """
     sh, tail = me.sh, me.tail
     t_start = time.time()
+    # Every hold this side makes is released the moment EITHER side calls contact. Without it the
+    # side that did not call contact finished its in-flight burst -- up to WALK_STEP_MAX_S, ~240
+    # units -- and walked straight through the engagement: the simulated `converge` once reported
+    # a best of 11.2 while the two players ended 87.4 apart.
+    abort = duel.contact
     sh.log(f"approach[{me.tag}]: arrive<={arrive} engage<={engage} <={max_steps} steps, "
            f"<={max_seconds}s, route={len(me.route or [])} waypoints")
     facing = None
     for attempt in range(FACING_PROBE_TRIES):
-        facing, _ = facing_probe(sh, tail, label=f"{me.tag}_facing{attempt}")
+        facing, _ = facing_probe(sh, tail, label=f"{me.tag}_facing{attempt}", abort=abort)
         if facing is not None:
             break
         sh.log(f"approach[{me.tag}]: facing probe {attempt} moved nothing -- the player may not be "
                f"controllable yet; turning 90 deg, waiting {FACING_PROBE_REST_S}s and retrying")
-        turn_by(sh, tail, 90.0)
-        time.sleep(FACING_PROBE_REST_S)
+        turn_by(sh, tail, 90.0, abort=abort)
+        _wait(abort, FACING_PROBE_REST_S)
     if facing is None:
         # NOT an abort. A side that cannot measure its heading can still walk: every burst is
         # scored and a believed one replaces the facing, so the loop finds it within a step or two.
@@ -1002,7 +1019,7 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
             # step 15 asked -72 and delivered -16). Ask for err/gain and let the next believed
             # burst say what was actually delivered.
             cmd = max(-179.0, min(179.0, err / max(me.turn_gain, 0.2)))
-            mt = turn_by(sh, tail, cmd)
+            mt = turn_by(sh, tail, cmd, abort=abort)
             applied = (mt["sweep_deg"] if (mt["kind"] == "rotation" and mt["sweep_deg"] is not None)
                        else cmd)
             pending_turn = (facing, err)
@@ -1010,6 +1027,10 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
             confident = False
             track[-1]["turn_cmd"] = cmd
             track[-1]["turn_applied"] = applied
+            if duel.contact.is_set():
+                sh.log(f"[app {me.tag}] turn released -- the other side called contact")
+                return {"ok": True, "reason": "contact-other", "steps": step, "best": best,
+                        "best_3d": me.best_3d, "aborted_hold": "turn", "track": track}
         # A FULL burst is spent only on a facing that was measured by a believed burst and already
         # points at the target; everything else gets a probe whose only job is to measure the
         # facing again. This is the fix for wtb2's 38.6 % efficiency: its four biggest losses were
@@ -1022,8 +1043,14 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         else:
             secs, probe = WALK_PROBE_S, True
         m = measure_hold(sh, tail, WALK_FORWARD_KEY, secs, settle=WALK_SETTLE_S,
-                         rest=WALK_REST_S, label=f"{me.tag}app{step:02d}_walk")
+                         rest=WALK_REST_S, label=f"{me.tag}app{step:02d}_walk", abort=abort)
         sh.log(fmt_hold(m))
+        if duel.contact.is_set():
+            # Do not score a burst that was cut short on purpose, and do not unstick from it.
+            sh.log(f"[app {me.tag}] burst released after {m['hold_s']:.2f} of {secs:.2f} s -- "
+                   f"the other side called contact")
+            return {"ok": True, "reason": "contact-other", "steps": step, "best": best,
+                    "best_3d": me.best_3d, "aborted_hold": "walk", "track": track}
         expect = WALK_UNITS_PER_S_LONG * max(m["hold_s"] - TURN_HOLD_LEAD_S, 0.0)
         good = (m["scale_ok"] and m["heading"] is not None
                 and m["dist"] >= WALK_PROGRESS_FRACTION * expect
@@ -1059,11 +1086,12 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
                 sh.log(f"[app {me.tag}] {blocks} blocked bursts in a row -- detour the other way")
             detour_left = DETOUR_STEPS
             measure_hold(sh, tail, WALK_BACK_KEY, UNSTICK_BACK_S, settle=WALK_SETTLE_S,
-                         rest=WALK_REST_S, label=f"{me.tag}app{step:02d}_unstick_back")
+                         rest=WALK_REST_S, label=f"{me.tag}app{step:02d}_unstick_back",
+                         abort=abort)
             side = LATERAL_RIGHT_KEY if detour_sign > 0 else LATERAL_LEFT_KEY
             measure_hold(sh, tail, side, UNSTICK_LATERAL_UNITS / LATERAL_UNITS_PER_S,
                          settle=WALK_SETTLE_S, rest=WALK_REST_S,
-                         label=f"{me.tag}app{step:02d}_unstick_side")
+                         label=f"{me.tag}app{step:02d}_unstick_side", abort=abort)
         if detour_left > 0 and not good:
             detour_left -= 1
     sh.log(f"[app {me.tag}] STOP -- step cap {max_steps} reached, best distance {best}")
@@ -1212,7 +1240,7 @@ class KillWatch(threading.Thread):
     POLL_S = 0.25
 
     def __init__(self, tails, spawns, server_log=SERVER_LOG, health=None,
-                 health_range=(-0.5, 0.5)):
+                 health_range=(-1e9, 0.0)):
         super().__init__(daemon=True)
         self.tails, self.spawns = tails, spawns
         self.server_log, self.health, self.health_range = server_log, health, health_range
@@ -1403,16 +1431,22 @@ def main():
                          "capturing every screen, and stop. No match is created. This is how the "
                          "reference crop for a new map is obtained")
     ap.add_argument("--health-offset", default=None,
-                    help="BYTE OFFSET FROM THE ACTOR BASE of a confirmed health word, e.g. 0x208. "
+                    help="BYTE OFFSET FROM THE ACTOR BASE of the health word to watch, e.g. 0x1044. "
                          "Not an item index: PS2X_PEEK skips items whose chain does not resolve, "
-                         "so indices shift and an index-based guard checked the wrong block. ONLY "
-                         "pass this once the offset has been confirmed across two separate kills "
-                         "(task-8 brief); unset, the health signal is off and the run says so "
-                         "instead of guessing. +0x204 (1.0) and +0x208 (100000.0) are candidates "
-                         "ONLY -- they sit behind a +0x200 word of 0000ff00, which is as much a "
-                         "packed RGBA as a header, so `scale + far distance` fits them too")
-    ap.add_argument("--health-range", default="-0.5:0.5",
-                    help="lo:hi -- the float range that counts as dead for --health-word")
+                         "so indices shift. The candidate is research/19 F1: health is the float "
+                         "at actor+0x1044 (1.0 = full, <= 0.0 = dead), with the alive byte at "
+                         "actor+0xF7A (1 = alive; a byte, so it is NOT watchable with the float "
+                         "--health-range). Research-sourced -- two r0001 community tools, 17 decomp "
+                         "sites, 1.0 in all eight actor images -- and NOT yet read live in an "
+                         "online match; Sprint 5 Task 2 confirms it, so it is deliberately not the "
+                         "default. PS2X_PEEK must cover the offset (e.g. *0x408c58+0x1040:4) or the "
+                         "run fails with reads=0. The +0x204/+0x208 pair this help used to name is "
+                         "RETRACTED.")
+    ap.add_argument("--health-range", default="-1e9:0.0",
+                    help="lo:hi -- the float range that counts as DEAD for --health-offset. The "
+                         "default matches research/19's `<= 0.0 = dead`. It used to be -0.5:0.5, "
+                         "which on a 1.0-full health float would have called a player at 40 %% "
+                         "health dead and printed PASS for a kill that never happened")
     a = ap.parse_args()
     if a.until_kill:
         a.converge = True

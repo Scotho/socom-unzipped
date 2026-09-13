@@ -137,14 +137,22 @@ class Shell:
         write_pad_file(self.pad_file)
         time.sleep(wait)
 
-    def pad(self, seconds, buttons=(), sticks=()):
-        """Inject buttons (names) and stick directions (W/A/S/D, I/J/K/L) together for `seconds`."""
+    def pad(self, seconds, buttons=(), sticks=(), abort=None):
+        """Inject buttons (names) and stick directions (W/A/S/D, I/J/K/L) together for `seconds`.
+
+        `abort` (a threading.Event) releases the pad the moment it is set instead of at the end of
+        the hold. The two-mover approach passes the duel's contact flag: a player still walking
+        after the OTHER side has called contact overshoots the engagement, which is the geometry
+        problem the whole of Task 8 was fighting."""
         axes = {}
         for k in sticks:
             name, value = PAD_AXIS[k.upper()]
             axes[name] = value
         write_pad_file(self.pad_file, buttons, axes)
-        time.sleep(seconds)
+        if abort is None:
+            time.sleep(seconds)
+        else:
+            abort.wait(seconds)
         write_pad_file(self.pad_file)
 
     def diff(self, name, im=None, arr=None):
