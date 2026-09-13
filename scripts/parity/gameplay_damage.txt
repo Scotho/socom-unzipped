@@ -1,0 +1,82 @@
+# Shared step script; screens align by step index. `next` = wait for a new, settled screen.
+# The 'save to memory card?' dialog lands on a step index that moves with how many
+# controller-configuration screens the boot shows (2026-09-10: step 9, two before the single
+# guard that used to sit at step 11 - the blind CROSS then answered YES and the probe looped
+# on slot select / 'overwritten data will be lost'). So every step it can land on carries a
+# guard pair; ifref presses only on a match, so an unused pair costs ~2 s and no press, and
+# the blind CROSS count is unchanged. Rows 47..62 of the 160x112 thumbnail are the dialog
+# text only (63..75 are the YES/NO buttons), so the second guard still matches after RIGHT.
+# Measured over both mission runs under logs/parity/gate/: dist 0.00 on the prompt, 21.6 on
+# the slot dialog, 23.2 on the overwrite dialog, 22.8..55.2 elsewhere; threshold 8.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+next+2.0:CROSS      # main menu -> NEW GAME
+next+2.0:CROSS      # select rank
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # controller presets (1)
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # controller presets (2)
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:RIGHT   # 'save to memory card?': move the highlight YES -> NO
+ifref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,8)+1.0:CROSS   # ... and answer NO (a blind CROSS = YES loops on slot select / overwrite?)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+long+2.0:NONE       # briefing reached (waits out the location cinematic / typed text, up to 150 s)
+until(20,368,110,384)+1.2:DOWN   # DOWN until DEPLOY is highlighted (press count varies per run)
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+1.0:NONE
+wait+2.0:CROSS      # deploy -> load mission
+next+10.0:NONE      # mission
+untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD ammo panel shows
+wait+2.0:NONE
+hold+8.0:W          # walk forward 8 s
+wait+2.0:NONE
+hold+0.3:R1         # R1 = fire
+wait+1.0:NONE
+hold+0.3:R1
+wait+3.0:NONE
+hold+3.0:L          # right stick: turn right
+wait+2.0:NONE
+hold+8.0:S          # walk back 8 s
+wait+2.0:NONE
+hold+0.3:R1
+wait+3.0:NONE
+# --- Task 8 (S3) extension: stay in the mission long enough to TAKE DAMAGE, so the
+# per-player health field can be found in the actor block that PS2X_PEEK dumps every
+# sample. The probe above proves the controls; these steps walk into the level and then
+# stand still in the open, which is what gets the player shot.
+wait+3.0:NONE
+hold+6.0:W
+wait+2.0:NONE
+hold+0.4:R1
+wait+2.0:NONE
+hold+6.0:W
+wait+2.0:NONE
+hold+0.4:R1
+wait+2.0:NONE
+hold+6.0:W
+wait+2.0:NONE
+hold+0.4:R1
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE
+hold+6.0:W
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE
+hold+6.0:W
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE
+wait+15.0:NONE

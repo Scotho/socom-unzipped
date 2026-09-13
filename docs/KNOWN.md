@@ -5,7 +5,7 @@ artefact settles them, **retired** when they stop mattering, and **retracted** l
 turn out false. Every proven entry names the artefact that proves it; every believed entry names
 the experiment that would settle it. If an entry cannot do that, it does not belong here.
 
-Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 6 closed (Sprint 4, mid-flight; Task 7 running).
+Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 8 closed (Sprint 4).
 
 ---
 
@@ -27,12 +27,18 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
 | **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
 | **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
+| **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). HANDOFF's `*0x488de8+0xbc` is **not** the route | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
+| **Two movers plus the mined corridor close the map**: 1392 → **33.0 units** in 23 steps and ~127 s, both players walking, first time two online players have met | `ours_task8_kill2`, `logs/run_A_20260912_231341.log` / `run_B_…` (1172 in-game rows each); `research/18` §4.8. Approach efficiency 57.5 % / 64.7 % against Task 7's 38.6 % |
+| **The bursts at contact hit nothing because the two players were stacked, not beside each other**: minimum 2-D separation **10.1** units, minimum 3-D **34.9**, vertical separation **−54.5 to −34.9 (mean −44.8)** over the last 400 rows — 77° of elevation at 10 units of range, and the sweep covered yaw only | Same run, the two instances' position rows aligned row-for-row; `actor+0x204`/`+0x208` unchanged on **both** instances for all 1172 rows, so no damage was dealt either way |
+| **The rifles DID fire** — this is a geometry failure, not an input one | `buttons=0800` (bit 11, R1) injected **96 times** in `logs/run_A_20260912_231341.log`; HUD ammo `A_fight04.png` 30/30 → `A_fight07.png` **0/30** with bullet impacts on the stone wall in front of the muzzle, `B_final.png` 13/30 1 MAG (~47 rounds fired) |
 | **The online movement blocker was `sceInetInterfaceControl(0x200)` returning a constant** — `msSinceNetActivity` never reset, so the movement scale clamped to 0.0 on frame one. Pitch is not among the three scaled axes, which is why RY survived | `abf35bb`; `DAT_0045a1ca` measured 1 (killing the rival candidate), `MoveScale f12 = 1.0` on all 332/331 calls, instance A 73 distinct x (539.7→337.9) against 1 before, B 80. **Same-binary A/B** (`5ed29ca`, one match, both legs a frame apart): fix ON f12 = 1.0 on 330/330, idle max 1490 ms, activity globals 192/192 distinct, 89 distinct x; fix OFF f12 = 0.0 on 339/339, idle 504,210 ms, globals never written, **0.46 units** of travel. Movement tracks the stick — 1.3 units at neutral vs 28-38 per hold, starting on the hold frame, axes orthogonal. Review verified every figure to 3 dp |
 
 ## 2. Believed, unconfirmed — with the experiment that would settle it
 
 | What | What would settle it |
 |---|---|
+| `actor+0x204` (1.0) and `actor+0x208` (100000.0) are the player's health and max health. They read the same in every RDRAM image, in the PCSX2 console image and in an online match | Watch them across **two separate kills** — the brief's rule, and this task got zero. `--until-kill --health-item 2 --health-word 2` arms the watch once they are confirmed; unset, the run says the signal is off |
+| Which of `I`/`K` (right stick up/down) raises the muzzle | One timed pitch hold measured against the elevation of a target of known height difference. The engagement sweeps both ways precisely because this is unknown |
 | Whether a parked opponent starving the mover matches **console** behaviour, or is an artefact of feeding the counter from RX bytes only (the game's own source may be richer) | A PCSX2 pair with one player parked and the other walking, same `actor+0x1368` measurement |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
@@ -91,6 +97,22 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   all inside two windows where A moved 2.5 units. It forbids "stall against geometry while the
   target is parked", not long approaches as first written. Keeping both players moving removes it
   under either causal reading.
+- **A `MediusPlayerReport` in the Medius log is NOT a round end.** It is a periodic client stats
+  report: in `ours_task8_kill1` exactly one arrived, at T+156.7 s, with the two players 603 units
+  apart, both still walking and no respawn in either position record — and the harness printed
+  `RESULT PASS signal=server` for it. `KillWatch` now records it and never fires on it.
+- **A finished `drive.py` kills the NEXT run's game.** Its cleanup runs
+  `taskkill /F /IM socom2.exe`, so an earlier driver reaching its own end takes down whatever is
+  running now: `run_t8probe2` died 66 s in, the log froze at 127 sampler rows, and `drive.py` went
+  on screenshotting a dead game for another four minutes. Kill the previous driver, not just the
+  game, before starting anything.
+- **The liveness rule counts non-zero position rows, not DISTINCT ones**, so it passes while the
+  player is in-game and not yet controllable. `ours_task8_kill3` lost its second mover exactly
+  there: 161 in-game rows, movement scale 1.0, and the record moving **0.00** units across a
+  forward hold, a turn and a second forward hold.
+- **The approach loop's distance is 2-D by construction** (the camera→player reconstruction is a
+  ground-plane rotation), so "contact at 33 units" can mean a 45-unit height difference and no line
+  of sight at all. Read `dy` before believing a range.
 - **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
   defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that

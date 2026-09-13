@@ -1154,3 +1154,329 @@ the single biggest tax on any two-instance work and the next task should budget 
   the runs they produced are cited throughout this section — **the exact command line of the headline
   run is unrecoverable.** Only the surviving scripts and the drive logs under `logs/parity/` remain.
   Every one of these runs costs twelve minutes; write a new script per run and never overwrite one.
+
+---
+
+## 4. S3 — where the kill state lives, the mined corridor, and `--until-kill` (2026-09-12)
+
+Task 7 left the acceptance test one thing short of runnable: A could be steered across the map but
+could not arrive, and nothing in the harness could say that a player had died. This section is the
+route to the player's own record in guest memory, what the Horizon logs do and do not carry, the
+corridor mined out of Task 7's own position rows, and what the loop does differently because of it.
+
+### 4.1 The player actor: `*0x408c58`, and the route HANDOFF quotes is the wrong one
+
+`HANDOFF.md:311` describes the player as reachable through the camera's follow pointer,
+`*0x488de8+0xbc`. **It is not, and a run was spent finding that out.** `logs/run_t8probe1.log`
+(single instance, `scripts/parity/gameplay_damage.txt`, 1162 sampler rows) peeked
+`*0x488de8+0xbc*` all the way into gameplay: the chain resolved **24 times out of 1162**, and to
+`0xd9d9d9d9` — the allocator's fill pattern — at that. The rest of the time `PS2X_PEEK` skipped the
+item silently, which is why the run script now peeks the raw static **last**, so an unresolved
+chain shows up as missing items rather than as a silent index shift in the rows that did resolve.
+
+The route that works was found **offline, in RDRAM images this repo already had**, at the cost of no
+runs at all. Scan an image for the actor vtable `0x6691a0`; there are 37 actors; exactly one of them
+has a mover (`actor+0xc0`) whose vtable is the **player's** `0x6694b0` rather than the AI movers'
+`0x6693f0` (STATUS 2026-09-09 02:10). Then scan for words equal to that actor's address. Three
+statics hold it outright:
+
+| static | holds |
+|---|---|
+| **`0x408c58`** | the local player's actor |
+| `0x40d744` | the same |
+| `0x440c38` | the same |
+| `0x415ff0` | a camera-ish object whose `+0xbc` is the same actor — the *real* version of HANDOFF's chain, 0x415ff0 rather than 0x488de8 |
+
+All four resolve to the player actor in **five of our RDRAM images** (`spawn_ours3`, `postload_ours`,
+`rest_ours`, `rest_ours_gq`, `s4rand_ours`) **and in the PCSX2 console image** (`spawn_pcsx2`, where
+the actor is `0x1713ce0` instead of our `0x1a5e4b0`). Working on both sides of the comparison is what
+makes them game statics rather than an artefact of our heap. `tools_py/parity/` has no scanner for
+this; the two throwaway scripts that produced it are quoted in the task report.
+
+So the peek spec for a gameplay run is
+
+```
+PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0x200:32,*0x408c58+0xc0*:32,0x408c58:4"
+```
+
+`0x416054:3` stays first because `PS2X_TRIGGER` only ever tests the first word of the first item,
+and because the liveness rule of §3.10 counts its rows.
+
+### 4.2 The health candidates, and what is NOT yet confirmed
+
+Diffing the actor block across the images (fresh spawn vs 400 s at rest) leaves two words that look
+like a health pair, and they are the same in every image including PCSX2's:
+
+| offset | value | why it is a candidate |
+|---|---|---|
+| `actor+0x204` | `1.0` | a fraction, the shape of "health remaining" |
+| `actor+0x208` | `100000.0` (`0x47c35000`) | a round maximum, the shape of "max health" |
+
+**They are candidates and nothing more.** The brief's rule is that an offset is not believed until it
+has been watched across **two separate kills**, and this task did not get two kills to watch it
+across. `--until-kill` therefore ships with the health signal **disarmed**: `--health-item` /
+`--health-word` exist, the tail will watch any (item, word) they name, and with neither given the
+run prints *"health word NOT armed (no confirmed offset)"* and falls back to the two signals below.
+Arming it on a guess is exactly the failure mode this sprint has been paying for all day.
+
+### 4.3 What the Horizon logs actually carry — and it is not a death
+
+§1 already measured that a playing match and a frozen one produce **byte-identical** DME TCP
+profiles, so the DME log cannot see a death. Checking what it *can* see: over the whole of Task 7's
+runs `server/logs/console-DME.log` contains only `RT_MSG_CLIENT_ECHO`, `MediusServerConnectNotification`
+(CONNECT / DISCONNECT), `MediusServerCreateGameWithAttributesRequest`, `MediusServerJoinGameRequest`
+and `MediusServerEndGameRequest`. No per-player events of any kind — the kill is peer-to-peer and
+the DME only relays it.
+
+`server/logs/console-Medius.log` is better and is what the harness reads: a client sends
+**`MediusPlayerReport`** with a `Stats:` blob at each round boundary, and its fourth dword steps
+`1 → 3 → 5 → 7` across a match. That is a **round-end** signal, not a kill: it says the round is
+over, not what ended it. The harness reads it, names it `server`, and the note says so rather than
+calling it a kill.
+
+### 4.4 The third signal: the position record itself
+
+A one-life round ends when someone dies, and both players are then put back at their spawns. That is
+visible in the instrument the harness already trusts: `[peek] @416054` jumps by more than any walk
+can cover between two samples (`TELEPORT_UNITS` 250 against ~10 units at 4 Hz and 40 units/s), and
+lands within `RESPAWN_RADIUS` of the spawn it left. `KillWatch` fires `respawn` on either, but only
+after that player got `MOVED_AWAY_UNITS` (250) from its spawn in the first place, so the first steps
+out of the spawn cannot trigger it.
+
+**This signal says "the round ended", not "A shot B".** A round also ends on its timer, so the run
+prints the time the signal fired relative to the start of the approach, and the two screens, and
+leaves the reader to judge. Naming the signal is the point: `RESULT PASS signal=respawn` and
+`RESULT PASS signal=health` are different claims and the line says which.
+
+### 4.5 The corridor, mined rather than planned
+
+Task 7's 38.6 % closure efficiency was lost to steering churn **in open ground**, not to walls
+(§3.13), so the cheapest win available was never a route planner. Two things were done instead, and
+the first cost no runs at all.
+
+**Mining.** `logs/run_A_20260912_211009.log` (the `wtb2` run) holds 1441 in-game position rows of A
+actually walking from the SEAL spawn to (1086, 745). Keeping a row when it is at least 70 units from
+the last kept row **and** closer to the terrorist spawn than any row before it gives a
+progress-monotone chain of 16 points — every one of them a place the player's camera record
+provably was:
+
+```
+(542.2,1479.8) (529.8,1407.2) (619.3,1378.2) (693.2,1348.9) (748.1,1297.8) (795.4,1232.7)
+(737.6,1192.2) (746.7,1119.7) (742.7,1044.5) (720.6, 977.1) (755.7, 912.1) (843.4, 903.9)
+(911.6, 879.0) (950.3, 814.1) (1033.8, 800.5) (1096.4, 750.6)
+```
+
+**1167.5 units of path to close 851.4 units of gap — 73 %**, against the 38.6 % the
+straight-line-plus-detour policy managed over the same ground. The `y` of those rows falls
+184.8 → −4.5: the route is a descent out of a bowl, which is why a straight line out of the SEAL
+spawn does not work. `MP51_SEAL_ROUTE` in the harness is that list, with the rule that produced it
+written next to it so it can be re-mined.
+
+The second gameplay run over the same ground (`run_A_20260912_220017.log`, `wtb6`) is the
+counter-example that says the mining rule matters: it branched east at (817, 1275), climbed back to
+y ≈ 100–118 and spent 250 s stuck around (1060–1180, 1025–1100). Mining that run would have produced
+a corridor into a dead end. The rule keeps only monotone progress, which is what excludes it.
+
+### 4.6 What the loop does differently
+
+`walk_to_b` is no longer its own loop: it is `approach()` with no corridor, no engagement and a
+partner that is not walking back, so the simulation exercises the code a match runs.
+
+1. **Both sides walk.** One mover cannot close 1382 units inside a round and a parked opponent
+   starves a stuck mover (KNOWN.md). `--converge` runs `approach()` on both instances in threads
+   against a shared `Duel` that carries each side's **measured** facing, so each side reconstructs
+   the other's player position from its camera record rather than guessing it to within the orbit
+   radius.
+2. **A full burst is only spent on a measured facing.** This is the efficiency fix and it is a fix
+   to the loop, not to the map. Over `wtb2`'s 24 transitions the four biggest losses were 150–185
+   unit bursts at straightness 0.93–0.97 — clean open-ground walking, in the wrong direction,
+   because the burst followed an open-loop turn whose delivery the loop had assumed. Now a burst
+   that follows a turn is a **1.5 s probe (~42 units)** whose only job is to measure the facing; the
+   full burst is spent on the next step, when the facing is measured and the bearing error is inside
+   the deadband. The worst case costs 42 units instead of 185.
+3. **The turn has a measured gain.** `wtb2`'s step 15 asked for −72.3° and delivered −16.3°; step 17
+   asked for +134.4° and delivered +184.3°. Each turn is now scored against the facing the next
+   believed burst measures, and an EMA of delivered/commanded (clamped to 0.35–2.5) scales the next
+   request. It is the same closed loop the sweep measurement already was, applied to the thing that
+   was open.
+4. **A believed burst ends the detour.** `wtb2` decremented `detour_left` and kept walking 65° off
+   the bearing for another step or two; it now clears it outright.
+
+### 4.7 The simulation, which now lives in the tree
+
+`tools_py/parity/sim_walk_to_b.py` — Task 7 wrote this in a scratch directory and lost it, and the
+note that cited it could not be checked. It writes the same `[peek]` / `MoveScale` lines the exe
+writes into temp logs at 4 Hz, the **real** `RunLogTail` reads them, and a fake `Shell.pad` drives a
+simulated player. Every scenario deliberately mismatches the world's turn response against the
+harness constants, so every correction overshoots or undershoots and the loop has to recover by
+re-measuring.
+
+Run as shipped (`python -m tools_py.parity.sim_walk_to_b all`, all six green):
+
+| scenario | result |
+|---|---|
+| `open` — one mover, parked target | arrives, 5 steps, 39 s |
+| `maze` — a wall across the direct line | arrives by detouring, 14 steps, 102 s |
+| `caps` — a deliberately wrong walk rate and a wall | stops on the cap, `ok=False`, best distance reported |
+| `converge` — **both** movers from the real mp51 spawns | **1526.3 → 64.3 units in 56 s**, A walking 1110 and B 700 to close 1462 — **80.8 % efficiency** |
+| `route` — the same with the mined corridor, a spawn-bowl wall and a wall in B's half | **1526.3 → 40.9 units**, 15 steps a side, 78 s, 65.1 % |
+| `watch` — a player walked 360 units away and teleported back | `KillWatch` fires `respawn` |
+
+The `converge` number is the one that decided the match was worth launching: it is not a measurement
+of the game, it is a measurement of the loop's own arithmetic against a world where the turn
+response is deliberately wrong.
+
+### 4.8 The runs
+
+Three launches, **all three reached gameplay** — against the 4-in-10 rate Task 7 measured. Nothing
+was changed in the lobby flow, so this is luck, not an improvement, and the next task should still
+budget 2.5 launches per usable match.
+
+| run | what it was for | outcome |
+|---|---|---|
+| `logs/run_t8probe1.log` | single instance, no match: does `*0x488de8+0xbc*` reach the player? | **no** — 24 resolutions in 1162 rows, all `0xd9d9d9d9` |
+| `logs/run_t8probe2.log` | the same with `*0x408c58` | **void** — the previous run's `drive.py` reached its own cleanup and ran `taskkill /F /IM socom2.exe`, which killed *this* run's exe 66 s in. The log froze at 127 sampler rows while `drive.py` kept screenshotting a dead game: §3.10's trap, from the other end |
+| `ours_task8_kill1` | the acceptance test, attempt 1 | reached contact-range arithmetic but was **stopped early by a false signal** |
+| `ours_task8_kill2` | attempt 2 | **closed 1392 → 33 units**, fired 24 bursts, **no hit** |
+| `ours_task8_kill3` | attempt 3, with a pitch sweep | reached gameplay, **lost instance B before its first step** |
+| `ours_task8_kill4` / `kill6` / `kill7` | attempts 4, 6 and 7 | never reached gameplay (lobby band 0.521, 0.521, and the on-screen keyboard never opened) |
+| `ours_task8_kill5` | attempt 5 | reached the lobby, both READY, **match never launched** — 0 in-game rows of 2514 |
+
+**`ours_task8_kill1`** (`logs/s4_task8_kill1.sh`, `logs/parity/drive_task8_kill1.txt`,
+`logs/run_A_20260912_230022.log` / `run_B_…`, 805 in-game rows each). Liveness checked before any
+hold: A 160 / B 161 in-game rows at the check, 803 / 802 by the end.
+
+**Both players moved.** Every Task 7 run had B parked inside 48 units of its spawn; here B walked
+its camera record from (1144.9, 77.8) to (869.1, 347.1). A walked (540.8, 1480.4) → (784.8, 973.9).
+
+| | steps | turns | probe bursts | believed | walked | gap closed | efficiency |
+|---|---|---|---|---|---|---|---|
+| Task 7 `wtb2` (one mover, 300 s) | 25 | — | — | — | 1960.7 | 757.8 | **38.6 %** |
+| `kill1` A (157 s) | 30 | 28 | 29 of 30 | 24 | 1371.9 | 788.7 (1392.0 → 603.3) | **57.5 %** |
+| `kill1` B (157 s) | 27 | 24 | 25 of 27 | 18 | 1065.2 | 689.0 (1368.6 → 679.7) | **64.7 %** |
+
+Two things came out of it, and both were defects in this task's own work:
+
+- **29 of A's 30 bursts were probes and exactly one was a full burst.** `TURN_DEADBAND_DEG` is 12°,
+  and no single open-loop aim is better than about ±20°, so every step turned, and every step that
+  turned walked a probe. Fixed by a separate `APPROACH_DEADBAND_DEG` of 30°: walking 30° off the
+  bearing still closes cos 30° = 87 % of the distance, which beats turning again.
+- **The run printed `RESULT PASS signal=server` for a round that had not ended.** One
+  `MediusPlayerReport` arrived at T+156.7 s with the players 603 units apart, both still walking and
+  no respawn in either position record. The server mark is now recorded and **never fires** (§4.3).
+  It is exactly the flattering positive the sprint has been warning about, and it was in the harness
+  for one run.
+
+Also confirmed live: `*0x408c58` resolves **in an online match** — actor `0x17941d0`, word 0
+`006691a0`, 804 rows on A and 802 on B — and `actor+0x204` = 1.0 with `actor+0x208` = 100000.0
+throughout, unchanged, because nobody was shot. And the peek indices **do** shift: A's item 1 holds
+2502 rows, 1698 of them the raw `0x408c58:4` static from before the actor existed and 804 the actor
+block. The health watch now checks word 0 against `0x6691a0` before reading anything.
+
+**`ours_task8_kill2`** (`logs/s4_task8_kill2.sh`, `logs/parity/drive_task8_kill2.txt`,
+`logs/run_A_20260912_231341.log` / `run_B_…`, 1172 in-game rows each). With the deadband, the gain
+EMA at 0.3 and the 2.0 s probe:
+
+**A closed 1392 → 33.04 units in 23 steps and about 127 s, and B stopped at 70.8.** The two
+instances met in the middle of mp51 — A's record ran (541.8, 1479.7) → (903.7, 893.6) and B's
+(1144.8, 78.2) → (927.4, 867.1). That is the first time in this project that two online players
+have been in the same place.
+
+**Then 24 bursts hit nothing, and the position rows say why.** Aligning the two instances' rows
+(1172 each, same 4 Hz sampler):
+
+| measurement | value |
+|---|---|
+| minimum **2-D** camera-to-camera separation | **10.1 units** (row 669) |
+| minimum **3-D** camera-to-camera separation | **34.9 units** (row 666) |
+| vertical separation over the last 400 rows | **−54.5 to −34.9, mean −44.8** (A below B) |
+| 2-D separation over the last 400 rows | 12.3 to 117.4, mean 58.0 |
+
+At 10 units of ground range a 45-unit height difference is **77° of elevation**, and the engagement
+swept yaw only. `actor+0x204` and `actor+0x208` are unchanged on **both** instances for all 1172
+rows, so neither player took a single point of damage: this is not "the kill did not register", it
+is "nothing was hit".
+
+**The loop's distance is 2-D by construction** — the camera→player reconstruction is a ground-plane
+rotation — so it declared contact at 33 units while the real separation was 35 and mostly vertical.
+That is the next thing to fix and it is not the approach.
+
+**And the shots were real.** This matters, because "the bursts did nothing" has two very different
+explanations and the frames settle which. The injected pad state carries `buttons=0800` — bit 11,
+R1 — **96 times** in A's run log, and the HUD ammo counters follow: `A_fight04.png` reads
+**30/30, 2 MAGS**, `A_fight07.png` reads **0/30** with a spray of bullet impacts across the stone
+wall a metre in front of the muzzle, `B_fight05.png` reads **4/30** with muzzle smoke, and
+`B_final.png` reads **13/30, 1 MAG** — about 47 rounds out of B alone. Both players emptied
+magazines; the rounds went into the geometry between them. The round clock in those frames runs
+02:09 → 01:06, so the engagement was nowhere near the round's end either.
+
+**`ours_task8_kill3`, `kill4`, `kill5` — the three that taught something and produced nothing.**
+
+- `kill3` reached gameplay and then **lost one of its two movers before the first step**: instance
+  B's facing probe measured **0.00 units** of travel across a 1.5 s forward hold, a 1.3 s turn and a
+  second 1.5 s hold, with 161 in-game rows and the movement scale at 1.0 the whole time. The player
+  was in-game and not yet controllable, and the loop gave up after two probes in ten seconds. A then
+  walked alone and stopped 587 units short — the one-mover arithmetic, reproduced by accident.
+  **The liveness rule cannot catch this**: it counts non-zero position rows, not *distinct* ones.
+  The probe now retries six times over ~40 s and, failing that, starts with the facing marked
+  untrusted and lets the first believed burst measure it, because a side that cannot measure its
+  heading can still walk.
+- `kill4` never reached the game lobby (`game_lobby` band distance **0.521** against the 0.45
+  threshold) and Task 7's guard ended it in four minutes instead of twelve.
+- `kill5` reached the lobby, pressed READY on both sides, and the match still did not launch:
+  **0 in-game peek rows of 2514**, caught by the liveness rule of §3.10.
+
+`kill6` never got the on-screen keyboard up for the game name (Task 7's `wait_osk` guard, five
+minutes), and `kill7` repeated `kill4`'s **0.521** lobby-band miss.
+
+So of **seven** two-instance launches, **three reached gameplay and two produced a usable
+approach** — the 4-in-10 rate this note has been quoting, and nothing in this task touched the
+lobby flow. Every one of the four failures was caught by a Task 7 guard in four to five minutes
+instead of twelve, which is the only reason seven launches fitted in the session at all.
+
+### 4.9 The exact commands, because `logs/` is gitignored
+
+Task 7 lost the command line of its headline run by rewriting its scripts in place; `logs/` is also
+**gitignored**, so a per-run script there does not survive the workspace either. The two that matter:
+
+```bash
+# ours_task8_kill1 -- the first two-mover approach
+export PS2X_SOCOM2_SERVER=192.168.2.10 PS2X_SOCOM2_RSA_KEY_B=b PS2X_SOCOM2_INPUT_TRACE=1 \
+       PS2X_CALL_TRACE="0x553dc0:MoveScale" PS2X_CALL_TRACE_EVERY=10 PS2X_PC_SAMPLER=0.25 \
+       PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0x200:32,*0x408c58+0xc0*:32,0x408c58:4"
+python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
+       --arrive 60 --engage 45 --max-steps 60 --max-walk-seconds 250 \
+       --fight-seconds 120 --kill-timeout 400 \
+       --out logs/parity/ours_task8_kill1 --seconds 1200 > logs/parity/drive_task8_kill1.txt 2>&1
+
+# ours_task8_kill2 -- THE HEADLINE RUN: 1392 -> 33.04 units, the same environment as above
+python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
+       --arrive 60 --engage 45 --max-steps 60 --max-walk-seconds 300 \
+       --fight-seconds 120 --kill-timeout 460 \
+       --out logs/parity/ours_task8_kill2 --seconds 1200 > logs/parity/drive_task8_kill2.txt 2>&1
+```
+
+The pitch sweep of §4.6 has **never been in front of a landed engagement**: the run that reached
+contact (`kill2`) predates it, and the four launches after it either lost a mover before the first
+step or never reached gameplay. It is shipped and simulated, not proven.
+
+The single-instance actor probe, which needs no match at all and is the cheapest way to re-check the
+peek route after any heap change:
+
+```bash
+PS2X_PC_SAMPLER=0.5 PS2X_RUN_LOG=$PWD/logs/run_t8probe.log \
+PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0x200:64,*0x408c58+0xc0*:64,0x408c58:4" \
+python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_damage.txt \
+       --out logs/parity/ours_task8_probe --seconds 760 --tail 120
+```
+
+### 4.10 What the next attempt should do, in order
+
+1. **The engagement is the open problem, not the approach.** Two movers plus the corridor get the
+   players into the same room; the third dimension is what is left. Sweep pitch (done, untested in a
+   landed engagement as of this note), put `dy` in the contact test, and prefer a stopping point
+   where the height difference is small.
+2. **Confirm `actor+0x204` / `+0x208` across two kills** and then arm `--health-item 2
+   --health-word 2` (word 1 for `+0x204`). Until then the run reads the round end, not the kill.
+3. **The lobby is still the single biggest tax** — two usable approaches cost seven launches and
+   about ninety minutes. `host_game` / `join_game` still navigate by fixed presses.
