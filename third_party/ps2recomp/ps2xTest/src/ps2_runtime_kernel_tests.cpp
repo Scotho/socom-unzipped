@@ -650,6 +650,69 @@ void register_ps2_runtime_kernel_tests()
                       "the scheduler must publish guest execution only around the active guest call");
         });
 
+        tc.Run("VU0 vf0 is the hardware constant (0,0,0,1) on every fresh guest context", [](TestCase &t)
+        {
+            // On the PS2, VU0 vf0 reads (0,0,0,1) always. The runtime used to memset it to zero
+            // everywhere except the main thread, so every `...w` op with ft = vf0 on a StartThread
+            // thread lost its w-term (Frostfire's collision bounds transform FUN_003085c0).
+            const auto lanes = [](__m128 v)
+            {
+                std::array<float, 4> out{};
+                _mm_storeu_ps(out.data(), v);
+                return out; // x, y, z, w
+            };
+            const auto isVf0Constant = [&](__m128 v)
+            {
+                const auto l = lanes(v);
+                return l[0] == 0.0f && l[1] == 0.0f && l[2] == 0.0f && l[3] == 1.0f;
+            };
+
+            R5900Context fresh{};
+            t.IsTrue(isVf0Constant(fresh.vu0_vf[0]), "a default R5900Context must hold vf0 = (0,0,0,1)");
+
+            GuestInvocation invocation{};
+            t.IsTrue(isVf0Constant(invocation.context.vu0_vf[0]),
+                     "a default GuestInvocation context must hold vf0 = (0,0,0,1)");
+
+            TestEnv env;
+            EeScheduler &ee = env.runtime.eeScheduler();
+            ee.reset(env.rdram.data(), env.ctx);
+            ee.bindMainContextForSyscall(env.ctx, env.rdram.data());
+            const int id = ee.createThread(EeThreadCreateParams{0u, K_SCHED_HIGH, 0x24000u, 0x800u,
+                                                                 0u, 20, 0u});
+            t.Equals(ee.startThread(id, 0u, env.ctx, false), KE_OK, "StartThread should accept the dormant thread");
+            GuestThread *started = ee.thread(id);
+            t.IsTrue(started != nullptr, "the started thread must exist");
+            if (!started)
+            {
+                return;
+            }
+            t.Equals(lanes(started->context.vu0_vf[0])[3], 1.0f,
+                     "StartThread's reset context must hold vf0.w = 1");
+            t.IsTrue(isVf0Constant(started->context.vu0_vf[0]),
+                     "StartThread's reset context must hold vf0 = (0,0,0,1)");
+
+            // The recompiled `vmaddw.xyz vf9, vf7, vf0w` (FUN_003085c0 @ 0x308608) on that thread,
+            // exactly as translateVU_VMADD_Field emits it: vf9.xyz = ACC + vf7 * vf0.w.
+            R5900Context *ctx = &started->context;
+            ctx->vu0_vf[7] = _mm_setr_ps(960.0f, 0.0f, 800.0f, 1.0f); // model matrix row 3 (T)
+            ctx->vu0_acc = _mm_setr_ps(12.5f, -3.0f, 40.0f, 0.0f);
+            ctx->vu0_vf[9] = _mm_setr_ps(-7.0f, -7.0f, -7.0f, -7.0f);
+            {
+                __m128 mul_res = PS2_VMUL(ctx->vu0_vf[7], _mm_shuffle_ps(ctx->vu0_vf[0], ctx->vu0_vf[0], _MM_SHUFFLE(3, 3, 3, 3)));
+                __m128 res = PS2_VADD(ctx->vu0_acc, mul_res);
+                __m128i mask = _mm_set_epi32(0, -1, -1, -1);
+                // _mm_blendv_ps as emitted; this TU has no SSE4.1, and the mask lanes are all-ones or zero.
+                const __m128 maskPs = _mm_castsi128_ps(mask);
+                ctx->vu0_vf[9] = _mm_or_ps(_mm_and_ps(maskPs, res), _mm_andnot_ps(maskPs, ctx->vu0_vf[9]));
+            }
+            const auto vf9 = lanes(ctx->vu0_vf[9]);
+            t.Equals(vf9[0], 960.0f + 12.5f, "vmaddw with vf0w must add row 3's x translation to ACC.x");
+            t.Equals(vf9[1], 0.0f - 3.0f, "vmaddw with vf0w must add row 3's y translation to ACC.y");
+            t.Equals(vf9[2], 800.0f + 40.0f, "vmaddw with vf0w must add row 3's z translation to ACC.z");
+            t.Equals(vf9[3], -7.0f, "the .xyz field mask must leave vf9.w untouched");
+        });
+
         tc.Run("thread lifecycle, nested suspend, WAIT-SUSPEND, and wakeup count are centralized", [](TestCase &t)
         {
             TestEnv env;

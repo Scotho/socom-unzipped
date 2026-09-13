@@ -217,6 +217,7 @@ namespace
         ctx->vu0_r = _mm_castsi128_ps(_mm_set1_epi32(0x3F800000));
         ctx->vu0_vpu_stat = 0;
         ctx->vu0_vpu_stat2 = 0;
+        ctx->vu0_vf[0] = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f); // hard-wired on hardware
     }
 
     void copyVu0ContextToState(const R5900Context *ctx, VU1State &state)

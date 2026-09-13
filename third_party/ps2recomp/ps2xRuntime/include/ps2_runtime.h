@@ -146,6 +146,12 @@ struct alignas(16) R5900Context
         std::memset(this, 0, sizeof(*this));
 
         // Initialize VU0 registers
+        // vf0 is hard-wired to (0,0,0,1) on the PS2. Every context -- StartThread resets, GuestThread,
+        // GuestInvocation (interrupts, alarms, HLE calls), the IOP host context -- starts from this
+        // constructor, and the translator compiles writes to vf0 out, so this is the one place that
+        // keeps `...w` ops with ft = vf0 (e.g. the bounds transform FUN_003085c0) from dropping their
+        // w-term. _mm_set_ps takes (w, z, y, x).
+        vu0_vf[0] = _mm_set_ps(1.0f, 0.0f, 0.0f, 0.0f);
         vu0_q = 1.0f; // Q register usually initialized to 1.0
 
         // Reset COP0 registers
