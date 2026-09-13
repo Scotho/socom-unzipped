@@ -492,6 +492,22 @@ def death_table(rows):
     return res
 
 
+def live_death_row(rows):
+    """The live stand's death detector: the first row whose health is <= 0 after an alive read
+    (0 < h <= 1) on the same actor address, else None. Only rows whose block head is still the actor
+    vtable count: at run 3's mission failure the actor was destroyed (word 0 -> base vtable 0x4061c0,
+    FUN_0029ed30) and +0x1044 read heap data, which must never be called a death."""
+    alive_actor = None
+    for r in rows:
+        if r.health is None or r.actor is None or not math.isfinite(r.health) or r.word0 != ACTOR_VTABLE:
+            continue
+        if 0.0 < r.health <= 1.0:
+            alive_actor = r.actor
+        elif r.health <= 0.0 and alive_actor == r.actor:
+            return r
+    return None
+
+
 # ---------------------------------------------------------------------------------------------
 # heading search: which actor-relative words move with rx and are constant at rest
 # ---------------------------------------------------------------------------------------------
@@ -828,7 +844,8 @@ class Probe:
             self.log(f"screenshot {label} failed: {e}")
 
     def screen(self, max_age=3.0):
-        """(hud, popup, panel, text) of the newest frame file, or None when it is missing or stale."""
+        """screen_state(...) = (gameplay, popup, band_fraction, prompt_distance) of the newest frame file,
+        or None when it is missing or stale."""
         try:
             if time.time() - os.path.getmtime(self.latest) > max_age:
                 return None
@@ -850,7 +867,7 @@ class Probe:
             st = self.screen()
             if st is None or not st[1]:
                 return
-            self.log(f"HELP pop-up on screen (panel {st[2]:.3f} text {st[3]:.3f}) -- CROSS")
+            self.log(f"HELP pop-up on screen (letterbox band {st[2]:.3f}, prompt distance {st[3]:.3f}) -- CROSS")
             self.shot(f"popup_{int(time.time() - self.t0)}s")
             self.press_cross("popup")
             self.sleep(1.5)
@@ -858,20 +875,13 @@ class Probe:
     def check_death(self):
         if self.death_seen is not None or self.tail is None:
             return
-        rows = self.tail.snapshot()
-        alive_actor = None
-        for r in rows[-400:]:
-            if r.health is None or r.actor is None or not math.isfinite(r.health):
-                continue
-            if 0.0 < r.health <= 1.0:
-                alive_actor = r.actor
-            elif r.health <= 0.0 and alive_actor == r.actor:
-                self.death_seen = r
-                self.event("death", health=r.health, actor=r.actor, alive=r.alive)
-                self.log(f"DEATH ROW health={r.health} alive={r.alive} actor={r.actor:#x} word0={r.word0:#x}"
-                         if r.word0 is not None else f"DEATH ROW health={r.health} alive={r.alive}")
-                self.shot("death")
-                return
+        r = live_death_row(self.tail.snapshot()[-400:])
+        if r is None:
+            return
+        self.death_seen = r
+        self.event("death", health=r.health, actor=r.actor, alive=r.alive)
+        self.log(f"DEATH ROW health={r.health} alive={r.alive} actor={r.actor:#x} word0={r.word0:#x}")
+        self.shot("death")
 
     # -- phases ----------------------------------------------------------------------------------
     def launch(self):
@@ -923,7 +933,7 @@ class Probe:
                 continue
             if st is None or not st[0]:
                 if time.time() - last_cross > 4.0:
-                    self.log(f"not in gameplay yet (screen {st}) -- CROSS")
+                    self.log(f"not in gameplay yet (gameplay/popup/band/prompt-distance {st}) -- CROSS")
                     self.press_cross("skip-cinematic")
                     last_cross = time.time()
                 self.sleep(1.0)

@@ -8,7 +8,8 @@
 # Do not add steps after the untilref line that press anything: they would land on the calibration.
 # The untilref HUD match below is NOT proof of gameplay: on 2026-09-13 (Task 2 run 1) it matched the
 # letterboxed intro cinematic at 216 s with 0 presses. The probe therefore enters gameplay itself
-# (squad-panel HUD check, CROSS through the cinematic and HELP pop-ups, a forward hold that moves).
+# (both letterbox bands lit, CROSS through the cinematic and through HELP pop-ups recognised by their
+# PRESS X TO CONTINUE line, a forward hold that moves the actor).
 next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
 next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
 next+1.0:CROSS      # card notice -> CONTINUE

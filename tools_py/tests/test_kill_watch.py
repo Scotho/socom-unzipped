@@ -183,5 +183,42 @@ class ArmingCli(unittest.TestCase):
         self.assertTrue(M.health_peek_problems("*0x408c58+0xF00:128", 0x1044))   # 64-word cap: ends at +0x1000
 
 
+class LaunchRefusalLabels(unittest.TestCase):
+    """Fix round 1: a health-coverage refusal is labelled as the health watch's, not the move path's."""
+
+    def test_health_refusal_has_its_own_label(self):
+        env = {"PS2X_PEEK": "*0x408c58:64,*0x408c58+0xF78:1", "PS2X_CALL_TRACE": "0x553dc0:MoveScale",
+               "PS2X_CALL_TRACE_EVERY": "10"}
+        lines, code = M.launch_refusal_lines(env, alive_offset=0xF7A, health_offset=0x1044)
+        self.assertEqual(code, 2)
+        health = [l for l in lines if "0x1044" in l]
+        self.assertTrue(health)
+        self.assertTrue(all(l.startswith("HEALTH WATCH REFUSES:") for l in health), health)
+        self.assertIn("RESULT NO-DATA health watch (not launched)", lines)
+        self.assertFalse(any(l.startswith("MOVE-PATH WATCH REFUSES:") and "0x1044" in l for l in lines))
+
+    def test_disarmed_health_adds_no_health_refusal(self):
+        env = {"PS2X_PEEK": "*0x408c58+0x1044:1", "PS2X_CALL_TRACE": "", "PS2X_CALL_TRACE_EVERY": "10"}
+        lines, code = M.launch_refusal_lines(env, alive_offset=0xF7A, health_offset=None)
+        self.assertEqual(code, 2)                        # the move path still refuses (no MoveScale slot): only its label may appear
+        self.assertFalse(any("HEALTH" in l for l in lines))
+
+
+class FrostfireScriptLaunches(unittest.TestCase):
+    """Fix round 1: the committed scripts/parity/online_match_frostfire.sh must pass the harness's own
+    pre-launch refusal with the default (armed) offsets. Its exports are read from the file, not copied."""
+
+    def exports(self):
+        import re
+        text = open(os.path.join("scripts", "parity", "online_match_frostfire.sh")).read()
+        return dict(re.findall(r'(PS2X_[A-Z0-9_]+)="?([^"\s]*)"?', text))
+
+    def test_committed_script_is_not_refused(self):
+        env = self.exports()
+        lines, code = M.launch_refusal_lines(env, M.DEFAULT_ALIVE_OFFSET, M.DEFAULT_HEALTH_OFFSET)
+        self.assertEqual((lines, code), ([], 0))
+        self.assertEqual(M.peek_spec_problems(env["PS2X_PEEK"]), [])
+
+
 if __name__ == "__main__":
     unittest.main()

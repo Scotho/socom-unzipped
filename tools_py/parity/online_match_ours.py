@@ -1750,6 +1750,23 @@ def health_peek_problems(spec, health_offset):
             f"e.g. *{ALIVE_PEEK_BASE:#x}+{health_offset:#x}:1 (or pass --health-offset none)"]
 
 
+def launch_refusal_lines(env, alive_offset, health_offset):
+    """The pre-launch refusal of a --converge run -> (lines to print, exit code); ([], 0) = launch.
+    Each instrument refuses under its own label: the move-path watch's preconditions and the armed health
+    watch's peek coverage are different failures and are named apart."""
+    lines = []
+    mp = move_path_preconditions(env, alive_offset=alive_offset if alive_offset is not None
+                                 else vc.ACTOR_ALIVE_OFFSET)
+    hp = health_peek_problems(env.get("PS2X_PEEK", ""), health_offset)
+    lines += [f"MOVE-PATH WATCH REFUSES: {p}" for p in mp]
+    lines += [f"HEALTH WATCH REFUSES: {p}" for p in hp]
+    if mp:
+        lines.append("RESULT NO-DATA move-path watch (not launched)")
+    if hp:
+        lines.append("RESULT NO-DATA health watch (not launched)")
+    return lines, (2 if lines else 0)
+
+
 def peek_spec_problems(spec):
     """Lint a PS2X_PEEK spec for the ways it has produced nothing before (non-fatal; printed)."""
     items = parse_peek_spec(spec)
@@ -2023,14 +2040,11 @@ def main():
         # whose round valves cannot be identified, is a match spent proving nothing.
         for prob in peek_spec_problems(os.environ.get("PS2X_PEEK", "")):
             print(f"PEEK SPEC: {prob}", flush=True)
-        refusals = move_path_preconditions(os.environ, alive_offset=(a.alive_offset if a.alive_offset is not None
-                                                                     else vc.ACTOR_ALIVE_OFFSET))
-        refusals += health_peek_problems(os.environ.get("PS2X_PEEK", ""), a.health_offset)
-        if refusals:
-            for prob in refusals:
-                print(f"MOVE-PATH WATCH REFUSES: {prob}", flush=True)
-            print("RESULT NO-DATA move-path watch (not launched)", flush=True)
-            raise SystemExit(2)
+        lines, code = launch_refusal_lines(os.environ, a.alive_offset, a.health_offset)
+        if lines:
+            for line in lines:
+                print(line, flush=True)
+            raise SystemExit(code)
     A = Client("A", a.out, a.name_a, True, a.seconds)
     B = Client("B", a.out, a.name_b, a.existing_b, a.seconds)
     failed = False

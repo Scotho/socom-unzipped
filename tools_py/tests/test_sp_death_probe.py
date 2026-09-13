@@ -200,6 +200,33 @@ class DeathTable(unittest.TestCase):
         self.assertAlmostEqual(x["alive_leaves_1_dt_s"], 3.0)
         self.assertFalse(x["goal2_pass"])
 
+    def test_goal2_requires_word0_intact_at_the_death_row(self):
+        # Fix round 1: identical to test_goal2_death except the block head no longer reads the vtable at
+        # the death row (a destroyed actor: FUN_0029ed30 writes the base vtable 0x4061c0).
+        freed = 0x004061C0
+        lines = [peek_line(health=1.0)] * 4 + [peek_line(health=0.62)] * 3
+        lines += [peek_line(health=0.0, alive=2, word0=freed)] * 4
+        x = sp.death_table(rows_from(lines))["death"]
+        self.assertIsNotNone(x)
+        self.assertFalse(x["word0_is_vtable"])
+        self.assertTrue(x["intermediate_before_death"])
+        self.assertFalse(x["goal2_pass"])
+
+
+class LiveDeathRow(unittest.TestCase):
+    """sp_death_probe.live_death_row: the live stand's death detector (Probe.check_death)."""
+
+    def test_intact_block_death_is_found(self):
+        rows = rows_from([peek_line(health=1.0)] * 3 + [peek_line(health=0.0, alive=2)])
+        r = sp.live_death_row(rows)
+        self.assertIsNotNone(r)
+        self.assertEqual(r.health, 0.0)
+
+    def test_freed_block_reading_zero_is_not_a_death(self):
+        # Run 3's mission failure: the block's word 0 became the base vtable and +0x1044 read heap data.
+        rows = rows_from([peek_line(health=0.72)] * 3 + [peek_line(health=0.0, word0=0x004061C0)] * 3)
+        self.assertIsNone(sp.live_death_row(rows))
+
 
 class FieldSearch(unittest.TestCase):
     def test_matrix_words_are_candidates_and_position_is_not(self):
