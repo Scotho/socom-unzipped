@@ -1913,6 +1913,173 @@ def evidence_shot(c, label, stale, log, missing=None):
         log(f"EVIDENCE MISSING {c.tag}_{label}: {e!r}")
 
 
+# --- the clock round-end negative control (Sprint 5 Task 1 Step 5b; Task 6's free fixture) -----------
+# After the precondition nobody fires: both sides alternate small strafe legs (each side's traffic feeds
+# the OTHER side's idle counter, KNOWN §2 two-sided starvation) until the round ends on its clock. The run
+# records that total_mp_kills, aiteam_* and actor+0x1044 do not step while mp_round_count does.
+CONTROL_ROUND_CAP_S = 420.0
+CONTROL_ROUND_LEG_S = (0.5, 0.8, 0.6, 0.9)   # cycled; inside the brief's 0.4-1.0 s lx legs
+CONTROL_ROUND_AFTER_S = 15.0                  # rows kept after the round-end signal (reported, never scored)
+CONTROL_ROUND_POLL_S = 0.25
+CONTROL_ROUND_VALVES = ("mp_round_count", "mp_game_over", "total_mp_kills", "aiteam_00", "aiteam_08",
+                        "player_team", "mp_major_game_state", "mp_minor_game_state")
+CONTROL_ROUND_STEP_VALVES = ("total_mp_kills", "aiteam_00", "aiteam_08")
+
+
+def control_round_state(items, health_offset=DEFAULT_HEALTH_OFFSET, alive_offset=DEFAULT_ALIVE_OFFSET):
+    """One peek row's items -> {valve: value | NoData, 'clock', 'health', 'alive'}; valves by name bytes,
+    actor fields through the vtable block."""
+    st = {name: vc.row_valve(items, name) for name in CONTROL_ROUND_VALVES}
+    st["clock"] = vc.row_clock_string(items)
+    st["health"] = (vc.row_actor_field(items, health_offset, "f32") if health_offset is not None
+                    else vc.NoData("health disarmed"))
+    st["alive"] = (vc.row_actor_field(items, alive_offset, "u8") if alive_offset is not None
+                   else vc.NoData("alive disarmed"))
+    return st
+
+
+def _known(v):
+    return v is not None and not isinstance(v, vc.NoData)
+
+
+def control_round_end(series):
+    """series: {tag: [(t, state)]} -> (t, tag, detail) of the FIRST round-end signal on any side, or None.
+    Signals (KillWatch._check_round's): mp_round_count changes, mp_game_over leaves 0, the clock string
+    becomes 00:00 -- each a transition between two identified reads, so history is never a signal."""
+    best = None
+    for tag, rows in series.items():
+        prev = {}
+        for t, st in rows:
+            hit = None
+            for name in ("mp_round_count", "mp_game_over", "clock"):
+                v, p = st.get(name), prev.get(name)
+                if not _known(v):
+                    continue
+                if _known(p) and v != p and (name == "mp_round_count"
+                                             or (name == "mp_game_over" and p == 0)
+                                             or (name == "clock" and v == "00:00")):
+                    hit = hit or f"{name} {p}->{v}"
+                prev[name] = v
+            if hit:
+                if best is None or t < best[0]:
+                    best = (t, tag, hit)
+                break
+    return best
+
+
+def score_control_round(series, end_t=None):
+    """-> dict: per side, the steps of total_mp_kills / aiteam_* (value changes between identified reads)
+    and the health minimum and changes, counted strictly BEFORE the round-end time `end_t` (after it the
+    round resets its counters, which is not a kill); the same step counts after `end_t` are reported apart."""
+    out = {"round_ended": end_t is not None, "sides": {}}
+    for tag, rows in series.items():
+        side = {"steps": {}, "steps_after_end": {}, "values": {}, "health_min": None,
+                "health_changes": 0, "alive_values": []}
+        prev = {}
+        for t, st in rows:
+            before = end_t is None or t < end_t
+            for name in CONTROL_ROUND_STEP_VALVES:
+                v = st.get(name)
+                if not _known(v):
+                    continue
+                seen = side["values"].setdefault(name, [])
+                if not seen or seen[-1] != v:
+                    seen.append(v)
+                if name in prev and prev[name] != v:
+                    key = "steps" if before else "steps_after_end"
+                    side[key][name] = side[key].get(name, 0) + 1
+                prev[name] = v
+            h = st.get("health")
+            if _known(h) and before:
+                if side["health_min"] is None or h < side["health_min"]:
+                    side["health_min"] = h
+                if "health" in prev and prev["health"] != h:
+                    side["health_changes"] += 1
+                prev["health"] = h
+            al = st.get("alive")
+            if _known(al) and before and al not in side["alive_values"]:
+                side["alive_values"].append(al)
+        for name in CONTROL_ROUND_STEP_VALVES:
+            side["steps"].setdefault(name, 0)
+        out["sides"][tag] = side
+    return out
+
+
+def control_round_result_line(score, end):
+    sides = sorted(score["sides"])
+    kills = sum(score["sides"][s]["steps"]["total_mp_kills"] for s in sides)
+    ai = ",".join(f"{s}:{n}={score['sides'][s]['steps'][n]}" for s in sides for n in ("aiteam_00", "aiteam_08"))
+    hmin = ",".join("n/a" if score["sides"][s]["health_min"] is None
+                    else f"{score['sides'][s]['health_min']:g}" for s in sides)
+    hch = ",".join(str(score["sides"][s]["health_changes"]) for s in sides)
+    sig = f" signal={end[2].replace(' ', '')} on={end[1]}" if end else ""
+    return (f"RESULT CONTROL-ROUND round_ended={'yes' if end else 'no'} kills_stepped={kills} "
+            f"aiteam_stepped={ai} health_min={hmin} health_changes={hch}{sig}")
+
+
+def control_round_ok(score, end):
+    """The negative control holds: the round ended, and nothing a kill moves stepped before it."""
+    if end is None:
+        return False
+    for side in score["sides"].values():
+        if any(side["steps"][n] for n in CONTROL_ROUND_STEP_VALVES) or side["health_changes"]:
+            return False
+    return True
+
+
+def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_ROUND_CAP_S,
+                  health_offset=DEFAULT_HEALTH_OFFSET, alive_offset=DEFAULT_ALIVE_OFFSET,
+                  after_s=CONTROL_ROUND_AFTER_S):
+    """Alternate lx strafe legs A, B, A, B (left, left, right, right, ...) with NO button ever pressed,
+    sampling each tail's newest peek row, until the first round-end signal (then `after_s` of neutral
+    observation) or `cap_s`. -> (series, end, score)."""
+    tags = sorted(clients)
+    series = {tag: [] for tag in tags}
+    last = {tag: None for tag in tags}
+
+    def collect():
+        for tg in tags:
+            tail = clients[tg].tail
+            with tail._lock:                              # noqa: SLF001 - same module
+                items = tail.latest_items
+            if items is not None and items is not last[tg]:
+                last[tg] = items
+                series[tg].append((clock(), control_round_state(items, health_offset, alive_offset)))
+
+    t0 = clock()
+    collect()
+    i, end = 0, None
+    log(f"CONTROL-ROUND start: strafe legs {CONTROL_ROUND_LEG_S}s alternating {'/'.join(tags)}, "
+        f"no buttons, cap {cap_s:g}s")
+    while clock() - t0 < cap_s:
+        tag = tags[i % len(tags)]
+        key = LATERAL_LEFT_KEY if (i // len(tags)) % 2 == 0 else LATERAL_RIGHT_KEY
+        clients[tag].sh.pad(CONTROL_ROUND_LEG_S[i % len(CONTROL_ROUND_LEG_S)], sticks=[key])
+        i += 1
+        collect()
+        end = control_round_end(series)
+        if end is not None:
+            break
+        if i % 80 == 0:
+            parts = []
+            for tg in tags:
+                st = series[tg][-1][1] if series[tg] else {}
+                parts.append(f"{tg}:clock={st.get('clock')} rc={st.get('mp_round_count')} "
+                             f"kills={st.get('total_mp_kills')} health={st.get('health')}")
+            log(f"CONTROL-ROUND T+{clock() - t0:.0f}s legs={i} " + " ".join(parts))
+    if end is not None:
+        log(f"CONTROL-ROUND round-end signal {end[2]} on {end[1]} at T+{end[0] - t0:.1f}s after {i} legs; "
+            f"observing {after_s:g}s more, pad neutral")
+        stop = clock() + after_s
+        while clock() < stop:
+            wait(CONTROL_ROUND_POLL_S)
+            collect()
+    else:
+        log(f"CONTROL-ROUND cap {cap_s:g}s reached after {i} legs with no round-end signal")
+    score = score_control_round(series, end[0] if end else None)
+    return series, end, score
+
+
 class Client:
     def __init__(self, tag, out, name, existing, seconds):
         self.tag, self.out, self.name, self.existing, self.seconds = tag, out, name, existing, seconds
@@ -1987,6 +2154,14 @@ def main():
     ap.add_argument("--kill-timeout", type=float, default=420.0,
                     help="wall-clock budget from the liveness check to the kill; on expiry the run "
                          "ends FAIL with both screens captured")
+    ap.add_argument("--control-round", action="store_true",
+                    help="implies --converge: after the control precondition NOBODY FIRES; both sides "
+                         "alternate 0.5-0.9 s strafe legs (each feeds the other's idle counter) until "
+                         "the round ends on its clock (mp_round_count step, mp_game_over, clock 00:00) "
+                         "or --control-round-cap. Prints RESULT CONTROL-ROUND; exit 1 unless the round "
+                         "ended with total_mp_kills, aiteam_* and the health word unchanged (Task 6's "
+                         "negative control)")
+    ap.add_argument("--control-round-cap", type=float, default=CONTROL_ROUND_CAP_S)
     ap.add_argument("--no-route", action="store_true",
                     help="ignore the mined corridor and walk the straight line (the Task 7 policy)")
     ap.add_argument("--map", default="frostfire",
@@ -2026,6 +2201,10 @@ def main():
     a.health_offset = parse_offset(a.health_offset)
     a.alive_offset = parse_offset(a.alive_offset)
     if a.until_kill:
+        a.converge = True
+    if a.control_round:
+        if a.until_kill:
+            raise SystemExit("--control-round and --until-kill are opposites: one fires, one must not")
         a.converge = True
     # Both of these were quietly inert: only --engage-dy was pushed into the module global, and
     # `level_target`'s `tol` default bound at IMPORT time, so a --engage-dy on the command line
@@ -2163,6 +2342,23 @@ def main():
                                          for tag, sd in control_sides.items()},
                                "move_path": mpw.history}, fh, indent=1, default=str)
                 raise SystemExit(code)
+        if a.converge and a.control_round:
+            # Sprint 5 Task 1 Step 5b: the clock round-end negative control. Nobody fires.
+            series, end, score = control_round({"A": A, "B": B}, A.sh.log, cap_s=a.control_round_cap,
+                                               health_offset=a.health_offset, alive_offset=a.alive_offset)
+            mpw.stop()
+            for c in (A, B):
+                evidence_shot(c, "final", [], A.sh.log, [])
+                for line in valve_report(c.tag, c.tail, valves_wanted):
+                    A.sh.log(line)
+            with open(os.path.join(a.out, "control_round.json"), "w") as fh:
+                json.dump({"control": {tag: sd.status for tag, sd in control_sides.items()},
+                           "move_path": mpw.history, "end": end, "score": score,
+                           "series": series}, fh, indent=1, default=str)
+            A.sh.log(control_round_result_line(score, end))
+            if not control_round_ok(score, end):
+                failed = True
+        if a.converge and not a.control_round:
             # Task 8 (S3): BOTH sides close, then fight, and a KillWatch decides when it is over.
             duel = Duel()
             # The mined corridor is map-specific (research/18 §4.5). On any other map it would
@@ -2353,6 +2549,8 @@ def main():
         A.kill()
         B.kill()
         subprocess.run(["taskkill", "/F", "/IM", "socom2.exe"], capture_output=True)
+    if failed and a.control_round:
+        raise SystemExit("--control-round: the negative control did not hold (see RESULT CONTROL-ROUND)")
     if failed:
         raise SystemExit("--until-kill: no KILL was observed -- FAIL. (A round end on its own is "
                          "not a kill: the round clock ends rounds too, and the health word that "
