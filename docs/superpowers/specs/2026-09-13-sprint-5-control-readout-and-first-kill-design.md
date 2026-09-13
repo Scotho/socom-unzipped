@@ -31,7 +31,7 @@ reCOM facts are **believed, not proven** until the bar here is met on our binary
   `FUN_002a7490`/`FUN_002a7420`/`FUN_002a73b0`. **`ng+0xde` is the game's own network-lag flag**:
   `FUN_00594cf0` sets it to 1 when idle ≥ 4501 ms and 0 below — but only on frames where it reaches
   the move-scale code. Round clock string at `0x408f10`. Value semantics are inference.
-- **The best Frostfire lead is uninitialised memory** (`research/19` F3): bytes the `CZNetGame`
+- ~~**The best Frostfire lead is uninitialised memory**~~ *(amended 2026-09-13 after launch 1: the ghost chain did not fire; the move path was stopped by the online snap-back because the local actor's ground probe never hits at the Frostfire spawn — `docs/KNOWN.md` §2, research/21 §6. The zero-fill A/B precondition is not met.)* (`research/19` F3): bytes the `CZNetGame`
   constructor never writes read `0xAF` on ours and `0x00` on the console, among them `+0xd2`, the
   "You are a ghost" flag (set for late joiners by `FUN_001f5e70`, cleared on new round by
   `FUN_001f6660`). Guest `_malloc_r`/`_memalign_r`/`_realloc_r` are bound in `Compatibility.cpp`
