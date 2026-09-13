@@ -458,7 +458,138 @@ def require_game_lobby(sh, what):
                      f"would never have launched")
 
 
-def host_game(sh, game_name="test"):
+# ---------------------------------------------------------------------------
+# CHOOSE GAMES -- the map list
+# ---------------------------------------------------------------------------
+# The AVAILABLE MAPS box holds six visible rows and SCROLLS, so the entry a fixed number of presses
+# lands on is not knowable from one screen and the old blind `sh.press("cross", 4.0)  # Medley`
+# accepted whatever happened to be highlighted. Geometry and thresholds below are MEASURED off the
+# 27 captures of logs/parity/ours_task8_mapscan (640x448): text rows start at y=117 with a pitch of
+# 20 and a height of 12, x 78..292.
+MAP_ROW_TOP, MAP_ROW_PITCH, MAP_ROW_H = 117, 20, 12
+MAP_ROW_X0, MAP_ROW_X1 = 78, 292
+MAP_ROWS = 6
+# The highlighted row is gold-on-teal and its PEAK luminance is 123-125 in all 27 captures; an
+# ordinary row's pale text peaks at 168-174 and an empty row at 99-110. A single absolute band
+# separates all three with a margin of more than 40 either way, which is why this needs no
+# reference image and no assumption about where the cursor starts.
+MAP_HILITE_LO, MAP_HILITE_HI = 116.0, 140.0
+# Text-mask distance: binarise the row and take (symmetric difference / union) over +-3 px of
+# shift. Measured across the same 27 captures against the FROSTFIRE reference: the true row scores
+# 0.000 and the nearest other map (ENOWAPI) 0.510, so 0.30 has a margin of 0.21. The
+# contrast-normalised band distance `Shell.diff` uses was NOT good enough here -- it put ENOWAPI at
+# 0.317 against a 0.42 threshold, i.e. it would have accepted the wrong map.
+MAP_MATCH_THRESH = 0.30
+MAP_REF_DIR = REFS
+
+
+def map_row_box(i):
+    y0 = MAP_ROW_TOP + MAP_ROW_PITCH * i
+    return MAP_ROW_X0, y0, MAP_ROW_X1, y0 + MAP_ROW_H
+
+
+def map_rows(im):
+    a = np.asarray(im.convert("L"), dtype=np.float32)
+    out = []
+    for i in range(MAP_ROWS):
+        x0, y0, x1, y1 = map_row_box(i)
+        out.append(a[y0:y1, x0:x1])
+    return out
+
+
+def map_cursor(sh, im=None):
+    """Index of the highlighted row in AVAILABLE MAPS, or -1. No reference image needed."""
+    rows = map_rows(im or winshot.grab(sh.hwnd))
+    cand = [i for i, b in enumerate(rows) if MAP_HILITE_LO <= float(b.max()) <= MAP_HILITE_HI]
+    if not cand:
+        return -1
+    return max(cand, key=lambda i: float(rows[i].std()))
+
+
+def map_text_mask(band):
+    lo, hi = float(band.min()), float(band.max())
+    return band > (lo + 0.55 * (hi - lo))
+
+
+def map_mask_distance(cur, ref):
+    """Symmetric difference over union of the two text masks, best over +-3 px of shift."""
+    if cur.shape != ref.shape:
+        return 1e9
+    a, b = map_text_mask(cur), map_text_mask(ref)
+    best = 1.0
+    for dx in range(-3, 4):
+        c = np.roll(a, dx, axis=1)
+        u = int((c | b).sum())
+        if u:
+            best = min(best, float((c ^ b).sum()) / float(u))
+    return best
+
+
+def map_scan(sh, presses=26, tag="mapscan"):
+    """Walk AVAILABLE MAPS one DOWN at a time, capturing every screen.
+
+    Costs one single-instance login and NO match launch, and it is what makes a verified map
+    selection possible: the reference crop for a map is cut from this scan's own captures.
+    The list as scanned on 2026-09-13, in order: Medley, Random, VIGILANCE, THE MIXER, FOXHUNT,
+    SUJO, ENOWAPI, SHADOW FALLS, FISH HOOK, CROSSROADS, SANDSTORM, CHAIN REACTION, GUIDANCE,
+    REQUIEM, BLIZZARD, **FROSTFIRE**, ABANDONED, DESERT GLORY, NIGHT STALKER, RAT'S NEST,
+    BITTER JUNGLE, BLOOD LAKE, DEATH TRAP, THE RUINS.
+    """
+    seen = []
+    for k in range(presses + 1):
+        im = winshot.grab(sh.hwnd)
+        im.save(os.path.join(sh.out, f"{sh.tag}{tag}_{k:02d}.png"))
+        cur = map_cursor(sh, im)
+        seen.append(cur)
+        sh.log(f"map scan {k:02d}: highlighted row {cur}")
+        if k < presses:
+            sh.pad_press("down", wait=0.5)
+    return seen
+
+
+def map_ref_path(name):
+    return os.path.join(MAP_REF_DIR, f"map_{name.lower()}.png")
+
+
+def choose_map(sh, name, presses=30):
+    """Select `name` in AVAILABLE MAPS, VERIFYING the highlighted row before pressing CROSS.
+
+    A blind index that silently lands on the wrong map produces a whole class of runs whose
+    position rows mean nothing -- and the mined waypoint corridor is map-specific, so the harness
+    has to KNOW which map it is on rather than assume. Returns the row index it accepted; raises
+    SystemExit with a capture if the map is never highlighted.
+    """
+    ref_path = map_ref_path(name)
+    if not os.path.exists(ref_path):
+        raise SystemExit(f"{sh.tag}no reference for map '{name}' at {ref_path} -- run the map scan "
+                         f"(--only A --map-scan 26) once and cut the highlighted row from its "
+                         f"captures; accepting whatever is highlighted is not an option")
+    ref = np.asarray(Image.open(ref_path).convert("L"), dtype=np.float32)
+    for k in range(presses + 1):
+        im = winshot.grab(sh.hwnd)
+        cur = map_cursor(sh, im)
+        if cur >= 0:
+            d = map_mask_distance(map_rows(im)[cur], ref)
+            if d <= MAP_MATCH_THRESH:
+                sh.log(f"map '{name}' highlighted at row {cur} after {k} DOWN (text-mask distance "
+                       f"{d:.3f} <= {MAP_MATCH_THRESH}) -- accepting")
+                sh.shot(f"14b_map_{name.lower()}")
+                sh.press("cross", 4.0)
+                return cur
+            if k % 5 == 0:
+                sh.log(f"map search {k:02d}: row {cur} is not '{name}' (distance {d:.3f})")
+        else:
+            sh.log(f"map search {k:02d}: no highlighted row -- pressing on")
+        sh.pad_press("down", wait=0.45)
+    sh.shot(f"14_map_{name.lower()}_NOT_FOUND")
+    raise SystemExit(f"{sh.tag}map '{name}' was never highlighted in {presses} presses of DOWN -- "
+                     f"see the capture. Accepting whatever is highlighted would put the run on an "
+                     f"unknown map, and the whole point of this check is that it cannot.")
+
+
+def open_choose_games(sh, game_name="test"):
+    """Briefing room -> CREATE GAME -> game name -> CHOOSE GAMES. Split out of `host_game` so the
+    map scan can reach the list without creating a world."""
     sh.press("up", 2.0)
     sh.press("cross", 6.0)                                       # CREATE GAME
     sh.shot("12_create_game")
@@ -468,7 +599,12 @@ def host_game(sh, game_name="test"):
     sh.press("up", 2.5)
     sh.press("cross", 6.0)                                       # CHOOSE GAMES
     sh.shot("14_choose_games")
-    sh.press("cross", 4.0)                                       # Medley
+
+
+def host_game(sh, game_name="test", game_map="medley"):
+    open_choose_games(sh, game_name)
+    row = choose_map(sh, game_map)                               # VERIFIED, not a blind CROSS
+    sh.log(f"map list: accepted '{game_map}' at row {row}")
     sh.press("square", 5.0)                                      # ACCEPT PLAY LIST
     sh.shot("15_play_list")
     sh.press("square", 25.0)                                     # CREATE GAME (DME world)

@@ -9,7 +9,12 @@ each correction overshoots or undershoots and the loop has to recover by re-meas
 what the real game does (research/18 §3.13: RMS 18 deg on an open-loop turn, and one wtb2 turn that
 asked for -72 deg and delivered -16).
 
-    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|watch|all]
+    python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|all]
+
+The per-scenario step counts and wall times this prints are ILLUSTRATIVE, not constants: the
+simulation is wall-clock timed and varies run to run (one `maze` took 14 steps / 102 s and another
+29 / 206 s on the same code). What is asserted is the OUTCOME -- arrival, the cap, the signal --
+and, for `converge`, that the distance the loop REPORTS tracks the simulated truth.
 
 Task 7 wrote this in a scratch directory and lost it. It lives next to the harness now.
 """
@@ -24,18 +29,38 @@ import time
 from . import online_match_ours as M
 
 
-def peek_line(x, y, z):
-    def w(v):
-        return f"{struct.unpack('<I', struct.pack('<f', v))[0]:08x}({v:g})"
-    return f"[peek] @416054: {w(x)} {w(y)} {w(z)}"
+def _w(v):
+    return f"{struct.unpack('<I', struct.pack('<f', v))[0]:08x}({v:g})"
+
+
+def peek_line(cx, cy, cz, actor=None, actor_addr=0x01794000):
+    """The camera record, and -- as the exe writes it when the actor chain resolves -- the ACTOR
+    block beside it, with the class vtable in word 0 and the true position in words 7/8/9.
+
+    The loop prefers the actor read, so the simulation has to provide it or it would be testing the
+    fallback. It is also what makes the simulation able to CATCH the measurement bug: on the
+    committed code this file reported a best separation of 40.3 against a simulated ground truth of
+    64.3 (and 23.4 vs 30.7, and 157.6 vs 204.7) in a world with no vertical dimension at all, which
+    can only be the camera+facing orbit reconstruction.
+    """
+    line = f"[peek] @416054: {_w(cx)} {_w(cy)} {_w(cz)}"
+    if actor is not None:
+        words = ["006691a0(9.41946e-39)"] + ["00000000(0)"] * 63
+        for slot, v in zip(M.ACTOR_POS_WORDS, actor):
+            words[slot] = _w(v)
+        line += f" @{actor_addr:x}: " + " ".join(words)
+    return line
 
 
 class World:
     """One simulated player. Truth is (x, z, facing); the log carries the camera record only."""
 
-    def __init__(self, path, x, z, facing, walk_u_s, look_deg_s, radius, wall=None):
+    def __init__(self, path, x, z, facing, walk_u_s, look_deg_s, radius, wall=None, height=None,
+                 actor_addr=0x01794000):
         self.path, self.x, self.z, self.facing = path, x, z, facing
         self.walk, self.look, self.r, self.wall = walk_u_s, look_deg_s, radius, wall
+        self.height = height or (lambda x, z: -131.0)
+        self.actor_addr = actor_addr
         self.state = {}
         self.lock = threading.Lock()
         self.stop = threading.Event()
@@ -78,11 +103,13 @@ class World:
                     self.x += self.walk * dt * math.cos(h)
                     self.z += self.walk * dt * math.sin(h)
                 cx, cz = self.camera()
+                y = self.height(self.x, self.z)
             n += 1
             with open(self.path, "a") as f:
                 if n % 2 == 0:
                     f.write("[call] 400.0s MoveScale #1 a0=0x1 ra=0x595028 f12=1.0 f13=0.0 f14=1.0\n")
-                f.write(peek_line(cx, -131.0, cz) + "\n")
+                f.write(peek_line(cx, y + 19.7, cz, actor=(self.x, y, self.z),
+                                  actor_addr=self.actor_addr) + "\n")
             time.sleep(dt)
 
 
@@ -109,12 +136,15 @@ class FakeClient:
         self.sh = sh
 
 
-def _worlds(label, ax, az, af, bx, bz, bf, wall=None, bwall=None, look_mismatch=0.78):
+def _worlds(label, ax, az, af, bx, bz, bf, wall=None, bwall=None, look_mismatch=0.78,
+            aheight=None, bheight=None):
     d = tempfile.gettempdir()
     wa = World(os.path.join(d, f"sim_A_{label}.log"), ax, az, af, M.WALK_UNITS_PER_S_LONG,
-               M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN * look_mismatch, 27.0, wall)
+               M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN * look_mismatch, 27.0, wall, aheight,
+               actor_addr=0x01794000)
     wb = World(os.path.join(d, f"sim_B_{label}.log"), bx, bz, bf, M.WALK_UNITS_PER_S_LONG,
-               M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN / look_mismatch, 27.0, bwall)
+               M.LOOK_DEG_PER_S * M.LOOK_RIGHT_SIGN / look_mismatch, 27.0, bwall, bheight,
+               actor_addr=0x017a4000)
     ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
     ta.start()
     tb.start()
@@ -139,12 +169,13 @@ def run(label, ax, az, af, bx, bz, bf, wall=None, arrive=120.0, max_steps=40, ma
     return r, true_d
 
 
-def run_converge(label, route=None, wall=None, bwall=None, arrive=120.0, engage=45.0,
-                 max_steps=40, max_seconds=290.0):
+def run_converge(label, route=None, wall=None, bwall=None, arrive=22.0, engage=22.0,
+                 max_steps=40, max_seconds=290.0, aheight=None, bheight=None):
     """Both movers (what a match runs): A and B walk toward each other from the mp51 spawns."""
     ax, az = M.MP51_SEAL_SPAWN
     bx, bz = M.MP51_TERROR_SPAWN
-    wa, wb, ta, tb = _worlds(label, ax, az, 20.0, bx, bz, 160.0, wall, bwall)
+    wa, wb, ta, tb = _worlds(label, ax, az, 20.0, bx, bz, 160.0, wall, bwall,
+                             aheight=aheight, bheight=bheight)
     duel = M.Duel()
     sideA = M.Side("A", FakeShell(wa, "A_"), ta, route=route)
     sideB = M.Side("B", FakeShell(wb, "B_"), tb, route=None)
@@ -159,7 +190,8 @@ def run_converge(label, route=None, wall=None, bwall=None, arrive=120.0, engage=
         ts.append(t)
     for t in ts:
         t.join()
-    true_d = math.hypot(wb.x - wa.x, wb.z - wa.z)
+    ay, by = wa.height(wa.x, wa.z), wb.height(wb.x, wb.z)
+    true_d = math.dist((wa.x, ay, wa.z), (wb.x, by, wb.z))
     walked = {}
     for tag, r in out.items():
         walked[tag] = sum((s.get("walk") or {}).get("dist") or 0.0 for s in r["track"])
@@ -233,20 +265,43 @@ def main():
         ran.append("caps")
     if which in ("converge", "all"):
         # arrive == engage, as the match runs it: two thresholds would let both sides stop short
-        # of contact and then nobody shoots.
-        out, d, _, _ = run_converge("converge", arrive=45.0, engage=45.0, max_seconds=290.0)
-        assert d <= 70.0, d
+        # of contact and then nobody shoots. The assertion is tight now BECAUSE the loop reads the
+        # actor's own position instead of reconstructing it from camera + facing; on the old code
+        # this scenario reported 40.3 against a ground truth of 64.3.
+        out, d, _, _ = run_converge("converge", arrive=22.0, engage=22.0, max_seconds=290.0)
+        rep_best = min(out["A"].get("best_3d") or 1e9, out["B"].get("best_3d") or 1e9)
+        print(f"   converge: reported best 3-D {rep_best:.1f} vs simulated truth {d:.1f} "
+              f"(error {abs(rep_best - d):.1f})")
+        assert d <= 35.0, d
+        assert abs(rep_best - d) <= 12.0, (rep_best, d)
         assert out["A"]["reason"] in ("contact", "contact-other", "arrived"), out["A"]["reason"]
         ran.append("converge")
     if which in ("route", "all"):
         # The shape of the real map: A's spawn bowl is walled in B's direction below z=1300 until
         # x>690, and B's half has a wall of its own. The mined corridor has to carry A out.
         out, d, _, _ = run_converge(
-            "route", route=M.MP51_SEAL_ROUTE, arrive=45.0, engage=45.0, max_seconds=290.0,
+            "route", route=M.MP51_SEAL_ROUTE, arrive=22.0, engage=22.0, max_seconds=290.0,
             wall=lambda x, z: z < 1300.0 and x < 690.0,
             bwall=lambda x, z: z > 400.0 and x > 1200.0)
-        assert d <= 70.0, d
+        assert d <= 45.0, d
         ran.append("route")
+    if which in ("stack", "all"):
+        # The kill2 failure, as a test. A's ground falls away as it walks south -- the mined
+        # corridor is a descent, y 184.8 -> -4.5 -- while B stays at one height, so a ground-plane
+        # loop walks A UNDER B and calls it contact. The loop must refuse and climb back up its own
+        # breadcrumb trail to B's height instead.
+        out, d, _, _ = run_converge(
+            "stack", arrive=22.0, engage=22.0, max_seconds=290.0,
+            aheight=lambda x, z: -131.0 + max(0.0, min(140.0, (z - 700.0) * 0.18)),
+            bheight=lambda x, z: -71.0)
+        trk = out["A"]["track"]
+        d3s = [t["d3"] for t in trk if t.get("d3") is not None]
+        stacked = [t for t in trk if t.get("target_name") == "level"]
+        print(f"   stack: A min reported 3-D {min(d3s):.1f}, simulated truth {d:.1f}, "
+              f"{len(stacked)} of {len(trk)} steps steered to a same-height breadcrumb, "
+              f"final |dy| {abs(trk[-1]['dy']):.1f}")
+        assert d <= 60.0, d
+        ran.append("stack")
     if which in ("watch", "all"):
         w = run_watch()
         assert w.fired and w.fired["kind"] == "respawn", w.events

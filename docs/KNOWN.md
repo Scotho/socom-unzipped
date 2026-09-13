@@ -51,6 +51,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | The DME aux-UDP channel carries nothing at round start | Rate bound only; `PS2X_SOCOM2_NET_TRACE_ALL` now closes it |
 | `sin`/`cos` have no live call sites | Direct-`jal` count only; `0x001D55B8`/`0x001D55BC` hold their addresses in a probable dispatch table |
 
+- **Movement on Frostfire.** One two-instance match (`ours_task8_frost1`, 2026-09-13) reached
+  gameplay on Frostfire with the round clock running, the pad reaching the guest (`ly=00` on 31
+  polls), the movement scale at **1.0** and 1152 actor rows per side — and **neither player moved**:
+  2.5 units of x on A and 0.0 on B over 240 s and twelve facing probes. `FUN_00553dc0` was traced
+  about **once a second** against ~20 a second on mp51. Whether this is a map-specific movement
+  defect or a match that never handed over control is **not settled by one run**; §3.12's fix was
+  measured on mp51 and only on mp51. Do not assume movement works on any other map.
+  Frostfire spawns are **692 units apart** (mp51: 1485) with a **42-unit height difference**.
+
 ## 3. Retracted — believed, then killed by measurement
 
 - **"The PCSX2 golden match is the same frozen state"** (`HANDOFF.md` "Open items" item 0). False. That golden was two
@@ -180,5 +189,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   printed `RESULT PASS signal=server` for a round that had not ended, until it caught itself. Any
   round-end signal must require something only a real round end produces.
 - **A finished `drive.py` taskkills the *next* run's game.** It voided one of Task 8's probes.
+- **A stale number is more dangerous than a false sentence.** A false claim reads as something a
+  reader can challenge; a superseded measurement carries no visible sign at all. This sprint's own
+  retraction task quoted a retracted figure into a tracked document, and this list carried two
+  contradictory generations of the same measurement for hours.
+- **Striking a claim's headline leaves its consequences standing** — and the consequences are the
+  half a skimming reader acts on. `HANDOFF`'s ground-height item had three live restatements of a
+  frame whose headline had already been struck.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.

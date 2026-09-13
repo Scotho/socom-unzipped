@@ -650,6 +650,28 @@ Three of the six two-instance runs in this task produced nothing usable, in two 
    check` prints the holder and the age — if the age is large and the owner is a task that has
    plainly finished, it is an orphan.
 
+5. **A finished `drive.py` kills the NEXT run's game.** `drive.py`'s cleanup runs
+   `taskkill /F /IM socom2.exe`, which is process-wide: an *earlier* driver reaching its own end
+   takes down whatever is running **now**. Task 8's second actor probe died 66 s in exactly this
+   way — its run log froze at 127 sampler rows while its `drive.py` went on screenshotting a dead
+   game for another four minutes, and only counting the instrument's rows against the wall clock
+   (127 rows over 20 s of wall clock = 0.0 Hz) gave it away. **Kill the previous driver, not just
+   the game**, before starting anything: `Get-CimInstance Win32_Process | Where-Object
+   { $_.CommandLine -match 'tools_py.parity' }` finds it when `Get-Process socom2` shows nothing.
+6. **A `MediusPlayerReport` in the Medius log is NOT a round end.** It is a periodic client stats
+   report. `ours_task8_kill1` had exactly one, at T+156.7 s, with the two players 603 units apart,
+   both still walking and no respawn in either position record — and the acceptance test printed
+   `RESULT PASS signal=server` for it. A false PASS in the very test that is supposed to certify
+   "playable" is the worst shape this class of defect takes. `KillWatch.FIRING` is now
+   `("health", "respawn")`; the server mark is recorded, named in the FAIL line as a non-firing
+   observation, and never believed. The DME TCP log is worse still and §1 already measured why: a
+   playing match and a frozen one are byte-identical there.
+7. **The liveness rule counts non-zero position rows, not DISTINCT ones**, so it passes while the
+   player is in-game and not yet controllable. `ours_task8_kill3` lost one of its two movers there:
+   161 in-game rows, movement scale 1.0, and the record moving **0.00** units across a forward
+   hold, a turn and a second forward hold. Before measuring anything, check the record actually
+   responds to a hold.
+
 This is the same class of defect the sprint has been closing in the gate all day: a check that can
 quietly attest to nothing. The online harness has it too, and now it is written down.
 
@@ -1164,10 +1186,26 @@ could not arrive, and nothing in the harness could say that a player had died. T
 route to the player's own record in guest memory, what the Horizon logs do and do not carry, the
 corridor mined out of Task 7's own position rows, and what the loop does differently because of it.
 
-### 4.1 The player actor: `*0x408c58`, and the route HANDOFF quotes is the wrong one
+### 4.1 The player actor: `*0x408c58` — and the route STATUS's 02:10 entry is read as is wrong
 
-`HANDOFF.md:311` describes the player as reachable through the camera's follow pointer,
-`*0x488de8+0xbc`. **It is not, and a run was spent finding that out.** `logs/run_t8probe1.log`
+> **RETRACTION for close-out — and the attribution matters.** The wrong route is
+> `*0x488de8+0xbc`, and it comes from **`STATUS.md`'s 2026-09-09 02:10 entry**, where it is written
+> as a warning ("Gotcha: the camera's follow pointer (`*0x488de8+0xbc`) is null in the spawn
+> images") and has since been read as a route. **It was never in `HANDOFF.md`** — `git log -S` over
+> that file matches only the close-out's own retraction commit — and `HANDOFF`'s
+> `*0x488de8+0x320` is the **camera position**, which is correct and stays. An earlier draft of
+> this section blamed `HANDOFF.md:311` and `:80`; that was wrong, and it was wrong *because* it
+> cited line numbers, which had already moved under the retractions inserted above them. **Cite the
+> dated entry or the item name, never `file:NN`.**
+>
+> The route does not reach the player: measured over 1162 sampler rows it resolved **24 times**,
+> every one of them to `0xd9d9d9d9` (the allocator's fill pattern). The route that works is the
+> static **`0x408c58`** (equivalently `0x40d744`, `0x440c38`, or `*0x415ff0+0xbc` — note
+> `0x415ff0`, not `0x488de8`), verified in five of our RDRAM images, **in the PCSX2 console
+> image**, and live in an online match.
+
+`STATUS.md`'s 2026-09-09 02:10 entry names the camera's follow pointer `*0x488de8+0xbc`, and it has
+been read since as the way to the player. **It is not, and a run was spent finding that out.** `logs/run_t8probe1.log`
 (single instance, `scripts/parity/gameplay_damage.txt`, 1162 sampler rows) peeked
 `*0x488de8+0xbc*` all the way into gameplay: the chain resolved **24 times out of 1162**, and to
 `0xd9d9d9d9` — the allocator's fill pattern — at that. The rest of the time `PS2X_PEEK` skipped the
@@ -1185,7 +1223,7 @@ statics hold it outright:
 | **`0x408c58`** | the local player's actor |
 | `0x40d744` | the same |
 | `0x440c38` | the same |
-| `0x415ff0` | a camera-ish object whose `+0xbc` is the same actor — the *real* version of HANDOFF's chain, 0x415ff0 rather than 0x488de8 |
+| `0x415ff0` | a camera-ish object whose `+0xbc` IS the same actor — the working version of that chain, `0x415ff0` rather than `0x488de8` |
 
 All four resolve to the player actor in **five of our RDRAM images** (`spawn_ours3`, `postload_ours`,
 `rest_ours`, `rest_ours_gq`, `s4rand_ours`) **and in the PCSX2 console image** (`spawn_pcsx2`, where
@@ -1212,12 +1250,24 @@ like a health pair, and they are the same in every image including PCSX2's:
 | `actor+0x204` | `1.0` | a fraction, the shape of "health remaining" |
 | `actor+0x208` | `100000.0` (`0x47c35000`) | a round maximum, the shape of "max health" |
 
-**They are candidates and nothing more.** The brief's rule is that an offset is not believed until it
-has been watched across **two separate kills**, and this task did not get two kills to watch it
-across. `--until-kill` therefore ships with the health signal **disarmed**: `--health-item` /
-`--health-word` exist, the tail will watch any (item, word) they name, and with neither given the
-run prints *"health word NOT armed (no confirmed offset)"* and falls back to the two signals below.
-Arming it on a guess is exactly the failure mode this sprint has been paying for all day.
+**They are candidates and nothing more, and they are weaker candidates than they look.** The word
+immediately before them, `actor+0x200`, is `0000ff00` — which reads as much like a packed RGBA as
+like a header, and in that reading `1.0` and `100000.0` are a scale and a far clip distance rather
+than health and max health. The brief's rule is that an offset is not believed until it has been
+watched across **two separate kills**, and this task got none.
+
+`--until-kill` therefore ships with the health signal **disarmed**, and the knob is
+`--health-offset` — a **byte offset from the actor base**, not an item index.
+
+> **A defect worth recording, because it was the zero-rows hazard hiding inside the instrument that
+> is supposed to certify the kill.** The first version of the arming path took `--health-item` /
+> `--health-word` and guarded on word 0 of the **health** item. The documented
+> `--health-item 2 --health-word 2` would therefore have checked `items[2][0] == 0x6691a0` — but
+> item 2 is `actor+0x200`, whose word 0 is `0000ff00`. The guard could never be true, the watch
+> would never have read anything, and a future run would have reported "health never moved" from
+> an instrument that never looked. The tail now finds the actor block by its **vtable**, keeps that
+> block's address, and resolves a health offset against `actor_addr + offset` across whichever
+> peeked item contains it — index-proof by construction.
 
 ### 4.3 What the Horizon logs actually carry — and it is not a death
 
@@ -1266,8 +1316,11 @@ provably was:
 (911.6, 879.0) (950.3, 814.1) (1033.8, 800.5) (1096.4, 750.6)
 ```
 
-**1167.5 units of path to close 851.4 units of gap — 73 %**, against the 38.6 % the
-straight-line-plus-detour policy managed over the same ground. The `y` of those rows falls
+**1167.5 units of path to close 851.4 units of gap — a ratio of 73 %.** That is the geometry of an
+idealised polyline and therefore an **upper bound**, not a closure efficiency: it is what a player
+would achieve walking the corridor perfectly, with no steering, no turns and no re-measurement. It
+is not comparable with the 38.6 % a real run achieved, and the first draft of this note compared
+them. What the corridor actually bought in the match is in §4.8. The `y` of those rows falls
 184.8 → −4.5: the route is a descent out of a bowl, which is why a straight line out of the SEAL
 spawn does not work. `MP51_SEAL_ROUTE` in the harness is that list, with the rule that produced it
 written next to it so it can be re-mined.
@@ -1311,7 +1364,11 @@ simulated player. Every scenario deliberately mismatches the world's turn respon
 harness constants, so every correction overshoots or undershoots and the loop has to recover by
 re-measuring.
 
-Run as shipped (`python -m tools_py.parity.sim_walk_to_b all`, all six green):
+Run as shipped (`python -m tools_py.parity.sim_walk_to_b all`). **The step counts and wall
+times below are ILLUSTRATIVE, not constants** -- the simulation is wall-clock timed and one
+`maze` took 14 steps / 102 s where another took 29 / 206 s on identical code. What is
+asserted is the OUTCOME (arrival, the cap, the signal) and, for `converge`, that the distance
+the loop REPORTS tracks the simulated truth:
 
 | scenario | result |
 |---|---|
@@ -1320,6 +1377,7 @@ Run as shipped (`python -m tools_py.parity.sim_walk_to_b all`, all six green):
 | `caps` — a deliberately wrong walk rate and a wall | stops on the cap, `ok=False`, best distance reported |
 | `converge` — **both** movers from the real mp51 spawns | **1526.3 → 64.3 units in 56 s**, A walking 1110 and B 700 to close 1462 — **80.8 % efficiency** |
 | `route` — the same with the mined corridor, a spawn-bowl wall and a wall in B's half | **1526.3 → 40.9 units**, 15 steps a side, 78 s, 65.1 % |
+| `stack` — A's ground falls away as it walks while B stays at one height (the kill2 failure, as a test) | the loop refuses contact and climbs its own breadcrumb trail back to B's height |
 | `watch` — a player walked 360 units away and teleported back | `KillWatch` fires `respawn` |
 
 The `converge` number is the one that decided the match was worth launching: it is not a measurement
@@ -1349,11 +1407,30 @@ hold: A 160 / B 161 in-game rows at the check, 803 / 802 by the end.
 **Both players moved.** Every Task 7 run had B parked inside 48 units of its spawn; here B walked
 its camera record from (1144.9, 77.8) to (869.1, 347.1). A walked (540.8, 1480.4) → (784.8, 973.9).
 
-| | steps | turns | probe bursts | believed | walked | gap closed | efficiency |
-|---|---|---|---|---|---|---|---|
-| Task 7 `wtb2` (one mover, 300 s) | 25 | — | — | — | 1960.7 | 757.8 | **38.6 %** |
-| `kill1` A (157 s) | 30 | 28 | 29 of 30 | 24 | 1371.9 | 788.7 (1392.0 → 603.3) | **57.5 %** |
-| `kill1` B (157 s) | 27 | 24 | 25 of 27 | 18 | 1065.2 | 689.0 (1368.6 → 679.7) | **64.7 %** |
+**The efficiency figures have to be team-level, and the first draft of this note got that wrong.**
+Two movers close the *same* gap, so quoting each side's closure against its own walking
+double-counts it: per-side, `kill2` comes out at 107.6 % and 119.2 %, which is impossible for one
+mover. The comparable quantity is **team-closed over team-walked**, measured on the actors' own
+positions:
+
+| | movers | walked (team) | true 3-D gap closed | efficiency | rate |
+|---|---|---|---|---|---|
+| Task 7 `wtb2` | 1 (B parked) | 1960.7 | 757.8 over 300 s | **38.6 %** | 2.5 units/s |
+| `kill1` | 2 | 2437.1 | 888.5 (1485.1 → 596.6) over 157 s | **36.5 %** | 5.7 units/s |
+| `kill2` | 2 | 2352.6 | 1435.5 (1485.5 → 50.0) over 127 s | **61.0 %** | **11.3 units/s** |
+
+So `kill1` was **not** an efficiency win — at 36.5 % it is marginally *worse* than the one-mover
+baseline it was quoted against, and the deadband defect below is why. `kill2` is a real one, and
+**the defensible headline is rate, not efficiency**: 1435 units of gap closed in 127 s against 758
+in 300 s, four and a half times faster, which is what turns "cannot finish inside a round" into
+"finishes in two minutes".
+
+Per-side detail, which is where the deadband defect shows:
+
+| | steps | turns | probe bursts | believed | walked |
+|---|---|---|---|---|---|
+| `kill1` A | 30 | 28 | **29 of 30** | 24 | 1371.9 |
+| `kill1` B | 27 | 24 | 25 of 27 | 18 | 1065.2 |
 
 Two things came out of it, and both were defects in this task's own work:
 
@@ -1374,32 +1451,51 @@ throughout, unchanged, because nobody was shot. And the peek indices **do** shif
 block. The health watch now checks word 0 against `0x6691a0` before reading anything.
 
 **`ours_task8_kill2`** (`logs/s4_task8_kill2.sh`, `logs/parity/drive_task8_kill2.txt`,
-`logs/run_A_20260912_231341.log` / `run_B_…`, 1172 in-game rows each). With the deadband, the gain
-EMA at 0.3 and the 2.0 s probe:
+`logs/run_A_20260912_231341.log` / `run_B_…`, **1172 in-game position rows on A and 1055 on B**
+(the first draft of this note quoted 1172 for both; the actor blocks give 1173 and 1056). With the
+deadband, the gain EMA at 0.3 and the 2.0 s probe:
 
 **A closed 1392 → 33.04 units in 23 steps and about 127 s, and B stopped at 70.8.** The two
 instances met in the middle of mp51 — A's record ran (541.8, 1479.7) → (903.7, 893.6) and B's
 (1144.8, 78.2) → (927.4, 867.1). That is the first time in this project that two online players
 have been in the same place.
 
-**Then 24 bursts hit nothing, and the position rows say why.** Aligning the two instances' rows
-(1172 each, same 4 Hz sampler):
+**Then 24 bursts hit nothing, and it is worth being exact about why.** The first reading was
+measured on the camera
+records and was both too kind and too narrow**; the actors' own positions (§4.1, words 7/8/9) are
+the honest version, and they change the conclusion:
 
-| measurement | value |
+| measurement, on the ACTOR rows | value |
 |---|---|
-| minimum **2-D** camera-to-camera separation | **10.1 units** (row 669) |
-| minimum **3-D** camera-to-camera separation | **34.9 units** (row 666) |
-| vertical separation over the last 400 rows | **−54.5 to −34.9, mean −44.8** (A below B) |
-| 2-D separation over the last 400 rows | 12.3 to 117.4, mean 58.0 |
+| minimum true **3-D** separation, whole run | **50.0 units** |
+| minimum true **2-D** separation, whole run | 17.6 units |
+| 3-D separation over the last 400 rows | median **67.9**, min 50.0, max 112.4 |
+| vertical separation over the last 400 rows | median **+44.0** (A below B) |
+| elevation angle over the last 400 rows | median **43.3°**, max 70.0° |
+| rows inside 45 units in 3-D / inside 25 / with `\|dy\|` ≤ 10 | **0 % / 0 % / 0 %** |
+
+**Range and elevation are co-equal causes.** The 77° figure the first draft led with is the single
+worst row, not the condition, and a fix aimed only at elevation would have failed again: the two
+players were never once inside the engagement range at all, in three dimensions. They swept from a
+median of 68 units away, and sweeping from out of range is not an aim problem.
 
 At 10 units of ground range a 45-unit height difference is **77° of elevation**, and the engagement
 swept yaw only. `actor+0x204` and `actor+0x208` are unchanged on **both** instances for all 1172
 rows, so neither player took a single point of damage: this is not "the kill did not register", it
 is "nothing was hit".
 
-**The loop's distance is 2-D by construction** — the camera→player reconstruction is a ground-plane
-rotation — so it declared contact at 33 units while the real separation was 35 and mostly vertical.
-That is the next thing to fix and it is not the approach.
+**And the loop's own distance was wrong, not merely two-dimensional.** It reconstructed each player
+as `camera + CAMERA_ORBIT_RADIUS * facing`, so a facing estimate that is wrong by tens of degrees
+misplaces a player by up to two orbit radii — about **50 units**, which is larger than the whole
+engagement range. It also needed the *other* side's facing to place the other player, the exact
+dependency that `kill3` could not satisfy. The simulation reproduces the pathology in a world with
+**no vertical dimension at all**: on the committed code `converge` reported a best separation of
+**40.3 against a ground truth of 64.3**, `route` **23.4 against 30.7** and `caps` **157.6 against
+204.7** — a consistent 25–47 unit under-report that can only be the orbit reconstruction.
+
+That is now fixed at the root: `true_pos()` reads the actor's own x/y/z and the reconstruction is
+a labelled fallback. After the change the same simulated scenario reports **18.1 against a ground
+truth of 18.1**. So "contact at 33 units" was never a measurement of anything.
 
 **And the shots were real.** This matters, because "the bursts did nothing" has two very different
 explanations and the frames settle which. The injected pad state carries `buttons=0800` — bit 11,
@@ -1480,3 +1576,142 @@ python -m tools_py.parity.drive --target ours --script scripts/parity/gameplay_d
    --health-word 2` (word 1 for `+0x204`). Until then the run reads the round end, not the kill.
 3. **The lobby is still the single biggest tax** — two usable approaches cost seven launches and
    about ninety minutes. `host_game` / `join_game` still navigate by fixed presses.
+
+---
+
+## 4.11 What the review changed, and the map switch (2026-09-13)
+
+Four corrections landed after §4.8 was written. Three of them were defects in this task's own work
+and none of them cost a match launch to find.
+
+### The measurement was wrong, and the simulation proves it in a world with no height
+
+`Duel` placed each player at `camera + CAMERA_ORBIT_RADIUS * facing`. A facing wrong by tens of
+degrees misplaces a player by up to **two orbit radii, ~50 units** — larger than the whole
+engagement range — and placing the *other* player needed the *other* side's facing, which is the
+dependency `kill3` could not satisfy. Reproduced offline, in a simulated world that is perfectly
+flat:
+
+| scenario | reported best | simulated truth | error |
+|---|---|---|---|
+| `converge` (before) | 40.3 | 64.3 | −24.0 |
+| `route` (before) | 23.4 | 30.7 | −7.3 |
+| `caps` (before) | 157.6 | 204.7 | −47.1 |
+| **`converge` (after)** | **18.1** | **18.1** | **0.0** |
+
+The fix is `true_pos()`: read the actor's own x/y/z from words 7/8/9 of the peeked block
+(`+0x1c/+0x20/+0x24`) and treat the reconstruction as a labelled fallback. Measured over kill2's
+1172 paired rows, the camera orbits the actor at a **ground radius of 20.65 (sd 5.17)** and sits
+**19.73 above** it — which is also, incidentally, a free pitch readout: the camera looks down on the
+player from about **44°**.
+
+### The pitch sweep is retired, on arithmetic rather than on a run
+
+The look response has a **0.44 s dead time**, so `ENGAGE_PITCH_HOLD_S = 0.5` delivers ~0.06 s of
+deflection — of the order of **6°** — while §3.x's own probe table records a 2 s `RUP` hold pitching
+"to the sky", i.e. saturation. Full-deflection-only injection therefore leaves almost nothing usable
+between ~6° and the clamp, and the level-again loop **counted holds**, so the first clamp would
+desynchronise the pitch from the facing probe and the forward tap that follow. `ENGAGE_SWEEP_PITCH`
+is `False`. Meeting at the same height is the calibrated fix, and the `|dy|` gate plus the
+breadcrumb rendezvous is what enforces it. Anyone who wants pitch properly: one timed `I` and one
+timed `K` hold in **any single-instance run**, read against the camera-minus-actor elevation above,
+gives both the sign and the deg/s without spending a match.
+
+### `RESULT PASS` is now reserved for a kill
+
+`respawn` is a **round-end** detector, and a round ends on its clock too — so with a 470 s timeout
+against a round of a few minutes, the acceptance test could have printed `RESULT PASS
+signal=respawn` for a test whose acceptance is a kill. That is the same defect as the
+`MediusPlayerReport` one, one level down. The verdict is now: `PASS` only when the firing signal is
+`health`; `PASS (round end corroborated by a health transition)` when both fired; otherwise
+**`ROUND-END (unattributed -- NOT a kill)`**, and `--until-kill` exits non-zero. With the health
+offsets unconfirmed, that means **`--until-kill` cannot currently print PASS at all**, which is the
+honest state of the instrument rather than a bug in it.
+
+### The map is now chosen, not accepted
+
+`host_game` used to take whatever was highlighted: `sh.press("cross", 4.0)  # Medley`. The owner
+asked for **Frostfire**, and the AVAILABLE MAPS box holds six visible rows and **scrolls**, so no
+fixed number of presses is knowable in advance.
+
+One single-instance scan (`--only A --map-scan 26`, `logs/parity/ours_task8_mapscan`, **no match
+created**) walked the list capturing every screen. The list, in order:
+
+> Medley, Random, VIGILANCE, THE MIXER, FOXHUNT, SUJO, ENOWAPI, SHADOW FALLS, FISH HOOK,
+> CROSSROADS, SANDSTORM, CHAIN REACTION, GUIDANCE, REQUIEM, BLIZZARD, **FROSTFIRE**, ABANDONED,
+> DESERT GLORY, NIGHT STALKER, RAT'S NEST, BITTER JUNGLE, BLOOD LAKE, DEATH TRAP, THE RUINS.
+
+`choose_map` verifies before it accepts, in two independent steps, both measured off those captures:
+
+1. **Which row is highlighted**, from an absolute luminance band and no reference image at all: the
+   highlighted row's peak luminance is **123–125** in all 27 captures, an ordinary row's pale text
+   **168–174**, an empty row **99–110**. Rows are at y = 117 + 20·i, height 12, x 78–292.
+2. **Whether that row is the map asked for**, by a **text-mask distance** (symmetric difference over
+   union of the binarised rows, best over ±3 px of shift) against `scripts/parity/refs/map_*.png`.
+   The contrast-normalised band distance `Shell.diff` uses was **not good enough** — it scored
+   ENOWAPI at 0.317 against a 0.42 threshold, i.e. it would have accepted the wrong map.
+
+Offline acceptance over all 28 CHOOSE GAMES captures this repo has: **cursor found on 28 of 28,
+FROSTFIRE matched on exactly 1**, distance **0.005** against a nearest rival of **0.510** and a
+threshold of 0.30. A map with no reference, or a map never highlighted in 30 presses, **aborts with
+a capture** — it never accepts whatever happens to be there.
+
+**And the mined corridor is dropped on any map it was not mined for.** `MINED_ROUTE_MAP` is
+`medley`; on anything else the banner reads `route=direct`, because a corridor that does not exist
+is worse than no corridor — the loop believes it.
+
+### 4.12 Frostfire — the map switch worked, and the players could not move (2026-09-13)
+
+`logs/s4_task8_frost1.sh`, `logs/parity/drive_task8_frost1.txt`,
+`logs/run_A_20260913_004754.log` / `run_B_…`, `logs/parity/ours_task8_frost1/`.
+
+**Everything upstream of gameplay worked, first launch.** The verified map selection found
+FROSTFIRE at row 4 after 15 DOWN presses with a text-mask distance of **0.005** against a 0.30
+threshold — the offline prediction exactly — the lobby launched, and the banner read
+`map=frostfire route=direct engage3d=22.0 dy_tol=10.0 pos=actor health=disarmed`. Liveness passed
+on both instances (163 / 162 in-game rows at the check, **1152 / 1151 actor rows** by the end), and
+`src=actor/actor` in every step line: the actor read was live on both sides.
+
+**The first thing to measure on a new map, as asked, and it is good news:**
+
+| | mp51 / Medley | Frostfire |
+|---|---|---|
+| spawn separation (actors, 3-D) | 1485.5 | **692.1** |
+| spawn separation (ground) | — | 690.8 |
+| height difference at spawn | — | **+41.9** (A below B) |
+| A spawn | (542.3, 1479.9) | (795.7, 613.6) |
+| B spawn | (1144.8, 77.5) | (535.7, 1253.6) |
+
+Less than half the gap — two movers would have had ~350 units each — but a 42-unit height
+difference is there from the spawn, so the vertical problem is not specific to where kill2 happened
+to meet.
+
+**And then neither player moved at all.** Over 240 s of approach and 1152 position rows, A's camera
+record spanned **2.5 units of x** (793.2–795.7) and B's spanned **0.0** (511.7 throughout). Both
+sides ran all six facing probes and every one measured **0.00 units**; both then fell back to an
+untrusted facing — which is the only reason the run produced any data at all, since the previous
+code would have aborted both sides — and every burst after that also moved nothing. Final result:
+`time-cap`, `contact=False`, `closest_3d=692.07`, i.e. the starting separation.
+
+**This is not an instrumentation failure, and the run says so four ways:**
+
+- The injected pad state reached the guest: `ly=00` (full forward) on 31 polls, `lx=00` on 11,
+  `rx=00` on 4, against 338 neutral.
+- The movement scale was **live, not frozen**: every `f12` row read `1.0`, so this is not §3.12's
+  lag freeze.
+- The match was really in gameplay: `A_hold02.png` shows the HUD, the round clock counting down
+  from **05:19**, `30/30 5 MAGS` and a squad marker.
+- The actor chain resolved on both instances for the whole run.
+
+**But the movement routine was barely running.** `FUN_00553dc0` produced **36 traced lines** at
+`PS2X_CALL_TRACE_EVERY=10` — about 360 calls across the whole gameplay window, roughly **one a
+second**, against the ~20 a second the mp51 runs produced. Its first call is at t=371.4 s, well
+after the round started.
+
+**What this is, honestly, is one run.** It has the shape of the defect this entire note exists
+about — the round runs and the local player cannot move — reappearing on a map the movement fix was
+never tested on; §3.12's fix was measured on mp51 and only on mp51. But a single match cannot
+separate "Frostfire-specific movement defect" from "this particular match never handed control to
+either client". The cheap next step is another Frostfire launch: if it reproduces, the call rate of
+`FUN_00553dc0` is the thread to pull, and `PS2X_SOCOM2_NET_STATS` / the `0x200` idle counter of
+§3.12 are where to look. **It should not be assumed that movement works on any map but mp51.**

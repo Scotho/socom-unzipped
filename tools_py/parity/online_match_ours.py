@@ -155,6 +155,9 @@ UNSTICK_BACK_S = 0.6
 # round (KNOWN.md, research/18 §3.13). BOTH players moving halves each side's share to ~700 units
 # -- and it also removes the starvation trap, because the movement scale is fed by RECEIVED bytes
 # and a parked opponent sends nothing.
+# The corridor below was mined on ONE map. `online_match_ours` must never steer along it anywhere
+# else: a corridor that does not exist is worse than no corridor, because the loop believes it.
+MINED_ROUTE_MAP = "medley"             # mp51, the Medley first round
 MP51_SEAL_SPAWN = (542.3, 1479.9)      # A's spawn, camera record (x, z)
 MP51_TERROR_SPAWN = (1144.8, 77.5)     # B's spawn, camera record (x, z)
 
@@ -197,6 +200,17 @@ TURN_GAIN_MIN_CMD = 25.0         # below this a turn is too small to estimate a 
 # kill1 took 14 steps and 80 s to close 190 of 1392 units for exactly that reason. Walking 30 deg
 # off the bearing still closes cos(30) = 87 % of the distance, which beats turning again.
 APPROACH_DEADBAND_DEG = 30.0
+# ... but only while there is room for the error to be cheap. 30 deg off at 400 units still closes
+# 87 % of the gap; 30 deg off at 40 units walks straight past. The deadband therefore tightens back
+# to the calibration's 12 deg inside APPROACH_TIGHT_UNITS, which is what stops the endgame
+# oscillating around the target (the simulated converge took 39 steps with one flat deadband).
+APPROACH_TIGHT_UNITS = 150.0
+APPROACH_TIGHT_DEADBAND_DEG = 12.0
+
+
+def approach_deadband(dist):
+    return APPROACH_TIGHT_DEADBAND_DEG if dist <= APPROACH_TIGHT_UNITS else APPROACH_DEADBAND_DEG
+
 
 # Contact range. PAD_AXIS injects only full stick deflection, so the shortest usable turn hold
 # already sweeps 35-40 deg and no single open-loop aim is better than about +-20 deg (research/18
@@ -212,8 +226,42 @@ ENGAGE_STEP_FORWARD_S = 0.8
 # 34.9). At 10 units of ground range a 45-unit height difference is 77 deg of elevation, and the
 # engagement only swept yaw. So the sweep now covers pitch as well -- both ways, because which of
 # I/K raises the muzzle has never been measured.
+# RETIRED before it was ever used in a landed engagement, on arithmetic rather than on a run.
+# The look response has a 0.44 s dead time, so a 0.5 s hold delivers ~0.06 s of deflection -- of
+# the order of 6 deg -- while research/18's own probe table records a 2 s RUP hold pitching "to the
+# sky", i.e. saturation. Full-deflection-only injection therefore leaves almost nothing usable
+# between ~6 deg and the clamp, and the level-again loop COUNTS holds, so the first clamp
+# desynchronises the pitch from the facing probe and the forward tap that follow it. Meeting at the
+# same height is the cheaper and calibrated fix, and it is what ENGAGE_DY_UNITS enforces.
+# The offline readout that would settle pitch properly, when someone wants it: the camera record
+# minus the actor position IS a pitch measurement (kill2: ground radius 20.65, height 19.73, i.e.
+# the camera sits ~44 deg above the player), so one timed I hold and one K hold in ANY
+# single-instance run give both the sign and the deg/s without spending a match.
+ENGAGE_SWEEP_PITCH = False
 ENGAGE_PITCH_HOLD_S = 0.5
 ENGAGE_PITCH_STEPS = 2           # how far up and down the sweep goes, in holds
+# ... but the pitch sweep is the SECOND fix, not the first, and the rows say why. Sweeping 77 deg
+# of elevation is beyond any plausible in-game pitch clamp and the ry hold response has never been
+# measured at all (§3.13 calibrated yaw only), so no hold length is known to reach it. Meeting at
+# the SAME elevation costs no new capability and makes the yaw sweep sufficient: at the 206-247
+# unit range where kill2's two players were last within 20-27 units of each other's height, the
+# elevation angle is 12 deg, not 77.
+# MEASURED on kill2's ACTOR rows (1056 paired), which is the honest version of that run: the
+# minimum true 3-D separation the two players ever reached was **50.0 units**, and over the last
+# 400 rows the 3-D separation had a median of 67.9 (min 50.0, max 112.4) with a median elevation of
+# 43.3 deg. **Zero per cent** of those rows were inside 45 units in 3-D, inside 25, or within 10 of
+# each other's height. So range and elevation are CO-EQUAL causes and the 77 deg figure was the
+# single worst row, not the condition. Contact is therefore a 3-D test with a height gate, and the
+# engagement keeps closing rather than only sweeping.
+ENGAGE_3D_UNITS = 22.0           # true actor-to-actor 3-D range at which a burst can be expected
+                                 # to matter: a body subtends 15-20 deg only inside about this
+ENGAGE_DY_UNITS = 10.0           # ... and the heights have to match, or the sweep has to solve an
+                                 # elevation it has no calibrated way to solve
+STACK_WATCH_UNITS = 140.0        # inside this ground range, a height mismatch is a STACK and the
+                                 # loop stops converging into it
+LEVEL_TARGET_MAX_RANGE = 600.0   # how far back along its own trail a player will go to find the
+                                 # other's elevation
+LEVEL_TARGET_MIN_RANGE = 40.0    # ... and how close a breadcrumb has to be to be worth walking to
 
 # Kill / round-end readout.
 TELEPORT_UNITS = 250.0           # a jump this big between consecutive 4 Hz position rows is not
@@ -229,6 +277,14 @@ SERVER_ROUND_MARK = "MediusPlayerReport"
 # item 1 was the raw `0x408c58:4` static for 1698 rows and the actor block for 804. Word 0 of the
 # actor block is the vtable, so the health watch checks it before reading anything.
 ACTOR_VTABLE = 0x006691A0
+# The actor carries its own x/y/z at +0x1c/+0x20/+0x24 (words 7/8/9 of the block). MEASURED over
+# ours_task8_kill2's 1172 paired rows: the 0x416054 camera record orbits it at a ground radius of
+# 20.65 (sd 5.17) and sits 19.73 above it, i.e. the camera looks down on the player from about 44
+# deg. Reading the actor directly removes the whole camera->player reconstruction, and with it the
+# error that made "contact at 33 units" meaningless: reconstructing from camera + facing is wrong
+# by up to two orbit radii (~50 units) when the facing estimate is wrong, and it needs the OTHER
+# side's facing, which is what ours_task8_kill3 never obtained.
+ACTOR_POS_WORDS = (7, 8, 9)
 
 
 # ---------------------------------------------------------------------------
@@ -260,8 +316,14 @@ class RunLogTail(threading.Thread):
         # -- an item whose pointer chain is bad is SKIPPED by the exe, not printed as zeros.
         self.items = {}
         self.item_rows = {}
-        self.watch = None       # (item_index, word_index) of a confirmed health word, or None
-        self.watch_vtable = None  # (item_index, expected word 0) proving that item IS the actor
+        # The ACTOR's own position rows, (t, x, y, z), read out of whichever peeked item carries
+        # the actor block -- identified by its vtable, never by an index, because PS2X_PEEK SKIPS
+        # an item whose chain does not resolve and the ones after it shift down.
+        self.actor_rows = []
+        self.actor_addr = None
+        # A health watch is an OFFSET IN BYTES FROM THE ACTOR BASE, not an item/word pair: the
+        # item index is not stable and an index-based guard checked the wrong block entirely.
+        self.watch_offset = None
         self.watch_hist = []    # (t, value) of that word, appended only when it changes
         self._stop = threading.Event()
         self._lock = threading.Lock()
@@ -294,24 +356,42 @@ class RunLogTail(threading.Thread):
         self.lines += 1
         t = time.time()
         if line.startswith("[peek]"):
+            blocks = []
             for idx, (addr, words) in enumerate(self._ITEM.findall(line)):
                 raw = [int(w, 16) for w in self._WORD.findall(words)]
-                if int(addr, 16) == self.addr:
+                a = int(addr, 16)
+                if a == self.addr:
                     vals = [struct.unpack("<f", struct.pack("<I", w))[0] for w in raw[:3]]
                     if len(vals) >= 3:
                         with self._lock:
                             self.rows.append((t, vals[0], vals[1], vals[2]))
                     continue
-                with self._lock:
-                    self.items[idx] = (t, int(addr, 16), raw)
+                blocks.append((idx, a, raw))
+            if not blocks:
+                return
+            # Which block is the actor? The one whose word 0 is the class vtable. Everything else
+            # -- its position, and where a health offset lives -- is addressed off that block's
+            # own address, so an unresolved chain can shift the indices without breaking anything.
+            actor = next((b for b in blocks if b[2] and b[2][0] == ACTOR_VTABLE), None)
+            with self._lock:
+                for idx, a, raw in blocks:
+                    self.items[idx] = (t, a, raw)
                     self.item_rows[idx] = self.item_rows.get(idx, 0) + 1
-                    if (self.watch and self.watch[0] == idx and self.watch[1] < len(raw)
-                            and (self.watch_vtable is None
-                                 or self.items.get(self.watch_vtable[0], (0, 0, [0]))[2][0]
-                                 == self.watch_vtable[1])):
-                        v = raw[self.watch[1]]
-                        if not self.watch_hist or self.watch_hist[-1][1] != v:
-                            self.watch_hist.append((t, v))
+                if actor is not None:
+                    self.actor_addr = actor[1]
+                    wi, wj, wk = ACTOR_POS_WORDS
+                    if len(actor[2]) > wk:
+                        xyz = [struct.unpack("<f", struct.pack("<I", actor[2][w]))[0]
+                               for w in (wi, wj, wk)]
+                        self.actor_rows.append((t, xyz[0], xyz[1], xyz[2]))
+                    if self.watch_offset is not None:
+                        want = self.actor_addr + self.watch_offset
+                        for _, a, raw in blocks:
+                            if a <= want < a + 4 * len(raw):
+                                v = raw[(want - a) // 4]
+                                if not self.watch_hist or self.watch_hist[-1][1] != v:
+                                    self.watch_hist.append((t, v))
+                                break
             return
         if MOVE_SCALE_TRACE_NAME in line:
             m = self._SCALE.search(line)
@@ -330,6 +410,19 @@ class RunLogTail(threading.Thread):
     def ingame(self):
         """Rows that are not the all-zero pre-gameplay record (research/18 §3.10 step 0)."""
         return [r for r in self._snapshot() if r[1] or r[2] or r[3]]
+
+    def actor_ingame(self):
+        with self._lock:
+            rows = list(self.actor_rows)
+        return [r for r in rows if r[1] or r[2] or r[3]]
+
+    def actor_latest(self, max_age=4.0):
+        """The player's OWN (t, x, y, z), or None. Preferred over `latest()` everywhere: it needs
+        no facing, no orbit radius and no reconstruction."""
+        rows = self.actor_ingame()
+        if rows and time.time() - rows[-1][0] <= max_age:
+            return rows[-1]
+        return None
 
     def latest(self, max_age=4.0):
         rows = self.ingame()
@@ -690,8 +783,57 @@ class Side:
     def __init__(self, tag, sh, tail, route=None):
         self.tag, self.sh, self.tail, self.route = tag, sh, tail, route
         self.turn_gain = 1.0
+        self.best_3d = None          # the 2-D best flatters a stack; keep the honest one too
         self.spawn = None
         self.result = None
+
+
+def true_pos(tail, facing=None):
+    """(x, y, z, source) for a player: the ACTOR's own position when the actor block is being
+    peeked, and the camera reconstruction only as a fallback.
+
+    The reconstruction is `camera + CAMERA_ORBIT_RADIUS * facing`, so a facing that is wrong by
+    tens of degrees misplaces the player by up to two orbit radii -- about 50 units, which is
+    larger than the whole engagement range. It also needs the OTHER side's facing to place the
+    other player, which is a dependency the actor read does not have.
+    """
+    a = tail.actor_latest()
+    if a is not None:
+        return a[1], a[2], a[3], "actor"
+    r = tail.latest()
+    if r is None:
+        return None
+    if facing is None:
+        return r[1], r[2], r[3], "camera-raw"
+    x, z = player_pos(r, facing)
+    return x, r[2], z, "camera-reconstructed"
+
+
+def level_target(tail, target_y, me_xz, tol=ENGAGE_DY_UNITS,
+                 max_range=LEVEL_TARGET_MAX_RANGE, min_range=LEVEL_TARGET_MIN_RANGE):
+    """The nearest place THIS player has actually stood whose height matches `target_y`.
+
+    The player's own position rows are a breadcrumb trail: every one of them is somewhere it
+    provably was, at a height it provably was at. When the two players are close on the ground and
+    far apart vertically, walking to a breadcrumb at the other's height is a proven-walkable way
+    out of the stack, and it needs no map, no route planner and no new calibration.
+
+    ours_task8_kill2 is why this exists: A's own rows span y 8.0-189.3 and B's 23.5-88.1, so A
+    walked THROUGH B's elevation band and kept descending. The closest the two ever came while
+    within 15 units of each other's height was 321.6 units; by the time they were 12.3 units apart
+    on the ground they were 36.0 apart vertically.
+    """
+    best = None
+    trail = tail.actor_ingame() or tail.ingame()
+    for r in trail:                              # (t, x, y, z)
+        if abs(r[2] - target_y) > tol:
+            continue
+        d = math.hypot(r[1] - me_xz[0], r[3] - me_xz[1])
+        if d > max_range or d < min_range:
+            continue
+        if best is None or d < best[0]:
+            best = (d, (r[1], r[3]), r[2])
+    return best
 
 
 def other_player_pos(tail, facing):
@@ -756,21 +898,50 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         if time.time() - t_start > max_seconds:
             sh.log(f"[app {me.tag}] STOP -- wall-clock cap {max_seconds}s")
             return {"ok": False, "reason": "time-cap", "steps": step, "best": best, "track": track}
-        rme = tail.latest()
-        opos, _ = other_player_pos(other.tail, duel.get_facing(other.tag))
-        if rme is None or opos is None:
+        pme = true_pos(tail, facing)
+        poth = true_pos(other.tail, duel.get_facing(other.tag))
+        if pme is None or poth is None:
             sh.log(f"[app {me.tag}] STOP -- stale position rows "
-                   f"(me={rme is not None} other={opos is not None})")
+                   f"(me={pme is not None} other={poth is not None})")
             return {"ok": False, "reason": "stale-rows", "steps": step, "best": best,
                     "track": track}
-        mx, mz = player_pos(rme, facing)
+        mx, my, mz, src_me = pme
+        opos = (poth[0], poth[2])
+        src = f"{src_me}/{poth[3]}"
         dist = math.hypot(opos[0] - mx, opos[1] - mz)
+        # HEIGHT and TRUE RANGE. Ground distance alone cannot see a floor between the two
+        # players; kill2 reported 33 units of ground gap while the true 3-D separation never got
+        # below 50 and the median elevation was 43 deg.
+        dy = poth[1] - my
+        d3 = math.hypot(dist, dy)
+        level = abs(dy) <= ENGAGE_DY_UNITS
         best = dist if best is None else min(best, dist)
-        duel.set_dist(me.tag, dist)
+        duel.set_dist(me.tag, d3)                    # the DUEL tracks the honest 3-D range
+        me.best_3d = d3 if me.best_3d is None else min(me.best_3d, d3)
         # The corridor exists to leave the spawn bowl, not to reach the player: as soon as the
         # other side is within WAYPOINT_DROP_UNITS the chain is dropped and the target is the
         # player itself.
         target, tname = opos, "player"
+        # Do not converge into a stack. Inside STACK_WATCH_UNITS of ground range with the heights
+        # mismatched, the target becomes the nearest breadcrumb on this player's OWN trail at the
+        # other player's height -- somewhere it has provably stood, at the height it needs.
+        if not level and dist <= STACK_WATCH_UNITS:
+            lt = level_target(tail, poth[1], (mx, mz))
+            if lt:
+                target, tname = lt[1], "level"
+                sh.log(f"[app {me.tag}] STACKED: {dist:.1f} units apart on the ground, {dy:+.1f} "
+                       f"apart vertically -- backing off {lt[0]:.0f} units to a breadcrumb at "
+                       f"y={lt[2]:.1f} instead of closing")
+            else:
+                sh.log(f"[app {me.tag}] STACKED: {dist:.1f} on the ground, {dy:+.1f} vertically, "
+                       f"and no breadcrumb of mine is at the other player's height -- closing "
+                       f"anyway, the engagement will have to sweep pitch")
+        # The corridor is a DESCENT (y 184.8 -> -4.5). Once this player is already at the other's
+        # height there is nothing to gain by following it further down.
+        elif me.route and level and wp < len(me.route):
+            sh.log(f"[app {me.tag}] heights match ({dy:+.1f}) -- dropping the corridor at wp{wp} "
+                   f"rather than descending past the other player")
+            me.route = None
         if me.route and dist > WAYPOINT_DROP_UNITS:
             while wp < len(me.route) and math.hypot(me.route[wp][0] - mx,
                                                     me.route[wp][1] - mz) <= WAYPOINT_ARRIVE:
@@ -787,27 +958,31 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         bearing = math.degrees(math.atan2(target[1] - mz, target[0] - mx))
         aim = wrap_deg(bearing + detour_sign * DETOUR_DEG) if detour_left > 0 else bearing
         err = wrap_deg(aim - facing)
-        track.append({"step": step, "tag": me.tag, "me": [rme[1], rme[2], rme[3]],
+        track.append({"step": step, "tag": me.tag, "me": [mx, my, mz],
                       "player_me": [mx, mz], "player_other": list(opos), "dist": dist,
                       "target": list(target), "target_name": tname, "facing": facing,
                       "bearing": bearing, "aim": aim, "err": err, "detour": detour_left,
-                      "confident": confident, "turn_gain": me.turn_gain, "t": time.time()})
+                      "confident": confident, "turn_gain": me.turn_gain, "t": time.time(),
+                      "dy": dy, "d3": d3, "level": level, "src": src,
+                      "me_y": my, "other_y": poth[1]})
         sh.log(f"[app {me.tag}] step {step:2d} me=({mx:8.2f},{mz:8.2f}) other=({opos[0]:8.2f},"
-               f"{opos[1]:8.2f}) dist={dist:8.2f} tgt={tname:>6} face={facing:7.2f} "
-               f"bear={bearing:7.2f} err={err:+7.2f} det={detour_left} conf={int(confident)} "
-               f"gain={me.turn_gain:4.2f}")
+               f"{opos[1]:8.2f}) d2={dist:8.2f} d3={d3:8.2f} dy={dy:+7.2f} tgt={tname:>6} "
+               f"face={facing:7.2f} bear={bearing:7.2f} err={err:+7.2f} det={detour_left} "
+               f"conf={int(confident)} gain={me.turn_gain:4.2f} src={src}")
         if shots and (step % shot_every == 0):
             sh.shot(f"app{step:02d}")
-        if dist <= engage:
-            sh.log(f"[app {me.tag}] CONTACT: {dist:.2f} <= {engage} units after {step} steps")
+        if d3 <= engage and level:
+            sh.log(f"[app {me.tag}] CONTACT: TRUE 3-D range {d3:.2f} <= {engage} AND heights "
+                   f"{dy:+.2f} within {ENGAGE_DY_UNITS}, after {step} steps (src {src})")
             duel.contact.set()
-            return {"ok": True, "reason": "contact", "steps": step, "dist": dist,
-                    "best": best, "track": track}
-        if dist <= arrive:
+            return {"ok": True, "reason": "contact", "steps": step, "dist": dist, "d3": d3,
+                    "dy": dy, "best": best, "best_3d": me.best_3d, "track": track}
+        if d3 <= arrive and level:
             sh.log(f"[app {me.tag}] ARRIVED: {dist:.2f} <= {arrive} units after {step} steps")
             return {"ok": True, "reason": "arrived", "steps": step, "dist": dist,
                     "best": best, "track": track}
-        if abs(err) > APPROACH_DEADBAND_DEG:
+        deadband = approach_deadband(d3)
+        if abs(err) > deadband:
             # The open-loop turn is the unreliable link (research/18 3.13: RMS 18 deg, and wtb2's
             # step 15 asked -72 and delivered -16). Ask for err/gain and let the next believed
             # burst say what was actually delivered.
@@ -824,7 +999,7 @@ def approach(me, other, duel, arrive, max_steps, max_seconds, shots=True, shot_e
         # points at the target; everything else gets a probe whose only job is to measure the
         # facing again. This is the fix for wtb2's 38.6 % efficiency: its four biggest losses were
         # 150-185 unit bursts at straightness 0.93-0.97 walked on a dead-reckoned facing.
-        if confident and abs(err) <= APPROACH_DEADBAND_DEG and detour_left == 0:
+        if confident and abs(err) <= deadband and detour_left == 0:
             want = (math.hypot(target[0] - mx, target[1] - mz)
                     * WALK_STEP_FRACTION / WALK_UNITS_PER_S_LONG)
             secs = max(WALK_STEP_MIN_S, min(WALK_STEP_MAX_S, want))
@@ -891,19 +1066,23 @@ def engage_fight(me, other, duel, seconds, shots=True):
     t0 = time.time()
     cycle = 0
     while time.time() - t0 < seconds and not duel.stop.is_set():
-        rme, facing = tail.latest(), duel.get_facing(me.tag)
-        opos, _ = other_player_pos(other.tail, duel.get_facing(other.tag))
-        if rme is not None and facing is not None and opos is not None:
-            mx, mz = player_pos(rme, facing)
+        facing = duel.get_facing(me.tag)
+        pme, poth = true_pos(tail, facing), true_pos(other.tail, duel.get_facing(other.tag))
+        dist = d3 = None
+        if pme is not None and poth is not None and facing is not None:
+            mx, my, mz, src_me = pme
+            opos = (poth[0], poth[2])
             dist = math.hypot(opos[0] - mx, opos[1] - mz)
+            dy = poth[1] - my
+            d3 = math.hypot(dist, dy)
             bearing = math.degrees(math.atan2(opos[1] - mz, opos[0] - mx))
             err = wrap_deg(bearing - facing)
-            duel.set_dist(me.tag, dist)
-            rother = other.tail.latest()
-            dy = (rother[2] - rme[2]) if rother else float("nan")
             elev = math.degrees(math.atan2(dy, max(dist, 1e-6)))
-            sh.log(f"[fight {me.tag}] cycle {cycle:2d} dist={dist:8.2f} dy={dy:+7.2f} "
-                   f"elev={elev:+6.1f}deg face={facing:7.2f} bear={bearing:7.2f} err={err:+7.2f}")
+            duel.set_dist(me.tag, d3)
+            me.best_3d = d3 if me.best_3d is None else min(me.best_3d, d3)
+            sh.log(f"[fight {me.tag}] cycle {cycle:2d} d2={dist:8.2f} d3={d3:8.2f} dy={dy:+7.2f} "
+                   f"elev={elev:+6.1f}deg face={facing:7.2f} bear={bearing:7.2f} err={err:+7.2f} "
+                   f"src={src_me}/{poth[3]}")
             if abs(err) > TURN_DEADBAND_DEG:
                 mt = turn_by(sh, tail, err / max(me.turn_gain, 0.2))
                 if mt["kind"] == "rotation" and mt["sweep_deg"] is not None:
@@ -912,9 +1091,10 @@ def engage_fight(me, other, duel, seconds, shots=True):
         # side. Pitch: level, then ENGAGE_PITCH_STEPS holds one way and the same number back plus
         # the same again the other way, so neither the sign of I/K nor the sign of the height
         # difference has to be known. Every position gets two bursts.
-        pitch_plan = ([(None, 0)]
-                      + [(LOOK_UP_KEY, 1)] * ENGAGE_PITCH_STEPS
-                      + [(LOOK_DOWN_KEY, -1)] * (2 * ENGAGE_PITCH_STEPS))
+        pitch_plan = [(None, 0)]
+        if ENGAGE_SWEEP_PITCH:
+            pitch_plan += ([(LOOK_UP_KEY, 1)] * ENGAGE_PITCH_STEPS
+                           + [(LOOK_DOWN_KEY, -1)] * (2 * ENGAGE_PITCH_STEPS))
         pitch_at = 0
         for pkey, pstep in pitch_plan:
             if duel.stop.is_set():
@@ -944,8 +1124,14 @@ def engage_fight(me, other, duel, seconds, shots=True):
             time.sleep(0.15)
         if shots:
             sh.shot(f"fight{cycle:02d}")
-        # Re-measure the facing (the sweep moved it) and close a little.
-        f, _ = facing_probe(sh, tail, seconds=ENGAGE_STEP_FORWARD_S, label=f"{me.tag}_fight_face")
+        # KEEP CLOSING. kill2's engagement swept from a median 3-D range of 67.9 units and
+        # never once came inside 45; sweeping from out of range is not an aim problem. The forward
+        # burst doubles as the facing measurement.
+        secs = ENGAGE_STEP_FORWARD_S
+        if d3 is not None and d3 > ENGAGE_3D_UNITS:
+            want = (d3 - ENGAGE_3D_UNITS) * 0.7 / WALK_UNITS_PER_S_LONG + TURN_HOLD_LEAD_S
+            secs = max(ENGAGE_STEP_FORWARD_S, min(WALK_STEP_MAX_S, want))
+        f, _ = facing_probe(sh, tail, seconds=secs, label=f"{me.tag}_fight_close")
         if f is not None:
             duel.set_facing(me.tag, f)
         cycle += 1
@@ -958,7 +1144,9 @@ class KillWatch(threading.Thread):
     Three independent signals, because no single one of them is trustworthy on its own:
 
     1. `health` -- a word of the peeked player-actor block crossing into a range. Armed only when
-       --health-item/--health-word name an offset confirmed across two kills; the brief forbids
+       --health-offset names an ACTOR-RELATIVE byte offset confirmed across two kills (never an
+       item index: PS2X_PEEK skips unresolved items and the ones after them shift down, so an
+       index-based guard read the wrong block entirely); the brief forbids
        believing a candidate before that, so by default this signal is OFF and says so.
     2. `respawn` -- the position record of either instance TELEPORTING (a jump no walk can make
        between two 4 Hz samples), or landing back within RESPAWN_RADIUS of the spawn it left. On a
@@ -1137,25 +1325,41 @@ def main():
                     help="implies --converge: run until a death or round end is observed, capture "
                          "both screens at that moment and print which signal fired; exit 1 on the "
                          "timeout so a failed match is a clean FAIL rather than a hang")
-    ap.add_argument("--engage", type=float, default=ENGAGE_UNITS,
-                    help="gap at which the approach stops and the sweep-fire engagement starts")
+    ap.add_argument("--engage", type=float, default=ENGAGE_3D_UNITS,
+                    help="TRUE 3-D actor-to-actor range at which the approach stops and the "
+                         "engagement starts. Contact also requires the two heights to be within "
+                         "--engage-dy; kill2 reported a 33-unit ground gap while the real 3-D "
+                         "separation never got below 50")
+    ap.add_argument("--engage-dy", type=float, default=ENGAGE_DY_UNITS)
     ap.add_argument("--fight-seconds", type=float, default=150.0)
     ap.add_argument("--kill-timeout", type=float, default=420.0,
                     help="wall-clock budget from the liveness check to the kill; on expiry the run "
                          "ends FAIL with both screens captured")
     ap.add_argument("--no-route", action="store_true",
                     help="ignore the mined corridor and walk the straight line (the Task 7 policy)")
-    ap.add_argument("--health-item", type=int, default=None,
-                    help="index of the PS2X_PEEK item holding the player actor block, and "
-                         "--health-word the word in it. ONLY pass these once the offset has been "
-                         "confirmed across two separate kills (task-8 brief); unset, the health "
-                         "signal is off and the run says so instead of guessing")
-    ap.add_argument("--health-word", type=int, default=None)
+    ap.add_argument("--map", default="frostfire",
+                    help="map to select in CHOOSE GAMES. The selection is VERIFIED against a "
+                         "reference crop of the highlighted row before CROSS is pressed; a map "
+                         "with no reference aborts rather than accepting whatever is highlighted")
+    ap.add_argument("--map-scan", type=int, default=0,
+                    help="with --only A: walk the AVAILABLE MAPS list this many DOWN presses, "
+                         "capturing every screen, and stop. No match is created. This is how the "
+                         "reference crop for a new map is obtained")
+    ap.add_argument("--health-offset", default=None,
+                    help="BYTE OFFSET FROM THE ACTOR BASE of a confirmed health word, e.g. 0x208. "
+                         "Not an item index: PS2X_PEEK skips items whose chain does not resolve, "
+                         "so indices shift and an index-based guard checked the wrong block. ONLY "
+                         "pass this once the offset has been confirmed across two separate kills "
+                         "(task-8 brief); unset, the health signal is off and the run says so "
+                         "instead of guessing. +0x204 (1.0) and +0x208 (100000.0) are candidates "
+                         "ONLY -- they sit behind a +0x200 word of 0000ff00, which is as much a "
+                         "packed RGBA as a header, so `scale + far distance` fits them too")
     ap.add_argument("--health-range", default="-0.5:0.5",
                     help="lo:hi -- the float range that counts as dead for --health-word")
     a = ap.parse_args()
     if a.until_kill:
         a.converge = True
+    globals()["ENGAGE_DY_UNITS"] = a.engage_dy
     os.makedirs(a.out, exist_ok=True)
     if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
         raise SystemExit("socom2.exe is already running")
@@ -1169,6 +1373,10 @@ def main():
             c.login()
             if c.error:
                 raise c.error
+            if a.map_scan:
+                L.open_choose_games(c.sh)
+                rows = L.map_scan(c.sh, a.map_scan)
+                c.sh.log(f"map scan done: highlighted rows {rows}")
             c.sh.shot("done")
         finally:
             c.kill()
@@ -1187,7 +1395,7 @@ def main():
         for c in (A, B):
             if c.error:
                 raise c.error
-        L.host_game(A.sh)
+        L.host_game(A.sh, game_map=a.map)
         L.join_game(B.sh, switch=a.same_team and not a.host_switch)   # the joiner is auto-assigned to the other team
         if a.host_switch:
             A.sh.log(f"teams before host switch {L.lobby_teams(A.sh)}")
@@ -1246,7 +1454,15 @@ def main():
         if a.converge:
             # Task 8 (S3): BOTH sides close, then fight, and a KillWatch decides when it is over.
             duel = Duel()
-            route = None if a.no_route else MP51_SEAL_ROUTE
+            # The mined corridor is map-specific (research/18 §4.5). On any other map it would
+            # steer along a route that does not exist, so it is dropped and the banner says so.
+            mined_ok = (not a.no_route) and a.map.lower() == MINED_ROUTE_MAP
+            route = MP51_SEAL_ROUTE if mined_ok else None
+            A.sh.log(f"RUN BANNER map={a.map} "
+                     f"route={'mined(' + MINED_ROUTE_MAP + ')' if mined_ok else 'direct'} "
+                     f"engage3d={a.engage} dy_tol={a.engage_dy} "
+                     f"pos={'actor' if A.tail.actor_ingame() else 'camera-reconstruction'} "
+                     f"health={'armed@+0x%x' % int(a.health_offset, 0) if a.health_offset else 'disarmed'}")
             sideA = Side("A", A.sh, A.tail, route=route)
             sideB = Side("B", B.sh, B.tail, route=None)   # B's half of the map has no mined track
             spawns = {}
@@ -1255,14 +1471,13 @@ def main():
                 if rows:
                     spawns[tag] = (rows[0][1], rows[0][3])
             health = None
-            if a.health_item is not None and a.health_word is not None:
-                health = (a.health_item, a.health_word)
+            if a.health_offset is not None:
+                health = int(a.health_offset, 0)
                 for c in (A, B):
-                    c.tail.watch = health
-                    c.tail.watch_vtable = (a.health_item, ACTOR_VTABLE)
-                A.sh.log(f"kill readout: health word armed at PS2X_PEEK item {a.health_item} "
-                         f"word {a.health_word} (actor +0x{a.health_word * 4:x}), dead range "
-                         f"{a.health_range}")
+                    c.tail.watch_offset = health
+                A.sh.log(f"kill readout: health word armed at ACTOR+0x{health:x} (found through "
+                         f"the block whose word 0 is {ACTOR_VTABLE:#x}, never through an item "
+                         f"index), dead range {a.health_range}")
             else:
                 A.sh.log("kill readout: health word NOT armed (no confirmed offset) -- the run "
                          "reads the round end from the position records and the Medius log, and "
@@ -1338,9 +1553,13 @@ def main():
             ra, rb = A.tail.latest(max_age=1e9), B.tail.latest(max_age=1e9)
             summary = {
                 "contact": duel.contact.is_set(),
-                "closest_units": closest,
+                "closest_3d_units": closest,
+                "best_3d_per_side": {"A": sideA.best_3d, "B": sideB.best_3d},
+                "actor_rows": {"A": len(A.tail.actor_ingame()), "B": len(B.tail.actor_ingame())},
+                "actor_addr": {"A": A.tail.actor_addr, "B": B.tail.actor_addr},
                 "final_records": {"A": ra, "B": rb},
                 "final_dy": (rb[2] - ra[2]) if (ra and rb) else None,
+                "best_3d": {"A": sideA.best_3d, "B": sideB.best_3d},
                 "approach_A": sideA.result, "approach_B": sideB.result,
                 "fight": fights,
                 "fired": watch.fired,
@@ -1355,18 +1574,34 @@ def main():
             # rows is a failed run, so the row counts are on the same line.
             if watch.fired:
                 ev = watch.fired
-                A.sh.log(f"RESULT PASS signal={ev['kind']} on={ev['tag']} "
-                         f"t=T+{ev['t'] - t_gameplay:.1f}s closest={closest} "
+                kinds = {e["kind"] for e in watch.events}
+                # PASS is reserved for a signal only a KILL produces. `respawn` detects a ROUND
+                # END, and a round ends on its clock too -- so calling it PASS would print a pass
+                # for a test whose acceptance is a kill, which is the same defect this task caught
+                # one level up in the `server` mark. It is reported, named, and it is not a pass.
+                if ev["kind"] == "health":
+                    verdict = "PASS"
+                elif "health" in kinds:
+                    verdict = "PASS (round end corroborated by a health transition)"
+                else:
+                    verdict = "ROUND-END (unattributed -- NOT a kill)"
+                    failed = a.until_kill
+                A.sh.log(f"RESULT {verdict} signal={ev['kind']} on={ev['tag']} "
+                         f"t=T+{ev['t'] - t_gameplay:.1f}s closest_3d={closest} "
+                         f"contact={duel.contact.is_set()} "
                          f"detail={json.dumps(ev['detail'], default=float)} "
-                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())}")
+                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
+                         f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())}")
             else:
                 obs = [e["kind"] for e in watch.events if not e.get("firing")]
                 if obs:
                     A.sh.log(f"non-firing observations only: {obs} -- a MediusPlayerReport is a "
                              f"periodic client stats report, not a round boundary")
                 A.sh.log(f"RESULT FAIL no kill or round-end signal in {a.kill_timeout}s; "
-                         f"closest={closest} contact={duel.contact.is_set()} "
-                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())}")
+                         f"closest_3d={closest} contact={duel.contact.is_set()} "
+                         f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
+                         f"actor_rows A={len(A.tail.actor_ingame())} "
+                         f"B={len(B.tail.actor_ingame())}")
                 if a.until_kill:
                     failed = True
         if a.sweep:
@@ -1383,7 +1618,9 @@ def main():
         B.kill()
         subprocess.run(["taskkill", "/F", "/IM", "socom2.exe"], capture_output=True)
     if failed:
-        raise SystemExit("--until-kill: no kill or round-end signal was observed -- FAIL")
+        raise SystemExit("--until-kill: no KILL was observed -- FAIL. (A round end on its own is "
+                         "not a kill: the round clock ends rounds too, and the health word that "
+                         "would attribute one is not confirmed. See the RESULT line.)")
 
 
 if __name__ == "__main__":
