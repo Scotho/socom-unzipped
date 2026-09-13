@@ -26,6 +26,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | The intro-movie macroblocks were a cross-thread race on `m_currentTransfer`, not a byte-accumulator bug | `4a701f1`; deficit 3,748 → 0, MISSING 9 → 0 |
 | `--vram-diff` catches a uniform ±1 px shift again after the seam budget (8/15 x, 6/15 y) | `6c017c2`, measured on real renders |
 | **One player walking to the other cannot finish inside a round.** Measured closure efficiency is 39 % (758 units gained for 1961 walked) at ~15 s/step, so 1382 units needs ~450 s against a ~360 s round. Two movers is ~700 units each, ~180 s | Task 7 run `wtb2`, `logs/run_A_20260912_211009.log`; arithmetic checked by review |
+| **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. `HANDOFF.md`'s `*0x488de8+0xbc` is wrong | Task 8, `9c28fe0` |
+| **The two-instance approach works: 1392 → 33 units** at 57.5 %/64.7 % efficiency (73 % path efficiency from mined waypoints, against Task 7's 38.6 %). Rifles fire — 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2`, 1172 in-game rows per instance |
 | **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
 | **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). HANDOFF's `*0x488de8+0xbc` is **not** the route | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
 | **Two movers plus the mined corridor close the map**: 1392 → **33.0 units** in 23 steps and ~127 s, both players walking, first time two online players have met | `ours_task8_kill2`, `logs/run_A_20260912_231341.log` / `run_B_…` (1172 in-game rows each); `research/18` §4.8. Approach efficiency 57.5 % / 64.7 % against Task 7's 38.6 % |
@@ -53,6 +55,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   were aimed at the wrong body of code.
 - **"The actor rests 14.7 above the ground vs the console's 20.1"** (`HANDOFF.md:99`, `STATUS.md:809`).
   Both numbers are camera-eye minus collision-hit. The player's feet are right to 0.008.
+- **`HANDOFF.md`'s player actor at `*0x488de8+0xbc`.** Wrong; it is `*0x408c58`, verified across
+  six images including the console's.
 - **"Frozen at STARTING ROUND 1 OF 11, waiting for a go"** (spec §1 and several STATUS entries).
   The banner is transient on ours too and the round timer runs. The true sentence is *the round
   runs and the local player cannot move*.
@@ -115,5 +119,9 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   of sight at all. Read `dy` before believing a range.
 - **The online lobby flow reaches gameplay about 4 times in 10.** Task 7 fixed four harness
   defects and left `host_game`/`join_game` fixed-press navigation untouched. Budget for it.
+- **`MediusPlayerReport` is a periodic stats report, not a round end.** Task 8's acceptance test
+  printed `RESULT PASS signal=server` for a round that had not ended, until it caught itself. Any
+  round-end signal must require something only a real round end produces.
+- **A finished `drive.py` taskkills the *next* run's game.** It voided one of Task 8's probes.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
