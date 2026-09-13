@@ -29,7 +29,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 | **The player actor is at `*0x408c58`** — verified in five of our RDRAM images, the PCSX2 console image, and live online. The `*0x488de8+0xbc` route is wrong. Full chain: `@408c58` word0 = `017941d0`; `@17941d0` word0 = `006691a0`; `*(actor+0xc0)` = mover `006694b0` | Task 8, `9c28fe0`; correct route now written into `HANDOFF.md` §"Open items" item 0 |
 | ~~**The two-instance approach closes faster than one:** 1359 units in 127 s against Task 7's 758 in 300 s~~ **SUPERSEDED — derived from the camera+facing reconstruction that was later proven wrong by up to 50 units. Use the actor-row generation below (1485.5 → 50.0 in ~127 s).** The rifle facts stand: 96 R1 injections, ammo 30/30 → 0/30, impacts on the wall ahead of the muzzle | Task 8 run `ours_task8_kill2` |
 | ~~**They fought at ~90 units** (median 93, min 34.9, 3 % inside 45)~~ **SUPERSEDED by the actor-row generation below (min 50.0, median 67.9, 0 % inside 45).** Same conclusion, better instrument | Review of `9c28fe0`; superseded once `true_pos()` read the actor's own coordinates |
-| **Open-loop aim resolution is floored at ~20-40°** because `PAD_AXIS` injects only full deflection (0/255); the shortest usable hold already sweeps 35-40°. A body at contact range subtends 15-20° | Task 7 §3.13; 19 timed holds, repeat scatter 99.5 vs 80.8 at the same hold length |
+| **Open-loop aim resolution is floored at ~20-40° by the HARNESS, not the runtime.** The harness's `PAD_AXIS` sends only full deflection (0/255); the shortest usable hold already sweeps 35-40°, against a body that subtends 15-20° at contact range. **The pad file itself accepts 0-255 per axis**, so partial-stick aim is available for the cost of one re-calibration | Task 7 §3.13 (19 timed holds, repeat scatter 99.5 vs 80.8 at one hold length); pad-file range confirmed by the Sprint 5 planning pass |
 | **The local player's actor is reachable from a STATIC**: `*0x408c58` (also `0x40d744`, `0x440c38`, and `*0x415ff0+0xbc`). the `*0x488de8+0xbc` route is **not** it (that route is recorded in `STATUS`'s 2026-09-09 01:30 entry, not HANDOFF, and `0x488de8` is the *camera*) | Offline scan of five of our RDRAM images **and the PCSX2 console image** for vtable `0x6691a0` keeping the actor whose mover is `0x6694b0`; live in an online match (`logs/run_A_20260912_230022.log`, actor `0x17941d0`, word 0 `006691a0`, 804 rows). `research/18` §4.1. `*0x488de8+0xbc*` resolved 24 times in 1162 rows and to `0xd9d9d9d9` |
 | **Two movers close the map four and a half times faster than one**: `ours_task8_kill2` closed the true 3-D gap **1485.5 → 50.0 units in ~127 s** (11.3 units/s) against Task 7's 757.8 in 300 s (2.5 units/s), both players walking — the first time two online players have been in the same place | `ours_task8_kill2`, `logs/run_A_20260912_231341.log` / `run_B_…` (1172 / 1055 in-game rows). Team-closed over team-walked **61.0 %** vs `wtb2`'s 38.6 %; `kill1` was **36.5 %**, i.e. no better than one mover. Per-side efficiencies double-count the same gap and must not be quoted |
 | **The bursts hit nothing because the players were never in range at all, in three dimensions**: on the ACTOR rows the minimum true 3-D separation for the whole run was **50.0 units**, the last 400 rows had a median of **67.9** and a median elevation of **43.3°**, and **0 %** of them were inside 45 units in 3-D, inside 25, or within 10 of each other's height. Range and elevation are co-equal causes; the 77° figure is the single worst row | Same run, actor positions (words 7/8/9); `actor+0x204`/`+0x208` unchanged on **both** instances throughout, so no damage was dealt either way |
@@ -42,24 +42,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 
 | What | What would settle it |
 |---|---|
-| `actor+0x204` (1.0) and `actor+0x208` (100000.0) are the player's health and max health — **weakly** believed: the word before them, `actor+0x200`, is `0000ff00`, which reads as much like a packed RGBA as like a header, and in that reading they are a scale and a far clip distance | Watch them across **two separate kills** — the brief's rule, and this task got zero. `--until-kill --health-offset 0x208` arms the watch once confirmed (a byte offset from the ACTOR BASE, never an item index); unset, the run says the signal is off |
+| `actor+0x204` (1.0) and `actor+0x208` (100000.0) are the player's health and max health — **weakly** believed: the word before them, `actor+0x200`, is `0000ff00`, which reads as much like a packed RGBA as like a header, and in that reading they are a scale and a far clip distance. **And `research/18` §4.2's "same in every image" is false**: in `ours_task8_frost1` instance B reads `+0x200` = 1 and `+0x204` = 1.01 on every row | Watch them across **two separate kills** — the brief's rule, and this task got zero. `--until-kill --health-offset 0x208` arms the watch once confirmed (a byte offset from the ACTOR BASE, never an item index); unset, the run says the signal is off |
 | Which of `I`/`K` (right stick up/down) raises the muzzle | One timed pitch hold measured against the elevation of a target of known height difference. The engagement sweeps both ways precisely because this is unknown |
-| **On Frostfire the local move path ran for 0.6 s at round start and never ticked again** — 18 calls between t=371.4 and t=372.0 s while 2634 peek rows kept arriving, with the pad reaching the guest, the movement scale at 1.0 and the round clock running. Reads as control never being handed over, not as a slow map. One run | One relaunch with `PS2X_CALL_TRACE_EVERY=1`, a trace on the **caller** of `0x553dc0`, and the `0x200` idle counter |
+| **On Frostfire the local move path ran for 0.6 s at round start and never ticked again** — 18 calls between t=371.4 and t=372.0 s while 2634 peek rows kept arriving, with the pad reaching the guest, the movement scale at 1.0 and the round clock running. Reads as control never being handed over, not as a slow map. **Two leads from the same logs:** both actors read `+0xd0/+0xd4` = **1/1** and `+0x20c` = **0** for the whole run, where every Medley actor reads 8/5 and 4/7 — a *state* difference; and in `FUN_00594cf0` the move-scale call sits inside `if (cVar7 == 0)`, so the multiplayer snap-back — **excluded only on Medley** — would produce exactly this picture. reCOM names the likely state: `mp_major_game_state`, `late_joiner` (`research/11`). Frostfire spawns are 692 units apart (Medley 1485) with a 42-unit height difference. **One run; §3.12's movement fix is proven on Medley only** | A zero-launch pass mapping reCOM's round-state names onto the round-start path, then one relaunch with `PS2X_CALL_TRACE_EVERY=1`, a trace on the **caller** of `0x553dc0`, the snap-back timestamp pair, and the `0x200` idle counter |
 | Whether a parked opponent starving the mover matches **console** behaviour, or is an artefact of feeding the counter from RX bytes only (the game's own source may be richer) | A PCSX2 pair with one player parked and the other walking, same `actor+0x1368` measurement |
 | Which of the two skeleton candidates is real — a lerp dropping its `a·w` term, or a second writer | `research/17` §4.3: read the node on return from the blend and again later in the same frame |
 | The transition residual strip (~1 in 5 runs) is a `refreshDirtyRows`/`executeClear` ordering artefact | No isolation test has been run; the *pre-existing on both binaries* half is measured |
 | The intro-cinematic freeze (seen once, Sprint 1) is a real defect | Not reproduced since |
 | The DME aux-UDP channel carries nothing at round start | Rate bound only; `PS2X_SOCOM2_NET_TRACE_ALL` now closes it |
 | `sin`/`cos` have no live call sites | Direct-`jal` count only; `0x001D55B8`/`0x001D55BC` hold their addresses in a probable dispatch table |
-
-- **Movement on Frostfire.** One two-instance match (`ours_task8_frost1`, 2026-09-13) reached
-  gameplay on Frostfire with the round clock running, the pad reaching the guest (`ly=00` on 31
-  polls), the movement scale at **1.0** and 1152 actor rows per side — and **neither player moved**:
-  2.5 units of x on A and 0.0 on B over 240 s and twelve facing probes. `FUN_00553dc0` was traced
-  about **once a second** against ~20 a second on mp51. Whether this is a map-specific movement
-  defect or a match that never handed over control is **not settled by one run**; §3.12's fix was
-  measured on mp51 and only on mp51. Do not assume movement works on any other map.
-  Frostfire spawns are **692 units apart** (mp51: 1485) with a **42-unit height difference**.
 
 ## 3. Retracted — believed, then killed by measurement
 
@@ -190,10 +181,6 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
   reviewer run gave `maze` 29 steps/206 s against a report's 14/102, and `route` 30.7/58.2 %
   against 40.9/65.1 %. Read those tables as illustrative; do not tune against them as constants
   or a slow machine reads as a regression.
-- **`MediusPlayerReport` is a periodic stats report, not a round end.** Task 8's acceptance test
-  printed `RESULT PASS signal=server` for a round that had not ended, until it caught itself. Any
-  round-end signal must require something only a real round end produces.
-- **A finished `drive.py` taskkills the *next* run's game.** It voided one of Task 8's probes.
 - **A stale number is more dangerous than a false sentence.** A false claim reads as something a
   reader can challenge; a superseded measurement carries no visible sign at all. This sprint's own
   retraction task quoted a retracted figure into a tracked document, and this list carried two
@@ -204,5 +191,12 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **`PS2X_CALL_TRACE` logs the first 300 calls unconditionally, then 1-in-`EVERY`.** A short
   trace never reaches the sampling regime, so dividing its line count by `EVERY` over-states the
   rate — it made an 18-call, 0.6-second burst read as "about one a second for six minutes".
+- **`docs/LOOP_PROMPT.md` still targets Sprint 3.** A cron firing reads it first, so an autonomous
+  session starts from the wrong sprint until it is repointed (Sprint 5 Task 0).
+- **Existing research notes go unread unless they are put in the dispatch.** `research/11`
+  (2026-09-07) named reCOM's `MP_MAJOR_GAME_STATE` and `CZNetGame` round valves — plausibly the
+  round-state machine behind Frostfire and the structures behind a kill readout — and sat unused
+  for six days while four agents worked the round-start blocker. Name the relevant notes in every
+  dispatch, not only the obvious ones.
 - **A count that matches is not a mechanism.** Three-calls/three-axes, and the `+8 px` bar that
   never tested ±1 px, both looked like evidence and were not.
