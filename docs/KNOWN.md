@@ -123,9 +123,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-12, after Task 
 - **Closure efficiency quoted per side double-counts the same gap** — kill2 recomputes to 107.6 %
   and 119.2 %, impossible for one mover. Use team-closed over team-walked (kill2 ≈ 58 %,
   kill1 ≈ 33 %). A mined corridor's path efficiency is an idealised upper bound, not a closure.
-- **Camera+facing reconstruction mis-places a player by up to two orbit radii (~50 units).** The
-  actor's own x/y/z are at actor words 7/8/9 and are already peeked — use them. A sim `converge`
-  run reported best 16.1 against a simulated true 82.0 under the reconstruction.
+- **Camera+facing reconstruction under-reports separation by 25-47 units, consistently.** Measured
+  on the committed sim, whose world has **no vertical dimension at all**, so the error is purely
+  the orbit reconstruction: reported-best vs ground truth `converge` 40.3 vs 64.3, `route` 23.4 vs
+  30.7, `caps` 157.6 vs 204.7 — the same failure the live match showed (believed 33, true 45-93 in
+  3-D), reproduced offline. The actor's own x/y/z are at actor words 7/8/9 and are already peeked.
+- **`sim_walk_to_b.py` is wall-clock-timed, so its per-scenario numbers vary run to run.** One
+  reviewer run gave `maze` 29 steps/206 s against a report's 14/102, and `route` 30.7/58.2 %
+  against 40.9/65.1 %. Read those tables as illustrative; do not tune against them as constants
+  or a slow machine reads as a regression.
 - **`MediusPlayerReport` is a periodic stats report, not a round end.** Task 8's acceptance test
   printed `RESULT PASS signal=server` for a round that had not ended, until it caught itself. Any
   round-end signal must require something only a real round end produces.
