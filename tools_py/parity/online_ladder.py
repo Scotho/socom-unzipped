@@ -155,10 +155,14 @@ def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeou
 # pass = MoveScale >= 17 calls/s over 60 s with both round clocks running, the clock string at real time (>= 0.95 of
 # host time), and back-pressure waits not in the hundreds over that window (PS2X_GS_STATS=1 on both instances;
 # PS2X_GS_MAX_PENDING_FRAMES=0 is the A/B knob). A RUNG0-FAIL ends the ladder: it names a runtime cause.
+# R67 -- instrument parameters, not acceptance bars (plan Amendment A4): MoveScale >= 17/s over the first pause-free 60 s
+# with both clocks running; clock-string rate >= 0.95; back-pressure waits < 100 per side in that window.
 RUNG0_WINDOW_S = 60.0
 RUNG0_MOVESCALE_MIN = 17.0       # calls/s (kill2 A 18.9, kill2 B 17.0, kill3 B 27.4; 8c under freezes 11.5)
 RUNG0_CLOCK_RATE_MIN = 0.95
-RUNG0_BP_WAITS_MAX = 100         # waits over the 60 s window, per instance ("not in the hundreds")
+RUNG0_BP_WAITS_MAX = 100         # waits over the 60 s window, per instance ("not in the hundreds"): fail at >= this
+RUNG0_INSTRUMENT_PARAMETERS = {"movescale_min_per_s": RUNG0_MOVESCALE_MIN, "window_s": RUNG0_WINDOW_S,
+                               "clock_rate_min": RUNG0_CLOCK_RATE_MIN, "bp_waits_max": RUNG0_BP_WAITS_MAX}
 RUNG0_PULSE_TABLE = (64, -64, 80, -80, 96, -96)
 RUNG0_PULSE_S = 0.3
 

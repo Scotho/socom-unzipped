@@ -3465,13 +3465,30 @@ def spawn_mismatch(sides, spawns, live=None):
     return None
 
 
+ROUTE_JOIN_MAX_UNITS = 60.0      # R65: after the precondition the mover joins the nearest same-floor waypoint this close
+ROUTE_JOIN_DY_UNITS = 10.0       # ... "same floor": |actor y - the waypoint's leg floor y| <= this
+
+
+def route_join_index(route, pos):
+    """R65: the index of the nearest waypoint (ground distance) within ROUTE_JOIN_MAX_UNITS of `pos` (x, y, z) whose leg
+    floor y is within ROUTE_JOIN_DY_UNITS of pos's y (a waypoint without a floor y matches any floor), or None."""
+    best = None
+    for i, w in enumerate(_wp(w) for w in route):
+        d = math.hypot(w["x"] - pos[0], w["z"] - pos[2])
+        if d > ROUTE_JOIN_MAX_UNITS or (w["floor_y"] is not None and abs(pos[1] - w["floor_y"]) > ROUTE_JOIN_DY_UNITS):
+            continue
+        if best is None or d < best[0]:
+            best = (d, i)
+    return None if best is None else best[1]
+
+
 def victim_should_oscillate(d3):
     """The cooperative victim strafe-oscillates only while the shooter is inside ENDGAME_UNITS (3-D)."""
     return d3 is not None and d3 <= ENDGAME_UNITS
 
 
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
-                  wait=time.sleep, spawns=None, live_spawns=None, route_path=None):
+                  wait=time.sleep, spawns=None, live_spawns=None, route_path=None, route_join="start"):
     """The default engagement -> result dict. The stander stands (it moves only when the StarvationWatch asks it: one
     RULE_LEG_S strafe leg); the mover follows `route` (default: routes/<map>.json for `mover`) to the stander's floor,
     close_to()s it into the engagement band, then cycles aim_yaw(read="pulse", tol=aim_tol_deg(d3)) -> one R1 burst
@@ -3487,7 +3504,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     route = route if route is not None else route_for(map_name, mover, path=route_path)
     out = {"mode": "route", "mover": shooter.tag, "stander": stander.tag, "route": None, "close": None,
            "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "fire_teleport": None,
-           "fire_freeze": None, "round_end": None, "t_fight": None, "t_end": None, "fire_windows": []}
+           "fire_freeze": None, "round_end": None, "t_fight": None, "t_end": None, "fire_windows": [],
+           "route_join": None}
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(stander.tag, stander.tail)
     log(f"ENDGAME BANNER mode=route mover={shooter.tag} stander={stander.tag} (stands at its spawn) "
@@ -3533,7 +3551,19 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     def mover_run():
         on_poll = lambda: react(shooter)
         if route:
-            r = follow_route(shooter, route, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
+            # R65: after the precondition (route_join="nearest") join at the nearest same-floor waypoint within 60 units,
+            # never an unrouted walk; after a round reset ("start") the players are at spawn: waypoint 0
+            here = shooter.tail.actor_latest()
+            k = 0 if route_join == "start" else (None if here is None else route_join_index(route, here[1:4]))
+            if k is None:
+                out["stop_reason"] = (f"NO-DATA route-start: no waypoint on {shooter.tag}'s floor within "
+                                      f"{ROUTE_JOIN_MAX_UNITS:g} units of "
+                                      + ("an unread position" if here is None else
+                                         f"({here[1]:.1f},{here[2]:.1f},{here[3]:.1f})") + " -- nobody walks unrouted")
+                return
+            out["route_join"] = k
+            log(f"ROUTE {shooter.tag} joins at wp{k} of {len(route)}")
+            r = follow_route(shooter, route[k:], clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
             out["route"] = r
             if not r["ok"]:
                 out["stop_reason"] = f"route failed: {r['reason']} -- --mover {stander.tag} swaps which side walks"
@@ -4316,7 +4346,8 @@ def main():
                                                   fight_s=a.fight_seconds, mover=mover, route_path=route_path)
                 elif a.endgame == "route":
                     endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=mover,
-                                            fight_s=a.fight_seconds, route_path=route_path, spawns=file_spawns,
+                                            fight_s=a.fight_seconds, route_path=route_path,
+                                            route_join="nearest" if n == 1 else "start", spawns=file_spawns,
                                             live_spawns=live_spawns)
                 threads = []
                 for me, oth in (() if watched_endgame else ((sideA, sideB), (sideB, sideA))):

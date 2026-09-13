@@ -19,7 +19,8 @@
 # +0x174, +0xF78 alive byte, +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
 # 0x4365c0 and 0x408f10) plus PS2X_GS_STATS=1 for rung 0's back-pressure waits (A4).
 #
-# Knobs (environment): ROUTE (default tools_py/parity/routes/frostfire_v2.json), ROUNDS (4), MOVER (A), AUTO_SWAP=1,
+# Knobs (environment): ROUTE (default tools_py/parity/routes/frostfire_v2.json), ROUNDS (4), MOVER (A),
+# --auto-swap always (R66: a SWAP-MOVER continues with the other mover),
 # SECONDS (2400: ~4 rounds of ~6.5 min + the lobby), PS2X_GS_MAX_PENDING_FRAMES (unset; 0 is the rung-0 A/B knob).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -44,8 +45,7 @@ export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-192.168.2.10}" PS2X_SOCOM2_RSA_
        PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,*0x437ce8+0x0c*:2,*0x437ce8+0x10*:2,*0x437ce8+0x14*:2,*0x437ce8+0x20*:2,*0x437ce8+0x24*:2,*0x437ce8+0x2c*:2,*0x437ce8+0x58*:2,*0x437ce8+0x5c*:2,*0x437ce8+0x70*:2,*0x43668c:2,0x4365c0:1,0x45a0c0:1,0x3df1b0:1,0x45a1c8:1,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,*0x437ce8+0x14**:3,*0x437ce8+0x20**:3,*0x437ce8+0x24**:3,*0x437ce8+0x2c**:3,*0x437ce8+0x58**:3,*0x437ce8+0x5c**:3,*0x437ce8+0x70**:3,*0x43668c*:3,0x408f10:2,0x408c58:4"
 
 ARGS=(--existing-b --hold 30 --until-kill --map frostfire --route "$ROUTE" --rounds "$ROUNDS" --mover "$MOVER"
-      --fight-seconds 150 --kill-timeout 470 --out "$OUT" --seconds "$SECONDS_RUN")
-[ "${AUTO_SWAP:-0}" = "1" ] && ARGS+=(--auto-swap)
+      --auto-swap --fight-seconds 150 --kill-timeout 470 --out "$OUT" --seconds "$SECONDS_RUN")
 
 case "$MODE" in
   dry)
