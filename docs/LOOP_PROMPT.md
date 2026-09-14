@@ -18,7 +18,7 @@ spec/plan pairs in the same two directories; Sprint 4's plan ends with an `## Ou
      and the local player cannot move", and it has had two causes on two maps.
    - **Medley:** the movement blocker is fixed (`sceInetInterfaceControl(0x200)` returned a
      constant; same-binary A/B). Both players walk and have met — closest **50.0 units true 3-D**,
-     0 % of rows inside any contact gate — and **no kill** has been observed.
+     0 % of rows inside any contact gate — ~~and **no kill** has been observed~~. **Superseded 2026-09-13 — the acceptance test PASSED** (Sprint 5 ladder launch 2, `logs/parity/s5_t5_ladder2`: rounds 1–3 KILL on both scorers, independently verified; `docs/research/22-kill-readout.md` §Ladder launch 2, `docs/research/assets/22-first-kill.png`).
    - **Frostfire, the default test map (owner, 2026-09-13):** neither player moves; the move path
      runs 18 calls in 0.6 s at round start and never again. Lead: uninitialised `CZNetGame` bytes
      (`*0x437ce8`) read `0xAF` on ours and `0x00` on the console, including the "you are a ghost"

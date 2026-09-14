@@ -95,7 +95,7 @@ actor-position readout and the Frostfire default, and must not be run as written
    our server (research/18 §1). The parenthesis "movement never verified there" was the tell, and it
    sat in the same sentence as the claim for two weeks.** A run = `logs/run_match_probe10.sh`
    pattern (detached, ~12 min, `.done` marker).
-1. **First kill / round end (the user's acceptance test)** — after item 0. Running/next: `python -m
+1. ~~**First kill / round end (the user's acceptance test)**~~ **Superseded 2026-09-13 — the acceptance test PASSED** (Sprint 5 ladder launch 2, `logs/parity/s5_t5_ladder2`: rounds 1–3 KILL on both scorers, independently verified; `docs/research/22-kill-readout.md` §Ladder launch 2, `docs/research/assets/22-first-kill.png`). (Historical:) after item 0. Running/next: `python -m
    tools_py.parity.online_match_ours --existing-b --same-team --hold 40 --sweep 24` with
    `PS2X_PC_SAMPLER=1 PS2X_PEEK=0x416054:3` on both instances (logs/run_match_sweep1.sh, output
    logs/parity/ours_match_sweep1, drive log drive_match_sweep1.txt). B stays on SEALs so both

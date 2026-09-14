@@ -344,3 +344,136 @@ read `+0x1044` at [1.0] on both sides in every round, and `total_mp_kills` uncha
 - **Clock rate.** 1.00 / 1.01, which passes.
 - **Host load.** Valheim and VirtualBox were running. Total CPU averaged 36 %.
 - **The `rx` table is asymmetric between instances.** A's 0.3 s pulses swept 1.1–5.1°, B's 1.9–11.6°. The route aims still converged on both sides.
+
+## Ladder launch 2
+
+**Draft, uncommitted (the controller commits).** Sprint 5 merged Task 5/6 ladder (Amendment A). This is the third
+launch against the 16-launch cap (1, 1b, 2). **Round 1 is the acceptance PASS: KillWatch and `verdict_replay` both
+score `KILL killer=A victim=B`.** Rounds 2 and 3 repeated it; round 4 reached rung 2 only. The only commit is the tiled
+screen pair `docs/research/assets/22-first-kill.png` (`5f1de26`). Per-round figures come from an offline script in the
+session scratchpad (`ladder2.py`, untracked, the `ladder1b.py` method: `verdict_core.parse_log`, B aligned on
+MoveScale `#0` (B + 5.60 s), the step → step + 8 s reset span dropped).
+
+### Launch and the command
+
+`bash scripts/parity/ladder_frostfire.sh --pinned logs/parity/s5_t5_ladder2`, from the repo root at `sprint-5` HEAD
+`171290b` (R70: route budget `20 + 3·len/7.5`, capped to leave 120 s of round clock).
+
+| per-instance logs | out dir | outcome (`logs/s5_t5_ladder2.done`) |
+|---|---|---|
+| **`logs/run_[AB]_20260913_230442.log`** (29.1 / 29.5 MB) | `logs/parity/s5_t5_ladder2` | `done 0 mpexit=0 KILL harness=171290b5524e4949753ccda0d813754fd6e397c8 … sha256=234b4772cd0a8bf8…`; `.detached` `exit=0` |
+
+- **Timing.** The launch ran 23:04:37–23:25:49 (21 min), with the lobby done at T+466 s.
+- **Lobby.** A timed out waiting for the persona screen at 179 s and recovered on its own. One `LOBBY RESEND
+  map-cross-dropped attempt=1` rescued the map selection (the second live R47 rescue). Class `ok`.
+- **Identity.** Every RESULT/LADDER line reads `harness=171290b5524e exe=234b4772cd0a8bf8`.
+
+**Environment:**
+- Horizon listening on 10071/10073/10075/10077/10078, not restarted.
+- Persona B present on `game/disc/mc0_b`.
+- No socom2 running; `kill_stale_drivers.ps1` killed 0.
+- `logs/.quiet` absent and the lock FREE before the launch.
+- 78.6 GB free on C:.
+- **Host load.** Valheim was closed. VirtualBox was open, per the owner: VBoxSDS, VBoxSVC, the VirtualBox GUI and three
+  VirtualBoxVM processes (one at a 121 MB working set, so a VM was probably running).
+- **CPU sampler** (`logs/s5_t5_ladder2.detached.cpu.csv`). Total CPU averaged 40.7 %, with p90 51.9 % and max 73.5 %.
+  **It wrote a row every 3.1 s, not every 1 s** (401 rows).
+
+### Harness lines
+
+```
+RUNG0 rx-table A: +64 +1.54 | -64 -1.65 | +80 +4.67 | -80 -3.28 | +96 +5.31 | -96 -6.11 (deg, 0.3 s)
+RUNG0 rx-table B: +64 +2.29 | -64 -2.04 | +80 +7.76 | -80 -7.62 | +96 +12.44 | -96 -11.41
+RUNG0 bp_waits_A=380 bp_waits_B=10 clock_rate_A=1.00 clock_rate_B=1.00 movescale_A=17.66 movescale_B=32.23 status=FAIL
+RUNG0 FAIL back-pressure waits A 380 >= 100 -- recorded; the rounds continue (R68)
+RESULT round=1 PASS signal=health on=B t=T+99.1s detail={"value": 0.0, "offset": 4164, "actor": 22572784, "alive_value": 0.2978736162185669} closest_3d=23.93 dy_at_closest=0.0 contact=False health_watch=armed reads A/B 399/399 misses 0/0 stale_shots=[] missing_shots=[]
+LADDER round=1 rung=3 controllable=yes,yes contact_s=14.30 contact_rows=58 sampler_s=0.25 rows_read=798 damage=yes kill=yes starvation_alarms=0 alarms_cleared=0 max_idle_ms=1524,668 lagflag_rows=399,399 aim_iters=2/2:3,0 bp_waits=443,3 mover=A
+RESULT round=2 PASS signal=health on=B t=T+231.6s (alive_value 0.2979) closest_3d=23.80 reads 925/925 misses 0/0 stale_shots=[] missing_shots=[]
+LADDER round=2 rung=3 controllable=yes,yes contact_s=6.05 contact_rows=25 sampler_s=0.25 rows_read=746 damage=yes kill=yes starvation_alarms=0 alarms_cleared=0 max_idle_ms=1508,700 lagflag_rows=373,373 aim_iters=2/2:1,0 bp_waits=431,13 mover=A
+RESULT round=3 PASS signal=health on=B t=T+351.7s (alive_value 0.2671) closest_3d=32.85 reads 1405/1404 misses 0/0 stale_shots=[] missing_shots=[]
+LADDER round=3 rung=3 controllable=yes,yes contact_s=5.77 contact_rows=24 sampler_s=0.26 rows_read=651 damage=yes kill=yes starvation_alarms=0 alarms_cleared=0 max_idle_ms=1512,467 lagflag_rows=326,325 aim_iters=3/3:1,0,0 bp_waits=408,8 mover=A
+RESULT round=4 ROUND-END (round; unattributed -- NOT a kill) signal=round on=B t=T+750.8s clock 00:01->00:00 closest_3d=25.78 reads 2989/2988 misses 0/0
+LADDER round=4 rung=2 controllable=yes,yes contact_s=272.85 contact_rows=1086 sampler_s=0.26 rows_read=2847 damage=NO-DATA kill=no starvation_alarms=0 alarms_cleared=0 max_idle_ms=1226,1555 lagflag_rows=1423,1424 aim_iters=111/111:(all 0) bp_waits=1950,68 mover=A
+LADDER-SUMMARY rounds=4/4 usable=4 best_rung=3 kills=3 rungs=3,3,3,2 movers=A,A,A,A stop=rounds done RUNG0 FAIL back-pressure waits A 380 >= 100
+STARVATION-WATCH alarms=0 cleared=0 freeze_alarms=0 round_alarms=0 max_idle_ms={'A': 1226, 'B': 1555}
+```
+
+### The two scorers
+
+`python -m tools_py.parity.verdict_replay logs/run_A_20260913_230442.log logs/run_B_20260913_230442.log --per-round`
+(default alignment B + 5.60 s, MoveScale `#0`) exits 0:
+
+```
+KILL killer=A victim=B t=141.33 round=1
+  victim-death   B +0x1044=0.000 word0=006691a0 at shared 586.05 guest 141.33
+  round-state    round 1 (mp_round_count 0 on both); no step, no 00:00, no game over; B clock 03:21; A clock 03:21
+  freeze         B window 574.65..590.11 none; A window 582.20..586.05 none
+  no-fall        B max y drop 0.00;  no-self-grenade  B pad mask f700: none;  killer-alive  A min +0x1044 1.000 over 4 rows
+  attribution    A fire mask 0800 over A guest 96.67..99.67: press at 585.46; max |dy| 0.00 (<= 10), max 3-D 29.22 (<= 60)
+  victim-team    B player_team 8 -> aiteam_08; A player_team 0; B +0xC8 80000100
+  cross-instance A kill row at 586.08 = death +0.03 s host, round 1 on both
+  total_mp_kills A 0->1 at 586.08; B none
+  aiteam_08      1->0 on both: B at 586.30 (guest +0.20), A at 586.08
+  +0xF7A         B: 8 intact rows reading 1 in the 2 s before; leaves 1 at +0.00 s
+KILL killer=A victim=B t=244.10 round=2    (attribution max 3-D 35.81; A kill row death -0.08 s; the same clauses ok)
+KILL killer=A victim=B t=336.51 round=3    (attribution max 3-D 37.55; A kill row death -0.02 s; the same clauses ok)
+NO-KILL no-death round=4                   (A +0x1044 [1.0] over 1454 rows; B [0.0, 1.0] over 1455 -- the 0.0 is round 3's body before the respawn)
+```
+
+The run without `--per-round` also exits 0, with `KILL killer=A victim=B t=141.33 round=1` and a note of 3 candidate
+deaths. **The negative control still holds:** re-scored at the same HEAD, 8c (`run_[AB]_20260913_132843`) gives
+`NO-KILL no-death` for rounds 1 and 2.
+
+**Screens.** `A_kill_r1.png` and `B_kill_r1.png` were written 0.28 s and 0.33 s after KillWatch's death read
+(23:14:29.48 host). The harness refuses frame files older than 2 s, and `stale_shots=[]`. Both show the kill feed
+"socomc fragged socome with M4A1 / ALL TERRORISTS ELIMINATED / SEALS VICTORIOUS!" and the round clock 03:21. B's frame
+also shows "You have died."; A's shows 27/30 rounds, one 3-round burst spent. Rounds 2 and 3 have the same pairs, 0.23–0.38 s
+after their death reads.
+
+### Per round
+
+| r | rung | route (budget) | close | contact s (harness) / band rows | aim iters | bursts (R1 edges) | victim `+0x1044` | alarms | freezes | teleports | bp waits A/B | closest 3-D (dy) |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | **KILL** | Arrived: wp1→wp19, 823 u in 86.4 s (9.5 u/s), budget 173 s (capped, ~293 s of clock left) | Band at 3-D 28.9, 5.3 s before the first burst | 14.30 / 184 (both include the post-death rows) | 2, max 3 | 1 | 1.0 → 0.298 → **0.0** within 0.25 s of one burst | 0 | none | 0 | 443 / 3 | 23.93 (0) |
+| 2 | **KILL** | Arrived: 866 u in 88.7 s (9.8 u/s), budget 238 s | Band at 25.7 | 6.05 / 152 | 2, max 1 | 1 | 1.0 → 0.298 → **0.0** | 0 | none | 0 | 431 / 13 | 20.57 (0) |
+| 3 | **KILL** | Arrived: 866 u in 76.6 s (11.3 u/s), budget 238 s | Band at 33.3 | 5.77 / 156 | 3, max 1 | 2 | 1.0 → 0.638 → 0.267 → **0.0** over two bursts | 0 | none | 0 | 408 / 8 | 19.25 (0) |
+| 4 | 2 | Arrived: 866 u in 85.2 s (10.2 u/s), budget 238 s | Band at 26.6 | 272.85 / 1088 | 111, all 0 pulses | 111 | 1.0 throughout | 0 | none | 0 | 1950 / 68 | 25.78 (0) |
+
+- **Freezes.** The only guest-clock pauses were the lobby, before round 1, and the three round boundaries (5.0–5.4 s each).
+- **Teleports.** No row step exceeded 30 u outside a round reset.
+- **Starvation.** NetIdle peaked at ≤ 1555 ms.
+
+### Reading
+
+- **The first two-instance online kill on ours.** It was A's M4A1, from the v2 route, at 3-D 24–38 on B's floor. The
+  damage path writes `+0x1044` online: one 3-round burst takes 1.0 → 0.298 → 0.0.
+  - `+0xF7A` leaves 1 on the death row.
+  - `total_mp_kills` steps 0→1 **on the killer's instance only** and reads 0 again next round.
+  - `aiteam_08` drops 1→0 on both instances within 0.25 s.
+  - `mp_round_count` steps **~33 s after the death** (32.9 / 33.1 / 34.5 s), not the ~5 s written in §5.1.1 R60.
+    `verdict_replay`'s windows handled it.
+- **The R70 budget fix worked.** All four routes arrived in 77–89 s against a 173–238 s budget. The follower ran
+  9.5–11.3 u/s, faster than launch 1's 7.5–9.1.
+- **Round 4 did not kill.**
+  - The aim loop read the same −4.1° error on every one of 111 cycles. That is inside its 5.68° tolerance, so it
+    never pulsed, and A fired 111 bursts for ~150 s with no damage.
+  - A's `A_final_r4.png` shows 0/30 with no magazines left (180 rounds, i.e. ~60 bursts, then dry fire). The reticle
+    is above and to the right of B's figure, which A's view renders low.
+  - Class: shots missing, a sub-tolerance aim bias with no re-aim. It is not a damage-path failure; rounds 1–3
+    settle that. Grenade option A7: moot.
+
+### Rung 0 compared with launch 1 (Valheim closed, VirtualBox open)
+
+| | launch 1b (Valheim + VirtualBox) | launch 2 (VirtualBox only) |
+|---|---|---|
+| MoveScale A / B (calls/s, 60 s) | 14.86 / 26.25 | **17.66 / 32.23** |
+| back-pressure waits A / B (60 s) | 359 / 348 | **380 / 10** |
+| clock rate A / B | 1.00 / 1.01 | 1.00 / 1.00 |
+| status | FAIL (MoveScale A, bp A, bp B) | FAIL (bp A only) |
+| per-round bp waits A / B | 1796–2308 / 1901–2357 | 408–1950 / 3–68 |
+| total CPU mean (sampler) | 36.4 % | 40.7 % |
+
+- **What closing Valheim changed.** B's back-pressure disappeared, and both MoveScale rates rose 19–23 %, clearing A's
+  17/s bar.
+- **A's did not change.** A is the host, and its waits stayed at ~380 per 60 s and ~5/s over whole rounds. So A's
+  back-pressure is not Valheim's; the cause is open. The `rx` table is still asymmetric (A 1.5–6.1°, B 2.0–12.4°).

@@ -318,7 +318,7 @@ Sprint 5 carries its first pass.
 
 The user's definition of playable: an automated two-instance online match driven to its end by one
 player killing the other, with the kill read from guest memory or the server and both screens
-captured. **Not reached.** What stands between here and there, in order:
+captured. ~~**Not reached.**~~ **Superseded 2026-09-13 — the acceptance test PASSED** (Sprint 5 ladder launch 2, `logs/parity/s5_t5_ladder2`: rounds 1–3 KILL on both scorers, independently verified; `docs/research/22-kill-readout.md` §Ladder launch 2, `docs/research/assets/22-first-kill.png`). What stood between here and there, in order (historical):
 
 1. **Confirm the named cause, then land the fix.** The cause (§3.6) is one constant in our
    `sceInetInterfaceControl` HLE; the fix is to return a live counter, and it is drafted. What is
