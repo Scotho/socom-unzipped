@@ -12,7 +12,7 @@ into `develop`.~~
 > whole-branch review and one fix wave followed). The movement blocker named below was **fixed**
 > (`abf35bb`) and **proven by a same-binary A/B in one match** (`5ed29ca`: fix ON, movement scale
 > 1.0 on 330/330 calls and 89 distinct player positions; fix OFF, 0.0 on 339/339 and 0.46 units of
-> travel) — on Medley. **No kill was reached**: the acceptance test ran end to end, closest true
+> travel) — on Medley. ~~**No kill was reached**~~ *(Superseded 2026-09-13: the acceptance test PASSED in Sprint 5 ladder launch 2 — `docs/KNOWN.md` §1 top row.)* At Sprint 4's end: the acceptance test ran end to end, closest true
 > 3-D separation 50.0 units on Medley. **Frostfire, the default test map since 2026-09-13, is a
 > second, open cause**: neither player moves after round start there. The live facts are in
 > `docs/KNOWN.md`; the next sprint is
@@ -24,7 +24,7 @@ The short version: the renderer work of Sprints 1–3 is done and solid; Sprint 
 render defect it set out to fix, made the gates unable to pass quietly, and — the part that matters
 most — replaced the project's whole mental model of the online blocker with a measured one, and
 then **named the cause**. The acceptance test (a two-instance online match driven to a first kill)
-is still not reached, but what blocks it is no longer a hunt: it is a constant-returning stub in
+~~is still not reached~~ *(Superseded 2026-09-13: the acceptance test PASSED in Sprint 5 ladder launch 2 — `docs/KNOWN.md` §1 top row.)*, but what blocked it then is no longer a hunt: it is a constant-returning stub in
 *our* HLE of a PS2 network API, which pins the game's own network-activity movement scale at zero.
 That reading is predicted from the disassembly and our source, not yet confirmed at runtime; one
 measurement run and one fix stand between it and the first kill. Three of this sprint's bugs turn
