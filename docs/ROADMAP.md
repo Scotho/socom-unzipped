@@ -423,6 +423,17 @@ movie_blocks monotonicity, the ground-height retarget, the 4c severity).
 
 ### Sprint 5 — control on the test map, a kill readout, and the first kill (revised 2026-09-13)
 
+> **COMPLETE — the acceptance test PASSED (2026-09-13).** Ladder launch 2 on Frostfire scored
+> `KILL killer=A victim=B` on rounds 1-3, on both KillWatch (actor fields) and `verdict_replay`
+> (round-state valves), independently re-derived clause by clause; round 4 reached rung 2 only.
+> Both root causes this sprint opened with turned out wrong or incomplete on the way: the
+> "ghost flag" lead for Frostfire never fired (the real cause was VU0 `vf0.w = 0` on non-main-thread
+> guest contexts, fixed at the constructor), and a second, unplanned defect — an unbounded GS
+> command backlog stalling single-player presentation — was found and fixed alongside it. A
+> mid-sprint owner-requested broad review rewrote Tasks 5-6 in place as Amendment A (one merged
+> 16-launch ladder, pre-registered acceptance bars, a simplified engagement) and the acceptance run
+> came from that rewritten path. Full detail: `docs/STATUS.md`'s dated Sprint 5 entry, the plan's own
+> `## Outcome` and `## Rulings made on the owner's behalf` sections, and `docs/KNOWN.md` §1.
 > **Superseded, in full, by `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`
 > and its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`).**
 > The Sprint 5 that stood here ("land the fix, reach the first kill") was written before Sprint 4's
@@ -467,7 +478,7 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 
 *The earlier outline is superseded; its "if Frostfire was not fixed" conditional is dead (fixed by `b625291`). Order: what makes online results cheap and repeatable, then visible gameplay correctness, then the gate's blindness, then latent items. Source: `.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/broad-review.md` §C8.*
 
-0. **If no kill landed in Sprint 5:** resume the merged ladder (plan Amendment A) from the highest rung reached, before anything else.
+~~0. **If no kill landed in Sprint 5:** resume the merged ladder (plan Amendment A) from the highest rung reached, before anything else.~~ **Retired 2026-09-13 — moot.** The acceptance test PASSED inside Sprint 5 (ladder launch 2, rounds 1-3 KILL on both scorers); the conditional opener never fires. Sprint 6 starts at item 1.
 1. **Lobby hardening, complete** — verify-then-act on every fixed press in `host_game`/`join_game`/login, a per-launch failure-class taxonomy (B JOIN not reached, map list search, login keyboard not opened, READY dropped, map CROSS dropped), per-stage timeouts with in-place retry. At 4 in 10 every online result costs 2.5 launches; Sprint 7's N-consecutive-passes needs ≥ 8 in 10.
 2. **Online freeze root cause** — pc-sampler with `m_vsyncTick` and host time, host CPU sampler, one loaded and one quiet launch from the same exe. 3–17 s guest stops starve the peer and break timing clauses; R41 changed recovery.
 3. **Single-player teleports** — a PCSX2 run of the same `rx`-hold script first, then trace the root-motion accumulate `FUN_0028c250` → `FUN_00309280` if ours alone does it.
@@ -484,10 +495,17 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 
 ### Sprint 7 — after the kill (outline)
 
-Unchanged in intent, and still gated on the acceptance test existing: lift the speed freeze for the
+Now unblocked: the acceptance test exists and PASSED in Sprint 5 (one run, ladder launch 2).
+**Repeatability of the acceptance test is this sprint's headline item, promoted here 2026-09-13**:
+the kill is not yet repeatable on demand — the one usable ladder launch killed on **3 of its 4
+rounds**, and round 4 missed on a **-4.1° aim error that sat inside tolerance and never
+corrected** across 111 bursts (`docs/KNOWN.md` §4, "the kill is not repeatable yet on demand"). The
+close-range aim loop needs a tighter tolerance or a burst-to-burst correction before "N consecutive
+passes, lobby rate measured, run as a nightly job" is worth attempting — a repeatability run against
+an aim loop that can miss forever at a fixed bias would just measure the same defect N times.
+Also unchanged in intent: lift the speed freeze for the
 two-instance case only (19–21 fps each is a test-rig problem until then, then a product problem);
-repeatability of the acceptance test (N consecutive passes, lobby rate measured, run as a nightly
-job) — **new**, because Sprint 5's bar is one run; knob retirement (`PS2X_*` is past 80 entries with
+knob retirement (`PS2X_*` is past 80 entries with
 revert layers that never retire); the portable package (M6). Optional: a second render-target scale
 pass if a stretched window becomes the default. The 4-program VU1 residual stays closed unless a
 new dump set dispatches `0x66` from `0x1b50`.
