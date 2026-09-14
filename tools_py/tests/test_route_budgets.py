@@ -139,11 +139,15 @@ class FollowerBudgetTest(unittest.TestCase):
         self.assertLessEqual(c.t - t0, M.ROUTE_NO_PROGRESS_S + 2 * (M.ROUTE_LEG_MAX_S + 4.0))
 
     def test_a_route_over_its_time_budget_fails(self):
-        c, w, sh, me = make(speed=12.0)                   # progresses every leg, but far too slowly
+        # R70: the raw formula (factor 3 over the measured 7.5 u/s) is generous enough that any walker fast enough
+        # to avoid "stuck" also meets it -- what still cuts a route off MID-route (legs > 0, not the upfront NO-DATA
+        # route-no-time check) is a tight round-clock cap.
+        c, w, sh, me = make()
         route = [(55.0 * k, 0.0) for k in range(8)]
-        r = M.follow_route(me, route, clock=c, wait=c.wait, log=sh.log)
+        r = M.follow_route(me, route, clock=c, wait=c.wait, log=sh.log, clock_remaining=130.0)
         self.assertFalse(r["ok"])
         self.assertIn("budget", r["reason"])
+        self.assertGreater(r["legs"], 0)
 
     def test_arrival_needs_the_leg_floor(self):
         # a waypoint on the upper floor (y 142) is not reached by standing under it on the lower floor

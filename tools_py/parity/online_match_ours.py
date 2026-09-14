@@ -3199,8 +3199,16 @@ ROUTE_FLOOR_TOL_Y = 6.0          # arrival: the actor's y within this of the leg
 ROUTE_OFF_FLOOR_Y = 12.0         # en route: y outside [prev floor, this floor] by more than this is off the route
 ROUTE_NO_PROGRESS_S = 12.0       # the best distance to the current waypoint (or the close target) must improve by
                                  # ROUTE_PROGRESS_UNITS within this: oscillating or sliding legs trip it (review I3)
-ROUTE_TIME_FACTOR = 3.0          # a route's whole time budget: slack + this x its length at walking speed
+ROUTE_TIME_FACTOR = 3.0          # a route's whole time budget: slack + this x its length at the follower's rate
 ROUTE_TIME_SLACK_S = 20.0
+# R70 (ladder launch 1, drive_s5_t5_ladder1b): every round stalled at rung 1 on the route's own time budget, which
+# was sized on WALK_UNITS_PER_S_LONG (40, the plant's hold speed with no aim/read latency). The follower's real
+# wall-clock delivery, measured per round off the drive log -- A 8.8 / 9.1 / 8.3 u/s (rounds 1-3), B 7.5 u/s
+# (round 4, after the auto-swap) -- is 7.5-9 u/s; ROUTE_BUDGET must use the slower, measured rate.
+ROUTE_WALK_RATE_U_S = 7.5
+ROUND_FIGHT_RESERVE_S = 120.0    # R70: the route budget is capped so at least this much round clock remains for
+                                 # close + fight; the remaining time is read from the clock string the way the C2
+                                 # wait (online_ladder.wait_round_end / clock_string_deadline) does
 CLOSE_MAX_S = 60.0               # a close's whole time budget (it starts <= ~45 units from the band)
 SPAWN_MISMATCH_UNITS = 20.0      # a live spawn further than this from the route file's is NO-DATA spawn-mismatch
 ROUND_RESET_SPAWN_UNITS = 20.0   # a jump landing this close to the side's spawn ...
@@ -3352,14 +3360,42 @@ class Progress:
         return idle if idle > ROUTE_NO_PROGRESS_S else None
 
 
-def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None):
+def route_budget_s(length, clock_remaining=None):
+    """R70: a route's whole time budget -- ROUTE_TIME_SLACK_S + ROUTE_TIME_FACTOR * length / ROUTE_WALK_RATE_U_S,
+    the follower's MEASURED wall-clock rate (ladder launch 1). When `clock_remaining` (seconds left on the round
+    clock) is given, the budget is capped so at least ROUND_FIGHT_RESERVE_S remains for the close and the fight:
+    min(formula, clock_remaining - ROUND_FIGHT_RESERVE_S). A caller sees a budget <= 0 as route-no-time -- there is
+    no time left to spend on the route at all."""
+    budget = ROUTE_TIME_SLACK_S + ROUTE_TIME_FACTOR * length / ROUTE_WALK_RATE_U_S
+    if clock_remaining is not None:
+        budget = min(budget, clock_remaining - ROUND_FIGHT_RESERVE_S)
+    return budget
+
+
+def route_clock_remaining_s(tail, clock=time.time):
+    """Seconds left on the round clock, read the way the C2 wait does (online_ladder.wait_round_end /
+    clock_string_deadline): the newest parseable clock-string row on `tail.round_rows`, parsed by
+    online_ladder.clock_seconds and extrapolated by the host time elapsed since it was read. None without one."""
+    with tail._lock:                                    # noqa: SLF001 - same module
+        rows = [(t, st["clock"]) for t, st in tail.round_rows if not isinstance(st.get("clock"), vc.NoData)]
+    if not rows:
+        return None
+    t, s = rows[-1]
+    v = online_ladder.clock_seconds(s)
+    return None if v is None else v - (clock() - t)
+
+
+def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None,
+                 clock_remaining=None):
     """Walk `route` (route_waypoints dicts, or (x, z) tuples) with aimed legs -> {"ok", "reason", "wp", "legs"}. A
     waypoint is reached inside its `arrive` distance with the actor's y within ROUTE_FLOOR_TOL_Y of the leg's floor y;
     the follower skips ahead whenever the next waypoint is already the nearer one (a corridor, not a rail). It fails on:
     ROUTE_STUCK_LEGS legs in a row gaining < ROUTE_PROGRESS_UNITS ("stuck at wpN"); no ROUTE_PROGRESS_UNITS gain on
-    the best distance for ROUTE_NO_PROGRESS_S ("no progress"); the route's time budget; standing at a waypoint on the
-    wrong floor, or leaving the legs' floor band en route ("floor"). TeleportAbort propagates. Reads only actor rows and
-    the actor matrix."""
+    the best distance for ROUTE_NO_PROGRESS_S ("no progress"); the route's time budget (route_budget_s, capped by the
+    round clock remaining -- read from `me.tail` unless `clock_remaining` overrides it -- to leave
+    ROUND_FIGHT_RESERVE_S for the close and the fight; a budget <= 0 is NO-DATA route-no-time, before any leg is
+    walked); standing at a waypoint on the wrong floor, or leaving the legs' floor band en route ("floor").
+    TeleportAbort propagates. Reads only actor rows and the actor matrix (plus, for the clock cap, round_rows)."""
     log = log or me.sh.log
     route = [_wp(w) for w in route]
     wp, legs, stuck = 0, 0, 0
@@ -3367,10 +3403,16 @@ def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=Non
     here0 = (a[1], a[3]) if a else (route[0]["x"], route[0]["z"])
     length = sum(math.dist((p["x"], p["z"]), (q["x"], q["z"])) for p, q in zip(route, route[1:]))
     length += math.dist(here0, (route[0]["x"], route[0]["z"])) if route else 0.0
-    budget = ROUTE_TIME_SLACK_S + ROUTE_TIME_FACTOR * length / WALK_UNITS_PER_S_LONG
+    remaining = route_clock_remaining_s(me.tail, clock) if clock_remaining is None else clock_remaining
+    budget = route_budget_s(length, remaining)
+    fail = lambda reason: {"ok": False, "reason": reason, "wp": wp, "legs": legs}
+    if budget <= 0:
+        reason = (f"{vc.NO_DATA} route-no-time: {remaining:.0f}s left on the round clock, under the "
+                  f"{ROUND_FIGHT_RESERVE_S:g}s reserved for the close and the fight -- the route is skipped")
+        log(f"ROUTE {me.tag} start: {len(route)} waypoints, {length:.0f} units -- {reason}")
+        return fail(reason)
     t0, prog = clock(), Progress(clock)
     log(f"ROUTE {me.tag} start: {len(route)} waypoints, {length:.0f} units, time budget {budget:.0f}s")
-    fail = lambda reason: {"ok": False, "reason": reason, "wp": wp, "legs": legs}
     while wp < len(route):
         if stop is not None and stop.is_set():
             return fail("stopped")
@@ -3680,7 +3722,10 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
             r = follow_route(shooter, route[k:], clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
             out["route"] = r
             if not r["ok"]:
-                out["stop_reason"] = f"route failed: {r['reason']} -- --mover {stander.tag} swaps which side walks"
+                # R70: a route-no-time budget is NO-DATA (not scored, no swap hint) -- the round ran out of clock,
+                # not out of route
+                out["stop_reason"] = (r["reason"] if r["reason"].startswith(vc.NO_DATA) else
+                                      f"route failed: {r['reason']} -- --mover {stander.tag} swaps which side walks")
                 return
         r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
         out["close"] = r
@@ -3911,7 +3956,9 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
                                         on_poll=rule_move)
             last_move[0] = clock()
             if not out["route"]["ok"]:
-                out["stop_reason"] = f"route failed: {out['route']['reason']}"
+                reason = out["route"]["reason"]
+                # R70: a route-no-time budget is NO-DATA, not a route failure
+                out["stop_reason"] = reason if reason.startswith(vc.NO_DATA) else f"route failed: {reason}"
                 return
         out["close"] = reach()
         if not out["close"]["ok"]:
@@ -4553,7 +4600,6 @@ def main():
                 t_end = time.time()
                 for c in (A, B):
                     evidence_shot(c, f"final_r{n}", stale_shots, A.sh.log, missing_shots)
-                closest = duel.best_dist()
                 # An armed watch that never read a word is a FAILED instrument, not a quiet one: it
                 # would report "health never moved" having never looked. §3.10 rule 3, applied to the
                 # one instrument the acceptance test will depend on (result_verdict makes it a FAIL).
@@ -4573,6 +4619,9 @@ def main():
                 # the LADDER line (brief Interfaces): contact by verdict_core over the round's rows, damage by spec
                 # §5 Goal 5(d) -- victim = the stander in --endgame, either direction otherwise
                 contact = ladder_contact(A.tail, B.tail, t_round, t_end)
+                # R70: closest_3d is THIS round's minimum (contact.closest_3d, paired over [t_round, t_end]), never
+                # duel.best_dist()'s whole-run minimum -- launch 1 printed 113.27 on every round.
+                closest = contact.closest_3d
                 inside = lambda rows: [r for r in rows if t_round <= r[0] <= t_end]
                 if health is None:
                     damage = "unarmed"
@@ -4636,7 +4685,7 @@ def main():
                        f"detail={json.dumps(fired['detail'], default=float)} " if fired else
                        f"(no signal in {a.kill_timeout}s) ")
                 A.sh.log(f"RESULT round={n} {verdict} {ident} {sig}"
-                         f"closest_3d={closest} dy_at_closest={duel.best_dy()} contact={duel.contact.is_set()} "
+                         f"closest_3d={closest} dy_at_closest={contact.closest_dy} contact={duel.contact.is_set()} "
                          f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                          f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
                          f"health_watch={'disarmed' if health is None else 'armed'} "
@@ -4652,7 +4701,7 @@ def main():
                     "round": n, "mover": mover, "round_value": round_value, "t": [t_round, t_end], "verdict": verdict,
                     "rung0": rung0_tok,
                     "ladder": ladder, "rung": rung, "kill": is_kill, "closest_3d_units": closest,
-                    "closest_dy": duel.best_dy(), "contact": vars(contact), "events": events, "fired": fired,
+                    "closest_dy": contact.closest_dy, "contact": vars(contact), "events": events, "fired": fired,
                     "stale_shots": stale_shots, "missing_shots": missing_shots, "fight": fights,
                     "approach_A": sideA.result, "approach_B": sideB.result, "alarms": ralarms,
                     "endgame": None if endgame is None else {k: v for k, v in endgame.items() if k != "approach"}})

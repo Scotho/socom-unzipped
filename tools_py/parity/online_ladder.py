@@ -270,7 +270,7 @@ def clock_string_deadline(clock_rows, slack=ROUND_END_SLACK_S):
     its remaining seconds + `slack` (None without a parseable string). A frozen string stops extending it."""
     prev, change = None, None
     for t, s in clock_rows:
-        v = _clock_seconds(s)
+        v = clock_seconds(s)
         if v is None:
             continue
         if prev is None or v != prev:
@@ -345,7 +345,9 @@ def movescale_rate(calls, w0, w1):
     return (inside[-1][1] - inside[0][1]) / (inside[-1][0] - inside[0][0])
 
 
-def _clock_seconds(s):
+def clock_seconds(s):
+    """'MM:SS' -> whole seconds, or None (unparseable). Public (R70): online_match_ours.route_clock_remaining_s reads
+    the round clock the same way the C2 wait (wait_round_end / clock_string_deadline, below) does."""
     try:
         m, sec = s.split(":")
         return int(m) * 60 + int(sec)
@@ -358,7 +360,7 @@ def clock_string_rate(clock_rows, w0, w1):
     first and last CHANGE inside the window / the host seconds between those changes. None without two changes."""
     changes, prev = [], None
     for t, s in clock_rows:
-        v = _clock_seconds(s)
+        v = clock_seconds(s)
         if v is None:
             continue
         if prev is not None and v != prev[1] and w0 <= t <= w1:
