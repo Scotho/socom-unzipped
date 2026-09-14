@@ -167,9 +167,11 @@ its call count, distinct returns (saturating at 64) and first/last value, includ
 -- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled
 `J` straight to a C++ function) undercount because they skip the dispatch table.
 `PS2X_GS_MAX_PENDING_FRAMES=<n>` (default **3**) bounds the GS command backlog: the EE waits at
-`VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread; `0` is
-unbounded, the pre-fix behaviour that let `m_pending` grow to gigabytes when the replay thread fell
-behind (fixed as a correctness bug, `8281254`/`7448601`/`92d30f0`). `PS2X_CYCLE_CLOCK=guest` makes
+`VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread; `0`
+restores unbounded back-pressure, the pre-fix backlog that let `m_pending` grow to gigabytes when the
+replay thread fell behind (fixed as a correctness bug, `8281254`/`7448601`/`92d30f0`), but **not** the
+pre-`R54` idle wait -- the idle-spin fix (`92d30f0`) stays in either way, so `0` is not a full A/B of
+the pre-fix runtime. `PS2X_CYCLE_CLOCK=guest` makes
 the idle wait account the remaining cycles itself instead of a host-clock deadline -- **this is not
 an A/B of the pre-`R54` scheduler path**; the idle-spin fix (`92d30f0`) landed on the host-clock
 path, and `guest` is an alternate accounting mode on top of it, untested as a toggle of the older
@@ -191,21 +193,28 @@ strafe legs until the round ends on its own clock, and `RESULT CONTROL-ROUND` re
 `total_mp_kills`, `aiteam_*` and the health word to stay unchanged. `--health-offset`/
 `--alive-offset` default to `0x1044`/`0xF7A` as covered above.
 Loop lock: `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to avoid touching the real
-lock); `LOOP_LOCK_SLOW_TESTS=1` runs `tools_py/tests/test_loop_lock.py`'s full-scale timing suite
-(~130 s) instead of the always-on ~110 s smoke scaled to 1/30. `scripts/run_detached.sh` (launched
-with `--purpose launch*` for an online match) writes a quiet marker (`logs/.quiet`, keyed to the
-Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log
-parsing while a match runs; records a 1 s host CPU sampler into the run directory; and refuses to
-start below 4 GB free on `C:`. `scripts/pin_harness.sh` archives `tools_py`/`scripts` at a given
-commit into the run directory and re-execs under `PYTHONPATH` pointed at that snapshot plus
-**`PYTHONSAFEPATH=1`**, so a pinned run cannot accidentally import the live tree instead (Python
-otherwise prepends the script's own directory to `sys.path`).
-`scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: kills stale
-drivers, checks the lock and disk, pins the harness, dry-runs first, then runs the pinned
-`online_match_ours.py --rounds … --endgame route --route … --auto-swap` under `run_detached.sh` and
-polls its `.done` marker. Its pinned-snapshot default and its exit codes are being revised by a
-close-out fix wave as this is written -- see the script's own header for the current values rather
-than this paragraph. `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]` is
+lock). `tools_py/tests/test_loop_lock.py` runs by default as a smoke of 7 lock tests (claim, renew,
+release, one reap, one quiet-marker check, and -- Ruling R73 -- one reaper race of 4 takers x 2 rounds
+with 0-0.3 s of process-list latency plus one stale-mutex double-entry check), ~25 s measured under
+host load (the race alone ~8-9 s), plus a hygiene test that fails when `scripts/loop_lock.sh`'s git
+blob differs from `tools_py/tests/fixtures/loop_lock_slow_green.txt`, the blob of the last green
+`LOOP_LOCK_SLOW_TESTS=1` run. That variable runs the whole suite (~16 min: every race, interleaving,
+`run`/`run_detached` test and the real-scale `run -- sleep 130` renewal). `scripts/run_detached.sh`
+(launched with `--purpose launch*` for an online match) writes a quiet marker (`logs/.quiet`, keyed to
+the Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and
+large-log parsing while a match runs; records a host CPU sampler into the run directory (nominally one
+row per 1 s, measured one row per ~3.1 s on ladder launches 1b and 2); refuses to start below 4 GB free
+on `C:`; and takes the loop lock for the job. `scripts/pin_harness.sh` archives `tools_py`/`scripts` at
+a given commit into `<out_dir>/harness` and records `HARNESS_COMMIT`/`EXE_BUILD`; it does not run or
+re-exec anything. The ladder template runs that snapshot with `PYTHONPATH=<snapshot>` plus
+**`PYTHONSAFEPATH=1`** from the repo root, so a pinned run cannot accidentally import the live tree
+instead (Python otherwise puts the current directory ahead of `PYTHONPATH`).
+`scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: it pins the
+harness, proves the snapshot imports, dry-runs first, then runs the pinned `online_match_ours.py
+--rounds … --endgame route --route … --auto-swap` under `run_detached.sh` (which does the disk and
+lock checks) and returns; nothing polls -- the caller watches `logs/<name>.done`. Killing stale
+drivers (`scripts/kill_stale_drivers.ps1`), a running Horizon stack and persona B are preconditions the
+caller meets, not steps the template takes; its header carries the exit codes and knobs. `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]` is
 the second, independent kill scorer (primary signal: the round-state valves -- `total_mp_kills`,
 `aiteam_*`, the clock -- corroborated by the actor fields), test-driven against synthetic and real
 fixtures per spec §5.1.1, and importing nothing from `online_match_ours.py` or `verdict_core.py` by

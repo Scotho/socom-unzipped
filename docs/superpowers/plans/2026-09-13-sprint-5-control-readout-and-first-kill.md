@@ -282,10 +282,14 @@ deleted at archive) — this section and the next are its durable copy.
 logs/parity/s5_t5_ladder2`, HEAD `171290b`, exe sha `234b4772cd0a8bf8` (frozen at `92d30f0`).
 Round 1 scored `KILL killer=A victim=B t=141.33` on both KillWatch (actor fields: `+0x1044`
 1.0 → 0.298 → 0.0, `+0xF7A` 1 → 2, word 0 intact) and `verdict_replay` (valves: `total_mp_kills`
-0→1 on the killer's instance, `aiteam_08` 1→0 on both, the killer's R1 burst inside the contact
-gate 0.59 s before), independently re-derived clause by clause. Rounds 2 and 3 repeated it in the
+0→1 on the killer's instance, `aiteam_08` 1→0 on both, the killer's R1 burst inside the attribution
+window (3-D ≤ 60, `|dy|` ≤ 10) 0.59 s before), independently re-derived clause by clause. Rounds 2 and 3 repeated it in the
 same lobby. Round 4 reached rung 2 only (111 in-tolerance bursts, no kill). Screens tiled into
-`docs/research/assets/22-first-kill.png` (`5f1de26`).
+`docs/research/assets/22-first-kill.png` (`5f1de26`). The kill frames' ages for this run are bounded
+by the screen files' mtimes (0.23–0.38 s after each death read, research/22), not by a recorded
+`screen_age_s`: that recording landed in `98f6417`, after the kill. The run's logs are pinned by
+`tools_py/tests/fixtures/replay/l2r1_*.txt` and archived under `D:/socom_archive/acceptance/s5_ladder2/`
+(manifest `docs/research/assets/22-first-kill-evidence.txt`).
 
 **The plan's own shape held better than Sprint 4's did.** The zero-run-first ordering (Task 4 Step
 1, Task 3 Step 0, Task 2 Step 1 before any launch) paid for itself repeatedly, and the
@@ -375,9 +379,11 @@ the online freeze root cause (3–17 s guest stops under host load, believed but
 host load); single-player teleports (a PCSX2 comparison first); the skeleton root decay
 (re-measured on the post-`vf0` exe before any new investigation); a gameplay-state probe as the
 gate's first correctness leg; the soft-double `exp` chain and `__ieee754_rem_pio2f` against exact
-oracles; a mixed ours/PCSX2 match; HLE audit leg three; harness and gate process cleanup (lock
-tests to a smoke default, `gate.py --baseline`, the sim's pre-existing stack/route flake, the
-redundant main-context `vf0` line); the parity PNG export moved off the GL thread; the display
+oracles; a mixed ours/PCSX2 match; HLE audit leg three; harness and gate process cleanup
+(`gate.py --baseline`, the sim's pre-existing stack/route flake, the redundant main-context `vf0`
+line; the lock tests' smoke default is done, `2858774`, as amended by R73: one reaper race and one
+mutex double-entry check stay always on, plus a stamp tying `scripts/loop_lock.sh` to its last green
+slow run); the parity PNG export moved off the GL thread; the display
 environment and zbp divergence against a console image; VU memory aliasing (latent, no reachable
 caller); and automated disk hygiene. Also parked: the close-range aim loop's lack of ammo awareness
 or re-aim escalation (round 4 fired 111 bursts at an in-tolerance miss with no correction — this is

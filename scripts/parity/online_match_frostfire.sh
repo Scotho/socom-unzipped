@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+# LEGACY converge path, superseded by scripts/parity/ladder_frostfire.sh (Sprint 5 Amendment A: pinned harness,
+# --endgame route, --rounds, run_detached.sh). The acceptance PASS (ladder launch 2, research/22) came from the ladder
+# template, not from this script, which is kept for its history and its instrument list (the ladder template reuses
+# that list); prefer ladder_frostfire.sh for any new launch.
+#
 # The two-instance online acceptance run on FROSTFIRE. First committed as the run that first reached
 # gameplay there (Sprint 4 Task 8, run `ours_task8_frost1`, 2026-09-13); its instruments were REPLACED in
 # Sprint 5 Task 2's fix round 1 with the launch-2 instrument spec (logs/s5_t1_launch2.sh, Sprint 5 Task 1)
@@ -23,7 +28,8 @@
 # corridor is Medley-only and is dropped here (the banner reads `route=direct`). Health is ARMED by the
 # harness defaults (--health-offset 0x1044, --alive-offset 0xF7A, e685b82): PASS needs a health
 # transition, `round`/`respawn` end rounds and are never a PASS. research/22: the <= 0 half of the health
-# readout has not yet been read live anywhere.
+# readout HAS now been read live -- ladder launch 2 (logs/run_[AB]_20260913_230442, rounds 1-3: +0x1044
+# 1.0 -> 0.298 -> 0.0 on the victim), through ladder_frostfire.sh, not this script.
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"

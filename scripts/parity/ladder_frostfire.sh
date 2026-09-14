@@ -35,7 +35,7 @@
 # PS2X_SOCOM2_SERVER must be this machine's LAN address (192.168.2.10 is the owner's).
 #
 # Instruments: scripts/parity/online_match_frostfire.sh's (MoveScale + NetIdle at EVERY=10; the actor block, +0x420,
-# +0x174, +0xF78 alive byte, +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
+# +0x174, the +0xF7A alive byte (inside the +0xF78 peek), +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
 # 0x4365c0 and 0x408f10) plus PS2X_GS_STATS=1 for rung 0's back-pressure waits (A4).
 #
 # Knobs (environment): ROUTE (default: the SNAPSHOT's tools_py/parity/routes/frostfire_v2.json; the live tree's for an

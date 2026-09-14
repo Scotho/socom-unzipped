@@ -297,7 +297,7 @@ cannot be read from them. [verified]
 
 ## 6. Launch 1 (Step 3–4 reading, draft, 2026-09-13)
 
-**Draft, uncommitted (the controller commits).** Marks as in §1–§5: **[verified]** = read from this run's
+Marks as in §1–§5: **[verified]** = read from this run's
 logs or the decomp in this step; **[inference]** otherwise.
 
 ### 6.1 Launches and the command
@@ -599,7 +599,7 @@ and zero-call rows can be false.
 
 ## 7. Launch 2 — ground probe (draft, 2026-09-13)
 
-**Draft, uncommitted (the controller commits).** Marks as in §6. The offline scripts are in the session
+Marks as in §6. The offline scripts are in the session
 scratchpad (`l2/peeks.py`, `probe.py`, `zr.py`, `walk2.py`, `cells.py`, `cells2.py`) and are not tracked.
 
 ### 7.1 Launch and the command
@@ -813,7 +813,7 @@ research/23's candidate (1), "grid exhausted, chain cut", is **excluded** for Fr
 
 ## 8. Launch 3 — after the vf0 fix (draft, 2026-09-13)
 
-**Draft, uncommitted (the controller commits).** Marks as in §6. The offline scripts are in the session
+Marks as in §6. The offline scripts are in the session
 scratchpad (`l3/an3.py`, `rv7/census.py`) and are not tracked.
 
 ### 8.1 Launches and the command
@@ -1030,7 +1030,7 @@ The Step 5 success condition also needs the bar on Medley.
 
 ## 9. Launch 8 — Medley control (draft, 2026-09-13)
 
-**Draft, uncommitted (the controller commits).** Marks as in §6. The offline script is in the session
+Marks as in §6. The offline script is in the session
 scratchpad (`an8.py`) and is not tracked.
 
 ### 9.1 Launches and the command

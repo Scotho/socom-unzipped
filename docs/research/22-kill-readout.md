@@ -262,7 +262,7 @@ with straightness ≥ 0.8.
 
 ## Ladder launch 1
 
-**Draft, uncommitted (the controller commits).** Sprint 5 merged Task 5/6 ladder (Amendment A), launch 1 of the
+Sprint 5 merged Task 5/6 ladder (Amendment A), launch 1 of the
 16-launch cap. Per-round figures below come from an offline script in the session scratchpad (`ladder1b.py`,
 untracked). It uses `verdict_core.parse_log`, aligns the logs on MoveScale `#0` (B + 6.10 s) and drops the
 step → step + 8 s reset span when it measures distances.
@@ -347,7 +347,7 @@ read `+0x1044` at [1.0] on both sides in every round, and `total_mp_kills` uncha
 
 ## Ladder launch 2
 
-**Draft, uncommitted (the controller commits).** Sprint 5 merged Task 5/6 ladder (Amendment A). This is the third
+Sprint 5 merged Task 5/6 ladder (Amendment A). This is the third
 launch against the 16-launch cap (1, 1b, 2). **Round 1 is the acceptance PASS: KillWatch and `verdict_replay` both
 score `KILL killer=A victim=B`.** Rounds 2 and 3 repeated it; round 4 reached rung 2 only. The only commit is the tiled
 screen pair `docs/research/assets/22-first-kill.png` (`5f1de26`). Per-round figures come from an offline script in the
