@@ -679,3 +679,34 @@ python <scratchpad>/locate.py title_ours postload_ours postload_pcsx2 spawn_ours
   (`t200` -> `spawn` in one run), not traced. It does not affect the mechanism: the pattern, the
   masking arithmetic and the leftover load packet agree independently.
 - **Still unexplained**: the three clip-header byte differences (§8.2) and run 4's 86-unit move (§6).
+
+## 10. Independent verification (2026-09-14, paused session)
+
+A separate agent re-derived §9 from the decomp, the runtime source and the RDRAM dumps. **Verdict: cause confirmed.**
+
+- **Units [verified].** `FUN_001a2520`/`FUN_001a2708` (the game's own libgraph) write DBP/SBP **unscaled**: `vram_addr` is the
+  14-bit block field, 256-byte blocks, 0x4000 blocks = 4 MiB. Our ×8 is wrong by exactly 8. Confirmations: `0x2400·256 +
+  7·0x40000 = 0x400000`; decomp 45108 hand-patches DBP by +0x280 per 0x28000 bytes, masked to 0x3FFF; sites 305403/305540
+  use `FBP << 5`.
+- **Direction [correction to §9.1].** The **load** (`FUN_003b18d0`) parks the motion pack into the top of VRAM; the **store**
+  (`FUN_003b1990`) restores it. §9.1 states this backwards; the derived mechanism is unaffected.
+- **Aliasing [verified].** Seven pieces → two blocks (0x2000 / 0). Predicted and observed smear `[6,5,6,5,6,5,6,7]` on
+  `spawn_ours3`, `spawn_ours_vf0` and `rest_ours`; identity on `spawn_pcsx2` and `title_ours`. Our chunks {0,2,4,6} are
+  byte-identical, as are {1,3,5}. Chunk 0 vs console chunk 6 differs only by the −0x2d00 relocation.
+- **Smoking gun [verified].** The leftover load packet in `spawn_ours_vf0_t200` (payload at 0x1d2b1b0, header intact)
+  decodes as `BITBLTBUF DBP=0x2000` for the piece whose correct DBP is 0x3C00.
+- **Refinement.** Chunk 6 is correct by luck in every run; chunk 5 only usually — the odd pieces alias to VRAM block 0, the
+  live framebuffer front, and `spawn_ours3` shows 16 KiB of it drawn over (0x178200–0x17FFFC, 512-on/512-off).
+- **Blast radius [partly checked].** Wrong today at 305403 (FBP×32 → 0x0C00), 305456 (0x2300 → 0x1800), 305540 and the
+  motion park/restore; unchanged at 45100 only when x=y=0. Affected surfaces: the motion pack, streamed loading-screen
+  images, and VRAM→EE grabs (screen capture / transition freeze). **Not checked:** which gate stages or fixtures cover
+  those paths, and whether anything was tuned around today's aliased destinations.
+- **Second defect [verified, separate].** On the 45100 path the guest advances DBP at packet offset 0x14 each iteration;
+  our stub re-reads only the 12-byte `GsImageMem`, so every strip lands at the same DBP. The ×8 fix does not address it.
+- **Why the existing test passes [verified].** `ps2_gs_tests.cpp:3989` uses `vram_addr = 0`, where ×8 is identity, and a
+  single region round-trips losslessly either way.
+- **The fix, as verified:** use `img.vram_addr` directly at `GS.cpp:641` and `:706`, ideally asserting `<= 0x3FFF` rather
+  than masking. Failing test: a seven-region round trip at `vram_addr` 0x2400 step 0x400, plus an assertion that the
+  emitted `BITBLTBUF` DBP equals `vram_addr`.
+- **Still outstanding:** the gate/fixture coverage question, the packet-offset-0x14 defect, §8.2's three clip-header byte
+  differences, §7.4's console `+0x2c` behaviour, and any live run.
