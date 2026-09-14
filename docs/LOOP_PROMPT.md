@@ -4,29 +4,44 @@ You are continuing the SOCOM II PC static-recompilation project at C:/projects/s
 autonomously. The user (Craig) is away and has given full authority to use best judgement;
 plans are suggestions.
 
-Ordered goals (user, 2026-09-11; restated 2026-09-13 at Sprint 4 close-out). **The sprint in flight,
+Ordered goals (user, 2026-09-11; restated 2026-09-13 at Sprint 5 close-out). **The sprint in flight,
 its branch, spec, plan and ledger are named in `docs/CURRENT_SPRINT.md`** — read it first; this file
-carries no sprint pointer of its own. Follow that plan's task order. Sprints 1-4 are history: the `2026-09-10-sprint-1-…`,
-`2026-09-11-sprint-2-…`, `2026-09-11-sprint-3-…` and `2026-09-12-sprint-4-visible-defects-and-first-kill`
-spec/plan pairs in the same two directories; Sprint 4's plan ends with an `## Outcome` section.
+carries no sprint pointer of its own. Follow that plan's task order. Sprints 1-5 are history: the `2026-09-10-sprint-1-…`,
+`2026-09-11-sprint-2-…`, `2026-09-11-sprint-3-…`, `2026-09-12-sprint-4-visible-defects-and-first-kill` and
+`2026-09-13-sprint-5-control-readout-and-first-kill` spec/plan pairs in the same two directories; Sprint 4's
+and Sprint 5's plans each end with an `## Outcome` section. **Sprint 5 is closed pending merge**
+(`docs/CURRENT_SPRINT.md`); the next work is **Sprint 6**, `docs/ROADMAP.md` §6, with **repeatability of
+the acceptance test as a standing goal** (goal 1 below) until a Sprint 6 plan exists to carry it.
 
-1. **The first-kill acceptance test** (`tools_py/parity/online_match_ours.py --until-kill`). This is
-   the active goal, and it is NOT untouched: Sprint 4 built it and it has not passed. State at
-   2026-09-13 (`docs/STATUS.md` "Sprint 4 landed", `docs/research/18` §4, `docs/KNOWN.md`):
-   - Two instances on local Horizon reach gameplay (~4 launches in 10) and **the round runs**.
-     Never write "frozen at round start" — that was retracted; the true sentence is "the round runs
-     and the local player cannot move", and it has had two causes on two maps.
-   - **Medley:** the movement blocker is fixed (`sceInetInterfaceControl(0x200)` returned a
-     constant; same-binary A/B). Both players walk and have met — closest **50.0 units true 3-D**,
-     0 % of rows inside any contact gate — ~~and **no kill** has been observed~~. **Superseded 2026-09-13 — the acceptance test PASSED** (Sprint 5 ladder launch 2, `logs/parity/s5_t5_ladder2`: rounds 1–3 KILL on both scorers, independently verified; `docs/research/22-kill-readout.md` §Ladder launch 2, `docs/research/assets/22-first-kill.png`).
-   - **Frostfire, the default test map (owner, 2026-09-13):** neither player moves; the move path
-     runs 18 calls in 0.6 s at round start and never again. Lead: uninitialised `CZNetGame` bytes
-     (`*0x437ce8`) read `0xAF` on ours and `0x00` on the console, including the "you are a ghost"
-     flag `+0xd2` (`docs/research/19` F3). Divergence measured, causation not.
-   - **Kill readout:** health `actor+0x1044` (float, `<= 0` dead) and alive byte `actor+0xF7A`
-     (`docs/research/19` F1), never yet read live online; `actor+0x204/+0x208` are retracted.
-     `RESULT PASS` is reserved for a kill, so it cannot print today; a round ending on its clock
-     prints `ROUND-END (unattributed -- NOT a kill)` and exits non-zero.
+1. **The acceptance test PASSED in Sprint 5; making it repeatable is now the active goal.**
+   `tools_py/parity/online_match_ours.py --until-kill` (now driven via
+   `scripts/parity/ladder_frostfire.sh` for the ladder). State at 2026-09-13
+   (`docs/STATUS.md` "Sprint 5 landed", `docs/research/22-kill-readout.md`, `docs/KNOWN.md` §1 and §4):
+   - **Frostfire, the default test map: a two-instance online match ends in a kill**, read from
+     guest memory and confirmed by two independent scorers (KillWatch on the actor fields, `total_mp_kills`
+     0→1 on the killer's instance, `aiteam_08` 1→0 on both, screens "socomc fragged socome with M4A1").
+     Ladder launch 2 killed on **3 of its 4 rounds** — round 4 missed at a **-4.1° aim error that sat
+     inside tolerance and never corrected** across 111 bursts. **The kill is not yet repeatable on
+     demand** (`docs/KNOWN.md` §4); before any "N consecutive passes" work, the close-range aim loop
+     needs a tighter tolerance or a burst-to-burst correction (`docs/ROADMAP.md` §6 Sprint 7).
+   - Two instances on local Horizon reach gameplay (~4 launches in 10, lobby hardening is Sprint 6
+     item 1) and **the round runs**. Never write "frozen at round start" — that was retracted; the
+     true sentence is "the round runs and the local player cannot move", which was true on Frostfire
+     until this sprint fixed it (below).
+   - **Frostfire control is fixed** (`b625291`): the lead this sprint opened with — an uninitialised
+     `CZNetGame` "ghost flag" `+0xd2` — was real but never fired; the actual cause was VU0 `vf0.w = 0`
+     on non-main-thread guest contexts, which meant the ground models at the Frostfire spawn were
+     linked into the collision grid by their untranslated bounds, so the local player's ground probe
+     never hit and the online snap-back suppressed movement.
+   - **Kill readout: sourced, armed by default, and now proven online.** Health `actor+0x1044`
+     (float, `<= 0` dead) and alive byte `actor+0xF7A` (`docs/research/19` F1) are read live
+     online (`+0x1044` 1.0 → 0.298 → 0.0, `+0xF7A` 1 → 2). `actor+0x204/+0x208` stay retracted.
+     `RESULT PASS` is reserved for a kill; a round ending on its clock still prints
+     `ROUND-END (unattributed -- NOT a kill)` and exits non-zero.
+   - **The runtime is frozen at `92d30f0`** for the ladder that produced the kill (R45/R61); do not
+     touch `third_party/ps2recomp/`/`recomp/` for Sprint 6 work that doesn't need to, without first
+     checking whether the freeze still applies (`docs/CURRENT_SPRINT.md`, the Sprint 6 plan once it
+     exists).
 2. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
    before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
    `./build.sh runtime` MUST precede the gate when the runtime changed: the gate launches
