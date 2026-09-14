@@ -468,3 +468,11 @@ nothing if wrong and are recorded for completeness rather than risk.
 70. **R70** — the route time budget derives from the measured follower rate (20 + 3×length/7.5 u/s), capped so at least 120 s of round clock remains for closing and fighting — cost if wrong: a follower stuck but very slowly sliding could burn more round time than intended before the no-progress guard fires.
 71. **R71** — when the round clock cannot be read at all, cap the route budget at 360 − 120 − elapsed host seconds since round start (floor 0 → `NO-DATA route-no-time`; no round start reading → 120 s flat) — cost if wrong: round 1's worst-case margin is accepted at ~8.5 s (typical case ~99 s).
 72. **R72** — stop the ladder at the first confirmed PASS, per the plan's own "the first round meeting Goal 6 on both scorers IS the acceptance run" — cost if wrong: none (13 of 16 launches went unspent, available if a re-check were ever needed).
+
+### Close-out rulings (added after the whole-branch review, 2026-09-14)
+
+- **R73** — the always-on lock suite keeps one reaper race (4 takers × 2 rounds) and one mutex double-entry check, plus a hygiene stamp tying `scripts/loop_lock.sh`'s blob to the last green `LOOP_LOCK_SLOW_TESTS=1` run — reinstates R14's intent after the close-out smoke removed them — cost if wrong: ~10 s per `build.sh test`.
+- **R74** (retroactive tooling default) — ladder launches pin the harness by default, `--live` opts out — the passing run was pinned; unpinned launches read a moving tree — cost if wrong: none.
+- **R75** — whole-branch review minors M1–M3, M5–M8, M10–M12 parked to Sprint 6; M4 (`--engage-dy` refused on route/cooperative) and M9 (health-event key names) fixed — cost if wrong: small, listed.
+- **R76** — the close-out gate is accepted as title PASS + transition PASS + mission PASS on the same-exe mission rerun (`s5_head_1x_b`); the first mission FAIL was an in-game HELP pop-up pausing gameplay, not a stall — cost if wrong: an intermittent mission stage until Sprint 6 dismisses the pop-up (the scorer fails it honestly).
+- **R77** — always-on lock tests may take up to ~30 s (measured 22–27 s at ~71 % host CPU), keeping R73's minimum race — cost if wrong: ~10 s per `build.sh test`.
