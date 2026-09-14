@@ -1,11 +1,165 @@
 # Project status — updated 2026-09-13
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
-- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 434/434 + vu1 fixture verify + `--vram-diff` at `checked=15 skipped=0`, with `vu1dump4_prog_182` back in the set and a one-pixel offset failing again; `PS2X_TEST_REPEAT=3` green (3 of 3 passes, 0 failed) at Sprint 4 close-out). **It runs zero Python tests** — `tools_py/tests` is run by hand (`python -m unittest discover -s tools_py/tests -t .`) until Sprint 5 Task 0 wires it in. Gate `python -m tools_py.parity.gate`: the title leg crops pillarboxing before scoring and the transition burst follows the save dialog instead of a fixed step; last full run PASS 3/3 `logs/parity/gate/20260912_192900` on the current `dist/socom2.exe` (no runtime source has changed since).
-- Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps. Online, two instances on local Horizon reach gameplay; **the round runs on both maps tried, and whether the local player can move depends on the map.** Medley: both players move (the `sceInetInterfaceControl(0x200)` fix) and have met, closest 50.0 units true 3-D. **Frostfire, the default test map since 2026-09-13: neither player moves** — the move path runs 18 calls in 0.6 s at round start and never again. **No kill has ever been observed**, and `--until-kill` cannot print `PASS` without one.
+- Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 450/450 + vu1 fixture verify + `--vram-diff` at `checked=15 skipped=0`; **since Sprint 5 Task 0 it also runs the Python suite first** — `python -m unittest discover -s tools_py/tests -t .`, 802 tests — both required green before any commit touching `third_party/ps2recomp/`, `recomp/` or the parity tools). Gate `python -m tools_py.parity.gate`: title/transition/mission; **the mission stage now requires live gameplay** (`d2eb932`) — ≥ 2 consecutive gameplay hold pairs differing by mean ≥ 3.0 and a capture count matching the logged holds, not just the mission having loaded (it had scored the intro cinematic since 2026-09-12).
+- Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps. Online, two instances on local Horizon: **the acceptance test PASSED** — a Frostfire match ends in a kill read from guest memory, confirmed by two independent scorers (`docs/research/22`, `docs/research/assets/22-first-kill.png`). **Frostfire control is fixed** (VU0 `vf0.w = 0` on `StartThread` contexts, `b625291`) and **the single-player gameplay stall is fixed** (an unbounded GS command backlog, `8281254`/`7448601`/`92d30f0`). **The runtime is frozen at `92d30f0` for the online ladder** (R45/R61) until Sprint 6 reopens it.
 - Sprint 4 (2026-09-13, entry below): intro-movie macroblocks fixed at the root (a cross-thread race on `m_currentTransfer`), the gate's silent-failure paths closed, `--vram-diff` 15/15, `rand()` 31-bit over the guest's own seed, soft-double ABI stubs re-bound, "ground height" reframed as the third-person camera (localised, not fixed), the online movement blocker fixed and A/B-proven on Medley, the acceptance test built and not passed.
-- **Sprint 5 (2026-09-13): the acceptance test PASSED** — ladder launch 2 on Frostfire, rounds 1–3 KILL on both scorers (KillWatch actor fields + `verdict_replay` valves), screens "socomc fragged socome with M4A1"; the causes of the Frostfire freeze (VU0 vf0 = 0 on StartThread threads, `b625291`) and of the single-player gameplay stall (unbounded GS backlog, `8281254`/`7448601`/`92d30f0`) fixed on the way. Dated entry pending close-out. ~~Next — Sprint 5 (`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` + plan): Frostfire control handover, whose lead is uninitialised `CZNetGame` bytes (`*0x437ce8`) reading `0xAF` on ours and `0x00` on the console, including the "you are a ghost" flag `+0xd2`; confirm the sourced kill readout (`actor+0x1044` health, `actor+0xF7A` alive byte, `docs/research/19`), never yet read live online; then the first kill. `docs/KNOWN.md` is the live proven/believed/retracted list and wins over this block.~~
-- Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. Known open: the camera's skeleton-root decay (two candidates, one run apart, `docs/research/17` §4.3); intro-cinematic freeze seen once (Sprint 1); the transition residual strip ~1 in 5 runs; `movie_blocks.py` in no automation.
+- **Sprint 5 (2026-09-13): the acceptance test PASSED.** Ladder launch 2 on Frostfire, rounds 1–3 KILL on both scorers (KillWatch actor fields + `verdict_replay` valves), screens "socomc fragged socome with M4A1". Root causes fixed on the way: Frostfire's lost control (VU0 `vf0.w = 0` on `StartThread` contexts) and the single-player gameplay stall (an unbounded GS command backlog). Dated entry below.
+- Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. Known open: the camera's skeleton-root decay (`docs/research/17` §4.3); single-player teleports; the online freeze root cause under host load; `movie_blocks.py` in no automation — all parked to Sprint 6 (`docs/ROADMAP.md` §6).
+
+## 2026-09-13 (local) — Sprint 5 landed: THE ACCEPTANCE TEST PASSED — Frostfire control fixed, the single-player stall fixed, and a first online kill on three independent rounds
+
+Sprint `2026-09-13-sprint-5-control-readout-and-first-kill`, branch `sprint-5`, Tasks 0-7 plus the
+owner-requested broad review (Amendment A, mid-sprint). Every task implemented, independently
+reviewed, fixed and re-reviewed; the plan's own `## Outcome` and `## Rulings made on the owner's
+behalf` sections carry the full detail this entry summarises. Headline facts, and every retraction,
+are in `docs/KNOWN.md`.
+
+### The sentence that matters
+
+**The acceptance test PASSED.** `bash scripts/parity/ladder_frostfire.sh --pinned
+logs/parity/s5_t5_ladder2` (HEAD `171290b`, exe sha `234b4772cd0a8bf8`, runtime frozen at `92d30f0`)
+scored `KILL killer=A victim=B t=141.33` on round 1 — both KillWatch (actor fields: `+0x1044`
+1.0 → 0.298 → 0.0 in 0.25 s, `+0xF7A` 1 → 2, word 0 intact at `006691a0`) and `verdict_replay`
+(valves: `total_mp_kills` 0→1 on the killer's own instance, `aiteam_08` 1→0 on both instances within
+0.25 s, the killer's R1 burst 0.59 s before the death from 27.9-29.2 units in 3-D, `dy` 0) —
+independently re-derived clause by clause by a second reviewer before the sprint declared it met.
+Rounds 2 and 3 repeated the kill in the same lobby (t=244.10, t=336.51); round 4 reached rung 2
+only (111 in-tolerance bursts, no damage — an aim bias that never corrected, not a broken damage
+path). Both screens read "socomc fragged socome with M4A1 / ALL TERRORISTS ELIMINATED / SEALS
+VICTORIOUS!", tiled into `docs/research/assets/22-first-kill.png` (`5f1de26`).
+
+### What landed, per task
+
+- **Task 0 (preconditions, `2b7c425`+3 fix rounds).** A heartbeat loop lock (`scripts/loop_lock.sh`)
+  that reaps only a stale, idle holder and refuses the stale break while anything is busy;
+  `scripts/run_detached.sh` and `kill_stale_drivers.ps1`; `build.sh test` now runs the Python suite
+  first (`tools_py/tests`, unittest only); `docs/CURRENT_SPRINT.md` created as the loop's sprint
+  pointer.
+- **Task 1 (Frostfire control handover, `03d3aa6`/`b625291`/`0118c95`+`b89c4c0`, 8 + 2 over-cap
+  launches).** The lead this sprint opened with — an uninitialised "ghost flag" `ng+0xd2` — was
+  real but **retracted**: the chain is reachable and verified in the decomp, but it never fired
+  (launch 1). The actual stop was `research/23`'s ground probe: at the Frostfire spawn,
+  `ProbeEval` returns a miss with candidate count 0 because the ground models are linked into the
+  collision grid by their **untranslated** bounds — cell (0,0)/(0,2) instead of the spawn's
+  (4,3)/(3,7) — so the local player's `actor+0x420` (last ground-hit time) is never stamped and the
+  online snap-back suppresses movement from clock 0.6 s. Root cause: `FUN_003085c0`'s
+  `vmaddw.xyz vf9, vf7, vf0w` translation scale reads VU0 `vf0.w`, and `R5900Context()` zeroed
+  `vf0` — correct for the main thread's constructed context, wrong everywhere else, because on real
+  hardware `vf0` is the constant `(0,0,0,1)`. Every `StartThread`/`GuestThread`/`GuestInvocation`
+  context (the level loader runs on one) inherited the zero. **Fixed** by setting `vf0 = (0,0,0,1)`
+  in the constructor, authorised without a pre-fix trace because it is correct behaviour regardless
+  of cause (R27) — confirmed by a post-fix census (all 48 translated Frostfire props now linked by
+  world bounds, 0 of 48 before) and by launch 3, where both sides moved the whole 302 s round
+  (MoveScale `f12 = 1.0` throughout, probe hits 1332/1332 and 1428/1428). The knob built as a first
+  candidate fix, `PS2X_GUEST_MALLOC_ZERO` (default off), turned out not to be the cause and ships
+  unused. The Medley control (launch 8c) supplied the unconditional clock round-end negative
+  fixture Task 6 needed, and surfaced 8-17 s guest freezes under host load (parked to Sprint 6).
+- **Task 2 (kill readout confirmation, `d0f4ccb`/`e685b82`/`6b0f258`, 4 single-player runs, 3
+  usable).** Health `actor+0x1044` and alive `actor+0xF7A` (sourced statically last sprint) were
+  armed as harness defaults; a single-player death was **not observed** in 3 usable runs (health
+  dropped to 0.392 then the actor left the mission area — MISSION FAILURE, not a death) and this
+  half closed "not observed" per the plan's own fallback (R28) — the first online death became the
+  sole confirmation. The actor's own heading field was found along the way: quaternion
+  `actor+0x70` → a 4×4 matrix at `+0x80..+0xbc`, walk direction `(-m[+0xa0], -m[+0xa8])`, p90 1.57°
+  over 17 live holds at rest. The camera cannot supply a heading at all — `atan2(actor-camera)` has
+  p90 error 23.85-55° depending on the sample gate — and Task 5 aimed from the actor matrix instead
+  (R12).
+- **Task 3 (a harness that cannot spend a match proving nothing, `736193c`+3 fix rounds+`24db942`+
+  `42b1dd8`, lock-free).** Pure scorers (`verdict_core.py`) for control, contact, starvation and
+  round-state, tested against real fixtures before any launch used them. A Sprint 4 reading was
+  **retracted** along the way: `kill3`'s "lost mover" (0.00 units across two holds) was the camera
+  record `0x416054` freezing while the actor itself walked ~65 and ~39 units on the two holds — the
+  camera is not a liveness signal, only the actor's own position words are.
+- **Task 4 (HLE and heap liveness audit, `ad32088`/`0cdb9a1`/`03d3aa6`/`3899b1e`/`07ffc0a`,
+  zero-run + rides Task 1's build).** `object_diff.py` reproduces the uninitialised-heap signature
+  by object rather than address, and corrected three ranges in last sprint's F3 list. A static
+  census of all 223 bound HLE stubs (148 zero-call) found `sceGsSetDefDBuff` reading its trailing
+  args from `$t0-$t2` where the guest passes them there directly — **fixed**, with the clear packet
+  now seeded in context 1 and byte-exact against `title_pcsx2`. `PS2X_HLE_STATS=1` ships. The
+  remaining ranked stubs (display-environment/zbp divergence, `rem_pio2f` precision) defer to
+  Sprint 6 (one-line-fix rule, R20).
+- **Tasks 5+6 (merged into one ladder by Amendment A, below).**
+- **Task 7 (this close-out).**
+
+### Root causes found
+
+1. **Frostfire's lost control was VU0 `vf0.w = 0` on non-main-thread guest contexts**, not the
+   "ghost flag" the sprint opened chasing. See Task 1 above.
+2. **The single-player gameplay stall was an unbounded GS command backlog.** `GSGlBackend::record`/
+   `Present` appended to `m_pending` with no bound; after the mission loaded, the GL replay thread
+   fell to ~14 frames/s against 60/s recorded, so private bytes ran 275 MB → 13 GB in 4 minutes and
+   the host presented one frame per 5-25 s. **Fixed** with bounded back-pressure
+   (`PS2X_GS_MAX_PENDING_FRAMES`, default 3): the EE waits at `VBlankStart` while more than N frames
+   are unreplayed, a consumer-progress heartbeat prevents the wait latching open on a large
+   in-flight batch (R40), and the next VBlank deadline is clamped to drop accumulated debt instead
+   of letting the guest run up to 4x real time to catch up (R41) — three fix rounds
+   (`8281254`/`7448601`/`92d30f0`), the last of which also closed a idle-spin residual (R54).
+3. **The mission-gate scorer had been scoring the intro cinematic since 2026-09-12.** `drive.py`'s
+   HUD check matched a letterboxed cinematic frame after cropping the bars; **fixed** to require
+   lit letterbox bands on the uncropped frame plus ≥ 2 consecutive gameplay hold pairs differing by
+   mean ≥ 3.0 (`69e2a9d`/`d2eb932`), which is also what caught defect 2 above — the frozen-hold runs
+   the old scorer had been calling PASS.
+
+### Retractions this sprint
+
+- **The uninitialised "ghost flag" `ng+0xd2`** as Frostfire's cause: the chain is real and verified
+  in the decomp, but it never fires online (launch 1).
+- **The exhausted-collision-grid theory** for the ground-probe miss: the grid is healthy (503 nodes
+  + 7689 free = 8192, free head never 0 over ~2000 rows); the real cause is the untranslated-bounds
+  linking above.
+- **`kill3`'s "lost its second mover"**: the camera record froze, not the actor.
+- **The "0.6 s host-clock coincidence"** note on Frostfire's move-path stop: the snap-back genuinely
+  fires at guest clock 0.6 s; the "host wall clock" reading was the same threshold seen at coarser
+  sampling resolution.
+
+### The broad review and Amendment A
+
+Mid-sprint, on request, an independent broad review (`.superpowers/sdd/…/broad-review.md`) judged
+the plan's original Tasks 5-6 "not on track as planned" (~55-65% odds of a kill) against ~85-95%
+with changes, on five re-derived facts: spawns are deterministic per map (Frostfire 691 units apart
+on two discrete floors, dy 42); mutual standing does **not** starve either side online (~48 s at
+full movement scale, contradicting a standing plan assumption); the actor-matrix yaw settles within
+one 4 Hz row of a turn release; a clock round end keeps the actor block and resets both players to
+spawn, so one lobby success can carry several rounds. **Amendment A** (`8672724`, rulings R42-R52)
+merged Tasks 5 and 6 into one 16-launch ladder in which every round is its own acceptance attempt,
+pre-registered the acceptance bars in spec §5.1/§5.1.1 before any match was scored, simplified the
+default engagement to a host shooter following a recorded route to a standing victim, added launch
+hygiene (a pinned harness snapshot per launch, a host CPU sampler, a `logs/.quiet` window, disk
+refusal below 4 GB), and pulled a minimal lobby dropped-press re-send forward from Sprint 6. The
+acceptance run came from this rewritten path, not the plan's original one.
+
+### The acceptance run and its numbers
+
+Ladder launch 2, one launch, no lobby failure. Per-round: round 1 contact 14.3 s / 58 rows, 1 burst,
+victim health 1.0 → 0.298 → 0.0, closest 3-D 23.9 (dy 0); round 2 contact 6.1 s / 25 rows, 1 burst,
+closest 20.6; round 3 contact 5.8 s / 24 rows, 2 bursts, closest 19.3; round 4 rung 2 only, 111
+bursts at -4.1° aim error (inside the 5.68° tolerance, never corrected), 0/30 ammo twice over.
+Frostfire's v2 route (derived from collision geometry, `docs/research/24`) arrived on all 4 rounds
+in 77-89 s (9.5-11.3 u/s). `mp_round_count` steps ~33 s after a kill (not the ~5 s spec §5.1.1 had
+estimated — corrected, no verdict depended on it); `total_mp_kills` steps on the killer's instance
+only and resets to 0 next round.
+
+### Launch counts against caps
+
+| task | cap | used |
+|---|---|---|
+| Task 1 (Frostfire control) | 3 usable / 8 launches | **8 + 2 over-cap** (R33, the Medley control) |
+| Task 2 (SP kill readout) | one run | **4 single-player runs** |
+| Tasks 5+6 (merged ladder, Amendment A) | 16 launches | **3 of 16** (launch 1, 1b, 2) |
+
+### Parked to Sprint 6
+
+Per the broad review's revised order (`docs/ROADMAP.md` §6): lobby hardening to completion; the
+online freeze root cause (3-17 s guest stops under host load, Task 1's launch 8c); single-player
+teleports; the skeleton root decay (re-measured on the post-`vf0` exe first); a gameplay-state probe
+as the gate's first correctness leg; the soft-double `exp` chain and `rem_pio2f` against exact
+oracles; a mixed ours/PCSX2 match; HLE audit leg three; harness/gate process cleanup; the parity PNG
+export off the GL thread; the display-environment/zbp A/B; VU memory aliasing; disk hygiene
+automation. Also parked, and named as Sprint 7's headline item rather than Sprint 6's: **the close-
+range aim loop has no ammo awareness or re-aim escalation** — round 4 fired 111 bursts at an
+in-tolerance miss with no correction, which is exactly the repeatability gap `docs/KNOWN.md` §4
+already flags (3 of 4 rounds killed; round 4 missed on an aim tolerance that never corrected).
 
 ## 2026-09-13 (local) — Sprint 4 landed: the online movement blocker fixed, the acceptance test built and NOT passed, Frostfire loses control at round start, and the first kill is Sprint 5's
 
