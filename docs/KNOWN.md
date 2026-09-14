@@ -113,12 +113,19 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **Ladder launch contract after close-out** (`c04f9e1`, `2858774`): `ladder_frostfire.sh` pins by default (`--live` opts
+  out); exit 4 = LOBBY-FAIL, 5 = CRASH (never read a crash as NO-KILL), 7 = pin failed; poll `logs/<name>.detached` and
+  `logs/<name>.done`. Swapped spawns are accepted and recorded (`spawns=swapped`) but that round is NO-DATA until the route
+  is mirrored. The default lock tests are a ~10 s smoke; **any `loop_lock.sh` change needs `LOOP_LOCK_SLOW_TESTS=1`
+  (~16 min) before commit** — the race tests live only there.
+
 - **Round-state facts measured at real kills** (ladder launch 2): `mp_round_count` steps **32.9–34.7 s** after a kill (spec
   §5.1.1 R60 anticipated ~5 s — no bar depends on it); the guest clock then freezes ~5.3 s; `total_mp_kills` steps only on the
   killer's instance and **resets to 0** ~5.2 s after each round step (with `aiteam_*` going 0→1 on the same row); over the
   kill windows the guest clock ran 0.70–0.91 guest s per host s (above §5.1.1's 0.57–0.72 note). Harness defects found, not
-  verdict-affecting: `damage=NO-DATA` for a round whose health never moved (`watch_hist` stores changes only); RESULT
-  `contact=False` is the retired 22-unit `approach()` flag; frame ages are bounded, not recorded.
+  verdict-affecting — ~~`damage=NO-DATA` for a steady-health round; RESULT `contact=False` from the retired `approach()`
+  flag; frame ages not recorded~~ **fixed `98f6417`** (round slice seeded with the last value; contact from `verdict_core`;
+  `screen_age_s=`/`screen_clock=` recorded, ±1 frame rewrite ~150 ms).
 - **The kill is not repeatable yet on demand**: 3 of 4 rounds killed in the one usable launch; round 4 fired 111 bursts at
   a −4.1° aim error that sat inside the angular tolerance (never corrected). Sprint 7's repeatability item needs a tighter
   aim tolerance or a burst-to-burst correction.
