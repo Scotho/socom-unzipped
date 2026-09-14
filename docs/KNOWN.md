@@ -113,6 +113,15 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The parity pipeline cannot see a defect that is present in every run** (owner question, 2026-09-14): title and
+  mission scoring compare our runs to our own earlier runs, and the mission stage checks only that gameplay is live.
+  So the grey water shards in Seeding Chaos (a GL depth-precision bug, visible in every gameplay gate frame since
+  Sprint 3, reviewed repeatedly without being flagged) and a gate run that ends in MISSION FAILURE 39 s in (the
+  known single-player turn teleport walking the player out of the mission area) both passed. The only console
+  reference for that spot was a PCSX2 slot-8 screenshot that nothing compared against. Fix planned in ROADMAP §6
+  item 5: console-vs-ours image comparison at fixed gameplay moments, and a mission-failure screen fails the stage.
+  Until then, **look at the frames against a console image** before calling a render or gameplay path correct.
+
 - **The gate mission stage can land its holds on an in-game HELP pop-up** ("You must MEET WITH MALLARD… PRESS X TO
   CONTINUE"), which pauses gameplay behind a lit HUD: `s5_head_1x` mission FAIL had 6/6 gameplay-band holds, diffs
   0.00–0.03, 1503 frame exports after gameplay start and no STALE FRAME — presentation live, game paused. The liveness
