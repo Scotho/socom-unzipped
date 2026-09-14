@@ -3209,6 +3209,31 @@ ROUTE_WALK_RATE_U_S = 7.5
 ROUND_FIGHT_RESERVE_S = 120.0    # R70: the route budget is capped so at least this much round clock remains for
                                  # close + fight; the remaining time is read from the clock string the way the C2
                                  # wait (online_ladder.wait_round_end / clock_string_deadline) does
+# R70 fix round 1 review: the exact tag a route-no-time failure's `reason` carries (and the ONLY thing the two
+# endgame_* call sites match on) -- `follow_route`'s pre-existing "NO-DATA heading or position" also starts with
+# vc.NO_DATA and must NOT be caught by the same check (it stays a scored `route failed: ... swaps` failure).
+ROUTE_NO_TIME_REASON = f"{vc.NO_DATA} route-no-time"
+
+
+def route_swap_stop_reason(reason, other_tag):
+    """endgame_route's stop_reason for a failed follow_route: exactly ROUTE_NO_TIME_REASON passes through unwrapped
+    (NO-DATA, no swap hint -- the round ran out of clock, not out of route); anything else -- including
+    follow_route's OWN, pre-existing NO-DATA reasons such as "NO-DATA heading or position" -- keeps the scored
+    'route failed: ... --mover <other_tag> swaps which side walks' wrap it always had."""
+    return (reason if reason.startswith(ROUTE_NO_TIME_REASON) else
+            f"route failed: {reason} -- --mover {other_tag} swaps which side walks")
+
+
+def route_stop_reason(reason):
+    """endgame_cooperative's stop_reason for a failed follow_route: the same ROUTE_NO_TIME_REASON exact match as
+    route_swap_stop_reason, without the swap hint (cooperative mode has no --mover to swap to)."""
+    return reason if reason.startswith(ROUTE_NO_TIME_REASON) else f"route failed: {reason}"
+
+
+# R71: when the round clock string itself could not be read at all (route_clock_remaining_s -> None), the budget is
+# capped as if the round were this long, less ROUND_FIGHT_RESERVE_S and the host seconds already spent in it (the
+# round's own start time, floored at 0) -- ROUND_FIGHT_RESERVE_S flat when even that start time is unavailable.
+ROUTE_BUDGET_NO_CLOCK_S = 360.0
 CLOSE_MAX_S = 60.0               # a close's whole time budget (it starts <= ~45 units from the band)
 SPAWN_MISMATCH_UNITS = 20.0      # a live spawn further than this from the route file's is NO-DATA spawn-mismatch
 ROUND_RESET_SPAWN_UNITS = 20.0   # a jump landing this close to the side's spawn ...
@@ -3385,17 +3410,27 @@ def route_clock_remaining_s(tail, clock=time.time):
     return None if v is None else v - (clock() - t)
 
 
+def route_no_clock_cap_s(round_start, clock=time.time):
+    """R71: the route budget cap when the round clock string could not be read at all -- ROUTE_BUDGET_NO_CLOCK_S (a
+    nominal round length) less ROUND_FIGHT_RESERVE_S and the host seconds already spent in the round (`round_start`,
+    the round's own start time), floored at 0. ROUND_FIGHT_RESERVE_S flat when `round_start` is also unavailable."""
+    if round_start is None:
+        return ROUND_FIGHT_RESERVE_S
+    return max(0.0, ROUTE_BUDGET_NO_CLOCK_S - ROUND_FIGHT_RESERVE_S - (clock() - round_start))
+
+
 def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=None, on_poll=None,
-                 clock_remaining=None):
+                 clock_remaining=None, round_start=None):
     """Walk `route` (route_waypoints dicts, or (x, z) tuples) with aimed legs -> {"ok", "reason", "wp", "legs"}. A
     waypoint is reached inside its `arrive` distance with the actor's y within ROUTE_FLOOR_TOL_Y of the leg's floor y;
     the follower skips ahead whenever the next waypoint is already the nearer one (a corridor, not a rail). It fails on:
     ROUTE_STUCK_LEGS legs in a row gaining < ROUTE_PROGRESS_UNITS ("stuck at wpN"); no ROUTE_PROGRESS_UNITS gain on
     the best distance for ROUTE_NO_PROGRESS_S ("no progress"); the route's time budget (route_budget_s, capped by the
-    round clock remaining -- read from `me.tail` unless `clock_remaining` overrides it -- to leave
-    ROUND_FIGHT_RESERVE_S for the close and the fight; a budget <= 0 is NO-DATA route-no-time, before any leg is
-    walked); standing at a waypoint on the wrong floor, or leaving the legs' floor band en route ("floor").
-    TeleportAbort propagates. Reads only actor rows and the actor matrix (plus, for the clock cap, round_rows)."""
+    round clock remaining -- read from `me.tail` unless `clock_remaining` overrides it, or (R71) by
+    route_no_clock_cap_s(round_start) when the clock could not be read at all -- to leave ROUND_FIGHT_RESERVE_S for
+    the close and the fight; a budget <= 0 is exactly ROUTE_NO_TIME_REASON, before any leg is walked); standing at a
+    waypoint on the wrong floor, or leaving the legs' floor band en route ("floor"). TeleportAbort propagates. Reads
+    only actor rows and the actor matrix (plus, for the clock cap, round_rows)."""
     log = log or me.sh.log
     route = [_wp(w) for w in route]
     wp, legs, stuck = 0, 0, 0
@@ -3404,10 +3439,17 @@ def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=Non
     length = sum(math.dist((p["x"], p["z"]), (q["x"], q["z"])) for p, q in zip(route, route[1:]))
     length += math.dist(here0, (route[0]["x"], route[0]["z"])) if route else 0.0
     remaining = route_clock_remaining_s(me.tail, clock) if clock_remaining is None else clock_remaining
-    budget = route_budget_s(length, remaining)
+    if remaining is None:
+        # R71: no clock string was readable at all -- fall back to a cap derived from the round's own elapsed time
+        # (or a flat ROUND_FIGHT_RESERVE_S when even that is unknown), logged once, here, where the budget is fixed
+        log(f"ROUTE {me.tag}: the round clock is unreadable -- capping the budget by the round's own elapsed time")
+        budget = min(route_budget_s(length), route_no_clock_cap_s(round_start, clock))
+    else:
+        budget = route_budget_s(length, remaining)
     fail = lambda reason: {"ok": False, "reason": reason, "wp": wp, "legs": legs}
     if budget <= 0:
-        reason = (f"{vc.NO_DATA} route-no-time: {remaining:.0f}s left on the round clock, under the "
+        left = "unreadable" if remaining is None else f"{remaining:.0f}s left"
+        reason = (f"{ROUTE_NO_TIME_REASON}: {left} on the round clock, under the "
                   f"{ROUND_FIGHT_RESERVE_S:g}s reserved for the close and the fight -- the route is skipped")
         log(f"ROUTE {me.tag} start: {len(route)} waypoints, {length:.0f} units -- {reason}")
         return fail(reason)
@@ -3649,7 +3691,8 @@ def victim_should_oscillate(d3):
 
 
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
-                  wait=time.sleep, spawns=None, live_spawns=None, route_path=None, route_join="start"):
+                  wait=time.sleep, spawns=None, live_spawns=None, route_path=None, route_join="start",
+                  round_start=None):
     """The default engagement -> result dict. The stander stands (it moves only when the StarvationWatch asks it: one
     RULE_LEG_S strafe leg); the mover follows `route` (default: routes/<map>.json for `mover`) to the stander's floor,
     close_to()s it into the engagement band, then cycles aim_yaw(read="pulse", tol=aim_tol_deg(d3)) -> one R1 burst
@@ -3719,13 +3762,11 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 return
             out["route_join"] = k
             log(f"ROUTE {shooter.tag} joins at wp{k} of {len(route)}")
-            r = follow_route(shooter, route[k:], clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
+            r = follow_route(shooter, route[k:], clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll,
+                             round_start=round_start)
             out["route"] = r
             if not r["ok"]:
-                # R70: a route-no-time budget is NO-DATA (not scored, no swap hint) -- the round ran out of clock,
-                # not out of route
-                out["stop_reason"] = (r["reason"] if r["reason"].startswith(vc.NO_DATA) else
-                                      f"route failed: {r['reason']} -- --mover {stander.tag} swaps which side walks")
+                out["stop_reason"] = route_swap_stop_reason(r["reason"], stander.tag)
                 return
         r = close_to(shooter, stander, clock=clock, wait=wait, log=log, stop=stop, on_poll=on_poll)
         out["close"] = r
@@ -3852,7 +3893,7 @@ def toward_axes(me, other_xz, deflection=RULE_LEG_DEFLECTION):
 
 
 def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, fight_s=None, micro_strafe=True,
-                        rule=True, clock=time.time, wait=time.sleep, mover="A", route_path=None):
+                        rule=True, clock=time.time, wait=time.sleep, mover="A", route_path=None, round_start=None):
     """The two-sided engagement (the first Task 5 brief): EACH side's scale is restored only by the OTHER side moving.
 
     Victim (the stander): strafe-oscillates continuously from the start (lx +-OSC_DEFLECTION, VICTIM_OSC_LEG_S legs)
@@ -3953,12 +3994,10 @@ def endgame_cooperative(sides, duel, watch, log, map_name=None, route=None, figh
     def shooter_loop():
         if route:
             out["route"] = follow_route(shooter, route, clock=clock, wait=wait, log=log, stop=stop,
-                                        on_poll=rule_move)
+                                        on_poll=rule_move, round_start=round_start)
             last_move[0] = clock()
             if not out["route"]["ok"]:
-                reason = out["route"]["reason"]
-                # R70: a route-no-time budget is NO-DATA, not a route failure
-                out["stop_reason"] = reason if reason.startswith(vc.NO_DATA) else f"route failed: {reason}"
+                out["stop_reason"] = route_stop_reason(out["route"]["reason"])
                 return
         out["close"] = reach()
         if not out["close"]["ok"]:
@@ -4537,10 +4576,11 @@ def main():
                 endgame = None
                 if a.endgame == "cooperative":
                     endgame = endgame_cooperative({"A": sideA, "B": sideB}, duel, starv, A.sh.log, map_name=a.map,
-                                                  fight_s=a.fight_seconds, mover=mover, route_path=route_path)
+                                                  fight_s=a.fight_seconds, mover=mover, route_path=route_path,
+                                                  round_start=t_round)
                 elif a.endgame == "route":
                     endgame = endgame_route({"A": sideA, "B": sideB}, duel, starv, A.sh.log, a.map, mover=mover,
-                                            fight_s=a.fight_seconds, route_path=route_path,
+                                            fight_s=a.fight_seconds, route_path=route_path, round_start=t_round,
                                             route_join="nearest" if n == 1 else "start", spawns=file_spawns,
                                             live_spawns=live_spawns)
                 threads = []
