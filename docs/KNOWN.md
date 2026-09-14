@@ -200,7 +200,7 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
   presses, and the hold captures (s30…) are the cinematic. **"PASS mission" proves the mission loaded and the
   script ran, not gameplay.** The reference image itself shows a HELP pop-up. Gameplay = lit letterbox bands on
   the uncropped frame (`sp_death_probe.screen_state`).
-- **Real actor teleports in single player** (Task 2, `e685b82`, review re-derived): 45 of 47 row steps > 30
+- **Real actor teleports in single player** — **cause located 2026-09-14** (research/25 §7–§8, traced run `logs/run_sp_20260914_122711.log`, independently re-derived by clip name): the animation pack `run/motion_p.zar`/`motion.rdr` (buffer `*0x415e08`, ours `[0x86d840, 0x9ad840)`) has its first 0x140000 bytes **overwritten during the single-player mission load** (repeats offsets 0x140000..0x1bffff at period 0x80000); 48 of 99 clips get corrupt keys descriptors (console 0), e.g. `seal_crouch_step` (#64) loses its no-root-motion flag and samples a rotation track as root translation → up to ~1875 u/s. Intact at title/menus/online; smeared in every SP spawn dump. Not water-specific. **The overwriter is not yet identified** (prime suspect: our 989snd `StreamSafeCdRead` emulation). Original entry (Task 2, `e685b82`, review re-derived): 45 of 47 row steps > 30
   units fell inside `rx` holds with |Δ| ≥ 64 (up to 380 units per 4 Hz row, velocity words to −2462), also 86
   units without `rx` on the vf0 build; the camera and matrix row 3 follow, so the motion is real. Online kill2's
   full-deflection turns moved ≤ 4.7 units with velocity words at 0 — a different path, so online
