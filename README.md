@@ -143,16 +143,76 @@ and `--map-scan <n>` (with `--only A`: walk the map list n rows and capture each
 reference crop is made); `--health-offset <byte offset from the actor base>` with
 `--health-range lo:hi` arms the health watch -- unset, the health signal is off and the run says so,
 and an armed watch that reads nothing fails the run. `docs/research/19` sources health at
-`0x1044` (alive byte `0xF7A`); it has not yet been read live online, and until it is, `--until-kill`
-cannot print `PASS`. A health death counts only as a transition -- the same actor address must
-read alive (`0 < v <= 1`) before a dead-range read, so a first read of `0.0` or of uninitialised
-heap is not a kill (`tools_py/tests/test_kill_watch.py`). Map references are committed for
-Frostfire and Medley. As of Sprint 4's close, **on Frostfire neither player moves** after round start and
-on Medley no kill has been observed -- see `docs/STATUS.md` and `docs/KNOWN.md`. Harness pieces:
+`0x1044` (alive byte `0xF7A`). **Both are armed by default since Sprint 5 Task 2**
+(`--health-offset 0x1044` / `--alive-offset 0xF7A`; `'none'` disarms either) -- a health death
+counts only as a transition (the same actor address must read alive, `0 < v <= 1`, before a
+dead-range read), so a first read of `0.0` or of uninitialised heap is not a kill
+(`tools_py/tests/test_kill_watch.py`), and `PS2X_PEEK` must cover the offset or the run refuses to
+launch rather than failing later with `reads=0`. Map references are committed for Frostfire and
+Medley. **As of Sprint 5's close the acceptance test has PASSED**: a Frostfire ladder match ends in
+a kill scored by two independent readers (KillWatch on the actor fields above, `verdict_replay.py`
+on the round-state valves) -- see `docs/STATUS.md` and `docs/KNOWN.md`. Harness pieces:
 `drive.py` scripts gain an `ifburst` step (fire a capture burst only if the preceding `ifref`
 matched), and `python -m tools_py.parity.movie_blocks <dumpdir>` checks a `PS2X_GS_DUMP_DISPLAY`
 capture for 16x16 blocks black on the GL target but present in shadow VRAM (limits:
 `docs/research/16` §9.1.1; wired into no automation).
+
+**Sprint 5 knobs and tools.**
+`PS2X_GUEST_MALLOC_ZERO=1` (default **off**) zero-fills the block `PS2Runtime::guestMalloc` returns
+and the grown tail of `PS2Runtime::guestRealloc` (these back the bound `_malloc_r`/`_memalign_r`/
+`_realloc_r`; `guestCalloc` already zeroes) -- built as a candidate fix for Frostfire's lost
+control, ships unused since the real cause was VU0 `vf0` (below); `PS2X_GUEST_MALLOC_ZERO_B` is the
+driver's per-instance-B variant. `PS2X_HLE_STATS=1` prints, per bound HLE stub (`recomp/socom2.toml`),
+its call count, distinct returns (saturating at 64) and first/last value, including zero-call stubs
+-- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled
+`J` straight to a C++ function) undercount because they skip the dispatch table.
+`PS2X_GS_MAX_PENDING_FRAMES=<n>` (default **3**) bounds the GS command backlog: the EE waits at
+`VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread; `0` is
+unbounded, the pre-fix behaviour that let `m_pending` grow to gigabytes when the replay thread fell
+behind (fixed as a correctness bug, `8281254`/`7448601`/`92d30f0`). `PS2X_CYCLE_CLOCK=guest` makes
+the idle wait account the remaining cycles itself instead of a host-clock deadline -- **this is not
+an A/B of the pre-`R54` scheduler path**; the idle-spin fix (`92d30f0`) landed on the host-clock
+path, and `guest` is an alternate accounting mode on top of it, untested as a toggle of the older
+behaviour.
+`online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
+(default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
+move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and
+a `LADDER-SUMMARY`; `--route <file>` picks the waypoint route for `--endgame route`/`cooperative`
+(default `tools_py/parity/routes/frostfire_v2.json` for `--map frostfire`, derived from collision
+geometry in `docs/research/24`; the older 3c-derived `routes/frostfire.json` stays loadable); `--endgame
+route` (the Amendment A default) has the stander wait at spawn while the mover follows the route,
+closes into the contact band, aims with partial-`rx` pulses read from the actor matrix and fires,
+teleport-checked throughout; `--endgame cooperative` adds victim strafe-oscillation and shooter
+micro-strafing between bursts so each side keeps feeding the other's starvation counter;
+`--mover {A,B}` (default A, the host) picks which side walks and shoots; `--auto-swap` swaps
+`--mover` once on a `SWAP-MOVER` stop instead of ending the run; `--control-round` (implies
+`--converge`) runs the clock round-end negative control -- nobody fires, both sides alternate
+strafe legs until the round ends on its own clock, and `RESULT CONTROL-ROUND` requires
+`total_mp_kills`, `aiteam_*` and the health word to stay unchanged. `--health-offset`/
+`--alive-offset` default to `0x1044`/`0xF7A` as covered above.
+Loop lock: `LOOP_LOCK_PATH` overrides the lock's base path (tests use it to avoid touching the real
+lock); `LOOP_LOCK_SLOW_TESTS=1` runs `tools_py/tests/test_loop_lock.py`'s full-scale timing suite
+(~130 s) instead of the always-on ~110 s smoke scaled to 1/30. `scripts/run_detached.sh` (launched
+with `--purpose launch*` for an online match) writes a quiet marker (`logs/.quiet`, keyed to the
+Windows pid) that tells other agents to stay off `build.sh test`, the gate, `unittest` and large-log
+parsing while a match runs; records a 1 s host CPU sampler into the run directory; and refuses to
+start below 4 GB free on `C:`. `scripts/pin_harness.sh` archives `tools_py`/`scripts` at a given
+commit into the run directory and re-execs under `PYTHONPATH` pointed at that snapshot plus
+**`PYTHONSAFEPATH=1`**, so a pinned run cannot accidentally import the live tree instead (Python
+otherwise prepends the script's own directory to `sys.path`).
+`scripts/parity/ladder_frostfire.sh --pinned <outdir>` is the ladder launch template: kills stale
+drivers, checks the lock and disk, pins the harness, dry-runs first, then runs the pinned
+`online_match_ours.py --rounds … --endgame route --route … --auto-swap` under `run_detached.sh` and
+polls its `.done` marker. Its pinned-snapshot default and its exit codes are being revised by a
+close-out fix wave as this is written -- see the script's own header for the current values rather
+than this paragraph. `tools_py/parity/verdict_replay.py <run_A.log> <run_B.log> [--per-round]` is
+the second, independent kill scorer (primary signal: the round-state valves -- `total_mp_kills`,
+`aiteam_*`, the clock -- corroborated by the actor fields), test-driven against synthetic and real
+fixtures per spec §5.1.1, and importing nothing from `online_match_ours.py` or `verdict_core.py` by
+design, so a parser bug in one cannot hide behind agreement with the other. `tools_py/parity/
+verdict_core.py` holds the pure, IO-free scorers (`score-control`, `move-path`, `contact`,
+`starvation`) both the harness's own preconditions and Task 1's launch-1 scoring share, with a CLI
+for offline replay of any stored log pair.
 `socom2.exe` takes the ELF path as argv[1]; it finds the `.iso` next to the ELF or one level up
 (`game/`) or via `PS2X_CD_IMAGE`; memory cards live in `game/disc/mc0`.
 PCSX2 reference: `tools/pcsx2/pcsx2-qt.exe -batch -nogui -fastboot -logfile <log> "<iso>"`.
