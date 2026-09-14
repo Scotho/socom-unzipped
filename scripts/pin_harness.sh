@@ -85,15 +85,18 @@ fi
 # concurrent `take`/reap glancing at the process list while this runs would see it as busy. It is
 # sub-second, so in practice this never lines up with a stale-break window, but it is the same class
 # of process as the one the busy list exists to protect against.
-check=$(PYTHONPATH="$harness" PYTHONSAFEPATH=1 python -c \
-  "import tools_py.parity.online_match_ours as m; print(m.__file__)" 2>&1)
-norm_harness=$(printf '%s' "$harness" | tr '\\' '/')
-norm_check=$(printf '%s' "$check" | tr '\\' '/')
-case "$norm_check" in
-  "$norm_harness"*)
-    echo "pin_harness: OK -- $check";;
-  *)
-    echo "pin_harness: WARNING -- pinned import check did not resolve under $harness: $check" >&2;;
-esac
+# The comparison is python's, on real paths (close-out wave): a string prefix match WARNed whenever <out_dir> was
+# relative (logs/parity/...) or an MSYS /c/... path, because python prints C:\... . The snapshot is handed over as
+# MSYS resolves it (`pwd -W`: C:/...), which python can realpath.
+harness_win=$(cd "$harness" && { pwd -W 2>/dev/null || pwd; })
+check=$(PYTHONPATH="$harness_win" PYTHONSAFEPATH=1 python -c \
+  "import os, sys, tools_py.parity.online_match_ours as m
+h = os.path.normcase(os.path.realpath(sys.argv[1])); f = os.path.normcase(os.path.realpath(m.__file__))
+print(m.__file__); sys.exit(0 if f.startswith(h + os.sep) else 3)" "$harness_win" 2>&1)
+if [ $? -eq 0 ]; then
+  echo "pin_harness: OK -- $check"
+else
+  echo "pin_harness: WARNING -- pinned import check did not resolve under $harness: $check" >&2
+fi
 
 echo "$harness"

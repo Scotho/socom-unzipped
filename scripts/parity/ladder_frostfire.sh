@@ -12,7 +12,10 @@
 #                                                                     run, then launch DETACHED (scripts/run_detached.sh
 #                                                                     --purpose launch-ladder: loop lock, logs/.quiet, 1 s
 #                                                                     CPU sampler, refuses below 4 GB free on C:) on THAT
-#                                                                     snapshot
+#                                                                     snapshot. A launch is PINNED BY DEFAULT (--pinned is
+#                                                                     accepted and changes nothing)
+#   scripts/parity/ladder_frostfire.sh --live [out_dir]               the explicit opt-out: launch on the LIVE tree (no
+#                                                                     snapshot; RESULT lines print harness=<sha>-live)
 #   scripts/parity/ladder_frostfire.sh --outcome <rc> <drive_log>     print the done-marker line for a harness exit code
 #
 # Pinning (scripts/pin_harness.sh: `git archive HEAD tools_py scripts` into <out_dir>/harness with HARNESS_COMMIT /
@@ -24,7 +27,8 @@
 # Markers: run_detached.sh writes `exit=<code>` to logs/<name>.detached when the lock is released; the child writes
 # logs/<name>.done as its last act: `done <rc> mpexit=<rc> <outcome> harness=<commit> <EXE_BUILD>`, <outcome> one of
 # LOBBY-FAIL <class> (exit 4, R47: no round was played -- never a usable round, nothing toward the A1 stop rules),
-# KILL (0), NO-KILL (1), NO-DATA (2), NO-CONTROL (3), PIN-FAIL (7), EXIT-<rc>.
+# KILL (0), NO-KILL (1), NO-DATA (2), NO-CONTROL (3), CRASH (5: an uncaught harness exception -- never NO-KILL),
+# PIN-FAIL (7), EXIT-<rc>.
 #
 # Before a launch (plan Task 5 Step 3): the local Horizon stack running (server/), persona B on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, `powershell -File scripts/kill_stale_drivers.ps1`, no other heavy host work.
@@ -37,23 +41,29 @@
 # Knobs (environment): ROUTE (default: the SNAPSHOT's tools_py/parity/routes/frostfire_v2.json; the live tree's for an
 # unpinned --dry-run), ROUNDS (4), MOVER (A), --auto-swap always (R66: a SWAP-MOVER continues with the other mover),
 # SECONDS_RUN (2400: ~4 rounds of ~6.5 min + the lobby), PS2X_GS_MAX_PENDING_FRAMES (unset; 0 is the rung-0 A/B knob),
-# PIN_HARNESS_SH (scripts/pin_harness.sh; tests substitute a failing one).
+# PIN_HARNESS_SH (scripts/pin_harness.sh; tests substitute a failing one), RUN_DETACHED_SH (scripts/run_detached.sh;
+# tests substitute one that records its arguments).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 export PATH="/usr/bin:/bin:$PATH"
 
 MODE=launch
-PINNED=0
+PINNED=""
 while :; do
   case "${1:-}" in
     --dry-run) MODE=dry; shift ;;
     --pinned) PINNED=1; shift ;;
-    --child) MODE=child; PINNED=1; shift ;;
+    --live) PINNED=0; shift ;;
+    --child) MODE=child; shift ;;
     --outcome) MODE=outcome; shift ;;
     *) break ;;
   esac
 done
+# close-out wave: a launch (and its detached child) is pinned unless --live says otherwise; a bare --dry-run stays live
+if [ -z "$PINNED" ]; then
+  if [ "$MODE" = dry ]; then PINNED=0; else PINNED=1; fi
+fi
 
 outcome() {   # outcome <rc> <drive_log> -> the <outcome> words of the done marker
   local rc="$1" log="$2" cls
@@ -64,6 +74,7 @@ outcome() {   # outcome <rc> <drive_log> -> the <outcome> words of the done mark
     1) echo "NO-KILL" ;;
     2) echo "NO-DATA" ;;
     3) echo "NO-CONTROL" ;;
+    5) echo "CRASH" ;;
     7) echo "PIN-FAIL" ;;
     *) echo "EXIT-$rc" ;;
   esac
@@ -85,6 +96,7 @@ ROUNDS="${ROUNDS:-4}"
 MOVER="${MOVER:-A}"
 SECONDS_RUN="${SECONDS_RUN:-2400}"
 PIN_HARNESS_SH="${PIN_HARNESS_SH:-scripts/pin_harness.sh}"
+RUN_DETACHED_SH="${RUN_DETACHED_SH:-scripts/run_detached.sh}"
 
 HARNESS=""
 pin() {       # pin <out_dir>: snapshot HEAD into <out_dir>/harness and set HARNESS, or fail LOUDLY (exit 7)
@@ -142,14 +154,20 @@ case "$MODE" in
     mkdir -p logs/parity "$(dirname "$OUT")"
     "${PY[@]}" --dry-run "${ARGS[@]}" || exit $?
     rm -f "logs/${NAME}.done"
-    exec bash scripts/run_detached.sh --purpose launch-ladder --log "logs/parity/detached_${NAME}.txt" \
-         "$0" "logs/${NAME}.detached" --child "$OUT"
+    LIVE_FLAG=()
+    [ "$PINNED" = 1 ] || LIVE_FLAG=(--live)
+    exec bash "$RUN_DETACHED_SH" --purpose launch-ladder --log "logs/parity/detached_${NAME}.txt" \
+         "$0" "logs/${NAME}.detached" --child "${LIVE_FLAG[@]}" "$OUT"
     ;;
   child)
     mkdir -p "$OUT"
     "${PY[@]}" "${ARGS[@]}" > "logs/parity/drive_${NAME}.txt" 2>&1
     rc=$?
-    ident="harness=$(cat "$HARNESS/HARNESS_COMMIT" 2>/dev/null) $(cat "$HARNESS/EXE_BUILD" 2>/dev/null)"
+    if [ "$PINNED" = 1 ]; then
+      ident="harness=$(cat "$HARNESS/HARNESS_COMMIT" 2>/dev/null) $(cat "$HARNESS/EXE_BUILD" 2>/dev/null)"
+    else
+      ident="harness=$(git rev-parse HEAD 2>/dev/null)-live"
+    fi
     echo "mpexit=$rc $ident" >> "logs/parity/drive_${NAME}.txt"
     echo "done $rc mpexit=$rc $(outcome "$rc" "logs/parity/drive_${NAME}.txt") $ident" > "logs/${NAME}.done"
     exit $rc

@@ -221,7 +221,8 @@ def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeou
       * the guest clock 0x4365c0 restarted past its frozen boundary value and kept advancing for
         NEXT_ROUND_CLOCK_RUN_S after the restart (clock_restart);
       * the newest actor row fresh (the actor re-found by its vtable) and within NEXT_ROUND_SPAWN_UNITS (ground) of the
-        side's spawn (`spawns` {tag: (x, y, z)}; a side without one cannot pass).
+        side's spawn OR of the other side's (close-out wave: the game may swap the sides' spawns between rounds)
+        (`spawns` {tag: (x, y, z)}; a side without one cannot pass); info['spawns'] records same | swapped | mixed.
     mp_game_over != 0 ends the wait; an unread mp_round_count at round start is NO-DATA at once (no hang).
     -> (ok, reason, {tag: actor_addr}); `info` (a dict) receives {tag: {step, restart, running, pos, spawn_d}}."""
     info = {} if info is None else info
@@ -252,10 +253,19 @@ def wait_next_round(tails, start_round, clock=time.time, wait=time.sleep, timeou
             if fresh:
                 st["pos"] = actor[1:4]
                 st["spawn_d"] = None if spawn is None else math.hypot(actor[1] - spawn[0], actor[3] - spawn[2])
-            at_spawn = fresh and st["spawn_d"] is not None and st["spawn_d"] <= NEXT_ROUND_SPAWN_UNITS
+                others = [(math.hypot(actor[1] - sp[0], actor[3] - sp[2]), o) for o, sp in sorted((spawns or {}).items())
+                          if o != tag and sp is not None]
+                st["other_d"], st["other"] = min(others) if (spawn is not None and others) else (None, None)
+            own_ok = fresh and st["spawn_d"] is not None and st["spawn_d"] <= NEXT_ROUND_SPAWN_UNITS
+            other_ok = (fresh and not own_ok and st.get("other_d") is not None
+                        and st["other_d"] <= NEXT_ROUND_SPAWN_UNITS)
+            st["at"] = "own" if own_ok else "other" if other_ok else None
+            at_spawn = own_ok or other_ok
             states[tag] = (rc, st["step"] is not None, running, fresh, at_spawn, actor[4] if actor else None)
             done = done and st["step"] is not None and running and at_spawn
         if done:
+            at = {info[tag]["at"] for tag in tails}
+            info["spawns"] = "same" if at == {"own"} else "swapped" if at == {"other"} else "mixed"
             return True, "", {tag: s[5] for tag, s in states.items()}
         if clock() >= t_end:
             return False, ("timed out after %gs: " % timeout) + " ".join(

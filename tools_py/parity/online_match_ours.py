@@ -22,6 +22,7 @@ import os
 import re
 import struct
 import subprocess
+import sys
 import threading
 import time
 
@@ -4553,6 +4554,7 @@ def main():
             file_spawns = {t: map_spawn(tag=t, path=route_path) for t in "AB"
                            if route_path and map_spawn(tag=t, path=route_path)}
             rounds_out = []
+            round_spawns = {}   # close-out wave: {round n: same | swapped | mixed} from the next-round spawn check
             is_kill_any = [False]
             ctl = tuple({vc.CONTROLLABLE: "yes", vc.NO_DATA: vc.NO_DATA}.get(control_sides[t].status, "no")
                         for t in ("A", "B"))
@@ -4783,7 +4785,8 @@ def main():
                          f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
                          f"health_watch={'disarmed' if health is None else 'armed'} "
                          f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
-                         f"stale_shots={stale_shots} missing_shots={missing_shots} {screen_fields(kill_screens)}")
+                         f"stale_shots={stale_shots} missing_shots={missing_shots} {screen_fields(kill_screens)}"
+                         + (f" spawns={round_spawns[n]}" if n in round_spawns else ""))
                 is_kill_any[0] = is_kill_any[0] or is_kill
                 fatal = None
                 if mpw.stalled is not None or mpw.freeze_nodata is not None:
@@ -4791,7 +4794,7 @@ def main():
                 elif not watched_endgame:
                     fatal = "converge mode plays one round"
                 rounds_out.append({
-                    "round": n, "mover": mover, "round_value": round_value, "t": [t_round, t_end], "verdict": verdict,
+                    "round": n, "mover": mover, "round_value": round_value, "spawns": round_spawns.get(n), "t": [t_round, t_end], "verdict": verdict,
                     "rung0": rung0_tok,
                     "ladder": ladder, "rung": rung, "kill": is_kill, "closest_3d_units": closest,
                     "closest_dy": contact.closest_dy, "contact": vars(contact), "events": events, "fired": fired,
@@ -4826,7 +4829,11 @@ def main():
                 steps_txt = " ".join(
                     f"{t}(step={'%.1f' % s['step'] if s['step'] else '?'} restart="
                     f"{'%.1f' % s['restart'] if s['restart'] else '?'} spawn_d="
-                    f"{'%.1f' % s['spawn_d'] if s['spawn_d'] is not None else '?'})" for t, s in sorted(info.items()))
+                    f"{'%.1f' % s['spawn_d'] if s['spawn_d'] is not None else '?'})" for t, s in sorted(info.items())
+                    if t in ("A", "B"))
+                if info.get("spawns"):
+                    steps_txt += f" spawns={info.get('spawns')}"
+                    round_spawns[n] = info["spawns"]
                 if ok:
                     A.sh.log(f"ROUND {n} starts: mp_round_count moved past {prev}, the guest clocks restarted and ran "
                              f"{online_ladder.NEXT_ROUND_CLOCK_RUN_S:g}s, both sides at their spawns, actors re-found "
@@ -4890,5 +4897,21 @@ def main():
                          "would attribute one is not confirmed. See the RESULT line.)")
 
 
+CRASH_EXIT = 5     # close-out wave: an uncaught exception -- never exit 1, which reads as a clean NO-KILL
+
+
+def run_main():
+    """main(), with an uncaught Exception printed (traceback + `RESULT CRASH <type>`) and turned into exit CRASH_EXIT.
+    SystemExit (every deliberate outcome: KILL 0, NO-KILL 1, NO-DATA 2, NO-CONTROL 3, LOBBY-FAIL 4) and
+    KeyboardInterrupt pass through unchanged."""
+    try:
+        main()
+    except Exception as e:                              # noqa: BLE001 - the point
+        import traceback
+        traceback.print_exc()
+        print(f"RESULT CRASH {type(e).__name__}: {e} -- a harness exception, not a round outcome", flush=True)
+        sys.exit(CRASH_EXIT)
+
+
 if __name__ == "__main__":
-    main()
+    run_main()
