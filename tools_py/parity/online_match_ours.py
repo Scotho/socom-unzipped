@@ -1839,10 +1839,13 @@ class KillWatch(threading.Thread):
                     state["alive"] = None
                 elif state["alive"] is not None:
                     prev_t, prev_raw, prev_v = state["alive"]
+                    # The previous (alive-range) health read. Named `alive_raw`/`alive_value`/`alive_at` before the
+                    # Sprint 5 final fix wave (M9) -- logs up to and including ladder launch 2 carry the old keys; no
+                    # parser reads either spelling.
                     self._add("health", tag, {"raw": raw, "value": v, "at": t,
                                               "offset": self.health, "actor": actor,
-                                              "alive_raw": prev_raw, "alive_value": prev_v,
-                                              "alive_at": prev_t})
+                                              "prev_health_raw": prev_raw, "prev_health_value": prev_v,
+                                              "prev_health_at": prev_t})
                     state["alive"] = None            # one death per alive stretch
             state["seen"] = len(hist)
 
@@ -4326,6 +4329,12 @@ def main():
     if problem:
         raise SystemExit(problem)
     watched_endgame = a.endgame in ("route", "cooperative") and not a.control_round
+    if watched_endgame and a.engage_dy != ENGAGE_DY_UNITS:
+        # M4 (Sprint 5 final review): the route/cooperative endgame's contact band is its own (|dy| <= 10, printed on
+        # the ENDGAME BANNER); --engage-dy only reaches the converge endgame, so a non-default value here would be
+        # printed on RUN BANNER and silently ignored.
+        raise SystemExit(f"--engage-dy {a.engage_dy} is not used by --endgame {a.endgame} (its band is fixed); "
+                         f"omit it or use --endgame converge")
     route_path = a.route or default_route_path(a.map)
     ident = identity_tokens()
     if a.dry_run:
