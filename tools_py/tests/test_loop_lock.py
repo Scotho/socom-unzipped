@@ -4,9 +4,16 @@ No game, no build, and never the real lock: every test points LOOP_LOCK_PATH at 
 LOOP_LOCK_PS_CMD at a fake process list (a file the test writes, "pid|ppid|created|name|cmdline" per line),
 and back-dates heartbeats by writing the record directly.
 
-The DEFAULT suite is a <= 15 s smoke (SMOKE: claim, renew, release, one reap, one quiet-marker check; the Sprint 5
-close-out wave, R14 revisited). Every other test -- the races, the interleavings, run/run_detached, the hammer, the
-real-scale renewal (`run -- sleep 130`, ~135 s) -- runs only with LOOP_LOCK_SLOW_TESTS=1, which runs them all.
+The DEFAULT suite is a <= ~30 s smoke (SMOKE; the Sprint 5 close-out wave, R14 revisited, amended by Rulings R73
+and R77; measured 23.5-27.2 s under host load on 2026-09-14):
+claim, renew, release, one reap, one quiet-marker check, and -- because mutual exclusion is the lock's whole job --
+one reaper race (4 takers x 2 rounds on a stale ghost, 0-0.3 s of process-list latency) and one stale-mutex
+double-entry check (3 takers through the critical-section detector). Every other test -- the longer races, the
+interleavings, run/run_detached, the hammer, the real-scale renewal (`run -- sleep 130`, ~135 s) -- runs only with
+LOOP_LOCK_SLOW_TESTS=1, which runs them all (~16 min).
+R73's hygiene test (TestSlowSuiteStamp, always on outside the slow run) fails when scripts/loop_lock.sh's git blob
+differs from fixtures/loop_lock_slow_green.txt: an edit to the lock script needs a green slow run, and only then a
+new stamp (`git hash-object scripts/loop_lock.sh`).
 LOOP_LOCK_TEST_SCRIPTS=<dir> points the suite at another copy of the scripts (used to show a test is
 red against the previous version).
 """
@@ -33,6 +40,8 @@ SMOKE = {
     "test_non_holder_release_exits_1",                                  # release
     "test_stale_heartbeat_with_empty_busy_list_is_reaped",              # one reap
     "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose",      # one quiet-marker check
+    "test_smoke_racing_reapers_with_process_list_latency_one_wins",     # R73: one reaper race
+    "test_smoke_stale_mutex_takers_never_double_enter",                 # R73: one mutex double-entry check
 }
 
 
@@ -401,6 +410,30 @@ class TestRaces(LockTestBase):
             self.assertTrue(self.is_free())
         print("\n[race] per-round (TAKEN, history lines):", self.counts, file=sys.stderr)
 
+    def test_smoke_racing_reapers_with_process_list_latency_one_wins(self):
+        # R73, always on: the reap race above at smoke scale -- a stale ghost, 4 concurrent reapers, 2 rounds, a
+        # process list with 0-0.3 s of random latency so the reapers' busy checks interleave. Exactly one TAKEN
+        # and exactly one REAPED history line per round, nothing stranded beside the lock. (One bash per taker
+        # plus one release per round; the slow race above keeps the 0-2 s latency, 6 rounds and the extra checks.)
+        # Cost, measured 2026-09-14 at ~71 % host CPU: ~4-4.5 s per round, almost all of it loop_lock.sh's own
+        # forks under 4-way contention (one uncontended take ~1.25 s; the latency adds < 0.5 s) -- so ~8-9 s.
+        # Ruling R77: the always-on lock tests may take up to ~30 s in total; measured 23.5-27.2 s (race 8.1-16.5 s at
+        # the heaviest load seen) on 2026-09-14. R73's floor of 4 takers x 2 rounds stays.
+        env = self.env(LOOP_LOCK_PS_CMD="sleep 0.$((RANDOM %% 4)); cat '%s'" % fwd(self.procs))
+        for rnd in range(2):
+            ghost = "sghost%d" % rnd
+            self.write_record(ghost, 3600, hb_age_s=30 * 60)
+            outs = self._race(4, env)
+            winners = [re.search(r"TAKEN by (\S+)", o).group(1) for o in outs if "TAKEN" in o]
+            self.assertEqual(len(winners), 1, (rnd, outs))
+            self.assertEqual(len(re.findall(r'REAPED "%s ' % ghost, self.history())), 1, (rnd, self.history()))
+            self.assertNotIn("DISPLACED", self.history())
+            self.assertEqual(self.strays(), [], rnd)
+            self.assertEqual(self.record()[0], winners[0])
+            rc, out = self.sh("release", winners[0])
+            self.assertEqual(rc, 0, out)
+            self.assertFalse(os.path.exists(self.lockd), out)
+
     def test_hammer_three_takers_one_holder_per_round(self):
         # 3 takers x 10 rounds (100 with LOOP_LOCK_SLOW_TESTS=1), no latency; odd rounds start free, even
         # rounds on a stale ghost.
@@ -626,6 +659,23 @@ class TestInterleavings(LockTestBase):
             self.assertEqual(taken, 1, (rnd, outs))
             self.assertEqual(key[1:3], (1, 1), (rnd, self.history()))
         print("\n[e2b] (TAKEN, MUTEX-BROKEN, REAPED, double entries): %s" % tally, file=sys.stderr)
+
+    def test_smoke_stale_mutex_takers_never_double_enter(self):
+        # R73, always on: one round of e2b above -- a stale token-named mutex, a stale ghost and 3 concurrent takers
+        # through the critical-section detector (LOOP_LOCK_TEST_CS_DIR): nobody else inside the mutex while one
+        # holds it, one break, one reap, one TAKEN.
+        cs = os.path.join(self.tmp, "cs")
+        os.makedirs(cs)
+        self.write_record("ghost", 3600, hb_age_s=50 * 60)
+        self.make_mutex(token_age_s=60)
+        env = self.env(LOOP_LOCK_TEST_CS_DIR=fwd(cs), LOOP_LOCK_TEST_CS_HOLD="0.2")
+        procs = [self.popen("take", "t%d" % i, env=env) for i in range(3)]
+        outs = [p.communicate(timeout=120)[0] for p in procs]
+        double = os.path.join(cs, "double.log")
+        self.assertEqual(_read(double) if os.path.exists(double) else "", "", outs)
+        self.assertEqual(sum(o.startswith("TAKEN") for o in outs), 1, outs)
+        self.assertEqual((self.history().count("MUTEX-BROKEN"), self.history().count("REAPED")), (1, 1), self.history())
+        self.assertEqual(self.strays(), [])
 
     def test_old_graves_are_cleaned_on_take(self):
         grave = self.lock + ".d.reaped.1.2"
@@ -899,7 +949,7 @@ class TestRunDetached(LockTestBase):
         quiet = os.path.join(self.tmp, "quiet_marker")
         job = os.path.join(self.tmp, "job.sh")
         with open(job, "w", newline="\n") as f:
-            f.write("sleep 2\nexit 0\n")
+            f.write("sleep 1\nexit 0\n")
         marker = os.path.join(self.tmp, "job.done")
         env = self._quiet_env(quiet)
         p = subprocess.run([BASH, DETACHED_SH, "--purpose", "some other work", "--quiet",
@@ -1059,6 +1109,33 @@ class TestKillStaleDrivers(unittest.TestCase):
                 if p.poll() is None:
                     p.kill()
                 p.wait(timeout=10)
+
+
+class TestSlowSuiteStamp(unittest.TestCase):
+    """Ruling R73: the slow suite is opt-in, so an edit to scripts/loop_lock.sh must not ship on the smoke alone.
+    fixtures/loop_lock_slow_green.txt records the script's git blob at the last GREEN
+    `LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock`; any other blob fails here."""
+
+    STAMP = os.path.join(ROOT, "tools_py", "tests", "fixtures", "loop_lock_slow_green.txt")
+
+    def test_loop_lock_sh_blob_matches_the_last_green_slow_run(self):
+        if SLOW:
+            self.skipTest("this is the slow run itself: write the stamp only after it is green")
+        if os.environ.get("LOOP_LOCK_TEST_SCRIPTS"):
+            self.skipTest("LOOP_LOCK_TEST_SCRIPTS points at another copy of the scripts")
+        git = shutil.which("git")
+        if not git:
+            self.skipTest("git not found")
+        p = subprocess.run([git, "hash-object", "scripts/loop_lock.sh"], cwd=ROOT, capture_output=True, text=True,
+                           timeout=60)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        blob = p.stdout.strip()
+        self.assertTrue(os.path.exists(self.STAMP), "no stamp: run the slow suite, then record %s" % self.STAMP)
+        stamped = [l.split()[1] for l in _read(self.STAMP).splitlines() if l.startswith("blob ")]
+        self.assertEqual(stamped, [blob],
+                         "scripts/loop_lock.sh (blob %s) differs from the last green slow run's %s: run "
+                         "LOOP_LOCK_SLOW_TESTS=1 python -m unittest tools_py.tests.test_loop_lock and, only if it "
+                         "is green, update %s" % (blob, stamped, self.STAMP))
 
 
 if __name__ == "__main__":
