@@ -340,6 +340,9 @@ class RunLogTail(threading.Thread):
         # The actor address travels with every read: a death is only a death on the actor that was
         # alive a moment ago, and the actor block can be re-pointed (respawn, a different player).
         self.watch_hist = []
+        # Close-out wave: the host time of every read, so a round's slice can tell "read, never moved" (seeded with
+        # the value known at the round start: damage=no) from "never read inside the round" (NO-DATA).
+        self.watch_read_t = []
         # Sprint 5 Task 3: the state the verdicts need, read by CONTENT through verdict_core.
         #   calls[name] = [(t, #n, f12)] for every `[call]` slot (count calls from #n, never lines);
         #   rets[name]  = [(t, #n, v0)];
@@ -440,6 +443,7 @@ class RunLogTail(threading.Thread):
                             if a <= want < a + 4 * len(raw):
                                 v = raw[(want - a) // 4]
                                 self.watch_reads += 1
+                                self.watch_read_t.append(t)
                                 hit = True
                                 if (not self.watch_hist
                                         or self.watch_hist[-1][1:] != (v, self.actor_addr)):
@@ -2737,11 +2741,30 @@ def result_verdict(fired, events, health_armed, watch_reads, stale_shots=(), sta
     return f"ROUND-END ({fired['kind']}; unattributed -- NOT a kill)", False
 
 
-def evidence_shot(c, label, stale, log, missing=None):
+def tail_clock_string(tail):
+    """The newest peeked clock string (0x408f10, 'MM:SS') of a tail, or None."""
+    with tail._lock:                                    # noqa: SLF001 - same module
+        for _, st in reversed(tail.round_rows):
+            v = st.get("clock")
+            if v is not None and not isinstance(v, vc.NoData):
+                return v
+    return None
+
+
+def evidence_shot(c, label, stale, log, missing=None, info=None):
     """A screen that is evidence (kill, final): a stale frame file goes to `stale`, a missing or
-    unreadable one to `missing`; either blocks a PASS (result_verdict)."""
+    unreadable one to `missing`; either blocks a PASS (result_verdict). Spec §5.1 (close-out wave): a
+    capture that succeeds records `info[tag] = (frame age s, peeked clock string)` -- the age is the frame
+    file's (sh.latest_frame, rewritten ~every 150 ms) when the capture returned, None without a file."""
     try:
         c.sh.shot(label, max_age=FRAME_MAX_AGE_S)
+        if info is not None:
+            path, age = getattr(c.sh, "latest_frame", None), None
+            try:
+                age = time.time() - os.path.getmtime(path) if path else None
+            except OSError:
+                pass
+            info[c.tag] = (age, tail_clock_string(c.tail) if getattr(c, "tail", None) is not None else None)
     except winshot.StaleFrameError as e:
         stale.append(f"{c.tag}_{label}")
         log(f"STALE FRAME {c.tag}_{label}: {e}")
@@ -3080,7 +3103,7 @@ def rx_pulse_table(me, clock=time.time, wait=time.sleep, table=None, seconds=Non
 
 def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starvation_alarms, alarms_cleared,
                 max_idle_ms, lagflag_rows, aim_iters=None, contact_s=None, sampler_s=None, round_n=None, mover=None,
-                bp_waits=None, rung0=None):
+                bp_waits=None, rung0=None, screens=None):
     """The brief's one-line ladder result, with spec §5.1's contact time and the sampler period beside the contact
     rows. A field whose rows were zero reads NO-DATA (None, or 0 for a row count), never 0. `aim_iters`
     (aim_iters_field) is appended when given; `rung0` (round 1, online_ladder.rung0_report's token) LAST, as
@@ -3097,6 +3120,7 @@ def ladder_line(rung, controllable, contact_rows, rows_read, damage, kill, starv
             + ("" if aim_iters is None else f" aim_iters={aim_iters}")
             + ("" if bp_waits is None else f" bp_waits={','.join(nd(v) for v in bp_waits)}")
             + ("" if mover is None else f" mover={mover}")
+            + ("" if screens is None else f" {screens}")
             + ("" if rung0 is None else f" RUNG0 {rung0}"))
 
 
@@ -3116,6 +3140,33 @@ def ladder_contact(tailA, tailB, t0=None, t1=None):
     return vc.score_contact([r for r in tailA.actor_ingame() if inside(r[0])],
                             [r for r in tailB.actor_ingame() if inside(r[0])], ca, cb, clk or clkb, (sa, sb),
                             round_time_rows=(rta, rtb), round_steps=(sta, stb))
+
+
+def round_watch_hist(tail, t0, t1):
+    """The health watch's history for one round [t0, t1] (close-out wave). watch_hist stores CHANGES only, so a
+    round whose value never moved has no entry inside it: the slice is seeded with the last entry before t0,
+    re-stamped at t0, so a steady 1.0 reads damage=no. A round with no READ inside it is [] (damage NO-DATA)."""
+    with tail._lock:                                    # noqa: SLF001 - same module
+        reads = tail.watch_read_t
+        k = bisect.bisect_left(reads, t0)
+        if k >= len(reads) or reads[k] > t1:
+            return []
+        hist = list(tail.watch_hist)
+    before = [h for h in hist if h[0] < t0]
+    return ([(t0,) + tuple(before[-1][1:])] if before else []) + [h for h in hist if t0 <= h[0] <= t1]
+
+
+def contact_token(contact):
+    """RESULT contact=: the spec §5.1 contact verdict (verdict_core.score_contact via ladder_contact, the source of
+    contact_s) -> yes | no | NO-DATA."""
+    return vc.NO_DATA if contact.status == vc.NO_DATA else ("yes" if contact.ok else "no")
+
+
+def screen_fields(info):
+    """{tag: (age s | None, clock string | None)} of the kill screens -> 'screen_age_s=<A,B> screen_clock=<A,B>'."""
+    age = lambda t: vc.NO_DATA if (info.get(t) or (None,))[0] is None else f"{info[t][0]:.2f}"
+    clk = lambda t: vc.NO_DATA if (info.get(t) or (None, None))[1] is None else str(info[t][1])
+    return f"screen_age_s={age('A')},{age('B')} screen_clock={clk('A')},{clk('B')}"
 
 
 def _row_at(rows, t, max_age=vc.CONTACT_ROW_MAX_GAP_S):
@@ -4518,6 +4569,7 @@ def main():
                     if starv is not None:
                         starv.new_round(t_round)
                 stale_shots, missing_shots, kill_shots = [], [], {"done": False}
+                kill_screens = {}   # spec §5.1 (close-out wave): {tag: (frame age s, peeked clock string)}
                 if n == 1 and watched_endgame:
                     # rung 0's reported rx pulse table (A3/A4), both sides at once, before anybody walks
                     tt = [threading.Thread(target=lambda sd=sd: rung0_tables.__setitem__(sd.tag, rx_pulse_table(sd)))
@@ -4539,7 +4591,7 @@ def main():
                     if not kill_shots["done"]:
                         kill_shots["done"] = True
                         for c in (A, B):
-                            evidence_shot(c, f"kill_r{n}", stale_shots, A.sh.log, missing_shots)
+                            evidence_shot(c, f"kill_r{n}", stale_shots, A.sh.log, missing_shots, info=kill_screens)
 
                 def monitor():
                     while not duel.stop.is_set():
@@ -4671,7 +4723,7 @@ def main():
                         pairs = [("victim", victim_c, shooter_c, sideA if mover == "A" else sideB)]
                     else:
                         pairs = [("B", B, A, sideA), ("A", A, B, sideB)]
-                    verdicts_d = [damage_verdict(inside(v.tail.watch_hist) if v.tail.watch_reads else [],
+                    verdicts_d = [damage_verdict(round_watch_hist(v.tail, t_round, t_end),
                                                  inside(v.tail.actor_ingame()), inside(s.tail.actor_ingame()),
                                                  side.r1_times)
                                   for _, v, s, side in pairs]
@@ -4714,7 +4766,8 @@ def main():
                     aim_iters=aim_iters_field((sideA if mover == "A" else sideB).aims,
                                               t0=endgame and endgame.get("t_fight")),
                     round_n=n, mover=mover,
-                    bp_waits=tuple(online_ladder.bp_waits(inside(c.tail.bp_rows)) for c in (A, B)), rung0=rung0_tok)
+                    bp_waits=tuple(online_ladder.bp_waits(inside(c.tail.bp_rows)) for c in (A, B)), rung0=rung0_tok,
+                    screens=screen_fields(kill_screens) if kill_shots["done"] else None)
                 if fired is None:
                     obs = [e["kind"] for e in events if not e.get("firing")]
                     if obs:
@@ -4725,12 +4778,12 @@ def main():
                        f"detail={json.dumps(fired['detail'], default=float)} " if fired else
                        f"(no signal in {a.kill_timeout}s) ")
                 A.sh.log(f"RESULT round={n} {verdict} {ident} {sig}"
-                         f"closest_3d={closest} dy_at_closest={contact.closest_dy} contact={duel.contact.is_set()} "
+                         f"closest_3d={closest} dy_at_closest={contact.closest_dy} contact={contact_token(contact)} "
                          f"rows A={len(A.tail.ingame())} B={len(B.tail.ingame())} "
                          f"actor_rows A={len(A.tail.actor_ingame())} B={len(B.tail.actor_ingame())} "
                          f"health_watch={'disarmed' if health is None else 'armed'} "
                          f"reads={watch_reads} misses={watch_misses} changes={watch_hist} "
-                         f"stale_shots={stale_shots} missing_shots={missing_shots}")
+                         f"stale_shots={stale_shots} missing_shots={missing_shots} {screen_fields(kill_screens)}")
                 is_kill_any[0] = is_kill_any[0] or is_kill
                 fatal = None
                 if mpw.stalled is not None or mpw.freeze_nodata is not None:
