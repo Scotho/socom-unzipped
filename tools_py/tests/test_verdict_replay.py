@@ -5,7 +5,8 @@ loosened: every bar a test relies on is asserted against its registered value in
 `TestPreRegisteredBars`, so a silent edit of a bar fails here.
 
 Two kinds of input:
-  * trimmed raw excerpts of launch 8c (clock round-end negative control) and launch 3c (no contact)
+  * trimmed raw excerpts of launch 8c (clock round-end negative control), launch 3c (no contact) and
+    ladder launch 2 round 1 (the acceptance PASS, pinned so a scorer change that flips it fails here)
     under `fixtures/replay/` (provenance in that folder's README.md; make_fixtures.py regenerates);
   * synthetic two-instance logs written here in the exe's own row formats (`[peek]`, `[call]`,
     `[socom2-input] state`), one hazard per test on top of one baseline kill that meets every clause.
@@ -19,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from tools_py.parity import verdict_replay as vr
 
@@ -30,6 +32,9 @@ FIXTURES = os.path.join(HERE, "fixtures", "replay")
 # (research/21 §8.3 and §9.1); the trimmed fixtures do not carry #0.
 L8C_OFFSET_B = 5.80
 L3C_OFFSET_B = 6.00
+# Ladder launch 2 (the acceptance PASS): B + 5.600 s, MoveScale #0 at A 427.6 / B 422.0 in the full logs --
+# the alignment research/22's scoring used.
+L2R1_OFFSET_B = 5.600
 
 
 def fixture(name):
@@ -261,6 +266,57 @@ class TestLaunch3cNoContact(unittest.TestCase):
     def test_no_kill_no_death(self):
         v = vr.score_logs(fixture("l3c_A.txt"), fixture("l3c_B.txt"), offset_b=L3C_OFFSET_B)
         self.assertEqual((v.word, v.reason, v.exit_code), (vr.NO_KILL, vr.R_NO_DEATH, 1), v.text())
+
+
+class TestLadderLaunch2Round1Kill(unittest.TestCase):
+    """The acceptance PASS, pinned (final review I1): ladder launch 2 round 1 at the offset its scoring used
+    (B + 5.600 s, MoveScale #0 on both full logs). The full logs score `KILL killer=A victim=B t=141.33
+    round=1` (research/22); the trimmed pair must say the same, so a scorer change that flips it fails here."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.a, cls.b = fixture("l2r1_A.txt"), fixture("l2r1_B.txt")
+
+    def score(self, **kw):
+        return vr.score_logs(self.a, self.b, offset_b=L2R1_OFFSET_B, **kw)
+
+    def test_kill_killer_a_victim_b_round_1(self):
+        v = self.score()
+        self.assertEqual((v.word, v.killer, v.victim, v.round, v.exit_code), (vr.KILL, "A", "B", 1, 0), v.text())
+        self.assertTrue(v.headline().startswith("KILL killer=A victim=B t="), v.text())
+        self.assertTrue(v.headline().endswith(" round=1"), v.text())
+        self.assertAlmostEqual(v.t, 141.33, delta=0.05)
+        self.assertTrue(all(ok is not False for _, ok, _ in v.clauses), v.text())
+
+    def test_per_round_round_1_kill_then_no_death(self):
+        lines = self.score(per_round=True)
+        self.assertEqual([l.headline() if l.word != vr.KILL else l.headline().split(" t=")[0] + " round=%d" % l.round
+                          for l in lines], ["KILL killer=A victim=B round=1", "NO-KILL no-death round=2"],
+                         "\n".join(l.text() for l in lines))
+
+    def test_the_kill_clauses_read_what_research_22_reports(self):
+        c = {name: txt for name, _, txt in self.score().clauses}
+        self.assertIn("B +0x1044=0.000 word0=006691a0", c["victim-death"])
+        self.assertIn("A: total_mp_kills 0->1", c["total_mp_kills"])
+        self.assertIn("B: aiteam_08 1->0", c["aiteam_08"])
+        self.assertIn("A: aiteam_08 1->0", c["aiteam_08"])
+        self.assertIn("B player_team 8 -> aiteam_08; A player_team 0", c["victim-team"])
+        worst_3d = float(c["attribution"].split("max 3-D ")[1].split()[0])
+        self.assertTrue(25.0 < worst_3d <= vr.ATTRIBUTION_3D_MAX, c["attribution"])   # full logs 29.22, fixture 29.15
+        self.assertNotIn("press at", c["attribution"].split(":")[0])
+        self.assertIn("press at", c["attribution"])
+
+    def test_a_bar_mutation_flips_the_verdict(self):
+        # The proof that this fixture guards the verdict: tighten the attribution distance below the pair's
+        # measured 29 units in memory and the same rows stop being a KILL.
+        with mock.patch.object(vr, "ATTRIBUTION_3D_MAX", 20.0):
+            v = self.score()
+        self.assertEqual((v.word, v.reason), (vr.NO_KILL, vr.R_UNATTRIBUTED), v.text())
+        self.assertEqual(vr.ATTRIBUTION_3D_MAX, 60.0)
+
+    def test_the_other_shooter_is_not_a_kill(self):
+        v = self.score(shooter="B")
+        self.assertEqual((v.word, v.reason), (vr.NO_KILL, vr.R_UNATTRIBUTED), v.text())
 
 
 # ---------------------------------------------------------------------------------------------
@@ -949,7 +1005,7 @@ class TestParserParity(unittest.TestCase):
 
     def test_row_counts_agree_with_verdict_core(self):
         from tools_py.parity import verdict_core as vc
-        for name in ("l8c_A.txt", "l8c_B.txt", "l3c_A.txt", "l3c_B.txt"):
+        for name in ("l8c_A.txt", "l8c_B.txt", "l3c_A.txt", "l3c_B.txt", "l2r1_A.txt", "l2r1_B.txt"):
             lines = fixture(name)
             p = vc.parse_log(lines)
             mine = vr.row_counts(vr.parse_log(lines))
@@ -968,7 +1024,7 @@ class TestParserParity(unittest.TestCase):
 
     def test_row_times_and_values_agree_with_verdict_core(self):
         from tools_py.parity import verdict_core as vc
-        for name in ("l8c_A.txt", "l8c_B.txt", "l3c_A.txt", "l3c_B.txt"):
+        for name in ("l8c_A.txt", "l8c_B.txt", "l3c_A.txt", "l3c_B.txt", "l2r1_A.txt", "l2r1_B.txt"):
             lines = fixture(name)
             p = vc.parse_log(lines)
             mine = vr.parse_log(lines)

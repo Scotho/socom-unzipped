@@ -40,6 +40,14 @@ FIXTURES = [
     # ~20 s; B + 6.00 s = A.
     ("l3c_A.txt", "logs/run_A_20260913_115809.log", 393.0, 696.0, 80),
     ("l3c_B.txt", "logs/run_B_20260913_115809.log", 387.0, 690.0, 80),
+    # ladder launch 2 round 1 (the acceptance PASS, research/22 "Ladder launch 2"): B's death at shared
+    # (A) 586.05, mp_round_count 0 -> 1 at A 618.9 / B 619.1 shared, clock restart ~624.4; B + 5.60 s = A.
+    # Death -30 s .. restart +2 s at one row per ~8 s, dense (one row in 2) over death -5..+5 s on both
+    # (fall, attribution, killer +-0.5 s, alive byte, kill-row window) and one in 3 on B at death
+    # -12..-10 s (the self-grenade window's guest-clock endpoint). Rounds 2-3 would add ~150 KB each.
+    ("l2r1_A.txt", "logs/run_A_20260913_230442.log", 556.05, 626.4, 32, [(581.05, 591.05, 2)]),
+    ("l2r1_B.txt", "logs/run_B_20260913_230442.log", 550.45, 620.8, 32,
+     [(568.45, 570.45, 3), (575.45, 585.45, 2)]),
 ]
 
 _ITEM = re.compile(r"@([0-9a-fA-F]+):((?:\s+[0-9a-fA-F]{8}\([^)]*\))+)")
@@ -73,7 +81,10 @@ def _trim_peek(line):
     return " ".join(parts)
 
 
-def make(name, src, t0, t1, stride):
+def make(name, src, t0, t1, stride, dense=()):
+    """`dense`: [(d0, d1, dense_stride)] source-clock spans kept at a finer stride. The stride changes
+    only at a kept anchor (a whole anchor segment overlapping a span is dense) and the row count restarts
+    there, so the parsers' index interpolation between two anchors still sees evenly strided rows."""
     with open(os.path.join(ROOT, src), "r", errors="replace") as f:
         lines = f.read().split("\n")
     # the window: from the first MoveScale call at >= t0 to the last at <= t1
@@ -82,20 +93,29 @@ def make(name, src, t0, t1, stride):
     inside = [(i, t) for i, t in calls if t0 <= t <= t1]
     first, last = inside[0][0], inside[-1][0]
     out, last_anchor, peek_i = [], None, 0
-    kept_calls = set()
+    kept_calls = {}
     for i, t in inside:
         if last_anchor is None or t - last_anchor >= ANCHOR_SPACING_S:
-            kept_calls.add(i)
+            kept_calls[i] = t
             last_anchor = t
-    kept_calls.add(last)
+    kept_calls.setdefault(last, inside[-1][1])
+    starts = sorted(kept_calls.items())
+    seg_stride = {}
+    for k, (i, t) in enumerate(starts):
+        t_next = starts[k + 1][1] if k + 1 < len(starts) else t
+        s = [ds for d0, d1, ds in dense if t <= d1 and t_next >= d0]
+        seg_stride[i] = min(s) if s else stride
+    cur = stride
     for i in range(first, last + 1):
         line = lines[i].rstrip("\r")
         if line.startswith("[peek]"):
-            if peek_i % stride == 0:
+            if peek_i % cur == 0:
                 out.append(_trim_peek(line))
             peek_i += 1
         elif i in kept_calls:
             out.append(line)
+            if dense:
+                cur, peek_i = seg_stride[i], 0
         elif line.startswith("[socom2-input] state"):
             out.append(line)
     with open(os.path.join(OUT, name), "w", newline="\n") as f:
