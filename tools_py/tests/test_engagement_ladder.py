@@ -42,7 +42,7 @@ class LadderLineTest(unittest.TestCase):
         self.assertEqual(M.ladder_rung(("yes", "yes"), True, "no"), 2)
         self.assertEqual(M.ladder_rung(("yes", "yes"), False, "yes"), 1)
         self.assertEqual(M.ladder_rung(("yes", "NO-DATA"), True, "yes"), 0)
-        self.assertEqual(M.ladder_rung(("yes", "yes"), None, "no"), 1)
+        self.assertEqual(M.ladder_rung(("yes", "yes"), None, "no"), vc.NO_DATA)   # contact NO-DATA (fix round)
 
 
 class DamageVerdictTest(unittest.TestCase):

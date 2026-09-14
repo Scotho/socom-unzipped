@@ -61,7 +61,8 @@ class RouteJoinTest(unittest.TestCase):
 
 class TemplateAutoSwapTest(unittest.TestCase):
     def test_the_template_passes_auto_swap(self):
-        text = open(os.path.join(ROOT, "scripts", "parity", "ladder_frostfire.sh")).read()
+        with open(os.path.join(ROOT, "scripts", "parity", "ladder_frostfire.sh")) as f:
+            text = f.read()
         args = text.split("ARGS=(", 1)[1].split(")", 1)[0]
         self.assertIn("--auto-swap", args)
 
@@ -70,7 +71,8 @@ class Rung0ParametersTest(unittest.TestCase):
     def test_registered_instrument_parameters(self):
         self.assertEqual(LD.RUNG0_INSTRUMENT_PARAMETERS,
                          {"movescale_min_per_s": 17.0, "window_s": 60.0, "clock_rate_min": 0.95, "bp_waits_max": 100})
-        src = open(LD.__file__).read()
+        with open(LD.__file__, encoding="utf-8") as f:
+            src = f.read()
         self.assertIn("instrument parameters, not acceptance bars (plan Amendment A4)", src)
 
 

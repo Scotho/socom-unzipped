@@ -2,7 +2,7 @@
 
   * rung 0: MoveScale >= 17 calls/s over a 60 s window with both round clocks running, the clock string at >= 0.95 of
     real time, back-pressure waits not in the hundreds (parsed from `[gs-gl stats] backpressure ... waits=` into
-    `bp_waits=<A,B>` on the LADDER line); a failure prints `RESULT RUNG0-FAIL <reason>`;
+    `bp_waits=<A,B>` on the LADDER line); a failure is recorded as `RUNG0 FAIL <reason>` (R68, never fatal);
   * the rung-0 rx pulse table (+-64/+-80/+-96, 0.3 s each at spawn, degrees per pulse; reported, not a gate);
   * RESULT lines carry `harness=<commit> exe=<sha256 prefix>`, read from a pinned snapshot's HARNESS_COMMIT /
     EXE_BUILD when present;
@@ -172,7 +172,8 @@ class DryRunTest(unittest.TestCase):
     @unittest.skipUnless(BASH, "bash not found")
     def test_the_launch_template_passes_its_own_dry_run(self):
         self.assertTrue(os.path.exists(TEMPLATE))
-        text = open(TEMPLATE).read()
+        with open(TEMPLATE) as f:
+            text = f.read()
         for need in ("pin_harness.sh", "PYTHONSAFEPATH=1", "run_detached.sh", "--purpose launch-ladder",
                      "PS2X_GS_STATS=1", "0x4365c0:1", "--route"):
             self.assertIn(need, text)

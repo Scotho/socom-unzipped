@@ -2174,7 +2174,7 @@ def health_peek_problems(spec, health_offset):
             f"e.g. *{ALIVE_PEEK_BASE:#x}+{health_offset:#x}:1 (or pass --health-offset none)"]
 
 
-def launch_refusal_lines(env, alive_offset, health_offset):
+def launch_refusal_lines(env, alive_offset, health_offset, ident=""):
     """The pre-launch refusal of a --converge run -> (lines to print, exit code); ([], 0) = launch.
     Each instrument refuses under its own label: the move-path watch's preconditions and the armed health
     watch's peek coverage are different failures and are named apart."""
@@ -2184,10 +2184,11 @@ def launch_refusal_lines(env, alive_offset, health_offset):
     hp = health_peek_problems(env.get("PS2X_PEEK", ""), health_offset)
     lines += [f"MOVE-PATH WATCH REFUSES: {p}" for p in mp]
     lines += [f"HEALTH WATCH REFUSES: {p}" for p in hp]
+    tail = f" {ident}" if ident else ""                  # harness= / exe= on every RESULT line (fix round minor)
     if mp:
-        lines.append("RESULT NO-DATA move-path watch (not launched)")
+        lines.append(f"RESULT NO-DATA move-path watch (not launched){tail}")
     if hp:
-        lines.append("RESULT NO-DATA health watch (not launched)")
+        lines.append(f"RESULT NO-DATA health watch (not launched){tail}")
     return lines, (2 if lines else 0)
 
 
@@ -2302,13 +2303,21 @@ class MovePathWatch(threading.Thread):
                                            f"{now - eps[-1][0]:.1f}s > FREEZE_MAX_S {FREEZE_MAX_S:g}s")
                     if self.freeze_nodata is None:
                         self.freeze_nodata = (tag, v, now + t0)
-                elif fe is not None and now - fe < vc.MOVE_STALL_S:
-                    frozen = eps[-1][2]
-                    v = vc.MovePathVerdict("disarmed", v.since,
-                                           v.detail + (f"; freeze: round clock 0x4365c0 still since "
-                                                       f"{eps[-1][0]:.1f}" if frozen else
-                                                       f"; freeze: round clock 0x4365c0 ran again at {fe:.1f}, "
-                                                       f"re-armed {vc.MOVE_STALL_S:g}s after"))
+                elif eps and eps[-1][2]:
+                    v = vc.MovePathVerdict("disarmed", v.since, v.detail + f"; freeze: round clock 0x4365c0 still "
+                                                                           f"since {eps[-1][0]:.1f}")
+                elif fe is not None:
+                    # fix round minor: a short freeze PAUSES the stall clock -- the silence before it still counts
+                    start = v.since if v.since is not None else now
+                    silent = (now - start) - sum(max(0.0, min(now, b) - max(start, a)) for a, b, _ in eps)
+                    if silent < vc.MOVE_STALL_S:
+                        v = vc.MovePathVerdict("disarmed", v.since,
+                                               v.detail + f"; freeze: round clock 0x4365c0 ran again at {fe:.1f}; "
+                                                          f"{silent:.1f}s silent outside freezes "
+                                                          f"(< {vc.MOVE_STALL_S:g}s)")
+                    else:
+                        v = vc.MovePathVerdict("stalled", v.since,
+                                               v.detail + f"; {silent:.1f}s silent outside freezes")
             prev = self.verdicts.get(tag)
             if prev is None or prev.status != v.status:
                 since = "-" if v.since is None else f"{v.since:.1f}"
@@ -2962,9 +2971,12 @@ def endgame_arg_problem(a):
 # --- the LADDER line and the damage verdict ------------------------------------------------------------------
 def ladder_rung(controllable, contact_ok, damage):
     """0 not controllable on both; 1 no contact (spec §5.1: vc.score_contact(...).ok -- the band for >= 5.0 s over
-    >= 10 rows; None = NO-DATA); 2 contact; 3 contact and damage."""
+    >= 10 rows); 2 contact; 3 contact and damage. Contact NO-DATA (`contact_ok` None) on a controllable pair is
+    vc.NO_DATA -- a round whose contact could not be scored is not a rung-1 round (fix round minor)."""
     if tuple(controllable) != ("yes", "yes"):
         return 0
+    if contact_ok is None:
+        return vc.NO_DATA
     if not contact_ok:
         return 1
     return 3 if damage == "yes" else 2
@@ -3313,8 +3325,18 @@ def _walk_leg(me, target_xz, clock, wait, log, on_poll=None, back=False, stand_o
     return d0, math.hypot(target_xz[0] - b[1], target_xz[1] - b[3])
 
 
+ROUTE_NEAR_GAIN_UNITS = 0.5      # within ROUTE_PROGRESS_UNITS of arriving, any new minimum this big is progress
+
+
+def progress_need(d_from, arrive):
+    """The gain that counts as progress from a distance `d_from` toward a target reached at `arrive`: ROUTE_PROGRESS_UNITS,
+    or -- within that of arriving -- ROUTE_NEAR_GAIN_UNITS (fix round minor: an overshooting approach near the waypoint
+    makes new minima of the distance to go that are smaller than 6 units, and must not trip the budgets)."""
+    return ROUTE_NEAR_GAIN_UNITS if d_from - arrive < ROUTE_PROGRESS_UNITS else ROUTE_PROGRESS_UNITS
+
+
 class Progress:
-    """The no-progress budget: `best` must improve by ROUTE_PROGRESS_UNITS within ROUTE_NO_PROGRESS_S."""
+    """The no-progress budget: `best` must improve by progress_need(best, arrive) within ROUTE_NO_PROGRESS_S."""
 
     def __init__(self, clock):
         self.clock, self.best, self.t = clock, None, clock()
@@ -3322,8 +3344,8 @@ class Progress:
     def reset(self):
         self.best, self.t = None, self.clock()
 
-    def stalled(self, d):
-        if self.best is None or d < self.best - ROUTE_PROGRESS_UNITS:
+    def stalled(self, d, arrive=0.0):
+        if self.best is None or d < self.best - progress_need(self.best, arrive):
             self.best, self.t = d, self.clock()
             return None
         idle = self.clock() - self.t
@@ -3372,20 +3394,27 @@ def follow_route(me, route, clock=time.time, wait=time.sleep, log=None, stop=Non
             if not lo <= a[2] <= hi:
                 return fail(f"off the route's floor before wp{wp} (y {a[2]:.1f} outside {lo:.0f}..{hi:.0f})")
         if d <= w["arrive"]:
-            if w["floor_y"] is not None and abs(a[2] - w["floor_y"]) > ROUTE_FLOOR_TOL_Y:
-                return fail(f"wrong floor at wp{wp} (y {a[2]:.1f}, the leg's floor {w['floor_y']:.1f})")
+            # fix round minor: on a ramp leg the actor stands grade x d below/above the waypoint's floor when it arrives
+            grade = 0.0
+            if w["floor_y"] is not None and wp > 0 and route[wp - 1]["floor_y"] is not None:
+                run = math.dist(pos(route[wp - 1]), pos(w))
+                grade = abs(w["floor_y"] - route[wp - 1]["floor_y"]) / run if run > 1e-6 else 0.0
+            tol_y = ROUTE_FLOOR_TOL_Y + grade * d
+            if w["floor_y"] is not None and abs(a[2] - w["floor_y"]) > tol_y:
+                return fail(f"wrong floor at wp{wp} (y {a[2]:.1f}, the leg's floor {w['floor_y']:.1f} "
+                            f"+-{tol_y:.1f})")
             log(f"ROUTE {me.tag} wp{wp} reached at ({here[0]:.1f},{a[2]:.1f},{here[1]:.1f})")
             wp, stuck = wp + 1, 0
             prog.reset()
             continue
-        idle = prog.stalled(d)
+        idle = prog.stalled(d, w["arrive"])
         if idle is not None:
             return fail(f"no progress toward wp{wp} for {idle:.1f}s (best {prog.best:.1f} units)")
         leg = _walk_leg(me, pos(w), clock, wait, log, on_poll=on_poll)
         legs += 1
         if leg is None:
             return fail("NO-DATA heading or position")
-        if leg[0] - leg[1] < ROUTE_PROGRESS_UNITS:
+        if leg[0] - leg[1] < progress_need(leg[0], w["arrive"]):
             stuck += 1
             log(f"ROUTE {me.tag} wp{wp}: leg gained {leg[0] - leg[1]:.1f} units ({stuck}/{ROUTE_STUCK_LEGS})")
             if stuck >= ROUTE_STUCK_LEGS:
@@ -3420,7 +3449,7 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
             return {"ok": False, "reason": f"leg cap {ROUTE_MAX_LEGS}", "legs": legs, "d3": d3}
         if clock() - t0 > CLOSE_MAX_S:
             return {"ok": False, "reason": f"time budget {CLOSE_MAX_S:g}s exceeded closing", "legs": legs, "d3": d3}
-        idle = prog.stalled(d3)
+        idle = prog.stalled(d3, stop_d3)
         if idle is not None:
             return {"ok": False, "reason": f"no progress closing for {idle:.1f}s (best {prog.best:.1f})", "legs": legs,
                     "d3": d3}
@@ -3428,7 +3457,7 @@ def close_to(me, other, clock=time.time, wait=time.sleep, log=None, stop=None, o
         legs += 1
         if leg is None:
             return {"ok": False, "reason": "NO-DATA heading or position", "legs": legs}
-        stuck = stuck + 1 if leg[0] - leg[1] < ROUTE_PROGRESS_UNITS else 0
+        stuck = stuck + 1 if leg[0] - leg[1] < progress_need(leg[0], stop_d3) else 0
         if stuck >= ROUTE_STUCK_LEGS:
             return {"ok": False, "reason": "stuck closing", "legs": legs, "d3": d3}
 
@@ -4191,7 +4220,7 @@ def main():
         # whose round valves cannot be identified, is a match spent proving nothing.
         for prob in peek_spec_problems(os.environ.get("PS2X_PEEK", "")):
             print(f"PEEK SPEC: {prob}", flush=True)
-        lines, code = launch_refusal_lines(os.environ, a.alive_offset, a.health_offset)
+        lines, code = launch_refusal_lines(os.environ, a.alive_offset, a.health_offset, ident)
         if watched_endgame:
             eg = endgame_preconditions(os.environ)
             lines += [f"ENDGAME REFUSES: {p}" for p in eg]
