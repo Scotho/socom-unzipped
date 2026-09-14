@@ -7,36 +7,47 @@
    `> Superseded by …` blockquote, the blockquote wins, and where anything disagrees with KNOWN.md,
    KNOWN.md wins.
 2. **`docs/ROADMAP.md`** — why the work is ordered the way it is: what Sprint 4's results overturned
-   (§3) and what each later sprint is for. Its §7 checklist defers to KNOWN.md.
-3. **The sprint in flight: Sprint 5** (`docs/CURRENT_SPRINT.md` names its branch, spec, plan and
-   ledger) —
-   `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
-   `docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`. Task 0
-   (preconditions: the heartbeat loop lock with `run` and `scripts/run_detached.sh`,
-   `scripts/kill_stale_drivers.ps1`, Python tests inside `./build.sh test`) has landed; pick up at the
-   next unchecked task in the plan. Its three threads: Frostfire control handover (the default test map, where
-   neither player moves), confirming the sourced kill readout (`actor+0x1044` / `actor+0xF7A`,
-   `docs/research/19`), and the first kill.
-4. **`docs/STATUS.md`** — "Current state" at the top, then the 2026-09-13 "Sprint 4 landed" and
-   "carried findings" entries.
+   (§3), what Sprint 5 settled (its own §6 entry), and what each later sprint is for. Its §7
+   checklist defers to KNOWN.md.
+3. **Sprint 5 is CLOSED, pending merge** (`docs/CURRENT_SPRINT.md`): **the acceptance test PASSED**
+   — a two-instance Frostfire match ends in a kill, read from guest memory and confirmed by two
+   independent scorers (KillWatch on the actor fields, `verdict_replay.py` on the round-state
+   valves). Its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`)
+   ends with `## Outcome` and `## Rulings made on the owner's behalf` sections; its spec is
+   `docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md`.
+   **The next work is Sprint 6**, per `docs/ROADMAP.md` §6: lobby hardening, the online freeze root
+   cause, single-player teleports, the skeleton root decay, a gameplay-state gate probe, exact-oracle
+   math, a mixed ours/PCSX2 match, and the rest of the revised order — with **repeatability of the
+   acceptance test as a standing goal** (`docs/ROADMAP.md` §7 Sprint 7, pulled forward in emphasis:
+   the one usable ladder launch killed on 3 of 4 rounds, and round 4 missed on a -4.1° aim error that
+   sat inside tolerance and never corrected, `docs/KNOWN.md` §4). `docs/CURRENT_SPRINT.md` still
+   names Sprint 5's branch/spec/plan/ledger until a Sprint 6 plan exists to replace them; the
+   runtime stays frozen at `92d30f0` (R45/R61) until Sprint 6 has reason to reopen it.
+4. **`docs/STATUS.md`** — "Current state" at the top, then the 2026-09-13 "Sprint 5 landed" entry
+   (and the "Sprint 4 landed" / "carried findings" entries below it for the sprint before that).
 
-Sprint 4 is the last closed sprint:
-`docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md` and
-`docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the plan's `## Outcome`
-section at the foot says what actually happened and where reality diverged; the spec's §1 opens with
-a retracted premise, marked in place). Sprints 1-3 are history -- read them for how the VU1 native
-path, the host-draw hook, the render-target scale and the gates got here, not for what to do next:
+Sprint 5 is the last closed sprint:
+`docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md` and
+`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md` (the plan's
+`## Outcome` and `## Rulings made on the owner's behalf` sections at the foot say what actually
+happened, including Amendment A's mid-sprint rewrite of Tasks 5-6). Sprints 1-4 are history -- read
+them for how the VU1 native path, the host-draw hook, the render-target scale, the gates and the
+online movement fix got here, not for what to do next:
 `docs/superpowers/specs/2026-09-10-sprint-1-hygiene-and-native-render-design.md`,
 `docs/superpowers/plans/2026-09-10-sprint-1-hygiene-and-native-render.md`,
 `docs/superpowers/specs/2026-09-11-sprint-2-host-render-and-family-b-design.md`,
 `docs/superpowers/plans/2026-09-11-sprint-2-host-render-and-family-b.md`,
 `docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md`,
-`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`.
+`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md`,
+`docs/superpowers/specs/2026-09-12-sprint-4-visible-defects-and-first-kill-design.md`,
+`docs/superpowers/plans/2026-09-12-sprint-4-visible-defects-and-first-kill.md` (the spec's §1 opens
+with a retracted premise, marked in place).
 
 **Everything below this section is reference and history.** The dated "Open items" lists are
-snapshots of what was next *on that date*; the live task list is the Sprint 5 plan. In particular
-the 2026-09-10 17:45 list's item 1 (a `--sweep` first-kill recipe) predates `--until-kill`, the
-actor-position readout and the Frostfire default, and must not be run as written.
+snapshots of what was next *on that date*; the live task list is Sprint 6's, once its plan exists
+(`docs/ROADMAP.md` §6 in the meantime). In particular the 2026-09-10 17:45 list's item 1 (a
+`--sweep` first-kill recipe) predates `--until-kill`, the actor-position readout, the Frostfire
+default and the engagement ladder, and must not be run as written.
 
 ## Reference: run recipes and history
 
