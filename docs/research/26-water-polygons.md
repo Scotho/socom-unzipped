@@ -1,5 +1,12 @@
 # 26 — The grey shards at the Seeding Chaos stream: GL depth quantisation (draft)
 
+> **REFUTED 2026-09-14.** The condition sentence below (§4 candidate 1) is **false**. A mission run with
+> `PS2X_GS_NO_ZTEST=1` produces the identical grey shards: the depth test cannot be the mechanism when it is
+> switched off. The depth-quantisation arithmetic in §3.3 is still correct and is fixed on `fix/gl-depth-precision`
+> (see research/27), but it fixes something else. The live candidates are §4's 2 and 3 — the `0x34` env-map pass'
+> texture/CLUT and its geometry. Read the rest of this note as evidence, not as a conclusion.
+
+
 Draft, uncommitted, 2026-09-14. Research only; no code changed. Markings: **[verified]** = read off an
 artefact or computed from one in this pass; **[inference]** = follows from verified facts but not measured.
 
@@ -106,12 +113,12 @@ collapse to 20 levels, and the four nearest triangles' twelve vertices collapse 
 
 ## 4. Candidates, ranked
 
-1. **GL depth quantisation (condition sentence).**
+1. ~~**GL depth quantisation (condition sentence).**~~ **REFUTED 2026-09-14 — see the banner above.**
    - For: it explains shape (straight iso-error edges inside the correct footprint), both errors
      (overdraw of the banks and holes in the bed), and persistence across every stamp and knob
      (native, host-draw and GS_SCALE all share `appendVertex` and the shader).
-   - Against: none found. Why it does not show elsewhere is [inference]: most layered surfaces are
-     > 128 z apart or rely on draw order, where GEQUAL ties pass.
+   - Against: **the shards survive `PS2X_GS_NO_ZTEST=1`.** (Written as "none found" before that run — a
+     candidate with no disconfirming test recorded against it had simply not been tested.)
    - *Check:* a GL run with depth normalised to the Z format (e.g. `z / 65536` for Z16/Z16S,
      `z / 2^24` for Z24, before `*2−1`, or `glClipControl`/`glDepthRange` equivalent) behind an
      uncommitted diagnostic knob. Shards gone and brown water bounded by the banks → settled.
