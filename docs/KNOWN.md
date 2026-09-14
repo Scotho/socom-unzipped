@@ -113,6 +113,13 @@ Maintained by whoever is running the loop. Last audited: 2026-09-13, after the S
 
 ## 4. Standing hazards — things that will bite again
 
+- **The gate mission stage can land its holds on an in-game HELP pop-up** ("You must MEET WITH MALLARD… PRESS X TO
+  CONTINUE"), which pauses gameplay behind a lit HUD: `s5_head_1x` mission FAIL had 6/6 gameplay-band holds, diffs
+  0.00–0.03, 1503 frame exports after gameplay start and no STALE FRAME — presentation live, game paused. The liveness
+  scorer is right to fail it; the mission-only rerun `s5_head_1x_b` passed (4 live pairs). This is **not** the GS backlog
+  stall (exports collapse) nor host load. Fix belongs in the mission script: detect the prompt
+  (`sp_death_probe.screen_state`) and press CROSS before each hold (Sprint 6).
+
 - **Ladder launch contract after close-out** (`c04f9e1`, `2858774`): `ladder_frostfire.sh` pins by default (`--live` opts
   out); exit 4 = LOBBY-FAIL, 5 = CRASH (never read a crash as NO-KILL), 7 = pin failed; poll `logs/<name>.detached` and
   `logs/<name>.done`. Swapped spawns are accepted and recorded (`spawns=swapped`) but that round is NO-DATA until the route
