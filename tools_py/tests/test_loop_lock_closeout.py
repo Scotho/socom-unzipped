@@ -85,7 +85,10 @@ class TestSmokeSelection(unittest.TestCase):
             "test_smoke_holder_renew_refreshes_the_heartbeat",
             "test_non_holder_release_exits_1",
             "test_stale_heartbeat_with_empty_busy_list_is_reaped",
-            "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose"})
+            "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose",
+            # Ruling R73 (Sprint 5 final review I2): mutual exclusion stays always on
+            "test_smoke_racing_reapers_with_process_list_latency_one_wins",
+            "test_smoke_stale_mutex_takers_never_double_enter"})
         with open(TL.__file__) as f:
             src = f.read()
         self.assertIn('test.skipTest("slow lock suite: set LOOP_LOCK_SLOW_TESTS=1")', src)
