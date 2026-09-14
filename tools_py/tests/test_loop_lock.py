@@ -4,8 +4,9 @@ No game, no build, and never the real lock: every test points LOOP_LOCK_PATH at 
 LOOP_LOCK_PS_CMD at a fake process list (a file the test writes, "pid|ppid|created|name|cmdline" per line),
 and back-dates heartbeats by writing the record directly.
 
-The real-scale renewal test (`run -- sleep 130`, 60 s renew, heartbeat < 70 s throughout, ~135 s) runs
-only with LOOP_LOCK_SLOW_TESTS=1; test_run_renews_heartbeat_scaled is the same property at 1/30 scale.
+The DEFAULT suite is a <= 15 s smoke (SMOKE: claim, renew, release, one reap, one quiet-marker check; the Sprint 5
+close-out wave, R14 revisited). Every other test -- the races, the interleavings, run/run_detached, the hammer, the
+real-scale renewal (`run -- sleep 130`, ~135 s) -- runs only with LOOP_LOCK_SLOW_TESTS=1, which runs them all.
 LOOP_LOCK_TEST_SCRIPTS=<dir> points the suite at another copy of the scripts (used to show a test is
 red against the previous version).
 """
@@ -26,6 +27,18 @@ QUIET_GATE_SH = os.path.join(SCRIPTS, "check_quiet_gate.sh").replace("\\", "/")
 KILL_PS1 = os.path.join(SCRIPTS, "kill_stale_drivers.ps1")
 POWERSHELL = (shutil.which("powershell.exe") or shutil.which("powershell")) if os.name == "nt" else None
 SLOW = os.environ.get("LOOP_LOCK_SLOW_TESTS") == "1"
+SMOKE = {
+    "test_free_take_writes_four_field_record_inside_the_claim_dir",     # claim
+    "test_smoke_holder_renew_refreshes_the_heartbeat",                  # renew
+    "test_non_holder_release_exits_1",                                  # release
+    "test_stale_heartbeat_with_empty_busy_list_is_reaped",              # one reap
+    "test_quiet_flag_writes_marker_even_for_a_non_launch_purpose",      # one quiet-marker check
+}
+
+
+def smoke_or_slow(test):
+    if not SLOW and test._testMethodName not in SMOKE:
+        test.skipTest("slow lock suite: set LOOP_LOCK_SLOW_TESTS=1")
 
 IDLE = ["4|0||System|", "900|4||explorer.exe|C:\\Windows\\explorer.exe", "901|900||bash.exe|bash"]
 
@@ -61,6 +74,7 @@ def processes_with(marker):
 @unittest.skipUnless(BASH, "bash not found")
 class LockTestBase(unittest.TestCase):
     def setUp(self):
+        smoke_or_slow(self)
         self.tmp = tempfile.mkdtemp(prefix="loop_lock_test_")
         self.lock = os.path.join(self.tmp, "lk")
         self.lockd = self.lock + ".d"
@@ -146,6 +160,16 @@ class TestTakeReapBreak(LockTestBase):
         self.assertEqual(rec[3:], ["two", "words"])
         self.assertFalse(os.path.exists(self.lock), "the record lives inside the claim dir")
         self.assertEqual(self.sh("id")[1].strip(), "alice " + rec[1])
+
+    def test_smoke_holder_renew_refreshes_the_heartbeat(self):
+        self.write_record("alice", 600, hb_age_s=600, purpose="p")
+        take_id = self.record()[1]
+        rc, out = self.sh("renew", "alice")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("RENEWED by alice", out)
+        rec = self.record()
+        self.assertEqual(rec[:2], ["alice", take_id])
+        self.assertLessEqual(abs(int(rec[2]) - time.time()), 5)
 
     def test_held_lock_is_busy_even_for_its_owner(self):
         self.assertEqual(self.sh("take", "alice")[0], 0)
@@ -997,6 +1021,9 @@ class TestRunDetached(LockTestBase):
 
 @unittest.skipUnless(POWERSHELL, "Windows PowerShell not available")
 class TestKillStaleDrivers(unittest.TestCase):
+    def setUp(self):
+        smoke_or_slow(self)
+
     def ps(self, *args):
         return [POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", KILL_PS1] + list(args)
 

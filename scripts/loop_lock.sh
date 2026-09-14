@@ -68,7 +68,7 @@
 # LOOP_LOCK_MUTEX_WAIT_SEC, LOOP_LOCK_MUTEX_STALE_SEC, and LOOP_LOCK_TEST_PAUSE_AT=<point>[,...] with
 # LOOP_LOCK_TEST_PAUSE_DIR: at a named point the script touches <dir>/<point>.paused and waits for
 # <dir>/<point>.go (points: reap_before_mutex, reap_inside_mutex, renew_before_mutex, renew_inside_mutex,
-# release_before_mutex); LOOP_LOCK_TEST_CS_DIR (critical-section overlap detector), LOOP_LOCK_TEST_CS_HOLD,
+# release_before_mutex, mutex_after_token); LOOP_LOCK_TEST_CS_DIR (critical-section overlap detector), LOOP_LOCK_TEST_CS_HOLD,
 # LOOP_LOCK_RELEASE_WAIT_SEC.
 LOCK="${LOOP_LOCK_PATH:-$(cd "$(dirname "$0")/.." && pwd)/logs/.loop_lock}"
 LOCKD="$LOCK.d"
@@ -146,10 +146,17 @@ mx_acquire() {   # [wait_seconds]
     if mkdir "$MX" 2>/dev/null; then
       MX_TOKEN="$MX/t.$(now).$$.$RANDOM$RANDOM"
       if { : > "$MX_TOKEN"; } 2>/dev/null; then
-        test_cs_enter
-        return 0
+        test_pause mutex_after_token
+        # Exactly one entry, ours (close-out wave, the X3 guard): a breaker removed our dir and another
+        # process re-made it between our mkdir and our token write -- two tokens, two holders. Step back:
+        # remove our token (and the dir if that empties it) and retry.
+        if [ "$(ls -A "$MX" 2>/dev/null | grep -c .)" = 1 ] && mx_mine; then
+          test_cs_enter
+          return 0
+        fi
+        rm -f "$MX_TOKEN" 2>/dev/null; rmdir "$MX" 2>/dev/null
       fi
-      MX_TOKEN=""                                # our dir vanished under a breaker: start again
+      MX_TOKEN=""                                # our dir vanished under a breaker, or was shared: start again
     else
       tok=$(ls -A "$MX" 2>/dev/null | head -n 1)
       if [ -n "$tok" ]; then
@@ -189,19 +196,20 @@ test_cs_leave() {
 # ---- records ---------------------------------------------------------------------------------------
 # The record line of a claim dir (arg) or of the legacy file; "NOREC <mtime>" for a claim dir without one.
 # A missing or unreadable record is re-read a few times first: on Windows a reader can catch the instant
-# of a record replace.
+# of a record replace. The read is braced so a failed open (a sharing violation) prints nothing: the
+# renewer captures 2>&1 and matches "not held" at the start (close-out wave).
 line_of() {   # dir-or-empty
   local line="" i
   if [ -n "$1" ]; then
     for i in 1 2 3 4 5; do
-      [ -f "$1/record" ] && IFS= read -r line < "$1/record" 2>/dev/null
+      [ -f "$1/record" ] && { IFS= read -r line < "$1/record"; } 2>/dev/null
       [ -n "$line" ] && break
       [ -d "$1" ] || break
       sleep 0.05
     done
     [ -n "$line" ] || line="NOREC $(stat -c %Y "$1" 2>/dev/null)"
   else
-    [ -f "$LOCK" ] && IFS= read -r line < "$LOCK" 2>/dev/null
+    [ -f "$LOCK" ] && { IFS= read -r line < "$LOCK"; } 2>/dev/null
   fi
   printf '%s' "$line"
 }
@@ -399,15 +407,19 @@ target_id() {   # owner
   fi
 }
 # The same, but a miss is confirmed under the mutex before it counts (no "not held" from a torn read).
+# Exit 2 = the miss could not be confirmed (the mutex stayed busy): transient, never "not held".
 target_id_confirmed() {   # owner
   local want; want=$(target_id "$1")
-  if [ -z "$want" ] && mx_acquire; then want=$(target_id "$1"); mx_release; fi
+  if [ -z "$want" ]; then
+    mx_acquire || return 2
+    want=$(target_id "$1"); mx_release
+  fi
   echo "$want"
 }
 
 do_renew() {
   local owner="$1" want line rc
-  want=$(target_id_confirmed "$owner")
+  want=$(target_id_confirmed "$owner") || { echo "renew: the lock mutex stayed held; holding not confirmed this time"; return 1; }
   [ -n "$want" ] || { echo "not held by $owner"; return 1; }
   test_pause renew_before_mutex
   mx_acquire || { echo "renew: the lock mutex stayed held; not renewed this time"; return 1; }
@@ -447,7 +459,7 @@ do_release() {
       echo "not held by $owner (stale LOOP_LOCK_HELD=\"$LOOP_LOCK_HELD\"; the live lock is $R_OWNER $R_EPOCH)"; return 1
     fi
   fi
-  want=$(target_id_confirmed "$owner")
+  want=$(target_id_confirmed "$owner") || { echo "release failed: mutex busy; holding not confirmed, the lock stays as it is"; return 1; }
   [ -n "$want" ] || { echo "not held by $owner"; return 1; }
   test_pause release_before_mutex
   release_id "$want"; rc=$?
