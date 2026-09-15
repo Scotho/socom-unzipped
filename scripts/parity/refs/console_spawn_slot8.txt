@@ -1,0 +1,9 @@
+console_spawn_slot8.png -- the PCSX2 console reference for the Seeding Chaos spawn view (the mission gate's s28).
+Source: the Screenshot.png embedded in PCSX2 savestate slot 8, tools/pcsx2/sstates/SCUS-97275 (0F6FC6CF).08.p2s
+(a zip), resized from its native 640x480 to the game's 640x448 presentation with Pillow LANCZOS on 2026-09-15:
+  python - <<'PY'
+  import zipfile, io; from PIL import Image
+  z = zipfile.ZipFile("tools/pcsx2/sstates/SCUS-97275 (0F6FC6CF).08.p2s")
+  Image.open(io.BytesIO(z.read("Screenshot.png"))).convert("RGB").resize((640, 448), Image.LANCZOS).save("scripts/parity/refs/console_spawn_slot8.png")
+  PY
+research/26 §2: same camera as our s28 (trees, rock and HUD line up); the water is one continuous dark-brown surface.
