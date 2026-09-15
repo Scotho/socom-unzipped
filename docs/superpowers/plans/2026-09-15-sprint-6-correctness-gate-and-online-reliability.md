@@ -389,6 +389,11 @@ Decision table: ≥ 8/10 gameplay → done; 5–7 → read the classes, fix the 
 
 ---
 
+## Rulings made on the owner's behalf
+
+- **R78** (2026-09-15, Task 1): the console spawn score and the guest-value probe are printed on every mission summary and do not change the verdict until their defects (water, root node) are fixed — a gate that fails on a known, owned defect every run teaches nothing; the mission-failure detector, by contrast, fails the stage from day one because a failed mission is never acceptable evidence. *Cost if wrong:* a regression in the water or the root node goes unflagged until Task 5; mitigated by the numbers being on every summary.
+- **R79** (2026-09-15, Task 0a): the depth fix, the `ifpopup` step and the Task 1 gate wiring are committed on `s6_depth_m5`, whose mission stage met the pre-Task-1 bar (5/6 gameplay holds, 2 live pairs — the bar Sprint 5 merged on) and FAILed only on the new mission-failure detector catching the pre-existing right-stick turn teleport (`s43_holdS.png`, banner dist 0.018), the defect Task 0b fixes next. Title and transition PASSed on the same exe (`s6_depth`, `s6_depth_r2`). *Why:* the failure is a true positive on a known defect unrelated to the change, and holding three verified commits behind the fix for it would only merge them later on the same evidence. *Cost if wrong:* if Task 0b's gate does not pass end to end, these commits are the first suspects and are reverted together.
+
 ## Self-review
 
 - **Spec coverage:** Goals 0–9 → Tasks 0–9; §5's bars appear in each task's decision table; §6's budget is the sum of the window steps (2 + 3 + 10 + 2 + 4 + 3 + 4 launches/gates). The spec's "no opt-out for the block pointer" is Task 0b Step 4.
