@@ -38,15 +38,21 @@ wait+2.0:CROSS      # deploy -> load mission
 next+10.0:NONE      # mission
 untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30,lit)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD shows on a full frame (lit letterbox bands: not the cinematic, R30)
 wait+2.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+8.0:W          # walk forward 8 s
 wait+2.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+0.3:R1         # R1 = fire
 wait+1.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+0.3:R1
 wait+3.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+3.0:L          # right stick: turn right
 wait+2.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+8.0:S          # walk back 8 s
 wait+2.0:NONE
+ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+0.3:R1
 wait+3.0:NONE

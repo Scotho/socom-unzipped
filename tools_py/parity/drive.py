@@ -87,6 +87,30 @@ def frame(hwnd):
     return thumb(winshot.grab(hwnd))
 
 
+def popup_present(im):
+    """True when the uncropped 640x448 frame is gameplay carrying a HELP pop-up ("PRESS X TO CONTINUE").
+    The prompt test is sp_death_probe.screen_state's (centred prompt line, any row in its range), which
+    the death probe already uses to clear pop-ups before its own holds."""
+    from tools_py.parity import sp_death_probe
+    return bool(sp_death_probe.screen_state(np.asarray(im.convert("RGB")))[1])
+
+
+def needs_cross(im):
+    """(press, reason): is the uncropped frame something a gameplay hold must not be sent over, that CROSS
+    dismisses? Two classes, both measured on gate runs: a HELP pop-up (s5_head_1x, s6_depth_m2: the game pauses
+    behind a lit HUD) and the letterboxed "X TO ABORT" objective cinematic that starts a few seconds after the
+    HUD first shows (s6_depth_m4: bands 0.33, four holds swallowed). A black frame (loading, transition) gets no
+    press -- it is waited through."""
+    from tools_py.parity import sp_death_probe
+    rgb = np.asarray(im.convert("RGB"))
+    gameplay, popup, band, dist = sp_death_probe.screen_state(rgb)
+    if popup:
+        return True, f"HELP pop-up (prompt distance {dist:.3f})"
+    if not gameplay and float(rgb.mean()) > 8.0:
+        return True, f"letterboxed cinematic (bands {band:.2f})"
+    return False, ("black frame" if float(rgb.mean()) <= 8.0 else f"gameplay (bands {band:.2f})")
+
+
 def hud_match(im, ref_thumb, box, thresh, lit):
     """untilref's per-frame test -> (matched, distance, band_fraction or None).
 
@@ -320,6 +344,28 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             print(f"ifref({parts[0]}): dist={dist:.1f} matched={matched}", flush=True)
             if not matched:
                 buttons = []
+        elif mode == "ifpopup":
+            # ifpopup+<delay>:BTN -- press BTN (CROSS) only while the settled screen is something a hold
+            # must not be sent over and CROSS dismisses (needs_cross): an in-game HELP pop-up ("You must
+            # MEET WITH MALLARD ... PRESS X TO CONTINUE", which pauses the game behind a lit HUD --
+            # s5_head_1x, s6_depth_m2: 6/6 gameplay-band holds, diffs 0.00-0.05) or the letterboxed
+            # "X TO ABORT" objective cinematic (s6_depth_m4: it started after the HUD match and swallowed
+            # four holds). At most 6 presses, <delay> apart; a live gameplay frame or a black frame gets no
+            # press. Put one before every gameplay hold.
+            presses = 0
+            reason = ""
+            while presses < 6:
+                wait_stable(hwnd, 0.5, 2.0, on_frame=cap)   # pop-ups and cinematic titles settle; live gameplay never does
+                press, reason = needs_cross(winshot.grab(hwnd))
+                if not press:
+                    break
+                for b in buttons:
+                    keys.press(hwnd, b, a.target)
+                presses += 1
+                time.sleep(delay)
+            print(f"ifpopup: {presses} presses, now: {reason}", flush=True)
+            buttons = []
+            delay = 0.5
         elif mode in ("burst", "ifburst"):
             # burst+<seconds>:NONE - capture a frame every 0.2 s for <seconds> (transition flashes
             # that a single per-step capture misses), saved as sNN_burst_<k>.png.
