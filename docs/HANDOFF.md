@@ -9,7 +9,10 @@
 2. **`docs/ROADMAP.md`** — why the work is ordered the way it is: what Sprint 4's results overturned
    (§3), what Sprint 5 settled (its own §6 entry), and what each later sprint is for. Its §7
    checklist defers to KNOWN.md.
-3. **Sprint 5 is CLOSED, pending merge** (`docs/CURRENT_SPRINT.md`): **the acceptance test PASSED**
+3. *(2026-09-15: Sprint 5 is **merged** (`2ae4d79`); Sprint 6 is **drafted, not opened** — `docs/CURRENT_SPRINT.md`
+   names its spec/plan, the uncommitted depth-fix and `ifpopup` state, the queued lock-bound commands, and the new rule
+   that builds, gates and launches run only in an owner-named host window. The paragraph below is the 2026-09-13 text.)*
+   **Sprint 5 is CLOSED, pending merge** (`docs/CURRENT_SPRINT.md`): **the acceptance test PASSED**
    — a two-instance Frostfire match ends in a kill, read from guest memory and confirmed by two
    independent scorers (KillWatch on the actor fields, `verdict_replay.py` on the round-state
    valves). Its plan (`docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md`)

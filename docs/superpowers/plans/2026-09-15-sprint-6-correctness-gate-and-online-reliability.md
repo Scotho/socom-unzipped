@@ -1,0 +1,397 @@
+# Sprint 6 — A Gate That Can See, the Paused Correctness Fixes, and a Cheaper Online Result: Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Land the two paused runtime fixes and the pop-up gate step, give the parity gate a correctness leg (mission-failure detection, a console-vs-ours image score, a guest-value probe), make online results cheap (lobby ≥ 8/10, the freeze rooted), and make the acceptance kill repeat.
+
+**Architecture:** Lock-free scorers with tests before any run that depends on them; every runtime change with a failing test first, `build.sh test` and the three-stage gate before commit; every launch capped with a decision table. The runtime freeze (`92d30f0`) is lifted for Task 0's two fixes only. Builds, gates and launches happen only in a **host window the owner names** (2026-09-15: game runs and builds lag the owner's machine while they work).
+
+**Tech Stack:** C++20 (llvm-mingw clang via `build.sh`), Python 3 (`unittest`, numpy, Pillow), the local Horizon server, PCSX2 2.8.1 as the console reference (savestate slot 8 = Seeding Chaos spawn), Ghidra decomp `game/analysis/socom2_game.elf.decomp.c`, Git Bash + PowerShell.
+
+**Spec:** `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md` (owner review pending). **Required reading for every dispatch:** `docs/KNOWN.md`, `docs/research/25-sp-teleport.md` §9–§10, `docs/research/26-water-polygons.md`, `docs/research/27-gl-depth-precision.md`, `docs/HANDOFF-AUDIT-2026-09-14.md`, and for online tasks `docs/research/22-kill-readout.md`, `docs/research/24-frostfire-walkability.md`.
+
+## Handoff notes for the executing model (read once)
+
+- **Process.** superpowers:subagent-driven-development; fresh implementer per task; a task review after each that re-derives at least one number independently; the controller merges. Ledger at `.superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md`. Decisions on the owner's behalf are `Ruling: … — why — cost if wrong`, numbered from **R78** (Sprint 5 ended at R77).
+- **`docs/KNOWN.md` has one writer: the controller.** Retractions happen on discovery, in the same hour.
+- **Host window.** No `./build.sh runtime`, `./build.sh test`, gate or launch outside a window the owner has named. Lock-free work (scorers, tests that need no build, docs, decomp reading) fills the rest. `scripts/kill_stale_drivers.ps1` stops a run on request.
+- **Commit conventions.** `git commit -m "…" -- <paths>` with an explicit pathspec; never `git add -A`; `server/config/simulated.db` stays unstaged; `ONBOARDING.md` untracked. Push after each commit. Trailer: the attribution the session is given (`Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>` on 2026-09-15). Research tasks do not commit; the controller commits notes.
+- **Lock protocol.** `bash scripts/loop_lock.sh run <owner> --purpose "<what>" -- <cmd>` for builds/tests/gates; `scripts/run_detached.sh` for launches; on this host use `"C:/Program Files/Git/bin/bash.exe"`. Never hold the lock across tool calls.
+- **Instruments** are unchanged from Sprint 5's plan (peek chains, call trace, `PS2X_HLE_STATS`, the pad file); every instrument counts its rows and fails when empty.
+- **Test binary.** `ps2x_tests.exe` lives at `third_party/ps2recomp/build-clang/ps2xTest/` and takes no filter; it runs every case (~450, well under a minute). `build.sh test` builds it and runs the Python suite first.
+
+## Global Constraints
+
+- Branch `sprint-6` off `develop` after `fix/gl-depth-precision` and `fix/gs-block-pointer` are merged (Task 0). Branch in the main checkout, never a worktree.
+- `./build.sh test` exit 0 and the three-stage gate PASS before any commit touching `third_party/ps2recomp/`, `recomp/`, `tools_py/parity/{drive,gate,compare}.py`, `scripts/parity/` or `build.sh`.
+- `./build.sh runtime` before any run on a changed runtime; the gate launches `dist/socom2.exe`.
+- Defaults do not move except Task 0's two correctness fixes. Speed work frozen. No patches to recompiled game logic, no guest-memory writes in any acceptance path. Do not resize the game window. LF line endings.
+- Every online launch records `waits=` per instance and the exe sha; every ladder result names the harness commit.
+
+---
+
+## File map
+
+| Path | Responsibility |
+|---|---|
+| `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_depth.h` (new), `ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`, `ps2xTest/src/ps2_gs_tests.cpp` (`GSGlDepth` suite) | Task 0a: depth precision (already written and test-green on `fix/gl-depth-precision`) |
+| `third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp` (`sceGsExecLoadImage`, `sceGsExecStoreImage`), `ps2xTest/src/ps2_gs_tests.cpp` (seven-region round trip), `tools_py/parity/motion_pack_check.py` (new) | Task 0b: block pointer |
+| `tools_py/parity/drive.py` (`popup_present`, `ifpopup`), `tools_py/tests/test_drive_popup.py`, `scripts/parity/gameplay_probe.txt` | Task 0c: pop-up dismissal (written, unit-green, gate owed) |
+| `tools_py/parity/mission_fail.py` (new), `tools_py/tests/test_mission_fail.py` (new), `tools_py/parity/gate.py` (`score_mission_log`) | Task 1a |
+| `tools_py/parity/console_compare.py` (new), `tools_py/tests/test_console_compare.py` (new), `scripts/parity/refs/console_spawn_slot8.png` (new), `tools_py/parity/gate.py` | Task 1b |
+| `tools_py/parity/guest_probe.py` (new), `tools_py/tests/test_guest_probe.py` (new), `scripts/parity/guest_probe_console.json` (new), `tools_py/parity/gate.py` (mission env) | Task 1c |
+| `tools_py/parity/online_login_ours.py` (`login`, `host_game`, `join_game`, `lobby_stage`), `tools_py/tests/test_online_login.py` | Task 2 |
+| `third_party/ps2recomp/ps2xRuntime/src/lib/ps2_runtime.cpp` (pc-sampler fields), `tools_py/parity/freeze_trace.py` (new) | Task 3 |
+| `tools_py/parity/online_match_ours.py` (`aim_yaw`, `engage_fight`), `tools_py/parity/sim_walk_to_b.py`, `tools_py/tests/test_aim_loop.py` (new) | Task 4 |
+| `docs/research/26-water-polygons.md`, `docs/research/17-ground-height.md`, `GS.cpp` (packet offset 0x14) | Task 5 |
+| `tools_py/parity/oracles/` (new), `ps2xTest/src/ps2_runtime_expansion_tests.cpp` | Task 6 |
+| `scripts/parity/mixed_match.sh` (new) | Task 7 |
+| `README.md`, `build.sh`, `tools_py/parity/movie_blocks.py`, `scripts/archive_logs.ps1` (new) | Task 8 |
+
+---
+
+### Task 0: Land the paused fixes and the pop-up gate step
+
+**Files:** see the first three rows of the file map.
+
+**Interfaces:**
+- Produces: `dist/socom2.exe` at a recorded sha with both runtime fixes; `GsGlDepth::Mode` (header); `drive.popup_present(im) -> bool` and the `ifpopup+<delay>:BTN` step mode; `motion_pack_check.py` CLI printing `corrupt=<n> of <m>`.
+
+**State on 2026-09-15 (this plan's author ran these):** the depth fix passed `./build.sh test` (Python 845 OK, ps2x_tests 454/454, vram-diff 15/15) on `fix/gl-depth-precision`; title and transition PASSed on that exe (`s6_depth`, `s6_depth_r2`); the mission stage FAILed on the HELP pop-up (`s6_depth_m2`, 6/6 gameplay-band holds, diffs 0.00–0.05); `ifpopup` was written test-first (`test_drive_popup.py`, 5 tests green) and wired before each of the six holds; the mission rerun `s6_depth_m3` was killed at the owner's request (host contention; its frame file had gone stale 176 s). **Nothing is committed.**
+
+#### 0a — depth fix (owner window needed for one mission gate)
+
+- [ ] **Step 1: Confirm the tree still matches the verified state**
+
+Run: `git status --short` — expect exactly `M gs_gl_backend.cpp`, `M ps2_gs_tests.cpp`, `?? gs_gl_depth.h`, `M README.md`, `M tools_py/parity/drive.py`, `M scripts/parity/gameplay_probe.txt`, `?? tools_py/tests/test_drive_popup.py`, plus the unrelated `simulated.db`, `ONBOARDING.md`, the audit doc, and the Sprint 6 spec/plan/outline docs.
+
+- [ ] **Step 2: Mission gate on a quiet host** (the owner has named a window)
+
+```bash
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "depth+ifpopup: gate mission" -- \
+  python -m tools_py.parity.gate --only mission --stamp s6_depth_m4
+cat logs/parity/gate/s6_depth_m4/summary.txt
+grep -a "ifpopup" logs/parity/gate/s6_depth_m4/mission.drive.log
+```
+Expected: `PASS mission … ≥ 3 gameplay holds, ≥ 2 live pairs`; the `ifpopup:` lines show `presses=1` on at least one step and `popup=False` after. If FAIL with `STALE FRAME`, the host was not quiet — rerun, do not reinterpret. If FAIL with 6/6 gameplay and diffs ~0 and the `ifpopup` lines all say `0 presses, popup=False`, the detector missed the prompt: save the s30 capture as a fixture, add it to `test_drive_popup.py`, fix `popup_present`, and rerun.
+
+- [ ] **Step 3: Commit the depth fix, then the harness step, with pathspecs**
+
+```bash
+git commit -m "fix(gs-gl): carry integer GS z exactly into the depth test (clip control, gl_FragDepth fallback, PS2X_GS_DEPTH_LEGACY opt-out)
+
+research/27: the legacy z*2-1 mapping rounded window depth to multiples of 128 GS z units below ~2^30, so a Z16S
+scene kept ~512 distinct depths. Precision fix only -- the Seeding Chaos water shards survive PS2X_GS_NO_ZTEST=1 and
+are not this defect. ps2x_tests 454/454 (GSGlDepth suite RED first), vram-diff 15/15, gate title PASS s6_depth,
+transition PASS s6_depth_r2, mission PASS s6_depth_m4.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
+  third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_depth.h \
+  third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp \
+  third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp README.md
+git commit -m "fix(gate): dismiss the in-game HELP pop-up before every mission hold (ifpopup step)
+
+A pop-up pauses the game behind a lit HUD, so holds moved nothing and the liveness scorer failed s5_head_1x and
+s6_depth_m2 (6/6 gameplay-band holds, diffs 0.00-0.05). drive.py gains popup_present() and an ifpopup+<delay>:BTN
+mode that presses only while sp_death_probe.screen_state sees the prompt (test_drive_popup.py, RED first);
+gameplay_probe.txt carries one before each hold. Mission gate PASS s6_depth_m4.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
+  tools_py/parity/drive.py tools_py/tests/test_drive_popup.py scripts/parity/gameplay_probe.txt
+git push
+```
+
+#### 0b — the GS block-pointer fix (owner window for one build + test + full gate)
+
+- [ ] **Step 1: Branch off develop after 0a is merged**
+
+```bash
+git checkout develop && git merge --ff-only fix/gl-depth-precision && git push
+git checkout -b fix/gs-block-pointer
+```
+
+- [ ] **Step 2: Add the failing seven-region test** to `ps2_gs_tests.cpp`, directly after the existing `"sceGsExecLoadImage and sceGsExecStoreImage roundtrip and free guest packets"` case. The full case is in the plan author's scratchpad draft and is reproduced here so it can be pasted:
+
+```cpp
+        // research/25 §9-§10: the game parks the top 1.75 MB of VRAM in the motion-pack buffer during the
+        // single-player mission load as seven 256x256 PSMCT32 pieces, vram_addr 0x2400 stepping 0x400
+        // (libgraph units: 256-byte blocks, the BITBLTBUF DBP/SBP unit). A single region at vram_addr 0
+        // round-trips losslessly whatever the unit, which is why the test above never caught the x8.
+        tc.Run("seven 256x256 CT32 regions at vram_addr 0x2400..0x3C00 each round-trip their own bytes", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kImageAddr = 0x4000u;
+            constexpr uint32_t kSrcAddr = 0x100000u;
+            constexpr uint32_t kDstAddr = 0x200000u;
+            constexpr uint32_t kPieceBytes = 256u * 256u * 4u; // 0x40000
+            constexpr uint32_t kPieces = 7u;
+            constexpr uint16_t kFirstVramAddr = 0x2400u;
+            constexpr uint16_t kVramStep = 0x400u;
+
+            auto fillPiece = [&](uint32_t base, uint32_t piece)
+            {
+                for (uint32_t off = 0; off < kPieceBytes; off += 4u)
+                {
+                    const uint32_t word = (piece << 24) | (off & 0x00FFFFFFu);
+                    std::memcpy(rdram + base + off, &word, sizeof(word));
+                }
+            };
+
+            for (uint32_t i = 0; i < kPieces; ++i)
+            {
+                const uint16_t vramAddr = static_cast<uint16_t>(kFirstVramAddr + i * kVramStep);
+                const GsImageMem image{0u, 0u, 256u, 256u, vramAddr, 4u, 0u};
+                writeGsImageTest(rdram, kImageAddr, image);
+                fillPiece(kSrcAddr, i);
+                R5900Context loadCtx{};
+                setRegU32(loadCtx, 4, kImageAddr);
+                setRegU32(loadCtx, 5, kSrcAddr);
+                ps2_stubs::sceGsExecLoadImage(rdram, &loadCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(loadCtx, 2)), 0,
+                         "sceGsExecLoadImage piece " + std::to_string(i) + " should succeed");
+                uint64_t bitbltbuf = 0u;   // the freed packet still holds the BITBLTBUF it sent (A+D data at +16)
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                t.Equals(static_cast<uint32_t>((bitbltbuf >> 32) & 0x3FFFu), static_cast<uint32_t>(vramAddr),
+                         "sceGsExecLoadImage should send BITBLTBUF DBP == vram_addr (256-byte blocks) for piece " + std::to_string(i));
+            }
+            for (uint32_t i = 0; i < kPieces; ++i)
+            {
+                const uint16_t vramAddr = static_cast<uint16_t>(kFirstVramAddr + i * kVramStep);
+                const GsImageMem image{0u, 0u, 256u, 256u, vramAddr, 4u, 0u};
+                writeGsImageTest(rdram, kImageAddr, image);
+                std::memset(rdram + kDstAddr, 0xEE, kPieceBytes);
+                R5900Context storeCtx{};
+                setRegU32(storeCtx, 4, kImageAddr);
+                setRegU32(storeCtx, 5, kDstAddr);
+                ps2_stubs::sceGsExecStoreImage(rdram, &storeCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(storeCtx, 2)), 0,
+                         "sceGsExecStoreImage piece " + std::to_string(i) + " should succeed");
+                uint64_t bitbltbuf = 0u;
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                t.Equals(static_cast<uint32_t>(bitbltbuf & 0x3FFFu), static_cast<uint32_t>(vramAddr),
+                         "sceGsExecStoreImage should send BITBLTBUF SBP == vram_addr (256-byte blocks) for piece " + std::to_string(i));
+                uint32_t firstWord = 0u;
+                std::memcpy(&firstWord, rdram + kDstAddr, sizeof(firstWord));
+                t.Equals(firstWord >> 24, i, "piece " + std::to_string(i) +
+                         " should read back its own bytes (the x8 block pointer aliases seven regions onto two: [6,5,6,5,6,5,6])");
+                bool wholePieceOk = true;
+                for (uint32_t off = 0; off < kPieceBytes && wholePieceOk; off += 4u)
+                {
+                    uint32_t word = 0u;
+                    std::memcpy(&word, rdram + kDstAddr + off, sizeof(word));
+                    wholePieceOk = word == ((i << 24) | (off & 0x00FFFFFFu));
+                }
+                t.IsTrue(wholePieceOk, "piece " + std::to_string(i) + " should round-trip every word");
+            }
+        });
+```
+
+- [ ] **Step 3: Build the test binary and watch it fail**
+
+```bash
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "block-pointer: RED" -- bash -c \
+  'cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j "$(nproc)" && cd third_party/ps2recomp/build-clang/ps2xTest && ./ps2x_tests.exe' 2>&1 | grep -aE "seven 256x256|DBP ==|SBP ==|own bytes|Failed\]" | head -20
+```
+Expected: the DBP assertions fail with `0x2000`/`0x0000` (i.e. `(vram_addr * 8) & 0x3FFF`) against `0x2400`…`0x3C00`, and pieces 0–4 read back `6,5,6,5,6`. If the test passes, it is not exercising the stub path (check `guestHeapBase()` addressing of the freed packet) — fix the test, not the expectation.
+
+- [ ] **Step 4: The fix** in `GS.cpp` (two lines; the comment is the reason a reader needs):
+
+```cpp
+        // libgraph's vram_addr is already the BITBLTBUF block field (256-byte blocks, 14 bits): the game's own
+        // sceGsSetDefLoadImage/StoreImage callers pass byte>>8 and FBP<<5 (research/25 §10). The former
+        // `* 2048 / 256` (x8) aliased seven VRAM regions onto two and smeared the motion pack (SP turn teleport).
+        uint32_t dbp = static_cast<uint32_t>(img.vram_addr) & 0x3FFFu;
+```
+and the same for `sbp` in `sceGsExecStoreImage`. No opt-out knob (spec §6: the old value was simply wrong).
+
+- [ ] **Step 5: GREEN, then the whole suite**
+
+Same command as Step 3; expected every new assertion `Passed`. Then, in the owner's window:
+```bash
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "block-pointer: runtime+test+gate" -- bash -c \
+  './build.sh runtime && ./build.sh test && python -m tools_py.parity.gate --stamp s6_blockptr'
+sha256sum dist/socom2.exe
+```
+Expected: test exit 0; gate `PASS title`, `PASS transition`, `PASS mission`. Blast radius: compare `s6_blockptr/title/s00..s19` run-vs-run against `s5_head_1x` (`python -m tools_py.parity.compare`, ≥ 99.0 except s14's known 98.8 split) and **look at** `mission/s28_none.png` against `s6_depth_m4`'s — loading screens and movies moved to correct addresses may change frames the scorer does not measure.
+
+- [ ] **Step 6: The offline descriptor check (lock-free after one spawn dump)**
+
+Create `tools_py/parity/motion_pack_check.py`: given an RDRAM image and `game/disc/RUN/MOTION_P.ZAR`, locate the pack buffer at `*0x415e08`, walk the clip table (`0x415d40+0xf8[i]`, count at `+0x100`; header `+0x00` name ptr, `+0x44` descriptor ptr; research/25 §8.1), and for each clip with a non-null descriptor compare the 16-byte descriptor's relative layout against the file bytes at the same pack offset. Print `corrupt=<n> of <m> (null=<k>)` and exit 1 when `n > 0`. Test (`tools_py/tests/test_motion_pack_check.py`): a synthetic 3-clip pack where one descriptor is overwritten reports `corrupt=1 of 3`. Then, with a post-fix spawn dump from the gate run (`PS2X_RDRAM_DUMP_AT` at the mission's first hold, or the existing `PS2X_RDRAM_DUMP` path):
+```bash
+python -m tools_py.parity.motion_pack_check logs/parity/spawn_ours_blockptr.rdram game/disc/RUN/MOTION_P.ZAR
+python -m tools_py.parity.motion_pack_check logs/parity/spawn_ours_vf0.rdram game/disc/RUN/MOTION_P.ZAR   # pre-fix control: 48
+```
+Expected: `corrupt=0 of 87` post-fix, `corrupt=48 of 87` on the pre-fix image.
+
+- [ ] **Step 7: Commit, push, merge; STATUS entry; KNOWN §2 row promoted to §1; CURRENT_SPRINT points at this plan**
+
+```bash
+git commit -m "fix(gs): the libgraph vram_addr is the BITBLTBUF block field -- drop the x8 in sceGsExecLoadImage/StoreImage
+
+research/25 §9-§10: the x8 aliased the game's seven-piece VRAM park/restore onto two blocks and smeared the motion
+pack [6,5,6,5,6,5,6], corrupting 48 clip descriptors and causing the single-player turn teleport. Seven-region
+round-trip test RED first; ps2x_tests green; gate 3/3 s6_blockptr; motion_pack_check 48 -> 0 on a post-fix spawn dump.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
+  third_party/ps2recomp/ps2xRuntime/src/lib/Kernel/Stubs/GS.cpp third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp \
+  tools_py/parity/motion_pack_check.py tools_py/tests/test_motion_pack_check.py
+git push -u origin fix/gs-block-pointer
+```
+
+---
+
+### Task 1: A gate that can see
+
+Lock-free until the calibration gate. Three independent scorers, each a pure function over files, each wired into `gate.py score_mission_log` behind its own PASS/FAIL line.
+
+**Interfaces:**
+- Produces: `mission_fail.detect(png_path) -> (failed: bool, reason: str)`; `console_compare.score(ours_png, console_png, mask) -> float` (0 = identical, 255 = opposite) and `console_compare.FLOOR`; `guest_probe.evaluate(run_log, console_json) -> list[(name, ours, console, tol, ok)]`.
+
+#### 1a — mission-failure detection
+
+- [ ] **Step 1: Fixtures.** Copy `logs/parity/gate/s5_head_1x_b/mission/final.png` (MISSION FAILURE screen — verify by eye first; if it is not the failure screen, take `s38_holdS.png`/`s40_holdR1.png` from the same run and pick the one that is) to `tools_py/tests/fixtures/mission/failure_screen.png`, and `logs/parity/gate/s6_depth_m2/mission/s28_none.png` to `…/gameplay_spawn.png`.
+
+- [ ] **Step 2: Failing test** `tools_py/tests/test_mission_fail.py`:
+```python
+import unittest
+from tools_py.parity import mission_fail
+
+class Detect(unittest.TestCase):
+    def test_failure_screen_is_detected(self):
+        failed, reason = mission_fail.detect("tools_py/tests/fixtures/mission/failure_screen.png")
+        self.assertTrue(failed, reason)
+    def test_spawn_gameplay_is_not_a_failure(self):
+        failed, reason = mission_fail.detect("tools_py/tests/fixtures/mission/gameplay_spawn.png")
+        self.assertFalse(failed, reason)
+```
+Run: `python -m unittest tools_py.tests.test_mission_fail -v` → ImportError (RED).
+
+- [ ] **Step 3: Implement** `tools_py/parity/mission_fail.py`: the failure screen is a centred banner ("MISSION FAILURE" or "leaving designated mission area") on a darkened frame. Detect it the way `sp_death_probe.screen_state` detects the prompt: a binarised template of the banner text row cut from the fixture (`> 110` grey), matched at any row of the centre band with mean XOR distance `< 0.06`. Store the template's row/columns as constants with the fixture named in a comment. Return `(True, "MISSION FAILURE banner at y=<n>, dist=<d>")` or `(False, "dist=<d>")`.
+
+- [ ] **Step 4: GREEN**, then wire into `gate.py score_mission_log`: after the liveness checks, run `detect` over every `s??_hold*.png` and `final.png`; any hit → `return False, "MISSION FAILED on screen: <reason> (<file>)"`. Add a `MissionScoring` test in `test_gate.py` that builds a run dir with a passing hold set plus the failure fixture as `final.png` and asserts FAIL. Commit: `feat(gate): the mission stage fails on a MISSION FAILURE screen (owner-agreed 2026-09-14)`.
+
+#### 1b — console-vs-ours image score at the spawn
+
+- [ ] **Step 1: Extract the console reference.** PCSX2 savestate `tools/pcsx2/sstates/SCUS-97275 (0F6FC6CF).08.p2s` is a zip; extract its `Screenshot.png` (480 rows), resize to 640×448 with Pillow `LANCZOS`, save as `scripts/parity/refs/console_spawn_slot8.png`. Record the command in the file's neighbour `console_spawn_slot8.txt`.
+
+- [ ] **Step 2: Failing test** `tools_py/tests/test_console_compare.py`:
+```python
+import unittest
+from tools_py.parity import console_compare as cc
+
+class Score(unittest.TestCase):
+    def test_identical_frames_score_zero(self):
+        s = cc.score("scripts/parity/refs/console_spawn_slot8.png", "scripts/parity/refs/console_spawn_slot8.png")
+        self.assertEqual(s, 0.0)
+    def test_our_spawn_with_shards_scores_above_floor(self):
+        s = cc.score("tools_py/tests/fixtures/mission/gameplay_spawn.png", "scripts/parity/refs/console_spawn_slot8.png")
+        self.assertGreater(s, cc.FLOOR)
+    def test_mask_hides_the_hud_and_objective_text(self):
+        m = cc.default_mask()
+        self.assertFalse(m[400:448, :].any())      # HUD band
+        self.assertFalse(m[50:100, 200:440].any())  # "CURRENT OBJECTIVE" text
+```
+
+- [ ] **Step 3: Implement** `console_compare.py`: `default_mask()` returns a 448×640 bool array, True where scoring applies (everything except the HUD band rows 340–448, the objective text box, and the compass); `score(a, b, mask=None)` crops both to content (`drive.crop_to_content`), resizes to 640×448, converts to grey, and returns the masked mean absolute difference. **`FLOOR` is registered before the first scored gate run** from the numbers: our own run-to-run (research/27: 1.85) and our-vs-console with shards (measure on the fixture; expect ~15–30). Set `FLOOR` halfway between the measured shard score and the largest of three of our own runs vs console **with the water region masked** (so the floor measures everything except the known defect), and a second constant `WATER_FLOOR` for the unmasked score that today's frames fail. Write both numbers and their sources in the module docstring.
+
+- [ ] **Step 4: GREEN**; wire into `score_mission_log` as an extra line `CONSOLE spawn score=<s> floor=<FLOOR> water=<w>/<WATER_FLOOR>` and FAIL when `s > FLOOR`. Do **not** fail on `WATER_FLOOR` until Task 5 lands (R78: a gate that fails on a known, owned defect every run teaches nothing; the number is printed so its trend is visible). `test_gate.py`: a run whose s28 is the console image itself passes; one whose s28 is a black frame fails.
+
+- [ ] **Step 5: One mission gate in the owner's window** (`--stamp s6_gate_console`) to see the line print with real numbers; adjust the mask if the objective text moved. Commit: `feat(gate): console-vs-ours spawn image score (owner-agreed 2026-09-14)`.
+
+#### 1c — guest-value probe
+
+- [ ] **Step 1: Console numbers on disk.** `scripts/parity/guest_probe_console.json`:
+```json
+{"root_node_y": {"chain": "*0x408c58+0x2e8*+0x04", "console": 5.50391, "tol": 0.1, "source": "research/17 §1 table"},
+ "move_scale":  {"chain": "*0x408c58+0x1368", "console": 1.0, "tol": 0.001, "source": "KNOWN §1 MoveScale row (SP: no network idle)"},
+ "teleport_steps": {"derived": "actor xyz steps > 30 units between 4 Hz rows outside rx holds", "console": 0, "tol": 0, "source": "research/25 §1.1"}}
+```
+(The rand-derived field: `CSealCtrl+0x5c`, console 6.3338 ± 1.0 per research/17 §6 — add only if its chain resolves in a spawn dump; the seed is host-clock, so use a range.)
+
+- [ ] **Step 2: Failing test** `tools_py/tests/test_guest_probe.py`: a synthetic run log with `[peek]` rows where root-node Y reads 0.0 evaluates to `ok=False` for `root_node_y` and `ok=True` for `move_scale`; a log with two rows 40 units apart and no `rx` hold gives `teleport_steps=1`.
+
+- [ ] **Step 3: Implement** `guest_probe.py` reusing `sp_death_probe.parse_peek_line` and `holds_from_pads`; `evaluate(run_log, console_json)` returns the rows; CLI prints a table and exits 1 on any `ok=False`. Wire: `gate.py`'s mission stage sets `PS2X_PEEK` to the chains in the JSON (plus `0x416054:3`) and the mission summary gains `PROBE root_node_y=0.00 (console 5.50 ±0.1) FAIL …`. **Do not fail the gate on it yet** (same R78 reasoning until Task 5's skeleton item); print it.
+
+- [ ] **Step 4: GREEN; one mission gate in the window; commit** `feat(gate): guest-value probe (root node, MoveScale, teleport count) printed on every mission stage`.
+
+---
+
+### Task 2: Lobby hardening, complete
+
+**Files:** `tools_py/parity/online_login_ours.py`, `tools_py/tests/test_online_login.py` (extend), `docs/research/28-lobby-taxonomy.md` (new).
+
+- [ ] **Step 1: Taxonomy from logs already on disk (lock-free).** Over every `logs/run_[AB]_*.log` and `converge.json` since 2026-09-12, classify each launch's outcome: gameplay reached; `LOBBY-FAIL <class>` (map CROSS, READY — already classified); B JOIN not reached; map-list search failed; login keyboard not opened; pre-login window/menu (exit 1, unclassified today). Write the counts to research/28 §1 with the launch names. Expected: ~10–15 launches, gameplay ≤ 50 %.
+
+- [ ] **Step 2: Failing tests** for each unclassified class in `test_online_login.py`, using the existing `FakeShell` pattern from `tools_py/tests/fixtures/lobby/`: a login screen whose keyboard never appears must raise `LobbyFail("login-keyboard")` within its stage timeout; a JOIN GAME list that never shows the host must raise `LobbyFail("join-not-listed")`; a window that never reaches the main menu must raise `LobbyFail("pre-login")` instead of exiting 1.
+
+- [ ] **Step 3: Implement** verify-then-act on every fixed press in `login`, `host_game`, `join_game`: each press is followed by a frame check against the expected next screen (reference crops in `scripts/parity/refs/`, thumbnail regions as `ifref` uses), re-sent up to 3 times on fresh frames, and `lobby_stage(sh, name, timeout)` wraps each stage so a timeout carries the class. GREEN.
+
+- [ ] **Step 4: Ten launches in the owner's windows** (`scripts/parity/online_match_frostfire.sh` with `--control-round`, pinned harness, exit 4 counts as a classified failure):
+```bash
+for i in 1 2 3 4 5 6 7 8 9 10; do bash scripts/run_detached.sh --owner main scripts/parity/online_match_frostfire.sh logs/s6_lobby_$i.done; done  # one at a time, poll the marker
+```
+Decision table: ≥ 8/10 gameplay → done; 5–7 → read the classes, fix the largest, five more launches; ≤ 4 → the dominant class is server-side or timing (check `server/logs/medius.log` for the failed launches) and becomes a ruling with a research/28 §2 entry. Commit after Step 3 (harness-only rule: `build.sh test` + the simulation) and again with the numbers.
+
+---
+
+### Task 3: Online freeze root cause
+
+**Files:** `ps2_runtime.cpp` (pc-sampler prints `m_vsyncTick`, host time, GS pending count and back-pressure wait total on each sample), `tools_py/parity/freeze_trace.py` (new: aligns sampler rows with `[peek]` clock rows and prints every window where the guest clock stalls ≥ 2 s with the host CPU % and the sampled PCs).
+
+- [ ] **Step 1 (lock-free):** `freeze_trace.py` over launch 8c's logs (`logs/run_[AB]_20260913_132843.log`): reproduce the 3–17 s stalls as a table (start, length, main-thread PC, NetIdle peak). Test: a synthetic log with one 5 s clock stall yields one window.
+- [ ] **Step 2 (window):** the sampler fields (one commit, `build.sh test`, gate); then two launches from the same exe, one with a CPU load generator on the host (`powershell -c "1..4 | % { Start-Job { while($true){} } }"`, stopped after) and one quiet, both with `PS2X_PC_SAMPLER=0.25`.
+- [ ] **Step 3:** condition sentence in research/29: either the stall is the host starving the render thread (GS pending climbs, wait total climbs → back-pressure is doing its job, ruling: host load), or the guest is parked at one PC with pending flat (a runtime wait — fix it, A/B on one exe). Commit the fix only with the A/B.
+
+---
+
+### Task 4: Acceptance repeatability
+
+**Files:** `online_match_ours.py` (`aim_yaw`, `engage_fight`), `sim_walk_to_b.py`, `tools_py/tests/test_aim_loop.py` (new), `scripts/parity/ladder_frostfire.sh`.
+
+- [ ] **Step 1: Failing sim test.** In `test_aim_loop.py`, a `World` whose actor-matrix heading carries a fixed −4.1° bias relative to the true bearing (round 4's signature) and a target that subtends 3° at the fight range: the current `aim_yaw` reports in-tolerance and `engage_fight` fires ≥ 20 bursts with no hit. Assert the new behaviour: after `AIM_MISS_BURSTS = 3` bursts with no damage (health of the target unchanged, read from the sim's state items), the loop steps the lead by ±1.5° alternating and re-aims, and a hit lands within 12 bursts. RED with the current code.
+- [ ] **Step 2: Implement** the burst-to-burst correction in `engage_fight`: track `bursts_since_damage`; on reaching `AIM_MISS_BURSTS`, apply a lead offset (`+1.5°, −1.5°, +3.0°, −3.0°`) to the next `aim_yaw` target, reset on any damage; stop and report `NO-KILL aim-exhausted` after the table is exhausted twice (ammo-aware: reload is a `SQUARE` press when the HUD count reads 0 — `sp_death_probe` already reads ammo from the HUD crop). GREEN; the existing sim suite stays green.
+- [ ] **Step 3 (windows):** two ladder launches, `bash scripts/parity/ladder_frostfire.sh --pinned logs/parity/s6_ladder{1,2}`, on the Task 0 exe. Bars: rounds 1–3 KILL on each, both scorers (`verdict_replay` offline over the logs) agreeing. Decision table: 2/2 → done, record exe sha + harness commit in KNOWN §1; 1/2 → one retry; 0/2 → the miss class from the RESULT lines decides (aim-exhausted → back to Step 1 with the live bias; lobby → Task 2; freeze → Task 3).
+
+---
+
+### Task 5: Visible single-player correctness
+
+- [ ] **5a Water (research/26 candidate 2).** Window: one mission gate with `PS2X_GS_TRACE_CMDS=t249` and `python -m tools_py.parity.gsdump_capture --slot 8` on PCSX2; lock-free: decode the `tbp0=038a8` submits from both, diff TEX0/CLUT/ALPHA of the `0x34` pass (`tools_py/gsdump_timeline.py`). Cheap first cut in the same window: `PS2X_VU1_NATIVE=0` mission-only (excludes candidate 3) and a diagnostic build flag that skips the `0x34` pass (shards go with it → candidate 2 confirmed). Fix only with a condition sentence; judged by Task 1b's `WATER_FLOOR` (then promoted to failing).
+- [ ] **5b Skeleton root decay.** Window: one 60 s stand at the spawn with `PS2X_PEEK=*0x408c58+0x2e8*+0x04:1` on the Task 0 exe. If it holds 5.50 → KNOWN §1 promotion, close research/17 §4.3 as fixed by `b625291`; if it decays → research/17 §4.3's separating run (read the node on return from `FUN_001c0768` and again later in the frame).
+- [ ] **5c The packet-offset-0x14 DBP defect.** Failing test: a `sceGsSetDefLoadImage` packet whose guest-written DBP halfword at +0x14 differs from the `GsImageMem` block field; `sceGsExecLoadImage` must send the halfword. Fix: read the halfword at exec time when the packet carries one (research/25 §10). Gate + a loading-screen frame compared by eye against PCSX2.
+
+---
+
+### Task 6: Exact-oracle math and HLE audit leg three (lock-free filler)
+
+- [ ] `tools_py/parity/oracles/softdouble.py`: run the recompiled `litodp → dpmul → dpdiv → exp → dptofp` chain through `dist/vu1_replay.exe`-style harness? No — through `ps2x_tests`: a C++ test that calls the recompiled functions on 64 inputs and compares against host `double` within 1 ulp; RED first (KNOWN: `1/(exp(1)-1)` reads 0.034 vs 0.58). Fix in the 64-bit integer recompilation path; `build.sh test`.
+- [ ] `__ieee754_rem_pio2f`: port fdlibm's faithfully into the stub; test against `math.remainder` over 10^5 floats.
+- [ ] HLE leg three: for research/20's remaining ranked rows, the consumer reading and either a "constant by spec" tag or a fix with a moves-test.
+
+### Task 7: Mixed match (windows, 4 launches)
+
+- [ ] `scripts/parity/mixed_match.sh`: ours hosting + PCSX2 joining (research/18 §1 recipe, `pcsx2_keys.py`), then the reverse. Bars: gameplay reached both ways; the movement bar met on ours; on the console client our player is seen moving (PCSX2 screenshot diff over a 10 s hold). Result to KNOWN §1 or §2 with the launch names.
+
+### Task 8: Harness and maintainability (lock-free)
+
+- [ ] `gate.py --baseline <stamp>`: score a saved run dir without launching; test.
+- [ ] `movie_blocks.py` wired into `build.sh test` with a saved furniture baseline under `tests/fixtures/movie/`.
+- [ ] Client-rect assertion in `drive.py` (fail loudly when the window is not 640×448 at capture).
+- [ ] `scripts/archive_logs.ps1`: move gate stamps and run logs older than 14 days (never the ones named in KNOWN §1) to `D:\socom_archive`, dry-run by default.
+- [ ] Knob retirement pass 1: remove `PS2X_GUEST_MALLOC_ZERO` (shipped unused), the redundant main-context vf0 line, and the `_B` variants no driver sets (grep `tools_py/` first); README entries deleted with them; `build.sh test` + gate.
+- [ ] README "Build, run, verify" contributor section: the five commands a newcomer runs, in order, with expected output lines.
+
+### Task 9: Close-out
+
+- [ ] `PS2X_TEST_REPEAT=3 ./build.sh test` and a full gate on a quiet host; STATUS entry; KNOWN audit; ROADMAP §6 marked; CURRENT_SPRINT → Sprint 7; whole-branch review; the controller merges `sprint-6` into `develop` and `main`; ledger archived to `D:\socom_archive`.
+
+---
+
+## Self-review
+
+- **Spec coverage:** Goals 0–9 → Tasks 0–9; §5's bars appear in each task's decision table; §6's budget is the sum of the window steps (2 + 3 + 10 + 2 + 4 + 3 + 4 launches/gates). The spec's "no opt-out for the block pointer" is Task 0b Step 4.
+- **Placeholders:** none; every test step has code or an exact assertion; Task 6's first bullet corrects itself in place rather than leaving a question.
+- **Type consistency:** `popup_present(im)`, `mission_fail.detect(path)`, `console_compare.score(a, b, mask=None)`, `guest_probe.evaluate(run_log, console_json)` are used with the same signatures throughout.
+- **Owner gate:** the spec is unreviewed; Tasks 0–1 are owner-agreed items, and the controller stops for a re-ruling before Task 2's launches if the owner has not reviewed by then.

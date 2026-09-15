@@ -1,11 +1,39 @@
-# Project status — updated 2026-09-13
+# Project status — updated 2026-09-15
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
+- **2026-09-15:** Sprint 5 merged (main = develop = `2ae4d79`). Two 2026-09-14 defects have verified causes: the SP turn teleport is the ×8 GS block pointer in `sceGsExecLoadImage`/`StoreImage` (research/25 §9–§10, fix not landed); the grey water is **not** depth precision (research/27), cause open. The depth-precision fix is verified but uncommitted on `fix/gl-depth-precision`; an `ifpopup` gate step (HELP pop-up dismissal) is written and unit-green, its mission gate owed. Sprint 6 spec+plan drafted (`docs/CURRENT_SPRINT.md`). **Builds/gates/launches only in an owner-named host window.**
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 450/450 + vu1 fixture verify + `--vram-diff` at `checked=15 skipped=0`; **since Sprint 5 Task 0 it also runs the Python suite first** — `python -m unittest discover -s tools_py/tests -t .`, 802 tests — both required green before any commit touching `third_party/ps2recomp/`, `recomp/` or the parity tools). Gate `python -m tools_py.parity.gate`: title/transition/mission; **the mission stage now requires live gameplay** (`d2eb932`) — ≥ 2 consecutive gameplay hold pairs differing by mean ≥ 3.0 and a capture count matching the logged holds, not just the mission having loaded (it had scored the intro cinematic since 2026-09-12).
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps. Online, two instances on local Horizon: **the acceptance test PASSED** — a Frostfire match ends in a kill read from guest memory, confirmed by two independent scorers (`docs/research/22`, `docs/research/assets/22-first-kill.png`). **Frostfire control is fixed** (VU0 `vf0.w = 0` on `StartThread` contexts, `b625291`) and **the single-player gameplay stall is fixed** (an unbounded GS command backlog, `8281254`/`7448601`/`92d30f0`). **The runtime is frozen at `92d30f0` for the online ladder** (R45/R61) until Sprint 6 reopens it.
 - Sprint 4 (2026-09-13, entry below): intro-movie macroblocks fixed at the root (a cross-thread race on `m_currentTransfer`), the gate's silent-failure paths closed, `--vram-diff` 15/15, `rand()` 31-bit over the guest's own seed, soft-double ABI stubs re-bound, "ground height" reframed as the third-person camera (localised, not fixed), the online movement blocker fixed and A/B-proven on Medley, the acceptance test built and not passed.
 - **Sprint 5 (2026-09-13): the acceptance test PASSED.** Ladder launch 2 on Frostfire, rounds 1–3 KILL on both scorers (KillWatch actor fields + `verdict_replay` valves), screens "socomc fragged socome with M4A1". Root causes fixed on the way: Frostfire's lost control (VU0 `vf0.w = 0` on `StartThread` contexts) and the single-player gameplay stall (an unbounded GS command backlog). Dated entry below.
 - Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Rendering and VU1 defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. **Sprint 5 moved four runtime defaults:** GS back-pressure on (`PS2X_GS_MAX_PENDING_FRAMES=3`, was unbounded), the VU0 `vf0` constant (`vf0.w = 1`) on `StartThread` contexts, `sceGsSetDefDBuff`'s clear packet seeded in context 1, and the idle guest sleeping to the cycle deadline (`92d30f0`). Known open: the camera's skeleton-root decay (`docs/research/17` §4.3); single-player teleports; the online freeze root cause under host load; `movie_blocks.py` in no automation — all parked to Sprint 6 (`docs/ROADMAP.md` §6).
+
+## 2026-09-15 (local) — audit after the pause; the depth fix verified; the HELP pop-up gate flake fixed in the harness; Sprint 6 drafted; lock-bound work queued for an owner window
+
+Owner returned after the 2026-09-14 pause and asked for an audit, then "proceed as suggested autonomously", then paused
+lock-bound work ("lag spikes running this while working") and asked for lock-free tasks to be partitioned out.
+
+- **Depth-precision fix (`fix/gl-depth-precision`, uncommitted):** `./build.sh test` under the lock — Python **845** OK
+  (63 skipped), ps2x_tests **454/454**, vram-diff `checked=15 skipped=0`. Title PASS `s6_depth` (19/23), transition PASS
+  `s6_depth_r2` were already on disk from 2026-09-14. Mission `s6_depth_m2`: **FAIL on the HELP pop-up class** — 6/6
+  hold captures gameplay (bands 0.98), 0 live pairs (diffs 0.01–0.05), `s30_holdW.png` and `final.png` show "You must
+  MEET WITH MALLARD … PRESS X TO CONTINUE"; no `STALE FRAME`. Same class as `s5_head_1x` (KNOWN §4).
+- **The fix for that class, as KNOWN §4 prescribed:** `drive.py` gains `popup_present(im)` (delegates to
+  `sp_death_probe.screen_state`'s prompt test) and an `ifpopup+<delay>:BTN` step that presses only while the prompt is on
+  screen (≤ 6 times) and never on a clean frame; `gameplay_probe.txt` carries one before each of its six holds. Written
+  test-first: `tools_py/tests/test_drive_popup.py` failed 3 + errored 2 on the old code (an unknown mode pressed blindly
+  once), 5/5 after. The mission rerun `s6_depth_m3` reached its last step but its frame file went stale for 176 s while
+  the owner was working on the host, and was killed at the owner's request — **one mission gate is owed before either
+  commit** (rule: gate green before a commit touching `third_party/` or `scripts/parity/`).
+- **Sprint 6 drafted, not opened:** spec and plan under `docs/superpowers/` (owner review pending); order changed from
+  ROADMAP §6 to put the gate's correctness leg (mission-failure detection, console-vs-ours spawn score, guest-value
+  probe — the owner-agreed 2026-09-14 items) right after the paused fixes, because a fix nobody can measure is not a fix.
+  A packaging/launcher/installer outline was written on request
+  (`docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md`).
+- **Block-pointer fix:** not started in code (TDD: the seven-region test must be watched failing, which needs a build);
+  the test is pasted in full into the plan's Task 0b.
+- **Process:** `docs/HANDOFF-AUDIT-2026-09-14.md` (the previous session's audit) is now tracked. New standing rule in
+  `CURRENT_SPRINT.md`: builds, gates and launches only in a host window the owner names.
 
 ## 2026-09-13 (local) — Sprint 5 landed: THE ACCEPTANCE TEST PASSED — Frostfire control fixed, the single-player stall fixed, and a first online kill on three independent rounds
 

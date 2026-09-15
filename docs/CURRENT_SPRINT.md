@@ -30,7 +30,32 @@ a mixed ours/PCSX2 match, and the rest of the revised order. This file gets a ne
 (branch, spec, plan, ledger) once Sprint 6's plan exists; until then it still names Sprint 5's
 paths above for anyone reading its closed-out ledger.
 
-## Paused 2026-09-14 (owner) — open threads after Sprint 5 merged
+## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window
+
+**Sprint 6 is drafted, not opened**: spec `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
+and plan `docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` (owner review pending;
+Tasks 0–1 are owner-agreed items). Branch `sprint-6` is created only after Task 0's two fix branches merge.
+A packaging/launcher/installer outline is at `docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md`.
+
+**Rule since 2026-09-15: builds, gates and launches only in a host window the owner names** (they lag the owner's
+machine; a contended mission gate's frame file went stale 176 s). Lock-free work continues in between.
+
+State of the working tree on `fix/gl-depth-precision` (nothing committed):
+- Depth fix: `./build.sh test` green (Python 845 OK, ps2x_tests 454/454, vram-diff 15/15); title PASS `s6_depth`,
+  transition PASS `s6_depth_r2`; mission FAIL `s6_depth_m2` on the HELP pop-up class only (6/6 gameplay-band holds,
+  diffs 0.00–0.05, `s30_holdW.png` shows "PRESS X TO CONTINUE").
+- `ifpopup` gate step: `tools_py/parity/drive.py` `popup_present()` + `ifpopup+<delay>:BTN` (test-first,
+  `tools_py/tests/test_drive_popup.py` 5/5), one before each of the six holds in `scripts/parity/gameplay_probe.txt`.
+  Mission rerun `s6_depth_m3` was killed at the owner's request (host contention) — **one mission gate is owed**.
+- README carries the `PS2X_GS_DEPTH_LEGACY` entry (commits with the depth fix).
+
+**Queued for the next window, in order** (plan Task 0; each command is in the plan):
+1. `gate --only mission --stamp s6_depth_m4` on the current exe → commit the depth fix and the ifpopup step, push, ff-merge to develop.
+2. Branch `fix/gs-block-pointer`; paste the seven-region test (plan Task 0b Step 2); build `ps2x_tests` → RED; the
+   two-line fix in `GS.cpp`; `./build.sh runtime && ./build.sh test && gate --stamp s6_blockptr`; motion_pack_check 48 → 0.
+3. Open `sprint-6` and start Task 1 (lock-free scorers first).
+
+## Paused 2026-09-14 (owner) — open threads after Sprint 5 merged (superseded above; kept for the record)
 
 Sprint 5 is merged (develop = main = 2ae4d79). Work paused mid-investigation of two Seeding Chaos defects the owner
 spotted in gate frames. Both are written up and both have a named cause; neither fix has landed.
