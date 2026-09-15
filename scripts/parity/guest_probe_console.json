@@ -1,0 +1,24 @@
+{
+  "_about": "Console numbers for the gate's guest-value probe (Sprint 6 Task 1c). Each entry names the peek chain the mission stage adds to PS2X_PEEK, the console value, a tolerance, and where the console value was measured. A missing read is NO-DATA, never a pass.",
+  "root_node_y": {
+    "peek": "*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2",
+    "read": "the pointer at actor+0x2e8 names the skeleton root node; word 1 of the node item (its Y translation at +0x04), float, the settled value (median of the last quarter of rows)",
+    "console": 5.50391,
+    "tol": 0.1,
+    "source": "research/17 §1 table (spawn_pcsx2.rdram); ours reads 0.0 after decaying from the bind pose (research/17 §4.1)"
+  },
+  "move_scale": {
+    "peek": "*0x408c58+0x1368:1",
+    "read": "actor+0x1368, float",
+    "console": 1.0,
+    "tol": 0.001,
+    "source": "KNOWN §1 MoveScale row: 1.0 whenever the network has been heard from; single player has no idle path, so 1.0 throughout"
+  },
+  "teleport_steps": {
+    "peek": "*0x408c58:64",
+    "read": "count of consecutive-row actor position steps > 30 units (words 7/8/9 of the actor block)",
+    "console": 0,
+    "tol": 0,
+    "source": "research/25 §1.1: every step > 30 units on ours is a teleport; the console walks at ~7.5 u/s, ~2 units per 4 Hz row"
+  }
+}
