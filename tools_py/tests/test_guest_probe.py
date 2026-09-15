@@ -34,11 +34,25 @@ class Evaluate(unittest.TestCase):
         self.assertTrue(res["move_scale"].ok)
         self.assertTrue(res["teleport_steps"].ok)
 
-    def test_a_forty_unit_jump_counts_one_teleport(self):
-        rows = [_line((900.0, -145.0, 850.0))] * 3 + [_line((940.0, -145.0, 850.0))] * 3
+    def test_a_two_hundred_unit_jump_counts_one_teleport(self):
+        rows = [_line((900.0, -145.0, 850.0))] * 3 + [_line((1100.0, -145.0, 850.0))] * 3
         res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
         self.assertEqual(res["teleport_steps"].ours, 1)
         self.assertFalse(res["teleport_steps"].ok)
+
+    def test_a_run_at_forty_units_per_second_is_not_a_teleport(self):
+        # s6_probe: the 8 s forward hold moved ~36-45 units per 1 s sampler row along one axis -- a run, not a
+        # jump. research/25 §1.1's 30-unit bar was per 4 Hz row (> 120 u/s); at the gate's 1 s rows it is 120 units.
+        rows = [_line((939.4, -146.5, 862.5 + 40.0 * i)) for i in range(9)]
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertEqual(res["teleport_steps"].ours, 0)
+        self.assertTrue(res["teleport_steps"].ok)
+
+    def test_the_guest_clock_sets_the_row_period_when_present(self):
+        # The same 40-unit steps at 0.25 s rows (the ladder's cadence) are 160 u/s: teleports.
+        rows = [_line((939.4, -146.5, 862.5 + 40.0 * i)) + f" @4365c0: {_w(100.0 + 0.25 * i)}" for i in range(9)]
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertEqual(res["teleport_steps"].ours, 8)
 
     def test_missing_read_is_no_data_not_a_pass(self):
         rows = [peek_line(500.0, 100.0, 600.0, actor=(900.0, -145.0, 850.0), actor_addr=ACTOR)] * 3   # no node, no scale

@@ -370,21 +370,29 @@ class MissionSeeing(unittest.TestCase):
         self.assertIn("PROBE move_scale PASS", detail)
         self.assertIn("PROBE teleport_steps PASS", detail)
 
-    def test_probe_failure_is_printed_not_scored(self):
+    def test_probe_failure_fails_the_stage(self):
+        # R80 (2026-09-15): s6_probe read root node 5.5039, MoveScale 1.0 and 0 teleports on the block-pointer exe,
+        # so the three probe values are scored from that run on -- R78's print-only period for them is over.
         with tempfile.TemporaryDirectory() as tmp:
             run_log = os.path.join(tmp, "some.log")
             with open(run_log, "w", encoding="utf-8") as f:
                 f.write("".join(self._peek_rows(root_y=0.0)))
             ok, detail = gate.score_mission_log(self._run(tmp), run_log=run_log)
-        self.assertTrue(ok, detail)      # R78
+        self.assertFalse(ok, detail)
+        self.assertTrue(detail.startswith("GUEST PROBE FAILED: root_node_y"), detail)
         self.assertIn("PROBE root_node_y FAIL", detail)
         self.assertIn("PROBE move_scale PASS", detail)
 
-    def test_no_game_log_means_no_probe_lines(self):
+    def test_no_game_log_is_no_data_and_fails_only_when_the_probe_was_required(self):
+        # A re-score of an old run (--score-mission) has no game log: printed as NO-DATA, not failed. A run the
+        # gate launched itself (run_gate sets PS2X_PEEK and the sampler) must have rows: NO-DATA fails it.
         with tempfile.TemporaryDirectory() as tmp:
             ok, detail = gate.score_mission_log(self._run(tmp))
-        self.assertTrue(ok, detail)
-        self.assertIn("PROBE NO-DATA", detail)
+            self.assertTrue(ok, detail)
+            self.assertIn("PROBE NO-DATA", detail)
+            ok, detail = gate.score_mission_log(self._run(os.path.join(tmp, "b")), probe_required=True)
+            self.assertFalse(ok, detail)
+            self.assertTrue(detail.startswith("GUEST PROBE FAILED"), detail)
 
     def test_mission_stage_launches_with_the_probe_peek_spec(self):
         """run_gate sets PS2X_PEEK for the mission stage from guest_probe_console.json unless the
@@ -404,8 +412,13 @@ class MissionSeeing(unittest.TestCase):
                 mock.patch.object(gate.shutil, "copyfile"), \
                 mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("PS2X_PEEK", None)
+            os.environ.pop("PS2X_PC_SAMPLER", None)
             gate.run_gate("mission", tmp)
             self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE))
+            # The runtime prints [peek] rows only from the PC sampler's thread (game_overrides_socom2.cpp:
+            # "dump guest words ... with each sample"), so PS2X_PEEK alone yields 0 rows -- s6_blockptr's
+            # mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)" for exactly that reason.
+            self.assertEqual(drive_env()["PS2X_PC_SAMPLER"], "1")
             calls.clear()
             os.environ["PS2X_PEEK"] = "0x416054:3"
             gate.run_gate("mission", tmp)
@@ -413,6 +426,7 @@ class MissionSeeing(unittest.TestCase):
             calls.clear()
             gate.run_gate("title", tmp)
             self.assertEqual(drive_env()["PS2X_PEEK"], "0x416054:3")   # title: the environment passes through untouched
+            self.assertNotIn("PS2X_PC_SAMPLER", drive_env())
 
 
 class GameplayBands(unittest.TestCase):

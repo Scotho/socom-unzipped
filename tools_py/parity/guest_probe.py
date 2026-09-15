@@ -25,7 +25,12 @@ from tools_py.parity import verdict_core as vc
 
 Result = namedtuple("Result", "name ours console tol ok detail")
 
-TELEPORT_STEP_UNITS = 30.0
+# research/25 §1.1 measured teleports as steps > 30 units between 4 Hz rows, i.e. > 120 u/s; a run reads ~40 u/s
+# (s6_probe's 8 s forward hold: 36-45 units per 1 s row). The row period comes from the guest clock (0x4365c0,
+# float seconds) when the peek carries it, else DEFAULT_ROW_PERIOD_S -- the mission stage's PS2X_PC_SAMPLER=1.
+TELEPORT_SPEED_UPS = 120.0
+DEFAULT_ROW_PERIOD_S = 1.0
+GUEST_CLOCK = 0x4365C0
 ROOT_NODE_OFF = 0x2E8
 MOVE_SCALE_OFF = 0x1368
 
@@ -79,7 +84,8 @@ def evaluate(lines_or_path, console_json):
     for items in rows:
         a, pos = _actor_pos(items)
         if pos:
-            positions.append(pos)
+            clock_w = sp.word_at(items, GUEST_CLOCK)
+            positions.append((pos, sp.f32(clock_w) if clock_w is not None else None))
         if not a:
             continue
         node = sp.word_at(items, a + ROOT_NODE_OFF)
@@ -90,8 +96,11 @@ def evaluate(lines_or_path, console_json):
         w = sp.word_at(items, a + MOVE_SCALE_OFF)
         if w is not None:
             scale.append(sp.f32(w))
-    steps = sum(1 for p, q in zip(positions, positions[1:])
-                if math.dist(p, q) > TELEPORT_STEP_UNITS)
+    steps = 0
+    for (p, tp), (q, tq) in zip(positions, positions[1:]):
+        dt = (tq - tp) if (tp is not None and tq is not None and tq > tp) else DEFAULT_ROW_PERIOD_S
+        if math.dist(p, q) / dt > TELEPORT_SPEED_UPS:
+            steps += 1
     measured = {"root_node_y": (_settled(root), len(root)),
                 "move_scale": (_settled(scale), len(scale)),
                 "teleport_steps": (steps if positions else None, len(positions))}

@@ -79,11 +79,13 @@ MISSION_MIN_LIVE_PAIRS = 2
 # Sprint 6 Task 1 (owner-agreed 2026-09-14): three scorers that look at what the liveness checks cannot.
 # 1a mission_fail.detect over every hold capture and final.png FAILS the stage: s5_head_1x_b's holds were
 #    gameplay and live while s38/s40/final were the MISSION FAILURE statistics screen.
-# 1b console_compare on the spawn capture (mission_spawn_capture) and 1c guest_probe over the game's run
-#    log (mission_game_log) are PRINTED into the detail and do not change the verdict -- R78: the water
-#    shards and the decayed root node are known, owned defects, and a gate that fails on them every run
-#    teaches nothing; the numbers are on every summary so their trend is visible. Each flips to failing in
-#    the same commit as its fix (Task 5).
+# 1b console_compare on the spawn capture (mission_spawn_capture) is PRINTED into the detail and does not
+#    change the verdict -- R78: the water shards are a known, owned defect, and a gate that fails on them
+#    every run teaches nothing; the numbers are on every summary so their trend is visible. It flips to
+#    failing in the same commit as the water fix (Task 5a).
+# 1c guest_probe over the game's run log (mission_game_log) is SCORED since R80 (2026-09-15): s6_probe on the
+#    block-pointer exe read the root node at the console's 5.5039, MoveScale 1.0 and 0 teleports, so a value
+#    outside its tolerance fails the stage. NO-DATA fails only a stage the gate launched itself.
 GUEST_PROBE_CONSOLE = os.path.join("scripts", "parity", "guest_probe_console.json")
 # What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
 # (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
@@ -341,7 +343,7 @@ def probe_lines(run_log):
     return ["PROBE %s %s %s" % (r.name, "PASS" if r.ok else "FAIL", r.detail) for r in results]
 
 
-def score_mission_log(drive_log, run_dir=None, run_log=None):
+def score_mission_log(drive_log, run_dir=None, run_log=None, probe_required=False):
     """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, one capture per logged hold,
     >= MISSION_MIN_GAMEPLAY_HOLDS of the hold captures gameplay, and >= MISSION_MIN_LIVE_PAIRS live pairs
     (consecutive gameplay captures that differ: the game was running while the holds were sent). A log alone
@@ -398,9 +400,20 @@ def score_mission_log(drive_log, run_dir=None, run_log=None):
         failed, reason = mission_fail.detect(p)
         if failed:
             return False, "MISSION FAILED on screen: %s (%s); %s" % (reason, os.path.basename(p), detail)
-    # 1b + 1c: printed, not scored (R78).
+    # 1b: printed, not scored (R78) until the water is fixed. 1c: scored since R80 (s6_probe read the root node at
+    # the console's 5.5039, MoveScale 1.0 and 0 teleports on the block-pointer exe) -- a probe value outside its
+    # tolerance fails the stage; NO-DATA fails it only when the gate launched the stage itself (probe_required:
+    # run_gate set PS2X_PEEK and the sampler, so rows must exist), never on a --score-mission re-score of an
+    # older run that carries no game log.
     lines = [detail, console_spawn_line(drive_log, run_dir)]
-    lines += probe_lines(run_log or mission_game_log(drive_log))
+    probes = probe_lines(run_log or mission_game_log(drive_log))
+    lines += probes
+    failed = [l for l in probes if " FAIL " in l and ("NO-DATA" not in l or probe_required)]
+    failed += [l for l in probes if l.startswith("PROBE NO-DATA") and probe_required]
+    if failed:
+        head = failed[0].split(" ", 2)
+        name = head[1] if len(head) > 1 else "?"
+        return False, "GUEST PROBE FAILED: %s; %s" % (name, "; ".join(lines))
     return True, "; ".join(lines)
 
 
@@ -423,8 +436,14 @@ def run_gate(name, out_root):
     # mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
     # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
     env = dict(os.environ)
-    if name == "mission" and not env.get("PS2X_PEEK"):
-        env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
+    if name == "mission":
+        if not env.get("PS2X_PEEK"):
+            env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
+        # The runtime prints its [peek] rows from the PC sampler's thread, one row per sample
+        # (game_overrides_socom2.cpp, PS2X_PC_SAMPLER=<seconds>): without it PS2X_PEEK yields nothing --
+        # s6_blockptr's mission stage read "PROBE ... NO-DATA (0 reads of 0 rows)". One row per second
+        # is the ladder's cadence and costs nothing measurable.
+        env.setdefault("PS2X_PC_SAMPLER", "1")
     with open(drive_log, "w", encoding="utf-8") as log:
         subprocess.run([sys.executable, "-m", "tools_py.parity.drive", "--target", "ours",
                         "--script", cfg["script"], "--out", out_dir,
@@ -441,7 +460,7 @@ def run_gate(name, out_root):
         return score_title(out_dir)
     if name == "transition":
         return score_transition(out_dir)
-    return score_mission_log(drive_log, run_log=mission_game_log(drive_log))
+    return score_mission_log(drive_log, run_log=mission_game_log(drive_log), probe_required=True)
 
 
 def main(argv=None):

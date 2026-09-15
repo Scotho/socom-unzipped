@@ -15,10 +15,10 @@
     "source": "KNOWN §1 MoveScale row: 1.0 whenever the network has been heard from; single player has no idle path, so 1.0 throughout"
   },
   "teleport_steps": {
-    "peek": "*0x408c58:64",
-    "read": "count of consecutive-row actor position steps > 30 units (words 7/8/9 of the actor block)",
+    "peek": "*0x408c58:64,0x4365c0:1",
+    "read": "count of consecutive-row actor position steps faster than 120 u/s (words 7/8/9 of the actor block; the row period from the guest clock 0x4365c0 when present, else 1 s -- the mission stage samples at PS2X_PC_SAMPLER=1)",
     "console": 0,
     "tol": 0,
-    "source": "research/25 §1.1: every step > 30 units on ours is a teleport; the console walks at ~7.5 u/s, ~2 units per 4 Hz row"
+    "source": "research/25 §1.1: every step > 30 units per 4 Hz row (> 120 u/s) on ours was a teleport; a run reads ~40 u/s (s6_probe, 8 s forward hold)"
   }
 }
