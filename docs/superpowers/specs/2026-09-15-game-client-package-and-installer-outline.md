@@ -122,34 +122,42 @@ client-side story. What the *server* package needs, in order:
 
 ```
 [Setup]
-AppName=SOCOM II PC            AppVersion={#GitTag}     DefaultDirName={autopf}\SOCOM II PC
-PrivilegesRequired=lowest      OutputBaseFilename=socom2-setup-{#GitTag}
+AppName=SOCOM Unzipped         AppVersion={#GitTag}     DefaultDirName={autopf}\SOCOM Unzipped
+PrivilegesRequired=lowest      OutputBaseFilename=socom-unzipped-setup-{#GitTag}
 LicenseFile=LICENSES\GPL-3.0.txt
 
 [Files]
-Source: "dist\socom2.exe";  DestDir: "{app}"
-Source: "dist\*.dll";       DestDir: "{app}"
-Source: "launcher\*";       DestDir: "{app}"
-Source: "LICENSES\*";       DestDir: "{app}\LICENSES"
+Source: "dist\socom2.exe";        DestDir: "{app}"
+Source: "dist\*.dll";             DestDir: "{app}"
+Source: "dist\socom2_game.elf";   DestDir: "{app}"
+Source: "launcher\*";             DestDir: "{app}"
+Source: "LICENSES\*";             DestDir: "{app}\LICENSES"
 
 [Dirs]
-Name: "{localappdata}\socom2\cards";  Name: "{localappdata}\socom2\logs"
+Name: "{localappdata}\SOCOM Unzipped\cards";  Name: "{localappdata}\SOCOM Unzipped\logs"
 
 [Icons]
-Name: "{autoprograms}\SOCOM II PC"; Filename: "{app}\launcher.exe"
+Name: "{autoprograms}\SOCOM Unzipped"; Filename: "{app}\launcher.exe"
 
 [Run]
 Filename: "{app}\launcher.exe"; Parameters: "--first-run"; Flags: postinstall nowait
 ```
 
 The installer never touches the ISO; the launcher's first run asks for it. Uninstall removes `{app}`
-and leaves `{localappdata}\socom2` (cards are saves). A CI job builds the folder (§2 A), the installer
+and leaves `{localappdata}\SOCOM Unzipped` (cards are saves). A CI job builds the folder (§2 A), the installer
 (§6), and `SHA256SUMS`, from a tag.
 
-## 7. Open questions for the owner
+## 7. Owner decisions (2026-09-15)
 
-1. **Distribution of derived code** (§1, §4.2): ship the exe and ELF, or ship a kit that builds them
-   from the user's disc? Everything in §2–§6 works either way, but the first-run flow is different.
-2. **Public server**: who hosts, and is the project's own Horizon stack the only supported server, or
-   should the client also join community Horizon instances (same protocol, different app-id policy)?
-3. **Name.** "SOCOM Unzipped" is the repo; the launcher and installer need the user-facing name.
+1. **Distribution: ship the exe and the merged ELF.** The portable folder (§2 A) carries `socom2.exe`, the
+   DLLs and `socom2_game.elf`; the player supplies only their ISO, which the launcher's first run asks for.
+   Consequence: §4.2's "build the ELF on first run" path is dropped; no embedded Python, no decrypt port.
+   The owner takes the distribution risk knowingly; the README and installer license page say plainly
+   that the code is derived from the retail game and that the player must own the disc.
+2. **Online: a project-hosted Horizon server**, its address the launcher's default, with a custom
+   address still allowed (so "bring your own server" remains possible for LAN groups, and community
+   instances can be tried without a build). Follow-ups it creates: a host machine and its router/port
+   plan (§5.1), the advertised address made configurable in `server/config`, and the two-machine test
+   (§5.2) as Sprint 7's first online item.
+3. **Name: SOCOM Unzipped** for the launcher, the installer and the folder (`SOCOM Unzipped/`,
+   `socom-unzipped-setup-<tag>.exe`); the installer sketch in §6 is updated accordingly.
