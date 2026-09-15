@@ -38,7 +38,7 @@ block-pointer exe (`s6_blockptr`, sha `1cfef9af028a90fc…`) **with the mission-
 teleport no longer ends the mission. The runtime freeze at `92d30f0` is over: **the ladder exe is now `a81eb74`'s**, and
 the first online result on it must be recorded against that sha.
 
-branch: sprint-6 (to be created off develop at the next lock-free step; work so far went to develop through the two fix branches)
+branch: sprint-6 (created 2026-09-15 evening off develop at `20db94b`; Task 0 and the lock-free Task 1-4 work went to develop first)
 spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md (owner review pending)
 plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
 ledger: .superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md (create on first dispatch)
