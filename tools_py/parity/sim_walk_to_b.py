@@ -11,7 +11,8 @@ asked for -72 deg and delivered -16).
 
     python -m tools_py.parity.sim_walk_to_b [open|maze|caps|converge|route|stack|watch|nocontrol|movepath|
                                              endgame|endgame-negative|endgame-rule|engage-route|
-                                             engage-route-starved|engage-route-swap|engage-route-teleport|all]
+                                             engage-route-starved|engage-route-swap|engage-route-teleport|
+                                             aim-bias|aim-exhausted|all]
 
 Sprint 5 Task 5 added the engagement's own world (`endgame`): a TWO-SIDED STARVATION MODEL (`Net`: each
 side's idle ms is reset only by the OTHER side's traffic -- translation always, rotation iff
@@ -229,8 +230,15 @@ class World:
 
     def __init__(self, path, x, z, facing, walk_u_s, look_deg_s, radius, wall=None, height=None,
                  actor_addr=0x01794000, ignores_pad=False, valves=True, terrain=None, floor="lower",
-                 net=None, tag=None, yaw=None, move_dz=0, tick_clock=False, back_u_s=None):
+                 net=None, tag=None, yaw=None, move_dz=0, tick_clock=False, back_u_s=None, aim_err_bias=0.0,
+                 health=None):
         self.path, self.x, self.z, self.facing = path, x, z, facing
+        # Sprint 6 Task 4: the matrix heading the log carries is the true heading MINUS `aim_err_bias` degrees, so the
+        # harness's aim error (bearing - heading) reads `true error + aim_err_bias` -- a fixed offset the loop cannot
+        # see (round 4 of ladder launch 2 read -4.1 on every cycle, inside its tolerance, never pulsed, and 111 bursts
+        # missed). `health` (a float, or None) is written as the actor+0x1044 word the live health watch reads; the
+        # scenario's hit model lowers it.
+        self.aim_err_bias, self.health = aim_err_bias, health
         # Task 5: the engagement world. `yaw` = (gain, dead zone, lead s): rx turns at the harness's OWN table
         # times a WRONG gain, nothing inside the dead zone, nothing for the first `lead` s of a hold (None: the
         # legacy constant look rate). `move_dz`: left-stick dead zone, speed linear above it. The actor matrix
@@ -377,6 +385,8 @@ class World:
                 cx, cz = self.camera()
                 y = self.y()
                 scale, idle, mf, round_t = self.scale, self.idle, self.mf, self.round_t
+                mf = M.wrap_deg(mf - self.aim_err_bias)
+                health = self.health
             n += 1
             with open(self.path, "a") as f:
                 if n % 2 == 0 and not self.movescale_stopped and not frozen:
@@ -398,14 +408,17 @@ class World:
                     extra += f" @4365c0: {_w(round_t)}"
                 if self.net is not None:
                     extra += " " + ng_items(Net.lagflag(idle))
+                if health is not None:
+                    extra += f" @{self.actor_addr + M.DEFAULT_HEALTH_OFFSET:x}: {_w(health)}"
                 f.write(peek_line(cx, y + 19.7, cz, actor=(self.x, y, self.z), actor_addr=self.actor_addr,
                                   matrix_facing=mf if self.yaw is not None else None) + extra + "\n")
 
 
 class FakeShell:
-    def __init__(self, world, tag):
+    def __init__(self, world, tag, on_fire=None):
         self.world, self.tag = world, tag
         self.lines = []
+        self.on_fire = on_fire           # Sprint 6 Task 4: called with the host time at every R1 press (the hit model)
 
     def log(self, m):
         self.lines.append(m)
@@ -419,6 +432,8 @@ class FakeShell:
         with self.world.lock:
             self.world.state = {}
             self.world.axes, self.world.buttons = ax, {b.upper() for b in buttons}
+        if self.on_fire is not None and any(b.upper() == "R1" for b in buttons):
+            self.on_fire(time.time())
         if abort is None:
             time.sleep(seconds)
         else:
@@ -759,6 +774,86 @@ def run_endgame(label="endgame", rotation_feeds=False, firing_feeds=False, micro
     return res
 
 
+# ---------------------------------------------------------------------------------------------
+# Sprint 6 Task 4: the aim-bias world (ladder launch 2 round 4 -- research/22 "Ladder launch 2", KNOWN §4)
+# ---------------------------------------------------------------------------------------------
+# A flat world, the shooter already in the band at AIM_BIAS_RANGE_UNITS from a stander whose body subtends
+# AIM_BIAS_SUBTENDED_DEG there. The shooter's matrix heading carries a FIXED bias (World.aim_err_bias), so the harness
+# reads its aim error AIM_BIAS_DEG degrees off the truth (a read of -4.1 at a true 0 is exactly round 4's line): with the
+# shooter parked at the loop's fixed point (read error 0, true error -AIM_BIAS_DEG = +4.1) aim_yaw reports in-tolerance,
+# never pulses, and every burst misses -- round 4's signature. A lead of L turns the shooter to L past the bearing it
+# reads, i.e. to a true error of -AIM_BIAS_DEG - L: the +3.0 entry lands it 1.1 deg off. The HIT MODEL (an assumption a live launch must confirm, KNOWN §4): a burst hits iff the shooter's TRUE aim
+# error at the R1 press is inside half the subtended angle; a hit lowers the stander's actor+0x1044 word by
+# AIM_BIAS_HIT_DAMAGE, which the health watch on the stander's tail reads exactly as the live harness does.
+AIM_BIAS_DEG = -4.1
+AIM_BIAS_RANGE_UNITS = 30.0
+AIM_BIAS_SUBTENDED_DEG = 4.0     # "~3 deg" (a body at 30 units): the +3.0 lead leaves 1.1 deg of the 4.1 bias, and the
+                                 # lead re-aim (0.5 deg tolerance on a matrix this world lags by a quarter of each pulse)
+                                 # lands within ~0.8 of that: the half-angle needs >= 1.9
+AIM_BIAS_HIT_DAMAGE = 0.2
+AIM_BIAS_UNREACHABLE_DEG = -12.0  # a bias the +-3 deg lead table cannot reach: the loop must give up, not fire forever
+AIM_BIAS_FIGHT_S = 90.0
+
+
+def run_aim_bias(label="aim_bias", bias_deg=AIM_BIAS_DEG, subtended_deg=AIM_BIAS_SUBTENDED_DEG,
+                 range_units=AIM_BIAS_RANGE_UNITS, fight_s=AIM_BIAS_FIGHT_S):
+    """endgame_route's fight loop (no route, no close: the shooter starts in the band) against the aim-bias world ->
+    dict: the engagement's result, the true error at every burst, the hits, the stander's final health."""
+    d = tempfile.gettempdir()
+    tag = f"{label}_{os.getpid()}"
+    flat = lambda x, z: 100.0
+    kw = dict(yaw=ENDGAME_YAW, move_dz=ENDGAME_MOVE_DZ, tick_clock=True, back_u_s=M.WALK_BACK_UNITS_PER_S, height=flat)
+    # bearing A -> B is 0 deg; the shooter's TRUE facing is `bias_deg` (its true error -bias_deg), and its matrix
+    # heading reads the bearing exactly: the loop's fixed point
+    wa = World(os.path.join(d, f"sim_A_{tag}.log"), 0.0, 0.0, bias_deg, M.WALK_UNITS_PER_S_LONG, M.LOOK_DEG_PER_S,
+               27.0, actor_addr=0x01794000, tag="A", aim_err_bias=bias_deg, **kw)
+    wb = World(os.path.join(d, f"sim_B_{tag}.log"), range_units, 0.0, 180.0, M.WALK_UNITS_PER_S_LONG,
+               M.LOOK_DEG_PER_S, 27.0, actor_addr=0x017a4000, tag="B", health=1.0, **kw)
+    ta, tb = M.RunLogTail(wa.path), M.RunLogTail(wb.path)
+    tb.watch_offset = M.DEFAULT_HEALTH_OFFSET          # the stander's health, as --health-offset arms it live
+    ta.start()
+    tb.start()
+    time.sleep(1.5)
+    bursts, hits = [], []
+    duel = M.Duel()
+
+    def on_fire(t):
+        with wa.lock:
+            ax_, az_, af_ = wa.x, wa.z, wa.facing
+        with wb.lock:
+            dist = math.hypot(wb.x - ax_, wb.z - az_)
+            err = M.wrap_deg(math.degrees(math.atan2(wb.z - az_, wb.x - ax_)) - af_)
+            width = 2.0 * range_units * math.tan(math.radians(subtended_deg / 2.0))   # the body's width, in units
+            half = math.degrees(math.atan2(width / 2.0, dist))
+            hit = abs(err) < half
+            if hit:
+                wb.health = max(0.0, wb.health - AIM_BIAS_HIT_DAMAGE)
+            bursts.append((t, err, hit))
+            if hit:
+                hits.append((t, err))
+            if wb.health <= 0.0:
+                duel.stop.set()                        # a kill ends the round (live: KillWatch stops the duel)
+    lines = []
+
+    def log(m):
+        lines.append(m)
+        print(f"W_{m}", flush=True)
+    sides = {"A": M.Side("A", FakeShell(wa, "A_", on_fire=on_fire), ta), "B": M.Side("B", FakeShell(wb, "B_"), tb)}
+    out = M.endgame_route(sides, duel, None, log, "sim-flat", mover="A", route=[], fight_s=fight_s)
+    time.sleep(0.5)
+    res = {"label": label, "out": out, "bursts": bursts, "hits": hits, "health": wb.health, "lines": lines,
+           "aims": sides["A"].aims, "read_errs": [a["err_after"] for a in sides["A"].aims if a["err_after"] is not None]}
+    first_hit = next((i + 1 for i, b in enumerate(bursts) if b[2]), None)
+    print(f"\n== {label}: bias={bias_deg:+.1f} stop={out['stop_reason']!r} bursts={out['bursts']} (model {len(bursts)}) "
+          f"hits={len(hits)} first_hit_burst={first_hit} health={wb.health:.2f} lead={out.get('lead')} "
+          f"true_err_at_bursts={[round(b[1], 1) for b in bursts]}")
+    for w in (wa, wb):
+        w.stop.set()
+    ta.stop()
+    tb.stop()
+    return res
+
+
 def _captured(sh):
     return getattr(sh, "lines", [])
 
@@ -899,7 +994,7 @@ def assert_route_ok(r, want_reactions=False, max_idle_ms=ENDGAME_MAX_IDLE_MS):
 
 SCENARIOS = ("open", "maze", "caps", "converge", "route", "stack", "watch", "nocontrol", "movepath", "endgame",
              "endgame-negative", "endgame-rule", "engage-route", "engage-route-starved",
-             "engage-route-swap", "engage-route-teleport", "engage-route-blocked")
+             "engage-route-swap", "engage-route-teleport", "engage-route-blocked", "aim-bias", "aim-exhausted")
 # The review's I2: this world is IDEALISED (walls block a whole step, the ramp is a clean wedge, no doors, no slides).
 # `engage-route-blocked` puts a ring of wall around the stander, so the close can never reach the band: the follower's
 # budgets (stuck legs, no best-distance progress for ROUTE_NO_PROGRESS_S, CLOSE_MAX_S) must end it in bounded time.
@@ -1078,6 +1173,18 @@ def _run(which):
         assert "--mover B" in o["stop_reason"], o["stop_reason"]
         assert o["bursts"] == 0, o["bursts"]
         ran.append("engage-route-blocked")
+    if which in ("aim-bias", "all"):
+        # Sprint 6 Task 4: round 4's fixed -4.1 deg bias -- the burst-to-burst correction walks the lead table until a
+        # burst lands, within 12 bursts, and keeps the lead that hit
+        r = run_aim_bias("aim_bias")
+        first_hit = next((i + 1 for i, b in enumerate(r["bursts"]) if b[2]), None)
+        assert first_hit is not None and first_hit <= 12, (first_hit, r["out"].get("lead"))
+        assert r["out"]["stop_reason"] is None, r["out"]["stop_reason"]
+        ran.append("aim-bias")
+    if which in ("aim-exhausted", "all"):
+        r = run_aim_bias("aim_exhausted", bias_deg=AIM_BIAS_UNREACHABLE_DEG)
+        assert not r["hits"] and (r["out"]["stop_reason"] or "").startswith(M.AIM_EXHAUSTED_REASON), r["out"]
+        ran.append("aim-exhausted")
     if which in ("engage-route-teleport", "all"):
         r = run_route_engagement("route_teleport", keepalive=True, teleport_after_s=8.0)
         assert r["out"]["teleport"] is not None and r["out"]["stop_reason"].startswith("teleport"), r["out"]

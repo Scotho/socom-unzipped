@@ -3745,6 +3745,132 @@ def victim_should_oscillate(d3):
     return d3 is not None and d3 <= ENDGAME_UNITS
 
 
+# --- Sprint 6 Task 4: the burst-to-burst correction (ladder launch 2 round 4, KNOWN §4) --------------------------
+# Round 4 read the same -4.1 deg aim error on all 111 cycles -- inside the tolerance, so aim_yaw never pulsed -- and
+# fired 111 bursts with no damage: a fixed offset between the actor-matrix heading and where the bullets go is invisible
+# to the aim loop. The correction closes the loop on the one signal that sees the bullets: the target's +0x1044 health
+# word (RunLogTail.watch_hist, the same watch the kill readout reads). After AIM_MISS_BURSTS bursts with no drop the
+# next aim's target is rotated by a LEAD from AIM_LEAD_TABLE_DEG (alternating sides, widening), re-aimed at
+# AIM_LEAD_TOL_DEG (aim_yaw pulses only outside its tolerance: a 1.5 deg step under the 5-6 deg band tolerance would
+# never turn the player); any damage resets the miss count and keeps the lead that was on at the burst it credits; the
+# table walked AIM_LEAD_ROUNDS times with no damage ends the engagement with AIM_EXHAUSTED_REASON instead of firing
+# until the round clock runs out. A burst is judged only once a health read exists AIM_HIT_READ_S after it ended, so a
+# hit whose row has not arrived yet is not counted as a miss. Without an armed health watch nothing is ever judged and
+# the correction is inert (no evidence, no correction) -- the banner says so.
+AIM_MISS_BURSTS = 3              # bursts with no drop on the target's +0x1044 word before the aim steps a lead
+AIM_LEAD_TABLE_DEG = (1.5, -1.5, 3.0, -3.0)   # the lead offsets in order, degrees of bearing (+: aim_yaw's positive err)
+AIM_LEAD_ROUNDS = 2              # the table is walked this many times with no damage before the engagement gives up
+AIM_LEAD_TOL_DEG = 0.5           # the re-aim tolerance on the cycle that steps a lead
+AIM_HIT_READ_S = 0.5             # a burst is judged once a health read this long after its end exists (one 4 Hz row +)
+AIM_HIT_SETTLE_MAX_S = 1.5       # ... waited for at most this long before the next cycle (a slow sampler: judged later)
+AIM_EXHAUSTED_REASON = "NO-KILL aim-exhausted"
+
+
+def health_drop_times(tail, since):
+    """Host times of the DROPS on a tail's health watch after `since`: reads of +0x1044 (RunLogTail.watch_hist) below
+    the previous alive read (0 < v <= 1) on the same actor -- damage_verdict's drop, without its band/burst/fall
+    qualification (the fight loop is in the band and just fired). [] without a watch."""
+    with tail._lock:                                    # noqa: SLF001 - same module
+        hist = list(tail.watch_hist)
+    out, prev = [], None
+    for t, raw, actor in hist:
+        v = vc.f32(raw)
+        if (prev is not None and prev[1] == actor and 0.0 < prev[0] <= 1.0 and math.isfinite(v) and v < prev[0]
+                and t > since):
+            out.append(t)
+        prev = (v, actor)
+    return out
+
+
+class AimLead:
+    """The burst-to-burst correction's state for one engagement (see the constants above)."""
+
+    def __init__(self, t0):
+        self.lead = 0.0                  # the lead applied to the next aim's target, degrees
+        self.k = 0                       # lead steps taken since the last damage
+        self.bursts_since_damage = 0     # bursts JUDGED as misses since the last damage
+        self.pending = []                # [(t_start, t_end, lead)] bursts not yet judged
+        self.bursts = []                 # [(t_start, t_end, lead)] every burst
+        self.steps = []                  # [{"t", "lead", "bursts_since_damage"}]
+        self.hits = self.resets = 0
+        self.t_last = t0                 # drops at or before this are history
+        self.fresh = False               # the next aim is the one that steps a lead: re-aim at AIM_LEAD_TOL_DEG
+
+    def target(self, me_xz, target_xz):
+        """`target_xz` rotated about `me_xz` by the current lead."""
+        if not self.lead:
+            return target_xz
+        dx, dz = target_xz[0] - me_xz[0], target_xz[1] - me_xz[1]
+        a = math.radians(self.lead)
+        return (me_xz[0] + dx * math.cos(a) - dz * math.sin(a), me_xz[1] + dx * math.sin(a) + dz * math.cos(a))
+
+    def tol(self, tol):
+        return min(tol, AIM_LEAD_TOL_DEG) if self.fresh else tol
+
+    def aimed(self):
+        self.fresh = False
+
+    def burst(self, t_start, t_end):
+        self.pending.append((t_start, t_end, self.lead))
+        self.bursts.append((t_start, t_end, self.lead))
+
+    def settle(self, tail, clock, wait):
+        """Wait (<= AIM_HIT_SETTLE_MAX_S) for a health read AIM_HIT_READ_S after the newest pending burst. Nothing to
+        wait for without an armed watch (the correction is inert)."""
+        if not self.pending or tail.watch_offset is None:
+            return
+        t_end = clock() + AIM_HIT_SETTLE_MAX_S
+        while clock() < t_end:
+            with tail._lock:                            # noqa: SLF001 - same module
+                last = tail.watch_read_t[-1] if tail.watch_read_t else None
+            if last is not None and last >= self.pending[-1][1] + AIM_HIT_READ_S:
+                return
+            wait(AIM_POLL_S)
+
+    def observe(self, tail):
+        """Credit the drops read since the last one (-> 'damage'), else judge the pending bursts whose post-burst read
+        exists as misses (-> None). Without an armed watch nothing is judged: no evidence, no correction."""
+        if tail.watch_offset is None:
+            self.pending = []
+            return None
+        drops = health_drop_times(tail, self.t_last)
+        if drops:
+            t_d = drops[-1]
+            # the lead that was on at the burst the drop credits: the newest burst that STARTED before the drop was
+            # read (damage lands during the burst; its row can be read before the burst ends)
+            fired = [b for b in self.bursts if b[0] <= t_d]
+            self.lead = fired[-1][2] if fired else self.lead
+            self.hits += len(drops)
+            self.resets += 1
+            self.k, self.bursts_since_damage, self.t_last, self.fresh = 0, 0, t_d, False
+            self.pending = [b for b in self.pending if b[0] > t_d]
+            return "damage"
+        with tail._lock:                                # noqa: SLF001 - same module
+            last = tail.watch_read_t[-1] if tail.watch_read_t else None
+        judged = [b for b in self.pending if last is not None and last >= b[1] + AIM_HIT_READ_S]
+        if judged:
+            self.pending = [b for b in self.pending if b not in judged]
+            self.bursts_since_damage += len(judged)
+        return None
+
+    def decide(self, now):
+        """-> 'step' (the lead moved on to the next table entry), 'exhausted' (the table was walked AIM_LEAD_ROUNDS
+        times with no damage), or None."""
+        if self.bursts_since_damage < AIM_MISS_BURSTS * (self.k + 1):
+            return None
+        if self.k >= len(AIM_LEAD_TABLE_DEG) * AIM_LEAD_ROUNDS:
+            return "exhausted"
+        self.lead = AIM_LEAD_TABLE_DEG[self.k % len(AIM_LEAD_TABLE_DEG)]
+        self.k += 1
+        self.fresh = True
+        self.steps.append({"t": now, "lead": self.lead, "bursts_since_damage": self.bursts_since_damage})
+        return "step"
+
+    def summary(self):
+        return {"lead": self.lead, "steps": list(self.steps), "hits": self.hits, "resets": self.resets,
+                "bursts_since_damage": self.bursts_since_damage, "pending": len(self.pending)}
+
+
 def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, fight_s=None, clock=time.time,
                   wait=time.sleep, spawns=None, live_spawns=None, route_path=None, route_join="start",
                   round_start=None):
@@ -3752,7 +3878,9 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     RULE_LEG_S strafe leg); the mover follows `route` (default: routes/<map>.json for `mover`) to the stander's floor,
     close_to()s it into the engagement band, then cycles aim_yaw(read="pulse", tol=aim_tol_deg(d3)) -> one R1 burst
     while inside the tolerance, re-closing when the band is left and reacting to StarvationWatch requests with a
-    strafe leg. A TeleportAbort ends the attempt with `teleport` set (the RESULT line says so) -- unless it is the
+    strafe leg. Sprint 6 Task 4: bursts with no drop on the stander's health word step a lead into the aim (AimLead;
+    `lead` in the result), and a lead table walked AIM_LEAD_ROUNDS times with no damage stops the engagement with
+    AIM_EXHAUSTED_REASON. A TeleportAbort ends the attempt with `teleport` set (the RESULT line says so) -- unless it is the
     round-end reset to spawn (is_round_reset: `round_end`); a failed route or close ends it with the hint to swap the
     mover. `spawns` ({tag: (x, y, z)}, the route file's): a live spawn (`live_spawns`, default each tail's first actor
     row) further than SPAWN_MISMATCH_UNITS is `NO-DATA spawn-mismatch` before anybody walks. A teleport, or a guest
@@ -3764,7 +3892,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
     out = {"mode": "route", "mover": shooter.tag, "stander": stander.tag, "route": None, "close": None,
            "rule_moves": [], "bursts": 0, "stop_reason": None, "teleport": None, "fire_teleport": None,
            "fire_freeze": None, "round_end": None, "t_fight": None, "t_end": None, "fire_windows": [],
-           "route_join": None}
+           "route_join": None, "lead": None}
+    lead = AimLead(clock())
     duel.observe(shooter.tag, shooter.tail)
     duel.observe(stander.tag, stander.tail)
     log(f"ENDGAME BANNER mode=route mover={shooter.tag} stander={stander.tag} (stands at its spawn) "
@@ -3772,7 +3901,8 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
         f"band=|dy|<={ENGAGE_DY_UNITS:g},3-D<={ENGAGE_BAND_3D_UNITS:g} (stop at {ENGAGE_BAND_STOP_UNITS:g}) "
         f"aim=pulses(read {AIM_PULSE_READ_S:g}s after each, <= {AIM_PULSE_MAX_S:g}s) tol=min({AIM_TOL_DEG:g},0.8*atan(3.4/d)) "
         f"oscillation=OFF micro-strafe=OFF reaction=other-side-moves {RULE_LEG_S:g}s only when starved with both "
-        f"round clocks running; teleport abort > {TELEPORT_STEP_UNITS:g}u per row")
+        f"round clocks running; teleport abort > {TELEPORT_STEP_UNITS:g}u per row; "
+        f"lead={'after %d bursts with no drop on %s+0x%x: %s x%d, then %s' % (AIM_MISS_BURSTS, stander.tag, stander.tail.watch_offset, AIM_LEAD_TABLE_DEG, AIM_LEAD_ROUNDS, AIM_EXHAUSTED_REASON) if stander.tail.watch_offset is not None else 'INERT (no health watch on ' + stander.tag + ')'}")
     stop = duel.stop
     sign, sign_lock = {"s": 1}, threading.Lock()        # both side threads react: flip under a lock
     mismatch = spawn_mismatch({shooter.tag: shooter, stander.tag: stander}, spawns, live_spawns) if spawns else None
@@ -3829,6 +3959,7 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
             out["stop_reason"] = f"close failed: {r['reason']} -- --mover {stander.tag} swaps which side walks"
             return
         out["t_fight"] = clock()
+        lead.t_last = clock()
         log(f"ENDGAME band reached: {shooter.tag} at 3-D {r['d3']:.1f} from {stander.tag}")
         while clock() - out["t_fight"] < fight_s and not stop.is_set():
             if watch is not None and watch.stop_reason:
@@ -3838,6 +3969,23 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 return                                   # I6: an earlier window's late rows made the round NO-DATA
             if react(shooter):
                 continue
+            # Sprint 6 Task 4: judge the last burst by the stander's health word before the next aim
+            lead.settle(stander.tail, clock, wait)
+            if lead.observe(stander.tail) == "damage":
+                log(f"ENDGAME lead: damage read on {stander.tag}+0x{stander.tail.watch_offset:x} -- miss count reset, "
+                    f"lead {lead.lead:+.1f} deg kept (hits {lead.hits})")
+            act = lead.decide(clock())
+            if act == "exhausted":
+                out["stop_reason"] = (f"{AIM_EXHAUSTED_REASON}: {lead.bursts_since_damage} bursts with no drop on "
+                                      f"{stander.tag}+0x{stander.tail.watch_offset:x} through the lead table "
+                                      f"{AIM_LEAD_TABLE_DEG} x{AIM_LEAD_ROUNDS} -- the aim is off by more than the "
+                                      f"table reaches, or the bullets do not go where the matrix heading points")
+                out["lead"] = lead.summary()
+                return
+            if act == "step":
+                log(f"ENDGAME lead: {lead.bursts_since_damage} bursts with no drop on {stander.tag}+0x"
+                    f"{stander.tail.watch_offset:x} -- lead {lead.lead:+.1f} deg (step {lead.k} of "
+                    f"{len(AIM_LEAD_TABLE_DEG) * AIM_LEAD_ROUNDS}), re-aim at {AIM_LEAD_TOL_DEG:g} deg")
             a, b = shooter.tail.actor_latest(), stander.tail.actor_latest()
             if a is None or b is None:
                 out["stop_reason"] = "stale actor rows in the engagement"
@@ -3857,8 +4005,9 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                     return
                 continue
             tol = aim_tol_deg(d3)
-            _, err = aim_yaw(shooter, (b[1], b[3]), shooter.tail, shooter.sh, clock=clock, wait=wait,
-                             on_poll=on_poll, read="pulse", tol=tol)
+            _, err = aim_yaw(shooter, lead.target((a[1], a[3]), (b[1], b[3])), shooter.tail, shooter.sh, clock=clock,
+                             wait=wait, on_poll=on_poll, read="pulse", tol=lead.tol(tol))
+            lead.aimed()
             if err is None:
                 out["stop_reason"] = "aim NO-DATA"
                 return
@@ -3870,6 +4019,7 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
                 shooter.r1_times.append(t_b)
                 shooter.sh.pad(ENDGAME_BURST_S, buttons=["R1"])
                 out["bursts"] += 1
+                lead.burst(t_b, clock())
                 wait(ENDGAME_BURST_GAP_S)
                 out["fire_windows"].append((t_b, clock()))
                 if fire_window_teleport(out, (shooter, stander), t_b, clock(), log, classify=classify):
@@ -3896,10 +4046,12 @@ def endgame_route(sides, duel, watch, log, map_name, mover="A", route=None, figh
         stop.set()
         ts.join(timeout=RULE_LEG_S + 2.0)
         out["t_end"] = clock()
+        out["lead"] = lead.summary()
     if out["stop_reason"]:
         log(f"ENDGAME STOP: {out['stop_reason']}")
     log(f"ENDGAME done: mode=route bursts={out['bursts']} reactions={len(out['rule_moves'])} "
-        f"route={out['route'] and out['route']['reason']} close={out['close'] and out['close']['reason']}")
+        f"route={out['route'] and out['route']['reason']} close={out['close'] and out['close']['reason']} "
+        f"lead={out['lead']['lead']:+.1f} steps={len(out['lead']['steps'])} hits={out['lead']['hits']}")
     return out
 
 
@@ -4747,6 +4899,9 @@ def main():
                 c_ok = None if contact.status == vc.NO_DATA else contact.ok
                 if endgame is not None and (endgame.get("stop_reason") or "").startswith(vc.NO_DATA) and not is_kill:
                     verdict = endgame["stop_reason"]    # a spawn mismatch, a freeze in a fire window: not scored
+                elif (endgame is not None and (endgame.get("stop_reason") or "").startswith(AIM_EXHAUSTED_REASON)
+                      and not is_kill):
+                    verdict = endgame["stop_reason"]    # Sprint 6 Task 4: the lead table found no damage
                 elif endgame is not None and endgame.get("fire_teleport") and not is_kill:
                     ftp = endgame["fire_teleport"]
                     verdict = (f"NO-DATA teleport-in-fire-window side={ftp['tag']} step={ftp['step']:.1f}u -- an "
