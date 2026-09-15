@@ -5,6 +5,23 @@
 #include "raylib.h"
 #include "rlgl.h"
 #include "external/glad.h"
+#include "runtime/gs/gs_gl_depth.h"
+
+// raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
+// at runtime through GLFW, which raylib links on desktop.
+#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ANDROID) && !defined(__ANDROID__)
+#define PS2X_GS_GL_HAVE_GLFW_PROC 1
+extern "C" void (*glfwGetProcAddress(const char *procname))(void);
+#endif
+#ifndef GL_CLIP_DEPTH_MODE
+#define GL_CLIP_DEPTH_MODE 0x935D
+#endif
+#ifndef GL_NEGATIVE_ONE_TO_ONE
+#define GL_NEGATIVE_ONE_TO_ONE 0x935E
+#endif
+#ifndef GL_ZERO_TO_ONE
+#define GL_ZERO_TO_ONE 0x935F
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -230,9 +247,22 @@ uniform vec2 uRtSize;
 out vec4 vColor;
 out vec3 vTex;
 out float vFog;
+#if PS2X_DEPTH_MODE == 2
+noperspective out float vDepth;
+#endif
 void main()
 {
-    gl_Position = vec4(aPos.x / uRtSize.x * 2.0 - 1.0, aPos.y / uRtSize.y * 2.0 - 1.0, aPos.z * 2.0 - 1.0, 1.0);
+    // aPos.z = GS z / 2^32 (GsGlDepth::attribute). research/26: `* 2.0 - 1.0` rounds window depth
+    // to 128 GS z units, so the default is GL_ZERO_TO_ONE clip control with z passed through.
+#if PS2X_DEPTH_MODE == 1
+    float zNdc = aPos.z;
+#else
+    float zNdc = aPos.z * 2.0 - 1.0;
+#endif
+    gl_Position = vec4(aPos.x / uRtSize.x * 2.0 - 1.0, aPos.y / uRtSize.y * 2.0 - 1.0, zNdc, 1.0);
+#if PS2X_DEPTH_MODE == 2
+    vDepth = aPos.z;
+#endif
     vColor = aColor;
     vTex = aTex;
     vFog = aFog;
@@ -254,6 +284,9 @@ uniform int uFge, uFba;
 uniform vec3 uFogColor;
 layout(location = 0, index = 0) out vec4 oColor;
 layout(location = 0, index = 1) out vec4 oBlendAlpha;
+#if PS2X_DEPTH_MODE == 2
+noperspective in float vDepth;
+#endif
 
 float wrapCoord(float c, int mode, float size, float mn, float mx)
 {
@@ -265,6 +298,9 @@ float wrapCoord(float c, int mode, float size, float mn, float mx)
 
 void main()
 {
+#if PS2X_DEPTH_MODE == 2
+    gl_FragDepth = vDepth;
+#endif
     vec4 c = vColor;
     if (uTme == 1)
     {
@@ -314,6 +350,61 @@ void main()
     oBlendAlpha = vec4(min(c.a * 2.0, 1.0));
 }
 )GLSL";
+
+    // research/26 depth path. Render-thread state, chosen once in ensureGl.
+    using ClipControlFn = void(
+#if defined(_WIN32) && !defined(_WIN64)
+        __stdcall
+#endif
+        *)(GLenum, GLenum);
+    GsGlDepth::Mode g_depthMode = GsGlDepth::Mode::Legacy;
+    ClipControlFn g_clipControl = nullptr;
+
+    // GL 4.5 or ARB_clip_control, a resolvable entry point, and a round trip through
+    // GL_CLIP_DEPTH_MODE that proves the call took. Leaves the default clip range set.
+    ClipControlFn probeClipControl()
+    {
+#if defined(PS2X_GS_GL_HAVE_GLFW_PROC)
+        GLint major = 0, minor = 0, extCount = 0;
+        glGetIntegerv(GL_MAJOR_VERSION, &major);
+        glGetIntegerv(GL_MINOR_VERSION, &minor);
+        bool advertised = major > 4 || (major == 4 && minor >= 5);
+        glGetIntegerv(GL_NUM_EXTENSIONS, &extCount);
+        for (GLint i = 0; i < extCount && !advertised; ++i)
+        {
+            const char *ext = reinterpret_cast<const char *>(glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(i)));
+            advertised = ext != nullptr && std::strcmp(ext, "GL_ARB_clip_control") == 0;
+        }
+        if (!advertised)
+            return nullptr;
+        const ClipControlFn fn = reinterpret_cast<ClipControlFn>(glfwGetProcAddress("glClipControl"));
+        if (fn == nullptr)
+            return nullptr;
+        while (glGetError() != GL_NO_ERROR)
+        {
+        }
+        fn(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+        GLint mode = 0;
+        glGetIntegerv(GL_CLIP_DEPTH_MODE, &mode);
+        const bool took = glGetError() == GL_NO_ERROR && mode == GL_ZERO_TO_ONE;
+        fn(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
+        return took ? fn : nullptr;
+#else
+        return nullptr;
+#endif
+    }
+
+    std::string withDepthMode(const char *source, GsGlDepth::Mode mode)
+    {
+        std::string s(source);
+        const std::string version = "#version 330 core\n";
+        const size_t at = s.find(version);
+        const std::string define = "#define PS2X_DEPTH_MODE " + std::to_string(static_cast<int>(mode)) + "\n";
+        if (at == std::string::npos)
+            return define + s;
+        s.insert(at + version.size(), define);
+        return s;
+    }
 
     // PS2X_GS_SCALE_FILTER=point|box -- how a host-scale render target is resolved down to its
     // native GS extent for the reads the guest can observe. `point` (the default) is a GL_NEAREST
@@ -834,8 +925,23 @@ bool GSGlBackend::ensureGl()
         return true;
     if (!IsWindowReady())
         return false;
-    const uint32_t vs = compileShader(GL_VERTEX_SHADER, kVertexShader);
-    const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, kFragmentShader);
+    // research/26: exact integer z in the depth test. PS2X_GS_DEPTH_LEGACY=1 restores the old
+    // z*2-1 mapping for A/B.
+    {
+        static bool s_chosen = false;
+        if (!s_chosen)
+        {
+            s_chosen = true;
+            const bool legacy = GsGlDepth::legacyRequested(std::getenv("PS2X_GS_DEPTH_LEGACY"));
+            g_clipControl = legacy ? nullptr : probeClipControl();
+            g_depthMode = GsGlDepth::choose(legacy, g_clipControl != nullptr);
+            std::fprintf(stderr, "[gs-gl] depth mapping: %s\n", GsGlDepth::name(g_depthMode));
+        }
+    }
+    const std::string vsSource = withDepthMode(kVertexShader, g_depthMode);
+    const std::string fsSource = withDepthMode(kFragmentShader, g_depthMode);
+    const uint32_t vs = compileShader(GL_VERTEX_SHADER, vsSource.c_str());
+    const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, fsSource.c_str());
     if (!vs || !fs)
         return false;
     m_program = glCreateProgram();
@@ -1064,6 +1170,12 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
     // R40 heartbeat: a live replay of a big batch must not look like a stalled consumer to the
     // recorder's capped back-pressure wait. One lock-free bump per 64 commands (and at entry).
     m_backpressure.consumerProgress();
+    // research/26: guest draws use GL_ZERO_TO_ONE so window depth = aPos.z exactly. Clip control is
+    // context-global, and raylib's own 2D drawing (ortho z at ndc -1) would clip under it, so it is
+    // restored at the end of the replay. The resolve pass's z = 0 is inside [0, w] either way.
+    const bool clipZeroToOne = g_depthMode == GsGlDepth::Mode::ClipZeroToOne && g_clipControl != nullptr;
+    if (clipZeroToOne)
+        g_clipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
     uint32_t heartbeatCountdown = 64u;
     for (Cmd &cmd : buffer.commands)
     {
@@ -1204,6 +1316,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         }
     }
     flushBatch();
+    if (clipZeroToOne)
+        g_clipControl(GL_LOWER_LEFT, GL_NEGATIVE_ONE_TO_ONE);
     m_queueCv.notify_all();
     if (s_stats && (++s_calls % 60u) == 0u)
     {
@@ -2627,7 +2741,9 @@ void GSGlBackend::appendVertex(const GSVertex &v, const GSDrawState &state, bool
     const float scale = static_cast<float>(renderScale());
     out.x = (v.x - static_cast<float>(ctx.xyoffset.ofx >> 4)) * scale;
     out.y = (v.y - static_cast<float>(ctx.xyoffset.ofy >> 4)) * scale;
-    out.z = static_cast<float>(std::min<double>(v.z, 4294967295.0) / 4294967296.0);
+    // z / 2^32: exact in float32 for integer z < 2^24 (all of Z24/Z16/Z16S). The shader's depth
+    // mapping (GsGlDepth::Mode) decides whether it stays exact through to the depth test.
+    out.z = GsGlDepth::attribute(v.z);
     if (state.prim.fst)
     {
         out.s = static_cast<float>(v.u) / 16.0f;

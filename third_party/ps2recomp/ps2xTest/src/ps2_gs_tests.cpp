@@ -9,6 +9,7 @@
 #include "runtime/gs/ps2_gs_psmct32.h"
 #include "runtime/gs/ps2_gs_psmt4.h"
 #include "runtime/gs/ps2_gs_psmt8.h"
+#include "runtime/gs/gs_gl_depth.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -4709,6 +4710,62 @@ void register_ps2_gs_tests()
             }
             t.IsTrue(pattern2Ok,
                      "second T4HL transfer to a different DBP should be byte-correct, proving the discarded excess bytes from the first transfer did not leak into subsequent transfer state");
+        });
+    });
+
+    // research/26: the GL backend's depth path, replicated in the GPU's float32 arithmetic.
+    MiniTest::Case("GSGlDepth", [](TestCase &tc)
+    {
+        // Seeding Chaos stream water (Z16S, 1105..1328 nearest the spawn), a bed/bank neighbour
+        // pair, the top of Z24, and a Z32 value.
+        static const double kZ[] = {1105.0, 1152.0, 1202.0, 1280.0, 1328.0, 9000.0, 16777215.0, 2147483648.0};
+        static const size_t kN = sizeof(kZ) / sizeof(kZ[0]);
+
+        tc.Run("legacy z*2-1 mapping rounds nearby GS z to the same window depth (the defect)", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            const float a = windowFromZ(Mode::Legacy, 1105.0), b = windowFromZ(Mode::Legacy, 1152.0), c = windowFromZ(Mode::Legacy, 1202.0);
+            t.IsTrue(a == b && b == c, "legacy: 1105, 1152 and 1202 collapse to one depth");
+            t.IsTrue(windowFromZ(Mode::Legacy, 1280.0) == windowFromZ(Mode::Legacy, 1328.0), "legacy: 1280 and 1328 collapse to one depth");
+            t.IsTrue(static_cast<double>(b) * 4294967296.0 == 1152.0, "legacy: the collapsed depth is 1152 (a multiple of 128)");
+        });
+
+        tc.Run("clip-control and gl_FragDepth mappings keep integer GS z exact, distinct and ordered", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            for (Mode mode : {Mode::ClipZeroToOne, Mode::FragDepth})
+            {
+                const std::string tag = name(mode);
+                for (size_t i = 0; i < kN; ++i)
+                {
+                    const float w = windowFromZ(mode, kZ[i]);
+                    t.IsTrue(static_cast<double>(w) * 4294967296.0 == kZ[i], tag + ": window depth * 2^32 is the GS z exactly, z=" + std::to_string(kZ[i]));
+                    if (i > 0)
+                        t.IsTrue(windowFromZ(mode, kZ[i - 1]) < w, tag + ": window depth strictly increases with GS z at z=" + std::to_string(kZ[i]));
+                }
+            }
+        });
+
+        tc.Run("GEQUAL on coplanar-close z 1152 vs 1160: the nearer (larger z) wins in either draw order", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            auto gequalPasses = [](Mode mode, double incoming, double stored)
+            { return windowFromZ(mode, incoming) >= windowFromZ(mode, stored); };
+            t.IsTrue(gequalPasses(Mode::ClipZeroToOne, 1160.0, 1152.0), "clip-control: 1160 over stored 1152 passes");
+            t.IsTrue(!gequalPasses(Mode::ClipZeroToOne, 1152.0, 1160.0), "clip-control: 1152 over stored 1160 is rejected");
+            t.IsTrue(!gequalPasses(Mode::FragDepth, 1152.0, 1160.0), "gl_FragDepth: 1152 over stored 1160 is rejected");
+            // The CPU backend's integer test agrees; the legacy mapping does not.
+            t.IsTrue(gequalPasses(Mode::Legacy, 1152.0, 1160.0), "legacy: 1152 over stored 1160 wrongly passes (tie at 1152)");
+        });
+
+        tc.Run("depth mode choice: PS2X_GS_DEPTH_LEGACY wins, then clip control, then gl_FragDepth", [](TestCase &t)
+        {
+            using namespace GsGlDepth;
+            t.IsTrue(legacyRequested("1"), "PS2X_GS_DEPTH_LEGACY=1 requests legacy");
+            t.IsTrue(!legacyRequested(nullptr) && !legacyRequested("") && !legacyRequested("0"), "unset, empty or 0 does not");
+            t.IsTrue(choose(true, true) == Mode::Legacy, "legacy env overrides clip control");
+            t.IsTrue(choose(false, true) == Mode::ClipZeroToOne, "clip control is the default when available");
+            t.IsTrue(choose(false, false) == Mode::FragDepth, "gl_FragDepth when clip control is unavailable");
         });
     });
 }

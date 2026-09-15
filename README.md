@@ -166,6 +166,14 @@ driver's per-instance-B variant. `PS2X_HLE_STATS=1` prints, per bound HLE stub (
 its call count, distinct returns (saturating at 64) and first/last value, including zero-call stubs
 -- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled
 `J` straight to a C++ function) undercount because they skip the dispatch table.
+`PS2X_GS_DEPTH_LEGACY=1` restores the GL backend's pre-2026-09-15 depth mapping (`gl_Position.z =
+z/2^32 * 2 - 1` under the default clip range), which rounds window depth to multiples of 128 GS z
+units for every z below ~2^30 and so let a Z16S scene keep only ~512 distinct depths. The default
+now carries integer GS z exactly into the `GL_DEPTH_COMPONENT32F` test: `glClipControl(GL_ZERO_TO_ONE)`
+with z passed through when GL 4.5 / `ARB_clip_control` is available (logged as `[gs-gl] depth
+mapping: clip-control`), else `gl_FragDepth` from the interpolated z (exact, no early-z). The
+mapping is replicated on the CPU in `runtime/gs/gs_gl_depth.h` and pinned by the `GSGlDepth` unit
+suite. It is a precision fix, **not** the Seeding Chaos water fix (`docs/research/27`).
 `PS2X_GS_MAX_PENDING_FRAMES=<n>` (default **3**) bounds the GS command backlog: the EE waits at
 `VBlankStart` while more than `n` guest frames are recorded ahead of the GL replay thread; `0`
 restores unbounded back-pressure, the pre-fix backlog that let `m_pending` grow to gigabytes when the
