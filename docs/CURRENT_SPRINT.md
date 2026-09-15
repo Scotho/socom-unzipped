@@ -30,7 +30,25 @@ a mixed ours/PCSX2 match, and the rest of the revised order. This file gets a ne
 (branch, spec, plan, ledger) once Sprint 6's plan exists; until then it still names Sprint 5's
 paths above for anyone reading its closed-out ledger.
 
-## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window
+## 2026-09-15 (evening) — Sprint 6 Task 0 done, Task 1 wired, Tasks 2–3 advanced lock-free
+
+Everything Task 0 owed is on `develop` (`a81eb74` the block-pointer fix; `f6a4434` the depth fix; `326c9c9` the ifpopup
+step; `34ed2ac` the gate wiring; `78a81d1` lobby verify-then-act; research/28 and /29). The gate PASSed 3/3 on the
+block-pointer exe (`s6_blockptr`, sha `1cfef9af028a90fc…`) **with the mission-failure detector active** — the turn
+teleport no longer ends the mission. The runtime freeze at `92d30f0` is over: **the ladder exe is now `a81eb74`'s**, and
+the first online result on it must be recorded against that sha.
+
+branch: sprint-6 (to be created off develop at the next lock-free step; work so far went to develop through the two fix branches)
+spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md (owner review pending)
+plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
+ledger: .superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md (create on first dispatch)
+
+**Next, in order:** (1) `s6_probe`'s result → commit the `PS2X_PC_SAMPLER` gate change; (2) commit the aim-loop
+simulation work (Task 4 Steps 1–2) once its agent reports and the suite is green; (3) Task 2 Step 4 — ten launches on
+the pinned harness to measure the lobby rate (owner window); (4) Task 3 Step 2 — the sampler fields research/29 §4
+names, then the quiet/loaded launch pair; (5) Task 4 Step 3 — two ladder launches on `a81eb74`; (6) Task 5a the water.
+
+## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window (superseded above; kept for the record)
 
 **Sprint 6 is drafted, not opened**: spec `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
 and plan `docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` (owner review pending;

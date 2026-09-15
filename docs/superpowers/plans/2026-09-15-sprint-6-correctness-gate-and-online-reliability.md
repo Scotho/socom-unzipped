@@ -57,7 +57,9 @@
 **Interfaces:**
 - Produces: `dist/socom2.exe` at a recorded sha with both runtime fixes; `GsGlDepth::Mode` (header); `drive.popup_present(im) -> bool` and the `ifpopup+<delay>:BTN` step mode; `motion_pack_check.py` CLI printing `corrupt=<n> of <m>`.
 
-**State on 2026-09-15 (this plan's author ran these):** the depth fix passed `./build.sh test` (Python 845 OK, ps2x_tests 454/454, vram-diff 15/15) on `fix/gl-depth-precision`; title and transition PASSed on that exe (`s6_depth`, `s6_depth_r2`); the mission stage FAILed on the HELP pop-up (`s6_depth_m2`, 6/6 gameplay-band holds, diffs 0.00–0.05); `ifpopup` was written test-first (`test_drive_popup.py`, 5 tests green) and wired before each of the six holds; the mission rerun `s6_depth_m3` was killed at the owner's request (host contention; its frame file had gone stale 176 s). **Nothing is committed.**
+**DONE 2026-09-15 evening — every step of 0a, 0b and 0c landed on `develop`** (`f6a4434` depth, `326c9c9` ifpopup with the cinematic class added, `34ed2ac` Task 1 wiring, `a81eb74` block pointer; gate PASS 3/3 `s6_blockptr`, exe sha `1cfef9af028a90fc…`; `motion_pack_check` 0 of 8 chunks corrupt). Task 1a/1b/1c wiring is also done (print-only per R78); the probe's first populated run is `s6_probe` after `PS2X_PC_SAMPLER=1` was added to the mission stage's environment. Task 2 Steps 1–3 and Task 3 Step 1 plus a zero-run research/29 landed lock-free the same evening. The morning state below is kept for the record.
+
+**State on 2026-09-15 morning (this plan's author ran these):** the depth fix passed `./build.sh test` (Python 845 OK, ps2x_tests 454/454, vram-diff 15/15) on `fix/gl-depth-precision`; title and transition PASSed on that exe (`s6_depth`, `s6_depth_r2`); the mission stage FAILed on the HELP pop-up (`s6_depth_m2`, 6/6 gameplay-band holds, diffs 0.00–0.05); `ifpopup` was written test-first (`test_drive_popup.py`, 5 tests green) and wired before each of the six holds; the mission rerun `s6_depth_m3` was killed at the owner's request (host contention; its frame file had gone stale 176 s). **Nothing is committed.**
 
 #### 0a — depth fix (owner window needed for one mission gate)
 

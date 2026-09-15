@@ -1,12 +1,48 @@
 # Project status — updated 2026-09-15
 
 ## Current state (keep to five lines; update when it changes, dated entries below are the log)
-- **2026-09-15:** Sprint 5 merged (main = develop = `2ae4d79`). Two 2026-09-14 defects have verified causes: the SP turn teleport is the ×8 GS block pointer in `sceGsExecLoadImage`/`StoreImage` (research/25 §9–§10, fix not landed); the grey water is **not** depth precision (research/27), cause open. The depth-precision fix is verified but uncommitted on `fix/gl-depth-precision`; an `ifpopup` gate step (HELP pop-up dismissal) is written and unit-green, its mission gate owed. Sprint 6 spec+plan drafted (`docs/CURRENT_SPRINT.md`). **Builds/gates/launches only in an owner-named host window.**
+- **2026-09-15 (evening):** develop = `6a4cc1d`+. **The single-player turn teleport is FIXED** (`a81eb74`: the ×8 GS block pointer dropped; seven-region test; gate 3/3 `s6_blockptr` with the mission stage passing the new mission-failure detector after the same 3 s turn that ended `s6_depth_m5` in MISSION FAILURE; motion pack intact on the 255 s dump, 0 of 8 chunks corrupt vs 5 of 8 before). The GL depth-precision fix landed (`f6a4434`). **The gate can now see three things it could not:** a MISSION FAILURE screen fails the mission stage; the console spawn score and water statistics print on every mission summary (today `flat=0.505 dark=0.302 -> FAIL`, the shards, cause still open); a guest-value probe prints root node / MoveScale / teleport count (its rows need `PS2X_PC_SAMPLER`, added; first populated run pending). Holds are preceded by an `ifpopup` step that dismisses HELP pop-ups and the X-TO-ABORT cinematic. Sprint 6 Tasks 0–1 done, Task 2's lobby hardening and Task 3's freeze analysis landed lock-free (research/28, /29). **Builds/gates/launches only in an owner-named host window.**
 - Build: `./build.sh all`; tests `./build.sh test` (ps2x_tests 450/450 + vu1 fixture verify + `--vram-diff` at `checked=15 skipped=0`; **since Sprint 5 Task 0 it also runs the Python suite first** — `python -m unittest discover -s tools_py/tests -t .`, 802 tests — both required green before any commit touching `third_party/ps2recomp/`, `recomp/` or the parity tools). Gate `python -m tools_py.parity.gate`: title/transition/mission; **the mission stage now requires live gameplay** (`d2eb932`) — ≥ 2 consecutive gameplay hold pairs differing by mean ≥ 3.0 and a capture count matching the logged holds, not just the mission having loaded (it had scored the intro cinematic since 2026-09-12).
 - Plays: title/menus 59 fps, Albania 5-1 at 36-42 fps. Online, two instances on local Horizon: **the acceptance test PASSED** — a Frostfire match ends in a kill read from guest memory, confirmed by two independent scorers (`docs/research/22`, `docs/research/assets/22-first-kill.png`). **Frostfire control is fixed** (VU0 `vf0.w = 0` on `StartThread` contexts, `b625291`) and **the single-player gameplay stall is fixed** (an unbounded GS command backlog, `8281254`/`7448601`/`92d30f0`). **The runtime is frozen at `92d30f0` for the online ladder** (R45/R61) until Sprint 6 reopens it.
 - Sprint 4 (2026-09-13, entry below): intro-movie macroblocks fixed at the root (a cross-thread race on `m_currentTransfer`), the gate's silent-failure paths closed, `--vram-diff` 15/15, `rand()` 31-bit over the guest's own seed, soft-double ABI stubs re-bound, "ground height" reframed as the third-person camera (localised, not fixed), the online movement blocker fixed and A/B-proven on Medley, the acceptance test built and not passed.
 - **Sprint 5 (2026-09-13): the acceptance test PASSED.** Ladder launch 2 on Frostfire, rounds 1–3 KILL on both scorers (KillWatch actor fields + `verdict_replay` valves), screens "socomc fragged socome with M4A1". Root causes fixed on the way: Frostfire's lost control (VU0 `vf0.w = 0` on `StartThread` contexts) and the single-player gameplay stall (an unbounded GS command backlog). Dated entry below.
 - Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Rendering and VU1 defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. **Sprint 5 moved four runtime defaults:** GS back-pressure on (`PS2X_GS_MAX_PENDING_FRAMES=3`, was unbounded), the VU0 `vf0` constant (`vf0.w = 1`) on `StartThread` contexts, `sceGsSetDefDBuff`'s clear packet seeded in context 1, and the idle guest sleeping to the cycle deadline (`92d30f0`). Known open: the camera's skeleton-root decay (`docs/research/17` §4.3); single-player teleports; the online freeze root cause under host load; `movie_blocks.py` in no automation — all parked to Sprint 6 (`docs/ROADMAP.md` §6).
+
+## 2026-09-15 (local, evening) — the owner's two-hour window: the turn teleport fixed at the block pointer, the depth fix merged, and a gate that can see
+
+The owner gave a two-hour host window ("proceed for the next 2 hours … full authority") and lock-free agents filled the
+rest. Everything below is on `develop`.
+
+- **Mission gate, three runs on the depth-fix exe.** `s6_depth_m4` FAIL: the HUD matched at s28, then the "X TO ABORT"
+  objective cinematic started and swallowed four holds (bands 0.33) — a second dismissable class beside the HELP pop-up.
+  The `ifpopup` step now presses CROSS while `drive.needs_cross()` says the frame is a pop-up or a letterboxed non-black
+  cinematic (test-first, 11 tests). `s6_depth_m5`: liveness bar met (5/6 gameplay, 2 live pairs, the step pressed twice at
+  two holds) and the stage FAILed only on the **new mission-failure detector**: `s43_holdS.png` was the MISSION FAILURE
+  statistics screen after the 3 s right-stick turn — the turn teleport, caught by the gate for the first time. Ruling
+  R79 committed the depth fix, the step and the gate wiring on that evidence.
+- **Block-pointer fix (`fix/gs-block-pointer` → develop `a81eb74`).** Seven-region round-trip test pasted from the plan:
+  RED with every DBP/SBP off by 8 and pieces reading back another piece's bytes (a first GREEN attempt failed on the
+  test's own buffers sitting at the guest heap base 0x100000, where the stub mallocs its 256 KiB packet — moved to
+  0x1800000). Two-line fix in `GS.cpp` (`vram_addr & 0x3FFF`), 455/455. Pipeline (detached, one restart after a
+  tool-timeout kill produced spawn errors 0xC0000142 across the Python suite — environment, not tests): Python 904 OK,
+  vram-diff 15/15, **gate PASS 3/3 `s6_blockptr`**, exe sha `1cfef9af028a90fc…`. The mission stage's s43 after the
+  same turn was gameplay (bands 0.98) and no failure banner was found. `motion_pack_check` on the 255 s RAM dump:
+  `chunk_map=[0..7] corrupt_chunks=0 of 8` (pre-fix images 5 of 8; console identity).
+- **Gate wiring (Task 1, `34ed2ac`).** `score_mission_log` fails on a MISSION FAILURE banner in any hold capture or
+  `final.png` (`s5_head_1x_b` and `s3d_2x_host` now fail as they should have), prints the console spawn comparison
+  (`score=44.7 water flat=0.505 dark=0.302 -> FAIL` on `s6_blockptr`) and the guest-value probe. The probe read
+  `NO-DATA (0 rows)` because the runtime prints `[peek]` rows only from the PC sampler thread: `PS2X_PC_SAMPLER=1` is
+  now set for the mission stage (test-first); the run that proves it is `s6_probe`.
+- **Lock-free agents (five):** gate wiring (above); `freeze_trace.py` (12 tests) reproducing 8c's stalls to the row and
+  finding a second shape; research/28 lobby taxonomy over 30 launches (gameplay 14/30; classes counted; five failures
+  classified only from captures); lobby verify-then-act (`78a81d1`, 31 tests, 13 named classes, `[lobby]` line per
+  press; re-send harmlessness unverified without a launch); research/29 naming both freeze shapes (shape 1 =
+  `sceGsSyncV` → `waitVSync` under an alive-but-slow GL thread, unbounded by the back-pressure cap; shape 2 = stale
+  sampler rows while `socom2_libnetb::waitReadable` blocks the EE executor for up to 10 s, not excluded from the guest
+  clock — a fix candidate). The aim-loop simulation agent (Task 4 Steps 1–2) was still running at the time of writing.
+- **Process:** one stopped background job (`TaskStop` on a build pipeline) made every child spawn fail with
+  0xC0000142 for the rest of that process's life; long pipelines go through `scripts/run_detached.sh`, never a tool
+  call with a timeout.
 
 ## 2026-09-15 (local) — audit after the pause; the depth fix verified; the HELP pop-up gate flake fixed in the harness; Sprint 6 drafted; lock-bound work queued for an owner window
 
