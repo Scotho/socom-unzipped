@@ -4076,6 +4076,96 @@ void register_ps2_gs_tests()
             }
         });
 
+        // research/25 §9-§10: the game parks the top 1.75 MB of VRAM in the motion-pack buffer during the
+        // single-player mission load as seven 256x256 PSMCT32 pieces, vram_addr 0x2400 stepping 0x400
+        // (libgraph units: 256-byte blocks, the BITBLTBUF DBP/SBP unit). A single region at vram_addr 0
+        // round-trips losslessly whatever the unit, which is why the test above never caught the x8.
+        tc.Run("seven 256x256 CT32 regions at vram_addr 0x2400..0x3C00 each round-trip their own bytes", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kImageAddr = 0x4000u;
+            constexpr uint32_t kSrcAddr = 0x1800000u;   // high RAM: the guest heap starts at 0x100000 and the stub mallocs a 256 KiB packet there
+            constexpr uint32_t kDstAddr = 0x1900000u;
+            constexpr uint32_t kPieceBytes = 256u * 256u * 4u; // 0x40000
+            constexpr uint32_t kPieces = 7u;
+            constexpr uint16_t kFirstVramAddr = 0x2400u;
+            constexpr uint16_t kVramStep = 0x400u;
+
+            auto fillPiece = [&](uint32_t base, uint32_t piece)
+            {
+                for (uint32_t off = 0; off < kPieceBytes; off += 4u)
+                {
+                    const uint32_t word = (piece << 24) | (off & 0x00FFFFFFu);
+                    std::memcpy(rdram + base + off, &word, sizeof(word));
+                }
+            };
+
+            // Load: EE -> GS, seven pieces.
+            for (uint32_t i = 0; i < kPieces; ++i)
+            {
+                const uint16_t vramAddr = static_cast<uint16_t>(kFirstVramAddr + i * kVramStep);
+                const GsImageMem image{0u, 0u, 256u, 256u, vramAddr, 4u, 0u};
+                writeGsImageTest(rdram, kImageAddr, image);
+                fillPiece(kSrcAddr, i);
+
+                R5900Context loadCtx{};
+                setRegU32(loadCtx, 4, kImageAddr);
+                setRegU32(loadCtx, 5, kSrcAddr);
+                ps2_stubs::sceGsExecLoadImage(rdram, &loadCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(loadCtx, 2)), 0,
+                         "sceGsExecLoadImage piece " + std::to_string(i) + " should succeed");
+
+                // The freed packet still holds the BITBLTBUF it sent; DBP is bits 32..45 of the A+D data.
+                uint64_t bitbltbuf = 0u;
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                const uint32_t dbp = static_cast<uint32_t>((bitbltbuf >> 32) & 0x3FFFu);
+                t.Equals(dbp, static_cast<uint32_t>(vramAddr),
+                         "sceGsExecLoadImage should send BITBLTBUF DBP == vram_addr (256-byte blocks) for piece " +
+                             std::to_string(i));
+            }
+
+            // Store: GS -> EE, the same seven pieces back.
+            for (uint32_t i = 0; i < kPieces; ++i)
+            {
+                const uint16_t vramAddr = static_cast<uint16_t>(kFirstVramAddr + i * kVramStep);
+                const GsImageMem image{0u, 0u, 256u, 256u, vramAddr, 4u, 0u};
+                writeGsImageTest(rdram, kImageAddr, image);
+                std::memset(rdram + kDstAddr, 0xEE, kPieceBytes);
+
+                R5900Context storeCtx{};
+                setRegU32(storeCtx, 4, kImageAddr);
+                setRegU32(storeCtx, 5, kDstAddr);
+                ps2_stubs::sceGsExecStoreImage(rdram, &storeCtx, &runtime);
+                t.Equals(static_cast<int32_t>(getRegU32Test(storeCtx, 2)), 0,
+                         "sceGsExecStoreImage piece " + std::to_string(i) + " should succeed");
+
+                uint64_t bitbltbuf = 0u;
+                std::memcpy(&bitbltbuf, rdram + runtime.guestHeapBase() + 16u, sizeof(bitbltbuf));
+                const uint32_t sbp = static_cast<uint32_t>(bitbltbuf & 0x3FFFu);
+                t.Equals(sbp, static_cast<uint32_t>(vramAddr),
+                         "sceGsExecStoreImage should send BITBLTBUF SBP == vram_addr (256-byte blocks) for piece " +
+                             std::to_string(i));
+
+                uint32_t firstWord = 0u;
+                std::memcpy(&firstWord, rdram + kDstAddr, sizeof(firstWord));
+                const uint32_t gotPiece = firstWord >> 24;
+                t.Equals(gotPiece, i,
+                         "piece " + std::to_string(i) + " should read back its own bytes, not another piece's "
+                         "(the x8 block pointer aliases seven regions onto two: [6,5,6,5,6,5,6])");
+
+                bool wholePieceOk = true;
+                for (uint32_t off = 0; off < kPieceBytes && wholePieceOk; off += 4u)
+                {
+                    uint32_t word = 0u;
+                    std::memcpy(&word, rdram + kDstAddr + off, sizeof(word));
+                    wholePieceOk = word == ((i << 24) | (off & 0x00FFFFFFu));
+                }
+                t.IsTrue(wholePieceOk, "piece " + std::to_string(i) + " should round-trip every word");
+            }
+        });
+
         tc.Run("sceGifPkRefLoadImage seeds A+D GIFtag nloop once (no double-count)", [](TestCase &t)
         {
             std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);

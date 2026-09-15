@@ -123,8 +123,8 @@ git checkout -b fix/gs-block-pointer
             t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
             uint8_t *const rdram = runtime.memory().getRDRAM();
             constexpr uint32_t kImageAddr = 0x4000u;
-            constexpr uint32_t kSrcAddr = 0x100000u;
-            constexpr uint32_t kDstAddr = 0x200000u;
+            constexpr uint32_t kSrcAddr = 0x1800000u;   // high RAM: the guest heap starts at 0x100000 and the stub mallocs a 256 KiB packet there
+            constexpr uint32_t kDstAddr = 0x1900000u;
             constexpr uint32_t kPieceBytes = 256u * 256u * 4u; // 0x40000
             constexpr uint32_t kPieces = 7u;
             constexpr uint16_t kFirstVramAddr = 0x2400u;

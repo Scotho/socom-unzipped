@@ -638,7 +638,11 @@ namespace ps2_stubs
             return;
         }
 
-        uint32_t dbp = (static_cast<uint32_t>(img.vram_addr) * 2048u) / 256u;
+        // libgraph's vram_addr is already the BITBLTBUF block field (256-byte blocks, 14 bits): the game's own
+        // sceGsSetDefLoadImage/StoreImage callers pass byte>>8 and FBP<<5 (research/25 §10). The former
+        // `* 2048 / 256` (x8) aliased seven VRAM regions onto two and smeared the motion pack during the
+        // single-player mission load (the turn teleport). Masked to the field width, as the packet is.
+        uint32_t dbp = static_cast<uint32_t>(img.vram_addr) & 0x3FFFu;
         uint32_t dsax = static_cast<uint32_t>(img.x);
         uint32_t dsay = static_cast<uint32_t>(img.y);
 
@@ -703,7 +707,8 @@ namespace ps2_stubs
             return;
         }
 
-        uint32_t sbp = (static_cast<uint32_t>(img.vram_addr) * 2048u) / 256u;
+        // vram_addr is the SBP block field directly (see sceGsExecLoadImage).
+        uint32_t sbp = static_cast<uint32_t>(img.vram_addr) & 0x3FFFu;
         uint64_t bitbltbuf = (static_cast<uint64_t>(sbp & 0x3FFFu) << 0) |
                              (static_cast<uint64_t>(fbw & 0x3Fu) << 16) |
                              (static_cast<uint64_t>(img.psm & 0x3Fu) << 24) |
