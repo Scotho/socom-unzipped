@@ -125,10 +125,13 @@ cause is named and verified offline; the PCSX2 run becomes the *acceptance* of t
 - **Goal 1(a).** The scorer FAILs `s5_head_1x_b` (which ended in MISSION FAILURE) and PASSes a hold set
   from a run that stayed in the mission. *Does not separate:* a failure screen that appears after the
   last hold capture.
-- **Goal 1(b).** A single number per mission gate; the floor is registered before the first scored run
-  from ≥ 3 of our own runs vs slot 8, chosen so that today's shards FAIL and run-to-run variation of
-  our own captures (pose, fog, foliage: measured 1.85/255 new-vs-new in research/27) PASSes. *Does not
-  separate:* a colour-only defect inside the HUD mask, or a defect at any camera other than the spawn.
+- **Goal 1(b).** *(Revised 2026-09-15 on measurement, see the plan's Task 1b Step 3.)* The whole-frame score
+  is printed for its trend only: our clean spawn captures sit 44–46 from the console and 3–10 from each
+  other, and the gap is the global darkness divergence, not the shards; brightness normalisation does not
+  separate the two. The verdict comes from two water-footprint statistics registered before any scored
+  run: flat-region fraction ≤ 0.35 (console 0.188, ours 0.498–0.597) and near-black fraction ≤ 0.20
+  (console 0.084, ours 0.293–0.306). *Does not separate:* a colour-only water defect, a defect at any
+  camera other than the spawn, or a fix that only brightens the scene (both statistics are required).
 - **Goal 1(c).** Each value has a console number and a tolerance on disk; `NO-DATA` when a peek is
   missing. *Does not separate:* a field that is wrong in the same way on both platforms.
 - **Goal 2.** Lobby reaches gameplay ≥ 8 of 10 consecutive launches on the pinned harness, every
