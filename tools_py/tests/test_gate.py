@@ -39,8 +39,20 @@ FULL_DBUFF_RUN = os.path.join(ROOT, "logs", "parity", "gate", "s5_task4_dbuff") 
 # R34: runs whose hold captures are gameplay but frozen (the present loop stalled after gameplay start: 43 / 36
 # latest_frame exports after the first guest fault, against ~1400 in s3a), and live references.
 FROZEN_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s5_gatefix", "mission4")]
-LIVE_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s3a", "famb", "native_on", "s3d_2x_host")]
+LIVE_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s3a", "famb", "native_on")]
+# Live, but the mission was lost on screen: s3d_2x_host's s38/s40 holds and s5_head_1x_b's final frame are the
+# MISSION FAILURE statistics screen (Sprint 6 Task 1a). Both read as gameplay to the band test; s3d_2x_host was
+# in LIVE_RUNS until the failure-screen check landed.
+FAILED_ON_SCREEN_RUNS = [os.path.join(ROOT, "logs", "parity", "gate", r) for r in ("s3d_2x_host", "s5_head_1x_b")]
 BAD_MISSION_LOG = os.path.join(ROOT, "logs", "parity", "vr_gameplay.drive.log")         # known FAIL: HUD never matched
+# Sprint 6 Task 1: the three lock-free scorers wired into score_mission_log. failure_screen.png is the
+# s5_head_1x_b MISSION FAILURE screen; gameplay_spawn.png is s6_depth_m2's s28 (the spawn view with the
+# grey water shards); console_spawn_slot8.png is the PCSX2 slot-8 screenshot of the same view.
+MISSION_FIXTURES = os.path.join(ROOT, "tools_py", "tests", "fixtures", "mission")
+FAILURE_SCREEN = os.path.join(MISSION_FIXTURES, "failure_screen.png")
+GAMEPLAY_SPAWN = os.path.join(MISSION_FIXTURES, "gameplay_spawn.png")
+CONSOLE_SPAWN = os.path.join(ROOT, "scripts", "parity", "refs", "console_spawn_slot8.png")
+GUEST_PROBE_CONSOLE = os.path.join(ROOT, "scripts", "parity", "guest_probe_console.json")
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
 # Pre-fix run: the probe stalled on the "save to memory card?" dialog, so it has black frames
 # from the boot and none at/after its burst step (gate.py TRANSITION_MIN_FRAMES).
@@ -235,6 +247,172 @@ class MissionScoring(unittest.TestCase):
     def test_missing_hud_fails(self):
         ok, detail = gate.score_mission_log(BAD_MISSION_LOG)
         self.assertFalse(ok)
+
+    def test_real_runs_that_failed_the_mission_on_screen_fail(self):
+        runs = [r for r in FAILED_ON_SCREEN_RUNS if os.path.isdir(os.path.join(r, "mission"))]
+        if not runs:
+            self.skipTest("needs logs/parity/gate/s3d_2x_host or s5_head_1x_b")
+        for r in runs:
+            ok, detail = gate.score_mission_log(os.path.join(r, "mission.drive.log"))
+            self.assertFalse(ok, (r, detail))
+            self.assertIn("MISSION FAILED on screen", detail)
+
+
+class MissionSeeing(unittest.TestCase):
+    """Sprint 6 Task 1 (owner-agreed 2026-09-14): score_mission_log runs three more scorers once the
+    liveness checks pass. mission_fail.detect over the hold captures and final.png FAILS the stage
+    (1a); console_compare on the s28 spawn capture (1b) and guest_probe over the game's run log (1c)
+    are printed into the detail and, under R78, do not change the verdict."""
+
+    HUD_LINE = "untilref(scripts/parity/ref_hud_ours.png): 3 presses, dist=5.2 bands=0.92, matched=True\n"
+    HOLD_LINES = ("s30_holdW                t= 213.6s stable=True waited=0.0s\n"
+                  "s32_holdR1               t= 216.4s stable=True waited=0.0s\n"
+                  "s34_holdR1               t= 218.3s stable=True waited=0.0s\n")
+
+    def _run(self, tmp, s28=None, extra_holds=(), final=None, log_s28=True):
+        """<tmp>/mission.drive.log + <tmp>/mission/ in run_gate's layout: the s3a passing hold set,
+        optionally an s28_none capture, extra hold captures and a final.png."""
+        run = os.path.join(tmp, "mission")
+        shutil.copytree(S3A_MISSION_RUN, run)
+        text = ("s27_none                 t= 205.9s stable=False waited=40.2s\n" + self.HUD_LINE
+                + ("s28_none                 t= 207.9s stable=True waited=0.0s\n" if log_s28 else "")
+                + self.HOLD_LINES)
+        for name, _ in extra_holds:
+            text += "%-24s t= 224.8s stable=True waited=0.0s\n" % name[:-4]
+        log = os.path.join(tmp, "mission.drive.log")
+        with open(log, "w", encoding="utf-8") as f:
+            f.write(text)
+        if s28:
+            shutil.copyfile(s28, os.path.join(run, "s28_none.png"))
+        for name, src in extra_holds:
+            shutil.copyfile(src, os.path.join(run, name))
+        if final:
+            shutil.copyfile(final, os.path.join(run, "final.png"))
+        return log
+
+    # -- 1a: the MISSION FAILURE screen fails the stage --------------------------------------------
+    def test_failure_screen_as_final_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp, final=FAILURE_SCREEN))
+        self.assertFalse(ok, detail)
+        self.assertIn("MISSION FAILED on screen", detail)
+        self.assertIn("final.png", detail)
+
+    def test_failure_screen_as_a_hold_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = self._run(tmp, extra_holds=[("s36_holdL.png", FAILURE_SCREEN)])
+            ok, detail = gate.score_mission_log(log)
+        self.assertFalse(ok, detail)
+        self.assertIn("MISSION FAILED on screen", detail)
+        self.assertIn("s36_holdL.png", detail)
+
+    def test_gameplay_final_still_passes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp, final=GAMEPLAY_SPAWN))
+        self.assertTrue(ok, detail)
+        self.assertNotIn("MISSION FAILED", detail)
+
+    # -- 1b: console-vs-ours on the s28 spawn capture, print-only (R78) -----------------------------
+    def test_console_line_passes_on_the_console_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp, s28=CONSOLE_SPAWN))
+        self.assertTrue(ok, detail)
+        self.assertRegex(detail, r"CONSOLE spawn score=\d+\.\d water flat=0\.\d{3} dark=0\.\d{3} -> PASS")
+
+    def test_console_line_fails_on_our_spawn_without_changing_the_verdict(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp, s28=GAMEPLAY_SPAWN))
+        self.assertTrue(ok, detail)      # R78: the water defect is known and owned; the number is for the trend
+        self.assertRegex(detail, r"CONSOLE spawn score=\d+\.\d water flat=0\.\d{3} dark=0\.\d{3} -> FAIL")
+
+    def test_console_line_is_no_data_without_an_s28_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp))
+        self.assertTrue(ok, detail)
+        self.assertIn("CONSOLE spawn NO-DATA", detail)
+
+    def test_console_line_is_no_data_when_the_log_names_no_step_after_the_hud(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp, s28=CONSOLE_SPAWN, log_s28=False))
+        self.assertTrue(ok, detail)
+        self.assertIn("CONSOLE spawn NO-DATA", detail)
+
+    def test_spawn_capture_is_the_first_none_step_after_the_hud_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = self._run(tmp, s28=CONSOLE_SPAWN)
+            self.assertEqual(gate.mission_spawn_capture(log, os.path.join(tmp, "mission")),
+                             os.path.join(tmp, "mission", "s28_none.png"))
+            log = self._run(os.path.join(tmp, "b"), s28=None)
+            self.assertIsNone(gate.mission_spawn_capture(log, os.path.join(tmp, "b", "mission")))
+
+    # -- 1c: guest-value probe over the game's run log, print-only (R78) ----------------------------
+    @staticmethod
+    def _peek_rows(root_y=5.50391, move_scale=1.0):
+        from tools_py.parity.sim_walk_to_b import peek_line, _w
+        actor, node = 0x01794000, 0x00C10000
+        rows = []
+        for i in range(10):
+            line = peek_line(500.0, 100.0, 600.0, actor=(900.0 + 2.0 * i, -145.0, 850.0), actor_addr=actor)
+            line += f" @{actor + 0x2e8:x}: {node:08x}(0)"
+            line += f" @{node:x}: 00000000(0) {_w(root_y)}"
+            line += f" @{actor + 0x1368:x}: {_w(move_scale)}"
+            rows.append(line + "\n")
+        return rows
+
+    def test_probe_lines_come_from_the_game_log_beside_the_drive_log(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            log = self._run(tmp)
+            with open(os.path.join(tmp, "mission.game.log"), "w", encoding="utf-8") as f:
+                f.write("Using argv boot path\n" + "".join(self._peek_rows()))
+            ok, detail = gate.score_mission_log(log)
+        self.assertTrue(ok, detail)
+        self.assertIn("PROBE root_node_y PASS", detail)
+        self.assertIn("PROBE move_scale PASS", detail)
+        self.assertIn("PROBE teleport_steps PASS", detail)
+
+    def test_probe_failure_is_printed_not_scored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            run_log = os.path.join(tmp, "some.log")
+            with open(run_log, "w", encoding="utf-8") as f:
+                f.write("".join(self._peek_rows(root_y=0.0)))
+            ok, detail = gate.score_mission_log(self._run(tmp), run_log=run_log)
+        self.assertTrue(ok, detail)      # R78
+        self.assertIn("PROBE root_node_y FAIL", detail)
+        self.assertIn("PROBE move_scale PASS", detail)
+
+    def test_no_game_log_means_no_probe_lines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ok, detail = gate.score_mission_log(self._run(tmp))
+        self.assertTrue(ok, detail)
+        self.assertIn("PROBE NO-DATA", detail)
+
+    def test_mission_stage_launches_with_the_probe_peek_spec(self):
+        """run_gate sets PS2X_PEEK for the mission stage from guest_probe_console.json unless the
+        environment already carries one (an operator's wider spec wins)."""
+        from tools_py.parity import guest_probe
+        calls = []
+
+        def fake_run(cmd, **kw):
+            calls.append((cmd, kw.get("env")))
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        def drive_env():
+            return [env for cmd, env in calls if "tools_py.parity.drive" in cmd][0]
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(gate.subprocess, "run", fake_run), \
+                mock.patch.object(gate.shutil, "copyfile"), \
+                mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("PS2X_PEEK", None)
+            gate.run_gate("mission", tmp)
+            self.assertEqual(drive_env()["PS2X_PEEK"], guest_probe.peek_spec(GUEST_PROBE_CONSOLE))
+            calls.clear()
+            os.environ["PS2X_PEEK"] = "0x416054:3"
+            gate.run_gate("mission", tmp)
+            self.assertEqual(drive_env()["PS2X_PEEK"], "0x416054:3")
+            calls.clear()
+            gate.run_gate("title", tmp)
+            self.assertEqual(drive_env()["PS2X_PEEK"], "0x416054:3")   # title: the environment passes through untouched
 
 
 class GameplayBands(unittest.TestCase):

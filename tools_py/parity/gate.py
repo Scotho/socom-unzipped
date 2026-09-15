@@ -27,7 +27,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import compare, screen_bands
+from tools_py.parity import compare, console_compare, guest_probe, mission_fail, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -76,6 +76,15 @@ MISSION_MIN_GAMEPLAY_HOLDS = 3
 # sits well above a frozen frame and at the bottom of real motion.
 MISSION_LIVE_PAIR_DIFF = 3.0
 MISSION_MIN_LIVE_PAIRS = 2
+# Sprint 6 Task 1 (owner-agreed 2026-09-14): three scorers that look at what the liveness checks cannot.
+# 1a mission_fail.detect over every hold capture and final.png FAILS the stage: s5_head_1x_b's holds were
+#    gameplay and live while s38/s40/final were the MISSION FAILURE statistics screen.
+# 1b console_compare on the spawn capture (mission_spawn_capture) and 1c guest_probe over the game's run
+#    log (mission_game_log) are PRINTED into the detail and do not change the verdict -- R78: the water
+#    shards and the decayed root node are known, owned defects, and a gate that fails on them every run
+#    teaches nothing; the numbers are on every summary so their trend is visible. Each flips to failing in
+#    the same commit as its fix (Task 5).
+GUEST_PROBE_CONSOLE = os.path.join("scripts", "parity", "guest_probe_console.json")
 # What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
 # (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
 # between the controller-configuration screens and the mission briefing. It deliberately does not
@@ -269,12 +278,79 @@ def mission_run_dir(drive_log):
     return None
 
 
-def score_mission_log(drive_log, run_dir=None):
+def mission_game_log(drive_log):
+    """run_gate copies the game's own run log (the newest logs/run_*.log, where the runtime prints its
+    [peek] rows) to <root>/mission.game.log beside <root>/mission.drive.log; None when there is none."""
+    suffix = ".drive.log"
+    if drive_log.endswith(suffix):
+        p = drive_log[:-len(suffix)] + ".game.log"
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def mission_spawn_capture(drive_log, run_dir):
+    """The spawn-view capture the console reference was taken at: the first `s<NN>_none` step the drive
+    log records after the HUD untilref matched (s28 in gameplay_probe.txt: the untilref step itself,
+    captured once the HUD is on screen, before the 2 s wait and the first hold). Read off the log rather
+    than pinned to 28 so the step moving in the script does not silently score a different frame. None
+    when the log names no such step or its capture is missing."""
+    try:
+        with open(drive_log, encoding="utf-8", errors="replace") as f:
+            lines = f.read().splitlines()
+    except OSError:
+        return None
+    hud = re.compile(r"untilref\([^)]*%s[^)]*\):.*matched=True" % re.escape(HUD_REF_NAME))
+    seen_hud = False
+    for line in lines:
+        if not seen_hud:
+            seen_hud = bool(hud.search(line))
+            continue
+        m = re.match(r"^(s\d\d_none)\b", line)
+        if m:
+            p = os.path.join(run_dir, m.group(1) + ".png")
+            return p if os.path.isfile(p) else None
+    return None
+
+
+def console_spawn_line(drive_log, run_dir):
+    """`CONSOLE spawn score=<s> water flat=<f> dark=<d> -> PASS|FAIL` for the spawn capture, or
+    `CONSOLE spawn NO-DATA`. Print-only (R78)."""
+    cap = mission_spawn_capture(drive_log, run_dir)
+    if cap is None:
+        return "CONSOLE spawn NO-DATA (no s??_none capture after the HUD match)"
+    try:
+        s = console_compare.score(cap)
+        ok, _ = console_compare.water_verdict(cap)
+        st = console_compare.water_stats(cap)
+    except (OSError, ValueError) as e:
+        return "CONSOLE spawn NO-DATA (%s: %s)" % (os.path.basename(cap), e)
+    return "CONSOLE spawn score=%.1f water flat=%.3f dark=%.3f -> %s (%s vs %s)" % (
+        s, st["flat"], st["dark"], "PASS" if ok else "FAIL", os.path.basename(cap), console_compare.CONSOLE_REF)
+
+
+def probe_lines(run_log):
+    """One `PROBE <name> PASS|FAIL <detail>` per guest_probe result over the game's run log, or a single
+    `PROBE NO-DATA` when there is no log to read. Print-only (R78)."""
+    if not run_log or not os.path.isfile(run_log):
+        return ["PROBE NO-DATA (no game run log beside the drive log)"]
+    try:
+        results = guest_probe.evaluate(run_log, GUEST_PROBE_CONSOLE)
+    except (OSError, ValueError, KeyError) as e:
+        return ["PROBE NO-DATA (%s)" % e]
+    return ["PROBE %s %s %s" % (r.name, "PASS" if r.ok else "FAIL", r.detail) for r in results]
+
+
+def score_mission_log(drive_log, run_dir=None, run_log=None):
     """HUD matched in the drive log, >= MISSION_MIN_HOLDS hold steps, one capture per logged hold,
     >= MISSION_MIN_GAMEPLAY_HOLDS of the hold captures gameplay, and >= MISSION_MIN_LIVE_PAIRS live pairs
     (consecutive gameplay captures that differ: the game was running while the holds were sent). A log alone
     proves the script ran, not what the holds were held over, so missing captures are FAIL with NO-DATA,
-    never a PASS."""
+    never a PASS.
+
+    Then (Sprint 6 Task 1): no hold capture or final.png may be the MISSION FAILURE screen (FAIL), and the
+    console spawn comparison and the guest-value probe are appended to the detail, print-only (R78).
+    `run_log` is the game's own run log for the probe; default mission_game_log(drive_log)."""
     try:
         with open(drive_log, encoding="utf-8", errors="replace") as f:
             text = f.read()
@@ -312,7 +388,20 @@ def score_mission_log(drive_log, run_dir=None):
                   " ".join("%s=%.2f" % (n, f) for n, (_, f), _ in frames),
                   live, MISSION_MIN_LIVE_PAIRS, MISSION_LIVE_PAIR_DIFF,
                   " ".join("%.2f" % d for d, _ in diffs)))
-    return good >= MISSION_MIN_GAMEPLAY_HOLDS and live >= MISSION_MIN_LIVE_PAIRS, detail
+    if not (good >= MISSION_MIN_GAMEPLAY_HOLDS and live >= MISSION_MIN_LIVE_PAIRS):
+        return False, detail
+    # 1a: a live game can still have failed the mission. The band and liveness tests read the MISSION
+    # FAILURE statistics screen as gameplay (s5_head_1x_b), so every hold capture and the final frame
+    # is checked for its banner.
+    final = os.path.join(run_dir, "final.png")
+    for p in caps + ([final] if os.path.isfile(final) else []):
+        failed, reason = mission_fail.detect(p)
+        if failed:
+            return False, "MISSION FAILED on screen: %s (%s); %s" % (reason, os.path.basename(p), detail)
+    # 1b + 1c: printed, not scored (R78).
+    lines = [detail, console_spawn_line(drive_log, run_dir)]
+    lines += probe_lines(run_log or mission_game_log(drive_log))
+    return True, "; ".join(lines)
 
 
 def _lock(cmd, owner):
@@ -330,11 +419,19 @@ def run_gate(name, out_root):
     for p in glob.glob(os.path.join("logs", "parity", "latest_frame.png*")):
         os.remove(p)
     drive_log = os.path.join(out_root, name + ".drive.log")
+    # drive.py launches the exe with its own environment, so PS2X_* set here reach the runtime. The
+    # mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
+    # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
+    env = dict(os.environ)
+    if name == "mission" and not env.get("PS2X_PEEK"):
+        env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
     with open(drive_log, "w", encoding="utf-8") as log:
         subprocess.run([sys.executable, "-m", "tools_py.parity.drive", "--target", "ours",
                         "--script", cfg["script"], "--out", out_dir,
                         "--seconds", str(cfg["seconds"]), "--tail", str(cfg["tail"])],
-                       stdout=log, stderr=subprocess.STDOUT)
+                       stdout=log, stderr=subprocess.STDOUT, env=env)
+    # The game's own run log (where the runtime prints its [peek] rows) lands beside the drive log as
+    # <name>.game.log; score_mission_log's probe reads it back from there (mission_game_log).
     newest = sorted(glob.glob(os.path.join("logs", "run_*.log")), key=os.path.getmtime)
     if newest:
         shutil.copyfile(newest[-1], os.path.join(out_root, name + ".game.log"))
@@ -344,7 +441,7 @@ def run_gate(name, out_root):
         return score_title(out_dir)
     if name == "transition":
         return score_transition(out_dir)
-    return score_mission_log(drive_log)
+    return score_mission_log(drive_log, run_log=mission_game_log(drive_log))
 
 
 def main(argv=None):
