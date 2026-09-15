@@ -136,6 +136,35 @@ LOBBY_FRAME_MAX_AGE_S = 1.0
 CLASS_OK, CLASS_MAP_CROSS, CLASS_READY = "ok", "map-cross-dropped", "ready-dropped"
 CLASS_JOIN, CLASS_HOST = "join-not-reached", "host-not-reached"
 CLASS_MAP_SEARCH, CLASS_KEYBOARD = "map-list-search", "login-keyboard"
+# Sprint 6 Task 2 (research/28 §4): a window that never reaches the main menu, or never shows the LOGIN
+# screen after it (wtb4, 3b), used to exit 1 without a class 120-180 s downstream. A `wait_for` timeout
+# anywhere else is `screen:<name>`; a verified fixed press that never lands is `create-game:<step>` or
+# `join:<step>` (LOBBY_PRESS_STEPS below), each printed as one `[lobby] <step> press=<btn> verified=<bool>
+# attempt=<n>` line per press so the next taxonomy is a grep.
+CLASS_PRE_LOGIN = "pre-login"
+
+# Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
+# x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
+# scripts/parity/refs/lobby/title_<name>.png, cut from launch 8c by
+# tools_py/tests/fixtures/lobby/make_screen_fixtures.py. Over the 128 stage captures of the 30 launches
+# in research/28 §1 the right screen scores 0.000-0.011, the nearest wrong one 0.385 (CREATE GAME vs
+# CREATE GAME PLAY LIST, whose title extends the other's) and every other pair >= 0.658.
+LOBBY_TITLE = (slice(18, 58), slice(20, 360))
+LOBBY_TITLES = ("briefing_room", "create_game", "play_list", "game_lobby")
+LOBBY_TITLE_MAX_DIST = 0.15     # 14x the worst true match, under half the nearest wrong pair
+LOBBY_REF_DIR = os.path.join(REFS, "lobby")
+# Menu rows the fixed UP presses must light before the CROSS that follows (y0, y1, x0, x1). A lit row is
+# a teal fill: its median luminance is 62-68 on every capture, an unlit row's <= 34 (even with the
+# game-name keyboard drawn over the menu, cal1). The games-list row is a fainter fill: 36 when JOIN
+# GAME activated a list with a game in it (8c, launch1), 15-18 with "There are no games to join."
+LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
+              "choose_games": (386, 406, 18, 170),    # CREATE GAME menu's last row
+              "games_list": (262, 280, 150, 620)}     # first row of the briefing room's games list
+LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0}
+# The "READY button will be available in 30 seconds ... CONTINUE" panel: region mean 54 while it is
+# up (every *_16_game_lobby capture), 27-28 once CONTINUE dismissed it (*_17_game_lobby_ok).
+LOBBY_NOTICE = (slice(152, 265), slice(150, 490))
+LOBBY_NOTICE_MIN_MEAN = 40.0
 
 # Map CROSS signature: the SELECTED MAPS panel (x 335-625, y 110-380) is byte-identical when the
 # CROSS did not register. 8b's dropped press: mean |diff| 0.00 (A_14b vs A_15, 9 s and a SQUARE
@@ -241,12 +270,16 @@ def ready_dropped(gray):
     return edge is not None and edge <= READY_EDGE_DROPPED_MAX
 
 
-def lobby_resend_cross(sh, wait):
-    """A re-sent CROSS goes through the injected pad file when there is one (never dropped)."""
+def lobby_resend(sh, btn, wait):
+    """A re-sent press goes through the injected pad file when there is one (never dropped)."""
     if sh.pad_file:
-        sh.pad_press("CROSS", wait=wait)
+        sh.pad_press(btn.upper(), wait=wait)
     else:
-        sh.press("cross", wait)
+        sh.press(btn, wait)
+
+
+def lobby_resend_cross(sh, wait):
+    lobby_resend(sh, "cross", wait)
 
 
 def verify_resend(sh, cls, dropped, resend):
@@ -273,6 +306,64 @@ def press_map_cross_verified(sh, wait=4.0):
         return d < MAP_CROSS_DROPPED_MAX_DIFF
 
     return verify_resend(sh, CLASS_MAP_CROSS, dropped, lambda: lobby_resend_cross(sh, wait))
+
+
+# ---------------------------------------------------------------------------
+# Verified fixed presses (Sprint 6 Task 2, research/28 §4 ranks 1-3)
+# ---------------------------------------------------------------------------
+@functools.lru_cache(maxsize=None)
+def lobby_title_ref(name):
+    return np.asarray(Image.open(os.path.join(LOBBY_REF_DIR, f"title_{name}.png")).convert("L"), dtype=np.float32)
+
+
+def lobby_title_dist(gray, name):
+    """Text-mask distance of the frame's title band to the `name` reference (0 = the same title)."""
+    return map_mask_distance(gray[LOBBY_TITLE], lobby_title_ref(name))
+
+
+def lobby_title_is(gray, name):
+    return lobby_title_dist(gray, name) <= LOBBY_TITLE_MAX_DIST
+
+
+def lobby_row_lit(gray, row):
+    y0, y1, x0, x1 = LOBBY_ROWS[row]
+    return float(np.median(gray[y0:y1, x0:x1])) > LOBBY_ROW_LIT_MEDIAN[row]
+
+
+def lobby_notice_up(gray):
+    return float(gray[LOBBY_NOTICE].mean()) > LOBBY_NOTICE_MIN_MEAN
+
+
+def press_verified(sh, step, btn, wait, check, what):
+    """Press `btn`, wait, and verify `check(gray)` on a fresh frame; re-send through the pad up to
+    LOBBY_RESEND_MAX times; LobbyFail(step) if the expected screen never appears. One log line per press:
+    `[lobby] <step> press=<btn> verified=<bool> attempt=<n>`. Returns the number of re-sends it took.
+
+    The whole CREATE GAME / JOIN GAME flow used to be blind fixed presses, and one eaten press derailed
+    the rest silently: wtb3 and kill6 lost the CROSS into CREATE GAME and typed the game name into the
+    briefing room; kill4, kill7 and 8b lost the ACCEPT and created nothing; launch1/1b's JOIN never
+    entered the lobby -- each classified at the end of the stage (or 500 s later on liveness) with no
+    press named. research/28 §4 puts these first at 9 of 16 failures."""
+    n = [0]
+
+    def send():
+        n[0] += 1
+        if n[0] == 1:
+            sh.press(btn, wait)
+        else:
+            lobby_resend(sh, btn, wait)
+
+    def dropped():
+        ok = bool(check(lobby_gray(sh)))
+        sh.log(f"[lobby] {step} press={btn} verified={ok} attempt={n[0]}")
+        return not ok
+
+    send()
+    try:
+        return verify_resend(sh, step, dropped, send)
+    except LobbyFail as e:
+        e.detail = f"{what} never showed after {btn.upper()} and {LOBBY_RESEND_MAX} re-sends -- see the capture"
+        raise
 
 
 class Shell:
@@ -418,16 +509,23 @@ class Shell:
                 return False
         return True
 
-    def wait_for(self, name, timeout, thresh=None):
-        t = time.time()
-        while time.time() - t < timeout:
+    def wait_for(self, name, timeout, thresh=None, cls=None, required=True):
+        """Wait for screen `name`. A timeout is a classified lobby failure (`cls`, default
+        `screen:<name>`): research/28 §4 rank 2 -- it used to log `TIMEOUT waiting for <name>` and return
+        False, and every caller pressed on into whatever was on screen (wtb4, 3b, ladder1), so the class
+        finally raised named a screen 120-180 s downstream of the miss. `required=False` keeps the old
+        log-and-return for the one screen whose reference is known to miss on good runs."""
+        t = self.clock()
+        while self.clock() - t < timeout:
             if self.is_screen(name, thresh):
-                self.log(f"screen {name} after {time.time() - t:.1f}s")
+                self.log(f"screen {name} after {self.clock() - t:.1f}s")
                 return True
             time.sleep(0.5)
         self.log(f"TIMEOUT waiting for {name}")
         self.shot(f"timeout_{name}")
-        return False
+        if not required:
+            return False
+        raise lobby_fail(self, cls or f"screen:{name}", f"{name} not on screen within {timeout:.0f}s")
 
     def press_until_gone(self, b, name, tries=8, wait=3.0, thresh=None):
         """Press `b` until `name` is no longer on screen. "Gone" needs two checks 0.6 s apart:
@@ -446,10 +544,7 @@ class Shell:
         """Distance of the accent-toggle key to the two references: which mode the on-screen
         keyboard is in, and (by both distances being large) whether it is on screen at all."""
         self.check_stage()
-        normal = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_normal.png")).convert("L"), dtype=float)
-        accent = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_accent.png")).convert("L"), dtype=float)
-        cur = np.asarray(winshot.grab(self.hwnd).crop(OSK_ACCENT_BOX).convert("L"), dtype=float)
-        return float(abs(cur - normal).mean()), float(abs(cur - accent).mean())
+        return osk_ref_dists(lobby_gray_of(winshot.grab(self.hwnd)))
 
     # Measured on logs/parity/ours_task7_cal1 (keyboard up: 39.0/43.1 and 6.3/0.0) against the
     # screens behind it (keyboard gone: 59.9 and 74.1). Only used to LOG whether a type() left the
@@ -537,6 +632,25 @@ class Shell:
                 winshot.grab(self.hwnd).save(os.path.join(shots, f"{tag}_key{n}_{ch}.png"))
 
 
+@functools.lru_cache(maxsize=None)
+def osk_mode_refs():
+    normal = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_normal.png")).convert("L"), dtype=np.float32)
+    accent = np.asarray(Image.open(os.path.join("scripts", "parity", "ref_osk_accent.png")).convert("L"), dtype=np.float32)
+    return normal, accent
+
+
+def osk_ref_dists(gray):
+    """(distance to the normal-mode key, distance to the accent-mode key) of a full frame's accent box."""
+    x0, y0, x1, y1 = OSK_ACCENT_BOX
+    cur = gray[y0:y1, x0:x1]
+    normal, accent = osk_mode_refs()
+    return float(np.abs(cur - normal).mean()), float(np.abs(cur - accent).mean())
+
+
+def osk_open_of(gray):
+    return min(osk_ref_dists(gray)) < Shell.OSK_OPEN_MAX
+
+
 def attach(proc, title, out, tag="", pad_file=None):
     """Find the instance's window (by title substring) and wait for its first frame."""
     t0 = time.time()
@@ -578,11 +692,14 @@ def boot_to_online(sh):
             if sh.is_screen("main_menu", 90.0):
                 break
     else:
-        raise SystemExit(f"{sh.tag}main menu not reached")
+        # research/28 §2: exit 1 with no class was the one failure the taxonomy could not count
+        raise lobby_fail(sh, CLASS_PRE_LOGIN, "main menu not reached after 9 boot presses")
     time.sleep(3.0)
     sh.press("down", 1.5)
     sh.press("cross", 3.0)                                       # ONLINE
-    sh.wait_for("login", 40)
+    # wtb4 and 3b (both instances at once) never showed the LOGIN screen here; the old harness pressed on
+    # and classified the run as login-keyboard 120-180 s later.
+    sh.wait_for("login", 40, cls=CLASS_PRE_LOGIN)
     sh.shot("00_login")
 
 
@@ -593,7 +710,11 @@ def login(sh, name, password, existing):
     sh.wait_for("universe", 60)
     sh.shot("01_universe")
     sh.press_until_gone("cross", "universe")                     # connect to the universe
-    sh.wait_for("persona", 60)
+    # required=False: `TIMEOUT waiting for persona` was logged by 11 launches that reached gameplay
+    # (kill1/2, wtb2/6, frost1, launch2/3c, 8c, ladder2 -- `grep -l "liveness OK" logs/parity/drive_*.txt |
+    # xargs grep "TIMEOUT waiting for persona"`): the persona reference misses the screen on good runs, so
+    # this one timeout stays a log line. Every other screen's timeout occurred only in failed launches.
+    sh.wait_for("persona", 60, required=False)
     sh.shot("02_persona")
     sh.press("cross", 4.0)                                       # persona list
     if existing:
@@ -816,15 +937,24 @@ def choose_map(sh, name, presses=30):
 
 def open_choose_games(sh, game_name="test"):
     """Briefing room -> CREATE GAME -> game name -> CHOOSE GAMES. Split out of `host_game` so the
-    map scan can reach the list without creating a world."""
-    sh.press("up", 2.0)
-    sh.press("cross", 6.0)                                       # CREATE GAME
+    map scan can reach the list without creating a world.
+
+    Every press is verified on a fresh frame and re-sent (press_verified); the class names the press.
+    research/28 §3: wtb3 and kill6 lost the CROSS into CREATE GAME (12_create_game still BRIEFING ROOM),
+    wtb3's cursor then drifted to RANK RESTRICTIONS, cal1 typed the up/down/cross presses into the
+    name keyboard."""
+    press_verified(sh, "create-game:select", "up", 2.0,
+                   lambda g: lobby_row_lit(g, "create_game"), "the CREATE GAME row lit")
+    press_verified(sh, "create-game:enter", "cross", 6.0,
+                   lambda g: lobby_title_is(g, "create_game"), "the CREATE GAME screen")
     sh.shot("12_create_game")
-    sh.press("cross", 5.0)                                       # game name keyboard
+    press_verified(sh, "create-game:name-keyboard", "cross", 5.0, osk_open_of, "the game-name keyboard")
     sh.type(game_name)
     sh.shot("13_game_name")
-    sh.press("up", 2.5)
-    sh.press("cross", 6.0)                                       # CHOOSE GAMES
+    press_verified(sh, "create-game:choose-games-select", "up", 2.5,
+                   lambda g: lobby_row_lit(g, "choose_games"), "the CHOOSE GAMES row lit")
+    press_verified(sh, "create-game:choose-games", "cross", 6.0,
+                   lambda g: lobby_title_is(g, "play_list"), "the CREATE GAME PLAY LIST screen")
     sh.shot("14_choose_games")
 
 
@@ -836,11 +966,16 @@ def host_game(sh, game_name="test", game_map="frostfire"):
     open_choose_games(sh, game_name)
     row = choose_map(sh, game_map)                               # VERIFIED, not a blind CROSS
     sh.log(f"map list: accepted '{game_map}' at row {row}")
-    sh.press("square", 5.0)                                      # ACCEPT PLAY LIST
+    # kill4, kill7 and 8b: 15_play_list still showed the play list (the ACCEPT was eaten), so the CREATE
+    # SQUARE landed on a menu with an empty PLAY LIST and the lobby never appeared (band distance 0.521).
+    press_verified(sh, "create-game:accept", "square", 5.0,
+                   lambda g: lobby_title_is(g, "create_game"), "CREATE GAME with the play list accepted")
     sh.shot("15_play_list")
-    sh.press("square", 25.0)                                     # CREATE GAME (DME world)
+    press_verified(sh, "create-game:create", "square", 25.0,
+                   lambda g: lobby_title_is(g, "game_lobby"), "the GAME LOBBY")
     sh.shot("16_game_lobby")
-    sh.press("cross", 4.0)                                       # CONTINUE on the 30 s notice
+    press_verified(sh, "create-game:continue", "cross", 4.0,
+                   lambda g: not lobby_notice_up(g), "the 30 s notice dismissed")
     sh.shot("17_game_lobby_ok")
     require_game_lobby(sh, "CREATE GAME")
 
@@ -882,11 +1017,18 @@ def lobby_select(sh, row, label):
 
 @staged("join")
 def join_game(sh, switch=True):
-    sh.press("cross", 8.0)                                       # JOIN GAME activates the list
+    # join:list -- JOIN GAME activates the games list and highlights the host's game; "There are no games
+    # to join." (wtb3/wtb5's B, whose host never created the world) leaves the row dark, and the re-sends
+    # give the host up to 3 x 8 s more. join:enter -- launch1/1b's CROSS on the game left the list on
+    # screen (band distance 0.577) although Medius had answered the join (research/21 §6.1).
+    press_verified(sh, "join:list", "cross", 8.0,
+                   lambda g: lobby_row_lit(g, "games_list"), "a game highlighted in the games list")
     sh.shot("12_games_list")
-    sh.press("cross", 25.0)                                      # first game
+    press_verified(sh, "join:enter", "cross", 25.0,
+                   lambda g: lobby_title_is(g, "game_lobby"), "the GAME LOBBY")
     sh.shot("16_game_lobby")
-    sh.press("cross", 3.0)                                       # CONTINUE
+    press_verified(sh, "join:continue", "cross", 3.0,
+                   lambda g: not lobby_notice_up(g), "the 30 s notice dismissed")
     sh.shot("17_game_lobby_ok")
     require_game_lobby(sh, "JOIN GAME")
     sh.log(f"teams (seals, terrorists text px) {lobby_teams(sh)}")
