@@ -424,6 +424,42 @@ weapon fire, music and voice streams -- reaches a speaker. This is the largest r
 - [ ] Knob retirement pass 1: remove `PS2X_GUEST_MALLOC_ZERO` (shipped unused), the redundant main-context vf0 line, and the `_B` variants no driver sets (grep `tools_py/` first); README entries deleted with them; `build.sh test` + gate.
 - [ ] README "Build, run, verify" contributor section: the five commands a newcomer runs, in order, with expected output lines.
 
+### Task 8b: The launcher, first cut (owner 2026-09-16, item 5: "launcher build out that requires pointing to a r001 iso, a selection for detail quality pre-launch with a visible controller testing area and any other settings we can easily add")
+
+**Shape.** A small raylib/C++ program `launcher/socom-unzipped-launcher.exe` in the same build (`build.sh runtime`
+builds it next to `socom2.exe`), because the game's own input code is raylib: the controller test area then shows
+exactly what the game will read. One 640×448 window, four panels, one Launch button. It owns `config.json` next to the
+exe and sets the `PS2X_*` environment for `socom2.exe <elf>`; the game itself does not change.
+
+**Panels.**
+1. **Disc.** A path field with a Browse button (Windows file dialog via `GetOpenFileName`); on choose, the launcher
+   opens the ISO, finds `SCUS_972.75` in its directory (the ISO 9660 walk is ~60 lines; `tools_py/make_overlay_elf.py`
+   has the Python version to port) and hashes it: the r0001 sha256 is pinned in the source; a mismatch shows "not
+   SOCOM II NTSC r0001" in red and disables Launch. The merged ELF ships beside the exe (owner decision, packaging §7).
+2. **Video.** Detail quality as three radio buttons mapped to knobs the gate already verifies: *Native* (`PS2X_GS_SCALE=1`),
+   *Sharp* (`PS2X_GS_SCALE=2`, verified S=2 on both draw paths), *Sharper* (`PS2X_GS_SCALE=3`, labelled experimental —
+   S=3/4 are untested, README). Presentation filter (linear / integer / point → `PS2X_PRESENT_FILTER`). Window size:
+   640×448, 1280×896, fullscreen-borderless — the runtime takes none of these yet: **the launcher passes
+   `PS2X_WINDOW_SIZE=<w>x<h>` and the runtime gains that one knob** (`ps2_runtime.cpp` `InitWindow` at ~730; a
+   borderless fullscreen is `SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE)`; the gate keeps its 640×448 default).
+3. **Controller.** A live diagram: two stick circles with dots, the D-pad, four face buttons, four shoulders, Start/Back,
+   drawn from `IsGamepadAvailable(0)` / `GetGamepadAxisMovement` / `IsGamepadButtonDown` — the same calls the game's
+   input poll uses (`socom2_host_input.cpp`, the 2026-09-16 gamepad block) — with the pad's name, "none" in grey, and
+   the keyboard map printed beside it. A "mouse look" checkbox (`PS2X_SOCOM2_MOUSE=1`) and a sensitivity slider
+   (`PS2X_SOCOM2_MOUSE_SENS`).
+4. **Online.** Server address (default: the project's server once one exists, else `127.0.0.1`), profile name → memory
+   card directory `cards/<profile>/` (`PS2X_MC_DIR`), "second instance on this machine" checkbox
+   (`PS2X_SOCOM2_UDP_SHIFT=2`, `PS2X_SOCOM2_RSA_KEY=b`, a second card dir).
+
+**Launch.** Writes `config.json`, spawns `socom2.exe` with the environment (`PS2X_SOCOM2_PAD=1` always), stdout/stderr
+to `logs/run_<stamp>.log`, and stays open with a "Copy diagnostics" button (zips the last log + config).
+
+**Order of work (test-first where there is logic):** (1) the runtime's `PS2X_WINDOW_SIZE` knob with a unit test on
+the parser and a title-gate run to prove 640×448 unchanged; (2) the ISO check as a pure function (`launcher/iso.cpp`)
+with a test on a synthetic ISO directory and the real disc; (3) the raylib window with the four panels, `config.json`
+round-trip tested; (4) the owner's hands-on test with the Xbox controller; (5) the portable folder (packaging §2 A)
+gains the launcher and README says "run the launcher". Ships with defaults that reproduce today's behaviour.
+
 ### Task 9: Close-out
 
 - [ ] `PS2X_TEST_REPEAT=3 ./build.sh test` and a full gate on a quiet host; STATUS entry; KNOWN audit; ROADMAP §6 marked; CURRENT_SPRINT → Sprint 7; whole-branch review; the controller merges `sprint-6` into `develop` and `main`; ledger archived to `D:\socom_archive`.
