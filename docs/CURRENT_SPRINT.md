@@ -43,6 +43,13 @@ spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-rel
 plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
 ledger: .superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md (create on first dispatch)
 
+**Owner's order, 2026-09-16 (after playing the build with a controller):** (1) the water shards and the occasional
+flat-grey hill patch in Seeding Chaos (believed the same defect: geometry drawn untextured) — Task 5a; (2) the untested
+online maps, control rounds without a kill requirement — Task 6b; (3) misc hardening; (4) audio — Task 6c (nothing
+SOCOM plays reaches the host backend); (5) the launcher: an r0001 ISO pointer, a pre-launch detail-quality choice, a
+visible controller test area, other easy settings (packaging outline §3); (6) the rest of the sprint work in the
+controller's order. Gamepad support landed in the SOCOM input path the same day (uncommitted until its gate).
+
 **Next, in order:** (1) `s6_probe`'s result → commit the `PS2X_PC_SAMPLER` gate change; (2) commit the aim-loop
 simulation work (Task 4 Steps 1–2) once its agent reports and the suite is green; (3) Task 2 Step 4 — ten launches on
 the pinned harness to measure the lobby rate (owner window); (4) Task 3 Step 2 — the sampler fields research/29 §4
