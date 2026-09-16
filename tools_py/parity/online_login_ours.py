@@ -175,10 +175,21 @@ LOBBY_REF_DIR = os.path.join(REFS, "lobby")
 # a teal fill: its median luminance is 62-68 on every capture, an unlit row's <= 34 (even with the
 # game-name keyboard drawn over the menu, cal1). The games-list row is a fainter fill: 36 when JOIN
 # GAME activated a list with a game in it (8c, launch1), 15-18 with "There are no games to join."
+# The GAME LOBBY's READY row (menu row 2, the cursor detector's band): median 68 with the cursor on it
+# (8a A/B, s6_ladder4 B_16), 23 with no cursor drawn (every *_17_game_lobby_ok), 0-8 once in-game.
 LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
               "choose_games": (386, 406, 18, 170),    # CREATE GAME menu's last row
-              "games_list": (262, 280, 150, 620)}     # first row of the briefing room's games list
-LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0}
+              "games_list": (262, 280, 150, 620),     # first row of the briefing room's games list
+              "ready": (158, 180, 22, 165)}           # GAME LOBBY menu row 2
+LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0, "ready": 50.0}
+# GAME LOBBY menu rows (ARMORY, SWITCH TEAMS, READY) for the cursor read, and the most DOWN/UP presses a
+# cursor search may send. s6_ladder4 (research/30): B read no cursor after the host's READY -- the match
+# had launched -- and the old unbounded wiggle sent DOWN,UP x4 and a CROSS into the game, where D-pad
+# UP/DOWN cycle the scope zoom (FUN_00594cf0): B spawned scoped 3.0x. Every press now needs a fresh
+# frame whose title band still reads GAME LOBBY.
+LOBBY_CURSOR_ROWS = ((98, 120), (128, 150), (158, 180))
+LOBBY_CURSOR_MIN_MEAN = 50.0
+LOBBY_CURSOR_PRESSES = 4
 # The "READY button will be available in 30 seconds ... CONTINUE" panel: region mean 54 while it is
 # up (every *_16_game_lobby capture), 27-28 once CONTINUE dismissed it (*_17_game_lobby_ok).
 LOBBY_NOTICE = (slice(152, 265), slice(150, 490))
@@ -1143,14 +1154,13 @@ def host_game(sh, game_name="test", game_map="frostfire"):
     require_game_lobby(sh, "CREATE GAME")
 
 
-def lobby_cursor(sh):
-    """Index of the highlighted GAME LOBBY menu row (0 ARMORY, 1 SWITCH TEAMS, 2 NOT READY/READY),
-    -1 when nothing is highlighted (a fresh lobby shows no cursor until the first press). The
-    highlighted row is a teal fill (mean ~70 vs ~30)."""
-    im = np.asarray(winshot.grab(sh.hwnd).convert("L"), dtype=np.float32)
-    means = [float(im[y0:y1, 22:165].mean()) for y0, y1 in ((98, 120), (128, 150), (158, 180))]
+def lobby_cursor_of(gray):
+    """(index of the highlighted GAME LOBBY menu row -- 0 ARMORY, 1 SWITCH TEAMS, 2 NOT READY/READY --
+    or -1 when nothing is highlighted, the three row means). A fresh lobby shows no cursor until the
+    first press; the highlighted row is a teal fill (mean ~70 vs ~30)."""
+    means = [float(gray[y0:y1, 22:165].mean()) for y0, y1 in LOBBY_CURSOR_ROWS]
     i = int(np.argmax(means))
-    return i if means[i] > 50 else -1
+    return (i if means[i] > LOBBY_CURSOR_MIN_MEAN else -1), [round(m, 1) for m in means]
 
 
 def lobby_teams(sh):
@@ -1159,13 +1169,29 @@ def lobby_teams(sh):
     return int((im[240:300, 180:390] > 140).sum()), int((im[240:300, 405:615] > 140).sum())
 
 
-def lobby_select(sh, row, label):
+def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES):
     """Move the lobby cursor to `row` by reading the highlight (no assumption about wrap-around or
-    where the cursor starts: the old fixed 'down, cross' for SWITCH TEAMS landed on NOT READY)."""
-    prev, key = None, None
-    for _ in range(8):
-        cur = lobby_cursor(sh)
+    where the cursor starts: the old fixed 'down, cross' for SWITCH TEAMS landed on NOT READY).
+
+    Every DOWN/UP is preceded by a fresh frame that must still carry the GAME LOBBY title: once it is
+    gone (the match launched, a loading screen) nothing more is pressed and False is returned -- the
+    caller must not press CROSS either. At most `presses` presses. Returns True when the cursor reads
+    on `row`, or when it never did but `lit_row` (a LOBBY_ROWS key) reads lit on the last frame; raises
+    LobbyFail `<label>:cursor-not-found` (with the row means it read) when the lobby is still up and
+    neither holds, rather than pressing CROSS blind."""
+    cls = f"{label.lower().replace(' ', '-')}:cursor-not-found"
+    prev, key, reads = None, None, []
+    for n in range(presses + 1):
+        g = lobby_gray(sh)
+        if not lobby_title_is(g, "game_lobby"):
+            sh.log(f"[lobby] game lobby gone during {label} search -- no more presses")
+            return False
+        cur, means = lobby_cursor_of(g)
+        reads.append(means)
         if cur == row:
+            sh.log(f"lobby cursor {cur} for {label}")
+            return True
+        if n == presses:
             break
         # Prefer the short way; if the last press did not move the cursor (sweep2: UP from
         # NOT READY did nothing), go the other way round (the menu wraps on DOWN).
@@ -1175,7 +1201,12 @@ def lobby_select(sh, row, label):
         sh.press(want, 1.0)
         sh.log(f"lobby cursor {cur} -> {want}")
         prev, key = cur, want
-    sh.log(f"lobby cursor {lobby_cursor(sh)} for {label}")
+    why = (f"cursor never read on {label} (row {row}) in {presses} presses; "
+           f"row means (ARMORY, SWITCH TEAMS, READY) per read: {reads}")
+    if lit_row is not None and lobby_row_lit(g, lit_row):
+        sh.log(f"lobby cursor {cur} for {label} -- {lit_row} row lit by median, pressing on it; {why}")
+        return True
+    raise lobby_fail(sh, cls, why)
 
 
 @staged("join")
@@ -1196,25 +1227,30 @@ def join_game(sh, switch=True):
     require_game_lobby(sh, "JOIN GAME")
     sh.log(f"teams (seals, terrorists text px) {lobby_teams(sh)}")
     if switch:                                                   # a joiner is auto-assigned to the other team
-        lobby_select(sh, 1, "SWITCH TEAMS")
-        sh.press("cross", 4.0)
-        sh.shot("18_switched")
-        sh.log(f"teams after switch {lobby_teams(sh)}")
+        if lobby_select(sh, 1, "SWITCH TEAMS"):
+            sh.press("cross", 4.0)
+            sh.shot("18_switched")
+            sh.log(f"teams after switch {lobby_teams(sh)}")
 
 
 @staged("ready")
 def ready(sh):
-    lobby_select(sh, 2, "READY")                                 # menu: ARMORY, SWITCH TEAMS, READY
+    if not lobby_select(sh, 2, "READY", lit_row="ready"):   # menu: ARMORY, SWITCH TEAMS, READY
+        sh.shot("19_ready")                                  # the screen the search stopped on
+        return
     sh.press("cross", 3.0)
 
     def pair():
-        """Two fresh frames READY_CONFIRM_GAP_S apart -> 'dropped' (both READY), 'taken' (neither), 'unsure'."""
+        """Two fresh frames READY_CONFIRM_GAP_S apart -> 'dropped' (both READY), 'taken' (neither),
+        'gone' (no label on either: the lobby has been left), 'unsure'."""
         edges = []
         for k in range(2):
             if k:
                 sh.stage_sleep(READY_CONFIRM_GAP_S)
             edges.append(ready_label_edge(lobby_gray(sh)))
         sh.log(f"READY check: row-2 label right edges {edges} (READY ~48, NOT READY ~82)")
+        if edges == [None, None]:
+            return "gone"
         flags = [e is not None and e <= READY_EDGE_DROPPED_MAX for e in edges]
         return "dropped" if all(flags) else "taken" if not any(flags) else "unsure"
 
@@ -1227,11 +1263,13 @@ def ready(sh):
             state = pair()
         if state == "unsure":
             raise lobby_fail(sh, CLASS_READY, "READY label frames disagree twice -- not pressing a toggle blind")
+        if state == "gone":
+            sh.log("[lobby] game lobby gone during READY check -- no more presses")
         return state == "dropped"
 
     def resend():
-        lobby_select(sh, 2, "READY")
-        lobby_resend_cross(sh, 3.0)
+        if lobby_select(sh, 2, "READY", lit_row="ready"):
+            lobby_resend_cross(sh, 3.0)
 
     verify_resend(sh, CLASS_READY, dropped, resend)             # R47: re-sent while READY still shows
     sh.shot("19_ready")
