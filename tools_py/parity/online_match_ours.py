@@ -3757,6 +3757,7 @@ def victim_should_oscillate(d3):
 # until the round clock runs out. A burst is judged only once a health read exists AIM_HIT_READ_S after it ended, so a
 # hit whose row has not arrived yet is not counted as a miss. Without an armed health watch nothing is ever judged and
 # the correction is inert (no evidence, no correction) -- the banner says so.
+LADDER_POST_ROUNDS_TAIL_S = 8.0   # rows kept after the last round: VALVE_WINDOW_GUEST_S (3 guest s) at 0.57 guest s/host s + margin
 AIM_MISS_BURSTS = 3              # bursts with no drop on the target's +0x1044 word before the aim steps a lead
 AIM_LEAD_TABLE_DEG = (1.5, -1.5, 3.0, -3.0)   # the lead offsets in order, degrees of bearing (+: aim_yaw's positive err)
 AIM_LEAD_ROUNDS = 2              # the table is walked this many times with no damage before the engagement gives up
@@ -5008,6 +5009,11 @@ def main():
 
             history, ladder_stop = online_ladder.run_ladder(a.rounds if watched_endgame else 1, play_round, next_round,
                                                             A.sh.log, mover=a.mover, auto_swap=a.auto_swap)
+            # s6_ladder8: the run stopped at the last round's kill and verdict_replay read NO-DATA
+            # 'rows-after-valve-window' for it -- the valve scorer needs VALVE_WINDOW_GUEST_S of rows after the
+            # death, at the slowest measured guest clock. Keep the tails running that long first.
+            A.sh.log(f"LADDER tail: {LADDER_POST_ROUNDS_TAIL_S:.0f}s of rows after the last round for the offline scorers")
+            time.sleep(LADDER_POST_ROUNDS_TAIL_S)
             watch.stop()
             mpw.stop()
             if starv is not None:

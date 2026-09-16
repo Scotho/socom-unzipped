@@ -202,3 +202,14 @@ class RoundsArgTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PostRoundsTail(unittest.TestCase):
+    """s6_ladder8 (2026-09-15): the run stopped at the last round's kill, so verdict_replay read NO-DATA
+    'rows-after-valve-window' for round 4 -- it needs VALVE_WINDOW_GUEST_S of rows after the death, and the guest
+    clock runs at ~0.57-0.91 guest s per host s (KNOWN §4). The ladder keeps the tails running that long after
+    run_ladder returns."""
+
+    def test_tail_covers_the_valve_window_at_the_slowest_guest_clock(self):
+        from tools_py.parity import online_match_ours as M, verdict_replay as VR
+        self.assertGreaterEqual(M.LADDER_POST_ROUNDS_TAIL_S, VR.VALVE_WINDOW_GUEST_S / 0.57 + 1.0)
