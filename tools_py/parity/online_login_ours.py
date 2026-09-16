@@ -41,6 +41,8 @@ OSK_INK_MIN = 60                 # column max above this is ink (glyph or cursor
 OSK_CURSOR_MIN = 200             # column max above this is the cursor block, not counted; glyphs stay below it
 OSK_GLYPH_MIN_WIDTH = 2          # a narrower run is a cursor edge, not a glyph (';', the narrowest, is 3 px)
 OSK_TYPE_ATTEMPTS = 3            # one type + two retypes before login:keyboard-typing
+OSK_ENTER_RETRIES = 2            # re-presses of ENTER while the keyboard stays up, before login:keyboard-enter
+OSK_ENTER_SETTLE_S = 3.0         # the keyboard's close after ENTER, before its first read-back (the old WARNING's wait)
 OSK_SLOW_HOLD_S, OSK_SLOW_WAIT_S = 0.18, 0.5   # retype pacing: 0.09 s / 0.35 s doubled (5-6 frames at 32 fps)
 OSK_CROSS_WAIT_S = 0.6                          # after a key's CROSS, both pacings (the keyboard redraws the field)
 
@@ -160,6 +162,12 @@ CLASS_MAP_SEARCH, CLASS_KEYBOARD = "map-list-search", "login-keyboard"
 # attempt=<n>` line per press so the next taxonomy is a grep.
 CLASS_PRE_LOGIN = "pre-login"
 CLASS_OSK_TYPING = "login:keyboard-typing"   # the keyboard read back the wrong character count three times
+# s6_ladder6 (2026-09-15, both instances at ~59 fps; research/28 §5-§6): the runtime drops about one press in twenty,
+# and the two blind press runs left in login() each lost one. A: one of the four DOWNs to CONNECT, so CROSS opened
+# the gender prompt; B: a step of the walk to ENTER, so the keyboard stayed up. Both timed out the login stage.
+CLASS_CONNECT_FOCUS = "login:connect-focus"  # CONNECT never read lit after the DOWNs and their bounded extras
+CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT lit after the CROSS and its re-sends
+CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
 
 # Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
 # x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
@@ -180,8 +188,25 @@ LOBBY_REF_DIR = os.path.join(REFS, "lobby")
 LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
               "choose_games": (386, 406, 18, 170),    # CREATE GAME menu's last row
               "games_list": (262, 280, 150, 620),     # first row of the briefing room's games list
-              "ready": (158, 180, 22, 165)}           # GAME LOBBY menu row 2
-LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0, "ready": 50.0}
+              "ready": (158, 180, 22, 165),           # GAME LOBBY menu row 2
+              # CONNECT TO SOCOM II form (login): the CONNECT button, bottom left, and the GENDER row. Over
+              # every *_06_connect_focus capture the button's median is 68 on the 117 with the cursor on it,
+              # 19 (s6_ladder6: cursor on GENDER), 24 or 31 (older Sprint 4 runs) without; GENDER reads 68
+              # lit (s6_ladder6) and 23 unlit (s5_t5_ladder2).
+              "connect": (366, 390, 20, 160),
+              "gender": (226, 246, 20, 160)}
+LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0, "ready": 50.0,
+                        "connect": 50.0, "gender": 50.0}
+# The form's prompt band ("Connect.", "Specify your gender.", "Enter your password.": bright centred text at
+# y 74-90) tells the form from what follows the CONNECT: 52-117 columns above 80 within x 230-415 on every form
+# capture, 0 on the write-down / save-card / slot notices, 7 on the EULA (a panel edge), and 0 with a keyboard
+# drawn over the form (the overlay dims the band).
+LOGIN_FORM_PROMPT = (slice(74, 90), slice(230, 415))
+LOGIN_FORM_PROMPT_LUMA = 80.0
+LOGIN_FORM_PROMPT_MIN_COLS = 40
+LOGIN_CONNECT_DOWNS = 4          # PASSWORD -> SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
+LOGIN_CONNECT_EXTRA_DOWNS = 3    # more DOWNs while CONNECT reads unlit, before login:connect-focus
+LOGIN_GENDER_BACKS = 2           # TRIANGLEs out of a prompt the CROSS opened, before login:connect-focus
 # GAME LOBBY menu rows (ARMORY, SWITCH TEAMS, READY) for the cursor read, and the most DOWN/UP presses a
 # cursor search may send. s6_ladder4 (research/30): B read no cursor after the host's READY -- the match
 # had launched -- and the old unbounded wiggle sent DOWN,UP x4 and a CROSS into the game, where D-pad
@@ -354,9 +379,23 @@ def lobby_title_is(gray, name):
     return lobby_title_dist(gray, name) <= LOBBY_TITLE_MAX_DIST
 
 
-def lobby_row_lit(gray, row):
+def lobby_row_median(gray, row):
     y0, y1, x0, x1 = LOBBY_ROWS[row]
-    return float(np.median(gray[y0:y1, x0:x1])) > LOBBY_ROW_LIT_MEDIAN[row]
+    return float(np.median(gray[y0:y1, x0:x1]))
+
+
+def lobby_row_lit(gray, row):
+    return lobby_row_median(gray, row) > LOBBY_ROW_LIT_MEDIAN[row]
+
+
+def login_form_prompt_cols(gray):
+    """Columns of bright text in the CONNECT TO SOCOM II form's prompt band."""
+    return int((gray[LOGIN_FORM_PROMPT] > LOGIN_FORM_PROMPT_LUMA).any(axis=0).sum())
+
+
+def login_form_up(gray):
+    """The CONNECT TO SOCOM II form is on screen with no keyboard over it."""
+    return login_form_prompt_cols(gray) >= LOGIN_FORM_PROMPT_MIN_COLS
 
 
 def lobby_notice_up(gray):
@@ -649,12 +688,12 @@ class Shell:
                                                    f"refusing to type into whatever menu is on screen")
         self.osk_normal_mode()
         if self.pad_file:
-            self.osk_type_pad_verified(text, shots, tag)
-        else:
-            osk_type(self.hwnd, text, shots, tag, target=T)
-        time.sleep(3.0)
-        if self.osk_open():
-            self.log(f"WARNING: the on-screen keyboard is still up after typing {text!r} "
+            self.osk_type_pad_verified(text, shots, tag)     # reads the field and the ENTER back; fails with a class
+            return
+        osk_type(self.hwnd, text, shots, tag, target=T)
+        time.sleep(OSK_ENTER_SETTLE_S)
+        if self.osk_open():                                  # the posted-keys path has no cursor to re-walk from
+            self.log(f"WARNING: the on-screen keyboard is still up after typing {text!r} through posted keys "
                      f"(accent-box distance {self.osk_refs()}) -- the presses after this one go to "
                      f"the keyboard, not to the menu")
 
@@ -707,7 +746,43 @@ class Shell:
             self.log(f"[osk] typed {n} of {len(text)} -> retype (attempt {attempt})")
             slow = True
             cur = self.osk_clear(cur, n, len(text), slow=slow)
-        self.osk_type_pad("", None, "", cur=cur, enter=True, slow=slow)          # the walk to ENTER and its CROSS
+        cur = self.osk_type_pad("", None, "", cur=cur, enter=True, slow=slow)    # the walk to ENTER and its CROSS
+        self.osk_enter_verified(text, cur)
+
+    def osk_press_key(self, cur, label, slow=True):
+        """Walk the cursor from `cur` to the key `label` and press it. Returns the key's position."""
+        hold, wait, cross_wait = self.osk_pacing(slow)
+        dst = osk_pos(label)
+        for m in osk_moves(cur, dst):
+            self.pad_press(m.upper(), wait, hold)
+        self.pad_press("CROSS", cross_wait, hold)
+        return dst
+
+    def osk_enter_verified(self, text, cur):
+        """Read the keyboard back after the ENTER press (s6_ladder6 B: the walk to ENTER lost a step at ~59 fps, the
+        old code logged a WARNING and the DOWNs meant for CONNECT went to the keyboard until the stage timed out).
+        While the keyboard is still up, re-press ENTER from the dead-reckoned cursor at the slow pacing, at most
+        OSK_ENTER_RETRIES times; when the field now holds len(text)+1 characters the dropped step was a d-pad move
+        and the CROSS typed the key beside ENTER, so BCKSPC once first (the walk to BCKSPC ends on it from ENTER or
+        from its left neighbour alike: rows 0-1 are longer than row 3). Still up after that: login:keyboard-enter."""
+        self.stage_sleep(OSK_ENTER_SETTLE_S)
+        for attempt in range(1, OSK_ENTER_RETRIES + 2):
+            gray = lobby_gray(self)
+            if not osk_open_of(gray):
+                done = attempt - 1
+                self.log("[osk] enter: keyboard closed" + (f" after {done} re-press{'es' if done > 1 else ''}" if done else ""))
+                return
+            n = osk_typed_count(gray)
+            if attempt > OSK_ENTER_RETRIES:
+                raise lobby_fail(self, CLASS_OSK_ENTER, f"keyboard still up after ENTER and {OSK_ENTER_RETRIES} re-presses "
+                                                        f"({n} of {len(text)} characters)")
+            if n == len(text) + 1:
+                self.log(f"[osk] enter: keyboard still up, {n} of {len(text)} characters -> BCKSPC, re-press (attempt {attempt})")
+                cur = self.osk_press_key(cur, "BCKSPC")
+            else:
+                self.log(f"[osk] enter: keyboard still up -> re-press (attempt {attempt})")
+            cur = self.osk_press_key(cur, "ENTER")
+            self.stage_sleep(OSK_ENTER_SETTLE_S)
 
     def osk_clear(self, cur, n, total, slow=True):
         """Walk to BCKSPC (top row, right end) and press it once per counted character, then read the field
@@ -852,11 +927,7 @@ def login(sh, name, password, existing):
         sh.shot("04_pw_kbd")
     sh.type(password)
     sh.shot("05_password")
-    for _ in range(4):                                           # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
-        sh.press("down", 0.8)
-    sh.shot("06_connect_focus")
-    sh.press("cross", 5.0)
-    sh.shot("07_after_connect")
+    press_connect(sh)
     # Prompts between CONNECT and the EULA vary (write-down notice, save to card?, slot,
     # overwrite?): answer whichever is on screen until the EULA shows.
     t = time.time()
@@ -888,6 +959,66 @@ def login(sh, name, password, existing):
     sh.press_until_gone("cross", "lobby_news")                   # close SERVER NEWS
     time.sleep(2.0)
     sh.shot("09_lobby_no_news")
+
+
+def press_connect(sh):
+    """The DOWNs from PASSWORD to CONNECT and the CROSS on it, each read back (s6_ladder6 A: one of the four blind
+    DOWNs was dropped, CROSS opened "Specify your gender." and the login stage timed out).
+
+    After the four DOWNs a fresh frame must show the CONNECT button lit; while it does not, one more DOWN and a
+    re-read, at most LOGIN_CONNECT_EXTRA_DOWNS times (`[login] connect focus: lit|not lit (median m) attempt k`);
+    a read that shows neither the form nor CONNECT presses nothing more. CROSS goes only to a lit CONNECT. The
+    frame after it must no longer show the form: still up with CONNECT lit is a dropped CROSS (re-sent, at most
+    LOBBY_RESEND_MAX times, then login:connect-press -- 127 of 127 launches that connected had the form gone at
+    the 5 s read); still up with the cursor elsewhere, or a keyboard opened, is a prompt the CROSS opened:
+    TRIANGLE backs out of it and the DOWN search resumes, at most LOGIN_GENDER_BACKS times."""
+    for _ in range(LOGIN_CONNECT_DOWNS):                         # SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
+        sh.press("down", 0.8)
+    extra = backs = resends = crosses = attempt = 0
+    while True:
+        while True:                                              # the focus search
+            attempt += 1
+            gray = lobby_gray(sh)
+            m = lobby_row_median(gray, "connect")
+            lit = m > LOBBY_ROW_LIT_MEDIAN["connect"]
+            sh.log(f"[login] connect focus: {'lit' if lit else 'not lit'} (median {m:.0f}) attempt {attempt}")
+            if lit:
+                break
+            if not login_form_up(gray):
+                raise lobby_fail(sh, CLASS_CONNECT_FOCUS, f"the CONNECT form is not on screen after {LOGIN_CONNECT_DOWNS} "
+                                                          f"DOWN and {extra} more (prompt band {login_form_prompt_cols(gray)} "
+                                                          f"columns, keyboard {'up' if osk_open_of(gray) else 'down'})")
+            if extra == LOGIN_CONNECT_EXTRA_DOWNS:
+                raise lobby_fail(sh, CLASS_CONNECT_FOCUS, f"CONNECT not lit after {LOGIN_CONNECT_DOWNS} DOWN and {extra} "
+                                                          f"more (median {m:.0f}, GENDER {'lit' if lobby_row_lit(gray, 'gender') else 'unlit'})")
+            extra += 1
+            lobby_resend(sh, "down", 0.8)
+        sh.shot("06_connect_focus")
+        crosses += 1
+        if crosses == 1:
+            sh.press("cross", 5.0)
+        else:
+            lobby_resend(sh, "cross", 5.0)
+        gray = lobby_gray(sh)
+        keyboard = osk_open_of(gray)
+        if not login_form_up(gray) and not keyboard:
+            sh.shot("07_after_connect")
+            return
+        if lobby_row_lit(gray, "connect") and not keyboard:
+            resends += 1
+            if resends > LOBBY_RESEND_MAX:
+                raise lobby_fail(sh, CLASS_CONNECT_PRESS, f"the form is still up with CONNECT lit after the CROSS and "
+                                                          f"{LOBBY_RESEND_MAX} re-sends")
+            sh.log(f"[login] connect press: form still up, CONNECT lit -> re-send CROSS (attempt {resends})")
+            continue
+        gender = lobby_row_lit(gray, "gender")
+        what = "a keyboard opened" if keyboard else "GENDER lit (the gender prompt)" if gender else "cursor elsewhere"
+        backs += 1
+        if backs > LOGIN_GENDER_BACKS:
+            raise lobby_fail(sh, CLASS_CONNECT_FOCUS, f"the CROSS opened a prompt {backs} times ({what})")
+        sh.log(f"[login] connect press: form still up, {what} -> TRIANGLE, resume the DOWN search (back {backs})")
+        sh.shot("07_gender_prompt" if gender and not keyboard else "07_unexpected_prompt")
+        lobby_resend(sh, "triangle", 1.5)
 
 
 @staged("login")

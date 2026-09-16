@@ -134,9 +134,14 @@ def expected(*legs):
 
 def run_typed(text, *frames):
     sh, g = FakeShell(), Grabs(*frames)
-    with mock.patch.object(L.winshot, "grab", g):
+    with mock.patch.object(L.winshot, "grab", g), mock.patch.object(L.time, "sleep"):
         sh.osk_type_pad_verified(text)
     return sh, g
+
+
+def typing_lines(sh):
+    """The typed / cleared read-back lines (the ENTER read-back's lines are test_login_connect.py's)."""
+    return [m for m in sh.logs if m.startswith(("[osk] typed", "[osk] cleared"))]
 
 
 class PadTypingVerified(unittest.TestCase):
@@ -145,7 +150,7 @@ class PadTypingVerified(unittest.TestCase):
         self.assertEqual(sh.presses, expected(*"socom", "ENTER"))
         self.assertNotIn(("pad", "BCKSPC"), sh.presses)
         self.assertEqual(sh.presses.count(("pad", "CROSS")), 6)
-        self.assertEqual([m for m in sh.logs if m.startswith("[osk]")], ["[osk] typed 5 of 5 (attempt 1)"])
+        self.assertEqual(typing_lines(sh), ["[osk] typed 5 of 5 (attempt 1)"])
         self.assertTrue(all(a is not None and a <= L.LOBBY_FRAME_MAX_AGE_S for a in g.ages), g.ages)
         # normal pacing on the first attempt
         self.assertTrue(all(h == 0.09 for _, h, _ in sh.paced), sh.paced)
@@ -162,7 +167,7 @@ class PadTypingVerified(unittest.TestCase):
         enter, _ = walk(cur2, "ENTER")
         self.assertEqual(sh.presses, typed1 + clear + retype + enter)
         self.assertEqual(sh.presses.count(("pad", "CROSS")), 5 + 4 + 5 + 1)
-        self.assertEqual([m for m in sh.logs if m.startswith("[osk]")],
+        self.assertEqual(typing_lines(sh),
                          ["[osk] typed 4 of 5 -> retype (attempt 1)",
                           "[osk] cleared: 0 of 5 left",
                           "[osk] typed 5 of 5 (attempt 2)"])
@@ -201,13 +206,16 @@ class PadTypingVerified(unittest.TestCase):
                          ["[osk] cleared: 1 of 5 left -> 1 more BCKSPC", "[osk] cleared: 0 of 5 left"])
 
     def test_type_routes_the_pad_path_through_the_verified_typer(self):
-        kbd = frame((REF_NORMAL, OSK_ACCENT_BOX))
+        # frames: the mode read (keyboard up), the count read (5 typed), the read after ENTER (keyboard gone --
+        # a keyboard still up here is re-pressed and classified by test_login_connect.py, not warned about)
+        kbd, gone = frame((REF_NORMAL, OSK_ACCENT_BOX)), Image.new("RGB", (640, 448), 0)
         sh = FakeShell()
         sh.osk_open = lambda: True
-        with mock.patch.object(L.winshot, "grab", Grabs(kbd, synth_typed(5), kbd)), mock.patch.object(L.time, "sleep"):
+        with mock.patch.object(L.winshot, "grab", Grabs(kbd, synth_typed(5), gone)), mock.patch.object(L.time, "sleep"):
             sh.type("socom")
         self.assertEqual(sh.presses, expected(*"socom", "ENTER"))
-        self.assertTrue(any(m.startswith("WARNING: the on-screen keyboard is still up") for m in sh.logs))
+        self.assertFalse([m for m in sh.logs if m.startswith("WARNING")], sh.logs)
+        self.assertIn("[osk] enter: keyboard closed", sh.logs)
 
     def test_posted_keys_path_is_unchanged(self):
         sh = FakeShell(pad_file=None)
