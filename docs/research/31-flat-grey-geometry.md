@@ -189,3 +189,25 @@ dark=0.268`); 859k log lines, 447k `[gs-pages]`, 400k `[gs-cmd]`.
 never reached the HUD because a plugged-in controller changed the boot flow — `PS2X_HOST_GAMEPAD=0` now pins it). Shards
 gone → the GL shadow/cache serves stale or mis-laid texels for this texture/CLUT pair; unchanged → the VRAM bytes the
 game uploads are read the same way by both backends and the comparison moves to the PCSX2 slot-8 GS dump.
+
+## 7. The CPU-VRAM twin is not a diagnostic (`s6_water_texcpu2`, 2026-09-16) [verified]
+
+`PS2X_GS_TEX_FROM_CPU=1` on a full mission gate (controller pinned off, pristine card): **every screen from the boot on
+renders as noise** -- the armory, the briefing text, the fonts are half-legible over a field of random texels
+(`logs/parity/gate/s6_water_texcpu2/mission/s44_holdS.png`) -- and the frame file went stale by 138-174 s per hold
+(`SnapshotVram` copies the whole 4 MB per `resolveTexture`; the exe fell to a frame every few seconds). The HUD search
+ran its 40 presses on that noise (dist 133, never matched) and the holds landed in the armory. So the game-thread
+VRAM read from the render thread is not the authoritative picture it was assumed to be: either the snapshot races
+the game thread's uploads, or the decode addresses the two memories differently. Either way the twin cannot say
+whether the water's texels are wrong in VRAM or wrong in the cache, and it goes off the list.
+
+**What is left, in order:** (a) the PCSX2 slot-8 GS dump (`gsdump_capture --slot 8`, `gsdump_timeline.py --all`):
+the console's last upload into 0x38a8/0x3852 and its TEX0/CLUT against our `[gs-pages]` uploads -- byte-level and
+lock-free once the dump exists; (b) the `resolveTexture` eviction/decode log knobs (§5) on a normal run, to see
+which cache entry serves the water draw on a shard frame; (c) the `PS2X_GS_BACKEND=cpu` oracle only if (a) and (b)
+disagree.
+
+Also noted on the same day's `s6_gamepad5` gate: its spawn capture (`s28_none.png`) is a **letterboxed, HUD-less frame**
+(the location cinematic caught after the HUD match) and the console comparison scored it `flat=0.071 dark=0.212`
+-- the first 'PASS'-side flat figure ever printed, and meaningless: every HUD spawn frame before it reads
+0.503-0.509. The comparison must refuse a frame that is not a HUD frame (gate hardening, done the same day).

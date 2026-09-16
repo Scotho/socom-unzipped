@@ -154,6 +154,23 @@ Maintained by whoever is running the loop. Last audited: 2026-09-15, after the p
   a −4.1° aim error that sat inside the angular tolerance (never corrected). Sprint 7's repeatability item needs a tighter
   aim tolerance or a burst-to-burst correction.
 
+- **The gate's memory card is shared state, and a saved controller configuration changes the boot flow** (2026-09-16,
+  three full gates lost: `s6_gamepad`, `s6_gamepad2`, `s6_gamepad3`): the owner's free-play session ran on the default card
+  `game/disc/mc0` and saved the controller configuration (`BASCUS-97275SOCOMII` 4784 → 6160 B, `SCRATCHPAD.DAT`, both
+  00:24), after which every boot skipped the PRECISION SHOOTER CONFIGURATION screens and the "save to memory card?" dialog —
+  and the transition stage, which keys its burst on that dialog, reported "no transition burst fired". The controller
+  itself was not the cause (`PS2X_HOST_GAMEPAD=0` made no difference; the knob stays, so a harness run never depends on
+  what is plugged in). Fix: `gate.py` boots every stage from a fresh copy of the 2026-09-08 card `game/disc/mc0_parity`
+  in the stamp directory (`PRISTINE_CARD`; an operator's `PS2X_MC_DIR` wins), and free play uses its own copy
+  `game/disc/mc0_owner`. The online ladder keeps `mc0`/`mc0_b` (their personas); its boot loop adapts to either flow.
+  **That card did not bring the dialog back** (`s6_fade`: the boot went main menu → rank → briefing in 45 s, no
+  configuration screen), and a step-pinned fallback burst could not catch the fade either -- it happens during the rank
+  press's own settle wait, at a step index that drifts with the boot (s05 there, s07 nominal). So the transition stage
+  is now **scored by content** when no burst fired: `gate.score_fade` orders every capture by mtime, finds the first
+  frame whose header band matches `scripts/parity/ref_briefing_ours.png`, skips the briefing's own ≤ 2 s fade-in and
+  counts the contiguous black run behind it, from 5 fps wait captures (`--wait-period 0.2`). `s6_fade` and
+  `s6_gamepad3` re-score PASS at exactly the 5-frame floor on their old 1 Hz captures. The boot's black screens sit
+  behind the main menu and cannot join the run, which is what the burst step was enforcing.
 - **Every blind press in the online harness now costs a launch** (2026-09-15 evening, seven ladder launches on the block-pointer exe, 2 reached gameplay): each launch failed on a different press that had no read-back -- the OSK's first character (`ocom`), a DOWN before CONNECT (CROSS landed on GENDER), an ENTER-walk step, the main menu's ONLINE CROSS (`s6_ladder7`: menu still up, ONLINE lit), the map-list walk pressing through a mid-scroll frame, and a READY search that pressed UP into the started match (B spawned zoomed 3.0x; research/30). The drop rate is about one press in twenty at 59 fps, on the pad-file path as well as posted keys. Sprint 5's launches on the frozen exe hit the same class at a lower rate (R47's two re-sends). Rule: a press without a verification of the screen it should produce is a bug, not a step; the lobby now verifies every stage (`[lobby]`, `[login]`, `[osk]` lines) and `lobby_report.py` counts re-sends per launch.
 - **The OSK password typing drops characters at a low guest frame rate, and the keyboard now opens in accent mode on both instances** (2026-09-15 evening, `s6_ladder2` and the Sprint 5 harness bisect `s6_ladder_oldharness`, both instances, 0/3 launches reached gameplay): B's password reached the server as `ocom` (first character lost), A connected with an empty password, the old harness typed `xmfû`; the guest ran 32 fps in the OSK window against 60 in Sprint 5 and the pad walk is dead-reckoned at 0.09 s holds with no read-back. Fix in flight: read the typed length back from the OSK text row and retype slower (research/28 §6). Until it lands, every online launch on the block-pointer exe fails at login.
 - **A two-instance launch can start with a starved runtime** (`s6_ladder1`, the first double launch of the freshly built exe): 34 present windows in 490 s, the guest parked at VSync, presses received but never processed, `LOBBY-FAIL pre-login` after 9 blind boot presses; the next launch on the same harness and exe booted normally. Cause not identified (research/28 §6). Read a boot failure's `[gs-gl stats]` cadence before blaming the harness.
