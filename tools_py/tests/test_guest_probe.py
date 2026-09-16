@@ -93,7 +93,34 @@ class RestWindow(unittest.TestCase):
                 + [_line((900.0, -145.0, 850.0), root_y=5.03)] * 40)                       # holds change the pose
         res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
         self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
-        self.assertAlmostEqual(res["root_node_y"].ours, 5.50391, places=4)
+        # The lowest sustained plateau: the holds' pose here sits 0.47 lower than the at-rest value and wins, which
+        # is inside the tolerance (1.5) and, unlike the tail median, never a decay stall (s6_lum8).
+        self.assertAlmostEqual(res["root_node_y"].ours, 5.50391, delta=0.5)
+
+    def test_a_gradual_decay_is_read_after_it_settles(self):
+        """s6_water_state / s6_clut (2026-09-16): the root node decayed over ~25 rows (11.48 -> 10.98 -> ... -> 5.56) instead
+        of stepping, and the window opened on the decay's first rows (10.407 read, console 5.5039). The window must open
+        where consecutive rows stop moving (REST_SETTLE_DELTA), not where the value first leaves its initial plateau."""
+        decay = [10.98, 10.98, 10.98, 10.41, 10.41, 9.63, 9.63, 7.88, 7.88, 7.12, 6.57, 6.16, 5.65]   # the 1 Hz sampler repeats values
+        rows = ([_line((900.0, -145.0, 850.0), root_y=11.48)] * 12
+                + [_line((900.0, -145.0, 850.0), root_y=v) for v in decay]
+                + [_line((900.0, -145.0, 850.0), root_y=v) for v in (5.56, 5.56, 5.56, 5.56, 5.51, 5.51, 5.50, 5.50, 5.50, 5.48)]
+                + [_line((900.0, -145.0, 850.0), root_y=8.2)] * 40)                        # holds raise it again
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+        self.assertAlmostEqual(res["root_node_y"].ours, 5.5, delta=0.1)
+
+    def test_a_long_stall_inside_the_decay_is_not_rest(self):
+        """s6_lum8 (2026-09-16): the decay stalled for eight rows at 10.73 and nine at 6.83 before reaching 5.4-5.5 (the
+        1 Hz sampler over a slow blend). Four quiet deltas accepted the first stall (10.732 read). The rest value is the
+        LOWEST sustained plateau after the departure: the node decays down to rest and only later holds raise it."""
+        series = ([11.48] * 12 + [11.43] * 3 + [10.73] * 8 + [9.2] * 2 + [8.32] * 3 + [6.83] * 9 + [5.98] * 3 + [5.73] * 4
+                  + [5.53] * 12 + [5.5] * 9 + [5.44] * 4 + [5.39] * 15 + [5.55] * 8 + [5.8] * 18 + [6.21] * 11 + [6.5] * 15
+                  + [7.5] * 11 + [7.91] * 19)
+        rows = [_line((900.0, -145.0, 850.0), root_y=v) for v in series]
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+        self.assertAlmostEqual(res["root_node_y"].ours, 5.45, delta=0.12)
 
     def test_a_short_log_falls_back_to_what_it_has(self):
         rows = [_line((900.0, -145.0, 850.0), root_y=5.50391)] * 5

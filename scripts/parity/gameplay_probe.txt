@@ -36,7 +36,7 @@ wait+1.0:NONE
 wait+1.0:NONE
 wait+2.0:CROSS      # deploy -> load mission
 next+10.0:NONE      # mission
-untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,30,lit)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD shows on a full frame (lit letterbox bands: not the cinematic, R30)
+untilref(scripts/parity/ref_hud_ours.png,92,112,125,160,40,40,lit)+1.0:CROSS   # through the intro cinematics (X skips/dismisses) until the HUD shows on a full frame (lit letterbox bands: not the cinematic, R30)
 wait+2.0:NONE
 ifpopup+1.0:CROSS   # a HELP pop-up pauses the game behind a lit HUD: dismiss it (CROSS, only while shown) before the hold
 hold+1.0:I          # right stick up: raise the muzzle so the R1 bursts below go into the sky -- s6_gamepad ended in

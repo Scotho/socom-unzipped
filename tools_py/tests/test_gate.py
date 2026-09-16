@@ -482,25 +482,36 @@ class HudMatch(unittest.TestCase):
     """drive.hud_match is untilref's per-frame test. The HUD reference region compared on the cropped
     160x112 thumbnail matches the cinematic (the defect); with `lit` the band test must reject it."""
 
+    # 2026-09-16: the HUD reference was re-captured from the lit look (the post-process brighten now reaches the
+    # frame, research/31 section 12-13); the dbuff fixtures are the earlier dark look, so the defect-documenting
+    # cases compare them against the reference of their day (committed beside them), and the acceptance case uses a
+    # lit-look fixture (tests/fixtures/gate/mission/lum/s28_none.png, logs/parity/gate/s6_lum3).
     def setUp(self):
         with Image.open(HUD_REF) as im:
             self.ref = drive.thumb(im)
+        with Image.open(os.path.join(DBUFF_MISSION_RUN, "ref_hud_ours_2026-09-11.png")) as im:
+            self.ref_2026_09_11 = drive.thumb(im)
 
-    def _match(self, path, lit):
+    def _match(self, path, lit, ref=None):
         with Image.open(path) as im:
-            return drive.hud_match(im, self.ref, (92, 112, 125, 160), 30.0, lit)
+            return drive.hud_match(im, self.ref if ref is None else ref, (92, 112, 125, 160), 40.0, lit)   # the scripts' threshold: 40 since the lit look (a HUD frame of another run read 32.6, cinematics 55+)
 
     def test_cinematic_matched_without_lit_documents_the_defect(self):
-        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=False)
+        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=False, ref=self.ref_2026_09_11)
         self.assertTrue(matched, dist)
 
     def test_cinematic_rejected_with_lit(self):
-        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=True)
+        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=True, ref=self.ref_2026_09_11)
         self.assertFalse(matched, (dist, band))
 
     def test_hud_accepted_with_lit(self):
-        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "final.png"), lit=True)
+        matched, dist, band = self._match(os.path.join(FIXTURES, "mission", "lum", "s28_none.png"), lit=True)
         self.assertTrue(matched, (dist, band))
+
+    def test_the_dark_look_no_longer_matches_the_lit_reference(self):
+        """The reference must follow the runtime: a frame from before the brighten reads 50+ against it."""
+        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "final.png"), lit=True)
+        self.assertFalse(matched, dist)
 
     def test_mission_scripts_require_lit(self):
         """Every script that waits for the in-game HUD (the mission gate's gameplay_probe.txt, and

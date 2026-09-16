@@ -17,7 +17,8 @@ from tools_py.parity import drive
 
 
 def _popup_frame():
-    return Image.open("scripts/parity/ref_hud_ours.png").convert("RGB")
+    # The frame the prompt template is cut from: it carries the HELP pop-up (the lit-look HUD reference does not).
+    return Image.open("scripts/parity/ref_popup_prompt_ours.png").convert("RGB")
 
 
 def _clean_frame():
@@ -153,3 +154,25 @@ class WaitPeriodArg(unittest.TestCase):
     def test_run_steps_captures_at_the_period(self):
         self.assertEqual(self._frames_for(0.2), ["w00_%03d.png" % k for k in range(5)])
         self.assertEqual(self._frames_for(1.0), ["w00_000.png"])
+
+
+class PopupPresentLitLook(unittest.TestCase):
+    """2026-09-16: the prompt template was cut out of scripts/parity/ref_hud_ours.png at a fixed row, and the reference
+    of that day happened to carry a HELP pop-up there. When the reference was re-captured from the lit look (no pop-up),
+    the template went blank and every gameplay frame read 'HELP pop-up (prompt distance 0.000)' (s6_lum7). The template
+    now comes from its own committed image, scripts/parity/ref_popup_prompt_ours.png; these are real lit-look frames."""
+
+    ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+    def _frame(self, name):
+        return Image.open(os.path.join(self.ROOT, "tests", "fixtures", "gate", "mission", "lum", name))
+
+    def test_a_lit_gameplay_frame_has_no_popup(self):
+        self.assertFalse(drive.popup_present(self._frame("gameplay_lit.png")))
+
+    def test_a_lit_frame_with_the_help_popup_is_detected(self):
+        self.assertTrue(drive.popup_present(self._frame("popup_lit.png")))
+
+    def test_the_prompt_template_is_not_blank(self):
+        from tools_py.parity import sp_death_probe as sp
+        self.assertGreater(float(sp.prompt_template().mean()), 0.1)

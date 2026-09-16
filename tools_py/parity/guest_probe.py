@@ -78,6 +78,13 @@ def _actor_pos(items):
 REST_DEPART = 0.5
 REST_SETTLE_ROWS = 1
 REST_WINDOW_ROWS = 6
+# s6_water_state / s6_clut / s6_lum8 (2026-09-16): the root node can also DECAY over ~25 rows (11.48 -> 10.98 -> ...
+# -> 5.5) rather than step, with stalls of up to eight identical rows on the way down (the 1 Hz sampler over a slow
+# blend): a window opened at the departure read 10.407, one opened at the first quiet stretch read 10.732. The node
+# decays DOWN to rest and only later holds raise it, so the rest value is the LOWEST sustained plateau after the
+# departure: the REST_WINDOW_ROWS-row window with the smallest median among those whose spread is under
+# REST_SETTLE_SPREAD. A series with no such window falls back to the departure-based window.
+REST_SETTLE_SPREAD = 0.3
 
 
 def _settled(values):
@@ -87,6 +94,15 @@ def _settled(values):
     depart = next((i for i, v in enumerate(values) if abs(v - first) > REST_DEPART), None)
     if depart is None:
         return float(statistics.median(values))
+    best = None
+    for i in range(depart, len(values) - REST_WINDOW_ROWS + 1):
+        window = values[i: i + REST_WINDOW_ROWS]
+        if max(window) - min(window) < REST_SETTLE_SPREAD:
+            med = float(statistics.median(window))
+            if best is None or med < best:
+                best = med
+    if best is not None:
+        return best
     window = values[depart + REST_SETTLE_ROWS: depart + REST_SETTLE_ROWS + REST_WINDOW_ROWS]
     return float(statistics.median(window or values[depart:]))
 

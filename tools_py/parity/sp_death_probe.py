@@ -119,6 +119,10 @@ Hold = namedtuple("Hold", "kind value start release")      # kind: rx | ry | fwd
 # depends on what is behind it).
 BAND_MIN = 0.5
 HUD_REF = os.path.join("scripts", "parity", "ref_hud_ours.png")
+# The "PRESS (X) TO CONTINUE" template source: a frame that carries the HELP pop-up at PROMPT_REF_Y (the 2026-09-11
+# HUD reference did; the lit-look reference of 2026-09-16 does not, and cutting the template out of it made every
+# gameplay frame read as a pop-up -- s6_lum7).
+PROMPT_REF = os.path.join("scripts", "parity", "ref_popup_prompt_ours.png")
 PROMPT_REF_Y, PROMPT_H, PROMPT_X, PROMPT_LEVEL = 227, 18, (250, 420), 110
 PROMPT_Y_RANGE = (140, 420)          # run 4: an eight-line pop-up put the prompt at y=340
 PROMPT_MAX_DIST = 0.06               # pop-ups measured 0.000-0.006; cinematic and mission-gate frames >= 0.218
@@ -709,11 +713,11 @@ _PROMPT_TEMPLATE = {}
 
 
 def prompt_template():
-    """The binarised "PRESS (X) TO CONTINUE" line out of the committed scripts/parity/ref_hud_ours.png."""
+    """The binarised "PRESS (X) TO CONTINUE" line out of the committed scripts/parity/ref_popup_prompt_ours.png (PROMPT_REF)."""
     if "t" not in _PROMPT_TEMPLATE:
         import numpy as np
         from PIL import Image
-        with Image.open(HUD_REF) as im:
+        with Image.open(PROMPT_REF) as im:
             g = np.asarray(im.convert("L")).astype(np.float32)
         y, (x0, x1) = PROMPT_REF_Y, PROMPT_X
         _PROMPT_TEMPLATE["t"] = g[y:y + PROMPT_H, x0:x1] > PROMPT_LEVEL

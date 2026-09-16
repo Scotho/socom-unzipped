@@ -250,9 +250,17 @@ class FieldSearch(unittest.TestCase):
 
 
 class ScreenState(unittest.TestCase):
-    def test_committed_hud_reference_is_hud_with_popup(self):
+    def test_committed_hud_reference_is_hud_without_popup(self):
+        """2026-09-16: the HUD reference is a lit-look gameplay frame with no pop-up; the prompt template has its own"""
         from PIL import Image
         with Image.open("scripts/parity/ref_hud_ours.png") as im:
+            hud, popup, panel, text = sp.screen_state(im.convert("RGB"))
+        self.assertTrue(hud, panel)
+        self.assertFalse(popup, text)
+
+    def test_committed_prompt_image_is_hud_with_popup(self):
+        from PIL import Image
+        with Image.open(sp.PROMPT_REF) as im:
             hud, popup, panel, text = sp.screen_state(im.convert("RGB"))
         self.assertTrue(hud, panel)
         self.assertTrue(popup, text)
