@@ -243,14 +243,36 @@ LOBBY_NOTICE_MIN_MEAN = 40.0
 # The 8c driver retried below 3.0; 1.0 keeps "byte-identical" and leaves 3.5x margin to that read.
 MAP_PANEL = (slice(110, 380), slice(335, 625))
 MAP_CROSS_DROPPED_MAX_DIFF = 1.0
-# READY signature: the row-2 label's text right edge (luminance > 110, x 22-165, y 158-180) is
-# col 48 while it still reads READY and col 82-83 once NOT READY shows (8a A/B). No text at all
-# (8c: the match launched inside 3 s) or any other edge is NOT retried: a second CROSS on NOT
-# READY would un-ready.
+# READY signature: the row-2 label's text right edge (x 22-165, y 158-180) is col 48-49 while it still
+# reads READY and col 82-84 once NOT READY shows (8a A/B, s6_ladder8/9). The label carries a right-aligned
+# count suffix at times ("NOT READY 3", "READY 5": digits at cols 117-131), which the edge ignores
+# (READY_COUNT_COL). The text is 127-147 bright with the cursor highlight on the row (teal fill, brightest
+# pixel 68) and only 83-85 without it (s6_ladder9 A/B_19_ready: the highlight was off the row 3 s after the
+# CROSS, and at luma 110 both checks read [None, None] and took the "lobby gone" branch with the lobby
+# still up): a frame with no text at the lit luma is read again at the dim luma, 75, between the fill and
+# the dim text. No text at all (8c: the match launched inside 3 s) or any other edge is NOT retried: a
+# second CROSS on NOT READY would un-ready.
 READY_LABEL = (slice(158, 180), slice(22, 165))
 READY_LABEL_LUMA = 110
+READY_LABEL_DIM_LUMA = 75
+READY_COUNT_COL = 90            # label columns at or beyond this are the count suffix, not the label (an
+                                # in-game frame, 8c, lights cols 98-102 and 127-140 at this luma)
 READY_EDGE_DROPPED_MAX = 55
 READY_CONFIRM_GAP_S = 1.0       # R69: the two frames a READY re-send needs are this far apart
+READY_REREAD_MAX = 4            # a label-less frame with GAME LOBBY still up is re-read this often ...
+READY_REREAD_GAP_S = 0.5        # ... this far apart, before the check gives up (ready:label-unread)
+# Team columns: bright text pixels (> 140) in the SEALS (x 180-390) and TERRORISTS (x 405-615) name columns,
+# rows 240..300. One name reads 143-144, two in one column 288, none 0 (s6_ladder5/8/9); in-game frames
+# leave 3-23 stray pixels. A column holds a name at LOBBY_TEAM_NAME_MIN_PX and both names at
+# LOBBY_TEAM_TWO_NAMES_MIN_PX; a single name with the other column empty (the host before the join, s6_ladder8
+# A_17; a half-rendered frame) is not a verdict. s6_ladder9: both names under SEALS, and a match never
+# starts with an empty team -- the joiner's SWITCH TEAMS is pressed by the read.
+LOBBY_TEAM_COLS = ((slice(240, 300), slice(180, 390)), (slice(240, 300), slice(405, 615)))
+LOBBY_TEAM_TEXT_LUMA = 140
+LOBBY_TEAM_NAME_MIN_PX = 60
+LOBBY_TEAM_TWO_NAMES_MIN_PX = 220
+LOBBY_SWITCH_MAX = 3            # SWITCH TEAMS presses before join:switch-teams
+LOBBY_TEAMS_REREAD_S = 1.0      # wait between two reads that showed no name at all
 
 
 class LobbyFail(SystemExit):
@@ -332,8 +354,14 @@ def map_cross_dropped(pre, post):
 
 
 def ready_label_edge(gray):
-    cols = np.where((gray[READY_LABEL] > READY_LABEL_LUMA).any(axis=0))[0]
-    return int(cols.max()) if len(cols) else None
+    """Right edge (column within READY_LABEL) of the row-2 label text left of the count suffix, or None:
+    read at the lit luma (the cursor on the row), else at the dim luma (the cursor elsewhere)."""
+    band = gray[READY_LABEL][:, :READY_COUNT_COL]
+    for luma in (READY_LABEL_LUMA, READY_LABEL_DIM_LUMA):
+        cols = np.where((band > luma).any(axis=0))[0]
+        if len(cols):
+            return int(cols.max())
+    return None
 
 
 def ready_dropped(gray):
@@ -476,6 +504,7 @@ def press_verified(sh, step, btn, wait, check, what):
 class Shell:
     stages = ()                  # active lobby stages ((name, deadline), ...), outermost first
     clock = staticmethod(time.time)
+    lobby_role = "host"          # "joiner" once join_game ran: names the teams-unbalanced class in ready()
 
     def check_stage(self):
         now = self.clock() if self.stages else None
@@ -1412,13 +1441,29 @@ def lobby_cursor_of(gray):
     return (i if means[i] > LOBBY_CURSOR_MIN_MEAN else -1), [round(m, 1) for m in means]
 
 
+def lobby_teams_of(gray):
+    """(seals, terrorists) bright text pixels in the two name columns: who is where."""
+    return tuple(int((gray[box] > LOBBY_TEAM_TEXT_LUMA).sum()) for box in LOBBY_TEAM_COLS)
+
+
 def lobby_teams(sh):
-    """Bright text pixels in the SEALS and TERRORISTS name columns (rows 240..300): who is where."""
-    im = np.asarray(winshot.grab(sh.hwnd).convert("L"), dtype=np.float32)
-    return int((im[240:300, 180:390] > 140).sum()), int((im[240:300, 405:615] > 140).sum())
+    """lobby_teams_of on a fresh frame."""
+    return lobby_teams_of(lobby_gray(sh))
 
 
-def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES):
+def lobby_teams_state(seals, terrorists):
+    """'ok' (a name in each column), 'one-sided' (both names in one column, the other empty), 'unread'
+    (no name, or one name only: the names had not rendered -- s6_ladder8 A_16 (0, 0), A_17 (143, 0) -- never
+    a verdict)."""
+    named = [px >= LOBBY_TEAM_NAME_MIN_PX for px in (seals, terrorists)]
+    if all(named):
+        return "ok"
+    if any(px >= LOBBY_TEAM_TWO_NAMES_MIN_PX for px in (seals, terrorists)):
+        return "one-sided"
+    return "unread"
+
+
+def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES, on_lobby=None):
     """Move the lobby cursor to `row` by reading the highlight (no assumption about wrap-around or
     where the cursor starts: the old fixed 'down, cross' for SWITCH TEAMS landed on NOT READY).
 
@@ -1427,7 +1472,9 @@ def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES):
     caller must not press CROSS either. At most `presses` presses. Returns True when the cursor reads
     on `row`, or when it never did but `lit_row` (a LOBBY_ROWS key) reads lit on the last frame; raises
     LobbyFail `<label>:cursor-not-found` (with the row means it read) when the lobby is still up and
-    neither holds, rather than pressing CROSS blind."""
+    neither holds, rather than pressing CROSS blind. `on_lobby(gray)` is called once, with the first
+    frame that carries the title and before any press (ready() reads the team columns on it: one frame,
+    two reads); it may raise LobbyFail."""
     cls = f"{label.lower().replace(' ', '-')}:cursor-not-found"
     prev, key, reads = None, None, []
     for n in range(presses + 1):
@@ -1435,6 +1482,9 @@ def lobby_select(sh, row, label, lit_row=None, presses=LOBBY_CURSOR_PRESSES):
         if not lobby_title_is(g, "game_lobby"):
             sh.log(f"[lobby] game lobby gone during {label} search -- no more presses")
             return False
+        if on_lobby is not None:
+            on_lobby(g)
+            on_lobby = None
         cur, means = lobby_cursor_of(g)
         reads.append(means)
         if cur == row:
@@ -1474,32 +1524,99 @@ def join_game(sh, switch=True):
                    lambda g: not lobby_notice_up(g), "the 30 s notice dismissed")
     sh.shot("17_game_lobby_ok")
     require_game_lobby(sh, "JOIN GAME")
-    sh.log(f"teams (seals, terrorists text px) {lobby_teams(sh)}")
-    if switch:                                                   # a joiner is auto-assigned to the other team
-        if lobby_select(sh, 1, "SWITCH TEAMS"):
-            sh.press("cross", 4.0)
-            sh.shot("18_switched")
-            sh.log(f"teams after switch {lobby_teams(sh)}")
+    sh.lobby_role = "joiner"
+    if switch:
+        # --same-team: a match never starts with an empty team (s6_ladder9 sat on it until the liveness
+        # timeout), so the flag no longer presses SWITCH TEAMS blind; the team read below decides.
+        sh.log("[lobby] --same-team is superseded: the team read decides (one name per column)")
+    join_balance_teams(sh)
+
+
+def join_balance_teams(sh):
+    """One name in each team column, or a SWITCH TEAMS press (cursor verified on its row) and a re-read, up
+    to LOBBY_SWITCH_MAX presses; LobbyFail join:switch-teams when the names stay in one column.
+
+    s6_ladder9: the joiner was auto-assigned to the host's team ("teams (seals, terrorists text px) (288, 0)";
+    s6_ladder5/8 read (143, 144)) and the harness logged it and moved on; both instances then readied up and
+    waited 200 s for a match that cannot start with an empty team. A frame with no name at all is re-read,
+    never pressed on. Returns the number of SWITCH TEAMS presses it took."""
+    seals = terrorists = 0
+    state = "unread"
+    for attempt in range(1, LOBBY_SWITCH_MAX + 2):
+        seals, terrorists = lobby_teams(sh)
+        state = lobby_teams_state(seals, terrorists)
+        verdict = "switch" if state == "one-sided" else state
+        sh.log(f"[lobby] teams: seals={seals} terrorists={terrorists} -> {verdict} (attempt {attempt})")
+        if state == "ok":
+            return attempt - 1
+        if attempt > LOBBY_SWITCH_MAX:
+            break
+        if state == "unread":
+            sh.stage_sleep(LOBBY_TEAMS_REREAD_S)
+            continue
+        if not lobby_select(sh, 1, "SWITCH TEAMS"):
+            raise lobby_fail(sh, "join:switch-teams", "the game lobby was gone before the SWITCH TEAMS press "
+                             f"(seals={seals} terrorists={terrorists})")
+        sh.press("cross", 4.0)
+        sh.shot("18_switched")
+    if state == "unread":
+        sh.log("[lobby] teams unread on every frame -- not pressing SWITCH TEAMS on it")
+        return 0
+    raise lobby_fail(sh, "join:switch-teams", f"both names still in one column after {LOBBY_SWITCH_MAX} SWITCH TEAMS "
+                     f"presses: seals={seals} terrorists={terrorists} text px")
+
+
+def ready_teams_check(sh, gray):
+    """The team columns on the frame the READY search starts from: names in one column only is
+    `<role>:teams-unbalanced` (host:... for the host, who cannot fix it but must not ready up and wait
+    200 s for a match that never starts -- s6_ladder9); fewer than two names read is not a verdict."""
+    seals, terrorists = lobby_teams_of(gray)
+    state = lobby_teams_state(seals, terrorists)
+    sh.log(f"[lobby] teams before READY: seals={seals} terrorists={terrorists} -> {state}")
+    if state == "one-sided":
+        raise lobby_fail(sh, f"{sh.lobby_role}:teams-unbalanced",
+                         f"names in one team column only (seals={seals} terrorists={terrorists} text px); "
+                         "a match never starts with an empty team")
 
 
 @staged("ready")
 def ready(sh):
-    if not lobby_select(sh, 2, "READY", lit_row="ready"):   # menu: ARMORY, SWITCH TEAMS, READY
+    if not lobby_select(sh, 2, "READY", lit_row="ready",     # menu: ARMORY, SWITCH TEAMS, READY
+                        on_lobby=lambda g: ready_teams_check(sh, g)):
         sh.shot("19_ready")                                  # the screen the search stopped on
         return
     sh.press("cross", 3.0)
 
+    def read_label():
+        """(edge, gone) on a fresh frame. No label with GAME LOBBY still up is an unread frame (s6_ladder9:
+        the highlight off the row, the text dim) -- re-read up to READY_REREAD_MAX times READY_REREAD_GAP_S
+        apart; `gone` only when the title band no longer reads GAME LOBBY."""
+        for k in range(READY_REREAD_MAX + 1):
+            g = lobby_gray(sh)
+            edge = ready_label_edge(g)
+            if edge is not None:
+                return edge, False
+            if not lobby_title_is(g, "game_lobby"):
+                return None, True
+            if k < READY_REREAD_MAX:
+                sh.log(f"READY check: no row-2 label but GAME LOBBY still up -- re-read {k + 1}/{READY_REREAD_MAX}")
+                sh.stage_sleep(READY_REREAD_GAP_S)
+        return None, False
+
     def pair():
         """Two fresh frames READY_CONFIRM_GAP_S apart -> 'dropped' (both READY), 'taken' (neither),
-        'gone' (no label on either: the lobby has been left), 'unsure'."""
-        edges = []
+        'gone' (no label on either and the lobby has been left), 'unread' (no label on either with the
+        lobby still up), 'unsure'."""
+        edges, gone = [], False
         for k in range(2):
             if k:
                 sh.stage_sleep(READY_CONFIRM_GAP_S)
-            edges.append(ready_label_edge(lobby_gray(sh)))
+            edge, left = read_label()
+            edges.append(edge)
+            gone = gone or left
         sh.log(f"READY check: row-2 label right edges {edges} (READY ~48, NOT READY ~82)")
         if edges == [None, None]:
-            return "gone"
+            return "gone" if gone else "unread"
         flags = [e is not None and e <= READY_EDGE_DROPPED_MAX for e in edges]
         return "dropped" if all(flags) else "taken" if not any(flags) else "unsure"
 
@@ -1512,6 +1629,9 @@ def ready(sh):
             state = pair()
         if state == "unsure":
             raise lobby_fail(sh, CLASS_READY, "READY label frames disagree twice -- not pressing a toggle blind")
+        if state == "unread":
+            raise lobby_fail(sh, "ready:label-unread", f"no row-2 label on {2 * (READY_REREAD_MAX + 1)} frames "
+                             "with GAME LOBBY still up -- not pressing a toggle blind")
         if state == "gone":
             sh.log("[lobby] game lobby gone during READY check -- no more presses")
         return state == "dropped"

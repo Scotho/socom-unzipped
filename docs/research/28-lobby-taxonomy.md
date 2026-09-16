@@ -190,7 +190,7 @@ not, one was the starved runtime and four were blind presses that are now verifi
 re-sent: `create-game:choose-games`, `join:list`, `join:enter`, plus `map-cross-dropped` and `ready-dropped`), the map
 walk needed 19 DOWN with five re-reads at today's frame rate, and then the match never started: **both players sat on
 the SEALs side** with both readied and TERRORISTS empty (capture `A_lobby_fail_timeout_launch.png`, host row "NOT
-READY 3"). B's SWITCH TEAMS press was dropped and its team read `(288, 0)` (both names in one column; the good launches
+READY 3"). B was auto-assigned to the host's team (SWITCH TEAMS was never pressed: `--same-team` was off, and the old join only pressed it then) and its team read `(288, 0)` (both names in one column; the good launches
 read `(143, 144)`) was logged but not acted on; the READY check then misread "NOT READY 3" as the lobby being gone. Two
 more verify-then-act steps (teams after the switch, the READY label with its count suffix) — `LOBBY-FAIL
 timeout:launch`, 215 s lost. A two-minute aim simulation ran on the host during this launch (a confound for its timing,
