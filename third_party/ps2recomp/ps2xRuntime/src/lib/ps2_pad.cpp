@@ -1,4 +1,5 @@
 #include "runtime/ps2_pad.h"
+#include "runtime/host_gamepad.h"
 #include "ps2_host_backend.h"
 #include <cstring>
 
@@ -39,7 +40,7 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
 
     uint16_t btns = 0xFFFFu;
     constexpr int kGamepad = 0;
-    const bool useGamepad = IsGamepadAvailable(kGamepad);
+    const bool useGamepad = hostGamepadEnabled() && IsGamepadAvailable(kGamepad);
     auto clearBit = [&btns](uint16_t mask)
     { btns &= ~mask; };
 

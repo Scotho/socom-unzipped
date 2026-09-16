@@ -138,6 +138,7 @@ else
   PY=(python -m tools_py.parity.online_match_ours)
 fi
 
+export PS2X_HOST_GAMEPAD=0   # a launch boots with no controller (see gate.py)
 export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-192.168.2.10}" PS2X_SOCOM2_RSA_KEY_B=b PS2X_SOCOM2_INPUT_TRACE=1 \
        PS2X_PC_SAMPLER=0.25 PS2X_CALL_TRACE_EVERY=10 PS2X_CALL_TRACE="0x553dc0:MoveScale,0x30cd80:NetIdle" \
        PS2X_GS_STATS=1 \

@@ -1,6 +1,7 @@
 #include "socom2_host_input.h"
 
 #include "raylib.h"
+#include "runtime/host_gamepad.h"
 
 #include <algorithm>
 #include <chrono>
@@ -147,6 +148,7 @@ namespace ps2_stubs
             if (const char *script = std::getenv("PS2X_SOCOM2_INPUT_SCRIPT"))
                 parseScript(script);
             std::cout << "[socom2-input] keyboard on (arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3)"
+                      << "; gamepad " << (!hostGamepadEnabled() ? "off (PS2X_HOST_GAMEPAD=0)" : IsGamepadAvailable(0) ? GetGamepadName(0) : "none")
                       << "; mouse " << (g_config.mouse ? "on" : "off (PS2X_SOCOM2_MOUSE=1)")
                       << "; script events " << g_config.script.size() << std::endl;
         }
@@ -195,6 +197,42 @@ namespace ps2_stubs
         next.axis[3] = axisFromKeys(KEY_W, KEY_S);   // LY (up = 0)
         next.axis[0] = axisFromKeys(KEY_J, KEY_L);   // RX
         next.axis[1] = axisFromKeys(KEY_I, KEY_K);   // RY
+
+        // Gamepad 0 (raylib: XInput / DirectInput), OR-ed with the keyboard like the pad file is. The
+        // generic pad path (ps2_pad.cpp) read it already, but SOCOM's pad is served by this poll once
+        // PS2X_SOCOM2_PAD is set, so an Xbox controller did nothing here until 2026-09-16 (owner's free
+        // play: Windows saw the controller, the game did not). A stick overrides the keyboard axis only
+        // when deflected past the dead zone, so WASD/IJKL/mouse keep working with a pad plugged in.
+        if (hostGamepadEnabled() && IsGamepadAvailable(0))
+        {
+            static const struct { int button; uint8_t pad; } kPadButtons[] = {
+                {GAMEPAD_BUTTON_LEFT_FACE_UP, kPadUp}, {GAMEPAD_BUTTON_LEFT_FACE_RIGHT, kPadRight},
+                {GAMEPAD_BUTTON_LEFT_FACE_DOWN, kPadDown}, {GAMEPAD_BUTTON_LEFT_FACE_LEFT, kPadLeft},
+                {GAMEPAD_BUTTON_RIGHT_FACE_UP, kPadTriangle}, {GAMEPAD_BUTTON_RIGHT_FACE_RIGHT, kPadCircle},
+                {GAMEPAD_BUTTON_RIGHT_FACE_DOWN, kPadCross}, {GAMEPAD_BUTTON_RIGHT_FACE_LEFT, kPadSquare},
+                {GAMEPAD_BUTTON_LEFT_TRIGGER_1, kPadL1}, {GAMEPAD_BUTTON_RIGHT_TRIGGER_1, kPadR1},
+                {GAMEPAD_BUTTON_LEFT_TRIGGER_2, kPadL2}, {GAMEPAD_BUTTON_RIGHT_TRIGGER_2, kPadR2},
+                {GAMEPAD_BUTTON_MIDDLE_LEFT, kPadSelect}, {GAMEPAD_BUTTON_MIDDLE_RIGHT, kPadStart},
+                {GAMEPAD_BUTTON_LEFT_THUMB, kPadL3}, {GAMEPAD_BUTTON_RIGHT_THUMB, kPadR3},
+            };
+            for (const auto &entry : kPadButtons)
+            {
+                if (IsGamepadButtonDown(0, entry.button))
+                    next.button[entry.pad] = 1u;
+            }
+            // Triggers: raylib maps the trigger axes (rest -1.0) past 0.1 to GAMEPAD_BUTTON_*_TRIGGER_2 itself
+            // (rcore_desktop_glfw.c), so the button table above covers L2/R2; no axis read here.
+            static const struct { int axis; int slot; } kSticks[] = {
+                {GAMEPAD_AXIS_RIGHT_X, 0}, {GAMEPAD_AXIS_RIGHT_Y, 1}, {GAMEPAD_AXIS_LEFT_X, 2}, {GAMEPAD_AXIS_LEFT_Y, 3},
+            };
+            constexpr float kDeadZone = 0.15f;
+            for (const auto &stick : kSticks)
+            {
+                const float v = GetGamepadAxisMovement(0, stick.axis);
+                if (v > kDeadZone || v < -kDeadZone)
+                    next.axis[stick.slot] = clampAxis(128.0f + v * 127.0f);
+            }
+        }
 
         // Mouse -> right stick + triggers.
         if (g_config.mouse)

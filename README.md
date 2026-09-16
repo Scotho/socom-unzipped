@@ -74,7 +74,12 @@ path unchanged); `PS2X_VU1_NATIVE=0` reverts the dispatcher to the generated/int
 interpreter, which with `--no-native` is how `vu1_replay` goldens are made;
 `PS2X_GS_BACKEND=cpu` picks the CPU rasteriser (anything else, including unset, is the GL backend;
 `build.sh test` and `vu1_replay` force `cpu`); setting `PS2X_SOCOM2_PAD` (to any value) enables the
-host input path the parity harness drives, `PS2X_SOCOM2_MOUSE=1` adds mouse look; `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
+host input path the parity harness drives (keyboard: arrows/WASD/IJKL, Enter=START, Backspace=SELECT,
+ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3; **gamepad 0 -- an Xbox/XInput or DirectInput pad --
+since 2026-09-16, OR-ed with the keyboard, sticks past a 15 % dead zone override the keyboard axes**; the start
+banner names the pad or says `gamepad none`; **`PS2X_HOST_GAMEPAD=0` disables every host gamepad read** -- the gate and the
+online launch scripts set it, because a plugged-in controller makes the game skip its controller-configuration screens
+at boot), `PS2X_SOCOM2_MOUSE=1` adds mouse look; `PS2X_TEST_REPEAT=N` (above) repeats the unit suite for a
 determinism check.
 `PS2X_VU1_NATIVE_TEST_CEILING=<n>` / `PS2X_VU1_NATIVE_TEST_CLIP_CEILING=<n>` lower the native
 dispatcher's per-handler vertex/triangle and clipped-vertex ceilings so `build.sh test` can reach

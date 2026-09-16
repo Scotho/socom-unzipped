@@ -1,5 +1,6 @@
 #include "Common.h"
 #include "Pad.h"
+#include "runtime/host_gamepad.h"
 
 namespace ps2_stubs
 {
@@ -84,6 +85,8 @@ namespace ps2_stubs
 
         int findFirstGamepad()
         {
+            if (!hostGamepadEnabled())
+                return -1;
             for (int i = 0; i < 4; ++i)
             {
                 if (IsGamepadAvailable(i))

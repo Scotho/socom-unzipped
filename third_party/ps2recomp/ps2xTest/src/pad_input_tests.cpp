@@ -2,6 +2,7 @@
 #include "ps2_stubs.h"
 #include "ps2_syscalls.h"
 #include "Stubs/Pad.h"
+#include "runtime/host_gamepad.h"
 
 #include <vector>
 #include <cstdint>
@@ -66,6 +67,21 @@ namespace
 
 void register_pad_input_tests()
 {
+    // PS2X_HOST_GAMEPAD: a gate or launch boots with no controller (s6_gamepad/s6_gamepad2, 2026-09-16 -- a plugged-in
+    // Xbox pad made the libpad HLE report a configured controller and the boot skipped the screens the transition
+    // stage keys on). Only the literal "0" disables the host gamepad; unset/empty/anything else keeps the player's default.
+    MiniTest::Case("HostGamepadKnob", [](TestCase &tc)
+    {
+        tc.Run("PS2X_HOST_GAMEPAD=0 disables the host gamepad, everything else keeps it", [](TestCase &t)
+        {
+            t.IsTrue(!hostGamepadAllowed("0"), "0 disables");
+            t.IsTrue(hostGamepadAllowed(nullptr), "unset keeps it");
+            t.IsTrue(hostGamepadAllowed(""), "empty keeps it");
+            t.IsTrue(hostGamepadAllowed("1"), "1 keeps it");
+            t.IsTrue(hostGamepadAllowed("off"), "a word is not 0");
+        });
+    });
+
     MiniTest::Case("PadInput", [](TestCase &tc)
                    {
         tc.Run("scePadRead uses override state", [](TestCase &t)
