@@ -536,18 +536,16 @@ class Shell:
         winshot.grab(self.hwnd, max_age=max_age).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
-        """One button press. With a pad file every pad button goes through the injected pad file (pad_press):
-        posted keyboard messages reach raylib only when the game's window thread pumps, and about one press in
-        twenty was dropped on the 2026-09-15 launches (s6_ladder6: a DOWN before CONNECT and an ENTER-walk step;
-        s6_ladder7 A: the CROSS on ONLINE); the pad file is polled by the guest every frame. A button the pad
-        does not have, or no pad file, is a posted key as before.
+        """One button press, POSTED as a key even when a pad file exists. The pad file was tried for every press
+        on 2026-09-15 (posted keys drop about one press in twenty when the window thread does not pump), and
+        s6_ladder10 answered it: three DOWN presses through the pad file left NEW GAME lit on the main menu (row
+        medians new game 70, online 34, lan 28) while posted arrows moved that cursor in every earlier launch --
+        the shell menus do not read a 0.09 s pad-file press. The OSK walks and holds keep the pad file (they do
+        register there); menu drops are caught by the verified steps that re-send.
 
         0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to trip the UI's
         held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the repeat reopened it, eight times
         in a row, 2026-09-09 play4)."""
-        if self.pad_file and b.upper() in PAD_BUTTON:
-            self.pad_press(b.upper(), wait=wait)
-            return
         self.check_stage()
         keys.press(self.hwnd, b, T, hold_s=0.08)
         self.stage_sleep(wait)

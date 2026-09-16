@@ -105,14 +105,19 @@ def real_shell(pad_file):
 
 
 class PressRouting(unittest.TestCase):
-    def test_pad_button_goes_through_the_pad_file(self):
+    """Shell.press posts the KEY even when a pad file exists. s6_ladder10 (2026-09-16): three DOWN presses
+    through the pad file left NEW GAME lit on the main menu (row medians new game 70, online 34, lan 28) --
+    the shell menus do not read a 0.09 s pad-file press, while posted arrows moved that cursor in every
+    earlier launch. Drops on the keyboard path (~1 in 20) are caught by the verified steps that re-send."""
+
+    def test_pad_button_posts_the_key_even_with_a_pad_file(self):
         sh = real_shell("pad.txt")
         with mock.patch.object(L.keys, "press") as key, mock.patch.object(L, "write_pad_file") as pad, \
                 mock.patch.object(L.time, "sleep") as sleep:
             sh.press("cross", 2.0)
-        key.assert_not_called()
-        self.assertEqual(pad.call_args_list, [mock.call("pad.txt", ["CROSS"]), mock.call("pad.txt")])
-        self.assertEqual([c.args[0] for c in sleep.call_args_list], [0.09, 2.0])
+        key.assert_called_once_with(1, "cross", L.T, hold_s=0.08)
+        pad.assert_not_called()
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [2.0])
 
     def test_lower_and_upper_case_names(self):
         for name in ("down", "DOWN", "Triangle"):
@@ -120,8 +125,8 @@ class PressRouting(unittest.TestCase):
             with mock.patch.object(L.keys, "press") as key, mock.patch.object(L, "write_pad_file") as pad, \
                     mock.patch.object(L.time, "sleep"):
                 sh.press(name)
-            key.assert_not_called()
-            self.assertEqual(pad.call_args_list[0], mock.call("pad.txt", [name.upper()]))
+            key.assert_called_once_with(1, name, L.T, hold_s=0.08)
+            pad.assert_not_called()
 
     def test_no_pad_file_posts_the_key(self):
         sh = real_shell(None)
