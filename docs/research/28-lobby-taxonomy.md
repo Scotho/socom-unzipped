@@ -163,3 +163,17 @@ Three two-instance launches, 0/3 gameplay, two distinct causes — neither the l
 Consequences: (1) the OSK typing is the blind class §5 named, and it now costs launches — fix: read back the typed length from the OSK text row (cursor block at ~30 + 11.3 px per character) and retype slower, class `login:keyboard-typing`; (2) `timeout:login` is too coarse a class — the stage timed out at the persona dialog / the invalid-password prompt, which the login flow does not recognise; (3) the accent-mode toggle must re-read the mode after toggling; (4) launch 1's starved runtime is a hazard to watch for: a launch whose `[gs-gl stats]` cadence collapses should be classified as such, not as a lobby failure.
 
 **Launch 4, `s6_ladder3` (harness `b8d2410`, with the OSK read-back):** login PASSED on both instances — `[osk] mode accent -> toggling`, `mode normal`, `typed 5 of 5 (attempt 1)` on A and B, Medius accepted — then `LOBBY-FAIL map-list-search` on A: the AVAILABLE MAPS walk read "no highlighted row" at presses 9, 15 and 20 and pressed on; Sprint 5's same code found FROSTFIRE highlighted at row 4 after exactly 15 DOWN. The luminance model still holds on today's captures (highlighted 125, pale 170, empty 110), so the misses were frames read mid-scroll at today's lower two-instance frame rate, and the loop walked past the target to the last entry (THE RUINS). Fix in flight: re-read instead of pressing through an unreadable frame, and score all six visible rows so the target is found whether or not it is highlighted. [verified from `drive_s6_ladder3.txt` and `A_14_map_frostfire_NOT_FOUND.png`]
+
+**Launches 5–6, `s6_ladder4` and `s6_ladder5` (harness `cc94efb`, both lobby fixes):** the lobby reached gameplay on
+both instances in both launches — the map walk logged `visible at row 5, cursor at 4 -> down` / `-> up` and accepted
+FROSTFIRE at row 3, with one verified re-send each for `create-game:choose-games-select` and `map-cross-dropped`.
+`s6_ladder4` then ended `NO-CONTROL side=B`: B spawned **already zoomed 3.0×** (its first in-game capture shows the
+scope) and moved at scope speed (18–25 units per 2 s hold vs 54); research/30 traces the zoom to D-pad UP edges
+reaching the player update, and B's READY search had pressed DOWN/UP eight times after the host readied (class to add:
+`ready:cursor-not-found`; the wiggle must stop when the game lobby is gone). `s6_ladder5` (normal READY): both sides
+controllable (B 54.7), round 1 played, the mover stuck at wp8 with 0 bursts and the round ended on its clock; round 2
+restarted (00:00 → 05:59 after ~130 sampler rows) but the ladder's 45 s next-round wait had given up (now 120 s). The
+mover's slowness (per-row move p50 1.5 vs 4.9 in Sprint 5) is **confounded**: a decomp-reading agent was grepping the
+host during the round, against KNOWN §4's quiet-host rule; back-pressure waits (357/384) match Sprint 5's round 1
+(443/3) and do not by themselves show a slower replay. Re-measure on a quiet host. [verified: the log lines and
+captures; inference: the confound]
