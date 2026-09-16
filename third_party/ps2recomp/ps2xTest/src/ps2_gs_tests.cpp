@@ -16,7 +16,12 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include "raylib.h"
+#include "runtime/socom2_lum_readback.h"
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -159,9 +164,10 @@ namespace
         runtime->requestStop();
     }
 
+    // The guest-memory form of a GsImageMem is libgraph's load-image packet (Support.h writeGsLoadImagePacket).
     void writeGsImageTest(uint8_t *rdram, uint32_t addr, const GsImageMem &image)
     {
-        std::memcpy(rdram + addr, &image, sizeof(image));
+        writeGsLoadImagePacket(rdram, addr, image);
     }
 
     void writeGsImageTest(std::vector<uint8_t> &rdram, uint32_t addr, const GsImageMem &image)
@@ -1263,6 +1269,321 @@ void register_ps2_gs_tests()
                              "1:1 FST sprite copies should preserve each source texel without off-by-one edge skew");
                 }
             }
+        });
+
+        // The GS on-chip CLUT (research/31 section 8/9). TEX0/TEX2 writes with CLD != 0 copy the palette from VRAM
+        // into the CLUT buffer at that moment; draws sample the buffer, so re-purposing the palette slot afterwards
+        // (SOCOM II rewrites block 0x3852 in CT16 and CT32 form on every frame, and the CT32 write also overlaps the
+        // 0x3854 palette) does not reach draws whose palette was loaded before the rewrite. Decoding from live VRAM at
+        // draw time -- what both backends did -- reads the other texture's bytes as this texture's palette.
+        tc.Run("TEX0 CLD=1 loads the CLUT at the write: rewriting the palette slot afterwards does not change the draw", [](TestCase &t)
+        {
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            GS gs;
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+
+            constexpr uint32_t kTexTbp = 64u;
+            constexpr uint32_t kCbp = 96u;
+            constexpr uint64_t kFrame = (150ull << 0) | (1ull << 16) | (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+            constexpr uint64_t kZbuf = (1ull << 32);
+            constexpr uint64_t kScissor = (0ull << 0) | (3ull << 16) | (0ull << 32) | (3ull << 48);
+            constexpr uint64_t kTex0Base =
+                (static_cast<uint64_t>(kTexTbp) << 0) | (1ull << 14) | (static_cast<uint64_t>(GS_PSM_T8) << 20) |
+                (2ull << 26) | (2ull << 30) | (1ull << 34) | (static_cast<uint64_t>(kCbp) << 37) |
+                (static_cast<uint64_t>(GS_PSM_CT32) << 51);
+            constexpr uint64_t kPrim = static_cast<uint64_t>(GS_PRIM_SPRITE) | (1ull << 4) | (1ull << 8);
+            constexpr uint64_t kXyz1 = (static_cast<uint64_t>(4u << 4) << 0) | (static_cast<uint64_t>(4u << 4) << 16);
+            constexpr uint64_t kUv1 = ((4ull * 16ull) << 0) | ((4ull * 16ull) << 16);
+            constexpr uint32_t kPaletteA[4] = {0x800000FFu, 0x8000FF00u, 0x80FF0000u, 0x80FFFFFFu};
+            constexpr uint32_t kPaletteB[4] = {0x80202020u, 0x80202020u, 0x80202020u, 0x80202020u};
+
+            auto setPalette = [&](uint32_t cbp, const uint32_t (&pal)[4])
+            {
+                for (uint32_t i = 0u; i < 4u; ++i)
+                    gs.WriteVram(GS_PSM_CT32, cbp, 1u, i, 0u, pal[i]);   // entries 0..3: the CSM1 swizzle is identity there
+            };
+            for (uint32_t y = 0u; y < 4u; ++y)
+                for (uint32_t x = 0u; x < 4u; ++x)
+                    gs.WriteVram(GS_PSM_T8, kTexTbp, 1u, x, y, x);
+            auto draw = [&]()
+            {
+                gs.writeRegister(GS_REG_PRIM, kPrim);
+                gs.writeRegister(GS_REG_RGBAQ, 0x80808080ull);
+                gs.writeRegister(GS_REG_UV, 0ull);
+                gs.writeRegister(GS_REG_XYZ2, 0ull);
+                gs.writeRegister(GS_REG_UV, kUv1);
+                gs.writeRegister(GS_REG_XYZ2, kXyz1);
+            };
+            auto row = [&](const uint32_t (&expect)[4], const char *why)
+            {
+                for (uint32_t x = 0u; x < 4u; ++x)
+                    t.Equals(readReferenceFramePSMCT32Pixel(vram, 150u, 1u, x, 0u), expect[x], why);
+            };
+
+            gs.writeRegister(GS_REG_FRAME_1, kFrame);
+            gs.writeRegister(GS_REG_ZBUF_1, kZbuf);
+            gs.writeRegister(GS_REG_SCISSOR_1, kScissor);
+            gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+            gs.writeRegister(GS_REG_TEST_1, 0x30000ull);
+            gs.writeRegister(GS_REG_ALPHA_1, 0ull);
+            gs.writeRegister(GS_REG_TEX1_1, 0ull);
+
+            setPalette(kCbp, kPaletteA);
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Base | (1ull << 61));   // CLD=1: load now
+            setPalette(kCbp, kPaletteB);                                 // the slot is re-purposed before the draw
+            draw();
+            row(kPaletteA, "a draw must sample the CLUT loaded at the TEX0 write, not the bytes the slot holds at draw time");
+
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Base);                  // CLD=0: keep the buffer
+            draw();
+            row(kPaletteA, "TEX0 with CLD=0 must not reload the CLUT");
+
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Base | (1ull << 61));   // CLD=1 again: reload from the slot
+            draw();
+            row(kPaletteB, "TEX0 with CLD=1 must reload the CLUT from the slot's current bytes");
+        });
+
+        tc.Run("TEX0 CLD=2/4 track CBP0: CLD=4 reloads only when CBP moved off the recorded pointer", [](TestCase &t)
+        {
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            GS gs;
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+
+            constexpr uint32_t kTexTbp = 64u;
+            constexpr uint32_t kCbp = 96u;
+            constexpr uint32_t kCbp2 = 100u;
+            constexpr uint64_t kFrame = (150ull << 0) | (1ull << 16) | (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+            constexpr uint64_t kScissor = (0ull << 0) | (3ull << 16) | (0ull << 32) | (3ull << 48);
+            constexpr uint64_t kPrim = static_cast<uint64_t>(GS_PRIM_SPRITE) | (1ull << 4) | (1ull << 8);
+            constexpr uint64_t kXyz1 = (static_cast<uint64_t>(4u << 4) << 0) | (static_cast<uint64_t>(4u << 4) << 16);
+            constexpr uint64_t kUv1 = ((4ull * 16ull) << 0) | ((4ull * 16ull) << 16);
+            constexpr uint32_t kPaletteC[4] = {0x80101010u, 0x80202020u, 0x80303030u, 0x80404040u};
+            constexpr uint32_t kPaletteD[4] = {0x80FF00FFu, 0x80FF00FFu, 0x80FF00FFu, 0x80FF00FFu};
+            constexpr uint32_t kPaletteE[4] = {0x8000FFFFu, 0x8000FFFFu, 0x8000FFFFu, 0x8000FFFFu};
+
+            auto tex0 = [&](uint32_t cbp, uint64_t cld)
+            {
+                return (static_cast<uint64_t>(kTexTbp) << 0) | (1ull << 14) | (static_cast<uint64_t>(GS_PSM_T8) << 20) |
+                       (2ull << 26) | (2ull << 30) | (1ull << 34) | (static_cast<uint64_t>(cbp) << 37) |
+                       (static_cast<uint64_t>(GS_PSM_CT32) << 51) | (cld << 61);
+            };
+            auto setPalette = [&](uint32_t cbp, const uint32_t (&pal)[4])
+            {
+                for (uint32_t i = 0u; i < 4u; ++i)
+                    gs.WriteVram(GS_PSM_CT32, cbp, 1u, i, 0u, pal[i]);
+            };
+            for (uint32_t y = 0u; y < 4u; ++y)
+                for (uint32_t x = 0u; x < 4u; ++x)
+                    gs.WriteVram(GS_PSM_T8, kTexTbp, 1u, x, y, x);
+            auto draw = [&]()
+            {
+                gs.writeRegister(GS_REG_PRIM, kPrim);
+                gs.writeRegister(GS_REG_RGBAQ, 0x80808080ull);
+                gs.writeRegister(GS_REG_UV, 0ull);
+                gs.writeRegister(GS_REG_XYZ2, 0ull);
+                gs.writeRegister(GS_REG_UV, kUv1);
+                gs.writeRegister(GS_REG_XYZ2, kXyz1);
+            };
+            auto row = [&](const uint32_t (&expect)[4], const char *why)
+            {
+                for (uint32_t x = 0u; x < 4u; ++x)
+                    t.Equals(readReferenceFramePSMCT32Pixel(vram, 150u, 1u, x, 0u), expect[x], why);
+            };
+
+            gs.writeRegister(GS_REG_FRAME_1, kFrame);
+            gs.writeRegister(GS_REG_ZBUF_1, 1ull << 32);
+            gs.writeRegister(GS_REG_SCISSOR_1, kScissor);
+            gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+            gs.writeRegister(GS_REG_TEST_1, 0x30000ull);
+            gs.writeRegister(GS_REG_ALPHA_1, 0ull);
+            gs.writeRegister(GS_REG_TEX1_1, 0ull);
+
+            setPalette(kCbp, kPaletteC);
+            gs.writeRegister(GS_REG_TEX0_1, tex0(kCbp, 2ull));            // CLD=2: load, CBP0 = kCbp
+            setPalette(kCbp, kPaletteD);
+            gs.writeRegister(GS_REG_TEX0_1, tex0(kCbp, 4ull));            // CLD=4, CBP == CBP0: no reload
+            draw();
+            row(kPaletteC, "CLD=4 with CBP equal to CBP0 must keep the loaded CLUT");
+
+            setPalette(kCbp2, kPaletteE);
+            gs.writeRegister(GS_REG_TEX2_1, tex0(kCbp2, 4ull));           // TEX2 carries the same CLUT fields; CBP moved
+            draw();
+            row(kPaletteE, "CLD=4 with CBP different from CBP0 must reload from the new slot (via TEX2 too)");
+        });
+
+        // Diagnostic (research/31 section 11): replay a PCSX2 GS dump's packet stream through the frontend + CPU
+        // rasteriser and write the frame as a PPM, so the console's own draw list can be rendered by our GS
+        // implementation and compared with PCSX2's screenshot of the same state. Runs only with
+        // PS2X_CONSOLE_REPLAY_DIR=<dir> holding vram_initial.bin (4 MiB) and packets.bin ([u32 path][u32 size][bytes]...).
+        // Diagnostic (research/31 section 11): replay a PCSX2 GS dump's packet stream through the frontend and both
+        // rasterisers -- the CPU reference and, with PS2X_CONSOLE_REPLAY_GL=1, the OpenGL backend on a hidden raylib
+        // window as well -- and write each frame as a PPM, so the console's own draw list can be rendered by our GS
+        // implementation and the two backends diffed on identical input. PS2X_CONSOLE_REPLAY_DIR=<dir> holds
+        // vram_initial.bin (4 MiB) and packets.bin ([u32 path][u32 size][bytes]...); PS2X_CONSOLE_REPLAY_STOP=<n>
+        // replays only the first n packets; PS2X_CONSOLE_REPLAY_FBP=<fbp> picks the frame buffer to write (default 0x8c).
+        tc.Run("console GS dump replays through the CPU rasteriser (PS2X_CONSOLE_REPLAY_DIR)", [](TestCase &t)
+        {
+            const char *dir = std::getenv("PS2X_CONSOLE_REPLAY_DIR");
+            if (!dir)
+                return;
+            std::vector<uint8_t> vramInitial(PS2_GS_VRAM_SIZE, 0u);
+            {
+                FILE *fp = std::fopen((std::string(dir) + "/vram_initial.bin").c_str(), "rb");
+                t.IsTrue(fp != nullptr, "vram_initial.bin opens");
+                if (!fp)
+                    return;
+                const size_t got = std::fread(vramInitial.data(), 1, vramInitial.size(), fp);
+                std::fclose(fp);
+                t.Equals(static_cast<uint32_t>(got), static_cast<uint32_t>(PS2_GS_VRAM_SIZE), "vram_initial.bin is 4 MiB");
+            }
+            std::vector<uint8_t> stream;
+            {
+                FILE *fp = std::fopen((std::string(dir) + "/packets.bin").c_str(), "rb");
+                t.IsTrue(fp != nullptr, "packets.bin opens");
+                if (!fp)
+                    return;
+                std::fseek(fp, 0, SEEK_END);
+                const long n = std::ftell(fp);
+                std::fseek(fp, 0, SEEK_SET);
+                stream.resize(static_cast<size_t>(n));
+                const size_t got = std::fread(stream.data(), 1, stream.size(), fp);
+                std::fclose(fp);
+                t.Equals(static_cast<uint32_t>(got), static_cast<uint32_t>(stream.size()), "packets.bin read");
+            }
+            const long stopAt = std::getenv("PS2X_CONSOLE_REPLAY_STOP") ? std::strtol(std::getenv("PS2X_CONSOLE_REPLAY_STOP"), nullptr, 0) : -1L;
+            const uint32_t fbp = std::getenv("PS2X_CONSOLE_REPLAY_FBP") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_CONSOLE_REPLAY_FBP"), nullptr, 0)) : 0x8cu;
+            const bool wantGl = std::getenv("PS2X_CONSOLE_REPLAY_GL") != nullptr;
+
+            auto setBackend = [](const char *which)
+            {
+#ifdef _WIN32
+                _putenv_s("PS2X_GS_BACKEND", which);
+#else
+                setenv("PS2X_GS_BACKEND", which, 1);
+#endif
+            };
+            auto render = [&](bool useGl)
+            {
+                setBackend(useGl ? "gpu" : "cpu");
+                std::vector<uint8_t> vram(vramInitial);
+                GS gs;
+                gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+                size_t off = 0, packets = 0;
+                while (off + 8 <= stream.size())
+                {
+                    uint32_t path = 0, size = 0;
+                    std::memcpy(&path, stream.data() + off, 4);
+                    std::memcpy(&size, stream.data() + off + 4, 4);
+                    off += 8;
+                    if (off + size > stream.size())
+                        break;
+                    gs.processGIFPacket(stream.data() + off, size);
+                    off += size;
+                    ++packets;
+                    if (stopAt >= 0 && static_cast<long>(packets) >= stopAt)
+                        break;
+                }
+                if (useGl)
+                {
+                    gs.hostRenderFrame();
+                    gs.refreshDisplaySnapshot();   // Sync(DebugReadback) inline on this (render) thread + SnapshotVram
+                    uint32_t snapSize = 0u;
+                    const uint8_t *snap = gs.lockDisplaySnapshot(snapSize);
+                    if (snap && snapSize >= vram.size())
+                        std::memcpy(vram.data(), snap, vram.size());
+                    gs.unlockDisplaySnapshot();
+                }
+                std::printf("console replay: %zu packets (%s)\n", packets, useGl ? "gl" : "cpu");
+                const std::string outPath = std::string(dir) + (useGl ? "/frame_gl_fbp" : "/frame_fbp") + std::to_string(fbp) + ".ppm";
+                if (FILE *fp = std::fopen(outPath.c_str(), "wb"))
+                {
+                    std::fprintf(fp, "P6\n640 448\n255\n");
+                    for (uint32_t y = 0; y < 448u; ++y)
+                        for (uint32_t x = 0; x < 640u; ++x)
+                        {
+                            const uint32_t px = readReferenceFramePSMCT32Pixel(vram, fbp, 10u, x, y);
+                            const uint8_t rgb[3] = {static_cast<uint8_t>(px & 0xFFu), static_cast<uint8_t>((px >> 8) & 0xFFu), static_cast<uint8_t>((px >> 16) & 0xFFu)};
+                            std::fwrite(rgb, 1, 3, fp);
+                        }
+                    std::fclose(fp);
+                }
+            };
+            render(false);
+            if (wantGl)
+            {
+                SetConfigFlags(FLAG_WINDOW_HIDDEN);
+                InitWindow(640, 448, "console replay");
+                render(true);
+                CloseWindow();
+            }
+            setBackend("cpu");
+        });
+
+        tc.Run("SOCOM II exposure readback reads the 1x4 frame pixels the guest's VIF1 packet names", [](TestCase &t)
+        {
+            // The packet FUN_003b24c0 sends (7 quadwords): two VIF codes, a GIF tag, then A+D BITBLTBUF / TRXPOS /
+            // TRXREG / TRXDIR, as the console dump records it (research/31 section 12: sbp 0x1180 fbw 10 CT32, 1x4
+            // at (317, 430), local -> host).
+            uint8_t packet[7 * 16] = {};
+            auto ad = [&](int qw, uint64_t value, uint8_t reg)
+            {
+                std::memcpy(packet + qw * 16, &value, 8);
+                const uint64_t hi = reg;
+                std::memcpy(packet + qw * 16 + 8, &hi, 8);
+            };
+            ad(3, 0x00000000000a1180ull, 0x50);
+            ad(4, 0x0000000001ae013dull, 0x51);
+            ad(5, 0x0000000400000001ull, 0x52);
+            ad(6, 0x0000000000000001ull, 0x53);
+
+            socom2_lum::Transfer tr;
+            t.IsTrue(socom2_lum::parseTransfer(packet, 7, tr), "the packet's TRXDIR is found");
+            t.Equals(tr.sbp, 0x1180u, "BITBLTBUF sbp");
+            t.Equals(tr.sbw, 10u, "BITBLTBUF sbw");
+            t.Equals(tr.spsm, 0u, "BITBLTBUF spsm (CT32)");
+            t.Equals(tr.ssax, 317u, "TRXPOS ssax");
+            t.Equals(tr.ssay, 430u, "TRXPOS ssay");
+            t.Equals(tr.rrw, 1u, "TRXREG rrw (a column)");
+            t.Equals(tr.rrh, 4u, "TRXREG rrh");
+            t.Equals(tr.dir, 1u, "TRXDIR local -> host");
+
+            std::vector<std::array<uint32_t, 5>> reads;
+            uint8_t out[16] = {};
+            const size_t n = socom2_lum::readbackPixels(packet, 7, [&](uint32_t psm, uint32_t bp, uint32_t bw, uint32_t x, uint32_t y)
+            {
+                reads.push_back({psm, bp, bw, x, y});
+                return (x & 0xFFu) | ((y & 0xFFu) << 8) | (0xAAu << 24);   // R = x, G = y, A = 0xAA
+            }, out, sizeof(out));
+            t.Equals(static_cast<uint32_t>(n), 16u, "four CT32 pixels = one quadword, what the reverse DMA delivered");
+            t.Equals(static_cast<uint32_t>(reads.size()), 4u, "one GS read per pixel");
+            t.Equals(reads[0][0], 0u, "reads use the source psm");
+            t.Equals(reads[0][1], 0x1180u, "reads use the source block pointer");
+            t.Equals(reads[0][2], 10u, "reads use the source buffer width");
+            t.Equals(reads[0][3], 317u, "first pixel x");
+            t.Equals(reads[3][3], 317u, "fourth pixel x (same column)");
+            t.Equals(reads[0][4], 430u, "first pixel y");
+            t.Equals(reads[3][4], 433u, "fourth pixel y");
+            t.Equals(static_cast<uint32_t>(out[0]), 317u & 0xFFu, "out[0] is the first pixel's R (what the caller takes)");
+            t.Equals(static_cast<uint32_t>(out[1]), 430u & 0xFFu, "out[1] is its G");
+            t.Equals(static_cast<uint32_t>(out[3]), 0xAAu, "out[3] is its A");
+            t.Equals(static_cast<uint32_t>(out[5]), 431u & 0xFFu, "the second pixel (next row) follows in memory order");
+        });
+
+        tc.Run("SOCOM II exposure readback syncs the GPU at most once per interval", [](TestCase &t)
+        {
+            t.IsTrue(socom2_lum::syncDue(5000, 0), "the first readback syncs");
+            t.IsTrue(!socom2_lum::syncDue(5050, 5000), "50 ms later it reads the synced copy");
+            t.IsTrue(socom2_lum::syncDue(5100, 5000), "100 ms later it syncs again");
+            t.IsTrue(socom2_lum::syncDue(100, 5000), "a clock that went backwards syncs rather than waits");
+        });
+
+        tc.Run("SOCOM II exposure readback ignores a packet that is not a local -> host transfer", [](TestCase &t)
+        {
+            uint8_t packet[7 * 16] = {};
+            uint8_t out[16] = {0x11, 0x22, 0x33, 0x44};
+            const size_t n = socom2_lum::readbackPixels(packet, 7, [](uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) { return 0u; }, out, sizeof(out));
+            t.Equals(static_cast<uint32_t>(n), 0u, "no TRXDIR: nothing read");
+            t.Equals(static_cast<uint32_t>(out[0]), 0x11u, "out untouched");
         });
 
         tc.Run("fullscreen display copy tracks the preferred presentation source frame", [](TestCase &t)
@@ -3986,6 +4307,107 @@ void register_ps2_gs_tests()
                      "triangle fan quad should light at least one framebuffer row");
         });
 
+        // libgraph's sceGsSetDefLoadImage / sceGsSetDefStoreImage fill a GIF packet the game may inspect or patch
+        // directly: SOCOM II's auto-exposure thread (FUN_003b28d0 / FUN_003b1dd0) reads the store packet's PSM at
+        // byte 0x23 and its TRXREG at 0x40/0x44, patches TRXPOS at 0x30 and DMAs the 7 quadwords itself. The HLE
+        // used to write a private 12-byte struct there instead, so the guest read zero sizes and never issued its
+        // readback (research/31 section 13).
+        tc.Run("sceGsSetDefStoreImage writes libgraph's 7-quadword store-image packet", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kAddr = 0x4000u;
+            R5900Context ctx{};
+            setRegU32(ctx, 4, kAddr);
+            setRegU32(ctx, 5, 0x1180u);   // vram address (blocks): the frame buffer
+            setRegU32(ctx, 6, 10u);       // vram width (64-px units)
+            setRegU32(ctx, 7, 0u);        // PSMCT32
+            setRegU32(ctx, 8, 317u);      // x
+            setRegU32(ctx, 9, 430u);      // y
+            setRegU32(ctx, 10, 1u);       // width
+            setRegU32(ctx, 11, 4u);       // height
+            ps2_stubs::sceGsSetDefStoreImage(rdram, &ctx, &runtime);
+            auto q = [&](int i, uint64_t &lo, uint64_t &hi)
+            {
+                std::memcpy(&lo, rdram + kAddr + i * 16, 8);
+                std::memcpy(&hi, rdram + kAddr + i * 16 + 8, 8);
+            };
+            uint64_t lo = 0, hi = 0;
+            q(1, lo, hi);
+            t.Equals(lo, 5ull | (1ull << 15) | (1ull << 60), "quadword 1: GIF tag NLOOP=5 EOP PACKED NREG=1");
+            t.Equals(hi, 0xEull, "quadword 1: the one register is A+D");
+            q(2, lo, hi);
+            t.Equals(lo, 0x1180ull | (10ull << 16), "quadword 2: BITBLTBUF source = the frame buffer");
+            t.Equals(hi & 0xFFu, 0x50ull, "quadword 2: register BITBLTBUF");
+            t.Equals(static_cast<uint32_t>(rdram[kAddr + 0x23] & 0x3Fu), 0u, "byte 0x23 is the source PSM the guest reads");
+            q(3, lo, hi);
+            t.Equals(lo, 317ull | (430ull << 16), "quadword 3: TRXPOS source origin");
+            t.Equals(hi & 0xFFu, 0x51ull, "quadword 3: register TRXPOS (the guest patches offset 0x30)");
+            q(4, lo, hi);
+            t.Equals(lo, 1ull | (4ull << 32), "quadword 4: TRXREG 1x4");
+            t.Equals(hi & 0xFFu, 0x52ull, "quadword 4: register TRXREG (the guest reads 0x40/0x44)");
+            q(5, lo, hi);
+            t.Equals(hi & 0xFFu, 0x61ull, "quadword 5: FINISH, so the guest can wait for the transfer");
+            q(6, lo, hi);
+            t.Equals(lo, 1ull, "quadword 6: TRXDIR local -> host");
+            t.Equals(hi & 0xFFu, 0x53ull, "quadword 6: register TRXDIR");
+            GsImageMem img{};
+            t.IsTrue(readGsImage(rdram, kAddr, img), "readGsImage parses the packet back");
+            t.Equals(static_cast<uint32_t>(img.vram_addr), 0x1180u, "parsed vram address");
+            t.Equals(static_cast<uint32_t>(img.vram_width), 10u, "parsed vram width");
+            t.Equals(static_cast<uint32_t>(img.psm), 0u, "parsed psm");
+            t.Equals(static_cast<uint32_t>(img.x), 317u, "parsed x");
+            t.Equals(static_cast<uint32_t>(img.y), 430u, "parsed y");
+            t.Equals(static_cast<uint32_t>(img.width), 1u, "parsed width");
+            t.Equals(static_cast<uint32_t>(img.height), 4u, "parsed height");
+        });
+
+        tc.Run("sceGsSetDefLoadImage writes libgraph's 6-quadword load-image packet", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
+            uint8_t *const rdram = runtime.memory().getRDRAM();
+            constexpr uint32_t kAddr = 0x4000u;
+            R5900Context ctx{};
+            setRegU32(ctx, 4, kAddr);
+            setRegU32(ctx, 5, 0x2000u);   // vram address (blocks)
+            setRegU32(ctx, 6, 4u);        // vram width
+            setRegU32(ctx, 7, 0x13u);     // PSMT8
+            setRegU32(ctx, 8, 0u);
+            setRegU32(ctx, 9, 0u);
+            setRegU32(ctx, 10, 64u);
+            setRegU32(ctx, 11, 64u);
+            ps2_stubs::sceGsSetDefLoadImage(rdram, &ctx, &runtime);
+            auto q = [&](int i, uint64_t &lo, uint64_t &hi)
+            {
+                std::memcpy(&lo, rdram + kAddr + i * 16, 8);
+                std::memcpy(&hi, rdram + kAddr + i * 16 + 8, 8);
+            };
+            uint64_t lo = 0, hi = 0;
+            q(0, lo, hi);
+            t.Equals(lo, 4ull | (1ull << 15) | (1ull << 60), "quadword 0: GIF tag NLOOP=4 EOP PACKED NREG=1");
+            t.Equals(hi, 0xEull, "quadword 0: A+D");
+            q(1, lo, hi);
+            t.Equals(lo, (0x2000ull << 32) | (4ull << 48) | (0x13ull << 56), "quadword 1: BITBLTBUF destination");
+            t.Equals(hi & 0xFFu, 0x50ull, "quadword 1: register BITBLTBUF");
+            q(2, lo, hi);
+            t.Equals(lo, 0ull, "quadword 2: TRXPOS destination origin 0,0");
+            t.Equals(hi & 0xFFu, 0x51ull, "quadword 2: register TRXPOS");
+            q(3, lo, hi);
+            t.Equals(lo, 64ull | (64ull << 32), "quadword 3: TRXREG 64x64");
+            q(4, lo, hi);
+            t.Equals(lo, 0ull, "quadword 4: TRXDIR host -> local");
+            t.Equals(hi & 0xFFu, 0x53ull, "quadword 4: register TRXDIR");
+            q(5, lo, hi);
+            t.Equals(lo, 256ull | (1ull << 15) | (2ull << 58), "quadword 5: IMAGE tag, 64x64 T8 = 256 quadwords");
+            GsImageMem img{};
+            t.IsTrue(readGsImage(rdram, kAddr, img), "readGsImage parses the load packet back");
+            t.Equals(static_cast<uint32_t>(img.vram_addr), 0x2000u, "parsed vram address");
+            t.Equals(static_cast<uint32_t>(img.psm), 0x13u, "parsed psm");
+            t.Equals(static_cast<uint32_t>(img.width), 64u, "parsed width");
+        });
+
         tc.Run("sceGsExecLoadImage and sceGsExecStoreImage roundtrip and free guest packets", [](TestCase &t)
         {
             PS2Runtime runtime;
@@ -4003,7 +4425,19 @@ void register_ps2_gs_tests()
                 0xD0u, 0xE0u, 0xF0u, 0xFFu,
             };
 
-            writeGsImageTest(rdram, kImageAddr, image);
+            (void)image;
+            {
+                R5900Context defCtx{};
+                setRegU32(defCtx, 4, kImageAddr);
+                setRegU32(defCtx, 5, 0u);    // vram address
+                setRegU32(defCtx, 6, 1u);    // vram width
+                setRegU32(defCtx, 7, 0u);    // PSMCT32
+                setRegU32(defCtx, 8, 0u);
+                setRegU32(defCtx, 9, 0u);
+                setRegU32(defCtx, 10, 2u);
+                setRegU32(defCtx, 11, 2u);
+                ps2_stubs::sceGsSetDefLoadImage(rdram, &defCtx, &runtime);   // libgraph's packet layout
+            }
             std::memcpy(rdram + kSrcAddr, pixels, sizeof(pixels));
 
             R5900Context loadCtx{};

@@ -286,7 +286,6 @@ namespace
         return (index & ~0x18u) | ((index & 0x08u) << 1u) | ((index & 0x10u) >> 1u);
     }
 
-    // TODO: clut cache
     uint32_t resolveClutIndex(uint8_t index, uint8_t cpsm, uint8_t csm, uint8_t csa, uint8_t sourcePsm)
     {
         uint32_t clutIndex = static_cast<uint32_t>(index);
@@ -558,8 +557,33 @@ void GSCpuBackend::Reset()
     ResetUnlocked();
 }
 
+void GSCpuBackend::LoadClut(const GSClutLoad &load)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (GSClutLoad &l : m_clutLoads)
+        if (l.id == load.id)
+        {
+            l = load;
+            return;
+        }
+    if (m_clutLoads.size() >= 16u)
+        m_clutLoads.erase(m_clutLoads.begin());
+    m_clutLoads.push_back(load);
+}
+
+const GSClutLoad *GSCpuBackend::FindClut(uint64_t id) const
+{
+    if (id == 0u)
+        return nullptr;
+    for (const GSClutLoad &l : m_clutLoads)
+        if (l.id == id)
+            return &l;
+    return nullptr;
+}
+
 void GSCpuBackend::ResetUnlocked()
 {
+    m_clutLoads.clear();
     m_transfer = {};
     m_transfer.direction = 3u;
     m_transferState = {};
@@ -960,6 +984,28 @@ uint32_t GSCpuBackend::LookupCLUT(const GSDrawState &state,
     const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
     const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
     const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
+
+    // The on-chip CLUT (GSClutLoad): the snapshot taken at the TEX0 write, addressed from its block 0.
+    if (csm == 0u && state.texclut.cou == 0u && state.texclut.cov == 0u)
+    {
+        if (const GSClutLoad *load = FindClut(state.context.clutId))
+        {
+            uint8_t *bytes = const_cast<uint8_t *>(load->bytes.data());
+            switch (load->cpsm)
+            {
+            case GS_PSM_CT32:
+                return applyTexa(state.texa, GS_PSM_CT32, GSMem::ReadCT32(bytes, 0u, 1u, clutX, clutY));
+            case GS_PSM_CT24:
+                return applyTexa(state.texa, GS_PSM_CT24, GSMem::ReadCT24(bytes, 0u, 1u, clutX, clutY));
+            case GS_PSM_CT16:
+                return applyTexa(state.texa, GS_PSM_CT16, Rgba5551ToRgba8888(GSMem::ReadCT16(bytes, 0u, 1u, clutX, clutY)));
+            case GS_PSM_CT16S:
+                return applyTexa(state.texa, GS_PSM_CT16S, Rgba5551ToRgba8888(GSMem::ReadCT16S(bytes, 0u, 1u, clutX, clutY)));
+            default:
+                break;
+            }
+        }
+    }
 
     switch (cpsm)
     {

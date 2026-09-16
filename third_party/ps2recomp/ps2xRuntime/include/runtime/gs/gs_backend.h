@@ -17,6 +17,9 @@ public:
 
     virtual void BeginTransfer(const GSTransferCommand &command) = 0;
     virtual void UploadImage(const uint8_t *data, uint32_t sizeBytes) = 0;
+    // A palette snapshot the frontend took at a TEX0/TEX2 write with CLD != 0 (GSClutLoad); draws whose
+    // context.clutId names it decode through the snapshot rather than live VRAM.
+    virtual void LoadClut(const GSClutLoad &load) { (void)load; }
 
     virtual void Flush() = 0;
     virtual void TextureFlush() = 0;
@@ -27,6 +30,11 @@ public:
     virtual uint32_t ConsumeLocalToHostBytes(uint8_t *dst, uint32_t maxBytes) = 0;
 
     virtual uint32_t ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const = 0;
+    // ReadVram without bringing GPU-drawn pages up to date first: whatever the last sync left in CPU memory.
+    virtual uint32_t PeekVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const { return ReadVram(psm, base, bw, x, y); }
+    // Ask for GPU-drawn pages to be downloaded into CPU memory in stream order, without waiting: a later
+    // PeekVram sees them once the render thread gets there. No-op for a CPU backend (its memory is current).
+    virtual void RequestVramReadback() {}
     virtual void WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value) = 0;
     virtual void SnapshotVram(std::vector<uint8_t> &out) const = 0;
     virtual GSTransferSnapshot GetTransferSnapshot() const = 0;

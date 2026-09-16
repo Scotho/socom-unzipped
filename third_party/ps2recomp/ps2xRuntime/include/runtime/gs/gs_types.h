@@ -190,6 +190,25 @@ struct GSContext
     uint64_t alpha = 0;
     uint64_t test = 0;
     uint64_t fba = 0;
+    // The CLUT this context's indexed draws sample: the serial of the palette snapshot the frontend took at the
+    // last TEX0/TEX2 write with CLD != 0 (GSClutLoad::id), 0 = no load yet (decode from live VRAM, the old path).
+    uint64_t clutId = 0;
+};
+
+// The GS on-chip CLUT buffer (research/31 section 9). A TEX0/TEX2 write with CLD != 0 copies the palette out of
+// VRAM at that moment and every later draw samples the copy, so re-purposing the palette slot afterwards does
+// not reach those draws -- SOCOM II rewrites block 0x3852 in CT16 and CT32 form on every frame and the CT32
+// write also overlaps the 0x3854 palette. `bytes` is the VRAM from block `cbp` on (blocks are 256 bytes and
+// contiguous; a 16x16 CT32 palette is 1 KiB, a CT16 palette with CSA bit 4 reaches 1.5 KiB), read with the
+// same CSM1 block addressing as VRAM but relative to block 0. CSM2 (TEXCLUT-addressed) palettes are not
+// snapshotted and keep the live-VRAM path.
+constexpr size_t kGSClutSnapshotBytes = 2048;
+struct GSClutLoad
+{
+    uint64_t id = 0;
+    uint32_t cbp = 0;
+    uint8_t cpsm = 0;
+    std::array<uint8_t, kGSClutSnapshotBytes> bytes{};
 };
 
 struct GSPrimReg

@@ -165,6 +165,8 @@ public:
 
     void WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value);
     uint32_t ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const;
+    uint32_t PeekVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const;   // no GPU sync
+    void requestVramReadback();                                                                    // async GPU -> CPU
 
 private:
     void snapshotVRAM();
@@ -190,6 +192,9 @@ private:
     void processImageData(const uint8_t *data, uint32_t sizeBytes);
     bool tryProcessNativeImageUploadPacket(const uint8_t *data, uint32_t sizeBytes);
     void fillDrawState(GSDrawState &state, const GSPrimReg &prim) const;
+    // TEX0/TEX2 CLD semantics: snapshot the palette into the backend's CLUT buffer (GSClutLoad) when the
+    // register asks for a load (CLD 1..3 always, 4/5 when CBP moved off CBP0/CBP1).
+    void loadClutIfNeeded(int ci);
     GSPrimitiveBatch buildDrawBatch(int vertexCount) const;
     void updatePreferredDisplaySourceForDraw(const GSPrimitiveBatch &batch);
     GSPresentationRequest buildPresentationRequestUnlocked() const;
@@ -224,6 +229,9 @@ private:
     uint64_t m_colclamp = 0;
     GSTexaReg m_texa{0u, false, 0u};
     GSTexClutReg m_texclut{0u, 0u, 0u};
+    uint32_t m_cbp0 = 0u, m_cbp1 = 0u;     // CLD 2..5's recorded palette pointers
+    uint64_t m_clutSerial = 0u;
+    GSClutLoad m_clutLast[2];              // the last snapshot per context: an unchanged palette re-uses its id
 
     GSBitBltBuf m_bitbltbuf{};
     GSTrxPos m_trxpos{};

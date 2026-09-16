@@ -186,6 +186,11 @@ void GS::reset()
     m_colclamp = 0u;
     m_texa = {0u, false, 0u};
     m_texclut = {0u, 0u, 0u};
+    m_cbp0 = m_cbp1 = 0u;
+    m_clutLast[0] = GSClutLoad{};
+    m_clutLast[1] = GSClutLoad{};
+    m_ctx[0].clutId = 0u;
+    m_ctx[1].clutId = 0u;
     m_bitbltbuf = {};
     m_trxpos = {};
     m_trxreg = {};
@@ -1367,6 +1372,7 @@ void GS::writeRegisterUnlocked(uint8_t regAddr, uint64_t value)
         t.csm = static_cast<uint8_t>((value >> 55) & 0x1);
         t.csa = static_cast<uint8_t>((value >> 56) & 0x1F);
         t.cld = static_cast<uint8_t>((value >> 61) & 0x7);
+        loadClutIfNeeded(ci);
         break;
     }
     case GS_REG_CLAMP_1:
@@ -1397,6 +1403,7 @@ void GS::writeRegisterUnlocked(uint8_t regAddr, uint64_t value)
         t.csm = static_cast<uint8_t>((value >> 55) & 0x1);
         t.csa = static_cast<uint8_t>((value >> 56) & 0x1F);
         t.cld = static_cast<uint8_t>((value >> 61) & 0x7);
+        loadClutIfNeeded(ci);
         break;
     }
     case GS_REG_XYOFFSET_1:
@@ -1812,11 +1819,65 @@ uint32_t GS::ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint
     return m_backend ? m_backend->ReadVram(psm, base, bw, x, y) : 0u;
 }
 
+uint32_t GS::PeekVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const
+{
+    std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+    return m_backend ? m_backend->PeekVram(psm, base, bw, x, y) : 0u;
+}
+
+void GS::requestVramReadback()
+{
+    std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+    if (m_backend)
+        m_backend->RequestVramReadback();
+}
+
 void GS::WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value)
 {
     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
     if (m_backend)
         m_backend->WriteVram(psm, base, bw, x, y, value);
+}
+
+void GS::loadClutIfNeeded(int ci)
+{
+    GSContext &ctx = m_ctx[ci];
+    const GSTex0Reg &t = ctx.tex0;
+    bool load = false;
+    switch (t.cld)
+    {
+    case 1: load = true; break;
+    case 2: load = true; m_cbp0 = t.cbp; break;
+    case 3: load = true; m_cbp1 = t.cbp; break;
+    case 4: if (t.cbp != m_cbp0) { load = true; m_cbp0 = t.cbp; } break;
+    case 5: if (t.cbp != m_cbp1) { load = true; m_cbp1 = t.cbp; } break;
+    default: break;
+    }
+    if (!load)
+        return;
+    const bool indexed = t.psm == GS_PSM_T8 || t.psm == GS_PSM_T8H || t.psm == GS_PSM_T4 || t.psm == GS_PSM_T4HL || t.psm == GS_PSM_T4HH;
+    const size_t base = static_cast<size_t>(t.cbp) * 256u;
+    if (!indexed || t.csm != 0u || !m_localMemoryStorage || base >= m_localMemorySize)
+    {
+        ctx.clutId = 0u;   // nothing to snapshot (or a CSM2 palette): the live-VRAM path
+        return;
+    }
+    const size_t n = std::min<size_t>(kGSClutSnapshotBytes, m_localMemorySize - base);
+    GSClutLoad &last = m_clutLast[ci];
+    if (last.id != 0u && last.cbp == t.cbp && last.cpsm == t.cpsm &&
+        std::memcmp(last.bytes.data(), m_localMemoryStorage + base, n) == 0)
+    {
+        ctx.clutId = last.id;   // the palette bytes did not change since the last load: same snapshot
+        return;
+    }
+    last.id = ++m_clutSerial;
+    last.cbp = t.cbp;
+    last.cpsm = t.cpsm;
+    last.bytes.fill(0u);
+    std::memcpy(last.bytes.data(), m_localMemoryStorage + base, n);
+    ctx.clutId = last.id;
+    if (m_backend)
+        m_backend->LoadClut(last);
 }
 
 void GS::fillDrawState(GSDrawState &state, const GSPrimReg &prim) const

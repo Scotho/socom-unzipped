@@ -35,6 +35,7 @@ public:
     void Submit(const GSPrimitiveBatch &batch) override;
     void BeginTransfer(const GSTransferCommand &command) override;
     void UploadImage(const uint8_t *data, uint32_t sizeBytes) override;
+    void LoadClut(const GSClutLoad &load) override;
 
     void Flush() override;
     void TextureFlush() override;
@@ -45,6 +46,8 @@ public:
     uint32_t ConsumeLocalToHostBytes(uint8_t *dst, uint32_t maxBytes) override;
 
     uint32_t ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const override;
+    uint32_t PeekVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const override;
+    void RequestVramReadback() override;
     void WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value) override;
     void SnapshotVram(std::vector<uint8_t> &out) const override;
     GSTransferSnapshot GetTransferSnapshot() const override;
@@ -69,6 +72,7 @@ private:
         Present,
         Readback,
         Reset,
+        ClutLoad,
     };
 
     struct Cmd
@@ -161,10 +165,12 @@ private:
         uint32_t tbp0 = 0, tbw = 0, psm = 0, tw = 0, th = 0;
         uint32_t cbp = 0, cpsm = 0, csm = 0, csa = 0;
         uint32_t texa = 0, texclut = 0;
+        uint64_t clutId = 0;
         bool operator==(const TextureKey &o) const
         {
             return tbp0 == o.tbp0 && tbw == o.tbw && psm == o.psm && tw == o.tw && th == o.th && cbp == o.cbp &&
-                   cpsm == o.cpsm && csm == o.csm && csa == o.csa && texa == o.texa && texclut == o.texclut;
+                   cpsm == o.cpsm && csm == o.csm && csa == o.csa && texa == o.texa && texclut == o.texclut &&
+                   clutId == o.clutId;
         }
     };
     struct TextureKeyHash
@@ -175,6 +181,7 @@ private:
             h ^= (k.tbw + k.psm * 64u + k.tw * 4096u + k.th * 65536u) * 0x85EBCA6Bu;
             h ^= (k.cbp + k.cpsm * 16384u + k.csa * 262144u + k.csm * 524288u) * 0xC2B2AE35u;
             h ^= k.texa * 0x27D4EB2Fu ^ k.texclut * 0x165667B1u;
+            h ^= static_cast<size_t>(k.clutId * 0x9E3779B97F4A7C15ull);
             return h;
         }
     };
@@ -281,6 +288,7 @@ private:
     std::vector<RenderTarget> m_renderTargets;
     std::vector<DepthTarget> m_depthTargets;
     std::unordered_map<TextureKey, TextureEntry, TextureKeyHash> m_textures;
+    std::unordered_map<uint64_t, GSClutLoad> m_cluts;   // palette snapshots by id (render thread only)
     std::array<uint64_t, 512> m_shadowPageGeneration{};
     uint64_t m_generation = 1;
     uint64_t m_frameCounter = 0;
@@ -303,6 +311,7 @@ private:
     int m_resolveUScaleY = -1;
     struct Uniforms
     {
+        int srcMode = -1, srcConst = -1;   // blend modes whose source term must carry Cd*C (see executeSubmit)
         int rtSize = -1, tex = -1, texSize = -1, tme = -1, tfx = -1, tcc = -1, fst = -1, wrapU = -1, wrapV = -1;
         int region = -1, ate = -1, atst = -1, afail = -1, aref = -1, fge = -1, fogColor = -1, fba = -1;
     } m_u;

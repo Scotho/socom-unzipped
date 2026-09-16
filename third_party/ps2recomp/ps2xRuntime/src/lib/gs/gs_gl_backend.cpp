@@ -29,6 +29,7 @@ extern "C" void (*glfwGetProcAddress(const char *procname))(void);
 #include <cstdlib>
 #include <cstring>
 #include <cstddef>
+#include <ctime>
 #include <chrono>
 
 // ---------------------------------------------------------------------------------------------
@@ -282,6 +283,8 @@ uniform int uAte, uAtst, uAfail;
 uniform float uAref;
 uniform int uFge, uFba;
 uniform vec3 uFogColor;
+uniform int uSrcMode;       // 1: emit uSrcConst; 2: emit the fragment's PS2 alpha (As) in every channel -- for blends
+uniform vec4 uSrcConst;     // whose source term has to carry Cd*C (executeSubmit, "Cd*C + Cd")
 layout(location = 0, index = 0) out vec4 oColor;
 layout(location = 0, index = 1) out vec4 oBlendAlpha;
 #if PS2X_DEPTH_MODE == 2
@@ -346,6 +349,10 @@ void main()
         c.rgb = mix(uFogColor, c.rgb, vFog);
     if (uFba == 1)
         c.a = float(int(floor(c.a * 255.0 + 0.5)) | 128) / 255.0;
+    if (uSrcMode == 1)
+        c = uSrcConst;
+    else if (uSrcMode == 2)
+        c = vec4(min(c.a * 2.0, 1.0));
     oColor = c;
     oBlendAlpha = vec4(min(c.a * 2.0, 1.0));
 }
@@ -618,7 +625,9 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
     m_vram = vram;
     m_vramSize = vramSize;
     m_cpu->Initialize(vram, vramSize);
-    m_shadowMemory.assign(vramSize, 0u);
+    // Seed the render-thread shadow from the buffer handed in: zero at a game boot, the dump's VRAM when a GS dump
+    // is replayed (ps2_gs_tests 'console GS dump replays...', research/31 section 11).
+    m_shadowMemory.assign(vram, vram + vramSize);
     m_shadow->Initialize(m_shadowMemory.data(), vramSize);
     m_gpuDirtyPages.fill(0u);
     m_shadowPageGeneration.fill(0u);
@@ -826,6 +835,13 @@ void GSGlBackend::UploadImage(const uint8_t *data, uint32_t sizeBytes)
     record(std::move(cmd), data, sizeBytes);
 }
 
+void GSGlBackend::LoadClut(const GSClutLoad &load)
+{
+    Cmd cmd;
+    cmd.type = CmdType::ClutLoad;
+    record(std::move(cmd), reinterpret_cast<const uint8_t *>(&load), static_cast<uint32_t>(sizeof(GSClutLoad)));
+}
+
 void GSGlBackend::Flush() {}
 void GSGlBackend::TextureFlush() {}
 
@@ -890,6 +906,21 @@ uint32_t GSGlBackend::ReadVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_
 {
     syncDirtyPagesForRead(base >> 5, 1u + pageSpan(psm, bw, y + 1u));
     return m_cpu->ReadVram(psm, base, bw, x, y);
+}
+
+uint32_t GSGlBackend::PeekVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y) const
+{
+    return m_cpu->ReadVram(psm, base, bw, x, y);
+}
+
+void GSGlBackend::RequestVramReadback()
+{
+    // The game thread must not wait here: SOCOM II's auto-exposure thread reads frame pixels ~176 times per pass,
+    // and one blocking sync per 100 ms already held the single EE host thread for the GL backlog each time
+    // (s6_lum5/6: the pad went unanswered). The Readback executes in stream order; PeekVram sees it after.
+    Cmd cmd;
+    cmd.type = CmdType::Readback;
+    record(std::move(cmd));
 }
 
 void GSGlBackend::WriteVram(uint32_t psm, uint32_t base, uint32_t bw, uint32_t x, uint32_t y, uint32_t value)
@@ -981,6 +1012,8 @@ bool GSGlBackend::ensureGl()
     m_u.fge = uni("uFge");
     m_u.fogColor = uni("uFogColor");
     m_u.fba = uni("uFba");
+    m_u.srcMode = uni("uSrcMode");
+    m_u.srcConst = uni("uSrcConst");
 
     glGenVertexArrays(1, &m_vao);
     glGenBuffers(1, &m_vbo);
@@ -1084,6 +1117,46 @@ uint32_t GSGlBackend::HostFrameTexture(uint32_t &width, uint32_t &height, uint32
 
 // PS2X_GS_TRACE_PRESENT / PS2X_GS_TRACE_CMDS=<n>: trace after present n; a negative n counts from
 // the first movie block upload (SOCOM II's intro movie starts at a different present count per run).
+// Wall-clock time of day for trace lines, so a [gs-cmd] line can be lined up with the drive log's step
+// times (the run log's name carries the launch time to the second).
+// "0x38a4,0x38a8": the block pointers a PS2X_GS_*_TBP0 filter accepts (the game repacks its streamed texture region
+// every few frames, so one texture sits at more than one block over a run).
+static std::vector<long> traceBlockList(const char *e)
+{
+    std::vector<long> out;
+    while (e && *e)
+    {
+        char *end = nullptr;
+        const long v = std::strtol(e, &end, 0);
+        if (end == e)
+            break;
+        out.push_back(v);
+        e = (*end == ',') ? end + 1 : end;
+    }
+    return out;
+}
+
+static bool traceBlockMatch(const std::vector<long> &list, uint32_t tbp0)
+{
+    return list.empty() || std::find(list.begin(), list.end(), static_cast<long>(tbp0)) != list.end();
+}
+
+static const char *traceTimeOfDay()
+{
+    static char buf[32];
+    const auto now = std::chrono::system_clock::now();
+    const std::time_t t = std::chrono::system_clock::to_time_t(now);
+    const int ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()).count() % 1000);
+    std::tm tmv{};
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d.%03d", tmv.tm_hour, tmv.tm_min, tmv.tm_sec, ms);
+    return buf;
+}
+
 long GSGlBackend::traceSkip(const char *env) const
 {
     // The trace switches never change during a run: cache the lookups (std::getenv here was ~4%
@@ -1203,7 +1276,45 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         if (s_traceCmds && s_traceLines < s_traceMax &&
             (s_traceFrom >= 0 ? static_cast<long>(m_frameCounter) >= s_traceFrom : static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_TRACE_CMDS")))
         {
-            ++s_traceLines;
+            // PS2X_GS_TRACE_CMDS_TBP0=<block>: print only the submits that bind that texture (transfers, uploads
+            // and the rest still print); PS2X_GS_TRACE_CMDS_PER_FRAME=<n>: at most n submit lines per frame. Together
+            // they let a trace stay armed across a whole mission (the water pass: research/31 section 8) instead of
+            // the ~5 s a 400k-line cap covers when every submit prints.
+            static const std::vector<long> s_traceTbp0 = traceBlockList(std::getenv("PS2X_GS_TRACE_CMDS_TBP0"));
+            static const uint32_t s_tracePerFrame = std::getenv("PS2X_GS_TRACE_CMDS_PER_FRAME") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_TRACE_CMDS_PER_FRAME"), nullptr, 0)) : 0u;
+            static unsigned long long s_traceFrameSeen = ~0ull;
+            static uint32_t s_traceFrameLines = 0u;
+            if (m_frameCounter != s_traceFrameSeen)
+            {
+                s_traceFrameSeen = m_frameCounter;
+                s_traceFrameLines = 0u;
+            }
+            // PS2X_GS_TRACE_CMDS_BOX=x0,y0,x1,y1 (screen pixels, after XYOFFSET): print only the submits whose vertex
+            // bounding box touches that box -- "which draws cover this shard pixel" (research/31 section 10).
+            static const std::vector<long> s_traceBox = traceBlockList(std::getenv("PS2X_GS_TRACE_CMDS_BOX"));
+            bool boxHit = true;
+            if (cmd.type == CmdType::Submit && s_traceBox.size() >= 4u && cmd.batch.vertexCount > 0u)
+            {
+                float bx0 = 1e30f, bx1 = -1e30f, by0 = 1e30f, by1 = -1e30f;
+                for (uint8_t k = 0; k < cmd.batch.vertexCount; ++k)
+                {
+                    const GSVertex &v = cmd.batch.vertices[k];
+                    bx0 = std::min(bx0, v.x); bx1 = std::max(bx1, v.x);
+                    by0 = std::min(by0, v.y); by1 = std::max(by1, v.y);
+                }
+                const float ox = static_cast<float>(cmd.batch.state.context.xyoffset.ofx >> 4);
+                const float oy = static_cast<float>(cmd.batch.state.context.xyoffset.ofy >> 4);
+                boxHit = !(bx1 - ox < static_cast<float>(s_traceBox[0]) || bx0 - ox > static_cast<float>(s_traceBox[2]) ||
+                           by1 - oy < static_cast<float>(s_traceBox[1]) || by0 - oy > static_cast<float>(s_traceBox[3]));
+            }
+            const bool traceThis = cmd.type != CmdType::Submit ||
+                (traceBlockMatch(s_traceTbp0, cmd.batch.state.context.tex0.tbp0) && boxHit &&
+                 (s_tracePerFrame == 0u || s_traceFrameLines < s_tracePerFrame));
+            if (traceThis && cmd.type == CmdType::Submit)
+                ++s_traceFrameLines;
+            if (traceThis)
+                ++s_traceLines;
+            if (traceThis)
             switch (cmd.type)
             {
             case CmdType::Submit:
@@ -1218,8 +1329,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 }
                 std::fprintf(stderr, "[gs-cmd] n=%u x=[%.0f..%.0f] y=[%.0f..%.0f] z=[%.0f..%.0f] ", (unsigned)cmd.batch.vertices.size(),
                              xmin, xmax, ymin, ymax, zmin, zmax);
-                std::fprintf(stderr, "submit prim=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x sc=(%d,%d)-(%d,%d) off=(%u,%u) frame=%llu%c",
-                             cmd.batch.state.prim.type, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.prim.fst ? 1u : 0u,
+                std::fprintf(stderr, "submit prim=%u iip=%u tme=%u fst=%u q=%g tbp0=%05x psm=%02x cbp=%05x cpsm=%02x fbp=%03x fpsm=%02x zbp=%03x zpsm=%02x zmsk=%u test=%05llx abe=%u v0=(%.0f,%.0f,%.0f) v1=(%.0f,%.0f) rgba=%02x%02x%02x%02x sc=(%d,%d)-(%d,%d) off=(%u,%u) alpha=%llx pabe=%u fba=%u fge=%u fog=%02x texa=%02x/%02x/%u tex1=%llx tod=%s frame=%llu%c",
+                             cmd.batch.state.prim.type, cmd.batch.state.prim.iip ? 1u : 0u, cmd.batch.state.prim.tme ? 1u : 0u, cmd.batch.state.prim.fst ? 1u : 0u,
                              (double)cmd.batch.vertices[1].q, cmd.batch.state.context.tex0.tbp0,
                              cmd.batch.state.context.tex0.psm, cmd.batch.state.context.tex0.cbp, cmd.batch.state.context.tex0.cpsm,
                              cmd.batch.state.context.frame.fbp, cmd.batch.state.context.frame.psm, cmd.batch.state.context.zbuf.zbp,
@@ -1227,7 +1338,19 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                              (unsigned long long)(cmd.batch.state.context.test & 0x7FFFFu), cmd.batch.state.prim.abe ? 1u : 0u,
                              cmd.batch.vertices[0].x, cmd.batch.vertices[0].y, (double)cmd.batch.vertices[0].z,
                              cmd.batch.vertices[1].x, cmd.batch.vertices[1].y,
-                             cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, cmd.batch.state.context.scissor.x0, cmd.batch.state.context.scissor.y0, cmd.batch.state.context.scissor.x1, cmd.batch.state.context.scissor.y1, (unsigned)(cmd.batch.state.context.xyoffset.ofx >> 4), (unsigned)(cmd.batch.state.context.xyoffset.ofy >> 4), (unsigned long long)m_frameCounter, 10);
+                             cmd.batch.vertices[1].r, cmd.batch.vertices[1].g, cmd.batch.vertices[1].b, cmd.batch.vertices[1].a, cmd.batch.state.context.scissor.x0, cmd.batch.state.context.scissor.y0, cmd.batch.state.context.scissor.x1, cmd.batch.state.context.scissor.y1, (unsigned)(cmd.batch.state.context.xyoffset.ofx >> 4), (unsigned)(cmd.batch.state.context.xyoffset.ofy >> 4),
+                             (unsigned long long)cmd.batch.state.context.alpha, cmd.batch.state.pabe ? 1u : 0u, (unsigned)(cmd.batch.state.context.fba & 1u),
+                             cmd.batch.state.prim.fge ? 1u : 0u, cmd.batch.vertices[1].fog, cmd.batch.state.texa.ta0, cmd.batch.state.texa.ta1, cmd.batch.state.texa.aem ? 1u : 0u,
+                             (unsigned long long)cmd.batch.state.context.tex1, traceTimeOfDay(), (unsigned long long)m_frameCounter, 10);
+                if (!s_traceTbp0.empty() || s_traceBox.size() >= 4u)
+                {
+                    // Every vertex of the filtered submit: position, q, s/t (or u/v), rgba, fog.
+                    std::fprintf(stderr, "[gs-vtx]");
+                    for (const GSVertex &v : cmd.batch.vertices)
+                        std::fprintf(stderr, " (%.1f,%.1f,%.0f q=%g st=%g,%g uv=%u,%u rgba=%02x%02x%02x%02x f=%02x)",
+                                     v.x, v.y, (double)v.z, (double)v.q, (double)v.s, (double)v.t, v.u, v.v, v.r, v.g, v.b, v.a, v.fog);
+                    std::fprintf(stderr, "%c", 10);
+                }
                 break;
             }
             case CmdType::BeginTransfer:
@@ -1248,6 +1371,8 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             case CmdType::Present:
                 std::fprintf(stderr, "[gs-cmd] present%c", 10);
                 break;
+            case CmdType::ClutLoad:
+                break;
             default:
                 std::fprintf(stderr, "[gs-cmd] other %u%c", static_cast<unsigned>(cmd.type), 10);
                 break;
@@ -1256,8 +1381,16 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         switch (cmd.type)
         {
         case CmdType::Submit:
+        {
+            // PS2X_GS_SKIP_TBP0=<blocks>: drop every textured draw that binds one of these textures (a bisect:
+            // research/31 section 10 -- are the water shards the water draws or something under them?).
+            static const std::vector<long> s_skipTbp0 = traceBlockList(std::getenv("PS2X_GS_SKIP_TBP0"));
+            if (!s_skipTbp0.empty() && cmd.batch.state.prim.tme && !traceBlockMatch(s_skipTbp0, 0xFFFFFFFFu) &&
+                std::find(s_skipTbp0.begin(), s_skipTbp0.end(), static_cast<long>(cmd.batch.state.context.tex0.tbp0)) != s_skipTbp0.end())
+                break;
             executeSubmit(cmd.batch);
             break;
+        }
         case CmdType::BeginTransfer:
             flushBatch();
             executeTransfer(cmd.transfer);
@@ -1284,11 +1417,26 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             flushBatch();
             executeReadback();
             break;
+        case CmdType::ClutLoad:
+        {
+            // A palette snapshot (GSClutLoad) in stream order; decodeTexture reads it by state.context.clutId.
+            GSClutLoad load;
+            if (cmd.dataSize >= sizeof(GSClutLoad))
+            {
+                std::memcpy(&load, buffer.data.data() + cmd.dataOffset, sizeof(GSClutLoad));
+                m_cluts[load.id] = load;
+                if (m_cluts.size() > 512u)
+                    for (auto it2 = m_cluts.begin(); it2 != m_cluts.end();)
+                        it2 = (it2->first + 256u < load.id) ? m_cluts.erase(it2) : std::next(it2);
+            }
+            break;
+        }
         case CmdType::Reset:
             flushBatch();
             for (auto &kv : m_textures)
                 glDeleteTextures(1, &kv.second.texture);
             m_textures.clear();
+            m_cluts.clear();
             for (RenderTarget &rt : m_renderTargets)
             {
                 glDeleteFramebuffers(1, &rt.fbo);
@@ -2474,22 +2622,37 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
     const bool indexed = tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 || tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH;
 
+    // The on-chip CLUT (GSClutLoad): the palette snapshot the frontend took at the TEX0 write, addressed from
+    // its block 0. Without it the decode read the slot's bytes at decode time -- SOCOM II's water palette slot
+    // holds another texture's CT32 palette by then (research/31 section 9).
+    const GSClutLoad *clutLoad = nullptr;
+    if (indexed && state.context.clutId != 0u && tex.csm == 0u && state.texclut.cou == 0u && state.texclut.cov == 0u)
+    {
+        auto cl = m_cluts.find(state.context.clutId);
+        if (cl != m_cluts.end())
+            clutLoad = &cl->second;
+    }
+    uint8_t *clutVram = clutLoad ? const_cast<uint8_t *>(clutLoad->bytes.data()) : vram;
+    const uint32_t clutBp = clutLoad ? 0u : tex.cbp;
+    const uint32_t clutBw = clutLoad ? 1u : clutWidth;
+    const uint8_t clutPsm = clutLoad ? clutLoad->cpsm : tex.cpsm;
+
     // Decode the CLUT once (256 entries) for indexed formats.
     uint32_t clut[256];
     if (indexed)
     {
         for (uint32_t i = 0; i < 256u; ++i)
         {
-            const uint32_t clutIndex = resolveClutIndex(static_cast<uint8_t>(i), tex.cpsm, tex.csm, tex.csa, tex.psm);
+            const uint32_t clutIndex = resolveClutIndex(static_cast<uint8_t>(i), clutPsm, tex.csm, tex.csa, tex.psm);
             const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
             const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
             uint32_t c = 0u;
-            switch (tex.cpsm)
+            switch (clutPsm)
             {
-            case GS_PSM_CT32: c = applyTexa(state.texa, GS_PSM_CT32, GSMem::ReadCT32(vram, tex.cbp, clutWidth, clutX, clutY)); break;
-            case GS_PSM_CT24: c = applyTexa(state.texa, GS_PSM_CT24, GSMem::ReadCT24(vram, tex.cbp, clutWidth, clutX, clutY)); break;
-            case GS_PSM_CT16: c = applyTexa(state.texa, GS_PSM_CT16, rgba5551To8888(GSMem::ReadCT16(vram, tex.cbp, clutWidth, clutX, clutY))); break;
-            case GS_PSM_CT16S: c = applyTexa(state.texa, GS_PSM_CT16S, rgba5551To8888(GSMem::ReadCT16S(vram, tex.cbp, clutWidth, clutX, clutY))); break;
+            case GS_PSM_CT32: c = applyTexa(state.texa, GS_PSM_CT32, GSMem::ReadCT32(clutVram, clutBp, clutBw, clutX, clutY)); break;
+            case GS_PSM_CT24: c = applyTexa(state.texa, GS_PSM_CT24, GSMem::ReadCT24(clutVram, clutBp, clutBw, clutX, clutY)); break;
+            case GS_PSM_CT16: c = applyTexa(state.texa, GS_PSM_CT16, rgba5551To8888(GSMem::ReadCT16(clutVram, clutBp, clutBw, clutX, clutY))); break;
+            case GS_PSM_CT16S: c = applyTexa(state.texa, GS_PSM_CT16S, rgba5551To8888(GSMem::ReadCT16S(clutVram, clutBp, clutBw, clutX, clutY))); break;
             default: c = 0xFFFF00FFu; break;
             }
             clut[i] = c;
@@ -2564,18 +2727,52 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     // Gated by PS2X_GS_GL_DEBUG_AFTER (presents) and capped: ungated it wrote 136k files per boot.
     static const unsigned long long s_dumpAfter = std::getenv("PS2X_GS_GL_DEBUG_AFTER") ? std::strtoull(std::getenv("PS2X_GS_GL_DEBUG_AFTER"), nullptr, 0) : 0ull;
     static uint32_t s_dumpCount = 0;
-    if (s_dumpDir && m_frameCounter >= s_dumpAfter && s_dumpCount++ < 6u)
+    // PS2X_GS_DUMP_TEX_TBP0=<block>: only decodes of that texture; _EVERY=<n>: every n-th of them; _MAX=<n>: the cap
+    // (default 6); _FROM=t<seconds>: a host-time arm like PS2X_GS_TRACE_CMDS (the frame arm above still applies).
+    static const std::vector<long> s_dumpTbp0 = traceBlockList(std::getenv("PS2X_GS_DUMP_TEX_TBP0"));
+    static const uint32_t s_dumpEvery = std::getenv("PS2X_GS_DUMP_TEX_EVERY") ? std::max<uint32_t>(1u, static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_DUMP_TEX_EVERY"), nullptr, 0))) : 1u;
+    static const uint32_t s_dumpMax = std::getenv("PS2X_GS_DUMP_TEX_MAX") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_GS_DUMP_TEX_MAX"), nullptr, 0)) : 6u;
+    static const bool s_dumpHasFrom = std::getenv("PS2X_GS_DUMP_TEX_FROM") != nullptr;
+    static uint32_t s_dumpSeen = 0u;
+    const bool dumpArmed = s_dumpDir && m_frameCounter >= s_dumpAfter &&
+        (!s_dumpHasFrom || static_cast<long>(m_frameCounter) >= traceSkip("PS2X_GS_DUMP_TEX_FROM")) &&
+        traceBlockMatch(s_dumpTbp0, tex.tbp0);
+    if (dumpArmed && (s_dumpSeen++ % s_dumpEvery) == 0u && s_dumpCount++ < s_dumpMax)
     {
         static uint32_t s_dumpIndex = 0;
         char path[512];
-        std::snprintf(path, sizeof(path), "%s/tex_%03u_tbp%05x_psm%02x_%ux%u_cbp%05x_cpsm%02x.ppm", s_dumpDir, s_dumpIndex,
-                      tex.tbp0, tex.psm, width, height, tex.cbp, tex.cpsm);
+        std::snprintf(path, sizeof(path), "%s/tex_%03u_f%llu_tbp%05x_psm%02x_%ux%u_cbp%05x_cpsm%02x.ppm", s_dumpDir, s_dumpIndex,
+                      (unsigned long long)m_frameCounter, tex.tbp0, tex.psm, width, height, tex.cbp, tex.cpsm);
         if (FILE *fp = std::fopen(path, "wb"))
         {
             std::fprintf(fp, "P6\n%u %u\n255\n", width, height);
             for (uint32_t i = 0; i < width * height; ++i)
                 std::fwrite(&pixels[i], 1, 3, fp);
             std::fclose(fp);
+        }
+        // The decoded CLUT beside it (indexed formats): 16x16 RGB + alpha, entry i at (i & 15, i >> 4), plus a note
+        // of which palette snapshot (context.clutId) or live slot it came from.
+        if (indexed)
+        {
+            std::snprintf(path, sizeof(path), "%s/tex_%03u_clut_id%llu.ppm", s_dumpDir, s_dumpIndex, (unsigned long long)state.context.clutId);
+            if (FILE *fp = std::fopen(path, "wb"))
+            {
+                std::fprintf(fp, "P6\n16 16\n255\n");
+                for (uint32_t i = 0; i < 256u; ++i)
+                    std::fwrite(&clut[i], 1, 3, fp);
+                std::fclose(fp);
+            }
+            std::snprintf(path, sizeof(path), "%s/tex_%03u_clut_alpha.pgm", s_dumpDir, s_dumpIndex);
+            if (FILE *fp = std::fopen(path, "wb"))
+            {
+                std::fprintf(fp, "P5\n16 16\n255\n");
+                for (uint32_t i = 0; i < 256u; ++i)
+                {
+                    const uint8_t a = static_cast<uint8_t>(clut[i] >> 24);
+                    std::fwrite(&a, 1, 1, fp);
+                }
+                std::fclose(fp);
+            }
         }
         std::snprintf(path, sizeof(path), "%s/tex_%03u_alpha.pgm", s_dumpDir, s_dumpIndex);
         if (FILE *fp = std::fopen(path, "wb"))
@@ -2690,6 +2887,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     key.csa = tex.csa;
     key.texa = static_cast<uint32_t>(state.texa.ta0) | (static_cast<uint32_t>(state.texa.ta1) << 8) | (state.texa.aem ? 0x10000u : 0u);
     key.texclut = static_cast<uint32_t>(state.texclut.cbw) | (static_cast<uint32_t>(state.texclut.cou) << 8) | (static_cast<uint32_t>(state.texclut.cov) << 16);
+    key.clutId = state.context.clutId;
 
     auto it = m_textures.find(key);
     if (it != m_textures.end())
@@ -2697,8 +2895,10 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         uint64_t newest = 0u;
         for (uint32_t p = it->second.pageStart; p < it->second.pageStart + it->second.pageCount && p < 512u; ++p)
             newest = std::max(newest, m_shadowPageGeneration[p]);
-        // CLUT pages too
-        if (tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 || tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH)
+        // CLUT pages too -- unless the draw samples a palette snapshot (context.clutId): then the slot's later
+        // rewrites are exactly what must NOT reach it.
+        if (state.context.clutId == 0u &&
+            (tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 || tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH))
             newest = std::max(newest, m_shadowPageGeneration[std::min<uint32_t>(511u, tex.cbp >> 5)]);
         if (newest <= it->second.generation)
         {
@@ -2938,6 +3138,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
                 (mask & 0x00FF0000u) != 0x00FF0000u, (mask & 0xFF000000u) != 0xFF000000u);
 
     // Alpha blending: out = (A - B) * C + D
+    int srcMode = 0;
+    float srcConst = 0.0f;
     if (state.prim.abe)
     {
         const uint64_t alpha = ctx.alpha;
@@ -2980,7 +3182,17 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
         else if (a == 1u && b == 2u)      // Cd * C + D
         {
             if (d == 0u) { src = GL_ONE; dst = cFactor; }
-            else if (d == 1u) { src = GL_ZERO; dst = GL_ONE; }
+            else if (d == 1u)
+            {
+                // Cd*C + Cd = Cd*(1+C): GL has no destination factor above one, so the SOURCE term carries Cd*C --
+                // the fragment shader emits C (uSrcMode) and the source factor is GL_DST_COLOR. SOCOM II's
+                // post-process brightens every frame this way (ALPHA 0x5d00000069: FIX 93 -> x1.73, research/31
+                // section 12); the former identity mapping left the whole scene dark. C = Ad keeps the identity
+                // (Cd*Ad would need the destination alpha in the shader).
+                if (csel >= 2u) { srcMode = 1; srcConst = static_cast<float>((alpha >> 32) & 0xFFu) / 128.0f; src = GL_DST_COLOR; dst = GL_ONE; }
+                else if (csel == 0u) { srcMode = 2; src = GL_DST_COLOR; dst = GL_ONE; }
+                else { src = GL_ZERO; dst = GL_ONE; }
+            }
             else { src = GL_ZERO; dst = cFactor; }
         }
         else if (a == 2u && b == 0u)      // -Cs * C + D
@@ -3012,6 +3224,8 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     glUniform1i(m_u.fge, state.prim.fge ? 1 : 0);
     glUniform3f(m_u.fogColor, state.fogR / 255.0f, state.fogG / 255.0f, state.fogB / 255.0f);
     glUniform1i(m_u.fba, (ctx.fba & 1ull) != 0ull ? 1 : 0);
+    glUniform1i(m_u.srcMode, srcMode);
+    glUniform4f(m_u.srcConst, srcConst, srcConst, srcConst, 1.0f);
     const uint32_t test = static_cast<uint32_t>(ctx.test);
     glUniform1i(m_u.ate, test & 1u);
     glUniform1i(m_u.atst, (test >> 1) & 7u);
