@@ -335,19 +335,24 @@ class PreLogin(unittest.TestCase):
         self.assertIn("LOBBY class=pre-login", self.sh.logs)
         self.assertNotIsInstance(cm.exception.code, str)
 
-    def test_login_screen_never_shown_after_the_menu(self):       # wtb4 / 3b root: `TIMEOUT waiting for login`
+    def test_login_screen_never_shown_after_the_menu(self):       # wtb4 / 3b / s6_ladder7 A root: `TIMEOUT waiting for login`
         now = [0.0]
         self.sh.clock = lambda: now[0]
         self.sh.is_screen = lambda name, thresh=None: name == "main_menu"
+        # the menu with ONLINE lit, as every one of those timeout captures shows it (test_login_path's fixtures)
+        menu = frame(("menu_row_new_game_dim_lad7.png", (262, 278, 368, 296)),
+                     ("menu_row_online_lit_lad7.png", (262, 312, 368, 332)), ("menu_row_lan_dim_lad7.png", (262, 348, 368, 364)))
 
         def tick(s):
             now[0] += s
 
         with mock.patch.object(L.drive, "wait_stable"), mock.patch.object(L.drive, "frame", return_value=None), \
-                mock.patch.object(L.time, "sleep", tick), self.assertRaises(L.LobbyFail) as cm:
+                mock.patch.object(L.time, "sleep", tick), mock.patch.object(L.winshot, "grab", Grabs(menu)), \
+                self.assertRaises(L.LobbyFail) as cm:
             L.boot_to_online(self.sh)
         self.assertEqual(cm.exception.cls, "pre-login")
-        self.assertEqual(self.sh.presses, [("key", "down"), ("key", "cross")])
+        # the CROSS is re-sent through the pad while the menu still shows ONLINE lit (s6_ladder7 A's dropped CROSS)
+        self.assertEqual(self.sh.presses, [("key", "down"), ("key", "cross")] + [("pad", "CROSS")] * L.ONLINE_CROSS_RESENDS)
         self.assertIn("TIMEOUT waiting for login", self.sh.logs)
 
 

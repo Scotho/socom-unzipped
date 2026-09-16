@@ -168,6 +168,7 @@ CLASS_OSK_TYPING = "login:keyboard-typing"   # the keyboard read back the wrong 
 CLASS_CONNECT_FOCUS = "login:connect-focus"  # CONNECT never read lit after the DOWNs and their bounded extras
 CLASS_CONNECT_PRESS = "login:connect-press"  # the form stayed up with CONNECT lit after the CROSS and its re-sends
 CLASS_OSK_ENTER = "login:keyboard-enter"     # the keyboard stayed up after ENTER and OSK_ENTER_RETRIES re-presses
+CLASS_PERSONA = "login:persona"              # + ":list" / ":password-keyboard" / ":name-keyboard": that CROSS never registered
 
 # Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
 # x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
@@ -207,6 +208,22 @@ LOGIN_FORM_PROMPT_MIN_COLS = 40
 LOGIN_CONNECT_DOWNS = 4          # PASSWORD -> SAVE PASSWORD, HOMETOWN, GENDER, CONNECT
 LOGIN_CONNECT_EXTRA_DOWNS = 3    # more DOWNs while CONNECT reads unlit, before login:connect-focus
 LOGIN_GENDER_BACKS = 2           # TRIANGLEs out of a prompt the CROSS opened, before login:connect-focus
+
+# The main menu of the block-pointer exe: NEW GAME / ONLINE / LAN. The lit row's text pulses in size (ONLINE lit spans
+# x 267-370 in s6_ladder7's A_lobby_fail_pre-login and 243-394 in wtb4's and 3b's timeout captures, the width of a
+# lit NEW GAME), so the rows are read by the median of the text's core: lit 114-146, dim 15-43 over every capture.
+# Every timeout capture before the login screen (wtb4, 3b, s6_ladder7 A) shows ONLINE lit: the DOWN had registered
+# and the CROSS was dropped. Boxes (y0, y1, x0, x1) as LOBBY_ROWS.
+MENU_ROWS = {"new_game": (278, 296, 262, 368), "online": (312, 332, 262, 368), "lan": (348, 364, 262, 368)}
+MENU_ROW_LIT_MEDIAN = 80.0
+ONLINE_EXTRA_DOWNS = 2           # more DOWNs while ONLINE reads unlit after the first, before pre-login
+ONLINE_CROSS_RESENDS = 3         # re-sent CROSSes while the menu still shows ONLINE lit and no login screen
+LOGIN_SCREEN_WAIT_S = 40.0       # the login screen after the ONLINE CROSS (0.8-1.3 s on every launch that got there)
+# The persona-list CROSS (the first of the two after the universe) is verified by the frame changing: measured over
+# s6_ladder7 B, a static screen re-read differs by 0.00-0.05, the cursor moving one row by 1.33, the password
+# keyboard opening by 16.5 (16.45-18.04 over 13 launches' 02_persona -> 03_name), a screen change by 12.9.
+PERSONA_CHANGED_MIN_DIFF = 4.0   # 3x the cursor move, a quarter of the keyboard
+PERSONA_CROSS_WAIT_S = 4.0
 # GAME LOBBY menu rows (ARMORY, SWITCH TEAMS, READY) for the cursor read, and the most DOWN/UP presses a
 # cursor search may send. s6_ladder4 (research/30): B read no cursor after the host's READY -- the match
 # had launched -- and the old unbounded wiggle sent DOWN,UP x4 and a CROSS into the game, where D-pad
@@ -402,6 +419,28 @@ def lobby_notice_up(gray):
     return float(gray[LOBBY_NOTICE].mean()) > LOBBY_NOTICE_MIN_MEAN
 
 
+def menu_row_median(gray, row):
+    y0, y1, x0, x1 = MENU_ROWS[row]
+    return float(np.median(gray[y0:y1, x0:x1]))
+
+
+def menu_online_lit(gray):
+    """The main menu with ONLINE highlighted: its row's text core lit, NEW GAME's and LAN's dim (a transition or a
+    bright frame lights all three; the login screen lights none)."""
+    return (menu_row_median(gray, "online") > MENU_ROW_LIT_MEDIAN
+            and menu_row_median(gray, "new_game") <= MENU_ROW_LIT_MEDIAN
+            and menu_row_median(gray, "lan") <= MENU_ROW_LIT_MEDIAN)
+
+
+def menu_rows_detail(gray):
+    return "row medians " + ", ".join(f"{r.replace('_', ' ')} {menu_row_median(gray, r):.0f}" for r in MENU_ROWS)
+
+
+def frame_diff(pre, post):
+    """Mean |difference| of two grey frames (0 for the same static screen)."""
+    return float(np.abs(post - pre).mean())
+
+
 def press_verified(sh, step, btn, wait, check, what):
     """Press `btn`, wait, and verify `check(gray)` on a fresh frame; re-send through the pad up to
     LOBBY_RESEND_MAX times; LobbyFail(step) if the expected screen never appears. One log line per press:
@@ -468,9 +507,18 @@ class Shell:
         winshot.grab(self.hwnd, max_age=max_age).save(os.path.join(self.out, f"{self.tag}{label}.png"))
 
     def press(self, b, wait=1.0):
-        # 0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to
-        # trip the UI's held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the
-        # repeat reopened it, eight times in a row, 2026-09-09 play4).
+        """One button press. With a pad file every pad button goes through the injected pad file (pad_press):
+        posted keyboard messages reach raylib only when the game's window thread pumps, and about one press in
+        twenty was dropped on the 2026-09-15 launches (s6_ladder6: a DOWN before CONNECT and an ENTER-walk step;
+        s6_ladder7 A: the CROSS on ONLINE); the pad file is polled by the guest every frame. A button the pad
+        does not have, or no pad file, is a posted key as before.
+
+        0.08 s = 5 frames at the shell's 60 fps: long enough to register, short enough not to trip the UI's
+        held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the repeat reopened it, eight times
+        in a row, 2026-09-09 play4)."""
+        if self.pad_file and b.upper() in PAD_BUTTON:
+            self.pad_press(b.upper(), wait=wait)
+            return
         self.check_stage()
         keys.press(self.hwnd, b, T, hold_s=0.08)
         self.stage_sleep(wait)
@@ -583,6 +631,16 @@ class Shell:
         False, and every caller pressed on into whatever was on screen (wtb4, 3b, ladder1), so the class
         finally raised named a screen 120-180 s downstream of the miss. `required=False` keeps the old
         log-and-return for the one screen whose reference is known to miss on good runs."""
+        if self.screen_within(name, timeout, thresh):
+            return True
+        if not required:
+            return False
+        raise lobby_fail(self, cls or f"screen:{name}", f"{name} not on screen within {timeout:.0f}s")
+
+    def screen_within(self, name, timeout, thresh=None):
+        """True when screen `name` shows within `timeout` s (polled every 0.5 s); False, logged and captured as
+        `timeout_<name>`, when it does not. No class: the caller decides (wait_for fails the run, press_online
+        re-sends the CROSS while the menu still shows ONLINE lit)."""
         t = self.clock()
         while self.clock() - t < timeout:
             if self.is_screen(name, thresh):
@@ -591,9 +649,7 @@ class Shell:
             time.sleep(0.5)
         self.log(f"TIMEOUT waiting for {name}")
         self.shot(f"timeout_{name}")
-        if not required:
-            return False
-        raise lobby_fail(self, cls or f"screen:{name}", f"{name} not on screen within {timeout:.0f}s")
+        return False
 
     def press_until_gone(self, b, name, tries=8, wait=3.0, thresh=None):
         """Press `b` until `name` is no longer on screen. "Gone" needs two checks 0.6 s apart:
@@ -892,12 +948,50 @@ def boot_to_online(sh):
         # research/28 §2: exit 1 with no class was the one failure the taxonomy could not count
         raise lobby_fail(sh, CLASS_PRE_LOGIN, "main menu not reached after 9 boot presses")
     time.sleep(3.0)
-    sh.press("down", 1.5)
-    sh.press("cross", 3.0)                                       # ONLINE
-    # wtb4 and 3b (both instances at once) never showed the LOGIN screen here; the old harness pressed on
-    # and classified the run as login-keyboard 120-180 s later.
-    sh.wait_for("login", 40, cls=CLASS_PRE_LOGIN)
+    press_online(sh)
     sh.shot("00_login")
+
+
+def press_online(sh):
+    """The DOWN to ONLINE and the CROSS on it, each read back (s6_ladder7 A: the DOWN registered, the CROSS was
+    dropped, and the run waited 40 s on a main menu with ONLINE lit; wtb4 and 3b before it timed out on the same
+    picture, and the old harness then pressed on and classified the run as login-keyboard 120-180 s later).
+
+    After the DOWN a fresh frame must show ONLINE lit; while it does not, one more DOWN and a re-read, at most
+    ONLINE_EXTRA_DOWNS times (`[login] online: lit|not lit attempt k`), then pre-login -- a CROSS never goes to an
+    unread menu (NEW GAME would start a campaign). Then CROSS and the login screen within LOGIN_SCREEN_WAIT_S; not
+    there and the menu still showing ONLINE lit is a dropped CROSS: re-sent through the pad, at most
+    ONLINE_CROSS_RESENDS times (`[login] online cross: login screen after k presses`); the menu gone without the
+    login screen, or the re-sends exhausted, is the existing pre-login class."""
+    sh.press("down", 1.5)
+    for attempt in range(1, ONLINE_EXTRA_DOWNS + 2):
+        gray = lobby_gray(sh)
+        lit = menu_online_lit(gray)
+        sh.log(f"[login] online: {'lit' if lit else 'not lit'} attempt {attempt}")
+        if lit:
+            break
+        if attempt > ONLINE_EXTRA_DOWNS:
+            raise lobby_fail(sh, CLASS_PRE_LOGIN, f"ONLINE not lit after 1 DOWN and {ONLINE_EXTRA_DOWNS} more "
+                                                  f"({menu_rows_detail(gray)})")
+        lobby_resend(sh, "down", 1.5)
+    for k in range(1, ONLINE_CROSS_RESENDS + 2):
+        if k == 1:
+            sh.press("cross", 3.0)                               # ONLINE
+        else:
+            lobby_resend(sh, "cross", 3.0)
+        if sh.screen_within("login", LOGIN_SCREEN_WAIT_S):
+            sh.log(f"[login] online cross: login screen after {k} press{'es' if k > 1 else ''}")
+            return
+        gray = lobby_gray(sh)
+        if not menu_online_lit(gray):
+            raise lobby_fail(sh, CLASS_PRE_LOGIN, f"login not on screen within {LOGIN_SCREEN_WAIT_S:.0f}s of the ONLINE "
+                                                  f"CROSS (press {k}) and the menu no longer shows ONLINE lit "
+                                                  f"({menu_rows_detail(gray)})")
+        if k > ONLINE_CROSS_RESENDS:
+            raise lobby_fail(sh, CLASS_PRE_LOGIN, f"login not on screen within {LOGIN_SCREEN_WAIT_S:.0f}s of the ONLINE "
+                                                  f"CROSS and {ONLINE_CROSS_RESENDS} re-sends -- the menu still shows "
+                                                  f"ONLINE lit")
+        sh.log(f"[login] online cross: no login screen, the menu still shows ONLINE lit -> re-send CROSS (attempt {k})")
 
 
 @staged("login")
@@ -913,13 +1007,11 @@ def login(sh, name, password, existing):
     # this one timeout stays a log line. Every other screen's timeout occurred only in failed launches.
     sh.wait_for("persona", 60, required=False)
     sh.shot("02_persona")
-    sh.press("cross", 4.0)                                       # persona list
+    press_persona(sh, existing)
     if existing:
-        sh.press("cross", 4.0)                                   # saved persona -> password keyboard opens
         sh.shot("03_name")
         sh.shot("04_pw_kbd")
     else:
-        sh.press("cross", 4.0)                                   # <New Persona> -> name keyboard
         sh.type(name, sh.out, sh.tag + "name")
         sh.shot("03_name")
         sh.press("down", 1.0)
@@ -959,6 +1051,32 @@ def login(sh, name, password, existing):
     sh.press_until_gone("cross", "lobby_news")                   # close SERVER NEWS
     time.sleep(2.0)
     sh.shot("09_lobby_no_news")
+
+
+def press_persona(sh, existing):
+    """The two CROSSes after the universe, each read back on a fresh frame and re-sent through the pad (at most
+    LOBBY_RESEND_MAX times, then login:persona:<stage>). They were the last blind presses of the login stage.
+
+    The first ("list") is verified by the frame changing from the one read before it (frame_diff over
+    PERSONA_CHANGED_MIN_DIFF); the second by the keyboard being open (osk_open_of): the saved persona's password
+    keyboard, or <New Persona>'s name keyboard. On the launches with a saved persona the "persona" screen the
+    reference names is the CONNECT TO SOCOM II form with the cursor on PASSWORD (s6_ladder7 B_02_persona): the first
+    CROSS opens the password keyboard and the second lands on its accent key, which osk_normal_mode toggles back --
+    so a dropped second CROSS is harmless and a dropped first one is the one this catches."""
+    pre = lobby_gray(sh)
+
+    def changed(gray):
+        d = frame_diff(pre, gray)
+        sh.log(f"[login] persona list: frame diff {d:.2f} (min {PERSONA_CHANGED_MIN_DIFF})")
+        return d > PERSONA_CHANGED_MIN_DIFF
+
+    press_verified(sh, f"{CLASS_PERSONA}:list", "cross", PERSONA_CROSS_WAIT_S, changed, "a changed screen")
+    if existing:
+        press_verified(sh, f"{CLASS_PERSONA}:password-keyboard", "cross", PERSONA_CROSS_WAIT_S, osk_open_of,
+                       "the password keyboard")
+    else:
+        press_verified(sh, f"{CLASS_PERSONA}:name-keyboard", "cross", PERSONA_CROSS_WAIT_S, osk_open_of,
+                       "the name keyboard")
 
 
 def press_connect(sh):
