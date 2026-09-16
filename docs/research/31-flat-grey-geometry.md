@@ -165,3 +165,27 @@ Knobs to add if the above is not enough (uncommitted diagnostics):
 - TME=0 for form 1 by tone (§2, 21 vs 29-42) — unless the vertex α is larger than the dump's ≤ 51.
 - The loading-screen strip defect (§4).
 - `Missing`-PSM decode (magenta, §3.6).
+
+## 6. The trace run (`s6_water_trace`, 2026-09-16) [verified]
+
+`PS2X_GS_TRACE_PAGES=0x1c2:4 PS2X_GS_TRACE_CMDS=t240` on a mission gate (PASS, shards present: `water flat=0.504
+dark=0.268`); 859k log lines, 447k `[gs-pages]`, 400k `[gs-cmd]`.
+
+- **The water texture is uploaded from EE memory, not copied from the frame buffer**: `transfer dir=0 sbp=00000 spsm=13
+  -> dbp=038a8 dpsm=13 dbw=1 at (0,0) 32x32` followed by `upload 1024 bytes` (line 287010, frame 13393), then two more
+  uploads of 64x64 (4096 bytes) to the same address later (lines 294575, 303234). `dir=0` is host→local; the `sbp=0` is
+  unset. (§0's "copy" reading of an earlier draft is withdrawn.)
+- **The CLUT block 0x3852 is a shared scratch slot rewritten every frame in two formats**: a PSMCT32 16x16 (1 KiB)
+  upload and a PSMCT16 16x16 (512 B) upload alternate (21 and 16 of each over the trace); the water draws
+  (`tbp0=038a8 psm=13 cbp=03852 cpsm=02`) follow the CT16 upload (line 286953 → first water submit 287568), and the
+  CT32 upload comes ~130 lines later. 31,567 textured submits use `psm=13 cpsm=02` against 77,485 with a CT32 CLUT, so
+  16-bit CLUTs are common, not a water-only path.
+- **Uploads and draws are replayed in order on the GL thread** (`executeCommands` cases BeginTransfer/Upload at
+  gs_gl_backend.cpp:1261-1268 call `executeTransfer`/`executeUpload`, which write `m_shadow` and `markShadowPages`),
+  so the CT16→draw→CT32 alternation is not a record/replay race.
+- No `[gs-gl tex]` mismatch lines: the decode diagnostic needs `PS2X_GS_GL_DEBUG_AFTER`; not set in this run.
+
+**Next (queued):** the zero-code twin `PS2X_GS_TEX_FROM_CPU=1` on a mission gate (`s6_water_texcpu2`; the first attempt
+never reached the HUD because a plugged-in controller changed the boot flow — `PS2X_HOST_GAMEPAD=0` now pins it). Shards
+gone → the GL shadow/cache serves stale or mis-laid texels for this texture/CLUT pair; unchanged → the VRAM bytes the
+game uploads are read the same way by both backends and the comparison moves to the PCSX2 slot-8 GS dump.
