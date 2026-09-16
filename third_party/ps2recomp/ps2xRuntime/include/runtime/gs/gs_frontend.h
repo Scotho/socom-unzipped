@@ -192,6 +192,7 @@ private:
     void processImageData(const uint8_t *data, uint32_t sizeBytes);
     bool tryProcessNativeImageUploadPacket(const uint8_t *data, uint32_t sizeBytes);
     void fillDrawState(GSDrawState &state, const GSPrimReg &prim) const;
+    void dumpGifRecordUnlocked(uint32_t path, const uint8_t *data, uint32_t sizeBytes);   // PS2X_GIF_DUMP
     // TEX0/TEX2 CLD semantics: snapshot the palette into the backend's CLUT buffer (GSClutLoad) when the
     // register asks for a load (CLD 1..3 always, 4/5 when CBP moved off CBP0/CBP1).
     void loadClutIfNeeded(int ci);

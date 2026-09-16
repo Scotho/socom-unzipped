@@ -19,8 +19,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <map>
 #include "raylib.h"
 #include "runtime/socom2_lum_readback.h"
+#include "runtime/gs/gs_cpu_backend.h"
 #include <string>
 #include <thread>
 #include <vector>
@@ -1462,8 +1464,12 @@ void register_ps2_gs_tests()
                 setenv("PS2X_GS_BACKEND", which, 1);
 #endif
             };
+            uint32_t watchX = 0, watchY = 0;
+            const bool pixelWatch = std::getenv("PS2X_CONSOLE_REPLAY_PIXEL") &&
+                                    std::sscanf(std::getenv("PS2X_CONSOLE_REPLAY_PIXEL"), "%u,%u", &watchX, &watchY) == 2;
             auto render = [&](bool useGl)
             {
+                uint32_t lastPx = 0xFFFFFFFFu;
                 setBackend(useGl ? "gpu" : "cpu");
                 std::vector<uint8_t> vram(vramInitial);
                 GS gs;
@@ -1480,6 +1486,29 @@ void register_ps2_gs_tests()
                     gs.processGIFPacket(stream.data() + off, size);
                     off += size;
                     ++packets;
+                    // PS2X_CONSOLE_REPLAY_PIXEL=x,y: on the CPU pass, print every packet that changes that frame pixel
+                    // (fbp from PS2X_CONSOLE_REPLAY_FBP) with the packet's leading GIF tag and A+D TEX0 -- a pixel history.
+                    if (!useGl && pixelWatch)
+                    {
+                        const uint32_t px = readReferenceFramePSMCT32Pixel(vram, fbp, 10u, watchX, watchY) & 0xFFFFFFu;
+                        if (px != lastPx)
+                        {
+                            uint64_t tagLo = 0, tex0 = 0, prim = 0;
+                            std::memcpy(&tagLo, stream.data() + off - size, 8);
+                            for (uint32_t k = 16; k + 16 <= size && k < 16 * 40; k += 16)
+                            {
+                                uint64_t lo = 0, hi = 0;
+                                std::memcpy(&lo, stream.data() + off - size + k, 8);
+                                std::memcpy(&hi, stream.data() + off - size + k + 8, 8);
+                                if ((hi & 0xFF) == 0x06 && tex0 == 0) tex0 = lo;
+                                if ((hi & 0xFF) == 0x00 && prim == 0) prim = lo;
+                            }
+                            std::printf("pixel(%u,%u) packet %zu size %u: %06x -> %06x  tag=%016llx tex0=%016llx prim=%llx tagprim=%llx\n",
+                                        watchX, watchY, packets, size, lastPx, px, (unsigned long long)tagLo, (unsigned long long)tex0,
+                                        (unsigned long long)prim, (unsigned long long)((tagLo >> 47) & 0x7FF));
+                            lastPx = px;
+                        }
+                    }
                     if (stopAt >= 0 && static_cast<long>(packets) >= stopAt)
                         break;
                 }
@@ -1584,6 +1613,77 @@ void register_ps2_gs_tests()
             const size_t n = socom2_lum::readbackPixels(packet, 7, [](uint32_t, uint32_t, uint32_t, uint32_t, uint32_t) { return 0u; }, out, sizeof(out));
             t.Equals(static_cast<uint32_t>(n), 0u, "no TRXDIR: nothing read");
             t.Equals(static_cast<uint32_t>(out[0]), 0x11u, "out untouched");
+        });
+
+        // Diagnostic (research/31 section 15): feed a vu1_replay packet file (records of u32 length + GIF packet) through
+        // the frontend with a recording backend and print the alpha of every submitted vertex per bound TEX0 block --
+        // whether the frontend keeps the zero alphas the VU1 program kicks. PS2X_PK_REPLAY=<file.pk>.
+        tc.Run("vu1_replay packets through the frontend keep their vertex alphas (PS2X_PK_REPLAY)", [](TestCase &t)
+        {
+            const char *path = std::getenv("PS2X_PK_REPLAY");
+            if (!path)
+                return;
+            struct Recorder final : GSRasterBackend   // a CPU backend by composition (GSCpuBackend is final)
+            {
+                GSCpuBackend inner;
+                std::map<uint32_t, std::map<int, int>> alphas;   // tbp0 -> alpha -> count
+                void Initialize(uint8_t *vram, uint32_t vramSize) override { inner.Initialize(vram, vramSize); }
+                void Reset() override { inner.Reset(); }
+                void Submit(const GSPrimitiveBatch &batch) override
+                {
+                    for (uint8_t k = 0; k < batch.vertexCount; ++k)
+                        alphas[batch.state.context.tex0.tbp0][batch.vertices[k].a] += 1;
+                    inner.Submit(batch);
+                }
+                void BeginTransfer(const GSTransferCommand &c) override { inner.BeginTransfer(c); }
+                void UploadImage(const uint8_t *d, uint32_t n) override { inner.UploadImage(d, n); }
+                void Flush() override { inner.Flush(); }
+                void TextureFlush() override { inner.TextureFlush(); }
+                void Sync(GSSyncReason r) override { inner.Sync(r); }
+                PresentationFrame Present(const GSPresentationRequest &r) override { return inner.Present(r); }
+                bool ClearFramebuffer(const GSContext &c, uint32_t rgba) override { return inner.ClearFramebuffer(c, rgba); }
+                uint32_t ConsumeLocalToHostBytes(uint8_t *d, uint32_t n) override { return inner.ConsumeLocalToHostBytes(d, n); }
+                uint32_t ReadVram(uint32_t psm, uint32_t b, uint32_t bw, uint32_t x, uint32_t y) const override { return inner.ReadVram(psm, b, bw, x, y); }
+                void WriteVram(uint32_t psm, uint32_t b, uint32_t bw, uint32_t x, uint32_t y, uint32_t v) override { inner.WriteVram(psm, b, bw, x, y, v); }
+                void SnapshotVram(std::vector<uint8_t> &out) const override { inner.SnapshotVram(out); }
+                GSTransferSnapshot GetTransferSnapshot() const override { return inner.GetTransferSnapshot(); }
+            };
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            auto rec = std::make_unique<Recorder>();
+            Recorder *recPtr = rec.get();
+            GS gs;
+            gs.setRasterBackend(std::move(rec));
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+            FILE *fp = std::fopen(path, "rb");
+            t.IsTrue(fp != nullptr, "packet file opens");
+            if (!fp)
+                return;
+            std::vector<uint8_t> file;
+            std::fseek(fp, 0, SEEK_END);
+            file.resize(static_cast<size_t>(std::ftell(fp)));
+            std::fseek(fp, 0, SEEK_SET);
+            (void)std::fread(file.data(), 1, file.size(), fp);
+            std::fclose(fp);
+            size_t off = 0, packets = 0;
+            while (off + 4 <= file.size())
+            {
+                uint32_t n = 0;
+                std::memcpy(&n, file.data() + off, 4);
+                off += 4;
+                if (off + n > file.size())
+                    break;
+                gs.processGIFPacket(file.data() + off, n);
+                off += n;
+                ++packets;
+            }
+            std::printf("pk replay: %zu packets\n", packets);
+            for (const auto &kv : recPtr->alphas)
+            {
+                std::printf("  tbp0=%05x:", kv.first);
+                for (const auto &ac : kv.second)
+                    std::printf(" %d:%d", ac.first, ac.second);
+                std::printf("\n");
+            }
         });
 
         tc.Run("fullscreen display copy tracks the preferred presentation source frame", [](TestCase &t)

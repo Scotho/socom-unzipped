@@ -771,9 +771,86 @@ bool GS::copyLatchedHostPresentationFrame(std::vector<uint8_t> &outPixels,
     return true;
 }
 
+// PS2X_GIF_DUMP=<file>:t<seconds>[:<maxMB>]: from <seconds> of host time on, record every GIF packet the frontend
+// processes (packets from XGKICK, PATH2/3 DMA, the native packed fast path and the image-upload HLE, in order) as
+// [u32 path][u32 size][bytes] records into <file>, and the VRAM at arming time (after a GPU readback) into
+// <file>.vram -- the same shape as a PCSX2 dump extracted by the research/31 scripts, so ps2_gs_tests
+// 'console GS dump replays ...' (PS2X_CONSOLE_REPLAY_DIR) can render OUR stream through both rasterisers.
+void GS::dumpGifRecordUnlocked(uint32_t path, const uint8_t *data, uint32_t sizeBytes)
+{
+    static const char *s_env = std::getenv("PS2X_GIF_DUMP");
+    if (!s_env || !data || sizeBytes == 0u)
+        return;
+    static std::string s_file;
+    static double s_armSeconds = 0.0;
+    static uint64_t s_maxBytes = 64ull << 20;
+    static FILE *s_fp = nullptr;
+    static bool s_done = false;
+    static uint64_t s_written = 0;
+    static const auto s_epoch = std::chrono::steady_clock::now();
+    if (s_done)
+        return;
+    if (s_file.empty())
+    {
+        std::string spec = s_env;
+        // <file>:t<seconds>[:<maxMB>] -- the file may carry a drive letter, so split from the right.
+        size_t c2 = spec.find_last_of(':');
+        size_t c1 = (c2 == std::string::npos) ? std::string::npos : spec.find_last_of(':', c2 - 1);
+        if (c2 != std::string::npos && c2 + 1 < spec.size() && spec[c2 + 1] == 't')
+        {
+            s_armSeconds = std::atof(spec.c_str() + c2 + 2);
+            s_file = spec.substr(0, c2);
+        }
+        else if (c1 != std::string::npos && c1 + 1 < spec.size() && spec[c1 + 1] == 't')
+        {
+            s_armSeconds = std::atof(spec.c_str() + c1 + 2);
+            s_maxBytes = static_cast<uint64_t>(std::atof(spec.c_str() + c2 + 1) * (1 << 20));
+            s_file = spec.substr(0, c1);
+        }
+        else
+            s_file = spec;
+    }
+    const double elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - s_epoch).count();
+    if (elapsed < s_armSeconds)
+        return;
+    if (!s_fp)
+    {
+        std::vector<uint8_t> snap;
+        if (m_backend)
+        {
+            m_backend->Sync(GSSyncReason::DebugReadback);
+            m_backend->SnapshotVram(snap);
+        }
+        if (FILE *vf = std::fopen((s_file + ".vram").c_str(), "wb"))
+        {
+            std::fwrite(snap.data(), 1, snap.size(), vf);
+            std::fclose(vf);
+        }
+        s_fp = std::fopen(s_file.c_str(), "wb");
+        std::fprintf(stderr, "[gif-dump] armed at %.1f s -> %s (+.vram %zu bytes)\n", elapsed, s_file.c_str(), snap.size());
+        if (!s_fp)
+        {
+            s_done = true;
+            return;
+        }
+    }
+    const uint32_t hdr[2] = {path, sizeBytes};
+    std::fwrite(hdr, sizeof(hdr), 1, s_fp);
+    std::fwrite(data, 1, sizeBytes, s_fp);
+    s_written += 8u + sizeBytes;
+    if (s_written >= s_maxBytes)
+    {
+        std::fclose(s_fp);
+        s_fp = nullptr;
+        s_done = true;
+        std::fprintf(stderr, "[gif-dump] done: %llu bytes\n", (unsigned long long)s_written);
+    }
+}
+
 void GS::processGIFPacket(const uint8_t *data, uint32_t sizeBytes)
 {
     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
+    dumpGifRecordUnlocked(1u, data, sizeBytes);
     if (!data || sizeBytes < 16 || !m_backend)
         return;
 
@@ -874,6 +951,7 @@ bool GS::processNativePackedGIFPacket(const uint8_t *data, uint32_t sizeBytes)
     std::lock_guard<std::recursive_mutex> lock(m_stateMutex);
     if (!data || sizeBytes < 16u || !m_backend)
         return false;
+    dumpGifRecordUnlocked(3u, data, sizeBytes);
 
     if (!validatePackedGifPacket(data, sizeBytes))
         return false;
@@ -929,6 +1007,25 @@ void GS::uploadImageNativeUnlocked(uint64_t bitbltbuf,
 {
     if (!data || sizeBytes == 0 || !m_backend)
         return;
+
+    // The image-upload HLE writes registers directly: record it as the packet it stands for.
+    if (std::getenv("PS2X_GIF_DUMP"))
+    {
+        std::vector<uint8_t> pkt(16u * 5u + 16u + ((sizeBytes + 15u) & ~15u), 0u);
+        const uint64_t tag0 = 4ull | (1ull << 15) | (1ull << 60), ad = 0xEull;
+        const uint64_t regs[4][2] = {{bitbltbuf, 0x50ull}, {trxpos, 0x51ull}, {trxreg, 0x52ull}, {trxdir, 0x53ull}};
+        std::memcpy(pkt.data(), &tag0, 8);
+        std::memcpy(pkt.data() + 8, &ad, 8);
+        for (int i = 0; i < 4; ++i)
+        {
+            std::memcpy(pkt.data() + 16 * (i + 1), &regs[i][0], 8);
+            std::memcpy(pkt.data() + 16 * (i + 1) + 8, &regs[i][1], 8);
+        }
+        const uint64_t tag1 = (static_cast<uint64_t>((sizeBytes + 15u) / 16u) & 0x7FFFull) | (1ull << 15) | (2ull << 58);
+        std::memcpy(pkt.data() + 80, &tag1, 8);
+        std::memcpy(pkt.data() + 96, data, sizeBytes);
+        dumpGifRecordUnlocked(2u, pkt.data(), static_cast<uint32_t>(pkt.size()));
+    }
 
     writeRegisterUnlocked(GS_REG_BITBLTBUF, bitbltbuf);
     writeRegisterUnlocked(GS_REG_TRXPOS, trxpos);
