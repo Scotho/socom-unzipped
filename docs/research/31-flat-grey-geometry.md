@@ -467,3 +467,14 @@ hardware every partially visible object is judged "needs clipping" and takes the
 unclipped one for objects inside the guard band. Forcing the hardware verdict (`PS2X_CULL_PARTIAL_CLIP=1`, an
 experiment knob in the cull hook) recovered 6 polygons on the old runtime; with the VIF fix in place its effect is to
 be re-measured, and the proper fix is a flag-latency model in the recompiler's CTC2/CFC2 translation.
+
+**The flag-latency model, tried and reverted (same evening).** Two models were built test-first in the recompiler
+(`ps2_vu0_fmac_flags(ctx, res, dest, addr)` queuing the result by instruction address, `ps2_vu0_ctc2_status` clearing
+ahead of entries issued within the last three instructions): (a) CFC2 also sees only landed entries; (b) CFC2
+interlocks and sees everything. Both regenerate cleanly (unit tests, `build.sh test`, gate 3/3 on geometry) but both
+darken the spawn view and flatten the water (whole-frame score 31.8 / 36.8, water flat 0.408 / 0.514 against 25.3 /
+0.286 on the immediate model: `s6_flags_gate`, `s6_flags_gate2`), so some other macro-mode reader -- most likely in the
+exposure/brighten path -- depends on the immediate semantics, or on a CTC2 that does interlock. The immediate model is
+restored; the one polygon this residual costs at the spawn view stays in KNOWN with the two measurements. Whoever
+picks it up should trace `FUN_00294a30`'s CFC2 value on the console (PCSX2's COP2 flag pipeline is the reference to
+read) before modelling again.
