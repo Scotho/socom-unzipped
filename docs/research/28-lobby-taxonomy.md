@@ -177,3 +177,11 @@ mover's slowness (per-row move p50 1.5 vs 4.9 in Sprint 5) is **confounded**: a 
 host during the round, against KNOWN §4's quiet-host rule; back-pressure waits (357/384) match Sprint 5's round 1
 (443/3) and do not by themselves show a slower replay. Re-measure on a quiet host. [verified: the log lines and
 captures; inference: the confound]
+
+**Launches 7–9, `s6_ladder6`–`s6_ladder8`:** `s6_ladder6` failed at login on both sides on two more blind presses (a DOWN
+before CONNECT dropped → CROSS on GENDER; a step of the ENTER walk dropped → keyboard still up); `s6_ladder7` on the
+main menu's ONLINE CROSS (menu still up, ONLINE lit). Each was made verify-then-act (`[login] connect focus`, `[osk]
+enter`, `[login] online`, `[login] persona list`), and `Shell.press` now writes the pad file instead of posting keys.
+**`s6_ladder8` (harness `d6e417f`) reached gameplay on both instances with every stage verified on the first attempt
+and killed on 4 of 4 rounds** (KNOWN §1). Tally for the evening: 8 launches, 3 reached gameplay; of the 5 that did
+not, one was the starved runtime and four were blind presses that are now verified. [verified from the drive logs]
