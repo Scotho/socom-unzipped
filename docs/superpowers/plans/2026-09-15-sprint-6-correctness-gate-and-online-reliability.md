@@ -372,6 +372,27 @@ Decision table: ≥ 8/10 gameplay → done; 5–7 → read the classes, fix the 
 - [ ] `__ieee754_rem_pio2f`: port fdlibm's faithfully into the stub; test against `math.remainder` over 10^5 floats.
 - [ ] HLE leg three: for research/20's remaining ranked rows, the consumer reading and either a "constant by spec" tag or a fix with a moves-test.
 
+### Task 6b: Online map coverage sweep (owner request 2026-09-16, after the online tests are consistent)
+
+**Owner:** "testing online matches in each of the untested online maps (without a kill requirement initially)."
+Frostfire (kills), Medley and Vigilance (control rounds) are the only maps ever driven online.
+
+- [ ] **Step 1 (lock-free):** list every map on the CREATE GAME PLAY LIST from the map-scan captures (`A_mapscan_*`,
+  research/28's row scan) and the game's own list; cut a `map_<name>.png` reference row for each (the FROSTFIRE and
+  MEDLEY refs were cut from the highlighted row of a scan capture).
+- [ ] **Step 2 (windows, one launch per map):** `online_match_frostfire.sh`-style launch with `--map <name>
+  --control-round` (both sides alternate strafe legs, nobody fires; the RESULT is `CONTROL-ROUND` with the valves
+  unchanged) on the pinned harness. Bars per map: lobby reaches gameplay; both sides CONTROLLABLE on the control
+  precondition; the round runs to its clock or at least 120 s of live rows; spawns recorded (`spawns=`); no freeze
+  alarm > 10 s. A map that fails control or liveness gets one retry, then a KNOWN §2 row naming what failed.
+- [ ] **Step 3:** a table in a new research note (`31-online-map-coverage.md`): map, launch name, lobby outcome,
+  control A/B, freeze peaks, spawn coordinates, and whether the water/terrain looked right on the spawn capture
+  against a PCSX2 screenshot where one exists. Kills come later, map by map, by extending the route files.
+
+**Owner request 2026-09-16 on the water (Task 5a):** the Seeding Chaos stream still shows the grey clipping shards
+below the water (their screenshot of the spawn view); the gate's `CONSOLE spawn … water flat=… dark=… -> FAIL` line
+tracks it on every mission run. Task 5a is the next single-player item after the online tests are consistent.
+
 ### Task 7: Mixed match (windows, 4 launches)
 
 - [ ] `scripts/parity/mixed_match.sh`: ours hosting + PCSX2 joining (research/18 §1 recipe, `pcsx2_keys.py`), then the reverse. Bars: gameplay reached both ways; the movement bar met on ours; on the console client our player is seen moving (PCSX2 screenshot diff over a 10 s hold). Result to KNOWN §1 or §2 with the launch names.
