@@ -393,6 +393,24 @@ Frostfire (kills), Medley and Vigilance (control rounds) are the only maps ever 
 below the water (their screenshot of the spawn view); the gate's `CONSOLE spawn … water flat=… dark=… -> FAIL` line
 tracks it on every mission run. Task 5a is the next single-player item after the online tests are consistent.
 
+### Task 6c: Audio output (owner 2026-09-16: "i'm getting no sound" -- a known gap, not a device fault)
+
+The host audio device initialises (raylib/miniaudio, WASAPI) and the 989snd IOP service (`ps2xIOP/src/modules/snd989.cpp`,
+research/06) answers every RPC, loads the banks and models voices and streams -- but `PS2AudioBackend::onSoundCommand`
+"only understands the libsd SID" (STATUS 2026-09-06: "no audible output yet"). Nothing SOCOM plays -- UI clicks,
+weapon fire, music and voice streams -- reaches a speaker. This is the largest remaining "playable" gap after online.
+
+- [ ] **Step 1 (lock-free research, `research/32-audio-path.md`):** what 989snd Play / stream-play commands carry
+  (bank, sound index, pitch, volume, pan; VAG stream LBNs), where the VAG data lives (the bank blocks already
+  parsed: "block 3472B vag 60928B"), and the ADPCM decode (PS2 VAG: 16-byte blocks, 28 samples, filter/shift nibbles --
+  a 40-line decoder, well documented).
+- [ ] **Step 2 (test-first, no run):** a VAG decoder in `ps2xRuntime` with a unit test against a known block
+  (encode a sine with the reference tables, decode, compare) and a bank-index lookup test on a real bank from the disc.
+- [ ] **Step 3:** `PS2AudioBackend` mixes 989snd voices through raylib audio streams (one stream per voice slot, pitch
+  via resampling, volume/pan), and streamed VAG for music/voice via the existing stream-safe CD reads; a gate-side
+  check that a title-screen run writes a non-silent capture (`PS2X_AUDIO_DUMP=<wav>`, RMS above a floor).
+- [ ] **Step 4:** owner listening test in free play; then the per-stage sounds of the mission gate as a regression fixture.
+
 ### Task 7: Mixed match (windows, 4 launches)
 
 - [ ] `scripts/parity/mixed_match.sh`: ours hosting + PCSX2 joining (research/18 §1 recipe, `pcsx2_keys.py`), then the reverse. Bars: gameplay reached both ways; the movement bar met on ours; on the console client our player is seen moving (PCSX2 screenshot diff over a 10 s hold). Result to KNOWN §1 or §2 with the launch names.
