@@ -8,6 +8,37 @@
 - **Sprint 5 (2026-09-13): the acceptance test PASSED.** Ladder launch 2 on Frostfire, rounds 1–3 KILL on both scorers (KillWatch actor fields + `verdict_replay` valves), screens "socomc fragged socome with M4A1". Root causes fixed on the way: Frostfire's lost control (VU0 `vf0.w = 0` on `StartThread` contexts) and the single-player gameplay stall (an unbounded GS command backlog). Dated entry below.
 - Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Rendering and VU1 defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. **Sprint 5 moved four runtime defaults:** GS back-pressure on (`PS2X_GS_MAX_PENDING_FRAMES=3`, was unbounded), the VU0 `vf0` constant (`vf0.w = 1`) on `StartThread` contexts, `sceGsSetDefDBuff`'s clear packet seeded in context 1, and the idle guest sleeping to the cycle deadline (`92d30f0`). Known open: the camera's skeleton-root decay (`docs/research/17` §4.3); single-player teleports; the online freeze root cause under host load; `movie_blocks.py` in no automation — all parked to Sprint 6 (`docs/ROADMAP.md` §6).
 
+## 2026-09-15 (local, night) — first online launches on the block-pointer exe: the kill repeats (4 of 4 rounds), the aim correction fires live, and every blind press in the lobby is made to verify itself
+
+Owner: "proceed autonomously until asked to stop or the goal is reached". Ten two-instance ladder launches on the
+block-pointer exe (`1cfef9af…`), the Horizon stack restarted by this session (`server/start-servers.ps1`),
+`PS2X_SOCOM2_SERVER=192.168.2.10` confirmed as this host.
+
+- **The result:** `s6_ladder8` (harness `d6e417f`, quiet host) — **KILL on all four rounds** on KillWatch (health
+  `+0x1044` → 0.0 on B's intact actor at T+75.2/206.6/324.4/440.5 s), route arrived every round, **round 2 used the
+  burst-to-burst lead correction** (`lead=+1.5 steps=1 hits=3`). `verdict_replay --per-round`: rounds 1–2 KILL, round 3
+  `NO-KILL unattributed` (the fatal burst from 68.2 units against the pre-registered ≤ 60 bar — the bar stands),
+  round 4 `NO-DATA` (the run stopped at the kill; an 8 s tail now keeps the rows, `967bc03`). Against Sprint 5's single
+  launch (3 of 4, round 4 never corrected). The plan's 2-of-2 launch bar is not met yet: `s6_ladder9` never started
+  its match (below).
+- **What it took — ten launches, seven of them lost to one dropped press each** (research/28 §6, KNOWN §4 "every
+  blind press"): a starved runtime on the first double launch of the new exe; the OSK's first character (`ocom`); a
+  DOWN before CONNECT; an ENTER-walk step; the main menu's ONLINE CROSS; the map walk pressing through a mid-scroll
+  frame; a READY search that pressed UP into the started match (B spawned **zoomed 3.0x** — research/30: zoom is D-pad
+  UP/DOWN edges in PlayerUpd, view mode at `actor+0x200`); a dropped SWITCH TEAMS leaving both players on SEALs. The
+  drop rate is ~1 in 20 at 59 fps on posted keys and the pad file alike. Fixes, each test-first with real-capture
+  fixtures (`78a81d1` … `d6e417f`, 1044 Python tests): the OSK typed length read back and retyped; the keyboard mode
+  re-read after toggling; CONNECT focus, ENTER, ONLINE, the persona presses and every CREATE GAME / JOIN stage verified
+  before and after; the map walk scores all six visible rows and re-reads instead of pressing through; the READY
+  search stops when the lobby is gone; `Shell.press` writes the pad file; the next-round wait is 120 s (a clock-ended
+  round restarted ~130 rows after 00:00 and the 45 s wait had given up); `lobby_report.py` tabulates a launch's
+  outcome, class, re-sends and unverified presses.
+- **Runtime observations, none settled:** the mover's per-row movement in `s6_ladder5` read a third of Sprint 5's,
+  but a decomp-reading agent was loading the host during that round (confound; `s6_ladder8` on a quiet host arrived
+  every round); back-pressure waits (357/384 per rung 0) match Sprint 5's round 1 (443/3).
+- **Open:** SWITCH TEAMS verification and the READY label's count suffix (agent in flight); then the second launch for
+  the 2-of-2 bar; Task 2's ten-launch lobby rate on the finished harness; Task 3's sampler fields; Task 5a the water.
+
 ## 2026-09-15 (local, evening) — the owner's two-hour window: the turn teleport fixed at the block pointer, the depth fix merged, and a gate that can see
 
 The owner gave a two-hour host window ("proceed for the next 2 hours … full authority") and lock-free agents filled the
