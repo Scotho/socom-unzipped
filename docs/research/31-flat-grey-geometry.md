@@ -211,3 +211,159 @@ Also noted on the same day's `s6_gamepad5` gate: its spawn capture (`s28_none.pn
 (the location cinematic caught after the HUD match) and the console comparison scored it `flat=0.071 dark=0.212`
 -- the first 'PASS'-side flat figure ever printed, and meaningless: every HUD spawn frame before it reads
 0.503-0.509. The comparison must refuse a frame that is not a HUD frame (gate hardening, done the same day).
+
+## 8. The trace window was the cinematic; the console's water pass, byte for byte (2026-09-16) [verified]
+
+- **Section 6's trace covered no gameplay.** `s6_water_trace` armed at t240; its `[gs-cmd]` window is frames 13198-13408
+  and the drive's wait captures at that time (`mission/w27_036..038.png`) show the mission intro cinematic (the car on the
+  road, `06:47 HOURS`, letterboxed). The spawn capture s28 lands between 248 s (`s6_blockptr`) and 361 s (`s6_water_trace`)
+  across runs, so a host-time arm cannot be aimed at it. The A/B "layouts" in that window (the texture set packed one CLUT
+  lower every few frames, binds moving with it) are the cinematic's two camera set-ups, self-consistent, and not a defect.
+- **The console at spawn (`tools/pcsx2/snaps/..._20260916033728_(2).gs`, slot 8, 8 frames)** uploads the same set every
+  frame -- CT32 16x16 palettes at 0x384e, 0x3852 (CT16 on the first pass, CT32 on the second), 0x3854..0x3894, then T8
+  textures 0x3898 64x64, **0x38a8 32x32**, 0x38ac 64x64, 0x38bc 64x64 -- and draws the water with `tbp0=038a8 psm=13
+  cbp=03852 cpsm=02 csm=0 tfx=0 tcc=1`, 378 kicks per frame, vertex colour **(0x21,0x21,0x21) with alpha 0x00..0x33**,
+  `ALPHA_1=0x44` (`(Cs-Cd)*As+Cd`), `TEST_1=0x5000c`, `TEXA` ta0=0 ta1=0x80 aem=0, `TEX1_1=0x60` (bilinear, no mips),
+  `CLAMP_1=0`, `FOGCOL=0x484a4a`. Our cinematic-window submits carry the identical `rgba=2121213x`, cbp/cpsm and test
+  word -- the grey vertex colour is the game's, not ours.
+- **The console's water texture decodes to blue-grey noise** (`assets/31-console-water-texture-ct16.png`: the 1 KiB T8
+  payload through the 512 B CT16 palette, 156 distinct indices, palette colours (74..115, 82..123, 98..123), every alpha
+  bit set). With TEXA ta1=0x80 and tcc=1 that is a 40 % blend of `texel * 0x21 * 2 / 255 ≈ 26` over the bed -- the subtle
+  dark tint the console shows. So form 1's flat 29-42 grey needs one of: **bright texels** (section 2's table), or **no
+  blend at all** (an opaque draw of the modulated texel, 26-33, e.g. PABE set with As < 0x80, or a wrong ALPHA/FBA word
+  reaching the GL state), or **fog at full weight** (FOGCOL 72-74 grey, blended at 40 %: ~40).
+- **The GL-thread ordering is right at the code level:** `executeCommands` calls `flushBatch()` before every transfer,
+  upload, WriteVram, clear and present (gs_gl_backend.cpp), so a batched water draw cannot resolve its texture after the
+  second-pass CT32 palette lands on 0x3852. The refresh-from-render-target path never fired either: no
+  `download gpu->shadow` line in the whole trace (the 63 `gpu-dirty=1` texture lines at frame 10908 are the boot's
+  frame-0 full-VRAM clear note, never acted on).
+- **Instrumentation added for the gameplay-window run (`s6_water_state`)**: `[gs-cmd] submit` now prints
+  `alpha= pabe= fba= fge= fog= texa=ta0/ta1/aem tex1= tod=HH:MM:SS.mmm`; `PS2X_GS_TRACE_CMDS_TBP0=<blocks>` (comma list)
+  and `PS2X_GS_TRACE_CMDS_PER_FRAME=<n>` keep a trace armed for a whole mission; `PS2X_GS_DUMP_TEX_TBP0/_EVERY/_MAX/_FROM`
+  sample the decoded water texture across the run (file names carry the frame). The run arms at t250 with
+  blocks 0x38a4,0x38a8,0x38a0,0x38ac.
+
+## 9. The gameplay-window trace, and the semantic we did not implement: the GS on-chip CLUT (2026-09-16) [verified]
+
+`s6_water_state` (the section 8 instrumentation, armed at t250; the spawn capture at 318.6 s = frames 14172-14176,
+`tod=03:57:07`, shards present: `flat=0.516`):
+
+- **Every water draw in the gameplay window matches the console's state word for word**: `tbp0=038a8 psm=13 cbp=03852
+  cpsm=02`, `rgba=212121`, alpha 0x00..0x33, `alpha=44 pabe=0 fba=0 fge=1 fog=ff` (unfogged -- the fogged water submits
+  of section 8's table are the cinematic's), `texa=00/80/0`, `tex1=60`, `test=5000c`, 63 submits per frame, 40 fps.
+- **The decoded water texture is right at every sampled decode** (`PS2X_GS_DUMP_TEX_TBP0=0x38a8`, frames 14160/14183:
+  rgb (72..112, 80..120, 96..120), alpha 128 everywhere -- the console palette's range, section 8).
+- **The in-frame order is right**: CT32 upload to 0x3852, CT16 upload to 0x3852, the 1 KiB texture upload to 0x38a8,
+  the 63 water resolves, then the second CT32 upload to 0x3852 -- the slot holds the water's CT16 palette during every
+  water resolve, and `flushBatch()` precedes every upload on the GL thread.
+
+So the water pass itself is decoded and drawn correctly, and the flat cells are **other draws sharing the palette
+slots**. The console dump shows how the game uses them: the water's TEX0 is written **once per pass with CLD=1** and
+378 kicks follow; a second texture (`tbp0=03908`, CT32) writes TEX0 with `cbp=03852 cpsm=00 cld=1` sixteen times over
+the eight frames -- the same block, the other format. On the GS, **CLD=1 copies the palette from VRAM into the on-chip
+CLUT buffer at the TEX0 write**, and every later draw samples that copy; CLD=0 keeps it, CLD=2/3 record CBP0/CBP1, CLD=4/5
+reload only when CBP moved off them. Our frontend parsed `cld` and both backends ignored it (the CPU rasteriser's
+`// TODO: clut cache`): they decoded through the slot's bytes **at decode time**. Any texture whose slot was re-purposed
+between its TEX0 write and its decode -- the 0x3852 CT16/CT32 pair, and the second-pass CT32 write that overlaps the
+0x3854 palette by two blocks -- read the other texture's bytes as its palette: flat cells (a run of identical entries),
+black holes (entry 0), and the frame-to-frame flicker of a slot rewritten every frame. This is the mechanism of
+section 3's 'stale-serve holes' with the palette, not the texels, as the stale part.
+
+**Fix (test-first, `ps2_gs_tests` 'TEX0 CLD=1 loads the CLUT at the write ...' and 'TEX0 CLD=2/4 track CBP0 ...')**:
+the frontend snapshots the 2 KiB from block `cbp` at every TEX0/TEX2 write that asks for a load (`GSClutLoad`, an
+unchanged palette re-uses its serial), tags the context with the serial (`GSContext::clutId`), and both backends decode
+indexed textures from the snapshot (the GL texture-cache key carries the serial; the CLUT page's generation no longer
+evicts such an entry). CSM2 palettes keep the live-VRAM path. Measured on the gate after the fix: see STATUS.
+
+## 10. Three bisects: the shards are not the water pass (2026-09-16) [verified]
+
+| run | change | spawn `flat` | reading |
+|---|---|---|---|
+| `s6_clut` | GS on-chip CLUT modelled (section 9) | 0.504 | unchanged |
+| `s6_vu1interp` | `PS2X_VU1_NATIVE=0` (VU1 interpreter) | 0.507 | unchanged: not the vertex data (research/15's residual lists cleared for this) |
+| `s6_skipwater` | `PS2X_GS_SKIP_TBP0=0x38a8,0x38a4` (every draw binding the water texture dropped) | 0.488 | **the flat polygons stay** -- they are drawn under the water |
+
+The same polygon outlines appear in every run, so they are geometry with a per-draw defect, not a flicker of the
+water. The console's water vertices (dump, 756 kicks) are Gouraud (`GIFtag PRIM 0x07b`: tri-strip, IIP=1, TME, FGE, ABE,
+STQ) with per-vertex alpha 0x00..0x33 and s/q, t/q inside 0..2; ours print the same PRIM bits. What remains is the
+**bed**: whatever textured draw fills the stream floor, decoded flat. Next: `PS2X_GS_TRACE_CMDS_BOX=x0,y0,x1,y1` (added
+with `iip=` and the `[gs-vtx]` per-vertex line) lists every submit whose bounding box touches a shard pixel at the spawn
+frame -- its `tbp0/cbp/cpsm`, texel factor (`tme`), and vertex colours name the culprit draw and its texture, and
+`PS2X_GS_DUMP_TEX_TBP0` on that block shows what it decodes to.
+
+## 11. The oracle: the console's draw list through our CPU rasteriser has no slabs (2026-09-16) [verified]
+
+The bed pass under the water is a second pass over the water's own 63 triangles: `tbp0=03898` (64x64 T8) through the
+palette at 0x384e (its SECOND upload of the frame: alpha 0x7b, bright), vertex colour (13,9,6) with Gouraud alpha
+0x64/0x00, blend 0x44, unfogged -- identical on the console (dump packet 1193: [TEX0 03898][189 kicks][TEX0 038a8][189
+kicks]) and in our trace (`s6_box`), and our decode of that texture is byte-for-byte the console's
+(`PS2X_GS_DUMP_TEX_TBP0=0x3898` on `s6_bed`: mean 196/202/195, alpha 123; the dump's payload through its palette: the same).
+
+So the draw list is right and the decode is right. `ps2_gs_tests` 'console GS dump replays through the CPU rasteriser'
+(`PS2X_CONSOLE_REPLAY_DIR`: the dump's initial VRAM -- found in the state blob by its swizzled palettes at file offset
+0x12c1df -- and its 5386 packets of frames 0-1, fed to `GS::processGIFPacket`) renders the console's own frame through
+our frontend + CPU rasteriser: **a smooth textured stream bed, no slabs** (`assets/31-console-dump-cpu-replay.png`;
+`water flat=0.136 dark=0.128` -> PASS against the bar; the PCSX2 reference reads 0.188/0.084, our GL frame 0.503/0.266).
+
+**Therefore the shards are a GL-backend rasterisation defect of this pass** -- frontend, state, CLUT, texture decode and
+vertex data are all cleared. Candidates inside `gs_gl_backend.cpp` for a textured Gouraud-alpha tri-strip with STQ
+coordinates: the per-fragment s/q,t/q against the bound texture's size, the texture wrap for coordinates outside 0..1
+(the bed's s/q spans -0.54..0.89, t/q -0.78..1.12 -- CLAMP=0 means repeat), the alpha source in the blend, and the
+texture cache handing a 64x64 entry to a draw expecting another size. Next: replay the same packets through the GL
+backend (a headless raylib window in the test or vu1_replay) and diff against the CPU frame per pass.
+
+## 12. The cause: the GL backend dropped the game's full-frame brighten (`Cd*C + Cd`) (2026-09-16) [verified, fixed]
+
+The replay test now renders the dump through BOTH backends (`PS2X_CONSOLE_REPLAY_GL=1`: a hidden raylib window, this
+thread as the render thread, the readback inline; the GL shadow VRAM is seeded from the dump's initial VRAM at
+`Initialize`), and `PS2X_CONSOLE_REPLAY_STOP=<n>` truncates the stream, so a binary search over 5386 packets finds where
+the two frames part (16 s per step, no game launch):
+
+- packet 1194 (the water + bed passes): +0.4 mean difference, the bed pass itself renders alike in both;
+- **packet 1389: the whole frame.** The game's post-process: a sprite copies the frame at half size into the depth-buffer
+  pages (FRAME 0x118, ZMSK), then a full-screen sprite draws it back with `ALPHA_1 = 0x5d00000069` -- A=Cd, B=0, C=FIX,
+  D=Cd, FIX=93: **out = Cd x (1 + 93/128) = 1.73 x Cd**, a brighten of every pixel. The CPU rasteriser applies it (lit
+  pixels x1.717 measured); the GL blend table mapped `Cd*C + Cd` to `src=GL_ZERO, dst=GL_ONE` -- identity -- because GL has
+  no destination factor above one. So every gameplay frame we drew was 1.73x too dark, and the water's bed pass (a dark
+  polygon pass the brighten was supposed to lift) stayed as dark slabs: form 1. (Form 2, the flat hill patch, is
+  the same missing lift over a dark terrain pass -- to be confirmed on the gate's captures.)
+
+**Fix** (`gs_gl_backend.cpp`): for `Cd*C + Cd` the SOURCE term carries `Cd*C`: the fragment shader emits C
+(`uSrcMode` 1 = the FIX constant, 2 = the fragment's As broadcast) and the blend is `src=GL_DST_COLOR, dst=GL_ONE`;
+C = Ad keeps the identity (it would need the destination alpha in the shader). Offline result on the console dump:
+GL water `flat 0.616 -> 0.130` (CPU 0.136, PCSX2 0.188), frame mean 20.9 -> 65.0 (CPU 57.9) --
+`assets/31-console-dump-gl-replay-before.png` vs `assets/31-console-dump-gl-replay-fixed.png`. The 7.6 mean residual
+between GL and CPU after the fix is the next comparison to make with the same harness.
+
+## 13. Why the game never asked for the brighten: the stubbed exposure readback (2026-09-16) [verified, fixed]
+
+The blend fix alone did not move the live gate (`s6_blend`: 3/3, water flat 0.507): the in-game trace shows every
+post-process sprite with `alpha=69` -- **FIX = 0** -- where the console dump writes `0x5d00000069` (FIX 93). The factor is
+computed by the guest. The console dump has, right before the post-process, two local->host transfers of a 1x4 column
+of frame pixels at (317, 430) with a FINISH after each (packets 1387/1388); our traces have none: `FUN_003b24c0`, the
+auto-exposure thread's pixel readback (a VIF1 packet, FINISH wait, BUSDIR and a reverse-FIFO DMA of one quadword into
+the caller's buffer, whose first R/G/B bytes feed the exposure), is **bound to `socom2_LumReadPixel`, which answered a
+constant 0x80 grey pixel** since the reverse-FIFO path was missing (research/20 section 4: 'constant by omission, the
+effect is visual only'). A mid-grey scene needs no brighten, so FIX stayed 0 and every gameplay frame drew 1.73x too
+dark; the water's dark bed pass, meant to be lifted by that pass, stayed as the slabs.
+
+**Fix**: `runtime/socom2_lum_readback.h` parses the packet's A+D BITBLTBUF/TRXPOS/TRXREG/TRXDIR and reads the pixels
+out of GS memory through `GS::ReadVram` (the GL backend downloads GPU-drawn pages on read), writing the quadword
+where the DMA would have; test-first in `ps2_gs_tests` ('SOCOM II exposure readback ...'). Measured on the gate: see
+STATUS (`s6_lum`).
+
+## 14. Measured on the gate, and what is left (2026-09-16) [verified]
+
+- `s6_lum3` (libgraph packets + readback, one blocking GPU sync per pixel): the readback returns pixels, every frame is
+  lit, but the HUD reference no longer matched (re-captured; threshold 30 -> 40) and the guest's pad polling starved.
+- `s6_lum5/6` (one blocking sync per 100 ms): still starved -- each wait holds the single EE host thread for the GL
+  backlog (~3 frames); eighteen pop-up presses went unanswered and the holds drew static frames.
+- `s6_lum7` (**asynchronous** readback: `GS::requestVramReadback` posts the download in stream order, `PeekVram` reads
+  the copy the last one left, one request per 100 ms): **mission PASS, and the gate's water bar passes for the first
+  time** -- `flat=0.197 dark=0.080` against the console reference's 0.188 / 0.084 (every earlier run: 0.50 / 0.26).
+
+**Still visible, not measured by the bar:** the bed pass's polygons remain as flat LIGHT slabs in the stream
+(`logs/parity/gate/s6_lum7/mission/s28_none.png`). Every vertex of that pass carries alpha 0x64 in our trace (585 of 585,
+`s6_box`) where the console fades its shore vertices to 0 (the water pass: 46 of 189 vertices at 0; ours never). The
+same in both VU1 paths, so it is EE-side vertex data or an op both paths compute alike -- the next lead. The pop-up
+detector (`sp_death_probe.screen_state`) also false-positives on the lit look (prompt distance 0.000 with no pop-up).

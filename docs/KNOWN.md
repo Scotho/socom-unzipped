@@ -171,6 +171,26 @@ Maintained by whoever is running the loop. Last audited: 2026-09-15, after the p
   counts the contiguous black run behind it, from 5 fps wait captures (`--wait-period 0.2`). `s6_fade` and
   `s6_gamepad3` re-score PASS at exactly the 5-frame floor on their old 1 Hz captures. The boot's black screens sit
   behind the main menu and cannot join the run, which is what the burst step was enforcing.
+- **Every gameplay frame drew 1.73x too dark, and the water shards were its symptom** (2026-09-16, research/31 §11-13): the
+  game's post-process copies the frame at half size into the depth-buffer pages and draws it back with `ALPHA 0x5d00000069`
+  -- A=Cd, B=0, C=FIX=93, D=Cd, i.e. Cd x 1.73 -- a brighten the GL backend mapped to an identity (no destination factor above
+  one in GL; the source term now carries Cd x C: the fragment shader emits C, blend `GL_DST_COLOR, GL_ONE`). The factor itself
+  comes from the guest's auto-exposure thread, which reads a 1x4 column of frame pixels through a libgraph store-image
+  packet it inspects (PSM at byte 0x23, TRXREG at 0x40/0x44), patches (TRXPOS at 0x30) and DMAs through the VIF1 reverse
+  FIFO: our `sceGsSetDefStoreImage` HLE wrote a private 12-byte struct there (the guest computed a zero-sized transfer)
+  and `socom2_LumReadPixel` answered a constant grey pixel (the exposure saw a mid-grey scene and asked for FIX 0). Both
+  HLEs now write libgraph's packet layouts (`writeGsLoadImagePacket` / `writeGsStoreImagePacket`, parsed back by
+  `readGsImage`) and the readback reads the pixels out of GS memory (`socom2_lum_readback.h`). Found with the offline
+  oracle: the console's own GS dump replayed through both backends (`ps2_gs_tests` 'console GS dump replays ...',
+  `PS2X_CONSOLE_REPLAY_DIR` / `_GL` / `_STOP`), bisected to the packet.
+- **The GS on-chip CLUT was not modelled** (2026-09-16, research/31 §9): a TEX0/TEX2 write with CLD != 0 copies the palette
+  into the GS's CLUT buffer at that moment and draws sample the copy; our frontend parsed CLD and both backends read the
+  palette slot's bytes at decode time. SOCOM II rewrites block 0x3852 in CT16 (the water) and CT32 (another texture) form
+  every frame and the CT32 write overlaps the 0x3854 palette, so any texture whose slot was re-purposed between its TEX0
+  write and its decode read the other texture's bytes as its palette. Fixed test-first (`GSClutLoad`: the frontend
+  snapshots 2 KiB from the palette block at every loading TEX0/TEX2 write, contexts carry the snapshot id, both backends
+  decode through it; CSM2 palettes keep the live path). **It did not move the water shards** (`s6_clut` flat 0.504), and
+  neither did the VU1 interpreter (`s6_vu1interp` 0.507): the shards are on the GS side, not in the vertex data.
 - **Every blind press in the online harness now costs a launch** (2026-09-15 evening, seven ladder launches on the block-pointer exe, 2 reached gameplay): each launch failed on a different press that had no read-back -- the OSK's first character (`ocom`), a DOWN before CONNECT (CROSS landed on GENDER), an ENTER-walk step, the main menu's ONLINE CROSS (`s6_ladder7`: menu still up, ONLINE lit), the map-list walk pressing through a mid-scroll frame, and a READY search that pressed UP into the started match (B spawned zoomed 3.0x; research/30). The drop rate is about one press in twenty at 59 fps, on the pad-file path as well as posted keys. Sprint 5's launches on the frozen exe hit the same class at a lower rate (R47's two re-sends). Rule: a press without a verification of the screen it should produce is a bug, not a step; the lobby now verifies every stage (`[lobby]`, `[login]`, `[osk]` lines) and `lobby_report.py` counts re-sends per launch.
 - **The OSK password typing drops characters at a low guest frame rate, and the keyboard now opens in accent mode on both instances** (2026-09-15 evening, `s6_ladder2` and the Sprint 5 harness bisect `s6_ladder_oldharness`, both instances, 0/3 launches reached gameplay): B's password reached the server as `ocom` (first character lost), A connected with an empty password, the old harness typed `xmfû`; the guest ran 32 fps in the OSK window against 60 in Sprint 5 and the pad walk is dead-reckoned at 0.09 s holds with no read-back. Fix in flight: read the typed length back from the OSK text row and retype slower (research/28 §6). Until it lands, every online launch on the block-pointer exe fails at login.
 - **A two-instance launch can start with a starved runtime** (`s6_ladder1`, the first double launch of the freshly built exe): 34 present windows in 490 s, the guest parked at VSync, presses received but never processed, `LOBBY-FAIL pre-login` after 9 blind boot presses; the next launch on the same harness and exe booted normally. Cause not identified (research/28 §6). Read a boot failure's `[gs-gl stats]` cadence before blaming the harness.

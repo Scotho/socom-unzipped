@@ -10,6 +10,45 @@
 - Native VU1 unchanged since Sprint 3: 162/166 lists native, bit-exact; the residual 4 (`52 66 08 40 42`) are a documented ruling (`docs/research/15`). Rendering and VU1 defaults unmoved: `PS2X_GS_SCALE=1`, `PS2X_GS_SCALE_FILTER=point`, `PS2X_PRESENT_FILTER=linear`, `PS2X_VU1_HOST_DRAW` off, `PS2X_VU1_NATIVE` on, `PS2X_SOCOM2_NET_STATS` on. **Sprint 5 moved four runtime defaults:** GS back-pressure on (`PS2X_GS_MAX_PENDING_FRAMES=3`, was unbounded), the VU0 `vf0` constant (`vf0.w = 1`) on `StartThread` contexts, `sceGsSetDefDBuff`'s clear packet seeded in context 1, and the idle guest sleeping to the cycle deadline (`92d30f0`). Known open: the camera's skeleton-root decay (`docs/research/17` §4.3); single-player teleports; the online freeze root cause under host load; `movie_blocks.py` in no automation — all parked to Sprint 6 (`docs/ROADMAP.md` §6).
 
 
+
+## 2026-09-16 (later) — the water shards run to ground: a GL blend the game uses to brighten every frame, and the exposure readback that asks for it
+
+Owner: "proceed autonomously using your best judgement", water/ground first. Ten mission gates and one offline oracle.
+
+- **The console's own draw list, replayed through our GS.** A PCSX2 GS dump at the slot-8 spawn (`tools/pcsx2/snaps/..._(2).gs`)
+  gave the console's uploads, palettes, TEX0 words, per-vertex data and the packet order; `ps2_gs_tests` 'console GS dump
+  replays through the CPU rasteriser' feeds its initial VRAM and 5386 packets to `GS::processGIFPacket` and renders the frame
+  through the CPU rasteriser and, with `PS2X_CONSOLE_REPLAY_GL=1`, the OpenGL backend on a hidden window; `_STOP=<n>`
+  truncates the stream, so a 16 s binary search finds where the two backends part (research/31 §11-12).
+- **Cleared on the way** (each by measurement, research/31 §8-11): the trace window (§6 was the intro cinematic, not gameplay);
+  the water's texture bytes, palette and draw state (byte-for-byte the console's); the CLUT semantic (§9: the GS on-chip
+  CLUT is now modelled, `GSClutLoad`, test-first -- right, but not the cause); the VU1 vertex path (interpreter: same shards);
+  the water pass itself (skipping it leaves the slabs: they are the bed pass drawn under it).
+- **Cause 1, GL:** the game's post-process draws the half-size frame back over itself with `ALPHA 0x5d00000069` = Cd x (1 +
+  93/128): a 1.73x brighten of every pixel. The GL blend table mapped `Cd*C + Cd` to an identity (no destination factor
+  above one in GL). Fixed: the fragment shader emits C and the blend is `GL_DST_COLOR, GL_ONE` (§12). Offline: GL water
+  flat 0.616 -> 0.130 on the console's packets.
+- **Cause 2, guest-side, two HLEs:** the brighten factor comes from the auto-exposure thread's 1x4 frame-pixel readback,
+  which builds a libgraph store-image packet, inspects it (PSM at byte 0x23, TRXREG at 0x40/0x44), patches TRXPOS at 0x30
+  and DMAs it through the VIF1 reverse FIFO. `sceGsSetDefStoreImage` wrote a private 12-byte struct there (the guest read
+  zero sizes and never issued the transfer) and `socom2_LumReadPixel` answered a constant grey pixel (the exposure saw a
+  mid-grey scene: FIX 0). Fixed test-first: both image HLEs write libgraph's packet layouts (`writeGsLoadImagePacket`,
+  `writeGsStoreImagePacket`, parsed by `readGsImage`) and the readback reads the pixels from GS memory
+  (`socom2_lum_readback.h`, asynchronous: one `requestVramReadback` per 100 ms and `PeekVram` for the pixels -- a
+  blocking GPU sync per readback, even one per 100 ms, held the single EE host thread and starved the pad, `s6_lum5/6`);
+  `s6_lum7`/`s6_lum8`: mission PASS with **the gate's water bar passing for the first time** (`flat 0.20 dark 0.08` against
+  the console's 0.19 / 0.08; every earlier run 0.50 / 0.26) and **every gameplay frame lit like the console**
+  (trees, terrain, the HUD band -- the HUD reference `ref_hud_ours.png` was re-captured from the new look, and the
+  untilref threshold of the three gameplay scripts went 30 -> 40: a lit HUD frame of another run reads 32.6 against the
+  new reference, cinematic frames 55+; the dark-look dbuff fixtures keep their day's reference beside them).
+- **Still open -- the slabs themselves:** they persist, now as light polygons. The bed pass's per-vertex alpha is 0x64 on every
+  vertex in ours (585 of 585) where the console fades 46 of 189 water vertices and the bed's shore vertices to 0 -- a
+  guest-side vertex-alpha difference (the same in both VU1 paths, so EE-side data or a VU1 op both paths get alike). Next.
+- Also today: the transition stage scored by content (5 fps waits), the pristine memory card, the probe's rest-window
+  lowest-sustained-plateau rule (a gradual root-node decay had read 10.4, then an eight-row stall on the way down 10.7), `console_spawn_line` refusing non-HUD frames, the command trace's
+  texture / screen-box filters, per-vertex line, `alpha= pabe= fba= fge= fog= texa= tex1= tod=` fields, `PS2X_GS_SKIP_TBP0`,
+  `PS2X_GS_DUMP_TEX_*` sampling, and the GL shadow seeded from the initial VRAM at Initialize.
+
 ## 2026-09-16 — the owner plays; a gamepad, no sound, a grey hill; three gates lost to a saved controller configuration; the transition scored by content
 
 Owner: "do something fun for me" → a fresh instance on keyboard, then "do you see my controller?" → gamepad support in the
