@@ -23,8 +23,12 @@ from . import verdict_core as vc
 LADDER_ROUNDS_DEFAULT = 4
 SWAP_AFTER_RUNG1_ROUNDS = 3
 DECIDE_AFTER_RUNG2_ROUNDS = 2
-NEXT_ROUND_TIMEOUT_S = 45.0      # from a round's end to the next round's first live rows: 8c took ~11 s (00:00 ->
-                                 # step 5.4 s -> clock restart and reset 5.5 s later)
+NEXT_ROUND_TIMEOUT_S = 120.0     # from a round's end to the next round's first live rows: 8c took ~11 s (00:00 ->
+                                 # step 5.4 s -> clock restart and reset 5.5 s later), but s6_ladder5 (2026-09-15, a
+                                 # round ended on its CLOCK, two instances on a loaded host) restarted 05:59 only ~130
+                                 # sampler rows after 00:00 and the 45 s wait gave up first -- the round was fine, the
+                                 # wait was short. A round is 6 min; two minutes of waiting costs nothing it would not
+                                 # cost anyway
 NEXT_ROUND_POLL_S = 0.25
 NEXT_ROUND_CLOCK_RUN_S = 1.0     # the guest clock must advance past its frozen value for this long AFTER the restart
 NEXT_ROUND_SPAWN_UNITS = 20.0    # ... and each side's newest actor row must be this close (ground) to its spawn
