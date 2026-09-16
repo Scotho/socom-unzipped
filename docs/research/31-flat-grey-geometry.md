@@ -367,3 +367,27 @@ STATUS (`s6_lum`).
 `s6_box`) where the console fades its shore vertices to 0 (the water pass: 46 of 189 vertices at 0; ours never). The
 same in both VU1 paths, so it is EE-side vertex data or an op both paths compute alike -- the next lead. The pop-up
 detector (`sp_death_probe.screen_state`) also false-positives on the lit look (prompt distance 0.000 with no pop-up).
+
+## 15. The slabs are holes in the under-water terrain: fans our VU1 truncates (2026-09-16) [verified]
+
+With the brighten and the readback in place the slabs stayed, now light. Two more instruments settled where they
+come from:
+
+- **`PS2X_GIF_DUMP=<file>:t<seconds>[:<MB>]`** records OUR GIF stream (every packet the frontend processes, in order,
+  plus the VRAM at arming after a GPU readback) in the shape the replay test reads. Replaying our own spawn-view stream
+  (`s6_gifdump2`, armed 7 s after s28) through the CPU rasteriser AND the GL backend draws the same slabs -- and the
+  console's stream draws none on either. The rasterisers are cleared; the difference is in the packets.
+- **Per-packet pixel history** (`PS2X_CONSOLE_REPLAY_PIXEL=x,y`) at a slab pixel (196,280): the console paints it black
+  with the under-water terrain (texture 0x36b1, one 21 KB PATH1 packet), then blends the bed and water passes over the
+  black; ours never touches it before the bed pass, which blends over the fog clear (0x484a4a) -- the light slab.
+- **The terrain itself**: for texture 0x36b1 the console kicks 96 fan triangles + 30 list triangles per frame, ours 70 +
+  30; the console fan that covers the slab pixel reaches a near vertex at screen (180,367) that our fan does not have
+  (ours has the same base edge (187,262)-(456,262) and stops). The vertex data our VU1 receives is fine (the
+  `PS2X_VU1_DUMP` replays reproduce the console's per-vertex alphas for the water and bed passes exactly: the earlier
+  'no zero alphas' reading was the box filter sampling only the stream's middle), the eye position (data qword 30)
+  does not change the count (+-60 units), and neither do PS2X_VU1_FAST / FMAC_CHECK; the interpreter and the native
+  program agree. The five-plane Sutherland-Hodgman clipper (0x3618) or the backface cull (0x1638) -- both driven by
+  MAC-flag tests on VU arithmetic -- drops near-camera terrain triangles the console keeps. That is the open item.
+
+What the owner sees now (`s6_lum7`/`s6_lum8`): a lit scene matching the console's tone, the water bar passing, and
+light flat patches on the stream where our terrain has holes -- the same defect class as the flat hill patch (form 2).

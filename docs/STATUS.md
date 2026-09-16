@@ -41,9 +41,13 @@ Owner: "proceed autonomously using your best judgement", water/ground first. Ten
   (trees, terrain, the HUD band -- the HUD reference `ref_hud_ours.png` was re-captured from the new look, and the
   untilref threshold of the three gameplay scripts went 30 -> 40: a lit HUD frame of another run reads 32.6 against the
   new reference, cinematic frames 55+; the dark-look dbuff fixtures keep their day's reference beside them).
-- **Still open -- the slabs themselves:** they persist, now as light polygons. The bed pass's per-vertex alpha is 0x64 on every
-  vertex in ours (585 of 585) where the console fades 46 of 189 water vertices and the bed's shore vertices to 0 -- a
-  guest-side vertex-alpha difference (the same in both VU1 paths, so EE-side data or a VU1 op both paths get alike). Next.
+- **Still open -- the slabs themselves:** they persist, now as light polygons, and are **holes in the under-water terrain**:
+  replaying our own recorded GIF stream (`PS2X_GIF_DUMP`) through both rasterisers draws the same slabs while the console's
+  stream draws none, and a per-packet pixel history shows the console painting the slab pixel with the terrain (texture
+  0x36b1) before the translucent passes where ours never does -- our VU1 kicks 70 terrain fans per frame to the console's 96,
+  the missing ones the near-camera triangles. Vertex data, eye position and float knobs cleared; interpreter and native agree:
+  the clipper / backface-cull MAC-flag tests are the open item (research/31 §15). (The earlier 'vertex alpha never zero'
+  reading was the box filter sampling only the stream's middle.)
 - Also today: the transition stage scored by content (5 fps waits), the pristine memory card, the probe's rest-window
   lowest-sustained-plateau rule (a gradual root-node decay had read 10.4, then an eight-row stall on the way down 10.7), `console_spawn_line` refusing non-HUD frames, the command trace's
   texture / screen-box filters, per-vertex line, `alpha= pabe= fba= fge= fog= texa= tex1= tod=` fields, `PS2X_GS_SKIP_TBP0`,
