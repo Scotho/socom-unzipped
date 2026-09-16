@@ -492,26 +492,43 @@ class HudMatch(unittest.TestCase):
         with Image.open(os.path.join(DBUFF_MISSION_RUN, "ref_hud_ours_2026-09-11.png")) as im:
             self.ref_2026_09_11 = drive.thumb(im)
 
-    def _match(self, path, lit, ref=None):
+    # 2026-09-16 (evening): the compared region moved from the squad panel (92,112,125,160) to the ammo box
+    # (92,112,0,40) with threshold 20: once the ground behind the squad panel was drawn (research/31 section 17)
+    # the MISSION BRIEFING screen read 37.2 against the re-captured reference and the gate matched before pressing
+    # anything (s6_vifwait_gate). On the ammo box a HUD frame of any run reads under 4, the briefing 33, cinematics
+    # 27+ (and the lit band test rejects them anyway).
+    def _match(self, path, lit, ref=None, region=(92, 112, 0, 40), thresh=20.0):
         with Image.open(path) as im:
-            return drive.hud_match(im, self.ref if ref is None else ref, (92, 112, 125, 160), 40.0, lit)   # the scripts' threshold: 40 since the lit look (a HUD frame of another run read 32.6, cinematics 55+)
+            return drive.hud_match(im, self.ref if ref is None else ref, region, thresh, lit)
 
     def test_cinematic_matched_without_lit_documents_the_defect(self):
-        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=False, ref=self.ref_2026_09_11)
+        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=False, ref=self.ref_2026_09_11,
+                                       region=(92, 112, 125, 160), thresh=40.0)   # the region and threshold of that day
         self.assertTrue(matched, dist)
 
     def test_cinematic_rejected_with_lit(self):
-        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=True, ref=self.ref_2026_09_11)
+        matched, dist, band = self._match(os.path.join(DBUFF_MISSION_RUN, "s30_holdW.png"), lit=True, ref=self.ref_2026_09_11,
+                                          region=(92, 112, 125, 160), thresh=40.0)
         self.assertFalse(matched, (dist, band))
 
+    # 2026-09-16 (evening): the reference was re-captured again from the run with the VIF wait-for-idle fix
+    # (research/31 section 17, logs/parity/gate/s6_vifwait1): the ground behind the squad panel is now drawn,
+    # so the compared region no longer holds the light slab; a slab-era HUD frame reads 60+ against it.
     def test_hud_accepted_with_lit(self):
-        matched, dist, band = self._match(os.path.join(FIXTURES, "mission", "lum", "s28_none.png"), lit=True)
+        matched, dist, band = self._match(os.path.join(FIXTURES, "mission", "vifwait", "s28_none.png"), lit=True)
         self.assertTrue(matched, (dist, band))
 
-    def test_the_dark_look_no_longer_matches_the_lit_reference(self):
-        """The reference must follow the runtime: a frame from before the brighten reads 50+ against it."""
-        matched, dist, _ = self._match(os.path.join(DBUFF_MISSION_RUN, "final.png"), lit=True)
-        self.assertFalse(matched, dist)
+    def test_hud_frames_of_other_runs_are_accepted(self):
+        """The ammo box does not depend on the ground behind it: HUD frames of earlier runs (slab era) read under 4."""
+        for run in ("lum",):
+            matched, dist, band = self._match(os.path.join(FIXTURES, "mission", run, "s28_none.png"), lit=True)
+            self.assertTrue(matched, (run, dist, band))
+
+    def test_the_mission_briefing_is_rejected(self):
+        """s6_vifwait_gate: the briefing screen read 37.2 on the squad panel and the gate matched before pressing;
+        on the ammo box it reads 33 against a threshold of 20."""
+        matched, dist, band = self._match(os.path.join(FIXTURES, "mission", "vifwait", "briefing_s31.png"), lit=True)
+        self.assertFalse(matched, (dist, band))
 
     def test_mission_scripts_require_lit(self):
         """Every script that waits for the in-game HUD (the mission gate's gameplay_probe.txt, and
