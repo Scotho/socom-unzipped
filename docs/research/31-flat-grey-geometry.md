@@ -391,3 +391,38 @@ come from:
 
 What the owner sees now (`s6_lum7`/`s6_lum8`): a lit scene matching the console's tone, the water bar passing, and
 light flat patches on the stream where our terrain has holes -- the same defect class as the flat hill patch (form 2).
+
+## 16. The holes are draw-list omissions on the EE: the VU1 is cleared (2026-09-16) [verified]
+
+`s6_gifdump3` (gate PASS 1/1, water flat 0.185 dark 0.058) recorded OUR GIF stream and 8000 VU1 program dumps
+(`PS2X_VU1_DUMP`, `PS2X_VU1_DUMP_AFTER=330`) from the same spawn-view frames, so the console's draw list, ours, and our
+VU1 inputs can be laid side by side. Tools: `tools_py/research/terrain/` (README there).
+
+- **Fan alignment.** Per frame the console kicks 82 terrain fans (texture 0x36b1) and we kick 57; the first 43 match one
+  to one (order, polygon size histogram 3/4/5 vertices, first vertex within 2 px). The 25 missing are a block from the
+  console's second path-1 packet onward, interleaved with fans we do draw.
+- **The backface cull keeps everything.** `vu1_replay --pchist` on the terrain dumps: 0x2060 (front-facing) == 0x1f98
+  (primitives) in every family-B program. The clipper is where primitives go (16 -> 10 -> 10 -> 8 -> 8 -> 5 in one dump),
+  and Python plane maths on the dump's own data qwords 30-36 reproduces those drops exactly, with margins of 12..190 units
+  -- data, not MAC-flag timing. Replayed with the plane normals zeroed, those primitives project behind the camera
+  (wrapped FTOI4 coordinates): the console would drop them too.
+- **Classification.** Every terrain program of the frame (both the clipped 0x02 family and the unclipped 0x08/0x28 one)
+  replayed as-is and with the clip planes AND the cull normals zeroed, then each console fan matched by three shared
+  vertices (`classify2.py`): **63 KICKED, 18 ABSENT, 1 SENT-BUT-DROPPED**. The 18 never reach VU1 memory in any
+  program. They share vertices with fans we draw and unproject (camera fitted from dump 237, 0.9 px residual) into
+  the same world region (x 890..1035, z 853..1080, one flat strip at y = -153) -- the EE leaves out parts of the
+  same area, not a distant tile. (The one sent-but-dropped fan is program 242's unclipped list path dropping a
+  triangle the console draws: a second, smaller defect.)
+- **What builds the list.** `FUN_003b5f20` writes the family-B/C command lists (clipped path when `DAT_004b4eb0 == 0`);
+  `FUN_00336cb0` walks a render list of objects; per-object visibility is `FUN_00290c30` -> `FUN_00294ac0` (VU0
+  macro-mode: 8 box corners through a 4x4, `VCLIPw`, `CFC2 $vi18`, AND-mask culls, OR-mask marks 'partial') and
+  `FUN_00294a30` (`CTC2 $zero,$vi16` / two `VSUB.xyw` / `CFC2 $vi16 & 0xC0`: the sticky zero/sign STATUS bits decide
+  clipped vs unclipped VU1 path). The recompiler's `VCLIPw` (magnitude compare against |w|, six bits shifted in) and
+  `ps2_vu0_fmac_flags` (MAC + sticky status, cleared by CTC2) read correctly against the VU manual. The 177 per-frame
+  1x4 frame-buffer readbacks in the console dump are all the exposure thread's grid samples (`FUN_003b1dd0`), not a
+  visibility mechanism; our 100 ms snapshot answers them adequately.
+- **Next step** (a runtime hook, one build + one run): wrap `FUN_00290c30` through `registerFunction` to log the eight
+  corners, the guest result and a clean IEEE recomputation for the spawn frame; find the box holding world
+  (947, -139, 969) (console fan c46's triangle). Culled with a wrong mask -> the CLIP path; never visited -> the
+  render-list build upstream (streaming, PVS or LOD selection), which is where the flat hill patch (form 2) would
+  also come from.

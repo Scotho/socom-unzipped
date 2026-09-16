@@ -41,13 +41,12 @@ Owner: "proceed autonomously using your best judgement", water/ground first. Ten
   (trees, terrain, the HUD band -- the HUD reference `ref_hud_ours.png` was re-captured from the new look, and the
   untilref threshold of the three gameplay scripts went 30 -> 40: a lit HUD frame of another run reads 32.6 against the
   new reference, cinematic frames 55+; the dark-look dbuff fixtures keep their day's reference beside them).
-- **Still open -- the slabs themselves:** they persist, now as light polygons, and are **holes in the under-water terrain**:
-  replaying our own recorded GIF stream (`PS2X_GIF_DUMP`) through both rasterisers draws the same slabs while the console's
-  stream draws none, and a per-packet pixel history shows the console painting the slab pixel with the terrain (texture
-  0x36b1) before the translucent passes where ours never does -- our VU1 kicks 70 terrain fans per frame to the console's 96,
-  the missing ones the near-camera triangles. Vertex data, eye position and float knobs cleared; interpreter and native agree:
-  the clipper / backface-cull MAC-flag tests are the open item (research/31 §15). (The earlier 'vertex alpha never zero'
-  reading was the box filter sampling only the stream's middle.)
+- **Still open -- the slabs themselves:** they persist, now as light polygons, and are **holes in the under-water terrain**
+  the EE never asks VU1 to draw: with our GIF stream and VU1 dumps from the same spawn frames (`s6_gifdump3`, gate 1/1,
+  water flat 0.185 dark 0.058), 63 of the console's 82 terrain fans are ours too, 18 are absent from every VU1 program's
+  input (clipping and culling disabled in the replay), 1 is dropped by the unclipped list path. The VU1 clipper and cull,
+  the rasterisers, the vertex data and the exposure readback are cleared; the EE's box-frustum cull (VU0 macro CLIP,
+  `FUN_00290c30`) or the render-list build above it is next, via a logging hook (research/31 §16).
 - Also today: the transition stage scored by content (5 fps waits), the pristine memory card, the probe's rest-window
   lowest-sustained-plateau rule (a gradual root-node decay had read 10.4, then an eight-row stall on the way down 10.7), `console_spawn_line` refusing non-HUD frames, the command trace's
   texture / screen-box filters, per-vertex line, `alpha= pabe= fba= fge= fog= texa= tex1= tod=` fields, `PS2X_GS_SKIP_TBP0`,

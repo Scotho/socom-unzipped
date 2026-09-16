@@ -171,14 +171,16 @@ Maintained by whoever is running the loop. Last audited: 2026-09-15, after the p
   counts the contiguous black run behind it, from 5 fps wait captures (`--wait-period 0.2`). `s6_fade` and
   `s6_gamepad3` re-score PASS at exactly the 5-frame floor on their old 1 Hz captures. The boot's black screens sit
   behind the main menu and cannot join the run, which is what the burst step was enforcing.
-- **Our VU1 drops near-camera terrain triangles the console draws** (2026-09-16, research/31 §15): the light flat patches
-  left on the Seeding Chaos stream after the brighten fix are holes in the under-water terrain (texture 0x36b1: 96 fan
-  triangles per frame on the console, 70 in ours; the console's fan reaches a near vertex ours lacks), through which the
-  translucent bed and water passes show the fog clear colour. Proven by replaying OUR recorded GIF stream (`PS2X_GIF_DUMP`)
-  through both rasterisers (same slabs) against the console's (none), and a per-packet pixel history
-  (`PS2X_CONSOLE_REPLAY_PIXEL`). The VU1 input data, the eye position and the float knobs are cleared; the interpreter and
-  the native program agree, so the five-plane clipper (0x3618) or the backface cull (0x1638) -- MAC-flag tests on VU
-  arithmetic -- classify those triangles differently from the hardware. The same class as the flat hill patch (form 2).
+- **The EE leaves terrain triangles out of the draw list that the console draws** (2026-09-16, research/31 §15-16): the
+  light flat patches left on the Seeding Chaos stream after the brighten fix are holes in the under-water terrain
+  (texture 0x36b1: 82 fans per frame on the console, 57 in ours) through which the translucent bed and water passes
+  show the fog clear colour. The VU1 is cleared: with our GIF stream and VU1 dumps recorded from the same frames
+  (`s6_gifdump3`), 63 of the console's 82 fans are kicked by us, 18 never appear in any VU1 program's input (both the
+  clipped and the unclipped family, replayed with clipping and culling disabled), 1 is sent and dropped by the unclipped
+  list path. The absent triangles share vertices with the ones we draw and sit in the same world region. Candidates on
+  the EE: the box-frustum cull `FUN_00290c30`/`FUN_00294ac0` (VU0 macro CLIP) or the render-list build above it;
+  next step is a logging hook on `FUN_00290c30`. Tools: `tools_py/research/terrain/`. Same class as the flat hill
+  patch (form 2).
 - **Every gameplay frame drew 1.73x too dark, and the water shards were its symptom** (2026-09-16, research/31 §11-13): the
   game's post-process copies the frame at half size into the depth-buffer pages and draws it back with `ALPHA 0x5d00000069`
   -- A=Cd, B=0, C=FIX=93, D=Cd, i.e. Cd x 1.73 -- a brighten the GL backend mapped to an identity (no destination factor above
