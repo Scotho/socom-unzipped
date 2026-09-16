@@ -149,3 +149,15 @@ with the press named, and stops the 750-800 s liveness burn.
 6. **The game log itself.** It has no lobby, Medius or DME line; the runtime's net trace
    (`build_nettrace`) exists but was not on in any of these launches. A single `[net] Medius <msg>`
    line per request would have made section 3 a grep.
+
+## 6. First launches on the block-pointer exe (2026-09-15 evening, harness `6ff0335`/`c5cfa78`, exe `1cfef9af…`)
+
+Three two-instance launches, 0/3 gameplay, two distinct causes — neither the lobby stages this note's §4 ranked first.
+
+| launch | outcome | what actually happened | evidence |
+|---|---|---|---|
+| `s6_ladder1` (new harness) | `LOBBY-FAIL pre-login` after 9 boot presses, both instances | **the runtime barely ran**: 34 `[gs-gl stats]` present windows in 490 s (the next two launches: 175 in 258 s, 173 in 274 s), thread 1 parked at VSync on every sample, 216 frame exports vs ~6/s expected; the 8 CROSS presses reached the input layer (`[socom2-input] state buttons=4000`) but the guest never advanced past the memory-card slot dialog. A single-instance boot with the same environment two minutes later, and `s6_ladder2` on the same harness, both booted normally (main menu after 2 presses) — a **transient host condition on the first two-instance launch of the freshly built exe**, cause not identified (Defender scanning the new 236 MB binary is the guess). [verified: the counts; inference: the cause] | `logs/run_A_20260915_210946.log`, `logs/parity/s6_ladder1/A_lobby_fail_pre-login.png` |
+| `s6_ladder_oldharness` (Sprint 5's harness `171290b` pinned, as a bisect) | `LOBBY-FAIL timeout:login`, both | boot fine; the OSK opened in **accent mode** on both instances (`osk_ref_dists` (6.3, 0.0); in Sprint 5 only B did), the old harness's toggle detection read (43, 39) — neither mode — and it typed the password as `xmfû` | `logs/parity/s6_ladder_oldharness/A_lobby_fail_timeout_login.png` |
+| `s6_ladder2` (new harness) | `LOBBY-FAIL timeout:login`, both | boot fine; accent mode detected and toggled; then **B's password reached the server as `ocom`** (`MediusAccountLoginRequest USERNAME:socome PASS:ocom` → `MediusInvalidPassword` — the first character was lost) and **A pressed CONNECT with an empty password** and landed on the "Choose a different persona" dialog. The guest ran at **32 fps** in the stats window where the OSK opened (Sprint 5: 60), and the pad walk is dead-reckoned with 0.09 s holds. | `server/logs/console-Medius.log`, `logs/parity/s6_ladder2/A_05_password.png`, `B_04_pw_kbd.png` |
+
+Consequences: (1) the OSK typing is the blind class §5 named, and it now costs launches — fix: read back the typed length from the OSK text row (cursor block at ~30 + 11.3 px per character) and retype slower, class `login:keyboard-typing`; (2) `timeout:login` is too coarse a class — the stage timed out at the persona dialog / the invalid-password prompt, which the login flow does not recognise; (3) the accent-mode toggle must re-read the mode after toggling; (4) launch 1's starved runtime is a hazard to watch for: a launch whose `[gs-gl stats]` cadence collapses should be classified as such, not as a lobby failure.

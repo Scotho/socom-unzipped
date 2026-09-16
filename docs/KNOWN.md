@@ -153,6 +153,8 @@ Maintained by whoever is running the loop. Last audited: 2026-09-15, after the p
   a −4.1° aim error that sat inside the angular tolerance (never corrected). Sprint 7's repeatability item needs a tighter
   aim tolerance or a burst-to-burst correction.
 
+- **The OSK password typing drops characters at a low guest frame rate, and the keyboard now opens in accent mode on both instances** (2026-09-15 evening, `s6_ladder2` and the Sprint 5 harness bisect `s6_ladder_oldharness`, both instances, 0/3 launches reached gameplay): B's password reached the server as `ocom` (first character lost), A connected with an empty password, the old harness typed `xmfû`; the guest ran 32 fps in the OSK window against 60 in Sprint 5 and the pad walk is dead-reckoned at 0.09 s holds with no read-back. Fix in flight: read the typed length back from the OSK text row and retype slower (research/28 §6). Until it lands, every online launch on the block-pointer exe fails at login.
+- **A two-instance launch can start with a starved runtime** (`s6_ladder1`, the first double launch of the freshly built exe): 34 present windows in 490 s, the guest parked at VSync, presses received but never processed, `LOBBY-FAIL pre-login` after 9 blind boot presses; the next launch on the same harness and exe booted normally. Cause not identified (research/28 §6). Read a boot failure's `[gs-gl stats]` cadence before blaming the harness.
 - **The lobby now verifies two dropped-press classes and fails fast** (`74f221c`, `a0bca51`, R47/R69): map CROSS
   (SELECTED MAPS panel diff 0.00 dropped vs 8.95 taken) and READY (label edge 48 vs 82) are re-sent up to 3 times on
   fresh frames; **READY is a toggle**, so it is re-sent only when two frames ~1 s apart both read not-ready. Every lobby
