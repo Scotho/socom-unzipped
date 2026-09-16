@@ -1793,21 +1793,103 @@ namespace
         return decoded;
     }
 
+    // libgraph's sceGsLoadImage (6 quadwords) and sceGsStoreImage (7 quadwords) packets, exactly as the SCE
+    // library lays them out in guest memory -- a game may inspect or patch them and DMA them itself. SOCOM II's
+    // auto-exposure thread reads the store packet's source PSM at byte 0x23 and its TRXREG at 0x40/0x44, patches
+    // TRXPOS at 0x30 and sends the seven quadwords through VIF1 (research/31 section 13). Until 2026-09-16 the
+    // HLE wrote a private 12-byte GsImageMem there instead, and that thread computed a zero-sized transfer.
+    //
+    //   sceGsLoadImage:  giftag(NLOOP=4 A+D) | BITBLTBUF | TRXPOS | TRXREG | TRXDIR=0 | giftag(IMAGE, NLOOP=qwc)
+    //   sceGsStoreImage: vif1 codes (NOP NOP FLUSHA DIRECT 6) | giftag(NLOOP=5 A+D) | BITBLTBUF | TRXPOS | TRXREG |
+    //                    FINISH | TRXDIR=1
+    static void writeGsQword(uint8_t *ptr, uint64_t lo, uint64_t hi)
+    {
+        std::memcpy(ptr, &lo, 8);
+        std::memcpy(ptr + 8, &hi, 8);
+    }
+
+    static uint64_t gsImageQwc(const GsImageMem &img)
+    {
+        const uint32_t rowBytes = bytesForPixels(img.psm, static_cast<uint32_t>(img.width));
+        const uint32_t total = rowBytes * static_cast<uint32_t>(img.height);
+        return (total + 15u) / 16u;
+    }
+
+    static bool writeGsLoadImagePacket(uint8_t *rdram, uint32_t addr, const GsImageMem &img)
+    {
+        uint8_t *ptr = getMemPtr(rdram, addr);
+        if (!ptr)
+            return false;
+        const uint64_t bitbltbuf = (static_cast<uint64_t>(img.vram_addr & 0x3FFFu) << 32) |
+                                   (static_cast<uint64_t>(img.vram_width & 0x3Fu) << 48) |
+                                   (static_cast<uint64_t>(img.psm & 0x3Fu) << 56);
+        const uint64_t trxpos = (static_cast<uint64_t>(img.x & 0x7FFu) << 32) | (static_cast<uint64_t>(img.y & 0x7FFu) << 48);
+        const uint64_t trxreg = static_cast<uint64_t>(img.width & 0xFFFu) | (static_cast<uint64_t>(img.height & 0xFFFu) << 32);
+        writeGsQword(ptr + 0, 4ull | (1ull << 15) | (1ull << 60), 0xEull);
+        writeGsQword(ptr + 16, bitbltbuf, 0x50ull);
+        writeGsQword(ptr + 32, trxpos, 0x51ull);
+        writeGsQword(ptr + 48, trxreg, 0x52ull);
+        writeGsQword(ptr + 64, 0ull, 0x53ull);
+        writeGsQword(ptr + 80, (gsImageQwc(img) & 0x7FFFull) | (1ull << 15) | (2ull << 58), 0ull);
+        return true;
+    }
+
+    static bool writeGsStoreImagePacket(uint8_t *rdram, uint32_t addr, const GsImageMem &img)
+    {
+        uint8_t *ptr = getMemPtr(rdram, addr);
+        if (!ptr)
+            return false;
+        const uint64_t bitbltbuf = static_cast<uint64_t>(img.vram_addr & 0x3FFFu) |
+                                   (static_cast<uint64_t>(img.vram_width & 0x3Fu) << 16) |
+                                   (static_cast<uint64_t>(img.psm & 0x3Fu) << 24);
+        const uint64_t trxpos = static_cast<uint64_t>(img.x & 0x7FFu) | (static_cast<uint64_t>(img.y & 0x7FFu) << 16);
+        const uint64_t trxreg = static_cast<uint64_t>(img.width & 0xFFFu) | (static_cast<uint64_t>(img.height & 0xFFFu) << 32);
+        // VIF1: NOP, NOP, FLUSHA, DIRECT 6 (the six GIF quadwords that follow)
+        writeGsQword(ptr + 0, 0x0000000000000000ull, (0x50000006ull << 32) | 0x13000000ull);
+        writeGsQword(ptr + 16, 5ull | (1ull << 15) | (1ull << 60), 0xEull);
+        writeGsQword(ptr + 32, bitbltbuf, 0x50ull);
+        writeGsQword(ptr + 48, trxpos, 0x51ull);
+        writeGsQword(ptr + 64, trxreg, 0x52ull);
+        writeGsQword(ptr + 80, 0ull, 0x61ull);
+        writeGsQword(ptr + 96, 1ull, 0x53ull);
+        return true;
+    }
+
+    // Parse either packet back: the A+D entries name BITBLTBUF / TRXPOS / TRXREG / TRXDIR, and TRXDIR says
+    // which half of BITBLTBUF and TRXPOS (destination for host->local, source for local->host) is the image.
     static bool readGsImage(uint8_t *rdram, uint32_t addr, GsImageMem &out)
     {
         const uint8_t *ptr = getConstMemPtr(rdram, addr);
         if (!ptr)
             return false;
-        std::memcpy(&out, ptr, sizeof(out));
-        return true;
-    }
-
-    static bool writeGsImage(uint8_t *rdram, uint32_t addr, const GsImageMem &img)
-    {
-        uint8_t *ptr = getMemPtr(rdram, addr);
-        if (!ptr)
+        uint64_t bitbltbuf = 0, trxpos = 0, trxreg = 0, trxdir = 3;
+        bool sawBuf = false, sawReg = false, sawDir = false;
+        for (int q = 0; q < 7; ++q)
+        {
+            uint64_t lo = 0, hi = 0;
+            std::memcpy(&lo, ptr + q * 16, 8);
+            std::memcpy(&hi, ptr + q * 16 + 8, 8);
+            switch (hi & 0xFFu)
+            {
+            case 0x50: bitbltbuf = lo; sawBuf = true; break;
+            case 0x51: trxpos = lo; break;
+            case 0x52: trxreg = lo; sawReg = true; break;
+            case 0x53: trxdir = lo & 3u; sawDir = true; break;
+            default: break;
+            }
+        }
+        if (!sawBuf || !sawReg || !sawDir)
             return false;
-        std::memcpy(ptr, &img, sizeof(img));
+        const bool toHost = trxdir == 1u;
+        const uint64_t buf = toHost ? bitbltbuf : (bitbltbuf >> 32);
+        const uint64_t pos = toHost ? trxpos : (trxpos >> 32);
+        out.vram_addr = static_cast<uint16_t>(buf & 0x3FFFu);
+        out.vram_width = static_cast<uint8_t>((buf >> 16) & 0x3Fu);
+        out.psm = static_cast<uint8_t>((buf >> 24) & 0x3Fu);
+        out.x = static_cast<uint16_t>(pos & 0x7FFu);
+        out.y = static_cast<uint16_t>((pos >> 16) & 0x7FFu);
+        out.width = static_cast<uint16_t>(trxreg & 0xFFFu);
+        out.height = static_cast<uint16_t>((trxreg >> 32) & 0xFFFu);
         return true;
     }
 

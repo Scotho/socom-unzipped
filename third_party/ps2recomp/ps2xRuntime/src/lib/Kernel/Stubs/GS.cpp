@@ -1140,13 +1140,29 @@ namespace ps2_stubs
         img.vram_width = static_cast<uint8_t>(args.vramWidth);
         img.psm = static_cast<uint8_t>(args.psm);
 
-        writeGsImage(rdram, imgAddr, img);
+        writeGsLoadImagePacket(rdram, imgAddr, img);
         setReturnS32(ctx, 0);
     }
 
+    // The store packet is libgraph's 7-quadword layout (Support.h writeGsStoreImagePacket): SOCOM II's auto-exposure
+    // thread inspects and patches it and DMAs it itself (research/31 section 13).
     void sceGsSetDefStoreImage(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        sceGsSetDefLoadImage(rdram, ctx, runtime);
+        (void)runtime;
+        uint32_t imgAddr = getRegU32(ctx, 4);
+        const GsSetDefImageArgs args = decodeGsSetDefImageArgs(rdram, ctx);
+
+        GsImageMem img{};
+        img.x = static_cast<uint16_t>(args.x);
+        img.y = static_cast<uint16_t>(args.y);
+        img.width = static_cast<uint16_t>(args.width);
+        img.height = static_cast<uint16_t>(args.height);
+        img.vram_addr = static_cast<uint16_t>(args.vramAddr);
+        img.vram_width = static_cast<uint8_t>(args.vramWidth);
+        img.psm = static_cast<uint8_t>(args.psm);
+
+        writeGsStoreImagePacket(rdram, imgAddr, img);
+        setReturnS32(ctx, 0);
     }
 
     void sceGsSwapDBuffDc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
