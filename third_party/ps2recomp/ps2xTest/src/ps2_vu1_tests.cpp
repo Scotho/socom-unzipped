@@ -403,6 +403,48 @@ void register_ps2_vu1_tests()
             t.Equals(vu1.state().vi[0], 0, "VI0 should remain hardwired to zero");
         });
 
+        tc.Run("VIF-driven VU1 programs run to their E bit before the next MSCNT continues", [](TestCase &t)
+        {
+            // research/31 section 16: the VIF callbacks ran every program under a 65536-cycle budget and a
+            // program that needed more (a 43-primitive terrain chunk takes 68k) was left mid-way; the next
+            // MSCNT then 'continued' it from that pc with the new TOP, and the chunk drew garbage. Hardware
+            // stalls MSCAL/MSCNT until the VU is idle: the cut-off program must finish first, with its own
+            // TOP, and the continuation must start at the instruction after its E bit.
+            Vu1Fixture fx;
+            t.IsTrue(fx.initialize(), "VU1 fixture should initialize");
+            auto ibne = [](uint8_t it, uint8_t is, int16_t imm)
+            { return (0x29u << 25) | (static_cast<uint32_t>(it & 0xFu) << 16) | (static_cast<uint32_t>(is & 0xFu) << 11) | (static_cast<uint32_t>(imm) & 0x7FFu); };
+            uint32_t pc = 0u;
+            for (int k = 0; k < 15; ++k, pc += 8u)
+                writeVuInstructionPair(fx.code, pc, makeVuIaddiu(2u, 2u, 2000), kVuUpperNop);   // vi2 = 30000
+            const uint32_t loop = pc;
+            writeVuInstructionPair(fx.code, pc, makeVuIaddiu(1u, 1u, 1), kVuUpperNop); pc += 8u;   // vi1 += 1
+            writeVuInstructionPair(fx.code, pc, ibne(2u, 1u, -2), kVuUpperNop); pc += 8u;          // IBNE vi2, vi1, loop
+            writeVuInstructionPair(fx.code, pc, 0u, kVuUpperNop); pc += 8u;                        // delay slot
+            writeVuInstructionPair(fx.code, pc, makeVuLowerSpecial(0x68u, 0u, 5u), kVuUpperNop | 0x40000000u); pc += 8u; // XTOP vi5, E
+            writeVuInstructionPair(fx.code, pc, 0u, kVuUpperNop); pc += 8u;                        // the pair after the E bit
+            const uint32_t continuation = pc;
+            writeVuInstructionPair(fx.code, pc, makeVuLowerSpecial(0x68u, 0u, 6u), kVuUpperNop | 0x40000000u); pc += 8u; // XTOP vi6, E
+            writeVuInstructionPair(fx.code, pc, 0u, kVuUpperNop); pc += 8u;
+            (void)loop;
+
+            VU1Interpreter vu1;
+            vu1.execute(fx.code, PS2_VU1_CODE_SIZE, fx.data, PS2_VU1_DATA_SIZE, fx.gs, &fx.mem, 0u, 0x100u, 0u, 65536u);
+            t.IsTrue(vu1.programPending(), "a program longer than the budget is left pending by execute()");
+            t.IsTrue(vu1.state().vi[5] != 0x100, "... and has not reached its XTOP yet");
+
+            vu1.continueProgram(fx.code, PS2_VU1_CODE_SIZE, fx.data, PS2_VU1_DATA_SIZE, fx.gs, &fx.mem, 0x200u, 0u);
+            t.Equals(vu1.state().vi[5], 0x100, "the pending program finished first, with its own TOP");
+            t.Equals(vu1.state().vi[6], 0x200, "then the continuation ran from the pair after the E bit with the new TOP");
+            t.IsTrue(!vu1.programPending(), "nothing is pending after the continuation");
+            t.Equals(vu1.state().pc, continuation + 16u, "the pc rests after the continuation's E-bit pair");
+
+            VU1Interpreter vu2;
+            vu2.executeProgram(fx.code, PS2_VU1_CODE_SIZE, fx.data, PS2_VU1_DATA_SIZE, fx.gs, &fx.mem, 0u, 0x300u, 0u);
+            t.Equals(vu2.state().vi[5], 0x300, "executeProgram runs the long program to its E bit in one call");
+            t.IsTrue(!vu2.programPending(), "... leaving nothing pending");
+        });
+
         tc.Run("XTOP and XITOP expose VIF TOP values to VI registers", [](TestCase &t)
         {
             Vu1Fixture fx;

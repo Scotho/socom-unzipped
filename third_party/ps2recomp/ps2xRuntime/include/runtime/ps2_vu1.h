@@ -67,6 +67,21 @@ public:
                 GS &gs, PS2Memory *memory = nullptr,
                 uint32_t top = 0, uint32_t itop = 0, uint32_t maxCycles = 65536);
 
+    // The VIF's MSCAL / MSCNT entry points. The hardware VIF stalls on both until the VU is idle, so
+    // a program a budget stop left pending (research/31 section 16: a 43-primitive terrain chunk needs
+    // 68k cycles, the callbacks ran it under 65536 and the next MSCNT 'continued' it mid-clipper with
+    // the next buffer's TOP) finishes first, with its own TOP/ITOP, and the new program or the
+    // continuation then runs to its E bit. kVifCycleGuard bounds a runaway program: past it the
+    // program is dropped so the VIF can go on (hardware would hang there).
+    static constexpr uint32_t kVifCycleSlice = 1u << 20;
+    static constexpr uint64_t kVifCycleGuard = 1ull << 28;
+    void executeProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                        GS &gs, PS2Memory *memory, uint32_t startPC, uint32_t top, uint32_t itop);
+    void continueProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                         GS &gs, PS2Memory *memory, uint32_t top, uint32_t itop);
+    // True when the last run() stopped on its cycle budget before the program's E bit.
+    bool programPending() const { return m_programPending; }
+
     VU1State &state() { return m_state; }
     const VU1State &state() const { return m_state; }
 
@@ -270,6 +285,8 @@ private:
     GS *m_activeGs = nullptr;
     PS2Memory *m_activeMemory = nullptr;
     bool m_stopRequested = false;
+    bool m_programPending = false; // set by run(): budget stop before the E bit
+    void runToEnd(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize, GS &gs, PS2Memory *memory);
     bool m_pendingHaltD = false;
     bool m_pendingHaltT = false;
 

@@ -103,6 +103,7 @@ void VU1Interpreter::resetScheduler()
     m_viBranchBackupReg = 0;
     m_viBranchBackupValid = false;
     m_stopRequested = false;
+    m_programPending = false;
     m_pendingHaltD = false;
     m_pendingHaltT = false;
 }
@@ -1858,6 +1859,49 @@ void VU1Interpreter::resume(uint8_t *vuCode, uint32_t codeSize,
     run(vuCode, codeSize, vuData, dataSize, gs, memory, maxCycles);
 }
 
+void VU1Interpreter::runToEnd(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                              GS &gs, PS2Memory *memory)
+{
+    const uint64_t guardEnd = m_cycle + kVifCycleGuard;
+    while (m_programPending)
+    {
+        const uint64_t before = m_cycle;
+        run(vuCode, codeSize, vuData, dataSize, gs, memory, kVifCycleSlice);
+        if (m_programPending && (m_cycle == before || m_cycle >= guardEnd))
+        {
+            // No progress (a program that ran off its code) or a runaway program: dropped, so the VIF
+            // can go on. Logged once; the hardware would hang here.
+            static bool s_logged = false;
+            if (!s_logged)
+            {
+                s_logged = true;
+                std::fprintf(stderr, "[vu1] program at pc=0x%x dropped: %s\n", m_state.pc,
+                             m_cycle == before ? "no progress" : "past the runaway guard");
+            }
+            m_programPending = false;
+            break;
+        }
+    }
+}
+
+void VU1Interpreter::executeProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                                    GS &gs, PS2Memory *memory, uint32_t startPC, uint32_t top, uint32_t itop)
+{
+    if (m_programPending)
+        runToEnd(vuCode, codeSize, vuData, dataSize, gs, memory);
+    execute(vuCode, codeSize, vuData, dataSize, gs, memory, startPC, top, itop, kVifCycleSlice);
+    runToEnd(vuCode, codeSize, vuData, dataSize, gs, memory);
+}
+
+void VU1Interpreter::continueProgram(uint8_t *vuCode, uint32_t codeSize, uint8_t *vuData, uint32_t dataSize,
+                                     GS &gs, PS2Memory *memory, uint32_t top, uint32_t itop)
+{
+    if (m_programPending)
+        runToEnd(vuCode, codeSize, vuData, dataSize, gs, memory);
+    resume(vuCode, codeSize, vuData, dataSize, gs, memory, top, itop, kVifCycleSlice);
+    runToEnd(vuCode, codeSize, vuData, dataSize, gs, memory);
+}
+
 // ============================================================================
 // Fast path: same instruction semantics, no per-cycle scheduler.
 // ============================================================================
@@ -2735,6 +2779,9 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         s_vuTraceDumped.fetch_add(1, std::memory_order_relaxed);
     }
     m_state.cycles = m_cycle;
+    // A budget stop before the E bit (not a reserved-instruction stop) leaves the program pending;
+    // the VIF entry points below finish it before the next MSCAL / MSCNT takes effect.
+    m_programPending = !programEnded && !m_stopRequested;
     roundingScope.restore();
     // Guest time must not include the host time this interpreter took (see ps2GuestClockExcludedNs).
     if (m_unit == Unit::VU1)
