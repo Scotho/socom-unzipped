@@ -27,6 +27,23 @@ T = "ours"
 REFS = os.path.join("scripts", "parity", "refs")
 OSK_ACCENT_BOX = (20, 396, 96, 428)   # accent-toggle key: accented "aei" in normal mode, "abc" in accent mode
 
+# The keyboard's text row, for reading back what a type() actually put there (2026-09-15 evening, s6_ladder2 and
+# s6_ladder_oldharness: at ~32 fps -- two instances on one host -- the password came out as 'ocom', '' and 'xmfû'
+# and nothing in the drive log said so; research/28 §5 item 4). Measured on the 640x448 captures: each typed glyph
+# is a run of light-grey columns (max 100-200, 3-11 px wide: ';' to 'm') separated by 2-3 dark columns, starting at
+# col 31; the cursor block after the text is white (max > 200, 5 px) and BLINKS (absent in 7 of the 12 per-key
+# captures of ours_login / ours_match), and the font is proportional ("test;p" ends 20 px short of 6 x 11.3), so
+# the count is the number of glyph runs, not the cursor position. Exact on 15 of 15 labelled captures (the 12
+# per-key ones, 'xmfû', "test;p", and an empty field with its cursor on).
+OSK_TEXT_ROWS = (228, 250)
+OSK_TEXT_COLS = (20, 470)
+OSK_INK_MIN = 60                 # column max above this is ink (glyph or cursor); the field's ground stays below
+OSK_CURSOR_MIN = 200             # column max above this is the cursor block, not counted; glyphs stay below it
+OSK_GLYPH_MIN_WIDTH = 2          # a narrower run is a cursor edge, not a glyph (';', the narrowest, is 3 px)
+OSK_TYPE_ATTEMPTS = 3            # one type + two retypes before login:keyboard-typing
+OSK_SLOW_HOLD_S, OSK_SLOW_WAIT_S = 0.18, 0.5   # retype pacing: 0.09 s / 0.35 s doubled (5-6 frames at 32 fps)
+OSK_CROSS_WAIT_S = 0.6                          # after a key's CROSS, both pacings (the keyboard redraws the field)
+
 # Per-instance environment: window title tag (the harness finds windows by title substring),
 # memory-card directory and the UDP port shift (two clients on one host must not both bind the
 # game's fixed 3658/3659, like PCSX2 client B's 0F6FC6CF.clientB.pnach).
@@ -142,6 +159,7 @@ CLASS_MAP_SEARCH, CLASS_KEYBOARD = "map-list-search", "login-keyboard"
 # `join:<step>` (LOBBY_PRESS_STEPS below), each printed as one `[lobby] <step> press=<btn> verified=<bool>
 # attempt=<n>` line per press so the next taxonomy is a grep.
 CLASS_PRE_LOGIN = "pre-login"
+CLASS_OSK_TYPING = "login:keyboard-typing"   # the keyboard read back the wrong character count three times
 
 # Title band of the four screens the CREATE GAME / JOIN GAME presses move between (full-res 640x448:
 # x 20-360, y 18-58), compared as a text mask (map_mask_distance's measure) against
@@ -555,14 +573,26 @@ class Shell:
     def osk_open(self):
         return min(self.osk_refs()) < self.OSK_OPEN_MAX
 
+    OSK_MODE_TOGGLES = 2
+
     def osk_normal_mode(self):
+        """Toggle the keyboard out of accent mode, and READ THE MODE BACK on a fresh frame after each toggle:
+        the 2026-09-15 old-harness run toggled once, blind, and typed 'xmfû' for 'socom'. At most two toggles
+        (a third would be a dropped press or a mode the references do not know); the mode is logged each read."""
         dn, da = self.osk_refs()
-        if da < dn:
-            self.log("keyboard in accent mode -> toggling")
+        for toggle in range(self.OSK_MODE_TOGGLES + 1):
+            if dn <= da:
+                self.log(f"[osk] mode normal ({dn:.1f} vs {da:.1f})")
+                return
+            if toggle == self.OSK_MODE_TOGGLES:
+                self.log(f"[osk] mode accent ({dn:.1f} vs {da:.1f}) after {toggle} toggles -- typing anyway")
+                return
+            self.log(f"[osk] mode accent ({dn:.1f} vs {da:.1f}) -> toggling" + (" again" if toggle else ""))
             if self.pad_file:
                 self.pad_press("CROSS", 0.8)
             else:
                 self.press("cross", 0.8)
+            dn, da = osk_ref_dists(lobby_gray(self))          # a frame rendered after the press
 
     def wait_osk(self, timeout=12.0, reopen=True):
         """Wait for the on-screen keyboard to actually be on screen before typing into it.
@@ -608,7 +638,7 @@ class Shell:
                                                    f"refusing to type into whatever menu is on screen")
         self.osk_normal_mode()
         if self.pad_file:
-            self.osk_type_pad(text, shots, tag)
+            self.osk_type_pad_verified(text, shots, tag)
         else:
             osk_type(self.hwnd, text, shots, tag, target=T)
         time.sleep(3.0)
@@ -617,19 +647,77 @@ class Shell:
                      f"(accent-box distance {self.osk_refs()}) -- the presses after this one go to "
                      f"the keyboard, not to the menu")
 
-    def osk_type_pad(self, text, shots=None, tag=""):
+    @staticmethod
+    def osk_pacing(slow):
+        """(hold, d-pad wait, CROSS wait) of a pad keyboard press: the 0.09 s / 0.35 s / 0.6 s of pad_press, or
+        the doubled OSK_SLOW_* for a retype (the same 5-6 frames at the 32 fps two instances on one host run at);
+        the CROSS wait stays 0.6 s, already the longer of the two."""
+        return (OSK_SLOW_HOLD_S, OSK_SLOW_WAIT_S, OSK_CROSS_WAIT_S) if slow else (0.09, 0.35, OSK_CROSS_WAIT_S)
+
+    def osk_type_pad(self, text, shots=None, tag="", cur=OSK_START, enter=True, slow=False):
         """Type on the on-screen keyboard through the injected pad file rather than posted keys:
-        the cursor walk is dead-reckoned from OSK_START, so a single dropped press mistypes every
-        character after it and, on the last one, presses the key next to ENTER instead of ENTER."""
-        cur = OSK_START
-        for n, ch in enumerate(list(text) + ["ENTER"]):
+        the cursor walk is dead-reckoned from `cur` (the key the cursor is on), so a single dropped
+        press mistypes every character after it and, on the last one, presses the key next to ENTER
+        instead of ENTER. `enter=False` leaves the field open (the verified typer reads it back first);
+        `slow` uses the OSK_SLOW_* pacing for a retype. Returns the key the cursor is on."""
+        hold, wait, cross_wait = self.osk_pacing(slow)
+        for n, ch in enumerate(list(text) + (["ENTER"] if enter else [])):
             dst = osk_pos(ch)
             for m in osk_moves(cur, dst):
-                self.pad_press(m.upper())
+                self.pad_press(m.upper(), wait, hold)
             cur = dst
-            self.pad_press("CROSS", 0.6)
+            self.pad_press("CROSS", cross_wait, hold)
             if shots and ch != "ENTER":
                 winshot.grab(self.hwnd).save(os.path.join(shots, f"{tag}_key{n}_{ch}.png"))
+        return cur
+
+    def osk_typed(self):
+        """Characters in the keyboard's text row, read from a frame rendered after the last press."""
+        return osk_typed_count(lobby_gray(self))
+
+    def osk_type_pad_verified(self, text, shots=None, tag=""):
+        """Type `text` through the pad WITHOUT the final ENTER, read back how many characters the keyboard
+        shows, and only press ENTER when the count matches. A short count (a CROSS dropped at 32 fps: 'ocom',
+        an empty field on 2026-09-15) is cleared with one BCKSPC per counted character and retyped at the
+        slow pacing; after OSK_TYPE_ATTEMPTS the run fails as login:keyboard-typing with the count in the
+        detail, instead of pressing CONNECT with a wrong password and timing out 120 s later on the login
+        stage. The cursor stays dead-reckoned between attempts (there is no cursor read-back); the count
+        cannot tell a wrong glyph of the right length ('xmfû' is accent mode, which osk_normal_mode guards)."""
+        cur, slow = OSK_START, False
+        for attempt in range(1, OSK_TYPE_ATTEMPTS + 1):
+            cur = self.osk_type_pad(text, shots, tag, cur=cur, enter=False, slow=slow)
+            n = self.osk_typed()
+            if n == len(text):
+                self.log(f"[osk] typed {n} of {len(text)} (attempt {attempt})")
+                break
+            if attempt == OSK_TYPE_ATTEMPTS:
+                self.log(f"[osk] typed {n} of {len(text)} (attempt {attempt})")
+                raise lobby_fail(self, CLASS_OSK_TYPING, f"{n} of {len(text)} characters after {attempt} attempts")
+            self.log(f"[osk] typed {n} of {len(text)} -> retype (attempt {attempt})")
+            slow = True
+            cur = self.osk_clear(cur, n, len(text), slow=slow)
+        self.osk_type_pad("", None, "", cur=cur, enter=True, slow=slow)          # the walk to ENTER and its CROSS
+
+    def osk_clear(self, cur, n, total, slow=True):
+        """Walk to BCKSPC (top row, right end) and press it once per counted character, then read the field
+        back: a count still above 0 gets that many more presses, once (a dropped BCKSPC); characters left
+        after that fail the run as login:keyboard-typing. Returns the key the cursor is on (BCKSPC)."""
+        hold, wait, cross_wait = self.osk_pacing(slow)
+        dst = osk_pos("BCKSPC")
+        for m in osk_moves(cur, dst):
+            self.pad_press(m.upper(), wait, hold)
+        for extra in (False, True):
+            for _ in range(n):
+                self.pad_press("CROSS", cross_wait, hold)
+            left = self.osk_typed()
+            if left == 0:
+                self.log(f"[osk] cleared: 0 of {total} left")
+                return dst
+            if extra:
+                raise lobby_fail(self, CLASS_OSK_TYPING, f"{left} of {total} characters still in the field after clearing")
+            self.log(f"[osk] cleared: {left} of {total} left -> {left} more BCKSPC")
+            n = left
+        return dst
 
 
 @functools.lru_cache(maxsize=None)
@@ -649,6 +737,29 @@ def osk_ref_dists(gray):
 
 def osk_open_of(gray):
     return min(osk_ref_dists(gray)) < Shell.OSK_OPEN_MAX
+
+
+def osk_typed_count(gray):
+    """Characters in the on-screen keyboard's text row of a full 640x448 grey frame: the number of runs of
+    glyph columns (max between OSK_INK_MIN and OSK_CURSOR_MIN, at least OSK_GLYPH_MIN_WIDTH wide, separated by
+    a column with no ink). The blinking white cursor block is not a glyph, so an empty field reads 0 whether
+    or not its cursor is on. A space has no ink and is not counted (no harness text carries one)."""
+    y0, y1 = OSK_TEXT_ROWS
+    x0, x1 = OSK_TEXT_COLS
+    colmax = np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].max(axis=0)
+    ink, glyph = colmax > OSK_INK_MIN, (colmax > OSK_INK_MIN) & (colmax <= OSK_CURSOR_MIN)
+    count, x = 0, 0
+    while x < len(ink):
+        if not ink[x]:
+            x += 1
+            continue
+        start = x
+        while x < len(ink) and ink[x]:
+            x += 1
+        run = glyph[start:x]
+        if run.all() and x - start >= OSK_GLYPH_MIN_WIDTH:      # a run touching a white column is the cursor
+            count += 1
+    return count
 
 
 def attach(proc, title, out, tag="", pad_file=None):

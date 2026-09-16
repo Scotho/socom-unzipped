@@ -31,6 +31,7 @@ ROW_CHOOSE_GAMES = (18, 386, 170, 406)  # CREATE GAME menu's last row (CHOOSE GA
 ROW_GAMES_LIST = (150, 262, 620, 280)   # first row of the briefing room's games list
 NOTICE = (150, 152, 490, 265)           # "The READY button will be available in 30 seconds" panel
 OSK_ACCENT_BOX = (20, 396, 96, 428)     # the on-screen keyboard's accent-toggle key (Shell.osk_refs)
+OSK_TEXT_BAND = (0, 220, 640, 256)      # the keyboard's text row (228..250) with margin: typed glyphs + cursor block (osk_typed_count)
 
 L8C = "logs/parity/s5_t1_launch8c_medley"
 LAD2 = "logs/parity/s5_t5_ladder2"
@@ -65,6 +66,18 @@ FIXTURES = {
     "notice_gone_8c.png": (f"{L8C}/A_17_game_lobby_ok.png", NOTICE),
     # the game-name keyboard's accent key (cal1 left the keyboard open with "test;p" typed)
     "osk_accent_key_cal1.png": (f"logs/parity/ours_task7_cal1/A_19_ready.png", OSK_ACCENT_BOX),
+    # the keyboard's text row (Sprint 6, 2026-09-15 evening; osk_typed_count counts glyph runs): the old harness
+    # typed "xmfû" in accent mode (4 glyphs, cols 31..66), cal1 left "test;p" on the game-name keyboard (6, the
+    # proportional font: cursor at col 79, not 30 + 6 x 11.3), the pw_kbd captures show the field just opened (0;
+    # the old-harness one with its cursor block on at cols 30..34, the s6_ladder2 one with it blinked off), and
+    # two per-key captures from the runs where typing worked (3 with the cursor on, 6 with it off)
+    "osk_text_xmfu_oldharness.png": ("logs/parity/s6_ladder_oldharness/A_lobby_fail_timeout_login.png", OSK_TEXT_BAND),
+    "osk_text_testp_cal1.png": ("logs/parity/ours_task7_cal1/A_19_ready.png", OSK_TEXT_BAND),
+    "osk_text_empty_s6_lad2.png": ("logs/parity/s6_ladder2/A_04_pw_kbd.png", OSK_TEXT_BAND),
+    "osk_text_empty_s5_lad2.png": (f"{LAD2}/A_04_pw_kbd.png", OSK_TEXT_BAND),
+    "osk_text_empty_cursor_oldharness.png": ("logs/parity/s6_ladder_oldharness/A_04_pw_kbd.png", OSK_TEXT_BAND),
+    "osk_text_soc_cursor_match.png": ("logs/parity/ours_match/B_name_key2_c.png", OSK_TEXT_BAND),
+    "osk_text_socomc_login.png": ("logs/parity/ours_login/name_key5_c.png", OSK_TEXT_BAND),
 }
 
 if __name__ == "__main__":
