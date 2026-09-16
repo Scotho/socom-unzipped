@@ -38,6 +38,7 @@ std::atomic<bool> g_ps2xTraceArmed{false};
 #include <filesystem>
 #include <iomanip>
 #include "runtime/socom2_lum_readback.h"
+#include "runtime/socom2_cull_trace.h"
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -1191,6 +1192,424 @@ namespace
         runtime.replaceFunction(0x00620648u, socom2_RtNetConfigInit);
     }
 
+    // ------------------------------------------------------------------------------------------
+    // PS2X_CULL_TRACE="<file>:t<seconds>[:<count>]" -- research/31 section 16. From <seconds> after start,
+    // log the next <count> (default 4000) calls of the object box-frustum cull FUN_00290c30(camera,
+    // corners[8], flagsOut, occlusion): the eight world-space corners, the camera's 4x4 (camera + 0x330)
+    // and plane mask (camera + 0x564), the guest's result (v0: 2 culled, 1 visible, 0 partial) and mask,
+    // and the same judgement recomputed in IEEE arithmetic (socom2_cull::boxClipMasks), one line per call.
+    PS2Runtime::RecompiledFunction g_cullOriginal = nullptr;
+    std::FILE *g_cullTraceFile = nullptr;
+    double g_cullTraceAfter = 0.0;
+    int g_cullTraceLeft = 0;
+    std::chrono::steady_clock::time_point g_cullTraceStart;
+
+    void socom2_CullTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t camera = GPR_U32(ctx, 4);
+        const uint32_t cornersAddr = GPR_U32(ctx, 5);
+        const uint32_t flagsAddr = GPR_U32(ctx, 6);
+        const uint32_t occl = GPR_U32(ctx, 7);
+        float corners[8][4] = {};
+        float m[16] = {};
+        uint32_t planeMask = 0;
+        float lodScale[2] = {0.0f, 0.0f};
+        static const float s_forceLod = std::getenv("PS2X_LOD_SCALE") ? static_cast<float>(std::atof(std::getenv("PS2X_LOD_SCALE"))) : 0.0f;
+        if (s_forceLod > 0.0f)
+        {
+            if (uint8_t *pw = rdram + (camera & PS2_RAM_MASK) + 0x2c8u; camera != 0)
+            {
+                std::memcpy(pw, &s_forceLod, 4);
+                std::memcpy(pw + 4, &s_forceLod, 4);
+            }
+        }
+        if (const uint8_t *pl = getConstMemPtr(rdram, camera + 0x2c8u))
+            std::memcpy(lodScale, pl, sizeof(lodScale));
+        const uint8_t *pc = getConstMemPtr(rdram, cornersAddr);
+        const uint8_t *pm = getConstMemPtr(rdram, camera + 0x330u);
+        const uint8_t *pk = getConstMemPtr(rdram, camera + 0x564u);
+        if (pc) std::memcpy(corners, pc, sizeof(corners));
+        if (pm) std::memcpy(m, pm, sizeof(m));
+        if (pk) std::memcpy(&planeMask, pk, sizeof(planeMask));
+        g_cullOriginal(rdram, ctx, runtime);
+        // PS2X_CULL_PARTIAL_CLIP=1 (experiment, research/31 section 16): a box the frustum test marks partial
+        // (OR mask nonzero) that the guest then judged 'inside the guard band' (result 1) is answered 0, the
+        // 'needs clipping' verdict the hardware's flag latency gives FUN_00294a30 -- the clipped VU1 family.
+        {
+            static const bool s_partialClip = std::getenv("PS2X_CULL_PARTIAL_CLIP") && std::atoi(std::getenv("PS2X_CULL_PARTIAL_CLIP")) != 0;
+            if (s_partialClip && GPR_U32(ctx, 2) == 1u)
+            {
+                uint32_t andMaskX = 0, orMaskX = 0;
+                socom2_cull::boxClipMasks(m, corners, andMaskX, orMaskX);
+                if ((orMaskX & planeMask & 0x3Fu) != 0u)
+                    SET_GPR_U32(ctx, 2, 0u);
+            }
+        }
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
+            return;
+        --g_cullTraceLeft;
+        uint32_t guestMask = 0;
+        if (const uint8_t *pf = (flagsAddr ? getConstMemPtr(rdram, flagsAddr) : nullptr))
+            std::memcpy(&guestMask, pf, sizeof(guestMask));
+        uint32_t andMask = 0, orMask = 0;
+        socom2_cull::boxClipMasks(m, corners, andMask, orMask);
+        float lo[3] = {corners[0][0], corners[0][1], corners[0][2]}, hi[3] = {corners[0][0], corners[0][1], corners[0][2]};
+        for (int i = 1; i < 8; ++i)
+            for (int a = 0; a < 3; ++a)
+            {
+                lo[a] = corners[i][a] < lo[a] ? corners[i][a] : lo[a];
+                hi[a] = corners[i][a] > hi[a] ? corners[i][a] : hi[a];
+            }
+        std::fprintf(g_cullTraceFile,
+                     "t=%.3f cam=%08x occl=%u result=%u guestMask=%06x planeMask=%06x ieee=%06x lod=%g/%g box=(%.1f,%.1f,%.1f)-(%.1f,%.1f,%.1f)",
+                     sec, camera, occl, GPR_U32(ctx, 2), guestMask, planeMask, socom2_cull::packResult(andMask, orMask), lodScale[0], lodScale[1],
+                     lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]);
+        std::fprintf(g_cullTraceFile, " m=");
+        for (int i = 0; i < 16; ++i)
+            std::fprintf(g_cullTraceFile, "%s%.6g", i ? "," : "", m[i]);
+        std::fprintf(g_cullTraceFile, " corners=");
+        for (int i = 0; i < 8; ++i)
+            std::fprintf(g_cullTraceFile, "%s(%.1f,%.1f,%.1f,%.3g)", i ? ";" : "", corners[i][0], corners[i][1], corners[i][2], corners[i][3]);
+        std::fprintf(g_cullTraceFile, "\n");
+        if (g_cullTraceLeft == 0)
+            std::fflush(g_cullTraceFile);
+    }
+
+    // The scene-node traversal FUN_00338480(scene, node, parentComponent, ?, cullResult) that decides whether a
+    // node reaches the box cull at all: logged on the same file, one "node=" line per entry with the fields its
+    // gates read (node + 0x5c flags, + 0x5d, + 0x9c the fade/scale float, + 0x88 component presence).
+    PS2Runtime::RecompiledFunction g_nodeOriginal = nullptr;
+    PS2Runtime::RecompiledFunction g_nodeOriginal2 = nullptr;
+
+    void nodeTraceLine(const char *which, uint8_t *rdram, R5900Context *ctx);
+
+    void nodeTraceLine(const char *which, uint8_t *rdram, R5900Context *ctx)
+    {
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (g_cullTraceFile && g_cullTraceLeft > 0 && sec >= g_cullTraceAfter)
+        {
+            const uint32_t node = GPR_U32(ctx, 5);
+            const uint8_t *pn = getConstMemPtr(rdram, node);
+            uint32_t f5c = 0, c88 = 0, c8c = 0; float f9c = 0.0f; uint8_t a1 = 0;
+            if (pn)
+            {
+                std::memcpy(&f5c, pn + 0x5c, 4);
+                std::memcpy(&f9c, pn + 0x9c, 4);
+                std::memcpy(&c88, pn + 0x88, 4);
+                std::memcpy(&c8c, pn + 0x8c, 4);
+                a1 = pn[0xa1];
+            }
+            uint32_t comp = 0; uint8_t compKind = 0;
+            if (c88 && c8c)
+            {
+                const uint8_t *pp = getConstMemPtr(rdram, c8c);
+                if (pp) std::memcpy(&comp, pp, 4);
+                const uint8_t *pc = comp ? getConstMemPtr(rdram, comp) : nullptr;
+                if (pc) compKind = pc[4];
+            }
+            std::fprintf(g_cullTraceFile, "node t=%.3f via=%s obj=%08x f5c=%08x f9c=%g c88=%08x comp=%08x kind=%u a1=%02x scene=%08x arg2=%08x\n",
+                         sec, which, node, f5c, f9c, c88, comp, compKind, a1, GPR_U32(ctx, 4), GPR_U32(ctx, 6));
+        }
+    }
+
+    void socom2_NodeTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        nodeTraceLine("scene", rdram, ctx);
+        g_nodeOriginal(rdram, ctx, runtime);
+    }
+
+    void socom2_NodeTrace2(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        nodeTraceLine("world", rdram, ctx);
+        g_nodeOriginal2(rdram, ctx, runtime);
+    }
+
+    // The per-component LOD band test FUN_003b7b90(dist, component, lodEntry, &fade) that FUN_003374c0 runs before
+    // drawing a component whose LOD group (component + 5) is set: dist is camera+0x2c8 times the squared camera-space
+    // distance, the entry is {nearMin, nearFadeEnd, nearSlope, farFadeStart, farMax, farSlope, flags}; 0 = skip.
+    PS2Runtime::RecompiledFunction g_lodOriginal = nullptr;
+
+    void socom2_LodTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        float dist = 0.0f;
+        std::memcpy(&dist, &ctx->f[12], sizeof(dist));
+        const uint32_t comp = GPR_U32(ctx, 4), entry = GPR_U32(ctx, 5), fadeAddr = GPR_U32(ctx, 6);
+        float e[7] = {};
+        if (const uint8_t *pe = getConstMemPtr(rdram, entry))
+            std::memcpy(e, pe, sizeof(e));
+        float fadeIn = 0.0f;
+        if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
+            std::memcpy(&fadeIn, pf, sizeof(fadeIn));
+        g_lodOriginal(rdram, ctx, runtime);
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
+            return;
+        float fadeOut = 0.0f;
+        if (const uint8_t *pf = fadeAddr ? getConstMemPtr(rdram, fadeAddr) : nullptr)
+            std::memcpy(&fadeOut, pf, sizeof(fadeOut));
+        uint32_t flags = 0;
+        std::memcpy(&flags, &e[6], sizeof(flags));
+        std::fprintf(g_cullTraceFile, "lod t=%.3f comp=%08x dist=%g entry=%08x near=%g/%g/%g far=%g/%g/%g flags=%08x fade=%g->%g result=%u\n",
+                     sec, comp, dist, entry, e[0], e[1], e[2], e[3], e[4], e[5], flags, fadeIn, fadeOut, GPR_U32(ctx, 2));
+    }
+
+    // FUN_003b6e10(component): picks the component's triangle-count for this draw from its distance table --
+    // DAT_004b4a98 (0x4b4a98) is camera+0x2c8 * squared camera-space distance computed in FUN_003374c0,
+    // DAT_004b4a88 (0x4b4a88) whether it fell under a table threshold, DAT_004b4ad0 (0x4b4ad0) the count.
+    // Logged after the call: the distance, the flag, the full and chosen counts, the table (up to 4 entries).
+    PS2Runtime::RecompiledFunction g_detailOriginal = nullptr;
+
+    void socom2_DetailTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t comp = GPR_U32(ctx, 4);
+        static const bool s_forceFar = std::getenv("PS2X_DETAIL_FAR") && std::atoi(std::getenv("PS2X_DETAIL_FAR")) != 0;
+        if (s_forceFar)
+            rdram[0x4b4a88u & PS2_RAM_MASK] = 0;
+        g_detailOriginal(rdram, ctx, runtime);
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
+            return;
+        float dist = 0.0f; uint8_t nearFlag = 0; uint32_t count = 0, flags = 0, table = 0, tableCount = 0;
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a98u)) std::memcpy(&dist, q, 4);
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a88u)) nearFlag = *q;
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ad0u)) std::memcpy(&count, q, 4);
+        uint16_t full = 0;
+        if (const uint8_t *pc = getConstMemPtr(rdram, comp))
+        {
+            std::memcpy(&flags, pc, 4);
+            std::memcpy(&table, pc + 0x18 * 4, 4);
+            std::memcpy(&tableCount, pc + 0x19 * 4, 4);
+        }
+        std::fprintf(g_cullTraceFile, "detail t=%.3f comp=%08x flags=%08x dist=%g near=%u count=%u table=%08x n=%u", sec, comp, flags, dist, nearFlag, count, table, tableCount);
+        if (table && tableCount && tableCount < 16)
+        {
+            for (uint32_t i = 0; i < tableCount; ++i)
+            {
+                const uint8_t *pe = getConstMemPtr(rdram, table + i * 16u);
+                if (!pe) break;
+                float thr = 0.0f; uint16_t c8 = 0, ca = 0;
+                std::memcpy(&thr, pe, 4); std::memcpy(&c8, pe + 8, 2); std::memcpy(&ca, pe + 10, 2);
+                std::fprintf(g_cullTraceFile, " [%g:%u,%u]", thr, c8, ca);
+            }
+        }
+        uint32_t ec0 = 0, ec8 = 0, ed0 = 0, ad8 = 0, ac8 = 0; uint8_t ed8 = 0;
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ec0u)) std::memcpy(&ec0, q, 4);
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ec8u)) std::memcpy(&ec8, q, 4);
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ed0u)) std::memcpy(&ed0, q, 4);
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ed8u)) ed8 = *q;
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4ac8u)) std::memcpy(&ac8, q, 4);
+        std::fprintf(g_cullTraceFile, " extra=%08x/%u off=%u near2=%u geom=%08x", ec0, ec8, ed0, ed8, ac8);
+        // the variant header: geom - 16 bytes is the ushort[8] header FUN_003b6e10 read (count at [0], [6] offset, [7] extra)
+        if (ac8 >= 16u)
+        {
+            if (const uint8_t *ph = getConstMemPtr(rdram, ac8 - 16u))
+            {
+                uint16_t h[8]; std::memcpy(h, ph, sizeof(h));
+                std::fprintf(g_cullTraceFile, " hdr=%u,%u,%u,%u,%u,%u,%u,%u", h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7]);
+            }
+        }
+        uint32_t stk[4] = {};
+        if (const uint8_t *q = getConstMemPtr(rdram, 0x4b4a40u)) std::memcpy(stk, q, sizeof(stk));
+        std::fprintf(g_cullTraceFile, " vstack=%08x,%08x,%08x,%08x ret=%u\n", stk[0], stk[1], stk[2], stk[3], GPR_U32(ctx, 2));
+        (void)full;
+    }
+
+    // FUN_002918b0(t, record, out): applies a camera configuration record (piecewise tables at record + 0x22 /
+    // 0x24 / 0x26) to the active camera (DAT_00415ff0 -> + 0xb4), including its LOD base scale (camera + 0x2cc).
+    PS2Runtime::RecompiledFunction g_camCfgOriginal = nullptr;
+
+    void socom2_CamCfgTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        float t = 0.0f;
+        std::memcpy(&t, &ctx->f[12], sizeof(t));
+        const uint32_t rec = GPR_U32(ctx, 4);
+        uint16_t o22 = 0, o24 = 0, o26 = 0; uint8_t b4 = 0;
+        if (const uint8_t *pr = getConstMemPtr(rdram, rec))
+        {
+            std::memcpy(&o22, pr + 0x22, 2); std::memcpy(&o24, pr + 0x24, 2); std::memcpy(&o26, pr + 0x26, 2); b4 = pr[4];
+        }
+        g_camCfgOriginal(rdram, ctx, runtime);
+        if (!g_cullTraceFile)
+            return;
+        uint32_t holder = 0, cam = 0; float lod[2] = {0.0f, 0.0f};
+        if (const uint8_t *ph = getConstMemPtr(rdram, 0x00415ff0u)) std::memcpy(&holder, ph, 4);
+        if (holder) if (const uint8_t *pc = getConstMemPtr(rdram, holder + 0xb4u)) std::memcpy(&cam, pc, 4);
+        if (cam) if (const uint8_t *pl = getConstMemPtr(rdram, cam + 0x2c8u)) std::memcpy(lod, pl, sizeof(lod));
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        std::fprintf(g_cullTraceFile, "camcfg t=%.3f arg=%g rec=%08x b4=%02x o22=%u o24=%u o26=%u cam=%08x lod=%g/%g ret=%u\n",
+                     sec, t, rec, b4, o22, o24, o26, cam, lod[0], lod[1], GPR_U32(ctx, 2));
+    }
+
+    // PS2X_PACK_TRACE=<file>: log every FUN_0025a5d0(archive, name, out, size) -- the level loader's "does this
+    // inner file exist and can I read its first <size> bytes" probe (research/31 section 16: the per-instance
+    // mesh variants "N%03d_I%03d_V%02d" fall back to variant 0 when it answers false) -- with its answer.
+    PS2Runtime::RecompiledFunction g_packOriginal = nullptr;
+    std::FILE *g_packTraceFile = nullptr;
+
+    void socom2_PackTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t archive = GPR_U32(ctx, 4), nameAddr = GPR_U32(ctx, 5), size = GPR_U32(ctx, 7);
+        char name[96] = {};
+        if (const uint8_t *pn = getConstMemPtr(rdram, nameAddr))
+        {
+            for (int i = 0; i < 95 && pn[i]; ++i)
+                name[i] = static_cast<char>(pn[i] >= 0x20 && pn[i] < 0x7f ? pn[i] : '?');
+        }
+        g_packOriginal(rdram, ctx, runtime);
+        if (g_packTraceFile)
+        {
+            static uint32_t s_n = 0;
+            std::fprintf(g_packTraceFile, "#%u archive=%08x size=%u name=%s -> %u\n", s_n++, archive, size, name, GPR_U32(ctx, 2) & 0xFFu);
+            if ((s_n & 63u) == 0u)
+                std::fflush(g_packTraceFile);
+        }
+    }
+
+    void installPackTrace(PS2Runtime &runtime)
+    {
+        const char *path = std::getenv("PS2X_PACK_TRACE");
+        if (!path || !*path || !runtime.hasFunction(0x0025a5d0u))
+            return;
+        g_packTraceFile = std::fopen(path, "w");
+        if (!g_packTraceFile)
+            return;
+        g_packOriginal = runtime.lookupFunction(0x0025a5d0u);
+        runtime.replaceFunction(0x0025a5d0u, socom2_PackTrace);
+        std::cout << "[pack-trace] FUN_0025a5d0 -> " << path << std::endl;
+    }
+
+    // The deferred (sorted, translucent) draw list -- research/31 section 16: components whose flags carry bit 0 are
+    // not drawn in place by FUN_003374c0 but queued through FUN_003371b0(object, list, a, b, component, cullResult)
+    // into the bump buffer at scene + 0x638 and drawn later by FUN_00336cb0(list). Logged on the trace file:
+    // "defer" per enqueue (list bump state, component, its flags) and "flush" per FUN_00336cb0 call with the
+    // number of entries walked.
+    PS2Runtime::RecompiledFunction g_deferOriginal = nullptr;
+    PS2Runtime::RecompiledFunction g_flushOriginal = nullptr;
+
+    void socom2_DeferTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t list = GPR_U32(ctx, 4), obj = GPR_U32(ctx, 5), comp = GPR_U32(ctx, 7), cullRes = GPR_U32(ctx, 8);
+        uint32_t base = 0, bump = 0, cflags = 0;
+        if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
+        if (const uint8_t *pc = getConstMemPtr(rdram, comp)) std::memcpy(&cflags, pc, 4);
+        g_deferOriginal(rdram, ctx, runtime);
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
+            return;
+        uint32_t bumpAfter = 0;
+        if (const uint8_t *pl = getConstMemPtr(rdram, list)) std::memcpy(&bumpAfter, pl + 8, 4);
+        std::fprintf(g_cullTraceFile, "defer t=%.3f obj=%08x list=%08x base=%08x bump=%08x->%08x used=%u comp=%08x cflags=%08x cull=%u\n",
+                     sec, obj, list, base, bump, bumpAfter, bumpAfter >= base ? (bumpAfter - base) / 0x70u : 0u, comp, cflags, cullRes & 0xFFu);
+    }
+
+    void socom2_FlushTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t list = GPR_U32(ctx, 4);
+        // count the linked entries: head at list + 0x14 (the node after the sentinel at list + 0x10), next at +4
+        uint32_t n = 0, cur = 0;
+        if (const uint8_t *pl = getConstMemPtr(rdram, list)) std::memcpy(&cur, pl + 0x14, 4);
+        const uint32_t sentinel = list + 0x10u;
+        while (cur && cur != sentinel && n < 100000)
+        {
+            const uint8_t *pn = getConstMemPtr(rdram, cur);
+            if (!pn) break;
+            std::memcpy(&cur, pn + 4, 4); ++n;
+        }
+        uint32_t c0c = 0, bump = 0, base = 0;
+        if (const uint8_t *pl = getConstMemPtr(rdram, list)) { std::memcpy(&c0c, pl + 0xc, 4); std::memcpy(&base, pl + 4, 4); std::memcpy(&bump, pl + 8, 4); }
+        g_flushOriginal(rdram, ctx, runtime);
+        const double sec = std::chrono::duration<double>(std::chrono::steady_clock::now() - g_cullTraceStart).count();
+        if (!g_cullTraceFile || g_cullTraceLeft <= 0 || sec < g_cullTraceAfter)
+            return;
+        std::fprintf(g_cullTraceFile, "flush t=%.3f list=%08x entries=%u field0c=%08x used=%u\n", sec, list, n, c0c, bump >= base ? (bump - base) / 0x70u : 0u);
+    }
+
+    void installCullTrace(PS2Runtime &runtime)
+    {
+        const char *spec = std::getenv("PS2X_CULL_TRACE");
+        if (!spec || !*spec)
+        {
+            if (std::getenv("PS2X_CULL_PARTIAL_CLIP") && runtime.hasFunction(0x00290c30u))
+            {
+                g_cullTraceStart = std::chrono::steady_clock::now();
+                g_cullOriginal = runtime.lookupFunction(0x00290c30u);
+                runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
+                std::cout << "[cull-trace] PS2X_CULL_PARTIAL_CLIP: partial boxes take the clipped family" << std::endl;
+            }
+            return;
+        }
+        std::string path = spec;
+        int count = 4000;
+        // "<file>:t<seconds>[:<count>]" -- the drive letter's colon is not a separator.
+        size_t pos = path.find(":t");
+        if (pos == std::string::npos)
+        {
+            std::cout << "[cull-trace] PS2X_CULL_TRACE needs <file>:t<seconds>[:<count>]" << std::endl;
+            return;
+        }
+        std::string rest = path.substr(pos + 2);
+        path = path.substr(0, pos);
+        const size_t colon = rest.find(':');
+        if (colon != std::string::npos)
+        {
+            count = std::atoi(rest.c_str() + colon + 1);
+            rest = rest.substr(0, colon);
+        }
+        g_cullTraceAfter = std::atof(rest.c_str());
+        if (!runtime.hasFunction(0x00290c30u))
+        {
+            std::cout << "[cull-trace] no function at 0x290c30" << std::endl;
+            return;
+        }
+        g_cullTraceFile = std::fopen(path.c_str(), "w");
+        if (!g_cullTraceFile)
+        {
+            std::cout << "[cull-trace] cannot open " << path << std::endl;
+            return;
+        }
+        g_cullTraceLeft = count > 0 ? count : 4000;
+        g_cullTraceStart = std::chrono::steady_clock::now();
+        g_cullOriginal = runtime.lookupFunction(0x00290c30u);
+        runtime.replaceFunction(0x00290c30u, socom2_CullTrace);
+        if (runtime.hasFunction(0x00338480u))
+        {
+            g_nodeOriginal = runtime.lookupFunction(0x00338480u);
+            runtime.replaceFunction(0x00338480u, socom2_NodeTrace);
+        }
+        if (runtime.hasFunction(0x003389c0u))
+        {
+            g_nodeOriginal2 = runtime.lookupFunction(0x003389c0u);
+            runtime.replaceFunction(0x003389c0u, socom2_NodeTrace2);
+        }
+        if (runtime.hasFunction(0x003b7b90u))
+        {
+            g_lodOriginal = runtime.lookupFunction(0x003b7b90u);
+            runtime.replaceFunction(0x003b7b90u, socom2_LodTrace);
+        }
+        if (runtime.hasFunction(0x003b6e10u))
+        {
+            g_detailOriginal = runtime.lookupFunction(0x003b6e10u);
+            runtime.replaceFunction(0x003b6e10u, socom2_DetailTrace);
+        }
+        if (runtime.hasFunction(0x002918b0u))
+        {
+            g_camCfgOriginal = runtime.lookupFunction(0x002918b0u);
+            runtime.replaceFunction(0x002918b0u, socom2_CamCfgTrace);
+        }
+        if (runtime.hasFunction(0x003371b0u))
+        {
+            g_deferOriginal = runtime.lookupFunction(0x003371b0u);
+            runtime.replaceFunction(0x003371b0u, socom2_DeferTrace);
+        }
+        if (runtime.hasFunction(0x00336cb0u))
+        {
+            g_flushOriginal = runtime.lookupFunction(0x00336cb0u);
+            runtime.replaceFunction(0x00336cb0u, socom2_FlushTrace);
+        }
+        std::cout << "[cull-trace] FUN_00290c30 -> " << path << " from t=" << g_cullTraceAfter << "s, " << g_cullTraceLeft << " calls" << std::endl;
+    }
+
     void installCrashHandler(PS2Runtime &runtime)
     {
         g_runtimeForCrash = &runtime;
@@ -1206,6 +1625,8 @@ namespace
         startPcSampler(runtime);
         startRdramDump(runtime);
         installCallTrace(runtime);
+        installCullTrace(runtime);
+        installPackTrace(runtime);
         {
             // sanity check that the FTSCore data segment is resident: should print the boot path string
             const uint8_t *p = getConstMemPtr(runtime.memory().getRDRAM(), 0x003e5c60u);

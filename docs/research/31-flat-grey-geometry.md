@@ -426,3 +426,44 @@ VU1 inputs can be laid side by side. Tools: `tools_py/research/terrain/` (README
   (947, -139, 969) (console fan c46's triangle). Culled with a wrong mask -> the CLIP path; never visited -> the
   render-list build upstream (streaming, PVS or LOD selection), which is where the flat hill patch (form 2) would
   also come from.
+
+## 17. The cause: the VIF ran on while a VU1 program was still running (2026-09-16, evening) [verified, fixed]
+
+The trace hooks of section 16 (`PS2X_CULL_TRACE`, the node, LOD, detail-selection and deferred-list hooks in
+`game_overrides_socom2.cpp`) and the two RAM images -- ours from `PS2X_RDRAM_DUMP` at the spawn view, the console's from
+the PCSX2 slot-8 savestate's `eeMemory.bin` -- cleared the whole EE side: node records, matrices, boxes, components,
+mesh variants, detail tables and their thresholds, the camera and its LOD scale are identical byte for byte (only heap
+addresses and unread padding differ). The object renderer sizes and queues the same primitives. What differed was
+the VU1 program that should draw the missing patch: in our dumps it starts at **pc 0x3b40**, inside the clipper
+subroutine, not at the dispatcher entry 0x1b50, and its per-primitive loop runs once (28 primitives in, 2 polygons
+out) -- the console's stream draws the same 28 as 25 fans.
+
+**Why.** The renderer chains chunks as `[unpack][MSCAL] [unpack][MSCNT] [unpack][MSCNT] ...` on the double-buffered
+VU1 memory. Our VIF1 callbacks (`ps2_runtime.cpp`) ran every program through `VU1Interpreter::execute` / `resume`
+under a **65536-cycle budget**; a 43-primitive terrain chunk takes 68415 cycles (`vu1_replay` on dump 227), so it was
+left mid-way, and the next MSCNT `resume`d it from that pc with the next buffer's TOP. The hardware VIF stalls on
+MSCAL/MSCNT until the VU is idle. Which chunk got cut depended on host timing, hence the run-to-run variation and the
+flat hill patch (form 2): any long VU1 program followed by a continuation lost the continuation's chunk.
+
+**Fix** (`ps2_vu1.h`, `ps2_vu1_core.cpp`, `ps2_runtime.cpp`; test-first in `ps2_vu1_tests.cpp` 'VIF-driven VU1 programs
+run to their E bit before the next MSCNT continues'): `run()` records a budget stop as `programPending()`; the new VIF
+entry points `executeProgram` / `continueProgram` first run a pending program to its E bit (with its own TOP/ITOP), then
+run the new program or the continuation to its E bit, in 1M-cycle slices under a 256M-cycle runaway guard (a program
+that makes no progress or passes the guard is dropped with one log line -- the hardware would hang there). The
+budgeted `execute`/`resume` keep their contract for the tests that single-step.
+
+**Measured** (`s6_vifwait1`, plain mission gate, the same spawn view): terrain triangles per frame 96, the console's 96
+(84 fans to its 82: the same polygons, split slightly differently by clipping); whole-frame score 24.8 (was 27.2);
+water flat 0.248 dark 0.068 (console 0.19 / 0.08); the spawn capture shows the stream bed continuous, no light
+polygon anywhere. The HUD reference (`scripts/parity/ref_hud_ours.png`) was re-captured from that frame because the
+ground behind the squad panel is now drawn (a slab-era HUD frame reads 61.8 against it, threshold 40); fixture
+`tests/fixtures/gate/mission/vifwait/s28_none.png`.
+
+**A second, smaller defect found on the way, still open:** the recompiler updates VU0 macro-mode MAC/STATUS flags
+immediately, the hardware lands them four cycles after issue. The game's "needs clipping" test (`FUN_00294a30`:
+`vmulw`, `vmulw`, `vnop`, `vnop`, `ctc2 $zero,$vi16`, `vsub`, `vsub`, ..., `cfc2 $vi16 & 0xC0`) clears the sticky
+flags while the second `vmulw` (guard vector `b = (4096, 4096, 0, 850)`: a zero z lane) is still in flight, so on
+hardware every partially visible object is judged "needs clipping" and takes the clipped VU1 family; ours takes the
+unclipped one for objects inside the guard band. Forcing the hardware verdict (`PS2X_CULL_PARTIAL_CLIP=1`, an
+experiment knob in the cull hook) recovered 6 polygons on the old runtime; with the VIF fix in place its effect is to
+be re-measured, and the proper fix is a flag-latency model in the recompiler's CTC2/CFC2 translation.

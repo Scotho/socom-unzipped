@@ -171,16 +171,16 @@ Maintained by whoever is running the loop. Last audited: 2026-09-15, after the p
   counts the contiguous black run behind it, from 5 fps wait captures (`--wait-period 0.2`). `s6_fade` and
   `s6_gamepad3` re-score PASS at exactly the 5-frame floor on their old 1 Hz captures. The boot's black screens sit
   behind the main menu and cannot join the run, which is what the burst step was enforcing.
-- **The EE leaves terrain triangles out of the draw list that the console draws** (2026-09-16, research/31 §15-16): the
-  light flat patches left on the Seeding Chaos stream after the brighten fix are holes in the under-water terrain
-  (texture 0x36b1: 82 fans per frame on the console, 57 in ours) through which the translucent bed and water passes
-  show the fog clear colour. The VU1 is cleared: with our GIF stream and VU1 dumps recorded from the same frames
-  (`s6_gifdump3`), 63 of the console's 82 fans are kicked by us, 18 never appear in any VU1 program's input (both the
-  clipped and the unclipped family, replayed with clipping and culling disabled), 1 is sent and dropped by the unclipped
-  list path. The absent triangles share vertices with the ones we draw and sit in the same world region. Candidates on
-  the EE: the box-frustum cull `FUN_00290c30`/`FUN_00294ac0` (VU0 macro CLIP) or the render-list build above it;
-  next step is a logging hook on `FUN_00290c30`. Tools: `tools_py/research/terrain/`. Same class as the flat hill
-  patch (form 2).
+- **FIXED 2026-09-16 (evening): the terrain holes were VU1 chunks lost to a VIF that did not wait for the VU** (research/31
+  section 17): the VIF1 MSCAL/MSCNT callbacks ran every VU1 program under a 65536-cycle budget; a chunk that needed
+  more was left mid-way and the next MSCNT continued it from inside the clipper with the next buffer's TOP. The VIF
+  entry points now finish a pending program before the next one (`VU1Interpreter::executeProgram` /
+  `continueProgram`, test-first). Measured: 96 terrain triangles per frame like the console (was 70), the stream bed
+  continuous (`s6_vifwait1`). The same class explains the flat hill patch (form 2) and the run-to-run variation.
+- **Open: VU0 macro-mode flag latency** (research/31 section 17): the recompiler lands MAC/STATUS flags immediately,
+  hardware four cycles later; the game's 'needs clipping' test (`FUN_00294a30`) depends on it, so objects inside the
+  guard band take the unclipped VU1 family on ours. Small visible effect after the VIF fix; the fix is a latency
+  model in the CTC2/CFC2 translation.
 - **Every gameplay frame drew 1.73x too dark, and the water shards were its symptom** (2026-09-16, research/31 §11-13): the
   game's post-process copies the frame at half size into the depth-buffer pages and draws it back with `ALPHA 0x5d00000069`
   -- A=Cd, B=0, C=FIX=93, D=Cd, i.e. Cd x 1.73 -- a brighten the GL backend mapped to an identity (no destination factor above

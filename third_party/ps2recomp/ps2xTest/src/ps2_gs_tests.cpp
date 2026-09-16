@@ -22,6 +22,7 @@
 #include <map>
 #include "raylib.h"
 #include "runtime/socom2_lum_readback.h"
+#include "runtime/socom2_cull_trace.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include <string>
 #include <thread>
@@ -1596,6 +1597,34 @@ void register_ps2_gs_tests()
             t.Equals(static_cast<uint32_t>(out[1]), 430u & 0xFFu, "out[1] is its G");
             t.Equals(static_cast<uint32_t>(out[3]), 0xAAu, "out[3] is its A");
             t.Equals(static_cast<uint32_t>(out[5]), 431u & 0xFFu, "the second pixel (next row) follows in memory order");
+        });
+
+        tc.Run("SOCOM II box-frustum cull: the eight corners' CLIP judgements AND and OR the way FUN_00294ac0 does", [](TestCase &t)
+        {
+            // FUN_00294ac0 (research/31 section 16) runs each of eight box corners through a 4x4 (vf4..vf7 are the
+            // matrix ROWS applied as clip = vf4*x + vf5*y + vf6*z + vf7*w), CLIPs the result against its own w and
+            // ANDs / ORs the six judgement bits (bit0 x>+w, bit1 x<-w, bit2/3 y, bit4/5 z). An identity matrix
+            // makes the corners their own clip coordinates.
+            float m[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+            float inside[8][4], left[8][4], straddle[8][4];
+            for (int i = 0; i < 8; ++i)
+            {
+                const float sx = (i & 1) ? 1.0f : -1.0f, sy = (i & 2) ? 1.0f : -1.0f, sz = (i & 4) ? 1.0f : -1.0f;
+                inside[i][0] = 0.5f * sx; inside[i][1] = 0.5f * sy; inside[i][2] = 0.5f * sz; inside[i][3] = 1.0f;
+                left[i][0] = -3.0f + 0.5f * sx; left[i][1] = 0.5f * sy; left[i][2] = 0.5f * sz; left[i][3] = 1.0f;
+                straddle[i][0] = -1.0f + 0.5f * sx; straddle[i][1] = 0.5f * sy; straddle[i][2] = 0.5f * sz; straddle[i][3] = 1.0f;
+            }
+            uint32_t andMask = 0xFFu, orMask = 0xFFu;
+            socom2_cull::boxClipMasks(m, inside, andMask, orMask);
+            t.IsTrue(andMask == 0u && orMask == 0u, "a box inside every plane judges nothing");
+            socom2_cull::boxClipMasks(m, left, andMask, orMask);
+            t.IsTrue(andMask == 0x02u, "a box wholly beyond -x has bit 1 set in every corner (culled)");
+            t.IsTrue(orMask == 0x02u, "... and nothing else");
+            socom2_cull::boxClipMasks(m, straddle, andMask, orMask);
+            t.IsTrue(andMask == 0u, "a box straddling the -x plane is not culled");
+            t.IsTrue(orMask == 0x02u, "... but is marked partial on that plane");
+            // The guest packs AND in the low byte and OR << 8, as FUN_00294ac0 returns them.
+            t.IsTrue(socom2_cull::packResult(0u, 0x02u) == 0x200u, "packResult puts OR in bits 8..13");
         });
 
         tc.Run("SOCOM II exposure readback syncs the GPU at most once per interval", [](TestCase &t)

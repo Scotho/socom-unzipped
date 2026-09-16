@@ -17,3 +17,6 @@ Offline scripts used on 2026-09-16 to compare the console's terrain draw list (a
 
 `dist/vu1_replay.exe --batch <out> --no-native <dumps>` and `--pchist <hist.bin>` (execution counts per pc, e.g.
 0x1f98 primitives, 0x2060 front-facing, 0x2090 survived the clipper) are the replay side.
+- `cull_trace_scan.py TRACE [x,y,z]` -- reads a `PS2X_CULL_TRACE=<file>:t<seconds>[:<count>]` log (the object
+  box-frustum cull FUN_00290c30: corners, matrix, guest result and mask, IEEE recomputation) and lists the calls
+  whose box holds the world point, plus every guest-vs-IEEE mask disagreement.
