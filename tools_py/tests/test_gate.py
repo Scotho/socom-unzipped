@@ -427,6 +427,19 @@ class MissionSeeing(unittest.TestCase):
             gate.run_gate("title", tmp)
             self.assertEqual(drive_env()["PS2X_PEEK"], "0x416054:3")   # title: the environment passes through untouched
             self.assertNotIn("PS2X_PC_SAMPLER", drive_env())
+            self.assertEqual(drive_env()["PS2X_HOST_GAMEPAD"], "0")   # every stage: a gate boots with no controller
+            # ... and from a PRISTINE memory card: the owner's free play (2026-09-16) saved the controller configuration
+            # onto game/disc/mc0, the card every gate had booted from, and the boot stopped showing the configuration
+            # screens and the 'save to memory card?' dialog the transition stage keys on (s6_gamepad..s6_gamepad3).
+            # run_gate copies game/disc/mc0_parity into the stamp directory and points the game there.
+            card = drive_env()["PS2X_MC_DIR"]
+            self.assertTrue(card.startswith(os.path.abspath(tmp)), card)
+            self.assertTrue(os.path.isfile(os.path.join(card, "BASCUS-97275SOCOMII", "BASCUS-97275SOCOMII")), card)
+            os.environ["PS2X_MC_DIR"] = "C:/elsewhere"
+            calls.clear()
+            gate.run_gate("title", tmp)
+            self.assertEqual(drive_env()["PS2X_MC_DIR"], "C:/elsewhere")   # an operator's card wins
+            os.environ.pop("PS2X_MC_DIR", None)
 
 
 class GameplayBands(unittest.TestCase):
@@ -966,3 +979,185 @@ class TestGateDiskRefusal(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FadeBeforeBriefing(unittest.TestCase):
+    """The content-scored transition (s6_fade, 2026-09-16). With a controller configuration saved on the memory card
+    the boot shows no configuration screens and no 'save to memory card?' dialog, so no ifburst ever fires; the fade
+    to black happens during the rank press's own settle wait, and that step's index drifts with how many boot screens
+    the run showed (s05 in s6_fade, s07 nominal), so no step-pinned burst can catch it. gate.fade_frames scores by
+    content instead: every capture of the run in capture order, the FIRST frame whose header band matches
+    scripts/parity/ref_briefing_ours.png ends the fade, the briefing's own fade-in (non-black frames within
+    FADE_IN_MAX_S before it) is skipped, and the contiguous black-screen run before that is the transition. The boot's
+    black screens sit behind the main menu, a non-black frame, so they never join the run."""
+
+    BLACK, MENU, DIM = (0, 0, 0), (90, 90, 90), (40, 40, 40)
+
+    @staticmethod
+    def _write(run, frames, spacing=1.0):
+        """frames: (name, colour | "briefing") in capture order; mtimes `spacing` seconds apart."""
+        t0 = 1_700_000_000.0
+        for k, (name, colour) in enumerate(frames):
+            p = os.path.join(run, name)
+            if colour == "briefing":
+                shutil.copyfile(gate.BRIEFING_REF, p)
+            else:
+                Image.new("RGB", (640, 448), colour).save(p)
+            os.utime(p, (t0 + k * spacing, t0 + k * spacing))
+
+    def _boot(self):
+        return [("w00_000.png", self.BLACK), ("w00_001.png", self.BLACK), ("s00_CROSS.png", self.BLACK),
+                ("s03_CROSS.png", self.MENU), ("s04_CROSS.png", self.MENU)]
+
+    def test_counts_the_black_run_before_the_first_briefing_frame(self):
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(6)]
+                        + [("s05_CROSS.png", "briefing"), ("w07_000.png", self.BLACK)])
+            black, first = gate.fade_frames(run)
+            self.assertEqual(first, "s05_CROSS.png")
+            self.assertEqual([n for n, _ in black], ["w05_%03d.png" % k for k in range(6)])
+            ok, detail = gate.score_transition(run)
+        self.assertTrue(ok, detail)
+        self.assertIn("6 black-screen frames examined before the first briefing frame (s05_CROSS.png)", detail)
+
+    def test_the_briefing_fade_in_is_skipped(self):
+        """w06_002 in s6_fade: the header half-drawn (band dist 11.9), the screen not black -- the walk back must
+        step over such frames, bounded by FADE_IN_MAX_S, and still find the black run behind them."""
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(6)]
+                        + [("w06_000.png", self.DIM), ("w06_001.png", self.DIM), ("s06_CROSS.png", "briefing")],
+                        spacing=0.5)
+            black, first = gate.fade_frames(run)
+            self.assertEqual(first, "s06_CROSS.png")
+            self.assertEqual(len(black), 6)
+
+    def test_a_menu_frame_inside_the_fade_in_window_ends_the_search(self):
+        """The skip is for the briefing's fade-in only: a non-black frame older than FADE_IN_MAX_S before the first
+        briefing frame is a screen, and nothing behind it is the transition."""
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(6)]
+                        + [("w06_000.png", self.MENU), ("w06_001.png", self.MENU), ("w06_002.png", self.MENU),
+                           ("s06_CROSS.png", "briefing")], spacing=1.0)
+            black, first = gate.fade_frames(run)
+            self.assertEqual(first, "s06_CROSS.png")
+            self.assertEqual(black, [])
+
+    def test_fewer_than_the_floor_fails(self):
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(4)]
+                        + [("s05_CROSS.png", "briefing")])
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("4 black-screen frames examined before the first briefing frame", detail)
+        self.assertIn("need 5", detail)
+
+    def test_no_briefing_frame_examines_nothing(self):
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(6)])
+            self.assertEqual(gate.fade_frames(run), ([], None))
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("0 black-screen frames examined", detail)
+        self.assertIn("no briefing frame", detail)
+
+    def test_a_lit_band_fails(self):
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(6)]
+                        + [("s05_CROSS.png", "briefing")])
+            p = os.path.join(run, "w05_003.png")
+            stamp = os.path.getmtime(p)
+            im = Image.open(p).convert("RGB")
+            im.putpixel((320, 420), (255, 255, 255))
+            im.save(p)
+            os.utime(p, (stamp, stamp))          # keep its place in capture order
+            ok, detail = gate.score_transition(run)
+        self.assertFalse(ok, detail)
+        self.assertIn("NOT BLACK", detail)
+        self.assertIn("w05_003.png", detail)
+
+    def test_order_is_capture_time_not_file_name(self):
+        """Step names lie about time only when the run's steps drifted; capture order is what the fade is measured on."""
+        with tempfile.TemporaryDirectory() as run:
+            self._write(run, self._boot() + [("w09_%03d.png" % k, self.BLACK) for k in range(6)]
+                        + [("s02_none.png", "briefing")])
+            black, first = gate.fade_frames(run)
+            self.assertEqual(first, "s02_none.png")
+            self.assertEqual(len(black), 6)
+
+    def test_a_fired_ifburst_still_wins(self):
+        """A run whose dialog was answered scores from its NO-press burst exactly as before."""
+        ok, detail = gate.score_transition(TRANSITION_FIXTURE_RUN)
+        self.assertTrue(ok, detail)
+        self.assertIn("at/after the burst step", detail)
+
+    @unittest.skipUnless(os.path.isdir(os.path.join(ROOT, "logs", "parity", "gate", "s6_fade", "transition")),
+                         "needs logs/parity/gate/s6_fade/transition")
+    def test_the_s6_fade_run(self):
+        """The run that motivated this: 1 Hz wait captures caught five black frames between the rank press and the
+        briefing (w05_001, w05_002, s05_CROSS, w06_000, w06_001; w06_002 is the fade-in)."""
+        black, first = gate.fade_frames(os.path.join(ROOT, "logs", "parity", "gate", "s6_fade", "transition"))
+        self.assertEqual(first, "w06_003.png")
+        self.assertEqual([n for n, _ in black],
+                         ["w05_001.png", "w05_002.png", "s05_CROSS.png", "w06_000.png", "w06_001.png"])
+
+
+class DriveCommand(unittest.TestCase):
+    """run_gate's drive.py command line per stage: the transition stage captures its settle waits at 5 fps
+    (--wait-period 0.2) so a ~3 s fade yields well over TRANSITION_MIN_FRAMES frames; the other stages keep 1 Hz."""
+
+    def test_transition_stage_captures_waits_at_five_fps(self):
+        cmd = gate.drive_command("transition", os.path.join("out", "transition"))
+        self.assertIn("--wait-period", cmd)
+        self.assertEqual(cmd[cmd.index("--wait-period") + 1], "0.2")
+        self.assertEqual(cmd[cmd.index("--script") + 1], gate.GATES["transition"]["script"])
+
+    def test_other_stages_keep_the_default(self):
+        for name in ("title", "mission"):
+            self.assertNotIn("--wait-period", gate.drive_command(name, os.path.join("out", name)))
+
+
+class BlackRowsExamine(unittest.TestCase):
+    def test_examine_reports_black_screen_and_band_peak(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = os.path.join(tmp, "f.png")
+            Image.new("RGB", (640, 448), (0, 0, 0)).save(p)
+            self.assertEqual(black_rows.examine(p), (True, 0))
+            im = Image.open(p).convert("RGB")
+            im.putpixel((10, 430), (20, 20, 20))
+            im.save(p)
+            self.assertEqual(black_rows.examine(p), (True, 20))
+            im.putpixel((10, 10), (200, 0, 0))
+            im.save(p)
+            self.assertEqual(black_rows.examine(p)[0], False)
+
+
+class ConsoleSpawnNeedsAHudFrame(unittest.TestCase):
+    """s6_gamepad5 (2026-09-16): the capture after the HUD match was the letterboxed location cinematic (gameplay band
+    0.56, HUD frames read 0.92) and the console comparison printed `water flat=0.071` on it -- the only sub-0.5 flat
+    figure ever, and meaningless. A frame that is not a HUD frame is NO-DATA, not a verdict."""
+
+    def _run(self, frame):
+        with tempfile.TemporaryDirectory() as tmp:
+            run = os.path.join(tmp, "mission")
+            os.makedirs(run)
+            log = os.path.join(tmp, "mission.drive.log")
+            with open(log, "w") as f:
+                f.write("untilref(scripts/parity/ref_hud_ours.png): 2 presses, dist=15.9 bands=0.92, matched=True"
+                        + chr(10) + "s28_none t= 1.0s stable=True waited=0.0s" + chr(10))
+            frame.save(os.path.join(run, "s28_none.png"))
+            return gate.console_spawn_line(log, run)
+
+    def test_a_letterboxed_cinematic_frame_is_no_data(self):
+        im = Image.new("RGB", (640, 448), (90, 80, 70))
+        for y in list(range(0, 30)) + list(range(418, 448)):        # the cinematic's black bars
+            for x in range(640):
+                im.putpixel((x, y), (0, 0, 0))
+        line = self._run(im)
+        self.assertTrue(line.startswith("CONSOLE spawn NO-DATA"), line)
+        self.assertIn("not a HUD frame", line)
+        self.assertNotIn("flat=", line)
+
+    def test_a_hud_frame_is_still_scored(self):
+        with Image.open(os.path.join(ROOT, "logs", "parity", "gate", "s6_gamepad4", "mission", "s28_none.png")) as im:
+            line = self._run(im.convert("RGB"))
+        self.assertIn("water flat=", line)

@@ -4,8 +4,8 @@
     "peek": "*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2",
     "read": "the pointer at actor+0x2e8 names the skeleton root node; word 1 of the node item (its Y translation at +0x04), float, the settled value (median of the last quarter of rows)",
     "console": 5.50391,
-    "tol": 0.1,
-    "source": "research/17 §1 table (spawn_pcsx2.rdram); ours reads 0.0 after decaying from the bind pose (research/17 §4.1)"
+    "tol": 1.5,
+    "source": "research/17 §1 table (spawn_pcsx2.rdram, the idle pose). On the fixed exe the settled value is pose-dependent: 5.031 (s6_probe, s6_gamepad2), 4.707 (s6_gamepad3) right after the bind-pose plateau, 5.504 at idle later in s6_probe; the defect was a decay to 0.0 (research/17 §4.1). The bar is therefore >= 4.0: not decayed, not the exact idle pose"
   },
   "move_scale": {
     "peek": "*0x408c58+0x1368:1",

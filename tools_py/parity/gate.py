@@ -27,7 +27,7 @@ import time
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import compare, console_compare, guest_probe, mission_fail, screen_bands
+from tools_py.parity import black_rows, compare, console_compare, drive, guest_probe, mission_fail, screen_bands
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
@@ -87,6 +87,7 @@ MISSION_MIN_LIVE_PAIRS = 2
 #    block-pointer exe read the root node at the console's 5.5039, MoveScale 1.0 and 0 teleports, so a value
 #    outside its tolerance fails the stage. NO-DATA fails only a stage the gate launched itself.
 GUEST_PROBE_CONSOLE = os.path.join("scripts", "parity", "guest_probe_console.json")
+PRISTINE_CARD = os.path.join("game", "disc", "mc0_parity")   # the 2026-09-08 card: no controller config saved, so the boot shows the configuration screens and the save dialog
 # What this floor counts: black-screen frames AT OR AFTER the probe script's first `burst` step
 # (first_burst_step() below -> black_rows.py --from-step), i.e. frames of the black screen
 # between the controller-configuration screens and the mission briefing. It deliberately does not
@@ -126,7 +127,7 @@ TRANSITION_MIN_FRAMES = 5
 
 GATES = {
     "title": dict(script="scripts/parity/title_menu.txt", seconds=170, tail=8),
-    "transition": dict(script="scripts/parity/transition_probe.txt", seconds=170, tail=8),
+    "transition": dict(script="scripts/parity/transition_probe.txt", seconds=170, tail=8, wait_period=0.2),
     "mission": dict(script="scripts/parity/gameplay_probe.txt", seconds=480, tail=170),
 }
 
@@ -155,6 +156,20 @@ def score_title(run_dir):
 
 
 BURST_CAPTURE_RE = re.compile(r"^s(\d+)_burst_")
+# The content-scored transition (s6_fade, 2026-09-16). When no ifburst fired -- a saved controller configuration
+# on the card, or a boot that showed no configuration screens -- the fade to black happens during the rank
+# press's own settle wait, at a step index that drifts with the number of boot screens (s05 in s6_fade, s07
+# nominal), so no step-pinned burst catches it. fade_frames finds the FIRST capture whose header band matches
+# the briefing reference (rows 6..18, cols 0..80 of the 160x112 thumbnail: "MISSION BRIEFING"; measured 0.0 on
+# every briefing frame of s6_fade/s6_gamepad3, 25.4+ on every other screen, 11.9 on the half-drawn fade-in
+# frame), skips the briefing's own fade-in (non-black frames within FADE_IN_MAX_S before it) and counts the
+# contiguous black-screen run behind that. The boot's black screens sit behind the main menu, a non-black
+# frame, so they can never join the run -- the property the burst step was enforcing.
+BRIEFING_REF = os.path.join("scripts", "parity", "ref_briefing_ours.png")
+BRIEFING_BAND = (6, 18, 0, 80)
+BRIEFING_THRESH = 8.0
+FADE_IN_MAX_S = 2.0
+CAPTURE_RE = re.compile(r"^[sw]\d+_.*\.png$")
 
 
 def _script_step_modes(script_path=None):
@@ -234,6 +249,42 @@ def observed_burst_step(run_dir, script_path=None):
     return min(steps) if steps else None
 
 
+def briefing_dist(path, ref=None):
+    r0, r1, c0, c1 = BRIEFING_BAND
+    if ref is None:
+        ref = drive.thumb(Image.open(BRIEFING_REF))
+    t = drive.thumb(Image.open(path))
+    return float(np.abs(t[r0:r1, c0:c1] - ref[r0:r1, c0:c1]).mean())
+
+
+def fade_frames(run_dir):
+    """([(name, band_peak), ...] in capture order, first_briefing_name): the black-screen run immediately before
+    the first briefing frame of the run, capture order by file mtime (step names drift; capture time does not).
+    ([], None) when no capture matches the briefing."""
+    try:
+        names = [n for n in os.listdir(run_dir) if CAPTURE_RE.match(n)]
+    except OSError:
+        return [], None
+    paths = sorted((os.path.join(run_dir, n) for n in names), key=lambda p: (os.path.getmtime(p), p))
+    ref = drive.thumb(Image.open(BRIEFING_REF))
+    first = next((k for k, p in enumerate(paths) if briefing_dist(p, ref) <= BRIEFING_THRESH), None)
+    if first is None:
+        return [], None
+    t_first = os.path.getmtime(paths[first])
+    k = first - 1
+    # The briefing fades in from black: step back over its non-black frames, but only within FADE_IN_MAX_S.
+    while k >= 0 and t_first - os.path.getmtime(paths[k]) <= FADE_IN_MAX_S and not black_rows.examine(paths[k])[0]:
+        k -= 1
+    run = []
+    while k >= 0:
+        black, peak = black_rows.examine(paths[k])
+        if not black:
+            break
+        run.append((os.path.basename(paths[k]), peak))
+        k -= 1
+    return run[::-1], os.path.basename(paths[first])
+
+
 def score_transition(run_dir, script_path=None):
     """black_rows.py prints one "<file>  black screen, rows <y0>-<y1>: peak <n>" line per frame it
     actually examines and exits 1 only when one of them is not black. Zero examined frames also
@@ -242,15 +293,15 @@ def score_transition(run_dir, script_path=None):
     Only frames at or after the run's transition burst are examined (--from-step): those are the
     transition, everything before them is the boot. The step is taken from the captures the run
     actually wrote (observed_burst_step), so a probe whose dialog landed late is still scored from
-    its NO press. There is deliberately no fallback window: a run that fired no transition burst
-    never answered the dialog, so nothing marks where the transition begins and the only honest
-    verdict is FAIL. Falling back to a step index would let the run's later black frames -- the
-    boot's, or the trailing briefing burst's -- stand in for a fade that was never captured."""
+    its NO press. A run that fired no transition burst never saw the dialog (a saved controller
+    configuration on the card, s6_gamepad..s6_fade 2026-09-16): its fade happened during the rank
+    press's own settle wait at a drifting step index, so it is scored by CONTENT instead
+    (score_fade: the black run immediately before the first briefing frame). There is deliberately
+    no fallback to a step index: that would let the run's other black frames -- the boot's, or the
+    trailing briefing burst's -- stand in for a fade that was never captured."""
     burst = observed_burst_step(run_dir, script_path)
     if burst is None:
-        return False, ('transition not captured (0 black-screen frames examined: no transition '
-                       'burst fired, so the probe never answered the "save to memory card?" '
-                       'dialog and nothing marks where the transition begins) in %s' % run_dir)
+        return score_fade(run_dir)
     scope = " at/after the burst step (s%02d, fired)" % burst
     cmd = [sys.executable, "tools_py/parity/black_rows.py", run_dir, "--from-step", str(burst)]
     r = subprocess.run(cmd, capture_output=True, text=True)
@@ -268,6 +319,35 @@ def score_transition(run_dir, script_path=None):
             "; ".join(" ".join(ln.split()) for ln in bad[:5]) or r.stderr.strip()[:200])
     return True, "%d black-screen frames examined%s, rows 396-447 peak %d" % (
         len(examined), scope, max(peaks, default=0))
+
+
+def score_fade(run_dir):
+    """The content-scored transition for a run that fired no ifburst (see fade_frames)."""
+    run, first = fade_frames(run_dir)
+    if first is None:
+        return False, ("transition not captured (0 black-screen frames examined: no transition burst fired and "
+                       "no briefing frame was captured, so nothing marks where the fade ends) in %s" % run_dir)
+    scope = " before the first briefing frame (%s)" % first
+    if len(run) < TRANSITION_MIN_FRAMES:
+        return False, ("transition not captured (%d black-screen frames examined%s, need %d) in %s"
+                       % (len(run), scope, TRANSITION_MIN_FRAMES, run_dir))
+    bad = [(n, p) for n, p in run if p > 8]
+    if bad:
+        return False, "%d black-screen frames examined%s; non-black band: %s" % (
+            len(run), scope, "; ".join("%s rows 396-447 peak %d <-- NOT BLACK" % b for b in bad[:5]))
+    return True, "%d black-screen frames examined%s, rows 396-447 peak %d" % (
+        len(run), scope, max((p for _, p in run), default=0))
+
+
+def drive_command(name, out_dir):
+    """drive.py's command line for a stage; the transition stage captures its settle waits at 5 fps."""
+    cfg = GATES[name]
+    cmd = [sys.executable, "-m", "tools_py.parity.drive", "--target", "ours",
+           "--script", cfg["script"], "--out", out_dir,
+           "--seconds", str(cfg["seconds"]), "--tail", str(cfg["tail"])]
+    if cfg.get("wait_period"):
+        cmd += ["--wait-period", str(cfg["wait_period"])]
+    return cmd
 
 
 def mission_run_dir(drive_log):
@@ -321,6 +401,17 @@ def console_spawn_line(drive_log, run_dir):
     cap = mission_spawn_capture(drive_log, run_dir)
     if cap is None:
         return "CONSOLE spawn NO-DATA (no s??_none capture after the HUD match)"
+    # s6_gamepad5 (2026-09-16): the capture after the HUD match was the letterboxed location cinematic (gameplay
+    # band 0.56; HUD frames read 0.92) and the water statistics scored it flat=0.071 -- a figure no HUD frame has
+    # ever produced. A frame that is not a HUD frame is NO-DATA, never a verdict.
+    try:
+        with Image.open(cap) as im:
+            is_hud, band = screen_bands.gameplay_band(im.convert("RGB"))
+    except OSError as e:
+        return "CONSOLE spawn NO-DATA (%s: %s)" % (os.path.basename(cap), e)
+    if not is_hud:
+        return "CONSOLE spawn NO-DATA (%s is not a HUD frame: gameplay band %.2f < %.2f)" % (
+            os.path.basename(cap), band, screen_bands.GAMEPLAY_MIN)
     try:
         s = console_compare.score(cap)
         ok, _ = console_compare.water_verdict(cap)
@@ -436,6 +527,19 @@ def run_gate(name, out_root):
     # mission stage needs the guest-value probe's chains in PS2X_PEEK (Task 1c) for probe_lines to read
     # anything; an operator's own PS2X_PEEK (a wider spec, e.g. the ladder's) is left alone.
     env = dict(os.environ)
+    # A gate run is defined as a boot with NO controller: with an Xbox pad plugged in the libpad HLE reported a
+    # configured controller and the game skipped its PRECISION SHOOTER CONFIGURATION screens and the 'save to
+    # memory card?' dialog the transition stage keys on (s6_gamepad, s6_gamepad2, 2026-09-16).
+    env.setdefault("PS2X_HOST_GAMEPAD", "0")
+    # ... and from a PRISTINE memory card. The owner's free play (2026-09-16) saved the controller configuration
+    # onto game/disc/mc0, the card every gate booted from, and the boot stopped showing the configuration screens
+    # and the 'save to memory card?' dialog the transition stage keys on (s6_gamepad .. s6_gamepad3, three gates
+    # lost). Each stage now boots from a fresh copy of game/disc/mc0_parity in the stamp directory; an operator's
+    # own PS2X_MC_DIR wins. The copy is per stamp (not per stage) -- the game writes SCRATCHPAD.DAT at boot.
+    if not env.get("PS2X_MC_DIR"):
+        card = os.path.join(out_root, "mc0")
+        shutil.copytree(PRISTINE_CARD, card, dirs_exist_ok=True)
+        env["PS2X_MC_DIR"] = os.path.abspath(card)
     if name == "mission":
         if not env.get("PS2X_PEEK"):
             env["PS2X_PEEK"] = guest_probe.peek_spec(GUEST_PROBE_CONSOLE)
@@ -445,10 +549,7 @@ def run_gate(name, out_root):
         # is the ladder's cadence and costs nothing measurable.
         env.setdefault("PS2X_PC_SAMPLER", "1")
     with open(drive_log, "w", encoding="utf-8") as log:
-        subprocess.run([sys.executable, "-m", "tools_py.parity.drive", "--target", "ours",
-                        "--script", cfg["script"], "--out", out_dir,
-                        "--seconds", str(cfg["seconds"]), "--tail", str(cfg["tail"])],
-                       stdout=log, stderr=subprocess.STDOUT, env=env)
+        subprocess.run(drive_command(name, out_dir), stdout=log, stderr=subprocess.STDOUT, env=env)
     # The game's own run log (where the runtime prints its [peek] rows) lands beside the drive log as
     # <name>.game.log; score_mission_log's probe reads it back from there (mission_game_log).
     newest = sorted(glob.glob(os.path.join("logs", "run_*.log")), key=os.path.getmtime)

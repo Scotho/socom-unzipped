@@ -70,11 +70,25 @@ def _actor_pos(items):
     return a, None
 
 
+# The at-rest window (s6_gamepad2, 2026-09-16): the root node holds the bind pose (11.484) for the first ~40 rows,
+# then drops to the at-rest value (5.504) when gameplay starts, and later poses -- a muzzle-up hold, walking -- move it
+# (5.031 in that run's tail). The console number research/17 measured is the at-rest value, so the scalar is read from
+# the first REST_WINDOW_ROWS rows after the value first departs from its initial plateau by more than REST_DEPART,
+# skipping REST_SETTLE_ROWS; a value that never departs (a short log) falls back to the median of what there is.
+REST_DEPART = 0.5
+REST_SETTLE_ROWS = 1
+REST_WINDOW_ROWS = 6
+
+
 def _settled(values):
     if not values:
         return None
-    tail = values[-max(1, len(values) // 4):]
-    return float(statistics.median(tail))
+    first = values[0]
+    depart = next((i for i, v in enumerate(values) if abs(v - first) > REST_DEPART), None)
+    if depart is None:
+        return float(statistics.median(values))
+    window = values[depart + REST_SETTLE_ROWS: depart + REST_SETTLE_ROWS + REST_WINDOW_ROWS]
+    return float(statistics.median(window or values[depart:]))
 
 
 def evaluate(lines_or_path, console_json):

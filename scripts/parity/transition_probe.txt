@@ -26,6 +26,13 @@
 # is always on the NO press. gate.observed_burst_step() reads the step back off the
 # `sNN_burst_*.png` the run wrote, and score_transition counts ONLY frames from it on, so neither
 # the boot's black screens nor the controller-configuration screens can stand in for the fade.
+#
+# When the card already holds a controller configuration (the owner's free play saved one on 2026-09-16)
+# the boot shows no configuration screens and no dialog: no ifburst fires, and the fade to black happens
+# during the rank press's own settle wait, at a step index that drifts with the boot (s05 in s6_fade, s07
+# nominal). gate.score_fade then scores by content -- the black run immediately before the first frame
+# matching scripts/parity/ref_briefing_ours.png -- from the 5 fps wait captures the gate runs this
+# script with (--wait-period 0.2). The guard pairs below stay: they answer the dialog when it does show.
 next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
 next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
 next+1.0:CROSS      # card notice -> CONTINUE

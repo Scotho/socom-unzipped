@@ -117,3 +117,39 @@ class IfPopupStep(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WaitPeriodArg(unittest.TestCase):
+    """--wait-period <s>: the cadence of the w<step>_<k>.png captures during every settle wait (default 1.0). The
+    gate's transition stage runs at 0.2 so the fade into the briefing yields enough frames (gate.FadeBeforeBriefing)."""
+
+    def test_parser_default_and_override(self):
+        base = ["--target", "ours", "--out", "x"]
+        self.assertEqual(drive.build_parser().parse_args(base).wait_period, 1.0)
+        self.assertEqual(drive.build_parser().parse_args(base + ["--wait-period", "0.2"]).wait_period, 0.2)
+
+    def _frames_for(self, wait_period):
+        frame = _clean_frame()
+
+        def fake_wait_stable(hwnd, settle, maxwait, on_frame=None, **kwargs):
+            if on_frame:
+                for k in range(1, 6):
+                    on_frame(k * 0.2)
+            return True, 1.0
+
+        saved = (drive.winshot.grab, drive.wait_stable, drive.time.sleep)
+        drive.winshot.grab = lambda hwnd, max_age=None: frame
+        drive.wait_stable = fake_wait_stable
+        drive.time.sleep = lambda s: None
+        try:
+            with tempfile.TemporaryDirectory() as out:
+                a = types.SimpleNamespace(out=out, settle=0.0, maxwait=0.0, target="ours", tail=0.0,
+                                          wait_period=wait_period)
+                drive.run_steps(a, drive.parse("stable+0.0:NONE"), None, None, 0.0, None, [])
+                return sorted(f for f in os.listdir(out) if f.startswith("w00_"))
+        finally:
+            drive.winshot.grab, drive.wait_stable, drive.time.sleep = saved
+
+    def test_run_steps_captures_at_the_period(self):
+        self.assertEqual(self._frames_for(0.2), ["w00_%03d.png" % k for k in range(5)])
+        self.assertEqual(self._frames_for(1.0), ["w00_000.png"])

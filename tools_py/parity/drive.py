@@ -206,7 +206,7 @@ def wait_capturer(out_dir, hwnd, step, period=1.0):
     return on_frame
 
 
-def main():
+def build_parser():
     ap = argparse.ArgumentParser()
     ap.add_argument("--target", choices=("pcsx2", "ours"), required=True)
     ap.add_argument("--script", default="scripts/parity/launch_to_mission.txt")
@@ -215,7 +215,14 @@ def main():
     ap.add_argument("--maxwait", type=float, default=40.0)
     ap.add_argument("--seconds", type=int, default=400, help="our run length (run.sh)")
     ap.add_argument("--tail", type=float, default=8.0, help="seconds to keep capturing after the last step")
-    a = ap.parse_args()
+    ap.add_argument("--wait-period", type=float, default=1.0, dest="wait_period",
+                    help="seconds between the w<step>_<k>.png captures of every settle wait (the gate's "
+                         "transition stage uses 0.2 so the fade into the briefing yields enough frames)")
+    return ap
+
+
+def main():
+    a = build_parser().parse_args()
     for exe in ("socom2.exe", "pcsx2-qt.exe"):
         if exe in subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower():
             raise SystemExit(f"{exe} is already running; refusing to start a second game instance")
@@ -262,7 +269,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
         held = "none"
         # One counter per step, shared by every wait the step performs (the until*/ifref modes
         # wait more than once), so the w<step>_<k>.png names never collide.
-        cap = wait_capturer(a.out, hwnd, i)
+        cap = wait_capturer(a.out, hwnd, i, period=getattr(a, "wait_period", 1.0))
         if mode == "stable":
             stable, waited = wait_stable(hwnd, a.settle, a.maxwait, on_frame=cap)
         elif mode == "long":

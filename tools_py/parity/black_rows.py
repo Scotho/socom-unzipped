@@ -20,6 +20,7 @@ import os
 import re
 import sys
 
+import numpy as np
 from PIL import Image
 
 STEP_RE = re.compile(r"^[sw](\d+)_")
@@ -31,6 +32,19 @@ def step_index(name):
     it: `final.png` and `manifest.json` are not step captures."""
     m = STEP_RE.match(name)
     return int(m.group(1)) if m else -1
+
+
+def examine(path, rows=(396, 448), max_=8):
+    """(is_black_screen, band_peak): whether everything above the band is black (peak <= max_) -- only
+    such frames are transition frames -- and the brightest pixel inside the band of rows[0]..rows[1]
+    (scaled by h/448). gate.score_transition and main() share this so both count the same frames."""
+    im = np.asarray(Image.open(path).convert("RGB"))
+    h = im.shape[0]
+    y0 = rows[0] * h // 448
+    y1 = rows[1] * h // 448
+    top_peak = int(im[:y0].max()) if y0 > 0 else 0
+    band_peak = int(im[y0:y1].max()) if y1 > y0 else 0
+    return top_peak <= max_, band_peak
 
 
 def main():
@@ -49,16 +63,11 @@ def main():
     for path in sorted(caps):
         if a.from_step is not None and step_index(os.path.basename(path)) < a.from_step:
             continue
-        im = Image.open(path).convert("RGB")
-        w, h = im.size
-        y0 = a.rows[0] * h // 448
-        y1 = a.rows[1] * h // 448
-        top = im.crop((0, 0, w, y0))
-        topPeak = max(max(px) for px in top.getdata())
-        if topPeak > a.max:
+        black, peak = examine(path, tuple(a.rows), a.max)
+        if not black:
             continue  # not a black-screen frame: the band may legitimately hold content
-        band = im.crop((0, y0, w, y1))
-        peak = max(max(px) for px in band.getdata())
+        h = Image.open(path).size[1]
+        y0, y1 = a.rows[0] * h // 448, a.rows[1] * h // 448
         flag = "" if peak <= a.max else "  <-- NOT BLACK"
         if flag:
             bad += 1

@@ -78,3 +78,24 @@ class Evaluate(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RestWindow(unittest.TestCase):
+    """s6_gamepad2 (2026-09-16): root_node_y read 5.0312 against the console's 5.5039 -- the settled median came from
+    the LAST quarter of rows, after the mission script's holds (a muzzle-up hold, walks, a turn), where the pose is not
+    the at-rest pose research/17 measured. The console number is the standing at-rest value seconds after spawn, so the
+    probe reads its scalars from the REST window: rows REST_SKIP_ROWS..REST_SKIP_ROWS+REST_WINDOW_ROWS after the actor
+    first appears (past the bind-pose decay, before any scripted hold)."""
+
+    def test_scalars_come_from_the_rest_window_not_the_tail(self):
+        rows = ([_line((900.0, -145.0, 850.0), root_y=11.48)] * 12                           # bind pose plateau
+                + [_line((900.0, -145.0, 850.0), root_y=5.50391)] * (gp.REST_SETTLE_ROWS + gp.REST_WINDOW_ROWS)  # at rest
+                + [_line((900.0, -145.0, 850.0), root_y=5.03)] * 40)                       # holds change the pose
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
+        self.assertAlmostEqual(res["root_node_y"].ours, 5.50391, places=4)
+
+    def test_a_short_log_falls_back_to_what_it_has(self):
+        rows = [_line((900.0, -145.0, 850.0), root_y=5.50391)] * 5
+        res = {r.name: r for r in gp.evaluate(rows, CONSOLE)}
+        self.assertTrue(res["root_node_y"].ok, res["root_node_y"].detail)
