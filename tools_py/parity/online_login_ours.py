@@ -935,10 +935,19 @@ MAP_HILITE_LO, MAP_HILITE_HI = 116.0, 140.0
 # A_mapscan_00 in that scan (2026-09-13, offline, no launch). Against the highlighted row of all 28
 # CHOOSE GAMES captures it scores 0.000 on the two Medley frames (A_mapscan_00, A_14_choose_games)
 # and >= 0.673 on every other map (Random 0.673, ENOWAPI 0.674, Frostfire 0.777, the last entry
-# THE RUINS 0.771). Caveat: an UNhighlighted Medley row scores 0.046 against it -- harmless, because
-# choose_map only ever compares the highlighted row, which map_cursor finds by luminance.
+# THE RUINS 0.771). An UNhighlighted row of the same map scores the same mask (Medley 0.046; FROSTFIRE
+# 0.041-0.047 at rows 0-5 of A_mapscan_14..19, nearest other row 0.498), which is what lets choose_map
+# see the target BEFORE the cursor reaches it: acceptance still needs the HIGHLIGHTED row to match.
 MAP_MATCH_THRESH = 0.30
 MAP_REF_DIR = REFS
+# Launch s6_ladder3 (2026-09-15): with two instances on one host at ~35-55 fps, the read after DOWN 15
+# caught a mid-scroll frame with no row in the highlight band, choose_map logged "no highlighted row --
+# pressing on" and walked past FROSTFIRE to THE RUINS (Sprint 5, same code at 60 fps, accepted at
+# exactly 15). So an unreadable frame is re-read on FRESH captures MAP_REREAD_WAIT_S apart, up to
+# MAP_REREADS times (2 s), before it counts as "no highlight"; and every read scores all six rows, so a
+# target visible at another row is walked to one press at a time and cannot be overshot.
+MAP_REREADS = 4
+MAP_REREAD_WAIT_S = 0.5
 
 
 def map_row_box(i):
@@ -1009,6 +1018,42 @@ def map_ref_path(name):
     return os.path.join(MAP_REF_DIR, f"map_{name.lower()}.png")
 
 
+def map_ref(name):
+    return np.asarray(Image.open(map_ref_path(name)).convert("L"), dtype=np.float32)
+
+
+def map_row_distances(im, ref):
+    """Text-mask distance of each of the six visible rows to the reference (highlighted or not)."""
+    return [map_mask_distance(b, ref) for b in map_rows(im)]
+
+
+def map_frame(sh):
+    """A fresh frame of the list. A StaleFrameError (an instance stall) is waited out under the stage
+    deadline, as lobby_gray does -- never read as a frame without a highlight."""
+    while True:
+        try:
+            return winshot.grab(sh.hwnd, max_age=LOBBY_FRAME_MAX_AGE_S)
+        except winshot.StaleFrameError as e:
+            sh.log(f"map search: {e} -- waiting for a fresh frame")
+            sh.stage_sleep(MAP_REREAD_WAIT_S)
+
+
+def map_read(sh, ref, k):
+    """One reading of AVAILABLE MAPS: (highlighted row or -1, the six row distances). A frame with no row
+    in the highlight band is re-read on fresh frames MAP_REREAD_WAIT_S apart, up to MAP_REREADS times."""
+    for n in range(MAP_REREADS + 1):
+        if n:
+            sh.stage_sleep(MAP_REREAD_WAIT_S)
+        im = map_frame(sh)
+        cur = map_cursor(sh, im)
+        if cur >= 0:
+            return cur, map_row_distances(im, ref)
+        if n < MAP_REREADS:
+            sh.log(f"map search {k:02d}: no highlighted row (re-read {n + 1})")
+    sh.log(f"map search {k:02d}: no highlighted row after {MAP_REREADS} re-reads -- pressing on")
+    return -1, map_row_distances(im, ref)
+
+
 @staged("map_select")
 def choose_map(sh, name, presses=30):
     """Select `name` in AVAILABLE MAPS, VERIFYING the highlighted row before pressing CROSS.
@@ -1016,30 +1061,37 @@ def choose_map(sh, name, presses=30):
     A blind index that silently lands on the wrong map produces a whole class of runs whose
     position rows mean nothing -- and the mined waypoint corridor is map-specific, so the harness
     has to KNOW which map it is on rather than assume. Returns the row index it accepted; raises
-    SystemExit with a capture if the map is never highlighted.
+    LobbyFail (CLASS_MAP_SEARCH) with a capture if the map is never highlighted in `presses` presses.
+
+    The walk is DOWN by default; once the target's text is visible at row j (pale or highlighted), each
+    press is one step toward j and the next read decides again, so the cursor cannot run past it.
     """
     ref_path = map_ref_path(name)
     if not os.path.exists(ref_path):
         raise SystemExit(f"{sh.tag}no reference for map '{name}' at {ref_path} -- run the map scan "
                          f"(--only A --map-scan 26) once and cut the highlighted row from its "
                          f"captures; accepting whatever is highlighted is not an option")
-    ref = np.asarray(Image.open(ref_path).convert("L"), dtype=np.float32)
-    for k in range(presses + 1):
-        im = winshot.grab(sh.hwnd)
-        cur = map_cursor(sh, im)
-        if cur >= 0:
-            d = map_mask_distance(map_rows(im)[cur], ref)
-            if d <= MAP_MATCH_THRESH:
-                sh.log(f"map '{name}' highlighted at row {cur} after {k} DOWN (text-mask distance "
-                       f"{d:.3f} <= {MAP_MATCH_THRESH}) -- accepting")
-                sh.shot(f"14b_map_{name.lower()}")
-                press_map_cross_verified(sh, 4.0)                # R47: re-sent while SELECTED MAPS does not move
-                return cur
-            if k % 5 == 0:
-                sh.log(f"map search {k:02d}: row {cur} is not '{name}' (distance {d:.3f})")
-        else:
-            sh.log(f"map search {k:02d}: no highlighted row -- pressing on")
-        sh.pad_press("down", wait=0.45)
+    ref = map_ref(name)
+    downs = 0                                                    # DOWN presses so far (the acceptance line's count)
+    for k in range(presses + 1):                                 # k = presses sent so far, DOWN or UP
+        cur, dist = map_read(sh, ref, k)
+        if cur >= 0 and dist[cur] <= MAP_MATCH_THRESH:
+            sh.log(f"map '{name}' highlighted at row {cur} after {downs} DOWN (text-mask distance "
+                   f"{dist[cur]:.3f} <= {MAP_MATCH_THRESH}) -- accepting")
+            sh.shot(f"14b_map_{name.lower()}")
+            press_map_cross_verified(sh, 4.0)                    # R47: re-sent while SELECTED MAPS does not move
+            return cur
+        seen = [j for j, d in enumerate(dist) if d <= MAP_MATCH_THRESH]
+        btn = "down"
+        if cur >= 0 and seen:
+            j = min(seen, key=lambda j: abs(j - cur))
+            btn = "up" if j < cur else "down"
+            sh.log(f"map '{name}' visible at row {j}, cursor at {cur} -> {btn}")
+        elif cur >= 0 and k % 5 == 0:
+            sh.log(f"map search {k:02d}: row {cur} is not '{name}' (distance {dist[cur]:.3f})")
+        if k < presses:                                          # exactly `presses` presses, presses + 1 reads
+            sh.pad_press(btn, wait=0.45)
+            downs += btn == "down"
     sh.shot(f"14_map_{name.lower()}_NOT_FOUND")
     raise lobby_fail(sh, CLASS_MAP_SEARCH, f"map '{name}' was never highlighted in {presses} presses of DOWN -- "
                      f"see the capture. Accepting whatever is highlighted would put the run on an "
