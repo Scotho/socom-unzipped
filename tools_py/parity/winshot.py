@@ -107,6 +107,30 @@ def grab(hwnd, max_age=None):
     raise RuntimeError(f"no frame file at {path}: {last_err}")
 
 
+SWP_NOSIZE, SWP_NOMOVE, SWP_NOZORDER, SWP_NOACTIVATE = 0x0001, 0x0002, 0x0004, 0x0010
+
+
+def ensure_client_size(hwnd, width=640, height=448):
+    """Restore the window's CLIENT area to width x height, in place, without activating it; True when it had to.
+
+    s6_ladder10/11 (2026-09-16): instance A's window had been resized between launches (983x630, then 729x462
+    client) -- the runtime exports the frame at the screen size, so every fixed-box detector read garbage
+    ('ONLINE not lit ... new game 18, online 14, lan 13') and the launch failed pre-login. The outer size is
+    corrected by the client difference, so the frame (and the title bar) stay where they are."""
+    if not hwnd or not user32.IsWindow(hwnd):      # tests attach shells to fake handles
+        return False
+    client = wt.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(client))
+    cw, ch = client.right - client.left, client.bottom - client.top
+    if (cw, ch) == (width, height):
+        return False
+    outer = wt.RECT()
+    user32.GetWindowRect(hwnd, ctypes.byref(outer))
+    ow, oh = outer.right - outer.left, outer.bottom - outer.top
+    user32.SetWindowPos(hwnd, 0, 0, 0, ow + (width - cw), oh + (height - ch), SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE)
+    return True
+
+
 def keep_on_top(hwnd):
     """Pin a window above the others without activating it. PrintWindow hands back a white bitmap
     for a GL window that another window overlaps (DWM keeps no composed copy), and the desktop

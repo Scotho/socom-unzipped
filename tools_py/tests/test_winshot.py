@@ -6,6 +6,9 @@ import os
 import tempfile
 import time
 import unittest
+from unittest import mock
+
+from tools_py.parity import winshot
 
 
 def display_available():
@@ -114,3 +117,47 @@ class FrameFreshnessTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EnsureClientSize(unittest.TestCase):
+    """s6_ladder10/11 (2026-09-16): instance A's window had been resized (983x630, then 729x462 client) and every
+    fixed-box detector on it read garbage ('ONLINE not lit ... new game 18, online 14, lan 13'). The harness
+    restores the 640x448 client area itself, keeping the window where it is and never activating it."""
+
+    def _fake_user32(self, client, outer):
+        import ctypes
+        calls = []
+
+        class U:
+            def IsWindow(self, hwnd):
+                return 1
+
+            def GetClientRect(self, hwnd, prect):
+                r = ctypes.cast(prect, ctypes.POINTER(winshot.wt.RECT)).contents
+                r.left, r.top, r.right, r.bottom = 0, 0, client[0], client[1]
+                return 1
+
+            def GetWindowRect(self, hwnd, prect):
+                r = ctypes.cast(prect, ctypes.POINTER(winshot.wt.RECT)).contents
+                r.left, r.top, r.right, r.bottom = 100, 50, 100 + outer[0], 50 + outer[1]
+                return 1
+
+            def SetWindowPos(self, hwnd, after, x, y, w, h, flags):
+                calls.append((w, h, flags))
+                return 1
+        return U(), calls
+
+    def test_a_resized_client_is_restored_by_the_outer_difference(self):
+        fake, calls = self._fake_user32(client=(729, 462), outer=(745, 501))
+        with mock.patch.object(winshot, "user32", fake):
+            self.assertTrue(winshot.ensure_client_size(1234, 640, 448))
+        self.assertEqual(len(calls), 1)
+        w, h, flags = calls[0]
+        self.assertEqual((w, h), (745 - (729 - 640), 501 - (462 - 448)))
+        self.assertTrue(flags & winshot.SWP_NOMOVE and flags & winshot.SWP_NOACTIVATE and flags & winshot.SWP_NOZORDER)
+
+    def test_the_right_size_is_left_alone(self):
+        fake, calls = self._fake_user32(client=(640, 448), outer=(656, 487))
+        with mock.patch.object(winshot, "user32", fake):
+            self.assertFalse(winshot.ensure_client_size(1234, 640, 448))
+        self.assertEqual(calls, [])

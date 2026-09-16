@@ -507,6 +507,9 @@ class Shell:
     lobby_role = "host"          # "joiner" once join_game ran: names the teams-unbalanced class in ready()
 
     def check_stage(self):
+        # s6_ladder10/11: a resized game window breaks every fixed-box detector; put it back before any press or read.
+        if winshot.ensure_client_size(self.hwnd):
+            self.log("[window] client area was not 640x448 -- restored")
         now = self.clock() if self.stages else None
         for name, deadline in self.stages:
             if now >= deadline:
@@ -942,6 +945,7 @@ def attach(proc, title, out, tag="", pad_file=None):
         proc.terminate()
         raise SystemExit(f"{tag}game window not found")
     winshot.keep_on_top(hwnd)
+    winshot.ensure_client_size(hwnd)
     if getattr(proc, "latest_frame", None):
         winshot.register_frame_file(hwnd, proc.latest_frame)
     last = None
