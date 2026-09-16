@@ -185,3 +185,13 @@ enter`, `[login] online`, `[login] persona list`), and `Shell.press` now writes 
 **`s6_ladder8` (harness `d6e417f`) reached gameplay on both instances with every stage verified on the first attempt
 and killed on 4 of 4 rounds** (KNOWN §1). Tally for the evening: 8 launches, 3 reached gameplay; of the 5 that did
 not, one was the starved runtime and four were blind presses that are now verified. [verified from the drive logs]
+
+**Launch 10, `s6_ladder9` (harness `d6e417f`):** every login and lobby stage verified itself (three dropped presses
+re-sent: `create-game:choose-games`, `join:list`, `join:enter`, plus `map-cross-dropped` and `ready-dropped`), the map
+walk needed 19 DOWN with five re-reads at today's frame rate, and then the match never started: **both players sat on
+the SEALs side** with both readied and TERRORISTS empty (capture `A_lobby_fail_timeout_launch.png`, host row "NOT
+READY 3"). B's SWITCH TEAMS press was dropped and its team read `(288, 0)` (both names in one column; the good launches
+read `(143, 144)`) was logged but not acted on; the READY check then misread "NOT READY 3" as the lobby being gone. Two
+more verify-then-act steps (teams after the switch, the READY label with its count suffix) — `LOBBY-FAIL
+timeout:launch`, 215 s lost. A two-minute aim simulation ran on the host during this launch (a confound for its timing,
+not for the dropped presses). [verified from the drive log and capture]
