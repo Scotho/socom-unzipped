@@ -476,6 +476,8 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 
 ### Sprint 6 — the correctness bugs, the lobby, and whatever Sprint 5 left open (revised 2026-09-13 after the Sprint 5 broad review)
 
+> **Closed 2026-09-17.** The ledger is `docs/AUDIT-2026-09-17.md` §3; items 10-12 below were dropped, not deferred; the sprints that follow are drafted in `docs/CURRENT_SPRINT.md` (Sprint 7 "two strangers, two machines, one hosted server", Sprint 8 "it looks and sounds finished", Sprint 9 "console players in the same lobby, and it stays up").
+
 *The earlier outline is superseded; its "if Frostfire was not fixed" conditional is dead (fixed by `b625291`). Order: what makes online results cheap and repeatable, then visible gameplay correctness, then the gate's blindness, then latent items. Source: `.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/broad-review.md` §C8.*
 
 ~~0. **If no kill landed in Sprint 5:** resume the merged ladder (plan Amendment A) from the highest rung reached, before anything else.~~ **Retired 2026-09-13 — moot.** The acceptance test PASSED inside Sprint 5 (ladder launch 2, rounds 1-3 KILL on both scorers); the conditional opener never fires. Sprint 6 starts at item 1.
@@ -496,6 +498,8 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 13. **Disk hygiene automated** — archive old gate stamps and non-fixture run logs to `D:\socom_archive`; the < 4 GB refusals standing.
 
 ### Sprint 7 — after the kill (outline)
+
+> **Superseded 2026-09-17** by `docs/CURRENT_SPRINT.md`'s Sprint 7; its headline item (aim repeatability) was done inside Sprint 6 (`ebf13be`).
 
 Now unblocked: the acceptance test exists and PASSED in Sprint 5 (one run, ladder launch 2).
 **Repeatability of the acceptance test is this sprint's headline item, promoted here 2026-09-13**:
