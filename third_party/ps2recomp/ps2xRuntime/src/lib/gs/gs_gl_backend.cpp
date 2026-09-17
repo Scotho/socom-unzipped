@@ -1425,9 +1425,23 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             {
                 std::memcpy(&load, buffer.data.data() + cmd.dataOffset, sizeof(GSClutLoad));
                 m_cluts[load.id] = load;
+                m_clutUse[load.id] = ++m_clutLoadSeq;
+                // Ids are stable per palette content (GS::loadClutIfNeeded), so an id's age says nothing about
+                // whether draws still name it: evict by the last load or lookup instead.
                 if (m_cluts.size() > 512u)
                     for (auto it2 = m_cluts.begin(); it2 != m_cluts.end();)
-                        it2 = (it2->first + 256u < load.id) ? m_cluts.erase(it2) : std::next(it2);
+                    {
+                        const auto use = m_clutUse.find(it2->first);
+                        const bool stale = use == m_clutUse.end() || use->second + 256u < m_clutLoadSeq;
+                        if (stale)
+                        {
+                            if (use != m_clutUse.end())
+                                m_clutUse.erase(use);
+                            it2 = m_cluts.erase(it2);
+                        }
+                        else
+                            ++it2;
+                    }
             }
             break;
         }
@@ -1437,6 +1451,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 glDeleteTextures(1, &kv.second.texture);
             m_textures.clear();
             m_cluts.clear();
+            m_clutUse.clear();
             for (RenderTarget &rt : m_renderTargets)
             {
                 glDeleteFramebuffers(1, &rt.fbo);
@@ -2629,6 +2644,8 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     if (indexed && state.context.clutId != 0u && tex.csm == 0u && state.texclut.cou == 0u && state.texclut.cov == 0u)
     {
         auto cl = m_cluts.find(state.context.clutId);
+        if (cl != m_cluts.end())
+            m_clutUse[cl->first] = m_clutLoadSeq;
         if (cl != m_cluts.end())
             clutLoad = &cl->second;
     }

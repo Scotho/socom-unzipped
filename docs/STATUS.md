@@ -11,6 +11,24 @@
 
 
 
+## 2026-09-16 (night) — Task 6b's first maps froze at STARTING ROUND; it was the day's CLUT serials starving the guest clock, fixed
+
+Owner order: the untested online maps, control rounds. The Mixer and Crossroads reached gameplay frozen (banner up, clock running,
+nobody moves); Frostfire froze the same way on the same build, so a regression, not a map. Research/34.
+
+- **Bisect by launch** (`scripts/parity/online_control_round.sh frostfire`, one runtime tree per exe): HEAD and `545b85a` freeze,
+  `6d05b18` plays (`ours_control_frostfire_bisect3`, CONTROL-ROUND). `6d05b18~1` is not drivable any more (the plugged-in pad).
+- **Mechanism**: `[gs-gl stats]` on HEAD — texture cache 414 → 16,353 → 55,483 entries within seconds of the round, uploads 64k/s,
+  render 2 fps, back-pressure 25 s/s; `[clock]` 2.5 s of guest time per 42 s. The guest clock (`DAT_004365c0`, fed by timer T0,
+  host-paced minus the back-pressure wait) drives every gameplay timer; the HUD round clock is the network's. `3d37abc`'s CLUT
+  snapshot serial in the texture key minted a new key for every palette alternation.
+- **Fix**: snapshot ids keyed by palette content (FNV-1a over cbp/cpsm/bytes; `m_clutIds`), GL snapshot eviction by recency.
+  Test-first: 'a CLUT re-loaded with the same bytes re-uses its snapshot id' (ids A,B,A → 1,2,1; 10,000 alternations → 2 ids).
+  ps2x_tests 468/468. Online: `ours_control_frostfire_clutfix` CONTROL-ROUND exit 0, cache 292, 43–45 fps, guest clock 0.74 s/s.
+- **Left open** (KNOWN §2): the guest clock at 0.5–0.85 of wall time even when playing (VU1 time excluded by design); 21k texture
+  uploads/s in the round. KNOWN §4: a render stall reads as a frozen game with a running clock — check `[gs-gl stats]`/`[clock]` first.
+- Next: the twenty-map control-round queue (`scripts/parity/online_control_queue.sh`), research/33's table.
+
 ## 2026-09-16 (later) — the water shards run to ground: a GL blend the game uses to brighten every frame, and the exposure readback that asks for it
 
 Owner: "proceed autonomously using your best judgement", water/ground first. Ten mission gates and one offline oracle.

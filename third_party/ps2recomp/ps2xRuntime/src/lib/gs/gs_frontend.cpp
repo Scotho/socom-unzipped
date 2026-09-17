@@ -1967,7 +1967,25 @@ void GS::loadClutIfNeeded(int ci)
         ctx.clutId = last.id;   // the palette bytes did not change since the last load: same snapshot
         return;
     }
-    last.id = ++m_clutSerial;
+    // The id is part of the backends' texture-cache keys, so a palette must keep its id across re-loads:
+    // SOCOM II alternates palettes on consecutive draws (HUD, player skins), and minting a serial for every
+    // load whose bytes differ from the previous one gave each draw a new key -- 55,000 GL cache entries and
+    // 64,000 texture uploads a second in an online round, the render thread at 2 fps and the guest clock
+    // starved behind its back-pressure (research/34). Keyed by the bytes instead: FNV-1a over cbp, cpsm and
+    // the snapshot; the table is cleared when it grows past 4096 entries (a burst of distinct palettes).
+    uint64_t hash = 1469598103934665603ull;
+    auto mix = [&hash](uint8_t b) { hash = (hash ^ b) * 1099511628211ull; };
+    for (unsigned i = 0; i < 4u; ++i)
+        mix(static_cast<uint8_t>(t.cbp >> (8u * i)));
+    mix(static_cast<uint8_t>(t.cpsm));
+    for (size_t i = 0; i < n; ++i)
+        mix(m_localMemoryStorage[base + i]);
+    if (m_clutIds.size() > 4096u)
+        m_clutIds.clear();
+    uint64_t &id = m_clutIds[hash];
+    if (id == 0u)
+        id = ++m_clutSerial;
+    last.id = id;
     last.cbp = t.cbp;
     last.cpsm = t.cpsm;
     last.bytes.fill(0u);

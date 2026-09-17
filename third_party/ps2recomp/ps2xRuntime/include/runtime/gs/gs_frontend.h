@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <mutex>
 #include <vector>
 
@@ -233,6 +234,7 @@ private:
     uint32_t m_cbp0 = 0u, m_cbp1 = 0u;     // CLD 2..5's recorded palette pointers
     uint64_t m_clutSerial = 0u;
     GSClutLoad m_clutLast[2];              // the last snapshot per context: an unchanged palette re-uses its id
+    std::unordered_map<uint64_t, uint64_t> m_clutIds;   // palette bytes (hash of cbp, cpsm, bytes) -> snapshot id: a palette seen before keeps its id
 
     GSBitBltBuf m_bitbltbuf{};
     GSTrxPos m_trxpos{};

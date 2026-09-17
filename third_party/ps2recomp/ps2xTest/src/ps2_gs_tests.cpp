@@ -20,6 +20,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <map>
+#include <set>
 #include "raylib.h"
 #include "runtime/socom2_lum_readback.h"
 #include "runtime/socom2_cull_trace.h"
@@ -1412,6 +1413,106 @@ void register_ps2_gs_tests()
             gs.writeRegister(GS_REG_TEX2_1, tex0(kCbp2, 4ull));           // TEX2 carries the same CLUT fields; CBP moved
             draw();
             row(kPaletteE, "CLD=4 with CBP different from CBP0 must reload from the new slot (via TEX2 too)");
+        });
+
+        // A palette that was loaded before keeps its snapshot id when it is loaded again (research/34): the id
+        // is part of the GL backend's texture-cache key, and the first cut gave every load whose bytes differed
+        // from the *previous* load a fresh serial. SOCOM II's HUD and player skins alternate between palettes
+        // on every draw, so each draw got a new key -- 55,000 cache entries and 64,000 texture uploads a second
+        // in an online round, the render thread at 2 fps, and the guest clock (timer T0, host-paced minus the
+        // render back-pressure) crawling: the players stood in STARTING ROUND 1 OF 11 for good.
+        tc.Run("a CLUT re-loaded with the same bytes re-uses its snapshot id (alternating palettes do not mint serials)", [](TestCase &t)
+        {
+            struct Recorder final : GSRasterBackend   // a CPU backend by composition (GSCpuBackend is final)
+            {
+                GSCpuBackend inner;
+                std::vector<uint64_t> ids;
+                void Initialize(uint8_t *vram, uint32_t vramSize) override { inner.Initialize(vram, vramSize); }
+                void Reset() override { inner.Reset(); }
+                void Submit(const GSPrimitiveBatch &batch) override { inner.Submit(batch); }
+                void BeginTransfer(const GSTransferCommand &c) override { inner.BeginTransfer(c); }
+                void UploadImage(const uint8_t *d, uint32_t n) override { inner.UploadImage(d, n); }
+                void LoadClut(const GSClutLoad &load) override { ids.push_back(load.id); inner.LoadClut(load); }
+                void Flush() override { inner.Flush(); }
+                void TextureFlush() override { inner.TextureFlush(); }
+                void Sync(GSSyncReason r) override { inner.Sync(r); }
+                PresentationFrame Present(const GSPresentationRequest &r) override { return inner.Present(r); }
+                bool ClearFramebuffer(const GSContext &c, uint32_t rgba) override { return inner.ClearFramebuffer(c, rgba); }
+                uint32_t ConsumeLocalToHostBytes(uint8_t *d, uint32_t n) override { return inner.ConsumeLocalToHostBytes(d, n); }
+                uint32_t ReadVram(uint32_t psm, uint32_t b, uint32_t bw, uint32_t x, uint32_t y) const override { return inner.ReadVram(psm, b, bw, x, y); }
+                void WriteVram(uint32_t psm, uint32_t b, uint32_t bw, uint32_t x, uint32_t y, uint32_t v) override { inner.WriteVram(psm, b, bw, x, y, v); }
+                void SnapshotVram(std::vector<uint8_t> &out) const override { inner.SnapshotVram(out); }
+                GSTransferSnapshot GetTransferSnapshot() const override { return inner.GetTransferSnapshot(); }
+            };
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            auto rec = std::make_unique<Recorder>();
+            Recorder *recPtr = rec.get();
+            GS gs;
+            gs.setRasterBackend(std::move(rec));
+            gs.init(vram.data(), static_cast<uint32_t>(vram.size()), nullptr);
+
+            constexpr uint32_t kTexTbp = 64u;
+            constexpr uint32_t kCbp = 96u;
+            constexpr uint64_t kFrame = (150ull << 0) | (1ull << 16) | (static_cast<uint64_t>(GS_PSM_CT32) << 24);
+            constexpr uint64_t kScissor = (0ull << 0) | (3ull << 16) | (0ull << 32) | (3ull << 48);
+            constexpr uint64_t kPrim = static_cast<uint64_t>(GS_PRIM_SPRITE) | (1ull << 4) | (1ull << 8);
+            constexpr uint64_t kXyz1 = (static_cast<uint64_t>(4u << 4) << 0) | (static_cast<uint64_t>(4u << 4) << 16);
+            constexpr uint64_t kUv1 = ((4ull * 16ull) << 0) | ((4ull * 16ull) << 16);
+            constexpr uint64_t kTex0Load =
+                (static_cast<uint64_t>(kTexTbp) << 0) | (1ull << 14) | (static_cast<uint64_t>(GS_PSM_T8) << 20) |
+                (2ull << 26) | (2ull << 30) | (1ull << 34) | (static_cast<uint64_t>(kCbp) << 37) |
+                (static_cast<uint64_t>(GS_PSM_CT32) << 51) | (1ull << 61);   // CLD=1
+            constexpr uint32_t kPaletteA[4] = {0x800000FFu, 0x8000FF00u, 0x80FF0000u, 0x80FFFFFFu};
+            constexpr uint32_t kPaletteB[4] = {0x80202020u, 0x80202020u, 0x80202020u, 0x80202020u};
+            auto setPalette = [&](const uint32_t (&pal)[4])
+            {
+                for (uint32_t i = 0u; i < 4u; ++i)
+                    gs.WriteVram(GS_PSM_CT32, kCbp, 1u, i, 0u, pal[i]);
+            };
+            for (uint32_t y = 0u; y < 4u; ++y)
+                for (uint32_t x = 0u; x < 4u; ++x)
+                    gs.WriteVram(GS_PSM_T8, kTexTbp, 1u, x, y, x);
+            gs.writeRegister(GS_REG_FRAME_1, kFrame);
+            gs.writeRegister(GS_REG_ZBUF_1, 1ull << 32);
+            gs.writeRegister(GS_REG_SCISSOR_1, kScissor);
+            gs.writeRegister(GS_REG_XYOFFSET_1, 0ull);
+            gs.writeRegister(GS_REG_TEST_1, 0x30000ull);
+            gs.writeRegister(GS_REG_ALPHA_1, 0ull);
+            gs.writeRegister(GS_REG_TEX1_1, 0ull);
+            auto draw = [&]()
+            {
+                gs.writeRegister(GS_REG_PRIM, kPrim);
+                gs.writeRegister(GS_REG_RGBAQ, 0x80808080ull);
+                gs.writeRegister(GS_REG_UV, 0ull);
+                gs.writeRegister(GS_REG_XYZ2, 0ull);
+                gs.writeRegister(GS_REG_UV, kUv1);
+                gs.writeRegister(GS_REG_XYZ2, kXyz1);
+            };
+
+            setPalette(kPaletteA);
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Load);
+            setPalette(kPaletteB);
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Load);
+            setPalette(kPaletteA);
+            gs.writeRegister(GS_REG_TEX0_1, kTex0Load);
+            draw();
+            t.Equals(recPtr->ids.size(), static_cast<size_t>(3u), "three CLD=1 loads reach the backend");
+            if (recPtr->ids.size() == 3u)
+            {
+                t.IsTrue(recPtr->ids[0] != recPtr->ids[1], "two different palettes get two ids");
+                t.Equals(recPtr->ids[2], recPtr->ids[0], "palette A loaded again gets its first id back, not a third serial");
+            }
+            for (uint32_t x = 0u; x < 4u; ++x)
+                t.Equals(readReferenceFramePSMCT32Pixel(vram, 150u, 1u, x, 0u), kPaletteA[x], "the draw samples palette A through the re-used snapshot");
+
+            // Ten thousand alternations mint no further ids: the key space stays two entries wide.
+            for (int i = 0; i < 10000; ++i)
+            {
+                setPalette((i & 1) ? kPaletteB : kPaletteA);
+                gs.writeRegister(GS_REG_TEX0_1, kTex0Load);
+            }
+            std::set<uint64_t> distinct(recPtr->ids.begin(), recPtr->ids.end());
+            t.Equals(distinct.size(), static_cast<size_t>(2u), "alternating two palettes ten thousand times uses exactly two snapshot ids");
         });
 
         // Diagnostic (research/31 section 11): replay a PCSX2 GS dump's packet stream through the frontend + CPU

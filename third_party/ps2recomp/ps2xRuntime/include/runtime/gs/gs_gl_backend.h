@@ -289,6 +289,8 @@ private:
     std::vector<DepthTarget> m_depthTargets;
     std::unordered_map<TextureKey, TextureEntry, TextureKeyHash> m_textures;
     std::unordered_map<uint64_t, GSClutLoad> m_cluts;   // palette snapshots by id (render thread only)
+    std::unordered_map<uint64_t, uint64_t> m_clutUse;   // id -> m_clutLoadSeq at its last load or lookup (eviction)
+    uint64_t m_clutLoadSeq = 0u;
     std::array<uint64_t, 512> m_shadowPageGeneration{};
     uint64_t m_generation = 1;
     uint64_t m_frameCounter = 0;
