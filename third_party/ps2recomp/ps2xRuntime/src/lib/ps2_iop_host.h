@@ -48,6 +48,8 @@ public:
     void audioBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes) override;
     void audioNotify(uint32_t function, const int32_t *args, size_t count) override;
     bool audioIsPlaying(uint32_t handle, bool &playing) const override;
+    void audioPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes) override;
+    bool audioPcmPosition(uint32_t &position) const override;
     bool writeGuest(uint32_t address, const void *source, size_t size) override;
     bool zeroGuest(uint32_t address, size_t size) override;
     bool normalizeGuestAddress(uint32_t address, uint32_t &normalized) const override;

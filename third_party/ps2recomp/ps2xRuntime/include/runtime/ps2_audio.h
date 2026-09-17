@@ -34,6 +34,8 @@ public:
     void onBankLoaded(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes);
     void onNotify(uint32_t function, const int32_t *args, size_t count);
     bool isPlaying(uint32_t handle, bool &playing) const;   // the mixer's answer for snd_SoundIsStillPlaying
+    void onPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes);   // the PCM ring the EE DMAs into
+    bool pcmPosition(uint32_t &position) const;
     void setDiscImagePath(const std::string &path) { m_discImagePath = path; }   // where the VAG streams are read from
     size_t mixerActiveStreams() const { return m_mixer.activeStreams(); }
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }

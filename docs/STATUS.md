@@ -11,6 +11,15 @@
 
 
 
+## 2026-09-17 (midday) — the title music plays: the 989snd PCM stream ring (research/32 §7)
+
+The EE decodes the title music itself and DMAs 16-bit PCM into an IOP ring the IRX plays; the module now forwards every
+DMA that lands in the ring to the host mixer and answers `snd_PcmStreamPosition` as the IRX does — the DMA's absolute
+address, which the EE masks to 24 bits and subtracts its ring address from. A bare offset gave four refills in 163 s; the
+absolute address gives 48 rolling refills and the music through the whole title stage (RMS 5000–6000, `s6_audio_title`).
+The ring's layout was measured off the DMAs (sample-interleaved, not 512-byte blocks). ps2x_tests 486/486. Hazard kept:
+the ring still sits at the fixed EE address 0x900000 inside the game's memory (KNOWN §4).
+
 ## 2026-09-17 (morning) — the mission's voice-overs and music play: VPK and VAGp streams through the mixer (research/32 §6)
 
 `snd_PlayVAGStreamByLoc` now opens the file at `sector * 2048 + offset` in the disc image and plays it as it reads: the

@@ -172,3 +172,25 @@ register tests, not audio output.
   runner gained `PS2X_TEST_SUITE=<substring>` and `PS2X_TEST_SKIP=<substrings>` filters and unbuffered stdout, which
   found the one-in-six crash of the day: the routing test rendering 4096 frames into a 2048-frame buffer.
 
+## 7. The PCM stream: the title music (2026-09-17, later still)
+
+- **What it is.** `snd_PcmStreamOpen(bytes 0x6000, 0, vol 0x366, 0, channels 2, mode 2)` → an IOP ring the EE fills;
+  `snd_PcmStreamStart(buf, 0x6000, buf, freq 0, channels 0)` → the IRX plays it through `sceSdBlockTrans` in loop mode;
+  `snd_PcmStreamPosition` → `sceSdBlockTransStatus`: **the DMA's current IOP address**. The EE streamer
+  (`FUN_0030a3b0`, state 2) masks that answer to 24 bits, subtracts the ring address it was given at open, and refills
+  the 1 KiB-aligned free region between its write pointer and the play position (`FUN_0030a2d0`), decoding the music it
+  reads from the disc (`sceCdStRead` at LBN 0xcdade) on the EE. Returning a bare offset, the first cut saw four refills
+  in 163 s; returning ring + offset, 48 rolling refills and the music through the whole title stage (RMS 5000–6000).
+- **The ring's layout, measured** (`PS2X_AUDIO_PCM_DUMP`, the first 256 KiB the EE wrote): sample-interleaved stereo
+  16-bit — even/odd sample correlation 0.97, adjacent 512-byte blocks 0.00 — not the 512-byte L/R blocks the libsd
+  block transfer is usually described with. 48 kHz (`freq` 0 = the open call's default).
+- **The ring's address.** The module used to hand the EE a fixed `0x900000`, an address inside the game's own EE memory
+  where the SIF DMA copies then landed (research/06 §5). It now asks for a guest allocation, but the EE's 24-bit mask
+  needs the ring under 16 MB and the runtime's guest heap sits at 0x0178cf00 on this game — so the fixed address is
+  still what the game gets, with a warning. KNOWN §4: a low guest reservation for it is owed.
+- **Host side.** `Mixer::pcmStreamStart/Write/Position/Stop` (a ring played at its rate, gain 0..0x3fff after the SPU's
+  `>> 1`, sample-interleaved); the module's `onSifTransfer` forwards every DMA that lands in the ring
+  (`IopHost::audioPcmWrite`) and answers the position from the mixer (`IopHost::audioPcmPosition`).
+- **Tests** (486/486): the ring plays L/R at its rate, reports its position, wraps and stops; a 24 kHz ring consumes
+  half the bytes per frame; the backend routes start / the ring writes / position / stop.
+

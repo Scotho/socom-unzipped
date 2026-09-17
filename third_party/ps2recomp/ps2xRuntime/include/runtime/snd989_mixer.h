@@ -51,6 +51,15 @@ namespace snd989
         // sample rate, channels; research/32 section 5) at `byteOffset` of `path`, read as it plays. vol 0..0x400, pan as play().
         bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
         void stopAllStreams();
+
+        // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
+        // ring the IRX plays through sceSdBlockTrans; stereo data is sample-interleaved L R L R (measured on the title
+        // music). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
+        void pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol);
+        void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
+        uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped
+        void pcmStreamStop();
+        bool pcmStreamActive() const;
         size_t activeStreams() const;
 
         // Mix `frames` stereo frames (interleaved L R) at kSampleRate; advances the grain sequencers.

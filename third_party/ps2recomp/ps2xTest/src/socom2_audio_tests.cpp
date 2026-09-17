@@ -611,5 +611,85 @@ void register_socom2_audio_tests()
             mixer.stopAll();
             std::remove(path.c_str());
         });
+
+        tc.Run("Mixer: the PCM ring plays sample-interleaved stereo at its rate, reports its position, wraps, and stops", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            t.IsTrue(!mixer.pcmStreamActive(), "no PCM stream before start");
+            t.Equals(mixer.pcmStreamPosition(), 0u, "position 0 before start");
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            t.IsTrue(mixer.pcmStreamActive(), "started");
+            // Interleaved L R L R: left +8000, right -8000, over the whole ring.
+            std::vector<uint8_t> ring(0x6000u);
+            for (size_t i = 0; i < ring.size(); i += 2)
+            {
+                const int16_t v = ((i / 2) % 2 == 0) ? static_cast<int16_t>(8000) : static_cast<int16_t>(-8000);   // L R L R
+                ring[i] = static_cast<uint8_t>(v & 0xFF);
+                ring[i + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+            }
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());
+            std::vector<int16_t> buf(2 * 6144);   // sized for the largest render below
+            mixer.render(buf.data(), 512);
+            double left = 0, right = 0;
+            for (size_t i = 0; i < 512; ++i)
+            {
+                left += buf[2 * i];
+                right += buf[2 * i + 1];
+            }
+            t.IsTrue(left > 0 && right < 0, "even samples to the left channel, odd to the right (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
+            t.IsTrue(std::fabs(left + right) < 0.02 * (std::fabs(left) + std::fabs(right)), "equal magnitudes");
+            const int32_t sample = buf[0];
+            t.IsTrue(sample >= 3600 && sample <= 4400, "vol 0x400 at half scale: 8000 -> about 4000 (got " + std::to_string(sample) + ")");
+            t.Equals(mixer.pcmStreamPosition(), 512u * 4u, "512 frames of stereo 16-bit consumed 2048 bytes");
+            // 0x6000 bytes = 6144 frames; 6144 - 512 more frames reach the end, then it wraps to 0.
+            mixer.render(buf.data(), 6144u - 512u);
+            t.Equals(mixer.pcmStreamPosition(), 0u, "the ring wraps");
+            mixer.render(buf.data(), 100u);
+            t.Equals(mixer.pcmStreamPosition(), 400u, "and continues from the start");
+            // A rate below the output rate stretches: 24000 Hz consumes half the bytes per frame.
+            mixer.pcmStreamStop();
+            t.IsTrue(!mixer.pcmStreamActive() && mixer.pcmStreamPosition() == 0u, "stopped: inactive, position 0");
+            mixer.render(buf.data(), 512);
+            int32_t peak = 0;
+            for (size_t i = 0; i < 2u * 512u; ++i)   // only the frames this render wrote
+                peak = std::max<int32_t>(peak, buf[i] < 0 ? -buf[i] : buf[i]);
+            t.Equals(peak, 0, "silence after stop");
+            mixer.pcmStreamStart(0x6000u, 24000u, 2u, 0x400);
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());
+            mixer.render(buf.data(), 512);
+            t.Equals(mixer.pcmStreamPosition(), 256u * 4u, "24 kHz: 512 output frames consume 256 ring frames");
+            mixer.pcmStreamStop();
+        });
+
+        tc.Run("PS2AudioBackend routes the PCM stream: start, the EE's ring writes, the position the module reports, stop", [](TestCase &t)
+        {
+            PS2AudioBackend backend;
+            uint32_t position = 0;
+            t.IsTrue(!backend.pcmPosition(position), "no PCM stream: the module answers 0 itself");
+            const int32_t start[5] = {0x6000, 0, 2, 0x366, 0x01a00000};
+            backend.onNotify(0x3Eu, start, 5u);
+            t.IsTrue(backend.pcmPosition(position) && position == 0u, "started at position 0");
+            std::vector<uint8_t> half(0x3000u);
+            for (size_t i = 0; i < half.size(); i += 2)
+            {
+                const int16_t v = ((i / 2) % 2 == 0) ? 6000 : -6000;   // L R L R
+                half[i] = static_cast<uint8_t>(v & 0xFF);
+                half[i + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
+            }
+            backend.onPcmWrite(0u, half.data(), half.size());
+            std::vector<int16_t> buf(2 * 1024);
+            backend.mixerRender(buf.data(), 1024);
+            double left = 0, right = 0;
+            for (size_t i = 0; i < 1024; ++i)
+            {
+                left += buf[2 * i];
+                right += buf[2 * i + 1];
+            }
+            t.IsTrue(left > 0 && right < 0, "the ring's even samples play left, odd samples right");
+            t.IsTrue(backend.pcmPosition(position) && position == 1024u * 4u, "position after 1024 frames: 4096 bytes");
+            const int32_t none[1] = {0};
+            backend.onNotify(0x3Du, none, 1u);
+            t.IsTrue(!backend.pcmPosition(position), "snd_PcmStreamStop: no stream");
+        });
     });
 }

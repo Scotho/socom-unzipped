@@ -277,6 +277,16 @@ bool PS2IopHostAdapter::audioIsPlaying(uint32_t handle, bool &playing) const
     return m_runtime.audioBackend().isPlaying(handle, playing);
 }
 
+void PS2IopHostAdapter::audioPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes)
+{
+    m_runtime.audioBackend().onPcmWrite(offset, data, bytes);
+}
+
+bool PS2IopHostAdapter::audioPcmPosition(uint32_t &position) const
+{
+    return m_runtime.audioBackend().pcmPosition(position);
+}
+
 std::string PS2IopHostAdapter::hostPath(ps2x::iop::HostPathKind kind) const
 {
     const PS2Runtime::IoPaths &paths = PS2Runtime::getIoPaths();

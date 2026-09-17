@@ -198,6 +198,8 @@ bounds a single gap (a stall must not become a 300 ms dt). `PS2X_CLOCK_TRACE=1` 
 `PS2X_AUDIO_DUMP=<file.wav>` writes the 989snd mix (48 kHz stereo) as it is rendered -- bank sounds only until the
 VAG streams land (research/32 section 5); a run the harness kills leaves the WAV header's sizes at zero, so read
 the file by its length.
+`PS2X_AUDIO_PCM_DUMP=<file>` writes the first 256 KiB the EE DMAs into the 989snd PCM ring (the title music), each
+write as `{offset, bytes}` then the bytes, to check the ring's layout offline (research/32 section 7).
 `online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
 (default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
 move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and

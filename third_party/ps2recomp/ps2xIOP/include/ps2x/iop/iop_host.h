@@ -76,6 +76,17 @@ namespace ps2x::iop
             (void)handle; (void)block; (void)blockBytes; (void)vag; (void)vagBytes;
         }
         // snd_SoundIsStillPlaying answered by the host mixer: true when it knows the handle (playing = its state).
+        // The PCM stream's ring (research/32 section 7): bytes the EE DMAed into it, and the play position the host
+        // mixer reports for snd_PcmStreamPosition (false when the host has no PCM stream).
+        virtual void audioPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes)
+        {
+            (void)offset; (void)data; (void)bytes;
+        }
+        virtual bool audioPcmPosition(uint32_t &position) const
+        {
+            (void)position;
+            return false;
+        }
         virtual bool audioIsPlaying(uint32_t handle, bool &playing) const
         {
             (void)handle; (void)playing;

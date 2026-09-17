@@ -484,6 +484,15 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
     case 0x2Eu: m_mixer.resume(static_cast<uint32_t>(arg(0))); break;
     case 0x2Fu: m_mixer.stop(static_cast<uint32_t>(arg(0))); break;
     case 0x34u: m_mixer.stopAllStreams(); break;
+    case 0x3Eu:   // snd_PcmStreamStart {ringBytes, freq, channels, vol, buffer}
+        if (count >= 4)
+        {
+            m_mixer.pcmStreamStart(static_cast<uint32_t>(arg(0)), static_cast<uint32_t>(arg(1)), static_cast<uint32_t>(arg(2)), arg(3));
+            std::cout << "[audio] 989snd pcm stream: ring " << arg(0) << " B at " << std::hex << static_cast<uint32_t>(arg(4)) << std::dec << ", " << (arg(1) ? arg(1) : 48000) << " Hz, " << arg(2) << " ch, vol " << arg(3) << std::endl;
+        }
+        break;
+    case 0x3Cu:
+    case 0x3Du: m_mixer.pcmStreamStop(); break;
     case 0x06u: m_mixer.unloadBank(static_cast<uint32_t>(arg(0))); break;
     default:
         break;
@@ -512,5 +521,36 @@ bool PS2AudioBackend::isPlaying(uint32_t handle, bool &playing) const
     if (type != 4u && type != 5u)
         return false;
     playing = m_mixer.isPlaying(handle);
+    return true;
+}
+
+void PS2AudioBackend::onPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes)
+{
+    m_mixer.pcmStreamWrite(offset, data, bytes);
+    // PS2X_AUDIO_PCM_DUMP=<file>: the first 256 KiB the EE wrote, raw, to check the ring's layout offline.
+    static FILE *s_dump = nullptr;
+    static size_t s_dumped = 0;
+    static bool s_tried = false;
+    if (!s_tried)
+    {
+        s_tried = true;
+        if (const char *path = std::getenv("PS2X_AUDIO_PCM_DUMP"))
+            s_dump = std::fopen(path, "wb");
+    }
+    if (s_dump && s_dumped < (256u << 10))
+    {
+        const uint32_t hdr[2] = {offset, static_cast<uint32_t>(bytes)};
+        std::fwrite(hdr, sizeof(hdr), 1, s_dump);
+        std::fwrite(data, 1, bytes, s_dump);
+        std::fflush(s_dump);
+        s_dumped += bytes;
+    }
+}
+
+bool PS2AudioBackend::pcmPosition(uint32_t &position) const
+{
+    if (!m_mixer.pcmStreamActive())
+        return false;
+    position = m_mixer.pcmStreamPosition();
     return true;
 }

@@ -436,6 +436,26 @@ namespace snd989
         std::vector<Voice> voices;
         std::vector<Handler> handlers;
         std::vector<Stream> streams;
+        // The PCM ring (research/32 section 7): 16-bit PCM the EE DMAs in, played from offset 0 at `rate`;
+        // stereo is sample-interleaved L R L R (measured: even/odd sample correlation 0.97 on the title music).
+        struct PcmRing
+        {
+            bool active = false;
+            std::vector<uint8_t> bytes;
+            uint32_t rate = 48000;
+            uint32_t channels = 2;
+            int32_t gain = 0;        // per-channel volume 0..0x3fff after the SPU's >> 1
+            double pos = 0.0;        // frames into the ring
+            uint32_t frames() const { return channels == 0 || bytes.empty() ? 0u : static_cast<uint32_t>(bytes.size() / (2u * channels)); }
+            int16_t sample(uint32_t frame, uint32_t channel) const
+            {
+                size_t at;
+                at = (static_cast<size_t>(frame) * channels + channel) * 2u;   // sample-interleaved (measured on the title music, research/32 section 7)
+                if (at + 1 >= bytes.size())
+                    return 0;
+                return static_cast<int16_t>(bytes[at] | (bytes[at + 1] << 8));
+            }
+        } pcm;
         int32_t masterVol[17] = {};
         uint32_t nextUid = 1;
         uint32_t nextSlot = 0;
@@ -931,6 +951,24 @@ namespace snd989
                     st.pos += st.step;
                 }
             }
+            if (m_impl->pcm.active && m_impl->pcm.frames() > 0)
+            {
+                Impl::PcmRing &ring = m_impl->pcm;
+                const int32_t gain = (ring.gain * m_impl->masterVol[16]) / 0x400;
+                const double step = static_cast<double>(ring.rate) / static_cast<double>(kSampleRate);
+                const uint32_t total = ring.frames();
+                for (size_t i = 0; i < chunk; ++i)
+                {
+                    const uint32_t f = static_cast<uint32_t>(ring.pos) % total;
+                    const int32_t l = ring.sample(f, 0);
+                    const int32_t r = ring.channels >= 2 ? ring.sample(f, 1) : l;
+                    mix[(frame + i) * 2] += (l * gain) / 0x7fff;   // the SPU voice volume is 15-bit: 0x3fff (the >> 1 of full) is half scale
+                    mix[(frame + i) * 2 + 1] += (r * gain) / 0x7fff;
+                    ring.pos += step;
+                    if (ring.pos >= static_cast<double>(total))
+                        ring.pos -= static_cast<double>(total);
+                }
+            }
             frame += chunk;
             m_impl->tickAccumulator += static_cast<double>(chunk);
             if (m_impl->tickAccumulator >= framesPerTick)
@@ -1037,5 +1075,53 @@ namespace snd989
             if (!st.done)
                 ++n;
         return n;
+    }
+}
+
+namespace snd989
+{
+    void Mixer::pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        Impl::PcmRing &ring = m_impl->pcm;
+        ring.bytes.assign(std::min<uint32_t>(ringBytes, 4u << 20), 0u);
+        ring.rate = rate ? rate : 48000u;
+        ring.channels = std::clamp<uint32_t>(channels ? channels : 2u, 1u, 2u);
+        // vol 0..0x400 -> 0..0x7ffe (MakeVolume's scale) then the SPU's >> 1: 0..0x3fff
+        ring.gain = static_cast<int32_t>((static_cast<int64_t>(0x7ffe) * std::clamp(vol, 0, 0x400)) / 0x400) >> 1;
+        ring.pos = 0.0;
+        ring.active = !ring.bytes.empty();
+    }
+
+    void Mixer::pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        Impl::PcmRing &ring = m_impl->pcm;
+        if (!data || ring.bytes.empty() || offset >= ring.bytes.size())
+            return;
+        const size_t n = std::min(bytes, ring.bytes.size() - offset);
+        std::memcpy(ring.bytes.data() + offset, data, n);
+    }
+
+    uint32_t Mixer::pcmStreamPosition() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        const Impl::PcmRing &ring = m_impl->pcm;
+        if (!ring.active || ring.frames() == 0)
+            return 0u;
+        return (static_cast<uint32_t>(ring.pos) % ring.frames()) * 2u * ring.channels;
+    }
+
+    void Mixer::pcmStreamStop()
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        m_impl->pcm.active = false;
+        m_impl->pcm.pos = 0.0;
+    }
+
+    bool Mixer::pcmStreamActive() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->pcm.active;
     }
 }

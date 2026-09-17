@@ -297,6 +297,10 @@ namespace ps2x::iop::detail
             std::array<StreamSlot, kMaxStreamSlots> streams{};
 
             bool pcmStreamOpen = false;
+            uint32_t pcmBuffer = 0u;      // the ring the EE DMAs PCM into (a guest allocation, research/32 section 7)
+            uint32_t pcmBufferBytes = 0u;
+            int32_t pcmVolume = 0x400;
+            uint32_t pcmChannels = 2u;
             bool dstrmInitialised = false;
         };
 
@@ -357,6 +361,29 @@ namespace ps2x::iop::detail
                 result.handled = true;
                 result.resultAddress = request.receive.address;
                 return result;
+            }
+
+            void onSifTransfer(const SifTransfer &transfer) override
+            {
+                if (transfer.kind != SifTransferKind::SetDma || transfer.phase != SifTransferPhase::AfterCopy)
+                    return;
+                uint32_t buffer = 0u, bytes = 0u;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    buffer = m_model.pcmBuffer;
+                    bytes = m_model.pcmBufferBytes;
+                }
+                if (buffer == 0u || bytes == 0u || transfer.size == 0u)
+                    return;
+                const uint64_t dst = transfer.destinationAddress & 0x1FFFFFFFu;
+                const uint64_t base = buffer & 0x1FFFFFFFu;
+                if (dst + transfer.size <= base || dst >= base + bytes)
+                    return;
+                const uint64_t from = std::max<uint64_t>(dst, base);
+                const uint64_t to = std::min<uint64_t>(dst + transfer.size, base + bytes);
+                std::vector<uint8_t> copy(static_cast<size_t>(to - from));
+                if (m_host.readGuest(transfer.destinationAddress + static_cast<uint32_t>(from - dst), copy.data(), copy.size()))
+                    m_host.audioPcmWrite(static_cast<uint32_t>(from - base), copy.data(), copy.size());
             }
 
             void appendDebugMetrics(std::vector<DebugMetric> &metrics) const override
@@ -881,24 +908,65 @@ namespace ps2x::iop::detail
                     break;
 
                 case kPcmStreamOpen:
+                {
+                    // {bytes, p2, vol, p4, channels, mode}: the ring the EE will DMA PCM into. A real guest allocation,
+                    // so the copies land somewhere of ours (the fixed 0x900000 landed in the game's own memory) and
+                    // onSifTransfer can hand the bytes to the host mixer.
                     m_model.pcmStreamOpen = true;
-                    value = kFakePcmBuffer;
+                    m_model.pcmBufferBytes = args.u32(0);
+                    m_model.pcmVolume = args.s32(2);
+                    m_model.pcmChannels = args.u32(4) ? args.u32(4) : 2u;
+                    if (m_model.pcmBuffer == 0u && m_model.pcmBufferBytes != 0u && m_model.pcmBufferBytes <= (4u << 20))
+                    {
+                        // The EE masks snd_PcmStreamPosition's answer to 24 bits and subtracts this address (FUN_0030a3b0),
+                        // so the ring has to sit under 16 MB; otherwise the old fixed address (in the game's memory) it is.
+                        const uint32_t allocated = m_host.allocateGuest(m_model.pcmBufferBytes, 64u);
+                        if (allocated != 0u && allocated < 0x01000000u)
+                            m_model.pcmBuffer = allocated;
+                        else
+                        {
+                            if (allocated != 0u)
+                                m_host.freeGuest(allocated);
+                            m_model.pcmBuffer = kFakePcmBuffer;
+                            logWarning("PCM ring: guest allocation " + hexString(allocated) + " is above 16 MB; using " + hexString(kFakePcmBuffer));
+                        }
+                    }
+                    value = m_model.pcmBuffer != 0u ? m_model.pcmBuffer : kFakePcmBuffer;
                     hasResult = true;
                     break;
+                }
 
                 case kPcmStreamClose:
                     m_model.pcmStreamOpen = false;
-                    break;
-
-                case kPcmStreamStop:
-                case kPcmStreamStart:
                     forwardAudio(fno, args);
                     break;
 
+                case kPcmStreamStop:
+                    forwardAudio(fno, args);
+                    break;
+
+                case kPcmStreamStart:
+                {
+                    // {buf, size, end, freq, channels}: the host gets the ring size, the rate (0 = 48000), the channels
+                    // (0 = the open call's) and the open call's volume.
+                    forwardAudio(kPcmStreamStop, args);   // the audioCommand path, as before
+                    const uint32_t channels = args.u32(4) ? args.u32(4) : m_model.pcmChannels;
+                    const int32_t words[5] = {static_cast<int32_t>(args.u32(1) ? args.u32(1) : m_model.pcmBufferBytes),
+                                              static_cast<int32_t>(args.u32(3)), static_cast<int32_t>(channels), m_model.pcmVolume,
+                                              static_cast<int32_t>(m_model.pcmBuffer)};
+                    m_host.audioNotify(kPcmStreamStart, words, 5u);
+                    break;
+                }
+
                 case kPcmStreamPosition:
-                    value = 0u;
+                {
+                    // The IRX answers sceSdBlockTransStatus: the DMA's current IOP address. The EE (FUN_0030a3b0) masks it to
+                    // 24 bits and subtracts the ring address it was given at open, so this is ring + play offset.
+                    uint32_t position = 0u;
+                    value = m_host.audioPcmPosition(position) ? ((m_model.pcmBuffer + position) & 0xFFFFFFu) : 0u;
                     hasResult = true;
                     break;
+                }
 
                 case kGetVoiceStatus:
                     value = 0u;
