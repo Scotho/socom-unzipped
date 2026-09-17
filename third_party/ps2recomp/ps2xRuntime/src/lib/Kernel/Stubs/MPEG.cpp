@@ -1143,6 +1143,20 @@ namespace ps2_stubs
             }
         }
 
+        // Drops everything past `keep` bytes of the PSS buffer (a refused packet and what followed it: the game
+        // resubmits those bytes).
+        void truncatePss(MpegPlaybackState &playback, size_t keep)
+        {
+            if (playback.pssBuffer.size() > keep)
+            {
+                playback.pssBuffer.resize(keep);
+            }
+            if (playback.pssGuestAddrs.size() > keep)
+            {
+                playback.pssGuestAddrs.resize(keep);
+            }
+        }
+
         std::vector<MpegRegisteredCallback> matchingStreamCallbacks(uint32_t mpegAddr, uint32_t streamType)
         {
             std::vector<MpegRegisteredCallback> out;
@@ -1184,10 +1198,50 @@ namespace ps2_stubs
             }
         }
 
+        // Queues the stream callback events for one PES payload, one per run of contiguous guest addresses: a payload
+        // that straddles the end of the game's PSS ring reaches the callback as two pieces, the way the real
+        // sceMpegDemuxPssRing hands it over (the game copies `len` bytes from `data` and cannot see the wrap).
+        void queueStreamCallbackEventRuns(uint32_t mpegAddr,
+                                          const MpegPlaybackState &playback,
+                                          uint32_t streamType,
+                                          size_t payloadStart,
+                                          size_t payloadLen,
+                                          std::vector<MpegStreamCallbackEvent> &callbackEvents,
+                                          int64_t pts90k,
+                                          int64_t dts90k)
+        {
+            const std::vector<uint32_t> &addrs = playback.pssGuestAddrs;
+            size_t runStart = payloadStart;
+            const size_t end = std::min(payloadStart + payloadLen, addrs.size());
+            for (size_t i = payloadStart + 1u; i <= end; ++i)
+            {
+                const bool contiguous = i < end && addrs[i] == addrs[i - 1u] + 1u;
+                if (!contiguous)
+                {
+                    queueStreamCallbackEvent(mpegAddr, streamType, addrs[runStart], static_cast<uint32_t>(i - runStart),
+                                             callbackEvents, runStart == payloadStart ? pts90k : -1, runStart == payloadStart ? dts90k : -1);
+                    runStart = i;
+                }
+            }
+        }
+
+        // A PES packet parked at the front of the PSS buffer while its stream callbacks run on the guest: accepted, it
+        // is fed (video) and erased; refused, the demux call stops before it (research/32 section 7.1).
+        struct MpegPendingPacket
+        {
+            bool valid = false;
+            size_t end = 0u;
+            bool video = false;
+            size_t payloadStart = 0u;
+            int64_t pts90k = -1;
+            int64_t dts90k = -1;
+        };
+
         void processPssBuffer(uint32_t mpegAddr,
                               MpegPlaybackState &playback,
                               std::vector<MpegStreamCallbackEvent> &callbackEvents,
-                              bool finalChunk = false)
+                              bool finalChunk = false,
+                              MpegPendingPacket *pending = nullptr)
         {
             std::vector<uint8_t> &buffer = playback.pssBuffer;
 
@@ -1334,14 +1388,14 @@ namespace ps2_stubs
                     {
                         if (payloadStart < playback.pssGuestAddrs.size())
                         {
-                            queueStreamCallbackEvent(
-                                mpegAddr,
-                                kMpegStrM2V,
-                                playback.pssGuestAddrs[payloadStart],
-                                static_cast<uint32_t>(packetEnd - payloadStart),
-                                callbackEvents,
-                                pes.pts90k,
-                                pes.dts90k);
+                            const size_t before = callbackEvents.size();
+                            queueStreamCallbackEventRuns(mpegAddr, playback, kMpegStrM2V, payloadStart,
+                                                         packetEnd - payloadStart, callbackEvents, pes.pts90k, pes.dts90k);
+                            if (pending != nullptr && callbackEvents.size() > before)
+                            {
+                                *pending = MpegPendingPacket{true, packetEnd, true, payloadStart, pes.pts90k, pes.dts90k};
+                                return;
+                            }
                         }
                         feedElementaryStream(
                             playback,
@@ -1357,27 +1411,37 @@ namespace ps2_stubs
                     const size_t payloadStart = pes.payloadOffset;
                     if (payloadStart < packetEnd && payloadStart < playback.pssGuestAddrs.size())
                     {
-                        queueStreamCallbackEvent(
-                            mpegAddr,
-                            kMpegStrPCM,
-                            playback.pssGuestAddrs[payloadStart],
-                            static_cast<uint32_t>(packetEnd - payloadStart),
-                            callbackEvents,
-                            pes.pts90k,
-                            pes.dts90k);
-                        queueStreamCallbackEvent(
-                            mpegAddr,
-                            kMpegStrADPCM,
-                            playback.pssGuestAddrs[payloadStart],
-                            static_cast<uint32_t>(packetEnd - payloadStart),
-                            callbackEvents,
-                            pes.pts90k,
-                            pes.dts90k);
+                        queueStreamCallbackEventRuns(mpegAddr, playback, kMpegStrPCM, payloadStart, packetEnd - payloadStart,
+                                                     callbackEvents, pes.pts90k, pes.dts90k);
+                        queueStreamCallbackEventRuns(mpegAddr, playback, kMpegStrADPCM, payloadStart, packetEnd - payloadStart,
+                                                     callbackEvents, pes.pts90k, pes.dts90k);
+                        if (pending != nullptr && !callbackEvents.empty())
+                        {
+                            *pending = MpegPendingPacket{true, packetEnd, false, payloadStart, pes.pts90k, pes.dts90k};
+                            return;
+                        }
                     }
                 }
 
                 erasePssPrefix(playback, packetEnd);
             }
+        }
+
+        void acceptPendingPacket(MpegPlaybackState &playback, const MpegPendingPacket &pending)
+        {
+            if (!pending.valid || playback.pssBuffer.size() < pending.end)
+            {
+                return;
+            }
+            if (pending.video && pending.payloadStart < pending.end)
+            {
+                feedElementaryStream(playback,
+                                     playback.pssBuffer.data() + pending.payloadStart,
+                                     pending.end - pending.payloadStart,
+                                     pending.pts90k,
+                                     pending.dts90k);
+            }
+            erasePssPrefix(playback, pending.end);
         }
 
         void finishPlaybackStream(uint32_t mpegAddr, MpegPlaybackState &playback)
@@ -1443,7 +1507,8 @@ namespace ps2_stubs
                             const uint8_t *data,
                             size_t size,
                             uint32_t guestAddr,
-                            std::vector<MpegStreamCallbackEvent> &callbackEvents)
+                            std::vector<MpegStreamCallbackEvent> &callbackEvents,
+                            bool process = true)
         {
             if (!data || size == 0)
             {
@@ -1478,7 +1543,10 @@ namespace ps2_stubs
             {
                 playback.pssGuestAddrs.push_back(guestAddr + static_cast<uint32_t>(i));
             }
-            processPssBuffer(mpegAddr, playback, callbackEvents);
+            if (process)
+            {
+                processPssBuffer(mpegAddr, playback, callbackEvents);
+            }
         }
 
         size_t appendGuestBytes(uint32_t mpegAddr,
@@ -1486,7 +1554,8 @@ namespace ps2_stubs
                                 const uint8_t *rdram,
                                 uint32_t addr,
                                 size_t size,
-                                std::vector<MpegStreamCallbackEvent> &callbackEvents)
+                                std::vector<MpegStreamCallbackEvent> &callbackEvents,
+                                bool process = true)
         {
             size_t copied = 0u;
             while (copied < size)
@@ -1511,7 +1580,8 @@ namespace ps2_stubs
                     src,
                     chunk,
                     curAddr,
-                    callbackEvents);
+                    callbackEvents,
+                    process);
                 copied += chunk;
             }
             return copied;
@@ -1524,7 +1594,8 @@ namespace ps2_stubs
                                     uint32_t byteCount,
                                     uint32_t ringBaseAddr,
                                     uint32_t ringSize,
-                                    std::vector<MpegStreamCallbackEvent> &callbackEvents)
+                                    std::vector<MpegStreamCallbackEvent> &callbackEvents,
+                                    bool process = true)
         {
             if (byteCount == 0u)
             {
@@ -1545,7 +1616,8 @@ namespace ps2_stubs
                         rdram,
                         dataAddr,
                         first,
-                        callbackEvents);
+                        callbackEvents,
+                        process);
                     if (copied < first)
                     {
                         return copied;
@@ -1560,13 +1632,14 @@ namespace ps2_stubs
                             rdram,
                             ringBaseAddr,
                             remaining,
-                            callbackEvents);
+                            callbackEvents,
+                            process);
                     }
                     return copied;
                 }
             }
 
-            return appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, callbackEvents);
+            return appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, callbackEvents, process);
         }
 
         bool writeMpegCallbackData(uint8_t *rdram, uint32_t addr, const MpegStreamCallbackEvent &event)
@@ -1591,28 +1664,41 @@ namespace ps2_stubs
             return true;
         }
 
-        void dispatchGuestStreamCallback(uint8_t *rdram,
-                                         R5900Context *callerCtx,
-                                         PS2Runtime *runtime,
-                                         const MpegStreamCallbackEvent &event,
-                                         const MpegRegisteredCallback &callback)
+        // Builds the guest invocation for one stream callback (the 0x20-byte callback record allocated on the guest
+        // heap, freed when the callback returns). False when the callback cannot run.
+        bool buildGuestStreamInvocation(uint8_t *rdram,
+                                        R5900Context *callerCtx,
+                                        PS2Runtime *runtime,
+                                        const MpegStreamCallbackEvent &event,
+                                        const MpegRegisteredCallback &callback,
+                                        GuestInvocation &out)
         {
             if (!rdram || !callerCtx || !runtime || callback.func == 0u || !runtime->hasFunction(callback.func))
             {
-                return;
+                return false;
             }
 
             const uint32_t cbDataAddr = runtime->guestMalloc(kMpegCallbackDataSize, 16u);
             if (cbDataAddr == 0u)
             {
-                return;
+                return false;
             }
             if (!writeMpegCallbackData(rdram, cbDataAddr, event))
             {
                 runtime->guestFree(cbDataAddr);
-                return;
+                return false;
             }
 
+            static uint32_t s_streamCallbackTraceCount = 0u;
+            if (mpegTraceEnabled() && s_streamCallbackTraceCount < 4096u)
+            {
+                // PS2X_MPEG_TRACE: one line per demuxed piece handed to a guest stream callback (research/32 section 7.1
+                // matched these against the disc's PES packets by PTS).
+                ++s_streamCallbackTraceCount;
+                std::cerr << "[MPEG:StrCb] type=" << event.streamType << " data=0x" << std::hex << event.dataAddr
+                          << std::dec << " len=" << event.len << " pts=" << static_cast<int64_t>(event.pts)
+                          << " func=0x" << std::hex << callback.func << std::dec << std::endl;
+            }
             R5900Context callbackCtx = *callerCtx;
             SET_GPR_U32(&callbackCtx, 4, event.mpegAddr);
             SET_GPR_U32(&callbackCtx, 5, cbDataAddr);
@@ -1622,14 +1708,27 @@ namespace ps2_stubs
             SET_GPR_U32(&callbackCtx, 31, 0u);
             callbackCtx.pc = callback.func;
 
-            GuestInvocation invocation{};
-            invocation.kind = GuestInvocationKind::RpcCallback;
-            invocation.context = callbackCtx;
-            invocation.onComplete = [runtime, cbDataAddr](const R5900Context &, R5900Context &)
+            out = GuestInvocation{};
+            out.kind = GuestInvocationKind::RpcCallback;
+            out.context = callbackCtx;
+            out.onComplete = [runtime, cbDataAddr](const R5900Context &, R5900Context &)
             {
                 runtime->guestFree(cbDataAddr);
             };
-            runtime->eeScheduler().queueInvocation(std::move(invocation));
+            return true;
+        }
+
+        void dispatchGuestStreamCallback(uint8_t *rdram,
+                                         R5900Context *callerCtx,
+                                         PS2Runtime *runtime,
+                                         const MpegStreamCallbackEvent &event,
+                                         const MpegRegisteredCallback &callback)
+        {
+            GuestInvocation invocation{};
+            if (buildGuestStreamInvocation(rdram, callerCtx, runtime, event, callback, invocation))
+            {
+                runtime->eeScheduler().queueInvocation(std::move(invocation));
+            }
         }
 
         void dispatchStreamCallbacks(uint8_t *rdram,
@@ -1662,6 +1761,227 @@ namespace ps2_stubs
             }
 
             dispatchStreamCallbacks(rdram, ctx, runtime, events);
+        }
+
+        // Ends a demux stub: sets its result, then runs the stream callbacks on the calling guest thread, in packet
+        // order, before the caller's next instruction. The real library calls them from inside sceMpegDemuxPss /
+        // sceMpegDemuxPssRing, and SOCOM II's audio callback copies each packet out of the PSS ring that the next
+        // disc read overwrites (research/32 section 7.1). Never returns on the dispatcher thread when there is a
+        // callback to run; off it (a test calling the stub directly) the callbacks are queued as before.
+        void finishDemuxWithStreamCallbacks(uint8_t *rdram,
+                                            R5900Context *ctx,
+                                            PS2Runtime *runtime,
+                                            const std::vector<MpegStreamCallbackEvent> &events,
+                                            int32_t result)
+        {
+            setReturnS32(ctx, result);
+            if (events.empty() || runtime == nullptr)
+            {
+                return;
+            }
+            EeScheduler &scheduler = runtime->eeScheduler();
+            if (!scheduler.onExecutorThread() || scheduler.currentThread() == nullptr)
+            {
+                dispatchStreamCallbacksUnlocked(rdram, ctx, runtime, events);
+                return;
+            }
+            std::vector<GuestInvocation> invocations;
+            for (const MpegStreamCallbackEvent &event : events)
+            {
+                for (const MpegRegisteredCallback &callback : event.callbacks)
+                {
+                    GuestInvocation invocation{};
+                    if (buildGuestStreamInvocation(rdram, ctx, runtime, event, callback, invocation))
+                    {
+                        invocations.push_back(std::move(invocation));
+                    }
+                }
+            }
+            if (invocations.empty())
+            {
+                return;
+            }
+            scheduler.invokeCurrentSequence(std::move(invocations));
+        }
+
+        // One sceMpegDemuxPss / sceMpegDemuxPssRing call on the dispatcher thread (research/32 section 7.1). The input
+        // is appended to the PSS buffer, then demuxed packet by packet: a packet with stream callbacks is parked at the
+        // front of the buffer while its callbacks run on the calling guest thread, in packet order, before the caller's
+        // next instruction, as the real library does. A callback returning 0 has not taken the packet (SOCOM II's audio
+        // callback does so when its staging ring is full): the call stops there and returns the bytes consumed before
+        // that packet, the packet and what followed it are dropped from the buffer, and the game resubmits them.
+        struct MpegDemuxCall
+        {
+            uint32_t mpegAddr = 0u;
+            size_t inputBytes = 0u;
+            size_t decodedBefore = 0u;
+            bool ring = false;
+        };
+
+        void finishDemuxCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, const MpegDemuxCall &call, size_t consumed)
+        {
+            (void)rdram;
+            std::vector<uint32_t> completedMpegIds;
+            bool eofChanged = false;
+            size_t decodedCount = 0u;
+            uint32_t traceIdx = 0u;
+            {
+                std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                recordCdStreamBytesDemuxedUnlocked(consumed, completedMpegIds, eofChanged);
+                decodedCount = playback.decodedFrames.size();
+                traceIdx = call.ring ? g_mpeg_stub_state.demuxRingTraceCount++ : g_mpeg_stub_state.demuxPssTraceCount++;
+            }
+            const bool currentStreamCompleted =
+                std::find(completedMpegIds.begin(), completedMpegIds.end(), call.mpegAddr) != completedMpegIds.end();
+            if (decodedCount != call.decodedBefore || eofChanged || currentStreamCompleted)
+            {
+                runtime->eeScheduler().completeExternalWait(kMpegPictureWaitType, call.mpegAddr, KE_OK);
+            }
+            for (const uint32_t completedMpegId : completedMpegIds)
+            {
+                if (completedMpegId != call.mpegAddr)
+                {
+                    runtime->eeScheduler().completeExternalWait(kMpegPictureWaitType, completedMpegId, KE_OK);
+                }
+            }
+            if (mpegTraceEnabled() && (traceIdx < 16u || (traceIdx % 500u) == 0u))   // the game re-polls a refused packet thousands of times a second
+            {
+                std::cerr << "[MPEG:Demux" << (call.ring ? "PssRing" : "Pss") << "] #" << traceIdx << " mp=0x" << std::hex
+                          << call.mpegAddr << std::dec << " input=" << call.inputBytes << " consumed=" << consumed
+                          << " decoded=" << decodedCount << std::endl;
+            }
+            setReturnS32(ctx, static_cast<int32_t>(consumed));
+        }
+
+        void continueDemuxCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, MpegDemuxCall call)
+        {
+            for (;;)
+            {
+                std::vector<MpegStreamCallbackEvent> events;
+                MpegPendingPacket pending{};
+                std::ptrdiff_t packetInputOffset = 0;
+                {
+                    std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                    MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                    processPssBuffer(call.mpegAddr, playback, events, false, &pending);
+                    if (!pending.valid)
+                    {
+                        break;
+                    }
+                    // the packet sits at the front of the buffer: this many of the call's input bytes precede it
+                    // (negative when it began in bytes carried over from an earlier call)
+                    packetInputOffset = static_cast<std::ptrdiff_t>(call.inputBytes) - static_cast<std::ptrdiff_t>(playback.pssBuffer.size());
+                }
+
+                std::vector<GuestInvocation> invocations;
+                for (const MpegStreamCallbackEvent &event : events)
+                {
+                    for (const MpegRegisteredCallback &callback : event.callbacks)
+                    {
+                        GuestInvocation invocation{};
+                        if (buildGuestStreamInvocation(rdram, ctx, runtime, event, callback, invocation))
+                        {
+                            invocations.push_back(std::move(invocation));
+                        }
+                    }
+                }
+                if (invocations.empty())
+                {
+                    std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                    acceptPendingPacket(getPlaybackState(call.mpegAddr), pending);
+                    continue;
+                }
+
+                auto refused = std::make_shared<bool>(false);
+                for (size_t i = 0; i < invocations.size(); ++i)
+                {
+                    auto release = std::move(invocations[i].onComplete);
+                    const bool last = i + 1u == invocations.size();
+                    invocations[i].onComplete = [release, refused, last, rdram, runtime, call, pending, packetInputOffset](const R5900Context &done, R5900Context &parent)
+                    {
+                        if (release)
+                        {
+                            release(done, parent);
+                        }
+                        if (getRegU32(&done, 2) == 0u)
+                        {
+                            *refused = true;
+                        }
+                        if (!last)
+                        {
+                            return;
+                        }
+                        if (!*refused)
+                        {
+                            {
+                                std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                                acceptPendingPacket(getPlaybackState(call.mpegAddr), pending);
+                            }
+                            continueDemuxCall(rdram, &parent, runtime, call);
+                            return;
+                        }
+                        size_t consumed = 0u;
+                        {
+                            std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                            MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                            if (packetInputOffset >= 0)
+                            {
+                                truncatePss(playback, 0u);
+                                consumed = static_cast<size_t>(packetInputOffset);
+                            }
+                            else
+                            {
+                                truncatePss(playback, static_cast<size_t>(-packetInputOffset));
+                            }
+                        }
+                        finishDemuxCall(rdram, &parent, runtime, call, consumed);
+                    };
+                }
+                runtime->eeScheduler().invokeCurrentSequence(std::move(invocations));
+            }
+            finishDemuxCall(rdram, ctx, runtime, call, call.inputBytes);
+        }
+
+        // True when the stub runs on the dispatcher thread inside a guest thread, where it may transfer control.
+        bool demuxOnExecutor(PS2Runtime *runtime)
+        {
+            return runtime != nullptr && runtime->eeScheduler().onExecutorThread() && runtime->eeScheduler().currentThread() != nullptr;
+        }
+
+        void runDemuxCallOnExecutor(uint8_t *rdram,
+                                    R5900Context *ctx,
+                                    PS2Runtime *runtime,
+                                    uint32_t mpegAddr,
+                                    uint32_t dataAddr,
+                                    uint32_t byteCount,
+                                    uint32_t ringBaseAddr,
+                                    uint32_t ringSize,
+                                    bool ring)
+        {
+            MpegDemuxCall call{};
+            call.mpegAddr = mpegAddr;
+            call.ring = ring;
+            bool backpressured = false;
+            {
+                std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+                call.decodedBefore = playback.decodedFrames.size();
+                backpressured = mpegDemuxBackpressured(playback);
+                if (!backpressured)
+                {
+                    std::vector<MpegStreamCallbackEvent> none;
+                    call.inputBytes = ring
+                        ? appendGuestRingBytes(mpegAddr, playback, rdram, dataAddr, byteCount, ringBaseAddr, ringSize, none, false)
+                        : appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, none, false);
+                }
+            }
+            if (backpressured)
+            {
+                setReturnS32(ctx, 0);
+                return;
+            }
+            continueDemuxCall(rdram, ctx, runtime, call);
         }
 
         // libmpeg control callbacks registered with sceMpegAddCallback (not the
@@ -2213,6 +2533,12 @@ namespace ps2_stubs
         const uint32_t dataAddr = getRegU32(ctx, 5);
         const uint32_t byteCount = getRegU32(ctx, 6);
 
+        if (demuxOnExecutor(runtime))
+        {
+            runDemuxCallOnExecutor(rdram, ctx, runtime, mpegAddr, dataAddr, byteCount, 0u, 0u, false);
+            return;
+        }
+
         std::vector<MpegStreamCallbackEvent> callbackEvents;
         std::vector<uint32_t> completedMpegIds;
         size_t consumed = 0u;
@@ -2272,8 +2598,7 @@ namespace ps2_stubs
             });
         }
 
-        dispatchStreamCallbacksUnlocked(rdram, ctx, runtime, callbackEvents);
-        setReturnS32(ctx, static_cast<int32_t>(consumed));
+        finishDemuxWithStreamCallbacks(rdram, ctx, runtime, callbackEvents, static_cast<int32_t>(consumed));
     }
 
     void sceMpegDemuxPssRing(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -2295,6 +2620,12 @@ namespace ps2_stubs
         const uint32_t availableBytes = getRegU32(ctx, 6);
         const uint32_t ringBaseAddr = getRegU32(ctx, 7);
         const uint32_t ringSize = readAbiArg4(rdram, ctx);
+
+        if (demuxOnExecutor(runtime))
+        {
+            runDemuxCallOnExecutor(rdram, ctx, runtime, mpegAddr, dataAddr, availableBytes, ringBaseAddr, ringSize, true);
+            return;
+        }
 
         std::vector<MpegStreamCallbackEvent> callbackEvents;
         std::vector<uint32_t> completedMpegIds;
@@ -2355,6 +2686,7 @@ namespace ps2_stubs
         if (mpegTraceEnabled() && (traceIdx < 16u || (traceIdx % 500u) == 0u))
         {
             std::cerr << "[MPEG:DemuxPssRing] #" << traceIdx << " mp=0x" << std::hex << mpegAddr << std::dec
+                      << " data=0x" << std::hex << dataAddr << " ring=0x" << ringBaseAddr << "+0x" << ringSize << std::dec
                       << " avail=" << availableBytes << " consumed=" << consumed
                       << " decoded=" << decodedCount << " bp=" << backpressured
                       << " cbs=" << callbackEvents.size() << std::endl;
@@ -2373,8 +2705,7 @@ namespace ps2_stubs
             });
         }
 
-        dispatchStreamCallbacksUnlocked(rdram, ctx, runtime, callbackEvents);
-        setReturnS32(ctx, static_cast<int32_t>(consumed));
+        finishDemuxWithStreamCallbacks(rdram, ctx, runtime, callbackEvents, static_cast<int32_t>(consumed));
     }
 
     void sceMpegDispCenterOffX(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

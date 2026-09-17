@@ -53,8 +53,8 @@ namespace snd989
         void stopAllStreams();
 
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
-        // ring the IRX plays through sceSdBlockTrans; stereo data is sample-interleaved L R L R (measured on the title
-        // music). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
+        // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie
+        // audio's SShd interleave). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
         void pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol);
         void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
         uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped

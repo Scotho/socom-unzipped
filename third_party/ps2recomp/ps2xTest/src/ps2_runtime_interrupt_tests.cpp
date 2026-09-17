@@ -64,6 +64,10 @@ namespace
     constexpr uint32_t kTimer2WaitPc = 0x00160500u;
     constexpr uint32_t kTimer2ResumePc = 0x00160510u;
     constexpr uint32_t kTimer2HandlerPc = 0x00160520u;
+    constexpr uint32_t kQueueTwoPc = 0x00160600u;
+    constexpr uint32_t kQueueResumePc = 0x00160610u;
+    constexpr uint32_t kQueuedCallbackAPc = 0x00160620u;
+    constexpr uint32_t kQueuedCallbackBPc = 0x00160630u;
 
     constexpr uint32_t kTimer2Count = 0x10001000u;
     constexpr uint32_t kTimer2Mode = 0x10001010u;
@@ -180,6 +184,39 @@ namespace
     }
 
     void schedulerIrqResume(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_dispatchTrace.push_back(3);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    // Two guest invocations queued back to back (the MPEG demux queues one stream callback per PES packet this
+    // way): they must run in the order they were queued, before the base context continues.
+    void queuedCallbackA(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        g_dispatchTrace.push_back(1);
+        ctx->pc = 0u;
+    }
+
+    void queuedCallbackB(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        g_dispatchTrace.push_back(2);
+        ctx->pc = 0u;
+    }
+
+    void queueTwoCallbacks(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        for (const uint32_t pc : {kQueuedCallbackAPc, kQueuedCallbackBPc})
+        {
+            GuestInvocation invocation{};
+            invocation.kind = GuestInvocationKind::RpcCallback;
+            invocation.context.pc = pc;
+            runtime->eeScheduler().queueInvocation(std::move(invocation));
+        }
+        ctx->pc = kQueueResumePc;
+    }
+
+    void queueResume(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
     {
         g_dispatchTrace.push_back(3);
         ctx->pc = 0u;
@@ -505,6 +542,25 @@ void register_ps2_runtime_interrupt_tests()
                      "the dispatcher should run wait, IRQ frame, then the resumed base context in exact order");
             t.Equals(g_lastIntcArg.load(std::memory_order_relaxed), 0xCAFEu,
                      "the IRQ frame should receive its registered argument");
+        });
+
+        tc.Run("queued invocations run in the order they were queued", [](TestCase &t)
+        {
+            TestEnv env;
+            env.runtime.registerFunction(kQueueTwoPc, queueTwoCallbacks);
+            env.runtime.registerFunction(kQueueResumePc, queueResume);
+            env.runtime.registerFunction(kQueuedCallbackAPc, queuedCallbackA);
+            env.runtime.registerFunction(kQueuedCallbackBPc, queuedCallbackB);
+
+            g_dispatchTrace.clear();
+            R5900Context mainContext{};
+            mainContext.pc = kQueueTwoPc;
+            env.runtime.eeScheduler().reset(env.rdram.data(), mainContext);
+            env.runtime.eeScheduler().run();
+
+            const std::vector<int> expected{1, 2, 3};
+            t.IsTrue(g_dispatchTrace == expected,
+                     "two invocations queued A then B must run A, B, then the base context (the demux's packet order)");
         });
 
         tc.Run("iSignalSema defers selection until IRQ return", [](TestCase &t)

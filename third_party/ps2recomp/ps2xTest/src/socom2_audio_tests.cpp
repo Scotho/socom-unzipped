@@ -600,30 +600,32 @@ void register_socom2_audio_tests()
                 std::fwrite(file.data(), 1, file.size(), fp);
                 std::fclose(fp);
             }
-            snd989::Mixer mixer;
-            t.IsTrue(mixer.playStream(0x0400000Au, path, 0u, 0x400, -1, 1u), "starts");
-            std::vector<int16_t> buf(2 * 512);
-            mixer.render(buf.data(), 512);
-            int32_t peak = 0;
-            for (int16_t v : buf)
-                peak = std::max<int32_t>(peak, v < 0 ? -v : v);
-            t.IsTrue(peak >= 9000 && peak <= 11500, "peak " + std::to_string(peak) + " (about 10135: 28672 x 0.707 x 1/2)");
-            mixer.stopAll();
+            {   // the mixer must close the file before it can be removed (Windows)
+                snd989::Mixer mixer;
+                t.IsTrue(mixer.playStream(0x0400000Au, path, 0u, 0x400, -1, 1u), "starts");
+                std::vector<int16_t> buf(2 * 512);
+                mixer.render(buf.data(), 512);
+                int32_t peak = 0;
+                for (int16_t v : buf)
+                    peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+                t.IsTrue(peak >= 9000 && peak <= 11500, "peak " + std::to_string(peak) + " (about 10135: 28672 x 0.707 x 1/2)");
+                mixer.stopAll();
+            }
             std::remove(path.c_str());
         });
 
-        tc.Run("Mixer: the PCM ring plays sample-interleaved stereo at its rate, reports its position, wraps, and stops", [](TestCase &t)
+        tc.Run("Mixer: the PCM ring plays block-interleaved stereo (512-byte L and R blocks, as the movie audio is laid out) at its rate, reports its position, wraps, and stops", [](TestCase &t)
         {
             snd989::Mixer mixer;
             t.IsTrue(!mixer.pcmStreamActive(), "no PCM stream before start");
             t.Equals(mixer.pcmStreamPosition(), 0u, "position 0 before start");
             mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
             t.IsTrue(mixer.pcmStreamActive(), "started");
-            // Interleaved L R L R: left +8000, right -8000, over the whole ring.
+            // 512-byte blocks alternating L (+8000) and R (-8000) over the whole ring: the SShd interleave of the movie audio.
             std::vector<uint8_t> ring(0x6000u);
             for (size_t i = 0; i < ring.size(); i += 2)
             {
-                const int16_t v = ((i / 2) % 2 == 0) ? static_cast<int16_t>(8000) : static_cast<int16_t>(-8000);   // L R L R
+                const int16_t v = ((i / 512) % 2 == 0) ? static_cast<int16_t>(8000) : static_cast<int16_t>(-8000);   // 512 bytes of L, 512 of R
                 ring[i] = static_cast<uint8_t>(v & 0xFF);
                 ring[i + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
             }
@@ -636,7 +638,7 @@ void register_socom2_audio_tests()
                 left += buf[2 * i];
                 right += buf[2 * i + 1];
             }
-            t.IsTrue(left > 0 && right < 0, "even samples to the left channel, odd to the right (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
+            t.IsTrue(left > 0 && right < 0, "left blocks to the left channel, right blocks to the right (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
             t.IsTrue(std::fabs(left + right) < 0.02 * (std::fabs(left) + std::fabs(right)), "equal magnitudes");
             const int32_t sample = buf[0];
             t.IsTrue(sample >= 3600 && sample <= 4400, "vol 0x400 at half scale: 8000 -> about 4000 (got " + std::to_string(sample) + ")");
@@ -672,7 +674,7 @@ void register_socom2_audio_tests()
             std::vector<uint8_t> half(0x3000u);
             for (size_t i = 0; i < half.size(); i += 2)
             {
-                const int16_t v = ((i / 2) % 2 == 0) ? 6000 : -6000;   // L R L R
+                const int16_t v = ((i / 512) % 2 == 0) ? 6000 : -6000;   // 512 bytes of L, 512 of R
                 half[i] = static_cast<uint8_t>(v & 0xFF);
                 half[i + 1] = static_cast<uint8_t>((v >> 8) & 0xFF);
             }
@@ -685,7 +687,7 @@ void register_socom2_audio_tests()
                 left += buf[2 * i];
                 right += buf[2 * i + 1];
             }
-            t.IsTrue(left > 0 && right < 0, "the ring's even samples play left, odd samples right");
+            t.IsTrue(left > 0 && right < 0, "the ring's left blocks play left, right blocks right");
             t.IsTrue(backend.pcmPosition(position) && position == 1024u * 4u, "position after 1024 frames: 4096 bytes");
             const int32_t none[1] = {0};
             backend.onNotify(0x3Du, none, 1u);

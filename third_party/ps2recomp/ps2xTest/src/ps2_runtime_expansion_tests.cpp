@@ -309,6 +309,126 @@ namespace
         runtime->requestStop();
     }
 
+    // The synchronous-delivery test (research/32 section 7.1): a guest caller of sceMpegDemuxPssRing, the stream
+    // callback it registered, and the caller's return site. The real library runs the callback inside the demux
+    // call, so the caller's next instruction must already see it.
+    constexpr uint32_t kSyncDemuxCallerPc = 0x00125000u;
+    constexpr uint32_t kSyncDemuxAfterPc = 0x00125010u;
+    constexpr uint32_t kSyncDemuxCallbackPc = 0x00125020u;
+    constexpr uint32_t kSyncDemuxMpegAddr = 0x00126000u;
+    constexpr uint32_t kSyncDemuxPacketAddr = 0x00127000u;
+    uint32_t gSyncDemuxPacketSize = 0u;
+    int32_t gSyncDemuxSeenAfterStub = -1;      // -1: the stub transferred, never returning into the caller's frame
+    int32_t gSyncDemuxAfterCount = -1;
+    int32_t gSyncDemuxAfterResult = -1;
+
+    void syncDemuxCallback(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        gMpegStreamCallbackCount.fetch_add(1u, std::memory_order_acq_rel);
+        setRegU32(*ctx, 2, 1u);   // taken
+        ctx->pc = 0u;
+    }
+
+    void syncDemuxAfter(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gSyncDemuxAfterCount = static_cast<int32_t>(gMpegStreamCallbackCount.load(std::memory_order_acquire));
+        gSyncDemuxAfterResult = ::getRegS32(*ctx, 2);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    void syncDemuxCaller(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        setRegU32(*ctx, 4, kSyncDemuxMpegAddr);
+        setRegU32(*ctx, 5, kSyncDemuxPacketAddr);
+        setRegU32(*ctx, 6, gSyncDemuxPacketSize);
+        setRegU32(*ctx, 7, kSyncDemuxPacketAddr);
+        setRegU32(*ctx, 8, gSyncDemuxPacketSize);
+        setRegU32(*ctx, 31, kSyncDemuxAfterPc);
+        ctx->pc = kSyncDemuxAfterPc;   // the recompiled wrapper's `pc = ra` before the stub call
+        ps2_stubs::sceMpegDemuxPssRing(rdram, ctx, runtime);
+        // only reached when the stub returned into this frame: what the caller's next instruction sees
+        gSyncDemuxSeenAfterStub = static_cast<int32_t>(gMpegStreamCallbackCount.load(std::memory_order_acquire));
+    }
+
+    // The ring-wrap test (research/32 section 7.1): a PES packet whose payload straddles the end of the game's PSS
+    // ring must reach the stream callback as two contiguous pieces, the way the real sceMpegDemuxPssRing hands it
+    // over, since the game copies `len` bytes from `data` and cannot see the wrap.
+    constexpr uint32_t kWrapCallbackPc = 0x00125030u;
+    constexpr uint32_t kWrapMpegAddr = 0x0012A000u;
+    constexpr uint32_t kWrapRingBase = 0x0012B000u;
+    constexpr uint32_t kWrapRingSize = 0x1000u;
+    std::vector<std::pair<uint32_t, uint32_t>> gWrapPieces;   // (data, len) per callback
+
+    void wrapRecordCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t cbData = ::getRegU32(ctx, 5);
+        uint32_t dataAddr = 0u, len = 0u;
+        std::memcpy(&dataAddr, rdram + cbData + 0x08u, sizeof(dataAddr));
+        std::memcpy(&len, rdram + cbData + 0x0Cu, sizeof(len));
+        gWrapPieces.emplace_back(dataAddr, len);
+        setRegU32(*ctx, 2, 1u);   // taken
+        ctx->pc = 0u;
+    }
+
+    // The refusal test (research/32 section 7.1): a stream callback that returns 0 has not taken the packet (SOCOM II's
+    // audio callback does so when its staging ring is full); the real library stops the demux there, returns the
+    // bytes consumed before that packet, and the game resubmits the rest later. Two packets A and B: the callback
+    // takes A, refuses B once, then takes B on the resubmission.
+    constexpr uint32_t kRefuseCallerPc = 0x00125040u;
+    constexpr uint32_t kRefuseAfterFirstPc = 0x00125050u;
+    constexpr uint32_t kRefuseAfterSecondPc = 0x00125060u;
+    constexpr uint32_t kRefuseCallbackPc = 0x00125070u;
+    constexpr uint32_t kRefuseMpegAddr = 0x0012C000u;
+    constexpr uint32_t kRefusePacketsAddr = 0x0012D000u;
+    uint32_t gRefusePacketABytes = 0u;
+    uint32_t gRefusePacketBBytes = 0u;
+    int32_t gRefuseFirstResult = -1;
+    int32_t gRefuseSecondResult = -1;
+    std::vector<std::pair<uint32_t, uint32_t>> gRefuseSeen;   // (data, len) per callback invocation
+
+    void refuseCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *)
+    {
+        const uint32_t cbData = ::getRegU32(ctx, 5);
+        uint32_t dataAddr = 0u, len = 0u;
+        std::memcpy(&dataAddr, rdram + cbData + 0x08u, sizeof(dataAddr));
+        std::memcpy(&len, rdram + cbData + 0x0Cu, sizeof(len));
+        gRefuseSeen.emplace_back(dataAddr, len);
+        setRegU32(*ctx, 2, gRefuseSeen.size() == 2u ? 0u : 1u);   // the second sight (packet B, first time) is refused
+        ctx->pc = 0u;
+    }
+
+    void refuseDemux(R5900Context *ctx, uint32_t data, uint32_t bytes, uint32_t ra, uint8_t *rdram, PS2Runtime *runtime)
+    {
+        setRegU32(*ctx, 4, kRefuseMpegAddr);
+        setRegU32(*ctx, 5, data);
+        setRegU32(*ctx, 6, bytes);
+        setRegU32(*ctx, 7, 0u);
+        setRegU32(*ctx, 8, 0xFFFFFFFFu);
+        setRegU32(*ctx, 31, ra);
+        ctx->pc = ra;
+        ps2_stubs::sceMpegDemuxPssRing(rdram, ctx, runtime);
+    }
+
+    void refuseCaller(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        refuseDemux(ctx, kRefusePacketsAddr, gRefusePacketABytes + gRefusePacketBBytes, kRefuseAfterFirstPc, rdram, runtime);
+    }
+
+    void refuseAfterFirst(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gRefuseFirstResult = ::getRegS32(*ctx, 2);
+        const uint32_t consumed = static_cast<uint32_t>(std::max(0, gRefuseFirstResult));
+        refuseDemux(ctx, kRefusePacketsAddr + consumed, gRefusePacketABytes + gRefusePacketBBytes - consumed, kRefuseAfterSecondPc, rdram, runtime);
+    }
+
+    void refuseAfterSecond(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gRefuseSecondResult = ::getRegS32(*ctx, 2);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
 }
 
 void register_ps2_runtime_expansion_tests()
@@ -520,6 +640,155 @@ void register_ps2_runtime_expansion_tests()
             ps2_stubs::sceMpegAddCallback(rdram.data(), &addAfterReinit, nullptr);
             t.Equals(getRegS32(addAfterReinit, 2), 1,
                      "sceMpegInit should reset MPEG callback bookkeeping between runs");
+        });
+
+        tc.Run("sceMpegDemuxPssRing runs the stream callback before the caller's next instruction", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            runtime.registerFunction(kSyncDemuxCallerPc, &syncDemuxCaller);
+            runtime.registerFunction(kSyncDemuxAfterPc, &syncDemuxAfter);
+            runtime.registerFunction(kSyncDemuxCallbackPc, &syncDemuxCallback);
+
+            R5900Context addCtx{};
+            setRegU32(addCtx, 4, kSyncDemuxMpegAddr);
+            setRegU32(addCtx, 5, 2u);
+            setRegU32(addCtx, 6, 0u);
+            setRegU32(addCtx, 7, kSyncDemuxCallbackPc);
+            setRegU32(addCtx, 8, 0x1234u);
+            ps2_stubs::sceMpegAddStrCallback(rdram.data(), &addCtx, &runtime);
+
+            const std::vector<uint8_t> payload = {0x80u, 0x01u, 0x02u, 0x03u, 0x04u, 0x05u};
+            const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
+            std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, static_cast<uint8_t>(packetLen >> 8u),
+                                           static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
+            packet.insert(packet.end(), payload.begin(), payload.end());
+            std::memcpy(rdram.data() + kSyncDemuxPacketAddr, packet.data(), packet.size());
+            gSyncDemuxPacketSize = static_cast<uint32_t>(packet.size());
+
+            gMpegStreamCallbackCount.store(0u, std::memory_order_release);
+            gSyncDemuxSeenAfterStub = -1;
+            gSyncDemuxAfterCount = -1;
+            gSyncDemuxAfterResult = -1;
+            R5900Context mainContext{};
+            mainContext.pc = kSyncDemuxCallerPc;
+            runtime.eeScheduler().reset(rdram.data(), mainContext);
+            runtime.eeScheduler().run();
+
+            t.IsTrue(gSyncDemuxSeenAfterStub != 0,
+                     "the caller's next instruction must not run before the stream callback (the real library calls it inside the demux)");
+            t.Equals(gSyncDemuxAfterCount, 1, "the caller's return site should see the one callback done");
+            t.Equals(gSyncDemuxAfterResult, static_cast<int32_t>(gSyncDemuxPacketSize),
+                     "the caller's return site should receive the consumed byte count as the demux result");
+        });
+
+        tc.Run("sceMpegDemuxPssRing splits a payload that wraps the ring into two callbacks", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            runtime.registerFunction(kWrapCallbackPc, &wrapRecordCallback);
+            runtime.registerFunction(kMpegCallbackStopPc, &testStopAfterMpegCallback);
+
+            R5900Context addCtx{};
+            setRegU32(addCtx, 4, kWrapMpegAddr);
+            setRegU32(addCtx, 5, 2u);
+            setRegU32(addCtx, 6, 0u);
+            setRegU32(addCtx, 7, kWrapCallbackPc);
+            setRegU32(addCtx, 8, 0u);
+            ps2_stubs::sceMpegAddStrCallback(rdram.data(), &addCtx, &runtime);
+
+            // a 0xBD packet with a 64-byte payload, written so that 24 payload bytes sit before the ring end and 40 after it
+            std::vector<uint8_t> payload(64u);
+            for (size_t i = 0; i < payload.size(); ++i)
+                payload[i] = static_cast<uint8_t>(0x80u + i);
+            const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
+            std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, static_cast<uint8_t>(packetLen >> 8u),
+                                           static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
+            packet.insert(packet.end(), payload.begin(), payload.end());
+            const uint32_t headBytes = 9u + 24u;                       // header plus the first 24 payload bytes
+            const uint32_t start = kWrapRingBase + kWrapRingSize - headBytes;
+            std::memcpy(rdram.data() + start, packet.data(), headBytes);
+            std::memcpy(rdram.data() + kWrapRingBase, packet.data() + headBytes, packet.size() - headBytes);
+
+            gWrapPieces.clear();
+            R5900Context idleContext{};
+            idleContext.pc = kMpegCallbackStopPc;
+            runtime.eeScheduler().reset(rdram.data(), idleContext);
+            R5900Context demuxCtx{};
+            setRegU32(demuxCtx, 4, kWrapMpegAddr);
+            setRegU32(demuxCtx, 5, start);
+            setRegU32(demuxCtx, 6, static_cast<uint32_t>(packet.size()));
+            setRegU32(demuxCtx, 7, kWrapRingBase);
+            setRegU32(demuxCtx, 8, kWrapRingSize);
+            ps2_stubs::sceMpegDemuxPssRing(rdram.data(), &demuxCtx, &runtime);
+            runtime.eeScheduler().run();
+
+            t.Equals(gWrapPieces.size(), static_cast<size_t>(2u), "a wrapped payload should arrive as two pieces");
+            if (gWrapPieces.size() == 2u)
+            {
+                t.Equals(gWrapPieces[0].first, start + 9u, "the first piece starts at the payload");
+                t.Equals(gWrapPieces[0].second, 24u, "the first piece runs to the ring end");
+                t.Equals(gWrapPieces[1].first, kWrapRingBase, "the second piece starts at the ring base");
+                t.Equals(gWrapPieces[1].second, 40u, "the second piece carries the rest of the payload");
+            }
+        });
+
+        tc.Run("sceMpegDemuxPssRing stops at a packet the stream callback refuses and re-delivers it on the next call", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            runtime.registerFunction(kRefuseCallerPc, &refuseCaller);
+            runtime.registerFunction(kRefuseAfterFirstPc, &refuseAfterFirst);
+            runtime.registerFunction(kRefuseAfterSecondPc, &refuseAfterSecond);
+            runtime.registerFunction(kRefuseCallbackPc, &refuseCallback);
+
+            R5900Context addCtx{};
+            setRegU32(addCtx, 4, kRefuseMpegAddr);
+            setRegU32(addCtx, 5, 2u);
+            setRegU32(addCtx, 6, 0u);
+            setRegU32(addCtx, 7, kRefuseCallbackPc);
+            setRegU32(addCtx, 8, 0u);
+            ps2_stubs::sceMpegAddStrCallback(rdram.data(), &addCtx, &runtime);
+
+            auto makePacket = [](size_t payloadBytes, uint8_t fill)
+            {
+                std::vector<uint8_t> payload(payloadBytes, fill);
+                const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
+                std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, static_cast<uint8_t>(packetLen >> 8u),
+                                               static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
+                packet.insert(packet.end(), payload.begin(), payload.end());
+                return packet;
+            };
+            const std::vector<uint8_t> packetA = makePacket(48u, 0xA0u);
+            const std::vector<uint8_t> packetB = makePacket(32u, 0xB0u);
+            std::memcpy(rdram.data() + kRefusePacketsAddr, packetA.data(), packetA.size());
+            std::memcpy(rdram.data() + kRefusePacketsAddr + packetA.size(), packetB.data(), packetB.size());
+            gRefusePacketABytes = static_cast<uint32_t>(packetA.size());
+            gRefusePacketBBytes = static_cast<uint32_t>(packetB.size());
+
+            gRefuseSeen.clear();
+            gRefuseFirstResult = -1;
+            gRefuseSecondResult = -1;
+            R5900Context mainContext{};
+            mainContext.pc = kRefuseCallerPc;
+            runtime.eeScheduler().reset(rdram.data(), mainContext);
+            runtime.eeScheduler().run();
+
+            t.Equals(gRefuseFirstResult, static_cast<int32_t>(packetA.size()),
+                     "the first call consumes packet A only: the callback refused B");
+            t.Equals(gRefuseSecondResult, static_cast<int32_t>(packetB.size()),
+                     "the resubmission consumes packet B");
+            t.Equals(gRefuseSeen.size(), static_cast<size_t>(3u), "the callback saw A, B refused, B again");
+            if (gRefuseSeen.size() == 3u)
+            {
+                t.Equals(gRefuseSeen[0].first, kRefusePacketsAddr + 9u, "A's payload first");
+                t.Equals(gRefuseSeen[1].first, kRefusePacketsAddr + static_cast<uint32_t>(packetA.size()) + 9u, "then B's payload");
+                t.Equals(gRefuseSeen[2].first, kRefusePacketsAddr + static_cast<uint32_t>(packetA.size()) + 9u, "and B's payload again on the resubmission");
+                t.Equals(gRefuseSeen[2].second, 32u, "B's payload length on the resubmission");
+            }
         });
 
         tc.Run("sceMpegDemuxPssRing dispatches registered video and audio stream callbacks", [](TestCase &t)

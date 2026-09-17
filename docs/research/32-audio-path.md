@@ -194,3 +194,48 @@ register tests, not audio output.
 - **Tests** (486/486): the ring plays L/R at its rate, reports its position, wraps and stops; a 24 kHz ring consumes
   half the bytes per frame; the backend routes start / the ring writes / position / stop.
 
+### 7.1 Scratchy (owner, 2026-09-17): the demux HLE fed the game's audio callback wrong, three ways
+
+- **Where the bytes come from.** The title "music" is the intro movie's audio track: the CD stream at LBN 0xcdade is an
+  MPEG program stream (video PES 0xE0, private stream 1 0xBD); the runtime's sceMpeg HLE demuxes each 16 KB disc read
+  the game hands it (`sceMpegDemuxPssRing`, a plain buffer at 0x451e00, ring size 0xffffffff) and calls the game's
+  type-2 stream callback (`FUN_0030aca0`) once per audio packet. That callback skips the 4-byte substream header,
+  copies the packet into a 48 KB staging ring at 0x01a4dd00, and returns **1 = taken, 0 = no room**; a second routine
+  DMAs the staging ring into the 989snd PCM ring in 1 KB pieces. The track's header is `SShd` size 24, type 1 (16-bit
+  PCM), 48000 Hz, 2 channels, interleave 0x200, then `SSbd`: the audio is little-endian PCM in **512-byte blocks, left
+  then right**, one continuous byte stream across packets (payloads are 4073 or 4059 bytes, odd, so the sample grid is
+  fixed to the stream, not to the packets). The first cut's "sample-interleaved" reading was measured on a capture that
+  was mostly silence, where any layout correlates.
+- **The first guess, measured wrong.** The ring sat at EE address 0x900000, inside the game's heap; the loud writes in
+  the capture (rms 13,800, lag-1 correlation 0.02) looked like the game's own data landing in the ring between refills.
+  Moved to 0x000A0000 (below the ELF's 0x100000, above the runtime's kernel mirror at 0x80000, under the EE's 24-bit
+  position mask) — kept, it closes KNOWN §4's hazard row — but the run after the move (`s6_audio_title`) was
+  unchanged: 1,747 of 2,743 loud writes still noise, the mix still 270 jumps per 1,000 frames.
+- **Method that worked.** `logs/title_disc_audio.bin` is the disc's private-stream-1 payloads concatenated (4-byte
+  substream header stripped); the timestamped ring dump (`PS2X_AUDIO_PCM_DUMP`) is matched against it write by write
+  (`per_write.py`: where each write's bytes sit in the disc stream, how far the match runs, where it breaks). Three
+  faults fell out, in order:
+  1. **Packet order** (`s6_audio_title`): breaks of exactly +4073 / −8146 / +4059 / −8132 bytes — the game received the
+     packets as A, C, B, D. `sceMpegDemuxPssRing` queued one callback per packet with `queueInvocation`, and the EE
+     dispatcher, on finding pending invocations, stacked each on the running thread *before the previous one had
+     started*, so two callbacks queued by one demux call ran last-in first-out. Fixed in `EeScheduler::run` (a pending
+     invocation stacks only over a started frame, `GuestInvocation::started`); test "queued invocations run in the
+     order they were queued". After it (`s6_audio_title2`): every write contiguous, but the whole stream one byte off.
+  2. **Timing.** The real library runs the stream callback *inside* the demux call; ours ran it later, after the game
+     had moved on. Now `sceMpegDemuxPss` / `sceMpegDemuxPssRing` run the callbacks on the calling guest thread, in
+     packet order, before the caller's next instruction (`invokeCurrentSequence`); test "runs the stream callback
+     before the caller's next instruction". Also a payload straddling the ring end now reaches the callback as two
+     pieces (test "splits a payload that wraps the ring"). Neither changed the one-byte shift — this game's reads are
+     pack-aligned, nothing straddles — but both are the library's contract.
+  3. **The refusal** (`s6_audio_title6`, the callback and DMA traces side by side): the shift was 4113 bytes = the
+     40-byte SShd/SSbd header + one 4073-byte packet. Before the first DMA into the PCM ring the game had been handed
+     13 packets, 52.9 KB, more than its 48 KB staging ring; the callback returned 0 for the one that did not fit, and
+     the HLE ignored the return value and consumed the packet anyway. On hardware the library stops at a refused
+     packet, returns the bytes consumed before it, and the game resubmits the rest once its ring has drained. The
+     demux now runs packet by packet on the executor: a packet with stream callbacks is parked at the front of the PSS
+     buffer while they run; accepted, it is fed (video) and erased; refused, the call stops and returns the input
+     offset of that packet, dropping it and what followed from the buffer (test "stops at a packet the stream callback
+     refuses and re-delivers it on the next call"). The lost packet had flipped the byte parity of everything after
+     it, which is what turned the music into noise.
+- **Measured after** (`s6_audio_title7`): every ring write matches the disc stream contiguously at +40 bytes (the header), 998 of 1,010 loud writes smooth (the rest are the stream's own fades), and the mix over 40–60 s has **0 jumps per 1,000 frames** (295 before). The refusal path engages every read: a 16 KB read is consumed in two or three calls (`consumed=4110`, then `0` while the staging ring drains, then the rest), and the game re-polls a refused packet about 13,700 times a second — 1.2 million demux calls in the 90 s stage, each re-appending and re-parsing the remainder. Harmless to the stage (it passed at speed) but a cost worth a short-circuit if the title screen ever needs the CPU back.
+

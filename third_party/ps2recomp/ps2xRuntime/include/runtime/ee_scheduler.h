@@ -99,6 +99,9 @@ struct GuestInvocation
     uint64_t tag = 0;
     R5900Context context{};
     std::function<void(const R5900Context &, R5900Context &)> onComplete;
+    // Set once the dispatcher has run guest code for this frame. A queued invocation is stacked on a thread only
+    // over a started frame, so invocations queued together run in queue order (the MPEG demux relies on it).
+    bool started = false;
 };
 
 struct GuestThread
@@ -357,6 +360,9 @@ public:
     [[nodiscard]] const EeSemaphore *semaphore(int id) const;
     [[nodiscard]] EeEventFlag *eventFlag(int id);
     [[nodiscard]] const EeEventFlag *eventFlag(int id) const;
+    // True on the dispatcher's thread while it runs guest code: the only place a stub may transfer control
+    // (invokeCurrent / invokeCurrentSequence) instead of queueing an invocation.
+    [[nodiscard]] bool onExecutorThread() const noexcept { return m_executorThread != std::thread::id{} && std::this_thread::get_id() == m_executorThread; }
     [[nodiscard]] GuestThread *currentThread();
     [[nodiscard]] const GuestThread *currentThread() const;
     [[nodiscard]] int currentThreadId() const noexcept;

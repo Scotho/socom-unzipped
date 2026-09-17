@@ -262,7 +262,7 @@ void EeScheduler::run()
             continue;
         }
 
-        if (!m_pendingInvocations.empty())
+        if (!m_pendingInvocations.empty() && (running->invocations.empty() || running->invocations.back().started))
         {
             GuestInvocation invocation = std::move(m_pendingInvocations.front());
             m_pendingInvocations.pop_front();
@@ -303,6 +303,10 @@ void EeScheduler::run()
         try
         {
             m_insideInterrupt = !running->invocations.empty() && running->invocations.back().kind == GuestInvocationKind::Interrupt;
+            if (!running->invocations.empty())
+            {
+                running->invocations.back().started = true;
+            }
             m_guestExecuting.store(true, std::memory_order_release);
             m_runtime.clearDispatchUnwind();
             function(m_rdram, &context, &m_runtime);

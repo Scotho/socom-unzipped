@@ -50,10 +50,7 @@ SOCOM plays reaches the host backend); (5) the launcher: an r0001 ISO pointer, a
 visible controller test area, other easy settings (packaging outline §3); (6) the rest of the sprint work in the
 controller's order. Gamepad support landed in the SOCOM input path the same day (uncommitted until its gate).
 
-**Next, in order:** (1) `s6_probe`'s result → commit the `PS2X_PC_SAMPLER` gate change; (2) commit the aim-loop
-simulation work (Task 4 Steps 1–2) once its agent reports and the suite is green; (3) Task 2 Step 4 — ten launches on
-the pinned harness to measure the lobby rate (owner window); (4) Task 3 Step 2 — the sampler fields research/29 §4
-names, then the quiet/loaded launch pair; (5) Task 4 Step 3 — two ladder launches on `a81eb74`; (6) Task 5a the water.
+**Next, in order (2026-09-17 afternoon):** the owner's order is done through item 5 — Task 5a water/terrain (research/31), Task 6b the twenty-map sweep (research/33, 19 of 20 play), the guest clock fix and the audio path (research/32: bank sounds, streams, the PCM title music), the launcher first cut (Task 8b, `770d5fb`). The title music is clean (research/32 §7.1, evening: three sceMpeg HLE faults fixed under tests). Now: (1) a ladder launch on the current exe for the 2-of-2 online kill bar (`s6_ladder12`, done: 3 kills in 4 rounds); (2) the owner's hands-on tests — the launcher with the Xbox pad, and listening in free play (Task 6c Step 4, Task 8b Step 4); (3) Task 8 harness items and the open rows (KNOWN §2: Foxhunt's fall-damage bar; §4: the PCM ring's address); (4) Task 7 mixed match; (5) the portable folder (Task 8b Step 5).
 
 ## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window (superseded above; kept for the record)
 

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -104,7 +105,11 @@ namespace ps2x::iop::detail
         constexpr uint32_t kHandleTypeSound = 5u;
         constexpr uint32_t kFakeBankBase = 0x00A00000u; // "IOP" addresses handed to the EE as bank handles
         constexpr uint32_t kFakeBankStride = 0x00010000u;
-        constexpr uint32_t kFakePcmBuffer = 0x00900000u;
+        // The PCM ring the EE DMAs into. The game's ELF loads at 0x100000 and the runtime mirrors the kernel area only up
+        // to 0x80000, so 0xA0000..0xA6000 is nobody's: the old 0x900000 sat inside the game's heap, where the game's own
+        // writes turned the title music to scratch (research/32 section 7). It must stay under 16 MB: the EE masks
+        // snd_PcmStreamPosition's answer to 24 bits before subtracting it (FUN_0030a3b0).
+        constexpr uint32_t kFakePcmBuffer = 0x000A0000u;
         constexpr uint32_t kBankMagicSBlk = 0x6B6C4253u; // "SBlk"
         constexpr uint32_t kBankMagicSBv2 = 0x32764253u; // "SBv2"
         constexpr uint32_t kDstrmModuleId = 0x12C4E67Au;
@@ -381,6 +386,14 @@ namespace ps2x::iop::detail
                     return;
                 const uint64_t from = std::max<uint64_t>(dst, base);
                 const uint64_t to = std::min<uint64_t>(dst + transfer.size, base + bytes);
+                static const bool trace = std::getenv("PS2X_MPEG_TRACE") != nullptr;
+                if (trace)
+                {
+                    // one line per SIF DMA into the PCM ring: where the EE copied it from (research/32 section 7.1)
+                    std::fprintf(stderr, "[989snd:PcmDma] src=0x%08x dst=0x%08x bytes=%u ring_off=%u\n",
+                                 transfer.sourceAddress, transfer.destinationAddress, transfer.size,
+                                 static_cast<unsigned>(from - base));
+                }
                 std::vector<uint8_t> copy(static_cast<size_t>(to - from));
                 if (m_host.readGuest(transfer.destinationAddress + static_cast<uint32_t>(from - dst), copy.data(), copy.size()))
                     m_host.audioPcmWrite(static_cast<uint32_t>(from - base), copy.data(), copy.size());
@@ -916,21 +929,8 @@ namespace ps2x::iop::detail
                     m_model.pcmBufferBytes = args.u32(0);
                     m_model.pcmVolume = args.s32(2);
                     m_model.pcmChannels = args.u32(4) ? args.u32(4) : 2u;
-                    if (m_model.pcmBuffer == 0u && m_model.pcmBufferBytes != 0u && m_model.pcmBufferBytes <= (4u << 20))
-                    {
-                        // The EE masks snd_PcmStreamPosition's answer to 24 bits and subtracts this address (FUN_0030a3b0),
-                        // so the ring has to sit under 16 MB; otherwise the old fixed address (in the game's memory) it is.
-                        const uint32_t allocated = m_host.allocateGuest(m_model.pcmBufferBytes, 64u);
-                        if (allocated != 0u && allocated < 0x01000000u)
-                            m_model.pcmBuffer = allocated;
-                        else
-                        {
-                            if (allocated != 0u)
-                                m_host.freeGuest(allocated);
-                            m_model.pcmBuffer = kFakePcmBuffer;
-                            logWarning("PCM ring: guest allocation " + hexString(allocated) + " is above 16 MB; using " + hexString(kFakePcmBuffer));
-                        }
-                    }
+                    if (m_model.pcmBuffer == 0u)
+                        m_model.pcmBuffer = kFakePcmBuffer;
                     value = m_model.pcmBuffer != 0u ? m_model.pcmBuffer : kFakePcmBuffer;
                     hasResult = true;
                     break;

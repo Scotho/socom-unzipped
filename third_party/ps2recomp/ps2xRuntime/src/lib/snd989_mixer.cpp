@@ -437,7 +437,8 @@ namespace snd989
         std::vector<Handler> handlers;
         std::vector<Stream> streams;
         // The PCM ring (research/32 section 7): 16-bit PCM the EE DMAs in, played from offset 0 at `rate`;
-        // stereo is sample-interleaved L R L R (measured: even/odd sample correlation 0.97 on the title music).
+        // stereo is 512 bytes of left then 512 of right (the movie audio's SShd interleave 0x200; a first cut read the
+        // capture as sample-interleaved and was wrong -- research/32 section 7).
         struct PcmRing
         {
             bool active = false;
@@ -450,7 +451,12 @@ namespace snd989
             int16_t sample(uint32_t frame, uint32_t channel) const
             {
                 size_t at;
-                at = (static_cast<size_t>(frame) * channels + channel) * 2u;   // sample-interleaved (measured on the title music, research/32 section 7)
+                // 512-byte blocks, L then R (the SShd interleave 0x200 of the movie audio, research/32 section 7):
+                // frame f sits in block pair f / 256 at sample f % 256.
+                if (channels >= 2)
+                    at = static_cast<size_t>(frame / 256u) * 1024u + channel * 512u + static_cast<size_t>(frame % 256u) * 2u;
+                else
+                    at = static_cast<size_t>(frame) * 2u;
                 if (at + 1 >= bytes.size())
                     return 0;
                 return static_cast<int16_t>(bytes[at] | (bytes[at + 1] << 8));

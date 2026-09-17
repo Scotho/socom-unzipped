@@ -527,7 +527,7 @@ bool PS2AudioBackend::isPlaying(uint32_t handle, bool &playing) const
 void PS2AudioBackend::onPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes)
 {
     m_mixer.pcmStreamWrite(offset, data, bytes);
-    // PS2X_AUDIO_PCM_DUMP=<file>: the first 256 KiB the EE wrote, raw, to check the ring's layout offline.
+    // PS2X_AUDIO_PCM_DUMP=<file>: the first 16 MiB the EE wrote, raw with a wall-clock stamp, to check the ring's layout and fill rate offline.
     static FILE *s_dump = nullptr;
     static size_t s_dumped = 0;
     static bool s_tried = false;
@@ -537,9 +537,11 @@ void PS2AudioBackend::onPcmWrite(uint32_t offset, const uint8_t *data, size_t by
         if (const char *path = std::getenv("PS2X_AUDIO_PCM_DUMP"))
             s_dump = std::fopen(path, "wb");
     }
-    if (s_dump && s_dumped < (256u << 10))
+    if (s_dump && s_dumped < (16u << 20))
     {
-        const uint32_t hdr[2] = {offset, static_cast<uint32_t>(bytes)};
+        static const auto s_epoch = std::chrono::steady_clock::now();
+        const uint32_t ms = static_cast<uint32_t>(std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - s_epoch).count());
+        const uint32_t hdr[3] = {offset, static_cast<uint32_t>(bytes), ms};   // offset, bytes, wall ms since the first write
         std::fwrite(hdr, sizeof(hdr), 1, s_dump);
         std::fwrite(data, 1, bytes, s_dump);
         std::fflush(s_dump);

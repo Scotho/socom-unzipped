@@ -11,6 +11,23 @@
 
 
 
+## 2026-09-17 (evening) — title music clean: the sceMpeg HLE fed the game's audio callback wrong, three ways (research/32 §7.1)
+
+The owner's "title audio is really scratchy": the intro movie's PCM track reached the 989snd ring with whole packets swapped
+(the EE dispatcher ran invocations queued together last-in first-out), late (after the demux call instead of inside it, as
+the real library does), and one byte off (a packet the game's callback refused for lack of staging room was consumed anyway
+and lost, flipping the sample parity of everything after it). All three fixed under tests (496 pass); the ring moved to
+0x000A0000 and reads the track's 512-byte L/R blocks. Measured on `s6_audio_title7`: every ring write contiguous with the
+disc stream, the mix's discontinuity rate 295 → 0 per 1,000 frames. Owner's listen (Task 6c Step 4) still owed.
+
+## 2026-09-17 (afternoon) — ladder s6_ladder12 on the current exe: 4 of 4 rounds usable, kills in 3
+
+`scripts/parity/ladder_frostfire.sh logs/parity/s6_ladder12` (harness `770d5fb`, exe `5255e13c…`, the wall-time clock and the
+audio in): rounds 1, 2 and 4 KILL on KillWatch (health → 0.0 on B's actor), round 3 aborted by the harness's own teleport guard
+during the aim step (an actor row jumped 48.7 u; a single-round glitch, not repeated). The RUNG0 bar failed on back-pressure
+waits (A 351 ≥ 100): the GL thread's 21k texture uploads a second (KNOWN §2) are what it counts, and the bar was calibrated on
+a build without them. Gameplay-wise the online result holds: three kills in four rounds on one lobby.
+
 ## 2026-09-17 (afternoon) — the launcher, first cut (Task 8b): disc check, video, controller, online, Launch
 
 `dist/socom_unzipped_launcher.exe` (raylib, built by `build.sh runtime`; sources `ps2xLauncher/`): the four panels of the plan,
