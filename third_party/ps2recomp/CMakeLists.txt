@@ -88,6 +88,10 @@ if(PS2X_BUILD_RUNTIME)
     add_subdirectory("ps2xRuntime")
 endif()
 
+if(PS2X_BUILD_RUNTIME AND NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
+    add_subdirectory("ps2xLauncher")
+endif()
+
 if(PS2X_BUILD_ANALYZER)
     add_subdirectory("ps2xAnalyzer")
 endif()

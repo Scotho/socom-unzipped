@@ -201,6 +201,19 @@ the file by its length.
 `PS2X_AUDIO_PCM_DUMP=<file>` writes the first 256 KiB the EE DMAs into the 989snd PCM ring (the title music), each
 write as `{offset, bytes}` then the bytes, to check the ring's layout offline (research/32 section 7).
 `online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
+`PS2X_WINDOW_SIZE=<w>x<h>` opens the game window at that size and `PS2X_WINDOW_SIZE=fullscreen` borderless over
+the desktop; unset keeps the 640x448 default the gate depends on.
+
+**The launcher** (`dist/socom_unzipped_launcher.exe`, built by `./build.sh runtime` next to `socom2.exe`): one
+window that owns `config.json` beside it and starts `socom2.exe socom2_game.elf` with the `PS2X_*` environment,
+so nobody sets a variable by hand. Disc: the ISO path (Browse), verified by hashing `SCUS_972.75` out of the image
+against the r0001 digest -- Launch stays off until it matches. Video: Native / Sharp (2x) / Sharper (3x, untested)
+detail (`PS2X_GS_SCALE`), the presentation filter, 640x448 / 1280x896 / fullscreen. Controller: the pad raylib sees,
+sticks and buttons live (the same calls the game's input poll makes), mouse look and its sensitivity. Online: server
+address, profile (its own `cards/<profile>/`), and a second-instance checkbox (UDP shift 2, key b, `cards/<profile>_b`).
+Launch writes `logs/run_<stamp>.log`; Copy diagnostics puts the last log and `config.json` under `diagnostics/`.
+`--selftest` prints the verified disc and the environment and exits; `--launch-test [seconds]` starts the game the
+way the button does and reports whether it is still running after that long.
 (default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
 move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and
 a `LADDER-SUMMARY`; `--route <file>` picks the waypoint route for `--endgame route`/`cooperative`

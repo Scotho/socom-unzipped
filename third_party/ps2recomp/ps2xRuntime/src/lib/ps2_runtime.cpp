@@ -1,4 +1,5 @@
 #include "ps2_runtime.h"
+#include "runtime/ps2_window_size.h"
 #include "ps2_guest_heap_policy.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -730,7 +731,14 @@ bool PS2Runtime::initialize(const char *title)
         InitWindow(HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT, title); // raylib vita does not support audio
 #else
         SetConfigFlags(FLAG_WINDOW_RESIZABLE);
-        InitWindow(HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT, title);
+        // PS2X_WINDOW_SIZE=<w>x<h> | fullscreen (the launcher's window-size choice, Task 8b); unset keeps the default
+        // the parity gate depends on.
+        const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
+        InitWindow(windowSize.width, windowSize.height, title);
+        if (windowSize.borderless)
+            SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
+        if (windowSize.set)
+            std::cout << "[window] PS2X_WINDOW_SIZE: " << (windowSize.borderless ? "borderless fullscreen" : std::to_string(windowSize.width) + "x" + std::to_string(windowSize.height)) << std::endl;
         InitAudioDevice();
         m_audioBackend.setAudioReady(IsAudioDeviceReady());
 #endif

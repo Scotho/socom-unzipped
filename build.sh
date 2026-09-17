@@ -39,6 +39,8 @@ runtime() {
   cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
   mkdir -p "$ROOT/dist"
   cp "$RTBUILD/ps2xRuntime/ps2EntryRunner.exe" "$ROOT/dist/socom2.exe"
+  # Task 8b: the launcher, built next to the game (research/32 has the audio; packaging outline section 3 the launcher)
+  cmake --build "$RTBUILD" --target socom_unzipped_launcher -j "$(nproc)" && cp "$RTBUILD/ps2xLauncher/socom_unzipped_launcher.exe" "$ROOT/dist/"
   cp "$RTBUILD/ps2xRuntime/"*.dll "$ROOT/dist/" 2>/dev/null || true
   for d in libc++.dll libunwind.dll libwinpthread-1.dll; do
     [ -f "$ROOT/tools/llvm-mingw/bin/$d" ] && cp "$ROOT/tools/llvm-mingw/bin/$d" "$ROOT/dist/"

@@ -11,6 +11,16 @@
 
 
 
+## 2026-09-17 (afternoon) — the launcher, first cut (Task 8b): disc check, video, controller, online, Launch
+
+`dist/socom_unzipped_launcher.exe` (raylib, built by `build.sh runtime`; sources `ps2xLauncher/`): the four panels of the plan,
+`config.json` beside it, Launch spawning `socom2.exe socom2_game.elf` with the environment and a log. Test-first for the logic
+(ps2x_tests 492/492): SHA-256 against the FIPS vectors, the ISO 9660 root lookup on a synthetic image and the real disc
+(SCUS_972.75 = the pinned r0001 digest `0172dc0b…`), config.json round-trips and tolerance, the environment mapping, and the
+runtime's new `PS2X_WINDOW_SIZE` parser. Live: `--launch-test 15` started the game through the launcher's own path with the
+window knob and mouse look reaching it. Not done from the plan: the diagnostics zip (a folder copy instead), the owner's
+hands-on test with the Xbox pad (Step 4), the portable folder (Step 5). Gate `s6_launcher_gate` below.
+
 ## 2026-09-17 (midday) — the title music plays: the 989snd PCM stream ring (research/32 §7)
 
 The EE decodes the title music itself and DMAs 16-bit PCM into an IOP ring the IRX plays; the module now forwards every

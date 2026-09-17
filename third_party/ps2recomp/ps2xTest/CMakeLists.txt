@@ -63,6 +63,8 @@ add_library(ps2_test_lib STATIC
     src/ps2_runtime_expansion_tests.cpp
     src/socom2_libnetb_tests.cpp
     src/socom2_audio_tests.cpp
+    src/host_config_tests.cpp
+    src/launcher_tests.cpp
 )
 
 target_include_directories(ps2_test_lib PRIVATE
@@ -79,6 +81,7 @@ target_link_libraries(ps2_test_lib PRIVATE
     ps2_runtime
     ps2_iop
 )
+target_link_libraries(ps2_test_lib PUBLIC ps2x_launcher_core)   # launcher_tests.cpp (Task 8b)
 
 if(UNIX AND NOT APPLE)
     target_link_libraries(ps2_test_lib PRIVATE ${CMAKE_DL_LIBS})

@@ -23,6 +23,8 @@ void register_ps2_recompiler_tests();
 void register_ps2_runtime_expansion_tests();
 void register_socom2_libnetb_tests();
 void register_socom2_audio_tests();
+void register_host_config_tests();
+void register_launcher_tests();
 void reset_ps2_test_function_table();
 
 namespace
@@ -88,6 +90,8 @@ int main()
     register_ps2_runtime_expansion_tests();
     register_socom2_libnetb_tests();
     register_socom2_audio_tests();
+    register_host_config_tests();
+    register_launcher_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();
