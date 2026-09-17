@@ -98,7 +98,7 @@ Poll `logs/<name>.marker` (`run_detached.sh` writes `exit=<code>` there when the
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** Append to `third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp`, after the `GSGlDepth` suite:
+- [x] **Step 1: Write the failing test.** Append to `third_party/ps2recomp/ps2xTest/src/ps2_gs_tests.cpp`, after the `GSGlDepth` suite:
 
 ```cpp
         tc.Run("GsGlCaps names exactly what a machine is missing", [](TestCase &t)
@@ -130,7 +130,7 @@ Poll `logs/<name>.marker` (`run_detached.sh` writes `exit=<code>` there when the
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.**
+- [x] **Step 2: Run it and watch it fail.**
 
 ```bash
 export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"
@@ -138,29 +138,29 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 ; third
 ```
 Expected: the build fails with `fatal error: 'runtime/gs/gs_gl_caps.h' file not found` (the include added with the test). That compile error **is** the red. If it compiles, the header already exists — read it before writing a second one.
 
-- [ ] **Step 3: Implement the header** `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_caps.h`: `evaluate` parses the leading `<major>.<minor>` of `glVersion` (a null or unparsable string is a failure with `missing = "OpenGL 3.3 (no version string)"`), requires `major*10+minor >= 33`, and appends `"dual-source blending"` / `"GL_ARB_clip_control"` for each false flag, joined with `", "`. `Latch` is a `bool m_failed`, a `uint32_t m_attempts` and a `Report`; `shouldAttempt()` is `!m_failed`. Header-only, no GL includes, so the test links without a context.
+- [x] **Step 3: Implement the header** `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/gs_gl_caps.h`: `evaluate` parses the leading `<major>.<minor>` of `glVersion` (a null or unparsable string is a failure with `missing = "OpenGL 3.3 (no version string)"`), requires `major*10+minor >= 33`, and appends `"dual-source blending"` / `"GL_ARB_clip_control"` for each false flag, joined with `", "`. `Latch` is a `bool m_failed`, a `uint32_t m_attempts` and a `Report`; `shouldAttempt()` is `!m_failed`. Header-only, no GL includes, so the test links without a context.
 
-- [ ] **Step 4: Run it green.** Same command as Step 2. Expected: `Total Tests: <n>` with no `[Failed]` line and the two new cases present.
+- [x] **Step 4: Run it green.** Same command as Step 2. Expected: `Total Tests: <n>` with no `[Failed]` line and the two new cases present.
 
-- [ ] **Step 5: Wire the probe into `ensureGl`.** In `gs_gl_backend.cpp` `ensureGl()` (:953), before the shader compile: `if (!m_glCapsLatch.shouldAttempt()) return false;` then `m_glCapsLatch.attempted();` and, once `IsWindowReady()`, build the report from `glGetString(GL_VERSION)`, `probeDualSourceBlend()` (a `glGetIntegerv(GL_MAX_DUAL_SOURCE_DRAW_BUFFERS, …) >= 1` query) and `probeClipControl() != nullptr`, honouring `PS2X_GS_GL_FORCE_FAIL`. On `!ok` **and** on a shader compile/link failure: `m_glCapsLatch.fail(report)`, print the one `[gs-gl] UNSUPPORTED: …` line, return false forever. Add `glUnavailable()`/`glMissing()` to `gs_gl_backend.h`. In `ps2_runtime.cpp` at the replay call site (:2576): when `glUnavailable()` first reads true, swap the frontend to the CPU backend (the same path `PS2X_GS_BACKEND=cpu` takes) and record `GsGlCaps::kExitCode` as the process's exit code.
+- [x] **Step 5: Wire the probe into `ensureGl`.** In `gs_gl_backend.cpp` `ensureGl()` (:953), before the shader compile: `if (!m_glCapsLatch.shouldAttempt()) return false;` then `m_glCapsLatch.attempted();` and, once `IsWindowReady()`, build the report from `glGetString(GL_VERSION)`, `probeDualSourceBlend()` (a `glGetIntegerv(GL_MAX_DUAL_SOURCE_DRAW_BUFFERS, …) >= 1` query) and `probeClipControl() != nullptr`, honouring `PS2X_GS_GL_FORCE_FAIL`. On `!ok` **and** on a shader compile/link failure: `m_glCapsLatch.fail(report)`, print the one `[gs-gl] UNSUPPORTED: …` line, return false forever. Add `glUnavailable()`/`glMissing()` to `gs_gl_backend.h`. In `ps2_runtime.cpp` at the replay call site (:2576): when `glUnavailable()` first reads true, swap the frontend to the CPU backend (the same path `PS2X_GS_BACKEND=cpu` takes) and record `GsGlCaps::kExitCode` as the process's exit code.
 
-- [ ] **Step 6: The launcher's message.** In `ps2xLauncher/src/main.cpp`, where the exit is reported, map `65` to `"Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."` Add to `ps2xTest/src/launcher_tests.cpp`: `t.Equals(launcher::exitMessage(65), std::string("…CPU renderer."))` and `t.IsTrue(launcher::exitMessage(0).empty())`. Run Step 2's command: green.
+- [x] **Step 6: The launcher's message.** In `ps2xLauncher/src/main.cpp`, where the exit is reported, map `65` to `"Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."` Add to `ps2xTest/src/launcher_tests.cpp`: `t.Equals(launcher::exitMessage(65), std::string("…CPU renderer."))` and `t.IsTrue(launcher::exitMessage(0).empty())`. Run Step 2's command: green.
 
-- [ ] **Step 7: Full suite.**
+- [x] **Step 7: Full suite.**
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "1a: build.sh test" -- ./build.sh test
 ```
 Expected: exit 0, Python suite OK, `ps2x_tests` 0 failed.
 
-- [ ] **Step 8: Build the runtime (detached).**
+- [x] **Step 8: Build the runtime (detached).** *(done 2026-09-17: s7_1a_build, exit 0)*
 
 ```bash
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_glprobe_build.marker
 ```
 Poll `logs/s7_glprobe_build.marker` for `exit=0`. Then `sha256sum dist/socom2.exe` and record the sha in the ledger.
 
-- [ ] **Step 9: The GL gate (launch 1 of the sprint).** Write `logs/s7_gl_gate.sh` in the five-line shape above running `python -m tools_py.parity.gate --stamp s7_gl_gate --owner gate`, then:
+- [x] **Step 9: The GL gate (launch 1 of the sprint).** *(done 2026-09-17: s7_gl_gate 3/3, no UNSUPPORTED, depth mapping clip-control; the run exposed Task 1d's (hash, pc) false positive at entry 0x0000, fixed by keying the warning on the hash)* Write `logs/s7_gl_gate.sh` in the five-line shape above running `python -m tools_py.parity.gate --stamp s7_gl_gate --owner gate`, then:
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_gl_gate.sh logs/s7_gl_gate.marker
@@ -169,7 +169,7 @@ grep -a "gs-gl" logs/parity/gate/s7_gl_gate/title.run.log | head -5
 ```
 Expected: `PASS title`, `PASS transition`, `PASS mission` (3/3, the spec's bar: unchanged on the GL path) and `[gs-gl] initialised: …` with **no** `UNSUPPORTED` line. If a stage FAILs with `STALE FRAME`, rerun; a FAIL that names a scorer is a regression in this change and reverts it.
 
-- [ ] **Step 10: The CPU-fallback gate (launch 2).** Write `logs/s7_cpu_fallback.sh` with `export PS2X_GS_GL_FORCE_FAIL=1` before the gate line and `--only title --stamp s7_cpu_fallback`, then:
+- [x] **Step 10: The CPU-fallback gate (launch 2).** *(done 2026-09-17: s7_cpu_fallback2 PASS title 16/23 on the CPU rasterizer, one UNSUPPORTED line; the first attempt failed on the harness's own client-rect guard, fixed)* Write `logs/s7_cpu_fallback.sh` with `export PS2X_GS_GL_FORCE_FAIL=1` before the gate line and `--only title --stamp s7_cpu_fallback`, then:
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_cpu_fallback.sh logs/s7_cpu_fallback.marker
@@ -178,7 +178,7 @@ cat logs/parity/gate/s7_cpu_fallback/summary.txt
 ```
 Expected: exactly one `[gs-gl] UNSUPPORTED: forced (PS2X_GS_GL_FORCE_FAIL); falling back to the CPU rasterizer` line, and `PASS title` (the spec's bar: the fallback reaches the title stage, slower — a longer stage time is expected and is not a failure). If the title stage times out, raise only that stage's timeout and say so in the commit; do not loosen a scorer.
 
-- [ ] **Step 11: Commit.**
+- [x] **Step 11: Commit.** *(2026-09-17)*
 
 ```bash
 git commit -m "feat(gs-gl): probe GL 3.3 + dual-source + clip control once, latch, and fall back to the CPU rasterizer
@@ -379,7 +379,7 @@ git push
 
 - [ ] **Step 4: The window flags and the launcher default.** In `ps2_runtime.cpp` :731, `SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);` (before `InitWindow`, which is where raylib reads them). In `launcher_config.h`, `std::string windowSize = "1280x896";`. In `launcher_tests.cpp` add: `t.Equals(launcher::Config{}.windowSize, std::string("1280x896"), "the launcher's default is 2x")` and keep the existing round-trip case. **The gate is unaffected**: it sets no `PS2X_WINDOW_SIZE`, so the runtime default stays 640x448.
 
-- [ ] **Step 5: Write the failing Python test** `tools_py/tests/test_scale_compare.py`:
+- [x] **Step 5: Write the failing Python test** `tools_py/tests/test_scale_compare.py`:
 
 ```python
 import unittest
@@ -416,7 +416,7 @@ class Diff(unittest.TestCase):
 ```
 Run: `python -m unittest tools_py.tests.test_scale_compare -v` → `ModuleNotFoundError` (RED).
 
-- [ ] **Step 6: Implement `scale_compare.py` and `scale_shot.py`.** Run: `python -m unittest tools_py.tests.test_scale_compare -v` → 3 tests OK.
+- [x] **Step 6: Implement `scale_compare.py` and `scale_shot.py`.** Run: `python -m unittest tools_py.tests.test_scale_compare -v` → 3 tests OK.
 
 - [ ] **Step 7: Suite, then build.**
 
@@ -472,7 +472,9 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/vu1_native_tests.cpp`:
+*(2026-09-17, after s7_gl_gate: the warning fired on the supported disc at entry 0x0000 of the supported hash, the entry left to generated code; keyed on the hash now (`Vu1NativeWarning::hashHasNativeEntry`), pinned by the test.)*
+
+- [x] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/vu1_native_tests.cpp`:
 
 ```cpp
         tc.Run("the native-VU1 warning fires once, after a second of misses", [](TestCase &t)
@@ -494,9 +496,9 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `'runtime/vu1_native_warning.h' file not found`.
+- [x] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `'runtime/vu1_native_warning.h' file not found`.
 
-- [ ] **Step 3: Implement the header, and call it** in `ps2_vu1_core.cpp` right after `m_nativeFn` is resolved (:2495-2505): a function-local `static Vu1NativeWarning::State s_warn;` fed `m_nativeFn != nullptr` and `steady_clock::now()`; when it says warn, print `Vu1NativeWarning::line(m_knownHash, m_state.pc)` to stderr and call `warned()`. Only when `s_nativeEnv && hashableImage` — `PS2X_VU1_NATIVE=0` is a deliberate choice and must stay silent.
+- [x] **Step 3: Implement the header, and call it** in `ps2_vu1_core.cpp` right after `m_nativeFn` is resolved (:2495-2505): a function-local `static Vu1NativeWarning::State s_warn;` fed `m_nativeFn != nullptr` and `steady_clock::now()`; when it says warn, print `Vu1NativeWarning::line(m_knownHash, m_state.pc)` to stderr and call `warned()`. Only when `s_nativeEnv && hashableImage` — `PS2X_VU1_NATIVE=0` is a deliberate choice and must stay silent.
 
 - [ ] **Step 4: Run it green, then the suite.**
 
@@ -1125,7 +1127,7 @@ git push
 
 **Steps (autonomous half, all of it, before the stop):**
 
-- [ ] **Step 1: Write the failing test** `tools_py/tests/test_make_server_zip.py`, modelled on `test_make_portable.py`:
+- [x] **Step 1: Write the failing test** `tools_py/tests/test_make_server_zip.py`, modelled on `test_make_portable.py`:
 
 ```python
 import os, subprocess, tempfile, unittest, zipfile
@@ -1151,9 +1153,9 @@ class MakeServerZip(unittest.TestCase):
 ```
 Run: `python -m unittest tools_py.tests.test_make_server_zip -v` → `FileNotFoundError: … scripts/make_server_zip.sh` (RED).
 
-- [ ] **Step 2: Implement `scripts/make_server_zip.sh`.** Run the same command: 2 tests OK.
+- [x] **Step 2: Implement `scripts/make_server_zip.sh`.** Run the same command: 2 tests OK.
 
-- [ ] **Step 3: Verify the advertised-address rewrite works end to end on this machine** (no owner needed — a private address proves the mechanism):
+- [x] **Step 3: Verify the advertised-address rewrite works end to end on this machine** (no owner needed — a private address proves the mechanism):
 
 ```bash
 powershell.exe -NoProfile -File server/start-servers.ps1 -PublicIp 203.0.113.7 -NoStart
@@ -1162,14 +1164,14 @@ powershell.exe -NoProfile -File server/start-servers.ps1 -PublicIp 192.168.2.10 
 ```
 Expected: `-ShowIp` reports `203.0.113.7` in all four advertised fields and `MPS.Ip` still `127.0.0.1`; `server/config/simulated.db` stays unstaged either way.
 
-- [ ] **Step 4: The port list in `server/README.md`** is checked against what the stack actually binds:
+- [x] **Step 4: The port list in `server/README.md`** is checked against what the stack actually binds:
 
 ```bash
 powershell.exe -NoProfile -Command "Get-NetTCPConnection -State Listen | Where-Object { $_.OwningProcess -in (Get-Process -Name *horizon*,*medius*,*dme* -ErrorAction SilentlyContinue).Id } | Select-Object LocalPort | Sort-Object LocalPort"
 ```
 Expected: every listening port appears in `server/README.md`'s forward list; add any that does not, with what it is for.
 
-- [ ] **Step 5: Add the launcher's test for the filled-in preset** (it fails until the addresses exist, which is the point — mark it skipped-with-a-reason rather than deleted):
+- [x] **Step 5: Add the launcher's test for the filled-in preset** (it fails until the addresses exist, which is the point — mark it skipped-with-a-reason rather than deleted):
 
 ```cpp
             const launcher::ServerPreset *unzipped = launcher::findServerPreset("unzipped");
@@ -1237,7 +1239,7 @@ Expected (the spec's bar): the launcher's SOCOM Unzipped preset **reaches the lo
 
 **Steps (autonomous half, all of it, before the stop):**
 
-- [ ] **Step 1: Write the failing test** `tools_py/tests/test_two_machine_readout.py`:
+- [x] **Step 1: Write the failing test** `tools_py/tests/test_two_machine_readout.py`:
 
 ```python
 import unittest
@@ -1261,16 +1263,16 @@ class Readout(unittest.TestCase):
 ```
 Run: `python -m unittest tools_py.tests.test_two_machine_readout -v` → `ModuleNotFoundError` (RED). (Replace the three `[peek]` literals with real rows copied out of `logs/run_A_*.log` before implementing — a synthetic row that the real parser would not accept is worse than no test.)
 
-- [ ] **Step 2: Implement** `two_machine_readout.py` (reusing `lobby_report.summarise`, `verdict_core`'s actor-position parsing and `CLOCK_STRING_ADDR`) and the shell wrapper. Run the same command: 3 tests OK.
+- [x] **Step 2: Implement** `two_machine_readout.py` (reusing `lobby_report.summarise`, `verdict_core`'s actor-position parsing and `CLOCK_STRING_ADDR`) and the shell wrapper. Run the same command: 3 tests OK.
 
-- [ ] **Step 3: Prove the readout on a two-instance round we already have** (no second machine needed):
+- [x] **Step 3: Prove the readout on a two-instance round we already have** (no second machine needed):
 
 ```bash
 python -m tools_py.parity.two_machine_readout logs/run_A_<s7_slice_ctl stamp>.log logs/run_B_<s7_slice_ctl stamp>.log
 ```
 Expected: a block naming the lobby class, `saw_peer_move A=True B=True` (both sides strafed in a control round) and a clock skew near zero — the two-instance case is the readout's own calibration.
 
-- [ ] **Step 4: Write the owner's instructions** into `docs/HUMAN_TASKS.md` under the second-machine item: the zip to copy (`dist/portable/socom-unzipped.zip`), which preset to pick, both directions of hosting, and the one command to run afterwards (`bash scripts/parity/two_machine_readout.sh <log_A> <log_B>`), plus the four things to report (NAT shape, advertised address, whether key sharing mattered, clock skew).
+- [x] **Step 4: Write the owner's instructions** into `docs/HUMAN_TASKS.md` under the second-machine item: the zip to copy (`dist/portable/socom-unzipped.zip`), which preset to pick, both directions of hosting, and the one command to run afterwards (`bash scripts/parity/two_machine_readout.sh <log_A> <log_B>`), plus the four things to report (NAT shape, advertised address, whether key sharing mattered, clock skew).
 
 - [ ] **Step 5: Commit the autonomous half.**
 
@@ -1377,6 +1379,8 @@ git push
 R91 onward; see the Sprint 6 plan for R78–R90.
 
 *(Empty at the start of the sprint. Each moved default and each skipped measurement gets a numbered ruling here, in the shape `Ruling: … — why — cost if wrong`. Already expected: the launcher's 1280x896 Video default and `FLAG_WINDOW_HIGHDPI` (Task 1c), the scheduler's equal-priority semantics (Task 2a), and the launcher's default server preset switching to SOCOM Unzipped once the owner's address exists (Task 4, lifting R89).)*
+
+- **R91** (2026-09-17, Task 1a): `GL_ARB_clip_control` absent is a note, not a fallback trigger. The spec's Goal 1a said "probe ... and the `GL_ARB_clip_control` the depth path uses"; the depth path has a working fragment-depth mapping without it (`GsGlDepth::Mode::FragDepth`, research/26), so treating its absence as unsupported would push every GL 3.3-4.4 machine onto the CPU rasterizer for nothing. The probe prints `[gs-gl] note: GL_ARB_clip_control absent: depth uses the fragment-depth mapping (not exact-integer)` and carries on. *Cost if wrong:* a machine without clip control renders with the pre-research/26 depth precision, which the gate scored acceptable for months; the note names it in the log.
 
 ## Self-review
 

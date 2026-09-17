@@ -96,6 +96,19 @@ these from the router to the host. Ports are as listed in the table above and ve
 | 10073 | TCP | DME TCP - game/world data |
 | 50000+ | UDP | DME UDP game data, one socket per connected client, bound on demand from `dme.json: UDPPort` upward. Forward a range (e.g. 50000-50100) sized for the player count; a single 50000 rule only covers the first client. |
 
+Checked against what the stack actually binds (Sprint 7 Task 4 Step 4, 2026-09-17, four processes running):
+`Get-NetTCPConnection -State Listen` owned by the server processes reports **10071, 10073, 10075, 10077, 10078**
+and `Get-NetUDPEndpoint` reports **10070** on `0.0.0.0`; nothing else. Every one of them is in the two tables
+above, so the forward list is complete. The 50000+ DME UDP sockets are bound per client on demand and so show up
+only while a client is connected - none were, which is why they are absent from that capture rather than from the
+list.
+
+Packaging this folder for the hosting machine: `bash scripts/make_server_zip.sh [out dir]` (default `dist/server`)
+writes `socom-unzipped-server/` and `socom-unzipped-server.zip` -- `horizon-server/` with its Release binaries (no
+`obj/`, no `bin/Debug/`), the empty `dme-plugins/`, `medius-plugins/`, `files/`, `logs/`, `config/` **without
+`simulated.db`** (the host seeds their own; `config/README.txt` in the zip says how), plus `start-servers.ps1`,
+`seed-simulated-db.ps1` and this README.
+
 **10077/TCP (MPS) does not need forwarding** as long as DME runs on the same machine as Medius: `dme.json` has
 `"MPS": { "Ip": "127.0.0.1" }`, so that connection never leaves the host. It only becomes an external port if DME
 is split onto a separate box, and then it should be restricted to that box, not exposed to the internet.

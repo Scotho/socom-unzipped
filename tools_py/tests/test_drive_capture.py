@@ -24,6 +24,12 @@ class ClientRectTest(unittest.TestCase):
     def test_a_fake_handle_is_captured(self):
         self.assertTrue(self._capture(None))   # tests attach shells to fake handles
 
+    def test_a_zero_client_area_is_captured_not_refused(self):
+        # s7_cpu_fallback (2026-09-17): GetClientRect read 0x0 at one capture (the window minimised or momentarily
+        # hidden) while the game kept exporting frames; the capture reads the exported frame file, so a 0x0 rect
+        # says nothing about the frame. Only a non-zero rect that is not 640x448 (a resized window) is evidence.
+        self.assertTrue(self._capture((0, 0)))
+
     def test_a_resized_window_fails_loudly_and_saves_nothing(self):
         with self.assertRaises(winshot.ClientRectError) as cm:
             self._capture((983, 630))
