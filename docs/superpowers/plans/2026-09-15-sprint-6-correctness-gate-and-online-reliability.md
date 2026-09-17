@@ -413,7 +413,7 @@ weapon fire, music and voice streams -- reaches a speaker. This is the largest r
 
 ### Task 7: Mixed match (windows, 4 launches)
 
-- [ ] `scripts/parity/mixed_match.sh`: ours hosting + PCSX2 joining (research/18 §1 recipe, `pcsx2_keys.py`), then the reverse. Bars: gameplay reached both ways; the movement bar met on ours; on the console client our player is seen moving (PCSX2 screenshot diff over a 10 s hold). Result to KNOWN §1 or §2 with the launch names.
+- [ ] `scripts/parity/mixed_match.sh`: ours hosting + PCSX2 joining (research/18 §1 recipe, `pcsx2_keys.py`), then the reverse. *(2026-09-17: the script, `pcsx2_ctl` macros, `--foreign-b`, `motion_diff` are in with tests; leg 1 ran -- ours hosted, the PCSX2 macro's fixed timings drifted at boot, no joiner. Next: screen-verified PCSX2 steps.)* Bars: gameplay reached both ways; the movement bar met on ours; on the console client our player is seen moving (PCSX2 screenshot diff over a 10 s hold). Result to KNOWN §1 or §2 with the launch names.
 
 ### Task 8: Harness and maintainability (lock-free)
 

@@ -11,6 +11,18 @@
 
 
 
+## 2026-09-17 (late) — Task 8b Step 5 done; Task 7's mixed match: the tooling is in, the first leg did not meet
+
+`scripts/make_portable.sh` builds the portable folder (285 MB, a 63 MB zip; README says "run the launcher"). Task 7:
+`tools_py/parity/pcsx2_ctl.py` (the S4 PCSX2 controller, promoted, with `join`/`host`/`ready` macros playing research/18
+§1's click path), `online_match_ours --foreign-b` (ours hosts, waits for a joiner it does not drive, readies, walks),
+`motion_diff` (is our player seen moving on the console client), `scripts/parity/mixed_match.sh` (leg 1), six tests.
+Leg 1 (`mixed_ours_hosts`): ours logged in, hosted and waited 420 s; the PCSX2 macro lost its place at boot -- its
+first capture after the recipe's 90 s and four CROSS presses was a MISSION BRIEFING, the boot having been faster than
+the recipe's timing, so the presses walked into NEW GAME and the joiner never came (`RESULT ... joiner=none`). The
+PCSX2 side needs screen-verified steps like ours: map its 640x480 frame onto the harness's 640x448 detectors and
+press on what the screen shows. Next: that, then the leg again, then the reverse leg.
+
 ## 2026-09-17 (night) — Sprint 6 Task 8: the harness items, Foxhunt settled, knob retirement pass 1
 
 `docs/HUMAN_TASKS.md` opened for the owner's hands-on checks (the title/intro listen, free play, the launcher with the pad).

@@ -2920,6 +2920,27 @@ def control_round_arg_problem(a):
     return None
 
 
+# --- Sprint 6 Task 7: the mixed match -- our instance hosts, a foreign client (PCSX2) joins ---------------------
+FOREIGN_JOIN_TIMEOUT_S = 420.0
+FOREIGN_JOIN_POLL_S = 5.0
+
+
+def wait_for_joiner(read_teams, log, timeout_s=FOREIGN_JOIN_TIMEOUT_S, poll_s=FOREIGN_JOIN_POLL_S,
+                    clock=time.time, wait=time.sleep):
+    """Poll `read_teams()` -> (seals, terrorists) text px until a name shows in each team column (the joiner
+    was auto-assigned opposite the host) or `timeout_s` passes. -> seconds waited, or None on timeout."""
+    t0 = clock()
+    while True:
+        seals, terrorists = read_teams()
+        state = L.lobby_teams_state(seals, terrorists)
+        log(f"[lobby] waiting for a joiner: seals={seals} terrorists={terrorists} -> {state} (T+{clock() - t0:.0f}s)")
+        if state == "ok":
+            return clock() - t0
+        if clock() - t0 >= timeout_s:
+            return None
+        wait(poll_s)
+
+
 def control_round_ok(score, end):
     """The negative control holds: the round ended, and nothing a kill moves stepped before it."""
     if end is None:
@@ -4392,6 +4413,9 @@ def main():
     ap.add_argument("--name-b", default="socome")
     ap.add_argument("--existing-b", action="store_true")
     ap.add_argument("--only", default="", help="A or B: run one instance's login only (setup check)")
+    ap.add_argument("--foreign-b", action="store_true",
+                    help="Sprint 6 Task 7: A hosts and waits for a joiner the harness does not drive (a PCSX2 client "
+                         "played by tools_py.parity.pcsx2_ctl), readies, holds, then walks --play bursts")
     ap.add_argument("--play", type=int, default=0, help="gameplay bursts after the hold (A walks + fires, B turns)")
     ap.add_argument("--same-team", action="store_true", help="B switches to SEALs (the joiner is auto-assigned to TERRORISTS); teammates spawn together")
     ap.add_argument("--sweep", type=int, default=0, help="gameplay: A turns in place in <N> steps of --sweep-hold s firing a burst at each; B stands")
@@ -4587,6 +4611,30 @@ def main():
             c.sh.shot("done")
         finally:
             c.kill()
+        return
+    if a.foreign_b:
+        try:
+            A.launch()
+            A.login()
+            if A.error:
+                raise A.error
+            L.host_game(A.sh, game_map=a.map)
+            waited = wait_for_joiner(lambda: L.lobby_teams(A.sh), A.sh.log)
+            if waited is None:
+                A.sh.log(f"RESULT MIXED-MATCH host=ours joiner=none within {FOREIGN_JOIN_TIMEOUT_S:g}s")
+                return
+            A.sh.log(f"[lobby] joiner in after {waited:.0f}s")
+            time.sleep(35)                                       # READY becomes available
+            L.ready(A.sh)
+            for i in range(a.hold // 10):
+                time.sleep(10)
+                A.sh.shot(f"hold{i:02d}")
+            for i in range(a.play):
+                A.sh.hold("W", 3.0)
+                A.sh.shot(f"play{i:02d}")
+            A.sh.log("RESULT MIXED-MATCH host=ours joiner=foreign lobby=ok")
+        finally:
+            A.kill()
         return
     try:
         A.launch()
