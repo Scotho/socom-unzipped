@@ -8,7 +8,27 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
-## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted
+## 2026-09-17 (late) — Sprint 6 CLOSED and merged (`8f57cbd` on develop and main); Sprint 7 OPEN
+
+branch: sprint-7 (off develop at `8f57cbd`)
+spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (owner review pending; Goal N = Task N)
+plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md
+audit: docs/AUDIT-2026-09-17.md
+human tasks: docs/HUMAN_TASKS.md (four open: the title/intro listen, free play, the launcher with the pad, the two
+server addresses; plus a second machine for Goal 5)
+
+**Sprint 6's close-out is done**: the plan reconciled with the audit's ledger (43 of 55 boxes ticked; the 12 open are
+carried by Sprint 7 or Sprint 8), rulings R81–R90, the KNOWN audit, STATUS's current state, ROADMAP §6 marked,
+`PS2X_TEST_REPEAT=3 ./build.sh test` 503/503 three times, gate 3/3 (`s6_fixwave_gate`), merged and pushed.
+
+**Sprint 7's order (the spec's Goals 1–7):** (1) the stranger's machine, defensively — GL probe and CPU fallback,
+the bounded command queue, the DPI flag and 2x default, the native-VU1 warning, audio I/O off the callback; (2) online
+correctness before scale — the equal-priority time slice removed, a same-key control round, the CD stream cursor, the
+ten-launch lobby rate, freeze shape 2; (3) the 21k decodes settled and fixed; (4) the hosted server (**owner**: the
+machine and the two addresses); (5) the first two-machine match (**owner**: a second machine); (6) the owner's checks;
+(7) close-out. The loop does not wait on (4)–(6): it works (1)–(3) and files what it cannot verify in HUMAN_TASKS.
+
+## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted (superseded above; kept for the record)
 
 branch: sprint-6
 spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
