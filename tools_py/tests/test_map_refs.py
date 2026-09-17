@@ -1,9 +1,6 @@
-"""The committed AVAILABLE MAPS references must exist for every map the harness defaults to, and
-must not match each other -- choose_map aborts without a reference, and two references that match
-each other would let it accept the wrong map. The map-scan captures they were cut from are
-git-ignored, so this checks only what a fresh clone has; the per-capture distances are recorded in
-online_login_ours.py next to MAP_MATCH_THRESH."""
-import inspect
+"""The CHOOSE GAMES map references (scripts/parity/refs/map_<slug>.png): one per map on the CREATE GAME PLAY
+LIST as scanned on 2026-09-13 (online_login_ours.MAP_SCAN_ORDER), cut from logs/parity/ours_task8_mapscan by
+the crop geometry choose_map uses, and named by a slug so that RAT'S NEST or THE MIXER give plain file names."""
 import os
 import unittest
 
@@ -12,29 +9,35 @@ from PIL import Image
 
 from tools_py.parity import online_login_ours as L
 
-
-def load(name):
-    return np.asarray(Image.open(L.map_ref_path(name)).convert("L"), dtype=np.float32)
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-class MapReferences(unittest.TestCase):
-    MAPS = ("frostfire", "medley")
+class MapRefNames(unittest.TestCase):
+    def test_slug_names(self):
+        self.assertEqual(os.path.basename(L.map_ref_path("frostfire")), "map_frostfire.png")
+        self.assertEqual(os.path.basename(L.map_ref_path("FROSTFIRE")), "map_frostfire.png")
+        self.assertEqual(os.path.basename(L.map_ref_path("RAT'S NEST")), "map_rats_nest.png")
+        self.assertEqual(os.path.basename(L.map_ref_path("the mixer")), "map_the_mixer.png")
+        self.assertEqual(os.path.basename(L.map_ref_path("Shadow Falls")), "map_shadow_falls.png")
 
-    def test_references_exist_with_row_geometry(self):
-        x0, y0, x1, y1 = L.map_row_box(0)
-        for name in self.MAPS:
-            with self.subTest(map=name):
-                self.assertTrue(os.path.exists(L.map_ref_path(name)))
-                self.assertEqual(load(name).shape, (y1 - y0, x1 - x0))
+    def test_every_scanned_map_has_a_reference_of_the_row_size(self):
+        self.assertEqual(len(L.MAP_SCAN_ORDER), 24)
+        for name in L.MAP_SCAN_ORDER:
+            path = os.path.join(ROOT, L.map_ref_path(name))
+            self.assertTrue(os.path.exists(path), path)
+            with Image.open(path) as im:
+                self.assertEqual(im.size, (L.MAP_ROW_X1 - L.MAP_ROW_X0, L.MAP_ROW_H), path)
 
-    def test_each_matches_itself_and_not_the_other(self):
-        for name in self.MAPS:
-            self.assertLessEqual(L.map_mask_distance(load(name), load(name)), L.MAP_MATCH_THRESH)
-        self.assertGreater(L.map_mask_distance(load("medley"), load("frostfire")), L.MAP_MATCH_THRESH)
-
-    def test_host_game_default_map_has_a_reference(self):
-        default = inspect.signature(L.host_game).parameters["game_map"].default
-        self.assertTrue(os.path.exists(L.map_ref_path(default)), default)
+    def test_references_do_not_confuse_each_other(self):
+        """Every reference scores under 0.05 against itself and at least MAP_MATCH_THRESH against every other."""
+        refs = {name: L.map_ref(name) for name in L.MAP_SCAN_ORDER}
+        for a, ra in refs.items():
+            for b, rb in refs.items():
+                d = L.map_mask_distance(ra, rb)
+                if a == b:
+                    self.assertLess(d, 0.05, (a, b, d))
+                else:
+                    self.assertGreaterEqual(d, L.MAP_MATCH_THRESH, (a, b, d))
 
 
 if __name__ == "__main__":

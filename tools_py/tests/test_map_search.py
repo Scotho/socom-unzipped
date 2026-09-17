@@ -49,6 +49,8 @@ FF_AT2_CUR4 = frame_of_rows(**{**PALE_ROWS, "r2": FF_PALE, "r4": OTHER_LIT})
 FF_AT2_CUR3 = frame_of_rows(**{**PALE_ROWS, "r2": FF_PALE, "r3": OTHER_LIT})
 FF_LIT_AT2 = frame_of_rows(**{**PALE_ROWS, "r2": FF_LIT})
 FF_AT5_CUR4 = frame_of_rows(**{**PALE_ROWS, "r5": FF_PALE, "r4": OTHER_LIT})
+FF_AT1_CUR4 = frame_of_rows(**{**PALE_ROWS, "r1": FF_PALE, "r4": OTHER_LIT})
+FF_AT3_CUR4 = frame_of_rows(**{**PALE_ROWS, "r3": FF_PALE, "r4": OTHER_LIT})
 NOT_FOUND_LAD3 = frame_of_list("maplist_s6_lad3_not_found.png")
 MEDLEY_LAD2 = frame_of_list("maplist_s5_lad2_medley.png")
 
@@ -148,6 +150,24 @@ class ChooseMap(unittest.TestCase):
         self.assertEqual(L.MAP_REREADS, 4)
         self.assertEqual(L.MAP_REREAD_WAIT_S, 0.5)
         self.assertEqual(L.choose_map.lobby_stage, "map_select")
+
+    # 2026-09-16, launch ours_control_crossroads: the target was seen at row 1 with the cursor pinned at row 4 (a
+    # scrolled list moves the CONTENT under the cursor), one UP was pressed, the next read did not show the target
+    # (a mid-scroll frame) and the walk fell back to DOWN -- the two presses cancelled and the target was never
+    # reached in 30 presses. Once a target has been seen the walk keeps that direction through reads that do not
+    # show it, for up to MAP_STICKY_PRESSES presses, before falling back to DOWN.
+    def test_target_above_the_cursor_keeps_pressing_up_through_an_unreadable_read(self):
+        sh, g, row, cross = run(FF_AT1_CUR4, NO_MATCH_CUR4, FF_AT2_CUR4, FF_AT3_CUR4, FF_LIT_AT4)
+        self.assertEqual(row, 4)
+        self.assertEqual(sh.presses, [UP, UP, UP, UP])
+        self.assertIn("map 'frostfire' visible at row 1, cursor at 4 -> up", sh.logs)
+        cross.assert_called_once()
+
+    def test_sticky_direction_falls_back_to_down_after_its_budget(self):
+        self.assertEqual(L.MAP_STICKY_PRESSES, 6)
+        sh, g, row, cross = run(FF_AT1_CUR4, *([NO_MATCH_CUR4] * 7), FF_LIT_AT4)
+        self.assertEqual(row, 4)
+        self.assertEqual(sh.presses, [UP] * 7 + [DOWN])
 
     def test_a_highlighted_at_row_4_after_15_down(self):
         sh, g, row, cross = run(*([NO_MATCH_CUR4] * 15), FF_LIT_AT4)

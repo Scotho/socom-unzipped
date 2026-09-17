@@ -13,6 +13,7 @@ import contextlib
 import functools
 import json
 import os
+import re
 import subprocess
 import time
 
@@ -1239,6 +1240,11 @@ MAP_REF_DIR = REFS
 # target visible at another row is walked to one press at a time and cannot be overshot.
 MAP_REREADS = 4
 MAP_REREAD_WAIT_S = 0.5
+# Launch ours_control_crossroads (2026-09-16): in a SCROLLED list the cursor stays pinned at row 4 and the content
+# moves, so a target seen above the cursor needs several UPs; one mid-scroll read that did not show it sent the walk
+# back DOWN and the presses cancelled for 30 presses. Once seen, the direction toward the target is kept through reads
+# that do not show it, for up to this many presses, before the walk falls back to DOWN.
+MAP_STICKY_PRESSES = 6
 
 
 def map_row_box(i):
@@ -1305,8 +1311,22 @@ def map_scan(sh, presses=26, tag="mapscan"):
     return seen
 
 
+# The CREATE GAME PLAY LIST as scanned on 2026-09-13 (logs/parity/ours_task8_mapscan, capture k highlights
+# entry k): the order the DOWN presses walk. Every entry has a reference row scripts/parity/refs/map_<slug>.png
+# cut from that scan (tests/test_map_refs.py checks presence, size and that none confuses another).
+MAP_SCAN_ORDER = ("Medley", "Random", "VIGILANCE", "THE MIXER", "FOXHUNT", "SUJO", "ENOWAPI", "SHADOW FALLS",
+                  "FISH HOOK", "CROSSROADS", "SANDSTORM", "CHAIN REACTION", "GUIDANCE", "REQUIEM", "BLIZZARD",
+                  "FROSTFIRE", "ABANDONED", "DESERT GLORY", "NIGHT STALKER", "RAT'S NEST", "BITTER JUNGLE",
+                  "BLOOD LAKE", "DEATH TRAP", "THE RUINS")
+
+
+def map_slug(name):
+    """'RAT'S NEST' -> 'rats_nest', 'The Mixer' -> 'the_mixer', 'frostfire' -> 'frostfire'."""
+    return re.sub(r"[^a-z0-9]+", "_", name.lower().replace("'", "")).strip("_")
+
+
 def map_ref_path(name):
-    return os.path.join(MAP_REF_DIR, f"map_{name.lower()}.png")
+    return os.path.join(MAP_REF_DIR, f"map_{map_slug(name)}.png")
 
 
 def map_ref(name):
@@ -1364,12 +1384,13 @@ def choose_map(sh, name, presses=30):
                          f"captures; accepting whatever is highlighted is not an option")
     ref = map_ref(name)
     downs = 0                                                    # DOWN presses so far (the acceptance line's count)
+    sticky, sticky_left = "down", 0                              # the direction a seen target set, and its budget
     for k in range(presses + 1):                                 # k = presses sent so far, DOWN or UP
         cur, dist = map_read(sh, ref, k)
         if cur >= 0 and dist[cur] <= MAP_MATCH_THRESH:
             sh.log(f"map '{name}' highlighted at row {cur} after {downs} DOWN (text-mask distance "
                    f"{dist[cur]:.3f} <= {MAP_MATCH_THRESH}) -- accepting")
-            sh.shot(f"14b_map_{name.lower()}")
+            sh.shot(f"14b_map_{map_slug(name)}")
             press_map_cross_verified(sh, 4.0)                    # R47: re-sent while SELECTED MAPS does not move
             return cur
         seen = [j for j, d in enumerate(dist) if d <= MAP_MATCH_THRESH]
@@ -1377,13 +1398,17 @@ def choose_map(sh, name, presses=30):
         if cur >= 0 and seen:
             j = min(seen, key=lambda j: abs(j - cur))
             btn = "up" if j < cur else "down"
+            sticky, sticky_left = btn, MAP_STICKY_PRESSES
             sh.log(f"map '{name}' visible at row {j}, cursor at {cur} -> {btn}")
+        elif sticky_left > 0:
+            btn = sticky                                         # a read that lost the target does not undo the walk
+            sticky_left -= 1
         elif cur >= 0 and k % 5 == 0:
             sh.log(f"map search {k:02d}: row {cur} is not '{name}' (distance {dist[cur]:.3f})")
         if k < presses:                                          # exactly `presses` presses, presses + 1 reads
             sh.pad_press(btn, wait=0.45)
             downs += btn == "down"
-    sh.shot(f"14_map_{name.lower()}_NOT_FOUND")
+    sh.shot(f"14_map_{map_slug(name)}_NOT_FOUND")
     raise lobby_fail(sh, CLASS_MAP_SEARCH, f"map '{name}' was never highlighted in {presses} presses of DOWN -- "
                      f"see the capture. Accepting whatever is highlighted would put the run on an "
                      f"unknown map, and the whole point of this check is that it cannot.")
