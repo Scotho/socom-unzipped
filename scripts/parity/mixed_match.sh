@@ -6,24 +6,24 @@
 #
 # Usage: scripts/parity/mixed_match.sh [out dir]        (default logs/parity/mixed_ours_hosts)
 # Needs: the Horizon stack (server/start-servers.ps1 -Status), the DNS stub
-# (python -m tools_py.parity.dns_stub --bind 192.168.2.10 --answer 192.168.2.10), tools/pcsx2_b with the clientB
+# (python -m tools_py.parity.dns_stub; it reads SOCOM_SERVER_IP too), tools/pcsx2_b with the clientB
 # pnach and a card carrying a network configuration (research/18 section 1 a-c).
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+. "$(dirname "$0")/env.sh"
 OUT="${1:-logs/parity/mixed_ours_hosts}"
 NAME="$(basename "$OUT")"
 PCSX2_OUT="$OUT/pcsx2"
 mkdir -p "$OUT" "$PCSX2_OUT"
 export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
-export PS2X_HOST_GAMEPAD=0
-export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-192.168.2.10}" PS2X_SOCOM2_INPUT_TRACE=1 PS2X_PC_SAMPLER=0.25 \
-       PS2X_CALL_TRACE_EVERY=10 PS2X_CALL_TRACE="0x553dc0:MoveScale,0x30cd80:NetIdle" \
-       PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,0x4365c0:1,0x408f10:2,0x408c58:4"
+# Instruments come from scripts/parity/env.sh (sourced above). This leg keeps its own, shorter peek set:
+# no CZNetGame valve name bytes and no deref levels -- the console client is scored from its captures.
+export PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,0x4365c0:1,0x408f10:2,0x408c58:4"
 
-if ! netstat -an | grep -q "192.168.2.10:53 "; then
-  echo "mixed_match: the DNS stub is not listening on 192.168.2.10:53 -- start tools_py.parity.dns_stub first" >&2
+if ! netstat -an | grep -q "$SOCOM_SERVER_IP:53 "; then
+  echo "mixed_match: the DNS stub is not listening on $SOCOM_SERVER_IP:53 -- start tools_py.parity.dns_stub first" >&2
   echo "done 5" > "logs/${NAME}.done"; exit 5
 fi
 

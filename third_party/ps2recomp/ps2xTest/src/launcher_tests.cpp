@@ -169,5 +169,58 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_GS_SCALE=2") && has("PS2X_SOCOM2_MOUSE=1") && has("PS2X_SOCOM2_MOUSE_SENS=0.75") && has("PS2X_WINDOW_SIZE=fullscreen"), "scale, mouse, sensitivity, fullscreen");
             t.IsTrue(has("PS2X_SOCOM2_UDP_SHIFT=2") && has("PS2X_SOCOM2_RSA_KEY=b") && has("PS2X_MC_DIR=cards/craig_b"), "the second instance: shift 2, key b, its own cards");
         });
+
+        tc.Run("server presets: the picker's choice round-trips and an unknown one falls back to custom", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.Equals(c.serverPreset, std::string("custom"), "the default preset is custom (the old hand-typed address)");
+            c.serverPreset = "unzipped";
+            c.server = "192.168.2.10";
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.serverPreset, std::string("unzipped"), "the preset survives the round trip");
+            t.Equals(back.server, std::string("192.168.2.10"), "... and so does the custom address behind it");
+            launcher::Config odd;
+            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"horizon-2\"}", odd), "an unknown preset parses");
+            t.Equals(odd.serverPreset, std::string("custom"), "... as custom, so the player's own address still applies");
+            t.IsTrue(launcher::findServerPreset("nope") == nullptr, "an unknown id has no preset");
+            const launcher::ServerPreset *community = launcher::findServerPreset("community");
+            t.IsTrue(community != nullptr && std::string(community->address) == "COMMUNITY_SERVER_ADDRESS_TBC", "the community preset's address is the placeholder, not a guess");
+        });
+
+        tc.Run("the environment: the chosen preset decides PS2X_SOCOM2_SERVER", [](TestCase &t)
+        {
+            auto serverOf = [](const launcher::Config &c)
+            {
+                for (const std::string &kv : launcher::environmentFor(c))
+                    if (kv.rfind("PS2X_SOCOM2_SERVER=", 0) == 0)
+                        return kv.substr(std::strlen("PS2X_SOCOM2_SERVER="));
+                return std::string("<missing>");
+            };
+            launcher::Config c;
+            c.serverPreset = "community";
+            c.server = "10.0.0.5";
+            t.Equals(serverOf(c), std::string("COMMUNITY_SERVER_ADDRESS_TBC"), "community wins over whatever is in the text field");
+            c.serverPreset = "unzipped";
+            t.Equals(serverOf(c), std::string("UNZIPPED_SERVER_ADDRESS_TBC"), "our own server, not hosted yet");
+            c.serverPreset = "custom";
+            t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
+            c.server.clear();
+            t.Equals(serverOf(c), std::string("127.0.0.1"), "custom with nothing typed: the loopback default");
+            t.Equals(launcher::effectiveServer(c), std::string("127.0.0.1"), "effectiveServer agrees");
+        });
+
+        tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
+        {
+            launcher::Config c;
+            c.isoPath = "C:/discs/socom2.iso";
+            std::vector<std::string> env = launcher::environmentFor(c);
+            auto has = [&](const std::string &kv) { return std::find(env.begin(), env.end(), kv) != env.end(); };
+            auto hasKey = [&](const std::string &k) { return std::any_of(env.begin(), env.end(), [&](const std::string &e) { return e.rfind(k + "=", 0) == 0; }); };
+            t.IsTrue(has("PS2X_CD_IMAGE=C:/discs/socom2.iso"), "the disc the launcher verified is the disc the runtime mounts");
+            launcher::Config empty;
+            env = launcher::environmentFor(empty);
+            t.IsTrue(!hasKey("PS2X_CD_IMAGE"), "no ISO configured: the runtime keeps its own .iso search");
+        });
     });
 }

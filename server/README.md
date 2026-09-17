@@ -19,7 +19,7 @@ connected yet.
 | `config/` | The live configuration: `nat.json`, `muis.json`, `medius.json`, `dme.json`, `db.config.json`, `simulated.db`. |
 | `logs/` | Console captures (`console-<component>.log`) and the servers' own rolling logs (`medius.log`, `dme.log`, `muis.log`). |
 | `medius-plugins/`, `dme-plugins/`, `files/` | Empty dirs the servers expect relative to the working directory. |
-| `start-servers.ps1` | Start / `-Stop` / `-Status` / `-Build` the stack. |
+| `start-servers.ps1` | Start / `-Stop` / `-Status` / `-Build` the stack; `-PublicIp` / `-ShowIp` set and show the advertised address. |
 | `seed-simulated-db.ps1` | Write (or `-Show`) the encrypted `config/simulated.db` (test account + per-app settings). |
 | `build-release.log` | Output of the first full `dotnet build` (0 errors, 16 warnings, 17 s). |
 
@@ -31,11 +31,13 @@ cd C:\projects\socom_pc\server
 .\start-servers.ps1 -Status    # which ports are listening
 .\start-servers.ps1 -Stop
 .\start-servers.ps1 -Build     # rebuild horizon-server\Horizon.Server.sln (Release) first
+.\start-servers.ps1 -ShowIp    # what address will clients be told to connect back to?
+.\start-servers.ps1 -PublicIp 203.0.113.7    # advertise that address, then start
 ```
 
 Prerequisite: .NET SDK 9.x (9.0.204 and 10.0.400 are installed; every project targets `net9.0`, no retargeting was needed).
 
-### Ports (all bind 0.0.0.0; advertised address is 127.0.0.1)
+### Ports (all bind 0.0.0.0)
 
 | Port | Proto | Component | Config key |
 |---|---|---|---|
@@ -47,11 +49,60 @@ Prerequisite: .NET SDK 9.x (9.0.204 and 10.0.400 are installed; every project ta
 | 10070 | UDP | NAT (address echo) | `nat.json: Port`, `medius.json: NATPort` |
 | 50000+ | UDP | DME UDP, one socket per connected client, bound on demand | `dme.json: UDPPort` |
 
-Advertised IP: `medius.json`/`dme.json` set `"UsePublicIp": true, "PublicIpOverride": "127.0.0.1"` and
-`"NATIp": "127.0.0.1"`. With `UsePublicIp: false` Horizon would pick the LAN adapter IP
-(`Utils.GetLocalIPAddress`) instead; there is no way to advertise loopback otherwise.
-For a real PS2/emulator on the LAN, change `PublicIpOverride`, `NATIp` and `muis.json: Universes[..].Endpoint`
-to the host's LAN IP.
+### Advertised address (what clients are told to connect back to)
+
+Binding and advertising are two different things. Everything binds `0.0.0.0`, but Medius/MUIS also *hand the
+client an address* in their replies, and the client dials that. It must therefore be an address the client can
+reach: the host's LAN IP for a PS2/emulator on the same LAN, the host's public IP for a hosted server. With
+`"UsePublicIp": true` that address comes from the config; with `false` Horizon picks the first LAN adapter IP
+(`Utils.GetLocalIPAddress`), which is also the only way to get loopback advertised as something else.
+
+Six fields carry it, and `start-servers.ps1` sets all six at once:
+
+```powershell
+.\start-servers.ps1 -ShowIp                    # print the six fields and their current values
+.\start-servers.ps1 -PublicIp 203.0.113.7      # rewrite them, then start
+.\start-servers.ps1 -PublicIp 192.168.1.50 -NoStart   # rewrite only (also takes -ConfigDir <dir>)
+```
+
+| File | Field | What reads it |
+|---|---|---|
+| `medius.json` | `PublicIpOverride` | MAS/MLS tell the client where MLS and the DME game server live |
+| `medius.json` | `NATIp` | address of the NAT/address-echo service handed to the client |
+| `dme.json` | `PublicIpOverride` | DME's own address, registered with MPS and passed to joining clients |
+| `muis.json` | `Universes["10472"][0].Endpoint` | the universe MUIS points SOCOM II at |
+| `muis.json` | `Universes["0"][0].Endpoint` | same, fallback universe for unknown app ids |
+
+`-PublicIp` accepts an IP or a hostname, rewrites only those fields (formatting and every other key preserved),
+prints one `<file>: <field> -> <ip>` line per change, and refuses to write anything that would not parse back as
+JSON. Without it the config files are left exactly as they are. **`dme.json: MPS.Ip` stays `127.0.0.1`** - that is
+DME reaching Medius on the same machine, not an address any client sees; `-PublicIp` never touches it and `-ShowIp`
+prints it greyed out so nobody "fixes" it.
+
+The tracked configs currently advertise `192.168.2.10` (the dev box's LAN IP). Anyone bringing the stack up
+elsewhere runs `-PublicIp <their address>` first; no hand-editing of JSON is needed.
+
+### Hosting it on another machine: ports to forward
+
+Advertise the public address (`-PublicIp`), open the Windows firewall for the five server processes, and forward
+these from the router to the host. Ports are as listed in the table above and verified by `-Status`:
+
+| Forward | Proto | Why |
+|---|---|---|
+| 10070 | UDP | NAT / address echo - the client asks it "what address do you see me on?"; NAT traversal fails without it |
+| 10071 | TCP | MUIS - the first connection the game makes (universe lookup) |
+| 10075 | TCP | MAS - authentication |
+| 10078 | TCP | MLS - lobby |
+| 10073 | TCP | DME TCP - game/world data |
+| 50000+ | UDP | DME UDP game data, one socket per connected client, bound on demand from `dme.json: UDPPort` upward. Forward a range (e.g. 50000-50100) sized for the player count; a single 50000 rule only covers the first client. |
+
+**10077/TCP (MPS) does not need forwarding** as long as DME runs on the same machine as Medius: `dme.json` has
+`"MPS": { "Ip": "127.0.0.1" }`, so that connection never leaves the host. It only becomes an external port if DME
+is split onto a separate box, and then it should be restricted to that box, not exposed to the internet.
+
+Unverified on a real hosted machine: nothing here has been run outside the LAN yet (see Status above - no SOCOM II
+client has connected). Expect the NAT/UDP path (10070 and the 50000+ range) to be where a hosted bring-up first
+bites, since that is the part that depends on the advertised address being reachable from the client's side.
 
 App ids: MUIS has a `Universes` entry keyed `"10472"` (plus a `"0"` fallback, which MUIS uses for
 unknown app ids). DME has `"ApplicationIds": [10472]`. Medius has **no** app-id list of its own; the set of
@@ -173,6 +224,6 @@ Things to expect, roughly in order of likelihood of biting:
 7. **DNAS / SCE-RT extras.** `MediusDnasSignaturePost` is accepted and ignored. Anything the game expects around
    `MediusGetPolicy` (usage/privacy text) is served from simulated defaults.
 
-Suggested next step: point the game (or an emulator with the network plugin) at 127.0.0.1 via DNS/hosts override for
-the SOCOM II MUIS hostname, watch `logs\console-MUIS.log` then `console-Medius.log` at Debug level, and diff the first
-`RT_MSG_CLIENT_*` frames against the message classes in `horizon-server\RT.Models\RT\`.
+Suggested next step: point the game (or an emulator with the network plugin) at the server host - the same address
+`-ShowIp` reports - via a DNS/hosts override for the SOCOM II MUIS hostname, watch `logs\console-MUIS.log` then
+`console-Medius.log` at Debug level, and diff the first `RT_MSG_CLIENT_*` frames against the message classes in `horizon-server\RT.Models\RT\`.

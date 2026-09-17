@@ -10,8 +10,17 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
 #include <vector>
+
+namespace socom2_hostnet
+{
+    // Not in socom2_hostnet.h: the PS2X_SOCOM2_SERVER parse used by loadHosts(), exposed for this
+    // test so the value can be passed straight in instead of poking the process environment and
+    // re-running init() (init() is one-shot, so an env-based test would depend on case order).
+    uint32_t parseServerAddress(const std::string &value);
+}
 
 namespace
 {
@@ -101,6 +110,26 @@ void register_socom2_libnetb_tests()
             const uint32_t after = queryStatsWord(rdram);
             t.Equals(after, before, "PS2X_SOCOM2_NET_STATS=0 must keep code 0x200 constant (the defect's reproduction knob)");
             setNetStatsEnv(nullptr);
+        });
+
+        // A hosted server is reached by DNS name, so PS2X_SOCOM2_SERVER must accept one. The
+        // inet_pton-only parse dropped every non-numeric value and left the retail hostnames
+        // pointed at the 127.0.0.1 default -- silently, which reads as "online is just broken".
+        tc.Run("PS2X_SOCOM2_SERVER accepts a DNS name as well as a numeric IP", [](TestCase &t)
+        {
+            // getaddrinfo needs Winsock up; init() does WSAStartup and is idempotent.
+            t.IsTrue(socom2_hostnet::init(), "hostnet init must succeed");
+
+            const uint32_t numeric = socom2_hostnet::parseServerAddress("192.168.2.10");
+            t.Equals(numeric, 0xc0a8020au, "a numeric IPv4 literal must still parse unchanged");
+
+            // getaddrinfo("localhost") yields 127.0.0.1 or ::1; we ask for AF_INET, so 127.0.0.1.
+            const uint32_t named = socom2_hostnet::parseServerAddress("localhost");
+            t.Equals(named, 0x7f000001u, "a hostname must resolve, not be discarded");
+
+            // A name that cannot resolve returns 0 so loadHosts() keeps its previous value.
+            const uint32_t bad = socom2_hostnet::parseServerAddress("no-such-host.invalid");
+            t.Equals(bad, 0u, "an unresolvable name must report failure rather than a stale address");
         });
     });
 }

@@ -32,7 +32,7 @@
 #
 # Before a launch (plan Task 5 Step 3): the local Horizon stack running (server/), persona B on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, `powershell -File scripts/kill_stale_drivers.ps1`, no other heavy host work.
-# PS2X_SOCOM2_SERVER must be this machine's LAN address (192.168.2.10 is the owner's).
+# SOCOM_SERVER_IP (scripts/parity/env.sh) must be this machine's LAN address (192.168.2.10 is the owner's).
 #
 # Instruments: scripts/parity/online_match_frostfire.sh's (MoveScale + NetIdle at EVERY=10; the actor block, +0x420,
 # +0x174, the +0xF7A alive byte (inside the +0xF78 peek), +0x1044 health; CZNetGame + valves with name bytes; mission abort; the round clocks
@@ -46,6 +46,7 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+. "$(dirname "$0")/env.sh"
 export PATH="/usr/bin:/bin:$PATH"
 
 MODE=launch
@@ -138,11 +139,9 @@ else
   PY=(python -m tools_py.parity.online_match_ours)
 fi
 
-export PS2X_HOST_GAMEPAD=0   # a launch boots with no controller (see gate.py)
-export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-192.168.2.10}" PS2X_SOCOM2_RSA_KEY_B=b PS2X_SOCOM2_INPUT_TRACE=1 \
-       PS2X_PC_SAMPLER=0.25 PS2X_CALL_TRACE_EVERY=10 PS2X_CALL_TRACE="0x553dc0:MoveScale,0x30cd80:NetIdle" \
-       PS2X_GS_STATS=1 \
-       PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,*0x437ce8+0x0c*:2,*0x437ce8+0x10*:2,*0x437ce8+0x14*:2,*0x437ce8+0x20*:2,*0x437ce8+0x24*:2,*0x437ce8+0x2c*:2,*0x437ce8+0x58*:2,*0x437ce8+0x5c*:2,*0x437ce8+0x70*:2,*0x43668c:2,0x4365c0:1,0x45a0c0:1,0x3df1b0:1,0x45a1c8:1,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,*0x437ce8+0x14**:3,*0x437ce8+0x20**:3,*0x437ce8+0x24**:3,*0x437ce8+0x2c**:3,*0x437ce8+0x58**:3,*0x437ce8+0x5c**:3,*0x437ce8+0x70**:3,*0x43668c*:3,0x408f10:2,0x408c58:4"
+# Instruments come from scripts/parity/env.sh (sourced above); these two are this script's own.
+export PS2X_SOCOM2_RSA_KEY_B=b
+export PS2X_GS_STATS=1       # rung 0's back-pressure waits (A4)
 
 ARGS=(--existing-b --hold 30 --until-kill --map frostfire --route "$ROUTE" --rounds "$ROUNDS" --mover "$MOVER"
       --auto-swap --fight-seconds 150 --kill-timeout 470 --out "$OUT" --seconds "$SECONDS_RUN")

@@ -18,9 +18,9 @@
 #
 # Preconditions: the local Horizon stack running (server/), persona B already on game/disc/mc0_b
 # (--existing-b), no socom2.exe running, stale drivers killed (scripts/kill_stale_drivers.ps1) and the
-# loop lock held by the caller (scripts/run_detached.sh). PS2X_SOCOM2_SERVER must be this machine's LAN
-# address, or the exe advertises 127.0.0.1 as its own address (docs/HANDOFF.md); 192.168.2.10 is the
-# owner's machine -- override it elsewhere.
+# loop lock held by the caller (scripts/run_detached.sh). SOCOM_SERVER_IP (scripts/parity/env.sh) must be
+# this machine's LAN address, or the exe advertises 127.0.0.1 as its own address (docs/HANDOFF.md);
+# 192.168.2.10 is the owner's machine -- override SOCOM_SERVER_IP elsewhere.
 #
 # Usage: scripts/parity/online_match_frostfire.sh [out_dir]   (default logs/parity/ours_frostfire)
 #
@@ -33,13 +33,14 @@
 set -u
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
+. "$(dirname "$0")/env.sh"
 OUT="${1:-logs/parity/ours_frostfire}"
 NAME="$(basename "$OUT")"
 mkdir -p "$(dirname "$OUT")"
 export PATH="/usr/bin:/bin:$PATH"
 rm -f "logs/${NAME}.done"
-export PS2X_HOST_GAMEPAD=0   # a launch boots with no controller (see gate.py)
-export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-192.168.2.10}" PS2X_SOCOM2_RSA_KEY_B=b        PS2X_SOCOM2_INPUT_TRACE=1        PS2X_PC_SAMPLER=0.25        PS2X_CALL_TRACE_EVERY=10        PS2X_CALL_TRACE="0x553dc0:MoveScale,0x30cd80:NetIdle"        PS2X_PEEK="0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12,*0x408c58+0x174:1,*0x408c58+0xF78:24,*0x408c58+0x1044:8,*0x437ce8:64,*0x437ce8+0x100:21,*0x437ce8+0x0c*:2,*0x437ce8+0x10*:2,*0x437ce8+0x14*:2,*0x437ce8+0x20*:2,*0x437ce8+0x24*:2,*0x437ce8+0x2c*:2,*0x437ce8+0x58*:2,*0x437ce8+0x5c*:2,*0x437ce8+0x70*:2,*0x43668c:2,0x4365c0:1,0x45a0c0:1,0x3df1b0:1,0x45a1c8:1,*0x437ce8+0x0c**:3,*0x437ce8+0x10**:3,*0x437ce8+0x14**:3,*0x437ce8+0x20**:3,*0x437ce8+0x24**:3,*0x437ce8+0x2c**:3,*0x437ce8+0x58**:3,*0x437ce8+0x5c**:3,*0x437ce8+0x70**:3,*0x43668c*:3,0x408f10:2,0x408c58:4"
+# Instruments come from scripts/parity/env.sh (sourced above); the B-side key is this script's own.
+export PS2X_SOCOM2_RSA_KEY_B=b
 python -m tools_py.parity.online_match_ours --existing-b --hold 30 --until-kill \
        --map frostfire --engage 22 --engage-dy 10 \
        --max-steps 60 --max-walk-seconds 240 \

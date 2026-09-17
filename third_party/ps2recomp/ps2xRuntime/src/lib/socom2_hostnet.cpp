@@ -22,6 +22,11 @@
 
 namespace socom2_hostnet
 {
+    // Defined below, forward-declared here because loadHosts() (file-local) calls it. Not in the
+    // public header: it exists so socom2_libnetb_tests.cpp can drive the PS2X_SOCOM2_SERVER
+    // parse without touching the process environment or re-running init().
+    uint32_t parseServerAddress(const std::string &value);
+
     namespace
     {
         constexpr int kMaxSockets = 64;
@@ -100,7 +105,7 @@ namespace socom2_hostnet
             uint32_t server = 0x7f000001u;
             if (const char *env = std::getenv("PS2X_SOCOM2_SERVER"))
             {
-                const uint32_t ip = parseIp(env);
+                const uint32_t ip = parseServerAddress(env);
                 if (ip)
                     server = ip;
             }
@@ -124,6 +129,40 @@ namespace socom2_hostnet
                 }
             }
         }
+    }
+
+    // PS2X_SOCOM2_SERVER is a numeric IPv4 literal or a DNS name -- a hosted server is reached by
+    // name. Returns host byte order IPv4, or 0 when the value is neither, so the caller keeps
+    // whatever it had. Winsock is already up: init() runs WSAStartup before loadHosts(), which is
+    // the only caller inside the runtime, and getaddrinfo needs nothing earlier than that.
+    uint32_t parseServerAddress(const std::string &value)
+    {
+        if (const uint32_t ip = parseIp(value))
+            return ip;
+
+        addrinfo hints{};
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        addrinfo *res = nullptr;
+        uint32_t ip = 0;
+        if (getaddrinfo(value.c_str(), nullptr, &hints, &res) == 0 && res)
+        {
+            for (const addrinfo *p = res; p; p = p->ai_next)
+            {
+                if (p->ai_family == AF_INET && p->ai_addr)
+                {
+                    ip = ntohl(reinterpret_cast<const sockaddr_in *>(p->ai_addr)->sin_addr.s_addr);
+                    break;
+                }
+            }
+        }
+        if (res)
+            freeaddrinfo(res);
+        if (!ip)
+            std::cerr << "[socom2/hostnet] PS2X_SOCOM2_SERVER=\"" << value
+                      << "\" is neither an IPv4 address nor a name that resolves; ignoring it"
+                      << std::endl;
+        return ip;
     }
 
     bool init()

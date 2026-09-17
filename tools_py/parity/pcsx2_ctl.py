@@ -15,8 +15,9 @@ macros that play research/18 section 1's click path with its timings:
 
 Instances: A = tools/pcsx2 (PINE 28011, retail pnach), B = tools/pcsx2_b (PINE 28012, clientB pnach with the
 3658->3660 UDP shift). Windows are pinned topmost and placed side by side so PrintWindow's desktop fallback never
-grabs the other one. The macros need the DNS stub (`tools_py.parity.dns_stub --bind 192.168.2.10 --answer
-192.168.2.10`), the Horizon stack, and a card carrying a network configuration (research/18 section 1 c).
+grabs the other one. The macros need the DNS stub (`tools_py.parity.dns_stub`, which binds and answers
+SOCOM_SERVER_IP -- see scripts/parity/env.sh), the Horizon stack, and a card carrying a network configuration
+(research/18 section 1 c).
 """
 import argparse
 import ctypes

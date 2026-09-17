@@ -166,6 +166,23 @@ namespace
         return selected;
     }
 
+    // A text field that cannot be typed in: the address a preset decides. Same box, dimmed text, no cursor, and it
+    // never takes the keyboard (clicks fall through).
+    void readOnlyField(Rectangle r, const char *value)
+    {
+        DrawRectangleRec(r, kField);
+        DrawRectangleLinesEx(r, 1, Color{60, 62, 66, 255});
+        // trimmed from the end, not the start: the front of an address is the part that identifies it
+        std::string shown = value;
+        if (MeasureText(shown.c_str(), 16) > r.width - 12)
+        {
+            while (!shown.empty() && MeasureText((shown + "...").c_str(), 16) > r.width - 12)
+                shown.pop_back();
+            shown += "...";
+        }
+        DrawText(shown.c_str(), static_cast<int>(r.x) + 6, static_cast<int>(r.y) + 6, 16, kDim);
+    }
+
     // A single-line text field; `active` is the field that takes the keyboard.
     void textField(Rectangle r, std::string &value, int id, int &active, bool &changed)
     {
@@ -329,6 +346,9 @@ int main(int argc, char **argv)
     const std::vector<const char *> scaleLabels = {"Native", "Sharp (2x)", "Sharper (3x, experimental)"};
     const std::vector<const char *> filterLabels = {"linear", "integer", "point"};
     const std::vector<const char *> sizeLabels = {"640x448", "1280x896", "fullscreen"};
+    std::vector<const char *> presetLabels;
+    for (const launcher::ServerPreset &p : launcher::kServerPresets)
+        presetLabels.push_back(p.label);
 
     // --screenshot <file.png>: draw thirty frames, save the window with raylib's own reader, exit (a GDI grab of a GL
     // window comes back white on this machine).
@@ -416,18 +436,38 @@ int main(int argc, char **argv)
         y += 218;
 
         // ---- Online ----
-        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 96, kPanel);
+        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 128, kPanel);
         panelTitle(24, y, "Online");
-        DrawText("Server", 24, static_cast<int>(y) + 34, 14, kDim);
         bool changed = false;
-        textField({100, y + 28, 260, 30}, config.server, 2, activeField, changed);
-        DrawText("Profile", 380, static_cast<int>(y) + 34, 14, kDim);
-        textField({440, y + 28, 200, 30}, config.profile, 3, activeField, changed);
-        if (checkbox(24, y + 68, "second instance on this machine (for testing)", config.secondInstance))
+        int presetSel = static_cast<int>(presetLabels.size()) - 1;   // "Custom" unless one of the ids matches
+        for (size_t i = 0; i < presetLabels.size(); ++i)
+            if (config.serverPreset == launcher::kServerPresets[i].id)
+                presetSel = static_cast<int>(i);
+        const int newPreset = radios(24, y + 26, presetLabels, presetSel);
+        if (newPreset != presetSel)
+        {
+            config.serverPreset = launcher::kServerPresets[newPreset].id;
+            changed = true;
+        }
+        const launcher::ServerPreset *preset = launcher::findServerPreset(config.serverPreset);
+        const bool ownAddress = preset == nullptr || preset->address[0] == '\0';
+        DrawText("Server", 24, static_cast<int>(y) + 56, 14, kDim);
+        if (ownAddress)
+            textField({100, y + 50, 310, 30}, config.server, 2, activeField, changed);
+        else
+        {
+            if (activeField == 2)
+                activeField = -1;   // the preset took the field away mid-edit
+            readOnlyField({100, y + 50, 310, 30}, preset->address);
+        }
+        DrawText("Profile", 430, static_cast<int>(y) + 56, 14, kDim);
+        textField({490, y + 50, 200, 30}, config.profile, 3, activeField, changed);
+        DrawText(preset ? preset->note : "", 100, static_cast<int>(y) + 84, 14, kDim);
+        if (checkbox(24, y + 100, "second instance on this machine (for testing)", config.secondInstance))
             changed = true;
         if (changed)
             dirty = true;
-        y += 108;
+        y += 130;
 
         // ---- Launch ----
         const bool running = game.running();

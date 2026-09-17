@@ -20,10 +20,23 @@
   Everything runs with WorkingDirectory = this folder, because the servers resolve
   plugins/, logs/, files/ and simulated.db relative to the current directory.
 
+  ADVERTISED ADDRESS: the servers hand clients an address to come back on (Medius PublicIpOverride/NATIp and
+  the MUIS universe Endpoint). That address must be the one clients can reach - the host's LAN IP on a LAN,
+  its public IP for a hosted server - and it is NOT the same thing as the bind address (everything binds
+  0.0.0.0). -PublicIp rewrites exactly those fields in medius.json, dme.json and muis.json before starting;
+  -ShowIp (also printed by -Status) shows what is currently advertised. dme.json's MPS.Ip stays 127.0.0.1:
+  that is DME reaching Medius on the same machine, not something a client ever sees.
+
 .PARAMETER Mode      Separate | Unified  (default Separate)
 .PARAMETER Build     Run "dotnet build -c Release" on the solution first.
 .PARAMETER Stop      Stop previously started servers (uses logs\pids.json, falls back to process names).
-.PARAMETER Status    Show which Horizon ports are currently listening.
+.PARAMETER Status    Show which Horizon ports are currently listening (and what address is advertised).
+.PARAMETER PublicIp  Rewrite the advertised address in medius.json (PublicIpOverride, NATIp), dme.json
+                     (PublicIpOverride) and muis.json (Universes[..].Endpoint) to this IP or hostname before
+                     starting. Without it the config files are left exactly as they are.
+.PARAMETER ShowIp    Print the currently advertised address from those three files and exit.
+.PARAMETER ConfigDir Directory holding the *.json server configs (default: <this folder>\config).
+.PARAMETER NoStart   Do the -PublicIp rewrite (and/or -ShowIp) and exit without starting anything.
 .PARAMETER WaitSeconds  How long to poll for the listeners after starting (default 30).
 
 .EXAMPLE
@@ -31,6 +44,9 @@
   .\start-servers.ps1 -Status
   .\start-servers.ps1 -Stop
   .\start-servers.ps1 -Mode Unified -Build
+  .\start-servers.ps1 -ShowIp                         # what will clients be told?
+  .\start-servers.ps1 -PublicIp 203.0.113.7           # hosted box: advertise its public IP, then start
+  .\start-servers.ps1 -PublicIp 192.168.1.50 -NoStart # rewrite the configs only
 #>
 [CmdletBinding()]
 param(
@@ -39,13 +55,17 @@ param(
     [switch]$Build,
     [switch]$Stop,
     [switch]$Status,
+    [string]$PublicIp,
+    [switch]$ShowIp,
+    [string]$ConfigDir,
+    [switch]$NoStart,
     [int]$WaitSeconds = 30
 )
 
 $ErrorActionPreference = 'Stop'
 $ServerDir  = $PSScriptRoot
 $SrcDir     = Join-Path $ServerDir 'horizon-server'
-$ConfigDir  = Join-Path $ServerDir 'config'
+if (-not $ConfigDir) { $ConfigDir = Join-Path $ServerDir 'config' }
 $LogDir     = Join-Path $ServerDir 'logs'
 $PidFile    = Join-Path $LogDir 'pids.json'
 $BinRel     = 'bin\Release\net9.0'
@@ -71,6 +91,120 @@ $UdpPorts = [ordered]@{
     '10070' = 'NAT  (UDP)'
     '50000' = 'DME  UDP (game data, bound per client on demand)'
 }
+
+# --- advertised address -----------------------------------------------------
+# The fields the servers hand out to clients. dme.json's MPS.Ip is deliberately NOT in this set:
+# it is DME -> Medius on the same host and must stay 127.0.0.1.
+
+function Get-AdvertisedField {
+    # -> one object per advertised field: File (name), Path (full), Field (label), Value (current)
+    $out = @()
+
+    $p = Join-Path $ConfigDir 'medius.json'
+    if (Test-Path $p) {
+        $j = Get-Content $p -Raw | ConvertFrom-Json
+        foreach ($k in 'PublicIpOverride', 'NATIp') {
+            $out += [pscustomobject]@{ File = 'medius.json'; Path = $p; Field = $k; Value = $j.$k }
+        }
+    }
+
+    $p = Join-Path $ConfigDir 'dme.json'
+    if (Test-Path $p) {
+        $j = Get-Content $p -Raw | ConvertFrom-Json
+        $out += [pscustomobject]@{ File = 'dme.json'; Path = $p; Field = 'PublicIpOverride'; Value = $j.PublicIpOverride }
+    }
+
+    $p = Join-Path $ConfigDir 'muis.json'
+    if (Test-Path $p) {
+        $j = Get-Content $p -Raw | ConvertFrom-Json
+        if ($j.Universes) {
+            foreach ($appId in $j.Universes.PSObject.Properties.Name) {
+                $i = 0
+                foreach ($u in @($j.Universes.$appId)) {
+                    $out += [pscustomobject]@{ File = 'muis.json'; Path = $p; Field = ('Universes["{0}"][{1}].Endpoint' -f $appId, $i); Value = $u.Endpoint }
+                    $i++
+                }
+            }
+        }
+    }
+    return $out
+}
+
+function Show-AdvertisedIp {
+    Write-Host ''
+    Write-Host "Advertised address (what clients are told to connect back to), from $ConfigDir :" -ForegroundColor Cyan
+    $fields = Get-AdvertisedField
+    if (-not $fields) { Write-Warning "No server configs found in $ConfigDir"; return }
+    foreach ($f in $fields) {
+        Write-Host ("  {0,-11} {1,-32} {2}" -f $f.File, $f.Field, $f.Value)
+    }
+    $distinct = @($fields | Select-Object -ExpandProperty Value -Unique)
+    if ($distinct.Count -gt 1) {
+        Write-Warning ("Advertised addresses disagree ({0}) - clients will be sent to different hosts. Use -PublicIp <ip> to set all of them." -f ($distinct -join ', '))
+    }
+    # Host-local, never advertised - shown so nobody "fixes" it.
+    $p = Join-Path $ConfigDir 'dme.json'
+    if (Test-Path $p) {
+        $mps = (Get-Content $p -Raw | ConvertFrom-Json).MPS
+        Write-Host ("  {0,-11} {1,-32} {2}   (host-local: DME -> Medius, leave as 127.0.0.1)" -f 'dme.json', 'MPS.Ip', $mps.Ip) -ForegroundColor DarkGray
+    }
+    Write-Host ''
+}
+
+function Set-AdvertisedIp {
+    param([Parameter(Mandatory)][string]$Ip)
+
+    $ok = $false
+    $parsed = [System.Net.IPAddress]::Any
+    if ([System.Net.IPAddress]::TryParse($Ip, [ref]$parsed)) { $ok = $true }
+    elseif ($Ip -match '^(?=.{1,253}$)[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$') { $ok = $true }
+    if (-not $ok) { throw "-PublicIp '$Ip' is not a valid IP address or hostname." }
+
+    # Key -> the fields rewritten in that file. Only these keys are touched; every other key, and all
+    # whitespace/ordering, is preserved because the edit is a targeted rewrite of the raw text.
+    $plan = [ordered]@{
+        'medius.json' = @('PublicIpOverride', 'NATIp')
+        'dme.json'    = @('PublicIpOverride')          # NOT MPS.Ip
+        'muis.json'   = @('Endpoint')                  # Universes[..].Endpoint
+    }
+
+    $before = Get-AdvertisedField
+    $changedAny = $false
+
+    foreach ($file in $plan.Keys) {
+        $path = Join-Path $ConfigDir $file
+        if (-not (Test-Path $path)) { Write-Warning "config\$file is missing; not rewriting it."; continue }
+
+        $raw = Get-Content $path -Raw
+        $new = $raw
+        foreach ($key in $plan[$file]) {
+            $pattern = '("' + [regex]::Escape($key) + '"\s*:\s*")[^"]*(")'
+            $new = [regex]::Replace($new, $pattern, ('${1}' + $Ip + '${2}'))
+        }
+        if ($new -ceq $raw) {
+            Write-Host ("{0}: already {1}" -f $file, (@($before | Where-Object File -eq $file | Select-Object -ExpandProperty Value -Unique) -join ', '))
+            continue
+        }
+        try { $null = $new | ConvertFrom-Json }
+        catch { throw "Rewriting $file would produce invalid JSON; nothing was written. ($_)" }
+
+        [System.IO.File]::WriteAllText($path, $new, (New-Object System.Text.UTF8Encoding($false)))
+        $changedAny = $true
+        foreach ($f in $before | Where-Object { $_.File -eq $file -and $_.Value -ne $Ip }) {
+            Write-Host ("{0}: {1} -> {2}" -f $f.File, $f.Field, $Ip) -ForegroundColor Green
+        }
+    }
+
+    if ($changedAny) {
+        $mpsPath = Join-Path $ConfigDir 'dme.json'
+        if (Test-Path $mpsPath) {
+            $mpsIp = (Get-Content $mpsPath -Raw | ConvertFrom-Json).MPS.Ip
+            if ($mpsIp -ne '127.0.0.1') { Write-Warning "dme.json MPS.Ip is $mpsIp (expected 127.0.0.1)." }
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
 
 function Show-Status {
     Write-Host ''
@@ -145,8 +279,11 @@ function Start-One {
 
 # ---------------------------------------------------------------------------
 
-if ($Status) { Show-Status; return }
-if ($Stop)   { Stop-Servers; return }
+if ($Stop)     { Stop-Servers; return }
+if ($PublicIp) { Set-AdvertisedIp -Ip $PublicIp }
+if ($Status)   { Show-AdvertisedIp; Show-Status; return }
+if ($ShowIp)   { Show-AdvertisedIp; return }
+if ($NoStart)  { Write-Host 'NoStart: configuration only, no servers were started.'; return }
 
 if ($Build) {
     Write-Host 'Building Horizon.Server.sln (Release)...' -ForegroundColor Cyan
@@ -169,6 +306,8 @@ if (Test-Path $PidFile) {
     Write-Warning 'pids.json exists - stopping previous instance first.'
     Stop-Servers
 }
+
+Show-AdvertisedIp
 
 $started = @()
 switch ($Mode) {

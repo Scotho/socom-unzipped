@@ -174,8 +174,10 @@ class DryRunTest(unittest.TestCase):
         self.assertTrue(os.path.exists(TEMPLATE))
         with open(TEMPLATE) as f:
             text = f.read()
+        with open(os.path.join(os.path.dirname(TEMPLATE), "env.sh")) as f:
+            text += f.read()                          # the shared instruments the template sources
         for need in ("pin_harness.sh", "PYTHONSAFEPATH=1", "run_detached.sh", "--purpose launch-ladder",
-                     "PS2X_GS_STATS=1", "0x4365c0:1", "--route"):
+                     "PS2X_GS_STATS=1", "0x4365c0:1", "--route", "env.sh"):
             self.assertIn(need, text)
         p = subprocess.run([BASH, TEMPLATE, "--dry-run"], capture_output=True, text=True, cwd=ROOT, timeout=180)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)

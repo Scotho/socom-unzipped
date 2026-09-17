@@ -150,6 +150,22 @@ namespace launcher
         };
     }
 
+    const ServerPreset *findServerPreset(const std::string &id)
+    {
+        for (const ServerPreset &p : kServerPresets)
+            if (id == p.id)
+                return &p;
+        return nullptr;
+    }
+
+    std::string effectiveServer(const Config &c)
+    {
+        const ServerPreset *preset = findServerPreset(c.serverPreset);
+        if (preset && preset->address[0] != '\0')
+            return preset->address;
+        return c.server.empty() ? std::string("127.0.0.1") : c.server;
+    }
+
     std::string toJson(const Config &c)
     {
         std::string out = "{\n";
@@ -161,6 +177,7 @@ namespace launcher
         char sens[32];
         std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
         out += std::string("  \"mouseSensitivity\": ") + sens + ",\n";
+        out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
         out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + "\n";
@@ -182,7 +199,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "profile")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -191,6 +208,8 @@ namespace launcher
                     else if (key == "presentFilter") c.presentFilter = v;
                     else if (key == "windowSize") c.windowSize = v;
                     else if (key == "server") c.server = v;
+                    // a preset we do not know (an older or newer build's) falls back to the typed address
+                    else if (key == "serverPreset") c.serverPreset = findServerPreset(v) ? v : std::string("custom");
                     else c.profile = v;
                 }
                 else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance")
@@ -220,10 +239,15 @@ namespace launcher
     {
         std::vector<std::string> env;
         env.push_back("PS2X_SOCOM2_PAD=1");
+        // The runtime mounts the disc from PS2X_CD_IMAGE (game_overrides_socom2.cpp,
+        // configureCdImage); without it the verified ISO is ignored and the runtime falls
+        // back to hunting for any .iso next to the ELF.
+        if (!c.isoPath.empty())
+            env.push_back("PS2X_CD_IMAGE=" + c.isoPath);
         env.push_back("PS2X_GS_SCALE=" + std::to_string(c.gsScale < 1 ? 1 : c.gsScale));
         env.push_back("PS2X_PRESENT_FILTER=" + (c.presentFilter.empty() ? std::string("linear") : c.presentFilter));
         env.push_back("PS2X_WINDOW_SIZE=" + (c.windowSize.empty() ? std::string("640x448") : c.windowSize));
-        env.push_back("PS2X_SOCOM2_SERVER=" + (c.server.empty() ? std::string("127.0.0.1") : c.server));
+        env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
         const std::string profile = c.profile.empty() ? std::string("player") : c.profile;
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
         if (c.mouseLook)

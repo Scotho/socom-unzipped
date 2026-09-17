@@ -209,9 +209,13 @@ class FrostfireScriptLaunches(unittest.TestCase):
     pre-launch refusal with the default (armed) offsets. Its exports are read from the file, not copied."""
 
     def exports(self):
-        import re
-        text = open(os.path.join("scripts", "parity", "online_match_frostfire.sh")).read()
-        return dict(re.findall(r'(PS2X_[A-Z0-9_]+)="?([^"\s]*)"?', text))
+        # The exports a launch gets: scripts/parity/env.sh (the shared instruments, sourced by every online script)
+        # plus the script's own -- evaluated by bash on a clean environment, exactly as a launch evaluates them.
+        import subprocess
+        script = ("unset PS2X_PEEK PS2X_CALL_TRACE PS2X_CALL_TRACE_EVERY PS2X_SOCOM2_SERVER PS2X_GS_STATS; "
+                  ". scripts/parity/env.sh; export PS2X_SOCOM2_RSA_KEY_B=b; env | grep '^PS2X_'")
+        p = subprocess.run(["bash", "-c", script], capture_output=True, text=True, cwd=os.getcwd())
+        return dict(line.split("=", 1) for line in p.stdout.splitlines() if "=" in line)
 
     def test_committed_script_is_not_refused(self):
         env = self.exports()

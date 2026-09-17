@@ -1,10 +1,16 @@
 """Tiny UDP DNS responder for the PCSX2 guest: answers the SOCOM II / DNAS hostnames with the
 Horizon host address and NXDOMAIN for everything else. Run as Administrator (binds UDP 53 on the
-LAN address). Usage: python -m tools_py.parity.dns_stub [--bind 192.168.2.10] [--answer 192.168.2.10]
+LAN address). Usage: python -m tools_py.parity.dns_stub [--bind IP] [--answer IP]
+
+--bind/--answer default to the SOCOM_SERVER_IP environment variable (scripts/parity/env.sh, the one knob
+that points the harness at another server), or 192.168.2.10 -- the owner's machine -- when it is unset.
 """
 import argparse
+import os
 import socket
 import struct
+
+DEFAULT_IP = os.environ.get("SOCOM_SERVER_IP", "192.168.2.10")
 
 NAMES = {
     "socom2-prod.pdonline.scea.com",
@@ -30,8 +36,8 @@ def parse_name(data, off):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bind", default="192.168.2.10")
-    ap.add_argument("--answer", default="192.168.2.10")
+    ap.add_argument("--bind", default=DEFAULT_IP)
+    ap.add_argument("--answer", default=DEFAULT_IP)
     ap.add_argument("--port", type=int, default=53)
     ap.add_argument("--all", action="store_true", help="answer every name with --answer")
     a = ap.parse_args()
