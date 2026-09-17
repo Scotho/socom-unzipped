@@ -40,6 +40,12 @@ online server is Horizon Private Server configured for SOCOM II under `server/`.
 | `ghidra_proj/` (ignored) | Ghidra project `socom` (programs: SCUS_972.75, DNAS.BIN/.dec.bin, socom2_game.elf, 989SND.IRX) |
 | `dist/` (ignored) | `socom2.exe` + DLLs |
 
+## Run it (players)
+`scripts/make_portable.sh` builds `dist/portable/socom2/` (and a zip) from a finished build: the game, its DLLs, the
+launcher, a README and the licences, with empty `cards/` and `logs/`. In that folder, **run
+`socom_unzipped_launcher.exe`**, point it at your SOCOM II ISO (NTSC r0001), pick video and controller settings, Launch.
+Nothing is installed; delete the folder to uninstall.
+
 ## Build and run (developer machine)
 ```
 ./build.sh recomp      # regenerate ELF, normalize the function map, run ps2_recomp (~10 s)

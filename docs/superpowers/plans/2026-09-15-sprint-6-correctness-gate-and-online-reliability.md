@@ -458,7 +458,7 @@ to `logs/run_<stamp>.log`, and stays open with a "Copy diagnostics" button (zips
 the parser and a title-gate run to prove 640×448 unchanged; (2) the ISO check as a pure function (`launcher/iso.cpp`)
 with a test on a synthetic ISO directory and the real disc; (3) the raylib window with the four panels, `config.json`
 round-trip tested; (4) the owner's hands-on test with the Xbox controller; (5) the portable folder (packaging §2 A)
-gains the launcher and README says "run the launcher". Ships with defaults that reproduce today's behaviour.
+gains the launcher and README says "run the launcher" *(done 2026-09-17: `scripts/make_portable.sh` -> `dist/portable/socom2/` + zip; `test_make_portable`)*. Ships with defaults that reproduce today's behaviour.
 
 ### Task 9: Close-out
 
