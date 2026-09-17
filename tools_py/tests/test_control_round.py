@@ -30,8 +30,10 @@ def name_words(text):
     return list(struct.unpack("<III", (text.encode("ascii") + b"\0" * 12)[:12]))
 
 
-def items(round_count=0, game_over=0, kills=0, ai00=1, ai08=1, team=0, clock="03:00", health=1.0, alive=1):
+def items(round_count=0, game_over=0, kills=0, ai00=1, ai08=1, team=0, clock="03:00", health=1.0, alive=1,
+          y=100.0):
     block = [M.ACTOR_VTABLE] + [0] * 63
+    block[vc.ACTOR_POS_WORDS[1]] = f2w(y)                # actor +0x20: the player's height
     out = [(0x416054, [0, 0, 0]), (ACTOR, block),
            (ACTOR + 0xF78, [(alive & 0xFF) << 16] + [0] * 23),
            (ACTOR + 0x1044, [f2w(health)] + [0] * 7)]
@@ -177,6 +179,23 @@ class ScoreTest(unittest.TestCase):
         self.assertEqual(score["sides"]["A"]["alive_changes"], 0)
         self.assertTrue(M.control_round_ok(score, (1, "A", "x")))
 
+    def test_fall_damage_is_not_a_counter_step(self):
+        # Foxhunt (research/33): B strafed off a 110-unit drop, health 1.0 -> 0.738, no kill. A health drop within
+        # the grace window after a fall the driver saw is fall damage, reported apart; the negative control holds.
+        rows = ([(t, state(y=167.0)) for t in range(0, 224)] +
+                [(224, state(y=57.0)), (225, state(y=57.0, health=0.738))] +
+                [(t, state(y=57.0, health=0.738)) for t in range(226, 300)] +
+                [(300, state(y=57.0, health=0.738, round_count=1))])
+        score = M.score_control_round({"A": rows}, end_t=300, falls=[(224, "A", 167.0, 57.0)])
+        side = score["sides"]["A"]
+        self.assertEqual((side["health_changes"], side["fall_damage"], side["falls"]), (0, 1, 1))
+        self.assertTrue(M.control_round_ok(score, (300, "A", "mp_round_count 0->1")))
+        self.assertIn("fall_damage=A:1", M.control_round_result_line(score, (300, "A", "x")))
+        # the same drop with no fall seen stays a health change, and the control fails
+        score = M.score_control_round({"A": rows}, end_t=300)
+        self.assertEqual(score["sides"]["A"]["health_changes"], 1)
+        self.assertFalse(M.control_round_ok(score, (300, "A", "x")))
+
     def test_no_round_end_is_not_ok(self):
         score = M.score_control_round({"A": [(0, state())]}, end_t=None)
         self.assertFalse(M.control_round_ok(score, None))
@@ -210,6 +229,26 @@ class LoopTest(unittest.TestCase):
         self.assertLess(max(b - a for a, b in zip(b_starts, b_starts[1:])), 2.0)
         self.assertTrue(M.control_round_ok(score, end))
         self.assertGreater(series["A"][-1][0], end[0])  # observed after the signal
+
+    def test_a_fall_releases_the_pad_and_turns_back(self):
+        # the actor drops 110 units at t=20: the driver logs the fall, holds the pad neutral for a moment, and the
+        # side's next legs go the other way (back from the ledge)
+        series, end, score, pads, lines = run_loop(
+            lambda t: dict(clock=clock_str(t), round_count=int(t >= 61.0), y=57.0 if t >= 20.0 else 167.0))
+        fall_lines = [ln for ln in lines if "FALL" in ln]
+        self.assertEqual(len(fall_lines), 2, lines)          # both sides share the fake schedule
+        self.assertEqual({score["sides"][s]["falls"] for s in ("A", "B")}, {1})
+        # the drop lands during the first leg that ends after t=20; the fall is seen when that leg ends, and the
+        # next pad must wait out the neutral hold
+        leg = min((p for p in pads if p[1] + p[4] >= 20.0), key=lambda p: p[1] + p[4])
+        leg_end = leg[1] + leg[4]
+        gap = min(p[1] for p in pads if p[1] >= leg_end) - leg_end
+        self.assertGreaterEqual(gap, M.CONTROL_ROUND_FALL_HOLD_S - 1e-6, "no neutral hold after the fall")
+        a_before = [p[3][0] for p in pads if p[0] == "A" and p[1] < 20.0]
+        a_after = [p[3][0] for p in pads if p[0] == "A" and p[1] > 20.0]
+        # before: left, left, right, right, ...; after the flip the phase reverses relative to where it would be
+        self.assertTrue(a_before and a_after)
+        self.assertTrue(M.control_round_ok(score, end))
 
     def test_cap_without_a_round_end(self):
         series, end, score, pads, lines = run_loop(lambda t: dict(clock="05:00"), cap=30.0)

@@ -2786,6 +2786,13 @@ CONTROL_ROUND_CAP_S = 420.0
 CONTROL_ROUND_LEG_S = (0.5, 0.8, 0.6, 0.9)   # cycled; inside the brief's 0.4-1.0 s lx legs
 CONTROL_ROUND_AFTER_S = 15.0                  # rows kept after the round-end signal (reported, never scored)
 CONTROL_ROUND_POLL_S = 0.25
+# Foxhunt (research/33): the blind strafe legs walked B off a 110-unit drop (y 167 -> 57 in 1.2 s) and the fall damage
+# failed the negative control. A height drop of this much between two reads is a fall: the driver holds the pad
+# neutral, the side's legs turn back, and a health drop within the grace window is scored as fall damage, apart.
+CONTROL_ROUND_FALL_DROP_U = 30.0
+CONTROL_ROUND_FALL_HOLD_S = 1.0
+CONTROL_ROUND_FALL_GRACE_S = 3.0
+CONTROL_ROUND_HEIGHT_OFFSET = 0x20            # actor +0x20 = y (vc.ACTOR_POS_WORDS[1])
 CONTROL_ROUND_VALVES = ("mp_round_count", "mp_game_over", "total_mp_kills", "aiteam_00", "aiteam_08",
                         "player_team", "mp_major_game_state", "mp_minor_game_state")
 CONTROL_ROUND_STEP_VALVES = ("total_mp_kills", "aiteam_00", "aiteam_08")
@@ -2800,6 +2807,7 @@ def control_round_state(items, health_offset=DEFAULT_HEALTH_OFFSET, alive_offset
                     else vc.NoData("health disarmed"))
     st["alive"] = (vc.row_actor_field(items, alive_offset, "u8") if alive_offset is not None
                    else vc.NoData("alive disarmed"))
+    st["y"] = vc.row_actor_field(items, CONTROL_ROUND_HEIGHT_OFFSET, "f32")
     return st
 
 
@@ -2832,14 +2840,18 @@ def control_round_end(series):
     return best
 
 
-def score_control_round(series, end_t=None):
+def score_control_round(series, end_t=None, falls=()):
     """-> dict: per side, the steps of total_mp_kills / aiteam_* (value changes between identified reads)
     and the health minimum and changes, counted strictly BEFORE the round-end time `end_t` (after it the
-    round resets its counters, which is not a kill); the same step counts after `end_t` are reported apart."""
+    round resets its counters, which is not a kill); the same step counts after `end_t` are reported apart.
+    `falls`: [(t, tag, y_before, y_after)] the driver saw; a health change on that side within
+    CONTROL_ROUND_FALL_GRACE_S after one is fall damage, counted apart from `health_changes`."""
     out = {"round_ended": end_t is not None, "sides": {}}
     for tag, rows in series.items():
         side = {"steps": {}, "steps_after_end": {}, "values": {}, "health_min": None,
-                "health_changes": 0, "alive_values": [], "alive_changes": 0}
+                "health_changes": 0, "alive_values": [], "alive_changes": 0,
+                "falls": sum(1 for f in falls if f[1] == tag), "fall_damage": 0}
+        fall_times = [f[0] for f in falls if f[1] == tag]
         prev = {}
         for t, st in rows:
             before = end_t is None or t < end_t
@@ -2859,7 +2871,10 @@ def score_control_round(series, end_t=None):
                 if side["health_min"] is None or h < side["health_min"]:
                     side["health_min"] = h
                 if "health" in prev and prev["health"] != h:
-                    side["health_changes"] += 1
+                    if any(0 <= t - ft <= CONTROL_ROUND_FALL_GRACE_S for ft in fall_times):
+                        side["fall_damage"] += 1
+                    else:
+                        side["health_changes"] += 1
                 prev["health"] = h
             al = st.get("alive")
             if _known(al) and before:
@@ -2877,14 +2892,17 @@ def score_control_round(series, end_t=None):
 def control_round_result_line(score, end):
     sides = sorted(score["sides"])
     kills = sum(score["sides"][s]["steps"]["total_mp_kills"] for s in sides)
+    falls = ",".join(f"{s}:{score['sides'][s].get('fall_damage', 0)}" for s in sides
+                     if score["sides"][s].get("falls"))
     ai = ",".join(f"{s}:{n}={score['sides'][s]['steps'][n]}" for s in sides for n in ("aiteam_00", "aiteam_08"))
     hmin = ",".join("n/a" if score["sides"][s]["health_min"] is None
                     else f"{score['sides'][s]['health_min']:g}" for s in sides)
     hch = ",".join(str(score["sides"][s]["health_changes"]) for s in sides)
     ach = ",".join(str(score["sides"][s]["alive_changes"]) for s in sides)
     sig = f" signal={end[2].replace(' ', '')} on={end[1]}" if end else ""
-    return (f"RESULT CONTROL-ROUND round_ended={'yes' if end else 'no'} kills_stepped={kills} "
+    line = (f"RESULT CONTROL-ROUND round_ended={'yes' if end else 'no'} kills_stepped={kills} "
             f"aiteam_stepped={ai} health_min={hmin} health_changes={hch} alive_changed={ach}{sig}")
+    return line + (f" fall_damage={falls}" if falls else "")
 
 
 def control_round_arg_problem(a):
@@ -2921,6 +2939,9 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
     tags = sorted(clients)
     series = {tag: [] for tag in tags}
     last = {tag: None for tag in tags}
+    last_y = {tag: None for tag in tags}
+    flipped = {tag: False for tag in tags}              # a fall reverses the side's leg direction
+    falls = []
 
     def collect():
         for tg in tags:
@@ -2938,13 +2959,27 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
         f"no buttons, cap {cap_s:g}s")
     while clock() - t0 < cap_s:
         tag = tags[i % len(tags)]
-        key = LATERAL_LEFT_KEY if (i // len(tags)) % 2 == 0 else LATERAL_RIGHT_KEY
+        left = ((i // len(tags)) % 2 == 0) != flipped[tag]
+        key = LATERAL_LEFT_KEY if left else LATERAL_RIGHT_KEY
         clients[tag].sh.pad(CONTROL_ROUND_LEG_S[i % len(CONTROL_ROUND_LEG_S)], sticks=[key])
         i += 1
         collect()
         end = control_round_end(series)
         if end is not None:
             break
+        for tg in tags:                                  # a height drop between two reads is a fall
+            st = series[tg][-1][1] if series[tg] else {}
+            y = st.get("y")
+            if not _known(y):
+                continue
+            if last_y[tg] is not None and last_y[tg] - y >= CONTROL_ROUND_FALL_DROP_U:
+                falls.append((clock(), tg, last_y[tg], y))
+                flipped[tg] = not flipped[tg]
+                log(f"CONTROL-ROUND FALL {tg}: y {last_y[tg]:.0f} -> {y:.0f} at T+{clock() - t0:.1f}s; pad neutral "
+                    f"{CONTROL_ROUND_FALL_HOLD_S:g}s, legs turn back")
+                wait(CONTROL_ROUND_FALL_HOLD_S)
+                collect()
+            last_y[tg] = y
         if i % 80 == 0:
             parts = []
             for tg in tags:
@@ -2961,7 +2996,7 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
             collect()
     else:
         log(f"CONTROL-ROUND cap {cap_s:g}s reached after {i} legs with no round-end signal")
-    score = score_control_round(series, end[0] if end else None)
+    score = score_control_round(series, end[0] if end else None, falls)
     return series, end, score
 
 
