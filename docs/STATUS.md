@@ -11,6 +11,20 @@
 
 
 
+## 2026-09-17 — Task 6b: control rounds on all twenty untested online maps — 18 of 20 play (research/33)
+
+`scripts/parity/online_control_queue.sh`, 00:14 → 04:45, exe `7b3816046a5bae9c` (research/34 fix), one launch per map plus a
+retry pass. **Sujo, Enowapi, Shadow Falls, Fish Hook, Crossroads, Sandstorm, Chain Reaction, Guidance, Blizzard, Abandoned,
+Desert Glory, Night Stalker, Rat's Nest, Bitter Jungle, Blood Lake, Death Trap, The Ruins and (on retry) The Mixer**: map
+verified by reference, both sides READY, both controllable on the precondition, the round ran to its clock with no kill.
+- **Foxhunt**: the round ran to its clock, but B took fall damage strafing off a drop (health 1.0 → 0.74 at T+224 s), so the
+  negative-control health bar failed — a harness matter (KNOWN §2).
+- **Requiem**: B's four holds net 13–38 u against the 40 u bar on both passes; B moves, on a guest clock at 0.38 s per wall
+  second (the sweep's slowest). The slow guest clock (research/34 §6), not the map (KNOWN §2).
+- Lobby flakes on the first pass (The Mixer: OSK typing; Foxhunt: OSK ENTER) were caught by the retry pass.
+- Sweep-wide: the guest clock runs at 0.42–0.90 s per wall second, the joiner often slower than the host.
+- Next per the owner's order: misc hardening, then Task 6c audio, Task 8b launcher.
+
 ## 2026-09-16 (night) — Task 6b's first maps froze at STARTING ROUND; it was the day's CLUT serials starving the guest clock, fixed
 
 Owner order: the untested online maps, control rounds. The Mixer and Crossroads reached gameplay frozen (banner up, clock running,
