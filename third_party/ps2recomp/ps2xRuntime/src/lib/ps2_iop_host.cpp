@@ -262,6 +262,16 @@ void PS2IopHostAdapter::audioCommand(uint32_t sid,
                                             receive.size);
 }
 
+void PS2IopHostAdapter::audioBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes)
+{
+    m_runtime.audioBackend().onBankLoaded(handle, block, blockBytes, vag, vagBytes);
+}
+
+void PS2IopHostAdapter::audioNotify(uint32_t function, const int32_t *args, size_t count)
+{
+    m_runtime.audioBackend().onNotify(function, args, count);
+}
+
 std::string PS2IopHostAdapter::hostPath(ps2x::iop::HostPathKind kind) const
 {
     const PS2Runtime::IoPaths &paths = PS2Runtime::getIoPaths();

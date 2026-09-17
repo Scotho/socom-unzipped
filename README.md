@@ -195,6 +195,9 @@ the default (1) is the 2026-09-08 behaviour, which ran an online round at two th
 section 6: 195 ms of VU1 and 290 ms of back-pressure per second excluded). `PS2X_CLOCK_CAP_MS=<ms>` still
 bounds a single gap (a stall must not become a 300 ms dt). `PS2X_CLOCK_TRACE=1` prints, once a second,
 `gap_ms` / `excluded_ms` / `lost_ms` beside the cycle clock.
+`PS2X_AUDIO_DUMP=<file.wav>` writes the 989snd mix (48 kHz stereo) as it is rendered -- bank sounds only until the
+VAG streams land (research/32 section 5); a run the harness kills leaves the WAV header's sizes at zero, so read
+the file by its length.
 `online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
 (default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
 move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and

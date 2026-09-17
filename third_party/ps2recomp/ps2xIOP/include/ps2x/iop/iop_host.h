@@ -68,6 +68,18 @@ namespace ps2x::iop
 
         virtual void audioCommand(uint32_t sid, uint32_t function, GuestBuffer send, GuestBuffer receive) = 0;
 
+        // 989snd host playback (research/32): a sound bank's block and VAG chunks as read from the disc, and the
+        // play family in host words -- for snd_PlaySoundVolPanPMPB {handle, bank, sound, vol, pan, pitchMod, pitchBend},
+        // the handle the module synthesised; for the rest the command's own argument words.
+        virtual void audioBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes)
+        {
+            (void)handle; (void)block; (void)blockBytes; (void)vag; (void)vagBytes;
+        }
+        virtual void audioNotify(uint32_t function, const int32_t *args, size_t count)
+        {
+            (void)function; (void)args; (void)count;
+        }
+
         virtual std::string hostPath(HostPathKind kind) const = 0;
         virtual std::string translateGuestPath(std::string_view path) const = 0;
         virtual uint64_t openHostFile(std::string_view path) = 0;

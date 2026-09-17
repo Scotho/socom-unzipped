@@ -4,6 +4,10 @@
 #include "MiniTest.h"
 #include "runtime/ps2_vag.h"
 #include "runtime/socom2_bank.h"
+#include "runtime/snd989_mixer.h"
+#include "runtime/ps2_audio.h"
+
+#include <cmath>
 
 #include <algorithm>
 #include <cstdio>
@@ -190,6 +194,216 @@ void register_socom2_audio_tests()
             for (int16_t s : run.pcm)
                 peak = std::max<int32_t>(peak, s < 0 ? -s : s);
             t.IsTrue(peak > 2000, "the sample has signal (peak " + std::to_string(peak) + ")");
+        });
+
+        tc.Run("note2Pitch: the SPU pitch of note 60 against HUDUI's tones matches 2^(semitones/12) to a unit, PS1 notes scaled by 44100/48000", [](TestCase &t)
+        {
+            auto expect = [](int centerNote, int centerFine, int note, int fine, bool ps1) -> double
+            {
+                // sceSdNote2Pitch adds the center fine to the played fine (a tuning offset), so the interval is
+                // (note - center) semitones plus (fine + centerFine) / 128.
+                const double semis = (note - centerNote) + (fine + centerFine) / 128.0;
+                double p = 4096.0 * std::pow(2.0, semis / 12.0);
+                if (ps1)
+                    p = std::floor(44100.0 * std::floor(p) / 48000.0);
+                return p;
+            };
+            // HUDUI sound 0 tone 0: center -58 / 66 (negative: not a PS1 note), played at note 60
+            const double e0 = expect(58, 66, 60, 0, false);
+            const uint16_t p0 = snd989::note2Pitch(-58, 66, 60, 0);
+            t.IsTrue(std::fabs(p0 - e0) <= 1.5, "center -58/66 at note 60: " + std::to_string(p0) + " vs " + std::to_string(e0));
+            t.Equals(static_cast<int>(snd989::note2Pitch(-60, 0, 60, 0)), 0x1000, "note at its own center is unity");
+            const double e1 = expect(99, 104, 60, 0, false);
+            const uint16_t p1 = snd989::note2Pitch(-99, 104, 60, 0);
+            t.IsTrue(std::fabs(p1 - e1) <= 1.5, "sound 16 tone: center -99/104 -> " + std::to_string(p1) + " vs " + std::to_string(e1));
+            const double e2 = expect(60, 0, 60, 0, true);
+            const uint16_t p2 = snd989::note2Pitch(60, 0, 60, 0);
+            t.IsTrue(std::fabs(p2 - e2) <= 1.5, "a PS1 note (center >= 0) is scaled by 44100/48000: " + std::to_string(p2) + " vs " + std::to_string(e2));
+            const double e3 = expect(58, 66, 62, 64, false);
+            const uint16_t p3 = snd989::note2Pitch(-58, 66, 62, 64);
+            t.IsTrue(std::fabs(p3 - e3) <= 1.5, "note 62 fine 64 (pitch mod applied by the caller): " + std::to_string(p3) + " vs " + std::to_string(e3));
+        });
+
+        tc.Run("Mixer: a HUDUI sound plays to its end and goes quiet; stop keys it off; volume and master volume gate it", [](TestCase &t)
+        {
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size()), "HUDUI loads");
+            t.Equals(mixer.bankCount(), static_cast<size_t>(1u), "one bank");
+            t.Equals(mixer.play(0x00a00001u, 8u, 0x400, -1, 0, 0), 0u, "an unknown bank plays nothing");
+            t.Equals(mixer.play(0x00a00000u, 99u, 0x400, -1, 0, 0), 0u, "an out-of-range sound plays nothing");
+            const uint32_t h = mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0);   // the HUD click: one TONE, one-shot
+            t.IsTrue(h != 0u && (h >> 24) == 5u, "a bank-sound handle (type 5)");
+            t.IsTrue(mixer.isPlaying(h), "playing right after play()");
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(1u), "one voice for the one tone");
+            std::vector<int16_t> buf(2 * 4096);
+            mixer.render(buf.data(), 4096);
+            double sum = 0.0;
+            int32_t peak = 0;
+            for (int16_t s : buf)
+            {
+                sum += static_cast<double>(s) * s;
+                peak = std::max<int32_t>(peak, s < 0 ? -s : s);
+            }
+            const double rms = std::sqrt(sum / buf.size());
+            t.IsTrue(peak > 500, "the first 4096 frames carry the click (peak " + std::to_string(peak) + ")");
+            t.IsTrue(rms > 50.0, "and its RMS is above the floor (" + std::to_string(rms) + ")");
+            // sound 8's sample is 4424 samples at ~1.156x: about 3830 frames; the envelope's release follows. Two seconds is plenty.
+            size_t framesUntilQuiet = 0;
+            for (int i = 0; i < 24 && mixer.isPlaying(h); ++i)
+            {
+                mixer.render(buf.data(), 4096);
+                framesUntilQuiet += 4096;
+            }
+            t.IsTrue(!mixer.isPlaying(h), "the one-shot ends on its own (" + std::to_string(framesUntilQuiet) + " more frames)");
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(0u), "no voice left");
+            t.Equals(mixer.activeHandlers(), static_cast<size_t>(0u), "no handler left");
+
+            // Stop: the voice releases and the handle dies within a second.
+            const uint32_t h2 = mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0);
+            mixer.render(buf.data(), 512);
+            mixer.stop(h2);
+            size_t after = 0;
+            for (int i = 0; i < 12 && mixer.isPlaying(h2); ++i)
+            {
+                mixer.render(buf.data(), 4096);
+                after += 4096;
+            }
+            t.IsTrue(!mixer.isPlaying(h2) && after <= 48000u, "stopped within a second of frames (" + std::to_string(after) + ")");
+
+            // Volume 0 is silence; so is master volume 0 on the sound's group.
+            const uint32_t h3 = mixer.play(0x00a00000u, 8u, 0, -1, 0, 0);
+            mixer.render(buf.data(), 4096);
+            int32_t peak3 = 0;
+            for (int16_t s : buf)
+                peak3 = std::max<int32_t>(peak3, s < 0 ? -s : s);
+            t.Equals(peak3, 0, "vol 0: silence");
+            mixer.stop(h3);
+            mixer.stopAll();
+            for (int i = 0; i < 12; ++i)
+                mixer.render(buf.data(), 4096);
+            mixer.setMasterVolume(16u, 0);
+            const uint32_t h4 = mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0);
+            mixer.render(buf.data(), 4096);
+            int32_t peak4 = 0;
+            for (int16_t s : buf)
+                peak4 = std::max<int32_t>(peak4, s < 0 ? -s : s);
+            t.Equals(peak4, 0, "master volume 0: silence");
+            t.IsTrue(mixer.isPlaying(h4), "... but the sound still runs");
+            mixer.setMasterVolume(16u, 0x400);
+            mixer.stopAll();
+        });
+
+        tc.Run("Mixer: pan puts the sound left or right; the sound's own pan is the default; SetVolPan moves it", [](TestCase &t)
+        {
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            snd989::Mixer mixer;
+            mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size());
+            auto energy = [&](int32_t pan, double &left, double &right)
+            {
+                const uint32_t h = mixer.play(0x00a00000u, 8u, 0x400, pan, 0, 0);
+                std::vector<int16_t> buf(2 * 2048);
+                mixer.render(buf.data(), 2048);
+                left = right = 0.0;
+                for (size_t i = 0; i < 2048; ++i)
+                {
+                    left += std::fabs(static_cast<double>(buf[2 * i]));
+                    right += std::fabs(static_cast<double>(buf[2 * i + 1]));
+                }
+                mixer.stopAll();
+                for (int i = 0; i < 12; ++i)
+                    mixer.render(buf.data(), 2048);
+                return h;
+            };
+            double l = 0, r = 0;
+            energy(-1, l, r);   // sound 8's own pan is 0: centre
+            t.IsTrue(l > 0 && r > 0 && std::fabs(l - r) < 0.05 * (l + r), "pan reset (-1) -> the sound's own pan 0: centred");
+            energy(270, l, r);
+            t.IsTrue(l > 4.0 * r, "pan 270 is hard left (L " + std::to_string(l) + " R " + std::to_string(r) + ")");
+            energy(90, l, r);
+            t.IsTrue(r > 4.0 * l, "pan 90 is hard right (L " + std::to_string(l) + " R " + std::to_string(r) + ")");
+            energy(0x167, l, r);
+            t.IsTrue(l > r && l < 2.0 * r, "pan 359 (the weapon bank's) is just left of centre");
+
+            const uint32_t h = mixer.play(0x00a00000u, 8u, 0x400, 0, 0, 0);
+            mixer.setVolPan(h, snd989::kVolDontChange, 270);
+            std::vector<int16_t> buf(2 * 2048);
+            mixer.render(buf.data(), 2048);
+            l = r = 0.0;
+            for (size_t i = 0; i < 2048; ++i)
+            {
+                l += std::fabs(static_cast<double>(buf[2 * i]));
+                r += std::fabs(static_cast<double>(buf[2 * i + 1]));
+            }
+            t.IsTrue(l > 4.0 * r, "SetVolPan to 270 moved the playing sound hard left");
+            mixer.stopAll();
+        });
+
+        tc.Run("Mixer: a multi-tone sound starts all its tones; pitch mod raises the pitch; unloadBank silences the bank", [](TestCase &t)
+        {
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            snd989::Mixer mixer;
+            mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size());
+            const uint32_t h = mixer.play(0x00a00000u, 0u, 0x400, -1, 0, 0);   // four TONE grains, delay 0
+            t.IsTrue(h != 0u, "sound 0 plays");
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(4u), "four voices, one per tone");
+            mixer.stopAll();
+            std::vector<int16_t> buf(2 * 4096);
+            for (int i = 0; i < 12; ++i)
+                mixer.render(buf.data(), 4096);
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(0u), "stopAll released every voice");
+
+            // Pitch mod +1200 (12 semitones in 1/128 units = 1536) plays the one-shot in about half the frames.
+            auto framesToEnd = [&](int32_t pm)
+            {
+                const uint32_t hh = mixer.play(0x00a00000u, 8u, 0x400, -1, pm, 0);
+                size_t frames = 0;
+                while (mixer.isPlaying(hh) && frames < 48000u * 4u)
+                {
+                    mixer.render(buf.data(), 256);
+                    frames += 256;
+                }
+                return frames;
+            };
+            const size_t f0 = framesToEnd(0);
+            const size_t f1 = framesToEnd(1536);
+            t.IsTrue(f1 < f0 && f1 > f0 / 4, "an octave up ends in about half the frames (" + std::to_string(f1) + " vs " + std::to_string(f0) + ")");
+
+            const uint32_t h5 = mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0);
+            mixer.unloadBank(0x00a00000u);
+            t.Equals(mixer.bankCount(), static_cast<size_t>(0u), "bank gone");
+            t.IsTrue(!mixer.isPlaying(h5), "its sounds stop with it");
+            t.Equals(mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0), 0u, "and it no longer plays");
+        });
+
+        tc.Run("PS2AudioBackend routes a bank and the play family from the IOP module into the mixer", [](TestCase &t)
+        {
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            PS2AudioBackend backend;   // no audio device: the mix stream stays closed, the mixer still runs
+            backend.onBankLoaded(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size());
+            const int32_t play[7] = {0x05010001, 0x00a00000, 8, 0x400, -1, 0, 0};   // the module's handle first
+            backend.onNotify(0x12u, play, 7u);
+            t.Equals(backend.mixerActiveVoices(), static_cast<size_t>(1u), "snd_PlaySoundVolPanPMPBNoReturn started the tone");
+            t.IsTrue(backend.mixerIsPlaying(0x05010001u), "under the module's handle");
+            std::vector<int16_t> buf(2 * 2048);
+            backend.mixerRender(buf.data(), 2048);
+            int32_t peak = 0;
+            for (int16_t v : buf)
+                peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+            t.IsTrue(peak > 500, "the mix has signal");
+            const int32_t stop[1] = {0x05010001};
+            backend.onNotify(0x15u, stop, 1u);
+            for (int i = 0; i < 12; ++i)
+                backend.mixerRender(buf.data(), 4096);
+            t.IsTrue(!backend.mixerIsPlaying(0x05010001u), "snd_StopSound keyed it off");
+            const int32_t unload[1] = {0x00a00000};
+            backend.onNotify(0x06u, unload, 1u);
+            backend.onNotify(0x12u, play, 7u);
+            t.Equals(backend.mixerActiveVoices(), static_cast<size_t>(0u), "after snd_UnloadBank the bank plays nothing");
         });
     });
 }

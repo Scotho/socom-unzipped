@@ -1,6 +1,9 @@
 #ifndef PS2_AUDIO_H
 #define PS2_AUDIO_H
 
+#include "runtime/snd989_mixer.h"
+
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <mutex>
@@ -23,7 +26,15 @@ public:
               uint32_t voiceIndex = 0xFFFFFFFFu);
     void stop(uint32_t voiceId);
     void stopAll();
-    void setAudioReady(bool ready) { m_audioReady = ready; }
+    void setAudioReady(bool ready);
+
+    // 989snd (research/32): a bank's bytes from the IOP module, and the play family in host words
+    // (fno 0x11/0x12 = {handle, bank, sound, vol, pan, pitchMod, pitchBend}; the rest = the command's argument words).
+    void onBankLoaded(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes);
+    void onNotify(uint32_t function, const int32_t *args, size_t count);
+    size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
+    bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
+    void mixerRender(int16_t *interleaved, size_t frames);
 
 private:
     struct DecodedSample
@@ -35,6 +46,9 @@ private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
     bool m_audioReady = false;
+    snd989::Mixer m_mixer;
+    void openMixerStream();
+    void closeMixerStream();
     uint32_t m_mostRecentSampleKey = 0;
     std::vector<DecodedSample> m_loadOrderSamples;
     std::vector<uint32_t> m_loadOrderSampleKeys;

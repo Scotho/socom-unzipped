@@ -1,3 +1,7 @@
+#include <cstdio>
+#include <string>
+#include <iostream>
+#include <cstdlib>
 #include "runtime/ps2_audio.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_host_backend.h"
@@ -58,7 +62,8 @@ namespace
         p[41] = static_cast<uint8_t>(dataSize >> 8);
         p[42] = static_cast<uint8_t>(dataSize >> 16);
         p[43] = static_cast<uint8_t>(dataSize >> 24);
-        std::memcpy(p + 44, pcm, dataSize);
+        if (pcm && dataSize)
+            std::memcpy(p + 44, pcm, dataSize);
         return wav;
     }
 }
@@ -71,6 +76,13 @@ namespace ps2_vag
 
 struct PS2AudioBackend::Impl
 {
+    // The 989snd mix: one 48 kHz stereo stream fed from the audio thread (research/32 section 4).
+    AudioStream mixStream{};
+    bool mixStreamOpen = false;
+    FILE *dumpFile = nullptr;           // PS2X_AUDIO_DUMP=<wav>: the mix, written as it is rendered (the harness kills the process)
+    size_t dumpFrames = 0;
+    std::string dumpPath;
+    std::mutex dumpMutex;
     struct TrackedSound
     {
         Sound snd;
@@ -85,6 +97,7 @@ PS2AudioBackend::PS2AudioBackend() : m_impl(std::make_unique<Impl>())
 
 PS2AudioBackend::~PS2AudioBackend()
 {
+    closeMixerStream();
     if (m_impl)
         stopAll();
 }
@@ -325,4 +338,154 @@ void PS2AudioBackend::stopAll()
     }
     m_impl->activeSounds.clear();
 #endif
+}
+
+// ---- 989snd -------------------------------------------------------------------------------------
+
+namespace
+{
+    PS2AudioBackend *g_mixStreamOwner = nullptr;
+    constexpr size_t kDumpMaxFrames = 48000u * 600u;   // ten minutes
+
+    void mixStreamCallback(void *bufferData, unsigned int frames)
+    {
+        if (g_mixStreamOwner)
+            g_mixStreamOwner->mixerRender(static_cast<int16_t *>(bufferData), frames);
+    }
+
+    std::vector<uint8_t> buildStereoWav(const int16_t *pcm, size_t frames, uint32_t sampleRate)
+    {
+        const uint32_t dataSize = static_cast<uint32_t>(frames * 4);
+        std::vector<uint8_t> wav(44 + dataSize);
+        uint8_t *p = wav.data();
+        auto put32 = [&](size_t at, uint32_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); p[at + 2] = static_cast<uint8_t>(v >> 16); p[at + 3] = static_cast<uint8_t>(v >> 24); };
+        auto put16 = [&](size_t at, uint16_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); };
+        std::memcpy(p, "RIFF", 4);
+        put32(4, 36 + dataSize);
+        std::memcpy(p + 8, "WAVEfmt ", 8);
+        put32(16, 16);
+        put16(20, 1);
+        put16(22, 2);
+        put32(24, sampleRate);
+        put32(28, sampleRate * 4);
+        put16(32, 4);
+        put16(34, 16);
+        std::memcpy(p + 36, "data", 4);
+        put32(40, dataSize);
+        std::memcpy(p + 44, pcm, dataSize);
+        return wav;
+    }
+}
+
+void PS2AudioBackend::setAudioReady(bool ready)
+{
+    m_audioReady = ready;
+    if (ready)
+        openMixerStream();
+    else
+        closeMixerStream();
+}
+
+void PS2AudioBackend::openMixerStream()
+{
+    if (!m_impl || m_impl->mixStreamOpen)
+        return;
+    if (const char *dump = std::getenv("PS2X_AUDIO_DUMP"))
+    {
+        m_impl->dumpPath = dump;
+        m_impl->dumpFile = std::fopen(dump, "wb");
+        if (m_impl->dumpFile)
+        {
+            const std::vector<uint8_t> header = buildStereoWav(nullptr, 0, snd989::kSampleRate);   // sizes patched on close; a killed run reads by file length
+            std::fwrite(header.data(), 1, 44, m_impl->dumpFile);
+        }
+    }
+    SetAudioStreamBufferSizeDefault(1024);
+    m_impl->mixStream = LoadAudioStream(snd989::kSampleRate, 16, 2);
+    if (!IsAudioStreamValid(m_impl->mixStream))
+        return;
+    g_mixStreamOwner = this;
+    SetAudioStreamCallback(m_impl->mixStream, mixStreamCallback);
+    PlayAudioStream(m_impl->mixStream);
+    m_impl->mixStreamOpen = true;
+    std::cout << "[audio] 989snd mix stream open (" << snd989::kSampleRate << " Hz stereo"
+              << (m_impl->dumpPath.empty() ? "" : ", dump " + m_impl->dumpPath) << ")" << std::endl;
+}
+
+void PS2AudioBackend::closeMixerStream()
+{
+    if (!m_impl || !m_impl->mixStreamOpen)
+        return;
+    StopAudioStream(m_impl->mixStream);
+    g_mixStreamOwner = nullptr;
+    UnloadAudioStream(m_impl->mixStream);
+    m_impl->mixStreamOpen = false;
+    std::lock_guard<std::mutex> lock(m_impl->dumpMutex);
+    if (m_impl->dumpFile)
+    {
+        const uint32_t dataSize = static_cast<uint32_t>(m_impl->dumpFrames * 4);
+        const std::vector<uint8_t> header = buildStereoWav(nullptr, m_impl->dumpFrames, snd989::kSampleRate);
+        std::fseek(m_impl->dumpFile, 0, SEEK_SET);
+        std::fwrite(header.data(), 1, 44, m_impl->dumpFile);
+        std::fclose(m_impl->dumpFile);
+        m_impl->dumpFile = nullptr;
+        std::cout << "[audio] wrote " << m_impl->dumpPath << " (" << m_impl->dumpFrames << " frames, " << dataSize << " bytes)" << std::endl;
+    }
+}
+
+void PS2AudioBackend::onBankLoaded(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes)
+{
+    const bool ok = m_mixer.loadBank(handle, block, blockBytes, vag, vagBytes);
+    std::cout << "[audio] 989snd bank " << std::hex << handle << std::dec << (ok ? " loaded" : " rejected") << " (block "
+              << blockBytes << " B, vag " << vagBytes << " B)" << std::endl;
+}
+
+void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t count)
+{
+    auto arg = [&](size_t i) { return i < count ? args[i] : 0; };
+    switch (function)
+    {
+    case 0x11u:
+    case 0x12u:   // snd_PlaySoundVolPanPMPB[NoReturn]: {handle, bank, sound, vol, pan, pitchMod, pitchBend}
+        if (count >= 7)
+            m_mixer.playWithHandle(static_cast<uint32_t>(arg(0)), static_cast<uint32_t>(arg(1)), static_cast<uint32_t>(arg(2)), arg(3), arg(4), arg(5), arg(6));
+        break;
+    case 0x13u: m_mixer.pause(static_cast<uint32_t>(arg(0))); break;
+    case 0x14u: m_mixer.resume(static_cast<uint32_t>(arg(0))); break;
+    case 0x15u: m_mixer.stop(static_cast<uint32_t>(arg(0))); break;
+    case 0x18u: m_mixer.stopAll(); break;
+    case 0x1Bu: m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), arg(1), arg(2)); break;
+    case 0x21u:   // snd_SetSoundParams {handle, mask, vol, pan, pm, pb}: bit0 vol, bit1 pan
+    {
+        const int32_t mask = arg(1);
+        m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), (mask & 1) ? arg(2) : snd989::kVolDontChange, (mask & 2) ? arg(3) : snd989::kPanDontChange);
+        break;
+    }
+    case 0x22u:   // snd_AutoVol {handle, vol, ticks, how}: -4 = fade out and stop
+        if (arg(1) == -4)
+            m_mixer.stop(static_cast<uint32_t>(arg(0)));
+        else
+            m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), arg(1), snd989::kPanDontChange);
+        break;
+    case 0x09u: m_mixer.setMasterVolume(static_cast<uint32_t>(arg(0)), arg(1)); break;
+    case 0x06u: m_mixer.unloadBank(static_cast<uint32_t>(arg(0))); break;
+    default:
+        break;
+    }
+}
+
+void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
+{
+    m_mixer.render(interleaved, frames);
+    if (m_impl && !m_impl->dumpPath.empty())
+    {
+        std::lock_guard<std::mutex> lock(m_impl->dumpMutex);
+        if (m_impl->dumpFile && m_impl->dumpFrames < kDumpMaxFrames)
+        {
+            std::fwrite(interleaved, sizeof(int16_t), frames * 2, m_impl->dumpFile);
+            m_impl->dumpFrames += frames;
+            if ((m_impl->dumpFrames / frames) % 64 == 0)
+                std::fflush(m_impl->dumpFile);
+        }
+    }
 }

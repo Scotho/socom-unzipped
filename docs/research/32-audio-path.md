@@ -119,3 +119,31 @@ register tests, not audio output.
   buffers) from the audio callback, and honours stop/pause/vol-pan/params/AutoVol by handle. Streams (0x2c):
   the module's stream-safe reads deliver the sectors; a stream voice decodes them as they arrive. The gate-side
   bar: `PS2X_AUDIO_DUMP=<wav>` writes the mix; a title-screen run's RMS above a floor.
+
+## 5. Steps 2–3, first cut (2026-09-17)
+
+- **Step 2** (`734afcc`): `socom2_bank::parse` (the layout of §1, with the NumSounds offset the module had wrong) and
+  `ps2_vag::decodeBlocks` (headerless blocks to the end flag, loop flags reported), test-first on HUDUI's chunks
+  checked in as fixtures.
+- **Step 3, bank sounds** (this commit): `snd989::Mixer` — the grain sequencer at 240 ticks/s (TONE, RAND_DELAY,
+  RAND_PB / PB / ADD_PB, LOOP_*, STOP, KEY_OFF/KILL_VOICES; LFO, registers, markers, children, plugins not
+  modelled), voices with the §3 pitch (`note2Pitch`, a transliteration of sceSdNote2Pitch; the center fine is
+  *added* to the played fine), MakeVolume's pan table and group master volumes, the SPU ADSR (psx-spx rates: the
+  shift/step/exponential rules), linear-interpolated resampling, mixed to 48 kHz stereo. The IOP module now reads
+  each bank's block and VAG chunks and hands them to the host (`IopHost::audioBank`), and reports the play family in
+  host words with its own handle first (`IopHost::audioNotify`), so stop / pause / vol-pan / params / AutoVol / master
+  volume / unload address the same sounds the game does. `PS2AudioBackend` runs the mix on one raylib
+  `AudioStream` (`SetAudioStreamCallback`, 1024-frame buffers) opened when the audio device is ready;
+  `PS2X_AUDIO_DUMP=<wav>` writes the mix as it is rendered (the harness kills the process, so incrementally; a killed
+  run's header keeps zero sizes and the file length is the truth).
+- **Measured**: ps2x_tests 480/480 (mixer: a HUDUI click plays to its end and goes quiet, stop keys it off, vol 0 and
+  master 0 are silence, pan 270/90 hard left/right and 359 just left, SetVolPan moves a playing sound, a four-tone
+  sound starts four voices, +12 semitones halves the frames, unloadBank silences; the backend routes a bank and the
+  play family under the module's handle). Title stage with the dump (`s6_audio_title`, 163 s): the eleven HUD clicks
+  the walk presses are in the mix (five one-second windows with RMS 259–594, peak 13544); everything else is
+  silence, because the title music and the mission voice-overs are VAG **streams** (fno 0x2c), not yet played.
+- **Next**: streams (`snd_PlayVAGStreamByLoc`: sector + offset → the stream-safe CD reads the module already serves,
+  decoded as a looping voice with the stream's own vol/pan), `snd_SoundIsStillPlaying` answered from the mixer instead
+  of the module's 2.5 s lifetime, PauseAll/ContinueAll, the LFO grain (vibrato on weapon loops), and the owner's
+  listening test in free play.
+

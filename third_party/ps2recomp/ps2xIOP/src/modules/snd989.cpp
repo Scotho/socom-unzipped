@@ -972,6 +972,13 @@ namespace ps2x::iop::detail
             void forwardAudio(uint32_t fno, const CommandArgs &args)
             {
                 m_host.audioCommand(kSndSid, fno, args.guestBuffer(), GuestBuffer{});
+                if (fno == kPlaySound || fno == kPlaySoundNoReturn)
+                    return;   // playSound notifies with its handle
+                int32_t words[16] = {};
+                const uint32_t count = std::min<uint32_t>(args.bytes / 4u, 16u);
+                for (uint32_t i = 0; i < count; ++i)
+                    words[i] = args.s32(i);
+                m_host.audioNotify(fno, words, count);
             }
 
             // ---- handles -------------------------------------------------------------------
@@ -1089,6 +1096,10 @@ namespace ps2x::iop::detail
                 ++m_metrics.soundsPlayed;
 
                 forwardAudio(fno, args);
+                const int32_t words[7] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(bank),
+                                          static_cast<int32_t>(target->sound), target->volume, target->pan,
+                                          target->pitchMod, target->pitchBend};
+                m_host.audioNotify(fno, words, 7u);
                 return target->handle;
             }
 
@@ -1262,11 +1273,32 @@ namespace ps2x::iop::detail
                 bank.magic = block[0];
                 bank.version = block[1];
                 bank.bankId = block[3];
-                bank.numSounds = static_cast<int16_t>(block[5] & 0xFFFFu);
+                bank.numSounds = static_cast<int16_t>(block[5] >> 16);   // NumSounds is the s16 at 0x16 (research/32 section 1)
                 if (bank.magic != kBankMagicSBlk && bank.magic != kBankMagicSBv2)
                 {
                     logWarning("bank block has unknown magic " + hexString(bank.magic));
+                    return;
                 }
+                // The host mixer plays from the bytes themselves: chunk 0 (the block) and chunk 1 (the VAG data).
+                const uint32_t chunk1Offset = attributes[1] > 1u ? attributes[4] : 0u;
+                if (bank.blockBytes == 0u || bank.blockBytes > (8u << 20) || bank.vagDataBytes > (64u << 20))
+                    return;
+                std::vector<uint8_t> blockBytes(bank.blockBytes);
+                std::vector<uint8_t> vagBytes(bank.vagDataBytes);
+                if (!m_host.readHostFile(file, base + chunk0Offset, blockBytes.data(), blockBytes.size(), bytesRead) ||
+                    bytesRead != blockBytes.size())
+                {
+                    logWarning("bank block chunk unreadable");
+                    return;
+                }
+                if (!vagBytes.empty() &&
+                    (!m_host.readHostFile(file, base + chunk1Offset, vagBytes.data(), vagBytes.size(), bytesRead) ||
+                     bytesRead != vagBytes.size()))
+                {
+                    logWarning("bank VAG chunk unreadable");
+                    return;
+                }
+                m_host.audioBank(bank.handle, blockBytes.data(), blockBytes.size(), vagBytes.data(), vagBytes.size());
             }
 
             void finishBankLoad(Bank &bank)
@@ -1290,6 +1322,10 @@ namespace ps2x::iop::detail
 
             void unloadBank(uint32_t handle)
             {
+                {
+                    const int32_t words[1] = {static_cast<int32_t>(handle)};
+                    m_host.audioNotify(kUnloadBank, words, 1u);
+                }
                 Bank *bank = findBank(handle);
                 if (bank == nullptr)
                 {
