@@ -3,32 +3,93 @@
 The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own;
 the controller updates it when a sprint opens or closes.
 
-**Sprint 5 is CLOSED, pending merge.** The acceptance test PASSED (ladder launch 2, 2026-09-13:
-rounds 1-3 KILL on both scorers — `docs/STATUS.md` Sprint 5 entry, `docs/KNOWN.md` §1). Its plan's
-`## Outcome` and `## Rulings made on the owner's behalf` sections carry what actually happened;
-`.superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/progress.md` is the working
-ledger (gitignored, deleted once archived). Remaining before merge: the close-out fix wave, a
-`PS2X_TEST_REPEAT=3 ./build.sh test` + final gate on a quiet host, and the controller's merge —
-plan Task 7's last two boxes.
+**The goal every sprint serves:** SOCOM II running natively on PC with online play, that a stranger runs by pointing the
+launcher at their own r0001 ISO and playing a round against another stranger on a hosted Horizon server. The audit of
+2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
+order, and this file's order follows it.
 
-branch: sprint-5
-spec: docs/superpowers/specs/2026-09-13-sprint-5-control-readout-and-first-kill-design.md
-plan: docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md
-ledger: .superpowers/sdd/2026-09-13-sprint-5-control-readout-and-first-kill/progress.md
+## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted
 
-Acceptance test (met — see above): a two-instance online match on local Horizon, driven by
-`tools_py/parity/online_match_ours.py --until-kill` (now via `scripts/parity/ladder_frostfire.sh`),
-ends in a kill attributed by signals from different objects and processes (plan "Goal" line;
-spec §5, §5.1/§5.1.1 for the pre-registered bars actually used).
+branch: sprint-6
+spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
+plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md (its checkboxes are being
+reconciled with the audit's §3 ledger in the close-out; until then §3 is the truth)
+audit: docs/AUDIT-2026-09-17.md
+human tasks: docs/HUMAN_TASKS.md (the owner's hands-on checks and the two facts only the owner has: the community
+server's address and ours)
 
-Commit conventions, lock protocol and run rules: the plan's "Handoff notes for the executing model" and
-"Global Constraints" sections. Those sections win over anything older.
+**Where Sprint 6 stands (audit §3).** Done: Tasks 0, 1, 5a/5b, 6b, 6c (bar the listen), 8, 8b (bar the pad test), and
+the audit's fix wave (the ISO handoff, hostname resolution, the server's `-PublicIp`, the harness `env.sh`, the launcher's
+server picker). Partial: Task 2 (the ten-launch lobby rate never measured), Task 3 (freeze shape 2 unrooted), Task 4
+(met in practice, the strict two-scorer bar unrecorded), Task 7 (tooling in, leg 1 had no joiner). Not started: Task 6,
+Task 9. ROADMAP §6's items 10–12 were never carried into the plan and stay dropped.
 
-**Next: Sprint 6**, per `docs/ROADMAP.md` §6 — lobby hardening, the online freeze root cause,
-single-player teleports, the skeleton root decay, a gameplay-state gate probe, exact-oracle math,
-a mixed ours/PCSX2 match, and the rest of the revised order. This file gets a new sprint block
-(branch, spec, plan, ledger) once Sprint 6's plan exists; until then it still names Sprint 5's
-paths above for anyone reading its closed-out ledger.
+**Standing rules (superseding the older blocks below where they differ).** The owner's "proceed autonomously" (2026-09-17)
+replaces the host-window rule: builds, gates and launches run whenever the host is free, one launch at a time, through
+`scripts/run_detached.sh` under the loop lock, with `build.sh test` and suites held while a launch runs. Commits with
+explicit pathspecs, never `git add -A`; `server/config/simulated.db` never staged; `ONBOARDING.md` untracked; the
+Co-Authored-By trailer; a failing test first for every runtime change; `build.sh test` and the 3-stage gate before a
+commit that touches the runtime, the recomp or the parity tools. Bounded mechanical work goes to Opus subagents with an
+exact brief and a verification command; judgment stays here (owner, 2026-09-17). What only the owner can verify goes to
+`docs/HUMAN_TASKS.md` and the loop moves on. Every moved default and every skipped measurement gets a numbered ruling
+(R81 onward) in the plan's "Rulings made on the owner's behalf".
+
+**Next, in order (the rest of Sprint 6 = its close-out, then Sprint 7 opens):**
+1. Commit the fix wave (all suites green over the merged tree; gate on the rebuilt exe first, since the runtime changed).
+2. Close Sprint 6 honestly (Task 9): reconcile the plan's checkboxes with audit §3; the KNOWN audit (audit §4: the `0x34`
+   row, the frozen-exe row, the excluded-waits row, the repeatability row, the lobby rows, the motion-pack row, the
+   header line); rulings R81+ for the unrecorded decisions (audit §4's list); STATUS's current-state block rewritten;
+   ROADMAP §6 marked; `PS2X_TEST_REPEAT=3 ./build.sh test` and a full gate; merge `sprint-6` into `develop` and `main`;
+   the ledger archived.
+3. Open Sprint 7 (below): its spec and plan drafted from the audit, the plan's first tasks being the stranger's-machine
+   defences and the online-correctness items that need no owner.
+
+## Sprint 7 — "Two strangers, two machines, one hosted server" (drafted 2026-09-17, audit §6)
+
+A friend on another PC joins a round on a Horizon instance the project hosts, both from the portable zip. Ends in
+something a stranger notices: they got into a lobby from the zip, against a server with a name.
+
+1. **The stranger's machine, defensively** (autonomous): the GL capability probe with a CPU-backend fallback and a visible
+   error (audit §2.2 F2); a bound on the pending command queue when the back-pressure latch trips (F3); the HIGHDPI flag
+   and a launcher default of 2x (F8); the native-VU1 mismatch warning (F7); the ISO handoff already in.
+2. **Online correctness before scale** (autonomous): the equal-priority time slice removed under a test (audit §2.3, the
+   scheduler finding: settle it before shipping online); a same-RSA-key control round or a per-profile key; the CD stream
+   cursor fix; Task 2 Step 4's ten-launch lobby rate; Task 3's shape-2 freeze A/B.
+3. **The 21k decodes** (autonomous): settle the page-marking hypothesis with `PS2X_GS_TRACE_PAGES`, fix the marking
+   granularity, add the decodes-per-present budget to the console-replay GL test; then the ladder's RUNG0 bar passes.
+4. **The hosted server** (**owner** for the machine and the two addresses; autonomous for the rest): a machine, a public
+   address or name, the router's forwards per `server/README.md`, `start-servers.ps1 -PublicIp`, the picker's two
+   placeholders replaced, the launcher default switched to SOCOM Unzipped, `server/` packaged as a zip.
+5. **The first two-machine match** (**owner** hands-on with a second machine; scripts and readout autonomous): both
+   directions of hosting, from the portable zip, over the internet; NAT and clock-skew findings to KNOWN §1 or §2.
+6. **The HUMAN_TASKS items reported** (**owner**).
+
+## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17)
+
+1. Window policy: default size and fullscreen-borderless, `PS2X_GS_SCALE=2` as the launcher default with the gate scoring
+   it; render targets sized from use (audit F9). Autonomous; **owner** picks the default.
+2. Audio: streams pre-decoded off the audio callback (audit §2.3); the aside-cap parity fix and the scratch leak; the
+   stream-start underfill; a per-stage sound regression fixture. Autonomous; owner listen.
+3. Bare-run robustness: `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows; the
+   diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100 MB). Autonomous;
+   signing is **owner** money and identity.
+4. Knob retirement pass 2 (about 80 `PS2X_*`) into a config file plus `--dev`; the stub-state header into a `.cpp`; the
+   invocation stack pool. Autonomous.
+5. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
+6. An installer (Inno, outline §6) if wanted. **Owner** decision.
+
+## Sprint 9 — "Console players in the same lobby, and it stays up" (drafted 2026-09-17)
+
+1. Task 7 both directions with screen-verified PCSX2 steps. Autonomous.
+2. A nightly job: N consecutive ladder passes and the lobby rate tracked and published. Autonomous; **owner** names the machine.
+3. Per-map kill routes for the sweep maps; the two-instance speed freeze lifted. Autonomous.
+4. Task 6's math oracles and HLE leg 3 as filler. Autonomous.
+5. Stats and clans across restarts (a real DB) if wanted; the public README and the legal-position text. **Owner** decisions.
+
+---
+
+*The dated blocks below are the record of how Sprint 6 was opened and run; where they state rules or "next" lists, the
+block above supersedes them.*
 
 ## 2026-09-15 (evening) — Sprint 6 Task 0 done, Task 1 wired, Tasks 2–3 advanced lock-free
 

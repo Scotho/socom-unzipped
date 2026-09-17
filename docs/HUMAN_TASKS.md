@@ -20,6 +20,17 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   ISO, check the controller test area sees the pad (sticks, triggers, every button), pick a video size, press
   Launch. Report: did the pad register in the test area, did the game start, did the pad work in the game.
 
+- [ ] **The two server addresses for the launcher's picker** (owner request 2026-09-17; audit §2.6). The launcher now
+  offers *SOCOM Community (public Horizon)*, *SOCOM Unzipped (project server)* and *Custom*. Both preset addresses are
+  deliberate placeholders (`COMMUNITY_SERVER_ADDRESS_TBC`, `UNZIPPED_SERVER_ADDRESS_TBC`) in
+  `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h`, because neither is known to the tree: the
+  community server's is whatever the SOCOM community's Horizon publishes for SOCOM II (a hostname or IP), and ours does
+  not exist until a machine hosts it. Two lines back: the community address, and, once hosted, ours (with the ports
+  forwarded per `server/README.md`). The default preset switches to *SOCOM Unzipped* when ours is real.
+- [ ] **A second machine for the first two-machine match** (audit §1 G5). Every online result so far is two instances
+  on one PC. When a second PC (or a friend) can run the portable zip: report whether the lobby was reached, whether the
+  players saw each other move, and the two machines' network shape (same LAN, or across the internet behind NAT).
+
 ## Done
 
 (none yet)

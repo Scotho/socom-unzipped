@@ -11,6 +11,20 @@
 
 
 
+## 2026-09-17 (audit) — full audit and code review; the fix wave; the sprint rewritten; Sprints 7–9 drafted
+
+`docs/AUDIT-2026-09-17.md`. Four reviews against the goal sentence. The verdict: the game plays and measures well, but a
+stranger could not play for plumbing reasons -- the launcher never passed the verified ISO to the runtime (the portable
+folder ships no ISO, so Launch booted a game that could not read the disc), a hostname server address was discarded, the
+Horizon configs advertised this machine's LAN IP with no override, and the launcher's default server was loopback. All
+four fixed under tests the same day, plus one `SOCOM_SERVER_IP` knob for the harness and, at the owner's request, a
+server picker in the launcher (Community / Unzipped / Custom; the two addresses are placeholders until the owner supplies
+them). Still open for a stranger: a hosted machine and the two addresses (owner), the first two-machine match (owner),
+the GL capability probe and the unbounded command queue on a latched stall (Sprint 7), the equal-priority time slice the
+console never has (Sprint 7, before shipping online), the 21k decodes' page-marking cause (Sprint 7). The Sprint 6 ledger
+is in the audit's §3; the plan's checkboxes and KNOWN's stale rows are the close-out's work. Opus subagents did the fix
+wave's mechanical half (owner rule 2026-09-17).
+
 ## 2026-09-17 (late) — Task 8b Step 5 done; Task 7's mixed match: the tooling is in, the first leg did not meet
 
 `scripts/make_portable.sh` builds the portable folder (285 MB, a 63 MB zip; README says "run the launcher"). Task 7:
