@@ -129,11 +129,19 @@ def hud_match(im, ref_thumb, box, thresh, lit):
     return matched, dist, band
 
 
+FRAME_W, FRAME_H = 640, 448   # the frame the game presents; the gate's detectors are boxes in it
+
+
 def capture_step(hwnd, path, hold):
     """Save the step capture. A hold step asks for a frame file no older than 1 s: a runtime that stopped
     presenting leaves latest_frame.png stale while drive.py holds keys into nothing (s5_gatefix, mission4:
     36-43 exports after gameplay start). A stale frame prints STALE FRAME and the old frame is saved anyway
     -- the drive goes on; gate.score_mission_log's liveness check decides (R34)."""
+    size = winshot.client_size(hwnd)
+    if size is not None and size != (FRAME_W, FRAME_H):
+        # s6_ladder10/11: a resized window made every fixed-box detector read garbage for whole runs
+        raise winshot.ClientRectError(f"client area is {size[0]}x{size[1]}, not {FRAME_W}x{FRAME_H}, at "
+                                      f"{os.path.basename(path)}")
     if hold:
         try:
             im = winshot.grab(hwnd, max_age=1.0)

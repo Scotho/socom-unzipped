@@ -419,10 +419,10 @@ weapon fire, music and voice streams -- reaches a speaker. This is the largest r
 
 - [x] `gate.py --baseline <stamp>`: score a saved run dir without launching; test. *(2026-09-17: `score_baseline`, two tests; `--baseline s6_audio_gate20` re-scores 3/3.)*
 - [ ] `movie_blocks.py` wired into `build.sh test` with a saved furniture baseline under `tests/fixtures/movie/`.
-- [ ] Client-rect assertion in `drive.py` (fail loudly when the window is not 640×448 at capture).
-- [ ] `scripts/archive_logs.ps1`: move gate stamps and run logs older than 14 days (never the ones named in KNOWN §1) to `D:\socom_archive`, dry-run by default.
-- [ ] Knob retirement pass 1: remove `PS2X_GUEST_MALLOC_ZERO` (shipped unused), the redundant main-context vf0 line, and the `_B` variants no driver sets (grep `tools_py/` first); README entries deleted with them; `build.sh test` + gate.
-- [ ] README "Build, run, verify" contributor section: the five commands a newcomer runs, in order, with expected output lines.
+- [x] Client-rect assertion in `drive.py` (fail loudly when the window is not 640×448 at capture). *(2026-09-17: `winshot.client_size` + `ClientRectError` in `capture_step`; `test_drive_capture`.)*
+- [x] `scripts/archive_logs.ps1`: move gate stamps and run logs older than 14 days (never the ones named in KNOWN §1) to `D:\socom_archive`, dry-run by default. *(2026-09-17: KNOWN §1's paths as patterns; `test_archive_logs` 2/2; the real dry run finds nothing 14 days old yet.)*
+- [x] Knob retirement pass 1: remove `PS2X_GUEST_MALLOC_ZERO` (shipped unused), the redundant main-context vf0 line, and the `_B` variants no driver sets (grep `tools_py/` first); README entries deleted with them; `build.sh test` + gate. *(2026-09-17: the knob, its policy header, its test and the `_B` mappings for it and `PS2X_SOCOM2_NET_STATS_B` are gone; no `vf0` line exists in the runtime any more -- nothing to remove.)*
+- [x] README "Build, run, verify" contributor section: the five commands a newcomer runs, in order, with expected output lines. *(2026-09-17.)*
 
 ### Task 8b: The launcher, first cut (owner 2026-09-16, item 5: "launcher build out that requires pointing to a r001 iso, a selection for detail quality pre-launch with a visible controller testing area and any other settings we can easily add")
 

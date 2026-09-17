@@ -56,6 +56,21 @@ def register_frame_file(hwnd, path):
     _frame_files[hwnd] = path
 
 
+class ClientRectError(RuntimeError):
+    """The window's client area is not the game's 640x448 at a capture (Sprint 6 Task 8): every fixed-box detector
+    would read garbage, so the drive fails loudly instead of scoring a pillarboxed or stretched frame."""
+
+
+def client_size(hwnd):
+    """(width, height) of the window's client area, or None for a handle that is not a window (tests attach
+    shells to fake handles)."""
+    if not hwnd or not user32.IsWindow(hwnd):
+        return None
+    client = wt.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(client))
+    return client.right - client.left, client.bottom - client.top
+
+
 class StaleFrameError(RuntimeError):
     """The exe's frame file is older than the caller allows: the renderer stopped writing it (a hung
     or closed instance), so a capture would be a picture of the past. Subclasses RuntimeError, which

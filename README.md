@@ -56,6 +56,26 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+### Build, run, verify — a newcomer's first hour
+
+Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
+(`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`) and the disc image at
+`game/SOCOM II - U.S. Navy SEALs (USA).iso`. The expected lines are the ones to look for; the counts are as of
+2026-09-17 and only ever grow.
+
+| # | command | the line that says it worked |
+|---|---|---|
+| 1 | `./build.sh recomp` | `recomp: <n> files, unhandled=0` |
+| 2 | `./build.sh runtime` | `built dist/socom2.exe` (the launcher lands beside it) |
+| 3 | `./build.sh test` | `Total Tests: 500` / `Passed: 500` / `Failed: 0`, then `vu1_replay` with `checked=15 skipped=0` |
+| 4 | `python -m unittest discover -s tools_py/tests -t .` | `Ran 1104 tests ...` / `OK (skipped=63)` |
+| 5 | `python -m tools_py.parity.gate --stamp first_run` | `GATE PASS (3/3) -> logs\parity\gate\first_run` (about 15 min; the game window opens and closes three times; do not touch the keyboard) |
+
+`python -m tools_py.parity.gate --baseline first_run` re-scores that saved run without launching, which is the
+fastest way to check a scoring change. A gate refuses to start under 4 GB free on C: (`RUN_MIN_FREE_GB`) and
+while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
+day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
+
 Knobs (the behaviour-changing ones documented in full below; this is not the complete list --
 other behaviour-changing knobs exist under `getenv("PS2X_` in `third_party/ps2recomp/ps2xRuntime/`
 without a full entry here, grouped roughly by area: GS (`PS2X_GS_NO_ZTEST`,
@@ -163,11 +183,7 @@ capture for 16x16 blocks black on the GL target but present in shadow VRAM (limi
 `docs/research/16` §9.1.1; wired into no automation).
 
 **Sprint 5 knobs and tools.**
-`PS2X_GUEST_MALLOC_ZERO=1` (default **off**) zero-fills the block `PS2Runtime::guestMalloc` returns
-and the grown tail of `PS2Runtime::guestRealloc` (these back the bound `_malloc_r`/`_memalign_r`/
-`_realloc_r`; `guestCalloc` already zeroes) -- built as a candidate fix for Frostfire's lost
-control, ships unused since the real cause was VU0 `vf0` (below); `PS2X_GUEST_MALLOC_ZERO_B` is the
-driver's per-instance-B variant. `PS2X_HLE_STATS=1` prints, per bound HLE stub (`recomp/socom2.toml`),
+`PS2X_HLE_STATS=1` prints, per bound HLE stub (`recomp/socom2.toml`),
 its call count, distinct returns (saturating at 64) and first/last value, including zero-call stubs
 -- a varying-but-wrong return still passes a distinct count, and tail-called stubs (a recompiled
 `J` straight to a C++ function) undercount because they skip the dispatch table.
