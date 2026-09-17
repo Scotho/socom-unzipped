@@ -1,4 +1,5 @@
 #include "runtime/ps2_memory.h"
+#include "runtime/ps2_vag.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -109,6 +110,65 @@ namespace ps2_vag
             }
         }
 
+        return true;
+    }
+}
+
+namespace ps2_vag
+{
+    // Headerless SPU ADPCM blocks (a sound bank's VAG chunk, research/32 section 3). The same recurrence as
+    // decode() above; the run ends at the block flagged end (bit0), whose repeat bit (bit1) says whether the
+    // sample loops back to the block flagged loop-start (bit2).
+    bool decodeBlocks(const uint8_t *data, size_t maxBytes, BlockRun &out)
+    {
+        if (!data || maxBytes < 16)
+            return false;
+        out.pcm.clear();
+        out.bytesConsumed = 0;
+        out.loops = false;
+        out.loopStartSample = 0;
+        int16_t s1 = 0, s2 = 0;
+        for (size_t off = 0; off + 16 <= maxBytes; off += 16)
+        {
+            const uint8_t *block = data + off;
+            uint8_t shift = block[0] & 0x0F;
+            if (shift > 12)
+                shift = 9;
+            uint8_t filter = (block[0] >> 4) & 0x07;
+            if (filter > 4)
+                filter = 0;
+            const uint8_t flags = block[1];
+            if (flags & 0x04)
+                out.loopStartSample = out.pcm.size();
+            for (int sampleIdx = 0; sampleIdx < 28; ++sampleIdx)
+            {
+                const uint8_t byte = block[2 + sampleIdx / 2];
+                const uint8_t nibble = (sampleIdx & 1) ? (byte >> 4) : (byte & 0x0F);
+                const int8_t rawSample = signExtend4(nibble);
+                const int32_t shifted = rawSample << (12 - shift);
+                const int32_t old = s1;
+                const int32_t older = s2;
+                int32_t filtered;
+                switch (filter)
+                {
+                case 1: filtered = shifted + (60 * old + 32) / 64; break;
+                case 2: filtered = shifted + (115 * old - 52 * older + 32) / 64; break;
+                case 3: filtered = shifted + (98 * old - 55 * older + 32) / 64; break;
+                case 4: filtered = shifted + (122 * old - 60 * older + 32) / 64; break;
+                default: filtered = shifted; break;
+                }
+                const int16_t clamped = clamp16(filtered);
+                s2 = s1;
+                s1 = clamped;
+                out.pcm.push_back(clamped);
+            }
+            out.bytesConsumed = off + 16;
+            if (flags & 0x01)
+            {
+                out.loops = (flags & 0x02) != 0;
+                break;
+            }
+        }
         return true;
     }
 }

@@ -37,6 +37,10 @@ CLUT-serial regression of research/34, not the maps; both play on the fixed exe 
   its guest clock runs at 0.38 s per wall second there (A 0.57; the sweep's range is 0.42-0.90), and a 2 s host-time
   hold buys B under a second of game time. The slow guest clock is research/34 §6 / KNOWN §2, not a Requiem defect.
 
+**Requiem settled 2026-09-17:** on the wall-time guest clock (research/34 §6, `8238ee1`) `ours_control_requiem_clock` ran the control
+round to its clock with both sides controllable (B's first hold net 128 u against 13 before). Nineteen of twenty play; Foxhunt's
+fall-damage row is the one harness matter left.
+
 The guest-clock column (`DAT_004365c0` over the first 90 s of the round, per side) is the sweep's other finding: no
 map runs the game at wall speed, and the joiner is often slower than the host.
 
