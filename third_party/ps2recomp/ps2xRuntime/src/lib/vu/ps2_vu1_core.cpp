@@ -8,6 +8,7 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_guest_clock.h"
+#include "runtime/vu1_native_warning.h"
 #include "ps2_vu1_detail.h"
 
 #include <algorithm>
@@ -2501,6 +2502,25 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
         for (uint32_t i = 0; i < count; ++i)
             if (table[i].hash == m_knownHash && table[i].entryPc == m_state.pc && table[i].fn)
                 m_nativeFn = table[i].fn;
+        // Audit 2026-09-17 section 2.2 F7: the table is keyed to one disc's microcode hash, so
+        // another revision ran the interpreter with nothing to say why. One line, once, and only
+        // after a second of uninterrupted misses -- a boot whose gameplay microcode has not been
+        // uploaded yet is all misses by design and must stay quiet. PS2X_VU1_NATIVE=0 is a
+        // deliberate choice and never reaches here.
+        static Vu1NativeWarning::State s_warn;
+        const uint64_t nativeNowNs = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                               std::chrono::steady_clock::now().time_since_epoch())
+                                                               .count());
+        // s7_gl_gate: keyed on the (hash, pc) match this fired on the supported disc at entry 0x0000, which the
+        // table leaves to generated code on purpose. The question is whether the hash is known at all.
+        if (s_warn.shouldWarn(Vu1NativeWarning::hashHasNativeEntry(table, count, m_knownHash), nativeNowNs))
+        {
+            // Unsynchronized on purpose: VU1 runs on one thread, and the worst a second one could
+            // do is print the same line twice.
+            std::fprintf(stderr, "%s\n", Vu1NativeWarning::line(m_knownHash, m_state.pc).c_str());
+            std::fflush(stderr);
+            s_warn.warned();
+        }
     }
     if (m_nativeFn && !m_state.dBitEnabled && !m_state.tBitEnabled && !m_state.ebit &&
         !m_state.haltAfterDelaySlot && !m_state.branchPending)

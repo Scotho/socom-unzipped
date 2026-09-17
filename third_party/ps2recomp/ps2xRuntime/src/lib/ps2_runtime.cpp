@@ -6,6 +6,9 @@
 #include "game_overrides.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/gs/gs_frontend.h"
+#include "runtime/gs/gs_gl_backend.h"
+#include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_gl_caps.h"
 #include "runtime/ee_scheduler.h"
 #include "ThreadNaming.h"
 #include "Kernel/Stubs/Audio.h"
@@ -37,6 +40,22 @@ void ps2HostProfStart(void *nativeHandle);   // game_overrides_socom2.cpp (PS2X_
 namespace ps2_stubs
 {
     void resetSifState();
+}
+
+// Sprint 7 Task 1a: the process's parting word to the launcher.
+namespace
+{
+    std::atomic<int> g_ps2ProcessExitCode{0};
+}
+
+int ps2ProcessExitCode()
+{
+    return g_ps2ProcessExitCode.load(std::memory_order_acquire);
+}
+
+void setPs2ProcessExitCode(int code)
+{
+    g_ps2ProcessExitCode.store(code, std::memory_order_release);
 }
 
 #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
@@ -2581,6 +2600,17 @@ void PS2Runtime::run()
             }
             if (gs().hostRenderFrame())
                 hostTex = gs().hostFrameTexture(hostTexW, hostTexH, hostFullW, hostFullH);
+            // Task 1a: the GL probe latched a failure on this machine. Hand the frame to the CPU
+            // rasterizer -- the same backend PS2X_GS_BACKEND=cpu selects -- and leave a code the
+            // launcher can turn into a sentence. Once; the swap makes hostDriven() false.
+            if (GSGlBackend::glUnavailableForProcess())
+            {
+                std::cerr << "[gs-gl] switching to the CPU rasterizer: " << GSGlBackend::glMissingForProcess()
+                          << std::endl;
+                gs().setRasterBackend(std::make_unique<GSCpuBackend>());
+                setPs2ProcessExitCode(GsGlCaps::kExitCode);
+                hostTex = 0u;
+            }
         }
         if (hostTex != 0u && hostTexW != 0u && hostTexH != 0u)
         {

@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -188,6 +189,26 @@ void register_launcher_tests()
             t.IsTrue(community != nullptr && std::string(community->address) == "COMMUNITY_SERVER_ADDRESS_TBC", "the community preset's address is the placeholder, not a guess");
         });
 
+        // Sprint 7 Task 4 Step 5: the assertion that goes live the moment the owner supplies the hosted address.
+        // Until then it reports itself as skipped rather than failing - MiniTest has no Skip, so the reason is
+        // printed and nothing is asserted (docs/HUMAN_TASKS.md: "The two server addresses for the launcher's picker").
+        tc.Run("server presets: the Unzipped preset ships a real address and is the default", [](TestCase &t)
+        {
+            const launcher::ServerPreset *unzipped = launcher::findServerPreset("unzipped");
+            t.IsTrue(unzipped != nullptr, "the Unzipped preset exists");
+            if (unzipped == nullptr)
+                return;
+            if (std::string(unzipped->address) == "UNZIPPED_SERVER_ADDRESS_TBC")
+            {
+                std::cout << "[skipped: the owner has not supplied the hosted address yet (docs/HUMAN_TASKS.md)] ";
+            }
+            else
+            {
+                t.IsTrue(std::string(unzipped->address).find("TBC") == std::string::npos, "no placeholder ships");
+                t.Equals(launcher::Config{}.serverPreset, std::string("unzipped"), "the default preset is ours once it is real");
+            }
+        });
+
         tc.Run("the environment: the chosen preset decides PS2X_SOCOM2_SERVER", [](TestCase &t)
         {
             auto serverOf = [](const launcher::Config &c)
@@ -208,6 +229,15 @@ void register_launcher_tests()
             c.server.clear();
             t.Equals(serverOf(c), std::string("127.0.0.1"), "custom with nothing typed: the loopback default");
             t.Equals(launcher::effectiveServer(c), std::string("127.0.0.1"), "effectiveServer agrees");
+        });
+
+        tc.Run("exit code 65 tells the player the GL probe fell back to the CPU renderer", [](TestCase &t)
+        {
+            t.Equals(launcher::exitMessage(65),
+                     std::string("Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."),
+                     "65 (GsGlCaps::kExitCode) names the missing capability and what happened");
+            t.IsTrue(launcher::exitMessage(0).empty(), "a clean exit says nothing");
+            t.IsTrue(launcher::exitMessage(1).empty(), "a crash is the log's business, not this sentence");
         });
 
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)

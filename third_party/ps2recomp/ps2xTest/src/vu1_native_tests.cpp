@@ -2,10 +2,12 @@
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ps2_vu1.h"
+#include "runtime/vu1_native_warning.h"
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 
 namespace
 {
@@ -186,6 +188,32 @@ void register_vu1_native_tests()
 
             t.Equals(vu.state().vi[10], 0, "the native program registered for entry pc 0 must not run at entry pc 8");
             t.Equals(vu.state().pc, kProgramEndPc, "the microcode should have run from pc 8 to the end");
+        });
+
+        tc.Run("the native-VU1 warning fires once, after a second of misses", [](TestCase &t)
+        {
+            Vu1NativeWarning::State s;
+            t.IsTrue(!s.shouldWarn(false, 0ull), "no warning on the first miss");
+            t.IsTrue(!s.shouldWarn(false, 500000000ull), "no warning at half a second");
+            t.IsTrue(s.shouldWarn(false, 1000000001ull), "a second of misses warns");
+            s.warned();
+            for (uint64_t ns = 2000000000ull; ns < 60000000000ull; ns += 1000000000ull)
+                t.IsTrue(!s.shouldWarn(false, ns), "it never warns twice");
+            Vu1NativeWarning::State r;
+            t.IsTrue(!r.shouldWarn(false, 0ull), "arm");
+            t.IsTrue(!r.shouldWarn(true, 900000000ull), "a match resets the window");
+            t.IsTrue(!r.shouldWarn(false, 1500000000ull), "and the next miss starts a new one");
+            // s7_gl_gate (2026-09-17): the warning fired once on the supported disc, at entry 0x0000 of the supported
+            // hash -- the entry deliberately left to generated code. The question is whether the HASH has a native
+            // entry anywhere, not whether this (hash, pc) pair does: a supported disc never warns, another disc does.
+            struct FakeEntry { uint64_t hash; uint32_t entryPc; int fn; };
+            const FakeEntry table[] = {{0xd418194495c25213ull, 0x1b50u, 1}, {0xd418194495c25213ull, 0x2000u, 0}};
+            t.IsTrue(Vu1NativeWarning::hashHasNativeEntry(table, 2u, 0xd418194495c25213ull),
+                     "the supported hash has an entry (at some pc), so a miss at another pc is not a foreign disc");
+            t.IsTrue(!Vu1NativeWarning::hashHasNativeEntry(table, 2u, 0x1234ull), "an unknown hash has none");
+            const std::string line = Vu1NativeWarning::line(0xd418194495c25213ull, 0x1b50u);
+            t.IsTrue(line.find("0xd418194495c25213") != std::string::npos, "the line names the hash it saw: " + line);
+            t.IsTrue(line.find("r0001") != std::string::npos, "the line names the supported disc: " + line);
         });
     });
 }

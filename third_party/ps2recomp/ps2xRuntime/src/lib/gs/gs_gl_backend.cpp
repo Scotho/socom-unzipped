@@ -22,6 +22,9 @@ extern "C" void (*glfwGetProcAddress(const char *procname))(void);
 #ifndef GL_ZERO_TO_ONE
 #define GL_ZERO_TO_ONE 0x935F
 #endif
+#ifndef GL_MAX_DUAL_SOURCE_DRAW_BUFFERS
+#define GL_MAX_DUAL_SOURCE_DRAW_BUFFERS 0x88FC
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -400,6 +403,28 @@ void main()
         return nullptr;
 #endif
     }
+
+    // Task 1a: the fragment shader writes index 1 (oBlendAlpha) through
+    // glBindFragDataLocationIndexed, so a driver without dual-source draw buffers links a program
+    // that never blends correctly. One integer query answers it.
+    bool probeDualSourceBlend()
+    {
+        while (glGetError() != GL_NO_ERROR)
+        {
+        }
+        GLint buffers = 0;
+        glGetIntegerv(GL_MAX_DUAL_SOURCE_DRAW_BUFFERS, &buffers);
+        if (glGetError() != GL_NO_ERROR)
+            return false;
+        return buffers >= 1;
+    }
+
+    // The runtime's present loop reads the verdict but holds only a GSRasterBackend pointer, so
+    // the latch mirrors itself here. Written once (the render thread's single probe), read on the
+    // same thread; atomic anyway because the string is read beside it.
+    std::atomic<bool> g_glUnavailable{false};
+    std::mutex g_glMissingMutex;
+    std::string g_glMissing;
 
     std::string withDepthMode(const char *source, GsGlDepth::Mode mode)
     {
@@ -950,12 +975,42 @@ GSTransferSnapshot GSGlBackend::GetTransferSnapshot() const
 // ---------------------------------------------------------------------------------------------
 // Render-thread side
 // ---------------------------------------------------------------------------------------------
+bool GSGlBackend::glUnavailableForProcess()
+{
+    return g_glUnavailable.load(std::memory_order_acquire);
+}
+
+std::string GSGlBackend::glMissingForProcess()
+{
+    std::lock_guard<std::mutex> lock(g_glMissingMutex);
+    return g_glMissing;
+}
+
+// Task 1a: the probe failed, or the shaders did. Latch it, say once what is missing, and let the
+// runtime swap in the CPU rasterizer. ensureGl() never tries again.
+void GSGlBackend::latchGlUnsupported(const GsGlCaps::Report &report)
+{
+    m_glCapsLatch.fail(report);
+    {
+        std::lock_guard<std::mutex> lock(g_glMissingMutex);
+        g_glMissing = m_glCapsLatch.report().missing;
+    }
+    g_glUnavailable.store(true, std::memory_order_release);
+    std::fprintf(stderr,
+                 "[gs-gl] UNSUPPORTED: %s; falling back to the CPU rasterizer (PS2X_GS_BACKEND=cpu)\n",
+                 m_glCapsLatch.report().missing.c_str());
+}
+
 bool GSGlBackend::ensureGl()
 {
     if (m_program != 0u)
         return true;
+    // Task 1a: a machine that failed the probe (or the shader compile) never tries again.
+    if (!m_glCapsLatch.shouldAttempt())
+        return false;
     if (!IsWindowReady())
         return false;
+    m_glCapsLatch.attempted();
     // research/26: exact integer z in the depth test. PS2X_GS_DEPTH_LEGACY=1 restores the old
     // z*2-1 mapping for A/B.
     {
@@ -969,12 +1024,33 @@ bool GSGlBackend::ensureGl()
             std::fprintf(stderr, "[gs-gl] depth mapping: %s\n", GsGlDepth::name(g_depthMode));
         }
     }
+    // Task 1a (audit 2026-09-17 s2.2 F2): GL 3.3, dual-source blending and clip control, probed
+    // once. probeClipControl() is re-run rather than reading g_clipControl, which
+    // PS2X_GS_DEPTH_LEGACY deliberately clears.
+    {
+        const GsGlCaps::Report report = GsGlCaps::evaluate(reinterpret_cast<const char *>(glGetString(GL_VERSION)),
+                                                           probeDualSourceBlend(),
+                                                           probeClipControl() != nullptr);
+        if (!report.ok)
+        {
+            latchGlUnsupported(report);
+            return false;
+        }
+        if (!report.note.empty())
+            std::fprintf(stderr, "[gs-gl] note: %s\n", report.note.c_str());
+    }
     const std::string vsSource = withDepthMode(kVertexShader, g_depthMode);
     const std::string fsSource = withDepthMode(kFragmentShader, g_depthMode);
     const uint32_t vs = compileShader(GL_VERTEX_SHADER, vsSource.c_str());
     const uint32_t fs = compileShader(GL_FRAGMENT_SHADER, fsSource.c_str());
     if (!vs || !fs)
+    {
+        GsGlCaps::Report shaders;
+        shaders.ok = false;
+        shaders.missing = "a working OpenGL 3.3 shader compiler (the backend's shaders did not compile)";
+        latchGlUnsupported(shaders);
         return false;
+    }
     m_program = glCreateProgram();
     glAttachShader(m_program, vs);
     glAttachShader(m_program, fs);
@@ -992,6 +1068,10 @@ bool GSGlBackend::ensureGl()
         std::fprintf(stderr, "[gs-gl] program link failed: %s\n", log);
         glDeleteProgram(m_program);
         m_program = 0u;
+        GsGlCaps::Report link;
+        link.ok = false;
+        link.missing = "an OpenGL 3.3 driver that links the backend's shaders";
+        latchGlUnsupported(link);
         return false;
     }
     auto uni = [&](const char *name) { return glGetUniformLocation(m_program, name); };

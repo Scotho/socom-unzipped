@@ -3,6 +3,7 @@
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
+#include "runtime/gs/gs_gl_caps.h"
 
 #include <array>
 #include <atomic>
@@ -60,6 +61,14 @@ public:
     void ReleaseHostBackpressure() override;
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
     uint32_t HostFrameTexture2() override { return m_presentTexture2; }
+
+    // Task 1a: what the capability probe decided. Written once on the render thread by ensureGl()
+    // and read there; the static pair mirrors it for the runtime's present loop, which holds a
+    // GSRasterBackend pointer and cannot see this class.
+    bool glUnavailable() const { return m_glCapsLatch.failed(); }
+    std::string glMissing() const { return m_glCapsLatch.report().missing; }
+    static bool glUnavailableForProcess();
+    static std::string glMissingForProcess();
 
 private:
     enum class CmdType : uint8_t
@@ -236,6 +245,8 @@ private:
     void executeReadback();
     void flushBatch();
     bool ensureGl();
+    // Task 1a: latch the verdict, publish it to the process, and print the one UNSUPPORTED line.
+    void latchGlUnsupported(const GsGlCaps::Report &report);
     RenderTarget *getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create);
     DepthTarget *getDepthTarget(uint32_t zbp, uint32_t fbw, uint32_t width, uint32_t height);
     uint32_t resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight);
@@ -276,6 +287,9 @@ private:
     uint64_t m_nextToken = 1;
     std::atomic<uint64_t> m_executedToken{0};
     std::atomic<bool> m_glReady{false};
+    // Task 1a: one probe, one attempt. A failure is final, so ensureGl() stops recompiling the
+    // shaders on every host frame of a machine that cannot run them.
+    GsGlCaps::Latch m_glCapsLatch;
     std::thread::id m_renderThread{};
     // Frames recorded (EE executor, GuestFrameBoundary) vs replayed (the swaps above): ruling R35.
     GsFrameBackpressure m_backpressure;

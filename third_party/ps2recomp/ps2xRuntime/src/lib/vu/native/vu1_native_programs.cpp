@@ -7,6 +7,10 @@
 // Add one line per native program (and its declaration above).
 bool vu1native_socom2_dispatch(VU1Interpreter &vu, uint64_t budgetEnd);
 
+// Every hash below is an image from one disc: SOCOM II U.S. Navy SEALs NTSC r0001 (SCUS_972.75),
+// the revision the launcher's disc panel checks for. Another revision's microcode hashes to
+// something else, matches nothing here, and runs on the interpreter -- VU1Interpreter::run says so
+// once, through Vu1NativeWarning (runtime/vu1_native_warning.h).
 extern const Vu1NativeProgram g_vu1NativePrograms[] = {
     // SOCOM II: the command dispatcher (src/lib/vu/native/socom2_dispatch_0x1b50.cpp). Entry 0 of
     // the same image is a command-list upload stub that emits nothing and is left to the

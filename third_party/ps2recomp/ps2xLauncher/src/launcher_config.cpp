@@ -235,6 +235,15 @@ namespace launcher
         return true;
     }
 
+    std::string exitMessage(int exitCode)
+    {
+        // Kept in step with GsGlCaps::kExitCode (ps2xRuntime/include/runtime/gs/gs_gl_caps.h); the
+        // launcher does not include the runtime's headers.
+        if (exitCode == 65)
+            return "Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer.";
+        return std::string();
+    }
+
     std::vector<std::string> environmentFor(const Config &c)
     {
         std::vector<std::string> env;

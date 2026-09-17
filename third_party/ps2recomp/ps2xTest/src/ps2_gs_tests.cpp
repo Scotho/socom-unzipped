@@ -10,6 +10,7 @@
 #include "runtime/gs/ps2_gs_psmt4.h"
 #include "runtime/gs/ps2_gs_psmt8.h"
 #include "runtime/gs/gs_gl_depth.h"
+#include "runtime/gs/gs_gl_caps.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -5520,6 +5521,52 @@ void register_ps2_gs_tests()
             t.IsTrue(choose(true, true) == Mode::Legacy, "legacy env overrides clip control");
             t.IsTrue(choose(false, true) == Mode::ClipZeroToOne, "clip control is the default when available");
             t.IsTrue(choose(false, false) == Mode::FragDepth, "gl_FragDepth when clip control is unavailable");
+        });
+    });
+
+    // Sprint 7 Task 1a: the GL capability probe and its latch, pure and context-free.
+    MiniTest::Case("GsGlCaps", [](TestCase &tc)
+    {
+        tc.Run("GsGlCaps names exactly what a machine is missing", [](TestCase &t)
+        {
+            t.IsTrue(GsGlCaps::evaluate("3.3.0 NVIDIA 555.85", true, true).ok, "3.3 with both features is supported");
+            t.IsTrue(GsGlCaps::evaluate("4.6.0 Core Profile", true, true).ok, "a newer core profile is supported");
+            const GsGlCaps::Report old = GsGlCaps::evaluate("3.1.0 Mesa 21.0", true, true);
+            t.IsTrue(!old.ok, "GL 3.1 is not supported");
+            t.IsTrue(old.missing.find("OpenGL 3.3") != std::string::npos, "the line names the version: " + old.missing);
+            const GsGlCaps::Report noDual = GsGlCaps::evaluate("3.3.0", false, true);
+            t.IsTrue(!noDual.ok && noDual.missing.find("dual-source blending") != std::string::npos,
+                     "the line names dual-source blending: " + noDual.missing);
+            // Clip control is the exact-integer depth path; without it the fragment-depth mapping runs the game
+            // (GsGlDepth::Mode::FragDepth), so its absence is a note, never a reason for the slow CPU rasterizer.
+            const GsGlCaps::Report noClip = GsGlCaps::evaluate("3.3.0", true, false);
+            t.IsTrue(noClip.ok && noClip.missing.empty(), "GL 3.3 without clip control is still supported");
+            t.IsTrue(noClip.note.find("GL_ARB_clip_control") != std::string::npos,
+                     "and the note names clip control: " + noClip.note);
+            t.IsTrue(GsGlCaps::evaluate("3.3.0", true, true).note.empty(), "no note when clip control is there");
+            t.IsTrue(GsGlCaps::evaluate(nullptr, true, true).ok == false, "no version string is a failure, not a pass");
+        });
+        tc.Run("PS2X_GS_GL_FORCE_FAIL is the only way to reach the fallback on a machine that works", [](TestCase &t)
+        {
+            // Step 10's gate greps the run log for this exact wording; pin it here rather than on a launch.
+            const GsGlCaps::Report forced = GsGlCaps::evaluate("4.6.0 Core Profile", true, true, "1");
+            t.IsTrue(!forced.ok, "the knob forces the unsupported path on a supported machine");
+            t.Equals(forced.missing, std::string("forced (PS2X_GS_GL_FORCE_FAIL)"), "and says so by name");
+            t.IsTrue(GsGlCaps::evaluate("4.6.0 Core Profile", true, true, nullptr).ok, "unset changes nothing");
+            t.IsTrue(GsGlCaps::evaluate("4.6.0 Core Profile", true, true, "0").ok, "0 changes nothing");
+            t.IsTrue(GsGlCaps::evaluate("4.6.0 Core Profile", true, true, "").ok, "empty changes nothing");
+        });
+        tc.Run("the GL latch attempts once and never recompiles per frame", [](TestCase &t)
+        {
+            GsGlCaps::Latch latch;
+            t.IsTrue(latch.shouldAttempt(), "the first call attempts");
+            latch.attempted();
+            latch.fail(GsGlCaps::evaluate("3.1.0", false, false));
+            t.IsTrue(latch.failed(), "the latch is set");
+            for (int i = 0; i < 1000; ++i)
+                t.IsTrue(!latch.shouldAttempt(), "a latched probe never attempts again");
+            t.Equals(static_cast<int>(latch.attempts()), 1, "exactly one attempt over 1000 frames");
+            t.IsTrue(!latch.report().missing.empty(), "the latch keeps what was missing");
         });
     });
 }

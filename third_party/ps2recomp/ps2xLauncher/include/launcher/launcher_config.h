@@ -50,6 +50,11 @@ namespace launcher
     std::string toJson(const Config &config);
     bool fromJson(const std::string &json, Config &out);
 
+    // Sprint 7 Task 1a: what the game's exit code means, in a sentence for the player. Empty when the code
+    // carries no message of its own (0, or a crash the log already explains).
+    //   65 -- GsGlCaps::kExitCode: the GL probe failed and the run fell back to the CPU rasterizer.
+    std::string exitMessage(int exitCode);
+
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);

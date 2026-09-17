@@ -473,8 +473,11 @@ int main(int argc, char **argv)
         const bool running = game.running();
         if (!running && game.process)
         {
+            // Task 1a: 65 means the run happened but on the CPU rasterizer -- say so rather than
+            // leaving the player with a slideshow and no reason.
+            const std::string why = launcher::exitMessage(game.exitCode());
             game.close();
-            status = "the game exited";
+            status = why.empty() ? "the game exited" : why;
         }
         const bool canLaunch = disc.ok && !running;
         if (button({24, y, 160, 40}, running ? "running..." : "Launch", canLaunch))

@@ -552,4 +552,10 @@ extern const uint32_t g_ps2RecompiledFunctionTableEnd;
 extern const uint32_t g_ps2RecompiledFunctionTableSlotCount;
 extern PS2Runtime::RecompiledFunction g_ps2RecompiledFunctionTable[];
 
+// Sprint 7 Task 1a: the code the process leaves with when the run itself was fine but something
+// the player should hear about happened -- today only GsGlCaps::kExitCode (65), the GL backend
+// falling back to the CPU rasterizer. 0 until something sets it; main() exits with it.
+int ps2ProcessExitCode();
+void setPs2ProcessExitCode(int code);
+
 #endif // PS2_RUNTIME_H

@@ -19,6 +19,7 @@ namespace win32glue
         std::string logPath;
         std::string error;
         bool running() const;
+        int exitCode() const;   // Task 1a: the code the game left with (0 while it is still running)
         void close();
     };
 

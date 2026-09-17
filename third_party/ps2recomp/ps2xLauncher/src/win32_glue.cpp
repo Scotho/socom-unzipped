@@ -77,6 +77,20 @@ namespace win32glue
 #endif
     }
 
+    int GameProcess::exitCode() const
+    {
+#ifdef _WIN32
+        if (!process)
+            return 0;
+        DWORD code = 0;
+        if (!GetExitCodeProcess(static_cast<HANDLE>(process), &code) || code == STILL_ACTIVE)
+            return 0;
+        return static_cast<int>(code);
+#else
+        return 0;
+#endif
+    }
+
     void GameProcess::close()
     {
 #ifdef _WIN32
