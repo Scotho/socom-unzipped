@@ -567,6 +567,33 @@ def run_gate(name, out_root):
     return score_mission_log(drive_log, run_log=mission_game_log(drive_log), probe_required=True)
 
 
+def score_baseline(stamp):
+    """Sprint 6 Task 8: score a saved run directory (a stamp name under logs/parity/gate, or a path) without
+    launching anything -- each stage it holds through the same scorer the live gate used; nothing written.
+    Prints the gate's lines and summary; returns the gate's exit code, 4 when there is nothing to score."""
+    out_root = stamp if os.path.isdir(stamp) else os.path.join("logs", "parity", "gate", stamp)
+    results = []
+    title_dir = os.path.join(out_root, "title")
+    if os.path.isdir(title_dir):
+        results.append(("title",) + tuple(score_title(title_dir)))
+    transition_dir = os.path.join(out_root, "transition")
+    if os.path.isdir(transition_dir):
+        results.append(("transition",) + tuple(score_transition(transition_dir)))
+    drive_log = os.path.join(out_root, "mission.drive.log")
+    if os.path.isfile(drive_log):
+        results.append(("mission",) + tuple(score_mission_log(drive_log, run_log=mission_game_log(drive_log),
+                                                              probe_required=True)))
+    if not results:
+        print("gate: nothing to score in %s (no title/, transition/ or mission.drive.log)" % out_root)
+        return 4
+    failed = 0
+    for name, ok, detail in results:
+        print("%s %s (%s)" % ("PASS" if ok else "FAIL", name, detail), flush=True)
+        failed += 0 if ok else 1
+    print("GATE %s (%d/%d) [baseline %s]" % ("FAIL" if failed else "PASS", len(results) - failed, len(results), out_root))
+    return 1 if failed else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="title,transition,mission")
@@ -575,7 +602,12 @@ def main(argv=None):
     ap.add_argument("--score-title")
     ap.add_argument("--score-mission")
     ap.add_argument("--mission-frames", help="capture dir for --score-mission (default: <log minus .drive.log>)")
+    ap.add_argument("--baseline", help="re-score a saved stamp (a logs/parity/gate/<stamp> name or a path) without "
+                                       "launching: every stage it holds, through the live gate's scorers; writes nothing")
     args = ap.parse_args(argv)
+
+    if args.baseline:
+        return score_baseline(args.baseline)
 
     # --score-title/--score-mission re-score an existing run: no game launch, nothing large written
     # -- exempt from the disk refusal (review round 1 item 3, 2026-09-13), and checked first so

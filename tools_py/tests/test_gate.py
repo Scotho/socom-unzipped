@@ -1207,3 +1207,67 @@ class ConsoleSpawnNeedsAHudFrame(unittest.TestCase):
         with Image.open(os.path.join(ROOT, "logs", "parity", "gate", "s6_gamepad4", "mission", "s28_none.png")) as im:
             line = self._run(im.convert("RGB"))
         self.assertIn("water flat=", line)
+
+
+class BaselineScoring(unittest.TestCase):
+    """Sprint 6 Task 8: `gate.py --baseline <stamp>` re-scores a saved run directory without launching anything:
+    each stage the stamp holds (title/, transition/, mission.drive.log with its frames) goes through the same
+    scorer the live gate used, and nothing is written."""
+
+    def _stamp(self, tmp, stages):
+        import os
+        if "title" in stages:
+            os.makedirs(os.path.join(tmp, "title"))
+        if "transition" in stages:
+            os.makedirs(os.path.join(tmp, "transition"))
+        if "mission" in stages:
+            os.makedirs(os.path.join(tmp, "mission"))
+            with open(os.path.join(tmp, "mission.drive.log"), "w") as f:
+                f.write("drive\n")
+        return tmp
+
+    def test_scores_every_stage_the_stamp_holds_and_writes_nothing(self):
+        import io, os, tempfile
+        from contextlib import redirect_stdout
+        from unittest import mock
+        from tools_py.parity import gate
+        with tempfile.TemporaryDirectory() as tmp:
+            stamp = self._stamp(tmp, ("title", "transition", "mission"))
+            before = sorted(os.listdir(stamp))
+            calls = []
+            with mock.patch.object(gate, "score_title", lambda d: (calls.append(("title", d)) or (True, "t"))), \
+                 mock.patch.object(gate, "score_transition", lambda d: (calls.append(("transition", d)) or (True, "x"))), \
+                 mock.patch.object(gate, "score_mission_log",
+                                   lambda log, run_log=None, probe_required=False: (calls.append(("mission", log, probe_required)) or (False, "m"))):
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    rc = gate.main(["--baseline", stamp])
+            self.assertEqual(rc, 1, out.getvalue())
+            self.assertEqual([c[0] for c in calls], ["title", "transition", "mission"])
+            self.assertEqual(calls[0][1], os.path.join(stamp, "title"))
+            self.assertEqual(calls[2][1], os.path.join(stamp, "mission.drive.log"))
+            self.assertTrue(calls[2][2], "the mission is scored with the probe required, as the live gate does")
+            self.assertIn("PASS title (t)", out.getvalue())
+            self.assertIn("FAIL mission (m)", out.getvalue())
+            self.assertIn("GATE FAIL (2/3) [baseline", out.getvalue())
+            self.assertEqual(sorted(os.listdir(stamp)), before, "a baseline scoring writes nothing into the stamp")
+
+    def test_only_the_stages_present_and_nothing_is_an_error(self):
+        import io, tempfile
+        from contextlib import redirect_stdout
+        from unittest import mock
+        from tools_py.parity import gate
+        with tempfile.TemporaryDirectory() as tmp:
+            stamp = self._stamp(tmp, ("title",))
+            with mock.patch.object(gate, "score_title", lambda d: (True, "t")):
+                out = io.StringIO()
+                with redirect_stdout(out):
+                    rc = gate.main(["--baseline", stamp])
+            self.assertEqual(rc, 0)
+            self.assertIn("GATE PASS (1/1) [baseline", out.getvalue())
+        with tempfile.TemporaryDirectory() as tmp:
+            out = io.StringIO()
+            with redirect_stdout(out):
+                rc = gate.main(["--baseline", tmp])
+            self.assertEqual(rc, 4)
+            self.assertIn("nothing to score", out.getvalue())

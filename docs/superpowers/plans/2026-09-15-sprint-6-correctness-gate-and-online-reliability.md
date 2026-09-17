@@ -417,7 +417,7 @@ weapon fire, music and voice streams -- reaches a speaker. This is the largest r
 
 ### Task 8: Harness and maintainability (lock-free)
 
-- [ ] `gate.py --baseline <stamp>`: score a saved run dir without launching; test.
+- [x] `gate.py --baseline <stamp>`: score a saved run dir without launching; test. *(2026-09-17: `score_baseline`, two tests; `--baseline s6_audio_gate20` re-scores 3/3.)*
 - [ ] `movie_blocks.py` wired into `build.sh test` with a saved furniture baseline under `tests/fixtures/movie/`.
 - [ ] Client-rect assertion in `drive.py` (fail loudly when the window is not 640×448 at capture).
 - [ ] `scripts/archive_logs.ps1`: move gate stamps and run logs older than 14 days (never the ones named in KNOWN §1) to `D:\socom_archive`, dry-run by default.
