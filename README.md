@@ -189,6 +189,12 @@ the idle wait account the remaining cycles itself instead of a host-clock deadli
 an A/B of the pre-`R54` scheduler path**; the idle-spin fix (`92d30f0`) landed on the host-clock
 path, and `guest` is an alternate accounting mode on top of it, untested as a toggle of the older
 behaviour.
+`PS2X_CLOCK_EXCLUDE=0` stops subtracting the host time VU1 runs and the render back-pressure wait report
+(`ps2GuestClockExcludedNs`) from the guest clock, so timer T0 -- the game's frame dt -- follows wall time;
+the default (1) is the 2026-09-08 behaviour, which ran an online round at two thirds speed (research/34
+section 6: 195 ms of VU1 and 290 ms of back-pressure per second excluded). `PS2X_CLOCK_CAP_MS=<ms>` still
+bounds a single gap (a stall must not become a 300 ms dt). `PS2X_CLOCK_TRACE=1` prints, once a second,
+`gap_ms` / `excluded_ms` / `lost_ms` beside the cycle clock.
 `online_match_ours.py` flags from the Sprint 5 engagement ladder (Amendment A): `--rounds N`
 (default 4) plays N rounds on one lobby success, re-finding the actor by vtable and re-arming the
 move-path disarm window after each round or kill, with one `LADDER round=<n> …` line per round and

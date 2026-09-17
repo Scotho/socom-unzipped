@@ -603,12 +603,30 @@ class TransitionScoring(unittest.TestCase):
         """tests/fixtures/gate/transition/: five near-black 320x224 frames from a real run
         (logs/parity/gate/tfix4/transition -- four of the 5 fps burst frames of the fade into the
         briefing and one wait capture after it, all peak 0). Every name is s11_*/w13_*, at or
-        after the probe's burst step, so the scorer examines all five; five is exactly
-        gate.TRANSITION_MIN_FRAMES, so this also pins the floor."""
+        after the probe's burst step, so the scorer examines all five; five clears
+        gate.TRANSITION_MIN_FRAMES (3 since 2026-09-17; the wall-time transition test below pins it)."""
         ok, detail = gate.score_transition(TRANSITION_FIXTURE_RUN)
         self.assertTrue(ok, detail)
         self.assertIn("5 black-screen frames examined", detail)
         self.assertIn("at/after the burst step", detail)
+
+    def test_four_frames_pass_at_the_wall_time_transition(self):
+        """research/34 section 6: with the guest clock on wall time the black screen before the briefing lasts
+        about 4 s, not 14 (s6_clock_gate: 4 wait captures at 1 Hz, every frame peak 0, vs 14 on s6_clutfix_gate
+        at two thirds speed). The floor of 5 was calibrated on the slow clock; 3 keeps the vacuous-pass guard
+        (a run that never reached the fade examines 0 or 1) and admits the real transition."""
+        import shutil, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            names = sorted(n for n in os.listdir(TRANSITION_FIXTURE_RUN) if n.endswith(".png"))
+            for n in names[:4]:
+                shutil.copy(os.path.join(TRANSITION_FIXTURE_RUN, n), os.path.join(tmp, n))
+            for n in os.listdir(TRANSITION_FIXTURE_RUN):
+                if not n.endswith(".png"):
+                    shutil.copy(os.path.join(TRANSITION_FIXTURE_RUN, n), os.path.join(tmp, n))
+            ok, detail = gate.score_transition(tmp)
+            self.assertTrue(ok, detail)
+            self.assertIn("4 black-screen frames examined", detail)
+            self.assertEqual(gate.TRANSITION_MIN_FRAMES, 3)
 
     @unittest.skipUnless(os.path.isdir(CLEAN_TRANSITION_RUN), "needs logs/parity/gate/tfix3/transition")
     def test_known_clean_run_passes(self):
@@ -1072,12 +1090,12 @@ class FadeBeforeBriefing(unittest.TestCase):
 
     def test_fewer_than_the_floor_fails(self):
         with tempfile.TemporaryDirectory() as run:
-            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(4)]
+            self._write(run, self._boot() + [("w05_%03d.png" % k, self.BLACK) for k in range(2)]
                         + [("s05_CROSS.png", "briefing")])
             ok, detail = gate.score_transition(run)
         self.assertFalse(ok, detail)
-        self.assertIn("4 black-screen frames examined before the first briefing frame", detail)
-        self.assertIn("need 5", detail)
+        self.assertIn("2 black-screen frames examined before the first briefing frame", detail)
+        self.assertIn("need 3", detail)
 
     def test_no_briefing_frame_examines_nothing(self):
         with tempfile.TemporaryDirectory() as run:

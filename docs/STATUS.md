@@ -11,6 +11,19 @@
 
 
 
+## 2026-09-17 (later) — the game ran at two thirds speed; the guest clock now follows wall time (research/34 §6)
+
+Misc hardening, item one. The Task 6b sweep's guest-clock column (0.42–0.90 s per wall second on every map) was the
+same clock that froze under the CLUT regression, only slower: the scheduler subtracted VU1 time and the render
+back-pressure wait from the EE timers (`e163402`, made when the VU1 interpreter ran at 3 fps), and a `[clock]`
+accounting line added for the question measured ~195 + ~290 ms of every second gone. SOCOM II integrates all its
+timers from T0's dt, so the scheduler now counts wall time by default, capped at 100 ms per gap (`PS2X_CLOCK_EXCLUDE=1`
+restores the exclusion; README). Test-first in ps2x_tests (470/470). Gate `s6_clock_gate` title/mission PASS with the
+same spawn score (22.6) and larger hold diffs; online `ours_control_frostfire_clockoff` CONTROL-ROUND with both sides
+at 1.00 s/s. The transition stage's black-frame floor (5, calibrated on the slow clock's 14 s black screen) is 3 for
+the 4 s one (test-first). Task 6c Step 1 research is written: research/32 (the SBlk v3 bank layout read off the disc,
+the play-call arguments, the 989snd volume/pitch/envelope arithmetic).
+
 ## 2026-09-17 — Task 6b: control rounds on all twenty untested online maps — 18 of 20 play (research/33)
 
 `scripts/parity/online_control_queue.sh`, 00:14 → 04:45, exe `7b3816046a5bae9c` (research/34 fix), one launch per map plus a

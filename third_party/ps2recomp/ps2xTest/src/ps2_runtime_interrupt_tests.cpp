@@ -1,3 +1,5 @@
+#include "runtime/ps2_guest_clock.h"
+#include <thread>
 #include "MiniTest.h"
 #include "ps2_runtime.h"
 #include "ps2_syscalls.h"
@@ -300,6 +302,44 @@ void register_ps2_runtime_interrupt_tests()
 {
     MiniTest::Case("PS2RuntimeInterrupt", [](TestCase &tc)
     {
+        // research/34 section 6: the guest clock (timer T0, the cycle clock) follows the host clock minus the host
+        // time VU1 runs and the render back-pressure wait report through ps2GuestClockExcludedNs -- 330 ms of every
+        // second in an online round, so the game ran at two thirds speed. The policy is now switchable: with it off
+        // the guest clock is wall time (capped per gap by PS2X_CLOCK_CAP_MS), which is what a dt-integrating game wants.
+        tc.Run("accountCycles subtracts the excluded host time by default and counts it with the policy off", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            constexpr uint64_t kBatch = 5000u;   // accountCycles converts host time every 5000 estimated cycles
+            auto measure = [&](bool exclude) -> double
+            {
+                scheduler.setExcludeHostTime(exclude);
+                scheduler.accountCycles(kBatch);   // anchor the host clock
+                const uint64_t before = scheduler.eeCycleNow();
+                ps2GuestClockExcludedNs().store(0, std::memory_order_relaxed);
+                std::this_thread::sleep_for(std::chrono::milliseconds(60));
+                ps2GuestClockExcludedNs().fetch_add(40'000'000, std::memory_order_relaxed);   // 40 ms "in VU1"
+                scheduler.accountCycles(kBatch);
+                return static_cast<double>(scheduler.eeCycleNow() - before) / 294'912'000.0 * 1000.0;   // ms of guest time
+            };
+            const double excluded = measure(true);
+            const double counted = measure(false);
+            t.IsTrue(excluded >= 10.0 && excluded <= 40.0, "default: 60 ms of wall time minus 40 ms excluded is about 20 ms of guest time (got " + std::to_string(excluded) + ")");
+            t.IsTrue(counted >= 55.0, "policy off: the guest clock advanced by the whole 60 ms of wall time (got " + std::to_string(counted) + ")");
+            t.IsTrue(scheduler.excludeHostTime() == false, "the setter is observable");
+            scheduler.setExcludeHostTime(true);
+            cleanupRuntime(*env);
+        });
+
+        tc.Run("the guest clock follows wall time by default (PS2X_CLOCK_EXCLUDE unset)", [](TestCase &t)
+        {
+            auto env = std::make_unique<TestEnv>();
+            EeScheduler &scheduler = env->runtime.eeScheduler();
+            scheduler.accountCycles(5000u);   // the first accounting call applies the environment default
+            t.IsTrue(scheduler.excludeHostTime() == false, "the default policy counts VU1 and render-wait time as guest time (research/34 section 6)");
+            cleanupRuntime(*env);
+        });
+
         tc.Run("negative interrupt-safe EE syscall ids dispatch", [](TestCase &t)
         {
             TestEnv env;

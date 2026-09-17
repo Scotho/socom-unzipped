@@ -277,6 +277,12 @@ public:
     void postEvent(EeEvent event);
     [[nodiscard]] bool checkpointDue(uint32_t cycles = kGeneratedCheckpointCycles) noexcept;
     void accountCycles(uint32_t cycles) noexcept;
+    uint64_t eeCycleNow() const noexcept { return m_eeCycle; }   // the cycle clock accountCycles advances
+    // Whether host time reported through ps2GuestClockExcludedNs (VU1 runs, the render back-pressure wait) is
+    // subtracted from the guest clock. Default from PS2X_CLOCK_EXCLUDE (1 = subtract, the 2026-09-08 behaviour;
+    // 0 = the guest clock follows wall time, research/34 section 6).
+    void setExcludeHostTime(bool exclude) noexcept { m_excludeHostTime = exclude; m_excludePolicyRead = true; }
+    bool excludeHostTime() const noexcept { return m_excludeHostTime; }
     [[nodiscard]] bool isExecutingGuest() const noexcept;
 
     // Kernel object API. All calls except postEvent/requestStop execute on the
@@ -459,6 +465,9 @@ private:
     uint64_t m_snapshotSequence = 0;
     uint64_t m_snapshotPublishedCycle = ~0ull; // eeCycle of the last published snapshot (rate limit)
     uint64_t m_accountBatchedCycles = 0;       // accountCycles: estimated cycles since the last clock read
+    int64_t m_clockTraceGapNs = 0, m_clockTraceExcludedNs = 0, m_clockTraceLostNs = 0;   // PS2X_CLOCK_TRACE accounting
+    bool m_excludeHostTime = true;
+    bool m_excludePolicyRead = false;   // the PS2X_CLOCK_EXCLUDE default is applied on the first accountCycles
     std::atomic<uint32_t> m_eventCount{0};     // size of m_events (posters increment under m_eventMutex)
     uint32_t m_readyTotal = 0;                 // threads in m_readyQueues (selectReady skips the scan when 0)
     bool m_accountForceClock = false;          // accountCycles: convert on this call regardless of the batch

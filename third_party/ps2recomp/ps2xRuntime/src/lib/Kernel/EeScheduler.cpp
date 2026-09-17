@@ -408,6 +408,16 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
     // are wall-clock; the scheduler's vblank deadlines already are. PS2X_CYCLE_CLOCK=guest
     // restores estimate-driven accounting.
     static const bool s_guestClock = [] { const char *e = std::getenv("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
+    // The guest clock follows wall time (research/34 section 6: excluding VU1 and the render wait ran an online
+    // round at two thirds speed; with wall time both sides read 1.00 s/s and the control round played). PS2X_CLOCK_EXCLUDE=1
+    // restores the 2026-09-08 exclusion for an A/B; the cap knob below still
+    // bounds a single gap. Read once; setExcludeHostTime overrides it (tests).
+    static const bool s_excludeDefault = [] { const char *e = std::getenv("PS2X_CLOCK_EXCLUDE"); return e && std::atoi(e) != 0; }();
+    if (!m_excludePolicyRead)
+    {
+        m_excludePolicyRead = true;
+        m_excludeHostTime = s_excludeDefault;
+    }
     uint64_t elapsed = std::max<uint64_t>(1u, cycles);
     if (!s_guestClock)
     {
@@ -434,12 +444,18 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
             // diverged to +/-FLT_MAX. The VU1 interpreter reports its host time through
             // ps2GuestClockExcludedNs() and it is subtracted here (it runs in ~1000-cycle slices,
             // so a per-gap cap never sees it). PS2X_CLOCK_CAP_MS=<ms> additionally caps a single
-            // gap (default off; a vsync idle wait is a legitimate 16 ms gap).
+            // gap (default 100 ms; a vsync idle wait is a legitimate 16 ms gap, a level-load hitch is not a frame).
             const int64_t excluded = ps2GuestClockExcludedNs().exchange(0, std::memory_order_relaxed);
-            ns -= excluded;
+            if (m_excludeHostTime)
+                ns -= excluded;
+            // PS2X_CLOCK_TRACE=1 accounting (research/34 section 6): where a host second goes.
+            m_clockTraceGapNs += ns + excluded;
+            m_clockTraceExcludedNs += excluded;
+            if (ns < 0)
+                m_clockTraceLostNs += -ns;
             static const int64_t s_capNs = [] {
                 const char *e = std::getenv("PS2X_CLOCK_CAP_MS");
-                const double ms = e ? std::atof(e) : 0.0;
+                const double ms = e ? std::atof(e) : 100.0;   // default 100 ms: a stall is not a 300 ms dt (the camera spring diverged on one)
                 return ms > 0.0 ? static_cast<int64_t>(ms * 1000000.0) : 0;
             }();
             if (s_capNs > 0 && ns > s_capNs)
@@ -467,11 +483,14 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
             {
                 s_last = now;
                 const double hostSec = std::chrono::duration<double>(now - s_epoch).count();
-                std::fprintf(stderr, "[clock] host=%.1fs eeCycle=%.3fs T0=%u mode=0x%x nextDeadline=%.3fs vsyncTick=%llu checkpoints=%llu\n",
+                std::fprintf(stderr, "[clock] host=%.1fs eeCycle=%.3fs T0=%u mode=0x%x nextDeadline=%.3fs vsyncTick=%llu checkpoints=%llu gap_ms=%.0f excluded_ms=%.0f lost_ms=%.0f\n",
                              hostSec, static_cast<double>(m_eeCycle) / static_cast<double>(kEeClockHz),
                              m_runtime.memory().eeTimerCount(0), m_runtime.memory().eeTimerMode(0),
                              static_cast<double>(m_nextDeadlineCycle.load(std::memory_order_relaxed)) / static_cast<double>(kEeClockHz),
-                             (unsigned long long)currentVSyncTick(), (unsigned long long)s_calls);
+                             (unsigned long long)currentVSyncTick(), (unsigned long long)s_calls,
+                             static_cast<double>(m_clockTraceGapNs) / 1e6, static_cast<double>(m_clockTraceExcludedNs) / 1e6,
+                             static_cast<double>(m_clockTraceLostNs) / 1e6);
+                m_clockTraceGapNs = m_clockTraceExcludedNs = m_clockTraceLostNs = 0;
             }
         }
         if (elapsed == 0u)

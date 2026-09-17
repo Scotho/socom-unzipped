@@ -89,7 +89,17 @@ has no guest-clock bar — §6.
   a texture, or the uploads themselves), so `decodeTexture` re-runs for them. Measure with `PS2X_GS_STATS=1` and the
   `[gs-pages]` trace; the cache key's page span is the place to look.
 
-- **The guest clock runs at 0.5–0.85 of wall time even on passing runs** (table in §1, and `ours_control_frostfire_bisect3`:
-  13.8 s of guest time per 30 s). PCSX2 runs it 1:1. The VU1 interpreter's host time is excluded from guest time by
-  design; that exclusion is the slowdown. Online rounds therefore last longer in wall time than their clock says, and
-  anything paced on the guest clock (weapon timers, the 0.6 s snap-back window) is stretched the same way. KNOWN §2.
+- **FIXED 2026-09-17: the guest clock ran at 0.5–0.85 of wall time even on passing runs** (table in §1; the Task 6b
+  sweep measured 0.42–0.90 across twenty maps, Requiem's joiner 0.38). Measured with the `[clock]` accounting added
+  for it (`gap_ms` / `excluded_ms` / `lost_ms`, `ours_control_frostfire_clock`): of every host second in the round,
+  ~195 ms of VU1 time and ~290 ms of render back-pressure wait were subtracted from the guest clock
+  (`ps2GuestClockExcludedNs`, the 2026-09-08 `e163402` design, made when the VU1 interpreter ran at 3 fps and a
+  300 ms dt diverged the camera spring). SOCOM II integrates every timer from T0's dt, so counting wall time is what
+  it expects; the scheduler now counts it by default (`PS2X_CLOCK_EXCLUDE=1` restores the exclusion for an A/B) with
+  a 100 ms cap on a single gap (`PS2X_CLOCK_CAP_MS`, default was off) so a stall stays a stall. Test-first:
+  'accountCycles subtracts the excluded host time by default and counts it with the policy off' and 'the guest clock
+  follows wall time by default'. Measured: gate `s6_clock_gate` title/mission PASS (spawn 22.6, water flat 0.183,
+  hold diffs 3.6–127 vs 5–36 before); online `ours_control_frostfire_clockoff` CONTROL-ROUND exit 0 with **both sides
+  at 1.00 s per wall second** (eeCycle tracks host 1:1, holds net 119 / 54 u vs 40–90). The transition stage's
+  black-frame floor was calibrated on the slow clock (14 wait captures at two-thirds speed, 4 at wall speed, all
+  peak 0): recalibrated to 3 (`gate.TRANSITION_MIN_FRAMES`, test-first).

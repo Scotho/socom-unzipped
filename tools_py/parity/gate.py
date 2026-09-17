@@ -123,7 +123,10 @@ PRISTINE_CARD = os.path.join("game", "disc", "mc0_parity")   # the 2026-09-08 ca
 # peak 0. Both clear 5 by more than 3x, so the floor stays 5: under it, a run either did not reach
 # the fade or lost its captures. black_rows.py exits 0 when it examines nothing, so the exit code
 # alone is a vacuous pass and the count is part of the verdict.
-TRANSITION_MIN_FRAMES = 5
+# Recalibrated 2026-09-17 (research/34 section 6): with the guest clock on wall time the black screen before
+# the briefing lasts about 4 s (s6_clock_gate: 4 wait captures at 1 Hz, all peak 0) where the two-thirds-speed
+# clock gave 14 (s6_clutfix_gate). Three keeps the vacuous-pass guard (a stalled run examines 0 or 1).
+TRANSITION_MIN_FRAMES = 3
 
 GATES = {
     "title": dict(script="scripts/parity/title_menu.txt", seconds=170, tail=8),
