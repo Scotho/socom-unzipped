@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +33,9 @@ public:
     // (fno 0x11/0x12 = {handle, bank, sound, vol, pan, pitchMod, pitchBend}; the rest = the command's argument words).
     void onBankLoaded(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes);
     void onNotify(uint32_t function, const int32_t *args, size_t count);
+    bool isPlaying(uint32_t handle, bool &playing) const;   // the mixer's answer for snd_SoundIsStillPlaying
+    void setDiscImagePath(const std::string &path) { m_discImagePath = path; }   // where the VAG streams are read from
+    size_t mixerActiveStreams() const { return m_mixer.activeStreams(); }
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
     bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
     void mixerRender(int16_t *interleaved, size_t frames);
@@ -47,6 +51,7 @@ private:
     std::unique_ptr<Impl> m_impl;
     bool m_audioReady = false;
     snd989::Mixer m_mixer;
+    std::string m_discImagePath;
     void openMixerStream();
     void closeMixerStream();
     uint32_t m_mostRecentSampleKey = 0;

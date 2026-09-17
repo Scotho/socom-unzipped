@@ -1,4 +1,5 @@
 #include "MiniTest.h"
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 
@@ -41,6 +42,8 @@ namespace
 
 int main()
 {
+    // Unbuffered stdout: a crash mid-suite must leave the last [Run] line in a redirected log (2026-09-17).
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     // These tests cover the reference implementations, but the runtime defaults to the faster
     // paths this fork added for the game. Each is chosen per process from the environment and
     // read once, before any test runs, so select the reference ones here. An A/B run can

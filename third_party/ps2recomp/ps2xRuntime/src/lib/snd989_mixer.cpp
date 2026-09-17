@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <map>
@@ -12,6 +13,22 @@
 // bytes on the disc confirm (research/32 sections 1, 3): a handler walks a sound's grain list at 240 ticks a
 // second; each TONE grain keys on an SPU voice whose pitch comes from sceSdNote2Pitch, whose stereo volume comes
 // from MakeVolume's pan table and the group's master volume, and whose envelope is the SPU's ADSR.
+namespace snd989
+{
+    namespace
+    {
+        // The disc image is over 2 GB: fseek's long is 32 bits on Windows, so every seek goes through the 64-bit call.
+        int seek64(FILE *fp, uint64_t offset)
+        {
+#ifdef _WIN32
+            return _fseeki64(fp, static_cast<long long>(offset), SEEK_SET);
+#else
+            return fseeko(fp, static_cast<off_t>(offset), SEEK_SET);
+#endif
+        }
+    }
+}
+
 namespace snd989
 {
     namespace
@@ -159,7 +176,7 @@ namespace snd989
             void rate(int shift, int stepValue, bool exponential, bool decrease, int32_t &step, int32_t &cyc) const
             {
                 cyc = 1 << std::max(0, shift - 11);
-                step = stepValue << std::max(0, 11 - shift);
+                step = stepValue * (1 << std::max(0, 11 - shift));   // a shift of a negative step is undefined; multiply
                 if (exponential && !decrease && level > 0x6000)
                     cyc *= 4;
                 if (exponential && decrease)
@@ -298,6 +315,102 @@ namespace snd989
             uint8_t note = 60, fine = 0;
         };
 
+        // A VPK stream (research/32 section 5): interleaved 0x800-byte ADPCM chunks per channel, read from the disc
+        // image as it plays and resampled from the file's rate to kSampleRate.
+        struct Stream
+        {
+            uint32_t handle = 0;
+            FILE *file = nullptr;
+            uint64_t dataStart = 0;      // file offset of the first chunk
+            uint32_t dataSize = 0;       // bytes of chunk data
+            uint32_t interleave = 0x800;
+            uint32_t rate = 32000;
+            uint32_t channels = 1;
+            uint32_t consumed = 0;       // chunk bytes read so far
+            bool ended = false;          // no more chunks
+            bool paused = false;
+            bool done = false;           // played out (or stopped)
+            uint8_t group = 0;
+            VolPair base{};
+            std::vector<std::vector<int16_t>> pcm;   // per channel: the current chunk's samples
+            std::vector<int16_t> s1, s2;             // per channel ADPCM history
+            double pos = 0.0;                        // sample position inside the current chunk
+            double step = 1.0;                       // file rate / output rate
+
+            bool readChunkPair()
+            {
+                if (ended || !file)
+                    return false;
+                const size_t chunkBytes = static_cast<size_t>(interleave);
+                std::vector<uint8_t> raw(chunkBytes);
+                bool any = false;
+                for (uint32_t ch = 0; ch < channels; ++ch)
+                {
+                    pcm[ch].clear();
+                    if (consumed >= dataSize)
+                    {
+                        ended = true;
+                        continue;
+                    }
+                    const size_t want = std::min(chunkBytes, static_cast<size_t>(dataSize - consumed));
+                    if (seek64(file, dataStart + consumed) != 0)
+                    {
+                        ended = true;
+                        continue;
+                    }
+                    const size_t got = std::fread(raw.data(), 1, want, file);
+                    consumed += static_cast<uint32_t>(want);
+                    if (got < 16)
+                    {
+                        ended = true;
+                        continue;
+                    }
+                    any = true;
+                    int16_t h1 = s1[ch], h2 = s2[ch];
+                    for (size_t off = 0; off + 16 <= got; off += 16)
+                    {
+                        const uint8_t *block = raw.data() + off;
+                        uint8_t shift = block[0] & 0x0F;
+                        if (shift > 12)
+                            shift = 9;
+                        uint8_t filter = (block[0] >> 4) & 0x07;
+                        if (filter > 4)
+                            filter = 0;
+                        for (int i = 0; i < 28; ++i)
+                        {
+                            const uint8_t byte = block[2 + i / 2];
+                            const uint8_t nibble = (i & 1) ? (byte >> 4) : (byte & 0x0F);
+                            const int8_t raw4 = static_cast<int8_t>((nibble & 8) ? (nibble | 0xF0) : nibble);
+                            const int32_t shifted = raw4 << (12 - shift);
+                            const int32_t old = h1, older = h2;
+                            int32_t filtered;
+                            switch (filter)
+                            {
+                            case 1: filtered = shifted + (60 * old + 32) / 64; break;
+                            case 2: filtered = shifted + (115 * old - 52 * older + 32) / 64; break;
+                            case 3: filtered = shifted + (98 * old - 55 * older + 32) / 64; break;
+                            case 4: filtered = shifted + (122 * old - 60 * older + 32) / 64; break;
+                            default: filtered = shifted; break;
+                            }
+                            const int16_t v = static_cast<int16_t>(std::clamp(filtered, -32768, 32767));
+                            h2 = h1;
+                            h1 = v;
+                            pcm[ch].push_back(v);
+                        }
+                        if (block[1] & 0x01)
+                        {
+                            ended = true;   // the end flag inside the data: the last chunk
+                            break;
+                        }
+                    }
+                    s1[ch] = h1;
+                    s2[ch] = h2;
+                }
+                pos = 0.0;
+                return any;
+            }
+        };
+
         constexpr double kTickHz = 240.0;
     }
 
@@ -322,6 +435,7 @@ namespace snd989
         std::unordered_map<uint32_t, BankData> banks;
         std::vector<Voice> voices;
         std::vector<Handler> handlers;
+        std::vector<Stream> streams;
         int32_t masterVol[17] = {};
         uint32_t nextUid = 1;
         uint32_t nextSlot = 0;
@@ -350,8 +464,9 @@ namespace snd989
         void applyVoiceVolume(Voice &v, int32_t &left, int32_t &right) const
         {
             const int32_t modifier = groupModifier(v.group);
-            left = (v.base.left * modifier) / 0x400;
-            right = (v.base.right * modifier) / 0x400;
+            // The SPU voice takes (left >> 1, right >> 1): full volume is half of full scale (StartTone, research/32 section 3).
+            left = ((v.base.left * modifier) / 0x400) >> 1;
+            right = ((v.base.right * modifier) / 0x400) >> 1;
         }
 
         void startTone(Handler &h, BankData &bd, const socom2_bank::Tone &tone)
@@ -518,6 +633,22 @@ namespace snd989
             }
         }
 
+        Stream *findStream(uint32_t handle)
+        {
+            for (Stream &st : streams)
+                if (st.handle == handle)
+                    return &st;
+            return nullptr;
+        }
+
+        void closeStream(Stream &st)
+        {
+            if (st.file)
+                std::fclose(st.file);
+            st.file = nullptr;
+            st.done = true;
+        }
+
         bool handlerAlive(const Handler &h) const
         {
             if (!h.done)
@@ -532,11 +663,19 @@ namespace snd989
         {
             voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) { return v.env.phase == Envelope::Off; }), voices.end());
             handlers.erase(std::remove_if(handlers.begin(), handlers.end(), [this](const Handler &h) { return !handlerAlive(h); }), handlers.end());
+            for (Stream &st : streams)
+                if (st.done && st.file)
+                    closeStream(st);
+            streams.erase(std::remove_if(streams.begin(), streams.end(), [](const Stream &st) { return st.done; }), streams.end());
         }
     };
 
     Mixer::Mixer() : m_impl(std::make_unique<Impl>()) {}
-    Mixer::~Mixer() = default;
+    Mixer::~Mixer()
+    {
+        for (Stream &st : m_impl->streams)
+            m_impl->closeStream(st);
+    }
 
     bool Mixer::loadBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes)
     {
@@ -624,6 +763,9 @@ namespace snd989
     bool Mixer::isPlaying(uint32_t handle) const
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        for (const Stream &st : m_impl->streams)
+            if (st.handle == handle)
+                return !st.done;
         for (const Handler &h : m_impl->handlers)
             if (h.handle == handle)
                 return m_impl->handlerAlive(h);
@@ -633,6 +775,11 @@ namespace snd989
     void Mixer::stop(uint32_t handle)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (Stream *st = m_impl->findStream(handle))
+        {
+            m_impl->closeStream(*st);
+            return;
+        }
         if (Handler *h = m_impl->find(handle))
         {
             h->done = true;
@@ -643,6 +790,8 @@ namespace snd989
     void Mixer::pause(uint32_t handle)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (Stream *st = m_impl->findStream(handle))
+            st->paused = true;
         if (Handler *h = m_impl->find(handle))
             h->paused = true;
         for (Voice &v : m_impl->voices)
@@ -653,6 +802,8 @@ namespace snd989
     void Mixer::resume(uint32_t handle)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (Stream *st = m_impl->findStream(handle))
+            st->paused = false;
         if (Handler *h = m_impl->find(handle))
             h->paused = false;
         for (Voice &v : m_impl->voices)
@@ -746,6 +897,40 @@ namespace snd989
                     v.pos += v.step;
                 }
             }
+            for (Stream &st : m_impl->streams)
+            {
+                if (st.paused || st.done)
+                    continue;
+                int32_t left = 0, right = 0;
+                {
+                    const int32_t modifier = m_impl->groupModifier(st.group);
+                    left = ((st.base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
+                    right = ((st.base.right * modifier) / 0x400) >> 1;
+                }
+                for (size_t i = 0; i < chunk; ++i)
+                {
+                    if (st.pcm.empty() || st.pcm[0].empty() || st.pos >= static_cast<double>(st.pcm[0].size()))
+                    {
+                        const double carry = st.pcm.empty() || st.pcm[0].empty() ? 0.0 : st.pos - static_cast<double>(st.pcm[0].size());
+                        if (!st.readChunkPair() || st.pcm[0].empty())
+                        {
+                            st.done = true;
+                            break;
+                        }
+                        st.pos = std::max(0.0, carry);
+                    }
+                    const std::vector<int16_t> &l = st.pcm[0];
+                    const std::vector<int16_t> &r = st.pcm[st.channels > 1 ? 1 : 0];
+                    const size_t i0 = static_cast<size_t>(st.pos);
+                    const size_t i1 = std::min(i0 + 1, l.size() - 1);
+                    const double frac = st.pos - static_cast<double>(i0);
+                    const double sl = l[i0] * (1.0 - frac) + l[i1] * frac;
+                    const double sr = (i0 < r.size() ? r[i0] : 0) * (1.0 - frac) + (i1 < r.size() ? r[i1] : 0) * frac;
+                    mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
+                    mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                    st.pos += st.step;
+                }
+            }
             frame += chunk;
             m_impl->tickAccumulator += static_cast<double>(chunk);
             if (m_impl->tickAccumulator >= framesPerTick)
@@ -775,6 +960,81 @@ namespace snd989
         size_t n = 0;
         for (const Handler &h : m_impl->handlers)
             if (m_impl->handlerAlive(h))
+                ++n;
+        return n;
+    }
+}
+
+namespace snd989
+{
+    bool Mixer::playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group)
+    {
+        FILE *fp = std::fopen(path.c_str(), "rb");
+        if (!fp)
+            return false;
+        // Two file shapes on the disc (research/32 section 5): a VPK (magic stored as the little-endian word "VPK ",
+        // so the bytes read " KPV"; data size, interleave, header size, rate, channels as little-endian words) for the
+        // music, and a "VAGp" (48-byte big-endian header: data size at 0x0c, rate at 0x10; mono) for the voice-overs.
+        uint8_t header[0x30] = {};
+        if (seek64(fp, byteOffset) != 0 || std::fread(header, 1, sizeof(header), fp) != sizeof(header))
+        {
+            std::fclose(fp);
+            return false;
+        }
+        auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, header + at, 4); return v; };
+        auto be32 = [&](size_t at) { return (static_cast<uint32_t>(header[at]) << 24) | (static_cast<uint32_t>(header[at + 1]) << 16) | (static_cast<uint32_t>(header[at + 2]) << 8) | header[at + 3]; };
+        Stream st;
+        st.handle = handle;
+        st.file = fp;
+        if (std::memcmp(header, " KPV", 4) == 0)
+        {
+            st.dataSize = u32(4);
+            st.interleave = std::max<uint32_t>(16u, u32(8));
+            st.rate = u32(16) ? u32(16) : 32000u;
+            st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            st.dataStart = byteOffset + u32(12);
+        }
+        else if (std::memcmp(header, "VAGp", 4) == 0)
+        {
+            st.dataSize = be32(12);
+            st.interleave = 0x800;
+            st.rate = be32(16) ? be32(16) : 44100u;
+            st.channels = 1;
+            st.dataStart = byteOffset + 48;
+        }
+        else
+        {
+            std::fclose(fp);
+            return false;
+        }
+        st.group = group;
+        st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
+        st.pcm.assign(st.channels, {});
+        st.s1.assign(st.channels, 0);
+        st.s2.assign(st.channels, 0);
+        const int32_t playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
+        const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
+        st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (Stream *old = m_impl->findStream(handle))
+            m_impl->closeStream(*old);
+        m_impl->streams.push_back(std::move(st));
+        return true;
+    }
+
+    void Mixer::stopAllStreams()
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        for (Stream &st : m_impl->streams)
+            m_impl->closeStream(st);
+    }
+
+    size_t Mixer::activeStreams() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        size_t n = 0;
+        for (const Stream &st : m_impl->streams)
+            if (!st.done)
                 ++n;
         return n;
     }

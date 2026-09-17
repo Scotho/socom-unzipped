@@ -972,8 +972,8 @@ namespace ps2x::iop::detail
             void forwardAudio(uint32_t fno, const CommandArgs &args)
             {
                 m_host.audioCommand(kSndSid, fno, args.guestBuffer(), GuestBuffer{});
-                if (fno == kPlaySound || fno == kPlaySoundNoReturn)
-                    return;   // playSound notifies with its handle
+                if (fno == kPlaySound || fno == kPlaySoundNoReturn || fno == kPlayVagStreamByLoc)
+                    return;   // playSound / playVagStream notify with their handle
                 int32_t words[16] = {};
                 const uint32_t count = std::min<uint32_t>(args.bytes / 4u, 16u);
                 for (uint32_t i = 0; i < count; ++i)
@@ -1134,6 +1134,19 @@ namespace ps2x::iop::detail
                 if (handle == 0xFFFFFFFFu)
                 {
                     return 0xFFFFFFFFu;
+                }
+                {
+                    bool playing = false;
+                    if (m_host.audioIsPlaying(handle, playing))   // the host mixer's answer, when it has one
+                    {
+                        if (!playing)
+                        {
+                            if (SoundSlot *slot = findSound(handle))
+                                slot->active = false;
+                            return 0u;
+                        }
+                        return handle;
+                    }
                 }
                 SoundSlot *slot = findSound(handle);
                 if (slot == nullptr)
@@ -1421,6 +1434,11 @@ namespace ps2x::iop::detail
                 target->flags = args.u32(7);
                 ++m_metrics.streamsPlayed;
                 forwardAudio(kPlayVagStreamByLoc, args);
+                const int32_t words[9] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(target->sector1),
+                                          static_cast<int32_t>(target->sector2), static_cast<int32_t>(target->offset1), target->volume,
+                                          static_cast<int32_t>(target->offset2), target->pan, static_cast<int32_t>(target->group),
+                                          static_cast<int32_t>(target->flags)};
+                m_host.audioNotify(kPlayVagStreamByLoc, words, 9u);
                 return target->handle;
             }
 

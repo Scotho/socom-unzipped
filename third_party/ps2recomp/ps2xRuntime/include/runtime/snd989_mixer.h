@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -45,6 +46,12 @@ namespace snd989
         void setVolPan(uint32_t handle, int32_t vol, int32_t pan);   // kVolDontChange / kPanDontChange leave a value
         void setMasterVolume(uint32_t group, int32_t vol);           // 0..0x400; group 16 = every group
         void stopAll();
+
+        // snd_PlayVAGStreamByLoc: a VPK file in the disc image ("VPK " header: data size, 0x800-byte interleave, header size,
+        // sample rate, channels; research/32 section 5) at `byteOffset` of `path`, read as it plays. vol 0..0x400, pan as play().
+        bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
+        void stopAllStreams();
+        size_t activeStreams() const;
 
         // Mix `frames` stereo frames (interleaved L R) at kSampleRate; advances the grain sequencers.
         void render(int16_t *interleaved, size_t frames);

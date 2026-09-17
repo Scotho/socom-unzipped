@@ -272,6 +272,11 @@ void PS2IopHostAdapter::audioNotify(uint32_t function, const int32_t *args, size
     m_runtime.audioBackend().onNotify(function, args, count);
 }
 
+bool PS2IopHostAdapter::audioIsPlaying(uint32_t handle, bool &playing) const
+{
+    return m_runtime.audioBackend().isPlaying(handle, playing);
+}
+
 std::string PS2IopHostAdapter::hostPath(ps2x::iop::HostPathKind kind) const
 {
     const PS2Runtime::IoPaths &paths = PS2Runtime::getIoPaths();

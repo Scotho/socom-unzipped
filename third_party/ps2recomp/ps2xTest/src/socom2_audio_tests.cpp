@@ -389,7 +389,7 @@ void register_socom2_audio_tests()
             backend.onNotify(0x12u, play, 7u);
             t.Equals(backend.mixerActiveVoices(), static_cast<size_t>(1u), "snd_PlaySoundVolPanPMPBNoReturn started the tone");
             t.IsTrue(backend.mixerIsPlaying(0x05010001u), "under the module's handle");
-            std::vector<int16_t> buf(2 * 2048);
+            std::vector<int16_t> buf(2 * 4096);   // sized for the largest render below (a 2048 buffer overflowed the heap, 2026-09-17)
             backend.mixerRender(buf.data(), 2048);
             int32_t peak = 0;
             for (int16_t v : buf)
@@ -404,6 +404,212 @@ void register_socom2_audio_tests()
             backend.onNotify(0x06u, unload, 1u);
             backend.onNotify(0x12u, play, 7u);
             t.Equals(backend.mixerActiveVoices(), static_cast<size_t>(0u), "after snd_UnloadBank the bank plays nothing");
+        });
+
+        tc.Run("Mixer: a VPK stream plays its interleaved channels left and right at its own rate, then ends", [](TestCase &t)
+        {
+            // A VPK: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000, channels 2}, then
+            // 0x800-byte chunks alternating L, R. Left carries a positive ramp, right a negative one.
+            int8_t up[28], down[28];
+            for (int i = 0; i < 28; ++i)
+            {
+                up[i] = static_cast<int8_t>(i % 8);        // 0..7
+                down[i] = static_cast<int8_t>(-(i % 8));   // 0..-7
+            }
+            const int chunksPerChannel = 3;
+            std::vector<uint8_t> file(0xB0, 0u);
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
+            put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
+            put32(8, 0x800);
+            put32(12, 0xB0);
+            put32(16, 32000);
+            put32(20, 2);
+            for (int c = 0; c < chunksPerChannel; ++c)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int b = 0; b < 0x800 / 16; ++b)
+                    {
+                        const bool last = c == chunksPerChannel - 1 && b == 0x800 / 16 - 1;
+                        const std::vector<uint8_t> blk = block(12, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
+                        file.insert(file.end(), blk.begin(), blk.end());
+                    }
+            const std::string path = "socom2_audio_test_stream.vpk";
+            {
+                FILE *fp = std::fopen(path.c_str(), "wb");
+                t.IsTrue(fp != nullptr, "the temporary VPK can be written");
+                if (!fp)
+                    return;
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            snd989::Mixer mixer;
+            t.IsTrue(!mixer.playStream(0x04000001u, path, 4u, 0x400, -1, 1u), "an offset that is not a VPK header is refused");
+            t.IsTrue(mixer.playStream(0x04000001u, path, 0u, 0x400, -1, 1u), "the stream starts");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one stream");
+            t.IsTrue(mixer.isPlaying(0x04000001u), "playing under the module's handle");
+            std::vector<int16_t> buf(2 * 4800);
+            mixer.render(buf.data(), 4800);   // 100 ms
+            double left = 0, right = 0;
+            for (size_t i = 0; i < 4800; ++i)
+            {
+                left += buf[2 * i];
+                right += buf[2 * i + 1];
+            }
+            t.IsTrue(left > 0 && right < 0, "left carries the positive ramp, right the negative (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
+            t.IsTrue(std::fabs(left + right) < 0.05 * (std::fabs(left) + std::fabs(right)), "and they are equal in size (pan reset = centre)");
+            // 3 chunks x 128 blocks x 28 samples = 10752 samples at 32 kHz = 336 ms = 16128 output frames at 48 kHz.
+            size_t frames = 4800;
+            while (mixer.isPlaying(0x04000001u) && frames < 48000u)
+            {
+                mixer.render(buf.data(), 4800);
+                frames += 4800;
+            }
+            t.IsTrue(!mixer.isPlaying(0x04000001u), "the stream ends after its data (" + std::to_string(frames) + " frames)");
+            t.IsTrue(frames >= 14400u && frames <= 24000u, "about 16128 frames of output: 336 ms at 32 kHz resampled to 48 kHz");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "no stream left");
+
+            t.IsTrue(mixer.playStream(0x04000002u, path, 0u, 0x400, 90, 1u), "again, panned right");
+            mixer.render(buf.data(), 2400);
+            left = right = 0;
+            for (size_t i = 0; i < 2400; ++i)
+            {
+                left += std::fabs(static_cast<double>(buf[2 * i]));
+                right += std::fabs(static_cast<double>(buf[2 * i + 1]));
+            }
+            t.IsTrue(right > 4.0 * left, "pan 90: hard right");
+            mixer.stop(0x04000002u);
+            t.IsTrue(!mixer.isPlaying(0x04000002u), "stop ends a stream at once");
+            t.IsTrue(mixer.playStream(0x04000003u, path, 0u, 0x400, -1, 1u), "a third");
+            mixer.stopAllStreams();
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "stopAllStreams");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("PS2AudioBackend routes a VPK stream by sector and answers snd_SoundIsStillPlaying from the mixer", [](TestCase &t)
+        {
+            // A one-channel VPK in a "disc image" of three sectors: header at sector 2, so the play call's sector is 2.
+            int8_t up[28];
+            for (int i = 0; i < 28; ++i)
+                up[i] = static_cast<int8_t>(i % 8);
+            std::vector<uint8_t> image(2048u * 2u, 0u);
+            std::vector<uint8_t> vpk(0xB0, 0u);
+            auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(vpk.data(), " KPV", 4);
+            put32(4, 0x800u);
+            put32(8, 0x800u);
+            put32(12, 0xB0u);
+            put32(16, 32000u);
+            put32(20, 1u);
+            for (int b = 0; b < 0x800 / 16; ++b)
+            {
+                const std::vector<uint8_t> blk = block(12, 0, b == 0x800 / 16 - 1 ? 0x01 : 0x00, up);
+                vpk.insert(vpk.end(), blk.begin(), blk.end());
+            }
+            image.insert(image.end(), vpk.begin(), vpk.end());
+            const std::string path = "socom2_audio_test_image.bin";
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(image.data(), 1, image.size(), fp);
+                std::fclose(fp);
+            }
+            PS2AudioBackend backend;
+            backend.setDiscImagePath(path);
+            const int32_t play[9] = {0x04000005, 2, 0, 0, 0x400, 0, -1, 1, 0};
+            backend.onNotify(0x2Cu, play, 9u);
+            t.Equals(backend.mixerActiveStreams(), static_cast<size_t>(1u), "snd_PlayVAGStreamByLoc opened the stream at sector 2");
+            bool playing = false;
+            t.IsTrue(backend.isPlaying(0x04000005u, playing) && playing, "the mixer answers snd_SoundIsStillPlaying: playing");
+            t.IsTrue(!backend.isPlaying(0x00a00000u, playing), "a bank handle is not a sound handle: no answer");
+            std::vector<int16_t> buf(2 * 4800);
+            backend.mixerRender(buf.data(), 4800);
+            int32_t peak = 0;
+            for (int16_t v : buf)
+                peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+            t.IsTrue(peak > 0, "the stream is in the mix");
+            const int32_t stop[1] = {0x04000005};
+            backend.onNotify(0x2Fu, stop, 1u);
+            t.IsTrue(backend.isPlaying(0x04000005u, playing) && !playing, "snd_StopVAGStream: the mixer says it is over");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("Mixer: a VAGp file (the mission voice-overs: 48-byte big-endian header, mono 22050 Hz) streams too", [](TestCase &t)
+        {
+            int8_t up[28];
+            for (int i = 0; i < 28; ++i)
+                up[i] = static_cast<int8_t>(i % 8);
+            std::vector<uint8_t> file(48, 0u);
+            std::memcpy(file.data(), "VAGp", 4);
+            const uint32_t dataSize = 16u * 64u;   // 64 blocks
+            file[12] = static_cast<uint8_t>(dataSize >> 24); file[13] = static_cast<uint8_t>(dataSize >> 16); file[14] = static_cast<uint8_t>(dataSize >> 8); file[15] = static_cast<uint8_t>(dataSize);
+            const uint32_t rate = 22050u;
+            file[16] = static_cast<uint8_t>(rate >> 24); file[17] = static_cast<uint8_t>(rate >> 16); file[18] = static_cast<uint8_t>(rate >> 8); file[19] = static_cast<uint8_t>(rate);
+            std::memcpy(file.data() + 32, "M51_140", 7);
+            for (int b = 0; b < 64; ++b)
+            {
+                const std::vector<uint8_t> blk = block(12, 0, b == 63 ? 0x01 : 0x00, up);
+                file.insert(file.end(), blk.begin(), blk.end());
+            }
+            const std::string path = "socom2_audio_test_vo.vag";
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(0x04000009u, path, 0u, 0x400, -1, 1u), "the VAGp stream starts");
+            std::vector<int16_t> buf(2 * 4800);
+            mixer.render(buf.data(), 4800);
+            double left = 0, right = 0;
+            for (size_t i = 0; i < 4800; ++i)
+            {
+                left += buf[2 * i];
+                right += buf[2 * i + 1];
+            }
+            t.IsTrue(left > 0 && right > 0, "mono goes to both channels");
+            // 64 blocks x 28 = 1792 samples at 22050 Hz = 81 ms = 3901 frames at 48 kHz: over in the first render.
+            size_t frames = 4800;
+            while (mixer.isPlaying(0x04000009u) && frames < 48000u)
+            {
+                mixer.render(buf.data(), 4800);
+                frames += 4800;
+            }
+            t.IsTrue(frames <= 9600u, "ends within its 81 ms (" + std::to_string(frames) + " frames rendered)");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("Mixer: a full-scale stream at full volume sits at the SPU's half scale (voice volume >> 1), not at clipping", [](TestCase &t)
+        {
+            // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the SPU voice volume is
+            // 0x3fff * cos(45 deg) >> 1 of full scale: about 28672 * 0.707 * 0.5 = 10135 per channel.
+            int8_t sevens[28];
+            for (int i = 0; i < 28; ++i)
+                sevens[i] = 7;
+            std::vector<uint8_t> file(48, 0u);
+            std::memcpy(file.data(), "VAGp", 4);
+            const uint32_t dataSize = 16u * 32u;
+            file[12] = static_cast<uint8_t>(dataSize >> 24); file[13] = static_cast<uint8_t>(dataSize >> 16); file[14] = static_cast<uint8_t>(dataSize >> 8); file[15] = static_cast<uint8_t>(dataSize);
+            file[16] = 0; file[17] = 0; file[18] = 0xBB; file[19] = 0x80;   // 48000
+            for (int b = 0; b < 32; ++b)
+            {
+                const std::vector<uint8_t> blk = block(0, 0, b == 31 ? 0x01 : 0x00, sevens);
+                file.insert(file.end(), blk.begin(), blk.end());
+            }
+            const std::string path = "socom2_audio_test_loud.vag";
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(0x0400000Au, path, 0u, 0x400, -1, 1u), "starts");
+            std::vector<int16_t> buf(2 * 512);
+            mixer.render(buf.data(), 512);
+            int32_t peak = 0;
+            for (int16_t v : buf)
+                peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+            t.IsTrue(peak >= 9000 && peak <= 11500, "peak " + std::to_string(peak) + " (about 10135: 28672 x 0.707 x 1/2)");
+            mixer.stopAll();
+            std::remove(path.c_str());
         });
     });
 }

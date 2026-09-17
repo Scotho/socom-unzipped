@@ -147,3 +147,28 @@ register tests, not audio output.
   of the module's 2.5 s lifetime, PauseAll/ContinueAll, the LFO grain (vibrato on weapon loops), and the owner's
   listening test in free play.
 
+## 6. Streams (2026-09-17, later)
+
+- **Measured** (`s6_audio_gate5`, gate 3/3, spawn 23.8): the mission's eleven streams open and play (the briefing voice-overs, then the
+  mission music at RMS 3000–4500 through the round); the dump peaks at 18572 after the SPU's half-scale voice volume
+  (`left >> 1, right >> 1`) was added — the first cut summed at full scale and clipped at 32768.
+
+- **Two file shapes on the disc.** The music streams are VPK files: the magic is the little-endian word `"VPK "`, so the bytes
+  read `" KPV"` (0x20 4B 50 56); then data size, interleave (0x800), header size (0xB0), sample rate (32000), channels (2), all
+  little-endian; the data is 0x800-byte ADPCM chunks alternating L, R. The mission voice-overs are plain `VAGp` files
+  (48-byte big-endian header: data size at 0x0c, rate at 0x10 — 22050 Hz, mono; the name at 0x20: `M51_140`…). Both
+  read straight from the disc image at `sector * 2048 + offset` as they play (`Mixer::playStream`, resampled to 48 kHz;
+  the image is over 2 GB, so the seeks are 64-bit — a 32-bit `fseek` failed silently on every mission stream first).
+- **Wiring.** The module reports `snd_PlayVAGStreamByLoc` with its handle first (`{handle, sector1, sector2, off1, vol,
+  off2, pan, group, flags}`); `snd_SoundIsStillPlaying` is answered by the mixer for handles it knows
+  (`IopHost::audioIsPlaying`), so the game's own polling sees the real end of a sound.
+- **What is still silent.** The title-screen music is a **PCM stream** (fno 0x3B open 0x6000 bytes / 0x3E start / 0x40
+  position): the EE decodes it itself from a CD stream (`sceCdStStart` at LBN 0xcdade) and SIF-DMAs PCM into an IOP
+  buffer the module hands out (`0x900000`, a fake address the copies land on in EE RAM). The host needs the buffer in
+  the IOP heap window (`allocateGuest`), the module's `onSifTransfer` hook to see the writes, and a ring voice in the
+  mixer with a position the module can report. Next.
+- **Tests.** 484/484: the VPK stream (interleaved channels left and right, its own rate, ends after its data, pan,
+  stop, stopAllStreams), the VAGp stream, the backend routing a stream by sector and answering the playing query. The
+  runner gained `PS2X_TEST_SUITE=<substring>` and `PS2X_TEST_SKIP=<substrings>` filters and unbuffered stdout, which
+  found the one-in-six crash of the day: the routing test rendering 4096 frames into a 2048-frame buffer.
+

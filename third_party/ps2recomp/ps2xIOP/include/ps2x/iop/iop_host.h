@@ -75,6 +75,12 @@ namespace ps2x::iop
         {
             (void)handle; (void)block; (void)blockBytes; (void)vag; (void)vagBytes;
         }
+        // snd_SoundIsStillPlaying answered by the host mixer: true when it knows the handle (playing = its state).
+        virtual bool audioIsPlaying(uint32_t handle, bool &playing) const
+        {
+            (void)handle; (void)playing;
+            return false;
+        }
         virtual void audioNotify(uint32_t function, const int32_t *args, size_t count)
         {
             (void)function; (void)args; (void)count;

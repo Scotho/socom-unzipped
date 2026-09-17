@@ -11,6 +11,17 @@
 
 
 
+## 2026-09-17 (morning) — the mission's voice-overs and music play: VPK and VAGp streams through the mixer (research/32 §6)
+
+`snd_PlayVAGStreamByLoc` now opens the file at `sector * 2048 + offset` in the disc image and plays it as it reads: the
+music is VPK (the magic is the little-endian word "VPK ", bytes " KPV"; 0x800-byte interleaved stereo chunks at 32 kHz),
+the voice-overs are plain VAGp (22050 Hz mono). Three things the first cut got wrong, each caught by a run and fixed
+test-first: the magic bytes, the 32-bit `fseek` that failed on every offset past 2 GB, and the SPU's half-scale voice
+volume (the mix clipped at 32768; it peaks at 18572 now). `snd_SoundIsStillPlaying` is answered by the mixer. Gate
+`s6_audio_gate5` 3/3 with the dump: all eleven mission streams play. The title music is a **PCM stream** the EE decodes
+and DMAs into IOP memory — the next audio step (research/32 §6). The day's one-in-six C++ crash was the routing test's
+own buffer overflow; the runner gained `PS2X_TEST_SUITE` / `PS2X_TEST_SKIP` filters and unbuffered stdout.
+
 ## 2026-09-17 (night) — first sound: 989snd bank sounds play through a host mixer (Task 6c Steps 2–3, research/32 §5)
 
 The IOP module hands each bank's block and VAG chunks to the host and reports the play family with its own handle;
@@ -18,8 +29,9 @@ The IOP module hands each bank's block and VAG chunks to the host and reports th
 raylib stream. Test-first throughout (ps2x_tests 480/480; the HUDUI bank cut from the disc as fixtures). Title stage with
 `PS2X_AUDIO_DUMP`: the menu clicks are in the mix (five windows with signal, peak 13544). Music and voice-overs are VAG
 streams, not yet played — the next audio step. Gate `s6_audio_gate` 3/3 (spawn 23.4, water flat 0.185); `build.sh test` green on
-its second run — the first died once after the audio tests with stdout lost to buffering (the C++ suite passed 480/480 on three
-standalone runs before and after; KNOWN §2's intermittent scheduler-test flake is the known suspect, the exact test unattributed).
+its second run — the first died once after the audio tests. **Found the next morning:** the backend routing test rendered 4096
+frames into a buffer sized for 2048 (a heap overflow that crashed whatever ran next, one run in six; deterministic with the
+suite alone). Fixed; the runner gained `PS2X_TEST_SUITE` / `PS2X_TEST_SKIP` filters and unbuffered stdout for the next hunt.
 
 ## 2026-09-17 (later) — the game ran at two thirds speed; the guest clock now follows wall time (research/34 §6)
 

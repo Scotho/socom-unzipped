@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstdlib>
 #include "runtime/ps2_audio.h"
+#include "ps2_runtime.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_host_backend.h"
 #include <cstring>
@@ -468,6 +469,21 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
             m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), arg(1), snd989::kPanDontChange);
         break;
     case 0x09u: m_mixer.setMasterVolume(static_cast<uint32_t>(arg(0)), arg(1)); break;
+    case 0x2Cu:   // snd_PlayVAGStreamByLoc {handle, sector1, sector2, off1, vol, off2, pan, group, flags}
+        if (count >= 9)
+        {
+            if (m_discImagePath.empty())
+                m_discImagePath = PS2Runtime::getIoPaths().cdImage.string();
+            const uint64_t offset = static_cast<uint64_t>(static_cast<uint32_t>(arg(1))) * 2048ull + static_cast<uint32_t>(arg(3));
+            const bool ok = m_mixer.playStream(static_cast<uint32_t>(arg(0)), m_discImagePath, offset, arg(4), arg(6), static_cast<uint8_t>(arg(7)));
+            std::cout << "[audio] 989snd stream " << std::hex << static_cast<uint32_t>(arg(0)) << " sector " << static_cast<uint32_t>(arg(1))
+                      << std::dec << "+" << static_cast<uint32_t>(arg(3)) << (ok ? " playing" : " not a VPK or VAGp") << std::endl;
+        }
+        break;
+    case 0x2Du: m_mixer.pause(static_cast<uint32_t>(arg(0))); break;
+    case 0x2Eu: m_mixer.resume(static_cast<uint32_t>(arg(0))); break;
+    case 0x2Fu: m_mixer.stop(static_cast<uint32_t>(arg(0))); break;
+    case 0x34u: m_mixer.stopAllStreams(); break;
     case 0x06u: m_mixer.unloadBank(static_cast<uint32_t>(arg(0))); break;
     default:
         break;
@@ -488,4 +504,13 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
                 std::fflush(m_impl->dumpFile);
         }
     }
+}
+
+bool PS2AudioBackend::isPlaying(uint32_t handle, bool &playing) const
+{
+    const uint32_t type = (handle >> 24) & 0x1Fu;
+    if (type != 4u && type != 5u)
+        return false;
+    playing = m_mixer.isPlaying(handle);
+    return true;
 }
