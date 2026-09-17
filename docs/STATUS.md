@@ -11,14 +11,19 @@
 
 
 
-## 2026-09-17 (evening) — title music clean: the sceMpeg HLE fed the game's audio callback wrong, three ways (research/32 §7.1)
+## 2026-09-17 (evening) — title music plays the disc's PCM sample for sample (research/32 §7.1)
 
-The owner's "title audio is really scratchy": the intro movie's PCM track reached the 989snd ring with whole packets swapped
-(the EE dispatcher ran invocations queued together last-in first-out), late (after the demux call instead of inside it, as
-the real library does), and one byte off (a packet the game's callback refused for lack of staging room was consumed anyway
-and lost, flipping the sample parity of everything after it). All three fixed under tests (496 pass); the ring moved to
-0x000A0000 and reads the track's 512-byte L/R blocks. Measured on `s6_audio_title7`: every ring write contiguous with the
-disc stream, the mix's discontinuity rate 295 → 0 per 1,000 frames. Owner's listen (Task 6c Step 4) still owed.
+The owner's "title audio is really scratchy", then "still nowhere near accurate; the opening video seems okay; mission
+audio good". Nineteen instrumented title runs. The sceMpeg HLE fed the game's audio callback out of order, late, and
+consumed a packet the callback had refused (the one-byte shift that turned the music to noise); the first fix for that,
+stopping the demux at a refusal as the library does, starved the game instead (it drops what a call did not consume and
+polls the demux with nothing 340,000 times a second; the audio thread wakes once per served picture and fell to 22 wakes
+a second, and the mixer lapped the ring). Final shape: the demux always consumes its input, refused audio is set aside
+and re-offered in order, the lookahead is back to eight pictures, overdue pictures are dropped, an idle demux call yields
+to any ready thread. Measured on `s6_audio_title19`: 30 audio wakes a second, the ring filled at 192 KB/s, pictures
+every 2 fields, and the mixed WAV correlates with the disc's PCM at 0.99 across the intro movie and the title loop with
+the offset advancing exactly 1:1. Suite 500 pass, gate 3/3. Owner's listen (Task 6c Step 4) still owed; residual: the
+first ten seconds after a stream starts fill short while the pipeline settles.
 
 ## 2026-09-17 (afternoon) — ladder s6_ladder12 on the current exe: 4 of 4 rounds usable, kills in 3
 

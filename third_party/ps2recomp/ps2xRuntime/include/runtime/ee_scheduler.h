@@ -303,6 +303,12 @@ public:
     int cancelWakeup(int id);
     int changePriority(int id, int priority, bool interruptSafe, int &oldPriority);
     int rotateReadyQueue(int priority, bool interruptSafe);
+    // Lets a ready thread of ANY priority run once before the current thread continues (the caller sets pc to its
+    // return site first). Returns normally when no thread is ready; otherwise transfers and does not return into the
+    // caller's frame. A deliberate departure from the kernel's strict priorities for a thread that is only polling
+    // (research/32 section 7.1: SOCOM II's movie thread re-polling a demux that consumes nothing starved its audio
+    // thread).
+    void yieldToAnyReady();
     int releaseWait(int id, bool interruptSafe);
     void transferIfRequested(bool interruptSafe);
 

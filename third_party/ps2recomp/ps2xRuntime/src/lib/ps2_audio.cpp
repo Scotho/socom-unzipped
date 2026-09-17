@@ -1,3 +1,4 @@
+#include <chrono>
 #include <cstdio>
 #include <string>
 #include <iostream>
@@ -501,7 +502,30 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
 
 void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
 {
+    // PS2X_AUDIO_TRACE=1: how the host audio callback is serviced -- rendered frames against wall time, calls, the
+    // longest render -- every 5 s (research/32 section 7.1: the title music starved when this fell to 80% of real time).
+    static const bool trace = std::getenv("PS2X_AUDIO_TRACE") != nullptr;
+    static const auto t0 = std::chrono::steady_clock::now();
+    static uint64_t framesTotal = 0u, calls = 0u;
+    static double maxRenderMs = 0.0, nextReportS = 5.0;
+    const auto renderStart = std::chrono::steady_clock::now();
     m_mixer.render(interleaved, frames);
+    if (trace)
+    {
+        const auto now = std::chrono::steady_clock::now();
+        framesTotal += frames;
+        ++calls;
+        maxRenderMs = std::max(maxRenderMs, std::chrono::duration<double, std::milli>(now - renderStart).count());
+        const double elapsedS = std::chrono::duration<double>(now - t0).count();
+        if (elapsedS >= nextReportS)
+        {
+            std::fprintf(stderr, "[audio-trace] t=%.1fs rendered=%.2fs of wall (%.0f%%) calls=%llu frames/call=%zu max_render=%.2fms\n",
+                         elapsedS, framesTotal / 48000.0, 100.0 * (framesTotal / 48000.0) / elapsedS,
+                         static_cast<unsigned long long>(calls), frames, maxRenderMs);
+            nextReportS += 5.0;
+            maxRenderMs = 0.0;
+        }
+    }
     if (m_impl && !m_impl->dumpPath.empty())
     {
         std::lock_guard<std::mutex> lock(m_impl->dumpMutex);

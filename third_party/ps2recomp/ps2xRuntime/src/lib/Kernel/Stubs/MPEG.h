@@ -5,7 +5,14 @@
 namespace ps2_stubs
 {
     void resetMpegStubState();
+    // A demux call that consumes nothing (the presenter is far enough ahead, or the game's stream callback refused
+    // the packet) lets any ready guest thread run once before returning 0, so a game that re-polls in a loop does
+    // not starve its lower-priority threads (research/32 section 7.1).
+    void setMpegDemuxIdleYields(bool enabled);
     void enqueueMpegDecodedFrameForTesting(uint32_t mpegAddr);
+    // Drops the decoded pictures that are overdue by a whole interval at `currentTick` (vsync ticks) and returns
+    // how many stay queued; the presenter's real-time policy, exposed for the test.
+    size_t mpegSkipOverduePicturesForTesting(uint32_t mpegAddr, uint64_t currentTick);
     void notifyMpegCdStreamStart(PS2Runtime *runtime = nullptr);
     void notifyMpegCdStreamDataProduced(uint32_t byteCount, bool endOfStream);
     void notifyMpegCdStreamEof(PS2Runtime *runtime = nullptr);

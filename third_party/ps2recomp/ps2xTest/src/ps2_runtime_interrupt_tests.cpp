@@ -65,6 +65,9 @@ namespace
     constexpr uint32_t kTimer2ResumePc = 0x00160510u;
     constexpr uint32_t kTimer2HandlerPc = 0x00160520u;
     constexpr uint32_t kQueueTwoPc = 0x00160600u;
+    constexpr uint32_t kYieldMainPc = 0x00160700u;
+    constexpr uint32_t kYieldAfterPc = 0x00160710u;
+    constexpr uint32_t kYieldLowPc = 0x00160720u;
     constexpr uint32_t kQueueResumePc = 0x00160610u;
     constexpr uint32_t kQueuedCallbackAPc = 0x00160620u;
     constexpr uint32_t kQueuedCallbackBPc = 0x00160630u;
@@ -192,6 +195,38 @@ namespace
 
     // Two guest invocations queued back to back (the MPEG demux queues one stream callback per PES packet this
     // way): they must run in the order they were queued, before the base context continues.
+    // yieldToAnyReady: a thread that has nothing useful to do (SOCOM II's movie thread re-polling a demux that
+    // consumes nothing) lets a ready thread of ANY priority run once before it continues -- a deliberate departure
+    // from the kernel's strict priorities, which on hardware never bite because the poll never spins there.
+    void yieldLowThread(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        g_dispatchTrace.push_back(2);
+        ctx->pc = 0u;
+    }
+
+    void yieldAfter(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_dispatchTrace.push_back(3);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    void yieldMain(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_dispatchTrace.push_back(1);
+        EeScheduler &scheduler = runtime->eeScheduler();
+        EeThreadCreateParams low{};
+        low.entry = kYieldLowPc;
+        low.stack = 0x1E000u;
+        low.stackSize = 0x1000u;
+        low.priority = 100;   // lower than the main thread's
+        const int lowId = scheduler.createThread(low);
+        scheduler.startThread(lowId, 0u, *ctx, false);
+        ctx->pc = kYieldAfterPc;
+        scheduler.yieldToAnyReady();   // transfers: the low thread runs, then the main thread resumes at kYieldAfterPc
+        g_dispatchTrace.push_back(9);  // never: the yield does not return into this frame when a thread is ready
+    }
+
     void queuedCallbackA(uint8_t *, R5900Context *ctx, PS2Runtime *)
     {
         g_dispatchTrace.push_back(1);
@@ -561,6 +596,23 @@ void register_ps2_runtime_interrupt_tests()
             const std::vector<int> expected{1, 2, 3};
             t.IsTrue(g_dispatchTrace == expected,
                      "two invocations queued A then B must run A, B, then the base context (the demux's packet order)");
+        });
+
+        tc.Run("yieldToAnyReady lets a lower-priority ready thread run once before the caller continues", [](TestCase &t)
+        {
+            TestEnv env;
+            env.runtime.registerFunction(kYieldMainPc, yieldMain);
+            env.runtime.registerFunction(kYieldAfterPc, yieldAfter);
+            env.runtime.registerFunction(kYieldLowPc, yieldLowThread);
+
+            g_dispatchTrace.clear();
+            R5900Context mainContext{};
+            mainContext.pc = kYieldMainPc;
+            env.runtime.eeScheduler().reset(env.rdram.data(), mainContext);
+            env.runtime.eeScheduler().run();
+
+            const std::vector<int> expected{1, 2, 3};
+            t.IsTrue(g_dispatchTrace == expected, "main yields, the low-priority thread runs, main resumes at its return site");
         });
 
         tc.Run("iSignalSema defers selection until IRQ return", [](TestCase &t)

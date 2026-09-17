@@ -16,6 +16,8 @@ extern "C"
 }
 #endif
 
+#include <cassert>
+#include <chrono>
 #include <deque>
 #include <memory>
 
@@ -490,11 +492,44 @@ namespace ps2_stubs
         // NTSC-style fields at ~59.94 Hz to keep MPEG timing yet (29.97 fps).
         constexpr uint64_t kDefaultPictureIntervalQ32 = 2ull * kPictureClockOne;
         constexpr size_t kMpegTimingScanLimit = 4096u;
+        // How far the demux may run ahead of the presenter. Two pictures (the hardware IPU's depth) starved the presenter
+        // here, since the game's demux loop is time-budgeted per frame and our decode lands in bursts: pictures came
+        // every 2.4-2.8 fields instead of 2, and SOCOM II services its audio ring once per served picture. Eight is
+        // the depth the healthy runs had; the audio the demux runs ahead of is set aside when the game's staging ring
+        // is full (research/32 section 7.1).
         constexpr size_t kMaxDecodedPicturesAhead = 8u;
+
+        // A PES packet parked at the front of the PSS buffer while its stream callbacks run on the guest: accepted, it
+        // is fed (video) and erased; refused, the demux call stops before it (research/32 section 7.1).
+        struct MpegPendingPacket
+        {
+            bool valid = false;
+            size_t end = 0u;
+            bool video = false;   // false: an audio (private stream 1) packet
+            size_t payloadStart = 0u;
+            int64_t pts90k = -1;
+            int64_t dts90k = -1;
+        };
 
         struct MpegPlaybackState
         {
             uint32_t picturesServed = 0u;
+            size_t picturesDropped = 0u;   // overdue pictures skipped by the real-time presenter (trace)
+            // Audio packets the game's stream callback refused (its staging ring was full), kept in order and
+            // re-offered from a guest scratch buffer before any newer audio, while the video packets behind them keep
+            // flowing: stopping the whole demux at a refused audio packet starved the presenter, which starved the
+            // audio thread, which kept the staging ring full (research/32 section 7.1).
+            struct AsideAudio
+            {
+                std::vector<uint8_t> bytes;
+                int64_t pts90k = -1;
+                int64_t dts90k = -1;
+            };
+            std::deque<AsideAudio> asideAudio;
+            uint32_t asideScratchAddr = 0u;      // guestMalloc'd, one packet at a time
+            uint32_t asideScratchBytes = 0u;
+            bool asideAudioBlocked = false;      // refused: offered again on a later vsync tick
+            uint64_t asideRefusedTick = 0u;
             uint32_t width = 320u;
             uint32_t height = 240u;
             uint32_t decodeMode = 0u;
@@ -557,6 +592,7 @@ namespace ps2_stubs
         };
 
         std::mutex g_mpeg_stub_mutex;
+        bool g_mpegDemuxIdleYields = false;
         constexpr uint32_t kMpegPictureWaitType = 1u;
         MpegStubState g_mpeg_stub_state;
 
@@ -1143,20 +1179,6 @@ namespace ps2_stubs
             }
         }
 
-        // Drops everything past `keep` bytes of the PSS buffer (a refused packet and what followed it: the game
-        // resubmits those bytes).
-        void truncatePss(MpegPlaybackState &playback, size_t keep)
-        {
-            if (playback.pssBuffer.size() > keep)
-            {
-                playback.pssBuffer.resize(keep);
-            }
-            if (playback.pssGuestAddrs.size() > keep)
-            {
-                playback.pssGuestAddrs.resize(keep);
-            }
-        }
-
         std::vector<MpegRegisteredCallback> matchingStreamCallbacks(uint32_t mpegAddr, uint32_t streamType)
         {
             std::vector<MpegRegisteredCallback> out;
@@ -1224,18 +1246,6 @@ namespace ps2_stubs
                 }
             }
         }
-
-        // A PES packet parked at the front of the PSS buffer while its stream callbacks run on the guest: accepted, it
-        // is fed (video) and erased; refused, the demux call stops before it (research/32 section 7.1).
-        struct MpegPendingPacket
-        {
-            bool valid = false;
-            size_t end = 0u;
-            bool video = false;
-            size_t payloadStart = 0u;
-            int64_t pts90k = -1;
-            int64_t dts90k = -1;
-        };
 
         void processPssBuffer(uint32_t mpegAddr,
                               MpegPlaybackState &playback,
@@ -1805,17 +1815,18 @@ namespace ps2_stubs
         }
 
         // One sceMpegDemuxPss / sceMpegDemuxPssRing call on the dispatcher thread (research/32 section 7.1). The input
-        // is appended to the PSS buffer, then demuxed packet by packet: a packet with stream callbacks is parked at the
+        // is appended to the PSS buffer, then demuxed packet by packet: a packet with stream callbacks waits at the
         // front of the buffer while its callbacks run on the calling guest thread, in packet order, before the caller's
-        // next instruction, as the real library does. A callback returning 0 has not taken the packet (SOCOM II's audio
-        // callback does so when its staging ring is full): the call stops there and returns the bytes consumed before
-        // that packet, the packet and what followed it are dropped from the buffer, and the game resubmits them.
+        // next instruction, as the real library does. The call always consumes its whole input (SOCOM II treats a call
+        // that consumed less as finished and drops the rest): a video packet the callback refused is taken anyway, an
+        // audio packet it refused (its staging ring was full) is set aside and re-offered, in order, on a later vsync.
         struct MpegDemuxCall
         {
             uint32_t mpegAddr = 0u;
             size_t inputBytes = 0u;
             size_t decodedBefore = 0u;
             bool ring = false;
+            std::chrono::steady_clock::time_point started{};   // trace: the call's cost, callbacks included
         };
 
         void finishDemuxCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, const MpegDemuxCall &call, size_t consumed)
@@ -1845,13 +1856,81 @@ namespace ps2_stubs
                     runtime->eeScheduler().completeExternalWait(kMpegPictureWaitType, completedMpegId, KE_OK);
                 }
             }
-            if (mpegTraceEnabled() && (traceIdx < 16u || (traceIdx % 500u) == 0u))   // the game re-polls a refused packet thousands of times a second
+            if (mpegTraceEnabled() && (traceIdx < 16u || (traceIdx % 100u) == 0u))   // the game re-polls a refused packet thousands of times a second
             {
+                const double costUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - call.started).count();
+                uint32_t budget = 0u, t0 = 0u;
+                std::memcpy(&budget, rdram + 0x451da8u, sizeof(budget));   // SOCOM II's demux-loop budget in TIMER0 ticks (research/32 section 7.1)
+                t0 = runtime->memory().read32(0x10000000u);
                 std::cerr << "[MPEG:Demux" << (call.ring ? "PssRing" : "Pss") << "] #" << traceIdx << " mp=0x" << std::hex
                           << call.mpegAddr << std::dec << " input=" << call.inputBytes << " consumed=" << consumed
-                          << " decoded=" << decodedCount << std::endl;
+                          << " decoded=" << decodedCount << " cost_us=" << static_cast<long>(costUs)
+                          << " budget=" << budget << " t0=" << t0 << std::endl;
             }
             setReturnS32(ctx, static_cast<int32_t>(consumed));
+            if (consumed == 0u && g_mpegDemuxIdleYields)
+            {
+                // nothing consumed: let any ready guest thread run once before the caller re-polls (v0 is already 0;
+                // the caller's pc is its return site). Parking until vsync instead hung the title screen.
+                runtime->eeScheduler().yieldToAnyReady();
+            }
+        }
+
+        constexpr size_t kMaxAsideAudioPackets = 64u;   // ~260 KB, over a second of the movie's audio
+
+        // Moves the pending audio packet's payload aside (the guest read buffer it sits in is about to be reused) and
+        // erases it from the PSS buffer: the demux goes on with the packets behind it.
+        void setAudioPacketAside(MpegPlaybackState &playback, const MpegPendingPacket &pending)
+        {
+            if (pending.payloadStart < pending.end && pending.end <= playback.pssBuffer.size())
+            {
+                MpegPlaybackState::AsideAudio aside;
+                aside.bytes.assign(playback.pssBuffer.begin() + static_cast<std::ptrdiff_t>(pending.payloadStart),
+                                   playback.pssBuffer.begin() + static_cast<std::ptrdiff_t>(pending.end));
+                aside.pts90k = pending.pts90k;
+                aside.dts90k = pending.dts90k;
+                playback.asideAudio.push_back(std::move(aside));
+                while (playback.asideAudio.size() > kMaxAsideAudioPackets)
+                {
+                    playback.asideAudio.pop_front();
+                }
+            }
+            erasePssPrefix(playback, pending.end);
+        }
+
+        // Builds the events for the oldest aside packet, staged in the guest scratch. False when there is none.
+        bool stageAsideAudio(PS2Runtime *runtime, uint8_t *rdram, uint32_t mpegAddr, MpegPlaybackState &playback,
+                             std::vector<MpegStreamCallbackEvent> &events)
+        {
+            if (playback.asideAudio.empty())
+            {
+                return false;
+            }
+            const MpegPlaybackState::AsideAudio &aside = playback.asideAudio.front();
+            const uint32_t need = static_cast<uint32_t>(aside.bytes.size());
+            if (playback.asideScratchAddr == 0u || playback.asideScratchBytes < need)
+            {
+                if (playback.asideScratchAddr != 0u)
+                {
+                    runtime->guestFree(playback.asideScratchAddr);
+                }
+                playback.asideScratchBytes = std::max<uint32_t>(need, 8192u);
+                playback.asideScratchAddr = runtime->guestMalloc(playback.asideScratchBytes, 64u);
+                if (playback.asideScratchAddr == 0u)
+                {
+                    playback.asideScratchBytes = 0u;
+                    return false;
+                }
+            }
+            uint8_t *dst = getMemPtr(rdram, playback.asideScratchAddr);
+            if (dst == nullptr)
+            {
+                return false;
+            }
+            std::memcpy(dst, aside.bytes.data(), aside.bytes.size());
+            queueStreamCallbackEvent(mpegAddr, kMpegStrPCM, playback.asideScratchAddr, need, events, aside.pts90k, aside.dts90k);
+            queueStreamCallbackEvent(mpegAddr, kMpegStrADPCM, playback.asideScratchAddr, need, events, aside.pts90k, aside.dts90k);
+            return !events.empty();
         }
 
         void continueDemuxCall(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime, MpegDemuxCall call)
@@ -1860,18 +1939,30 @@ namespace ps2_stubs
             {
                 std::vector<MpegStreamCallbackEvent> events;
                 MpegPendingPacket pending{};
-                std::ptrdiff_t packetInputOffset = 0;
+                bool offeringAside = false;
                 {
                     std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
                     MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
-                    processPssBuffer(call.mpegAddr, playback, events, false, &pending);
-                    if (!pending.valid)
+                    // audio set aside earlier goes first, in order, while the game will take it
+                    if (!playback.asideAudioBlocked && stageAsideAudio(runtime, rdram, call.mpegAddr, playback, events))
                     {
-                        break;
+                        offeringAside = true;
+                        pending.valid = true;
                     }
-                    // the packet sits at the front of the buffer: this many of the call's input bytes precede it
-                    // (negative when it began in bytes carried over from an earlier call)
-                    packetInputOffset = static_cast<std::ptrdiff_t>(call.inputBytes) - static_cast<std::ptrdiff_t>(playback.pssBuffer.size());
+                    else
+                    {
+                        processPssBuffer(call.mpegAddr, playback, events, false, &pending);
+                        if (!pending.valid)
+                        {
+                            break;
+                        }
+                        if (!pending.video && !playback.asideAudio.empty())
+                        {
+                            // newer audio behind audio still set aside: keep the order, set this one aside too
+                            setAudioPacketAside(playback, pending);
+                            continue;
+                        }
+                    }
                 }
 
                 std::vector<GuestInvocation> invocations;
@@ -1889,7 +1980,15 @@ namespace ps2_stubs
                 if (invocations.empty())
                 {
                     std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
-                    acceptPendingPacket(getPlaybackState(call.mpegAddr), pending);
+                    MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                    if (offeringAside)
+                    {
+                        playback.asideAudio.pop_front();
+                    }
+                    else
+                    {
+                        acceptPendingPacket(playback, pending);
+                    }
                     continue;
                 }
 
@@ -1898,14 +1997,17 @@ namespace ps2_stubs
                 {
                     auto release = std::move(invocations[i].onComplete);
                     const bool last = i + 1u == invocations.size();
-                    invocations[i].onComplete = [release, refused, last, rdram, runtime, call, pending, packetInputOffset](const R5900Context &done, R5900Context &parent)
+                    invocations[i].onComplete = [release, refused, last, rdram, runtime, call, pending, offeringAside](const R5900Context &done, R5900Context &parent) mutable
                     {
                         if (release)
                         {
                             release(done, parent);
                         }
-                        if (getRegU32(&done, 2) == 0u)
+                        if (getRegU32(&done, 2) == 0u && !pending.video)
                         {
+                            // SOCOM II treats a call that consumed less than it offered as finished and drops the rest,
+                            // so the demux always consumes its whole input: a refused video packet is taken anyway, a
+                            // refused audio packet is set aside (hardware never refuses: the game paces its reads).
                             *refused = true;
                         }
                         if (!last)
@@ -1916,26 +2018,37 @@ namespace ps2_stubs
                         {
                             {
                                 std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
-                                acceptPendingPacket(getPlaybackState(call.mpegAddr), pending);
+                                MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                                if (offeringAside)
+                                {
+                                    playback.asideAudio.pop_front();
+                                }
+                                else
+                                {
+                                    acceptPendingPacket(playback, pending);
+                                }
                             }
                             continueDemuxCall(rdram, &parent, runtime, call);
                             return;
                         }
-                        size_t consumed = 0u;
+                        if (offeringAside || !pending.video)
                         {
-                            std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
-                            MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
-                            if (packetInputOffset >= 0)
+                            // a refused audio packet: keep it aside (the newest goes behind the others) and go on with
+                            // the video; the aside audio is offered again on a later vsync tick
                             {
-                                truncatePss(playback, 0u);
-                                consumed = static_cast<size_t>(packetInputOffset);
+                                std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+                                MpegPlaybackState &playback = getPlaybackState(call.mpegAddr);
+                                if (!offeringAside)
+                                {
+                                    setAudioPacketAside(playback, pending);
+                                }
+                                playback.asideAudioBlocked = true;
+                                playback.asideRefusedTick = runtime->eeScheduler().currentVSyncTick();
                             }
-                            else
-                            {
-                                truncatePss(playback, static_cast<size_t>(-packetInputOffset));
-                            }
+                            continueDemuxCall(rdram, &parent, runtime, call);
+                            return;
                         }
-                        finishDemuxCall(rdram, &parent, runtime, call, consumed);
+                        assert(false && "a refused packet is either taken (video) or set aside (audio)");
                     };
                 }
                 runtime->eeScheduler().invokeCurrentSequence(std::move(invocations));
@@ -1962,10 +2075,15 @@ namespace ps2_stubs
             MpegDemuxCall call{};
             call.mpegAddr = mpegAddr;
             call.ring = ring;
+            call.started = std::chrono::steady_clock::now();
             bool backpressured = false;
             {
                 std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
                 MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+                if (playback.asideAudioBlocked && runtime->eeScheduler().currentVSyncTick() != playback.asideRefusedTick)
+                {
+                    playback.asideAudioBlocked = false;   // the audio thread drains at 30 Hz: one re-offer per vsync is plenty
+                }
                 call.decodedBefore = playback.decodedFrames.size();
                 backpressured = mpegDemuxBackpressured(playback);
                 if (!backpressured)
@@ -1978,10 +2096,40 @@ namespace ps2_stubs
             }
             if (backpressured)
             {
-                setReturnS32(ctx, 0);
+                finishDemuxCall(rdram, ctx, runtime, call, 0u);
                 return;
             }
             continueDemuxCall(rdram, ctx, runtime, call);
+        }
+
+        // Real-time presentation: while the picture behind the front one is already due, the front one is overdue
+        // by a whole interval and is dropped, so a game loop that misses vsyncs (ours does during the movies) shows
+        // the latest due picture instead of drifting behind real time, and the demux held a couple of pictures ahead
+        // of the presenter keeps feeding the audio at the stream's rate (research/32 section 7.1). Returns the
+        // number of pictures dropped.
+        size_t skipOverdueDecodedFrames(MpegPlaybackState &playback, uint64_t currentTickQ32)
+        {
+            size_t dropped = 0u;
+            while (playback.decodedFrames.size() > 1u)
+            {
+                const MpegDecodedFrame &front = playback.decodedFrames.front();
+                const MpegDecodedFrame &second = playback.decodedFrames[1];
+                const uint64_t frontTarget = presentationTickForFrame(playback, front, currentTickQ32);
+                const uint64_t secondTarget = second.pts90k < 0
+                    ? frontTarget + decodedFrameIntervalQ32(playback, front)
+                    : presentationTickForFrame(playback, second, currentTickQ32);
+                if (secondTarget > currentTickQ32)
+                {
+                    break;
+                }
+                playback.decodedFrames.pop_front();
+                if (front.pts90k < 0 && playback.nextPictureTickQ32 != std::numeric_limits<uint64_t>::max())
+                {
+                    playback.nextPictureTickQ32 = secondTarget;
+                }
+                ++dropped;
+            }
+            return dropped;
         }
 
         // libmpeg control callbacks registered with sceMpegAddCallback (not the
@@ -2188,10 +2336,23 @@ namespace ps2_stubs
         }
     }
 
+    void setMpegDemuxIdleYields(bool enabled)
+    {
+        g_mpegDemuxIdleYields = enabled;
+    }
+
     void resetMpegStubState()
     {
         std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
         resetMpegStubStateUnlocked();
+    }
+
+    size_t mpegSkipOverduePicturesForTesting(uint32_t mpegAddr, uint64_t currentTick)
+    {
+        std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+        MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+        skipOverdueDecodedFrames(playback, currentTick << 32u);
+        return playback.decodedFrames.size();
     }
 
     void enqueueMpegDecodedFrameForTesting(uint32_t mpegAddr)
@@ -2860,6 +3021,7 @@ namespace ps2_stubs
             {
                 const uint64_t currentTick = runtime->eeScheduler().currentVSyncTick();
                 const uint64_t currentTickQ32 = currentTick << 32u;
+                playback.picturesDropped += skipOverdueDecodedFrames(playback, currentTickQ32);
                 const MpegDecodedFrame &nextFrame = playback.decodedFrames.front();
                 const uint64_t frameIntervalQ32 = decodedFrameIntervalQ32(playback, nextFrame);
                 uint64_t presentationTargetQ32 = presentationTickForFrame(playback, nextFrame, currentTickQ32);
@@ -2909,6 +3071,7 @@ namespace ps2_stubs
                     std::cerr << "[MPEG:GetPicture] frame " << frameCount
                               << " " << width << "x" << height
                               << " queued=" << playback.decodedFrames.size()
+                              << " dropped=" << playback.picturesDropped
                               << " cbTotal=" << playback.controlCallbackTotal
                               << " tick=" << currentTick << std::endl;
                 }

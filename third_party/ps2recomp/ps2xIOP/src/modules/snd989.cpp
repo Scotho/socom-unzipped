@@ -965,6 +965,14 @@ namespace ps2x::iop::detail
                     uint32_t position = 0u;
                     value = m_host.audioPcmPosition(position) ? ((m_model.pcmBuffer + position) & 0xFFFFFFu) : 0u;
                     hasResult = true;
+                    {
+                        static const bool trace = std::getenv("PS2X_MPEG_TRACE") != nullptr;
+                        if (trace)
+                        {
+                            // every poll (research/32 section 7.1: the game fills the ring up to this position each wake)
+                            std::fprintf(stderr, "[989snd:PcmPos] play_off=%u\n", position);
+                        }
+                    }
                     break;
                 }
 

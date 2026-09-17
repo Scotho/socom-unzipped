@@ -394,7 +394,7 @@ namespace
         std::memcpy(&dataAddr, rdram + cbData + 0x08u, sizeof(dataAddr));
         std::memcpy(&len, rdram + cbData + 0x0Cu, sizeof(len));
         gRefuseSeen.emplace_back(dataAddr, len);
-        setRegU32(*ctx, 2, gRefuseSeen.size() == 2u ? 0u : 1u);   // the second sight (packet B, first time) is refused
+        setRegU32(*ctx, 2, gRefuseSeen.size() == 2u ? 0u : 1u);   // B is refused on its first sight
         ctx->pc = 0u;
     }
 
@@ -418,13 +418,67 @@ namespace
     void refuseAfterFirst(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         gRefuseFirstResult = ::getRegS32(*ctx, 2);
-        const uint32_t consumed = static_cast<uint32_t>(std::max(0, gRefuseFirstResult));
-        refuseDemux(ctx, kRefusePacketsAddr + consumed, gRefusePacketABytes + gRefusePacketBBytes - consumed, kRefuseAfterSecondPc, rdram, runtime);
+        // the game moves on: its next read lands in the same buffer, overwriting A and B; the set-aside audio is
+        // offered again once a vsync has passed (the audio thread drains at 30 Hz), so the next call waits one
+        EeScheduler &scheduler = runtime->eeScheduler();
+        scheduler.waitVSync(scheduler.currentVSyncTick(), -1, [rdram, runtime](R5900Context &resume)
+        {
+            std::memset(rdram + kRefusePacketsAddr, 0xEE, gRefusePacketABytes + gRefusePacketBBytes);
+            refuseDemux(&resume, kRefusePacketsAddr, 0u, kRefuseAfterSecondPc, rdram, runtime);
+        });
     }
+
+    constexpr uint32_t kRefuseAfterThirdPc = 0x00125080u;
+    int32_t gRefuseThirdResult = -1;
 
     void refuseAfterSecond(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
     {
         gRefuseSecondResult = ::getRegS32(*ctx, 2);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    // The idle-wait test (research/32 section 7.1): a demux call that consumes nothing parks the caller until the
+    // next vsync, so SOCOM II's re-polling video thread stops starving its audio thread.
+    constexpr uint32_t kIdleCallerPc = 0x00125090u;
+    constexpr uint32_t kIdleAfterPc = 0x001250A0u;
+    constexpr uint32_t kIdleMpegAddr = 0x00131000u;
+    constexpr uint32_t kIdlePacketAddr = 0x00132000u;
+    uint32_t gIdlePacketBytes = 0u;
+    constexpr uint32_t kIdleLowPc = 0x001250B0u;
+    int32_t gIdleResult = -1;
+    std::vector<int> gIdleTrace;
+
+    void idleLowThread(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        gIdleTrace.push_back(2);
+        ctx->pc = 0u;
+    }
+
+    void idleCaller(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gIdleTrace.push_back(1);
+        EeThreadCreateParams low{};
+        low.entry = kIdleLowPc;
+        low.stack = 0x1F000u;
+        low.stackSize = 0x1000u;
+        low.priority = 100;
+        const int lowId = runtime->eeScheduler().createThread(low);
+        runtime->eeScheduler().startThread(lowId, 0u, *ctx, false);
+        setRegU32(*ctx, 4, kIdleMpegAddr);
+        setRegU32(*ctx, 5, kIdlePacketAddr);
+        setRegU32(*ctx, 6, gIdlePacketBytes);
+        setRegU32(*ctx, 7, 0u);
+        setRegU32(*ctx, 8, 0xFFFFFFFFu);
+        setRegU32(*ctx, 31, kIdleAfterPc);
+        ctx->pc = kIdleAfterPc;
+        ps2_stubs::sceMpegDemuxPssRing(rdram, ctx, runtime);
+    }
+
+    void idleAfter(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gIdleResult = ::getRegS32(*ctx, 2);
+        gIdleTrace.push_back(3);
         ctx->pc = 0u;
         runtime->requestStop();
     }
@@ -735,7 +789,7 @@ void register_ps2_runtime_expansion_tests()
             }
         });
 
-        tc.Run("sceMpegDemuxPssRing stops at a packet the stream callback refuses and re-delivers it on the next call", [](TestCase &t)
+        tc.Run("sceMpegDemuxPssRing sets a refused audio packet aside and re-offers it, in order, before newer audio", [](TestCase &t)
         {
             PS2Runtime runtime;
             std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
@@ -777,18 +831,82 @@ void register_ps2_runtime_expansion_tests()
             runtime.eeScheduler().reset(rdram.data(), mainContext);
             runtime.eeScheduler().run();
 
-            t.Equals(gRefuseFirstResult, static_cast<int32_t>(packetA.size()),
-                     "the first call consumes packet A only: the callback refused B");
-            t.Equals(gRefuseSecondResult, static_cast<int32_t>(packetB.size()),
-                     "the resubmission consumes packet B");
-            t.Equals(gRefuseSeen.size(), static_cast<size_t>(3u), "the callback saw A, B refused, B again");
+            t.Equals(gRefuseFirstResult, static_cast<int32_t>(packetA.size() + packetB.size()),
+                     "the first call consumes both packets: the refused audio packet is set aside, the demux goes on");
+            t.Equals(gRefuseSecondResult, 0, "the second call had no input");
+            t.Equals(gRefuseSeen.size(), static_cast<size_t>(3u), "the callback saw A, B refused, B offered again");
             if (gRefuseSeen.size() == 3u)
             {
                 t.Equals(gRefuseSeen[0].first, kRefusePacketsAddr + 9u, "A's payload first");
                 t.Equals(gRefuseSeen[1].first, kRefusePacketsAddr + static_cast<uint32_t>(packetA.size()) + 9u, "then B's payload");
-                t.Equals(gRefuseSeen[2].first, kRefusePacketsAddr + static_cast<uint32_t>(packetA.size()) + 9u, "and B's payload again on the resubmission");
-                t.Equals(gRefuseSeen[2].second, 32u, "B's payload length on the resubmission");
+                t.Equals(gRefuseSeen[2].second, 32u, "B's payload length on the re-offer");
+                t.IsTrue(gRefuseSeen[2].first != gRefuseSeen[1].first, "the re-offer comes from the runtime's own copy, not the overwritten read buffer");
+                bool intact = true;
+                for (uint32_t i = 0; i < 32u; ++i)
+                    intact = intact && rdram[gRefuseSeen[2].first + i] == 0xB0u;
+                t.IsTrue(intact, "the re-offered bytes are B's original payload");
             }
+        });
+
+        tc.Run("sceMpegDemuxPssRing holds the demux eight decoded pictures ahead of the presenter", [](TestCase &t)
+        {
+            // The hardware IPU pipeline is one or two pictures deep; letting our demux run further ahead outruns the
+            // game's audio staging ring (research/32 section 7.1: SOCOM II's title music starved on the refusals).
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            constexpr uint32_t kMpeg = 0x0012E000u;
+            constexpr uint32_t kPacket = 0x0012F000u;
+            const std::vector<uint8_t> payload = {0x80u, 0x01u, 0x02u, 0x03u};
+            const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
+            std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, static_cast<uint8_t>(packetLen >> 8u),
+                                           static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
+            packet.insert(packet.end(), payload.begin(), payload.end());
+            std::memcpy(rdram.data() + kPacket, packet.data(), packet.size());
+            auto demux = [&]()
+            {
+                R5900Context ctx{};
+                setRegU32(ctx, 4, kMpeg);
+                setRegU32(ctx, 5, kPacket);
+                setRegU32(ctx, 6, static_cast<uint32_t>(packet.size()));
+                setRegU32(ctx, 7, 0u);
+                setRegU32(ctx, 8, 0xFFFFFFFFu);
+                ps2_stubs::sceMpegDemuxPssRing(rdram.data(), &ctx, &runtime);
+                return getRegS32(ctx, 2);
+            };
+            for (int i = 0; i < 7; ++i)
+                ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);
+            t.Equals(demux(), static_cast<int32_t>(packet.size()), "seven pictures ahead: the demux takes input");
+            ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);
+            t.Equals(demux(), 0, "eight pictures ahead: the demux takes nothing until the presenter catches up");
+        });
+
+        tc.Run("sceMpegDemuxPssRing that consumes nothing lets a lower-priority ready thread run before returning 0", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            ps2_stubs::setMpegDemuxIdleYields(true);
+            runtime.registerFunction(kIdleCallerPc, &idleCaller);
+            runtime.registerFunction(kIdleAfterPc, &idleAfter);
+            runtime.registerFunction(kIdleLowPc, &idleLowThread);
+            // eight decoded pictures ahead: the demux is held back and consumes nothing
+            for (int i = 0; i < 8; ++i)
+                ps2_stubs::enqueueMpegDecodedFrameForTesting(kIdleMpegAddr);
+            const std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, 0x00u, 0x07u, 0x80u, 0x00u, 0x00u, 0x80u, 0x01u, 0x02u, 0x03u};
+            std::memcpy(rdram.data() + kIdlePacketAddr, packet.data(), packet.size());
+            gIdlePacketBytes = static_cast<uint32_t>(packet.size());
+            gIdleTrace.clear();
+            gIdleResult = -1;
+            R5900Context mainContext{};
+            mainContext.pc = kIdleCallerPc;
+            runtime.eeScheduler().reset(rdram.data(), mainContext);
+            runtime.eeScheduler().run();
+            ps2_stubs::setMpegDemuxIdleYields(false);
+
+            t.Equals(gIdleResult, 0, "nothing consumed");
+            const std::vector<int> expected{1, 2, 3};
+            t.IsTrue(gIdleTrace == expected, "the caller yields, the low-priority thread runs, the caller resumes at its return site");
         });
 
         tc.Run("sceMpegDemuxPssRing dispatches registered video and audio stream callbacks", [](TestCase &t)
@@ -987,6 +1105,21 @@ void register_ps2_runtime_expansion_tests()
                      "new MPEG create should allow callbacks for the next stream");
 
             runtime.requestStop();
+        });
+
+        tc.Run("sceMpegGetPicture skips pictures that are overdue by a whole interval and presents the latest due one", [](TestCase &t)
+        {
+            // When the game's frame loop falls below 60 fps the presenter used to fall behind real time picture by
+            // picture, and the demux (held two pictures ahead of it) starved the audio (research/32 section 7.1).
+            // Four pictures without PTS present two ticks apart from the first call's tick.
+            ps2_stubs::resetMpegStubState();
+            constexpr uint32_t kMpeg = 0x00130000u;
+            for (int i = 0; i < 4; ++i)
+                ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);
+            t.Equals(ps2_stubs::mpegSkipOverduePicturesForTesting(kMpeg, 10u), static_cast<size_t>(4u),
+                     "at the first call nothing is overdue: four pictures stay queued (targets 10, 12, 14, 16)");
+            t.Equals(ps2_stubs::mpegSkipOverduePicturesForTesting(kMpeg, 15u), static_cast<size_t>(2u),
+                     "at tick 15 the pictures due at 10 and 12 are skipped: the one due at 14 is next, the one due at 16 waits");
         });
 
         tc.Run("sceMpegGetPicture blocks as a typed scheduler wait and resumes on EOF", [](TestCase &t)

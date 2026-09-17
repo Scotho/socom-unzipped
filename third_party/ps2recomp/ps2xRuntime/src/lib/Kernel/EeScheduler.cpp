@@ -928,6 +928,32 @@ void EeScheduler::transferIfRequested(bool interruptSafe)
     throw EeDispatcherTransfer{};
 }
 
+void EeScheduler::yieldToAnyReady()
+{
+    assertExecutor();
+    if (m_readyTotal == 0u || m_currentThreadId == 0 || m_insideInterrupt)
+    {
+        return;
+    }
+    GuestThread *self = currentThread();
+    assert(self != nullptr);
+    const int saved = self->currentPriority;
+    self->currentPriority = kPriorityCount - 1;   // behind every ready thread for one selection
+    self->resumeCompletion = [this, saved](R5900Context &)
+    {
+        if (GuestThread *resumed = currentThread())
+        {
+            resumed->currentPriority = saved;
+        }
+    };
+    enqueueReady(*self, false);
+    m_currentThreadId = 0;
+    m_rescheduleRequested = false;
+    m_timeSliceExpired = false;
+    publishSnapshot();
+    throw EeDispatcherTransfer{};
+}
+
 int EeScheduler::createSemaphore(int initCount, int maxCount, uint32_t attr, uint32_t option)
 {
     assertExecutor();

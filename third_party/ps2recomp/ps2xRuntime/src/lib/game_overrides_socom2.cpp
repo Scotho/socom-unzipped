@@ -9,6 +9,7 @@
 #include "game_overrides.h"
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/LibC.h"
+#include "Kernel/Stubs/MPEG.h"
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
@@ -1639,6 +1640,7 @@ namespace
         // rand() is stubbed (recomp/socom2.toml) but srand() is not, and the game boots with
         // `srand(<RTC>); srand(rand());` -- both halves have to write the same word.
         ps2_stubs::setLibcRandState(0x001CC750u, 0xA8u);
+        ps2_stubs::setMpegDemuxIdleYields(true);   // research/32 section 7.1: the movie thread re-polls the demux in a loop
         configureCdImage();
         runtime.replaceFunction(0x001c59c0u, socom2_LoadGameCodeFromDisc);
         runtime.replaceFunction(0x001c5b30u, socom2_LoadGameCodeFromMemcard);
