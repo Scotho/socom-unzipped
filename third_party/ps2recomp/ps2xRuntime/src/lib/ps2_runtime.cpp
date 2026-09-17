@@ -1,6 +1,5 @@
 #include "ps2_runtime.h"
 #include "runtime/ps2_window_size.h"
-#include "ps2_guest_heap_policy.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
 #include "ps2_syscalls.h"
@@ -717,7 +716,6 @@ bool PS2Runtime::initialize(const char *title)
             std::cerr << "Failed to bind runtime core subsystems" << std::endl;
             return false;
         }
-        (void)ps2_guest_heap::zeroFillEnabled(); // reads PS2X_GUEST_MALLOC_ZERO; logs one line when on
 #if defined(PS2X_IOP_ENABLE_PLUGINS) && PS2X_IOP_ENABLE_PLUGINS && \
     !defined(PLATFORM_VITA) && (defined(_WIN32) || defined(__linux__))
         std::string pluginError;
@@ -1900,67 +1898,13 @@ void PS2Runtime::configureGuestHeap(uint32_t guestBase, uint32_t guestLimit)
     resetGuestHeapLocked(normalizedBase, guestLimit);
 }
 
-namespace
-{
-    // PS2X_GUEST_MALLOC_ZERO (ps2_guest_heap_policy.h): -1 = not read yet, 0 = off, 1 = on.
-    std::atomic<int> g_guestMallocZero{-1};
-}
 
-namespace ps2_guest_heap
-{
-    bool zeroFillEnabled()
-    {
-        int state = g_guestMallocZero.load(std::memory_order_relaxed);
-        if (state < 0)
-        {
-            const char *e = std::getenv("PS2X_GUEST_MALLOC_ZERO");
-            const bool on = e && *e && !(std::strcmp(e, "0") == 0 || std::strcmp(e, "false") == 0 ||
-                                         std::strcmp(e, "off") == 0);
-            state = on ? 1 : 0;
-            int expected = -1;
-            if (g_guestMallocZero.compare_exchange_strong(expected, state) && on)
-            {
-                std::cout << "[guest-heap] PS2X_GUEST_MALLOC_ZERO=1: guestMalloc blocks and grown guestRealloc "
-                             "tails are zero-filled (default off)" << std::endl;
-            }
-            state = g_guestMallocZero.load(std::memory_order_relaxed);
-        }
-        return state == 1;
-    }
-
-    void setZeroFillForTesting(int state)
-    {
-        g_guestMallocZero.store(state < 0 ? -1 : (state ? 1 : 0), std::memory_order_relaxed);
-    }
-}
-
-namespace
-{
-    // Zero guest bytes [guestAddr + from, guestAddr + to), clamped to RDRAM.
-    void zeroGuestRange(PS2Memory &memory, uint32_t guestAddr, uint32_t from, uint32_t to)
-    {
-        uint8_t *rdram = memory.getRDRAM();
-        if (!rdram || guestAddr == 0u || to <= from)
-            return;
-        const uint64_t start = static_cast<uint64_t>(guestAddr & PS2_RAM_MASK) + from;
-        uint64_t end = static_cast<uint64_t>(guestAddr & PS2_RAM_MASK) + to;
-        if (start >= PS2_RAM_SIZE)
-            return;
-        end = std::min<uint64_t>(end, PS2_RAM_SIZE);
-        std::memset(rdram + start, 0, static_cast<size_t>(end - start));
-    }
-}
 
 uint32_t PS2Runtime::guestMalloc(uint32_t size, uint32_t alignment)
 {
     std::lock_guard<std::mutex> lock(m_guestHeapMutex);
     ensureGuestHeapInitializedLocked();
     const uint32_t guestAddr = allocateGuestBlockLocked(size, alignment);
-    if (guestAddr != 0u && ps2_guest_heap::zeroFillEnabled())
-    {
-        // The whole block allocateGuestBlockLocked carved: size rounded up to the heap's 16 bytes.
-        zeroGuestRange(m_memory, guestAddr, 0u, alignGuestHeapValue(size, kGuestHeapDefaultAlignment));
-    }
     return guestAddr;
 }
 
@@ -1976,8 +1920,7 @@ uint32_t PS2Runtime::guestCalloc(uint32_t count, uint32_t size, uint32_t alignme
     }
 
     const uint32_t totalSize = count * size;
-    // Allocate without guestMalloc's PS2X_GUEST_MALLOC_ZERO fill: calloc zeroes below regardless,
-    // so the knob must not zero the block twice.
+    // calloc zeroes the block below.
     uint32_t guestAddr = 0u;
     {
         std::lock_guard<std::mutex> lock(m_guestHeapMutex);
@@ -2068,11 +2011,6 @@ uint32_t PS2Runtime::guestRealloc(uint32_t guestAddr, uint32_t newSize, uint32_t
                     next.size -= extraNeeded;
                 }
                 m_guestHeapEnd = std::max(m_guestHeapEnd, oldAddr + requestedSize);
-                if (ps2_guest_heap::zeroFillEnabled())
-                {
-                    // Grown in place: the old prefix stays, the tail taken from the neighbour is zeroed.
-                    zeroGuestRange(m_memory, oldAddr, oldSize, requestedSize);
-                }
                 return oldAddr;
             }
         }
@@ -2093,12 +2031,6 @@ uint32_t PS2Runtime::guestRealloc(uint32_t guestAddr, uint32_t newSize, uint32_t
         if (dstPhys + copyBytes <= PS2_RAM_SIZE && srcPhys + copyBytes <= PS2_RAM_SIZE)
             std::memmove(rdram + dstPhys, rdram + srcPhys, copyBytes);
     }
-    if (ps2_guest_heap::zeroFillEnabled())
-    {
-        // Moved: the copied prefix [0, oldSize) stays, the grown tail of the new block is zeroed.
-        zeroGuestRange(m_memory, newAddr, oldSize, requestedSize);
-    }
-
     freeGuestBlockLocked(oldAddr);
     return newAddr;
 }

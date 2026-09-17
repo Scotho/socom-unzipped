@@ -5,7 +5,6 @@
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/LibC.h"
 #include "Kernel/HleStats.h"
-#include "ps2_guest_heap_policy.h"
 #include "runtime/ee_scheduler.h"
 
 #include <array>
@@ -965,100 +964,6 @@ void register_ps2_runtime_kernel_tests()
             env.runtime.guestFree(grown);
             const uint32_t reused = env.runtime.guestMalloc(0x80u, 16u);
             t.Equals(reused, heapBase, "guestFree should make the head block reusable");
-        });
-
-        tc.Run("PS2X_GUEST_MALLOC_ZERO zero-fills recycled malloc blocks and grown realloc tails", [](TestCase &t)
-        {
-            // Determinism: the guest heap is first-fit over an address-ordered block list with
-            // neighbour coalescing, so on a freshly configured heap malloc(n) -> free -> malloc(n)
-            // returns the same address, and the test asserts that address equality before it
-            // reads a byte. The knob is toggled in-process through setZeroFillForTesting; the
-            // cached environment value is restored (-1 = re-read) at the end.
-            constexpr uint32_t kBase = 0x00200000u;
-            constexpr uint32_t kLimit = 0x00210000u;
-            const auto fill = [](PS2Runtime &rt, uint32_t addr, uint32_t size, uint8_t v)
-            { std::memset(rt.memory().getRDRAM() + (addr & PS2_RAM_MASK), v, size); };
-            const auto allAre = [](PS2Runtime &rt, uint32_t addr, uint32_t size, uint8_t v)
-            {
-                const uint8_t *p = rt.memory().getRDRAM() + (addr & PS2_RAM_MASK);
-                for (uint32_t i = 0; i < size; ++i)
-                    if (p[i] != v)
-                        return false;
-                return true;
-            };
-
-            for (int knob = 0; knob <= 1; ++knob)
-            {
-                ps2_guest_heap::setZeroFillForTesting(knob);
-                const uint8_t fresh = knob ? 0x00u : 0xAFu;  // what a recycled byte must read
-                PS2Runtime runtime;
-                t.IsTrue(runtime.memory().initialize(), "runtime memory initialize should succeed");
-                runtime.configureGuestHeap(kBase, kLimit);
-
-                // 1. malloc -> dirty -> free -> malloc of the same size reuses the block.
-                const uint32_t a = runtime.guestMalloc(0x100u, 16u);
-                t.Equals(a, kBase, "first allocation lands at the heap base");
-                fill(runtime, a, 0x100u, 0xAFu);
-                runtime.guestFree(a);
-                const uint32_t again = runtime.guestMalloc(0x100u, 16u);
-                t.Equals(again, a, "first-fit hands the freed block back (test precondition)");
-                t.IsTrue(allAre(runtime, again, 0x100u, fresh),
-                         knob ? "knob on: a recycled malloc block reads zero"
-                              : "knob off: a recycled malloc block keeps the old bytes");
-
-                // memalign shape (_memalign_r binds to guestMalloc with an alignment).
-                fill(runtime, again, 0x100u, 0xAFu);
-                runtime.guestFree(again);
-                const uint32_t aligned = runtime.guestMalloc(0x40u, 64u);
-                t.Equals(aligned, a, "64-byte aligned allocation reuses the base block");
-                t.IsTrue(allAre(runtime, aligned, 0x40u, fresh),
-                         knob ? "knob on: a recycled memalign block reads zero"
-                              : "knob off: a recycled memalign block keeps the old bytes");
-                runtime.guestFree(aligned);
-
-                // 2. realloc growing IN PLACE into a freed, dirty neighbour.
-                const uint32_t p = runtime.guestMalloc(0x100u, 16u);
-                const uint32_t q = runtime.guestMalloc(0x100u, 16u);
-                t.Equals(q, p + 0x100u, "second block is adjacent (test precondition)");
-                fill(runtime, p, 0x100u, 0x11u);
-                fill(runtime, q, 0x100u, 0xAFu);
-                runtime.guestFree(q);
-                const uint32_t grown = runtime.guestRealloc(p, 0x180u, 16u);
-                t.Equals(grown, p, "realloc grows in place into the free neighbour (test precondition)");
-                t.IsTrue(allAre(runtime, grown, 0x100u, 0x11u), "in-place grow keeps the old prefix");
-                t.IsTrue(allAre(runtime, grown + 0x100u, 0x80u, fresh),
-                         knob ? "knob on: the in-place grown tail reads zero"
-                              : "knob off: the in-place grown tail keeps the neighbour's bytes");
-                runtime.guestFree(grown);
-
-                // 3. realloc that MOVES: a pinned neighbour blocks in-place growth, and a freed
-                //    dirty block further up is where first-fit puts the new copy.
-                const uint32_t m = runtime.guestMalloc(0x100u, 16u);   // kBase
-                const uint32_t pin = runtime.guestMalloc(0x100u, 16u); // kBase+0x100
-                const uint32_t far = runtime.guestMalloc(0x200u, 16u); // kBase+0x200
-                t.Equals(far, m + 0x200u, "third block follows the pin (test precondition)");
-                fill(runtime, m, 0x100u, 0x22u);
-                fill(runtime, far, 0x200u, 0xAFu);
-                runtime.guestFree(far);
-                const uint32_t moved = runtime.guestRealloc(m, 0x180u, 16u);
-                t.Equals(moved, far, "realloc moves to the freed block past the pin (test precondition)");
-                t.IsTrue(allAre(runtime, moved, 0x100u, 0x22u), "moving realloc copies the old prefix");
-                t.IsTrue(allAre(runtime, moved + 0x100u, 0x80u, fresh),
-                         knob ? "knob on: the moved block's grown tail reads zero"
-                              : "knob off: the moved block's grown tail keeps the old bytes");
-                runtime.guestFree(moved);
-                runtime.guestFree(pin);
-
-                // 4. calloc zeroes either way.
-                const uint32_t c0 = runtime.guestMalloc(0x100u, 16u);
-                fill(runtime, c0, 0x100u, 0xAFu);
-                runtime.guestFree(c0);
-                const uint32_t c = runtime.guestCalloc(4u, 0x40u, 16u);
-                t.Equals(c, c0, "calloc reuses the freed block (test precondition)");
-                t.IsTrue(allAre(runtime, c, 0x100u, 0x00u), "calloc zeroes with the knob on or off");
-                runtime.guestFree(c);
-            }
-            ps2_guest_heap::setZeroFillForTesting(-1);
         });
 
         tc.Run("PS2X_HLE_STATS table lists every bound stub, zero-call ones included", [](TestCase &t)
