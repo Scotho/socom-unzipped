@@ -418,7 +418,7 @@ weapon fire, music and voice streams -- reaches a speaker. This is the largest r
 ### Task 8: Harness and maintainability (lock-free)
 
 - [x] `gate.py --baseline <stamp>`: score a saved run dir without launching; test. *(2026-09-17: `score_baseline`, two tests; `--baseline s6_audio_gate20` re-scores 3/3.)*
-- [ ] `movie_blocks.py` wired into `build.sh test` with a saved furniture baseline under `tests/fixtures/movie/`.
+- [x] `movie_blocks.py` wired into `build.sh test` with a saved furniture baseline under `tests/fixtures/movie/`. *(2026-09-17: seven presents of `s6_movie_dump3` as PNG pairs + `furniture.txt`; `test_movie_blocks_fixture` runs in the discovery `build.sh test` already calls.)*
 - [x] Client-rect assertion in `drive.py` (fail loudly when the window is not 640×448 at capture). *(2026-09-17: `winshot.client_size` + `ClientRectError` in `capture_step`; `test_drive_capture`.)*
 - [x] `scripts/archive_logs.ps1`: move gate stamps and run logs older than 14 days (never the ones named in KNOWN §1) to `D:\socom_archive`, dry-run by default. *(2026-09-17: KNOWN §1's paths as patterns; `test_archive_logs` 2/2; the real dry run finds nothing 14 days old yet.)*
 - [x] Knob retirement pass 1: remove `PS2X_GUEST_MALLOC_ZERO` (shipped unused), the redundant main-context vf0 line, and the `_B` variants no driver sets (grep `tools_py/` first); README entries deleted with them; `build.sh test` + gate. *(2026-09-17: the knob, its policy header, its test and the `_B` mappings for it and `PS2X_SOCOM2_NET_STATS_B` are gone; no `vf0` line exists in the runtime any more -- nothing to remove.)*

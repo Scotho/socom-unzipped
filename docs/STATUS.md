@@ -11,6 +11,17 @@
 
 
 
+## 2026-09-17 (night) — Sprint 6 Task 8: the harness items, Foxhunt settled, knob retirement pass 1
+
+`docs/HUMAN_TASKS.md` opened for the owner's hands-on checks (the title/intro listen, free play, the launcher with the pad).
+Task 8: `gate.py --baseline <stamp>` re-scores a saved stamp (3/3 on `s6_audio_gate20`); `drive.py` fails loudly on a
+resized window at capture; `scripts/archive_logs.ps1` (dry-run by default, KNOWN §1's paths protected as patterns; nothing
+14 days old yet in 20 GB of logs); the README's five-command contributor section; `PS2X_GUEST_MALLOC_ZERO` and the unset
+`_B` variants retired (build.sh test 499/499, gate 3/3 `s6_task8_gate`). The control round's fall guard (a 30 u height
+drop: pad neutral, legs turn back, the damage scored apart) settled Foxhunt: `ours_control_foxhunt_guard` ran to its clock
+with no health change -- twenty of twenty maps play their control round. `movie_blocks` runs in `build.sh test` against a saved fixture (seven presents of a
+title-stage display dump and their furniture baseline; the dump found no missing movie block). Task 8 is complete.
+
 ## 2026-09-17 (evening) — title music plays the disc's PCM sample for sample (research/32 §7.1)
 
 The owner's "title audio is really scratchy", then "still nowhere near accurate; the opening video seems okay; mission
