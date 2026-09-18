@@ -21,6 +21,8 @@ server addresses; plus a second machine for Goal 5)
 carried by Sprint 7 or Sprint 8), rulings R81–R90, the KNOWN audit, STATUS's current state, ROADMAP §6 marked,
 `PS2X_TEST_REPEAT=3 ./build.sh test` 503/503 three times, gate 3/3 (`s6_fixwave_gate`), merged and pushed.
 
+**2026-09-18 additions (owner):** Goal 8 (plan Tasks 8-11: controller and microphone selection, FPS overlay, detail/resolution) and Task 12 (the owner's three sound reports: online-menu splice and buzz, the mission going silent). Order from here: the Goal 8 commits (the overlay's title launch is their gate), the ten-round lobby re-run on the latched press (Task 2f), then Task 12, then close-out. Task 3 stopped by its own trace (R96); the menus' upload cost goes to Sprint 8.
+
 **Sprint 7's order (the spec's Goals 1–7):** (1) the stranger's machine, defensively — GL probe and CPU fallback,
 the bounded command queue, the DPI flag and 2x default, the native-VU1 warning, audio I/O off the callback; (2) online
 correctness before scale — the equal-priority time slice removed, a same-key control round, the CD stream cursor, the

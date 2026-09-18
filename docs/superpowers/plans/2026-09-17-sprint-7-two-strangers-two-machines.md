@@ -2629,6 +2629,24 @@ git push
 
 ---
 
+### Task 12 — The owner's sound reports of 2026-09-18 (online menus splice and buzz; the mission goes silent)
+
+**Reported** (hands-on from the launcher, run log `dist/logs/run_20260918_015258.log`): (1) on the SOCOM II ONLINE briefing-rooms screen just after signing in, the music "skips and almost plays two different spliced segments"; (2) "a persistent buzz" on the create-game playlist screen and in the lobby; (3) the same carried into a single-player mission after leaving online, then "mid mission, sound stopped working altogether". The audio changes since the last good listen: Task 1e (6ea9520, the worker-thread stream ring), Task 2c (5a1b6a8, the CD plain-read cursor), and Task 11's volume gain (a no-op at 100, verified by reading it).
+
+**What the log already says:** the online menu music is a CD stream the GAME reads itself (`sceCdStStart lbn=0xcdade`, then `0xce5bf`, `0xdd218`, one per screen) into the 989snd PCM ring at 0xa0000 (`snd_PcmStreamOpen/Start/Stop/Close` pairs at lines 135-370); each stream's first reads show `buffered=0` twice before the ring starts (lines 140, 190, 196, 232); the mission then plays VAG streams (`989snd stream 40x000x sector ... playing`, lines 375-3164) through the worker ring. No `[audio]` warning line appears anywhere and the window closed normally.
+
+**Files:**
+- Modify (as the finding dictates): `third_party/ps2recomp/ps2xRuntime/src/lib/snd989_mixer.cpp` / `.h`, `src/lib/Kernel/Stubs/CD.cpp`, `src/lib/ps2_audio.cpp`
+- Test: `third_party/ps2recomp/ps2xTest/src/socom2_audio_tests.cpp`, `ps2_runtime_io_tests.cpp`; `tools_py/parity/audio_corr.py` gains a repeat detector
+- Launch scripts under `logs/`: `s7_audio_online.sh` (driven online login to the briefing rooms with `PS2X_AUDIO_DUMP`, `PS2X_AUDIO_TRACE=1`, the stream-worker trace), the same with `PS2X_SND_STREAM_WORKER=0`; `s7_audio_mission.sh` (the mission gate stage with a dump)
+
+- [ ] **Step 1: The code review** (Opus, read-only, 2026-09-18): the PCM ring's consumed position and `snd_PcmStreamPosition` against a fill that lands late (a 512-byte block looping IS a buzz); Task 2c's `sceCdGetReadPos` "whichever the caller last moved" rule against the game's PCM feeder while a CD stream is open; the worker ring across `snd_StopSound` → `snd_PlayVAGStreamByLoc` on one slot (stale chunks at the head of the new stream IS a splice); any path where the worker exits or blocks so every stream goes silent while voices continue. Output: three ranked causes, each with its cheapest experiment.
+- [ ] **Step 2: The repeat detector.** `audio_corr.py --repeat`: for each 4 s window, the autocorrelation peak at lags 256..4096 samples (a 512-byte block is 128 stereo frames; a looping block or chunk shows as a peak > 0.9 at its length); prints `repeat lag=<n> r=<x>` per window and exits 1 above `--repeat-bar 0.9`. Test with a synthetic looped block. Python, no launch.
+- [ ] **Step 3: Reproduce, driven (launches 37-39).** `s7_audio_online.sh`: `online_control_round.sh`'s login path stopped at the briefing rooms for 60 s (the drive already reaches that screen; use its `--until lobby` if present, else the same-key script with a 60 s hold), dump on, worker on; then the same with `PS2X_SND_STREAM_WORKER=0`; then `s7_audio_mission.sh`. Read each dump with the repeat detector and with `audio_corr` against the menu stream's disc PCM (extract sectors 0xcdade.. and 0xce5bf.. from the ISO the way `logs/title_loop_pcm.bin` was made -- the recipe is in research/32 §7.1). Bar: the A/B names the half (worker or not); the mission dump's RMS never falls to zero for 10 s while the HUD is up.
+- [ ] **Step 4: The fix, under a RED test that reproduces Step 1's winning cause** (a stream stopped with chunks queued must not leak them into the next stream; a late fill must not be replayed as a loop; whatever the review found). `./build.sh test`, build.
+- [ ] **Step 5: The three launches again** on the fixed exe; the bars of Step 3, plus the title correlation (`s7_audio_title`'s command) still 1.000.
+- [ ] **Step 6: Commit** with the launch names; KNOWN §1 row; `docs/HUMAN_TASKS.md`: the owner's re-listen of the online menus and one mission, quoting their three sentences and the numbers that now stand against them.
+
 ### Task 7 — Close-out
 
 **Files:** `docs/STATUS.md`, `docs/KNOWN.md`, `docs/ROADMAP.md` §6, `docs/CURRENT_SPRINT.md`, this plan.
