@@ -491,6 +491,16 @@ namespace snd989
             uint32_t channels = 2;
             int32_t gain = 0;        // per-channel volume 0..0x3fff after the SPU's >> 1
             double pos = 0.0;        // frames into the ring
+            // Sprint 7 Task 12 (ruling R97): the game fills the ring up to the position it polls, block by block, and
+            // the ring used to play whatever bytes were there -- a fill that landed after the head had passed was
+            // skipped until the next wrap (a splice) and a block never refilled looped (the owner's "persistent
+            // buzz", 2026-09-18). A 256-frame block is `fresh` from the write that touches it until the head plays it;
+            // the head entering a block that is not fresh plays silence for that block and counts an underrun.
+            std::vector<uint8_t> fresh;      // one flag per 256-frame block
+            uint32_t currentBlock = 0xffffffffu;
+            bool silentBlock = false;
+            uint64_t underruns = 0;
+            uint32_t blockBytes() const { return 512u * std::max<uint32_t>(channels, 1u); }
             uint32_t frames() const { return channels == 0 || bytes.empty() ? 0u : static_cast<uint32_t>(bytes.size() / (2u * channels)); }
             int16_t sample(uint32_t frame, uint32_t channel) const
             {
@@ -510,6 +520,7 @@ namespace snd989
         // render mutex: a poll that blocked on a render blocked the EE inside a synchronous RPC.
         std::atomic<bool> pcmActive{false};
         std::atomic<uint32_t> pcmPositionBytes{0};
+        std::atomic<uint64_t> pcmUnderrunCount{0};
         int32_t masterVol[17] = {};
         uint32_t nextUid = 1;
         uint32_t nextSlot = 0;
@@ -1062,10 +1073,25 @@ namespace snd989
                 for (size_t i = 0; i < chunk; ++i)
                 {
                     const uint32_t f = static_cast<uint32_t>(ring.pos) % total;
-                    const int32_t l = ring.sample(f, 0);
-                    const int32_t r = ring.channels >= 2 ? ring.sample(f, 1) : l;
-                    mix[(frame + i) * 2] += (l * gain) / 0x7fff;   // the SPU voice volume is 15-bit: 0x3fff (the >> 1 of full) is half scale
-                    mix[(frame + i) * 2 + 1] += (r * gain) / 0x7fff;
+                    const uint32_t block = f / 256u;
+                    if (block != ring.currentBlock)
+                    {
+                        // Entering a block: fresh plays and is consumed; stale (played once, not rewritten) is silence.
+                        ring.currentBlock = block;
+                        const bool isFresh = block < ring.fresh.size() && ring.fresh[block] != 0u;
+                        ring.silentBlock = !isFresh;
+                        if (isFresh)
+                            ring.fresh[block] = 0u;
+                        else
+                            ++ring.underruns;
+                    }
+                    if (!ring.silentBlock)
+                    {
+                        const int32_t l = ring.sample(f, 0);
+                        const int32_t r = ring.channels >= 2 ? ring.sample(f, 1) : l;
+                        mix[(frame + i) * 2] += (l * gain) / 0x7fff;   // the SPU voice volume is 15-bit: 0x3fff (the >> 1 of full) is half scale
+                        mix[(frame + i) * 2 + 1] += (r * gain) / 0x7fff;
+                    }
                     ring.pos += step;
                     if (ring.pos >= static_cast<double>(total))
                         ring.pos -= static_cast<double>(total);
@@ -1082,6 +1108,7 @@ namespace snd989
         for (size_t i = 0; i < frames * 2; ++i)
             interleaved[i] = static_cast<int16_t>(std::clamp<int32_t>(mix[i], -32768, 32767));
         m_impl->updatePcmPosition();
+        m_impl->pcmUnderrunCount.store(m_impl->pcm.underruns, std::memory_order_relaxed);
         m_impl->reap();
     }
 
@@ -1268,9 +1295,14 @@ namespace snd989
         // vol 0..0x400 -> 0..0x7ffe (MakeVolume's scale) then the SPU's >> 1: 0..0x3fff
         ring.gain = static_cast<int32_t>((static_cast<int64_t>(0x7ffe) * std::clamp(vol, 0, 0x400)) / 0x400) >> 1;
         ring.pos = 0.0;
+        ring.fresh.assign(ring.bytes.empty() ? 0u : (ring.bytes.size() + ring.blockBytes() - 1u) / ring.blockBytes(), 0u);
+        ring.currentBlock = 0xffffffffu;
+        ring.silentBlock = false;
+        ring.underruns = 0;
         ring.active = !ring.bytes.empty();
         m_impl->pcmActive.store(ring.active, std::memory_order_relaxed);
         m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
+        m_impl->pcmUnderrunCount.store(0u, std::memory_order_relaxed);
     }
 
     void Mixer::pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes)
@@ -1281,6 +1313,19 @@ namespace snd989
             return;
         const size_t n = std::min(bytes, ring.bytes.size() - offset);
         std::memcpy(ring.bytes.data() + offset, data, n);
+        // Every block the write touches is fresh again (a partial write counts: the game writes whole blocks).
+        if (n > 0 && !ring.fresh.empty())
+        {
+            const size_t first = offset / ring.blockBytes();
+            const size_t last = std::min(ring.fresh.size() - 1u, (offset + n - 1u) / ring.blockBytes());
+            for (size_t b = first; b <= last; ++b)
+                ring.fresh[b] = 1u;
+        }
+    }
+
+    uint64_t Mixer::pcmUnderruns() const
+    {
+        return m_impl->pcmUnderrunCount.load(std::memory_order_relaxed);
     }
 
     // The game's audio thread polls this 30 times a second through a synchronous RPC (research/32 section 7.1):
@@ -1295,8 +1340,11 @@ namespace snd989
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         m_impl->pcm.active = false;
         m_impl->pcm.pos = 0.0;
+        m_impl->pcm.underruns = 0;
+        m_impl->pcm.currentBlock = 0xffffffffu;
         m_impl->pcmActive.store(false, std::memory_order_relaxed);
         m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
+        m_impl->pcmUnderrunCount.store(0u, std::memory_order_relaxed);
     }
 
     bool Mixer::pcmStreamActive() const

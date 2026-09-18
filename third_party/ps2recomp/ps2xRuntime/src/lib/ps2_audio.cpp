@@ -4,9 +4,11 @@
 #include <iostream>
 #include <cstdlib>
 #include "runtime/ps2_audio.h"
+#include "runtime/audio_volume.h"
 #include "ps2_runtime.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_host_backend.h"
+#include <cmath>
 #include <cstring>
 #include <vector>
 
@@ -510,6 +512,18 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
     static double maxRenderMs = 0.0, nextReportS = 5.0;
     const auto renderStart = std::chrono::steady_clock::now();
     m_mixer.render(interleaved, frames);
+    // PS2X_AUDIO_VOLUME (read once): unity does nothing at all -- no multiply, no rounding -- so "100" is byte
+    // for byte the mix this function produced before the knob existed.
+    static const float s_gain = [] {
+        const char *const e = std::getenv("PS2X_AUDIO_VOLUME");
+        return volumeGain((e != nullptr && *e != 0) ? std::atoi(e) : 100);
+    }();
+    if (s_gain != 1.0f)
+    {
+        const size_t samples = frames * 2u;   // interleaved stereo
+        for (size_t i = 0; i < samples; ++i)
+            interleaved[i] = static_cast<int16_t>(std::lround(static_cast<float>(interleaved[i]) * s_gain));
+    }
     if (trace)
     {
         const auto now = std::chrono::steady_clock::now();
@@ -519,9 +533,9 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
         const double elapsedS = std::chrono::duration<double>(now - t0).count();
         if (elapsedS >= nextReportS)
         {
-            std::fprintf(stderr, "[audio-trace] t=%.1fs rendered=%.2fs of wall (%.0f%%) calls=%llu frames/call=%zu max_render=%.2fms\n",
+            std::fprintf(stderr, "[audio-trace] t=%.1fs rendered=%.2fs of wall (%.0f%%) calls=%llu frames/call=%zu max_render=%.2fms pcm_underruns=%llu\n",
                          elapsedS, framesTotal / 48000.0, 100.0 * (framesTotal / 48000.0) / elapsedS,
-                         static_cast<unsigned long long>(calls), frames, maxRenderMs);
+                         static_cast<unsigned long long>(calls), frames, maxRenderMs, static_cast<unsigned long long>(m_mixer.pcmUnderruns()));
             nextReportS += 5.0;
             maxRenderMs = 0.0;
         }

@@ -48,6 +48,10 @@ namespace ps2_stubs
         // namespace in a header and so are one copy per translation unit.
         uint32_t g_cdReadLbn = 0u;
 
+        // Which of the two cursors the caller last moved: the stream entry points set it, the plain
+        // read/seek entry points clear it, and sceCdGetReadPos answers by it (commit 5a1b6a8's rule).
+        bool g_cdLastMovedWasStream = false;
+
         uint64_t currentCdStreamTick(PS2Runtime *runtime)
         {
             return runtime != nullptr ? runtime->eeScheduler().currentVSyncTick() : 0u;
@@ -181,6 +185,7 @@ namespace ps2_stubs
         void restartCdStreamAt(uint32_t lbn, PS2Runtime *runtime)
         {
             g_cdStreamingLbn = lbn;
+            g_cdLastMovedWasStream = true;
             g_cdStreamingEndLbn = cdStreamingEndLbnForStart(lbn);
             resetCdStreamProduction(runtime);
         }
@@ -337,6 +342,7 @@ namespace ps2_stubs
         if (ok)
         {
             g_cdReadLbn = selected.lbn + selected.sectors;
+            g_cdLastMovedWasStream = false;
             setReturnS32(ctx, 1); // command accepted/success
             return;
         }
@@ -402,9 +408,10 @@ namespace ps2_stubs
 
     void sceCdGetReadPos(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        // The position the caller is asking about is the one it last moved:
-        // the stream cursor while a stream is open, the plain-read cursor otherwise.
-        setReturnU32(ctx, g_cdStreamTiming.active ? g_cdStreamingLbn : g_cdReadLbn);
+        // The position the caller is asking about is the one it last moved: the stream cursor when a
+        // stream is open and a stream entry point moved last, the plain-read cursor otherwise (a plain
+        // sceCdRead/sceCdReadChain/sceCdSeek during an open stream, or no stream open at all).
+        setReturnU32(ctx, (g_cdStreamTiming.active && g_cdLastMovedWasStream) ? g_cdStreamingLbn : g_cdReadLbn);
     }
 
     void sceCdGetToc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -422,6 +429,7 @@ namespace ps2_stubs
         g_cdInitialized = true;
         g_lastCdError = 0;
         g_cdStreamTiming = {};
+        g_cdLastMovedWasStream = false;
         setReturnS32(ctx, 1);
     }
 
@@ -525,6 +533,7 @@ namespace ps2_stubs
             }
 
             g_cdReadLbn = lbn + sectors;
+            g_cdLastMovedWasStream = false;
         }
 
         setReturnS32(ctx, ok ? 1 : 0);
@@ -662,6 +671,7 @@ namespace ps2_stubs
 
         g_cdStreamingLbn = resolvedEntry.baseLbn;
         g_cdStreamingEndLbn = resolvedEntry.baseLbn + resolvedEntry.sectors;
+        g_cdLastMovedWasStream = true;
         if (cdTraceEnabled())
             std::cout << "[cd] SearchFile ok lsn=0x" << std::hex << resolvedEntry.baseLbn << " size=0x" << resolvedEntry.sizeBytes << std::dec << std::endl;
         if (shouldTrace)
@@ -680,6 +690,7 @@ namespace ps2_stubs
         // The plain seek positions the plain-read cursor; sceCdStSeek is the
         // stream's own seek and is the one that restarts the stream.
         g_cdReadLbn = getRegU32(ctx, 4);
+        g_cdLastMovedWasStream = false;
         setReturnS32(ctx, 1);
     }
 
@@ -844,6 +855,7 @@ namespace ps2_stubs
                 }
 
                 g_cdStreamingLbn += sectors;
+                g_cdLastMovedWasStream = true;
                 if (runtime == nullptr)
                 {
                     g_cdStreamTiming.producedSectors += sectors;

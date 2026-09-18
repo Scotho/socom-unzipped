@@ -2367,7 +2367,7 @@ Run Step 2's command. Expected: `error: no member named 'fpsOverlay' in 'launche
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_fpsoverlay_build.marker
 ```
 
-- [ ] **Step 8: The measurement (one launch, `s7_fps_overlay`, after the sprint's launch block).** A title-stage gate run with the overlay on, and a window capture of the same stage. `logs/s7_fps_overlay.sh`:
+- [x] **Step 8: The measurement (one launch, `s7_fps_overlay`, after the sprint's launch block).** A title-stage gate run with the overlay on, and a window capture of the same stage. `logs/s7_fps_overlay.sh`: *(done 2026-09-18: s7_fps_overlay title PASS 19/23 with the overlay on; window capture corner mean 29.7 / std 79.9 over a black band 0.0 -- the line is drawn and clear of every detector)*
 
 ```bash
 #!/usr/bin/env bash
@@ -2722,6 +2722,8 @@ R91 onward; see the Sprint 6 plan for R78–R90.
 - **R95** (2026-09-18, Task 8 Step 4): a 0.15 stick dead zone is applied in **all three** host pad paths, not just SOCOM's own poll. `socom2_host_input.cpp` has used 0.15 since 2026-09-16 (:228), but the generic pad path (`ps2_pad.cpp` :83-86) and the libpad HLE (`Kernel/Stubs/Pad.cpp` `axisToByte` :71-76) passed the raw raylib axis through, so a worn stick's rest position reached the game as movement on exactly the paths the menus read. The value is `PS2X_PAD_DEADZONE`, default 0.15, and the launcher now writes whatever the player set. Taken because the owner's request was "pick the pad and make it feel right", and two of the three paths could not be made to feel like anything. *Cost if wrong:* a player who wants raw sticks sets `PS2X_PAD_DEADZONE=0` (or drags the slider to 0.00), and the gate is untouched either way -- it sets `PS2X_HOST_GAMEPAD=0`, so no pad is read in any harness run.
 
 - **R96** (2026-09-18, Task 3): the page trace ran on the offline mission stage and on the online login stage of a launch that missed the lobby, not on an online gameplay round, because the lobby rate was 6/10 that night and the mechanism under test (the post-process target overlapping parked textures) is not online-specific. Both traces refuted the hypothesis (Step 1), so Steps 2-7 are not executed and the decode budget test is not written against a mechanism the trace did not find. *Cost if wrong:* an online-gameplay-only marking pattern goes untraced this sprint; the two online rounds' stats lines (uploads ~10k/s at 20-28 ms/s in gameplay) say the cost there is a fifth of the audit's figure, and the menus' 80-133 ms/s is the larger number either way.
+
+- **R97** (2026-09-18, Task 12 Step 4): the 989snd PCM ring plays a 256-frame block only if the game rewrote it since the head last played it; a stale block is silence and counts (`pcmUnderruns`, on the audio stat line). Taken because the ring had no fill/play interlock at all and the owner heard its two failure shapes (a late fill skipped = a splice; a missed fill replayed = a buzz); the console's IOP thread is never late, ours is whenever the login screen drops to 12-30 fps. *Cost if wrong:* a game that legitimately re-plays ring contents without rewriting (none known; research/32 §7 says the EE DMAs fresh PCM up to the polled position each wake) would go silent in those blocks; the counter names it on the stat line, and the title loop's 1.000 correlation is the regression check.
 
 ## Self-review
 

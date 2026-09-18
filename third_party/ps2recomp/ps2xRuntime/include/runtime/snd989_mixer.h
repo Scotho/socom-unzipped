@@ -71,6 +71,7 @@ namespace snd989
         void pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol);
         void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
         uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped
+        uint64_t pcmUnderruns() const;        // blocks the head reached before the game rewrote them (R97); 0 after stop
         void pcmStreamStop();
         bool pcmStreamActive() const;
         size_t activeStreams() const;

@@ -723,5 +723,88 @@ void register_ps2_runtime_io_tests()
             t.Equals(::getRegU32(&test.ctx, 2), kPlainReadLbn + kPlainReadSectors,
                      "sceCdGetReadPos should report the plain-read cursor with no stream open");
         });
+        // Sprint 7 Task 12b: sceCdGetReadPos reports whichever cursor the caller last moved (commit 5a1b6a8),
+        // not "the stream while a stream is open" -- a plain sceCdRead during an open stream moves the plain-read
+        // cursor and is the position the next sceCdGetReadPos is asking about.
+        tc.Run("sceCdGetReadPos follows whichever cursor the caller last moved", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t kSectorSize = 2048u;
+            constexpr uint32_t kImageSectors = 64u;
+            constexpr uint32_t kStreamLbn = 12u;
+            constexpr uint32_t kPlainReadLbn = 44u;
+            constexpr uint32_t kPlainReadSectors = 3u;
+            constexpr uint32_t stBufAddr = GUEST_BUFFER_AREA_START + 0x10000;
+            constexpr uint32_t streamDestAddr = GUEST_BUFFER_AREA_START + 0x20000;
+            constexpr uint32_t plainDestAddr = GUEST_BUFFER_AREA_START + 0x30000;
+            constexpr uint32_t modeAddr = GUEST_BUFFER_AREA_START + 0x3F00;
+            constexpr uint32_t errorAddr = GUEST_BUFFER_AREA_START + 0x3F80;
+
+            const std::filesystem::path imagePath = test.paths.base / "readpos.iso";
+            {
+                std::ofstream out(imagePath, std::ios::binary);
+                for (uint32_t sector = 0; sector < kImageSectors; ++sector)
+                {
+                    std::vector<uint8_t> bytes(kSectorSize, static_cast<uint8_t>(sector & 0xFFu));
+                    std::memcpy(bytes.data(), &sector, sizeof(sector));
+                    out.write(reinterpret_cast<const char *>(bytes.data()),
+                              static_cast<std::streamsize>(bytes.size()));
+                }
+            }
+
+            PS2Runtime::IoPaths ioPaths;
+            ioPaths.elfDirectory = test.paths.cdRoot;
+            ioPaths.hostRoot = test.paths.cdRoot;
+            ioPaths.cdRoot = test.paths.cdRoot;
+            ioPaths.mcRoot = test.paths.mcRoot;
+            ioPaths.cdImage = imagePath;
+            PS2Runtime::setIoPaths(ioPaths);
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 64u);
+            setRegU32(test.ctx, 5, 4u);
+            setRegU32(test.ctx, 6, stBufAddr);
+            ps2_stubs::sceCdStInit(test.rdram.data(), &test.ctx, nullptr);
+
+            writeGuestU32(test.rdram.data(), modeAddr, 0u);
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, kStreamLbn);
+            setRegU32(test.ctx, 5, modeAddr);
+            ps2_stubs::sceCdStStart(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "sceCdStStart should start the stream");
+
+            // The caller last moved the plain-read cursor, although the stream is still open:
+            // sceCdRead leaves it at lbn + sectors (CD.cpp, the accepted-read branch).
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, kPlainReadLbn);
+            setRegU32(test.ctx, 5, kPlainReadSectors);
+            setRegU32(test.ctx, 6, plainDestAddr);
+            ps2_stubs::sceCdRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "the plain read should succeed with the stream open");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), kPlainReadLbn + kPlainReadSectors,
+                     "sceCdGetReadPos should report the plain-read cursor the caller just moved");
+
+            // One stream read moves the stream cursor, and the answer follows it back.
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 1u);
+            setRegU32(test.ctx, 5, streamDestAddr);
+            setRegU32(test.ctx, 6, 1u); // STMBLK
+            setRegU32(test.ctx, 7, errorAddr);
+            ps2_stubs::sceCdStRead(test.rdram.data(), &test.ctx, nullptr);
+            const uint32_t streamCursor = ps2_stubs::getCdDebugSnapshot().streamingLbn;
+            t.Equals(streamCursor, kStreamLbn + 1u, "the stream cursor advanced by one sector");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), streamCursor,
+                     "sceCdGetReadPos should report the stream cursor once the stream moved last");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdStStop(test.rdram.data(), &test.ctx, nullptr);
+        });
     });
 }

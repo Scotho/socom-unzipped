@@ -6,6 +6,9 @@
 #include "runtime/socom2_bank.h"
 #include "runtime/snd989_mixer.h"
 #include "runtime/ps2_audio.h"
+#include "runtime/audio_volume.h"
+#include "runtime/host_mic.h"
+#include "ps2x/iop/iop_subsystem.h"
 
 #include <cmath>
 
@@ -89,6 +92,119 @@ namespace
         std::fclose(fp);
         return true;
     }
+    // ---- the 989snd IOP module (modules/snd989.cpp) --------------------------------------------
+    // Its model -- bank table, sound slots, VAG stream slots -- is only reachable over its RPC
+    // server (SID 0x00123456, one command per call), so the cases below drive it the way the game
+    // does. A minimal host: guest memory and nothing else (no disc image, no mixer).
+    class Snd989TestHost final : public ps2x::iop::IopHost
+    {
+    public:
+        std::vector<uint8_t> memory = std::vector<uint8_t>(0x10000u, 0u);
+
+        bool readGuest(uint32_t address, void *destination, size_t size) const override
+        {
+            if (!fits(address, size))
+                return false;
+            if (size != 0u)
+                std::memcpy(destination, memory.data() + address, size);
+            return true;
+        }
+        bool writeGuest(uint32_t address, const void *source, size_t size) override
+        {
+            if (!fits(address, size))
+                return false;
+            if (size != 0u)
+                std::memcpy(memory.data() + address, source, size);
+            return true;
+        }
+        bool zeroGuest(uint32_t address, size_t size) override
+        {
+            if (!fits(address, size))
+                return false;
+            std::fill(memory.begin() + address, memory.begin() + address + size, uint8_t{0});
+            return true;
+        }
+        bool normalizeGuestAddress(uint32_t address, uint32_t &normalized) const override
+        {
+            normalized = address & 0x1FFFFFFFu;
+            return normalized < memory.size();
+        }
+        uint32_t allocateIopHandle(ps2x::iop::IopHandleKind) override { return m_nextHandle += 0x40u; }
+        uint32_t allocateGuest(uint32_t size, uint32_t) override
+        {
+            if (size == 0u || m_nextAlloc + size > memory.size())
+                return 0u;
+            const uint32_t address = m_nextAlloc;
+            m_nextAlloc += size;
+            return address;
+        }
+        void freeGuest(uint32_t) override {}
+        void audioCommand(uint32_t, uint32_t function, ps2x::iop::GuestBuffer, ps2x::iop::GuestBuffer) override
+        {
+            audioCommands.push_back(function);
+        }
+        std::string hostPath(ps2x::iop::HostPathKind) const override { return std::string(); }
+        std::string translateGuestPath(std::string_view path) const override { return std::string(path); }
+        uint64_t openHostFile(std::string_view) override { return 0u; }
+        bool hostFileSize(uint64_t, uint64_t &) const override { return false; }
+        bool readHostFile(uint64_t, uint64_t, void *, size_t, size_t &bytesRead) override
+        {
+            bytesRead = 0u;
+            return false;
+        }
+        void closeHostFile(uint64_t) override {}
+        int32_t memoryCard(const ps2x::iop::MemoryCardRequest &) override { return 0; }
+        bool hasGuestFunction(uint32_t) const override { return false; }
+        bool invokeGuestFunction(uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *) override
+        {
+            return false;
+        }
+        void log(ps2x::iop::LogLevel, std::string_view) override {}
+
+        std::vector<uint32_t> audioCommands;
+
+    private:
+        bool fits(uint32_t address, size_t size) const
+        {
+            return static_cast<uint64_t>(address) + size <= memory.size();
+        }
+        uint32_t m_nextHandle = 0x8000u;
+        uint32_t m_nextAlloc = 0x4000u;
+    };
+
+    // One RPC call on the snd server, returning the module's result word.
+    struct Snd989Harness
+    {
+        static constexpr uint32_t kSid = 0x00123456u;
+        static constexpr uint32_t kSend = 0x0800u;
+        static constexpr uint32_t kReceive = 0x1000u;
+
+        Snd989TestHost host;
+        ps2x::iop::IopSubsystem subsystem{host};
+        bool configured = false;
+
+        Snd989Harness()
+        {
+            std::string error;
+            configured = subsystem.configure({"socom2_game.elf", 0u, 0u}, &error);
+        }
+
+        uint32_t call(uint32_t fno, const std::vector<uint32_t> &words)
+        {
+            if (!words.empty())
+                (void)host.writeGuest(kSend, words.data(), words.size() * sizeof(uint32_t));
+            (void)host.zeroGuest(kReceive, 0x40u);
+            ps2x::iop::RpcRequest request{};
+            request.sid = kSid;
+            request.function = fno;
+            request.send = {kSend, static_cast<uint32_t>(words.size() * sizeof(uint32_t))};
+            request.receive = {kReceive, 0x40u};
+            (void)subsystem.handleRpc(request);
+            uint32_t value = 0u;
+            (void)host.readGuest(kReceive + 4u, &value, sizeof(value));
+            return value;   // handleSingle: [0]=-1, [1]=the result, [2]=-1
+        }
+    };
 }
 
 void register_socom2_audio_tests()
@@ -710,6 +826,37 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // Sprint 7 Task 12 Step 4 (ruling R97): the owner's "persistent buzz" on the online menus was a 512-byte block
+        // looping -- the game's fill landed after the head had passed, and the ring replayed stale bytes. A block the
+        // game has not rewritten since the head last played it is now silence, counted, never a loop.
+        tc.Run("Mixer: a PCM ring block not rewritten since it was last played is silence and counts an underrun; a rewritten block plays", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);   // 24 block pairs of 1024 bytes = 256 frames each
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "no underruns at start");
+            std::vector<uint8_t> ring(0x6000u);
+            for (size_t i = 0; i < ring.size(); i += 2) { ring[i] = 0x40; ring[i + 1] = 0x1f; }   // +8000 everywhere
+            std::vector<int16_t> buf(2 * 6144);
+            auto peak = [&](size_t frames) { int32_t p = 0; for (size_t i = 0; i < 2 * frames; ++i) p = std::max<int32_t>(p, buf[i] < 0 ? -buf[i] : buf[i]); return p; };
+            mixer.render(buf.data(), 256);
+            t.Equals(peak(256), 0, "nothing written yet: silence");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1), "and that is one underrun");
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());   // the game fills the whole ring, as the log shows before Start
+            mixer.render(buf.data(), 6144u);                       // one full ring from block 1: every block fresh, block 0 played at the wrap
+            t.IsTrue(peak(6144u) > 3000, "written blocks play");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1), "no new underrun while the fill is ahead");
+            t.Equals(mixer.pcmStreamPosition(), 256u * 4u, "back at block 1");
+            mixer.render(buf.data(), 256);                         // block 1 again: played once since the write, never rewritten
+            t.Equals(peak(256), 0, "a block played once and not rewritten is silence, not a loop");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(2), "counted");
+            mixer.pcmStreamWrite(2048u, ring.data(), 1024u);       // the game refills block 2 just before the head reaches it
+            mixer.render(buf.data(), 256);
+            t.IsTrue(peak(256) > 3000, "the refilled block plays");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(2), "no underrun for it");
+            mixer.pcmStreamStop();
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "stop resets the count");
+        });
+
         tc.Run("Mixer: the PCM ring plays block-interleaved stereo (512-byte L and R blocks, as the movie audio is laid out) at its rate, reports its position, wraps, and stops", [](TestCase &t)
         {
             snd989::Mixer mixer;
@@ -788,6 +935,84 @@ void register_socom2_audio_tests()
             const int32_t none[1] = {0};
             backend.onNotify(0x3Du, none, 1u);
             t.IsTrue(!backend.pcmPosition(position), "snd_PcmStreamStop: no stream");
+        });
+
+        tc.Run("volumeGain: 0-100 percent to a linear gain, out of range clamped", [](TestCase &t)
+        {
+            t.IsTrue(volumeGain(100) == 1.0f, "100 is unity -- byte for byte the mix the renderer produced");
+            t.IsTrue(volumeGain(0) == 0.0f, "0 is silence");
+            t.IsTrue(volumeGain(50) == 0.5f, "50 is half");
+            t.IsTrue(volumeGain(150) == 1.0f, "above the range is unity, never a gain above 1 that would clip the mix");
+            t.IsTrue(volumeGain(-10) == 0.0f, "below the range is silence, never a negative gain that would invert it");
+            t.IsTrue(volumeGain(1) > 0.0f && volumeGain(1) < 0.02f, "the bottom step is quiet, not muted");
+        });
+
+        tc.Run("MicRing: write n, read n, and it wraps without tearing a frame", [](TestCase &t)
+        {
+            MicRing ring(8);
+            int16_t out[16] = {};
+            t.Equals(ring.available(), static_cast<size_t>(0), "a new ring is empty");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(0), "reading an empty ring yields nothing");
+            const int16_t a[4] = {1, 2, 3, 4};
+            t.Equals(ring.write(a, 4), static_cast<size_t>(4), "four in");
+            t.Equals(ring.available(), static_cast<size_t>(4), "four waiting");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(4), "four out");
+            t.IsTrue(out[0] == 1 && out[1] == 2 && out[2] == 3 && out[3] == 4, "in the order they went in");
+            // Six more from a read cursor at 4 in an 8-frame ring: the second half wraps past the end.
+            const int16_t b[6] = {5, 6, 7, 8, 9, 10};
+            t.Equals(ring.write(b, 6), static_cast<size_t>(6), "six in, across the wrap");
+            t.Equals(ring.read(out, 6), static_cast<size_t>(6), "six out, across the wrap");
+            for (int i = 0; i < 6; ++i)
+                t.Equals(static_cast<int>(out[i]), 5 + i, "every frame survived the wrap");
+            // Overrun: capacity is 8, so 9 cannot fit and the oldest are NOT silently overwritten.
+            const int16_t c[9] = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+            t.Equals(ring.write(c, 9), static_cast<size_t>(8), "a full ring takes what fits");
+            t.Equals(ring.dropped(), static_cast<size_t>(1), "and counts what it dropped");
+            t.Equals(ring.read(out, 16), static_cast<size_t>(8), "reading more than there is yields what there is");
+        });
+        // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
+        // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
+        // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
+        tc.Run("989snd: snd_StopSound on a VAG stream handle frees its stream slot", [](TestCase &t)
+        {
+            Snd989Harness h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kStopSound = 0x15u;
+            const std::vector<uint32_t> play = {2000u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};   // parent (word 5) = 0
+
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            t.Equals((first >> 24) & 0x1Fu, 4u, "and a type-4 (stream) handle");
+
+            h.call(kStopSound, {first});
+
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays after the stop");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
+                     "and so does the next one: snd_StopSound freed the stopped stream's slot");
+        });
+
+        // Task 12c: 971 "play request for unknown bank" lines for banks that were loaded and never unloaded. The
+        // reject path itself has to stay harmless (return 0, play nothing) while a loaded bank still plays.
+        tc.Run("989snd: a play on an unknown bank handle is rejected without disturbing a loaded bank", [](TestCase &t)
+        {
+            Snd989Harness h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            const uint32_t bank = h.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle even with no disc image");
+
+            t.Equals(h.call(kPlaySound, {0xDEADBEEFu, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "a play on a handle no bank owns returns 0");
+            t.IsTrue(h.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
+                     "and the loaded bank still plays");
         });
     });
 }

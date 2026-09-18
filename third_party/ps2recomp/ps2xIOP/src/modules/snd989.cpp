@@ -320,6 +320,12 @@ namespace ps2x::iop::detail
 
             ~Snd989Service() override
             {
+                if (m_metrics.unknownBankRejects > 8u)
+                {
+                    logWarning("unknown-bank rejects: " + std::to_string(m_metrics.unknownBankRejects) +
+                               " in all, " + std::to_string(m_metrics.unknownBankRejects - 8u) +
+                               " more than the 8 logged in full");
+                }
                 closeCdImage();
             }
 
@@ -411,6 +417,7 @@ namespace ps2x::iop::detail
                 metrics.push_back({"cd_reads", m_metrics.cdReads});
                 metrics.push_back({"cd_read_failures", m_metrics.cdReadFailures});
                 metrics.push_back({"unknown_commands", m_metrics.unknownCommands});
+                metrics.push_back({"unknown_bank_rejects", m_metrics.unknownBankRejects});
                 metrics.push_back({"active_sounds", countActiveSounds()});
                 metrics.push_back({"status_block", m_model.statusBlockAddress, true});
             }
@@ -427,6 +434,7 @@ namespace ps2x::iop::detail
                 uint64_t cdReads = 0u;
                 uint64_t cdReadFailures = 0u;
                 uint64_t unknownCommands = 0u;
+                uint64_t unknownBankRejects = 0u;
             };
 
             inline static constexpr std::array<uint32_t, 2> kSids{kSndSid, kStreamSid};
@@ -1131,7 +1139,7 @@ namespace ps2x::iop::detail
                 }
                 if (bank == 0u || findBank(bank) == nullptr)
                 {
-                    logDebug("play request for unknown bank " + hexString(bank));
+                    rejectUnknownBank(bank);
                     return 0u;
                 }
 
@@ -1179,6 +1187,39 @@ namespace ps2x::iop::detail
                 return target->handle;
             }
 
+            // 971 rejects in one run (2026-09-18) for banks the log shows loaded, with no unload between. Dump
+            // the whole bank table once per process at the first reject -- one launch then says whether the slot
+            // was cleared or the handle is stale -- and rate-limit the reject line itself to the first 8 and
+            // every 256th after that; the destructor reports what was suppressed.
+            void rejectUnknownBank(uint32_t bank)
+            {
+                static bool s_tableDumped = false;
+                if (!s_tableDumped)
+                {
+                    s_tableDumped = true;
+                    std::string table = "bank table at the first unknown-bank reject (requested " + hexString(bank) +
+                                        ", " + std::to_string(m_model.banks.size()) + " entries, lastBank " +
+                                        hexString(m_model.lastBank) + ")";
+                    for (const auto &entry : m_model.banks)
+                    {
+                        table += "\n  handle " + hexString(entry.handle) + " loaded=" + (entry.loaded ? "1" : "0") +
+                                 " id=" + hexString(entry.bankId) + " sector " + std::to_string(entry.sector) + "+" +
+                                 std::to_string(entry.byteOffset);
+                        if (!entry.path.empty())
+                        {
+                            table += " path " + entry.path;
+                        }
+                    }
+                    logWarning(table);
+                }
+                ++m_metrics.unknownBankRejects;
+                if (m_metrics.unknownBankRejects <= 8u || (m_metrics.unknownBankRejects % 256u) == 0u)
+                {
+                    logDebug("play request for unknown bank " + hexString(bank) + " (reject " +
+                             std::to_string(m_metrics.unknownBankRejects) + ")");
+                }
+            }
+
             void setSoundPaused(uint32_t handle, bool paused)
             {
                 SoundSlot *slot = findSound(handle);
@@ -1190,10 +1231,18 @@ namespace ps2x::iop::detail
 
             void stopSound(uint32_t handle)
             {
-                SoundSlot *slot = findSound(handle);
-                if (slot != nullptr)
+                if (SoundSlot *slot = findSound(handle); slot != nullptr)
                 {
                     slot->active = false;
+                    return;
+                }
+                // snd_StopSound is also how the game stops a VAG stream (a type-4 handle): free the model's
+                // stream slot too, or the slot leaks and every later snd_PlayVAGStreamByLoc is refused with
+                // "no free VAG stream slot" (237 of them in the owner's run of 2026-09-18). The mixer stop is
+                // the caller's forwardAudio(kStopSound, ...) in execute(), which is unchanged.
+                if (StreamSlot *stream = findStream(handle); stream != nullptr)
+                {
+                    stream->active = false;
                 }
             }
 
