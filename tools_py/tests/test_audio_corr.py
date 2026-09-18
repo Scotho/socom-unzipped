@@ -72,5 +72,62 @@ class Correlate(unittest.TestCase):
         self.assertTrue(scored and min(scored) > 0.99, f"the reference span correlates: {scored}")
 
 
+class Repeat(unittest.TestCase):
+    """Task 12 Step 2: the repeat detector -- a looping block or decoded chunk is an autocorrelation peak."""
+
+    @staticmethod
+    def _looped_block(rate=48000, seconds=4.0, block=128, seed=11):
+        one = np.random.RandomState(seed).randint(-9000, 9000, size=block).astype(np.float64)
+        return np.tile(one, int(round(seconds * rate)) // block + 1)[: int(round(seconds * rate))]
+
+    def test_a_looped_128_sample_block_peaks_near_one(self):
+        rate = 48000
+        rows = audio_corr.repeat_rows(self._looped_block(rate=rate), window_s=4.0, rate=rate,
+                                      silent_rms=audio_corr.DEFAULT_SILENT_RMS)
+        self.assertEqual(len(rows), 1)
+        t_s, r, lag = rows[0]
+        self.assertEqual(t_s, 0.0)
+        self.assertEqual(lag % 128, 0, f"the best lag is a multiple of the block: {lag}")
+        self.assertGreater(r, 0.99, f"a looping block reads as a repeat: {r}")
+        self.assertGreater(audio_corr.max_repeat(rows), 0.99)
+
+    def test_white_noise_does_not_repeat(self):
+        rate = 48000
+        noise = np.random.RandomState(4).randn(rate * 4) * 5000.0
+        rows = audio_corr.repeat_rows(noise, window_s=4.0, rate=rate,
+                                      silent_rms=audio_corr.DEFAULT_SILENT_RMS)
+        self.assertEqual(len(rows), 1)
+        self.assertLess(rows[0][1], 0.3, f"noise is not a loop: {rows[0][1]}")
+        self.assertLess(audio_corr.max_repeat(rows), 0.3)
+
+    def test_a_silent_window_is_nan_and_scores_zero(self):
+        rate = 48000
+        rows = audio_corr.repeat_rows(np.zeros(rate * 8), window_s=4.0, rate=rate,
+                                      silent_rms=audio_corr.DEFAULT_SILENT_RMS)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(np.isnan(r) for _, r, _ in rows))
+        self.assertEqual(audio_corr.max_repeat(rows), 0.0)
+
+    @staticmethod
+    def _write_wav(path, mono, rate=48000):
+        import wave
+        with wave.open(path, "wb") as w:
+            w.setnchannels(2)
+            w.setsampwidth(2)
+            w.setframerate(rate)
+            w.writeframes(np.repeat(np.asarray(mono, dtype=np.int16), 2).tobytes())
+
+    def test_cli_repeat_flags_a_looped_wav_and_passes_noise(self):
+        import os, tempfile
+        rate = 48000
+        with tempfile.TemporaryDirectory() as tmp:
+            looped = os.path.join(tmp, "looped.wav")
+            noisy = os.path.join(tmp, "noise.wav")
+            self._write_wav(looped, self._looped_block(rate=rate), rate)
+            self._write_wav(noisy, np.random.RandomState(5).randn(rate * 4) * 5000.0, rate)
+            self.assertEqual(audio_corr.main(["--repeat", looped]), 1)
+            self.assertEqual(audio_corr.main(["--repeat", noisy]), 0)
+
+
 if __name__ == "__main__":
     unittest.main()

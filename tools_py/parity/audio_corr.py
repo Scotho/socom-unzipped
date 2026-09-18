@@ -15,6 +15,16 @@ left block then right block, one continuous byte stream across packets.
 prints one row per window and `min_corr=<x>`, and exits 1 when a window that carries sound falls below the bar.
 Windows whose RMS is under `--silent-rms` carry no sound to match (the stage before a stream starts); they are
 printed as `silent` and left out of `min_corr`.
+
+Task 12 Step 2 adds a second mode that needs no reference at all:
+
+    python -m tools_py.parity.audio_corr logs/s7_audio_online.wav --repeat --repeat-bar 0.9
+
+Each window's own autocorrelation is taken at lags 256..4096 samples. A 512-byte PCM block looping in the
+989snd ring is 128 stereo frames, so it repeats the left channel at 128 and at every multiple of it, and a
+decoded chunk replayed instead of the next one repeats at its own length; either reads as r near 1.0, which
+is what the owner hears as a buzz. Real music at a 4 s window sits well under 0.9 at lags this short. The
+mode prints `repeat lag=<n> r=<x>` per window and `max_repeat=<x>`, and exits 1 above the bar.
 """
 import argparse
 import sys
@@ -197,12 +207,106 @@ def min_corr(rows):
     return float(min(scored)) if scored else 0.0
 
 
+# ---- the repeat detector (Task 12 Step 2) ------------------------------------------------------------------
+
+# A 512-byte PCM block is 128 stereo frames, so a block looping in the ring repeats the left channel every 128
+# samples and the autocorrelation of the window is ~1.0 at 128 and at every multiple of it. A decoded chunk
+# replayed instead of the next one repeats at its own length. The search starts at 256 so a window is never
+# scored on the pitch of the sound itself (a 200 Hz tone repeats every 240 samples at 48 kHz); real music at a
+# 4 s window sits well under 0.9 at every lag this short.
+DEFAULT_REPEAT_BAR = 0.9
+DEFAULT_MIN_LAG = 256
+DEFAULT_MAX_LAG = 4096
+
+
+def autocorr_peak(seg, min_lag=DEFAULT_MIN_LAG, max_lag=DEFAULT_MAX_LAG):
+    """(best_lag, r) of the mean-removed window over lags `min_lag..max_lag`, (0, nan) when there are none.
+
+    r(lag) = sum(x[t]*x[t+lag]) / sqrt(sum x[t]^2 * sum x[t+lag]^2), both sums over the overlap, so a window
+    whose energy rises or falls across it is still scored on shape rather than on loudness. The numerators come
+    from one FFT (3840 lags x 192000 samples is minutes in a Python loop and milliseconds here); the two
+    denominators from a prefix sum of the squares.
+    """
+    x = np.asarray(seg, dtype=np.float64)
+    n = len(x)
+    top = min(max_lag, n - 1)
+    if n == 0 or top < min_lag:
+        return 0, float("nan")
+    x = x - x.mean()
+    size = 1 << int(np.ceil(np.log2(2 * n)))
+    spectrum = np.fft.rfft(x, size)
+    corr = np.fft.irfft(spectrum * np.conj(spectrum), size)[: top + 1]
+    energy = np.concatenate([[0.0], np.cumsum(x * x)])      # energy[k] = sum of the first k squares
+    lags = np.arange(min_lag, top + 1)
+    head = energy[n - lags]                                  # sum x[t]^2   for t in [0, n-lag)
+    tail = energy[n] - energy[lags]                          # sum x[t+lag]^2 for t in [0, n-lag)
+    denom = np.sqrt(np.maximum(head, 0.0) * np.maximum(tail, 0.0))
+    ratio = np.where(denom > 0.0, corr[min_lag:top + 1] / np.where(denom > 0.0, denom, 1.0), 0.0)
+    top_r = float(ratio.max())
+    # A block that loops peaks at its length and at every multiple of it, all tied to the last bit. The shortest
+    # tied lag is the one that names the loop, so ties go to it rather than to wherever argmax happens to land.
+    best = int(np.flatnonzero(ratio >= top_r - _TIE)[0])
+    return int(lags[best]), float(ratio[best])
+
+
+def repeat_rows(mix, window_s=DEFAULT_WINDOW_S, rate=DEFAULT_RATE, silent_rms=DEFAULT_SILENT_RMS,
+                min_lag=DEFAULT_MIN_LAG, max_lag=DEFAULT_MAX_LAG):
+    """One (t_s, r, lag) row per whole window of `mix`; r is nan (and lag 0) for a window carrying no sound.
+
+    The silence rule is `_scorable`, the same one the correlation bar uses: a window that is quiet, or that
+    straddles the moment a stream starts, has no loop to find and must not be scored as if it had.
+    """
+    mix = np.asarray(mix, dtype=np.float64)
+    size = int(round(window_s * rate))
+    rows = []
+    if size <= 0:
+        return rows
+    for index in range(len(mix) // size):
+        start = index * size
+        seg = mix[start:start + size]
+        t_s = start / float(rate)
+        if not _scorable(seg, rate, silent_rms):
+            rows.append((t_s, float("nan"), 0))
+            continue
+        lag, r = autocorr_peak(seg, min_lag=min_lag, max_lag=max_lag)
+        rows.append((t_s, r, lag))
+    return rows
+
+
+def max_repeat(rows):
+    """The strongest repeat of the windows that carried sound; 0.0 when none of them did."""
+    scored = [r[1] for r in rows if not np.isnan(r[1])]
+    return float(max(scored)) if scored else 0.0
+
+
 # ---- CLI -------------------------------------------------------------------------------------------------
+
+def _repeat_main(args):
+    """`--repeat`: the mix on its own, window by window. Exit 1 when any scored window repeats above the bar."""
+    mix_left, _ = read_wav(args.wav)
+    start = int(round((args.from_s or 0.0) * args.rate))
+    stop = int(round(args.to_s * args.rate)) if args.to_s is not None else len(mix_left)
+    rows = repeat_rows(mix_left[start:stop], window_s=args.window_s, rate=args.rate,
+                       silent_rms=args.silent_rms, min_lag=args.min_lag, max_lag=args.max_lag)
+    offset = start / float(args.rate)
+    for t_s, r, lag in rows:
+        if np.isnan(r):
+            print(f"mix {t_s + offset:7.1f} s: silent")
+            continue
+        print(f"mix {t_s + offset:7.1f} s: repeat lag={lag} r={r:.3f}")
+    worst = max_repeat(rows)
+    silent = sum(1 for _, r, _ in rows if np.isnan(r))
+    print(f"max_repeat={worst:.4f} repeat_bar={args.repeat_bar:.2f} windows={len(rows)} "
+          f"scored={len(rows) - silent} silent={silent}")
+    return 1 if worst > args.repeat_bar else 0
+
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Correlate a mixed WAV against the disc's PCM (research/32 section 7.1)")
     ap.add_argument("wav", help="the mixed WAV (PS2X_AUDIO_DUMP)")
-    ap.add_argument("pcm", help="the disc PCM: the stream's private-stream-1 payloads concatenated")
+    ap.add_argument("pcm", nargs="?", default=None,
+                    help="the disc PCM: the stream's private-stream-1 payloads concatenated "
+                         "(not needed with --repeat)")
     ap.add_argument("--window-s", type=float, default=DEFAULT_WINDOW_S)
     ap.add_argument("--rate", type=int, default=DEFAULT_RATE)
     ap.add_argument("--decimate", type=int, default=DEFAULT_DECIMATE)
@@ -210,7 +314,18 @@ def main(argv=None):
     ap.add_argument("--bar", type=float, default=DEFAULT_BAR, help="exit 1 below this (default 0.99)")
     ap.add_argument("--from-s", type=float, default=None, help="score the mix from this second (a title dump carries three streams)")
     ap.add_argument("--to-s", type=float, default=None, help="... up to this second")
+    ap.add_argument("--repeat", action="store_true",
+                    help="look for a looping block or chunk in the mix alone; no reference needed")
+    ap.add_argument("--min-lag", type=int, default=DEFAULT_MIN_LAG)
+    ap.add_argument("--max-lag", type=int, default=DEFAULT_MAX_LAG)
+    ap.add_argument("--repeat-bar", type=float, default=DEFAULT_REPEAT_BAR,
+                    help="with --repeat, exit 1 above this (default 0.9)")
     args = ap.parse_args(argv)
+
+    if args.repeat:
+        return _repeat_main(args)
+    if args.pcm is None:
+        ap.error("pcm is required unless --repeat is given")
 
     rows = correlate(args.wav, args.pcm, from_s=args.from_s, to_s=args.to_s, window_s=args.window_s, rate=args.rate,
                      decimate=args.decimate, silent_rms=args.silent_rms)
