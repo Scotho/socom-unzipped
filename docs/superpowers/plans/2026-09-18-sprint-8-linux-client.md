@@ -1640,6 +1640,8 @@ git push
 
 ## Task 8 — The VM ring: first build, suite, boot, frame compare (spec Design item 6b, first two bars)
 
+*(2026-09-18 12:40-13:10: the VM built the runner (224 MB socom2, lld, the link about 15 min on 8 cores) and the launcher; the game booted under a bare X session on the VMSVGA GL 4.1 driver -- `[gs-gl] initialised: 4.1 (Core Profile) Mesa 25.2.8`, the probe passed with only the clip-control note -- and its exported boot frame differs from the Windows export of the same screen (logs/parity/s7_scale_1x.png) by mean |diff| 0.008 grey levels, bar 3: PASS. The audio dump needed a null PulseAudio sink first (a headless VM has no device: `WARNING: AUDIO: Failed to initialize playback device`). Seen on the VM's screen: the runtime debugger panel open at boot, where Windows keeps it closed until F1 -- noted for Task 11.)*
+
 **Files:**
 - Create: `logs/s8_vm_boot.sh`, `logs/s8_vm_audio.sh`, `logs/s8_win_boot.sh` (launch scripts, five lines each)
 - Writes: `logs/parity/s8_vm_boot.png`, `logs/parity/s8_win_boot.png`, `logs/parity/s8_vm_audio.wav`, `logs/linux_build.log`
