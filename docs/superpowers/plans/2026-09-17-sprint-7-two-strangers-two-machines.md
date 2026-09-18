@@ -2682,7 +2682,7 @@ Expected: `PASS title`, `PASS transition`, `PASS mission` on the sprint's final 
 
 - [x] **Step 5: STATUS, ROADMAP, CURRENT_SPRINT.** A STATUS entry with the current state (exe sha, gate stamp, the sprint's numbers); ROADMAP §6's Sprint 7 items marked; `docs/CURRENT_SPRINT.md` closes Sprint 7 and opens **Sprint 8** ("It looks and sounds finished, and it does not scare the machine") pointing at its spec. *(done: df65444 -- STATUS current state and the 2026-09-18 entries, ROADMAP §6 marked, CURRENT_SPRINT's closing block and the Sprint 8 revision)*
 
-- [ ] **Step 6: Whole-branch review, then merge.** *(review done 2026-09-18 by an Opus pass over develop..sprint-7: 12 findings, 5 must-fix -- the IOP reset moved to the reboot stubs, the reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen -- plus seven smaller ones; all in the review-fix commit that precedes the merge; the merge itself follows that commit's suite and gate)*
+- [x] **Step 6: Whole-branch review, then merge.** *(review done 2026-09-18 by an Opus pass over develop..sprint-7: 12 findings, 5 must-fix -- the IOP reset moved to the reboot stubs, the reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen -- plus seven smaller ones; all in the review-fix commit that precedes the merge; the merge itself follows that commit's suite and gate)* *(merged: 41467b7 the review fixes, suite 549, gate 3/3 `s7_final_gate`; d270022 on develop and main, pushed)*
 
 ```bash
 git log --oneline develop..sprint-7
@@ -2692,7 +2692,7 @@ git checkout main && git merge --ff-only develop && git push && git checkout spr
 ```
 Expected: every commit on the branch has a test or a launch named in its message; the merge is clean. Archive the ledger to `D:\socom_archive`.
 
-- [ ] **Step 7: Commit the close-out docs.**
+- [x] **Step 7: Commit the close-out docs.** *(done: this commit)*
 
 ```bash
 git commit -m "docs: Sprint 7 close-out -- the plan ticked against what landed, the KNOWN audit, STATUS, ROADMAP section 6, CURRENT_SPRINT to Sprint 8
