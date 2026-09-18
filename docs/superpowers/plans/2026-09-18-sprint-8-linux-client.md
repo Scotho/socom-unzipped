@@ -2036,6 +2036,8 @@ git push
 
 ## Task 11 — The tarball in the VM, and the launcher run (spec Design item 6b, fourth and fifth bars)
 
+*(2026-09-18 13:30, in the VM: `make_portable.sh` on Linux wrote dist-linux/portable/socom2-linux (socom2, the ELF, the launcher, cards/, logs/, LICENSES/, README.txt) with 125 shared libraries in lib/ -- the whole closure of Ubuntu's FFmpeg build (aom, dav1d, bluray, cairo, crypto ...) -- and a 114 MB tar.gz. Unpacked into a fresh directory: `./socom_unzipped_launcher --selftest` exits 0 and prints the same env list as Windows; `ldd ./socom2` resolves every library from ./lib through the $ORIGIN RPATH, none missing. The launcher run under X with Launch pressed follows the audio boot.)*
+
 **Files:**
 - Create: `logs/s8_vm_tarball.sh`
 - Read only: `third_party/ps2recomp/ps2xLauncher/src/main.cpp` (:6 documents the flag, :356 `if (argc > 1 && std::strcmp(argv[1], "--selftest") == 0)` — **confirmed present**), `dist/logs/run_20260918_015258.log` (the real Windows launcher run whose first lines are the reference), `scripts/make_portable.sh` (Task 7's Linux branch)
