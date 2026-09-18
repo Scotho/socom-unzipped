@@ -1308,9 +1308,9 @@ git push
 
 **Steps (autonomous half):**
 
-- [ ] **Step 1: Make each open item runnable without a question back.** Check that the four items in `docs/HUMAN_TASKS.md` each name the exact command, the exact thing to listen for or look at, and the one-line answer wanted; the audio items already do, the pad item already does. Fix any that do not (the two-addresses item gained Task 4's context; the second-machine item gained Task 5 Step 4's).
-- [ ] **Step 2: Attach the current measurement to each item** so the owner's ears are confirming a number, not replacing one: the title/intro listen carries `min_corr` from Task 1e/2c's gate, the free-play listen carries the mission gate's stamp, the pad item carries the launcher's build sha.
-- [ ] **Step 3: Commit** `docs: HUMAN_TASKS items carry the measurement each check confirms` with the pathspec `docs/HUMAN_TASKS.md`.
+- [x] **Step 1: Make each open item runnable without a question back.** Check that the four items in `docs/HUMAN_TASKS.md` each name the exact command, the exact thing to listen for or look at, and the one-line answer wanted; the audio items already do, the pad item already does. Fix any that do not (the two-addresses item gained Task 4's context; the second-machine item gained Task 5 Step 4's). *(done: adb2a76)*
+- [x] **Step 2: Attach the current measurement to each item** so the owner's ears are confirming a number, not replacing one: the title/intro listen carries `min_corr` from Task 1e/2c's gate, the free-play listen carries the mission gate's stamp, the pad item carries the launcher's build sha. *(done: adb2a76)*
+- [x] **Step 3: Commit** `docs: HUMAN_TASKS items carry the measurement each check confirms` with the pathspec `docs/HUMAN_TASKS.md`. *(done: adb2a76)*
 
 - [ ] **STOP: needs the owner's four hands-on checks (`docs/HUMAN_TASKS.md`).** The loop does not wait on them (spec Goal 6): it continues to Task 7 and files whatever is still open.
 
