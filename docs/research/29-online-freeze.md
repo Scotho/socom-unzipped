@@ -8,6 +8,16 @@ Sprint 6 Task 3 Step 1½. Read-only: no launch was made for this note. Inputs: `
 
 ## 0. Condition sentences (both [inference] until Task 3 Step 2's two launches settle them)
 
+**2026-09-17, the two launches (Sprint 7 Task 2e Steps 5-6):** with the §4 fields on the pc-sampler line (`t= vsync= ee= seq= dpc= idle=
+bp_pending= bp_waiters= bp_wait_ms= net_wait=`), one quiet Frostfire control round (`s7_freeze_quiet`, run logs `*_215259`) and one
+under four spinning cores (`s7_freeze_loaded`, `*_220545`) both played to the clock and **neither shape appeared**: `freeze_trace
+--peer` finds no stall window of 3-17 s on either side in either round (its two windows are the pre-round clock at 0 and the ~5 s
+round end). The condition sentences below stay [inference]; what the launches add is that host load of this kind (four busy cores,
+the GL thread alive) does not by itself produce shape 1, and that the cumulative back-pressure wait over a whole run is large
+(`bp_wait_ms` reached 178889 by the end of the loaded round's A) without a stall the guest clock shows, i.e. the wait is spread
+in sub-frame pieces, not pooled into freezes. Shape 2 needs a peer that stops sending; the mixed match (Sprint 9) is where that
+happens.
+
 - **Shape 1 (thread 1 parked at 0x3b00a4, st=2 wait=4, running=0; A 500.7–514.1 s, B 621.0–638.3 s):** the EE
   executor is idle with the main thread inside `sceGsSyncV`'s VSync wait, and the VBlankStart it needs is not
   delivered for 5–17 s. The runtime path that can hold a VBlankStart that long is `GuestFrameBoundary()` — the GS

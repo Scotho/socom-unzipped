@@ -761,7 +761,7 @@ Run: `python -m unittest tools_py.tests.test_control_round -v` → `NameError: n
 
 - [ ] **Step 2: Implement** the helper (it runs `bash -c '. scripts/parity/online_control_round.sh --print-env …'` behind a `--print-env` short-circuit the script gains at the top) and the `--same-key` branch in `scripts/parity/online_control_round.sh`. Run the same command: 2 tests OK, and the existing cases unchanged.
 
-- [ ] **Step 3: The same-key control round (launch 7).**
+- [x] **Step 3: The same-key control round (launch 7).** *(done: s7_samekey 2026-09-17: CONTROL-ROUND with the same key on both; no Step 4)*
 
 ```bash
 scripts/parity/online_control_round.sh --same-key "Frostfire" logs/parity/s7_samekey
@@ -778,7 +778,7 @@ Expected: `TOTAL launches=1 gameplay=1/1` and `RESULT CONTROL-ROUND`. Decision t
 ```
 (If `"craig"`/`"dave"` happen to collide, pick the two profile names the launch actually used and say so in the comment.) Run Task 1a Step 2's command → RED; implement `rsaKeyForProfile` and use it in `environmentFor`; GREEN; `./build.sh test`; rebuild; re-run Step 3's launch as `s7_samekey2`.
 
-- [ ] **Step 5: Commit** (the result goes to `docs/KNOWN.md` §1 either way — the spec asks for the result, not the fix).
+- [x] **Step 5: Commit** (the result goes to `docs/KNOWN.md` §1 either way — the spec asks for the result, not the fix). *(done: KNOWN §1 row (this commit); no per-profile key needed)*
 
 ```bash
 git commit -m "harness(online): --same-key control round -- the case two strangers with default config hit
@@ -902,7 +902,7 @@ Run: `python -m unittest tools_py.tests.test_lobby_report -v` → `AttributeErro
 
 - [x] **Step 2: Implement** `rate` (a thin reuse of the existing `totals` counting) and the `--bar` flag. Run the same command: green, existing cases unchanged.
 
-- [ ] **Step 3: Ten control rounds, one at a time (launches 9–18).** The harness is pinned and the map is Frostfire for all ten, so the number means one thing.
+- [x] **Step 3: Ten control rounds, one at a time (launches 9–18).** The harness is pinned and the map is Frostfire for all ten, so the number means one thing. *(done: lobby_rate_01..10 2026-09-17 22:28-00:06)*
 
 ```bash
 for i in 1 2 3 4 5 6 7 8 9 10; do
@@ -911,7 +911,7 @@ done
 ```
 Run them **one at a time**, polling `logs/s7_lobby_<i>.done` between launches; never two at once. An `exit=75 BUSY` means the previous one is still live.
 
-- [ ] **Step 4: Read the rate.**
+- [x] **Step 4: Read the rate.** *(done: RATE 6/10 bar=0.80 FAIL; classes login:keyboard-typing=4 -- Task 2f)*
 
 ```bash
 python -m tools_py.parity.lobby_report --bar 0.8 logs/parity/drive_s7_lobby_*.txt
@@ -984,21 +984,21 @@ Run: `python -m unittest tools_py.tests.test_freeze_trace -v` → the three new 
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_freeze_build.marker
 ```
 
-- [ ] **Step 5: The loaded launch (launch 19).** `logs/s7_freeze_load.sh`: start the load generator, run one Frostfire control round, stop the generator.
+- [x] **Step 5: The loaded launch (launch 19).** `logs/s7_freeze_load.sh`: start the load generator, run one Frostfire control round, stop the generator. *(done: s7_freeze_loaded: CONTROL-ROUND, no 3-17 s window)*
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_freeze_load.sh logs/s7_freeze_load.marker
 ```
 The script body around the round: `powershell -c "1..4 | % { Start-Job { while($true){} } }"` before, `powershell -c "Get-Job | Remove-Job -Force"` after (research/29 §3's recipe), `PS2X_CLOCK_TRACE=1` set throughout.
 
-- [ ] **Step 6: The quiet launch (launch 20).**
+- [x] **Step 6: The quiet launch (launch 20).** *(done: s7_freeze_quiet: CONTROL-ROUND, no 3-17 s window)*
 
 ```bash
 scripts/parity/online_control_round.sh "Frostfire" logs/parity/s7_freeze_quiet
 ```
 Same exe, no load generator.
 
-- [ ] **Step 7: The condition sentence.**
+- [x] **Step 7: The condition sentence.** *(done: research/29 §0, 2026-09-17 paragraph)*
 
 ```bash
 python -m tools_py.parity.freeze_trace logs/run_A_<loaded stamp>.log --peer logs/run_B_<loaded stamp>.log
