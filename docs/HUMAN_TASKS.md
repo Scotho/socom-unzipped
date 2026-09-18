@@ -123,21 +123,16 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   lobby, then leave and play one mission) and report the same three things: the menu music, any buzz, whether mission sound
   lasts. If the buzz is back, one line on whether the game looked slow at that moment.
 
-- [ ] **Enable WSL2 on this PC for the Linux port** (owner request 2026-09-18: "add linux support to the installer/launcher").
-  The port is built and unit-tested on GitHub's Linux runners, but the game itself (the gate, a control round, your
-  own play) can only run on a Linux box with a display, and this PC has none: WSL is not installed and enabling it
-  needs an administrator and a reboot. Virtualisation is already on in the firmware. Two commands in an
-  administrator PowerShell, then reboot:
-
-  ```powershell
-  wsl --install -d Ubuntu
-  ```
-
-  (the first run after the reboot asks for a Linux username and password; any will do). Then tell me it is there,
-  and the loop takes it from that point: the Linux build inside it, the game with its window through WSLg, the
-  gate. If you would rather test on a real Linux machine or a Steam Deck, say which instead: the tarball the port
-  produces runs unpacked from any folder, like the Windows zip.
-
+- [ ] **Run the Linux tarball on a real Linux machine or a Steam Deck** (Sprint 8 Goal 1; owner request 2026-09-18 "add linux
+  support to the installer/launcher"). The port is built, unit-tested and booted in a VirtualBox Ubuntu machine that the loop
+  created on this PC (`socom-linux`; your "Work" VM was not touched), so the WSL request is withdrawn. What a real box adds:
+  a real GPU driver (the VM's Mesa gives GL 4.1 through VMSVGA), real audio, a real pad. The tarball: build it with
+  `bash scripts/build_linux.sh` then `bash scripts/make_portable.sh` on a Linux checkout (or take
+  `dist-linux/portable/socom2-linux.tar.gz` from the VM: `scripts/vm_sync.sh ssh 'cat ~/socom_pc/dist-linux/portable/socom2-linux.tar.gz' > socom2-linux.tar.gz`
+  on this PC; 114 MB). Unpack anywhere, `./socom_unzipped_launcher`, point it at your ISO, Launch. Report: did the launcher
+  open (it needs an X or XWayland session), did the game boot to the title screen, was there music, did the pad work, and
+  the first three `[gs-gl]` lines of `logs/run_*.log` in the folder (the GL version and any UNSUPPORTED/note line). On a
+  Steam Deck: desktop mode, and say whether it ran from the SD card or internal storage.
 ## Done
 
 (none yet)
