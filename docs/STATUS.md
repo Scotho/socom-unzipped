@@ -8,6 +8,35 @@
 
 
 
+## 2026-09-18 (early) — Goal 8 in the launcher; the lobby misses diagnosed and latched; the owner's sound reports fixed under tests; Task 3 stopped by its own trace
+
+**The launch block** (2b, 2e, 3, 2d): the same-key control round plays (key sharing is not what keeps a second machine
+out); no 3-17 s freeze in a quiet or a four-core-loaded round with research/29 §4's fields on the sampler line; the lobby
+rate **6/10** with one miss class -- the on-screen keyboard at login typing extra glyphs. Diagnosed from the ten drive
+files and the `[socom2-input]` edges: the drive holds a press 90 ms of wall clock, the game sampled the pad file once per
+rendered frame, and in every miss the login screen ran at 12-30 fps under GL back-pressure, so presses fell between polls
+(dropped, never repeated; the cursor then desynchronised and every backspace typed `!`). Fixed with a 2 ms sampler and a
+per-poll OR latch (6b7a2b3, gate 3/3); the slowness itself is a KNOWN §2 row with its lead: the menus upload 7-11k 1 KB
+tiles a second at 80-133 ms/s, four to six times gameplay's. Task 3's page trace refuted the page-marking hypothesis
+(zero decodes online on the HUD pages; offline the arrow runs decode -> download) and re-measured the "21k" at ~10k/s in
+gameplay; stopped (R96), the menus' upload cost is Sprint 8's.
+
+**Goal 8 (owner request):** the Controller panel lists pads and the test area follows the pick, one selector and one dead
+zone for all three pad readers; `PS2X_FPS_OVERLAY` draws host fps / guest Hz / frame ms (title gate passes with it on,
+the window capture shows it); Sharpest (4x), Match display, a master volume; a Microphone panel with a live level meter,
+`PS2X_MIC_DEVICE` into a capture ring with a WAV dump, and the headset spike's row in KNOWN (the game polls Enumerate and
+EnumHint against our "no device" answer; serving it is believed bounded, Sprint 8). Voice does not reach another player
+yet; HUMAN_TASKS says so. Suite 538, Python 1172.
+
+**The owner's sound reports** (a hands-on session at 01:52; three sentences, one screenshot): the review of the run log
+found all three. "Sound stopped altogether" mid-mission: the IOP model never freed a VAG stream slot on snd_StopSound, so
+after six plays every play failed -- 237 `no free VAG stream slot` lines. The online menus' splice and buzz: the 989snd
+PCM ring had no fill/play interlock; a late fill was skipped (the splice), a missed one looped (the buzz); ruling R97 makes
+a block play once per fill and counts underruns on the audio trace line. Also fixed: the CD read-position rule that
+5a1b6a8 had described but not implemented; and 971 unknown-bank rejects after a successful load now dump the bank table
+once. All four under RED tests (b3e3797), the IOP model reachable from a test for the first time. The reason the fill is
+late is the login screen at 12-30 fps (above). The driven dumps that re-measure it and the owner's re-listen are next.
+
 ## 2026-09-17 (late night) — Sprint 7 block two: the stranger's machine, the console's scheduler, the instruments
 
 Branch `sprint-7`, eight commits (a843385..e5e447d). What a stranger's machine gets: a GL capability probe that falls back
