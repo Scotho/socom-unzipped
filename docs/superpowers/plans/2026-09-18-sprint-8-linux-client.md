@@ -2038,6 +2038,8 @@ git push
 
 ---
 
+- [ ] **Follow-up (2026-09-18 17:40, from the dump investigation): two harness items for the VM's marginal title stage.** (a) The drive resolves the disc by a fixed `game/` path and the runtime by a directory scan of the ELF's parent (`configureCdImage`, `game_overrides_socom2.cpp:551-581`); on Linux the gate should export `PS2X_CD_IMAGE` from a `hostplatform.iso_path()` so a run without the symlink fails loudly at launch instead of booting black. (b) The `untilref` press budget (12 presses x up to 12 s, `drive.py:75-84`) is marginal against a 119 s boot at 1.6 fps -- too slow never matches, too fast overshoots into MISSION BRIEFING (`s8_frz_D`, `s8_vm_title3`); pace the presses by the reference's own settle time rather than a fixed count. Both are Python, tested on both platforms, and not needed for the goal's bars (the stage passes 3 of 4 runs); Sprint 8's harness items.
+
 ## Task 11 — The tarball in the VM, and the launcher run (spec Design item 6b, fourth and fifth bars)
 
 *(done 2026-09-18 15:55: config.json beside the unpacked launcher, Launch pressed through XTEST after scrolling; the child's parent is the launcher, argv the folder's ELF, the log inside the folder; the first three lines identical to a Windows run's. Screenshots logs/parity/vm/launcher_*.png.)*
