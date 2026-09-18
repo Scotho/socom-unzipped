@@ -113,6 +113,33 @@ networks (the owner says which).
 
 The four `docs/HUMAN_TASKS.md` items. The loop does not wait on them.
 
+### Goal 8 — the launcher a player expects (owner request 2026-09-18; autonomous, hands-on checks to the owner)
+
+Added mid-sprint on the owner's words: "controller and microphone selection and functionality within the launcher (both in
+single player and multiplayer, test what you are capable of and leave the rest to human tasks). A FPS overlay toggle in the
+launcher. Detail/resolution selector, whatever else that would be feasible and useful." Four tasks (plan Tasks 8-11), each a
+launcher panel change plus the runtime knob it drives, every new knob off by default so the gate's 640x448 launch is untouched:
+
+- **8, controller selection**: the Controller panel lists the connected pads by index and name, the test area follows the
+  selected one, a dead-zone slider; the runtime takes `PS2X_HOST_GAMEPAD_INDEX` and `PS2X_PAD_DEADZONE` through one tested
+  selector used by all three pad readers (today each is pinned to pad 0 and only one has a dead zone). Bar: the selector's
+  unit tests and the launcher's environment test; the pad in single player and one online round is the owner's check.
+- **9, microphone**: a Microphone panel listing capture devices with a live level meter (miniaudio, which raylib already
+  links); the runtime opens the chosen device into a ring (`PS2X_MIC_DEVICE`, `PS2X_MIC_DUMP` for a playback check). The
+  game's headset module (`lgaud`, the Logitech USB headset) is a stub that answers "no device", so *voice reaching the other
+  player* is not in this sprint: Task 9c is a bounded spike that writes what the game asks the headset module for into KNOWN
+  §2, and Sprint 8 decides. Bar: the meter moves for the owner; the ring and level tests; the KNOWN row.
+- **10, FPS overlay**: `PS2X_FPS_OVERLAY=1` draws one line (host fps, guest vsync Hz, frame ms) at the top-left of the window;
+  a Video-panel checkbox. Bar: the formatter test; one title-stage gate launch with the overlay on still passes (the line
+  stays inside the top-left 200x14 px, clear of every detector box) and the window capture's corner differs from the exported
+  frame.
+- **11, detail and resolution**: Sharpest (4x, the backend's own clamp), Match display, a master volume slider
+  (`PS2X_AUDIO_VOLUME`), and the two game-side detail knobs as sliders only if reading them shows they are user-safe. Bar:
+  the config and environment tests; no default moves (a ruling if one must).
+
+Stop rule: any of these that needs a runtime change the gate cannot cover (the microphone's headset path) stops at the
+KNOWN row and a HUMAN_TASKS item rather than shipping an untested path.
+
 ### Goal 7 — close-out
 
 `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate, STATUS entry, KNOWN audit, ROADMAP §6, CURRENT_SPRINT → Sprint 8,
@@ -122,7 +149,9 @@ merge `sprint-7` into `develop` and `main`.
 
 Launches: Goal 1 two gates (GL, CPU fallback) plus one drag measurement; Goal 2 one control round and one ladder (2a),
 one control round (2b), ten control rounds (2d), two launches (2e); Goal 3 one traced online round plus one ladder;
-Goal 4 one launcher login. About 22 launches over the sprint; each through `scripts/run_detached.sh`, one at a time.
+Goal 4 one launcher login; Goal 8 one title-stage gate with the FPS overlay on. About 27 launches over the sprint (R94 added
+one, Goal 8 one, the page trace moved to the offline mission stage and re-ran twice); each through `scripts/run_detached.sh`,
+one at a time.
 
 Stop rules: Goal 2a's ladder failing the control bar on the new exe reverts the slice change and files the finding
 (the semantics were load-bearing, which is itself a KNOWN §1 row). Goal 3's trace not showing the download-then-decode
@@ -131,6 +160,6 @@ lobby-hardening task before anything else online.
 
 ## 4. What this sprint does not do
 
-Window policy beyond the DPI flag and the 2x default (Sprint 8); audio residuals beyond the I/O move (Sprint 8); the
+Window policy beyond the DPI flag, the 2x default and Goal 8's selectors (Sprint 8); audio residuals beyond the I/O move (Sprint 8); the
 release build, exit-code taxonomy, `SHA256SUMS`, signing (Sprint 8); knob retirement pass 2 (Sprint 8); the mixed match
 with PCSX2 (Sprint 9); stats, clans, the legal text (Sprint 9, owner).
