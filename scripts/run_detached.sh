@@ -132,11 +132,13 @@ if [ "$1" = "--_child" ]; then
     # it isn't yet. The MSYS pid is kept as a fourth field (unused by check_quiet_gate.sh) since it
     # is what this script's own kill/on_signal path needs.
     job_winpid=""
-    for _ in 1 2 3 4 5 6 7 8 9 10; do
-      job_winpid=$(cat "/proc/$job/winpid" 2>/dev/null)
-      [ -n "$job_winpid" ] && break
-      sleep 0.2
-    done
+    if command -v tasklist >/dev/null 2>&1; then   # the winpid file exists only under MSYS; on Linux $job is the pid
+      for _ in 1 2 3 4 5 6 7 8 9 10; do
+        job_winpid=$(cat "/proc/$job/winpid" 2>/dev/null)
+        [ -n "$job_winpid" ] && break
+        sleep 0.2
+      done
+    fi
     mkdir -p "$(dirname "$QUIET_MARKER")"
     printf '%s %s %s %s\n' "$owner" "${job_winpid:-$job}" "$(date +%s)" "$job" > "$QUIET_MARKER"
   fi
