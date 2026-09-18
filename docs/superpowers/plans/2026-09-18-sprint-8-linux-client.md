@@ -1950,6 +1950,8 @@ git push
 
 ## Task 10 — The title stage of the gate, inside the VM (spec Design item 6b, third bar)
 
+*(done 2026-09-18 15:50: five attempts in the VM, five causes (the C: drive, the exe name, xdotool's regex flavour, pkill -f vs -x, key injection unreachable at ~3 fps -> the latched pad file; plus the slow-host factor and the reference-paced press budget); `s8_vm_title5`: PASS title 19/23, GATE PASS 1/1, the same 19/23 as Windows. The audio dump run follows for R106.)*
+
 **Files:**
 - Create: `logs/s8_vm_title.sh`
 - Writes: `logs/parity/gate/s8_vm_title/title/` (19 captures `s00..s18` plus the `wNN_k` waits and `manifest.json`), `logs/parity/gate/s8_vm_title/summary.txt`
@@ -1960,7 +1962,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Re-sync and confirm the prerequisites.** The gate's title stage launches the game itself (`drive.py:34-38`), drives 19 steps of `scripts/parity/title_menu.txt` and scores each capture, so everything Task 9 wrote is exercised in one run.
+- [x] **Step 1: Re-sync and confirm the prerequisites.** The gate's title stage launches the game itself (`drive.py:34-38`), drives 19 steps of `scripts/parity/title_menu.txt` and scores each capture, so everything Task 9 wrote is exercised in one run.
 
 ```bash
 rsync -az -e "ssh -i vm/keys/socom_linux -p 2222" --exclude build-clang --exclude build-tools \
@@ -1970,7 +1972,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: numpy and Pillow present (install with `sudo apt-get install -y python3-numpy python3-pil` if not — `vm/postinstall.sh` did not list them, which is a gap to note), `xdotool` and `import` on `PATH`, and X alive on `:0`.
 
-- [ ] **Step 2: `drive.py`'s launcher on Linux.** `drive.py:37` runs `["bash", "./run.sh", str(seconds)]` and `run.sh:12` runs `dist/socom2.exe`. In the VM the binary is `dist-linux/socom2`. Make `run.sh` choose:
+- [x] **Step 2: `drive.py`'s launcher on Linux.** `drive.py:37` runs `["bash", "./run.sh", str(seconds)]` and `run.sh:12` runs `dist/socom2.exe`. In the VM the binary is `dist-linux/socom2`. Make `run.sh` choose:
 
 ```bash
 # run.sh, replacing the single dist/socom2.exe line:
@@ -1981,7 +1983,7 @@ timeout "$SECS" "$EXE" "$ELF" "$@" > "$LOG" 2>&1
 ```
   and `drive.py:245`'s `keys.WINDOW_TITLES["ours"]` is `"PS2-Recomp"`, which raylib sets on both platforms — confirm with `xdotool search --name PS2-Recomp` during Step 3 rather than assuming. This is a **Windows-affecting** edit to `run.sh`: `dist/socom2.exe` exists there, so the first branch always wins and the host's behaviour is unchanged; prove it by re-running the host gate in Step 5.
 
-- [ ] **Step 3: Run the title stage, detached.** `logs/s8_vm_title.sh`:
+- [x] **Step 3: Run the title stage, detached.** `logs/s8_vm_title.sh`:
 
 ```bash
 #!/usr/bin/env bash
@@ -2000,7 +2002,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'cat ~/socom_pc/logs/s8_vm_ti
 ```
   **Bar: `PASS title`.** The stage is ~3 minutes plus the boot.
 
-- [ ] **Step 4: If it fails, name the detector and keep its screenshot.** Do not adjust a threshold. `score_title` (`gate.py:149`) reports which of the 19 captures scored below the calibrated band (93.2-99.4 on the four stored clean runs, `gate.py:49-54`). Pull the failing capture and the reference:
+- [x] **Step 4: If it fails, name the detector and keep its screenshot.** Do not adjust a threshold. `score_title` (`gate.py:149`) reports which of the 19 captures scored below the calibrated band (93.2-99.4 on the four stored clean runs, `gate.py:49-54`). Pull the failing capture and the reference:
 
 ```bash
 scp -i vm/keys/socom_linux -P 2222 -r socom@127.0.0.1:~/socom_pc/logs/parity/gate/s8_vm_title logs/parity/gate/
@@ -2008,7 +2010,7 @@ python -m tools_py.parity.gate --score-title logs/parity/gate/s8_vm_title/title
 ```
   The **exact detector name, its score, its band and the path to its screenshot** go into `docs/KNOWN.md` §2 in Task 12, as the spec's alternative bar allows ("the title stage of the gate passes in the VM, or … the exact detector that fails named in KNOWN with its screenshot"). Three failure shapes to tell apart before writing that row, because they mean different things: (a) a capture that is the *right screen, wrong pixels* → a rendering difference, which is a real finding; (b) a capture that is a *different screen* → a press that did not land, i.e. a Task 9 `xdotool` defect, which is fixed here not filed; (c) a capture that is *blank or another window* → `windowraise` is momentary where `HWND_TOPMOST` is sticky (Task 9 Step 2's noted difference), which is also fixed here, by re-raising inside the capture loop.
 
-- [ ] **Step 5: The Windows gate, unchanged.**
+- [x] **Step 5: The Windows gate, unchanged.**
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_final_gate.sh logs/s8_t10_gate.marker
@@ -2016,7 +2018,7 @@ cat logs/parity/gate/s8_t10_gate/summary.txt
 ```
   Expected: `PASS title/transition/mission`, 3/3. `run.sh` was edited in Step 2, so this is not optional.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git commit -m "test(linux): the gate's title stage passes in the VM
@@ -2038,6 +2040,8 @@ git push
 
 ## Task 11 — The tarball in the VM, and the launcher run (spec Design item 6b, fourth and fifth bars)
 
+*(done 2026-09-18 15:55: config.json beside the unpacked launcher, Launch pressed through XTEST after scrolling; the child's parent is the launcher, argv the folder's ELF, the log inside the folder; the first three lines identical to a Windows run's. Screenshots logs/parity/vm/launcher_*.png.)*
+
 *(2026-09-18 13:30, in the VM: `make_portable.sh` on Linux wrote dist-linux/portable/socom2-linux (socom2, the ELF, the launcher, cards/, logs/, LICENSES/, README.txt) with 125 shared libraries in lib/ -- the whole closure of Ubuntu's FFmpeg build (aom, dav1d, bluray, cairo, crypto ...) -- and a 114 MB tar.gz. Unpacked into a fresh directory: `./socom_unzipped_launcher --selftest` exits 0 and prints the same env list as Windows; `ldd ./socom2` resolves every library from ./lib through the $ORIGIN RPATH, none missing. The launcher run under X with Launch pressed follows the audio boot.)*
 
 **Files:**
@@ -2055,7 +2059,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Build the tarball in the VM and unpack it somewhere fresh.**
+- [x] **Step 1: Build the tarball in the VM and unpack it somewhere fresh.**
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -2065,7 +2069,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: the script's last line reporting the entry count, the library count and the tarball size; the unpacked folder holding `socom2`, `socom2_game.elf`, `socom_unzipped_launcher` **with their executable bits** (`-rwxr-xr-x`), `lib/`, `cards/`, `logs/`, `LICENSES/`, `README.txt`. **A non-executable binary here is the bug this step exists to catch** — it is the classic tarball failure and it is invisible until someone else downloads it.
 
-- [ ] **Step 2: `--selftest`, from the fresh directory.**
+- [x] **Step 2: `--selftest`, from the fresh directory.**
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -2079,7 +2083,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: `exit=0` and the ISO verified — `SCUS_972.75` found and its SHA-256 matching the r0001 disc, the same verdict the Windows launcher prints. **This is the first proof the ISO 9660 reader and the SHA-256 in `ps2x_launcher_core` behave identically on Linux**, and it costs nothing; say so.
 
-- [ ] **Step 3: The launcher for real, under X, with the ISO typed.** No zenity in the VM (`vm/postinstall.sh` does not install it, deliberately — the typed path is the fallback the design names, and this exercises it):
+- [x] **Step 3: The launcher for real, under X, with the ISO typed.** No zenity in the VM (`vm/postinstall.sh` does not install it, deliberately — the typed path is the fallback the design names, and this exercises it):
 
 ```bash
 # logs/s8_vm_tarball.sh
@@ -2098,7 +2102,7 @@ echo "done" > "$HOME/socom_pc/logs/s8_vm_tarball.done"
 ```
   If `Return` does not press Launch (the launcher is a raylib immediate-mode window, and its buttons are hit-tested by mouse position, not by a focus ring), click it instead: read the Launch row's rectangle from `launcher_layout.h`, then `xdotool mousemove --window "$WID" <x> <y> click 1`. Decide which by looking at the window once with `import -window "$WID" launcher.png` and scp'ing it back — do not guess.
 
-- [ ] **Step 4: Compare the child's log with a Windows run's. Bar: lines 1 and 3 identical.**
+- [x] **Step 4: Compare the child's log with a Windows run's. Bar: lines 1 and 3 identical.**
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'head -3 "$(ls -t ~/unpack/socom2-linux/logs/run_*.log | head -1)"'
@@ -2113,7 +2117,7 @@ Using argv boot path
 ```
   Also confirm the log **exists where the launcher said it would** — `logs/run_<stamp>.log` inside the unpacked folder, not in the home directory — which is Task 4's `posix_spawn` file actions and its working directory working together. A log in `~` means `addchdir_np` did not take and the game would resolve `cards/` outside the folder.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
 ```bash
 git commit -m "test(linux): the tarball unpacks and runs from a fresh directory in the VM
