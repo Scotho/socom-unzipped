@@ -576,6 +576,12 @@ target_include_directories(ps2_runtime PUBLIC
 )
 
 target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop)
+if(UNIX AND NOT APPLE)
+    # Sprint 8 Goal 1: dladdr (the crash handler and the sampler's module base), timer_create (glibc < 2.34 keeps it
+    # in librt), pthreads -- on the library so the runner, the tests and the tools inherit them.
+    find_package(Threads REQUIRED)
+    target_link_libraries(ps2_runtime PUBLIC ${CMAKE_DL_LIBS} rt Threads::Threads)
+endif()
 
 # Sprint 7 Task 9b: host_mic.cpp includes raylib's own miniaudio.h (without MINIAUDIO_IMPLEMENTATION --
 # raudio.c already compiled it into libraylib), so it needs the raylib source tree on the include path.
