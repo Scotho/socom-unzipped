@@ -20,6 +20,12 @@ namespace socom2_hostnet
     // test so the value can be passed straight in instead of poking the process environment and
     // re-running init() (init() is one-shot, so an env-based test would depend on case order).
     uint32_t parseServerAddress(const std::string &value);
+
+    // Also not in socom2_hostnet.h, for the same reason: the Winsock/BSD error split. Every guest
+    // error code the table returns is produced by these two, so they are the one piece of the
+    // platform half a test can pin down without a network.
+    int hostnetLastError();
+    bool hostnetWouldBlock(int err);
 }
 
 namespace
@@ -115,6 +121,75 @@ void register_socom2_libnetb_tests()
         // A hosted server is reached by DNS name, so PS2X_SOCOM2_SERVER must accept one. The
         // inet_pton-only parse dropped every non-numeric value and left the retail hostnames
         // pointed at the 127.0.0.1 default -- silently, which reads as "online is just broken".
+        // The host socket table, end to end, through the public API only -- create, bind to an
+        // ephemeral loopback port, read the port back, send a datagram to itself, wait for it to
+        // become readable, receive it, close. On Windows this is the Winsock half that has always
+        // shipped and it passes today; it is here because the same case has to pass on Linux once
+        // socom2_hostnet.cpp grows its BSD half, and there it does not even compile yet (Task 8
+        // watches it in the VM). No platform guard: this is the contract, not an implementation.
+        tc.Run("hostnet UDP loopback round-trip through the public socket table", [](TestCase &t)
+        {
+            using namespace socom2_hostnet;
+            t.IsTrue(init(), "hostnet init must succeed");
+
+            const int fd = createSocket(Proto::Udp);
+            t.IsTrue(fd >= 0, "createSocket(Udp) must return a table descriptor");
+            if (fd < 0)
+                return;
+
+            t.Equals(bindSocket(fd, Endpoint{0x7f000001u, 0u}), 0, "bind to 127.0.0.1 port 0 must succeed");
+
+            Endpoint bound{};
+            t.Equals(localName(fd, &bound), 0, "localName must report the bound address");
+            t.IsTrue(bound.port != 0, "port 0 must come back as the ephemeral port the OS chose");
+
+            static const char kPayload[] = "hostnet";
+            const int sent = sendTo(fd, kPayload, sizeof(kPayload), Endpoint{0x7f000001u, bound.port});
+            t.Equals(sent, static_cast<int>(sizeof(kPayload)), "sendTo must report the whole datagram");
+
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+            while (readable(fd) <= 0 && std::chrono::steady_clock::now() < deadline)
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            t.IsTrue(readable(fd) > 0, "the socket must become readable within a second");
+
+            char buf[32] = {};
+            Endpoint from{};
+            const int got = recvFrom(fd, buf, sizeof(buf), &from);
+            t.Equals(got, static_cast<int>(sizeof(kPayload)), "recvFrom must return the bytes that were sent");
+            t.Equals(std::memcmp(buf, kPayload, sizeof(kPayload)), 0, "the payload must come back unchanged");
+            t.Equals(from.port, bound.port, "the datagram must be reported as coming from the sending port");
+
+            t.Equals(closeSocket(fd), 0, "closeSocket must release the table entry");
+        });
+
+        // The platform error split, with no network in it: a non-blocking socket with nothing
+        // queued reports the platform's would-block code (WSAEWOULDBLOCK on Windows, EWOULDBLOCK
+        // / EAGAIN on Linux), and hostnetWouldBlock() is the one place that difference lives.
+        // Without it mapError() would need a switch that says EWOULDBLOCK and EAGAIN separately,
+        // which on Linux is the same value twice and does not compile.
+        tc.Run("hostnetWouldBlock answers for the platform's would-block code", [](TestCase &t)
+        {
+            using namespace socom2_hostnet;
+            t.IsTrue(init(), "hostnet init must succeed");
+
+            const int fd = createSocket(Proto::Udp);
+            t.IsTrue(fd >= 0, "createSocket(Udp) must return a table descriptor");
+            if (fd < 0)
+                return;
+            t.Equals(bindSocket(fd, Endpoint{0x7f000001u, 0u}), 0, "bind to 127.0.0.1 port 0 must succeed");
+
+            char buf[8] = {};
+            Endpoint from{};
+            t.Equals(recvFrom(fd, buf, sizeof(buf), &from), -11,
+                     "an empty non-blocking socket must map to the guest's EAGAIN");
+
+            const int err = hostnetLastError();
+            t.IsTrue(hostnetWouldBlock(err), "hostnetWouldBlock must recognise the code the empty socket just set");
+            t.IsTrue(!hostnetWouldBlock(0), "hostnetWouldBlock must not treat success (0) as would-block");
+
+            t.Equals(closeSocket(fd), 0, "closeSocket must release the table entry");
+        });
+
         tc.Run("PS2X_SOCOM2_SERVER accepts a DNS name as well as a numeric IP", [](TestCase &t)
         {
             // getaddrinfo needs Winsock up; init() does WSAStartup and is idempotent.

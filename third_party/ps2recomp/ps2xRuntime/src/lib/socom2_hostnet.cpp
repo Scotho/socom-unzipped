@@ -8,6 +8,18 @@
 #define NOUSER
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#else
+// The BSD half. Same call graph throughout; only the spellings differ.
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <errno.h>
+#include <poll.h>
 #endif
 
 #include <array>
@@ -27,13 +39,38 @@ namespace socom2_hostnet
     // parse without touching the process environment or re-running init().
     uint32_t parseServerAddress(const std::string &value);
 
+    // The platform's error reporting, at namespace scope for the same reason parseServerAddress
+    // is: socom2_libnetb_tests.cpp drives them directly, and "what does this platform call
+    // would-block" is the one piece of the BSD/Winsock split a test can check without a network.
+    // hostnetLastError() is WSAGetLastError() on Windows and errno elsewhere.
+    int hostnetLastError();
+    bool hostnetWouldBlock(int err);
+
     namespace
     {
+#ifdef _WIN32
+        using SocketHandle = SOCKET;
+        constexpr SocketHandle kInvalidSocket = INVALID_SOCKET;
+        using SockLen = int;        // the address-length in/out parameter of accept/getsockname
+        using IoLen = int;          // the size argument of send/recv
+        using IoResult = int;       // what send/recv return
+        using SendBuf = const char *;
+        using RecvBuf = char *;
+#else
+        using SocketHandle = int;
+        constexpr SocketHandle kInvalidSocket = -1;
+        using SockLen = socklen_t;
+        using IoLen = size_t;
+        using IoResult = ssize_t;
+        using SendBuf = const void *;
+        using RecvBuf = void *;
+#endif
+
         constexpr int kMaxSockets = 64;
 
         struct Entry
         {
-            SOCKET s = INVALID_SOCKET;
+            SocketHandle s = kInvalidSocket;
             Proto proto = Proto::Tcp;
             bool used = false;
             bool connecting = false;
@@ -51,12 +88,17 @@ namespace socom2_hostnet
         std::string g_lastError;
         std::map<std::string, uint32_t> g_hosts;
 
+        // Would-block is tested before the switch rather than as a case of it because EWOULDBLOCK
+        // and EAGAIN are the same value on Linux, which a switch cannot spell twice. The Windows
+        // arm maps the same codes to the same guest errnos it always did.
         int mapError()
         {
-            const int e = WSAGetLastError();
+            const int e = hostnetLastError();
+            if (hostnetWouldBlock(e))
+                return -11;                       // EAGAIN
+#ifdef _WIN32
             switch (e)
             {
-            case WSAEWOULDBLOCK: return -11;      // EAGAIN
             case WSAEINPROGRESS: return -115;     // EINPROGRESS
             case WSAECONNREFUSED: return -111;
             case WSAETIMEDOUT: return -110;
@@ -66,6 +108,68 @@ namespace socom2_hostnet
             case WSAEADDRINUSE: return -98;
             default: return -5;                   // EIO
             }
+#else
+            switch (e)
+            {
+            case EINPROGRESS: return -115;
+            case ECONNREFUSED: return -111;
+            case ETIMEDOUT: return -110;
+            case EHOSTUNREACH: return -113;
+            case ENOTCONN: return -107;
+            case ECONNRESET: return -104;
+            case EADDRINUSE: return -98;
+            default: return -5;                   // EIO
+            }
+#endif
+        }
+
+        void hostnetSetLastError(int err)
+        {
+#ifdef _WIN32
+            WSASetLastError(err);
+#else
+            errno = err;
+#endif
+        }
+
+        void hostnetClose(SocketHandle s)
+        {
+#ifdef _WIN32
+            ::closesocket(s);
+#else
+            ::close(s);
+#endif
+        }
+
+        // 0 on success, non-zero on failure -- the ioctlsocket convention the call sites expect.
+        int hostnetSetNonBlocking(SocketHandle s, bool nonBlocking)
+        {
+#ifdef _WIN32
+            u_long nb = nonBlocking ? 1u : 0u;
+            return ::ioctlsocket(s, FIONBIO, &nb);
+#else
+            const int flags = ::fcntl(s, F_GETFL, 0);
+            if (flags < 0)
+                return -1;
+            const int want = nonBlocking ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+            return ::fcntl(s, F_SETFL, want) < 0 ? -1 : 0;
+#endif
+        }
+
+        int hostnetReadableBytes(SocketHandle s, int *bytes)
+        {
+#ifdef _WIN32
+            u_long n = 0;
+            if (::ioctlsocket(s, FIONREAD, &n) != 0)
+                return -1;
+            *bytes = static_cast<int>(n);
+#else
+            int n = 0;
+            if (::ioctl(s, FIONREAD, &n) != 0)
+                return -1;
+            *bytes = n;
+#endif
+            return 0;
         }
 
         Entry *entry(int fd)
@@ -131,10 +235,29 @@ namespace socom2_hostnet
         }
     }
 
+    int hostnetLastError()
+    {
+#ifdef _WIN32
+        return WSAGetLastError();
+#else
+        return errno;
+#endif
+    }
+
+    bool hostnetWouldBlock(int err)
+    {
+#ifdef _WIN32
+        return err == WSAEWOULDBLOCK;
+#else
+        return err == EWOULDBLOCK || err == EAGAIN;
+#endif
+    }
+
     // PS2X_SOCOM2_SERVER is a numeric IPv4 literal or a DNS name -- a hosted server is reached by
     // name. Returns host byte order IPv4, or 0 when the value is neither, so the caller keeps
-    // whatever it had. Winsock is already up: init() runs WSAStartup before loadHosts(), which is
-    // the only caller inside the runtime, and getaddrinfo needs nothing earlier than that.
+    // whatever it had. Winsock is already up where it has to be: init() runs WSAStartup before
+    // loadHosts(), which is the only caller inside the runtime, and getaddrinfo needs nothing
+    // earlier than that. On BSD sockets there is nothing to start.
     uint32_t parseServerAddress(const std::string &value)
     {
         if (const uint32_t ip = parseIp(value))
@@ -170,15 +293,21 @@ namespace socom2_hostnet
         std::lock_guard<std::mutex> lock(g_mutex);
         if (g_initialized)
             return true;
+#ifdef _WIN32
         WSADATA wsa{};
         if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0)
         {
             g_lastError = "WSAStartup failed";
             return false;
         }
+        const char *stackName = "Winsock";
+#else
+        // BSD sockets need no start-up call at all.
+        const char *stackName = "BSD sockets";
+#endif
         loadHosts();
         g_initialized = true;
-        std::cout << "[socom2/hostnet] Winsock ready; retail hostnames -> " << ipToString(g_hosts["socom2-prod.muis.pdonline.scea.com"]) << std::endl;
+        std::cout << "[socom2/hostnet] " << stackName << " ready; retail hostnames -> " << ipToString(g_hosts["socom2-prod.muis.pdonline.scea.com"]) << std::endl;
         return true;
     }
 
@@ -187,12 +316,14 @@ namespace socom2_hostnet
         std::lock_guard<std::mutex> lock(g_mutex);
         for (auto &e : g_table)
         {
-            if (e.used && e.s != INVALID_SOCKET)
-                closesocket(e.s);
+            if (e.used && e.s != kInvalidSocket)
+                hostnetClose(e.s);
             e = Entry{};
         }
+#ifdef _WIN32
         if (g_initialized)
             WSACleanup();
+#endif
         g_initialized = false;
     }
 
@@ -203,12 +334,11 @@ namespace socom2_hostnet
         {
             if (g_table[i].used)
                 continue;
-            SOCKET s = ::socket(AF_INET, proto == Proto::Tcp ? SOCK_STREAM : SOCK_DGRAM,
-                                proto == Proto::Tcp ? IPPROTO_TCP : IPPROTO_UDP);
-            if (s == INVALID_SOCKET)
+            SocketHandle s = ::socket(AF_INET, proto == Proto::Tcp ? SOCK_STREAM : SOCK_DGRAM,
+                                      proto == Proto::Tcp ? IPPROTO_TCP : IPPROTO_UDP);
+            if (s == kInvalidSocket)
                 return mapError();
-            u_long nb = 1;
-            ioctlsocket(s, FIONBIO, &nb);
+            hostnetSetNonBlocking(s, true);
             g_table[i] = Entry{s, proto, true, false, false};
             return i;
         }
@@ -221,7 +351,7 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
-        closesocket(e->s);
+        hostnetClose(e->s);
         *e = Entry{};
         return 0;
     }
@@ -254,22 +384,21 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         sockaddr_in a{};
-        int len = sizeof(a);
-        SOCKET s = ::accept(e->s, reinterpret_cast<sockaddr *>(&a), &len);
-        if (s == INVALID_SOCKET)
+        SockLen len = sizeof(a);
+        SocketHandle s = ::accept(e->s, reinterpret_cast<sockaddr *>(&a), &len);
+        if (s == kInvalidSocket)
             return mapError();
         for (int i = 0; i < kMaxSockets; ++i)
         {
             if (g_table[i].used)
                 continue;
-            u_long nb = 1;
-            ioctlsocket(s, FIONBIO, &nb);
+            hostnetSetNonBlocking(s, true);
             g_table[i] = Entry{s, Proto::Tcp, true, false, false};
             if (peer)
                 *peer = fromAddr(a);
             return i;
         }
-        closesocket(s);
+        hostnetClose(s);
         return -24;
     }
 
@@ -285,10 +414,21 @@ namespace socom2_hostnet
             e->connecting = false;
             return 0;
         }
-        const int err = WSAGetLastError();
+        const int err = hostnetLastError();
         if (e->proto == Proto::Udp)
             return mapError();
-        if (err == WSAEWOULDBLOCK || err == WSAEINPROGRESS || err == WSAEALREADY)
+#ifdef _WIN32
+        if (hostnetWouldBlock(err) || err == WSAEINPROGRESS || err == WSAEALREADY)
+#else
+        // A repeated connect() on a socket that finished connecting answers EISCONN here, where
+        // Winsock answers WSAEISCONN only from a blocking retry the guest never makes.
+        if (err == EISCONN)
+        {
+            e->connecting = false;
+            return 0;
+        }
+        if (hostnetWouldBlock(err) || err == EINPROGRESS || err == EALREADY)
+#endif
         {
             e->connecting = true;
             return 1;
@@ -304,6 +444,7 @@ namespace socom2_hostnet
             return -9;
         if (!e->connecting)
             return 0;
+#ifdef _WIN32
         fd_set w, x;
         FD_ZERO(&w);
         FD_ZERO(&x);
@@ -316,12 +457,33 @@ namespace socom2_hostnet
         if (FD_ISSET(e->s, &x))
         {
             int err = 0;
-            int len = sizeof(err);
+            SockLen len = sizeof(err);
             getsockopt(e->s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&err), &len);
             e->connecting = false;
-            WSASetLastError(err);
+            hostnetSetLastError(err);
             return mapError();
         }
+#else
+        // select(0, ...) is a Winsock spelling -- POSIX counts descriptors -- and poll() says the
+        // same thing without the FD_SETSIZE ceiling. A refused connect surfaces as POLLERR here
+        // and, on some kernels, only as SO_ERROR on a descriptor that also reads as writable, so
+        // both are consulted before the socket is called connected.
+        pollfd pfd{};
+        pfd.fd = e->s;
+        pfd.events = POLLOUT;
+        const int n = ::poll(&pfd, 1, 0);
+        if (n <= 0)
+            return 1;
+        int err = 0;
+        SockLen len = sizeof(err);
+        getsockopt(e->s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&err), &len);
+        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0 || err != 0)
+        {
+            e->connecting = false;
+            hostnetSetLastError(err);
+            return mapError();
+        }
+#endif
         e->connecting = false;
         return 0;
     }
@@ -332,8 +494,8 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
-        const int n = ::send(e->s, static_cast<const char *>(data), static_cast<int>(size), 0);
-        return n >= 0 ? n : mapError();
+        const IoResult n = ::send(e->s, static_cast<SendBuf>(data), static_cast<IoLen>(size), 0);
+        return n >= 0 ? static_cast<int>(n) : mapError();
     }
 
     int recv(int fd, void *data, uint32_t size)
@@ -342,10 +504,10 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
-        const int n = ::recv(e->s, static_cast<char *>(data), static_cast<int>(size), 0);
+        const IoResult n = ::recv(e->s, static_cast<RecvBuf>(data), static_cast<IoLen>(size), 0);
         if (n > 0)
             g_rxBytes += static_cast<uint64_t>(n);
-        return n >= 0 ? n : mapError();
+        return n >= 0 ? static_cast<int>(n) : mapError();
     }
 
     int sendTo(int fd, const void *data, uint32_t size, const Endpoint &remote)
@@ -355,9 +517,9 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         sockaddr_in a = toAddr(remote);
-        const int n = ::sendto(e->s, static_cast<const char *>(data), static_cast<int>(size), 0,
-                               reinterpret_cast<sockaddr *>(&a), sizeof(a));
-        return n >= 0 ? n : mapError();
+        const IoResult n = ::sendto(e->s, static_cast<SendBuf>(data), static_cast<IoLen>(size), 0,
+                                    reinterpret_cast<sockaddr *>(&a), sizeof(a));
+        return n >= 0 ? static_cast<int>(n) : mapError();
     }
 
     int recvFrom(int fd, void *data, uint32_t size, Endpoint *remote)
@@ -367,16 +529,16 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         sockaddr_in a{};
-        int len = sizeof(a);
-        const int n = ::recvfrom(e->s, static_cast<char *>(data), static_cast<int>(size), 0,
-                                 reinterpret_cast<sockaddr *>(&a), &len);
+        SockLen len = sizeof(a);
+        const IoResult n = ::recvfrom(e->s, static_cast<RecvBuf>(data), static_cast<IoLen>(size), 0,
+                                      reinterpret_cast<sockaddr *>(&a), &len);
         if (n < 0)
             return mapError();
         if (n > 0)
             g_rxBytes += static_cast<uint64_t>(n);
         if (remote)
             *remote = fromAddr(a);
-        return n;
+        return static_cast<int>(n);
     }
 
     int localName(int fd, Endpoint *local)
@@ -386,7 +548,7 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         sockaddr_in a{};
-        int len = sizeof(a);
+        SockLen len = sizeof(a);
         if (getsockname(e->s, reinterpret_cast<sockaddr *>(&a), &len) != 0)
             return mapError();
         if (local)
@@ -405,7 +567,7 @@ namespace socom2_hostnet
         if (!e)
             return -9;
         sockaddr_in a{};
-        int len = sizeof(a);
+        SockLen len = sizeof(a);
         if (getpeername(e->s, reinterpret_cast<sockaddr *>(&a), &len) != 0)
             return mapError();
         if (peer)
@@ -419,9 +581,8 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
-        u_long nb = blocking ? 0 : 1;
         e->blocking = blocking;
-        return ioctlsocket(e->s, FIONBIO, &nb) == 0 ? 0 : mapError();
+        return hostnetSetNonBlocking(e->s, !blocking) == 0 ? 0 : mapError();
     }
 
     int poll(int fd, int timeoutMs)
@@ -430,6 +591,7 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
+#ifdef _WIN32
         fd_set r, w, x;
         FD_ZERO(&r);
         FD_ZERO(&w);
@@ -446,6 +608,19 @@ namespace socom2_hostnet
         if (FD_ISSET(e->s, &w)) mask |= 2;
         if (FD_ISSET(e->s, &x)) mask |= 4;
         return mask;
+#else
+        pollfd pfd{};
+        pfd.fd = e->s;
+        pfd.events = POLLIN | POLLOUT;
+        const int n = ::poll(&pfd, 1, timeoutMs);
+        if (n < 0)
+            return mapError();
+        int mask = 0;
+        if (pfd.revents & POLLIN) mask |= 1;
+        if (pfd.revents & POLLOUT) mask |= 2;
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) mask |= 4;
+        return mask;
+#endif
     }
 
     int readable(int fd)
@@ -454,10 +629,10 @@ namespace socom2_hostnet
         Entry *e = entry(fd);
         if (!e)
             return -9;
-        u_long n = 0;
-        if (ioctlsocket(e->s, FIONREAD, &n) != 0)
+        int n = 0;
+        if (hostnetReadableBytes(e->s, &n) != 0)
             return mapError();
-        return static_cast<int>(n);
+        return n;
     }
 
     uint32_t resolve(const std::string &name)
@@ -497,8 +672,8 @@ namespace socom2_hostnet
             if (it != g_hosts.end())
                 target = it->second;
         }
-        SOCKET s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if (s == INVALID_SOCKET)
+        SocketHandle s = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+        if (s == kInvalidSocket)
             return 0x7f000001u;
         sockaddr_in a{};
         a.sin_family = AF_INET;
@@ -508,11 +683,11 @@ namespace socom2_hostnet
         if (::connect(s, reinterpret_cast<sockaddr *>(&a), sizeof(a)) == 0)
         {
             sockaddr_in l{};
-            int len = sizeof(l);
+            SockLen len = sizeof(l);
             if (getsockname(s, reinterpret_cast<sockaddr *>(&l), &len) == 0)
                 ip = ntohl(l.sin_addr.s_addr);
         }
-        closesocket(s);
+        hostnetClose(s);
         return ip;
     }
 

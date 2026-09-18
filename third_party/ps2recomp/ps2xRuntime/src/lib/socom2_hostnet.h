@@ -1,4 +1,4 @@
-// Host (Winsock) socket table behind the SOCOM II libnetb HLE.
+// Host socket table behind the SOCOM II libnetb HLE (Winsock on Windows, BSD sockets elsewhere).
 //
 // libnetb (SCE-RT, LIBNETB.IRX) offers the Medius client a small BSD-like socket API over the
 // PS2 inet stack. The EE side reaches it through msifrpc (see game_overrides_socom2.cpp); the
