@@ -373,7 +373,7 @@ git push
 
 ## Task 2 — GitHub Actions on ubuntu-24.04 (spec Design item 6a)
 
-*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3; the first CI run reached the compiler -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3; the first CI run reached the compiler; run 35352725720 on 8f8981c is the first fully green one: Python 1205, C++ 554/554 -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
 
 **Files:**
 - Create: `.github/workflows/linux.yml` — there is no `.github/` directory at `HEAD`

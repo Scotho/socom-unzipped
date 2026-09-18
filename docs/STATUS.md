@@ -8,6 +8,23 @@
 
 
 
+## 2026-09-18 (afternoon) — Sprint 8 Goal 1: the client on Linux, built and booting the same day
+
+The owner asked for Linux support at 11:00 and offered VirtualBox. By 15:20: an Ubuntu 24.04 VM (`socom-linux`) built
+unattended and provisioned; a GitHub Actions job on ubuntu-24.04; the port itself in seven slices, each under the rule
+that Windows stays byte-for-byte the same -- CMake's UNIX branches with the runner skipped where there is no generated
+code, hostnet's BSD half, the launcher's posix_spawn glue, the crash handler and a SIGPROF sampler feeding the same
+`[pc-sampler]` line, the replay tool's portability, the tarball with an ldd-driven lib/, the harness's xdotool and
+ImageMagick halves. The VM linked the 224 MB runner in about fifteen minutes and the game booted under a bare X session
+on Mesa's GL 4.1, the probe passing; its exported boot frame differs from the Windows export by 0.008 grey levels
+(bar 3). The first Linux run of the C++ suite paid for itself at once: glibc aborted on a double free in the mixer's
+stream-end path (a refused header closed its file twice) that Windows' allocator had never reported -- fixed at the
+root under a Windows-observable test, AddressSanitizer clean, Windows gate 3/3. Two VBlank timing tests assumed an
+unloaded host and now pay for host lateness. CI is green end to end (Python 1205, C++ 554/554). The tarball (114 MB,
+125 libraries: Ubuntu's FFmpeg closure, to slim later) unpacks and self-tests from a fresh directory. Open: the driven
+title stage in the VM (the audio bar rides on it, R106: a bare boot sits silent on the controller prompt), the
+launcher's real run from the tarball, the close-out. HUMAN_TASKS: the owner's real-Linux or Steam Deck run.
+
 ## 2026-09-18 (early) — Goal 8 in the launcher; the lobby misses diagnosed and latched; the owner's sound reports fixed under tests; Task 3 stopped by its own trace
 
 **The launch block** (2b, 2e, 3, 2d): the same-key control round plays (key sharing is not what keeps a second machine
