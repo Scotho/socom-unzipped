@@ -68,6 +68,35 @@
 #include <sys/syscall.h>
 #include <ucontext.h>
 #endif
+
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
+
+namespace
+{
+    // Sprint 8 Goal 1 Task 6: the tool's two process-environment touches, one body per platform.
+    void replaySetEnv(const char *pair)   // "NAME=value", the _putenv shape
+    {
+#ifdef _WIN32
+        _putenv(pair);
+#else
+        const char *eq = std::strchr(pair, '=');
+        if (eq == nullptr) { return; }
+        const std::string name(pair, static_cast<size_t>(eq - pair));
+        setenv(name.c_str(), eq + 1, 1);
+#endif
+    }
+
+    void replayMakeDirectory(const std::string &path)
+    {
+#ifdef _WIN32
+        CreateDirectoryA(path.c_str(), nullptr);
+#else
+        mkdir(path.c_str(), 0755);
+#endif
+    }
+}
 #endif
 #include <cstdio>
 #include <cstdlib>
@@ -500,7 +529,7 @@ namespace
     int runVramDiff(int argc, char **argv, const std::string &outDir, double tolerancePct,
                     const std::vector<std::string> &inputs)
     {
-        CreateDirectoryA(outDir.c_str(), nullptr);
+        replayMakeDirectory(outDir);
 
         // A child pass that dies before it writes its dump must not be scored against the
         // artefact a previous invocation left in outDir: clear both expected paths up front.
@@ -913,9 +942,9 @@ int main(int argc, char **argv)
         else if (!std::strcmp(argv[i], "--vram-tol") && i + 1 < argc)
             vramTolerancePct = std::atof(argv[++i]);
         else if (!std::strcmp(argv[i], "--native"))
-            _putenv("PS2X_VU1_NATIVE=1");
+            replaySetEnv("PS2X_VU1_NATIVE=1");
         else if (!std::strcmp(argv[i], "--no-native"))
-            _putenv("PS2X_VU1_NATIVE=0");
+            replaySetEnv("PS2X_VU1_NATIVE=0");
         else
             inputs.push_back(argv[i]);
     }
@@ -932,10 +961,10 @@ int main(int argc, char **argv)
 
     // Always explicit, so a stale PS2X_VU1_HOST_DRAW in the environment cannot decide which path a
     // run takes (and so the --vram-diff children do not inherit their parent's setting).
-    _putenv(hostDraw ? "PS2X_VU1_HOST_DRAW=1" : "PS2X_VU1_HOST_DRAW=0");
-    _putenv("PS2X_GS_BACKEND=cpu");
+    replaySetEnv(hostDraw ? "PS2X_VU1_HOST_DRAW=1" : "PS2X_VU1_HOST_DRAW=0");
+    replaySetEnv("PS2X_GS_BACKEND=cpu");
     if (trace)
-        _putenv("PS2X_TRACE_VU=0");
+        replaySetEnv("PS2X_TRACE_VU=0");
     // The generator needs the interpreter's own execution profile (the generated code keeps none).
     std::vector<uint32_t> bails;
     if (bailHist)
@@ -946,8 +975,8 @@ int main(int argc, char **argv)
     std::vector<uint32_t> pcHist, jrHist;
     if (!genPath.empty() || !pcHistPath.empty())
     {
-        _putenv("PS2X_VU1_GEN=0");
-        _putenv("PS2X_VU1_FAST=1");
+        replaySetEnv("PS2X_VU1_GEN=0");
+        replaySetEnv("PS2X_VU1_FAST=1");
         pcHist.assign(2048, 0u);
         g_vu1PcHist = pcHist.data();
         jrHist.assign(2048, 0u);
