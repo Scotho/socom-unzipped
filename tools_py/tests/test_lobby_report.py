@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 
+from tools_py.parity import lobby_report
 from tools_py.parity import lobby_report as R
 
 
@@ -174,6 +175,32 @@ class Cli(unittest.TestCase):
         with redirect_stderr(err):
             self.assertEqual(R.main([]), 2)
         self.assertIn("usage", err.getvalue())
+
+    def _summary(self, outcome, cls=None):
+        """A real summarise() result with the given outcome (and, on a lobby failure, that class)."""
+        if outcome == R.OUTCOME_GAMEPLAY:
+            return R.summarise(CLEAN)
+        if outcome == R.OUTCOME_LOBBY_FAIL:
+            return R.summarise(log(("A", "RESULT LOBBY-FAIL %s" % cls)))
+        if outcome == R.OUTCOME_RESULT:
+            return R.summarise(log(("A", "RESULT %s" % cls)))
+        return R.summarise([])
+
+    def _three_log_paths(self):
+        """Three drive logs, two of which reached gameplay."""
+        return [self.write("s7_lobby_1", CLEAN), self.write("s7_lobby_2", CLEAN),
+                self.write("s7_lobby_3", CREATE_FAIL)]
+
+    def test_rate_counts_gameplay_over_total_with_classes(self):
+        summaries = [self._summary("gameplay"), self._summary("gameplay"), self._summary("lobby-fail", cls="READY")]
+        g, n, classes = lobby_report.rate(summaries)
+        self.assertEqual((g, n), (2, 3))
+        self.assertEqual(classes["READY"], 1)
+
+    def test_bar_fails_below_the_threshold(self):
+        with redirect_stdout(io.StringIO()):                                 # the rows and RATE line, not test noise
+            rc = lobby_report.main(["--bar", "0.8"] + self._three_log_paths())   # 2 of 3
+        self.assertEqual(rc, 1)
 
     def test_launch_name(self):
         self.assertEqual(R.launch_name("logs/parity/drive_s5_t5_ladder2.txt"), "s5_t5_ladder2")
