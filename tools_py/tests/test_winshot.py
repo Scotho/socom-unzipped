@@ -119,6 +119,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
+@unittest.skipUnless(os.name == "nt", "Windows capture API (winshot.wt.RECT / user32 SetWindowPos)")
 class EnsureClientSize(unittest.TestCase):
     """s6_ladder10/11 (2026-09-16): instance A's window had been resized (983x630, then 729x462 client) and every
     fixed-box detector on it read garbage ('ONLINE not lit ... new game 18, online 14, lan 13'). The harness

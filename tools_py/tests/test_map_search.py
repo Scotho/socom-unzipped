@@ -14,7 +14,6 @@ from unittest import mock
 from PIL import Image
 
 from tools_py.parity import online_login_ours as L
-from tools_py.parity import winshot
 
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "lobby")
 LIST_BOX = L.map_row_box(0)[:2]                   # the six-row region crops start at row 0's corner
@@ -200,7 +199,7 @@ class ChooseMap(unittest.TestCase):
         self.assertIn("map 'frostfire' highlighted at row 4 after 1 DOWN (text-mask distance 0.005 <= 0.3) -- accepting", sh.logs)
 
     def test_b3_a_stale_frame_is_waited_out(self):
-        stale = winshot.StaleFrameError("latest.png", 9.6, L.LOBBY_FRAME_MAX_AGE_S)
+        stale = L.winshot.StaleFrameError("latest.png", 9.6, L.LOBBY_FRAME_MAX_AGE_S)
         sh, g, row, cross = run(stale, FF_LIT_AT4)
         self.assertEqual(row, 4)
         self.assertEqual(sh.presses, [])

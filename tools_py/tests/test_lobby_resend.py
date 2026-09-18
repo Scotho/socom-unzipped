@@ -11,7 +11,6 @@ from unittest import mock
 from PIL import Image
 
 from tools_py.parity import online_login_ours as L
-from tools_py.parity import winshot
 
 FIX = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "lobby")
 PANEL = (335, 110, 625, 380)
@@ -140,7 +139,7 @@ class MapCrossResend(unittest.TestCase):
         self.assertEqual(sh.presses, [("key", "cross"), ("key", "cross")])
 
     def test_a_stale_frame_is_waited_out_not_read_as_dropped(self):
-        stale = winshot.StaleFrameError("latest.png", 9.6, L.LOBBY_FRAME_MAX_AGE_S)
+        stale = L.winshot.StaleFrameError("latest.png", 9.6, L.LOBBY_FRAME_MAX_AGE_S)
         sh, g = FakeShell(), Grabs(MAP_PRE_8C, stale, MAP_TAKEN_8C)
         with mock.patch.object(L.winshot, "grab", g):
             self.assertEqual(L.press_map_cross_verified(sh), 0)

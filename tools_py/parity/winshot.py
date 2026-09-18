@@ -1,9 +1,29 @@
 """Focus-free capture of a top-level window's client area (PrintWindow, PW_RENDERFULLCONTENT)."""
 import ctypes
-import ctypes.wintypes as wt
+import sys
+
 from PIL import Image
 
-user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+# Windows-only, but IMPORTABLE everywhere (Sprint 8 Goal 1 Task 9): ctypes.windll and
+# ctypes.wintypes exist only on Windows, and unguarded module-level access broke `import
+# tools_py.parity.winshot` -- and with it five test modules -- on the Linux ring. The Linux twin is
+# x11shot; callers reach the right one through hostplatform.shot_module(). The pure parts here
+# (register_frame_file, StaleFrameError, grab's frame-file read) work on any host; every function
+# that touches user32/gdi32 raises a clear RuntimeError off Windows.
+if sys.platform == "win32":
+    import ctypes.wintypes as wt
+    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+else:
+    class _NotOnThisHost:
+        def __init__(self, name):
+            self._name = name
+
+        def __getattr__(self, attr):
+            raise RuntimeError(f"winshot.{self._name}.{attr} is the Win32 API and this host is "
+                               f"{sys.platform}; use hostplatform.shot_module() (x11shot) instead")
+
+    wt = _NotOnThisHost("wintypes")
+    user32, gdi32 = _NotOnThisHost("user32"), _NotOnThisHost("gdi32")
 PW_CLIENTONLY = 1
 PW_RENDERFULLCONTENT = 2
 
@@ -41,11 +61,14 @@ def window_title(hwnd):
     return buf.value
 
 
-class _BMI(ctypes.Structure):
-    _fields_ = [("biSize", wt.DWORD), ("biWidth", wt.LONG), ("biHeight", wt.LONG), ("biPlanes", wt.WORD),
-                ("biBitCount", wt.WORD), ("biCompression", wt.DWORD), ("biSizeImage", wt.DWORD),
-                ("biXPelsPerMeter", wt.LONG), ("biYPelsPerMeter", wt.LONG), ("biClrUsed", wt.DWORD),
-                ("biClrImportant", wt.DWORD)]
+if sys.platform == "win32":     # the field types are wintypes; capture() raises before it is reached elsewhere
+    class _BMI(ctypes.Structure):
+        _fields_ = [("biSize", wt.DWORD), ("biWidth", wt.LONG), ("biHeight", wt.LONG), ("biPlanes", wt.WORD),
+                    ("biBitCount", wt.WORD), ("biCompression", wt.DWORD), ("biSizeImage", wt.DWORD),
+                    ("biXPelsPerMeter", wt.LONG), ("biYPelsPerMeter", wt.LONG), ("biClrUsed", wt.DWORD),
+                    ("biClrImportant", wt.DWORD)]
+else:
+    _BMI = None
 
 
 _frame_files = {}   # hwnd -> frame file (per instance; see register_frame_file)

@@ -6,7 +6,13 @@ from unittest import mock
 
 from PIL import Image
 
-from tools_py.parity import drive, winshot
+from tools_py.parity import drive
+
+# drive.winshot is the HOST's capture primitive (winshot on Windows, x11shot on Linux --
+# hostplatform.shot_module(), Sprint 8 Task 9), so patch and read the errors off `drive.winshot`
+# rather than off the Windows module: on Linux the two are different objects and a patch of
+# `winshot` would never reach drive.capture_step.
+winshot = drive.winshot
 
 
 class ClientRectTest(unittest.TestCase):

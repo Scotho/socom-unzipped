@@ -51,6 +51,8 @@
 #     "<marker>.cpu.csv" until killed by hand or the machine reboots. Not otherwise guarded against.
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
+# Always invoked as `bash "$LOCKSH"`: the tracked file mode is 100644, so a fresh clone on Linux
+# (CI) cannot exec it -- "Permission denied", exit 75. gate.py calls it the same way.
 LOCKSH="$HERE/loop_lock.sh"
 RENEW_SEC="${LOOP_LOCK_DETACHED_RENEW_SEC:-300}"
 QUIET_MARKER="${RUN_QUIET_MARKER:-$ROOT/logs/.quiet}"
@@ -133,7 +135,7 @@ if [ "$1" = "--_child" ]; then
 
   finish() {
     # Release only the lock this job took (a reaped-and-retaken lock of the same owner is not ours).
-    "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1
+    bash "$LOCKSH" _release_id "$LOOP_LOCK_HELD" >> "$log" 2>&1
     case $? in
       0) echo "[run_detached] RELEASED" >> "$log";;
       3) echo "[run_detached] release failed: mutex busy; the lock stays held until reaped" >> "$log";;
@@ -160,10 +162,10 @@ if [ "$1" = "--_child" ]; then
     sleep 1
     if [ -z "$lost" ] && [ $((SECONDS - last)) -ge "$RENEW_SEC" ]; then
       last=$SECONDS
-      r=$("$LOCKSH" renew "$owner" 2>&1)
+      r=$(bash "$LOCKSH" renew "$owner" 2>&1)
       case "$r" in "not held"*)
         lost=1
-        msg="[run_detached] LOCK LOST $(date -u +%Y-%m-%dT%H:%M:%SZ): $LOOP_LOCK_HELD is no longer the live lock (lock now: $("$LOCKSH" check)); renewal stopped, the job keeps running UNGUARDED"
+        msg="[run_detached] LOCK LOST $(date -u +%Y-%m-%dT%H:%M:%SZ): $LOOP_LOCK_HELD is no longer the live lock (lock now: $(bash "$LOCKSH" check)); renewal stopped, the job keeps running UNGUARDED"
         echo "$msg" >> "$log"; echo "$msg" > "$marker.LOCK_LOST";;
       esac
     fi
@@ -212,7 +214,7 @@ purpose="${purpose:-detached $(basename "$script")}"
 want_quiet=$quiet_flag
 case "$purpose" in launch*) want_quiet=1;; esac
 
-out=$("$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
+out=$(bash "$LOCKSH" take "$owner" --purpose "$purpose" --print-id)
 rc=$?
 held_id=$(printf '%s\n' "$out" | sed -n 's/^ID: //p')
 out=$(printf '%s\n' "$out" | grep -v '^ID: ')

@@ -2,10 +2,17 @@
 from tools/pcsx2/inis/PCSX2.ini: arrows, Cross=K, Circle=L, Square=J, Triangle=I, Start=Return,
 Select=Backspace, L1=Q, R1=E, L2=1, R2=3."""
 import ctypes
+import sys
 import time
-from ctypes import wintypes as wt
 
-user32 = ctypes.windll.user32
+# PCSX2 is the Windows-side reference emulator, so this module only ever drives a Windows window --
+# but it must IMPORT everywhere (Sprint 8 Goal 1 Task 9), or gsdump_capture and every test that
+# reaches it die at import time on the Linux ring. press()/targets() raise there instead.
+if sys.platform == "win32":
+    from ctypes import wintypes as wt
+    user32 = ctypes.windll.user32
+else:
+    wt = user32 = None
 VK = {"UP": 0x26, "DOWN": 0x28, "LEFT": 0x25, "RIGHT": 0x27, "CROSS": 0x4B, "CIRCLE": 0x4C,
       "SQUARE": 0x4A, "TRIANGLE": 0x49, "START": 0x0D, "SELECT": 0x08, "L1": 0x51, "R1": 0x45,
       "L2": 0x31, "R2": 0x33}

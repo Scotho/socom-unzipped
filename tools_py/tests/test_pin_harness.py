@@ -73,10 +73,13 @@ class TestPinHarness(unittest.TestCase):
         self.assertRegex(sha, r"^[0-9a-f]{40}$")
 
     def test_pins_an_explicit_older_sha(self):
-        parent = subprocess.run(["git", "-C", ROOT, "rev-parse", "HEAD~1"], capture_output=True,
-                                text=True).stdout.strip()
-        if not parent:
-            self.skipTest("no parent commit available")
+        # --verify, or a shallow clone (CI checks out depth 1) makes rev-parse echo "HEAD~1" back on
+        # stdout with a non-zero status, and the skip below never fires.
+        p = subprocess.run(["git", "-C", ROOT, "rev-parse", "--verify", "HEAD~1"], capture_output=True,
+                           text=True)
+        parent = p.stdout.strip()
+        if p.returncode != 0 or len(parent) != 40:
+            self.skipTest("no parent commit available (shallow clone?)")
         out_dir = os.path.join(self.tmp, "out")
         p = self.run_pin(out_dir, parent)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)

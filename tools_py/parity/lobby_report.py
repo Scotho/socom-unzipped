@@ -125,7 +125,10 @@ def summarise(lines):
 
 
 def launch_name(path):
-    base = os.path.basename(path)
+    # The log paths in a report are whatever the host that ran the launch wrote -- a Windows path
+    # ("C:\\x\\detached_s6_ladder1.txt") is read back on Linux too (a shared report, the CI ring), and
+    # posixpath.basename would hand back the whole string. Split on BOTH separators, always.
+    base = path.replace("\\", "/").rsplit("/", 1)[-1]
     if base.endswith(".txt"):
         base = base[:-4]
     for prefix in ("drive_", "detached_"):

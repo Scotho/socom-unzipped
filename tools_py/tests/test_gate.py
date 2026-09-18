@@ -53,6 +53,8 @@ FAILURE_SCREEN = os.path.join(MISSION_FIXTURES, "failure_screen.png")
 GAMEPLAY_SPAWN = os.path.join(MISSION_FIXTURES, "gameplay_spawn.png")
 CONSOLE_SPAWN = os.path.join(ROOT, "scripts", "parity", "refs", "console_spawn_slot8.png")
 GUEST_PROBE_CONSOLE = os.path.join(ROOT, "scripts", "parity", "guest_probe_console.json")
+# A real HUD capture from a gate run; /logs/ is gitignored, so it is only on a host that has run one.
+HUD_FRAME_S6_GAMEPAD4 = os.path.join(ROOT, "logs", "parity", "gate", "s6_gamepad4", "mission", "s28_none.png")
 CLEAN_TRANSITION_RUN = os.path.join(ROOT, "logs", "parity", "gate", "tfix3", "transition")   # 18 frames at/after the burst step
 # Pre-fix run: the probe stalled on the "save to memory card?" dialog, so it has black frames
 # from the boot and none at/after its burst step (gate.py TRANSITION_MIN_FRAMES).
@@ -394,9 +396,14 @@ class MissionSeeing(unittest.TestCase):
             self.assertFalse(ok, detail)
             self.assertTrue(detail.startswith("GUEST PROBE FAILED"), detail)
 
+    @unittest.skipUnless(os.path.isdir(os.path.join(ROOT, gate.PRISTINE_CARD)),
+                         "needs the pristine memory card game/disc/mc0_parity (owner's disc assets; /game/ is gitignored)")
     def test_mission_stage_launches_with_the_probe_peek_spec(self):
         """run_gate sets PS2X_PEEK for the mission stage from guest_probe_console.json unless the
-        environment already carries one (an operator's wider spec wins)."""
+        environment already carries one (an operator's wider spec wins).
+
+        The card assertion below reads the copy run_gate makes of game/disc/mc0_parity, so this case
+        needs the owner's disc assets and is skipped on a bare clone (CI)."""
         from tools_py.parity import guest_probe
         calls = []
 
@@ -1203,8 +1210,10 @@ class ConsoleSpawnNeedsAHudFrame(unittest.TestCase):
         self.assertIn("not a HUD frame", line)
         self.assertNotIn("flat=", line)
 
+    @unittest.skipUnless(os.path.isfile(HUD_FRAME_S6_GAMEPAD4),
+                         "needs logs/parity/gate/s6_gamepad4/mission/s28_none.png")
     def test_a_hud_frame_is_still_scored(self):
-        with Image.open(os.path.join(ROOT, "logs", "parity", "gate", "s6_gamepad4", "mission", "s28_none.png")) as im:
+        with Image.open(HUD_FRAME_S6_GAMEPAD4) as im:
             line = self._run(im.convert("RGB"))
         self.assertIn("water flat=", line)
 

@@ -19,13 +19,18 @@ lift that; it is a follow-up against drive.py, not something to work around here
 Waits up to two minutes for the window to appear, then nudges it until GetClientRect matches.
 """
 import ctypes
-import ctypes.wintypes as wt
 import sys
 import time
 
 from tools_py.parity import keys, winshot
 
-user32 = ctypes.windll.user32
+# Windows-only tool, importable everywhere (Sprint 8 Goal 1 Task 9): the Linux window manager is
+# x11shot's business (winshot.ensure_client_size's twin), and main() below raises off Windows.
+if sys.platform == "win32":
+    import ctypes.wintypes as wt
+    user32 = ctypes.windll.user32
+else:
+    wt = user32 = None
 
 
 def resize(hwnd, w, h, tries=10):

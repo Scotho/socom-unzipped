@@ -485,8 +485,6 @@ class ResultVerdictTest(unittest.TestCase):
         self.assertFalse(kill)
 
     def test_evidence_shot_records_stale_and_missing(self):
-        from tools_py.parity import winshot
-
         class Sh:
             def __init__(self, exc):
                 self.exc = exc
@@ -499,7 +497,7 @@ class ResultVerdictTest(unittest.TestCase):
                 self.tag, self.sh = tag, Sh(exc)
 
         stale, missing, logged = [], [], []
-        M.evidence_shot(C("A", winshot.StaleFrameError("f", 9.0, 2.0)), "kill", stale, logged.append, missing)
+        M.evidence_shot(C("A", M.winshot.StaleFrameError("f", 9.0, 2.0)), "kill", stale, logged.append, missing)
         M.evidence_shot(C("B", OSError("no frame file")), "kill", stale, logged.append, missing)
         M.evidence_shot(C("B", RuntimeError("no frame file at x")), "final", stale, logged.append, missing)
         self.assertEqual((stale, missing), (["A_kill"], ["B_kill", "B_final"]))
