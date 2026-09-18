@@ -41,6 +41,13 @@ namespace ps2_stubs
         uint32_t g_cdStReadTraceCount = 0u;
         CdStreamTimingState g_cdStreamTiming;
 
+        // The plain-read cursor.  `g_cdStreamingLbn` (Support.h) is the *stream*
+        // cursor and is moved only by the stream entry points; a plain read must
+        // not disturb an open stream (audit 2026-09-17 §2.3, CD.cpp:328).
+        // Kept here rather than in Support.h, whose globals live in an anonymous
+        // namespace in a header and so are one copy per translation unit.
+        uint32_t g_cdReadLbn = 0u;
+
         uint64_t currentCdStreamTick(PS2Runtime *runtime)
         {
             return runtime != nullptr ? runtime->eeScheduler().currentVSyncTick() : 0u;
@@ -187,6 +194,8 @@ namespace ps2_stubs
         snapshot.mode = g_cdMode;
         snapshot.streamingLbn = g_cdStreamingLbn;
         snapshot.streamingEndLbn = g_cdStreamingEndLbn;
+        snapshot.readLbn = g_cdReadLbn;
+        snapshot.streamActive = g_cdStreamTiming.active;
         snapshot.nextPseudoLbn = g_nextPseudoLbn;
         snapshot.imageSizeBytes = g_cdImageSizeBytes;
         snapshot.imageSizeValid = g_cdImageSizeValid;
@@ -327,7 +336,7 @@ namespace ps2_stubs
 
         if (ok)
         {
-            g_cdStreamingLbn = selected.lbn + selected.sectors;
+            g_cdReadLbn = selected.lbn + selected.sectors;
             setReturnS32(ctx, 1); // command accepted/success
             return;
         }
@@ -393,7 +402,9 @@ namespace ps2_stubs
 
     void sceCdGetReadPos(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        setReturnU32(ctx, g_cdStreamingLbn);
+        // The position the caller is asking about is the one it last moved:
+        // the stream cursor while a stream is open, the plain-read cursor otherwise.
+        setReturnU32(ctx, g_cdStreamTiming.active ? g_cdStreamingLbn : g_cdReadLbn);
     }
 
     void sceCdGetToc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
@@ -513,7 +524,7 @@ namespace ps2_stubs
                 break;
             }
 
-            g_cdStreamingLbn = lbn + sectors;
+            g_cdReadLbn = lbn + sectors;
         }
 
         setReturnS32(ctx, ok ? 1 : 0);
@@ -666,7 +677,9 @@ namespace ps2_stubs
 
     void sceCdSeek(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
-        restartCdStreamAt(getRegU32(ctx, 4), runtime);
+        // The plain seek positions the plain-read cursor; sceCdStSeek is the
+        // stream's own seek and is the one that restarts the stream.
+        g_cdReadLbn = getRegU32(ctx, 4);
         setReturnS32(ctx, 1);
     }
 

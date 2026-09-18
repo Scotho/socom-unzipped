@@ -2,6 +2,7 @@
 #include "ps2_runtime.h"
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
+#include "Kernel/Stubs/CD.h"
 
 #include <filesystem>
 #include <fstream>
@@ -619,6 +620,108 @@ void register_ps2_runtime_io_tests()
             t.Equals(getRegS32(&test.ctx, 2), 1, "sceCdRead should succeed when cdImage is configured");
             t.Equals(std::memcmp(test.rdram.data() + bufAddr, "cd-image", 8), 0,
                      "sceCdRead should copy sector data from the configured image");
+        });
+
+        tc.Run("StRead after Read resumes at the stream LBN", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t kSectorSize = 2048u;
+            constexpr uint32_t kImageSectors = 64u;
+            constexpr uint32_t kStreamLbn = 10u;
+            constexpr uint32_t kPlainReadLbn = 40u;
+            constexpr uint32_t kPlainReadSectors = 4u;
+            constexpr uint32_t stBufAddr = GUEST_BUFFER_AREA_START + 0x10000;
+            constexpr uint32_t streamDestAddr = GUEST_BUFFER_AREA_START + 0x20000;
+            constexpr uint32_t plainDestAddr = GUEST_BUFFER_AREA_START + 0x30000;
+            constexpr uint32_t modeAddr = GUEST_BUFFER_AREA_START + 0x3F00;
+            constexpr uint32_t errorAddr = GUEST_BUFFER_AREA_START + 0x3F80;
+
+            // A disc image whose every sector is stamped with its own LBN, so a
+            // read from the wrong sector is visible in the bytes, not just the cursor.
+            const std::filesystem::path imagePath = test.paths.base / "stream.iso";
+            {
+                std::ofstream out(imagePath, std::ios::binary);
+                for (uint32_t sector = 0; sector < kImageSectors; ++sector)
+                {
+                    std::vector<uint8_t> bytes(kSectorSize, static_cast<uint8_t>(sector & 0xFFu));
+                    std::memcpy(bytes.data(), &sector, sizeof(sector));
+                    out.write(reinterpret_cast<const char *>(bytes.data()),
+                              static_cast<std::streamsize>(bytes.size()));
+                }
+            }
+
+            PS2Runtime::IoPaths ioPaths;
+            ioPaths.elfDirectory = test.paths.cdRoot;
+            ioPaths.hostRoot = test.paths.cdRoot;
+            ioPaths.cdRoot = test.paths.cdRoot;
+            ioPaths.mcRoot = test.paths.mcRoot;
+            ioPaths.cdImage = imagePath;
+            PS2Runtime::setIoPaths(ioPaths);
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 64u); // buffer sectors
+            setRegU32(test.ctx, 5, 4u);  // banks
+            setRegU32(test.ctx, 6, stBufAddr);
+            ps2_stubs::sceCdStInit(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "sceCdStInit should accept the ring description");
+
+            writeGuestU32(test.rdram.data(), modeAddr, 0u);
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, kStreamLbn);
+            setRegU32(test.ctx, 5, modeAddr);
+            ps2_stubs::sceCdStStart(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "sceCdStStart should start the stream");
+            t.Equals(ps2_stubs::getCdDebugSnapshot().streamingLbn, kStreamLbn,
+                     "sceCdStStart should park the stream cursor on the requested LBN");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 1u); // one sector
+            setRegU32(test.ctx, 5, streamDestAddr);
+            setRegU32(test.ctx, 6, 1u); // STMBLK
+            setRegU32(test.ctx, 7, errorAddr);
+            ps2_stubs::sceCdStRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "sceCdStRead should deliver one sector");
+            t.Equals(readGuestU32(test.rdram.data(), streamDestAddr), kStreamLbn,
+                     "the first stream sector should be the stream's own LBN");
+            const uint32_t afterFirst = ps2_stubs::getCdDebugSnapshot().streamingLbn;
+            t.Equals(afterFirst, kStreamLbn + 1u, "the stream cursor advanced by one sector");
+
+            // A plain read of an unrelated file while the stream is open.
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, kPlainReadLbn);
+            setRegU32(test.ctx, 5, kPlainReadSectors);
+            setRegU32(test.ctx, 6, plainDestAddr);
+            ps2_stubs::sceCdRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "the plain read should succeed");
+            t.Equals(ps2_stubs::getCdDebugSnapshot().streamingLbn, afterFirst,
+                     "a plain read must not move the stream cursor (CD.cpp:328 set it to lbn + sectors)");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 1u);
+            setRegU32(test.ctx, 5, streamDestAddr + kSectorSize);
+            setRegU32(test.ctx, 6, 1u);
+            setRegU32(test.ctx, 7, errorAddr);
+            ps2_stubs::sceCdStRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(ps2_stubs::getCdDebugSnapshot().streamingLbn, afterFirst + 1u,
+                     "the next stream read resumes where the stream was");
+            t.Equals(readGuestU32(test.rdram.data(), streamDestAddr + kSectorSize), afterFirst,
+                     "the next stream read delivers the stream's next sector, not bytes after the plain read");
+
+            // While a stream is open sceCdGetReadPos reports the stream cursor;
+            // with no stream open it reports the plain-read cursor.
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), afterFirst + 1u,
+                     "sceCdGetReadPos should report the stream cursor while a stream is open");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdStStop(test.rdram.data(), &test.ctx, nullptr);
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), kPlainReadLbn + kPlainReadSectors,
+                     "sceCdGetReadPos should report the plain-read cursor with no stream open");
         });
     });
 }
