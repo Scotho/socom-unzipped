@@ -8,6 +8,32 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
+## 2026-09-18 (morning) — Sprint 7 CLOSING: the autonomous half done, the owner-gated half parked; Sprint 8 next
+
+branch: sprint-7 (28+ commits on develop at `8f57cbd`); merge into develop and main follows the review fixes' gate
+spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (Goal 8 added 2026-09-18)
+plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md (134+ boxes ticked; the open ones carry a reason or a STOP)
+human tasks: docs/HUMAN_TASKS.md -- six open: the title/intro listen, free play, the launcher with the pad and its pick,
+the microphone meter, the sound re-listen, the two server addresses; plus the second machine for Goal 5
+
+**What landed (all under RED tests; suite 540 x3, Python 1172, vu1_replay PASS, gate 3/3 `s7_closeout_gate`):**
+Goal 1, the stranger's machine: the GL probe with the CPU fallback and exit 65; the native-VU1 warning; the bounded command
+queue on a latched stall (drag +38 MB, cap never engaged); DPI and the 2x launcher default (2x = 1x scaled, 0.83); audio
+I/O off the callback (title loop 1.000). Goal 2: the strict time slice (13 driven control rounds clean); the same-key round
+plays; the CD cursor fix; the lobby rate 6/10 -> 10/10 once the injected press was latched (the misses were the login
+screen at 12-30 fps under GL back-pressure, KNOWN §2); no 3-17 s freeze quiet or loaded, with research/29's fields on the
+sampler line. Goal 3 stopped by its own trace (R96): the page-marking hypothesis is refuted, gameplay uploads ~10k/s, the
+menus 80-133 ms/s -- Sprint 8's first item. Goals 4 and 5, the autonomous halves (the server zip, the two-machine readout).
+Goal 8 (owner, 2026-09-18): controller and microphone selection, the FPS overlay, 4x / Match display / volume. Task 12
+(owner's sound reports): VAG slots freed on stop and on a stream's own end, the PCM ring's once-per-fill policy (R97),
+sceSifInitRpc no longer wiping the IOP model, the CD read-position rule; mission log 0 unknown-bank rejects (was 971) and
+1 slot exhaustion (was 237). The whole-branch review's five must-fix findings (the IOP reset moved to the reboot stubs,
+the stream reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen) are the
+last commits before the merge.
+
+**Not done, by design or by the owner's gate:** the ladder on the strict-slice exe (Sprint 9's ground); the same-key
+harness helper (a logs/ script did it); the hosted server and its addresses, the second machine, the six hands-on checks.
+
 ## 2026-09-17 (late) — Sprint 6 CLOSED and merged (`8f57cbd` on develop and main); Sprint 7 OPEN
 
 branch: sprint-7 (off develop at `8f57cbd`)

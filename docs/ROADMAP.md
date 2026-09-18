@@ -500,6 +500,8 @@ reaching contact at matched height, which has never happened; the spec's §6 say
 ### Sprint 7 — after the kill (outline)
 
 > **Superseded 2026-09-17** by `docs/CURRENT_SPRINT.md`'s Sprint 7; its headline item (aim repeatability) was done inside Sprint 6 (`ebf13be`).
+>
+> **Sprint 7 ("two strangers, two machines, one hosted server") closed 2026-09-18:** the stranger's machine defended (GL probe and CPU fallback, bounded queue, DPI/2x, audio I/O off the callback), the console's scheduler semantics restored, the lobby rate 10/10, the launcher's player-facing selectors, the owner's sound reports fixed at the IOP model. Owner-gated and carried: the hosted server, the second machine. The ledger is `docs/CURRENT_SPRINT.md`'s 2026-09-18 block and the plan's rulings R91-R98.
 
 Now unblocked: the acceptance test exists and PASSED in Sprint 5 (one run, ladder launch 2).
 **Repeatability of the acceptance test is this sprint's headline item, promoted here 2026-09-13**:
