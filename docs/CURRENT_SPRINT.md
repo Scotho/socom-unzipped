@@ -86,19 +86,37 @@ something a stranger notices: they got into a lobby from the zip, against a serv
    directions of hosting, from the portable zip, over the internet; NAT and clock-skew findings to KNOWN §1 or §2.
 6. **The HUMAN_TASKS items reported** (**owner**).
 
-## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17)
+## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17; revised 2026-09-18 after Sprint 7)
 
-1. Window policy: default size and fullscreen-borderless, `PS2X_GS_SCALE=2` as the launcher default with the gate scoring
-   it; render targets sized from use (audit F9). Autonomous; **owner** picks the default.
-2. Audio: streams pre-decoded off the audio callback (audit §2.3); the aside-cap parity fix and the scratch leak; the
-   stream-start underfill; a per-stage sound regression fixture. Autonomous; owner listen.
-3. Bare-run robustness: `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows; the
-   diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100 MB). Autonomous;
-   signing is **owner** money and identity.
-4. Knob retirement pass 2 (about 80 `PS2X_*`) into a config file plus `--dev`; the stub-state header into a `.cpp`; the
-   invocation stack pool. Autonomous.
-5. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
-6. An installer (Inno, outline §6) if wanted. **Owner** decision.
+What Sprint 7 handed over, in the order the goal sentence wants it:
+
+1. **The menus' render cost, at the root.** The login and lobby screens upload 7-11k 1 KB tiles a second at 80-133 ms/s of
+   render time (four to six times gameplay's 20-28 ms/s), which is what drops the login screen to 12-30 fps under GL
+   back-pressure on this machine (KNOWN §2), what put the menu music's fill late (the buzz the owner heard; the ring now
+   silences instead of looping, R97), and what made the driven presses miss (latched, 6b7a2b3). Trace the login screen's own
+   pages, break the upload cost down per call, batch the tiles. Bar: the login screen at 60 fps with a spinning four-core
+   load AND `bp_pending` under 2; `pcm_underruns` stays 0. Autonomous.
+2. **Voice: serve the headset.** Task 9c's spike (KNOWN §2): the game binds 'BLIP', calls lgAudInit, then polls Enumerate and
+   EnumHint against our "no device" answer and nothing else. Answer Enumerate with one device when `PS2X_MIC_DEVICE` is set,
+   let Open succeed, serve GetAvailableRecordingBytes/Read from HostMic's ring; a WAV of what the game read as the proof;
+   then the owner's two-machine "can you hear me". Autonomous up to the two-machine check.
+3. **Audio residuals.** The one remaining slot exhaustion when six long-lived streams overlap (are two of them meant to end?
+   the mixer said they were playing for a whole mission); the stream-start underfill; the aside-cap parity fix and the
+   scratch leak; a per-stage sound regression fixture (the repeat detector and the correlation, on every gate dump).
+   Autonomous; owner listen.
+4. **Window policy** beyond Sprint 7's selectors: fullscreen at desktop resolution scored by the gate; render targets sized
+   from use are in (Task 1c). Autonomous; **owner** picks the default.
+5. **Bare-run robustness:** `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows (65
+   is the first); the diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100
+   MB). Autonomous; signing is **owner** money and identity.
+6. **Knob retirement pass 2** (about 90 `PS2X_*` now) into a config file plus `--dev`; the stub-state header into a `.cpp`;
+   the invocation stack pool. Autonomous.
+7. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
+8. An installer (Inno, outline §6) if wanted. **Owner** decision.
+
+Carried from Sprint 7 unchanged because they are the owner's: the hosted server and its two addresses (Task 4), the first
+two-machine match (Task 5), the hands-on checks in `docs/HUMAN_TASKS.md` (now six: the title/intro listen, free play, the
+launcher with the pad and its pick, the microphone meter, the sound re-listen, the two addresses).
 
 ## Sprint 9 — "Console players in the same lobby, and it stays up" (drafted 2026-09-17)
 

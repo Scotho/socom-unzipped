@@ -699,7 +699,7 @@ scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh 
 sha256sum dist/socom2.exe
 ```
 
-- [ ] **Step 5: The control round (launch 5).**
+- [x] **Step 5: The control round (launch 5).** *(done: thirteen driven control rounds played to the clock on the strict-slice exe -- s7_samekey, s7_freeze_quiet, s7_freeze_loaded, lobby_rate_01..10 of 2026-09-18 -- with no one-side-only defect in any; the KNOWN §1 row cites them)*
 
 ```bash
 scripts/parity/online_control_round.sh "Frostfire" logs/parity/s7_slice_ctl
@@ -708,7 +708,7 @@ grep -a "prio=" logs/run_A_*.log | head -3
 ```
 Expected: `RESULT CONTROL-ROUND`, both sides CONTROLLABLE, no freeze alarm > 10 s; the sampler lines now carry `prio=` and the priority table goes into `docs/research/29-online-freeze.md` §5 (one paragraph naming SOCOM's threads and their priorities).
 
-- [ ] **Step 6: The ladder (launch 6).**
+- [ ] **Step 6: The ladder (launch 6).** *(not run this sprint: the launch budget went to the ten-round re-run and Task 12's four audio launches; the ladder's kill-count reading is Sprint 9's mixed-match ground. Risk carried: an equal-priority interleave the control round does not exercise; the thirteen rounds and the gate are the evidence so far.)*
 
 ```bash
 bash scripts/parity/ladder_frostfire.sh logs/parity/s7_slice_ladder
@@ -752,7 +752,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing harness test** in `tools_py/tests/test_control_round.py`:
+- [ ] **Step 1: Write the failing harness test** in `tools_py/tests/test_control_round.py`: *(not built: the same-key round was run from a logs/ script (`online_control_round_samekey.sh`, R-free: it unsets one variable); a tested helper for a one-off launch was not worth the harness surface. The result is in KNOWN §1.)*
 
 ```python
     def test_same_key_flag_leaves_key_b_unset(self):
@@ -763,7 +763,7 @@ git push
 ```
 Run: `python -m unittest tools_py.tests.test_control_round -v` → `NameError: name 'control_round_env' is not defined` (RED).
 
-- [ ] **Step 2: Implement** the helper (it runs `bash -c '. scripts/parity/online_control_round.sh --print-env …'` behind a `--print-env` short-circuit the script gains at the top) and the `--same-key` branch in `scripts/parity/online_control_round.sh`. Run the same command: 2 tests OK, and the existing cases unchanged.
+- [ ] **Step 2: Implement** the helper (it runs `bash -c '. scripts/parity/online_control_round.sh --print-env …'` behind a `--print-env` short-circuit the script gains at the top) and the `--same-key` branch in `scripts/parity/online_control_round.sh`. Run the same command: 2 tests OK, and the existing cases unchanged. *(not built, see Step 1)*
 
 - [x] **Step 3: The same-key control round (launch 7).** *(done: s7_samekey 2026-09-17: CONTROL-ROUND with the same key on both; no Step 4)*
 
@@ -773,7 +773,7 @@ python -m tools_py.parity.lobby_report logs/parity/drive_s7_samekey.txt
 ```
 Expected: `TOTAL launches=1 gameplay=1/1` and `RESULT CONTROL-ROUND`. Decision table: passes → write the KNOWN §1 row "two clients on the same RSA key reach gameplay (`s7_samekey`)" and **stop here, no code change**; fails where key B passes → Step 4.
 
-- [ ] **Step 4 (only on a failure): the per-profile key.** Failing test in `launcher_tests.cpp`:
+- [ ] **Step 4 (only on a failure): the per-profile key.** Failing test in `launcher_tests.cpp`: *(not needed: the same-key round passed)*
 
 ```cpp
             t.IsTrue(launcher::rsaKeyForProfile("craig") == "a" || launcher::rsaKeyForProfile("craig") == "b", "a key is chosen");
@@ -922,7 +922,7 @@ python -m tools_py.parity.lobby_report --bar 0.8 logs/parity/drive_s7_lobby_*.tx
 ```
 Expected: `RATE <g>/10 bar=0.80 PASS` (the spec's bar: 8 of 10). Decision table: ≥ 8 → record the rate and the classes in `docs/research/28-lobby-taxonomy.md` §2 and `docs/KNOWN.md` §1, done. 6–7 → fix the dominant class and run five more (`s7_lobby_11..15`), then re-read the rate over all fifteen. **Stop rule (spec §3):** under 6 of 10 opens a lobby-hardening task **before anything else online** — Tasks 2e and 3's online launches wait behind it.
 
-- [ ] **Step 5: Commit** (harness plus the note; no runtime change).
+- [x] **Step 5: Commit** (harness plus the note; no runtime change). *(done: 588f372 (the queue and the report) and 68a082e (the number))*
 
 ```bash
 git commit -m "measure(online): the lobby rate is <g>/10 on Frostfire, with the failure class of each miss
@@ -2645,7 +2645,7 @@ git push
   2. **Symptoms 1 and 2:** the PCM ring at 0xa0000 has no fill/play interlock: `render` advances `ring.pos` unconditionally and wraps; `pcmStreamWrite` is a bare memcpy; the position the game reads is published once per host callback, after the block was consumed. A fill that lands late is skipped until the next wrap (the splice); a block not refilled in time replays verbatim (the buzz -- a 512-byte block looping). The ring is 24576 B = 128 ms, wrapping 8x a second; the login screen's 12-30 fps (KNOWN §2) is what puts the fill on the wrong side. Task 1e's worker ring is not on this path at all.
   3. **971 × `play request for unknown bank`** for banks 0xa30000/0xa00000 that were loaded (log 868-883) with no unload in between: bank sound effects were being dropped in the mission too; unexplained.
   4. **Task 2c's `sceCdGetReadPos`** is stream-wins-while-open (`CD.cpp:405`), not "whichever the caller last moved"; a plain reader with a stream open gets the stream's cursor. Latent (the log has no plain `sceCdRead` during the menus), to correct before any path mixes the two.
-- [ ] **Step 2: The repeat detector** (`audio_corr.py --repeat`, Opus, in progress): the autocorrelation peak at lags 256..4096 per 4 s window; a looping block reads r > 0.9 at its length.
+- [x] **Step 2: The repeat detector** (`audio_corr.py --repeat`, Opus, in progress): the autocorrelation peak at lags 256..4096 per 4 s window; a looping block reads r > 0.9 at its length. *(done: acc3310, 1109 Python)*
 - [x] **Step 3: The three small fixes, each under a RED test.** (a) `stopSound` frees a stream slot: init 2 slots, play, `snd_StopSound(handle)`, the next play returns non-zero -- fails today. (b) `sceCdGetReadPos` returns the cursor the caller last moved: stream open, plain `sceCdRead` at X, `GetReadPos` == X's end; then `sceCdStRead`, `GetReadPos` == the stream cursor. (c) The unknown-bank reject logs the bank table once (handle, loaded flag) so one launch says whether the slot was cleared or the handle is stale. `./build.sh test`, build. *(done: b3e3797; RED 3 failed of 538, GREEN 537 + the ring case)*
 - [x] **Step 4: The PCM ring's underrun policy** (a design change; ruling R97). Track the high-water mark of `pcmStreamWrite` per wrap; when `render` reaches a block that was not rewritten since the head last passed it, output silence for that block and count it (`pcm_underruns` on the audio stat line) instead of replaying stale bytes -- a gap where the console would also have had to wait, never a loop. RED test: fill 1 block, render 2 blocks, the second is silence and the counter is 1; a fill that arrives before the head is played verbatim. *(done: b3e3797, R97; RED 'a block played once and not rewritten is silence' then GREEN 538)*
 - [x] **Step 5: Reproduce and re-measure, driven (launches 37-38).** `logs/s7_audio_online.sh`: `online_control_round.sh`'s login path with `PS2X_AUDIO_DUMP`, `PS2X_AUDIO_TRACE=1`, `PS2X_AUDIO_PCM_DUMP` (write offset vs play offset crossings), on the fixed exe; `logs/s7_audio_mission.sh`: the mission gate stage with a dump and the trace. Bars: the repeat detector under 0.9 in every scored window of the online dump; `pcm_underruns` reported; no `no free VAG stream slot` and no `unknown bank` line in the mission log; the mission dump's RMS never at zero for 10 s while the HUD is up; the title correlation still 1.000 (`s7_audio_title`'s command). *(2026-09-18 04:43-05:00, first pass on b3e3797's exe: ONLINE MENUS `s7_audio_online` -- pcm_underruns=0 throughout, max_repeat 0.71 vs bar 0.9 PASS, music continuous on each screen (loud 34-85 s, 111-175 s), the ring policy unexercised at 60 fps -> a loaded run (`s7_audio_online_loaded.sh`, four spinning cores) follows. MISSION `s7_audio_mission` -- NOT MET: 107 `no free VAG stream slot` and 9 `unknown bank` lines, the dump silent from 278 s to the end (201 s): the model answers snd_SoundIsStillPlaying with the handle 4440 times for two streams the mixer finished (a stream's natural end never frees its slot -- stopSound was the smaller leak), and the bank table was EMPTY at the first reject (0 entries) after a successful load. Both to Step 3's fix agent, second pass.)* *(second pass 2026-09-18 05:11-05:35 on the stream-end + SIF-reset fix: MISSION `run_20260918_051258` -- unknown bank 0 (was 9), `no free VAG stream slot` 1 (was 107), 29 stream plays (was 12), gate PASS; the dump's quiet last 147 s is the driven stage's own shape (R98: yesterday's pre-change dumps go quiet for their last 200 and 165 s; this pass's last sound at 331 s is later than both). ONLINE LOADED `s7_audio_online_loaded` -- four spinning cores did not slow the login screen (fps median 60.0, min 59.4), pcm_underruns=0, max_repeat 0.70 PASS; R97 stays proven by its unit test. TITLE `s7_audio_title` -- the loop's windows corr 1.000 with a constant offset, min_corr 1.0000 from the loop's start (158 s this run).)*
