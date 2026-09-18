@@ -1,12 +1,30 @@
 # Project status — updated 2026-09-17
 
 ## Current state (keep it short; update when it changes, dated entries below are the log)
-- **2026-09-17:** branch `sprint-6`, closing; the ledger is `docs/AUDIT-2026-09-17.md` §3. **The game plays.** The gate passes 3/3 every day; twenty of twenty online maps run a control round; the kill repeats on demand (`ebf13be`'s burst-to-burst correction -- `s6_ladder8` 4/4, `s6_ladder12` 3/4); the audio path is measured sample-exact against the disc (research/32 §7.1); the launcher verifies the player's r0001 ISO **and now hands it to the game**, and it has a server picker (Community / Unzipped / Custom).
+- **2026-09-17 (late night):** branch `sprint-7`, block two committed (6ea9520..6b4a831): the GL probe and CPU fallback, the bounded command queue, DPI and the 2x launcher default, audio I/O off the callback, the strict time slice, the CD cursor fix, the freeze instruments; the launch block (same-key round, quiet/loaded freeze rounds, the page trace, ten lobby rounds) is running. Sprint 6's ledger is `docs/AUDIT-2026-09-17.md` §3. **The game plays.** The gate passes 3/3 every day; twenty of twenty online maps run a control round; the kill repeats on demand (`ebf13be`'s burst-to-burst correction -- `s6_ladder8` 4/4, `s6_ladder12` 3/4); the audio path is measured sample-exact against the disc (research/32 §7.1); the launcher verifies the player's r0001 ISO **and now hands it to the game**, and it has a server picker (Community / Unzipped / Custom).
 - **What a stranger still lacks** (audit §1): a hosted Horizon server and its two addresses (**owner**); the first two-machine match over the internet (**owner**) -- every online result so far is two instances on one host; the GL capability probe with a fallback and a visible error; a bound on the pending command queue when the back-pressure latch trips.
 - Build: `./build.sh all`; tests `./build.sh test` (the Python suite first, then `ps2x_tests` + the VU1 fixture verify + `--vram-diff`). Gate: `python -m tools_py.parity.gate` -- title/transition/mission, the mission stage requiring live gameplay.
 - Next: `docs/CURRENT_SPRINT.md`'s **Sprint 7 -- "two strangers, two machines, one hosted server"**.
 
 
+
+## 2026-09-17 (late night) — Sprint 7 block two: the stranger's machine, the console's scheduler, the instruments
+
+Branch `sprint-7`, eight commits (a843385..e5e447d). What a stranger's machine gets: a GL capability probe that falls back
+to the CPU rasterizer with exit code 65 and one line naming what was missing (Task 1a, `s7_gl_gate` 3/3 with the probe
+in); a native-VU1 mismatch warning keyed on the program hash, so the supported disc never warns (1d); the render-thread
+command queue capped at 64 MB while the back-pressure latch is tripped -- a 30 s title-bar drag mid-mission added 38 MB to
+the working set with the cap never engaged, pending bytes under 10 MB (1b, `s7_drag`, ruling R93); FLAG_WINDOW_HIGHDPI, a
+1280x896 launcher default and render targets sized from use (1c, ruling R92; `s7_scale_both`: the 2x frame is the 1x frame
+scaled, mean |diff| 0.83 vs bar 3); stream chunks pre-decoded on a worker thread so the audio callback never touches the
+disc (1e; `s7_audio_title`: the title loop correlates at 1.000 with the disc PCM, constant offset). What the console's
+semantics get: equal-priority guest threads are never time-sliced any more (2a, gate 3/3 with it in; the control round and
+ladder are in the launch block); a plain sceCdRead no longer moves the CD stream cursor (2c: the RED test showed sector 44
+delivered where 11 was due). Instruments: research/29's freeze fields on the pc-sampler line and a net-wait scope (2e), the
+lobby rate machine-checked with a ten-launch queue (2d), audio correlation over a time span and on killed dumps, the scale
+capture on exported frames. Suite 520 (the one known repo-root VU0 mapping failure), Python green, gate 3/3 (`s7_gl_gate2`).
+Running now: the launch block (2b same-key round, 2e quiet and loaded rounds, Task 3's page trace, 2d's ten rounds).
+Owner-gated and unchanged: the hosted server's two addresses, the second machine (`docs/HUMAN_TASKS.md`).
 
 ## 2026-09-17 (audit) — full audit and code review; the fix wave; the sprint rewritten; Sprints 7–9 drafted
 

@@ -12,13 +12,22 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   is a known residual (the first ~10 s after each stream start fill a little short). Anything else -- crackle,
   stutter, repeats, wrong pitch, wrong channel balance -- is new and worth a line: *when* (logos / intro / title
   loop, and roughly how far in) and *what* it sounds like. Measured state on 2026-09-17: the mixed output correlates
-  with the disc's PCM at 0.99 through both movies, so this listen is the confirmation, not the diagnosis.
+  with the disc's PCM at 0.99 through both movies, so this listen is the confirmation, not the diagnosis. Re-measured
+  on 2026-09-17 after the mixer moved its disc reads off the audio callback (Sprint 7 Task 1e) and the CD cursor fix
+  (Task 2c): the title loop correlates at 1.000 in every 4 s window with a constant offset (`s7_audio_title`). The
+  number you are confirming: **1.000** on the title loop, 0.99 on the intro. Command: `dist/socom2.exe` from the repo
+  root, or `bash scripts/parity/env.sh` then `python -m tools_py.parity.drive --only title` for the driven version.
 - [ ] **Listen in free play** (Task 6c Step 4). A mission with gunfire, voice-overs and the mission music. Mission
   audio was reported good on 2026-09-17; this is to confirm it stayed good after the demux changes that fixed the
-  title screen. Same reporting: when and what.
+  title screen. Same reporting: when and what. Command: `dist/socom2.exe`, NEW GAME, any mission; five minutes is
+  enough. No correlation number exists for mission audio (its sounds are mixed from many voices, not one stream);
+  the driven mission stage passes the gate 3/3 daily (`s7_gl_gate2`), which says nothing about how it sounds.
 - [ ] **The launcher with the Xbox pad** (Task 8b Step 4). Run `dist/socom_unzipped_launcher.exe`: point it at the
   ISO, check the controller test area sees the pad (sticks, triggers, every button), pick a video size, press
-  Launch. Report: did the pad register in the test area, did the game start, did the pad work in the game.
+  Launch. Report: did the pad register in the test area, did the game start, did the pad work in the game. Since
+  2026-09-17 the launcher opens the game at 1280x896 by default (Sprint 7 Task 1c, ruling R92; the 2x frame measured
+  0.83 mean |diff| against the 1x frame, i.e. scaled, not cropped) and the window is DPI-aware: one more line worth
+  having is whether the window looks right on your display (sharp, the whole frame visible, no tiny window).
 
 - [ ] **The two server addresses for the launcher's picker** (owner request 2026-09-17; audit §2.6). The launcher now
   offers *SOCOM Community (public Horizon)*, *SOCOM Unzipped (project server)* and *Custom*. Both preset addresses are
