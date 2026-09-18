@@ -8,9 +8,9 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
-## 2026-09-18 (morning) — Sprint 7 CLOSING: the autonomous half done, the owner-gated half parked; Sprint 8 next
+## 2026-09-18 (morning) — Sprint 7 CLOSED and merged (`d270022` on develop and main); Sprint 8 next
 
-branch: sprint-7 (28+ commits on develop at `8f57cbd`); merge into develop and main follows the review fixes' gate
+branch: sprint-7, 32 commits on develop at `8f57cbd`, merged `d270022` after the review fixes (41467b7: suite 549, gate 3/3 `s7_final_gate`)
 spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (Goal 8 added 2026-09-18)
 plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md (134+ boxes ticked; the open ones carry a reason or a STOP)
 human tasks: docs/HUMAN_TASKS.md -- six open: the title/intro listen, free play, the launcher with the pad and its pick,
