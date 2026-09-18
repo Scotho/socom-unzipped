@@ -12,6 +12,7 @@
 #include "ps2_runtime.h"
 #include "ps2_iop_transport.h"
 #include "ps2_syscalls.h"
+#include "ps2_stubs.h"
 
 #include <cmath>
 #include <cstring>
@@ -187,6 +188,26 @@ namespace
 
         void audioNotify(uint32_t function, const int32_t *args, size_t count) override
         {
+            backend.onNotify(function, args, count);
+        }
+        bool audioIsPlaying(uint32_t handle, bool &playing) const override
+        {
+            return backend.isPlaying(handle, playing);
+        }
+    };
+
+    // Sprint 7 review finding F3: the same mixer host, except that snd_PlayVAGStreamByLoc never reaches the
+    // mixer (a failed open, a notify the host dropped). The handle the model minted is then one the mixer has
+    // never seen, and the reaper must not read "no answer" as "finished".
+    class Snd989UnseenStreamHost final : public Snd989TestHost
+    {
+    public:
+        PS2AudioBackend backend;
+
+        void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+        {
+            if (function == 0x2Cu)
+                return;   // snd_PlayVAGStreamByLoc: the mixer never learns this handle
             backend.onNotify(function, args, count);
         }
         bool audioIsPlaying(uint32_t handle, bool &playing) const override
@@ -1155,6 +1176,93 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // Sprint 7 review finding F2: playVagStream reaped the ended streams BEFORE it looked the queued
+        // stream's parent up, so a parent whose mixer stream had just finished was deactivated and findStream
+        // missed it -- the queue silently took a fresh slot with an unrelated handle and the chain broke.
+        tc.Run("989snd: a stream queued onto a just-ended parent still chains onto the parent's slot", [](TestCase &t)
+        {
+            const std::string path = "ps2x_test_stream_queue.bin";
+            if (!writeOneChunkVpkImage(path))
+            {
+                t.IsTrue(false, "could not write the test disc image");
+                return;
+            }
+
+            Snd989HarnessT<Snd989MixerHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            h.host.backend.setDiscImagePath(path);
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u});
+            t.IsTrue(first != 0u, "the parent stream gets a slot");
+
+            // A live parent's shape: the queued play reuses the parent's slot and so returns the parent's own
+            // handle. Queue onto a parent the mixer has just finished and the answer must be the same.
+            std::vector<int16_t> buf(2 * 4800);
+            for (int i = 0; i < 3; ++i)
+            {
+                h.host.backend.mixerPumpStreams();
+                h.host.backend.mixerRender(buf.data(), 4800);
+            }
+            bool playing = true;
+            t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the parent");
+
+            const uint32_t queued = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, first, 0u, 0u});
+            t.Equals(queued, first, "the queued stream chains onto the parent's slot, exactly as a live parent would");
+
+            std::remove(path.c_str());
+        });
+
+        // Sprint 7 review finding F3: the backend answered "true, not playing" for ANY type-4/5 handle, so a
+        // handle the mixer had never seen (the play never reached it) read as finished and the reaper freed the
+        // slot under it. The answer is three-state now: no answer at all for a handle the mixer does not know.
+        tc.Run("989snd: a handle the mixer never saw gets no answer, and its slot is not reaped", [](TestCase &t)
+        {
+            PS2AudioBackend backend;
+            bool playing = true;
+            t.IsTrue(!backend.isPlaying(0x04120001u, playing), "a stream handle the mixer never saw: no answer");
+            playing = true;
+            t.IsTrue(!backend.isPlaying(0x05120001u, playing), "a sound handle the mixer never saw: no answer either");
+
+            Snd989HarnessT<Snd989UnseenStreamHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            const std::vector<uint32_t> play = {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            const uint32_t second = h.call(kPlayVagStreamByLoc, play);   // this play runs the reaper
+            t.IsTrue(second != 0u, "the second stream gets a slot too");
+            t.IsTrue(((first >> 16) & 0xFFu) != ((second >> 16) & 0xFFu),
+                     "the first slot was not reaped out from under a handle the mixer never answered for");
+        });
+
+        // Sprint 7 review finding F6: the PS2X_MIC_DUMP header was written with dataSize 0 and only patched
+        // with the real sizes on a clean stop, so a run that was killed (which is how a capture usually ends)
+        // left a WAV claiming zero bytes -- unplayable, although every byte was on disc.
+        tc.Run("the mic dump's WAV header: an unfinished dump reads to EOF, a finished one carries its sizes", [](TestCase &t)
+        {
+            uint8_t header[44] = {};
+            hostMicWavHeader(header, 0u, HostMic::kSampleRate);
+            auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, header + at, 4); return v; };
+            t.Equals(std::memcmp(header, "RIFF", 4), 0, "still a RIFF header");
+            t.Equals(std::memcmp(header + 36, "data", 4), 0, "with a data chunk");
+            t.Equals(u32(4), 0xFFFFFFFFu, "size 0 = not known yet: the RIFF size says 'read to the end of the file'");
+            t.Equals(u32(40), 0xFFFFFFFFu, "and so does the data size, so a killed run still plays");
+            t.Equals(u32(24), HostMic::kSampleRate, "16 kHz");
+            t.Equals(u32(28), HostMic::kSampleRate * 2u, "byte rate for 16-bit mono");
+
+            hostMicWavHeader(header, 32000u, HostMic::kSampleRate);
+            t.Equals(u32(4), 36u + 32000u, "a clean stop patches the real RIFF size back in");
+            t.Equals(u32(40), 32000u, "and the real data size");
+        });
+
         // Sprint 7 Task 12b, the bank table: in the same run bank 0xa30000 was loaded and 66 lines later every play
         // on it was rejected with an EMPTY table ("0 entries, lastBank 0x00000000"). Nothing unloaded it: the game
         // called sceSifInitRpc a second time (the lgaud / mcserv init between the two), and the EE stub reset every
@@ -1178,6 +1286,47 @@ void register_socom2_audio_tests()
 
             t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
                      "the bank is still loaded afterwards: sceSifInitRpc is not a bank unload");
+        });
+
+        // Sprint 7 review finding F1: with sceSifInitRpc no longer resetting the IOP model, the reset had to
+        // move to where the console puts it -- an actual IOP reboot. Both reboot stubs were empty, so after the
+        // InitRpc fix NOTHING reset the model any more. (SOCOM II never calls either: 0 RebootIop and 0 ResetIop
+        // in the owner's log and in the driven mission log, so this is correctness for a path the game skips.)
+        tc.Run("989snd: sceSifRebootIop resets the IOP model, so a loaded bank does not survive it", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u, "and the bank plays");
+
+            ps2_stubs::sceSifRebootIop(env.rdram.data(), &env.ctx, &env.runtime);
+
+            t.Equals(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "the reboot reset the IOP model: the bank is gone and the play is rejected");
+        });
+
+        tc.Run("989snd: sceSifResetIop resets the IOP model too", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+
+            ps2_stubs::sceSifResetIop(env.rdram.data(), &env.ctx, &env.runtime);
+
+            t.Equals(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "sceSifResetIop is a reboot as well: the bank table is empty afterwards");
         });
     });
 }

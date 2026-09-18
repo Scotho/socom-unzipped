@@ -2,14 +2,46 @@
 #include "MiniTest.h"
 #include "runtime/fps_overlay.h"
 #include "runtime/ps2_window_size.h"
+#include "launcher/launcher_config.h"
 
+#include <algorithm>
 #include <limits>
 #include <string>
+#include <vector>
 
 void register_host_config_tests()
 {
     MiniTest::Case("HostConfig", [](TestCase &tc)
     {
+        // Sprint 7 review finding F5: "Match display" is a button whose stored value is the monitor's own size,
+        // read from raylib. Before a monitor is known raylib answers 0, and "0x0" went straight into
+        // config.json -- where nothing rejected it and the game was told to open a window of no size.
+        tc.Run("Match display: a monitor with no size stores nothing, and a stored 0x0 is not a window size", [](TestCase &t)
+        {
+            t.Equals(launcher::monitorSizeOrEmpty(2560, 1440), std::string("2560x1440"), "a real monitor resolves to <w>x<h>");
+            t.Equals(launcher::monitorSizeOrEmpty(0, 768), std::string(""), "no width: nothing to store, so the caller keeps what it had");
+            t.Equals(launcher::monitorSizeOrEmpty(1366, 0), std::string(""), "no height either");
+            t.Equals(launcher::monitorSizeOrEmpty(-1, -1), std::string(""), "and a negative answer is not a size");
+
+            launcher::Config c;
+            t.IsTrue(launcher::fromJson("{\"windowSize\": \"0x0\"}", c), "config.json with a 0x0 windowSize parses");
+            t.Equals(c.windowSize, launcher::Config{}.windowSize, "a 0x0 window size loads as the default, not as 0x0");
+
+            launcher::Config zeroHeight;
+            t.IsTrue(launcher::fromJson("{\"windowSize\": \"1280x0\"}", zeroHeight), "so does one with a zero dimension");
+            t.Equals(zeroHeight.windowSize, launcher::Config{}.windowSize, "any zero dimension falls back to the default");
+
+            launcher::Config kept;
+            t.IsTrue(launcher::fromJson("{\"windowSize\": \"fullscreen\"}", kept), "fullscreen still parses");
+            t.Equals(kept.windowSize, std::string("fullscreen"), "and is left alone");
+
+            launcher::Config bad;
+            bad.windowSize = "0x0";
+            const std::vector<std::string> env = launcher::environmentFor(bad);
+            t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_WINDOW_SIZE=1280x896")) != env.end(),
+                     "and a 0x0 that reached a Config anyway never becomes PS2X_WINDOW_SIZE=0x0");
+        });
+
         tc.Run("PS2X_WINDOW_SIZE: <w>x<h> sets the window, fullscreen is borderless, anything else keeps the default", [](TestCase &t)
         {
             ps2_window::Size s = ps2_window::parseWindowSize("1280x896", 640, 448);

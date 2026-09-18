@@ -1,6 +1,7 @@
 #include "ps2_runtime.h"
 #include "runtime/fps_overlay.h"
 #include "runtime/host_mic.h"
+#include "socom2_host_input.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -584,6 +585,7 @@ PS2Runtime::~PS2Runtime()
         }
 
         stopHostMic();
+        ps2_stubs::socom2HostInputShutdown();   // review finding F12: the sampler thread, joined before we go
         if (IsWindowReady())
         {
             CloseWindow();
@@ -2880,6 +2882,7 @@ void PS2Runtime::run()
     }
     UnloadTexture(frameTex);
     stopHostMic();
+    ps2_stubs::socom2HostInputShutdown();   // review finding F12: the sampler thread, joined before we go
     CloseWindow();
 
     RUNTIME_LOG("[run] exiting loop");

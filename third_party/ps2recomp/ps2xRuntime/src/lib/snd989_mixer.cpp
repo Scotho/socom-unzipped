@@ -15,6 +15,7 @@
 #include <map>
 #include <memory>
 #include <thread>
+#include <unordered_set>
 
 // The 989snd bank-sound player as OpenGOAL's re-implementation of the public API describes it and the SBlk v3
 // bytes on the disc confirm (research/32 sections 1, 3): a handler walks a sound's grain list at 240 ticks a
@@ -472,6 +473,10 @@ namespace snd989
         // shared_ptr: pumpStreams() holds a reference to each stream while it reads, so reap() erasing one on the
         // render thread never closes a FILE * out from under a read in flight.
         std::vector<std::shared_ptr<Stream>> streams;
+        // Every handle ever handed to playWithHandle / playStream, including one whose file would not open: the
+        // mixer HAS an answer for those ("not playing"), and only for a handle that is not here does it have
+        // none at all. Entries outlive the stream or handler they named -- dropDoneStreams() erases those.
+        std::unordered_set<uint32_t> seenHandles;
         // The stream worker: started on the first playStream, joined in the destructor. PS2X_SND_STREAM_WORKER=0
         // leaves pumpStreams() to the caller (what the tests do).
         std::thread worker;
@@ -855,6 +860,10 @@ namespace snd989
     bool Mixer::playWithHandle(uint32_t handle, uint32_t bank, uint32_t sound, int32_t vol, int32_t pan, int32_t pitchMod, int32_t pitchBend)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        // Seen from here on, refused or not: the mixer HAS an answer for a play it turned down ("not playing"),
+        // and only a handle it was never handed at all leaves it with none (knowsHandle, review finding F3).
+        if (handle != 0u)
+            m_impl->seenHandles.insert(handle);
         auto it = m_impl->banks.find(bank);
         if (it == m_impl->banks.end() || handle == 0u)
             return false;
@@ -885,6 +894,12 @@ namespace snd989
         m_impl->handlers.push_back(h);
         m_impl->runGrains(m_impl->handlers.back());
         return true;
+    }
+
+    bool Mixer::knowsHandle(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->seenHandles.find(handle) != m_impl->seenHandles.end();
     }
 
     bool Mixer::isPlaying(uint32_t handle) const
@@ -1154,6 +1169,10 @@ namespace snd989
         auto sp = std::make_shared<Stream>();
         Stream &st = *sp;
         st.handle = handle;
+        {
+            std::lock_guard<std::mutex> lock(m_impl->mutex);
+            m_impl->seenHandles.insert(handle);   // seen, whatever the file turns out to be
+        }
         st.file = fp;
         if (std::memcmp(header, " KPV", 4) == 0)
         {

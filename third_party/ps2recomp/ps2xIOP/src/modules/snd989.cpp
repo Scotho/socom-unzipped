@@ -1518,11 +1518,13 @@ namespace ps2x::iop::detail
             // host the same question (IopHost::audioIsPlaying, answered from snd989::Mixer::isPlaying per
             // handle -- the query snd_SoundIsStillPlaying already used for sounds). Without it only
             // snd_StopSound ever frees a stream slot, and a stream that ends by itself leaks one forever.
-            void reapEndedStreams()
+            // `keep` is the handle of a slot the caller has already resolved (the parent a queued stream is
+            // chaining onto): it is about to be reused, so whether the mixer has finished it is beside the point.
+            void reapEndedStreams(uint32_t keep = 0u)
             {
                 for (auto &slot : m_model.streams)
                 {
-                    if (!slot.active || slot.paused)
+                    if (!slot.active || slot.paused || (keep != 0u && slot.handle == keep))
                     {
                         continue;
                     }
@@ -1541,9 +1543,9 @@ namespace ps2x::iop::detail
                     logWarning("snd_PlayVAGStreamByLoc before streaming init");
                     return 0u;
                 }
-                // Before the search, not only on the game's poll: a slot whose stream the mixer has finished is
-                // free even if the game has not asked about it yet.
-                reapEndedStreams();
+                // Sprint 7 review finding F2: the parent lookup comes FIRST. findStream only answers for an
+                // active slot, so reaping before it deactivated a parent whose mixer stream had just finished --
+                // the queue then silently took a fresh slot with an unrelated handle and the game's chain broke.
                 const uint32_t parent = args.u32(5);
                 StreamSlot *target = nullptr;
                 if (parent != 0u)
@@ -1551,6 +1553,9 @@ namespace ps2x::iop::detail
                     // queued after an existing stream: reuse its slot in the model
                     target = findStream(parent);
                 }
+                // Then the reap, so a slot whose stream the mixer has finished is free even if the game has not
+                // asked about it yet -- but never the slot this very call is chaining onto.
+                reapEndedStreams(target != nullptr ? target->handle : 0u);
                 if (target == nullptr)
                 {
                     for (uint32_t i = 0; i < m_model.streamCount; ++i)

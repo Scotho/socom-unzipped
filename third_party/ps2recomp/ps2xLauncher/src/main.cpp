@@ -6,6 +6,7 @@
 //   socom_unzipped_launcher.exe --selftest load config.json, verify the ISO if one is set, print the environment, exit
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
+#include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 #include "win32_glue.h"
@@ -31,7 +32,9 @@ namespace fs = std::filesystem;
 namespace
 {
     constexpr int kWidth = 820;
-    constexpr int kHeight = 932;   // Task 8: +26 for the Controller panel's pad list and dead-zone slider  // Task 10: +28 for the Video panel's FPS-overlay row  // Task 11: +34 for the Video panel's Volume row  // Task 9: +184 for the Microphone panel
+    // Sprint 7 review finding: this is the CONTENT height the body scrolls through, not the window's -- the
+    // running y ends at 880 and the status line under the Launch row reaches 944, so 960 leaves it a margin.
+    constexpr int kHeight = 960;   // Task 8: +26 for the Controller panel's pad list and dead-zone slider  // Task 10: +28 for the Video panel's FPS-overlay row  // Task 11: +34 for the Video panel's Volume row  // Task 9: +184 for the Microphone panel
 
     std::string readText(const fs::path &p)
     {
@@ -382,8 +385,14 @@ int main(int argc, char **argv)
         return stillRunning ? 0 : 3;
     }
 
-    SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+    // Sprint 7 review finding: kHeight is the CONTENT height, not the window's. At 125-150% DPI scaling a
+    // 932 px window is 1165-1398 px tall and the Launch row falls off a 768 or 1080 laptop panel, so the
+    // window opens at whatever the monitor allows, resizes, and scrolls to reach the rest.
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
     InitWindow(kWidth, kHeight, "SOCOM Unzipped");
+    const int monitorHeight = GetMonitorHeight(GetCurrentMonitor());
+    if (monitorHeight > 0)
+        SetWindowSize(kWidth, launcher::fitWindowHeight(kHeight, monitorHeight, 80));
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
@@ -423,7 +432,12 @@ int main(int argc, char **argv)
             std::fprintf(stderr, "[launcher] frame %u screen %dx%d render %dx%d ready %d\n", frames, GetScreenWidth(), GetScreenHeight(), GetRenderWidth(), GetRenderHeight(), IsWindowReady() ? 1 : 0);
         BeginDrawing();
         ClearBackground(kBg);
-        float y = 16;
+        // The wheel moves the whole body: every panel below takes its y from this one, and the hand-rolled
+        // widgets hit-test against the same y, so the Launch row stays clickable wherever it has scrolled to.
+        static int scroll = 0;
+        scroll -= static_cast<int>(GetMouseWheelMove() * 40.0f);
+        scroll = launcher::scrollClamp(scroll, kHeight, GetScreenHeight());
+        float y = 16 - static_cast<float>(scroll);
 
         // ---- Disc ----
         DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 84, kPanel);
@@ -625,12 +639,16 @@ int main(int argc, char **argv)
             const std::string why = launcher::exitMessage(game.exitCode());
             game.close();
             status = why.empty() ? "the game exited" : why;
+            // Review F8: the meter gives the capture device back to the game while it runs; take it again now.
+            meterOn = !config.micDevice.empty() && mic->startMeter(config.micDevice);
         }
         const bool canLaunch = disc.ok && !running;
         if (button({24, y, 160, 40}, running ? "running..." : "Launch", canLaunch))
         {
             writeText(configPath, launcher::toJson(config));
             dirty = false;
+            mic->stopMeter();   // Review F8: two processes must not hold the same microphone
+            meterOn = false;
             if (win32glue::startGame(dir.string(), config, game))
             {
                 lastLog = game.logPath;

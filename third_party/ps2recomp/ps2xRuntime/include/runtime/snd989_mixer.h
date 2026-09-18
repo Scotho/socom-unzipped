@@ -44,6 +44,10 @@ namespace snd989
         // The same under a handle the caller chose (the IOP module's): false if not playable.
         bool playWithHandle(uint32_t handle, uint32_t bank, uint32_t sound, int32_t vol, int32_t pan, int32_t pitchMod, int32_t pitchBend);
         bool isPlaying(uint32_t handle) const;
+        // Sprint 7 review finding F3: has the mixer ever been handed this handle (playWithHandle / playStream)?
+        // isPlaying answers false both for a finished sound and for one that never existed; the IOP model's
+        // stream reaper has to tell those apart, or it frees the slot of a play that never reached the mixer.
+        bool knowsHandle(uint32_t handle) const;
         void stop(uint32_t handle);      // key off: the voices release
         void pause(uint32_t handle);
         void resume(uint32_t handle);

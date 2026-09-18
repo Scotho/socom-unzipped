@@ -49,6 +49,13 @@ namespace launcher
         bool secondInstance = false;
     };
 
+    // Sprint 7 review finding F5: "Match display" resolved to TextFormat("%dx%d", GetMonitorWidth(...),
+    // GetMonitorHeight(...)) in main.cpp, and raylib answers 0 for both before a monitor is known -- so a click
+    // at the wrong moment stored "0x0" in config.json and the game opened at nothing at all. This is that
+    // resolution as a pure function: "" when either dimension is not a usable size, so the caller keeps what it
+    // had, and "<w>x<h>" otherwise.
+    std::string monitorSizeOrEmpty(int width, int height);
+
     // The preset with that id, or nullptr when the id is not one of ours.
     const ServerPreset *findServerPreset(const std::string &id);
     // The address the game is actually pointed at: the preset's for community/unzipped, the typed one for custom

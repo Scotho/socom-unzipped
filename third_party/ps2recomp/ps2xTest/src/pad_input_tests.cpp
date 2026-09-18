@@ -5,7 +5,10 @@
 #include "runtime/host_gamepad.h"
 #include "runtime/host_gamepad_select.h"
 #include "runtime/injected_pad_latch.h"
+#include "socom2_host_input.h"
 
+#include <chrono>
+#include <cstdio>
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -632,6 +635,33 @@ void register_pad_input_tests()
             ps2_stubs::scePadReqIntToStr(rdram.data(), &ctx, nullptr);
             const char *reqStr = reinterpret_cast<const char *>(rdram.data() + kPadDataAddr + 64);
             t.IsTrue(std::string(reqStr).find("COMPLETE") != std::string::npos, "req string should include COMPLETE");
+        });
+
+        // Sprint 7 review finding F12: the sampler thread was joined only by the destructor of a namespace-scope
+        // static, and main leaves through std::_Exit, so that destructor never ran -- the thread was still
+        // reading the pad file while the process tore its runtime down. The shutdown is explicit now.
+        tc.Run("the injected-pad sampler is stopped and joined by socom2HostInputShutdown", [](TestCase &t)
+        {
+            const std::string path = "ps2x_test_injected_pad.txt";
+            if (FILE *f = std::fopen(path.c_str(), "wb"))
+            {
+                std::fputs("b=0008 rx=128 ry=128 lx=128 ly=128\n", f);
+                std::fclose(f);
+            }
+
+            ps2_stubs::socom2HostInputStartSampler(path.c_str());
+            t.IsTrue(ps2_stubs::socom2HostInputSamplerRunning(), "the sampler thread is running");
+
+            const auto started = std::chrono::steady_clock::now();
+            ps2_stubs::socom2HostInputShutdown();
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+            t.IsTrue(!ps2_stubs::socom2HostInputSamplerRunning(), "and it is stopped and joined afterwards");
+            t.IsTrue(ms < 500.0, "the join returns promptly rather than outliving the process");
+
+            ps2_stubs::socom2HostInputShutdown();   // the teardown runs at both of PS2Runtime's exits
+            t.IsTrue(!ps2_stubs::socom2HostInputSamplerRunning(), "a second shutdown is a no-op");
+
+            std::remove(path.c_str());
         });
     });
 }

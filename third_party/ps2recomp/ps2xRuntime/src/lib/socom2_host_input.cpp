@@ -58,6 +58,7 @@ namespace ps2_stubs
             {
                 if (worker.joinable())
                     return;
+                stop.store(false, std::memory_order_relaxed);
                 const std::string file(path);
                 worker = std::thread([this, file]()
                 {
@@ -78,12 +79,14 @@ namespace ps2_stubs
                 });
             }
 
-            ~InjectedPadSampler()
+            void shutdown()
             {
                 stop.store(true, std::memory_order_relaxed);
                 if (worker.joinable())
                     worker.join();
             }
+
+            ~InjectedPadSampler() { shutdown(); }
         };
 
         InjectedPadSampler g_injectedPadSampler;
@@ -221,6 +224,22 @@ namespace ps2_stubs
         }
     }
 
+    void socom2HostInputStartSampler(const char *path)
+    {
+        if (path != nullptr && path[0] != 0)
+            g_injectedPadSampler.start(path);
+    }
+
+    void socom2HostInputShutdown()
+    {
+        g_injectedPadSampler.shutdown();
+    }
+
+    bool socom2HostInputSamplerRunning()
+    {
+        return g_injectedPadSampler.worker.joinable();
+    }
+
     void socom2HostInputPoll(Socom2PadState &pad)
     {
         if (!IsWindowReady())
@@ -349,7 +368,7 @@ namespace ps2_stubs
             static const char *s_file = std::getenv("PS2X_SOCOM2_INPUT_FILE");
             if (s_file != nullptr)
             {
-                g_injectedPadSampler.start(s_file);
+                socom2HostInputStartSampler(s_file);
                 const ps2x::InjectedPadSample sample = g_injectedPadSampler.latch.take();
                 for (int id = 0; id < 16; ++id)
                     if (sample.buttons & (1u << id))

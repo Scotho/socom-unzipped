@@ -806,5 +806,58 @@ void register_ps2_runtime_io_tests()
             clearContext(test.ctx);
             ps2_stubs::sceCdStStop(test.rdram.data(), &test.ctx, nullptr);
         });
+
+        // Sprint 7 review finding F11: sceCdInit cleared g_cdLastMovedWasStream but left g_cdReadLbn where the
+        // last read had put it, so a re-init reported the old drive position instead of the start of the disc.
+        tc.Run("sceCdInit resets the plain-read cursor as well as the last-moved flag", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t kSectorSize = 2048u;
+            constexpr uint32_t kImageSectors = 64u;
+            constexpr uint32_t kPlainReadLbn = 40u;
+            constexpr uint32_t kPlainReadSectors = 4u;
+            constexpr uint32_t plainDestAddr = GUEST_BUFFER_AREA_START + 0x30000;
+
+            const std::filesystem::path imagePath = test.paths.base / "cdinit.iso";
+            {
+                std::ofstream out(imagePath, std::ios::binary);
+                for (uint32_t sector = 0; sector < kImageSectors; ++sector)
+                {
+                    std::vector<uint8_t> bytes(kSectorSize, static_cast<uint8_t>(sector & 0xFFu));
+                    std::memcpy(bytes.data(), &sector, sizeof(sector));
+                    out.write(reinterpret_cast<const char *>(bytes.data()),
+                              static_cast<std::streamsize>(bytes.size()));
+                }
+            }
+
+            PS2Runtime::IoPaths ioPaths;
+            ioPaths.elfDirectory = test.paths.cdRoot;
+            ioPaths.hostRoot = test.paths.cdRoot;
+            ioPaths.cdRoot = test.paths.cdRoot;
+            ioPaths.mcRoot = test.paths.mcRoot;
+            ioPaths.cdImage = imagePath;
+            PS2Runtime::setIoPaths(ioPaths);
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, kPlainReadLbn);
+            setRegU32(test.ctx, 5, kPlainReadSectors);
+            setRegU32(test.ctx, 6, plainDestAddr);
+            ps2_stubs::sceCdRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(getRegS32(&test.ctx, 2), 1, "the plain read should succeed");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), kPlainReadLbn + kPlainReadSectors,
+                     "the read moved the cursor to lbn + sectors");
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdInit(test.rdram.data(), &test.ctx, nullptr);
+
+            clearContext(test.ctx);
+            ps2_stubs::sceCdGetReadPos(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(::getRegU32(&test.ctx, 2), 0u,
+                     "sceCdInit puts the drive back at sector 0: the stale cursor does not survive it");
+        });
     });
 }

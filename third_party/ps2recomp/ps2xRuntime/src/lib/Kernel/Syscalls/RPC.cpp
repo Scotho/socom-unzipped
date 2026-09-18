@@ -252,6 +252,20 @@ namespace ps2_syscalls
         setReturnS32(ctx, 0);
     }
 
+    // The EE half of an IOP reboot: every queue, client and server the guest had is gone with the IOP that
+    // served it, and the next sceSifInitRpc must set them up again (g_rpc_initialized back to false).
+    void SifResetRpcState()
+    {
+        std::lock_guard<std::mutex> lock(g_rpc_mutex);
+        g_rpc_servers.clear();
+        g_rpc_clients.clear();
+        g_rpc_next_id = 1;
+        g_rpc_packet_index = 0;
+        g_rpc_server_index = 0;
+        g_rpc_active_queue = 0;
+        g_rpc_initialized = false;
+    }
+
     void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         uint32_t clientPtr = getRegU32(ctx, 4);

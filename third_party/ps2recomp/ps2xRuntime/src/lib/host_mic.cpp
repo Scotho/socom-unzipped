@@ -17,28 +17,29 @@
 
 #include "external/miniaudio.h"
 
-namespace
+// raudio.c :167 defines MA_NO_WAV, so miniaudio's encoder is not in the library: the 44-byte header is
+// written by hand, in the shape ps2_audio.cpp :358-379 writes it, with channels = 1, blockAlign = 2 and
+// byteRate = 32000 for 16 kHz mono 16-bit. See host_mic.h for what dataSize == 0 means.
+void hostMicWavHeader(uint8_t *p, uint32_t dataSize, uint32_t sampleRate)
 {
-    // raudio.c :167 defines MA_NO_WAV, so miniaudio's encoder is not in the library: the 44-byte header is
-    // written by hand, in the shape ps2_audio.cpp :358-379 writes it, with channels = 1, blockAlign = 2 and
-    // byteRate = 32000 for 16 kHz mono 16-bit.
-    void buildMonoWavHeader(uint8_t *p, uint32_t dataSize, uint32_t sampleRate)
-    {
-        auto put32 = [&](size_t at, uint32_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); p[at + 2] = static_cast<uint8_t>(v >> 16); p[at + 3] = static_cast<uint8_t>(v >> 24); };
-        auto put16 = [&](size_t at, uint16_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); };
-        std::memcpy(p, "RIFF", 4);
-        put32(4, 36u + dataSize);
-        std::memcpy(p + 8, "WAVEfmt ", 8);
-        put32(16, 16);
-        put16(20, 1);                  // PCM
-        put16(22, 1);                  // mono
-        put32(24, sampleRate);
-        put32(28, sampleRate * 2u);    // byteRate: 32000 at 16 kHz
-        put16(32, 2);                  // blockAlign
-        put16(34, 16);                 // bits per sample
-        std::memcpy(p + 36, "data", 4);
-        put32(40, dataSize);
-    }
+    auto put32 = [&](size_t at, uint32_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); p[at + 2] = static_cast<uint8_t>(v >> 16); p[at + 3] = static_cast<uint8_t>(v >> 24); };
+    auto put16 = [&](size_t at, uint16_t v) { p[at] = static_cast<uint8_t>(v); p[at + 1] = static_cast<uint8_t>(v >> 8); };
+    // dataSize 0 = "not known yet" (the dump is still being written, and only a clean stop patches the real
+    // sizes in): both size fields say 0xFFFFFFFF, which every player treats as "read to the end of the file",
+    // so a run that was killed still leaves a playable WAV instead of one claiming zero bytes.
+    const bool unknown = dataSize == 0u;
+    std::memcpy(p, "RIFF", 4);
+    put32(4, unknown ? 0xFFFFFFFFu : 36u + dataSize);
+    std::memcpy(p + 8, "WAVEfmt ", 8);
+    put32(16, 16);
+    put16(20, 1);                  // PCM
+    put16(22, 1);                  // mono
+    put32(24, sampleRate);
+    put32(28, sampleRate * 2u);    // byteRate: 32000 at 16 kHz
+    put16(32, 2);                  // blockAlign
+    put16(34, 16);                 // bits per sample
+    std::memcpy(p + 36, "data", 4);
+    put32(40, unknown ? 0xFFFFFFFFu : dataSize);
 }
 
 struct HostMic::Impl
@@ -185,7 +186,7 @@ namespace
             return;
         }
         uint8_t header[44] = {};
-        buildMonoWavHeader(header, 0, HostMic::kSampleRate);   // sizes patched on stop; a killed run reads by length
+        hostMicWavHeader(header, 0, HostMic::kSampleRate);   // 0 = unknown: 0xFFFFFFFF sizes, patched on a clean stop
         std::fwrite(header, 1, 44, dump->file);
         g_dump = dump;
         dump->thread = std::thread([dump, &mic]()
@@ -224,7 +225,7 @@ namespace
             // The two sizes patched on stop, exactly as closeMixerStream does (ps2_audio.cpp :425-435).
             const uint32_t dataSize = static_cast<uint32_t>(dump->frames * 2u);
             uint8_t header[44] = {};
-            buildMonoWavHeader(header, dataSize, HostMic::kSampleRate);
+            hostMicWavHeader(header, dataSize, HostMic::kSampleRate);
             std::fseek(dump->file, 0, SEEK_SET);
             std::fwrite(header, 1, 44, dump->file);
             std::fclose(dump->file);

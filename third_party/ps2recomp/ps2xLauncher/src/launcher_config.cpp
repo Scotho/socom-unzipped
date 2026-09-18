@@ -192,6 +192,31 @@ namespace launcher
         return out;
     }
 
+    std::string monitorSizeOrEmpty(int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            return std::string();   // raylib has no monitor yet: store nothing rather than "0x0"
+        return std::to_string(width) + "x" + std::to_string(height);
+    }
+
+    namespace
+    {
+        // "<w>x<h>" with a zero (or negative, or unreadable) dimension is not a window size, whoever wrote it:
+        // an older build's "Match display", a hand-edited config.json. Anything that is not of that shape at all
+        // ("fullscreen") is left to the runtime's own parser.
+        bool isUsableWindowSize(const std::string &value)
+        {
+            const size_t x = value.find_first_of("xX");
+            if (x == std::string::npos)
+                return true;
+            const std::string w = value.substr(0, x);
+            const std::string h = value.substr(x + 1);
+            if (w.empty() || h.empty())
+                return true;
+            return std::atoi(w.c_str()) > 0 && std::atoi(h.c_str()) > 0;
+        }
+    }
+
     bool fromJson(const std::string &json, Config &out)
     {
         out = Config{};   // malformed input leaves the defaults
@@ -213,7 +238,8 @@ namespace launcher
                         return false;
                     if (key == "isoPath") c.isoPath = v;
                     else if (key == "presentFilter") c.presentFilter = v;
-                    else if (key == "windowSize") c.windowSize = v;
+                    // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
+                    else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") c.server = v;
                     // a preset we do not know (an older or newer build's) falls back to the typed address
                     else if (key == "serverPreset") c.serverPreset = findServerPreset(v) ? v : std::string("custom");
@@ -269,7 +295,8 @@ namespace launcher
         env.push_back("PS2X_PRESENT_FILTER=" + (c.presentFilter.empty() ? std::string("linear") : c.presentFilter));
         const int volume = c.audioVolume < 0 ? 0 : (c.audioVolume > 100 ? 100 : c.audioVolume);
         env.push_back("PS2X_AUDIO_VOLUME=" + std::to_string(volume));
-        env.push_back("PS2X_WINDOW_SIZE=" + (c.windowSize.empty() ? std::string("640x448") : c.windowSize));
+        const bool sizeUsable = !c.windowSize.empty() && isUsableWindowSize(c.windowSize);
+        env.push_back("PS2X_WINDOW_SIZE=" + (sizeUsable ? c.windowSize : Config{}.windowSize));
         if (c.fpsOverlay)
             env.push_back("PS2X_FPS_OVERLAY=1");
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));

@@ -33,9 +33,23 @@ namespace launcher
         // backend would not start -- the panel then shows "None" alone.
         virtual std::vector<std::string> list() = 0;
         // Open `name` for capture and start filling the meter. False when it will not open.
+        //
+        // Sprint 7 review finding F8, the meter's ownership of the device. The launcher holds the capture
+        // device open for its level meter, and on Windows a shared-mode device opened twice is not guaranteed
+        // to the second opener -- so while the game runs, the launcher must not be holding it. The contract
+        // both halves of the pair keep:
+        //   * startMeter(name) stops whatever was open first, then opens `name`. Calling it with a name that
+        //     is already open re-opens it; calling it with "" or an unknown name leaves nothing open and
+        //     returns false. It is the only call that touches the host audio backend at any cost.
+        //   * stopMeter() closes the device and the context if either is open and does nothing at all if
+        //     neither is: idempotent, safe before any start, safe twice in a row, and cheap enough to call on
+        //     every Launch. After it, levelDb() is -inf again.
+        // So the launcher can hand the device to the game for the length of a run and take it back after,
+        // with no state of its own to keep beyond the device name the player picked.
         virtual bool startMeter(const std::string &name) = 0;
-        // The last callback's RMS in dB (-inf until one arrives).
+        // The last callback's RMS in dB (-inf until one arrives, and again after stopMeter()).
         virtual float levelDb() const = 0;
+        // Idempotent and cheap; see startMeter above.
         virtual void stopMeter() = 0;
     };
 

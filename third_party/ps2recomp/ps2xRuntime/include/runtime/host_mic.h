@@ -91,6 +91,12 @@ private:
     std::string m_error;
 };
 
+// The 44-byte WAV header of a 16-bit mono stream, written by hand (raudio.c defines MA_NO_WAV, so miniaudio's
+// encoder is not in the library). Sprint 7 review finding F6: a dump is only patched with its real sizes on a
+// clean stop, so `dataSize == 0` means "not known yet" and writes 0xFFFFFFFF in both size fields -- players read
+// such a file to EOF, which is what a killed run needs, instead of seeing a header that claims zero bytes.
+void hostMicWavHeader(uint8_t *header44, uint32_t dataSize, uint32_t sampleRate);
+
 // PS2X_MIC_DEVICE / PS2X_MIC_DUMP, read once at start-up. Does nothing at all when PS2X_MIC_DEVICE is unset.
 void startHostMicFromEnvironment();
 void stopHostMic();

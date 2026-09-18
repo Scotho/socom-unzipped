@@ -430,6 +430,7 @@ namespace ps2_stubs
         g_lastCdError = 0;
         g_cdStreamTiming = {};
         g_cdLastMovedWasStream = false;
+        g_cdReadLbn = 0u;   // review finding F11: the drive is back at the start, not wherever the last read left it
         setReturnS32(ctx, 1);
     }
 

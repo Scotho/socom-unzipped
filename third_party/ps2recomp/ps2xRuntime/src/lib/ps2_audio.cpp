@@ -558,6 +558,11 @@ bool PS2AudioBackend::isPlaying(uint32_t handle, bool &playing) const
     const uint32_t type = (handle >> 24) & 0x1Fu;
     if (type != 4u && type != 5u)
         return false;
+    // Sprint 7 review finding F3: three-state. The IOP model mints the handle and only then forwards the play,
+    // so a handle the mixer has never been handed is one whose play never arrived -- not one that has finished.
+    // Answering "true, not playing" for it let the stream reaper free a slot the model still owned.
+    if (!m_mixer.knowsHandle(handle))
+        return false;
     playing = m_mixer.isPlaying(handle);
     return true;
 }

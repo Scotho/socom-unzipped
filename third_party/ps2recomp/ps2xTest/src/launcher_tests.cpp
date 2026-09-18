@@ -2,6 +2,7 @@
 #include "MiniTest.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
+#include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 
@@ -351,6 +352,18 @@ void register_launcher_tests()
             t.IsTrue(std::isinf(none) && none < 0.0f, "no frames is -inf too");
         });
 
+        // Sprint 7 review finding: with Windows DPI scaling at 125-150% the 932 px window is 1165-1398 px
+        // tall on a 768 or 1080 laptop panel, so the Launch row sits below the screen and nothing resizes.
+        // The window opens at whatever the monitor allows and the body scrolls to reach the rest.
+        tc.Run("the launcher fits a short display and scrolls its body", [](TestCase &t)
+        {
+            t.Equals(launcher::fitWindowHeight(932, 768, 80), 688, "a 768 px panel opens the window at 688, not 932 with the Launch row off-screen");
+            t.Equals(launcher::fitWindowHeight(932, 1440, 80), 932, "a tall display still gets the full content height");
+            t.Equals(launcher::scrollClamp(-10, 932, 688), 0, "scrolling up past the top stops at the top");
+            t.Equals(launcher::scrollClamp(999, 932, 688), 244, "scrolling down stops with the last pixel of content visible");
+            t.Equals(launcher::scrollClamp(5, 500, 688), 0, "content shorter than the window does not scroll at all");
+        });
+
         tc.Run("the microphone list is whatever MicDevices reports, with None first", [](TestCase &t)
         {
             struct FakeMic final : launcher::MicDevices
@@ -366,8 +379,14 @@ void register_launcher_tests()
             t.Equals(labels.size(), static_cast<size_t>(3), "None plus the two devices");
             t.Equals(labels[0], std::string("None"), "None is first, so 'no microphone' is a click, not an empty field");
             t.Equals(labels[1], std::string("Microphone (USB Headset)"), "the device names come through unchanged");
-            t.IsTrue(!mic.startMeter("Microphone (USB Headset)"), "a device that will not open says so");
-            t.IsTrue(mic.startMeter("Stereo Mix") && mic.started == "Stereo Mix", "and one that will, opens");
+            // Sprint 7 review finding F9: the two startMeter assertions that used to stand here asserted the
+            // FAKE's own return value ("Stereo Mix" opens, anything else does not), which is this test file's
+            // code and not the launcher's. micLabels is the launcher logic under test here.
+            // Review finding F8: stopMeter() is the half main.cpp calls on Launch, so it has to be safe to call
+            // at any time -- before any start, and twice in a row.
+            mic.stopMeter();
+            mic.stopMeter();
+            t.IsTrue(mic.started.empty(), "stopMeter before any start, and twice over, is a no-op");
         });
     });
 }

@@ -707,8 +707,15 @@ namespace ps2_stubs
         ps2_syscalls::sceSifLoadModuleBuffer(rdram, ctx, runtime);
     }
 
+    // Sprint 7 review finding F1: an IOP reboot is the one call that DOES reset the IOP services -- the IRXs
+    // are gone, so 989snd's bank table, its stream slots and the EE's RPC queues all go with them. Both stubs
+    // were empty, and once sceSifInitRpc stopped resetting on every call (Task 12, second pass) nothing reset
+    // the model at all. SOCOM II calls neither (0 RebootIop and 0 ResetIop in the owner's and the driven
+    // mission logs), so this is correctness for a path the game does not take.
     void sceSifRebootIop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        PS2IopTransport::reset(runtime);
+        ps2_syscalls::SifResetRpcState();
         setReturnS32(ctx, 1);
     }
 
@@ -735,8 +742,11 @@ namespace ps2_stubs
         ps2_syscalls::SifRemoveRpcQueue(rdram, ctx, runtime);
     }
 
+    // sceSifResetIop is the same reboot under the older name (see sceSifRebootIop above).
     void sceSifResetIop(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
+        PS2IopTransport::reset(runtime);
+        ps2_syscalls::SifResetRpcState();
         setReturnS32(ctx, 1);
     }
 
