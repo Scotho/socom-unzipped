@@ -55,7 +55,20 @@
 #include <sstream>
 #include <thread>
 #include <unordered_map>
+#ifdef _WIN32
 #include <windows.h>
+#else
+// Sprint 8 Goal 1 design item 3: the tool builds on Linux too; the --prof path has a POSIX half.
+#include <cerrno>
+#include <csignal>
+#include <ctime>
+#include <dlfcn.h>
+#include <unistd.h>
+#if defined(__linux__)
+#include <sys/syscall.h>
+#include <ucontext.h>
+#endif
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -725,6 +738,105 @@ namespace
     }
 }
 
+#if defined(__linux__) && defined(__x86_64__)
+namespace
+{
+    // Sprint 8 Goal 1 design item 3: the POSIX side of --prof (see the block in main()). The signal
+    // handler may not touch the map, so it publishes into a ring the helper thread drains.
+    constexpr uint32_t kProfRing = 8192u;   // power of two
+    std::atomic<uint64_t> g_profRing[kProfRing];
+    std::atomic<uint64_t> g_profWrite{0};
+    uint64_t g_profRead = 0;   // the helper thread alone
+
+    void hostProfSignalHandler(int, siginfo_t *, void *ctx)
+    {
+        if (!ctx)
+            return;
+        const uint64_t rip =
+            static_cast<uint64_t>(reinterpret_cast<const ucontext_t *>(ctx)->uc_mcontext.gregs[REG_RIP]);
+        if (!rip)
+            return;
+        const uint64_t slot = g_profWrite.fetch_add(1, std::memory_order_relaxed);
+        g_profRing[slot & (kProfRing - 1u)].store(rip, std::memory_order_release);
+    }
+
+    bool hostProfInstallSignal()
+    {
+        struct sigaction sa;
+        std::memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = hostProfSignalHandler;
+        sa.sa_flags = SA_SIGINFO | SA_RESTART;
+        sigemptyset(&sa.sa_mask);
+        return ::sigaction(SIGPROF, &sa, nullptr) == 0;
+    }
+
+    bool hostProfArmTimer(int tid, double periodMs)
+    {
+        struct sigevent sev;
+        std::memset(&sev, 0, sizeof(sev));
+        sev.sigev_notify = SIGEV_THREAD_ID;
+        sev.sigev_signo = SIGPROF;
+#if defined(sigev_notify_thread_id)
+        sev.sigev_notify_thread_id = tid;
+#else
+        sev._sigev_un._tid = tid;
+#endif
+        timer_t timer{};
+        if (::timer_create(CLOCK_MONOTONIC, &sev, &timer) != 0)
+            return false;
+        struct itimerspec its;
+        std::memset(&its, 0, sizeof(its));
+        const long long ns = static_cast<long long>(periodMs * 1e6);
+        its.it_interval.tv_sec = static_cast<time_t>(ns / 1000000000LL);
+        its.it_interval.tv_nsec = static_cast<long>(ns % 1000000000LL);
+        its.it_value = its.it_interval;
+        if (::timer_settime(timer, 0, &its, nullptr) != 0)
+        {
+            ::timer_delete(timer);
+            return false;
+        }
+        return true;   // the timer lives for the run, like the duplicated handle on Windows
+    }
+
+    uint64_t hostProfSelfBase()
+    {
+        Dl_info dli;
+        if (::dladdr(reinterpret_cast<void *>(&hostProfSelfBase), &dli) && dli.dli_fbase)
+            return reinterpret_cast<uint64_t>(dli.dli_fbase);
+        return 0;
+    }
+
+    std::string hostProfSelfExe()
+    {
+        char buf[4096];
+        const ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+        if (n <= 0)
+            return "?";
+        buf[n] = '\0';
+        return std::string(buf);
+    }
+
+    uint64_t hostProfDrain(std::unordered_map<uint64_t, uint32_t> &counts)
+    {
+        const uint64_t head = g_profWrite.load(std::memory_order_acquire);
+        if (head - g_profRead > kProfRing)
+            g_profRead = head - kProfRing;
+        uint64_t n = 0;
+        for (; g_profRead < head; ++g_profRead)
+        {
+            std::atomic<uint64_t> &slot = g_profRing[g_profRead & (kProfRing - 1u)];
+            const uint64_t rip = slot.load(std::memory_order_acquire);
+            if (!rip)
+                continue;
+            ++counts[rip];
+            slot.store(0, std::memory_order_relaxed);
+            ++n;
+        }
+        return n;
+    }
+}
+#endif
+
 int main(int argc, char **argv)
 {
     if (argc < 2)
@@ -918,6 +1030,7 @@ int main(int argc, char **argv)
     std::thread profThread;
     if (!profPath.empty())
     {
+#ifdef _WIN32
         HANDLE dup = nullptr;
         DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &dup,
                         THREAD_SUSPEND_RESUME | THREAD_GET_CONTEXT | THREAD_QUERY_INFORMATION, FALSE, 0);
@@ -966,6 +1079,52 @@ int main(int argc, char **argv)
                 }
             }
         });
+#elif defined(__linux__) && defined(__x86_64__)
+        // The Linux half: no thread can read another thread context, so the kernel interrupts this
+        // one -- a SIGPROF timer on this thread (SIGEV_THREAD_ID + gettid) whose handler pushes
+        // uc_mcontext.gregs[REG_RIP] into a ring the helper thread drains. Same histogram file.
+        const uint64_t base = hostProfSelfBase();
+        if (!hostProfInstallSignal() || !hostProfArmTimer(static_cast<int>(::syscall(SYS_gettid)), 0.1))
+        {
+            std::fprintf(stderr, "--prof: cannot arm the SIGPROF timer (errno %d)\n", errno);
+            return 1;
+        }
+        profThread = std::thread([base, profPath, &profStop]() {
+            std::unordered_map<uint64_t, uint32_t> counts;
+            uint64_t total = 0;
+            while (!profStop.load())
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                total += hostProfDrain(counts);
+            }
+            total += hostProfDrain(counts);
+            std::vector<std::pair<uint64_t, uint32_t>> v(counts.begin(), counts.end());
+            std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+            std::ofstream f(profPath, std::ios::trunc);
+            f << "base 0x" << std::hex << base << std::dec << " total " << total << '\n';
+            // readlink("/proc/self/exe") is this tool own path: the mirror of GetModuleFileNameA on
+            // the main module (dladdr would hand back argv[0], which can be relative).
+            const std::string selfExe = hostProfSelfExe();
+            for (const auto &kv : v)
+            {
+                Dl_info dli;
+                const bool known = ::dladdr(reinterpret_cast<void *>(kv.first), &dli) != 0 && dli.dli_fbase != nullptr;
+                const uint64_t modBase = known ? reinterpret_cast<uint64_t>(dli.dli_fbase) : 0ull;
+                if (known && modBase == base)
+                    f << std::hex << kv.first - base << std::dec << " " << kv.second << '\n';
+                else
+                {
+                    const char *name = known && dli.dli_fname ? dli.dli_fname : nullptr;
+                    f << std::hex << kv.first << std::dec << " " << kv.second << " ext "
+                      << (name ? name : (modBase ? selfExe.c_str() : "?")) << "+0x"
+                      << std::hex << (modBase ? kv.first - modBase : 0ull) << std::dec << '\n';
+                }
+            }
+        });
+#else
+        std::fprintf(stderr, "--prof: not supported on this platform\n");
+        return 1;
+#endif
     }
 
     double totalHostNs = 0.0;

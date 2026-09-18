@@ -25,6 +25,8 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 #include <ps2_log.h>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <ctime>
 #endif
 
 namespace
@@ -2848,6 +2850,26 @@ void VU1Interpreter::run(uint8_t *vuCode, uint32_t codeSize,
                         const uint64_t t = ((static_cast<uint64_t>(k.dwHighDateTime) << 32) | k.dwLowDateTime) +
                                            ((static_cast<uint64_t>(u.dwHighDateTime) << 32) | u.dwLowDateTime);
                         procMs = static_cast<double>(t - s_lastProc) / 10000.0 / seconds;
+                        s_lastProc = t;
+                    }
+                }
+#else
+                {
+                    // Sprint 8 Goal 1 design item 3: the same two numbers on Linux. The POSIX CPU
+                    // clocks are the equivalent of GetThreadTimes/GetProcessTimes, and, like them,
+                    // count kernel + user time; ns here instead of 100 ns ticks.
+                    static uint64_t s_lastThread = 0, s_lastProc = 0;
+                    struct timespec ts;
+                    if (::clock_gettime(CLOCK_THREAD_CPUTIME_ID, &ts) == 0)
+                    {
+                        const uint64_t t = static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
+                        threadMs = static_cast<double>(t - s_lastThread) / 1000000.0 / seconds;
+                        s_lastThread = t;
+                    }
+                    if (::clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &ts) == 0)
+                    {
+                        const uint64_t t = static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
+                        procMs = static_cast<double>(t - s_lastProc) / 1000000.0 / seconds;
                         s_lastProc = t;
                     }
                 }

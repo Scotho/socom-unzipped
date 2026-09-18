@@ -37,7 +37,10 @@
 #include <cstdlib>
 #include <thread>
 #include <unordered_map>
-void ps2HostProfStart(void *nativeHandle);   // game_overrides_socom2.cpp (PS2X_HOST_PROF)
+// game_overrides_socom2.cpp (PS2X_HOST_PROF). The parameter is the game thread native handle as
+// std::thread hands it over: a HANDLE (void *) on Windows, a pthread_t on Linux -- Sprint 8 Goal 1
+// design item 3, where the Linux sampler needs the thread rather than the Windows handle.
+void ps2HostProfStart(std::thread::native_handle_type nativeHandle);
 #include <sstream>
 
 namespace ps2_stubs

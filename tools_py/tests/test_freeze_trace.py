@@ -226,5 +226,58 @@ class CliTest(unittest.TestCase):
         self.assertIn("0x3b00a4", text)
 
 
+class LinuxSamplerLineTest(unittest.TestCase):
+    """Sprint 8 Goal 1 design item 3: the Linux [pc-sampler] line is the Windows line, character for character.
+
+    The sampler thread (game_overrides_socom2.cpp startPcSampler) composes the line out of code that
+    has no platform branch in it: guest registers through std::hex, the freeze fields through
+    FreezeFields::line's one snprintf, the thread table through std::hex again -- no %p, no
+    GetModuleHandle, no zero-padded host address anywhere on it. Task 5's Linux halves sit beside
+    it: the SIGPROF sampler fills the ring the Windows path fills (uc_mcontext.gregs[REG_RIP]
+    instead of CONTEXT.Rip) and everything after the sample -- the table, the freeze fields, the
+    print -- is the shared code above.
+
+    So this is a regression, green the day it was written: it fails the day a Linux-only branch
+    prints one of these fields at a different width, which would split freeze_trace's rows in two.
+    """
+
+    # The line as the Windows runner prints it (Sprint 7 Task 2e), and as the Linux runner prints it
+    # -- spelled out twice on purpose, so a divergence shows up as a diff and not as a shared typo.
+    WINDOWS = ("[pc-sampler] live pc=0x350d90 ra=0x25e9f0 sp=0x1f7fa70 t=612.50 vsync=41233 ee=612.10 seq=8891 "
+               "dpc=0x350d90 idle=140 bp_pending=0 bp_waiters=1 bp_wait_ms=12 net_wait=0/0 running=1 threads: "
+               "[1 pc=0x3b00a4 ra=0x3b535c sp=0x1f7f410 st=0 prio=48 wait=0/0] "
+               "[2 pc=0x1a3a48 ra=0x3b1e00 sp=0x4b4560 st=2 prio=50 wait=1/0]")
+    LINUX = ("[pc-sampler] live pc=0x350d90 ra=0x25e9f0 sp=0x1f7fa70 t=612.50 vsync=41233 ee=612.10 seq=8891 "
+             "dpc=0x350d90 idle=140 bp_pending=0 bp_waiters=1 bp_wait_ms=12 net_wait=0/0 running=1 threads: "
+             "[1 pc=0x3b00a4 ra=0x3b535c sp=0x1f7f410 st=0 prio=48 wait=0/0] "
+             "[2 pc=0x1a3a48 ra=0x3b1e00 sp=0x4b4560 st=2 prio=50 wait=1/0]")
+
+    def test_the_linux_line_is_the_windows_line(self):
+        self.assertEqual(self.LINUX, self.WINDOWS)
+
+    def test_both_lines_parse_to_the_same_row(self):
+        win = ft.parse([self.WINDOWS])
+        lin = ft.parse([self.LINUX])
+        self.assertEqual(len(win), 1)
+        self.assertEqual(len(lin), 1)
+        self.assertEqual(lin[0], win[0])
+
+    def test_the_linux_row_carries_every_freeze_field(self):
+        row = ft.parse([self.LINUX])[0]
+        for key in ft.FREEZE_FIELDS:
+            self.assertIsNotNone(row[key], key)
+        self.assertEqual(row["live_pc"], 0x350D90)
+        self.assertEqual(row["dpc"], 0x350D90)
+        self.assertEqual(row["bp_waiters"], 1)
+        self.assertEqual(row["threads"][1], (PARK_PC, 0, 0))
+
+    def test_a_window_of_linux_lines_classifies_like_a_window_of_windows_lines(self):
+        def window(line):
+            return [line, line.replace("t=612.50", "t=615.80").replace("bp_wait_ms=12", "bp_wait_ms=3200")
+                             .replace("seq=8891", "seq=9100")]
+        self.assertEqual(ft.classify(ft.parse(window(self.LINUX))), "host-load")
+        self.assertEqual(ft.classify(ft.parse(window(self.LINUX))), ft.classify(ft.parse(window(self.WINDOWS))))
+
+
 if __name__ == "__main__":
     unittest.main()

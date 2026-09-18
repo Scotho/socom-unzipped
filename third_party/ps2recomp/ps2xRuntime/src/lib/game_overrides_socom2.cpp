@@ -29,6 +29,23 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <tlhelp32.h>
+#else
+// Sprint 8 Goal 1 design item 3: the Linux halves of the crash handler and of the host PC sampler.
+// Nothing here is visible to the Windows build.
+#include <cerrno>
+#include <csignal>
+#include <cstdio>
+#include <dlfcn.h>
+#include <pthread.h>
+#include <execinfo.h>
+#include <unistd.h>
+#include "ThreadNaming.h"
+#if defined(__linux__)
+#include <ucontext.h>
+#include <sys/syscall.h>
+#include <dirent.h>
+#include <ctime>
+#endif
 #endif
 #include <chrono>
 #include <cstdlib>
@@ -911,6 +928,151 @@ namespace
         std::cout << o.str() << std::flush;
         return EXCEPTION_CONTINUE_SEARCH;
     }
+#elif defined(__linux__)
+    // Sprint 8 Goal 1 design item 3, the Linux half of the reporter above: sigaction for SIGSEGV,
+    // SIGBUS, SIGILL and SIGFPE on an alternate stack (a stack overflow faults with no usable stack
+    // left), printing the same line shape the vectored handler prints -- the fault code and its
+    // name, the faulting host address and that address relative to the module base (dladdr on the
+    // instruction pointer instead of GetModuleHandleA), the module-relative backtrace, then the
+    // guest pc/ra and thread table out of the same globals -- after which the default action is
+    // restored and the signal re-raised, so the process still dies the way it would have.
+    //
+    // This runs in a signal handler, so it formats with snprintf into a stack buffer and writes
+    // with write(2) rather than through ostringstream/std::cout (the iostreams above are safe on
+    // Windows only because a vectored handler is not a signal handler).
+    const char *crashSignalName(int sig)
+    {
+        switch (sig)
+        {
+        case SIGSEGV: return "SIGSEGV";
+        case SIGBUS: return "SIGBUS";
+        case SIGILL: return "SIGILL";
+        case SIGFPE: return "SIGFPE";
+        default: return "SIG?";
+        }
+    }
+
+    // stderr and stdout both, as the Windows handler prints to both.
+    void crashWrite(const char *text, int n)
+    {
+        if (n <= 0)
+            return;
+        for (int fd : {STDERR_FILENO, STDOUT_FILENO})
+        {
+            int off = 0;
+            while (off < n)
+            {
+                const ssize_t w = ::write(fd, text + off, static_cast<size_t>(n - off));
+                if (w <= 0)
+                    break;
+                off += static_cast<int>(w);
+            }
+        }
+    }
+
+    [[noreturn]] void crashReraise(int sig)
+    {
+        struct sigaction sa;
+        std::memset(&sa, 0, sizeof(sa));
+        sa.sa_handler = SIG_DFL;
+        sigemptyset(&sa.sa_mask);
+        ::sigaction(sig, &sa, nullptr);
+        // The signal is blocked while its own handler runs: unblock it so the re-raise is taken.
+        sigset_t unblock;
+        sigemptyset(&unblock);
+        sigaddset(&unblock, sig);
+        ::pthread_sigmask(SIG_UNBLOCK, &unblock, nullptr);
+        ::raise(sig);
+        ::_exit(128 + sig);
+    }
+
+    void crashHandler(int sig, siginfo_t *info, void *ucontext)
+    {
+        static std::atomic<int> reported{0};
+        if (reported.fetch_add(1, std::memory_order_relaxed) > 2)
+            crashReraise(sig);
+        uintptr_t ip = 0;
+#if defined(__x86_64__)
+        if (ucontext)
+            ip = static_cast<uintptr_t>(reinterpret_cast<const ucontext_t *>(ucontext)->uc_mcontext.gregs[REG_RIP]);
+#endif
+        uintptr_t base = 0;
+        Dl_info dli;
+        if (ip && ::dladdr(reinterpret_cast<void *>(ip), &dli) && dli.dli_fbase)
+            base = reinterpret_cast<uintptr_t>(dli.dli_fbase);
+        char buf[4096];
+        int n = std::snprintf(buf, sizeof(buf), "[crash] code=0x%x (%s) host=0x%llx module+0x%llx",
+                              static_cast<unsigned>(sig), crashSignalName(sig),
+                              static_cast<unsigned long long>(ip),
+                              static_cast<unsigned long long>(ip >= base ? ip - base : 0));
+        if ((sig == SIGSEGV || sig == SIGBUS) && info)
+        {
+            bool isWrite = false;
+#if defined(__x86_64__)
+            // The page-fault error code the kernel leaves in the context: bit 1 is write.
+            if (ucontext)
+                isWrite = (reinterpret_cast<const ucontext_t *>(ucontext)->uc_mcontext.gregs[REG_ERR] & 2) != 0;
+#endif
+            n += std::snprintf(buf + n, sizeof(buf) - n, " access=%s at 0x%llx", isWrite ? "write" : "read",
+                               static_cast<unsigned long long>(reinterpret_cast<uintptr_t>(info->si_addr)));
+        }
+        n += std::snprintf(buf + n, sizeof(buf) - n, "\n[crash] backtrace (module-relative):");
+        void *frames[48];
+        const int frameCount = ::backtrace(frames, 48);
+        for (int i = 0; i < frameCount && n < static_cast<int>(sizeof(buf)) - 64; ++i)
+        {
+            const uintptr_t f = reinterpret_cast<uintptr_t>(frames[i]);
+            n += std::snprintf(buf + n, sizeof(buf) - n, " %llx",
+                               static_cast<unsigned long long>(f >= base ? f - base : f));
+        }
+        n += std::snprintf(buf + n, sizeof(buf) - n, "\n");
+        crashWrite(buf, n);
+        if (g_runtimeForCrash)
+        {
+            const R5900Context *c = &g_runtimeForCrash->cpu();
+            n = std::snprintf(buf, sizeof(buf), "[crash] guest live pc=0x%x ra=0x%x",
+                              static_cast<unsigned>(c->pc), static_cast<unsigned>(GPR_U32(c, 31)));
+            const EeKernelSnapshot snap = g_runtimeForCrash->eeScheduler().snapshot();
+            n += std::snprintf(buf + n, sizeof(buf) - n, " running=%d threads:",
+                               static_cast<int>(snap.runningThreadId));
+            for (const auto &t : snap.threads)
+            {
+                if (n >= static_cast<int>(sizeof(buf)) - 96)
+                    break;
+                n += std::snprintf(buf + n, sizeof(buf) - n, " [%d pc=0x%x ra=0x%x st=%d]", static_cast<int>(t.id),
+                                   static_cast<unsigned>(t.pc), static_cast<unsigned>(t.ra),
+                                   static_cast<int>(t.status));
+            }
+            n += std::snprintf(buf + n, sizeof(buf) - n, "\n");
+            crashWrite(buf, n);
+        }
+        crashReraise(sig);
+    }
+
+    void installPosixCrashHandler()
+    {
+        // 64 KB alternate stack, allocated once and never freed: the handler must have a stack even
+        // when the fault IS the stack.
+        static bool installed = false;
+        if (installed)
+            return;
+        installed = true;
+        static std::vector<char> altStack(64u * 1024u);
+        stack_t ss;
+        std::memset(&ss, 0, sizeof(ss));
+        ss.ss_sp = altStack.data();
+        ss.ss_size = altStack.size();
+        ss.ss_flags = 0;
+        if (::sigaltstack(&ss, nullptr) != 0)
+            std::cerr << "[crash] sigaltstack failed: " << errno << std::endl;
+        struct sigaction sa;
+        std::memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = crashHandler;
+        sa.sa_flags = SA_SIGINFO | SA_ONSTACK | SA_RESTART;
+        sigemptyset(&sa.sa_mask);
+        for (int sig : {SIGSEGV, SIGBUS, SIGILL, SIGFPE})
+            ::sigaction(sig, &sa, nullptr);
+    }
 #endif
 
 
@@ -1636,6 +1798,8 @@ namespace
         g_runtimeForCrash = &runtime;
 #ifdef _WIN32
         AddVectoredExceptionHandler(1, crashHandler);
+#elif defined(__linux__)
+        installPosixCrashHandler();
 #endif
     }
 
@@ -1704,13 +1868,173 @@ namespace
 
 PS2_REGISTER_GAME_OVERRIDE("socom2-us", "socom2_game.elf", 0x00180008u, 0u, applySocom2)
 
+#if defined(__linux__) && defined(__x86_64__)
+namespace
+{
+    // ---- Sprint 8 Goal 1 design item 3: the Linux half of the host PC sampler -------------------
+    // Windows suspends the sampled thread and reads CONTEXT.Rip from the sampler thread. Linux has
+    // no such call, so the kernel interrupts the sampled thread itself: a SIGPROF interval timer
+    // (timer_create with SIGEV_THREAD_ID, which takes the thread's KERNEL tid) at the Windows
+    // sampler's period, and the handler records uc_mcontext.gregs[REG_RIP] into this ring exactly
+    // as the Windows path stores the context RIP. Everything after the sample -- the histogram, the
+    // module resolution, the hostprof.txt dump -- is the same code shape on both platforms.
+    constexpr uint32_t kHostProfMaxFrames = 24u;
+    constexpr uint32_t kHostProfRing = 4096u;   // power of two
+    struct HostProfSample
+    {
+        std::atomic<uint64_t> rip{0};   // published last, with release; 0 = the slot is not ready
+        uint32_t tid = 0;
+        uint32_t frameCount = 0;
+        uint64_t frames[kHostProfMaxFrames] = {};
+    };
+    HostProfSample g_hostProfRing[kHostProfRing];
+    std::atomic<uint64_t> g_hostProfWrite{0};
+    std::atomic<bool> g_hostProfStacks{false};
+    uint64_t g_hostProfRead = 0;    // the drain thread alone
+    uint64_t g_hostProfLost = 0;    // samples the drain thread could not keep up with
+
+    void hostProfSignalHandler(int, siginfo_t *, void *ctx)
+    {
+        if (!ctx)
+            return;
+        const uint64_t rip =
+            static_cast<uint64_t>(reinterpret_cast<const ucontext_t *>(ctx)->uc_mcontext.gregs[REG_RIP]);
+        if (!rip)
+            return;
+        const uint64_t slot = g_hostProfWrite.fetch_add(1, std::memory_order_relaxed);
+        HostProfSample &s = g_hostProfRing[slot & (kHostProfRing - 1u)];
+        s.tid = static_cast<uint32_t>(::syscall(SYS_gettid));
+        uint32_t frameCount = 0;
+        if (g_hostProfStacks.load(std::memory_order_relaxed))
+        {
+            // backtrace() is pre-warmed before the timers are armed (libgcc allocates once).
+            void *frames[kHostProfMaxFrames];
+            const int n = ::backtrace(frames, static_cast<int>(kHostProfMaxFrames));
+            for (int i = 0; i < n; ++i)
+                s.frames[i] = reinterpret_cast<uint64_t>(frames[i]);
+            frameCount = n > 0 ? static_cast<uint32_t>(n) : 0u;
+        }
+        s.frameCount = frameCount;
+        s.rip.store(rip, std::memory_order_release);
+    }
+
+    bool hostProfInstallSignal()
+    {
+        // Before any timer is armed: SIGPROF kills the process by default.
+        struct sigaction sa;
+        std::memset(&sa, 0, sizeof(sa));
+        sa.sa_sigaction = hostProfSignalHandler;
+        sa.sa_flags = SA_SIGINFO | SA_RESTART;
+        sigemptyset(&sa.sa_mask);
+        return ::sigaction(SIGPROF, &sa, nullptr) == 0;
+    }
+
+    // One periodic timer delivering SIGPROF to ONE thread. CLOCK_MONOTONIC, not
+    // CLOCK_THREAD_CPUTIME_ID: the Windows sampler samples on a wall-clock period, and a thread CPU
+    // clock can only ever be the clock of the thread that calls timer_create.
+    bool hostProfArmTimer(int tid, double periodMs, timer_t *out)
+    {
+        struct sigevent sev;
+        std::memset(&sev, 0, sizeof(sev));
+        sev.sigev_notify = SIGEV_THREAD_ID;
+        sev.sigev_signo = SIGPROF;
+#if defined(sigev_notify_thread_id)
+        sev.sigev_notify_thread_id = tid;
+#else
+        sev._sigev_un._tid = tid;
+#endif
+        timer_t timer{};
+        if (::timer_create(CLOCK_MONOTONIC, &sev, &timer) != 0)
+            return false;
+        struct itimerspec its;
+        std::memset(&its, 0, sizeof(its));
+        const long long ns = static_cast<long long>(periodMs * 1e6);
+        its.it_interval.tv_sec = static_cast<time_t>(ns / 1000000000LL);
+        its.it_interval.tv_nsec = static_cast<long>(ns % 1000000000LL);
+        its.it_value = its.it_interval;
+        if (::timer_settime(timer, 0, &its, nullptr) != 0)
+        {
+            ::timer_delete(timer);
+            return false;
+        }
+        *out = timer;
+        return true;
+    }
+
+    // The mirror of GetModuleHandleW(nullptr): the load address of the main executable.
+    uint64_t hostProfModuleBase()
+    {
+        Dl_info dli;
+        if (::dladdr(reinterpret_cast<void *>(&hostProfModuleBase), &dli) && dli.dli_fbase)
+            return reinterpret_cast<uint64_t>(dli.dli_fbase);
+        return 0;
+    }
+
+    // The mirror of GetThreadDescription: /proc/self/task/<tid>/comm.
+    std::string hostProfThreadName(int tid)
+    {
+        char path[64];
+        std::snprintf(path, sizeof(path), "/proc/self/task/%d/comm", tid);
+        std::ifstream f(path);
+        std::string name;
+        std::getline(f, name);
+        return name;
+    }
+
+    // -> samples consumed. Everything the handlers have published since the last call.
+    uint64_t hostProfDrain(std::unordered_map<uint64_t, uint32_t> &counts,
+                           std::unordered_map<std::string, uint32_t> &stackCounts,
+                           std::unordered_map<int, uint64_t> &perThread, bool stacks)
+    {
+        const uint64_t head = g_hostProfWrite.load(std::memory_order_acquire);
+        if (head - g_hostProfRead > kHostProfRing)
+        {
+            g_hostProfLost += head - g_hostProfRead - kHostProfRing;
+            g_hostProfRead = head - kHostProfRing;
+        }
+        uint64_t n = 0;
+        for (; g_hostProfRead < head; ++g_hostProfRead)
+        {
+            HostProfSample &s = g_hostProfRing[g_hostProfRead & (kHostProfRing - 1u)];
+            const uint64_t rip = s.rip.load(std::memory_order_acquire);
+            if (!rip)
+            {
+                // The handler reserved the slot but has not published it yet: one lost sample.
+                ++g_hostProfLost;
+                continue;
+            }
+            ++counts[rip];
+            ++perThread[static_cast<int>(s.tid)];
+            if (stacks && s.frameCount > 0)
+            {
+                std::string key;
+                key.reserve(s.frameCount * 13u);
+                char b[24];
+                for (uint32_t i = 0; i < s.frameCount && i < kHostProfMaxFrames; ++i)
+                {
+                    std::snprintf(b, sizeof(b), "%llx", static_cast<unsigned long long>(s.frames[i]));
+                    if (i)
+                        key += ';';
+                    key += b;
+                }
+                ++stackCounts[key];
+            }
+            s.rip.store(0, std::memory_order_relaxed);
+            ++n;
+        }
+        return n;
+    }
+}
+#endif
+
 // PS2X_HOST_PROF=<ms>: sample the game thread's host instruction pointer every <ms> (SuspendThread +
 // GetThreadContext) and write the histogram to PS2X_HOST_PROF_OUT (default logs/hostprof.txt) every
 // 10 s: "rva count" lines, RVA relative to the exe's load address, plus the load address itself.
 // Symbolize offline with tools_py/hostprof_symbolize.py (llvm-nm on dist/socom2.exe). Guest-level
 // samplers only say which recompiled function is hot; this says which *host* code is hot inside it.
-void ps2HostProfStart(void *nativeHandle)
+void ps2HostProfStart(std::thread::native_handle_type nativeHandle)
 {
+#ifdef _WIN32
     const char *env = std::getenv("PS2X_HOST_PROF");
     if (!env || !*env)
         return;
@@ -1917,4 +2241,157 @@ void ps2HostProfStart(void *nativeHandle)
             }
         }
     }).detach();
+#elif defined(__linux__) && defined(__x86_64__)
+    // The Linux half (Sprint 8 Goal 1 design item 3). Same environment knobs, same [host-prof] line,
+    // same hostprof.txt shape, so tools_py/hostprof_symbolize.py reads either platform's file.
+    const char *env = std::getenv("PS2X_HOST_PROF");
+    if (!env || !*env)
+        return;
+    const double periodMs = std::max(0.2, std::atof(env));
+    const char *outEnv = std::getenv("PS2X_HOST_PROF_OUT");
+    const std::string outPath = outEnv && *outEnv ? outEnv : "logs/hostprof.txt";
+    const bool allThreads = std::getenv("PS2X_HOST_PROF_ALL") != nullptr;
+    const bool mainThread = std::getenv("PS2X_HOST_PROF_MAIN") != nullptr;
+    const bool stacks = std::getenv("PS2X_HOST_PROF_STACKS") != nullptr;
+    // nativeHandle is the game thread pthread_t, which no call turns into a kernel tid; the tid was
+    // recorded on the thread itself when it named itself GameThread (include/ThreadNaming.h), which
+    // is where the Windows path duplicates the thread handle.
+    (void)nativeHandle;
+    const int mainTid = ThreadNaming::currentThreadTid();
+    const uint64_t base = hostProfModuleBase();
+    g_hostProfStacks.store(stacks, std::memory_order_relaxed);
+    std::cout << "[host-prof] sampling every " << periodMs << " ms -> " << outPath << " (base 0x" << std::hex << base << std::dec
+              << (allThreads ? ", all threads" : "") << ")" << std::endl;
+    std::thread([periodMs, outPath, base, allThreads, mainThread, stacks, mainTid]() {
+        // No TIME_CRITICAL equivalent is needed: the kernel timer takes the samples, this thread
+        // only drains the ring and writes the file.
+        if (!hostProfInstallSignal())
+        {
+            std::cerr << "[host-prof] sigaction(SIGPROF) failed: " << errno << std::endl;
+            return;
+        }
+        if (stacks)
+        {
+            void *warm[4];
+            (void)::backtrace(warm, 4);   // libgcc allocates on the first unwind, never in the handler
+        }
+        const int selfTid = ThreadNaming::currentThreadTid();
+        int eeTid = mainThread ? mainTid : 0;
+        if (!mainThread)
+        {
+            // ps2HostProfStart is called right after the game thread is created; wait (up to 5 s)
+            // for it to name itself.
+            for (int i = 0; i < 1000 && eeTid == 0; ++i)
+            {
+                eeTid = ThreadNaming::gameThreadTid();
+                if (eeTid == 0)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            }
+            if (eeTid == 0)
+            {
+                std::cerr << "[host-prof] the game thread never named itself; nothing to sample" << std::endl;
+                return;
+            }
+        }
+        std::unordered_map<int, timer_t> timers;
+        if (!allThreads)
+        {
+            timer_t t{};
+            if (!hostProfArmTimer(eeTid, periodMs, &t))
+            {
+                std::cerr << "[host-prof] timer_create failed: " << errno << std::endl;
+                return;
+            }
+            timers[eeTid] = t;
+        }
+        std::unordered_map<uint64_t, uint32_t> counts;
+        std::unordered_map<std::string, uint32_t> stackCounts;
+        std::unordered_map<int, uint64_t> perThread;
+        uint64_t total = 0;
+        auto lastDump = std::chrono::steady_clock::now();
+        auto lastScan = std::chrono::steady_clock::time_point{};
+        for (;;)
+        {
+            std::this_thread::sleep_for(std::chrono::duration<double, std::milli>(std::max(1.0, periodMs)));
+            const auto now = std::chrono::steady_clock::now();
+            if (allThreads && now - lastScan >= std::chrono::seconds(2))
+            {
+                // The mirror of the Toolhelp thread snapshot: every task of this process.
+                lastScan = now;
+                if (DIR *d = ::opendir("/proc/self/task"))
+                {
+                    while (const dirent *e = ::readdir(d))
+                    {
+                        const int tid = std::atoi(e->d_name);
+                        if (tid <= 0 || tid == selfTid || timers.count(tid))
+                            continue;
+                        timer_t t{};
+                        if (hostProfArmTimer(tid, periodMs, &t))
+                            timers[tid] = t;
+                    }
+                    ::closedir(d);
+                }
+            }
+            total += hostProfDrain(counts, stackCounts, perThread, stacks);
+            if (now - lastDump >= std::chrono::seconds(10))
+            {
+                lastDump = now;
+                std::vector<std::pair<uint64_t, uint32_t>> v(counts.begin(), counts.end());
+                std::sort(v.begin(), v.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+                std::ofstream f(outPath + ".tmp", std::ios::trunc);
+                f << "base 0x" << std::hex << base << std::dec << " total " << total << "\n";
+                size_t n = 0;
+                for (const auto &kv : v)
+                {
+                    // dladdr is the mirror of GetModuleHandleExW(FROM_ADDRESS) + GetModuleFileNameA.
+                    Dl_info dli;
+                    const bool known = ::dladdr(reinterpret_cast<void *>(kv.first), &dli) != 0 && dli.dli_fbase != nullptr;
+                    const uint64_t modBase = known ? reinterpret_cast<uint64_t>(dli.dli_fbase) : 0ull;
+                    if (known && modBase == base)
+                        f << std::hex << kv.first - base << std::dec << " " << kv.second << "\n";
+                    else
+                    {
+                        const char *name = known ? dli.dli_fname : nullptr;
+                        const char *slash = name ? std::strrchr(name, '/') : nullptr;
+                        f << std::hex << kv.first << std::dec << " " << kv.second << " ext " << (name ? (slash ? slash + 1 : name) : "?")
+                          << "+0x" << std::hex << (modBase ? kv.first - modBase : 0ull) << std::dec << "\n";
+                    }
+                    if (++n >= 40000u)
+                        break;
+                }
+                if (stacks)
+                {
+                    std::vector<std::pair<std::string, uint32_t>> sv(stackCounts.begin(), stackCounts.end());
+                    std::sort(sv.begin(), sv.end(), [](const auto &a, const auto &b) { return a.second > b.second; });
+                    size_t m = 0;
+                    for (const auto &kv : sv)
+                    {
+                        f << "stack " << kv.second << " " << kv.first << "\n";
+                        if (++m >= 20000u)
+                            break;
+                    }
+                }
+                if (allThreads)
+                {
+                    for (const auto &kv : perThread)
+                        f << "thread " << kv.first << " " << kv.second << " " << hostProfThreadName(kv.first) << "\n";
+                }
+                f.close();
+                std::error_code ec;
+                std::filesystem::rename(outPath + ".tmp", outPath, ec);
+                if (ec)
+                {
+                    std::filesystem::remove(outPath, ec);
+                    std::filesystem::rename(outPath + ".tmp", outPath, ec);
+                }
+            }
+        }
+    }).detach();
+#else
+    // Any other UNIX (no ucontext gregs / no POSIX timers we can point at one thread): a no-op that
+    // says so once, rather than a silent knob.
+    (void)nativeHandle;
+    if (const char *env = std::getenv("PS2X_HOST_PROF"); env && *env)
+        std::cout << "[host-prof] not supported on this platform; PS2X_HOST_PROF ignored" << std::endl;
+#endif
 }
