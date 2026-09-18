@@ -15,6 +15,14 @@ spec: docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md
 plan: docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md (Goal 1; the other goals' plans follow when Goal 1 lands)
 human tasks: docs/HUMAN_TASKS.md (seven open; the newest asks for WSL2 or a real Linux box -- superseded in part by the VM below)
 
+**Goal 1 status, 2026-09-18 15:20:** the Linux CI job is green end to end (35352725720: the whole tree compiles on
+ubuntu-24.04, Python 1205 OK, C++ 554/554). In the VM: the runner built (224 MB), the game boots under X on Mesa GL 4.1
+with the probe passing, its exported boot frame matches the Windows export at 0.008 (bar 3), the C++ suite runs to its
+end under AddressSanitizer at 554/554 after the double free it caught was fixed (a real bug on Windows too), the
+tarball unpacks and self-tests from a fresh directory with every library resolved from its own lib/. Left: the gate's
+title stage inside the VM (Task 10, the audio bar with it by R106), the launcher's real run from the tarball with Launch
+pressed (Task 11), the close-out (Task 12). The owner's real-Linux or Steam Deck run is the one hands-on item.
+
 **Goal 1, the client on Linux** (owner 2026-09-18: "add linux support to the installer/launcher"; "feel free to add a
 linux machine" to VirtualBox). Read as the whole client -- launcher and runtime -- as a portable tarball, since there is
 no installer on Windows yet either. Verification in three rings: GitHub Actions on ubuntu-24.04 for the library, tests
