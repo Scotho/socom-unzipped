@@ -749,6 +749,8 @@ git push
 
 ## Task 4 — The launcher's POSIX glue (spec Design item 4)
 
+*(landed 2026-09-18: fcd3ea2 -- posix_spawn glue, mergeEnvironment shared and tested on Windows; the POSIX bodies run first in CI and the VM; R100's GameProcess shape adopted)*
+
 **Files:**
 - Modify: `third_party/ps2recomp/ps2xLauncher/src/posix_glue.cpp` (Task 1's stub, filled in), `third_party/ps2recomp/ps2xLauncher/include/launcher/launcher_config.h` (:77, the declaration goes beside `environmentFor`), `third_party/ps2recomp/ps2xLauncher/src/launcher_config.cpp` (:285-320, beside `environmentFor`), `third_party/ps2recomp/ps2xTest/CMakeLists.txt` (after :124, the UNIX sources), `third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp` (the `Launcher` case)
 - Read only: `third_party/ps2recomp/ps2xLauncher/src/win32_glue.h` (:9-32, the contract), `third_party/ps2recomp/ps2xLauncher/src/win32_glue.cpp` (:18-207, the Windows body this mirrors — the environment merge at :126-159, the log at :160-169, the child at :170-191)
@@ -759,7 +761,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ tests.** In `launcher_tests.cpp`, inside the `Launcher` case. First the shared one, which runs on both platforms:
+- [x] **Step 1: Write the failing C++ tests.** In `launcher_tests.cpp`, inside the `Launcher` case. First the shared one, which runs on both platforms:
 
 ```cpp
         // Sprint 8 Goal 1 design item 4: the child's environment is the current block plus our knobs,
@@ -815,7 +817,7 @@ git push
 
   Add `#include "win32_glue.h"` and `#include <filesystem>` to `launcher_tests.cpp`'s include block (:1-15) — the first under `#ifndef _WIN32` is not needed, the header itself is portable.
 
-- [ ] **Step 2: Teach `ps2x_tests` about the glue on UNIX.** In `ps2xTest/CMakeLists.txt`, after :124:
+- [x] **Step 2: Teach `ps2x_tests` about the glue on UNIX.** In `ps2xTest/CMakeLists.txt`, after :124:
 
 ```cmake
 # Sprint 8 Goal 1 Task 4: launcher_tests.cpp drives win32glue's POSIX half directly. The glue is not in
@@ -829,7 +831,7 @@ target_include_directories(ps2_test_lib PRIVATE ${CMAKE_SOURCE_DIR}/ps2xLauncher
 ```
   The last line is unconditional because `launcher_tests.cpp` (compiled into `ps2_test_lib`) now includes `win32_glue.h`, which lives in `ps2xLauncher/src/` on both platforms. On Windows `win32_glue.cpp` is not added here — nothing in the Windows test binary calls the glue, and the `#ifndef _WIN32` guard means nothing tries.
 
-- [ ] **Step 3: Run the tests and watch them fail.**
+- [x] **Step 3: Run the tests and watch them fail.**
 
 ```bash
 # Windows (the shared case only; the guarded two do not exist there)
@@ -839,7 +841,7 @@ git push && gh run watch <id> --exit-status
 ```
   Expected on Windows: a **link** error, `undefined reference to 'launcher::mergeEnvironment(char const* const*, std::vector<std::string...> const&)'`. Expected on Linux: the same link error, and — once `mergeEnvironment` exists but the glue is still Task 1's stub — two assertion failures naming their messages: `the message must name the exact path it looked for, not just 'socom2 is missing'` (the stub says `launching is not implemented on this platform yet`) and, if the test binary is run from a directory that is not the build tree, `on Linux it is absolute (/proc/self/exe is)`. Both are the RED this task closes.
 
-- [ ] **Step 4: Implement `mergeEnvironment`** in `launcher_config.cpp`, next to `environmentFor` (after :320), declared in `launcher_config.h` beside :77:
+- [x] **Step 4: Implement `mergeEnvironment`** in `launcher_config.cpp`, next to `environmentFor` (after :320), declared in `launcher_config.h` beside :77:
 
 ```cpp
     std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
@@ -865,7 +867,7 @@ git push && gh run watch <id> --exit-status
     }
 ```
 
-- [ ] **Step 5: Implement `posix_glue.cpp`.** Replace Task 1's stub body. The choice that needs stating, and does so in the file: **`posix_spawn`, not `fork`+`exec`.**
+- [x] **Step 5: Implement `posix_glue.cpp`.** Replace Task 1's stub body. The choice that needs stating, and does so in the file: **`posix_spawn`, not `fork`+`exec`.**
 
 ```cpp
 // Sprint 8 Goal 1 design item 4: the launcher's POSIX half -- the same win32glue interface, on POSIX
@@ -1121,7 +1123,7 @@ namespace win32glue
 ```
   `<fcntl.h>` and `<cerrno>` belong in the include list above; add them. Note what this deliberately does **not** do: it never writes to `game.log` as a file handle (there is no handle to keep — the child owns the fd), which is why `log` is free to carry the latched status.
 
-- [ ] **Step 6: Green on both.**
+- [x] **Step 6: Green on both.**
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "T4: build.sh test" -- ./build.sh test
@@ -1129,7 +1131,7 @@ git push && gh run watch <id> --exit-status
 ```
   Expected: Windows 551 cases (the shared `mergeEnvironment` case only), 0 failed, `dist/` hashes unchanged; CI 553 cases (the shared one plus the two guarded), 0 failed, and the `socom-unzipped-launcher-linux` artifact attached.
 
-- [ ] **Step 7: Commit** (record the `GameProcess` field reuse as ruling **R100**).
+- [x] **Step 7: Commit** (record the `GameProcess` field reuse as ruling **R100**).
 
 ```bash
 git commit -m "feat(launcher): the POSIX half of win32glue
