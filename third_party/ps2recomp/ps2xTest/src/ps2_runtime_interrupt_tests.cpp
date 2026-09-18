@@ -71,6 +71,10 @@ namespace
     constexpr uint32_t kQueueResumePc = 0x00160610u;
     constexpr uint32_t kQueuedCallbackAPc = 0x00160620u;
     constexpr uint32_t kQueuedCallbackBPc = 0x00160630u;
+    constexpr uint32_t kSliceSetupPc = 0x00160800u;
+    constexpr uint32_t kSliceRunnerPc = 0x00160810u;
+    constexpr uint32_t kSliceEqualPc = 0x00160820u;
+    constexpr uint32_t kSliceHigherPc = 0x00160830u;
 
     constexpr uint32_t kTimer2Count = 0x10001000u;
     constexpr uint32_t kTimer2Mode = 0x10001010u;
@@ -92,6 +96,18 @@ namespace
     uint64_t g_vsyncTick = 0;
     uint64_t g_vsyncCsr = 0;
     std::atomic<bool> g_timer2Resumed{false};
+
+    // Task 2a (audit 2026-09-17 section 2.3): the time slice must expire only for a STRICTLY higher-priority
+    // ready thread. A lower priority number is higher priority in this scheduler (requestPreemptionIfHigher
+    // preempts when readyThread.currentPriority < running->currentPriority).
+    int g_sliceRunnerId = 0;
+    int g_sliceEqualId = 0;
+    int g_sliceHigherId = 0;
+    int g_sliceDispatches = 0;
+    int g_sliceEqualDueMin = -1;   // fewest expiries seen in one dispatch while only an equal-priority thread was ready
+    int g_sliceHigherDue = 0;      // expiries seen once the strictly higher-priority thread was ready
+    int g_sliceSuspendResult = 1;
+    int g_sliceResumeResult = 1;
 
     void setRegU32(R5900Context &ctx, int reg, uint32_t value)
     {
@@ -256,6 +272,101 @@ namespace
         g_dispatchTrace.push_back(3);
         ctx->pc = 0u;
         runtime->requestStop();
+    }
+
+    // Task 2a. Burns `slices` full time slices of guest time at the checkpoint the recompiled code calls, and
+    // returns how many of those checkpoints reported a reschedule was due. The guest clock follows wall time by
+    // default (accountCycles), so one slice (65536 cycles) is ~0.22 ms of spinning here.
+    int burnSlices(EeScheduler &scheduler, int slices)
+    {
+        const uint64_t target =
+            scheduler.eeCycleNow() + static_cast<uint64_t>(slices) * EeScheduler::kDefaultTimeSliceCycles;
+        const auto hostLimit = std::chrono::steady_clock::now() + std::chrono::milliseconds(250);
+        int due = 0;
+        while (scheduler.eeCycleNow() < target)
+        {
+            if (scheduler.checkpointDue(static_cast<uint32_t>(EeScheduler::kDefaultTimeSliceCycles)))
+            {
+                ++due;
+            }
+            if (std::chrono::steady_clock::now() > hostLimit)
+            {
+                break;   // host-stall guard, not a timing assertion
+            }
+        }
+        return due;
+    }
+
+    // The runner holds the CPU at priority 40 with an equal-priority thread ready the whole time. It goes back
+    // through the dispatcher between bursts, which is where the scheduler acts on an expired slice: if the slice
+    // expires for the equal-priority thread, the run loop preempts the runner there and the trace interleaves.
+    void sliceRunner(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        EeScheduler &scheduler = runtime->eeScheduler();
+        if (g_sliceDispatches == 0)
+        {
+            g_dispatchTrace.push_back(1);
+        }
+        ++g_sliceDispatches;
+
+        constexpr int kEqualBursts = 8;
+        constexpr int kSlicesPerBurst = 8;   // 8 x 8 = 64 full slices with an equal-priority thread ready
+        if (g_sliceDispatches <= kEqualBursts)
+        {
+            const int due = burnSlices(scheduler, kSlicesPerBurst);
+            if (g_sliceEqualDueMin < 0 || due < g_sliceEqualDueMin)
+            {
+                g_sliceEqualDueMin = due;
+            }
+            ctx->pc = kSliceRunnerPc;   // back through the dispatcher and straight back here
+            return;
+        }
+
+        g_sliceResumeResult = scheduler.resumeThread(g_sliceHigherId, false);   // a strictly higher thread is ready
+        g_sliceHigherDue = burnSlices(scheduler, kSlicesPerBurst);
+        g_dispatchTrace.push_back(2);
+        ctx->pc = 0u;
+    }
+
+    void sliceEqualThread(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        g_dispatchTrace.push_back(3);
+        ctx->pc = 0u;
+        runtime->requestStop();
+    }
+
+    void sliceHigherThread(uint8_t *, R5900Context *ctx, PS2Runtime *)
+    {
+        g_dispatchTrace.push_back(4);
+        ctx->pc = 0u;
+    }
+
+    void sliceSetup(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        EeScheduler &scheduler = runtime->eeScheduler();   // the main thread is priority 0: both of these are lower
+        EeThreadCreateParams runner{};
+        runner.entry = kSliceRunnerPc;
+        runner.stack = 0x1F000u;
+        runner.stackSize = 0x1000u;
+        runner.priority = 40;
+        g_sliceRunnerId = scheduler.createThread(runner);
+
+        EeThreadCreateParams equal = runner;
+        equal.entry = kSliceEqualPc;
+        equal.stack = 0x1F800u;
+        g_sliceEqualId = scheduler.createThread(equal);
+
+        EeThreadCreateParams higher = runner;
+        higher.entry = kSliceHigherPc;
+        higher.stack = 0x20000u;
+        higher.priority = 20;   // a lower number: strictly higher priority
+        g_sliceHigherId = scheduler.createThread(higher);
+
+        scheduler.startThread(g_sliceRunnerId, 0u, *ctx, false);
+        scheduler.startThread(g_sliceEqualId, 0u, *ctx, false);
+        scheduler.startThread(g_sliceHigherId, 0u, *ctx, false);
+        g_sliceSuspendResult = scheduler.suspendThread(g_sliceHigherId, false);   // held out of the ready queue
+        ctx->pc = 0u;   // the main thread is done; the runner is picked first (queued ahead of the equal thread)
     }
 
     void schedulerISemaHandler(uint8_t *, R5900Context *ctx, PS2Runtime *runtime)
@@ -613,6 +724,39 @@ void register_ps2_runtime_interrupt_tests()
 
             const std::vector<int> expected{1, 2, 3};
             t.IsTrue(g_dispatchTrace == expected, "main yields, the low-priority thread runs, main resumes at its return site");
+        });
+
+        // Audit 2026-09-17 section 2.3 (EeScheduler.cpp:371-402): equal-priority threads were round-robined every
+        // 65536 cycles (0.22 ms). The PS2 kernel never time-slices; equal-priority threads run until they block or
+        // rotate, so a pair of equal-priority SOCOM threads sharing an unlocked structure must not interleave here.
+        tc.Run("equal-priority threads are not time-sliced; a higher one preempts", [](TestCase &t)
+        {
+            TestEnv env;
+            env.runtime.registerFunction(kSliceSetupPc, sliceSetup);
+            env.runtime.registerFunction(kSliceRunnerPc, sliceRunner);
+            env.runtime.registerFunction(kSliceEqualPc, sliceEqualThread);
+            env.runtime.registerFunction(kSliceHigherPc, sliceHigherThread);
+
+            g_dispatchTrace.clear();
+            g_sliceDispatches = 0;
+            g_sliceEqualDueMin = -1;
+            g_sliceHigherDue = 0;
+            g_sliceSuspendResult = 1;
+            g_sliceResumeResult = 1;
+            R5900Context mainContext{};
+            mainContext.pc = kSliceSetupPc;
+            env.runtime.eeScheduler().reset(env.rdram.data(), mainContext);
+            env.runtime.eeScheduler().run();
+
+            t.Equals(g_sliceSuspendResult, 0, "the higher-priority thread should suspend cleanly");
+            t.Equals(g_sliceResumeResult, 0, "the higher-priority thread should resume cleanly");
+            t.Equals(g_sliceEqualDueMin, 0,
+                     "the slice must not expire for an equal-priority ready thread: the PS2 kernel never time-slices");
+            t.IsTrue(g_sliceHigherDue > 0,
+                     "the slice must expire once a strictly higher-priority thread is ready");
+            const std::vector<int> expected{1, 2, 4, 3};
+            t.IsTrue(g_dispatchTrace == expected,
+                     "the runner keeps the CPU to the end (1,2), then the higher-priority thread (4), then the equal one (3)");
         });
 
         tc.Run("iSignalSema defers selection until IRQ return", [](TestCase &t)
