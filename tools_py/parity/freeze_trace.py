@@ -74,7 +74,17 @@ DEFAULT_MIN_STALL_S = 2.0
 _TAGS = ("peek", "pc-sampler", "call", "ret")
 _SPLIT = re.compile(r"(?=\[(?:%s)\] )" % "|".join(re.escape(t) for t in _TAGS))
 _SAMPLER = re.compile(r"^\[pc-sampler\] live pc=0x([0-9a-fA-F]+).*? running=(-?\d+) threads:(.*)$")
-_THREAD = re.compile(r"\[(\d+) pc=0x([0-9a-fA-F]+) ra=0x[0-9a-fA-F]+ sp=0x[0-9a-fA-F]+ st=(\d+) wait=(\d+)/(\d+)\]")
+# Sprint 7 Task 2e (research/29 section 4 items 1-8): the freeze fields the sampler gained, all optional so a log
+# from before the change still parses. `t`/`ee` are seconds, `dpc` hex, `net_wait` is "<0|1>/<cumulative ms>".
+_FIELD_FLOAT = ("t", "ee")
+_FIELD_INT = ("vsync", "seq", "idle", "bp_pending", "bp_waiters", "bp_wait_ms")
+_FIELDS = re.compile(r"\b(t|vsync|ee|seq|dpc|idle|bp_pending|bp_waiters|bp_wait_ms|net_wait)="
+                     r"(0x[0-9a-fA-F]+|\d+/\d+|-?\d+(?:\.\d+)?)")
+FREEZE_FIELDS = _FIELD_FLOAT + _FIELD_INT + ("dpc", "net_wait", "net_wait_ms")
+# Sprint 7 Task 2a put a prio= field between st= and wait= in the thread table; a log from before it has none,
+# so the field is optional here and BOTH shapes of log read the same (without this the table parses as empty).
+_THREAD = re.compile(r"\[(\d+) pc=0x([0-9a-fA-F]+) ra=0x[0-9a-fA-F]+ sp=0x[0-9a-fA-F]+ st=(\d+)"
+                     r"(?: prio=-?\d+)? wait=(\d+)/(\d+)\]")
 
 
 def _segments(raw):
@@ -98,7 +108,77 @@ def _row_clock(items):
     return None, None
 
 
+def _sampler_fields(seg):
+    """The freeze fields of one [pc-sampler] segment; every key is present, None when the line predates them."""
+    out = {k: None for k in FREEZE_FIELDS}
+    for key, raw in _FIELDS.findall(seg):
+        if key == "dpc":
+            out["dpc"] = int(raw, 16)
+        elif key == "net_wait":
+            flag, _, ms = raw.partition("/")
+            out["net_wait"] = int(flag)
+            out["net_wait_ms"] = int(ms)
+        elif key in _FIELD_FLOAT:
+            out[key] = float(raw)
+        else:
+            out[key] = int(raw)
+    return out
+
+
 def parse(lines):
+    """-> [row] for every [pc-sampler] line, in order: live_pc, running, threads {tid: (pc, st, wait)} and the
+    Sprint 7 freeze fields (t, vsync, ee, seq, dpc, idle, bp_pending, bp_waiters, bp_wait_ms, net_wait,
+    net_wait_ms), each None on a log written before the sampler printed them. classify() reads these rows."""
+    rows = []
+    for raw in lines:
+        for seg in _segments(raw):
+            if not seg.startswith("[pc-sampler] "):
+                continue
+            m = _SAMPLER.match(seg)
+            if not m:
+                continue
+            row = {"live_pc": int(m.group(1), 16), "running": int(m.group(2)),
+                   "threads": {int(tid): (int(pc, 16), int(st), int(wr))
+                               for tid, pc, st, wr, _ in _THREAD.findall(m.group(3))}}
+            row.update(_sampler_fields(seg))
+            rows.append(row)
+    return rows
+
+
+def _flat(rows, key):
+    """True when every row carries `key` and they are all equal (>= 2 rows)."""
+    vals = [r.get(key) for r in rows]
+    return len(vals) >= 2 and all(v is not None and v == vals[0] for v in vals)
+
+
+def _climbing(rows, key):
+    vals = [r.get(key) for r in rows if r.get(key) is not None]
+    return len(vals) >= 2 and vals[-1] > vals[0]
+
+
+def classify(rows):
+    """Which of research/29's two freeze shapes a window of sampler rows is, from the fields alone:
+      "net-wait"          -- seq frozen, dpc frozen, net_wait=1: the guest is inside the blocking libnetb
+                             waitReadable poll (shape 2); no guest instruction runs, the thread table is stale.
+      "host-load"         -- vsync flat, a producer inside the GS back-pressure wait (bp_waiters >= 1) and
+                             bp_wait_ms climbing: the GL thread is starved by the host (shape 1, by design).
+      "runtime-oversleep" -- vsync flat, nobody in the back-pressure wait, idle climbing: the EE executor is
+                             sitting in waitForEvent (shape 1, a runtime wait to fix).
+      "unknown"           -- fewer than two rows, no freeze fields (a log from before Task 2e), or no match."""
+    rows = [r for r in rows if isinstance(r, dict)]
+    if len(rows) < 2:
+        return "unknown"
+    if all(r.get("net_wait") == 1 for r in rows) and _flat(rows, "seq") and _flat(rows, "dpc"):
+        return "net-wait"
+    if _flat(rows, "vsync"):
+        if any((r.get("bp_waiters") or 0) >= 1 for r in rows) and _climbing(rows, "bp_wait_ms"):
+            return "host-load"
+        if all(r.get("bp_waiters") == 0 for r in rows) and _climbing(rows, "idle"):
+            return "runtime-oversleep"
+    return "unknown"
+
+
+def parse_log(lines):
     """-> dict(rows=[(index, items)], samplers=[(row index, live_pc, running, {tid: (pc, st, wait)})],
     netidle=[(frac index, n, ms)], anchors=[(frac index, host t)], calls={name: [(frac index, t, n)]}).
     A sampler line is attributed to the peek row that FOLLOWS it (the sampler prints its pc line, then the row);
@@ -116,7 +196,9 @@ def parse(lines):
                 m = _SAMPLER.match(seg)
                 if m:
                     threads = {int(tid): (int(pc, 16), int(st), int(wr)) for tid, pc, st, wr, _ in _THREAD.findall(m.group(3))}
-                    samplers.append((pi, int(m.group(1), 16), int(m.group(2)), threads))
+                    row = {"live_pc": int(m.group(1), 16), "running": int(m.group(2)), "threads": threads}
+                    row.update(_sampler_fields(seg))
+                    samplers.append((pi, int(m.group(1), 16), int(m.group(2)), threads, row))
             elif seg.startswith("[call] "):
                 m = vc._CALL.match(seg)
                 if m:
@@ -162,17 +244,18 @@ def windows(lines, min_stall_s=DEFAULT_MIN_STALL_S, sampler_period=vc.SAMPLER_PE
       guest_clock_before (the value the clock held through the stall), guest_clock_after (the first value after it,
       None when the log ends in the stall), clock_source, main_pc (thread 1's most common sampled pc in the window),
       main_pc_share (its fraction of the window's samples), live_pc (the most common live pc), samples,
-      idle_share (fraction of samples with running=0), netidle_peak_ms (largest NetIdle v0 logged in the window,
+      shape (classify() over the window's sampler rows: "net-wait" / "host-load" / "runtime-oversleep" /
+      "unknown"), idle_share (fraction of samples with running=0), netidle_peak_ms (largest NetIdle v0 logged in the window,
       None if none), netidle_calls, movescale_calls."""
-    p = parse(lines)
+    p = parse_log(lines)
     rows = p["rows"]
     if len(rows) < 2:
         return []
     clock = vc._make_clock(p["anchors"], sampler_period)
     vals, srcs = zip(*(_row_clock(items) for _, items in rows))
     by_row = collections.defaultdict(list)
-    for ri, live, running, threads in p["samplers"]:
-        by_row[ri].append((live, running, threads))
+    for ri, live, running, threads, row in p["samplers"]:
+        by_row[ri].append((live, running, threads, row))
     idle_idx = sorted(p["netidle"])
     idle_pos = [r[0] for r in idle_idx]
     ms_idx = sorted(p["calls"].get("MoveScale", []))
@@ -183,9 +266,9 @@ def windows(lines, min_stall_s=DEFAULT_MIN_STALL_S, sampler_period=vc.SAMPLER_PE
         if t1 - t0 < min_stall_s:
             continue
         samples = [s for r in range(a, b + 1) for s in by_row.get(r, [])]
-        main_pc, main_n = _mode([th[MAIN_THREAD_ID][0] for _, _, th in samples if MAIN_THREAD_ID in th])
-        live_pc, _ = _mode([live for live, _, _ in samples])
-        idle = sum(1 for _, running, _ in samples if running == 0)
+        main_pc, main_n = _mode([th[MAIN_THREAD_ID][0] for _, _, th, _ in samples if MAIN_THREAD_ID in th])
+        live_pc, _ = _mode([live for live, _, _, _ in samples])
+        idle = sum(1 for _, running, _, _ in samples if running == 0)
         lo, hi = a - 0.5, b + 0.5
         idle_here = idle_idx[bisect.bisect_left(idle_pos, lo):bisect.bisect_right(idle_pos, hi)]
         ms_here = ms_idx[bisect.bisect_left(ms_pos, lo):bisect.bisect_right(ms_pos, hi)]
@@ -198,6 +281,7 @@ def windows(lines, min_stall_s=DEFAULT_MIN_STALL_S, sampler_period=vc.SAMPLER_PE
             "main_pc": main_pc, "main_pc_share": (main_n / len(samples)) if samples else None,
             "live_pc": live_pc, "samples": len(samples),
             "idle_share": (idle / len(samples)) if samples else None,
+            "shape": classify([row for _, _, _, row in samples]),
             "netidle_peak_ms": max((ms for _, _, ms in idle_here), default=None),
             "netidle_calls": len(idle_here),
             "movescale_calls": len(ms_here),
@@ -213,7 +297,7 @@ PEER_SLACK_S = 10.0     # 8c: the peer's NetIdle peak lands up to ~6 s after the
 
 def peer_netidle(peer_lines):
     """[(host t, n, ms)] of the peer log's NetIdle returns, stamped with their own [call] time (peer's epoch)."""
-    p = parse(peer_lines)
+    p = parse_log(peer_lines)
     t_of = {n: t for _, t, n in p["calls"].get("NetIdle", [])}
     return sorted((t_of[n], n, ms) for _, n, ms in p["netidle"] if n in t_of)
 
@@ -243,11 +327,12 @@ def format_window(w):
     peer = ""
     if "peer_netidle_peak_ms" in w:
         peer = " peer_netidle_peak=%s" % ("-" if w["peer_netidle_peak_ms"] is None else "%d ms" % w["peer_netidle_peak_ms"])
+    shape = "" if w.get("shape", "unknown") == "unknown" else " shape=%s" % w["shape"]
     return ("window rows %d..%d (%d rows) host %.2f-%.2f s stall=%.2fs clock %s -> %s [%s] main_pc=%s%s "
-            "netidle_peak=%s netidle_calls=%d movescale_calls=%d%s%s"
+            "netidle_peak=%s netidle_calls=%d movescale_calls=%d%s%s%s"
             % (w["start_row"], w["end_row"], w["rows"], w["t_start"], w["t_end"], w["stall_s"],
                _fmt_clock(w["guest_clock_before"]), _fmt_clock(w["guest_clock_after"]), w["clock_source"],
-               _fmt_pc(w["main_pc"]), share, peak, w["netidle_calls"], w["movescale_calls"], peer, kind))
+               _fmt_pc(w["main_pc"]), share, peak, w["netidle_calls"], w["movescale_calls"], shape, peer, kind))
 
 
 def summary(ws):

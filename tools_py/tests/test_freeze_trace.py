@@ -148,6 +148,51 @@ class WindowsTest(unittest.TestCase):
         self.assertEqual(ws[0]["netidle_peak_ms"], 0x2019)
 
 
+class SamplerFieldsTest(unittest.TestCase):
+    """Sprint 7 Task 2e: the [pc-sampler] line's freeze fields (research/29 section 4 items 1-8)."""
+
+    SAMPLE = ("[pc-sampler] live pc=0x350d90 ra=0x0 sp=0x0 t=612.50 vsync=41233 ee=612.10 seq=8891 "
+              "dpc=0x350d90 idle=140 bp_pending=0 bp_waiters=0 bp_wait_ms=12 net_wait=1/3300 running=3 threads:")
+
+    def test_the_new_sampler_fields_are_parsed(self):
+        row = ft.parse([self.SAMPLE])[0]
+        self.assertAlmostEqual(row["t"], 612.50)
+        self.assertEqual(row["vsync"], 41233)
+        self.assertEqual(row["seq"], 8891)
+        self.assertEqual(row["dpc"], 0x350d90)
+        self.assertEqual(row["bp_waiters"], 0)
+        self.assertEqual(row["net_wait"], 1)
+
+    def test_shape_two_classifies_as_net_wait(self):
+        rows = ft.parse([self.SAMPLE, self.SAMPLE.replace("t=612.50", "t=615.80")])
+        self.assertEqual(ft.classify(rows), "net-wait")
+
+    def test_a_host_load_window_classifies_as_host_load(self):
+        a = self.SAMPLE.replace("net_wait=1/3300", "net_wait=0/0").replace("bp_waiters=0", "bp_waiters=1")
+        b = a.replace("t=612.50", "t=615.80").replace("bp_wait_ms=12", "bp_wait_ms=3200").replace("seq=8891", "seq=9100")
+        self.assertEqual(ft.classify(ft.parse([a, b])), "host-load")
+
+    def test_a_runtime_oversleep_window_classifies_as_runtime_oversleep(self):
+        a = self.SAMPLE.replace("net_wait=1/3300", "net_wait=0/0")
+        b = a.replace("t=612.50", "t=615.80").replace("idle=140", "idle=9400").replace("seq=8891", "seq=9100")
+        self.assertEqual(ft.classify(ft.parse([a, b])), "runtime-oversleep")
+
+    def test_the_thread_table_parses_with_task_2as_prio_field(self):
+        line = (self.SAMPLE.replace("threads:", "threads:")
+                + " [1 pc=0x1a3b68 ra=0x33aa1c sp=0x1f7fd00 st=0 prio=48 wait=0/0]"
+                  " [2 pc=0x1a3a48 ra=0x3b1e00 sp=0x4b4560 st=2 prio=50 wait=1/0]")
+        row = ft.parse([line])[0]
+        self.assertEqual(row["threads"][1], (0x1a3b68, 0, 0))
+        self.assertEqual(row["threads"][2], (0x1a3a48, 2, 1))
+
+    def test_an_old_sampler_line_without_the_fields_still_parses(self):
+        rows = ft.parse([sampler(PARK_PC)])
+        self.assertEqual(len(rows), 1)
+        self.assertIsNone(rows[0]["t"])
+        self.assertIsNone(rows[0]["vsync"])
+        self.assertEqual(rows[0]["threads"][1][0], PARK_PC)
+
+
 class PeerTest(unittest.TestCase):
     def test_peer_netidle_peak_reads_the_other_log_over_the_window_plus_slack(self):
         peer = []

@@ -17,6 +17,7 @@
 //                                            binary without a rebuild.
 #pragma once
 #include <cstdint>
+#include <utility>
 
 struct R5900Context;
 class PS2Runtime;
@@ -28,6 +29,12 @@ namespace socom2_libnetb
 
     // Test only: forget the cached PS2X_SOCOM2_NET_STATS so the next call() re-reads the environment.
     void testResetKnobs();
+
+    // The pc-sampler's net_wait= field (research/29 section 4 item 8): {1 while a guest thread is inside one of
+    // the host-BLOCKING waits here (waitReadable's poll loop, 10 s cap for timeout < 0; doOpen's connect poll),
+    // else 0; cumulative milliseconds spent in them}. While the flag is 1 no guest instruction runs, so the
+    // sampled thread table and live pc are stale -- freeze shape 2 in docs/research/29-online-freeze.md.
+    std::pair<int, uint64_t> netWaitState();
 
     // EE function replacements (libnetb_ex path used by the SCE-RT platform layer).
     void exOpen(uint8_t *rdram, R5900Context *ctx, PS2Runtime *);        // FUN_002472c8
