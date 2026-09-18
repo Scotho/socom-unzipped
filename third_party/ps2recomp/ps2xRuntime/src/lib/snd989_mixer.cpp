@@ -34,6 +34,27 @@ namespace snd989
             return fseeko(fp, static_cast<off_t>(offset), SEEK_SET);
 #endif
         }
+
+        // Every stream file the mixer closes goes through here, and the count is the test's handle on the
+        // ownership: a file the mixer opened must be closed exactly once. A second fclose of the same FILE *
+        // is a double free (glibc aborts on it; the Windows allocator stayed quiet), so the counter is what a
+        // Windows test can see of it.
+        std::atomic<uint64_t> g_streamFileCloses{0};
+
+        void closeStreamFile(FILE *&fp)
+        {
+            if (fp)
+            {
+                std::fclose(fp);
+                g_streamFileCloses.fetch_add(1u, std::memory_order_relaxed);
+            }
+            fp = nullptr;
+        }
+    }
+
+    uint64_t Mixer::streamFileClosesForTest()
+    {
+        return g_streamFileCloses.load(std::memory_order_relaxed);
     }
 }
 
@@ -358,12 +379,7 @@ namespace snd989
             double step = 1.0;                       // file rate / output rate
 
             ~Stream() { closeFile(); }
-            void closeFile()
-            {
-                if (file)
-                    std::fclose(file);
-                file = nullptr;
-            }
+            void closeFile() { closeStreamFile(file); }
 
             // The producer's half of the old readChunkPair: reads and decodes the next chunk pair into `out`.
             // False at the end of the data, or with no file behind the stream. Never called from render().
@@ -1161,7 +1177,7 @@ namespace snd989
         uint8_t header[0x30] = {};
         if (seek64(fp, byteOffset) != 0 || std::fread(header, 1, sizeof(header), fp) != sizeof(header))
         {
-            std::fclose(fp);
+            closeStreamFile(fp);
             return false;
         }
         auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, header + at, 4); return v; };
@@ -1173,7 +1189,6 @@ namespace snd989
             std::lock_guard<std::mutex> lock(m_impl->mutex);
             m_impl->seenHandles.insert(handle);   // seen, whatever the file turns out to be
         }
-        st.file = fp;
         if (std::memcmp(header, " KPV", 4) == 0)
         {
             st.dataSize = u32(4);
@@ -1192,9 +1207,13 @@ namespace snd989
         }
         else
         {
-            std::fclose(fp);
+            closeStreamFile(fp);
             return false;
         }
+        // Only now does the Stream take the file: until the header is understood the open handle belongs to
+        // this call alone, which closes it on the refusal. Handing it over at the fopen left both owners
+        // closing it -- the refusal's fclose and then ~Stream's, a double free (ASan, Linux, 2026-09-18).
+        st.file = fp;
         st.group = group;
         st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
         st.s1.assign(st.channels, 0);

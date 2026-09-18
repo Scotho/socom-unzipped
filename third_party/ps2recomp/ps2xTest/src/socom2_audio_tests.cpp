@@ -719,7 +719,14 @@ void register_socom2_audio_tests()
                 std::fclose(fp);
             }
             snd989::Mixer mixer;
+            // Sprint 8: a refused playStream owns the file it opened for the length of the call and must close
+            // it exactly once. The refusal path used to fclose the handle the half-built Stream also held, so
+            // the Stream's destructor closed it a second time -- a double free glibc aborts on (Linux) and the
+            // Windows allocator never reported. Windows cannot see the second free, so it counts the closes.
+            const uint64_t closesBefore = snd989::Mixer::streamFileClosesForTest();
             t.IsTrue(!mixer.playStream(0x04000001u, path, 4u, 0x400, -1, 1u), "an offset that is not a VPK header is refused");
+            t.Equals(snd989::Mixer::streamFileClosesForTest() - closesBefore, static_cast<uint64_t>(1u),
+                     "the refused stream closes its file exactly once (twice is the double free)");
             t.IsTrue(mixer.playStream(0x04000001u, path, 0u, 0x400, -1, 1u), "the stream starts");
             mixer.pumpStreams();   // the worker's job, driven by hand: the whole file fits the ring
             t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one stream");

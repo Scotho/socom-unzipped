@@ -142,14 +142,37 @@ namespace
         // legitimately merge two VBlanks, so the loose bound is 2 per wake; right after the
         // re-anchor (R54, Minor 2) there must be exactly one: the re-anchored VBlank is a full
         // period away on both clocks, not already due.
+        //
+        // Sprint 8, the Linux port: a wake is only as prompt as the host's scheduler gives it, and on
+        // a VM sharing its cores (or under ASan) a wake lands tens of ms late and then carries every
+        // VBlank whose host period has already passed -- 3 to 6 of them, where an idle host sees 1.
+        // The same binary passes on a quiet VM and on Windows, so the bound below is per wake and is
+        // paid for in host time: one VBlank, plus one for each further period (with a quarter period
+        // of grace) that the wake itself was late by. The defect these two lines guard -- the
+        // re-anchored VBlank already due, delivered back to back with the next one -- costs no host
+        // time at all and still fails here. Wake 0's lateness is measured from the end of the stall,
+        // not from the wake before it: the stall itself is the excluded time the re-anchor drops.
+        auto ticksAllowed = [&](size_t k)
+        {
+            const auto since = (k == first && g_bpWakes[k - 1] < stalling->stallEnd) ? stalling->stallEnd : g_bpWakes[k - 1];
+            const double lateMs = std::chrono::duration<double, std::milli>(g_bpWakes[k] - since).count();
+            return 1u + static_cast<uint64_t>(lateMs / (16.667 * 1.25));
+        };
         uint64_t maxTicksPerWake = 0u;
+        bool everyWakeWithinItsHostTime = true;
         for (size_t k = first; k < first + 20; ++k)
-            maxTicksPerWake = std::max<uint64_t>(maxTicksPerWake, g_bpWakeTicks[k + 1] - g_bpWakeTicks[k]);
-        t.IsTrue(maxTicksPerWake <= 2u, "after the stall the guest must wake on every VBlank, saw up to " + std::to_string(maxTicksPerWake) + " VBlanks per wake");
+        {
+            const uint64_t wakeTicks = g_bpWakeTicks[k + 1] - g_bpWakeTicks[k];
+            maxTicksPerWake = std::max<uint64_t>(maxTicksPerWake, wakeTicks);
+            if (wakeTicks > std::max<uint64_t>(2u, ticksAllowed(k + 1)))
+                everyWakeWithinItsHostTime = false;
+        }
+        t.IsTrue(everyWakeWithinItsHostTime, "after the stall the guest must wake on every VBlank (no VBlank before its host period), saw up to " + std::to_string(maxTicksPerWake) + " VBlanks per wake");
         for (size_t k = first; k <= first + 1; ++k)
         {
             const uint64_t wakeTicks = g_bpWakeTicks[k] - g_bpWakeTicks[k - 1];
-            t.Equals(wakeTicks, uint64_t{1}, "the wakes right after the re-anchor must each see exactly one VBlank (no immediate second VBlank), wake " + std::to_string(k - first) + " saw " + std::to_string(wakeTicks));
+            const uint64_t allowed = ticksAllowed(k);
+            t.IsTrue(wakeTicks <= allowed, "the wakes right after the re-anchor must each see one VBlank per host period (no immediate second VBlank), wake " + std::to_string(k - first) + " saw " + std::to_string(wakeTicks) + " in " + std::to_string(allowed) + " periods of host time");
         }
 
         // R54: an idle guest sleeps between VBlanks after a wait. When the host deadline was ahead of

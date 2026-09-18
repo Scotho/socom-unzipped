@@ -68,6 +68,10 @@ namespace snd989
         void pumpStreams();
         // Closes every stream's file handle and keeps its ring: the seam the "plays with the handle closed" test needs.
         void closeStreamFilesForTest();
+        // How many stream files the mixer has closed, process-wide. A file playStream opened must be closed
+        // exactly once: closing it twice is the double free glibc caught on Linux and Windows did not report,
+        // and this counter is what a test can observe of the ownership on either platform.
+        static uint64_t streamFileClosesForTest();
 
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie
