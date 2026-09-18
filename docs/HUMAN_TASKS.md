@@ -109,6 +109,20 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   in that file the capture half works and only the game-side plumbing is missing -- which is the Sprint 8 job
   Task 9c's `docs/KNOWN.md` section 2 row scopes.
 
+- [ ] **Re-listen after the sound fixes** (Sprint 7 Task 12; your report of 2026-09-18 01:52: "sound is off on the online menu just after
+  signing in, skips and almost plays two different spliced segments"; "a persistent buzz during the create game playlist, also in
+  the lobby"; "mid mission, sound stopped working altogether"). What was found and fixed, each under a test: the buzz and the
+  splice were the menu-music ring replaying or skipping blocks when the game's fill ran late (the ring now plays a block once
+  per fill and counts misses); the mission going silent was two leaks of the game's stream slots (a stopped stream never freed
+  its slot; a stream that ended by itself never did either) plus the RPC init call wiping the whole sound model mid-mission
+  (every loaded bank gone -- 971 rejected sounds in your log). Numbers now standing against your three sentences: online menus
+  music continuous per screen, no repeat above 0.70 (bar 0.90), zero ring misses; mission log 0 unknown-bank rejects (was 971)
+  and 1 slot exhaustion (was 237), 29 streams played (was 12). One caveat: your buzz happened while the login screen ran at
+  12-30 fps, which the driven runs could not reproduce even under four spinning cores, so the ring's protection is proven by
+  its test, not by a launch. Please run the same path (`dist/socom_unzipped_launcher.exe`, online, sign in, create game,
+  lobby, then leave and play one mission) and report the same three things: the menu music, any buzz, whether mission sound
+  lasts. If the buzz is back, one line on whether the game looked slow at that moment.
+
 ## Done
 
 (none yet)

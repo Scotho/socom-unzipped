@@ -1268,6 +1268,11 @@ namespace ps2x::iop::detail
                         {
                             if (SoundSlot *slot = findSound(handle))
                                 slot->active = false;
+                            // A VAG stream the game let play to its end is never stopped: it polls here and
+                            // reuses the slot once the answer is "done". Free the model's slot with the answer,
+                            // or it leaks for the rest of the run (107 x "no free VAG stream slot", 2026-09-18).
+                            if (StreamSlot *stream = findStream(handle))
+                                stream->active = false;
                             return 0u;
                         }
                         return handle;
@@ -1509,6 +1514,26 @@ namespace ps2x::iop::detail
                 return 1u;
             }
 
+            // The console's IRX knows a stream has ended because it owns the mixer; our model has to ask the
+            // host the same question (IopHost::audioIsPlaying, answered from snd989::Mixer::isPlaying per
+            // handle -- the query snd_SoundIsStillPlaying already used for sounds). Without it only
+            // snd_StopSound ever frees a stream slot, and a stream that ends by itself leaks one forever.
+            void reapEndedStreams()
+            {
+                for (auto &slot : m_model.streams)
+                {
+                    if (!slot.active || slot.paused)
+                    {
+                        continue;
+                    }
+                    bool playing = false;
+                    if (m_host.audioIsPlaying(slot.handle, playing) && !playing)
+                    {
+                        slot.active = false;
+                    }
+                }
+            }
+
             uint32_t playVagStream(const CommandArgs &args)
             {
                 if (!m_model.streamingInitialised)
@@ -1516,6 +1541,9 @@ namespace ps2x::iop::detail
                     logWarning("snd_PlayVAGStreamByLoc before streaming init");
                     return 0u;
                 }
+                // Before the search, not only on the game's poll: a slot whose stream the mixer has finished is
+                // free even if the game has not asked about it yet.
+                reapEndedStreams();
                 const uint32_t parent = args.u32(5);
                 StreamSlot *target = nullptr;
                 if (parent != 0u)

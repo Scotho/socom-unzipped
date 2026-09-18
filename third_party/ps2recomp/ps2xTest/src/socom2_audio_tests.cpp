@@ -9,8 +9,12 @@
 #include "runtime/audio_volume.h"
 #include "runtime/host_mic.h"
 #include "ps2x/iop/iop_subsystem.h"
+#include "ps2_runtime.h"
+#include "ps2_iop_transport.h"
+#include "ps2_syscalls.h"
 
 #include <cmath>
+#include <cstring>
 
 #include <algorithm>
 #include <cstdio>
@@ -96,7 +100,7 @@ namespace
     // Its model -- bank table, sound slots, VAG stream slots -- is only reachable over its RPC
     // server (SID 0x00123456, one command per call), so the cases below drive it the way the game
     // does. A minimal host: guest memory and nothing else (no disc image, no mixer).
-    class Snd989TestHost final : public ps2x::iop::IopHost
+    class Snd989TestHost : public ps2x::iop::IopHost
     {
     public:
         std::vector<uint8_t> memory = std::vector<uint8_t>(0x10000u, 0u);
@@ -172,18 +176,38 @@ namespace
         uint32_t m_nextAlloc = 0x4000u;
     };
 
+    // Task 12b: the same minimal host with the one seam the runtime's PS2IopHostAdapter provides for the
+    // mixer -- audioNotify() reaches PS2AudioBackend::onNotify (which opens the VAG stream) and
+    // audioIsPlaying() is answered by snd989::Mixer::isPlaying, per handle. This is how the IOP model learns
+    // that a stream the game never stopped has played to its end.
+    class Snd989MixerHost final : public Snd989TestHost
+    {
+    public:
+        PS2AudioBackend backend;
+
+        void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+        {
+            backend.onNotify(function, args, count);
+        }
+        bool audioIsPlaying(uint32_t handle, bool &playing) const override
+        {
+            return backend.isPlaying(handle, playing);
+        }
+    };
+
     // One RPC call on the snd server, returning the module's result word.
-    struct Snd989Harness
+    template <typename HostT = Snd989TestHost>
+    struct Snd989HarnessT
     {
         static constexpr uint32_t kSid = 0x00123456u;
         static constexpr uint32_t kSend = 0x0800u;
         static constexpr uint32_t kReceive = 0x1000u;
 
-        Snd989TestHost host;
+        HostT host;
         ps2x::iop::IopSubsystem subsystem{host};
         bool configured = false;
 
-        Snd989Harness()
+        Snd989HarnessT()
         {
             std::string error;
             configured = subsystem.configure({"socom2_game.elf", 0u, 0u}, &error);
@@ -203,6 +227,77 @@ namespace
             uint32_t value = 0u;
             (void)host.readGuest(kReceive + 4u, &value, sizeof(value));
             return value;   // handleSingle: [0]=-1, [1]=the result, [2]=-1
+        }
+    };
+
+    using Snd989Harness = Snd989HarnessT<>;
+
+    // A one-channel VPK of a single 0x800-byte chunk (the last block carries the data's end flag) written at
+    // sector 2 of a small "disc image": a stream of ~5376 output frames that ends by itself.
+    bool writeOneChunkVpkImage(const std::string &path)
+    {
+        int8_t up[28];
+        for (int i = 0; i < 28; ++i)
+            up[i] = static_cast<int8_t>(i % 8);
+        std::vector<uint8_t> image(2048u * 2u, 0u);
+        std::vector<uint8_t> vpk(0xB0, 0u);
+        auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
+        std::memcpy(vpk.data(), " KPV", 4);
+        put32(4, 0x800u);
+        put32(8, 0x800u);
+        put32(12, 0xB0u);
+        put32(16, 32000u);
+        put32(20, 1u);
+        for (int b = 0; b < 0x800 / 16; ++b)
+        {
+            const std::vector<uint8_t> blk = block(12, 0, b == 0x800 / 16 - 1 ? 0x01 : 0x00, up);
+            vpk.insert(vpk.end(), blk.begin(), blk.end());
+        }
+        image.insert(image.end(), vpk.begin(), vpk.end());
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(image.data(), 1, image.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
+
+    // Task 12b, the bank table: the call that wiped it is an EE one (sceSifInitRpc), so this case needs the
+    // runtime's own IOP subsystem rather than the standalone harness above -- the same shape as TestEnv in
+    // ps2_sif_rpc_tests.cpp.
+    struct SndRuntimeEnv
+    {
+        std::vector<uint8_t> rdram;
+        R5900Context ctx{};
+        PS2Runtime runtime;
+        bool configured = false;
+
+        SndRuntimeEnv() : rdram(PS2_RAM_SIZE, 0)
+        {
+            std::memset(&ctx, 0, sizeof(ctx));
+            std::string error;
+            configured = PS2IopTransport::configureForTesting(&runtime, {"socom2_game.elf", 0u, 0u}, &error);
+        }
+
+        static constexpr uint32_t kSid = 0x00123456u;
+        static constexpr uint32_t kSend = 0x00023000u;
+        static constexpr uint32_t kReceive = 0x00023100u;
+
+        uint32_t call(uint32_t fno, const std::vector<uint32_t> &words)
+        {
+            std::memset(rdram.data() + kSend, 0, 0x100u);
+            std::memset(rdram.data() + kReceive, 0, 0x100u);
+            if (!words.empty())
+                std::memcpy(rdram.data() + kSend, words.data(), words.size() * sizeof(uint32_t));
+            ps2x::iop::RpcRequest request{};
+            request.sid = kSid;
+            request.function = fno;
+            request.send = {kSend, static_cast<uint32_t>(words.size() * sizeof(uint32_t))};
+            request.receive = {kReceive, 0x40u};
+            (void)PS2IopTransport::handleRpc(&runtime, rdram.data(), &ctx, std::move(request));
+            uint32_t value = 0u;
+            std::memcpy(&value, rdram.data() + kReceive + 4u, sizeof(value));
+            return value;
         }
     };
 }
@@ -1013,6 +1108,76 @@ void register_socom2_audio_tests()
                      "a play on a handle no bank owns returns 0");
             t.IsTrue(h.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
                      "and the loaded bank still plays");
+        });
+
+        // Sprint 7 Task 12b, the larger stream leak (the owner's run of 2026-09-18, logs/run_20260918_044701.log):
+        // 12 streams played, only 4 ever stopped, then 107 x "no free VAG stream slot". A one-shot VAG stream that
+        // plays to its natural end is never stopped by the game -- it polls snd_SoundIsStillPlaying and reuses the
+        // slot when the answer is "done" (4440 polls of 0x04030005 / 0x04050008 in that run). The console's IRX
+        // learns the end from the mixer; the model has to ask the host the same question, or the slot leaks for the
+        // rest of the run and so does the game's own handle.
+        tc.Run("989snd: a VAG stream that plays to its end is reported done and its slot is reusable", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_stream_end_image.bin";
+            t.IsTrue(writeOneChunkVpkImage(path), "the one-chunk VPK image is written");
+
+            Snd989HarnessT<Snd989MixerHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            h.host.backend.setDiscImagePath(path);
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kSoundIsStillPlaying = 0x19u;
+            const std::vector<uint32_t> play = {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};   // sector 2, vol 0x400, parent 0
+
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            t.Equals(h.host.backend.mixerActiveStreams(), static_cast<size_t>(1u), "and the mixer opened it");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), first, "while it plays, the game's poll says still playing");
+
+            // Render past the end of the chunk (3584 samples at 32 kHz = 5376 frames out).
+            std::vector<int16_t> buf(2 * 4800);
+            for (int i = 0; i < 3; ++i)
+            {
+                h.host.backend.mixerPumpStreams();
+                h.host.backend.mixerRender(buf.data(), 4800);
+            }
+            bool playing = true;
+            t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the stream");
+
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "so the game's poll says done");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays into a free slot");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
+                     "and so does the next one: the ended stream's slot was reused, not leaked");
+
+            std::remove(path.c_str());
+        });
+
+        // Sprint 7 Task 12b, the bank table: in the same run bank 0xa30000 was loaded and 66 lines later every play
+        // on it was rejected with an EMPTY table ("0 entries, lastBank 0x00000000"). Nothing unloaded it: the game
+        // called sceSifInitRpc a second time (the lgaud / mcserv init between the two), and the EE stub reset every
+        // IOP service on every call, wiping the model. On the console sceSifInitRpc only sets up the EE's own RPC
+        // packet queues -- the IOP keeps running and a bank stays loaded until snd_BankUnload / snd_UnloadBank.
+        tc.Run("989snd: a loaded bank survives a second sceSifInitRpc (the console does not reset the IOP for it)", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u, "and the bank plays");
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);   // the game's second init
+
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
+                     "the bank is still loaded afterwards: sceSifInitRpc is not a bank unload");
         });
     });
 }
