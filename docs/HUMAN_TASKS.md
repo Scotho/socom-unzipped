@@ -76,6 +76,39 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
     motion out of that player's own log, so it can say the other guy moved; it cannot say he was drawn moving on
     your screen. Your eyes are the only instrument for that half.
 
+- [ ] **Pick the pad in the launcher, then play with it** (Sprint 7 Task 8, owner request 2026-09-18). Plug the
+  Xbox pad in and run `dist/socom_unzipped_launcher.exe`. The Controller panel now lists every pad Windows
+  reports as `[<slot>] <name>` with *first available* at the top; pick yours, watch the test area (it draws the
+  slot you picked, not slot 0), and move the **dead zone** slider until the sticks read dead at rest and still
+  reach the edge of the ring at full deflection. Press Launch, play one single-player mission and one online
+  round. Report one line each: (a) did the pick hold -- was the pad you chose the one the game read, in the menus
+  and in the round; (b) did the dead zone feel right at the value you left it on (say the number), or is the
+  default too loose or too tight. The numbers you are confirming: the launcher writes
+  `PS2X_HOST_GAMEPAD_INDEX=<slot>` and `PS2X_PAD_DEADZONE=<value>` (visible with
+  `dist/socom_unzipped_launcher.exe --selftest`), and the default is **0.15**, the dead zone SOCOM's own poll has
+  used since 2026-09-16 and which the other two pad paths did not apply at all until this task (ruling R95).
+  Launcher build: the `dist/socom_unzipped_launcher.exe` sha256 from the commit below.
+
+- [ ] **Pick the microphone and watch the meter** (Sprint 7 Task 9a, owner request 2026-09-18). Run
+  `dist/socom_unzipped_launcher.exe`. The new Microphone panel lists every capture device Windows reports, with
+  *None* first; pick your headset's and speak. Report in one line: does the bar move when you speak and sit at
+  the left when you are quiet, and was the device you picked the one that reacted. If the list is empty or your
+  headset is missing, press Rescan first and say so -- an empty list means miniaudio could not start the host's
+  audio backend, which is a different fault from a missing device. The numbers you are confirming: the meter is
+  RMS in dB across -60..0 dB, and the launcher writes `PS2X_MIC_DEVICE=<the name you picked>` (visible with
+  `dist/socom_unzipped_launcher.exe --selftest`).
+- [ ] **Speak in an online lobby, and expect to be unheard** (Sprint 7 Task 9b/9c, owner request 2026-09-18).
+  With a second machine in a lobby (the two-machine item above), pick your microphone in the launcher, join, and
+  speak. **Expected answer: the other side hears NOTHING**, and that is not a fault in this sprint -- the IOP
+  headset module still answers "no headset" to everything but its version query
+  (`third_party/ps2recomp/ps2xIOP/src/modules/lgaud.cpp`), so nothing carries the captured audio to the game
+  yet. What is worth a line: (a) did anything at all come through (if it did, something we do not understand is
+  happening); (b) did picking a microphone change the game's behaviour in any way -- a stutter, a longer boot, a
+  new log line. To check the capture half by itself, without a second machine: run the game with
+  `PS2X_MIC_DUMP=logs/mic.wav` set, speak for ten seconds, quit, and play `logs/mic.wav` back. If your voice is
+  in that file the capture half works and only the game-side plumbing is missing -- which is the Sprint 8 job
+  Task 9c's `docs/KNOWN.md` section 2 row scopes.
+
 ## Done
 
 (none yet)

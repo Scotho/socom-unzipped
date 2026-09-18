@@ -33,8 +33,16 @@ namespace launcher
         // Sprint 7 Task 1c: the launcher opens at 2x. The runtime's own default is still 640x448
         // (PS2X_WINDOW_SIZE unset), which is what the parity gate runs at.
         std::string windowSize = "1280x896";   // <w>x<h> | fullscreen
+        bool fpsOverlay = false;               // Sprint 7 Task 10: PS2X_FPS_OVERLAY, off unless asked for
+        int audioVolume = 100;                 // Sprint 7 Task 11: PS2X_AUDIO_VOLUME, 0-100, 100 = unity
         bool mouseLook = false;
         double mouseSensitivity = 1.0;
+        // Sprint 7 Task 8: which host pad to read (-1 = the first available one, as the runtime did before)
+        // and the stick dead zone the three pad paths apply.
+        int gamepadIndex = -1;
+        double padDeadZone = 0.15;
+        // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
+        std::string micDevice;
         std::string serverPreset = "custom";   // an id out of kServerPresets; "custom" means the address below
         std::string server = "127.0.0.1";
         std::string profile = "player";

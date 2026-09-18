@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "Pad.h"
 #include "runtime/host_gamepad.h"
+#include "runtime/host_gamepad_select.h"
 
 namespace ps2_stubs
 {
@@ -68,9 +69,11 @@ namespace ps2_stubs
         PadPortState g_padPorts[kPadPortCount]{};
         int g_padReadLogCount = 0;
 
-        uint8_t axisToByte(float axis)
+        uint8_t axisToByte(float axis, float deadZone = 0.0f)
         {
-            axis = std::clamp(axis, -1.0f, 1.0f);
+            // Task 8 / ruling R95: the dead zone is opt-in per call site, so the keyboard/mouse callers below
+            // (which already produce exact -1/0/+1) are untouched.
+            axis = hostPadAxis(std::clamp(axis, -1.0f, 1.0f), deadZone);
             const float mapped = (axis + 1.0f) * 127.5f;
             return static_cast<uint8_t>(std::lround(mapped));
         }
@@ -87,14 +90,8 @@ namespace ps2_stubs
         {
             if (!hostGamepadEnabled())
                 return -1;
-            for (int i = 0; i < 4; ++i)
-            {
-                if (IsGamepadAvailable(i))
-                {
-                    return i;
-                }
-            }
-            return -1;
+            // Task 8: the launcher's pick first, then the old "lowest available slot" rule.
+            return hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable);
         }
 
         void applyGamepadState(PadInputState &state)
@@ -114,10 +111,11 @@ namespace ps2_stubs
             // D-Pad -> LEFT_FACE_*, Cross/Circle/Square/Triangle -> RIGHT_FACE_*
             // L1/R1 -> TRIGGER_1, L2/R2 -> TRIGGER_2, L3/R3 -> THUMB
             // Select/Start -> MIDDLE_LEFT/MIDDLE_RIGHT
-            state.lx = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X));
-            state.ly = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y));
-            state.rx = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X));
-            state.ry = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y));
+            const float deadZone = hostPadDeadZone();
+            state.lx = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_X), deadZone);
+            state.ly = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_LEFT_Y), deadZone);
+            state.rx = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_X), deadZone);
+            state.ry = axisToByte(GetGamepadAxisMovement(gamepad, GAMEPAD_AXIS_RIGHT_Y), deadZone);
 
             setButton(state, kPadBtnUp, IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_UP));
             setButton(state, kPadBtnDown, IsGamepadButtonDown(gamepad, GAMEPAD_BUTTON_LEFT_FACE_DOWN));

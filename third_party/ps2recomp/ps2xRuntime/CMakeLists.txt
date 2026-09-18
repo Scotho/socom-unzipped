@@ -388,6 +388,7 @@ add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
     src/lib/gs/ps2_gif_arbiter.cpp
     src/lib/ps2_audio.cpp
+    src/lib/host_mic.cpp
     src/lib/ps2_audio_vag.cpp
     src/lib/socom2_bank.cpp
     src/lib/snd989_mixer.cpp
@@ -551,6 +552,12 @@ target_include_directories(ps2_runtime PUBLIC
 )
 
 target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop)
+
+# Sprint 7 Task 9b: host_mic.cpp includes raylib's own miniaudio.h (without MINIAUDIO_IMPLEMENTATION --
+# raudio.c already compiled it into libraylib), so it needs the raylib source tree on the include path.
+if(TARGET raylib)
+    target_include_directories(ps2_runtime PRIVATE $<TARGET_PROPERTY:raylib,SOURCE_DIR>/external)
+endif()
 target_link_libraries(ps2EntryRunner
     PRIVATE
     ps2_runtime

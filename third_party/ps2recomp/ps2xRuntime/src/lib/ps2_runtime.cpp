@@ -1,4 +1,6 @@
 #include "ps2_runtime.h"
+#include "runtime/fps_overlay.h"
+#include "runtime/host_mic.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -581,6 +583,7 @@ PS2Runtime::~PS2Runtime()
             m_debugUiInitialized = false;
         }
 
+        stopHostMic();
         if (IsWindowReady())
         {
             CloseWindow();
@@ -762,6 +765,11 @@ bool PS2Runtime::initialize(const char *title)
             std::cout << "[window] PS2X_WINDOW_SIZE: " << (windowSize.borderless ? "borderless fullscreen" : std::to_string(windowSize.width) + "x" + std::to_string(windowSize.height)) << std::endl;
         InitAudioDevice();
         m_audioBackend.setAudioReady(IsAudioDeviceReady());
+        // Task 9b: PS2X_MIC_DEVICE=<name> opens the player's microphone. Unset -- the default, and what the
+        // gate runs with -- opens nothing at all. Nothing consumes the ring yet: lgaud.cpp still answers "no
+        // headset" to every RPC but its version query (Task 9c's spike scopes the consumer), so this is
+        // capture and PS2X_MIC_DUMP only.
+        startHostMicFromEnvironment();
 #endif
         SetTargetFPS(60);
         if (m_debugUiInitCallback)
@@ -2783,6 +2791,34 @@ void PS2Runtime::run()
                 }
             }
         }
+        // PS2X_FPS_OVERLAY=1 (Task 10): one line of raylib text in the top-left of the WINDOW. Drawn after the
+        // exported frame above, so the gate's detectors and every parity capture see exactly what they saw
+        // before this knob existed; the backing rectangle is 200x14, the box the task's bar allows.
+        {
+            static const bool s_fpsOverlay = [] {
+                const char *const e = std::getenv("PS2X_FPS_OVERLAY");
+                return e != nullptr && *e != 0 && std::strcmp(e, "0") != 0;
+            }();
+            if (s_fpsOverlay)
+            {
+                // The guest rate over the last second, from the same vsync counter the [pc-sampler] line's
+                // vsync= field reads (game_overrides_socom2.cpp:682).
+                static double s_windowStart = GetTime();
+                static uint64_t s_windowTick = eeScheduler().currentVSyncTick();
+                static double s_guestHz = -1.0;
+                const double nowS = GetTime();
+                const uint64_t tickNow = eeScheduler().currentVSyncTick();
+                if (nowS - s_windowStart >= 1.0)
+                {
+                    s_guestHz = static_cast<double>(tickNow - s_windowTick) / (nowS - s_windowStart);
+                    s_windowStart = nowS;
+                    s_windowTick = tickNow;
+                }
+                const std::string line = fpsOverlayLine(GetFPS(), s_guestHz, GetFrameTime() * 1000.0);
+                DrawRectangle(0, 0, 200, 14, Color{0, 0, 0, 160});
+                DrawText(line.c_str(), 4, 2, 10, RAYWHITE);
+            }
+        }
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);
@@ -2843,6 +2879,7 @@ void PS2Runtime::run()
         m_debugUiInitialized = false;
     }
     UnloadTexture(frameTex);
+    stopHostMic();
     CloseWindow();
 
     RUNTIME_LOG("[run] exiting loop");

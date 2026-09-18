@@ -259,10 +259,11 @@ namespace ps2_stubs
         // Task 8: the pad the launcher picked (PS2X_HOST_GAMEPAD_INDEX), or the first available one.
         // Re-selected every poll rather than latched: pads are hot-pluggable, and a player who plugs one in
         // mid-session should not have to restart.
-        const int pad = hostGamepadEnabled()
-                            ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
-                            : -1;
-        if (pad >= 0)
+        // `padSlot`, not `pad`: the poll's own out-parameter is named `pad` (Socom2PadState &).
+        const int padSlot = hostGamepadEnabled()
+                                ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                                : -1;
+        if (padSlot >= 0)
         {
             static const struct { int button; uint8_t pad; } kPadButtons[] = {
                 {GAMEPAD_BUTTON_LEFT_FACE_UP, kPadUp}, {GAMEPAD_BUTTON_LEFT_FACE_RIGHT, kPadRight},
@@ -276,7 +277,7 @@ namespace ps2_stubs
             };
             for (const auto &entry : kPadButtons)
             {
-                if (IsGamepadButtonDown(pad, entry.button))
+                if (IsGamepadButtonDown(padSlot, entry.button))
                     next.button[entry.pad] = 1u;
             }
             // Triggers: raylib maps the trigger axes (rest -1.0) past 0.1 to GAMEPAD_BUTTON_*_TRIGGER_2 itself
@@ -287,7 +288,7 @@ namespace ps2_stubs
             const float deadZone = hostPadDeadZone();
             for (const auto &stick : kSticks)
             {
-                const float v = hostPadAxis(GetGamepadAxisMovement(pad, stick.axis), deadZone);
+                const float v = hostPadAxis(GetGamepadAxisMovement(padSlot, stick.axis), deadZone);
                 if (v != 0.0f)
                     next.axis[stick.slot] = clampAxis(128.0f + v * 127.0f);
             }

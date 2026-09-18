@@ -173,10 +173,17 @@ namespace launcher
         out += "  \"gsScale\": " + std::to_string(c.gsScale) + ",\n";
         out += "  \"presentFilter\": " + quote(c.presentFilter) + ",\n";
         out += "  \"windowSize\": " + quote(c.windowSize) + ",\n";
+        out += std::string("  \"fpsOverlay\": ") + (c.fpsOverlay ? "true" : "false") + ",\n";
+        out += "  \"audioVolume\": " + std::to_string(c.audioVolume) + ",\n";
         out += std::string("  \"mouseLook\": ") + (c.mouseLook ? "true" : "false") + ",\n";
         char sens[32];
         std::snprintf(sens, sizeof(sens), "%g", c.mouseSensitivity);
         out += std::string("  \"mouseSensitivity\": ") + sens + ",\n";
+        out += "  \"gamepadIndex\": " + std::to_string(c.gamepadIndex) + ",\n";
+        char dz[32];
+        std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
+        out += std::string("  \"padDeadZone\": ") + dz + ",\n";
+        out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
@@ -199,7 +206,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -210,9 +217,10 @@ namespace launcher
                     else if (key == "server") c.server = v;
                     // a preset we do not know (an older or newer build's) falls back to the typed address
                     else if (key == "serverPreset") c.serverPreset = findServerPreset(v) ? v : std::string("custom");
+                    else if (key == "micDevice") c.micDevice = v;
                     else c.profile = v;
                 }
-                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance")
+                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
                 {
                     std::string raw;
                     if (!p.scalar(raw))
@@ -220,6 +228,10 @@ namespace launcher
                     if (key == "gsScale") c.gsScale = std::atoi(raw.c_str());
                     else if (key == "mouseSensitivity") c.mouseSensitivity = std::atof(raw.c_str());
                     else if (key == "mouseLook") c.mouseLook = raw == "true";
+                    else if (key == "fpsOverlay") c.fpsOverlay = raw == "true";
+                    else if (key == "audioVolume") c.audioVolume = std::atoi(raw.c_str());
+                    else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
+                    else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
                     else c.secondInstance = raw == "true";
                 }
                 else if (!p.skipValue())
@@ -255,10 +267,24 @@ namespace launcher
             env.push_back("PS2X_CD_IMAGE=" + c.isoPath);
         env.push_back("PS2X_GS_SCALE=" + std::to_string(c.gsScale < 1 ? 1 : c.gsScale));
         env.push_back("PS2X_PRESENT_FILTER=" + (c.presentFilter.empty() ? std::string("linear") : c.presentFilter));
+        const int volume = c.audioVolume < 0 ? 0 : (c.audioVolume > 100 ? 100 : c.audioVolume);
+        env.push_back("PS2X_AUDIO_VOLUME=" + std::to_string(volume));
         env.push_back("PS2X_WINDOW_SIZE=" + (c.windowSize.empty() ? std::string("640x448") : c.windowSize));
+        if (c.fpsOverlay)
+            env.push_back("PS2X_FPS_OVERLAY=1");
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
         const std::string profile = c.profile.empty() ? std::string("player") : c.profile;
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
+        // Sprint 7 Task 8: the pad the player picked (only when they picked one -- unset means the runtime's
+        // own "first available" rule), and the dead zone, always, so what they tuned is what the game gets.
+        if (c.gamepadIndex >= 0)
+            env.push_back("PS2X_HOST_GAMEPAD_INDEX=" + std::to_string(c.gamepadIndex));
+        char dz[32];
+        std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone < 0.0 ? 0.0 : (c.padDeadZone > 0.5 ? 0.5 : c.padDeadZone));
+        env.push_back(std::string("PS2X_PAD_DEADZONE=") + dz);
+        // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
+        if (!c.micDevice.empty())
+            env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);
         if (c.mouseLook)
         {
             env.push_back("PS2X_SOCOM2_MOUSE=1");

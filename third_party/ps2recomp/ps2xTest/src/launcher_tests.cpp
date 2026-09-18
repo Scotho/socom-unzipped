@@ -2,9 +2,11 @@
 #include "MiniTest.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
+#include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <iostream>
@@ -80,6 +82,30 @@ void register_launcher_tests()
             t.Equals(sha256::hex(reinterpret_cast<const uint8_t *>(two), std::strlen(two)), std::string("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"), "two blocks");
             std::vector<uint8_t> million(1000000u, static_cast<uint8_t>('a'));
             t.Equals(sha256::hex(million.data(), million.size()), std::string("cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"), "a million a's");
+        });
+
+        tc.Run("the controller pick and the dead zone round-trip and reach the environment", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.Equals(c.gamepadIndex, -1, "no pick by default: the first available pad, as before this task");
+            t.IsTrue(c.padDeadZone > 0.1499 && c.padDeadZone < 0.1501, "the default dead zone is the runtime's 0.15");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+            t.IsTrue(!hasKey(env, "PS2X_HOST_GAMEPAD_INDEX"), "no pick: the runtime is not told one, so it keeps its own rule");
+            t.IsTrue(has(env, "PS2X_PAD_DEADZONE=0.15"), "the dead zone always ships, so what the player tuned is what the game gets");
+            c.gamepadIndex = 2;
+            c.padDeadZone = 0.3;
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_HOST_GAMEPAD_INDEX=2"), "the picked slot");
+            t.IsTrue(has(env, "PS2X_PAD_DEADZONE=0.3"), "the tuned dead zone");
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.gamepadIndex, 2, "the pick survives the round trip");
+            t.IsTrue(back.padDeadZone > 0.2999 && back.padDeadZone < 0.3001, "and so does the dead zone");
+            launcher::Config partial;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", partial), "an older config.json parses");
+            t.Equals(partial.gamepadIndex, -1, "a config written before this task keeps the old behaviour");
         });
 
         tc.Run("iso9660: the root directory lookup finds SCUS_972.75 (with its ;1), rejects the rest", [](TestCase &t)
@@ -252,6 +278,96 @@ void register_launcher_tests()
             launcher::Config empty;
             env = launcher::environmentFor(empty);
             t.IsTrue(!hasKey("PS2X_CD_IMAGE"), "no ISO configured: the runtime keeps its own .iso search");
+        });
+
+        tc.Run("the FPS overlay is off unless the player asks for it", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.IsTrue(!c.fpsOverlay, "off by default: nothing is drawn over anyone's game unasked");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+            t.IsTrue(!hasKey(env, "PS2X_FPS_OVERLAY"), "off: the knob is not set at all, rather than set to 0");
+            c.fpsOverlay = true;
+            env = launcher::environmentFor(c);
+            t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_FPS_OVERLAY=1")) != env.end(), "on: exactly the value the runtime tests for");
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.IsTrue(back.fpsOverlay, "the choice survives the round trip");
+        });
+
+        tc.Run("the fourth scale, the matched display size, and the master volume reach the environment", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.Equals(c.audioVolume, 100, "full volume by default: the mixer is untouched unless the player moves it");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            t.IsTrue(has(env, "PS2X_AUDIO_VOLUME=100"), "unity always ships, so config.json is the one source of the value");
+            c.gsScale = 4;
+            c.windowSize = "2560x1440";      // what "Match display" resolved to on the player's monitor
+            c.audioVolume = 35;
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_GS_SCALE=4"), "the fourth radio reaches the backend's top clamp");
+            t.IsTrue(has(env, "PS2X_WINDOW_SIZE=2560x1440"), "a matched display is an ordinary <w>x<h>, not a magic word");
+            t.IsTrue(has(env, "PS2X_AUDIO_VOLUME=35"), "the volume the player set");
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.IsTrue(back.gsScale == 4 && back.windowSize == "2560x1440" && back.audioVolume == 35, "all three survive the round trip");
+            launcher::Config partial;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 2}", partial), "an older config.json parses");
+            t.Equals(partial.audioVolume, 100, "a config written before this task is still full volume");
+        });
+
+        tc.Run("the microphone pick round-trips and only reaches the environment when there is one", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.Equals(c.micDevice, std::string(""), "no microphone by default");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+            t.IsTrue(!hasKey(env, "PS2X_MIC_DEVICE"), "no pick: the runtime opens no capture device at all");
+            c.micDevice = "Microphone (USB Headset)";
+            env = launcher::environmentFor(c);
+            t.IsTrue(std::find(env.begin(), env.end(), std::string("PS2X_MIC_DEVICE=Microphone (USB Headset)")) != env.end(), "the device name, spaces and brackets and all");
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.micDevice, c.micDevice, "the device name survives the round trip");
+        });
+
+        tc.Run("micLevelDb: RMS in dB full scale, -inf for silence", [](TestCase &t)
+        {
+            // A full-scale sine has RMS 1/sqrt(2), i.e. -3.0103 dB, whatever its frequency or phase.
+            std::vector<float> sine(1600);   // 0.1 s at 16 kHz, ten whole cycles: no partial-cycle bias
+            for (size_t i = 0; i < sine.size(); ++i)
+                sine[i] = std::sin(2.0f * 3.14159265358979f * 100.0f * static_cast<float>(i) / 16000.0f);
+            const float full = launcher::micLevelDb(sine.data(), sine.size());
+            t.IsTrue(std::fabs(full + 3.0103f) < 0.05f, "a full-scale sine reads -3.01 dB");
+            std::vector<float> half = sine;
+            for (float &v : half)
+                v *= 0.5f;
+            t.IsTrue(std::fabs(launcher::micLevelDb(half.data(), half.size()) - (full - 6.0206f)) < 0.01f, "halving the amplitude drops it exactly 6.02 dB");
+            const std::vector<float> quiet(1600, 0.0f);
+            const float silent = launcher::micLevelDb(quiet.data(), quiet.size());
+            t.IsTrue(std::isinf(silent) && silent < 0.0f, "silence is -inf, not 0 and not a crash");
+            const float none = launcher::micLevelDb(nullptr, 0);
+            t.IsTrue(std::isinf(none) && none < 0.0f, "no frames is -inf too");
+        });
+
+        tc.Run("the microphone list is whatever MicDevices reports, with None first", [](TestCase &t)
+        {
+            struct FakeMic final : launcher::MicDevices
+            {
+                std::vector<std::string> list() override { return {"Microphone (USB Headset)", "Stereo Mix"}; }
+                bool startMeter(const std::string &name) override { started = name; return name == "Stereo Mix"; }
+                float levelDb() const override { return -12.5f; }
+                void stopMeter() override { started.clear(); }
+                std::string started;
+            };
+            FakeMic mic;
+            const std::vector<std::string> labels = launcher::micLabels(mic);
+            t.Equals(labels.size(), static_cast<size_t>(3), "None plus the two devices");
+            t.Equals(labels[0], std::string("None"), "None is first, so 'no microphone' is a click, not an empty field");
+            t.Equals(labels[1], std::string("Microphone (USB Headset)"), "the device names come through unchanged");
+            t.IsTrue(!mic.startMeter("Microphone (USB Headset)"), "a device that will not open says so");
+            t.IsTrue(mic.startMeter("Stereo Mix") && mic.started == "Stereo Mix", "and one that will, opens");
         });
     });
 }
