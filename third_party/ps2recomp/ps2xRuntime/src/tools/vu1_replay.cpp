@@ -69,6 +69,8 @@
 #include <ucontext.h>
 #endif
 
+#endif
+
 #ifndef _WIN32
 #include <sys/stat.h>
 #endif
@@ -97,7 +99,6 @@ namespace
 #endif
     }
 }
-#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
