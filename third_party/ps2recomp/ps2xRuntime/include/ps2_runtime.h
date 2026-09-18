@@ -527,6 +527,9 @@ private:
     bool m_debugUiInitialized = false;
 
 public:
+    // The pc stored on EVERY dispatch iteration (EeScheduler.cpp, m_debugPc.store): the pc-sampler prints this as
+    // dpc= because m_cpuContext.pc is only copied out every 4096 dispatches (research/29 section 4 item 4).
+    uint32_t debugPc() const { return m_debugPc.load(std::memory_order_relaxed); }
     std::atomic<uint32_t> m_debugPc{0};
     std::atomic<uint32_t> m_debugRa{0};
     std::atomic<uint32_t> m_debugSp{0};
@@ -551,5 +554,11 @@ extern const uint32_t g_ps2RecompiledFunctionTableBase;
 extern const uint32_t g_ps2RecompiledFunctionTableEnd;
 extern const uint32_t g_ps2RecompiledFunctionTableSlotCount;
 extern PS2Runtime::RecompiledFunction g_ps2RecompiledFunctionTable[];
+
+// Sprint 7 Task 1a: the code the process leaves with when the run itself was fine but something
+// the player should hear about happened -- today only GsGlCaps::kExitCode (65), the GL backend
+// falling back to the CPU rasterizer. 0 until something sets it; main() exits with it.
+int ps2ProcessExitCode();
+void setPs2ProcessExitCode(int code);
 
 #endif // PS2_RUNTIME_H

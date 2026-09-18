@@ -3,6 +3,11 @@
 `python -m tools_py.parity.lobby_report logs/parity/drive_<name>.txt [...]` prints one row per launch and a
 totals line: the table Task 2 Step 4's ten launches are judged by (>= 8/10 gameplay reached).
 
+With `--bar <fraction>` (Sprint 7 Task 2d) it adds `RATE <g>/<n> bar=<x.xx> PASS|FAIL` and exits 1 on FAIL,
+so the bar is machine-checked rather than eyeballed:
+
+    python -m tools_py.parity.lobby_report --bar 0.8 logs/parity/drive_s7_lobby_*.txt
+
 Line grammar (tools_py/parity/online_login_ours.py, Shell.log): `<t>s <A|B>_<message>`; the time prefix is
 absent on a few lines and the trailer (`mpexit=...`, `[run_detached] ...`, `--until-kill: ...`) carries no tag.
 The messages read here:
@@ -144,9 +149,10 @@ def row(name, summary):
             f"resends={_stage_counts(summary, 'resends')} unverified={_stage_counts(summary, 'unverified')}")
 
 
-def totals(summaries):
-    n = len(summaries)
-    gp = sum(1 for s in summaries if s["outcome"] == OUTCOME_GAMEPLAY)
+def rate(summaries):
+    """(gameplay, total, classes) over `summaries`: the launches that reached gameplay, how many there were,
+    and a Counter of the failure class of every miss -- the lobby class on a lobby failure, `result:<word>`
+    for any other RESULT, `none` for a launch that produced no verdict at all."""
     classes = Counter()
     for s in summaries:
         if s["outcome"] == OUTCOME_LOBBY_FAIL:
@@ -155,30 +161,70 @@ def totals(summaries):
             classes[f"result:{s['cls']}"] += 1
         elif s["outcome"] == OUTCOME_NONE:
             classes["none"] += 1
+    gameplay = sum(1 for s in summaries if s["outcome"] == OUTCOME_GAMEPLAY)
+    return gameplay, len(summaries), classes
+
+
+def totals(summaries):
+    gp, n, classes = rate(summaries)
     per_class = " ".join(f"{c}={classes[c]}" for c in sorted(classes)) or "-"
     return f"TOTAL launches={n} gameplay={gp}/{n} classes: {per_class}"
 
 
-def report(paths):
-    """The rows and the totals line for the drive logs at `paths`."""
-    out, summaries = [], []
+def summarise_paths(paths):
+    """[(launch name, summary)] for the drive logs at `paths`."""
+    named = []
     for p in paths:
         with open(p, encoding="utf-8", errors="replace") as f:
-            s = summarise(f)
-        summaries.append(s)
-        out.append(row(launch_name(p), s))
-    out.append(totals(summaries))
-    return out
+            named.append((launch_name(p), summarise(f)))
+    return named
+
+
+def report(paths):
+    """The rows and the totals line for the drive logs at `paths`."""
+    named = summarise_paths(paths)
+    return [row(name, s) for name, s in named] + [totals([s for _, s in named])]
+
+
+def rate_line(summaries, bar):
+    """('RATE <g>/<n> bar=<x.xx> PASS|FAIL', passed): the bar is a fraction of the launches, PASS when g/n >= bar."""
+    g, n, _ = rate(summaries)
+    passed = n > 0 and g >= bar * n - 1e-9
+    return f"RATE {g}/{n} bar={bar:.2f} {'PASS' if passed else 'FAIL'}", passed
+
+
+USAGE = "usage: python -m tools_py.parity.lobby_report [--bar <fraction>] <drive_log> [<drive_log>...]"
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
-    if not argv:
-        print("usage: python -m tools_py.parity.lobby_report <drive_log> [<drive_log>...]", file=sys.stderr)
+    bar, paths, i = None, [], 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--bar" or arg.startswith("--bar="):
+            value = arg.split("=", 1)[1] if "=" in arg else (argv[i + 1] if i + 1 < len(argv) else None)
+            try:
+                bar = float(value)
+            except (TypeError, ValueError):
+                print(f"--bar wants a fraction of the launches, e.g. --bar 0.8 (got {value!r})", file=sys.stderr)
+                return 2
+            i += 1 if "=" in arg else 2
+            continue
+        paths.append(arg)
+        i += 1
+    if not paths:
+        print(USAGE, file=sys.stderr)
         return 2
-    for line in report(argv):
-        print(line)
-    return 0
+    named = summarise_paths(paths)
+    summaries = [s for _, s in named]
+    for name, s in named:
+        print(row(name, s))
+    print(totals(summaries))
+    if bar is None:
+        return 0
+    line, passed = rate_line(summaries, bar)
+    print(line)
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":

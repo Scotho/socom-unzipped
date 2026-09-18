@@ -320,6 +320,12 @@ namespace ps2x::iop::detail
 
             ~Snd989Service() override
             {
+                if (m_metrics.unknownBankRejects > 8u)
+                {
+                    logWarning("unknown-bank rejects: " + std::to_string(m_metrics.unknownBankRejects) +
+                               " in all, " + std::to_string(m_metrics.unknownBankRejects - 8u) +
+                               " more than the 8 logged in full");
+                }
                 closeCdImage();
             }
 
@@ -411,6 +417,7 @@ namespace ps2x::iop::detail
                 metrics.push_back({"cd_reads", m_metrics.cdReads});
                 metrics.push_back({"cd_read_failures", m_metrics.cdReadFailures});
                 metrics.push_back({"unknown_commands", m_metrics.unknownCommands});
+                metrics.push_back({"unknown_bank_rejects", m_metrics.unknownBankRejects});
                 metrics.push_back({"active_sounds", countActiveSounds()});
                 metrics.push_back({"status_block", m_model.statusBlockAddress, true});
             }
@@ -427,6 +434,7 @@ namespace ps2x::iop::detail
                 uint64_t cdReads = 0u;
                 uint64_t cdReadFailures = 0u;
                 uint64_t unknownCommands = 0u;
+                uint64_t unknownBankRejects = 0u;
             };
 
             inline static constexpr std::array<uint32_t, 2> kSids{kSndSid, kStreamSid};
@@ -1131,7 +1139,7 @@ namespace ps2x::iop::detail
                 }
                 if (bank == 0u || findBank(bank) == nullptr)
                 {
-                    logDebug("play request for unknown bank " + hexString(bank));
+                    rejectUnknownBank(bank);
                     return 0u;
                 }
 
@@ -1179,6 +1187,39 @@ namespace ps2x::iop::detail
                 return target->handle;
             }
 
+            // 971 rejects in one run (2026-09-18) for banks the log shows loaded, with no unload between. Dump
+            // the whole bank table once per process at the first reject -- one launch then says whether the slot
+            // was cleared or the handle is stale -- and rate-limit the reject line itself to the first 8 and
+            // every 256th after that; the destructor reports what was suppressed.
+            void rejectUnknownBank(uint32_t bank)
+            {
+                static bool s_tableDumped = false;
+                if (!s_tableDumped)
+                {
+                    s_tableDumped = true;
+                    std::string table = "bank table at the first unknown-bank reject (requested " + hexString(bank) +
+                                        ", " + std::to_string(m_model.banks.size()) + " entries, lastBank " +
+                                        hexString(m_model.lastBank) + ")";
+                    for (const auto &entry : m_model.banks)
+                    {
+                        table += "\n  handle " + hexString(entry.handle) + " loaded=" + (entry.loaded ? "1" : "0") +
+                                 " id=" + hexString(entry.bankId) + " sector " + std::to_string(entry.sector) + "+" +
+                                 std::to_string(entry.byteOffset);
+                        if (!entry.path.empty())
+                        {
+                            table += " path " + entry.path;
+                        }
+                    }
+                    logWarning(table);
+                }
+                ++m_metrics.unknownBankRejects;
+                if (m_metrics.unknownBankRejects <= 8u || (m_metrics.unknownBankRejects % 256u) == 0u)
+                {
+                    logDebug("play request for unknown bank " + hexString(bank) + " (reject " +
+                             std::to_string(m_metrics.unknownBankRejects) + ")");
+                }
+            }
+
             void setSoundPaused(uint32_t handle, bool paused)
             {
                 SoundSlot *slot = findSound(handle);
@@ -1190,10 +1231,18 @@ namespace ps2x::iop::detail
 
             void stopSound(uint32_t handle)
             {
-                SoundSlot *slot = findSound(handle);
-                if (slot != nullptr)
+                if (SoundSlot *slot = findSound(handle); slot != nullptr)
                 {
                     slot->active = false;
+                    return;
+                }
+                // snd_StopSound is also how the game stops a VAG stream (a type-4 handle): free the model's
+                // stream slot too, or the slot leaks and every later snd_PlayVAGStreamByLoc is refused with
+                // "no free VAG stream slot" (237 of them in the owner's run of 2026-09-18). The mixer stop is
+                // the caller's forwardAudio(kStopSound, ...) in execute(), which is unchanged.
+                if (StreamSlot *stream = findStream(handle); stream != nullptr)
+                {
+                    stream->active = false;
                 }
             }
 
@@ -1219,6 +1268,11 @@ namespace ps2x::iop::detail
                         {
                             if (SoundSlot *slot = findSound(handle))
                                 slot->active = false;
+                            // A VAG stream the game let play to its end is never stopped: it polls here and
+                            // reuses the slot once the answer is "done". Free the model's slot with the answer,
+                            // or it leaks for the rest of the run (107 x "no free VAG stream slot", 2026-09-18).
+                            if (StreamSlot *stream = findStream(handle))
+                                stream->active = false;
                             return 0u;
                         }
                         return handle;
@@ -1460,6 +1514,28 @@ namespace ps2x::iop::detail
                 return 1u;
             }
 
+            // The console's IRX knows a stream has ended because it owns the mixer; our model has to ask the
+            // host the same question (IopHost::audioIsPlaying, answered from snd989::Mixer::isPlaying per
+            // handle -- the query snd_SoundIsStillPlaying already used for sounds). Without it only
+            // snd_StopSound ever frees a stream slot, and a stream that ends by itself leaks one forever.
+            // `keep` is the handle of a slot the caller has already resolved (the parent a queued stream is
+            // chaining onto): it is about to be reused, so whether the mixer has finished it is beside the point.
+            void reapEndedStreams(uint32_t keep = 0u)
+            {
+                for (auto &slot : m_model.streams)
+                {
+                    if (!slot.active || slot.paused || (keep != 0u && slot.handle == keep))
+                    {
+                        continue;
+                    }
+                    bool playing = false;
+                    if (m_host.audioIsPlaying(slot.handle, playing) && !playing)
+                    {
+                        slot.active = false;
+                    }
+                }
+            }
+
             uint32_t playVagStream(const CommandArgs &args)
             {
                 if (!m_model.streamingInitialised)
@@ -1467,6 +1543,9 @@ namespace ps2x::iop::detail
                     logWarning("snd_PlayVAGStreamByLoc before streaming init");
                     return 0u;
                 }
+                // Sprint 7 review finding F2: the parent lookup comes FIRST. findStream only answers for an
+                // active slot, so reaping before it deactivated a parent whose mixer stream had just finished --
+                // the queue then silently took a fresh slot with an unrelated handle and the game's chain broke.
                 const uint32_t parent = args.u32(5);
                 StreamSlot *target = nullptr;
                 if (parent != 0u)
@@ -1474,6 +1553,9 @@ namespace ps2x::iop::detail
                     // queued after an existing stream: reuse its slot in the model
                     target = findStream(parent);
                 }
+                // Then the reap, so a slot whose stream the mixer has finished is free even if the game has not
+                // asked about it yet -- but never the slot this very call is chaining onto.
+                reapEndedStreams(target != nullptr ? target->handle : 0u);
                 if (target == nullptr)
                 {
                     for (uint32_t i = 0; i < m_model.streamCount; ++i)

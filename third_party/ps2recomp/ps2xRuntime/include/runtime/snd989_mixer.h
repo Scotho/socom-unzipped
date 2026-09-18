@@ -15,6 +15,10 @@
 namespace snd989
 {
     constexpr uint32_t kSampleRate = 48000;     // SPU2: pitch 0x1000 plays one sample per output frame
+    // How far ahead pumpStreams() decodes each stream (audit 2026-09-17 section 2.3): four 0x800-byte chunk pairs
+    // is 4 x 112 ms of a 32 kHz VPK, so a worker tick that loses a second of wall time to a slow disc still has
+    // audio in hand, and the worst case a stream holds is 4 x 2 x 3584 samples (56 KB) of decoded PCM.
+    constexpr size_t kStreamRingChunks = 4;
     constexpr int32_t kVolDontChange = 0x7FFFFFFF;
     constexpr int32_t kPanDontChange = -2;
     constexpr int32_t kPanReset = -1;
@@ -40,6 +44,10 @@ namespace snd989
         // The same under a handle the caller chose (the IOP module's): false if not playable.
         bool playWithHandle(uint32_t handle, uint32_t bank, uint32_t sound, int32_t vol, int32_t pan, int32_t pitchMod, int32_t pitchBend);
         bool isPlaying(uint32_t handle) const;
+        // Sprint 7 review finding F3: has the mixer ever been handed this handle (playWithHandle / playStream)?
+        // isPlaying answers false both for a finished sound and for one that never existed; the IOP model's
+        // stream reaper has to tell those apart, or it frees the slot of a play that never reached the mixer.
+        bool knowsHandle(uint32_t handle) const;
         void stop(uint32_t handle);      // key off: the voices release
         void pause(uint32_t handle);
         void resume(uint32_t handle);
@@ -52,12 +60,22 @@ namespace snd989
         bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
         void stopAllStreams();
 
+        // The decode-ahead half of the streams (audit 2026-09-17 section 2.3): reads and decodes the next chunk
+        // pair of every live stream until its ring holds kStreamRingChunks, so render() never touches the disc.
+        // Owns the file handles under its own I/O mutex and never holds the render mutex while reading. A worker
+        // thread started on the first playStream calls it every 10 ms; PS2X_SND_STREAM_WORKER=0 disables that
+        // thread and leaves pumpStreams() to the caller (what the tests do). Joined in the destructor.
+        void pumpStreams();
+        // Closes every stream's file handle and keeps its ring: the seam the "plays with the handle closed" test needs.
+        void closeStreamFilesForTest();
+
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie
         // audio's SShd interleave). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
         void pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol);
         void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
         uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped
+        uint64_t pcmUnderruns() const;        // blocks the head reached before the game rewrote them (R97); 0 after stop
         void pcmStreamStop();
         bool pcmStreamActive() const;
         size_t activeStreams() const;
@@ -68,6 +86,8 @@ namespace snd989
         size_t activeHandlers() const;
 
     private:
+        void startStreamWorker();   // idempotent; a Mixer that never streams never starts a thread
+
         struct Impl;
         std::unique_ptr<Impl> m_impl;
     };

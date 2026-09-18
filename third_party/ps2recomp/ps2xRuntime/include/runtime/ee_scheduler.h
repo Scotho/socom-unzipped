@@ -414,7 +414,8 @@ private:
     void waitForEvent();
     void scheduleEvent(uint64_t deadlineCycle, std::chrono::steady_clock::time_point hostDeadline, EeEvent event);
     void updateNextDeadline();
-    [[nodiscard]] bool hasReadyAtOrAbovePriority(int priority) const;
+    // Strictly higher priority only (a lower number is higher): what an expiring time slice preempts for.
+    [[nodiscard]] bool hasReadyAbovePriority(int priority) const;
     void renewTimeSlice();
     void copyMainContextToRuntime();
 

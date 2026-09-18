@@ -14,6 +14,7 @@
 #include "ps2_runtime_macros.h"
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
+#include "runtime/socom2_freeze_fields.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
@@ -664,6 +665,7 @@ namespace
             return;
         const double period = std::max(0.01, std::atof(env));   // fractional seconds allowed (0.05 = 20 Hz profile)
         std::thread([&runtime, period]() {
+            const auto samplerEpoch = std::chrono::steady_clock::now();
             for (;;)
             {
                 std::this_thread::sleep_for(std::chrono::duration<double>(period));
@@ -672,9 +674,27 @@ namespace
                 o << "[pc-sampler] live pc=0x" << std::hex << c->pc << " ra=0x" << GPR_U32(c, 31)
                   << " sp=0x" << GPR_U32(c, 29) << std::dec;
                 const EeKernelSnapshot snap = runtime.eeScheduler().snapshot();
+                // Sprint 7 Task 2e / research/29 section 4: host time, the vsync tick, the guest clock and its
+                // snapshot sequence, the per-dispatch pc, the executor's idle count, the GS back-pressure and the
+                // libnetb wait -- one line that tells the two freeze shapes apart without a second launch.
+                FreezeFields::Sample fs;
+                fs.hostSeconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - samplerEpoch).count();
+                fs.vsyncTick = runtime.eeScheduler().currentVSyncTick();
+                fs.eeSeconds = static_cast<double>(snap.eeCycle) / static_cast<double>(EeScheduler::kEeClockHz);
+                fs.sequence = snap.sequence;
+                fs.debugPc = runtime.debugPc();
+                fs.idleWaits = runtime.eeScheduler().idleWaitCount();
+                fs.bpPending = runtime.gs().pendingGuestFrames();
+                fs.bpWaiters = runtime.gs().backpressureWaiters();
+                fs.bpWaitMs = runtime.gs().backpressureWaitNs() / 1000000ull;
+                const std::pair<int, uint64_t> net = socom2_libnetb::netWaitState();
+                fs.netWait = net.first;
+                fs.netWaitMs = net.second;
+                o << FreezeFields::line(fs);
                 o << " running=" << snap.runningThreadId << " threads:";
                 for (const auto &t : snap.threads)
                     o << " [" << t.id << " pc=0x" << std::hex << t.pc << " ra=0x" << t.ra << " sp=0x" << t.sp << std::dec << " st=" << static_cast<int>(t.status)
+                      << " prio=" << t.currentPriority   // Task 2a: SOCOM's thread priorities, logged with every sample
                       << " wait=" << static_cast<int>(t.waitReason) << "/" << t.waitId << "]";
                 std::cout << o.str() << std::endl;
                 // PS2X_PEEK="0xADDR[:words][,...]": dump guest words (hex + float) with each sample.

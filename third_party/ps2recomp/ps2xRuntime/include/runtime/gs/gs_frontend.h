@@ -159,6 +159,10 @@ public:
     // Returns true when the backend actually waited.
     bool guestFrameBoundary() { return m_backend && m_backend->GuestFrameBoundary(); }
     void releaseHostBackpressure() { if (m_backend) m_backend->ReleaseHostBackpressure(); }
+    // Sampler-side reads of the GPU backend's back-pressure; 0 for a backend that has none.
+    uint64_t pendingGuestFrames() const { return m_backend ? m_backend->PendingGuestFrames() : 0ull; }
+    uint32_t backpressureWaiters() const { return m_backend ? m_backend->BackpressureWaiters() : 0u; }
+    uint64_t backpressureWaitNs() const { return m_backend ? m_backend->BackpressureWaitNs() : 0ull; }
     uint32_t hostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight);
     uint32_t hostFrameTexture2() { return m_backend ? m_backend->HostFrameTexture2() : 0u; }
 

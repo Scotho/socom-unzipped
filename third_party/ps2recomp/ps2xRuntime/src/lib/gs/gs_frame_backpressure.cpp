@@ -91,7 +91,10 @@ GsFrameBackpressure::WaitResult GsFrameBackpressure::frameRecorded()
         }
     }
     --m_waiters;
-    m_stats.waitMs += std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    const auto waited = std::chrono::steady_clock::now() - t0;
+    m_stats.waitMs += std::chrono::duration<double, std::milli>(waited).count();
+    m_waitNsTotal.fetch_add(static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(waited).count()),
+                            std::memory_order_relaxed);
     if (result == WaitResult::Waited)
     {
         ++m_stats.waits;
@@ -153,3 +156,71 @@ GsFrameBackpressure::Stats GsFrameBackpressure::takeStats()
     m_stats = Stats{};
     return s;
 }
+
+bool GsFrameBackpressure::latched() const
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    return m_consumerStalled;
+}
+
+// ---------------------------------------------------------------------------------------------
+// GsPendingCap (Sprint 7 Task 1b)
+// ---------------------------------------------------------------------------------------------
+
+uint64_t GsPendingCap::parseCapMb(const char *value, uint64_t fallbackMb)
+{
+    if (!value || *value == 0)
+        return fallbackMb;
+    char *end = nullptr;
+    const unsigned long long parsed = std::strtoull(value, &end, 10);
+    // strtoull accepts a leading '-' (and wraps it): only plain decimal digits count. The upper
+    // bound keeps the byte count (MB * 1024 * 1024) far away from a uint64_t overflow.
+    if (*value < '0' || *value > '9' || !end || *end != 0 || parsed > 65535ull)
+    {
+        static bool s_logged = false;
+        if (!s_logged)
+        {
+            s_logged = true;
+            std::fprintf(stderr, "[gs-gl] PS2X_GS_PENDING_CAP_MB=%s is not a decimal in 0..65535; using %llu\n",
+                         value, static_cast<unsigned long long>(fallbackMb));
+        }
+        return fallbackMb;
+    }
+    return static_cast<uint64_t>(parsed);
+}
+
+GsPendingCap::GsPendingCap(uint64_t capBytes)
+    : m_capBytes(capBytes)
+{
+}
+
+bool GsPendingCap::admit(bool latched, bool carriesState, uint64_t bytes)
+{
+    if (m_capBytes != 0u && latched && !carriesState &&
+        m_bytes.load(std::memory_order_relaxed) >= m_capBytes)
+    {
+        m_droppedCommands.fetch_add(1u, std::memory_order_relaxed);
+        m_droppedBytes.fetch_add(bytes, std::memory_order_relaxed);
+        return false;
+    }
+    m_bytes.fetch_add(bytes, std::memory_order_relaxed);
+    return true;
+}
+
+void GsPendingCap::onReplayed(uint64_t bytes)
+{
+    // The replay takes the whole pending buffer, so the accounting never goes negative; clamp
+    // anyway rather than wrap, since a lost byte would make the cap unreachable for good.
+    uint64_t pending = m_bytes.load(std::memory_order_relaxed);
+    while (true)
+    {
+        const uint64_t next = bytes >= pending ? 0u : pending - bytes;
+        if (m_bytes.compare_exchange_weak(pending, next, std::memory_order_relaxed))
+            return;
+    }
+}
+
+uint64_t GsPendingCap::bytes() const { return m_bytes.load(std::memory_order_relaxed); }
+uint64_t GsPendingCap::capBytes() const { return m_capBytes; }
+uint64_t GsPendingCap::droppedCommands() const { return m_droppedCommands.load(std::memory_order_relaxed); }
+uint64_t GsPendingCap::droppedBytes() const { return m_droppedBytes.load(std::memory_order_relaxed); }

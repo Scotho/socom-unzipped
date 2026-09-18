@@ -138,7 +138,9 @@ def capture_step(hwnd, path, hold):
     36-43 exports after gameplay start). A stale frame prints STALE FRAME and the old frame is saved anyway
     -- the drive goes on; gate.score_mission_log's liveness check decides (R34)."""
     size = winshot.client_size(hwnd)
-    if size is not None and size != (FRAME_W, FRAME_H):
+    # a 0x0 client area (minimised, momentarily hidden) says nothing about the exported frame the grab reads;
+    # a non-zero area that is not the game's is a resized window, whose exported frame is scaled -- refuse that
+    if size is not None and size != (0, 0) and size != (FRAME_W, FRAME_H):
         # s6_ladder10/11: a resized window made every fixed-box detector read garbage for whole runs
         raise winshot.ClientRectError(f"client area is {size[0]}x{size[1]}, not {FRAME_W}x{FRAME_H}, at "
                                       f"{os.path.basename(path)}")

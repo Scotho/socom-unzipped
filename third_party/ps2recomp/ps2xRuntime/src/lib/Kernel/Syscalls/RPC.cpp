@@ -219,12 +219,18 @@ namespace ps2_syscalls
     void SifInitRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
     {
         std::lock_guard<std::mutex> lock(g_rpc_mutex);
-        if (runtime)
-        {
-            PS2IopTransport::reset(runtime);
-        }
         if (!g_rpc_initialized)
         {
+            // Only the first initialisation resets the IOP services. sceSifInitRpc sets up the EE's own RPC
+            // packet queues; on the console it neither reboots the IOP nor unloads an IRX, so 989snd keeps its
+            // bank table (a bank stays loaded until snd_BankUnload / snd_UnloadBank). Resetting on every call
+            // wiped the model mid-mission -- the owner's run of 2026-09-18 loaded bank 0xa30000, called
+            // sceSifInitRpc again while another library came up, and then rejected 107+ plays on that bank with
+            // an empty table. A real IOP reboot (sceSifRebootIop / sceSifResetIop) is where a reset belongs.
+            if (runtime)
+            {
+                PS2IopTransport::reset(runtime);
+            }
             g_rpc_servers.clear();
             g_rpc_clients.clear();
             g_rpc_next_id = 1;
@@ -244,6 +250,20 @@ namespace ps2_syscalls
         event.result = 0;
         pushSifRpcDebugEventLocked(event);
         setReturnS32(ctx, 0);
+    }
+
+    // The EE half of an IOP reboot: every queue, client and server the guest had is gone with the IOP that
+    // served it, and the next sceSifInitRpc must set them up again (g_rpc_initialized back to false).
+    void SifResetRpcState()
+    {
+        std::lock_guard<std::mutex> lock(g_rpc_mutex);
+        g_rpc_servers.clear();
+        g_rpc_clients.clear();
+        g_rpc_next_id = 1;
+        g_rpc_packet_index = 0;
+        g_rpc_server_index = 0;
+        g_rpc_active_queue = 0;
+        g_rpc_initialized = false;
     }
 
     void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)

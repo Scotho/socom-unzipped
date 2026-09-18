@@ -26,6 +26,8 @@ namespace ps2_stubs
         uint32_t mode = 0;
         uint32_t streamingLbn = 0;
         uint32_t streamingEndLbn = 0;
+        uint32_t readLbn = 0;
+        bool streamActive = false;
         uint32_t nextPseudoLbn = 0;
         uint64_t imageSizeBytes = 0;
         bool imageSizeValid = false;

@@ -1,5 +1,6 @@
 #include "MiniTest.h"
 #include "runtime/gs/gs_frame_backpressure.h"
+#include "runtime/socom2_freeze_fields.h"
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/ee_scheduler.h"
@@ -393,6 +394,89 @@ void register_gs_frame_backpressure_tests()
             t.IsFalse(anyWait, "unbounded: no frame ever waits");
             t.Equals(bp.pendingFrames(), uint64_t{1000}, "unbounded: 1000 frames pend with no consumer");
             t.IsTrue(msSince(t0) < 150, "unbounded: 1000 frames record without blocking");
+        });
+
+        tc.Run("a latched queue drops guest frames and keeps uploads", [](TestCase &t)
+        {
+            GsPendingCap cap(1024u);            // 1 KiB, so the cap is reachable in a test
+            uint64_t admittedDraws = 0, admittedUploads = 0;
+            for (int frame = 0; frame < 200; ++frame)
+            {
+                if (cap.admit(true, false, 64u)) ++admittedDraws;      // a guest frame's draw work
+                if (cap.admit(true, true, 64u))  ++admittedUploads;    // an upload: state, never dropped
+            }
+            t.Equals(static_cast<int>(admittedUploads), 200, "every upload is admitted while latched");
+            t.IsTrue(cap.bytes() <= 1024u + 200u * 64u, "only uploads may exceed the cap");
+            t.IsTrue(admittedDraws < 200u, "draws stop being admitted at the cap (" + std::to_string(admittedDraws) + ")");
+            t.IsTrue(cap.droppedCommands() > 0u, "the drops are counted");
+            t.Equals(static_cast<int>(cap.droppedBytes()), static_cast<int>((200u - admittedDraws) * 64u), "the dropped bytes are counted");
+        });
+
+        tc.Run("an unlatched queue admits everything and the replay releases bytes", [](TestCase &t)
+        {
+            GsPendingCap cap(1024u);
+            for (int i = 0; i < 1000; ++i)
+                t.IsTrue(cap.admit(false, false, 64u), "nothing is dropped while the consumer is live");
+            t.Equals(static_cast<int>(cap.droppedCommands()), 0, "no drops");
+            cap.onReplayed(cap.bytes());
+            t.Equals(static_cast<int>(cap.bytes()), 0, "a replay empties the accounting");
+        });
+
+        tc.Run("PS2X_GS_PENDING_CAP_MB parses like the frame knob", [](TestCase &t)
+        {
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb("128", 64u)), 128, "a decimal is taken");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb("-1", 64u)), 64, "a negative falls back");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb(nullptr, 64u)), 64, "unset falls back");
+        });
+
+        // Sprint 7 Task 2e (research/29 section 4): the [pc-sampler]'s freeze fields are built by a pure
+        // function, so the line's shape is a test rather than a launch (the sampler prints from its own thread).
+        tc.Run("the pc-sampler's freeze fields print research/29 section 4's values in order", [](TestCase &t)
+        {
+            FreezeFields::Sample s;
+            s.hostSeconds = 612.5;
+            s.vsyncTick = 41233ull;
+            s.eeSeconds = 612.1;
+            s.sequence = 8891ull;
+            s.debugPc = 0x350d90u;
+            s.idleWaits = 140ull;
+            s.bpPending = 0ull;
+            s.bpWaiters = 0u;
+            s.bpWaitMs = 12ull;
+            s.netWait = 1;
+            s.netWaitMs = 3300ull;
+            t.Equals(FreezeFields::line(s),
+                     std::string(" t=612.50 vsync=41233 ee=612.10 seq=8891 dpc=0x350d90 idle=140"
+                                 " bp_pending=0 bp_waiters=0 bp_wait_ms=12 net_wait=1/3300"),
+                     "freeze_trace.parse reads exactly this (tools_py/tests/test_freeze_trace.py SAMPLE)");
+            FreezeFields::Sample quiet;
+            quiet.hostSeconds = 3.0;
+            quiet.eeSeconds = 2.5;
+            t.Equals(FreezeFields::line(quiet),
+                     std::string(" t=3.00 vsync=0 ee=2.50 seq=0 dpc=0x0 idle=0 bp_pending=0 bp_waiters=0"
+                                 " bp_wait_ms=0 net_wait=0/0"),
+                     "a quiet sample still prints every field: a missing one would read as a parse failure");
+        });
+
+        tc.Run("waitNsTotal is cumulative and takeStats() does not clear it (the sampler never races the printer)", [](TestCase &t)
+        {
+            GsFrameBackpressure bp(1u, ms(60));
+            t.Equals(bp.waitNsTotal(), uint64_t{0}, "nothing has waited yet");
+            bp.frameRecorded();                                   // frame 1: at the bound
+            bp.frameRecorded();                                   // frame 2: over it, waits the cap out
+            const uint64_t afterWait = bp.waitNsTotal();
+            t.IsTrue(afterWait >= 40000000ull, "the 60 ms cap is counted in ns, was " + std::to_string(afterWait));
+            const GsFrameBackpressure::Stats stats = bp.takeStats();
+            t.IsTrue(stats.waitMs > 0.0, "the 60-present printer still gets its clearing counter");
+            t.Equals(bp.waitNsTotal(), afterWait, "the sampler's counter survives that takeStats()");
+            t.IsTrue(bp.takeStats().waitMs == 0.0, "... while the clearing one is back to zero");
+        });
+
+        tc.Run("a frontend with no GPU back-pressure reports zero pending frames and zero waiters", [](TestCase &t)
+        {
+            GS gs;
+            t.Equals(gs.pendingGuestFrames(), uint64_t{0}, "the CPU path has no pending guest frames");
+            t.Equals(static_cast<int>(gs.backpressureWaiters()), 0, "and nobody inside the wait");
         });
     });
 }

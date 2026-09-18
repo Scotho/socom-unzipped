@@ -7,6 +7,10 @@ namespace ps2_syscalls
     void SifStopModule(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifLoadModule(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifInitRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
+    // Sprint 7 review finding F1: SifInitRpc resets the EE's RPC state only on the FIRST call (the console's
+    // sceSifInitRpc neither reboots the IOP nor unloads an IRX). The reset itself belongs to an IOP reboot, so
+    // sceSifRebootIop / sceSifResetIop call this to put the EE side back to "never initialised".
+    void SifResetRpcState();
     void SifBindRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifCallRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void SifRegisterRpc(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

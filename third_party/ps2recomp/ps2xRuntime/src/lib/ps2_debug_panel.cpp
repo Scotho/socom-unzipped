@@ -1796,12 +1796,14 @@ namespace
 
         const ps2_stubs::CdDebugSnapshot cd = ps2_stubs::getCdDebugSnapshot();
         ImGui::SeparatorText("CDVD / sceCd state");
-        ImGui::Text("initialized=%u lastError=%d mode=0x%08X streamingLbn=0x%08X endLbn=0x%08X nextPseudoLbn=0x%08X",
+        ImGui::Text("initialized=%u lastError=%d mode=0x%08X streamingLbn=0x%08X endLbn=0x%08X streamActive=%u readLbn=0x%08X nextPseudoLbn=0x%08X",
                     cd.initialized ? 1u : 0u,
                     cd.lastError,
                     cd.mode,
                     cd.streamingLbn,
                     cd.streamingEndLbn,
+                    cd.streamActive ? 1u : 0u,
+                    cd.readLbn,
                     cd.nextPseudoLbn);
         ImGui::Text("imageValid=%u imageSize=%llu leafIndexBuilt=%u leafIndex=%zu looseIndex=%zu registeredFiles=%zu",
                     cd.imageSizeValid ? 1u : 0u,

@@ -3,7 +3,12 @@
 #include "ps2_syscalls.h"
 #include "Stubs/Pad.h"
 #include "runtime/host_gamepad.h"
+#include "runtime/host_gamepad_select.h"
+#include "runtime/injected_pad_latch.h"
+#include "socom2_host_input.h"
 
+#include <chrono>
+#include <cstdio>
 #include <vector>
 #include <cstdint>
 #include <string>
@@ -79,6 +84,92 @@ void register_pad_input_tests()
             t.IsTrue(hostGamepadAllowed(""), "empty keeps it");
             t.IsTrue(hostGamepadAllowed("1"), "1 keeps it");
             t.IsTrue(hostGamepadAllowed("off"), "a word is not 0");
+        });
+
+        tc.Run("PS2X_HOST_GAMEPAD_INDEX picks a pad when it is there, otherwise the first available one", [](TestCase &t)
+        {
+            // A fake `available` so the case runs the same on a machine with no pad and on one with four.
+            static bool s_present[kHostGamepadSlots];
+            auto available = [](int i) { return i >= 0 && i < kHostGamepadSlots && s_present[i]; };
+            for (bool &p : s_present) p = false;
+            s_present[0] = true;
+            s_present[2] = true;
+            t.Equals(hostGamepadSelect("2", kHostGamepadSlots, available), 2, "the env names pad 2 and pad 2 is there");
+            t.Equals(hostGamepadSelect("1", kHostGamepadSlots, available), 0, "the env names an absent pad: the first available one instead");
+            t.Equals(hostGamepadSelect(nullptr, kHostGamepadSlots, available), 0, "unset: the first available one");
+            t.Equals(hostGamepadSelect("", kHostGamepadSlots, available), 0, "empty: the first available one");
+            t.Equals(hostGamepadSelect("nonsense", kHostGamepadSlots, available), 0, "unparseable: the first available one");
+            t.Equals(hostGamepadSelect("9", kHostGamepadSlots, available), 0, "out of range: the first available one");
+            t.Equals(hostGamepadSelect("-1", kHostGamepadSlots, available), 0, "negative: the first available one");
+            for (bool &p : s_present) p = false;
+            t.Equals(hostGamepadSelect("2", kHostGamepadSlots, available), -1, "no pad at all: -1, and every caller reads the keyboard");
+            t.Equals(hostGamepadSelect(nullptr, kHostGamepadSlots, available), -1, "no pad at all, no preference: -1");
+            s_present[3] = true;
+            t.Equals(hostGamepadSelect(nullptr, kHostGamepadSlots, available), 3, "only the last slot: it is the first available");
+            t.Equals(hostGamepadSelect("3", 0, available), -1, "a zero count selects nothing");
+            t.Equals(hostGamepadSelect("3", kHostGamepadSlots, nullptr), -1, "no probe selects nothing");
+        });
+    });
+
+    // PS2X_SOCOM2_INPUT_FILE presses were read only inside the game's own pad poll, once per
+    // rendered frame; below ~11 fps a whole 0.09 s press fell between two polls and was dropped
+    // (ten driven launches, 2026-09-18). A sampler thread observes the file and the latch keeps
+    // every button seen since the previous poll, so a press is delivered late, never lost.
+    MiniTest::Case("InjectedPadLatch", [](TestCase &tc)
+    {
+        tc.Run("parseInjectedPadLine takes the harness line and rejects anything else", [](TestCase &t)
+        {
+            ps2x::InjectedPadSample s;
+            t.IsTrue(ps2x::parseInjectedPadLine("b=4000 rx=128 ry=128 lx=128 ly=128", s), "the harness line parses");
+            t.Equals(s.buttons, static_cast<uint32_t>(0x4000u), "buttons should be the hex mask");
+            t.Equals(s.rx, static_cast<uint8_t>(128), "rx should be neutral");
+            t.Equals(s.ly, static_cast<uint8_t>(128), "ly should be neutral");
+
+            ps2x::InjectedPadSample rejected;
+            t.IsTrue(!ps2x::parseInjectedPadLine("garbage", rejected), "garbage is not a pad line");
+            t.IsTrue(!ps2x::parseInjectedPadLine("b=4000 rx=128 ry=128 lx=128", rejected), "a line missing ly is not a pad line");
+        });
+
+        tc.Run("a press that lives between two takes is delivered to exactly one take", [](TestCase &t)
+        {
+            ps2x::InjectedPadLatch latch;
+            ps2x::InjectedPadSample neutral;
+            latch.observe(neutral);
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(0u), "nothing pressed yet");
+
+            ps2x::InjectedPadSample pressed;
+            pressed.buttons = 0x4000u;
+            latch.observe(pressed);
+            latch.observe(neutral);
+
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(0x4000u), "the press between polls is delivered");
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(0u), "and released on the next poll");
+        });
+
+        tc.Run("a press still held is delivered on every take while held", [](TestCase &t)
+        {
+            ps2x::InjectedPadLatch latch;
+            ps2x::InjectedPadSample pressed;
+            pressed.buttons = 1u;
+            latch.observe(pressed);
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(1u), "held press is down");
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(1u), "still down on the next poll");
+
+            ps2x::InjectedPadSample neutral;
+            latch.observe(neutral);
+            t.Equals(latch.take().buttons, static_cast<uint32_t>(0u), "released once the file says neutral");
+        });
+
+        tc.Run("axes are the latest sample's", [](TestCase &t)
+        {
+            ps2x::InjectedPadLatch latch;
+            ps2x::InjectedPadSample low;
+            low.lx = 0;
+            latch.observe(low);
+            ps2x::InjectedPadSample high;
+            high.lx = 255;
+            latch.observe(high);
+            t.Equals(latch.take().lx, static_cast<uint8_t>(255), "lx should be the latest sample's");
         });
     });
 
@@ -544,6 +635,33 @@ void register_pad_input_tests()
             ps2_stubs::scePadReqIntToStr(rdram.data(), &ctx, nullptr);
             const char *reqStr = reinterpret_cast<const char *>(rdram.data() + kPadDataAddr + 64);
             t.IsTrue(std::string(reqStr).find("COMPLETE") != std::string::npos, "req string should include COMPLETE");
+        });
+
+        // Sprint 7 review finding F12: the sampler thread was joined only by the destructor of a namespace-scope
+        // static, and main leaves through std::_Exit, so that destructor never ran -- the thread was still
+        // reading the pad file while the process tore its runtime down. The shutdown is explicit now.
+        tc.Run("the injected-pad sampler is stopped and joined by socom2HostInputShutdown", [](TestCase &t)
+        {
+            const std::string path = "ps2x_test_injected_pad.txt";
+            if (FILE *f = std::fopen(path.c_str(), "wb"))
+            {
+                std::fputs("b=0008 rx=128 ry=128 lx=128 ly=128\n", f);
+                std::fclose(f);
+            }
+
+            ps2_stubs::socom2HostInputStartSampler(path.c_str());
+            t.IsTrue(ps2_stubs::socom2HostInputSamplerRunning(), "the sampler thread is running");
+
+            const auto started = std::chrono::steady_clock::now();
+            ps2_stubs::socom2HostInputShutdown();
+            const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count();
+            t.IsTrue(!ps2_stubs::socom2HostInputSamplerRunning(), "and it is stopped and joined afterwards");
+            t.IsTrue(ms < 500.0, "the join returns promptly rather than outliving the process");
+
+            ps2_stubs::socom2HostInputShutdown();   // the teardown runs at both of PS2Runtime's exits
+            t.IsTrue(!ps2_stubs::socom2HostInputSamplerRunning(), "a second shutdown is a no-op");
+
+            std::remove(path.c_str());
         });
     });
 }

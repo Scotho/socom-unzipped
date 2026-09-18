@@ -48,4 +48,12 @@ namespace ps2_stubs
 
     // Refresh `pad` from the host. Safe to call before the window exists (does nothing then).
     void socom2HostInputPoll(Socom2PadState &pad);
+
+    // Sprint 7 review finding F12: the PS2X_SOCOM2_INPUT_FILE sampler is a thread, and it used to be joined
+    // only by the destructor of a namespace-scope static -- which main never reaches, because it leaves through
+    // std::_Exit. These are the explicit half: the poll starts the sampler itself when the variable is set, and
+    // PS2Runtime's teardown stops and joins it next to stopHostMic().
+    void socom2HostInputStartSampler(const char *path);   // idempotent: the second call does nothing
+    void socom2HostInputShutdown();                       // idempotent: stops and joins, then stays stopped
+    bool socom2HostInputSamplerRunning();
 }

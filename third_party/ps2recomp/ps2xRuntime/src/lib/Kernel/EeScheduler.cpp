@@ -391,7 +391,11 @@ bool EeScheduler::checkpointDue(uint32_t cycles) noexcept
     }
 
     const GuestThread *running = currentThread();
-    if (running != nullptr && hasReadyAtOrAbovePriority(running->currentPriority))
+    // Audit 2026-09-17 section 2.3: STRICTLY higher only. The PS2 kernel never time-slices -- equal-priority
+    // threads run until they block or rotate -- and round-robining them every 65536 cycles (0.22 ms) let any
+    // pair of equal-priority SOCOM threads sharing an unlocked structure (the network RX/TX queues) interleave
+    // mid-update on ours only. A lower priority number is higher priority here.
+    if (running != nullptr && hasReadyAbovePriority(running->currentPriority))
     {
         m_rescheduleRequested = true;
         m_timeSliceExpired = true;
@@ -2317,10 +2321,10 @@ void EeScheduler::updateNextDeadline()
     m_nextDeadlineCycle.store(it->deadlineCycle, std::memory_order_release);
 }
 
-bool EeScheduler::hasReadyAtOrAbovePriority(int priority) const
+bool EeScheduler::hasReadyAbovePriority(int priority) const
 {
     const int last = std::clamp(priority, 0, kPriorityCount - 1);
-    for (int p = 0; p <= last; ++p)
+    for (int p = 0; p < last; ++p)
     {
         if (!m_readyQueues[static_cast<size_t>(p)].empty())
         {

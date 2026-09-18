@@ -8,7 +8,55 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
-## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted
+## 2026-09-18 (morning) — Sprint 7 CLOSING: the autonomous half done, the owner-gated half parked; Sprint 8 next
+
+branch: sprint-7 (28+ commits on develop at `8f57cbd`); merge into develop and main follows the review fixes' gate
+spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (Goal 8 added 2026-09-18)
+plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md (134+ boxes ticked; the open ones carry a reason or a STOP)
+human tasks: docs/HUMAN_TASKS.md -- six open: the title/intro listen, free play, the launcher with the pad and its pick,
+the microphone meter, the sound re-listen, the two server addresses; plus the second machine for Goal 5
+
+**What landed (all under RED tests; suite 540 x3, Python 1172, vu1_replay PASS, gate 3/3 `s7_closeout_gate`):**
+Goal 1, the stranger's machine: the GL probe with the CPU fallback and exit 65; the native-VU1 warning; the bounded command
+queue on a latched stall (drag +38 MB, cap never engaged); DPI and the 2x launcher default (2x = 1x scaled, 0.83); audio
+I/O off the callback (title loop 1.000). Goal 2: the strict time slice (13 driven control rounds clean); the same-key round
+plays; the CD cursor fix; the lobby rate 6/10 -> 10/10 once the injected press was latched (the misses were the login
+screen at 12-30 fps under GL back-pressure, KNOWN §2); no 3-17 s freeze quiet or loaded, with research/29's fields on the
+sampler line. Goal 3 stopped by its own trace (R96): the page-marking hypothesis is refuted, gameplay uploads ~10k/s, the
+menus 80-133 ms/s -- Sprint 8's first item. Goals 4 and 5, the autonomous halves (the server zip, the two-machine readout).
+Goal 8 (owner, 2026-09-18): controller and microphone selection, the FPS overlay, 4x / Match display / volume. Task 12
+(owner's sound reports): VAG slots freed on stop and on a stream's own end, the PCM ring's once-per-fill policy (R97),
+sceSifInitRpc no longer wiping the IOP model, the CD read-position rule; mission log 0 unknown-bank rejects (was 971) and
+1 slot exhaustion (was 237). The whole-branch review's five must-fix findings (the IOP reset moved to the reboot stubs,
+the stream reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen) are the
+last commits before the merge.
+
+**Not done, by design or by the owner's gate:** the ladder on the strict-slice exe (Sprint 9's ground); the same-key
+harness helper (a logs/ script did it); the hosted server and its addresses, the second machine, the six hands-on checks.
+
+## 2026-09-17 (late) — Sprint 6 CLOSED and merged (`8f57cbd` on develop and main); Sprint 7 OPEN
+
+branch: sprint-7 (off develop at `8f57cbd`)
+spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (owner review pending; Goal N = Task N)
+plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md
+audit: docs/AUDIT-2026-09-17.md
+human tasks: docs/HUMAN_TASKS.md (four open: the title/intro listen, free play, the launcher with the pad, the two
+server addresses; plus a second machine for Goal 5)
+
+**Sprint 6's close-out is done**: the plan reconciled with the audit's ledger (43 of 55 boxes ticked; the 12 open are
+carried by Sprint 7 or Sprint 8), rulings R81–R90, the KNOWN audit, STATUS's current state, ROADMAP §6 marked,
+`PS2X_TEST_REPEAT=3 ./build.sh test` 503/503 three times, gate 3/3 (`s6_fixwave_gate`), merged and pushed.
+
+**2026-09-18 additions (owner):** Goal 8 (plan Tasks 8-11: controller and microphone selection, FPS overlay, detail/resolution) and Task 12 (the owner's three sound reports: online-menu splice and buzz, the mission going silent). Order from here: the Goal 8 commits (the overlay's title launch is their gate), the ten-round lobby re-run on the latched press (Task 2f), then Task 12, then close-out. Task 3 stopped by its own trace (R96); the menus' upload cost goes to Sprint 8.
+
+**Sprint 7's order (the spec's Goals 1–7):** (1) the stranger's machine, defensively — GL probe and CPU fallback,
+the bounded command queue, the DPI flag and 2x default, the native-VU1 warning, audio I/O off the callback; (2) online
+correctness before scale — the equal-priority time slice removed, a same-key control round, the CD stream cursor, the
+ten-launch lobby rate, freeze shape 2; (3) the 21k decodes settled and fixed; (4) the hosted server (**owner**: the
+machine and the two addresses); (5) the first two-machine match (**owner**: a second machine); (6) the owner's checks;
+(7) close-out. The loop does not wait on (4)–(6): it works (1)–(3) and files what it cannot verify in HUMAN_TASKS.
+
+## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted (superseded above; kept for the record)
 
 branch: sprint-6
 spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
@@ -64,19 +112,37 @@ something a stranger notices: they got into a lobby from the zip, against a serv
    directions of hosting, from the portable zip, over the internet; NAT and clock-skew findings to KNOWN §1 or §2.
 6. **The HUMAN_TASKS items reported** (**owner**).
 
-## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17)
+## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17; revised 2026-09-18 after Sprint 7)
 
-1. Window policy: default size and fullscreen-borderless, `PS2X_GS_SCALE=2` as the launcher default with the gate scoring
-   it; render targets sized from use (audit F9). Autonomous; **owner** picks the default.
-2. Audio: streams pre-decoded off the audio callback (audit §2.3); the aside-cap parity fix and the scratch leak; the
-   stream-start underfill; a per-stage sound regression fixture. Autonomous; owner listen.
-3. Bare-run robustness: `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows; the
-   diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100 MB). Autonomous;
-   signing is **owner** money and identity.
-4. Knob retirement pass 2 (about 80 `PS2X_*`) into a config file plus `--dev`; the stub-state header into a `.cpp`; the
-   invocation stack pool. Autonomous.
-5. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
-6. An installer (Inno, outline §6) if wanted. **Owner** decision.
+What Sprint 7 handed over, in the order the goal sentence wants it:
+
+1. **The menus' render cost, at the root.** The login and lobby screens upload 7-11k 1 KB tiles a second at 80-133 ms/s of
+   render time (four to six times gameplay's 20-28 ms/s), which is what drops the login screen to 12-30 fps under GL
+   back-pressure on this machine (KNOWN §2), what put the menu music's fill late (the buzz the owner heard; the ring now
+   silences instead of looping, R97), and what made the driven presses miss (latched, 6b7a2b3). Trace the login screen's own
+   pages, break the upload cost down per call, batch the tiles. Bar: the login screen at 60 fps with a spinning four-core
+   load AND `bp_pending` under 2; `pcm_underruns` stays 0. Autonomous.
+2. **Voice: serve the headset.** Task 9c's spike (KNOWN §2): the game binds 'BLIP', calls lgAudInit, then polls Enumerate and
+   EnumHint against our "no device" answer and nothing else. Answer Enumerate with one device when `PS2X_MIC_DEVICE` is set,
+   let Open succeed, serve GetAvailableRecordingBytes/Read from HostMic's ring; a WAV of what the game read as the proof;
+   then the owner's two-machine "can you hear me". Autonomous up to the two-machine check.
+3. **Audio residuals.** The one remaining slot exhaustion when six long-lived streams overlap (are two of them meant to end?
+   the mixer said they were playing for a whole mission); the stream-start underfill; the aside-cap parity fix and the
+   scratch leak; a per-stage sound regression fixture (the repeat detector and the correlation, on every gate dump).
+   Autonomous; owner listen.
+4. **Window policy** beyond Sprint 7's selectors: fullscreen at desktop resolution scored by the gate; render targets sized
+   from use are in (Task 1c). Autonomous; **owner** picks the default.
+5. **Bare-run robustness:** `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows (65
+   is the first); the diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100
+   MB). Autonomous; signing is **owner** money and identity.
+6. **Knob retirement pass 2** (about 90 `PS2X_*` now) into a config file plus `--dev`; the stub-state header into a `.cpp`;
+   the invocation stack pool. Autonomous.
+7. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
+8. An installer (Inno, outline §6) if wanted. **Owner** decision.
+
+Carried from Sprint 7 unchanged because they are the owner's: the hosted server and its two addresses (Task 4), the first
+two-machine match (Task 5), the hands-on checks in `docs/HUMAN_TASKS.md` (now six: the title/intro listen, free play, the
+launcher with the pad and its pick, the microphone meter, the sound re-listen, the two addresses).
 
 ## Sprint 9 — "Console players in the same lobby, and it stays up" (drafted 2026-09-17)
 

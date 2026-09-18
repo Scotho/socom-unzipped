@@ -6,12 +6,16 @@
 //   socom_unzipped_launcher.exe --selftest load config.json, verify the ISO if one is set, print the environment, exit
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
+#include "launcher/launcher_layout.h"
+#include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 #include "win32_glue.h"
 
 #include "raylib.h"
 
 #include <chrono>
+#include <cmath>
+#include <memory>
 #include <thread>
 #include <cstdio>
 #include <cstdlib>
@@ -28,7 +32,9 @@ namespace fs = std::filesystem;
 namespace
 {
     constexpr int kWidth = 820;
-    constexpr int kHeight = 660;
+    // Sprint 7 review finding: this is the CONTENT height the body scrolls through, not the window's -- the
+    // running y ends at 880 and the status line under the Launch row reaches 944, so 960 leaves it a margin.
+    constexpr int kHeight = 960;   // Task 8: +26 for the Controller panel's pad list and dead-zone slider  // Task 10: +28 for the Video panel's FPS-overlay row  // Task 11: +34 for the Video panel's Volume row  // Task 9: +184 for the Microphone panel
 
     std::string readText(const fs::path &p)
     {
@@ -216,6 +222,21 @@ namespace
             DrawText("_", static_cast<int>(r.x) + 6 + MeasureText(shown.c_str(), 16), static_cast<int>(r.y) + 6, 16, kAccent);
     }
 
+    // Sprint 7 Task 11: an integer slider -- the double `slider` below quantises to steps of 0.05, which is
+    // meaningless on a 0-100 range.
+    void sliderInt(Rectangle r, int &value, int lo, int hi)
+    {
+        DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + r.height / 2 - 2), static_cast<int>(r.width), 4, kField);
+        const float t = static_cast<float>(value - lo) / static_cast<float>(hi - lo);
+        DrawCircle(static_cast<int>(r.x + t * r.width), static_cast<int>(r.y + r.height / 2), 7, kAccent);
+        if (CheckCollisionPointRec(GetMousePosition(), {r.x - 8, r.y, r.width + 16, r.height}) && IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        {
+            float nt = (GetMousePosition().x - r.x) / r.width;
+            nt = nt < 0 ? 0 : (nt > 1 ? 1 : nt);
+            value = lo + static_cast<int>(static_cast<float>(hi - lo) * nt + 0.5f);
+        }
+    }
+
     void slider(Rectangle r, double &value, double lo, double hi)
     {
         DrawRectangle(static_cast<int>(r.x), static_cast<int>(r.y + r.height / 2 - 2), static_cast<int>(r.width), 4, kField);
@@ -236,11 +257,44 @@ namespace
         DrawText(title, static_cast<int>(x), static_cast<int>(y), 18, kAccent);
     }
 
-    // The controller diagram: the same raylib calls the game's input poll makes (socom2_host_input.cpp).
-    void drawController(float x, float y)
+    // Kept in step with hostPadAxis (ps2xRuntime/include/runtime/host_gamepad_select.h). The launcher does not
+    // include the runtime's headers -- the same rule exitMessage follows (launcher_config.cpp).
+    float launcherPadAxis(float v, float deadZone)
     {
-        const bool pad = IsGamepadAvailable(0);
-        const char *name = pad ? GetGamepadName(0) : "none";
+        if (deadZone <= 0.0f)
+            return v;
+        const float mag = v < 0.0f ? -v : v;
+        if (mag <= deadZone)
+            return 0.0f;
+        const float scaled = (mag - deadZone) / (1.0f - deadZone);
+        return v < 0.0f ? -scaled : scaled;
+    }
+
+    // A column of radio choices; returns the selected index (changed or not). Pad names do not fit one 820 px row.
+    int radiosColumn(float x, float y, const std::vector<std::string> &labels, int selected, float rowHeight = 22.0f)
+    {
+        for (size_t i = 0; i < labels.size(); ++i)
+        {
+            const float ry = y + static_cast<float>(i) * rowHeight;
+            const Rectangle hit = {x, ry, 18 + 8 + static_cast<float>(MeasureText(labels[i].c_str(), 14)), 18};
+            DrawCircle(static_cast<int>(x) + 9, static_cast<int>(ry) + 9, 9, kField);
+            DrawCircleLines(static_cast<int>(x) + 9, static_cast<int>(ry) + 9, 9, kDim);
+            if (static_cast<int>(i) == selected)
+                DrawCircle(static_cast<int>(x) + 9, static_cast<int>(ry) + 9, 5, kAccent);
+            DrawText(labels[i].c_str(), static_cast<int>(x) + 26, static_cast<int>(ry) + 2, 14, kText);
+            if (CheckCollisionPointRec(GetMousePosition(), hit) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+                selected = static_cast<int>(i);
+        }
+        return selected;
+    }
+
+    // The controller diagram for ONE slot: the same raylib calls the game's input poll makes
+    // (socom2_host_input.cpp), on the pad the player picked, with the dead zone they set applied to the drawn
+    // sticks -- so a dot resting in the middle of the ring is exactly the neutral the game will see.
+    void drawController(float x, float y, int slot, float deadZone)
+    {
+        const bool pad = slot >= 0 && IsGamepadAvailable(slot);
+        const char *name = pad ? GetGamepadName(slot) : "none";
         DrawText(pad ? name : "no gamepad (keyboard: WASD move, IJKL look, Z/X/C/V = square/cross/circle/triangle, Q/E = L1/R1, Enter = start)",
                  static_cast<int>(x), static_cast<int>(y), 14, pad ? kText : kDim);
         auto stick = [&](float cx, float cy, int axisX, int axisY, const char *label)
@@ -249,8 +303,8 @@ namespace
             float ax = 0, ay = 0;
             if (pad)
             {
-                ax = GetGamepadAxisMovement(0, axisX);
-                ay = GetGamepadAxisMovement(0, axisY);
+                ax = launcherPadAxis(GetGamepadAxisMovement(slot, axisX), deadZone);
+                ay = launcherPadAxis(GetGamepadAxisMovement(slot, axisY), deadZone);
             }
             DrawCircle(static_cast<int>(cx + ax * 24), static_cast<int>(cy + ay * 24), 6, kAccent);
             DrawText(label, static_cast<int>(cx) - 8, static_cast<int>(cy) + 34, 12, kDim);
@@ -271,7 +325,7 @@ namespace
         };
         for (const Btn &b : btns)
         {
-            const bool down = pad && IsGamepadButtonDown(0, b.id);
+            const bool down = pad && IsGamepadButtonDown(slot, b.id);
             DrawCircle(static_cast<int>(x + b.dx), static_cast<int>(y + b.dy), 11, down ? kAccent : kField);
             DrawCircleLines(static_cast<int>(x + b.dx), static_cast<int>(y + b.dy), 11, kDim);
             DrawText(b.label, static_cast<int>(x + b.dx) - MeasureText(b.label, 10) / 2, static_cast<int>(y + b.dy) - 5, 10, down ? kBg : kText);
@@ -331,8 +385,14 @@ int main(int argc, char **argv)
         return stillRunning ? 0 : 3;
     }
 
-    SetConfigFlags(FLAG_WINDOW_HIGHDPI);
+    // Sprint 7 review finding: kHeight is the CONTENT height, not the window's. At 125-150% DPI scaling a
+    // 932 px window is 1165-1398 px tall and the Launch row falls off a 768 or 1080 laptop panel, so the
+    // window opens at whatever the monitor allows, resizes, and scrolls to reach the rest.
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE);
     InitWindow(kWidth, kHeight, "SOCOM Unzipped");
+    const int monitorHeight = GetMonitorHeight(GetCurrentMonitor());
+    if (monitorHeight > 0)
+        SetWindowSize(kWidth, launcher::fitWindowHeight(kHeight, monitorHeight, 80));
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
@@ -341,11 +401,18 @@ int main(int argc, char **argv)
     win32glue::GameProcess game;
     std::string status = disc.ok ? "ready" : "";
     std::string lastLog;
+    // Sprint 7 Task 9a: the capture devices, enumerated once here and again only on Rescan --
+    // ma_context_get_devices starts the host audio backend, and doing that sixty times a second stalls the
+    // window on some WASAPI setups.
+    std::unique_ptr<launcher::MicDevices> mic = launcher::makeMicDevices();
+    std::vector<std::string> micLabels = launcher::micLabels(*mic);
+    std::string micStatus;
+    bool meterOn = !config.micDevice.empty() && mic->startMeter(config.micDevice);
     bool dirty = false;
 
-    const std::vector<const char *> scaleLabels = {"Native", "Sharp (2x)", "Sharper (3x, experimental)"};
+    const std::vector<const char *> scaleLabels = {"Native", "Sharp (2x)", "Sharper (3x, experimental)", "Sharpest (4x)"};
     const std::vector<const char *> filterLabels = {"linear", "integer", "point"};
-    const std::vector<const char *> sizeLabels = {"640x448", "1280x896", "fullscreen"};
+    const std::vector<const char *> sizeLabels = {"640x448", "1280x896", "fullscreen", "Match display"};
     std::vector<const char *> presetLabels;
     for (const launcher::ServerPreset &p : launcher::kServerPresets)
         presetLabels.push_back(p.label);
@@ -365,7 +432,12 @@ int main(int argc, char **argv)
             std::fprintf(stderr, "[launcher] frame %u screen %dx%d render %dx%d ready %d\n", frames, GetScreenWidth(), GetScreenHeight(), GetRenderWidth(), GetRenderHeight(), IsWindowReady() ? 1 : 0);
         BeginDrawing();
         ClearBackground(kBg);
-        float y = 16;
+        // The wheel moves the whole body: every panel below takes its y from this one, and the hand-rolled
+        // widgets hit-test against the same y, so the Launch row stays clickable wherever it has scrolled to.
+        static int scroll = 0;
+        scroll -= static_cast<int>(GetMouseWheelMove() * 40.0f);
+        scroll = launcher::scrollClamp(scroll, kHeight, GetScreenHeight());
+        float y = 16 - static_cast<float>(scroll);
 
         // ---- Disc ----
         DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 84, kPanel);
@@ -392,10 +464,10 @@ int main(int argc, char **argv)
         y += 96;
 
         // ---- Video ----
-        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 118, kPanel);
+        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 180, kPanel);
         panelTitle(24, y, "Video");
         DrawText("Detail", 24, static_cast<int>(y) + 30, 14, kDim);
-        int scaleSel = config.gsScale >= 3 ? 2 : (config.gsScale == 2 ? 1 : 0);
+        int scaleSel = config.gsScale >= 4 ? 3 : (config.gsScale == 3 ? 2 : (config.gsScale == 2 ? 1 : 0));
         const int newScale = radios(100, y + 28, scaleLabels, scaleSel);
         if (newScale != scaleSel)
         {
@@ -411,29 +483,118 @@ int main(int argc, char **argv)
             dirty = true;
         }
         DrawText("Window", 24, static_cast<int>(y) + 86, 14, kDim);
-        int sizeSel = indexOf(sizeLabels, config.windowSize, 0);
+        const std::string monitorSize = TextFormat("%dx%d", GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
+        int sizeSel = indexOf(sizeLabels, config.windowSize, -1);
+        if (sizeSel < 0)
+            sizeSel = (config.windowSize == monitorSize) ? 3 : 0;
         const int newSize = radios(100, y + 84, sizeLabels, sizeSel);
         if (newSize != sizeSel)
         {
-            config.windowSize = sizeLabels[newSize];
+            // "Match display" is a button, not a stored value: what lands in config.json is the monitor's own
+            // <w>x<h>, so a config carried to a machine with a different screen is a size, not a surprise.
+            config.windowSize = (newSize == 3) ? monitorSize : std::string(sizeLabels[newSize]);
             dirty = true;
         }
-        y += 130;
+        if (checkbox(100, y + 110, "FPS overlay (host fps, the game's vsync rate, frame time)", config.fpsOverlay))
+            dirty = true;
+        DrawText(TextFormat("Volume %d%%", config.audioVolume), 24, static_cast<int>(y) + 140, 14, kDim);
+        {
+            const int before = config.audioVolume;
+            sliderInt({140, y + 138, 280, 20}, config.audioVolume, 0, 100);
+            if (config.audioVolume != before)
+                dirty = true;
+        }
+        y += 192;
 
         // ---- Controller ----
-        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 206, kPanel);
+        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 232, kPanel);
         panelTitle(24, y, "Controller");
-        drawController(24, y + 28);
-        if (checkbox(480, y + 60, "mouse look", config.mouseLook))
+        // The pads raylib sees, polled every frame: one plugged in while the launcher is open appears in the
+        // list without a restart, and one unplugged disappears (the pick then falls back to "first available",
+        // which is exactly what an unset PS2X_HOST_GAMEPAD_INDEX means to the runtime).
+        std::vector<std::string> padLabels = {"first available"};
+        std::vector<int> padSlots = {-1};
+        for (int i = 0; i < 4; ++i)
+        {
+            if (IsGamepadAvailable(i))
+            {
+                padLabels.push_back(std::string("[") + std::to_string(i) + "] " + GetGamepadName(i));
+                padSlots.push_back(i);
+            }
+        }
+        int padSel = 0;
+        for (size_t i = 0; i < padSlots.size(); ++i)
+            if (padSlots[i] == config.gamepadIndex)
+                padSel = static_cast<int>(i);
+        const int newPad = radiosColumn(480, y + 28, padLabels, padSel);
+        if (newPad != padSel)
+        {
+            config.gamepadIndex = padSlots[newPad];
             dirty = true;
-        DrawText(TextFormat("sensitivity %.2f", config.mouseSensitivity), 480, static_cast<int>(y) + 92, 14, kDim);
+        }
+        // The slot the test area draws: the pick, or the first available pad when there is no pick.
+        int shownSlot = config.gamepadIndex;
+        if (shownSlot < 0)
+        {
+            for (int i = 0; i < 4 && shownSlot < 0; ++i)
+                if (IsGamepadAvailable(i))
+                    shownSlot = i;
+        }
+        drawController(24, y + 28, shownSlot, static_cast<float>(config.padDeadZone));
+        DrawText(TextFormat("dead zone %.2f", config.padDeadZone), 480, static_cast<int>(y) + 128, 14, kDim);
+        {
+            const double before = config.padDeadZone;
+            slider({480, y + 148, 280, 20}, config.padDeadZone, 0.0, 0.40);
+            if (config.padDeadZone != before)
+                dirty = true;
+        }
+        if (checkbox(480, y + 176, "mouse look", config.mouseLook))
+            dirty = true;
+        DrawText(TextFormat("sensitivity %.2f", config.mouseSensitivity), 480, static_cast<int>(y) + 200, 14, kDim);
         {
             const double before = config.mouseSensitivity;
-            slider({480, y + 112, 280, 20}, config.mouseSensitivity, 0.25, 3.0);
+            slider({480, y + 218, 280, 20}, config.mouseSensitivity, 0.25, 3.0);
             if (config.mouseSensitivity != before)
                 dirty = true;
         }
-        y += 218;
+        y += 244;
+
+        // ---- Microphone ----
+        DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 172, kPanel);
+        panelTitle(24, y, "Microphone");
+        int micSel = 0;
+        for (size_t i = 1; i < micLabels.size(); ++i)
+            if (micLabels[i] == config.micDevice)
+                micSel = static_cast<int>(i);
+        const int newMic = radiosColumn(24, y + 28, micLabels, micSel);
+        if (newMic != micSel)
+        {
+            config.micDevice = (newMic == 0) ? std::string() : micLabels[newMic];
+            mic->stopMeter();
+            meterOn = !config.micDevice.empty() && mic->startMeter(config.micDevice);
+            micStatus = config.micDevice.empty() ? "" : (meterOn ? "listening" : "that device will not open");
+            dirty = true;
+        }
+        if (button({kWidth - 24 - 96, y + 28, 96, 26}, "Rescan"))
+        {
+            micLabels = launcher::micLabels(*mic);
+            micStatus = TextFormat("%d capture device(s)", static_cast<int>(micLabels.size()) - 1);
+        }
+        // The meter: -60 dB (silence) to 0 dB (full scale) across 280 px, redrawn every frame from the capture
+        // callback's atomic. A bar that moves when the player speaks is the whole point of the panel.
+        const float db = meterOn ? mic->levelDb() : -INFINITY;
+        float filled = 0.0f;
+        if (meterOn && std::isfinite(db))
+            filled = (db + 60.0f) / 60.0f;
+        filled = filled < 0.0f ? 0.0f : (filled > 1.0f ? 1.0f : filled);
+        DrawRectangle(480, static_cast<int>(y) + 32, 280, 18, kField);
+        DrawRectangle(480, static_cast<int>(y) + 32, static_cast<int>(280.0f * filled), 18, filled > 0.9f ? kBad : kAccent);
+        DrawRectangleLines(480, static_cast<int>(y) + 32, 280, 18, kDim);
+        DrawText(meterOn && std::isfinite(db) ? TextFormat("%.0f dB", db) : "--", 768, static_cast<int>(y) + 34, 14, kDim);
+        DrawText(micStatus.c_str(), 480, static_cast<int>(y) + 58, 14, kDim);
+        DrawText("the game does not send your voice yet (Sprint 8); this meter proves the device works",
+                 480, static_cast<int>(y) + 80, 12, kDim);
+        y += 184;
 
         // ---- Online ----
         DrawRectangle(12, static_cast<int>(y) - 6, kWidth - 24, 128, kPanel);
@@ -473,14 +634,21 @@ int main(int argc, char **argv)
         const bool running = game.running();
         if (!running && game.process)
         {
+            // Task 1a: 65 means the run happened but on the CPU rasterizer -- say so rather than
+            // leaving the player with a slideshow and no reason.
+            const std::string why = launcher::exitMessage(game.exitCode());
             game.close();
-            status = "the game exited";
+            status = why.empty() ? "the game exited" : why;
+            // Review F8: the meter gives the capture device back to the game while it runs; take it again now.
+            meterOn = !config.micDevice.empty() && mic->startMeter(config.micDevice);
         }
         const bool canLaunch = disc.ok && !running;
         if (button({24, y, 160, 40}, running ? "running..." : "Launch", canLaunch))
         {
             writeText(configPath, launcher::toJson(config));
             dirty = false;
+            mic->stopMeter();   // Review F8: two processes must not hold the same microphone
+            meterOn = false;
             if (win32glue::startGame(dir.string(), config, game))
             {
                 lastLog = game.logPath;
@@ -499,6 +667,7 @@ int main(int argc, char **argv)
         EndDrawing();
     }
     writeText(configPath, launcher::toJson(config));
+    mic->stopMeter();
     game.close();
     CloseWindow();
     return 0;

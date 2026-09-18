@@ -1,5 +1,6 @@
 #include "runtime/ps2_pad.h"
 #include "runtime/host_gamepad.h"
+#include "runtime/host_gamepad_select.h"
 #include "ps2_host_backend.h"
 #include <cstring>
 
@@ -39,8 +40,11 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
     data[4] = data[5] = data[6] = data[7] = kPadStickCenter;
 
     uint16_t btns = 0xFFFFu;
-    constexpr int kGamepad = 0;
-    const bool useGamepad = hostGamepadEnabled() && IsGamepadAvailable(kGamepad);
+    // Task 8: the pad the launcher picked (PS2X_HOST_GAMEPAD_INDEX), or the first available one.
+    const int kGamepad = hostGamepadEnabled()
+                             ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                             : -1;
+    const bool useGamepad = kGamepad >= 0;
     auto clearBit = [&btns](uint16_t mask)
     { btns &= ~mask; };
 
@@ -79,10 +83,12 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
         if (IsGamepadButtonDown(kGamepad, GAMEPAD_BUTTON_RIGHT_THUMB))
             clearBit(PAD_R3);
 
-        float lx = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_X);
-        float ly = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_Y);
-        float rx = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_X);
-        float ry = GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_Y);
+        // Task 8 / ruling R95: one dead zone for all three pad paths; this one had none.
+        const float deadZone = hostPadDeadZone();
+        const float lx = hostPadAxis(GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_X), deadZone);
+        const float ly = hostPadAxis(GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_LEFT_Y), deadZone);
+        const float rx = hostPadAxis(GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_X), deadZone);
+        const float ry = hostPadAxis(GetGamepadAxisMovement(kGamepad, GAMEPAD_AXIS_RIGHT_Y), deadZone);
         data[6] = static_cast<uint8_t>(128 + lx * 127);
         data[7] = static_cast<uint8_t>(128 + ly * 127);
         data[4] = static_cast<uint8_t>(128 + rx * 127);

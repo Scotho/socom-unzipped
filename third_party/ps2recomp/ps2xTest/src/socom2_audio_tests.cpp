@@ -6,12 +6,21 @@
 #include "runtime/socom2_bank.h"
 #include "runtime/snd989_mixer.h"
 #include "runtime/ps2_audio.h"
+#include "runtime/audio_volume.h"
+#include "runtime/host_mic.h"
+#include "ps2x/iop/iop_subsystem.h"
+#include "ps2_runtime.h"
+#include "ps2_iop_transport.h"
+#include "ps2_syscalls.h"
+#include "ps2_stubs.h"
 
 #include <cmath>
+#include <cstring>
 
 #include <algorithm>
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -53,10 +62,277 @@ namespace
         }
         return b;
     }
+
+    // A stereo VPK on disk: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000,
+    // channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
+    // block carries the data's end flag. Task 1e's ring cases need a file longer than the ring holds.
+    bool writeVpk(const std::string &path, int chunkPairs)
+    {
+        int8_t up[28], down[28];
+        for (int i = 0; i < 28; ++i)
+        {
+            up[i] = static_cast<int8_t>(i % 8);
+            down[i] = static_cast<int8_t>(-(i % 8));
+        }
+        std::vector<uint8_t> file(0xB0, 0u);
+        auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+        std::memcpy(file.data(), " KPV", 4);
+        put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+        put32(8, 0x800);
+        put32(12, 0xB0);
+        put32(16, 32000);
+        put32(20, 2);
+        for (int c = 0; c < chunkPairs; ++c)
+            for (int ch = 0; ch < 2; ++ch)
+                for (int b = 0; b < 0x800 / 16; ++b)
+                {
+                    const bool last = c == chunkPairs - 1 && b == 0x800 / 16 - 1;
+                    const std::vector<uint8_t> blk = block(12, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(file.data(), 1, file.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
+    // ---- the 989snd IOP module (modules/snd989.cpp) --------------------------------------------
+    // Its model -- bank table, sound slots, VAG stream slots -- is only reachable over its RPC
+    // server (SID 0x00123456, one command per call), so the cases below drive it the way the game
+    // does. A minimal host: guest memory and nothing else (no disc image, no mixer).
+    class Snd989TestHost : public ps2x::iop::IopHost
+    {
+    public:
+        std::vector<uint8_t> memory = std::vector<uint8_t>(0x10000u, 0u);
+
+        bool readGuest(uint32_t address, void *destination, size_t size) const override
+        {
+            if (!fits(address, size))
+                return false;
+            if (size != 0u)
+                std::memcpy(destination, memory.data() + address, size);
+            return true;
+        }
+        bool writeGuest(uint32_t address, const void *source, size_t size) override
+        {
+            if (!fits(address, size))
+                return false;
+            if (size != 0u)
+                std::memcpy(memory.data() + address, source, size);
+            return true;
+        }
+        bool zeroGuest(uint32_t address, size_t size) override
+        {
+            if (!fits(address, size))
+                return false;
+            std::fill(memory.begin() + address, memory.begin() + address + size, uint8_t{0});
+            return true;
+        }
+        bool normalizeGuestAddress(uint32_t address, uint32_t &normalized) const override
+        {
+            normalized = address & 0x1FFFFFFFu;
+            return normalized < memory.size();
+        }
+        uint32_t allocateIopHandle(ps2x::iop::IopHandleKind) override { return m_nextHandle += 0x40u; }
+        uint32_t allocateGuest(uint32_t size, uint32_t) override
+        {
+            if (size == 0u || m_nextAlloc + size > memory.size())
+                return 0u;
+            const uint32_t address = m_nextAlloc;
+            m_nextAlloc += size;
+            return address;
+        }
+        void freeGuest(uint32_t) override {}
+        void audioCommand(uint32_t, uint32_t function, ps2x::iop::GuestBuffer, ps2x::iop::GuestBuffer) override
+        {
+            audioCommands.push_back(function);
+        }
+        std::string hostPath(ps2x::iop::HostPathKind) const override { return std::string(); }
+        std::string translateGuestPath(std::string_view path) const override { return std::string(path); }
+        uint64_t openHostFile(std::string_view) override { return 0u; }
+        bool hostFileSize(uint64_t, uint64_t &) const override { return false; }
+        bool readHostFile(uint64_t, uint64_t, void *, size_t, size_t &bytesRead) override
+        {
+            bytesRead = 0u;
+            return false;
+        }
+        void closeHostFile(uint64_t) override {}
+        int32_t memoryCard(const ps2x::iop::MemoryCardRequest &) override { return 0; }
+        bool hasGuestFunction(uint32_t) const override { return false; }
+        bool invokeGuestFunction(uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t *) override
+        {
+            return false;
+        }
+        void log(ps2x::iop::LogLevel, std::string_view) override {}
+
+        std::vector<uint32_t> audioCommands;
+
+    private:
+        bool fits(uint32_t address, size_t size) const
+        {
+            return static_cast<uint64_t>(address) + size <= memory.size();
+        }
+        uint32_t m_nextHandle = 0x8000u;
+        uint32_t m_nextAlloc = 0x4000u;
+    };
+
+    // Task 12b: the same minimal host with the one seam the runtime's PS2IopHostAdapter provides for the
+    // mixer -- audioNotify() reaches PS2AudioBackend::onNotify (which opens the VAG stream) and
+    // audioIsPlaying() is answered by snd989::Mixer::isPlaying, per handle. This is how the IOP model learns
+    // that a stream the game never stopped has played to its end.
+    class Snd989MixerHost final : public Snd989TestHost
+    {
+    public:
+        PS2AudioBackend backend;
+
+        void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+        {
+            backend.onNotify(function, args, count);
+        }
+        bool audioIsPlaying(uint32_t handle, bool &playing) const override
+        {
+            return backend.isPlaying(handle, playing);
+        }
+    };
+
+    // Sprint 7 review finding F3: the same mixer host, except that snd_PlayVAGStreamByLoc never reaches the
+    // mixer (a failed open, a notify the host dropped). The handle the model minted is then one the mixer has
+    // never seen, and the reaper must not read "no answer" as "finished".
+    class Snd989UnseenStreamHost final : public Snd989TestHost
+    {
+    public:
+        PS2AudioBackend backend;
+
+        void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+        {
+            if (function == 0x2Cu)
+                return;   // snd_PlayVAGStreamByLoc: the mixer never learns this handle
+            backend.onNotify(function, args, count);
+        }
+        bool audioIsPlaying(uint32_t handle, bool &playing) const override
+        {
+            return backend.isPlaying(handle, playing);
+        }
+    };
+
+    // One RPC call on the snd server, returning the module's result word.
+    template <typename HostT = Snd989TestHost>
+    struct Snd989HarnessT
+    {
+        static constexpr uint32_t kSid = 0x00123456u;
+        static constexpr uint32_t kSend = 0x0800u;
+        static constexpr uint32_t kReceive = 0x1000u;
+
+        HostT host;
+        ps2x::iop::IopSubsystem subsystem{host};
+        bool configured = false;
+
+        Snd989HarnessT()
+        {
+            std::string error;
+            configured = subsystem.configure({"socom2_game.elf", 0u, 0u}, &error);
+        }
+
+        uint32_t call(uint32_t fno, const std::vector<uint32_t> &words)
+        {
+            if (!words.empty())
+                (void)host.writeGuest(kSend, words.data(), words.size() * sizeof(uint32_t));
+            (void)host.zeroGuest(kReceive, 0x40u);
+            ps2x::iop::RpcRequest request{};
+            request.sid = kSid;
+            request.function = fno;
+            request.send = {kSend, static_cast<uint32_t>(words.size() * sizeof(uint32_t))};
+            request.receive = {kReceive, 0x40u};
+            (void)subsystem.handleRpc(request);
+            uint32_t value = 0u;
+            (void)host.readGuest(kReceive + 4u, &value, sizeof(value));
+            return value;   // handleSingle: [0]=-1, [1]=the result, [2]=-1
+        }
+    };
+
+    using Snd989Harness = Snd989HarnessT<>;
+
+    // A one-channel VPK of a single 0x800-byte chunk (the last block carries the data's end flag) written at
+    // sector 2 of a small "disc image": a stream of ~5376 output frames that ends by itself.
+    bool writeOneChunkVpkImage(const std::string &path)
+    {
+        int8_t up[28];
+        for (int i = 0; i < 28; ++i)
+            up[i] = static_cast<int8_t>(i % 8);
+        std::vector<uint8_t> image(2048u * 2u, 0u);
+        std::vector<uint8_t> vpk(0xB0, 0u);
+        auto put32 = [&](size_t at, uint32_t v) { vpk[at] = static_cast<uint8_t>(v); vpk[at + 1] = static_cast<uint8_t>(v >> 8); vpk[at + 2] = static_cast<uint8_t>(v >> 16); vpk[at + 3] = static_cast<uint8_t>(v >> 24); };
+        std::memcpy(vpk.data(), " KPV", 4);
+        put32(4, 0x800u);
+        put32(8, 0x800u);
+        put32(12, 0xB0u);
+        put32(16, 32000u);
+        put32(20, 1u);
+        for (int b = 0; b < 0x800 / 16; ++b)
+        {
+            const std::vector<uint8_t> blk = block(12, 0, b == 0x800 / 16 - 1 ? 0x01 : 0x00, up);
+            vpk.insert(vpk.end(), blk.begin(), blk.end());
+        }
+        image.insert(image.end(), vpk.begin(), vpk.end());
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(image.data(), 1, image.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
+
+    // Task 12b, the bank table: the call that wiped it is an EE one (sceSifInitRpc), so this case needs the
+    // runtime's own IOP subsystem rather than the standalone harness above -- the same shape as TestEnv in
+    // ps2_sif_rpc_tests.cpp.
+    struct SndRuntimeEnv
+    {
+        std::vector<uint8_t> rdram;
+        R5900Context ctx{};
+        PS2Runtime runtime;
+        bool configured = false;
+
+        SndRuntimeEnv() : rdram(PS2_RAM_SIZE, 0)
+        {
+            std::memset(&ctx, 0, sizeof(ctx));
+            std::string error;
+            configured = PS2IopTransport::configureForTesting(&runtime, {"socom2_game.elf", 0u, 0u}, &error);
+        }
+
+        static constexpr uint32_t kSid = 0x00123456u;
+        static constexpr uint32_t kSend = 0x00023000u;
+        static constexpr uint32_t kReceive = 0x00023100u;
+
+        uint32_t call(uint32_t fno, const std::vector<uint32_t> &words)
+        {
+            std::memset(rdram.data() + kSend, 0, 0x100u);
+            std::memset(rdram.data() + kReceive, 0, 0x100u);
+            if (!words.empty())
+                std::memcpy(rdram.data() + kSend, words.data(), words.size() * sizeof(uint32_t));
+            ps2x::iop::RpcRequest request{};
+            request.sid = kSid;
+            request.function = fno;
+            request.send = {kSend, static_cast<uint32_t>(words.size() * sizeof(uint32_t))};
+            request.receive = {kReceive, 0x40u};
+            (void)PS2IopTransport::handleRpc(&runtime, rdram.data(), &ctx, std::move(request));
+            uint32_t value = 0u;
+            std::memcpy(&value, rdram.data() + kReceive + 4u, sizeof(value));
+            return value;
+        }
+    };
 }
 
 void register_socom2_audio_tests()
 {
+    // Task 1e: the mixer's stream worker is a thread; the tests drive pumpStreams() themselves so a case's audio
+    // is a function of its calls and not of a 10 ms tick (the interface's PS2X_SND_STREAM_WORKER=0 path).
+#ifdef _WIN32
+    _putenv_s("PS2X_SND_STREAM_WORKER", "0");
+#else
+    setenv("PS2X_SND_STREAM_WORKER", "0", 1);
+#endif
+
     MiniTest::Case("SOCOM2Audio", [](TestCase &tc)
     {
         tc.Run("the HUDUI bank parses: 24 sounds, sound 0's four tones, sound 16's grain script, the bank name", [](TestCase &t)
@@ -445,6 +721,7 @@ void register_socom2_audio_tests()
             snd989::Mixer mixer;
             t.IsTrue(!mixer.playStream(0x04000001u, path, 4u, 0x400, -1, 1u), "an offset that is not a VPK header is refused");
             t.IsTrue(mixer.playStream(0x04000001u, path, 0u, 0x400, -1, 1u), "the stream starts");
+            mixer.pumpStreams();   // the worker's job, driven by hand: the whole file fits the ring
             t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one stream");
             t.IsTrue(mixer.isPlaying(0x04000001u), "playing under the module's handle");
             std::vector<int16_t> buf(2 * 4800);
@@ -469,6 +746,7 @@ void register_socom2_audio_tests()
             t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "no stream left");
 
             t.IsTrue(mixer.playStream(0x04000002u, path, 0u, 0x400, 90, 1u), "again, panned right");
+            mixer.pumpStreams();
             mixer.render(buf.data(), 2400);
             left = right = 0;
             for (size_t i = 0; i < 2400; ++i)
@@ -482,6 +760,53 @@ void register_socom2_audio_tests()
             t.IsTrue(mixer.playStream(0x04000003u, path, 0u, 0x400, -1, 1u), "a third");
             mixer.stopAllStreams();
             t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "stopAllStreams");
+            std::remove(path.c_str());
+        });
+
+        // Task 1e (audit 2026-09-17 section 2.3): the disc read moved off the audio callback. pumpStreams() decodes
+        // ahead into each stream's ring on a worker; render() touches memory only.
+        tc.Run("a stream plays out of its ring with the file handle closed", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_ring_stream.vpk";
+            t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(1u, path, 0ull, 0x400, 0, 0u), "the stream starts");
+            mixer.pumpStreams();
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one live stream");
+            mixer.closeStreamFilesForTest();
+            std::vector<int16_t> buf(4096 * 2, 0);
+            mixer.render(buf.data(), 4096);
+            bool anyNonZero = false;
+            for (int16_t s : buf) if (s != 0) { anyNonZero = true; break; }
+            t.IsTrue(anyNonZero, "render plays the ring's contents with no file behind it");
+            // And only the ring's contents: the file holds 8 chunk pairs, the ring at most kStreamRingChunks.
+            // One chunk pair is 128 blocks x 28 samples = 3584 samples at 32 kHz = 5376 frames at 48 kHz.
+            size_t frames = 4096;
+            while (frames < 8u * 5376u)
+            {
+                mixer.render(buf.data(), 4096);
+                frames += 4096;
+            }
+            bool tailNonZero = false;
+            for (int16_t s : buf) if (s != 0) { tailNonZero = true; break; }
+            t.IsTrue(!tailNonZero, "past the ring it goes quiet: render never read the rest of the file");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("render never reads the disc", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_ring_empty.vpk";
+            t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(2u, path, 0ull, 0x400, 0, 0u), "the stream starts");
+            mixer.closeStreamFilesForTest();          // nothing pumped: the ring is empty
+            std::vector<int16_t> buf(4096 * 2, 0x7F);
+            mixer.render(buf.data(), 4096);           // must not crash, must not read, must go quiet
+            t.Equals(static_cast<int>(buf[0]), 0, "an empty ring renders silence, not a disc read");
+            bool anyNonZero = false;
+            for (int16_t s : buf) if (s != 0) { anyNonZero = true; break; }
+            t.IsTrue(!anyNonZero, "the whole buffer is silence");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "an underrun is not the end of the stream");
             std::remove(path.c_str());
         });
 
@@ -516,6 +841,7 @@ void register_socom2_audio_tests()
             backend.setDiscImagePath(path);
             const int32_t play[9] = {0x04000005, 2, 0, 0, 0x400, 0, -1, 1, 0};
             backend.onNotify(0x2Cu, play, 9u);
+            backend.mixerPumpStreams();
             t.Equals(backend.mixerActiveStreams(), static_cast<size_t>(1u), "snd_PlayVAGStreamByLoc opened the stream at sector 2");
             bool playing = false;
             t.IsTrue(backend.isPlaying(0x04000005u, playing) && playing, "the mixer answers snd_SoundIsStillPlaying: playing");
@@ -557,6 +883,7 @@ void register_socom2_audio_tests()
             }
             snd989::Mixer mixer;
             t.IsTrue(mixer.playStream(0x04000009u, path, 0u, 0x400, -1, 1u), "the VAGp stream starts");
+            mixer.pumpStreams();
             std::vector<int16_t> buf(2 * 4800);
             mixer.render(buf.data(), 4800);
             double left = 0, right = 0;
@@ -603,6 +930,7 @@ void register_socom2_audio_tests()
             {   // the mixer must close the file before it can be removed (Windows)
                 snd989::Mixer mixer;
                 t.IsTrue(mixer.playStream(0x0400000Au, path, 0u, 0x400, -1, 1u), "starts");
+                mixer.pumpStreams();
                 std::vector<int16_t> buf(2 * 512);
                 mixer.render(buf.data(), 512);
                 int32_t peak = 0;
@@ -612,6 +940,37 @@ void register_socom2_audio_tests()
                 mixer.stopAll();
             }
             std::remove(path.c_str());
+        });
+
+        // Sprint 7 Task 12 Step 4 (ruling R97): the owner's "persistent buzz" on the online menus was a 512-byte block
+        // looping -- the game's fill landed after the head had passed, and the ring replayed stale bytes. A block the
+        // game has not rewritten since the head last played it is now silence, counted, never a loop.
+        tc.Run("Mixer: a PCM ring block not rewritten since it was last played is silence and counts an underrun; a rewritten block plays", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);   // 24 block pairs of 1024 bytes = 256 frames each
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "no underruns at start");
+            std::vector<uint8_t> ring(0x6000u);
+            for (size_t i = 0; i < ring.size(); i += 2) { ring[i] = 0x40; ring[i + 1] = 0x1f; }   // +8000 everywhere
+            std::vector<int16_t> buf(2 * 6144);
+            auto peak = [&](size_t frames) { int32_t p = 0; for (size_t i = 0; i < 2 * frames; ++i) p = std::max<int32_t>(p, buf[i] < 0 ? -buf[i] : buf[i]); return p; };
+            mixer.render(buf.data(), 256);
+            t.Equals(peak(256), 0, "nothing written yet: silence");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1), "and that is one underrun");
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());   // the game fills the whole ring, as the log shows before Start
+            mixer.render(buf.data(), 6144u);                       // one full ring from block 1: every block fresh, block 0 played at the wrap
+            t.IsTrue(peak(6144u) > 3000, "written blocks play");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1), "no new underrun while the fill is ahead");
+            t.Equals(mixer.pcmStreamPosition(), 256u * 4u, "back at block 1");
+            mixer.render(buf.data(), 256);                         // block 1 again: played once since the write, never rewritten
+            t.Equals(peak(256), 0, "a block played once and not rewritten is silence, not a loop");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(2), "counted");
+            mixer.pcmStreamWrite(2048u, ring.data(), 1024u);       // the game refills block 2 just before the head reaches it
+            mixer.render(buf.data(), 256);
+            t.IsTrue(peak(256) > 3000, "the refilled block plays");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(2), "no underrun for it");
+            mixer.pcmStreamStop();
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "stop resets the count");
         });
 
         tc.Run("Mixer: the PCM ring plays block-interleaved stereo (512-byte L and R blocks, as the movie audio is laid out) at its rate, reports its position, wraps, and stops", [](TestCase &t)
@@ -692,6 +1051,282 @@ void register_socom2_audio_tests()
             const int32_t none[1] = {0};
             backend.onNotify(0x3Du, none, 1u);
             t.IsTrue(!backend.pcmPosition(position), "snd_PcmStreamStop: no stream");
+        });
+
+        tc.Run("volumeGain: 0-100 percent to a linear gain, out of range clamped", [](TestCase &t)
+        {
+            t.IsTrue(volumeGain(100) == 1.0f, "100 is unity -- byte for byte the mix the renderer produced");
+            t.IsTrue(volumeGain(0) == 0.0f, "0 is silence");
+            t.IsTrue(volumeGain(50) == 0.5f, "50 is half");
+            t.IsTrue(volumeGain(150) == 1.0f, "above the range is unity, never a gain above 1 that would clip the mix");
+            t.IsTrue(volumeGain(-10) == 0.0f, "below the range is silence, never a negative gain that would invert it");
+            t.IsTrue(volumeGain(1) > 0.0f && volumeGain(1) < 0.02f, "the bottom step is quiet, not muted");
+        });
+
+        tc.Run("MicRing: write n, read n, and it wraps without tearing a frame", [](TestCase &t)
+        {
+            MicRing ring(8);
+            int16_t out[16] = {};
+            t.Equals(ring.available(), static_cast<size_t>(0), "a new ring is empty");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(0), "reading an empty ring yields nothing");
+            const int16_t a[4] = {1, 2, 3, 4};
+            t.Equals(ring.write(a, 4), static_cast<size_t>(4), "four in");
+            t.Equals(ring.available(), static_cast<size_t>(4), "four waiting");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(4), "four out");
+            t.IsTrue(out[0] == 1 && out[1] == 2 && out[2] == 3 && out[3] == 4, "in the order they went in");
+            // Six more from a read cursor at 4 in an 8-frame ring: the second half wraps past the end.
+            const int16_t b[6] = {5, 6, 7, 8, 9, 10};
+            t.Equals(ring.write(b, 6), static_cast<size_t>(6), "six in, across the wrap");
+            t.Equals(ring.read(out, 6), static_cast<size_t>(6), "six out, across the wrap");
+            for (int i = 0; i < 6; ++i)
+                t.Equals(static_cast<int>(out[i]), 5 + i, "every frame survived the wrap");
+            // Overrun: capacity is 8, so 9 cannot fit and the oldest are NOT silently overwritten.
+            const int16_t c[9] = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+            t.Equals(ring.write(c, 9), static_cast<size_t>(8), "a full ring takes what fits");
+            t.Equals(ring.dropped(), static_cast<size_t>(1), "and counts what it dropped");
+            t.Equals(ring.read(out, 16), static_cast<size_t>(8), "reading more than there is yields what there is");
+        });
+        // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
+        // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
+        // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
+        tc.Run("989snd: snd_StopSound on a VAG stream handle frees its stream slot", [](TestCase &t)
+        {
+            Snd989Harness h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kStopSound = 0x15u;
+            const std::vector<uint32_t> play = {2000u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};   // parent (word 5) = 0
+
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            t.Equals((first >> 24) & 0x1Fu, 4u, "and a type-4 (stream) handle");
+
+            h.call(kStopSound, {first});
+
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays after the stop");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
+                     "and so does the next one: snd_StopSound freed the stopped stream's slot");
+        });
+
+        // Task 12c: 971 "play request for unknown bank" lines for banks that were loaded and never unloaded. The
+        // reject path itself has to stay harmless (return 0, play nothing) while a loaded bank still plays.
+        tc.Run("989snd: a play on an unknown bank handle is rejected without disturbing a loaded bank", [](TestCase &t)
+        {
+            Snd989Harness h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            const uint32_t bank = h.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle even with no disc image");
+
+            t.Equals(h.call(kPlaySound, {0xDEADBEEFu, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "a play on a handle no bank owns returns 0");
+            t.IsTrue(h.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
+                     "and the loaded bank still plays");
+        });
+
+        // Sprint 7 Task 12b, the larger stream leak (the owner's run of 2026-09-18, logs/run_20260918_044701.log):
+        // 12 streams played, only 4 ever stopped, then 107 x "no free VAG stream slot". A one-shot VAG stream that
+        // plays to its natural end is never stopped by the game -- it polls snd_SoundIsStillPlaying and reuses the
+        // slot when the answer is "done" (4440 polls of 0x04030005 / 0x04050008 in that run). The console's IRX
+        // learns the end from the mixer; the model has to ask the host the same question, or the slot leaks for the
+        // rest of the run and so does the game's own handle.
+        tc.Run("989snd: a VAG stream that plays to its end is reported done and its slot is reusable", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_stream_end_image.bin";
+            t.IsTrue(writeOneChunkVpkImage(path), "the one-chunk VPK image is written");
+
+            Snd989HarnessT<Snd989MixerHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            h.host.backend.setDiscImagePath(path);
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kSoundIsStillPlaying = 0x19u;
+            const std::vector<uint32_t> play = {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};   // sector 2, vol 0x400, parent 0
+
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            t.Equals(h.host.backend.mixerActiveStreams(), static_cast<size_t>(1u), "and the mixer opened it");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), first, "while it plays, the game's poll says still playing");
+
+            // Render past the end of the chunk (3584 samples at 32 kHz = 5376 frames out).
+            std::vector<int16_t> buf(2 * 4800);
+            for (int i = 0; i < 3; ++i)
+            {
+                h.host.backend.mixerPumpStreams();
+                h.host.backend.mixerRender(buf.data(), 4800);
+            }
+            bool playing = true;
+            t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the stream");
+
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "so the game's poll says done");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays into a free slot");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
+                     "and so does the next one: the ended stream's slot was reused, not leaked");
+
+            std::remove(path.c_str());
+        });
+
+        // Sprint 7 review finding F2: playVagStream reaped the ended streams BEFORE it looked the queued
+        // stream's parent up, so a parent whose mixer stream had just finished was deactivated and findStream
+        // missed it -- the queue silently took a fresh slot with an unrelated handle and the chain broke.
+        tc.Run("989snd: a stream queued onto a just-ended parent still chains onto the parent's slot", [](TestCase &t)
+        {
+            const std::string path = "ps2x_test_stream_queue.bin";
+            if (!writeOneChunkVpkImage(path))
+            {
+                t.IsTrue(false, "could not write the test disc image");
+                return;
+            }
+
+            Snd989HarnessT<Snd989MixerHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            h.host.backend.setDiscImagePath(path);
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u});
+            t.IsTrue(first != 0u, "the parent stream gets a slot");
+
+            // A live parent's shape: the queued play reuses the parent's slot and so returns the parent's own
+            // handle. Queue onto a parent the mixer has just finished and the answer must be the same.
+            std::vector<int16_t> buf(2 * 4800);
+            for (int i = 0; i < 3; ++i)
+            {
+                h.host.backend.mixerPumpStreams();
+                h.host.backend.mixerRender(buf.data(), 4800);
+            }
+            bool playing = true;
+            t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the parent");
+
+            const uint32_t queued = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, first, 0u, 0u});
+            t.Equals(queued, first, "the queued stream chains onto the parent's slot, exactly as a live parent would");
+
+            std::remove(path.c_str());
+        });
+
+        // Sprint 7 review finding F3: the backend answered "true, not playing" for ANY type-4/5 handle, so a
+        // handle the mixer had never seen (the play never reached it) read as finished and the reaper freed the
+        // slot under it. The answer is three-state now: no answer at all for a handle the mixer does not know.
+        tc.Run("989snd: a handle the mixer never saw gets no answer, and its slot is not reaped", [](TestCase &t)
+        {
+            PS2AudioBackend backend;
+            bool playing = true;
+            t.IsTrue(!backend.isPlaying(0x04120001u, playing), "a stream handle the mixer never saw: no answer");
+            playing = true;
+            t.IsTrue(!backend.isPlaying(0x05120001u, playing), "a sound handle the mixer never saw: no answer either");
+
+            Snd989HarnessT<Snd989UnseenStreamHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            const std::vector<uint32_t> play = {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u};
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(first != 0u, "the first stream gets a slot");
+            const uint32_t second = h.call(kPlayVagStreamByLoc, play);   // this play runs the reaper
+            t.IsTrue(second != 0u, "the second stream gets a slot too");
+            t.IsTrue(((first >> 16) & 0xFFu) != ((second >> 16) & 0xFFu),
+                     "the first slot was not reaped out from under a handle the mixer never answered for");
+        });
+
+        // Sprint 7 review finding F6: the PS2X_MIC_DUMP header was written with dataSize 0 and only patched
+        // with the real sizes on a clean stop, so a run that was killed (which is how a capture usually ends)
+        // left a WAV claiming zero bytes -- unplayable, although every byte was on disc.
+        tc.Run("the mic dump's WAV header: an unfinished dump reads to EOF, a finished one carries its sizes", [](TestCase &t)
+        {
+            uint8_t header[44] = {};
+            hostMicWavHeader(header, 0u, HostMic::kSampleRate);
+            auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, header + at, 4); return v; };
+            t.Equals(std::memcmp(header, "RIFF", 4), 0, "still a RIFF header");
+            t.Equals(std::memcmp(header + 36, "data", 4), 0, "with a data chunk");
+            t.Equals(u32(4), 0xFFFFFFFFu, "size 0 = not known yet: the RIFF size says 'read to the end of the file'");
+            t.Equals(u32(40), 0xFFFFFFFFu, "and so does the data size, so a killed run still plays");
+            t.Equals(u32(24), HostMic::kSampleRate, "16 kHz");
+            t.Equals(u32(28), HostMic::kSampleRate * 2u, "byte rate for 16-bit mono");
+
+            hostMicWavHeader(header, 32000u, HostMic::kSampleRate);
+            t.Equals(u32(4), 36u + 32000u, "a clean stop patches the real RIFF size back in");
+            t.Equals(u32(40), 32000u, "and the real data size");
+        });
+
+        // Sprint 7 Task 12b, the bank table: in the same run bank 0xa30000 was loaded and 66 lines later every play
+        // on it was rejected with an EMPTY table ("0 entries, lastBank 0x00000000"). Nothing unloaded it: the game
+        // called sceSifInitRpc a second time (the lgaud / mcserv init between the two), and the EE stub reset every
+        // IOP service on every call, wiping the model. On the console sceSifInitRpc only sets up the EE's own RPC
+        // packet queues -- the IOP keeps running and a bank stays loaded until snd_BankUnload / snd_UnloadBank.
+        tc.Run("989snd: a loaded bank survives a second sceSifInitRpc (the console does not reset the IOP for it)", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u, "and the bank plays");
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);   // the game's second init
+
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u,
+                     "the bank is still loaded afterwards: sceSifInitRpc is not a bank unload");
+        });
+
+        // Sprint 7 review finding F1: with sceSifInitRpc no longer resetting the IOP model, the reset had to
+        // move to where the console puts it -- an actual IOP reboot. Both reboot stubs were empty, so after the
+        // InitRpc fix NOTHING reset the model any more. (SOCOM II never calls either: 0 RebootIop and 0 ResetIop
+        // in the owner's log and in the driven mission log, so this is correctness for a path the game skips.)
+        tc.Run("989snd: sceSifRebootIop resets the IOP model, so a loaded bank does not survive it", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+            t.IsTrue(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}) != 0u, "and the bank plays");
+
+            ps2_stubs::sceSifRebootIop(env.rdram.data(), &env.ctx, &env.runtime);
+
+            t.Equals(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "the reboot reset the IOP model: the bank is gone and the play is rejected");
+        });
+
+        tc.Run("989snd: sceSifResetIop resets the IOP model too", [](TestCase &t)
+        {
+            SndRuntimeEnv env;
+            t.IsTrue(env.configured, "the SOCOM II profile registers the 989snd service");
+
+            constexpr uint32_t kBankLoadByLoc = 0x03u;
+            constexpr uint32_t kPlaySound = 0x11u;
+
+            ps2_syscalls::SifInitRpc(env.rdram.data(), &env.ctx, &env.runtime);
+            const uint32_t bank = env.call(kBankLoadByLoc, {2010461u, 0u});
+            t.IsTrue(bank != 0u, "snd_BankLoadByLoc returns a bank handle");
+
+            ps2_stubs::sceSifResetIop(env.rdram.data(), &env.ctx, &env.runtime);
+
+            t.Equals(env.call(kPlaySound, {bank, 8u, 0x400u, 0xFFFFFFFFu, 0u, 0u}), 0u,
+                     "sceSifResetIop is a reboot as well: the bank table is empty afterwards");
         });
     });
 }

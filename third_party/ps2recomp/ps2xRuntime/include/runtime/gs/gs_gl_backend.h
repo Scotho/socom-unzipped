@@ -3,6 +3,7 @@
 #include "runtime/gs/gs_backend.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
+#include "runtime/gs/gs_gl_caps.h"
 
 #include <array>
 #include <atomic>
@@ -58,8 +59,19 @@ public:
     // EE executor: bound the frames recorded but not yet replayed (PS2X_GS_MAX_PENDING_FRAMES).
     bool GuestFrameBoundary() override;
     void ReleaseHostBackpressure() override;
+    uint64_t PendingGuestFrames() const override { return m_backpressure.pendingFrames(); }
+    uint32_t BackpressureWaiters() const override { return m_backpressure.waiters(); }
+    uint64_t BackpressureWaitNs() const override { return m_backpressure.waitNsTotal(); }
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
     uint32_t HostFrameTexture2() override { return m_presentTexture2; }
+
+    // Task 1a: what the capability probe decided. Written once on the render thread by ensureGl()
+    // and read there; the static pair mirrors it for the runtime's present loop, which holds a
+    // GSRasterBackend pointer and cannot see this class.
+    bool glUnavailable() const { return m_glCapsLatch.failed(); }
+    std::string glMissing() const { return m_glCapsLatch.report().missing; }
+    static bool glUnavailableForProcess();
+    static std::string glMissingForProcess();
 
 private:
     enum class CmdType : uint8_t
@@ -236,7 +248,14 @@ private:
     void executeReadback();
     void flushBatch();
     bool ensureGl();
-    RenderTarget *getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create);
+    // Task 1a: latch the verdict, publish it to the process, and print the one UNSUPPORTED line.
+    void latchGlUnsupported(const GsGlCaps::Report &report);
+    // usedHeight (Sprint 7 Task 1c) is the native row count the caller knows this target is
+    // using -- the scissor's last row + 1 for a draw or a clear. 0 means "not known", which
+    // keeps the old full 1024x1024 allocation. See gs_gl_target_extent.h.
+    RenderTarget *getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create, uint32_t usedHeight = 0u);
+    // Grow a target's native extent in place, never shrink it (Sprint 7 Task 1c).
+    void growRenderTarget(RenderTarget &rt, uint32_t nativeWidth, uint32_t nativeHeight);
     DepthTarget *getDepthTarget(uint32_t zbp, uint32_t fbw, uint32_t width, uint32_t height);
     uint32_t resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight);
     uint32_t decodeTexture(const GSDrawState &state, const TextureKey &key, uint32_t width, uint32_t height, uint32_t pageStart, uint32_t pageCount);
@@ -276,9 +295,15 @@ private:
     uint64_t m_nextToken = 1;
     std::atomic<uint64_t> m_executedToken{0};
     std::atomic<bool> m_glReady{false};
+    // Task 1a: one probe, one attempt. A failure is final, so ensureGl() stops recompiling the
+    // shaders on every host frame of a machine that cannot run them.
+    GsGlCaps::Latch m_glCapsLatch;
     std::thread::id m_renderThread{};
     // Frames recorded (EE executor, GuestFrameBoundary) vs replayed (the swaps above): ruling R35.
     GsFrameBackpressure m_backpressure;
+    // Sprint 7 Task 1b: the same queue bounded in BYTES while the consumer is latched stalled, so
+    // a title-bar drag cannot grow m_pending without end (PS2X_GS_PENDING_CAP_MB, default 64 MB).
+    GsPendingCap m_pendingCap;
 
     // GPU-dirty page tracking (written on the game thread from draw submissions)
     mutable std::mutex m_dirtyMutex;

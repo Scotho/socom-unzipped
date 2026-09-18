@@ -237,7 +237,8 @@ int main(int argc, char *argv[])
 #endif
         std::cout.flush();
         std::cerr.flush();
-        std::_Exit(0);
+        // Task 1a: 0 normally; 65 when the GL probe fell back to the CPU rasterizer.
+        std::_Exit(ps2ProcessExitCode());
     }
     catch (const std::exception &e)
     {

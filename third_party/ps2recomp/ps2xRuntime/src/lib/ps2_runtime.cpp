@@ -1,4 +1,7 @@
 #include "ps2_runtime.h"
+#include "runtime/fps_overlay.h"
+#include "runtime/host_mic.h"
+#include "socom2_host_input.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
 #include "ps2_stubs.h"
@@ -6,6 +9,9 @@
 #include "game_overrides.h"
 #include "ps2_runtime_macros.h"
 #include "runtime/gs/gs_frontend.h"
+#include "runtime/gs/gs_gl_backend.h"
+#include "runtime/gs/gs_cpu_backend.h"
+#include "runtime/gs/gs_gl_caps.h"
 #include "runtime/ee_scheduler.h"
 #include "ThreadNaming.h"
 #include "Kernel/Stubs/Audio.h"
@@ -37,6 +43,22 @@ void ps2HostProfStart(void *nativeHandle);   // game_overrides_socom2.cpp (PS2X_
 namespace ps2_stubs
 {
     void resetSifState();
+}
+
+// Sprint 7 Task 1a: the process's parting word to the launcher.
+namespace
+{
+    std::atomic<int> g_ps2ProcessExitCode{0};
+}
+
+int ps2ProcessExitCode()
+{
+    return g_ps2ProcessExitCode.load(std::memory_order_acquire);
+}
+
+void setPs2ProcessExitCode(int code)
+{
+    g_ps2ProcessExitCode.store(code, std::memory_order_release);
 }
 
 #define ELF_MAGIC 0x464C457F // "\x7FELF" in little endian
@@ -562,6 +584,8 @@ PS2Runtime::~PS2Runtime()
             m_debugUiInitialized = false;
         }
 
+        stopHostMic();
+        ps2_stubs::socom2HostInputShutdown();   // review finding F12: the sampler thread, joined before we go
         if (IsWindowReady())
         {
             CloseWindow();
@@ -728,7 +752,11 @@ bool PS2Runtime::initialize(const char *title)
 #if defined(PLATFORM_VITA)
         InitWindow(HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT, title); // raylib vita does not support audio
 #else
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+        // FLAG_WINDOW_HIGHDPI (Sprint 7 Task 1c, audit 2026-09-17 section 2.2 F8): without it the
+        // window is created in scaled pixels, so 640x448 on a 150% laptop is a 427x299 postage
+        // stamp blurred back up by the compositor. raylib reads the config flags in InitWindow,
+        // so they are set before it, never after.
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
         // PS2X_WINDOW_SIZE=<w>x<h> | fullscreen (the launcher's window-size choice, Task 8b); unset keeps the default
         // the parity gate depends on.
         const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
@@ -739,6 +767,11 @@ bool PS2Runtime::initialize(const char *title)
             std::cout << "[window] PS2X_WINDOW_SIZE: " << (windowSize.borderless ? "borderless fullscreen" : std::to_string(windowSize.width) + "x" + std::to_string(windowSize.height)) << std::endl;
         InitAudioDevice();
         m_audioBackend.setAudioReady(IsAudioDeviceReady());
+        // Task 9b: PS2X_MIC_DEVICE=<name> opens the player's microphone. Unset -- the default, and what the
+        // gate runs with -- opens nothing at all. Nothing consumes the ring yet: lgaud.cpp still answers "no
+        // headset" to every RPC but its version query (Task 9c's spike scopes the consumer), so this is
+        // capture and PS2X_MIC_DUMP only.
+        startHostMicFromEnvironment();
 #endif
         SetTargetFPS(60);
         if (m_debugUiInitCallback)
@@ -2581,6 +2614,17 @@ void PS2Runtime::run()
             }
             if (gs().hostRenderFrame())
                 hostTex = gs().hostFrameTexture(hostTexW, hostTexH, hostFullW, hostFullH);
+            // Task 1a: the GL probe latched a failure on this machine. Hand the frame to the CPU
+            // rasterizer -- the same backend PS2X_GS_BACKEND=cpu selects -- and leave a code the
+            // launcher can turn into a sentence. Once; the swap makes hostDriven() false.
+            if (GSGlBackend::glUnavailableForProcess())
+            {
+                std::cerr << "[gs-gl] switching to the CPU rasterizer: " << GSGlBackend::glMissingForProcess()
+                          << std::endl;
+                gs().setRasterBackend(std::make_unique<GSCpuBackend>());
+                setPs2ProcessExitCode(GsGlCaps::kExitCode);
+                hostTex = 0u;
+            }
         }
         if (hostTex != 0u && hostTexW != 0u && hostTexH != 0u)
         {
@@ -2749,6 +2793,34 @@ void PS2Runtime::run()
                 }
             }
         }
+        // PS2X_FPS_OVERLAY=1 (Task 10): one line of raylib text in the top-left of the WINDOW. Drawn after the
+        // exported frame above, so the gate's detectors and every parity capture see exactly what they saw
+        // before this knob existed; the backing rectangle is 200x14, the box the task's bar allows.
+        {
+            static const bool s_fpsOverlay = [] {
+                const char *const e = std::getenv("PS2X_FPS_OVERLAY");
+                return e != nullptr && *e != 0 && std::strcmp(e, "0") != 0;
+            }();
+            if (s_fpsOverlay)
+            {
+                // The guest rate over the last second, from the same vsync counter the [pc-sampler] line's
+                // vsync= field reads (game_overrides_socom2.cpp:682).
+                static double s_windowStart = GetTime();
+                static uint64_t s_windowTick = eeScheduler().currentVSyncTick();
+                static double s_guestHz = -1.0;
+                const double nowS = GetTime();
+                const uint64_t tickNow = eeScheduler().currentVSyncTick();
+                if (nowS - s_windowStart >= 1.0)
+                {
+                    s_guestHz = static_cast<double>(tickNow - s_windowTick) / (nowS - s_windowStart);
+                    s_windowStart = nowS;
+                    s_windowTick = tickNow;
+                }
+                const std::string line = fpsOverlayLine(GetFPS(), s_guestHz, GetFrameTime() * 1000.0);
+                DrawRectangle(0, 0, 200, 14, Color{0, 0, 0, 160});
+                DrawText(line.c_str(), 4, 2, 10, RAYWHITE);
+            }
+        }
         if (m_debugUiInitialized && m_debugUiDrawCallback)
         {
             m_debugUiDrawCallback(*this, m_debugUiUserData);
@@ -2809,6 +2881,8 @@ void PS2Runtime::run()
         m_debugUiInitialized = false;
     }
     UnloadTexture(frameTex);
+    stopHostMic();
+    ps2_stubs::socom2HostInputShutdown();   // review finding F12: the sampler thread, joined before we go
     CloseWindow();
 
     RUNTIME_LOG("[run] exiting loop");

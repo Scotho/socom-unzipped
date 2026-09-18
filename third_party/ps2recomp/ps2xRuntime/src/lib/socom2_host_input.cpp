@@ -2,8 +2,11 @@
 
 #include "raylib.h"
 #include "runtime/host_gamepad.h"
+#include "runtime/host_gamepad_select.h"
+#include "runtime/injected_pad_latch.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -11,6 +14,7 @@
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace ps2_stubs
@@ -38,6 +42,54 @@ namespace ps2_stubs
         };
 
         HostInputConfig g_config;
+
+        // PS2X_SOCOM2_INPUT_FILE sampler. The harness holds a press for ~0.09 s of wall clock, but
+        // the poll below runs once per rendered frame, so under ~11 fps a whole press fell between
+        // two polls and was never seen (ten driven launches, 2026-09-18). A thread samples the file
+        // every 2 ms into a latch and the poll takes every button seen since the previous poll, so a
+        // press is delivered late rather than dropped. No thread exists unless the variable is set.
+        struct InjectedPadSampler
+        {
+            ps2x::InjectedPadLatch latch;
+            std::thread worker;
+            std::atomic<bool> stop{false};
+
+            void start(const char *path)
+            {
+                if (worker.joinable())
+                    return;
+                stop.store(false, std::memory_order_relaxed);
+                const std::string file(path);
+                worker = std::thread([this, file]()
+                {
+                    while (!stop.load(std::memory_order_relaxed))
+                    {
+                        if (FILE *f = std::fopen(file.c_str(), "rb"))
+                        {
+                            char line[128] = {0};
+                            const size_t n = std::fread(line, 1, sizeof(line) - 1, f);
+                            std::fclose(f);
+                            line[n] = '\0';
+                            ps2x::InjectedPadSample sample;
+                            if (ps2x::parseInjectedPadLine(line, sample))
+                                latch.observe(sample);
+                        }
+                        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+                    }
+                });
+            }
+
+            void shutdown()
+            {
+                stop.store(true, std::memory_order_relaxed);
+                if (worker.joinable())
+                    worker.join();
+            }
+
+            ~InjectedPadSampler() { shutdown(); }
+        };
+
+        InjectedPadSampler g_injectedPadSampler;
 
         int buttonIdFromName(const std::string &name)
         {
@@ -147,8 +199,12 @@ namespace ps2_stubs
                 g_config.mouseSensitivity = static_cast<float>(std::atof(sens));
             if (const char *script = std::getenv("PS2X_SOCOM2_INPUT_SCRIPT"))
                 parseScript(script);
+            // Task 8: name the pad that is actually read (PS2X_HOST_GAMEPAD_INDEX), not slot 0.
+            const int pad = hostGamepadEnabled()
+                                ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                                : -1;
             std::cout << "[socom2-input] keyboard on (arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3)"
-                      << "; gamepad " << (!hostGamepadEnabled() ? "off (PS2X_HOST_GAMEPAD=0)" : IsGamepadAvailable(0) ? GetGamepadName(0) : "none")
+                      << "; gamepad " << (!hostGamepadEnabled() ? "off (PS2X_HOST_GAMEPAD=0)" : pad >= 0 ? GetGamepadName(pad) : "none")
                       << "; mouse " << (g_config.mouse ? "on" : "off (PS2X_SOCOM2_MOUSE=1)")
                       << "; script events " << g_config.script.size() << std::endl;
         }
@@ -166,6 +222,22 @@ namespace ps2_stubs
         {
             return static_cast<uint8_t>(std::clamp(std::lround(value), 0L, 255L));
         }
+    }
+
+    void socom2HostInputStartSampler(const char *path)
+    {
+        if (path != nullptr && path[0] != 0)
+            g_injectedPadSampler.start(path);
+    }
+
+    void socom2HostInputShutdown()
+    {
+        g_injectedPadSampler.shutdown();
+    }
+
+    bool socom2HostInputSamplerRunning()
+    {
+        return g_injectedPadSampler.worker.joinable();
     }
 
     void socom2HostInputPoll(Socom2PadState &pad)
@@ -203,7 +275,14 @@ namespace ps2_stubs
         // PS2X_SOCOM2_PAD is set, so an Xbox controller did nothing here until 2026-09-16 (owner's free
         // play: Windows saw the controller, the game did not). A stick overrides the keyboard axis only
         // when deflected past the dead zone, so WASD/IJKL/mouse keep working with a pad plugged in.
-        if (hostGamepadEnabled() && IsGamepadAvailable(0))
+        // Task 8: the pad the launcher picked (PS2X_HOST_GAMEPAD_INDEX), or the first available one.
+        // Re-selected every poll rather than latched: pads are hot-pluggable, and a player who plugs one in
+        // mid-session should not have to restart.
+        // `padSlot`, not `pad`: the poll's own out-parameter is named `pad` (Socom2PadState &).
+        const int padSlot = hostGamepadEnabled()
+                                ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                                : -1;
+        if (padSlot >= 0)
         {
             static const struct { int button; uint8_t pad; } kPadButtons[] = {
                 {GAMEPAD_BUTTON_LEFT_FACE_UP, kPadUp}, {GAMEPAD_BUTTON_LEFT_FACE_RIGHT, kPadRight},
@@ -217,7 +296,7 @@ namespace ps2_stubs
             };
             for (const auto &entry : kPadButtons)
             {
-                if (IsGamepadButtonDown(0, entry.button))
+                if (IsGamepadButtonDown(padSlot, entry.button))
                     next.button[entry.pad] = 1u;
             }
             // Triggers: raylib maps the trigger axes (rest -1.0) past 0.1 to GAMEPAD_BUTTON_*_TRIGGER_2 itself
@@ -225,11 +304,11 @@ namespace ps2_stubs
             static const struct { int axis; int slot; } kSticks[] = {
                 {GAMEPAD_AXIS_RIGHT_X, 0}, {GAMEPAD_AXIS_RIGHT_Y, 1}, {GAMEPAD_AXIS_LEFT_X, 2}, {GAMEPAD_AXIS_LEFT_Y, 3},
             };
-            constexpr float kDeadZone = 0.15f;
+            const float deadZone = hostPadDeadZone();
             for (const auto &stick : kSticks)
             {
-                const float v = GetGamepadAxisMovement(0, stick.axis);
-                if (v > kDeadZone || v < -kDeadZone)
+                const float v = hostPadAxis(GetGamepadAxisMovement(padSlot, stick.axis), deadZone);
+                if (v != 0.0f)
                     next.axis[stick.slot] = clampAxis(128.0f + v * 127.0f);
             }
         }
@@ -276,34 +355,28 @@ namespace ps2_stubs
             }
         }
 
-        // PS2X_SOCOM2_INPUT_FILE=<path>: a driver-written pad state, read on every poll (the file is
-        // tiny). One line: "b=<hex 16-bit button mask> rx=<0-255> ry=<n> lx=<n> ly=<n>". Buttons are
-        // OR-ed with the keyboard, an axis overrides the keyboard when it is not neutral (0x80).
+        // PS2X_SOCOM2_INPUT_FILE=<path>: a driver-written pad state, sampled by a background
+        // thread and latched, so every press written to the file is seen by at least one poll. One
+        // line: "b=<hex 16-bit button mask> rx=<0-255> ry=<n> lx=<n> ly=<n>". Buttons are OR-ed
+        // with the keyboard, an axis overrides the keyboard when it is not neutral (0x80).
         // Posted keyboard messages reach raylib only when the window thread pumps, so scripted
         // holds were dropped or their release was seen only at the next press (probe6, 2026-09-10);
-        // the file path is deterministic and works for two instances on one host.
+        // the file path is deterministic and works for two instances on one host. Reading the file
+        // here only, once per rendered frame, dropped a whole 0.09 s press under ~11 fps: the press
+        // lived entirely between two polls (ten driven launches, 2026-09-18).
         {
             static const char *s_file = std::getenv("PS2X_SOCOM2_INPUT_FILE");
             if (s_file != nullptr)
             {
-                if (FILE *f = std::fopen(s_file, "rb"))
-                {
-                    char line[128] = {0};
-                    const size_t n = std::fread(line, 1, sizeof(line) - 1, f);
-                    std::fclose(f);
-                    line[n] = '\0';
-                    unsigned mask = 0, rx = 0x80, ry = 0x80, lx = 0x80, ly = 0x80;
-                    if (std::sscanf(line, "b=%x rx=%u ry=%u lx=%u ly=%u", &mask, &rx, &ry, &lx, &ly) == 5)
-                    {
-                        for (int id = 0; id < 16; ++id)
-                            if (mask & (1u << id))
-                                next.button[id] = 1u;
-                        const unsigned values[4] = {rx, ry, lx, ly};
-                        for (int axis = 0; axis < 4; ++axis)
-                            if (values[axis] != 0x80u)
-                                next.axis[axis] = static_cast<uint8_t>(std::min(values[axis], 255u));
-                    }
-                }
+                socom2HostInputStartSampler(s_file);
+                const ps2x::InjectedPadSample sample = g_injectedPadSampler.latch.take();
+                for (int id = 0; id < 16; ++id)
+                    if (sample.buttons & (1u << id))
+                        next.button[id] = 1u;
+                const unsigned values[4] = {sample.rx, sample.ry, sample.lx, sample.ly};
+                for (int axis = 0; axis < 4; ++axis)
+                    if (values[axis] != 0x80u)
+                        next.axis[axis] = static_cast<uint8_t>(std::min(values[axis], 255u));
             }
         }
 
