@@ -83,6 +83,13 @@ target_link_libraries(ps2_test_lib PRIVATE
 )
 target_link_libraries(ps2_test_lib PUBLIC ps2x_launcher_core)   # launcher_tests.cpp (Task 8b)
 
+# Sprint 8 Task 4: launcher_tests.cpp's two POSIX-only cases exercise the win32glue interface's Unix body,
+# so that one translation unit joins the test library on Unix. On Windows nothing changes: win32_glue.cpp is
+# the launcher executable's alone and the tests around it are compiled out.
+if(UNIX)
+    target_sources(ps2_test_lib PRIVATE ${CMAKE_SOURCE_DIR}/ps2xLauncher/src/posix_glue.cpp)
+endif()
+
 if(UNIX AND NOT APPLE)
     target_link_libraries(ps2_test_lib PRIVATE ${CMAKE_DL_LIBS})
 endif()

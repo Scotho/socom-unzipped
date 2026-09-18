@@ -14,10 +14,18 @@ namespace win32glue
 
     struct GameProcess
     {
-        void *process = nullptr;   // HANDLE
+        void *process = nullptr;   // HANDLE on Windows; the pid, cast, on POSIX (main.cpp tests it for "a game was started")
         void *log = nullptr;       // HANDLE
         std::string logPath;
         std::string error;
+#ifndef _WIN32
+        // Sprint 8 Task 4: POSIX has a pid and a file descriptor where Windows has two handles, and
+        // running()/exitCode() are const -- so the one reap that can be done is cached here.
+        int pid = 0;               // pid_t; 0 = nothing started
+        int logFd = -1;
+        mutable bool exited = false;
+        mutable int status = 0;    // the raw wait(2) status, valid once `exited`
+#endif
         bool running() const;
         int exitCode() const;   // Task 1a: the code the game left with (0 while it is still running)
         void close();

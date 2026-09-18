@@ -5,11 +5,15 @@
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+#ifndef _WIN32
+#include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
+#endif
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -388,5 +392,51 @@ void register_launcher_tests()
             mic.stopMeter();
             t.IsTrue(mic.started.empty(), "stopMeter before any start, and twice over, is a no-op");
         });
+
+        // Sprint 8 Task 4: the environment the game is started with. Windows built its block inline and the
+        // POSIX spawn needs exactly the same rule, so the rule is one pure function shared by both glues.
+        tc.Run("mergeEnvironment: ours win by key, base order kept, ours appended", [](TestCase &t)
+        {
+            const char *const base[] = {"A=1", "B=2", nullptr};
+            const std::vector<std::string> merged = launcher::mergeEnvironment(base, {"B=3", "C=4"});
+            t.Equals(merged.size(), static_cast<size_t>(3), "one A, one B, one C -- the overridden base B is gone, not duplicated");
+            t.Equals(merged[0], std::string("A=1"), "a base entry nobody overrides survives unchanged");
+            t.Equals(merged[1], std::string("B=3"), "ours wins B");
+            t.Equals(merged[2], std::string("C=4"), "ours that the base lacks is appended, in our order");
+
+            // A key with no '=' is not an environment entry: execve would take it, the child could not read it.
+            const std::vector<std::string> skipped = launcher::mergeEnvironment(base, {"D"});
+            t.Equals(skipped.size(), static_cast<size_t>(2), "a key-only entry is dropped, not spawned");
+            t.Equals(skipped[0], std::string("A=1"), "the base is otherwise untouched");
+            t.Equals(skipped[1], std::string("B=2"), "and B keeps its base value when nothing overrides it");
+
+            const char *const none[] = {nullptr};
+            t.Equals(launcher::mergeEnvironment(none, {"A=1"}).size(), static_cast<size_t>(1), "an empty base is just ours");
+            t.Equals(launcher::mergeEnvironment(base, {}).size(), static_cast<size_t>(2), "no knobs is just the base");
+        });
+
+#ifndef _WIN32
+        // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in
+        // the Linux VM and in CI, never on Windows (where win32_glue.cpp owns the interface).
+        tc.Run("startGame refuses a directory with no socom2 next to the launcher", [](TestCase &t)
+        {
+            const std::string dir = (std::filesystem::temp_directory_path() / ("ps2x_task4_" + win32glue::stamp())).string();
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            launcher::Config config;
+            win32glue::GameProcess game;
+            t.IsTrue(!win32glue::startGame(dir, config, game), "no socom2 in the folder is a false, not a spawn");
+            t.IsTrue(game.error.find("socom2") != std::string::npos, "the message names socom2, so the player knows what is missing");
+            std::filesystem::remove_all(dir, ec);
+        });
+
+        tc.Run("exeDirectory is a directory that exists", [](TestCase &t)
+        {
+            const std::string dir = win32glue::exeDirectory();
+            t.IsTrue(!dir.empty(), "exeDirectory answers something");
+            std::error_code ec;
+            t.IsTrue(std::filesystem::is_directory(dir, ec), "and it is a directory that exists (/proc/self/exe's parent, or the fallback)");
+        });
+#endif
     });
 }

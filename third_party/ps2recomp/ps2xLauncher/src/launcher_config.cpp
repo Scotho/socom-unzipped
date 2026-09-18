@@ -282,6 +282,37 @@ namespace launcher
         return std::string();
     }
 
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
+    {
+        // Ours, minus anything that is not a KEY=VALUE pair: execve would carry a bare "D" into the child's
+        // environ, where nothing can read it back.
+        std::vector<std::string> mine;
+        mine.reserve(ours.size());
+        for (const std::string &o : ours)
+            if (o.find('=') != std::string::npos)
+                mine.push_back(o);
+
+        std::vector<std::string> merged;
+        for (const char *const *p = base; p != nullptr && *p != nullptr; ++p)
+        {
+            const std::string s(*p);
+            const size_t eq = s.find('=');
+            const std::string key = eq == std::string::npos ? s : s.substr(0, eq);
+            // Windows hands out "=C:=C:\path" per-drive cwd entries; an empty key is not a variable either.
+            if (key.empty() || key[0] == '=')
+                continue;
+            bool overridden = false;
+            for (const std::string &o : mine)
+                if (o.rfind(key + "=", 0) == 0)
+                    overridden = true;
+            if (!overridden)
+                merged.push_back(s);
+        }
+        for (const std::string &o : mine)
+            merged.push_back(o);
+        return merged;
+    }
+
     std::vector<std::string> environmentFor(const Config &c)
     {
         std::vector<std::string> env;

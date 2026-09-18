@@ -75,4 +75,11 @@ namespace launcher
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
+
+    // Sprint 8 Task 4: the child's environment, as both glues build it. `base` is a NULL-terminated KEY=VALUE
+    // array (the Windows block widened, or POSIX `environ`); `ours` is environmentFor()'s knobs. Ours win by
+    // key: an overridden base entry is dropped rather than duplicated, the rest of the base keeps its order,
+    // and ours follow in theirs. Entries with no '=' are not environment entries and are skipped on both
+    // sides (a bare key in `ours`, and Windows' "=C:"-style drive entries in `base`). Pure; both platforms.
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours);
 }
