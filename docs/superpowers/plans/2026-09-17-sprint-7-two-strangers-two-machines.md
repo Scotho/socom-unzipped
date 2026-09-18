@@ -2659,7 +2659,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: The repeat suite on a quiet host.**
+- [x] **Step 1: The repeat suite on a quiet host.** *(done 2026-09-18 05:40: `PS2X_TEST_REPEAT=3 ./build.sh test` -- 540/540 three times, Python 1172, vu1_replay PASS; `logs/s7_closeout_suite.marker.log`)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "s7 close-out: repeat suite" -- \
@@ -2667,7 +2667,7 @@ git push
 ```
 Expected: exit 0 three times over, with the same counts each time; a case that passes twice and fails once is a flake to name in `docs/KNOWN.md` §4, not a pass.
 
-- [ ] **Step 2: A full gate (launch 24).**
+- [x] **Step 2: A full gate (launch 24).** *(done: `s7_closeout_gate` GATE PASS 3/3 on the exe carrying every commit through 23a860d)*
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_closeout_gate.sh logs/s7_closeout_gate.marker
@@ -2676,13 +2676,13 @@ sha256sum dist/socom2.exe
 ```
 Expected: `PASS title`, `PASS transition`, `PASS mission` on the sprint's final exe, with the sha recorded in STATUS.
 
-- [ ] **Step 3: Tick this plan** against what actually landed — every `- [ ]` above becomes `- [x]` with the launch name that proved it, or keeps its box and gains a one-line reason and the sprint that carries it. No box is ticked on intent.
+- [x] **Step 3: Tick this plan** against what actually landed — every `- [ ]` above becomes `- [x]` with the launch name that proved it, or keeps its box and gains a one-line reason and the sprint that carries it. No box is ticked on intent. *(done: 8efae3c -- every open box carries a reason or a STOP)*
 
-- [ ] **Step 4: The KNOWN audit.** Walk `docs/KNOWN.md` §1 and §2 row by row: the 21k-decodes row moves or is rewritten (Task 3), the lobby rate becomes a proven number (Task 2d), the freeze shape-2 row gets its sentence (Task 2e), the same-key row is settled (Task 2b), and anything this sprint contradicted is retracted into §3 with the measurement that killed it.
+- [x] **Step 4: The KNOWN audit.** Walk `docs/KNOWN.md` §1 and §2 row by row: the 21k-decodes row moves or is rewritten (Task 3), the lobby rate becomes a proven number (Task 2d), the freeze shape-2 row gets its sentence (Task 2e), the same-key row is settled (Task 2b), and anything this sprint contradicted is retracted into §3 with the measurement that killed it. *(done: 94e532d, 7561f90, 1b2fe64, 68a082e, 23a860d, 8efae3c -- the 21k row rewritten and its §1 twin re-measured, the lobby rate proven, the freeze hazard annotated, the login-screen row, the SIF-reset and slot-leak rows, the lock-reap hazard)*
 
-- [ ] **Step 5: STATUS, ROADMAP, CURRENT_SPRINT.** A STATUS entry with the current state (exe sha, gate stamp, the sprint's numbers); ROADMAP §6's Sprint 7 items marked; `docs/CURRENT_SPRINT.md` closes Sprint 7 and opens **Sprint 8** ("It looks and sounds finished, and it does not scare the machine") pointing at its spec.
+- [x] **Step 5: STATUS, ROADMAP, CURRENT_SPRINT.** A STATUS entry with the current state (exe sha, gate stamp, the sprint's numbers); ROADMAP §6's Sprint 7 items marked; `docs/CURRENT_SPRINT.md` closes Sprint 7 and opens **Sprint 8** ("It looks and sounds finished, and it does not scare the machine") pointing at its spec. *(done: df65444 -- STATUS current state and the 2026-09-18 entries, ROADMAP §6 marked, CURRENT_SPRINT's closing block and the Sprint 8 revision)*
 
-- [ ] **Step 6: Whole-branch review, then merge.**
+- [ ] **Step 6: Whole-branch review, then merge.** *(review done 2026-09-18 by an Opus pass over develop..sprint-7: 12 findings, 5 must-fix -- the IOP reset moved to the reboot stubs, the reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen -- plus seven smaller ones; all in the review-fix commit that precedes the merge; the merge itself follows that commit's suite and gate)*
 
 ```bash
 git log --oneline develop..sprint-7
