@@ -8,6 +8,20 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
+## 2026-09-18 (midday) — Sprint 8 OPEN: "Linux, then it looks and sounds finished"
+
+branch: sprint-8 (off develop at `b65fe46`)
+spec: docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md
+plan: docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md (Goal 1; the other goals' plans follow when Goal 1 lands)
+human tasks: docs/HUMAN_TASKS.md (seven open; the newest asks for WSL2 or a real Linux box -- superseded in part by the VM below)
+
+**Goal 1, the client on Linux** (owner 2026-09-18: "add linux support to the installer/launcher"; "feel free to add a
+linux machine" to VirtualBox). Read as the whole client -- launcher and runtime -- as a portable tarball, since there is
+no installer on Windows yet either. Verification in three rings: GitHub Actions on ubuntu-24.04 for the library, tests
+and launcher (no generated code there); the VirtualBox VM `socom-linux` (Ubuntu 24.04.5 server, 8 cores, 8 GB, SSH on
+the host's 2222, created and installed unattended 2026-09-18 11:30-12:00) for the full build and the game under X; the
+owner's Linux PC or Steam Deck for the tarball. Goals 2-8 as drafted below, after Goal 1.
+
 ## 2026-09-18 (morning) — Sprint 7 CLOSED and merged (`d270022` on develop and main); Sprint 8 next
 
 branch: sprint-7, 32 commits on develop at `8f57cbd`, merged `d270022` after the review fixes (41467b7: suite 549, gate 3/3 `s7_final_gate`)
