@@ -107,6 +107,8 @@ rc=$?; echo "done $rc" > logs/<name>.done; exit $rc
 
 ## Task 1 — CMake and a Linux build script (spec Design item 1)
 
+*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3 -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Create: `scripts/build_linux.sh`, `third_party/ps2recomp/ps2xLauncher/src/posix_glue.cpp` (a stub that compiles; Task 4 fills it)
 - Modify: `third_party/ps2recomp/ps2xRuntime/CMakeLists.txt` (:454-465, :476-487, :488-547, :561-574, :598-651), `third_party/ps2recomp/ps2xLauncher/CMakeLists.txt` (:13, :19-21), `third_party/ps2recomp/ps2xLauncher/src/win32_glue.cpp` (:1 and :208 — wrapped whole, so the two glue files never define the same symbol twice)
@@ -121,7 +123,7 @@ rc=$?; echo "done $rc" > logs/<name>.done; exit $rc
 
 **Steps:**
 
-- [ ] **Step 1: Read what the empty-generated-dir path does today, and write the answer into the commit message.** The brief asks which of "links an empty exe" or "fails" happens; the tree says **neither**. At `HEAD`, `ps2xRuntime/CMakeLists.txt:455` takes the `else()` arm at :460-464 when `PS2X_RUNNER_GENERATED_DIR` is empty, which globs `src/runner/*.cpp` — **one real file, `src/runner/register_functions.cpp`**, an all-zero 16 M-slot function table — and :470-474 then appends `src/main.cpp` (`src/runner/main.cpp` does not exist; `src/main.cpp`, 255 lines, does). So the target configures and, on Windows, links a *stub* runner that starts and dispatches nothing. What actually stops a Linux build is not the glob at all: :501-505 attach four runner-only sources to that target unconditionally, and two of them do not compile on Linux —
+- [x] **Step 1: Read what the empty-generated-dir path does today, and write the answer into the commit message.** The brief asks which of "links an empty exe" or "fails" happens; the tree says **neither**. At `HEAD`, `ps2xRuntime/CMakeLists.txt:455` takes the `else()` arm at :460-464 when `PS2X_RUNNER_GENERATED_DIR` is empty, which globs `src/runner/*.cpp` — **one real file, `src/runner/register_functions.cpp`**, an all-zero 16 M-slot function table — and :470-474 then appends `src/main.cpp` (`src/runner/main.cpp` does not exist; `src/main.cpp`, 255 lines, does). So the target configures and, on Windows, links a *stub* runner that starts and dispatches nothing. What actually stops a Linux build is not the glob at all: :501-505 attach four runner-only sources to that target unconditionally, and two of them do not compile on Linux —
 
   ```
   src/lib/game_overrides_socom2.cpp:30    #include <windows.h>        (under #ifdef _WIN32 at :29 -- fine)
@@ -136,7 +138,7 @@ sed -n '454,475p;499,506p' third_party/ps2recomp/ps2xRuntime/CMakeLists.txt
 ls third_party/ps2recomp/ps2xRuntime/src/runner/ third_party/ps2recomp/ps2xRuntime/src/main.cpp
 ```
 
-- [ ] **Step 2: Gate every `ps2EntryRunner` rule behind `PS2X_BUILD_RUNNER`.** In `ps2xRuntime/CMakeLists.txt`, after `RUNNER_SRC_FILES` is complete (after :474) and before the target at :476:
+- [x] **Step 2: Gate every `ps2EntryRunner` rule behind `PS2X_BUILD_RUNNER`.** In `ps2xRuntime/CMakeLists.txt`, after `RUNNER_SRC_FILES` is complete (after :474) and before the target at :476:
 
 ```cmake
 # Sprint 8 Goal 1 design item 1: the runner IS the recompiled game, and the generated code is not in
@@ -153,9 +155,9 @@ endif()
 
   Then wrap, each in its own `if(PS2X_BUILD_RUNNER) ... endif() # PS2X_BUILD_RUNNER`: the target and its include directories (:476-487); the runner's `-msse4.1` at :490 — **`ps2_runtime`'s own `-msse4.1` at :491 stays outside the guard**, the library still needs it; `PS2X_GENERATED_OPT` (:494-498, add `PS2X_BUILD_RUNNER AND` to the condition at :495); the runner sources, unity, PCH, boot-ELF and `/FS` block (:499-547); the link and debug-UI block (:561-572) with `ps2x_stage_ffmpeg_runtime_dlls(ps2EntryRunner)` at :574; the Vita VPK (add `AND PS2X_BUILD_RUNNER` to :599); `EnableFastReleaseMode(ps2EntryRunner)` at :610 and the subsystem block at :612-622 (add `PS2X_BUILD_RUNNER AND` to :612); the WinAPI-clash block (:627-631); the Vita LTO block (add `AND PS2X_BUILD_RUNNER` to :634); the Android source (add `AND PS2X_BUILD_RUNNER` to :643). Split the single `install(TARGETS ps2_runtime ps2EntryRunner ...)` at :647-651 into an unconditional `install(TARGETS ps2_runtime ...)` and a guarded `install(TARGETS ps2EntryRunner ...)`.
 
-- [ ] **Step 3: `-Wl,--allow-multiple-definition` stays WIN32-only — verify, do not change.** :626-631 is already `if(MSVC) /FORCE:MULTIPLE elseif(WIN32) -Wl,--allow-multiple-definition endif()`, so the flag can never reach a Linux link. Extend the comment at :626 to say *why* it is Windows-only by construction — the clash is WinAPI `CloseWindow`/`ShowCursor` against raylib, and there is no such clash on Linux — and leave the logic alone. Same for `ps2xTest/CMakeLists.txt:122-124`: `ws2_32` is **already** under `if(WIN32)`. **Both were listed in the brief as work and the tree had already done them. Record both in the task review and in the sprint report.**
+- [x] **Step 3: `-Wl,--allow-multiple-definition` stays WIN32-only — verify, do not change.** :626-631 is already `if(MSVC) /FORCE:MULTIPLE elseif(WIN32) -Wl,--allow-multiple-definition endif()`, so the flag can never reach a Linux link. Extend the comment at :626 to say *why* it is Windows-only by construction — the clash is WinAPI `CloseWindow`/`ShowCursor` against raylib, and there is no such clash on Linux — and leave the logic alone. Same for `ps2xTest/CMakeLists.txt:122-124`: `ws2_32` is **already** under `if(WIN32)`. **Both were listed in the brief as work and the tree had already done them. Record both in the task review and in the sprint report.**
 
-- [ ] **Step 4: RPATH `$ORIGIN/lib` on the runner and the launcher, UNIX only.** In `ps2xRuntime/CMakeLists.txt` inside the `PS2X_BUILD_RUNNER` block, right after :487:
+- [x] **Step 4: RPATH `$ORIGIN/lib` on the runner and the launcher, UNIX only.** In `ps2xRuntime/CMakeLists.txt` inside the `PS2X_BUILD_RUNNER` block, right after :487:
 
 ```cmake
 if(UNIX AND NOT APPLE)
@@ -169,7 +171,7 @@ endif()
 
   and the same four lines for `socom_unzipped_launcher` at the end of `ps2xLauncher/CMakeLists.txt`. The backslash before `$ORIGIN` is required: CMake must emit the literal `$ORIGIN`, not an expanded (empty) variable.
 
-- [ ] **Step 5: The launcher's `WIN32` executable flag, and the POSIX source.** `ps2xLauncher/CMakeLists.txt:13` is `add_executable(socom_unzipped_launcher WIN32 src/main.cpp src/win32_glue.cpp src/mic_devices.cpp)`. `WIN32` is an `add_executable` *keyword*, so it cannot be made conditional inline; route it through a variable:
+- [x] **Step 5: The launcher's `WIN32` executable flag, and the POSIX source.** `ps2xLauncher/CMakeLists.txt:13` is `add_executable(socom_unzipped_launcher WIN32 src/main.cpp src/win32_glue.cpp src/mic_devices.cpp)`. `WIN32` is an `add_executable` *keyword*, so it cannot be made conditional inline; route it through a variable:
 
 ```cmake
 # Sprint 8 Task 1: the WIN32 keyword means "no console window" and exists only on Windows, so it is
@@ -188,9 +190,9 @@ endif()
 
   `comdlg32`/`shell32` at :19-21 are **already** under `if(WIN32)` — leave them. `mic_devices.cpp` needs no guard: it includes raylib's own `external/miniaudio.h` without `MINIAUDIO_IMPLEMENTATION` (`mic_devices.cpp:5-13`), and miniaudio's capture backends on Linux are PulseAudio and ALSA, whose dev packages `vm/postinstall.sh` and Task 2's workflow both install.
 
-- [ ] **Step 6: Make `win32_glue.cpp` contribute nothing on Linux.** Its per-function `#else` arms (:50-52, :66-67, :75-77, :89-91, :192-196, :204-206) would otherwise define the same `win32glue::` symbols `posix_glue.cpp` defines. Wrap the whole file: `#ifdef _WIN32` after the file comment at :1, `#endif // _WIN32` after the closing brace at :208, and three lines of comment saying the `#else` arms are now unreachable and their behaviour lives in `posix_glue.cpp`. **The Windows preprocessor output is unchanged** — `_WIN32` is defined there, so every byte the compiler sees is the same byte.
+- [x] **Step 6: Make `win32_glue.cpp` contribute nothing on Linux.** Its per-function `#else` arms (:50-52, :66-67, :75-77, :89-91, :192-196, :204-206) would otherwise define the same `win32glue::` symbols `posix_glue.cpp` defines. Wrap the whole file: `#ifdef _WIN32` after the file comment at :1, `#endif // _WIN32` after the closing brace at :208, and three lines of comment saying the `#else` arms are now unreachable and their behaviour lives in `posix_glue.cpp`. **The Windows preprocessor output is unchanged** — `_WIN32` is defined there, so every byte the compiler sees is the same byte.
 
-- [ ] **Step 7: The stub `posix_glue.cpp`,** so Task 4's tests are RED on an assertion rather than on a link error:
+- [x] **Step 7: The stub `posix_glue.cpp`,** so Task 4's tests are RED on an assertion rather than on a link error:
 
 ```cpp
 // Sprint 8 Goal 1 design item 4: the launcher's POSIX half. Task 1 puts the translation unit in place
@@ -235,7 +237,7 @@ namespace win32glue
 #endif // !_WIN32
 ```
 
-- [ ] **Step 8: Write `scripts/build_linux.sh`** — `build.sh`'s steps with the native toolchain and nothing else:
+- [x] **Step 8: Write `scripts/build_linux.sh`** — `build.sh`'s steps with the native toolchain and nothing else:
 
 ```bash
 #!/usr/bin/env bash
@@ -316,7 +318,7 @@ esac
 
   `chmod +x scripts/build_linux.sh`. What is deliberately absent, and why: no `recomp` step (the recompiler is not re-run on Linux this sprint — the generated C++ is platform-neutral and comes from the host), no DLL staging, and no `vu1_replay` fixture verify (`build.sh`'s runs 1-9 stay a Windows step until Task 6 lands and Task 8 can afford the minutes).
 
-- [ ] **Step 9: The two checks.** First, in the VM — the host has no Linux CMake:
+- [x] **Step 9: The two checks.** First, in the VM — the host has no Linux CMake:
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -334,7 +336,7 @@ sha256sum -c /tmp/dist_before.txt
 ```
   Expected: `./build.sh test` exit 0 at Sprint 7's close-out counts (549 C++ cases, 1172 Python), then `dist/socom2.exe: OK` and `dist/socom_unzipped_launcher.exe: OK`. **A changed hash on either is a stop** — a guard leaked into the Windows path and the step is not done.
 
-- [ ] **Step 10: Commit.**
+- [x] **Step 10: Commit.**
 
 ```bash
 git commit -m "build(linux): skip the runner without generated code, RPATH \$ORIGIN/lib, a native build script
@@ -371,6 +373,8 @@ git push
 
 ## Task 2 — GitHub Actions on ubuntu-24.04 (spec Design item 6a)
 
+*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3; the first CI run reached the compiler -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Create: `.github/workflows/linux.yml` — there is no `.github/` directory at `HEAD`
 - Test: none of its own. **The workflow is the test**, and its first run is deliberately RED: `ps2xTest/CMakeLists.txt:113-114` compiles `socom2_hostnet.cpp` into `ps2x_tests`, and that file has no BSD half until Task 3. Task 2 lands the harness and records the exact failure; Task 3's Step 6 turns it green.
@@ -381,7 +385,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the workflow.**
+- [x] **Step 1: Write the workflow.**
 
 ```yaml
 # Sprint 8 Goal 1 design item 6(a): ring one. ubuntu-24.04 has NO generated game code -- 14,882 files and
@@ -454,7 +458,7 @@ jobs:
           if-no-files-found: warn
 ```
 
-- [ ] **Step 2: Commit, push, and watch the first (RED) run.**
+- [x] **Step 2: Commit, push, and watch the first (RED) run.**
 
 ```bash
 git commit -m "ci(linux): build and test on ubuntu-24.04 without the generated code
@@ -480,11 +484,13 @@ socom2_hostnet.cpp:56:29: error: use of undeclared identifier 'WSAGetLastError'
 ```
   Paste the first twenty lines into the ledger — this is Task 3's RED, taken on CI instead of in the VM, which is cheaper and reproducible by anyone. **If the failure lands anywhere else** (apt, the CMake configure, raylib's own X11 detection, a missing `-dev` package, `ps2_runtime` itself), that is a Task 2 defect: fix the workflow and re-watch before moving on. Task 3 assumes the only red is hostnet.
 
-- [ ] **Step 3: Record the watch commands** in the workflow's header comment (Step 1 already carries them) and in the ledger: `gh run list --branch sprint-8 --limit 3` for the id and status, `gh run watch <id> --exit-status` to block until it finishes and take the exit code as the verdict, `gh run view <id> --log-failed` when it is red, `gh run download <id> -n ps2x-tests-log` for the suite output without opening a browser. No extra commit — the header already says it.
+- [x] **Step 3: Record the watch commands** in the workflow's header comment (Step 1 already carries them) and in the ledger: `gh run list --branch sprint-8 --limit 3` for the id and status, `gh run watch <id> --exit-status` to block until it finishes and take the exit code as the verdict, `gh run view <id> --log-failed` when it is red, `gh run download <id> -n ps2x-tests-log` for the suite output without opening a browser. No extra commit — the header already says it.
 
 ---
 
 ## Task 3 — hostnet's BSD half (spec Design item 2)
+
+*(landed 2026-09-18 by the concurrent implementation slices: f83de4f -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
 
 **Files:**
 - Modify: `third_party/ps2recomp/ps2xRuntime/src/lib/socom2_hostnet.cpp` — the Winsock include block (:3-11), `Entry::s` (:36), `mapError` (:53-67), `parseIp`'s `inet_pton` (:95-101, portable already, confirm), `init` (:168-183), `shutdown` (:185-197), `createSocket` (:199-217), `closeSocket` (:219-227), `bindSocket` (:229-239), `acceptSocket` (:249-272), `connectSocket` (:274-297), `connectStatus` (:299-326), `send`/`recv` (:328-349), `sendTo`/`recvFrom` (:351-380), `localName`/`peerName` (:382-413), `setBlocking` (:416-425), `poll` (:427-449), `readable` (:451-461), `resolve` (:463-481, `getaddrinfo`, portable already), `localIp` (:488-517)
@@ -503,7 +509,7 @@ socom2_hostnet.cpp:56:29: error: use of undeclared identifier 'WSAGetLastError'
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `socom2_libnetb_tests.cpp`, inside the existing `MiniTest::Case("SOCOM2Libnetb", ...)` body, after the last `tc.Run` (the `PS2X_SOCOM2_SERVER` case ending at :133):
+- [x] **Step 1: Write the failing test.** In `socom2_libnetb_tests.cpp`, inside the existing `MiniTest::Case("SOCOM2Libnetb", ...)` body, after the last `tc.Run` (the `PS2X_SOCOM2_SERVER` case ending at :133):
 
 ```cpp
         // Sprint 8 Goal 1 design item 2: the host socket table on BOTH platforms. Everything libnetb
@@ -548,7 +554,7 @@ socom2_hostnet.cpp:56:29: error: use of undeclared identifier 'WSAGetLastError'
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail — on Linux, where the RED lives.** On Windows this case is green the moment it is written (Winsock already does all of this); say so plainly in the ledger rather than pretending otherwise. The RED is the CI run Task 2 Step 2 already recorded, re-taken now that the case exists:
+- [x] **Step 2: Run it and watch it fail — on Linux, where the RED lives.** On Windows this case is green the moment it is written (Winsock already does all of this); say so plainly in the ledger rather than pretending otherwise. The RED is the CI run Task 2 Step 2 already recorded, re-taken now that the case exists:
 
 ```bash
 git commit -m "test(hostnet): a loopback UDP round trip through the host socket table (RED on Linux)
@@ -563,7 +569,7 @@ socom2_hostnet.cpp:36:13: error: unknown type name 'SOCKET'
 ```
   and on Windows `./build.sh test` exit 0 with the suite one case larger (550) and the new case passing. Both numbers go in the ledger; the Windows green is what says the case is a correct statement of the contract, and the Linux red is what says the contract is unimplemented there.
 
-- [ ] **Step 3: The compat block.** Replace `socom2_hostnet.cpp:3-11` with:
+- [x] **Step 3: The compat block.** Replace `socom2_hostnet.cpp:3-11` with:
 
 ```cpp
 #ifdef _WIN32
@@ -642,7 +648,7 @@ constexpr SOCKET INVALID_SOCKET = -1;
 #endif
 ```
 
-- [ ] **Step 4: `mapError` gets its two switch bodies** (:53-67). The returned values — the guest-visible negative errnos — are identical on both sides; only the names of the constants being matched change, which is why the two bodies cannot be collapsed:
+- [x] **Step 4: `mapError` gets its two switch bodies** (:53-67). The returned values — the guest-visible negative errnos — are identical on both sides; only the names of the constants being matched change, which is why the two bodies cannot be collapsed:
 
 ```cpp
         int mapError()
@@ -681,7 +687,7 @@ constexpr SOCKET INVALID_SOCKET = -1;
         }
 ```
 
-- [ ] **Step 5: The call sites, one by one.** Each is a named line, not a sweep — a subagent brief for this step lists them and the exact replacement, and the verification command is Step 6's.
+- [x] **Step 5: The call sites, one by one.** Each is a named line, not a sweep — a subagent brief for this step lists them and the exact replacement, and the verification command is Step 6's.
 
   1. `init` :173-180 — the `WSADATA`/`WSAStartup` pair and its failure return go under `#ifdef _WIN32`; the `#else` arm does nothing (BSD sockets need no start-up) and cannot fail. `loadHosts()` and `g_initialized` stay outside the guard. The banner at :181 keeps its exact Windows text and gains a Linux twin under the same guard: `"[socom2/hostnet] Winsock ready; retail hostnames -> "` / `"[socom2/hostnet] BSD sockets ready; retail hostnames -> "`. **Do not unify the two strings**: the Windows line is in every run log on record.
   2. `shutdown` :191, :195 — `closesocket(e.s)` → `closeSocketHandle(e.s)`; `WSACleanup()` under `#ifdef _WIN32`.
@@ -701,7 +707,7 @@ constexpr SOCKET INVALID_SOCKET = -1;
   16. `resolve` :471-480 — `getaddrinfo`/`freeaddrinfo` are portable; no change. Confirm and record.
   17. `parseIp` :95-101 — `inet_pton` is portable (`<arpa/inet.h>` on Linux, `ws2tcpip.h` on Windows); no change. Confirm and record.
 
-- [ ] **Step 6: Green on both.** CI first, because it is the cheap side:
+- [x] **Step 6: Green on both.** CI first, because it is the cheap side:
 
 ```bash
 git push && gh run list --branch sprint-8 --limit 1 && gh run watch <id> --exit-status
@@ -714,7 +720,7 @@ sha256sum -c /tmp/dist_before.txt
 ```
   Expected: exit 0, 550 cases, and `dist/socom2.exe: OK` — the Windows binary must still hash exactly as it did before Task 1, because every edit in this task is inside `#ifdef`/inline forwarders whose Windows expansion is the call that was there.
 
-- [ ] **Step 7: Commit** (record the compat-layer choice as ruling **R99**).
+- [x] **Step 7: Commit** (record the compat-layer choice as ruling **R99**).
 
 ```bash
 git commit -m "feat(hostnet): the BSD half of the host socket table
@@ -1157,6 +1163,8 @@ git push
 
 ## Task 5 — The crash handler, the host PC sampler and the thread times on Linux (spec Design item 3)
 
+*(landed 2026-09-18 by the concurrent implementation slices: a3d9269 + 247214f -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Create: `third_party/ps2recomp/ps2xRuntime/include/runtime/host_prof_line.h`, `third_party/ps2recomp/ps2xRuntime/include/runtime/cpu_time_ms.h`
 - Modify: `third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp` (:29-30 the include block, :869-913 the crash handler, :1634-1640 `installCrashHandler`, :1707-1919 `ps2HostProfStart`), `third_party/ps2recomp/ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp` (:26-27 the include, :2834-2864 the `[vu1-stats]` thread and process times)
@@ -1171,7 +1179,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ tests.** In `host_config_tests.cpp`:
+- [x] **Step 1: Write the failing C++ tests.** In `host_config_tests.cpp`:
 
 ```cpp
         // Sprint 8 Goal 1 design item 3: the PS2X_HOST_PROF histogram must read identically on both
@@ -1236,7 +1244,7 @@ class SamplerLineIsPlatformBlind(unittest.TestCase):
 ```
   Adjust the field-key names to whatever `freeze_trace._FIELDS` (:81-85) and `_sampler_fields` (:111-127) actually return when the case is written — read those two functions first and make the assertion match the parser's own keys, not this text.
 
-- [ ] **Step 2: Run them and watch them fail.**
+- [x] **Step 2: Run them and watch them fail.**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8
@@ -1244,7 +1252,7 @@ python -m unittest tools_py.tests.test_freeze_trace -v
 ```
   Expected: `'runtime/host_prof_line.h' file not found` from the C++ build, and the Python case passing on the first run — which is the honest outcome and is itself the statement worth having: the sampler line is already platform-blind, and this case is what will fail the day a Linux arm changes it. Record that distinction in the ledger rather than inventing a red.
 
-- [ ] **Step 3: Implement the two headers and route Windows through them.** `host_prof_line.h` and `cpu_time_ms.h` are header-only. Then replace `game_overrides_socom2.cpp` :1857-1872's inline line building with `HostProfLine::format(kv.first, kv.second, base, inExe ? nullptr : name, inExe ? 0 : (uint64_t)mod)`, and `ps2_vu1_core.cpp` :2841/:2849's two divisions with `CpuTimeMs::perSecond(...)` after converting the `FILETIME` pairs to ns. Run Step 2's commands: green, and **`./build.sh test` plus one gate stage before going further** — this is the one place in Task 5 where Windows code changes shape, so the proof that it did not change behaviour is a real run:
+- [x] **Step 3: Implement the two headers and route Windows through them.** `host_prof_line.h` and `cpu_time_ms.h` are header-only. Then replace `game_overrides_socom2.cpp` :1857-1872's inline line building with `HostProfLine::format(kv.first, kv.second, base, inExe ? nullptr : name, inExe ? 0 : (uint64_t)mod)`, and `ps2_vu1_core.cpp` :2841/:2849's two divisions with `CpuTimeMs::perSecond(...)` after converting the `FILETIME` pairs to ns. Run Step 2's commands: green, and **`./build.sh test` plus one gate stage before going further** — this is the one place in Task 5 where Windows code changes shape, so the proof that it did not change behaviour is a real run:
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "T5: build.sh test" -- ./build.sh test
@@ -1254,7 +1262,7 @@ head -3 logs/hostprof.txt
 ```
   Expected: `logs/hostprof.txt` still begins `base 0x<hex> total <n>` followed by `<rva> <count>` lines, and `python tools_py/hostprof_symbolize.py logs/hostprof.txt --top 10` still prints function names. A changed shape here is a defect, not a design choice.
 
-- [ ] **Step 4: The crash handler's Linux half.** `game_overrides_socom2.cpp` :869-913 keeps its `#ifdef _WIN32` body; add an `#else` arm before the `#endif` at :913:
+- [x] **Step 4: The crash handler's Linux half.** `game_overrides_socom2.cpp` :869-913 keeps its `#ifdef _WIN32` body; add an `#else` arm before the `#endif` at :913:
 
 ```cpp
 #else
@@ -1320,14 +1328,14 @@ head -3 logs/hostprof.txt
 ```
   Add `#include <dlfcn.h>`, `<execinfo.h>`, `<csignal>` to the `#else` arm of the include block at :29-30. `backtrace()` needs `-rdynamic` for readable names; it is not linked for names here (the line is module-relative addresses, symbolized offline exactly as on Windows), so no link flag changes.
 
-- [ ] **Step 5: The host sampler's Linux half.** Wrap the whole of `ps2HostProfStart` (:1712-1919) so its body is `#ifdef _WIN32 <the existing 200 lines> #else <the SIGPROF sampler> #endif`, sharing the env parsing at :1714-1724 (`PS2X_HOST_PROF`, `PS2X_HOST_PROF_OUT`, `PS2X_HOST_PROF_ALL`, `PS2X_HOST_PROF_MAIN`) and the dump loop's use of `HostProfLine::format`. The Linux arm:
+- [x] **Step 5: The host sampler's Linux half.** Wrap the whole of `ps2HostProfStart` (:1712-1919) so its body is `#ifdef _WIN32 <the existing 200 lines> #else <the SIGPROF sampler> #endif`, sharing the env parsing at :1714-1724 (`PS2X_HOST_PROF`, `PS2X_HOST_PROF_OUT`, `PS2X_HOST_PROF_ALL`, `PS2X_HOST_PROF_MAIN`) and the dump loop's use of `HostProfLine::format`. The Linux arm:
 
   - A fixed `std::array<std::atomic<uint64_t>, 65536> g_ring` plus an atomic write index; the signal handler stores `((ucontext_t *)ctx)->uc_mcontext.gregs[REG_RIP]` into the ring and returns. Nothing in it allocates, locks or calls into the C++ runtime: it runs **on the sampled thread**, so anything else can deadlock the very thread it is measuring.
   - A `std::thread` that arms `timer_create` with `SIGEV_THREAD_ID` on the target tid (`nativeHandle` is a `pthread_t`; the tid comes from a one-shot `PS2X_HOST_PROF` handshake where the EE thread records its own `gettid()` — read `ps2_runtime.cpp:2562`, which passes `gameThread.native_handle()`, and add the tid the same way under `#ifndef _WIN32`), sets `it_interval` to the same `periodMs`, then every `periodMs` drains the ring into the same `std::unordered_map<uint64_t,uint32_t> counts` and every 10 s writes `outPath` with the same `base 0x.. total ..` header and `HostProfLine::format` lines.
   - `PS2X_HOST_PROF_ALL` and `PS2X_HOST_PROF_STACKS` are **not** implemented on Linux this sprint: the arm prints `[host-prof] PS2X_HOST_PROF_ALL/_STACKS are Windows-only in this build` once and samples the one thread. Say so rather than silently ignoring the knob.
   - `base` comes from `dladdr` on `&ps2HostProfStart`, and an address outside the exe is named with `dladdr`'s `dli_fname` and `dli_fbase` — the two arguments `HostProfLine::format` already takes.
 
-- [ ] **Step 6: The `[vu1-stats]` thread times.** `ps2_vu1_core.cpp` :2835-2854's `#ifdef _WIN32` block gains an `#else`:
+- [x] **Step 6: The `[vu1-stats]` thread times.** `ps2_vu1_core.cpp` :2835-2854's `#ifdef _WIN32` block gains an `#else`:
 
 ```cpp
 #else
@@ -1351,9 +1359,9 @@ head -3 logs/hostprof.txt
 ```
   The `[vu1-stats]` format string at :2860 does not change, so `tools_py/vu1stats_summary.py` reads both.
 
-- [ ] **Step 7: State what is not tested here, and where it is verified.** The `sigaction` handler, the `SIGPROF` timer and the two `clock_gettime` calls have no pure piece left to assert once `HostProfLine::format` and `CpuTimeMs::perSecond` are extracted: what remains is OS plumbing whose only honest check is running it. **They are verified by Task 8's VM boot**, which asserts that the boot log carries a `[vu1-stats]` line with non-zero `thread=` and `proc=`, and by a deliberate fault: Task 8 Step 9 runs the VM's runner once with `PS2X_SOCOM2_FORCE_CRASH=1` if such a knob exists, and otherwise sends the live process `SIGSEGV` with `kill -SEGV` and requires a `[crash] code=0xb host=0x… module+0x…` line in the log. Write that sentence into this step, not into the commit message alone.
+- [x] **Step 7: State what is not tested here, and where it is verified.** The `sigaction` handler, the `SIGPROF` timer and the two `clock_gettime` calls have no pure piece left to assert once `HostProfLine::format` and `CpuTimeMs::perSecond` are extracted: what remains is OS plumbing whose only honest check is running it. **They are verified by Task 8's VM boot**, which asserts that the boot log carries a `[vu1-stats]` line with non-zero `thread=` and `proc=`, and by a deliberate fault: Task 8 Step 9 runs the VM's runner once with `PS2X_SOCOM2_FORCE_CRASH=1` if such a knob exists, and otherwise sends the live process `SIGSEGV` with `kill -SEGV` and requires a `[crash] code=0xb host=0x… module+0x…` line in the log. Write that sentence into this step, not into the commit message alone.
 
-- [ ] **Step 8: Green, then commit.**
+- [x] **Step 8: Green, then commit.**
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "T5: build.sh test" -- ./build.sh test
@@ -1396,6 +1404,8 @@ git push
 
 ## Task 6 — The `vu1_replay` tool's unguarded `<windows.h>` (spec: the survey's fourth item)
 
+*(landed 2026-09-18 by the concurrent implementation slices: a3d9269 + ab85233/31447c5 -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Modify: `third_party/ps2recomp/ps2xRuntime/src/tools/vu1_replay.cpp` (:58 the unguarded `#include <windows.h>`; :916-968, the `--prof` sampler that needs it — `DuplicateHandle` :922, `GetModuleHandleW` :924, `SuspendThread` :934, `CONTEXT`/`GetThreadContext` :936-939, `ResumeThread` :940, `GetModuleHandleExW` :954-955, `MAX_PATH` :961, `GetModuleFileNameA` :963)
 - Test: none beyond compiling. `vu1_replay` is an offline developer tool with no runtime path; `build_linux.sh test` already builds it (`--target ps2x_tests vu1_replay`), so "it compiles on Linux" is asserted by CI from the moment this lands.
@@ -1404,7 +1414,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Take the RED.** It is already on record from Task 2 if CI built `vu1_replay`; if not, take it explicitly:
+- [x] **Step 1: Take the RED.** It is already on record from Task 2 if CI built `vu1_replay`; if not, take it explicitly:
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -1412,7 +1422,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: `vu1_replay.cpp:58:10: fatal error: 'windows.h' file not found`.
 
-- [ ] **Step 2: Guard the include and split the sampler.** At :58, `#include <windows.h>` becomes
+- [x] **Step 2: Guard the include and split the sampler.** At :58, `#include <windows.h>` becomes
 
 ```cpp
 #ifdef _WIN32
@@ -1471,7 +1481,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
                                   known ? reinterpret_cast<uint64_t>(di.dli_fbase) : 0) << '\n';
 ```
 
-- [ ] **Step 3: Compile on both.**
+- [x] **Step 3: Compile on both.**
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -1480,7 +1490,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: the VM links `build-linux/ps2xRuntime/vu1_replay`, and the host's `./build.sh test` still runs its nine `vu1_replay` fixture verifies (`--verify` x5, `--vram-diff`, the clamp run, and the two ceiling overrides) to `tests: ok`. The nine verifies are the regression check that guarding the include changed nothing — they exercise the whole tool except `--prof`.
 
-- [ ] **Step 4: Commit.**
+- [x] **Step 4: Commit.**
 
 ```bash
 git commit -m "fix(vu1_replay): compile on Linux -- guard windows.h and give --prof a POSIX half
@@ -1503,6 +1513,8 @@ git push
 
 ## Task 7 — Packaging: the Linux branch of `make_portable.sh` (spec Design item 5)
 
+*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3 -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Create: `scripts/portable_libs.py`, `tools_py/tests/test_portable_libs.py`
 - Modify: `scripts/make_portable.sh` (all of it — the whole script becomes a `case "$(uname -s)"`), `tools_py/tests/test_make_portable.py` (:11, the `skipUnless` guard, so the Windows case is skipped on Linux instead of failing there)
@@ -1515,7 +1527,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing Python test** `tools_py/tests/test_portable_libs.py` (`unittest`, no pytest — `test_test_hygiene.py` enforces it):
+- [x] **Step 1: Write the failing Python test** `tools_py/tests/test_portable_libs.py` (`unittest`, no pytest — `test_test_hygiene.py` enforces it):
 
 ```python
 """Sprint 8 Goal 1 design item 5: which shared libraries the Linux tarball carries in lib/.
@@ -1577,9 +1589,9 @@ class Filter(unittest.TestCase):
 ```
   Run: `python -m unittest tools_py.tests.test_portable_libs -v` → `ModuleNotFoundError: No module named 'scripts'` (RED). `scripts/` needs an `__init__.py`, or the test imports by path — **choose the path import** (`importlib.util.spec_from_file_location`) so `scripts/` does not become a package and `test_test_hygiene.py`'s walk of `tools_py/` is unaffected. Rewrite the import as a three-line helper at the top of the test and re-run: `ModuleNotFoundError` becomes `FileNotFoundError: scripts/portable_libs.py`, which is the RED this step wants.
 
-- [ ] **Step 2: Implement `scripts/portable_libs.py`** with the four public functions and the `HOST_PREFIXES` tuple above, plus the `--missing` CLI. Run: `python -m unittest tools_py.tests.test_portable_libs -v` → 5 tests OK.
+- [x] **Step 2: Implement `scripts/portable_libs.py`** with the four public functions and the `HOST_PREFIXES` tuple above, plus the `--missing` CLI. Run: `python -m unittest tools_py.tests.test_portable_libs -v` → 5 tests OK.
 
-- [ ] **Step 3: Give `make_portable.sh` a platform switch.** Wrap the existing body in `case "$(uname -s)" in Linux) <new> ;; *) <the current 38 lines, unchanged> ;; esac`. **The Windows arm is not reindented** — its two here-docs (`LIC` at :19-31 and `RD` at :32-42) need their terminators at column 0, and moving them is how a packaging script silently starts shipping a truncated README. Say so in the header comment. The Linux arm:
+- [x] **Step 3: Give `make_portable.sh` a platform switch.** Wrap the existing body in `case "$(uname -s)" in Linux) <new> ;; *) <the current 38 lines, unchanged> ;; esac`. **The Windows arm is not reindented** — its two here-docs (`LIC` at :19-31 and `RD` at :32-42) need their terminators at column 0, and moving them is how a packaging script silently starts shipping a truncated README. Say so in the header comment. The Linux arm:
   - `DIST=dist-linux` (`LDIST`), refusing with exit 2 and `run scripts/build_linux.sh first` when `socom2`, `socom2_game.elf` or `socom_unzipped_launcher` is missing — `socom2_game.elf` is platform-neutral, so fall back to `dist/socom2_game.elf` when only Windows has built it.
   - `ldd` on **both** binaries, piped once through `portable_libs.py --missing` (exit 3 with the names when anything is unresolved: a tarball that is missing a library is a bug report, not a download) and once through `portable_libs.py` to fill `lib/` with `cp -L` (dereference: `ldd` hands back symlinks).
   - `cp -p` for the three binaries plus an explicit `chmod +x`, because a `.tar.gz` that unpacks non-executable is the classic Linux packaging failure.
@@ -1587,9 +1599,9 @@ class Filter(unittest.TestCase):
   - A `LICENSES/README.txt` naming the same components as the Windows one minus `libwinpthread`, plus a line saying `lib/`'s libraries carry their distribution's licences and that glibc, `libstdc++`, the GL driver, X11 and the sound libraries are the host's and are not shipped.
   - `tar -C "$OUT" -czf "$OUT/socom2-linux.tar.gz" socom2-linux`, and a final line reporting the entry count, the library count and the tarball's size.
 
-- [ ] **Step 4: Keep the Windows packaging test honest.** `tools_py/tests/test_make_portable.py:11` is `@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")`, which already skips the whole class in the VM and on CI (no `powershell` there). Confirm it does, and add one Linux-only case beside it that runs the new branch against a fake `dist-linux/` — three stub binaries, a stubbed `ldd` on `PATH` printing the fixture, and assertions that the tarball exists, that `lib/` holds exactly the four non-host libraries, and that `README.txt` says `./socom_unzipped_launcher`. Guard it with `@unittest.skipUnless(sys.platform.startswith("linux"), "the Linux branch")`.
+- [x] **Step 4: Keep the Windows packaging test honest.** `tools_py/tests/test_make_portable.py:11` is `@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")`, which already skips the whole class in the VM and on CI (no `powershell` there). Confirm it does, and add one Linux-only case beside it that runs the new branch against a fake `dist-linux/` — three stub binaries, a stubbed `ldd` on `PATH` printing the fixture, and assertions that the tarball exists, that `lib/` holds exactly the four non-host libraries, and that `README.txt` says `./socom_unzipped_launcher`. Guard it with `@unittest.skipUnless(sys.platform.startswith("linux"), "the Linux branch")`.
 
-- [ ] **Step 5: Green on all three.**
+- [x] **Step 5: Green on all three.**
 
 ```bash
 python -m unittest tools_py.tests.test_portable_libs tools_py.tests.test_make_portable -v
@@ -1599,7 +1611,7 @@ git push && gh run watch <id> --exit-status
 ```
   Expected: the Windows folder and zip built exactly as before (compare `ls dist/portable/socom2 | wc -l` against the last run's count in `docs/STATUS.md`), the Python suite up by 6 cases, CI green.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
 ```bash
 git commit -m "feat(packaging): a Linux branch for make_portable.sh, and the ldd filter as a tested function
@@ -1776,6 +1788,8 @@ git push
 
 ## Task 9 — The harness's Linux capture and key halves (spec Design item 6b, the gate's prerequisite)
 
+*(landed 2026-09-18 by the concurrent implementation slices: 2aa02c3 -- ticked wholesale; the handoff notes' reconciliation rule applies, line numbers are 7506685's)*
+
 **Files:**
 - Create: `tools_py/parity/x11shot.py`, `tools_py/parity/hostshot.py`, `tools_py/tests/test_hostshot.py`
 - Modify: `tools_py/parity/winshot.py` (no logic change — only the module docstring at :1, saying it is the Windows half of the `hostshot` pair), `tools_py/parity/keys.py` (:6-10 the ctypes import, :42-50 `press`, :30-39 `child_windows`), `tools_py/parity/drive.py` (:25 the import, :235-238 the "already running" check, :245-269 the window search and the kill)
@@ -1789,7 +1803,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test** `tools_py/tests/test_hostshot.py`:
+- [x] **Step 1: Write the failing test** `tools_py/tests/test_hostshot.py`:
 
 ```python
 """Sprint 8 Goal 1 Task 9: the harness picks its capture module by platform.
@@ -1833,7 +1847,7 @@ class ModuleSelection(unittest.TestCase):
 ```
   Run: `python -m unittest tools_py.tests.test_hostshot -v` → `ModuleNotFoundError: No module named 'tools_py.parity.hostshot'` (RED).
 
-- [ ] **Step 2: Write `x11shot.py`** — the same four behaviours `winshot.py` provides, through the tools `vm/postinstall.sh` installed. Every function shells out; nothing is linked, so the module imports anywhere:
+- [x] **Step 2: Write `x11shot.py`** — the same four behaviours `winshot.py` provides, through the tools `vm/postinstall.sh` installed. Every function shells out; nothing is linked, so the module imports anywhere:
 
 ```python
 """The Linux half of the capture pair (winshot.py is the Windows half; hostshot.py picks).
@@ -1854,9 +1868,9 @@ window on top does not end up in the capture the way a root-window screenshot wo
   - `ensure_client_size(hwnd, width=640, height=448)`: `xdotool windowsize <id> <w> <h>`, returning `True` when the geometry had to change. Openbox sizes the frame, not the client, so read the geometry back and correct once — the same correction `winshot.ensure_client_size` makes at :142-145.
   - `register_frame_file(hwnd, path)`: the same one-line dict insert.
 
-- [ ] **Step 3: Write `hostshot.py`** — `module_name`, `kill_command`, `load`, `kill_game`, and the two exception classes. Run Step 1's command: 5 tests OK **on the Windows host**, which is the point: the selector and the name parity are provable without an X server.
+- [x] **Step 3: Write `hostshot.py`** — `module_name`, `kill_command`, `load`, `kill_game`, and the two exception classes. Run Step 1's command: 5 tests OK **on the Windows host**, which is the point: the selector and the name parity are provable without an X server.
 
-- [ ] **Step 4: `keys.py` gets its Linux half.** :6-10's `user32 = ctypes.windll.user32` is a module-level statement, so the file cannot even be imported on Linux. Restructure: the two `MAPS` and `WINDOW_TITLES` (:12-27) are platform-free and stay at module level; the ctypes binding moves under `if sys.platform.startswith("win")`. `press(main_hwnd, button, target, hold_s=0.15)` (:42-50) becomes a switch:
+- [x] **Step 4: `keys.py` gets its Linux half.** :6-10's `user32 = ctypes.windll.user32` is a module-level statement, so the file cannot even be imported on Linux. Restructure: the two `MAPS` and `WINDOW_TITLES` (:12-27) are platform-free and stay at module level; the ctypes binding moves under `if sys.platform.startswith("win")`. `press(main_hwnd, button, target, hold_s=0.15)` (:42-50) becomes a switch:
 
 ```python
 def press(main_hwnd, button, target, hold_s=0.15):
@@ -1884,12 +1898,12 @@ def _press_x11(hwnd, button, target, hold_s):
 ```
   The X11 key names are the `"ours"` map's own keys read back from `socom2_host_input.cpp`'s keyboard map (`keys.py:22-25` documents it: arrows, Enter = START, Backspace = SELECT, Z/X/C/V = Square/Cross/Circle/Triangle, Q/E = L1/R1, 1/3 = L2/R2, WASD and IJKL for the sticks) — **not** a translation of the Windows virtual-key codes, which is a trap: `0x4B` is `K` in the `"ours"` map and `CROSS` in the `"pcsx2"` map. `child_windows` (:30-39) is a Windows-only helper; on Linux `press` targets the one window id and there are no children to fan out to, which the docstring says.
 
-- [ ] **Step 5: `drive.py` imports the platform module and kills with the platform command.** Three edits, no logic change:
+- [x] **Step 5: `drive.py` imports the platform module and kills with the platform command.** Three edits, no logic change:
   - :25 `from tools_py.parity import keys, screen_bands, winshot` → `from tools_py.parity import hostshot, keys, screen_bands` then `winshot = hostshot.load()`. The name `winshot` stays bound so the other 18 call sites (:58, :87, :140-154, :207, :245-259, :329-441) are untouched — deliberately, because this is a port, not a refactor.
   - :235-238's "already running" check uses `tasklist`, which does not exist on Linux: switch to `hostshot.running_game_names()` returning the lower-cased process list (`tasklist` on Windows, `ps -eo comm=` on Linux) and keep the same refusal message.
   - :267-269's `taskkill` → `subprocess.run(hostshot.kill_command(sys.platform, "socom2.exe" if sys.platform.startswith("win") else "socom2"), capture_output=True)`, keeping the PCSX2 branch Windows-only with the same `ValueError` `_press_x11` raises.
 
-- [ ] **Step 6: Green on both, and say what is not covered.**
+- [x] **Step 6: Green on both, and say what is not covered.**
 
 ```bash
 python -m unittest tools_py.tests.test_hostshot tools_py.tests.test_drive_capture tools_py.tests.test_drive_crop tools_py.tests.test_drive_popup -v
@@ -1898,7 +1912,7 @@ scripts/run_detached.sh --owner gate --purpose launch logs/s7_final_gate.sh logs
 ```
   Expected: the new module's 5 cases green, the three `drive` test modules unchanged, the Python suite green, and **the Windows gate still `PASS title/transition/mission` 3/3** — that gate run is the whole safety net for touching `drive.py` and `keys.py`, and it is non-negotiable before the commit. The X11 functions themselves are verified by **Task 10**; write that sentence in the commit, and note in the ledger that `online_login.py:130`, `online_login_ours.py:1705`, `online_match_ours.py:5144`, `pcsx2_ctl.py:233`, `scale_shot.py:101-103` and `sp_death_probe.py:1061` still call `taskkill` directly and are therefore still Windows-only.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
 
 ```bash
 git commit -m "feat(harness): a Linux capture and key half, picked by platform
