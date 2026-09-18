@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -53,10 +54,53 @@ namespace
         }
         return b;
     }
+
+    // A stereo VPK on disk: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000,
+    // channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
+    // block carries the data's end flag. Task 1e's ring cases need a file longer than the ring holds.
+    bool writeVpk(const std::string &path, int chunkPairs)
+    {
+        int8_t up[28], down[28];
+        for (int i = 0; i < 28; ++i)
+        {
+            up[i] = static_cast<int8_t>(i % 8);
+            down[i] = static_cast<int8_t>(-(i % 8));
+        }
+        std::vector<uint8_t> file(0xB0, 0u);
+        auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+        std::memcpy(file.data(), " KPV", 4);
+        put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+        put32(8, 0x800);
+        put32(12, 0xB0);
+        put32(16, 32000);
+        put32(20, 2);
+        for (int c = 0; c < chunkPairs; ++c)
+            for (int ch = 0; ch < 2; ++ch)
+                for (int b = 0; b < 0x800 / 16; ++b)
+                {
+                    const bool last = c == chunkPairs - 1 && b == 0x800 / 16 - 1;
+                    const std::vector<uint8_t> blk = block(12, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+        FILE *fp = std::fopen(path.c_str(), "wb");
+        if (!fp)
+            return false;
+        std::fwrite(file.data(), 1, file.size(), fp);
+        std::fclose(fp);
+        return true;
+    }
 }
 
 void register_socom2_audio_tests()
 {
+    // Task 1e: the mixer's stream worker is a thread; the tests drive pumpStreams() themselves so a case's audio
+    // is a function of its calls and not of a 10 ms tick (the interface's PS2X_SND_STREAM_WORKER=0 path).
+#ifdef _WIN32
+    _putenv_s("PS2X_SND_STREAM_WORKER", "0");
+#else
+    setenv("PS2X_SND_STREAM_WORKER", "0", 1);
+#endif
+
     MiniTest::Case("SOCOM2Audio", [](TestCase &tc)
     {
         tc.Run("the HUDUI bank parses: 24 sounds, sound 0's four tones, sound 16's grain script, the bank name", [](TestCase &t)
@@ -445,6 +489,7 @@ void register_socom2_audio_tests()
             snd989::Mixer mixer;
             t.IsTrue(!mixer.playStream(0x04000001u, path, 4u, 0x400, -1, 1u), "an offset that is not a VPK header is refused");
             t.IsTrue(mixer.playStream(0x04000001u, path, 0u, 0x400, -1, 1u), "the stream starts");
+            mixer.pumpStreams();   // the worker's job, driven by hand: the whole file fits the ring
             t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one stream");
             t.IsTrue(mixer.isPlaying(0x04000001u), "playing under the module's handle");
             std::vector<int16_t> buf(2 * 4800);
@@ -469,6 +514,7 @@ void register_socom2_audio_tests()
             t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "no stream left");
 
             t.IsTrue(mixer.playStream(0x04000002u, path, 0u, 0x400, 90, 1u), "again, panned right");
+            mixer.pumpStreams();
             mixer.render(buf.data(), 2400);
             left = right = 0;
             for (size_t i = 0; i < 2400; ++i)
@@ -482,6 +528,53 @@ void register_socom2_audio_tests()
             t.IsTrue(mixer.playStream(0x04000003u, path, 0u, 0x400, -1, 1u), "a third");
             mixer.stopAllStreams();
             t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "stopAllStreams");
+            std::remove(path.c_str());
+        });
+
+        // Task 1e (audit 2026-09-17 section 2.3): the disc read moved off the audio callback. pumpStreams() decodes
+        // ahead into each stream's ring on a worker; render() touches memory only.
+        tc.Run("a stream plays out of its ring with the file handle closed", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_ring_stream.vpk";
+            t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(1u, path, 0ull, 0x400, 0, 0u), "the stream starts");
+            mixer.pumpStreams();
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one live stream");
+            mixer.closeStreamFilesForTest();
+            std::vector<int16_t> buf(4096 * 2, 0);
+            mixer.render(buf.data(), 4096);
+            bool anyNonZero = false;
+            for (int16_t s : buf) if (s != 0) { anyNonZero = true; break; }
+            t.IsTrue(anyNonZero, "render plays the ring's contents with no file behind it");
+            // And only the ring's contents: the file holds 8 chunk pairs, the ring at most kStreamRingChunks.
+            // One chunk pair is 128 blocks x 28 samples = 3584 samples at 32 kHz = 5376 frames at 48 kHz.
+            size_t frames = 4096;
+            while (frames < 8u * 5376u)
+            {
+                mixer.render(buf.data(), 4096);
+                frames += 4096;
+            }
+            bool tailNonZero = false;
+            for (int16_t s : buf) if (s != 0) { tailNonZero = true; break; }
+            t.IsTrue(!tailNonZero, "past the ring it goes quiet: render never read the rest of the file");
+            std::remove(path.c_str());
+        });
+
+        tc.Run("render never reads the disc", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_ring_empty.vpk";
+            t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(2u, path, 0ull, 0x400, 0, 0u), "the stream starts");
+            mixer.closeStreamFilesForTest();          // nothing pumped: the ring is empty
+            std::vector<int16_t> buf(4096 * 2, 0x7F);
+            mixer.render(buf.data(), 4096);           // must not crash, must not read, must go quiet
+            t.Equals(static_cast<int>(buf[0]), 0, "an empty ring renders silence, not a disc read");
+            bool anyNonZero = false;
+            for (int16_t s : buf) if (s != 0) { anyNonZero = true; break; }
+            t.IsTrue(!anyNonZero, "the whole buffer is silence");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "an underrun is not the end of the stream");
             std::remove(path.c_str());
         });
 
@@ -516,6 +609,7 @@ void register_socom2_audio_tests()
             backend.setDiscImagePath(path);
             const int32_t play[9] = {0x04000005, 2, 0, 0, 0x400, 0, -1, 1, 0};
             backend.onNotify(0x2Cu, play, 9u);
+            backend.mixerPumpStreams();
             t.Equals(backend.mixerActiveStreams(), static_cast<size_t>(1u), "snd_PlayVAGStreamByLoc opened the stream at sector 2");
             bool playing = false;
             t.IsTrue(backend.isPlaying(0x04000005u, playing) && playing, "the mixer answers snd_SoundIsStillPlaying: playing");
@@ -557,6 +651,7 @@ void register_socom2_audio_tests()
             }
             snd989::Mixer mixer;
             t.IsTrue(mixer.playStream(0x04000009u, path, 0u, 0x400, -1, 1u), "the VAGp stream starts");
+            mixer.pumpStreams();
             std::vector<int16_t> buf(2 * 4800);
             mixer.render(buf.data(), 4800);
             double left = 0, right = 0;
@@ -603,6 +698,7 @@ void register_socom2_audio_tests()
             {   // the mixer must close the file before it can be removed (Windows)
                 snd989::Mixer mixer;
                 t.IsTrue(mixer.playStream(0x0400000Au, path, 0u, 0x400, -1, 1u), "starts");
+                mixer.pumpStreams();
                 std::vector<int16_t> buf(2 * 512);
                 mixer.render(buf.data(), 512);
                 int32_t peak = 0;

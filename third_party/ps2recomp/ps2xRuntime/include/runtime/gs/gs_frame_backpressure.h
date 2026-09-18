@@ -70,8 +70,14 @@ public:
     void release();
 
     uint64_t pendingFrames() const;
+    // Consumer latched stalled (Sprint 7 Task 1b reads it to bound the pending BYTES too).
+    bool latched() const;
     uint32_t waiters() const; // producers currently inside the wait (tests)
     Stats takeStats(); // returns and clears the counters
+    // Cumulative time spent inside Waited/TimedOut waits, in nanoseconds, NEVER cleared. Stats::waitMs is only
+    // reachable through takeStats(), which clears and belongs to the 60-present [gs-gl stats] printer; the
+    // pc-sampler reads this instead so the two instruments do not race each other (research/29 section 4 item 7).
+    uint64_t waitNsTotal() const { return m_waitNsTotal.load(std::memory_order_relaxed); }
 
 private:
     mutable std::mutex m_mutex;
@@ -84,6 +90,50 @@ private:
     uint64_t m_progressAtLatch = 0;
     uint32_t m_waiters = 0;
     std::atomic<uint64_t> m_progress{0};
+    std::atomic<uint64_t> m_waitNsTotal{0};
     bool m_released = false;
     Stats m_stats{};
+};
+
+// Sprint 7 Task 1b (audit 2026-09-17 section 2.2 F3, gap G7): the byte side of the same queue.
+// GsFrameBackpressure bounds how many guest FRAMES may be recorded ahead of the replay, but once
+// the consumer latches stalled (a title-bar drag holds the GL thread in the modal size-move loop
+// for as long as the mouse is down) frames stop waiting and the pending command buffer grows for
+// the whole drag: KNOWN section 4's ~15 GB working set. GsPendingCap bounds it in bytes instead.
+//
+// Policy: while the consumer is latched, a command that carries no state (draw work: it will be
+// re-submitted next guest frame) is dropped once the pending bytes reach the cap; a command that
+// carries state (an upload, a transfer, a CLUT load, a VRAM write, anything the replay cannot
+// reconstruct) is always admitted, so no drag can corrupt what the game draws after it. Nothing is
+// ever dropped while the consumer is live. capBytes == 0 is unbounded (the pre-1b behaviour);
+// PS2X_GS_PENDING_CAP_MB sets it, default 64 MB.
+//
+// The counters are atomic: admit() runs on the recorder's thread (under the queue lock) and the
+// stats line reads them on the render thread.
+class GsPendingCap
+{
+public:
+    static constexpr uint64_t kDefaultCapMb = 64u;
+
+    explicit GsPendingCap(uint64_t capBytes);
+
+    // Returns false when the command must be dropped: only ever when the consumer is latched, the
+    // command carries no state, and the pending bytes are already at the cap.
+    bool admit(bool latched, bool carriesState, uint64_t bytes);
+    // The replay took `bytes` of the pending buffer (call it with the buffer's size at the swap).
+    void onReplayed(uint64_t bytes);
+
+    uint64_t bytes() const;    // pending, as accounted by admit()/onReplayed()
+    uint64_t capBytes() const; // 0 = unbounded
+    uint64_t droppedCommands() const;
+    uint64_t droppedBytes() const;
+
+    // nullptr (unset) or an unparsable value -> fallbackMb; "0" -> 0 (unbounded); "<n>" -> n.
+    static uint64_t parseCapMb(const char *value, uint64_t fallbackMb = kDefaultCapMb);
+
+private:
+    uint64_t m_capBytes;
+    std::atomic<uint64_t> m_bytes{0};
+    std::atomic<uint64_t> m_droppedCommands{0};
+    std::atomic<uint64_t> m_droppedBytes{0};
 };

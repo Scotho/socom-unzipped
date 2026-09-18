@@ -59,6 +59,9 @@ public:
     // EE executor: bound the frames recorded but not yet replayed (PS2X_GS_MAX_PENDING_FRAMES).
     bool GuestFrameBoundary() override;
     void ReleaseHostBackpressure() override;
+    uint64_t PendingGuestFrames() const override { return m_backpressure.pendingFrames(); }
+    uint32_t BackpressureWaiters() const override { return m_backpressure.waiters(); }
+    uint64_t BackpressureWaitNs() const override { return m_backpressure.waitNsTotal(); }
     uint32_t HostFrameTexture(uint32_t &width, uint32_t &height, uint32_t &textureWidth, uint32_t &textureHeight) override;
     uint32_t HostFrameTexture2() override { return m_presentTexture2; }
 
@@ -247,7 +250,12 @@ private:
     bool ensureGl();
     // Task 1a: latch the verdict, publish it to the process, and print the one UNSUPPORTED line.
     void latchGlUnsupported(const GsGlCaps::Report &report);
-    RenderTarget *getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create);
+    // usedHeight (Sprint 7 Task 1c) is the native row count the caller knows this target is
+    // using -- the scissor's last row + 1 for a draw or a clear. 0 means "not known", which
+    // keeps the old full 1024x1024 allocation. See gs_gl_target_extent.h.
+    RenderTarget *getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create, uint32_t usedHeight = 0u);
+    // Grow a target's native extent in place, never shrink it (Sprint 7 Task 1c).
+    void growRenderTarget(RenderTarget &rt, uint32_t nativeWidth, uint32_t nativeHeight);
     DepthTarget *getDepthTarget(uint32_t zbp, uint32_t fbw, uint32_t width, uint32_t height);
     uint32_t resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight);
     uint32_t decodeTexture(const GSDrawState &state, const TextureKey &key, uint32_t width, uint32_t height, uint32_t pageStart, uint32_t pageCount);
@@ -293,6 +301,9 @@ private:
     std::thread::id m_renderThread{};
     // Frames recorded (EE executor, GuestFrameBoundary) vs replayed (the swaps above): ruling R35.
     GsFrameBackpressure m_backpressure;
+    // Sprint 7 Task 1b: the same queue bounded in BYTES while the consumer is latched stalled, so
+    // a title-bar drag cannot grow m_pending without end (PS2X_GS_PENDING_CAP_MB, default 64 MB).
+    GsPendingCap m_pendingCap;
 
     // GPU-dirty page tracking (written on the game thread from draw submissions)
     mutable std::mutex m_dirtyMutex;

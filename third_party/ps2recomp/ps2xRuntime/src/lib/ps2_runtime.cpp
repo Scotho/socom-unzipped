@@ -747,7 +747,11 @@ bool PS2Runtime::initialize(const char *title)
 #if defined(PLATFORM_VITA)
         InitWindow(HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT, title); // raylib vita does not support audio
 #else
-        SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+        // FLAG_WINDOW_HIGHDPI (Sprint 7 Task 1c, audit 2026-09-17 section 2.2 F8): without it the
+        // window is created in scaled pixels, so 640x448 on a 150% laptop is a 427x299 postage
+        // stamp blurred back up by the compositor. raylib reads the config flags in InitWindow,
+        // so they are set before it, never after.
+        SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);
         // PS2X_WINDOW_SIZE=<w>x<h> | fullscreen (the launcher's window-size choice, Task 8b); unset keeps the default
         // the parity gate depends on.
         const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);

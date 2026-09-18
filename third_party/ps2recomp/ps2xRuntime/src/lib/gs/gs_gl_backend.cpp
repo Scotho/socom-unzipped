@@ -6,6 +6,7 @@
 #include "rlgl.h"
 #include "external/glad.h"
 #include "runtime/gs/gs_gl_depth.h"
+#include "runtime/gs/gs_gl_target_extent.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
 // at runtime through GLFW, which raylib links on desktop.
@@ -638,7 +639,8 @@ void main()
 // Construction / VRAM model
 // ---------------------------------------------------------------------------------------------
 GSGlBackend::GSGlBackend()
-    : m_cpu(std::make_unique<GSCpuBackend>()), m_shadow(std::make_unique<GSCpuBackend>())
+    : m_cpu(std::make_unique<GSCpuBackend>()), m_shadow(std::make_unique<GSCpuBackend>()),
+      m_pendingCap(GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), GsPendingCap::kDefaultCapMb) * 1024ull * 1024ull)
 {
     m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(std::getenv("PS2X_GS_MAX_PENDING_FRAMES")));
 }
@@ -663,6 +665,8 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
                  renderScale(), renderScale(), resolveFilterIsBox() ? "box" : "point");
     std::fprintf(stderr, "[gs-gl] PS2X_GS_MAX_PENDING_FRAMES=%u (guest frames recorded ahead of replay before the EE waits; 0 = unbounded)\n",
                  m_backpressure.maxPendingFrames());
+    std::fprintf(stderr, "[gs-gl] PS2X_GS_PENDING_CAP_MB=%llu (pending command bytes kept while the replay is latched stalled; 0 = unbounded)\n",
+                 static_cast<unsigned long long>(m_pendingCap.capBytes() / (1024ull * 1024ull)));
 }
 
 void GSGlBackend::Reset()
@@ -718,6 +722,18 @@ uint32_t GSGlBackend::pageSpan(uint32_t psm, uint32_t bufferWidth64, uint32_t he
 void GSGlBackend::record(Cmd &&cmd, const uint8_t *data, size_t size)
 {
     std::lock_guard<std::mutex> lock(m_queueMutex);
+    // Task 1b: while the replay is latched stalled (the modal size-move loop a title-bar drag puts
+    // the GL thread in) the pending buffer is bounded in bytes. Draw work (Submit, Clear) is dropped
+    // past the cap: the next guest frame records it again, so the only cost is frames the stalled
+    // window could not show anyway. The fire-and-forget Readback goes with it -- it carries no data,
+    // it is the auto-exposure thread asking for fresher pixels (~176 per pass, s6_lum5/6) and a
+    // later one fetches the same or newer VRAM; the readbacks whose result is actually read back go
+    // through postAndGetToken below and are never dropped. Everything else carries state the replay
+    // cannot reconstruct (an upload, a transfer, a CLUT load, a VRAM write) and is always admitted.
+    const bool carriesState = !(cmd.type == CmdType::Submit || cmd.type == CmdType::Clear ||
+                                cmd.type == CmdType::Readback);
+    if (!m_pendingCap.admit(m_backpressure.latched(), carriesState, sizeof(Cmd) + size))
+        return;
     if (data && size)
     {
         cmd.dataOffset = m_pending.data.size();
@@ -731,6 +747,10 @@ void GSGlBackend::record(Cmd &&cmd, const uint8_t *data, size_t size)
 uint64_t GSGlBackend::postAndGetToken(Cmd &&cmd, const uint8_t *data, size_t size)
 {
     std::lock_guard<std::mutex> lock(m_queueMutex);
+    // Accounted, never dropped: every command posted here is waited on by its token (Reset, Present,
+    // the blocking Readback), so dropping one would stall the game thread for the token's 2 s
+    // timeout instead of saving memory.
+    m_pendingCap.admit(m_backpressure.latched(), true, sizeof(Cmd) + size);
     if (data && size)
     {
         cmd.dataOffset = m_pending.data.size();
@@ -755,6 +775,7 @@ void GSGlBackend::waitForToken(uint64_t token)
             std::lock_guard<std::mutex> lock(m_queueMutex);
             buffer.commands.swap(m_pending.commands);
             buffer.data.swap(m_pending.data);
+            m_pendingCap.onReplayed(buffer.commands.size() * sizeof(Cmd) + buffer.data.size());
             framesTaken = m_backpressure.recordedFrames();
         }
         executeCommands(buffer);
@@ -1163,6 +1184,7 @@ bool GSGlBackend::HostRenderFrame()
         std::lock_guard<std::mutex> lock(m_queueMutex);
         buffer.commands.swap(m_pending.commands);
         buffer.data.swap(m_pending.data);
+        m_pendingCap.onReplayed(buffer.commands.size() * sizeof(Cmd) + buffer.data.size());
         framesTaken = m_backpressure.recordedFrames();
     }
     if (!buffer.commands.empty())
@@ -1578,19 +1600,89 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      s_time[4], (unsigned long long)s_count[4], s_time[5], (unsigned long long)s_count[5],
                      s_time[6], (unsigned long long)s_count[6], m_textures.size(), m_renderTargets.size());
         const GsFrameBackpressure::Stats bp = m_backpressure.takeStats();
-        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu unlatched=%llu pending=%llu\n",
+        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu unlatched=%llu pending=%llu pending_bytes=%llu dropped_cmds=%llu dropped_bytes=%llu\n",
                      m_backpressure.maxPendingFrames(), (unsigned long long)bp.frames, (unsigned long long)bp.waits, bp.waitMs,
-                     (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)bp.unlatched, (unsigned long long)m_backpressure.pendingFrames());
+                     (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)bp.unlatched, (unsigned long long)m_backpressure.pendingFrames(),
+                     (unsigned long long)m_pendingCap.bytes(), (unsigned long long)m_pendingCap.droppedCommands(), (unsigned long long)m_pendingCap.droppedBytes());
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }
 }
 
-GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create)
+namespace
+{
+    // Bit i of a RenderTarget's dirtyMask covers native rows [32i, 32i+32); 1024 rows is the whole
+    // 32-bit mask (1u << 32 is undefined, hence the branch).
+    inline uint32_t bandMask(uint32_t rows)
+    {
+        const uint32_t bands = std::min<uint32_t>(32u, (rows + 31u) / 32u);
+        return bands >= 32u ? 0xFFFFFFFFu : (1u << bands) - 1u;
+    }
+}
+
+// Sprint 7 Task 1c. A target sized from the use known at creation must still be correct when the
+// use grows: the same base page is re-addressed at a wider FBW, or a later draw's scissor reaches
+// further down than the first one did. The extent only ever grows, never shrinks -- a shrink would
+// throw away rows the game can still read back through VRAM.
+//
+// The contents are not blitted: whatever the GPU drew and has not written back is put into the
+// shadow VRAM first, the textures are respecified (same names, so the FBO attachment and every
+// cached handle stay valid), and the whole extent is marked dirty so refreshDirtyRows paints it
+// back from the shadow before the next draw or present. Two proven paths instead of a third.
+void GSGlBackend::growRenderTarget(RenderTarget &rt, uint32_t nativeWidth, uint32_t nativeHeight)
+{
+    const uint32_t nw = std::max(rt.nativeWidth, std::min<uint32_t>(kMaxRtWidth, nativeWidth));
+    const uint32_t nh = std::max(rt.nativeHeight, std::min<uint32_t>(kRtHeight, nativeHeight));
+    if (nw == rt.nativeWidth && nh == rt.nativeHeight)
+        return;
+    if (rt.gpuDirty)
+        downloadRenderTargetToShadow(rt);
+    GLint prevFbo = 0, prevTex = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFbo);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTex);
+    rt.nativeWidth = nw;
+    rt.nativeHeight = nh;
+    rt.hostWidth = nw * renderScale();
+    rt.hostHeight = nh * renderScale();
+    glBindTexture(GL_TEXTURE_2D, rt.color);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(rt.hostWidth), static_cast<GLsizei>(rt.hostHeight),
+                 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    if (rt.mirrorTexture != 0u)
+    {
+        glBindTexture(GL_TEXTURE_2D, rt.mirrorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, static_cast<GLsizei>(rt.nativeWidth), static_cast<GLsizei>(rt.nativeHeight),
+                     0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    }
+    glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTex));
+    glBindFramebuffer(GL_FRAMEBUFFER, rt.fbo);
+    glDisable(GL_SCISSOR_TEST);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(prevFbo));
+    // The depth attachment is keyed by ZBP and sized from the target it was first used with;
+    // setupDrawState re-attaches when the texture name changes, and getDepthTarget grows it.
+    rt.attachedDepth = 0u;
+    rt.dirtySinceResolve = true;
+    rt.gpuDirty = false;
+    rt.shadowStale = false;
+    rt.gpuRows = false;
+    rt.dirtyRows = true;
+    rt.dirtyRowFirst = 0u;
+    rt.dirtyRowLast = rt.nativeHeight;
+    rt.dirtyMask = bandMask(rt.nativeHeight);
+    rt.dirtyRects.clear();
+    scaleNoteHostWrite(rt.fbp);
+}
+
+GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t fbw, uint32_t psm, bool create, uint32_t usedHeight)
 {
     // Targets are keyed by base page only: the game addresses the same buffer with different
     // FRAME widths (1024-wide at boot, 640-wide in the shell) and draws must land in one texture.
-    // Allocate the maximum stride so pixel coordinates map directly regardless of FBW.
+    // The stride used to be allocated at its 1024-pixel maximum for exactly that reason; since
+    // Sprint 7 Task 1c it is allocated from the FBW and the rows in use and GROWN when a later
+    // FRAME is wider or a later scissor reaches further down, so pixel coordinates still map
+    // directly regardless of FBW -- growRenderTarget below is what keeps that true.
     // S3-a invariant, load-bearing from S3-c on: the GL texture is exactly renderScale() times
     // the native GS extent, and every site in the backend names one or the other (research/14
     // section 3). If the two ever drift apart the GL rects and the VRAM addressing disagree
@@ -1608,6 +1700,12 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
         if (rt.fbp == fbp)
         {
             rt.fbw = std::max<uint32_t>(fbw, 1u);
+            // Sprint 7 Task 1c: the target was sized from the use known when it was created, and
+            // the use can grow -- the same base page is re-addressed at a wider FBW (1024-wide at
+            // boot, 640-wide in the shell) and a later draw's scissor reaches further down. Grow
+            // before handing the target back, never shrink.
+            growRenderTarget(rt, std::max<uint32_t>(1u, rt.fbw) * 64u,
+                             usedHeight == 0u ? 0u : GsGlTarget::choose(rt.fbw, usedHeight).height);
             checkScale(rt);
             return &rt;
         }
@@ -1617,8 +1715,15 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     rt.fbp = fbp;
     rt.fbw = std::max<uint32_t>(fbw, 1u);
     rt.psm = psm;
-    rt.nativeWidth = kMaxRtWidth;
-    rt.nativeHeight = kRtHeight;
+    // Sprint 7 Task 1c (audit section 2.2 F9): size the target from FBW and the rows the caller
+    // says it is using instead of the old flat kMaxRtWidth x kRtHeight. A caller that does not
+    // know (usedHeight == 0) still gets the full 1024x1024, so nothing is under-allocated by
+    // ignorance -- see gs_gl_target_extent.h.
+    {
+        const GsGlTarget::Extent extent = GsGlTarget::choose(rt.fbw, usedHeight);
+        rt.nativeWidth = extent.width;
+        rt.nativeHeight = extent.height;
+    }
     // [* S site 1 -- allocation] the GL colour texture is the native extent times the scale; the
     // depth attachment follows it via getDepthTarget(rt->hostWidth, rt->hostHeight) in
     // setupDrawState, and the native mirror stays nativeWidth x nativeHeight.
@@ -1643,8 +1748,8 @@ GSGlBackend::RenderTarget *GSGlBackend::getRenderTarget(uint32_t fbp, uint32_t f
     RenderTarget &ref = m_renderTargets.back();
     ref.dirtyRows = true;
     ref.dirtyRowFirst = 0u;
-    ref.dirtyRowLast = 448u;
-    ref.dirtyMask = (1u << 14) - 1u;   // bands 0..13 = rows 0..448
+    ref.dirtyRowLast = std::min<uint32_t>(448u, ref.nativeHeight);
+    ref.dirtyMask = bandMask(ref.dirtyRowLast);   // bands 0..13 = rows 0..448, clipped to the extent
     return &ref;
 }
 
@@ -1652,7 +1757,26 @@ GSGlBackend::DepthTarget *GSGlBackend::getDepthTarget(uint32_t zbp, uint32_t fbw
 {
     for (DepthTarget &dt : m_depthTargets)
         if (dt.zbp == zbp)
+        {
+            // Sprint 7 Task 1c: render targets are no longer all 1024x1024, so a depth buffer first
+            // used with a small target can be smaller than the one now attached to it. An FBO whose
+            // attachments differ in size renders only their intersection -- silently clipping every
+            // depth-tested draw -- so grow it. PS2 local memory starts zeroed and no path reads
+            // depth back into guest VRAM, so re-zeroing is the whole of the contents.
+            if (width > dt.width || height > dt.height)
+            {
+                dt.width = std::max(dt.width, width);
+                dt.height = std::max(dt.height, height);
+                GLint prevTexGrow = 0;
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &prevTexGrow);
+                glBindTexture(GL_TEXTURE_2D, dt.texture);
+                const std::vector<float> zeros(static_cast<size_t>(dt.width) * dt.height, 0.0f);
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32F, static_cast<GLsizei>(dt.width), static_cast<GLsizei>(dt.height),
+                             0, GL_DEPTH_COMPONENT, GL_FLOAT, zeros.data());
+                glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexGrow));
+            }
             return &dt;
+        }
     DepthTarget dt;
     dt.zbp = zbp;
     dt.fbw = fbw;
@@ -1957,7 +2081,8 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
 
 void GSGlBackend::executeClear(const GSContext &context, uint32_t rgba)
 {
-    RenderTarget *rt = getRenderTarget(context.frame.fbp, context.frame.fbw, context.frame.psm, true);
+    RenderTarget *rt = getRenderTarget(context.frame.fbp, context.frame.fbw, context.frame.psm, true,
+                                      std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(context.scissor.y1) + 1u));
     // Rows an image upload wrote into this target before the clear must land before the clear,
     // not after it: without this the next draw's refreshDirtyRows painted the stale rows (the
     // last cinematic frame, uploaded as 16x16 blocks into the display buffer) over the cleared
@@ -2142,9 +2267,10 @@ void GSGlBackend::resolveToMirror(RenderTarget &rt)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(prevTexAlloc));
         // Exactly one texture and one FBO per render target, for the life of that target: the
-        // native extent is kMaxRtWidth x kRtHeight for every target and is never rewritten, so
-        // there is no resize path that could leak a second pair. Both are deleted beside rt.fbo /
-        // rt.color when the targets are dropped (CmdType::Reset).
+        // native extent is chosen once by GsGlTarget::choose and afterwards only ever respecified
+        // in place by growRenderTarget (same names), so there is no resize path that could leak a
+        // second pair. Both are deleted beside rt.fbo / rt.color when the targets are dropped
+        // (CmdType::Reset).
         glGenFramebuffers(1, &rt.mirrorFbo);
         glBindFramebuffer(GL_FRAMEBUFFER, rt.mirrorFbo);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, rt.mirrorTexture, 0);
@@ -3172,7 +3298,8 @@ void GSGlBackend::executeSubmit(const GSPrimitiveBatch &batch)
 void GSGlBackend::setupDrawState(const GSDrawState &state)
 {
     const auto &ctx = state.context;
-    RenderTarget *rt = getRenderTarget(ctx.frame.fbp, ctx.frame.fbw, ctx.frame.psm, true);
+    RenderTarget *rt = getRenderTarget(ctx.frame.fbp, ctx.frame.fbw, ctx.frame.psm, true,
+                                      std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     m_batchRt = rt;
     refreshDirtyRows(*rt);
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);

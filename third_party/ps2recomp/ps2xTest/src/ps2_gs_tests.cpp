@@ -11,6 +11,7 @@
 #include "runtime/gs/ps2_gs_psmt8.h"
 #include "runtime/gs/gs_gl_depth.h"
 #include "runtime/gs/gs_gl_caps.h"
+#include "runtime/gs/gs_gl_target_extent.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -5567,6 +5568,24 @@ void register_ps2_gs_tests()
                 t.IsTrue(!latch.shouldAttempt(), "a latched probe never attempts again");
             t.Equals(static_cast<int>(latch.attempts()), 1, "exactly one attempt over 1000 frames");
             t.IsTrue(!latch.report().missing.empty(), "the latch keeps what was missing");
+        });
+    });
+
+    // Sprint 7 Task 1c: render-target extents chosen from FBW and the rows the game actually uses.
+    MiniTest::Case("GsGlTarget", [](TestCase &tc)
+    {
+        tc.Run("render targets are sized from fbw and usedHeight, not 1024x1024", [](TestCase &t)
+        {
+            const GsGlTarget::Extent shell = GsGlTarget::choose(10u, 448u);   // FBW 10 = 640 px, PAL/NTSC height
+            t.Equals(static_cast<int>(shell.width), 640, "640-wide shell buffer");
+            t.Equals(static_cast<int>(shell.height), 448, "448 rows, not 1024");
+            const GsGlTarget::Extent boot = GsGlTarget::choose(16u, 512u);
+            t.Equals(static_cast<int>(boot.width), 1024, "a 1024-wide boot buffer is capped at the stride");
+            t.Equals(static_cast<int>(boot.height), 512, "512 rows");
+            const GsGlTarget::Extent unknown = GsGlTarget::choose(0u, 0u);
+            t.Equals(static_cast<int>(unknown.width), 1024, "an unknown target keeps the old full allocation");
+            t.Equals(static_cast<int>(unknown.height), 1024, "an unknown target keeps the old full allocation");
+            t.Equals(static_cast<int>(GsGlTarget::choose(10u, 100u).height), 128, "rows round up to 32");
         });
     });
 }

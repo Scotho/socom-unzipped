@@ -3,11 +3,18 @@
 #include "runtime/ps2_vag.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <deque>
 #include <map>
+#include <memory>
+#include <thread>
 
 // The 989snd bank-sound player as OpenGOAL's re-implementation of the public API describes it and the SBlk v3
 // bytes on the disc confirm (research/32 sections 1, 3): a handler walks a sound's grain list at 240 ticks a
@@ -315,54 +322,77 @@ namespace snd989
             uint8_t note = 60, fine = 0;
         };
 
+        // One decoded chunk pair: the samples of channel 0 and, for a stereo stream, of channel 1.
+        using ChunkPair = std::array<std::vector<int16_t>, 2>;
+
         // A VPK stream (research/32 section 5): interleaved 0x800-byte ADPCM chunks per channel, read from the disc
-        // image as it plays and resampled from the file's rate to kSampleRate.
+        // image as it plays and resampled from the file's rate to kSampleRate. Since the 2026-09-17 audit
+        // (section 2.3) the seek, the read and the ADPCM decode all happen on pumpStreams()' thread under
+        // Impl::ioMutex and land in `ready`; render() only pops a chunk pair that is already in memory.
         struct Stream
         {
             uint32_t handle = 0;
+
+            // --- producer side: pumpStreams() only, under Impl::ioMutex ---
             FILE *file = nullptr;
             uint64_t dataStart = 0;      // file offset of the first chunk
             uint32_t dataSize = 0;       // bytes of chunk data
             uint32_t interleave = 0x800;
-            uint32_t rate = 32000;
-            uint32_t channels = 1;
             uint32_t consumed = 0;       // chunk bytes read so far
-            bool ended = false;          // no more chunks
+            std::vector<int16_t> s1, s2;             // per channel ADPCM history
+
+            // --- shared ---
+            uint32_t rate = 32000;                   // written once by playStream, read-only after
+            uint32_t channels = 1;                   // likewise
+            std::atomic<bool> ended{false};          // the producer has read the last chunk
+            std::atomic<bool> done{false};           // played out (or stopped): reaped
+            std::deque<ChunkPair> ready;             // the decode-ahead ring, guarded by Impl::ringMutex
+
+            // --- consumer side: render() only, under Impl::mutex ---
             bool paused = false;
-            bool done = false;           // played out (or stopped)
             uint8_t group = 0;
             VolPair base{};
-            std::vector<std::vector<int16_t>> pcm;   // per channel: the current chunk's samples
-            std::vector<int16_t> s1, s2;             // per channel ADPCM history
+            ChunkPair pcm;                           // per channel: the chunk pair being played
             double pos = 0.0;                        // sample position inside the current chunk
             double step = 1.0;                       // file rate / output rate
 
-            bool readChunkPair()
+            ~Stream() { closeFile(); }
+            void closeFile()
             {
-                if (ended || !file)
+                if (file)
+                    std::fclose(file);
+                file = nullptr;
+            }
+
+            // The producer's half of the old readChunkPair: reads and decodes the next chunk pair into `out`.
+            // False at the end of the data, or with no file behind the stream. Never called from render().
+            bool decodeChunkPair(ChunkPair &out)
+            {
+                if (ended.load(std::memory_order_relaxed) || !file)
                     return false;
                 const size_t chunkBytes = static_cast<size_t>(interleave);
                 std::vector<uint8_t> raw(chunkBytes);
                 bool any = false;
                 for (uint32_t ch = 0; ch < channels; ++ch)
                 {
-                    pcm[ch].clear();
+                    std::vector<int16_t> &pcmCh = out[ch];
+                    pcmCh.clear();
                     if (consumed >= dataSize)
                     {
-                        ended = true;
+                        ended.store(true, std::memory_order_release);
                         continue;
                     }
                     const size_t want = std::min(chunkBytes, static_cast<size_t>(dataSize - consumed));
                     if (seek64(file, dataStart + consumed) != 0)
                     {
-                        ended = true;
+                        ended.store(true, std::memory_order_release);
                         continue;
                     }
                     const size_t got = std::fread(raw.data(), 1, want, file);
                     consumed += static_cast<uint32_t>(want);
                     if (got < 16)
                     {
-                        ended = true;
+                        ended.store(true, std::memory_order_release);
                         continue;
                     }
                     any = true;
@@ -395,18 +425,17 @@ namespace snd989
                             const int16_t v = static_cast<int16_t>(std::clamp(filtered, -32768, 32767));
                             h2 = h1;
                             h1 = v;
-                            pcm[ch].push_back(v);
+                            pcmCh.push_back(v);
                         }
                         if (block[1] & 0x01)
                         {
-                            ended = true;   // the end flag inside the data: the last chunk
+                            ended.store(true, std::memory_order_release);   // the end flag inside the data: the last chunk
                             break;
                         }
                     }
                     s1[ch] = h1;
                     s2[ch] = h2;
                 }
-                pos = 0.0;
                 return any;
             }
         };
@@ -432,10 +461,25 @@ namespace snd989
     struct Mixer::Impl
     {
         mutable std::mutex mutex;
+        // Audit 2026-09-17 section 2.3: the disc lives behind `ioMutex`, never behind `mutex`. Lock order is
+        // mutex -> ringMutex and mutex -> ioMutex; pumpStreams() takes `mutex` only to copy the stream list, drops
+        // it, and reads with `ioMutex` held, so a slow read can never block render() or the game's position poll.
+        mutable std::mutex ioMutex;
+        mutable std::mutex ringMutex;
         std::unordered_map<uint32_t, BankData> banks;
         std::vector<Voice> voices;
         std::vector<Handler> handlers;
-        std::vector<Stream> streams;
+        // shared_ptr: pumpStreams() holds a reference to each stream while it reads, so reap() erasing one on the
+        // render thread never closes a FILE * out from under a read in flight.
+        std::vector<std::shared_ptr<Stream>> streams;
+        // The stream worker: started on the first playStream, joined in the destructor. PS2X_SND_STREAM_WORKER=0
+        // leaves pumpStreams() to the caller (what the tests do).
+        std::thread worker;
+        std::mutex workerMutex;
+        std::condition_variable workerCv;
+        bool workerStop = false;
+        bool workerStarted = false;
+        const bool workerEnabled;
         // The PCM ring (research/32 section 7): 16-bit PCM the EE DMAs in, played from offset 0 at `rate`;
         // stereo is 512 bytes of left then 512 of right (the movie audio's SShd interleave 0x200; a first cut read the
         // capture as sample-interleaved and was wrong -- research/32 section 7).
@@ -462,15 +506,45 @@ namespace snd989
                 return static_cast<int16_t>(bytes[at] | (bytes[at + 1] << 8));
             }
         } pcm;
+        // The position the game polls 30 times a second (research/32 section 7.1) is read off this, never off the
+        // render mutex: a poll that blocked on a render blocked the EE inside a synchronous RPC.
+        std::atomic<bool> pcmActive{false};
+        std::atomic<uint32_t> pcmPositionBytes{0};
         int32_t masterVol[17] = {};
         uint32_t nextUid = 1;
         uint32_t nextSlot = 0;
         double tickAccumulator = 0.0;
 
-        Impl()
+        Impl() : workerEnabled(streamWorkerEnabled())
         {
             for (int32_t &v : masterVol)
                 v = 0x400;
+        }
+
+        static bool streamWorkerEnabled()
+        {
+            const char *env = std::getenv("PS2X_SND_STREAM_WORKER");
+            return !(env && env[0] == '0');
+        }
+
+        // render()'s only contact with a stream's chunks: the ring, in memory.
+        bool popChunk(Stream &st)
+        {
+            std::lock_guard<std::mutex> lock(ringMutex);
+            if (st.ready.empty())
+                return false;
+            st.pcm = std::move(st.ready.front());
+            st.ready.pop_front();
+            return !st.pcm[0].empty();
+        }
+
+        void updatePcmPosition()
+        {
+            const uint32_t frames = pcm.frames();
+            pcmPositionBytes.store(!pcm.active || frames == 0u
+                                       ? 0u
+                                       : (static_cast<uint32_t>(pcm.pos) % frames) * 2u * pcm.channels,
+                                   std::memory_order_relaxed);
         }
 
         Handler *find(uint32_t handle)
@@ -661,18 +735,26 @@ namespace snd989
 
         Stream *findStream(uint32_t handle)
         {
-            for (Stream &st : streams)
-                if (st.handle == handle)
-                    return &st;
+            for (const std::shared_ptr<Stream> &st : streams)
+                if (st->handle == handle)
+                    return st.get();
             return nullptr;
         }
 
+        // Stopping a stream marks it; the FILE * is closed when the last reference to the Stream goes, so no
+        // fclose ever waits behind a read in flight (and no close happens under the render mutex while it might).
         void closeStream(Stream &st)
         {
-            if (st.file)
-                std::fclose(st.file);
-            st.file = nullptr;
-            st.done = true;
+            st.done.store(true, std::memory_order_relaxed);
+        }
+
+        // Drops the stopped streams: the last reference to a Stream closes its file. A read in flight holds its
+        // own reference, so the close happens on the worker instead and never waits under the render mutex.
+        void dropDoneStreams()
+        {
+            streams.erase(std::remove_if(streams.begin(), streams.end(),
+                                         [](const std::shared_ptr<Stream> &st) { return st->done.load(std::memory_order_relaxed); }),
+                          streams.end());
         }
 
         bool handlerAlive(const Handler &h) const
@@ -689,18 +771,26 @@ namespace snd989
         {
             voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) { return v.env.phase == Envelope::Off; }), voices.end());
             handlers.erase(std::remove_if(handlers.begin(), handlers.end(), [this](const Handler &h) { return !handlerAlive(h); }), handlers.end());
-            for (Stream &st : streams)
-                if (st.done && st.file)
-                    closeStream(st);
-            streams.erase(std::remove_if(streams.begin(), streams.end(), [](const Stream &st) { return st.done; }), streams.end());
+            dropDoneStreams();
         }
     };
 
     Mixer::Mixer() : m_impl(std::make_unique<Impl>()) {}
     Mixer::~Mixer()
     {
-        for (Stream &st : m_impl->streams)
-            m_impl->closeStream(st);
+        if (m_impl->worker.joinable())
+        {
+            {
+                std::lock_guard<std::mutex> lock(m_impl->workerMutex);
+                m_impl->workerStop = true;
+            }
+            m_impl->workerCv.notify_all();
+            m_impl->worker.join();
+        }
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        for (const std::shared_ptr<Stream> &st : m_impl->streams)
+            m_impl->closeStream(*st);
+        m_impl->streams.clear();
     }
 
     bool Mixer::loadBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes)
@@ -789,9 +879,9 @@ namespace snd989
     bool Mixer::isPlaying(uint32_t handle) const
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
-        for (const Stream &st : m_impl->streams)
-            if (st.handle == handle)
-                return !st.done;
+        for (const std::shared_ptr<Stream> &st : m_impl->streams)
+            if (st->handle == handle)
+                return !st->done.load(std::memory_order_relaxed);
         for (const Handler &h : m_impl->handlers)
             if (h.handle == handle)
                 return m_impl->handlerAlive(h);
@@ -804,6 +894,7 @@ namespace snd989
         if (Stream *st = m_impl->findStream(handle))
         {
             m_impl->closeStream(*st);
+            m_impl->dropDoneStreams();
             return;
         }
         if (Handler *h = m_impl->find(handle))
@@ -923,9 +1014,10 @@ namespace snd989
                     v.pos += v.step;
                 }
             }
-            for (Stream &st : m_impl->streams)
+            for (const std::shared_ptr<Stream> &sp : m_impl->streams)
             {
-                if (st.paused || st.done)
+                Stream &st = *sp;
+                if (st.paused || st.done.load(std::memory_order_relaxed))
                     continue;
                 int32_t left = 0, right = 0;
                 {
@@ -935,12 +1027,16 @@ namespace snd989
                 }
                 for (size_t i = 0; i < chunk; ++i)
                 {
-                    if (st.pcm.empty() || st.pcm[0].empty() || st.pos >= static_cast<double>(st.pcm[0].size()))
+                    if (st.pcm[0].empty() || st.pos >= static_cast<double>(st.pcm[0].size()))
                     {
-                        const double carry = st.pcm.empty() || st.pcm[0].empty() ? 0.0 : st.pos - static_cast<double>(st.pcm[0].size());
-                        if (!st.readChunkPair() || st.pcm[0].empty())
+                        const double carry = st.pcm[0].empty() ? 0.0 : st.pos - static_cast<double>(st.pcm[0].size());
+                        // Memory only (audit section 2.3): the next chunk pair comes off the ring the worker
+                        // filled, never off the disc. An empty ring on a stream that has not ended yet is an
+                        // underrun -- silence until the worker catches up, not the end of the stream.
+                        if (!m_impl->popChunk(st))
                         {
-                            st.done = true;
+                            if (st.ended.load(std::memory_order_acquire))
+                                st.done.store(true, std::memory_order_relaxed);
                             break;
                         }
                         st.pos = std::max(0.0, carry);
@@ -985,6 +1081,7 @@ namespace snd989
         }
         for (size_t i = 0; i < frames * 2; ++i)
             interleaved[i] = static_cast<int16_t>(std::clamp<int32_t>(mix[i], -32768, 32767));
+        m_impl->updatePcmPosition();
         m_impl->reap();
     }
 
@@ -1027,7 +1124,8 @@ namespace snd989
         }
         auto u32 = [&](size_t at) { uint32_t v; std::memcpy(&v, header + at, 4); return v; };
         auto be32 = [&](size_t at) { return (static_cast<uint32_t>(header[at]) << 24) | (static_cast<uint32_t>(header[at + 1]) << 16) | (static_cast<uint32_t>(header[at + 2]) << 8) | header[at + 3]; };
-        Stream st;
+        auto sp = std::make_shared<Stream>();
+        Stream &st = *sp;
         st.handle = handle;
         st.file = fp;
         if (std::memcmp(header, " KPV", 4) == 0)
@@ -1053,32 +1151,106 @@ namespace snd989
         }
         st.group = group;
         st.step = static_cast<double>(st.rate) / static_cast<double>(kSampleRate);
-        st.pcm.assign(st.channels, {});
         st.s1.assign(st.channels, 0);
         st.s2.assign(st.channels, 0);
         const int32_t playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
         const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
         st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
-        std::lock_guard<std::mutex> lock(m_impl->mutex);
-        if (Stream *old = m_impl->findStream(handle))
-            m_impl->closeStream(*old);
-        m_impl->streams.push_back(std::move(st));
+        {
+            std::lock_guard<std::mutex> lock(m_impl->mutex);
+            if (Stream *old = m_impl->findStream(handle))
+            {
+                m_impl->closeStream(*old);
+                m_impl->dropDoneStreams();   // the handle is being reused: the old entry must not answer for it
+            }
+            m_impl->streams.push_back(std::move(sp));
+        }
+        startStreamWorker();
         return true;
+    }
+
+    // The worker: pumpStreams() every 10 ms from the first stream on, so the ring is refilled off the audio
+    // callback. Started here rather than in the constructor because a Mixer that never streams needs no thread.
+    void Mixer::startStreamWorker()
+    {
+        if (!m_impl->workerEnabled)
+            return;
+        std::lock_guard<std::mutex> lock(m_impl->workerMutex);
+        if (m_impl->workerStarted)
+            return;
+        m_impl->workerStarted = true;
+        Impl *impl = m_impl.get();
+        m_impl->worker = std::thread([this, impl]()
+        {
+            std::unique_lock<std::mutex> lock(impl->workerMutex);
+            while (!impl->workerStop)
+            {
+                lock.unlock();
+                pumpStreams();
+                lock.lock();
+                impl->workerCv.wait_for(lock, std::chrono::milliseconds(10), [impl]() { return impl->workerStop; });
+            }
+        });
+    }
+
+    void Mixer::pumpStreams()
+    {
+        // The stream list is the render thread's; copy it (a reference each, so nothing is freed underneath) and
+        // let go of the render mutex before touching the disc.
+        std::vector<std::shared_ptr<Stream>> live;
+        {
+            std::lock_guard<std::mutex> lock(m_impl->mutex);
+            live.reserve(m_impl->streams.size());
+            for (const std::shared_ptr<Stream> &st : m_impl->streams)
+                if (!st->done.load(std::memory_order_relaxed))
+                    live.push_back(st);
+        }
+        for (const std::shared_ptr<Stream> &sp : live)
+        {
+            Stream &st = *sp;
+            std::lock_guard<std::mutex> io(m_impl->ioMutex);
+            while (!st.done.load(std::memory_order_relaxed) && !st.ended.load(std::memory_order_relaxed))
+            {
+                {
+                    std::lock_guard<std::mutex> ring(m_impl->ringMutex);
+                    if (st.ready.size() >= kStreamRingChunks)
+                        break;
+                }
+                ChunkPair decoded;
+                if (!st.decodeChunkPair(decoded) || decoded[0].empty())
+                    break;   // the end of the data, or nothing behind the stream: `ended` says which
+                std::lock_guard<std::mutex> ring(m_impl->ringMutex);
+                st.ready.push_back(std::move(decoded));
+            }
+        }
+    }
+
+    void Mixer::closeStreamFilesForTest()
+    {
+        std::vector<std::shared_ptr<Stream>> live;
+        {
+            std::lock_guard<std::mutex> lock(m_impl->mutex);
+            live = m_impl->streams;
+        }
+        std::lock_guard<std::mutex> io(m_impl->ioMutex);
+        for (const std::shared_ptr<Stream> &st : live)
+            st->closeFile();
     }
 
     void Mixer::stopAllStreams()
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
-        for (Stream &st : m_impl->streams)
-            m_impl->closeStream(st);
+        for (const std::shared_ptr<Stream> &st : m_impl->streams)
+            m_impl->closeStream(*st);
+        m_impl->dropDoneStreams();
     }
 
     size_t Mixer::activeStreams() const
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         size_t n = 0;
-        for (const Stream &st : m_impl->streams)
-            if (!st.done)
+        for (const std::shared_ptr<Stream> &st : m_impl->streams)
+            if (!st->done.load(std::memory_order_relaxed))
                 ++n;
         return n;
     }
@@ -1097,6 +1269,8 @@ namespace snd989
         ring.gain = static_cast<int32_t>((static_cast<int64_t>(0x7ffe) * std::clamp(vol, 0, 0x400)) / 0x400) >> 1;
         ring.pos = 0.0;
         ring.active = !ring.bytes.empty();
+        m_impl->pcmActive.store(ring.active, std::memory_order_relaxed);
+        m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
     }
 
     void Mixer::pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes)
@@ -1109,13 +1283,11 @@ namespace snd989
         std::memcpy(ring.bytes.data() + offset, data, n);
     }
 
+    // The game's audio thread polls this 30 times a second through a synchronous RPC (research/32 section 7.1):
+    // it reads the value render() published, and never waits on the render mutex.
     uint32_t Mixer::pcmStreamPosition() const
     {
-        std::lock_guard<std::mutex> lock(m_impl->mutex);
-        const Impl::PcmRing &ring = m_impl->pcm;
-        if (!ring.active || ring.frames() == 0)
-            return 0u;
-        return (static_cast<uint32_t>(ring.pos) % ring.frames()) * 2u * ring.channels;
+        return m_impl->pcmPositionBytes.load(std::memory_order_relaxed);
     }
 
     void Mixer::pcmStreamStop()
@@ -1123,11 +1295,12 @@ namespace snd989
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         m_impl->pcm.active = false;
         m_impl->pcm.pos = 0.0;
+        m_impl->pcmActive.store(false, std::memory_order_relaxed);
+        m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
     }
 
     bool Mixer::pcmStreamActive() const
     {
-        std::lock_guard<std::mutex> lock(m_impl->mutex);
-        return m_impl->pcm.active;
+        return m_impl->pcmActive.load(std::memory_order_relaxed);
     }
 }

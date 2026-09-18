@@ -30,7 +30,9 @@ namespace launcher
         std::string isoPath;
         int gsScale = 1;                       // 1 native, 2 sharp, 3 sharper (experimental)
         std::string presentFilter = "linear";  // linear | integer | point
-        std::string windowSize = "640x448";    // <w>x<h> | fullscreen
+        // Sprint 7 Task 1c: the launcher opens at 2x. The runtime's own default is still 640x448
+        // (PS2X_WINDOW_SIZE unset), which is what the parity gate runs at.
+        std::string windowSize = "1280x896";   // <w>x<h> | fullscreen
         bool mouseLook = false;
         double mouseSensitivity = 1.0;
         std::string serverPreset = "custom";   // an id out of kServerPresets; "custom" means the address below

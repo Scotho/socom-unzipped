@@ -41,6 +41,7 @@ public:
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
     bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
     void mixerRender(int16_t *interleaved, size_t frames);
+    void mixerPumpStreams() { m_mixer.pumpStreams(); }   // the decode-ahead pump, for callers that drive it themselves
 
 private:
     struct DecodedSample

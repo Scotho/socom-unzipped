@@ -15,6 +15,10 @@
 namespace snd989
 {
     constexpr uint32_t kSampleRate = 48000;     // SPU2: pitch 0x1000 plays one sample per output frame
+    // How far ahead pumpStreams() decodes each stream (audit 2026-09-17 section 2.3): four 0x800-byte chunk pairs
+    // is 4 x 112 ms of a 32 kHz VPK, so a worker tick that loses a second of wall time to a slow disc still has
+    // audio in hand, and the worst case a stream holds is 4 x 2 x 3584 samples (56 KB) of decoded PCM.
+    constexpr size_t kStreamRingChunks = 4;
     constexpr int32_t kVolDontChange = 0x7FFFFFFF;
     constexpr int32_t kPanDontChange = -2;
     constexpr int32_t kPanReset = -1;
@@ -52,6 +56,15 @@ namespace snd989
         bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
         void stopAllStreams();
 
+        // The decode-ahead half of the streams (audit 2026-09-17 section 2.3): reads and decodes the next chunk
+        // pair of every live stream until its ring holds kStreamRingChunks, so render() never touches the disc.
+        // Owns the file handles under its own I/O mutex and never holds the render mutex while reading. A worker
+        // thread started on the first playStream calls it every 10 ms; PS2X_SND_STREAM_WORKER=0 disables that
+        // thread and leaves pumpStreams() to the caller (what the tests do). Joined in the destructor.
+        void pumpStreams();
+        // Closes every stream's file handle and keeps its ring: the seam the "plays with the handle closed" test needs.
+        void closeStreamFilesForTest();
+
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie
         // audio's SShd interleave). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
@@ -68,6 +81,8 @@ namespace snd989
         size_t activeHandlers() const;
 
     private:
+        void startStreamWorker();   // idempotent; a Mixer that never streams never starts a thread
+
         struct Impl;
         std::unique_ptr<Impl> m_impl;
     };

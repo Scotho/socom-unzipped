@@ -50,6 +50,11 @@ public:
     // ReleaseHostBackpressure (any thread, at shutdown) wakes that wait and disables it.
     virtual bool GuestFrameBoundary() { return false; }
     virtual void ReleaseHostBackpressure() {}
+    // What that back-pressure is doing right now, for the pc-sampler (research/29 section 4 item 6). A backend
+    // without one (the CPU rasterizer) reports nothing pending and nobody waiting.
+    virtual uint64_t PendingGuestFrames() const { return 0ull; }
+    virtual uint32_t BackpressureWaiters() const { return 0u; }
+    virtual uint64_t BackpressureWaitNs() const { return 0ull; }
     virtual bool HostRenderFrame() { return false; }
     // width/height = the presented rectangle (rows/cols actually displayed); textureWidth/Height =
     // the GL texture's full size (the presented rectangle is its top-left corner).

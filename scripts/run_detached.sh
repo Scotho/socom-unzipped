@@ -78,7 +78,12 @@ while ($true) {
     $pc = Get-Counter '\Process(socom2*)\% Processor Time' -ErrorAction Stop
     $procs = ($pc.CounterSamples | ForEach-Object { "{0}={1:N1}" -f $_.InstanceName, $_.CookedValue }) -join ';'
   } catch {}
-  "$ts,$tot,$procs" | Out-File -FilePath $Csv -Append -Encoding ascii
+  $ws = ""
+  try {
+    # Whole MB with no thousands separator: "N0" would write 1,450 and split the CSV row in two.
+    $ws = (Get-Process socom2* -ErrorAction Stop | ForEach-Object { "{0}={1}" -f $_.ProcessName, [math]::Round($_.WorkingSet64/1MB) }) -join ';'
+  } catch {}
+  "$ts,$tot,$procs,$ws" | Out-File -FilePath $Csv -Append -Encoding ascii
   Start-Sleep -Seconds 1
 }
 PS1EOF

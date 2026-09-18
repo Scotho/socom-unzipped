@@ -139,7 +139,8 @@ void register_launcher_tests()
             t.IsTrue(back.isoPath == c.isoPath && back.gsScale == 2 && back.presentFilter == "integer" && back.windowSize == "1280x896" && back.mouseLook && back.mouseSensitivity == 1.5 && back.server == c.server && back.profile == "craig" && back.secondInstance, "every field survives");
             launcher::Config partial;
             t.IsTrue(launcher::fromJson("{\"gsScale\": 3, \"future\": [1,2,3], \"profile\": \"x\"}", partial), "unknown keys are ignored");
-            t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "640x448" && partial.server == "127.0.0.1", "missing keys keep their defaults");
+            t.IsTrue(partial.gsScale == 3 && partial.profile == "x" && partial.windowSize == "1280x896" && partial.server == "127.0.0.1", "missing keys keep their defaults");
+            t.Equals(launcher::Config{}.windowSize, std::string("1280x896"), "the launcher's default is 2x");
             launcher::Config broken;
             broken.gsScale = 2;
             t.IsTrue(!launcher::fromJson("{\"gsScale\": ", broken), "malformed JSON is refused");
@@ -155,7 +156,7 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_SOCOM2_PAD=1"), "the SOCOM input path is always on");
             t.IsTrue(has("PS2X_GS_SCALE=1"), "native scale");
             t.IsTrue(has("PS2X_PRESENT_FILTER=linear"), "the filter");
-            t.IsTrue(has("PS2X_WINDOW_SIZE=640x448"), "the window size");
+            t.IsTrue(has("PS2X_WINDOW_SIZE=1280x896"), "the window size: the launcher's 2x default (the gate sets none and stays 640x448)");
             t.IsTrue(has("PS2X_SOCOM2_SERVER=127.0.0.1"), "the server");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
             t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");

@@ -527,6 +527,9 @@ private:
     bool m_debugUiInitialized = false;
 
 public:
+    // The pc stored on EVERY dispatch iteration (EeScheduler.cpp, m_debugPc.store): the pc-sampler prints this as
+    // dpc= because m_cpuContext.pc is only copied out every 4096 dispatches (research/29 section 4 item 4).
+    uint32_t debugPc() const { return m_debugPc.load(std::memory_order_relaxed); }
     std::atomic<uint32_t> m_debugPc{0};
     std::atomic<uint32_t> m_debugRa{0};
     std::atomic<uint32_t> m_debugSp{0};
