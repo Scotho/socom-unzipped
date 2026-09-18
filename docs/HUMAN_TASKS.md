@@ -133,6 +133,10 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   open (it needs an X or XWayland session), did the game boot to the title screen, was there music, did the pad work, and
   the first three `[gs-gl]` lines of `logs/run_*.log` in the folder (the GL version and any UNSUPPORTED/note line). On a
   Steam Deck: desktop mode, and say whether it ran from the SD card or internal storage.
+  One number only your machine can give (R107): with `PS2X_AUDIO_DUMP=/tmp/title.wav` in the environment before Launch, sit
+  through the logos, the intro and a minute of the title loop, then send the WAV (or run `python3 -m tools_py.parity.audio_corr
+  /tmp/title.wav logs/title_loop_pcm.bin` on a checkout and send its last line). The VM renders at two frames a second on a
+  software rasteriser, which starves the music ring, so the correlation bar cannot be read there.
 ## Done
 
 (none yet)
