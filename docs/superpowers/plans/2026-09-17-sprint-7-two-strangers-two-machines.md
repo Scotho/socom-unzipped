@@ -1361,7 +1361,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ test.** In `pad_input_tests.cpp`, inside the existing `MiniTest::Case("HostGamepadKnob", ...)` body (:73), after the `PS2X_HOST_GAMEPAD=0` case, and add `#include "runtime/host_gamepad_select.h"` at the top:
+- [x] **Step 1: Write the failing C++ test.** In `pad_input_tests.cpp`, inside the existing `MiniTest::Case("HostGamepadKnob", ...)` body (:73), after the `PS2X_HOST_GAMEPAD=0` case, and add `#include "runtime/host_gamepad_select.h"` at the top: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("PS2X_HOST_GAMEPAD_INDEX picks a pad when it is there, otherwise the first available one", [](TestCase &t)
@@ -1389,14 +1389,14 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** The command set's C++ line:
+- [x] **Step 2: Run it and watch it fail.** The command set's C++ line: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 ; third_party/ps2recomp/build-clang/ps2xTest/ps2x_tests.exe 2>&1 | grep -E "Failed\]|Total Tests"
 ```
 Expected: `fatal error: 'runtime/host_gamepad_select.h' file not found`.
 
-- [ ] **Step 3: Implement the header.** `ps2xRuntime/include/runtime/host_gamepad_select.h`:
+- [x] **Step 3: Implement the header.** `ps2xRuntime/include/runtime/host_gamepad_select.h`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
 #pragma once
@@ -1473,7 +1473,7 @@ inline float hostPadAxis(float v, float deadZone)
 ```
 Run Step 2's command: green.
 
-- [ ] **Step 4: The three call sites.** Each keeps `hostGamepadEnabled()` in front, so `PS2X_HOST_GAMEPAD=0` (which the gate and every online launch script set) still short-circuits before any selection happens.
+- [x] **Step 4: The three call sites.** Each keeps `hostGamepadEnabled()` in front, so `PS2X_HOST_GAMEPAD=0` (which the gate and every online launch script set) still short-circuits before any selection happens. *(done 2026-09-18, agent-executed; suite 538)*
 
   `socom2_host_input.cpp` :206, replacing `if (hostGamepadEnabled() && IsGamepadAvailable(0))`, and the `kDeadZone` block at :228-233:
 
@@ -1542,7 +1542,7 @@ Run Step 2's command: green.
 
   Run Step 2's command: still green (the helper's case is the only one that covers these; the existing `PadInput` cases drive override state, not raylib).
 
-- [ ] **Step 5: Write the failing launcher tests.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`:
+- [x] **Step 5: Write the failing launcher tests.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("the controller pick and the dead zone round-trip and reach the environment", [](TestCase &t)
@@ -1571,7 +1571,7 @@ Run Step 2's command: green.
 ```
 Run Step 2's command. Expected: `error: no member named 'gamepadIndex' in 'launcher::Config'`.
 
-- [ ] **Step 6: Implement the config half.** In `launcher_config.h` `Config` (after `mouseSensitivity`, :37):
+- [x] **Step 6: Implement the config half.** In `launcher_config.h` `Config` (after `mouseSensitivity`, :37): *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         // Sprint 7 Task 8: which host pad to read (-1 = the first available one, as the runtime did before)
@@ -1604,7 +1604,7 @@ Run Step 2's command. Expected: `error: no member named 'gamepadIndex' in 'launc
 ```
 Run Step 2's command: green.
 
-- [ ] **Step 7: The Controller panel.** In `main.cpp`, `drawController` (:240-279) takes the slot it is to draw and stops asking for pad 0; the panel around it lists what is plugged in and owns the pick.
+- [x] **Step 7: The Controller panel.** In `main.cpp`, `drawController` (:240-279) takes the slot it is to draw and stops asking for pad 0; the panel around it lists what is plugged in and owns the pick. *(done 2026-09-18, agent-executed; suite 538)*
 
   `drawController`'s signature and first lines become:
 
@@ -1714,7 +1714,7 @@ Run Step 2's command: green.
 ```
   `kHeight` (:31) goes `660 -> 686` for the 26 extra pixels. The `slider` helper's 0.05 quantisation gives the dead zone nine positions (0.00, 0.05 … 0.40), which is the resolution the value deserves.
 
-- [ ] **Step 8: Suite, then build.**
+- [x] **Step 8: Suite, then build.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "8: build.sh test" -- ./build.sh test
@@ -1722,7 +1722,7 @@ scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh 
 ```
 Expected: exit 0 with the C++ count up by two cases. **No launch in this task** — the driven gate sets `PS2X_HOST_GAMEPAD=0` (`host_gamepad.h`: with a pad plugged in the game skips the PRECISION SHOOTER CONFIGURATION screens the transition stage keys on), so no gate run can exercise a pad at all. The proof is the owner's hands, Step 9.
 
-- [ ] **Step 9: The human task line.** Add to `docs/HUMAN_TASKS.md` under **Open**, carrying the measurement the check confirms (the standing rule from Task 6 Step 2):
+- [x] **Step 9: The human task line.** Add to `docs/HUMAN_TASKS.md` under **Open**, carrying the measurement the check confirms (the standing rule from Task 6 Step 2): *(done 2026-09-18, agent-executed; suite 538)*
 
 ```markdown
 - [ ] **Pick the pad in the launcher, then play with it** (Sprint 7 Task 8, owner request 2026-09-18). Plug the
@@ -1739,7 +1739,7 @@ Expected: exit 0 with the C++ count up by two cases. **No launch in this task** 
   Launcher build: the `dist/socom_unzipped_launcher.exe` sha256 from the commit below.
 ```
 
-- [ ] **Step 10: Commit** (this moves a default — record **R95** in the Rulings section).
+- [x] **Step 10: Commit** (this moves a default — record **R95** in the Rulings section). *(done: 206de19, one commit for Tasks 8-11)*
 
 ```bash
 git commit -m "feat(input): the launcher picks the pad, and one dead zone for all three pad paths
@@ -1791,7 +1791,7 @@ git push
 
 #### 9a — the launcher
 
-- [ ] **Step 1: Write the failing launcher tests.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`, with `#include "launcher/mic_devices.h"` and `#include <cmath>` at the top:
+- [x] **Step 1: Write the failing launcher tests.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`, with `#include "launcher/mic_devices.h"` and `#include <cmath>` at the top: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("the microphone pick round-trips and only reaches the environment when there is one", [](TestCase &t)
@@ -1848,9 +1848,9 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run them and watch them fail.** Task 8 Step 2's command. Expected: `fatal error: 'launcher/mic_devices.h' file not found`.
+- [x] **Step 2: Run them and watch them fail.** Task 8 Step 2's command. Expected: `fatal error: 'launcher/mic_devices.h' file not found`. *(done 2026-09-18, agent-executed; suite 538)*
 
-- [ ] **Step 3: Implement `mic_devices.h` / `mic_devices.cpp`.** The header is pure — no miniaudio:
+- [x] **Step 3: Implement `mic_devices.h` / `mic_devices.cpp`.** The header is pure — no miniaudio: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
 #pragma once
@@ -1922,7 +1922,7 @@ target_include_directories(socom_unzipped_launcher PRIVATE $<TARGET_PROPERTY:ray
 ```
 Run Step 2's command: green (the fake covers the interface; the miniaudio half is not in the test binary).
 
-- [ ] **Step 4: The config half.** `launcher_config.h` `Config`, after `padDeadZone`:
+- [x] **Step 4: The config half.** `launcher_config.h` `Config`, after `padDeadZone`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
@@ -1936,7 +1936,7 @@ Run Step 2's command: green (the fake covers the interface; the miniaudio half i
 ```
 Run Step 2's command: green, and Step 1's first case passes.
 
-- [ ] **Step 5: The Microphone panel.** In `main.cpp`, after the Controller panel and before Online. The device list is enumerated **once at start-up and on a Rescan press**, never per frame: `ma_context_get_devices` starts the host audio backend, and doing that sixty times a second stalls the window on some WASAPI setups.
+- [x] **Step 5: The Microphone panel.** In `main.cpp`, after the Controller panel and before Online. The device list is enumerated **once at start-up and on a Rescan press**, never per frame: `ma_context_get_devices` starts the host audio backend, and doing that sixty times a second stalls the window on some WASAPI setups. *(done 2026-09-18, agent-executed; suite 538)*
 
   Next to the other pre-loop locals (after `std::string lastLog;`):
 
@@ -1990,7 +1990,7 @@ Run Step 2's command: green, and Step 1's first case passes.
 
 #### 9b — the runtime
 
-- [ ] **Step 6: Write the failing ring test.** In `socom2_audio_tests.cpp`, inside `MiniTest::Case("SOCOM2Audio", ...)`, with `#include "runtime/host_mic.h"`:
+- [x] **Step 6: Write the failing ring test.** In `socom2_audio_tests.cpp`, inside `MiniTest::Case("SOCOM2Audio", ...)`, with `#include "runtime/host_mic.h"`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("MicRing: write n, read n, and it wraps without tearing a frame", [](TestCase &t)
@@ -2019,7 +2019,7 @@ Run Step 2's command: green, and Step 1's first case passes.
 ```
 Run Step 2's command. Expected: `fatal error: 'runtime/host_mic.h' file not found`.
 
-- [ ] **Step 7: Implement `host_mic.h` and `host_mic.cpp`.** The header carries `MicRing` inline (so the test links nothing) and declares `HostMic`:
+- [x] **Step 7: Implement `host_mic.h` and `host_mic.cpp`.** The header carries `MicRing` inline (so the test links nothing) and declares `HostMic`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
 #pragma once
@@ -2134,7 +2134,7 @@ void stopHostMic();
 ```
   and `stopHostMic();` on the shutdown path beside `CloseWindow()`. Run Step 2's command: green.
 
-- [ ] **Step 8: Suite, then build.**
+- [x] **Step 8: Suite, then build.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "9: build.sh test" -- ./build.sh test
@@ -2144,7 +2144,7 @@ Expected: exit 0 with the C++ count up by four cases, and `dist/socom2.exe` reli
 
 #### 9c — the spike
 
-- [ ] **Step 9: One bounded read, one KNOWN row, no code kept.** Read, in this order, and write nothing else:
+- [x] **Step 9: One bounded read, one KNOWN row, no code kept.** Read, in this order, and write nothing else: *(done 2026-09-18, agent-executed; suite 538)*
 
   1. `third_party/ps2recomp/ps2xIOP/src/modules/lgaud.cpp` — all 97 lines. What is there today: SIF RPC service `'BLIP'` (`0x50494c42`); `lgAudInit` is **function 0x10** and answers `reply[0] = 0` (status), `reply[1] = 0` (capability flags the EE ORs into its own word), `reply[2] = 0x0108` (the version the EE checks) and `reply[8] = 0x800` (the stream buffer the EE must allocate, +0x40), logging `[lgaud] lgAudInit -> version 1.08, no headset` (:54). **Every other function** returns `0x80000001` (:60) and is logged, up to 32 times, as `[lgaud:stub] rpc=0x… send=… recv=…`. Registered at `ps2xIOP/src/builtin_profiles.cpp` :121 in the `socom2-us` profile.
   2. `docs/research/05-code-package-and-harness.md` — the RPC table row `0x50494c42 'BLIP' | lgaud.irx (Logitech USB headset audio) | FUN_00243840 (lgAudInit)` (:50); the boot module list (:63: `LGAUD.IRX`, then `HEADSETO.IRX priority=22`, "HEADSET Output module v2.0 built with liblgaud 1.08 and SCE 2.8.0"); and :79's note that the game does lgaud device enumeration after the RSA-keygen stub.
@@ -2165,7 +2165,7 @@ grep -h "lgaud:stub" logs/run_*.log | sed 's/ send=.*//' | sort | uniq -c | sort
 
   **No code is written in this step and none is kept.** A function number whose meaning the decomp does not give is named as unknown in the row, not guessed at.
 
-- [ ] **Step 10: The human task lines.** Add both to `docs/HUMAN_TASKS.md` under **Open**:
+- [x] **Step 10: The human task lines.** Add both to `docs/HUMAN_TASKS.md` under **Open**: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```markdown
 - [ ] **Pick the microphone and watch the meter** (Sprint 7 Task 9a, owner request 2026-09-18). Run
@@ -2189,7 +2189,7 @@ grep -h "lgaud:stub" logs/run_*.log | sed 's/ send=.*//' | sort | uniq -c | sort
   Task 9c's `docs/KNOWN.md` §2 row scopes.
 ```
 
-- [ ] **Step 11: Commit.** No default moves: `PS2X_MIC_DEVICE` unset opens nothing, so no ruling.
+- [x] **Step 11: Commit.** No default moves: `PS2X_MIC_DEVICE` unset opens nothing, so no ruling. *(done: 206de19, one commit for Tasks 8-11)*
 
 ```bash
 git commit -m "feat(audio): the launcher picks a microphone and meters it; the runtime captures it
@@ -2235,7 +2235,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ test.** In `host_config_tests.cpp`, inside `MiniTest::Case("HostConfig", ...)`, with `#include "runtime/fps_overlay.h"` and `#include <limits>`:
+- [x] **Step 1: Write the failing C++ test.** In `host_config_tests.cpp`, inside `MiniTest::Case("HostConfig", ...)`, with `#include "runtime/fps_overlay.h"` and `#include <limits>`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("PS2X_FPS_OVERLAY: one line, three fields, and never a printed infinity", [](TestCase &t)
@@ -2251,9 +2251,9 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Task 8 Step 2's command. Expected: `fatal error: 'runtime/fps_overlay.h' file not found`.
+- [x] **Step 2: Run it and watch it fail.** Task 8 Step 2's command. Expected: `fatal error: 'runtime/fps_overlay.h' file not found`. *(done 2026-09-18, agent-executed; suite 538)*
 
-- [ ] **Step 3: Implement the header.**
+- [x] **Step 3: Implement the header.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
 #pragma once
@@ -2287,7 +2287,7 @@ inline std::string fpsOverlayLine(int hostFps, double guestVsyncHz, double frame
 ```
 Run Step 2's command: green.
 
-- [ ] **Step 4: Draw it.** In `ps2_runtime.cpp`, **after** the `PS2X_HOST_SCREENSHOT_LATEST` block (:2762-2785) and **before** `if (m_debugUiInitialized && m_debugUiDrawCallback)` (:2786). The order matters twice: after the export, so the overlay is never in an exported GS frame and therefore never in a parity capture or a `scale_shot --mode export` comparison; before the debug panel, so F1's panel draws over it rather than under it.
+- [x] **Step 4: Draw it.** In `ps2_runtime.cpp`, **after** the `PS2X_HOST_SCREENSHOT_LATEST` block (:2762-2785) and **before** `if (m_debugUiInitialized && m_debugUiDrawCallback)` (:2786). The order matters twice: after the export, so the overlay is never in an exported GS frame and therefore never in a parity capture or a `scale_shot --mode export` comparison; before the debug panel, so F1's panel draws over it rather than under it. *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         // PS2X_FPS_OVERLAY=1 (Task 10): one line of raylib text in the top-left of the WINDOW. Drawn after the
@@ -2321,7 +2321,7 @@ Run Step 2's command: green.
 ```
   with `#include "runtime/fps_overlay.h"` at the top. Run Step 2's command: still green.
 
-- [ ] **Step 5: Write the failing launcher test.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`:
+- [x] **Step 5: Write the failing launcher test.** In `launcher_tests.cpp`, inside `MiniTest::Case("Launcher", ...)`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("the FPS overlay is off unless the player asks for it", [](TestCase &t)
@@ -2341,7 +2341,7 @@ Run Step 2's command: green.
 ```
 Run Step 2's command. Expected: `error: no member named 'fpsOverlay' in 'launcher::Config'`.
 
-- [ ] **Step 6: The launcher half.** `launcher_config.h` `Config`, after `windowSize` (:35):
+- [x] **Step 6: The launcher half.** `launcher_config.h` `Config`, after `windowSize` (:35): *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         bool fpsOverlay = false;               // Sprint 7 Task 10: PS2X_FPS_OVERLAY, off unless asked for
@@ -2360,7 +2360,7 @@ Run Step 2's command. Expected: `error: no member named 'fpsOverlay' in 'launche
 ```
   `kHeight` goes `870 -> 898`. Run Step 2's command: green.
 
-- [ ] **Step 7: Suite, then build.**
+- [x] **Step 7: Suite, then build.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "10: build.sh test" -- ./build.sh test
@@ -2398,7 +2398,7 @@ print('corner mean |diff|', float(np.abs(np.asarray(win, float) - np.asarray(exp
 
   *(`scale_shot --mode window` is the PrintWindow path that tool kept "for the cases that genuinely want the window" — its module docstring. `--mode window` deliberately removes `PS2X_HOST_SCREENSHOT_LATEST` from the child, so the capture and the gate's export come from two launches of the same deterministic boot rather than one; the top-left 200x14 box is the same dark margin in both, which is why the bar can be a plain difference.)*
 
-- [ ] **Step 9: Commit.** No default moves — `PS2X_FPS_OVERLAY` unset is the old behaviour and the launcher's checkbox is off — so no ruling.
+- [x] **Step 9: Commit.** No default moves — `PS2X_FPS_OVERLAY` unset is the old behaviour and the launcher's checkbox is off — so no ruling. *(done: 206de19, one commit for Tasks 8-11)*
 
 ```bash
 git commit -m "feat(present): PS2X_FPS_OVERLAY -- host fps, the guest vsync rate and frame time, in the window only
@@ -2441,7 +2441,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ tests.** In `socom2_audio_tests.cpp`, inside `MiniTest::Case("SOCOM2Audio", ...)`, with `#include "runtime/audio_volume.h"`:
+- [x] **Step 1: Write the failing C++ tests.** In `socom2_audio_tests.cpp`, inside `MiniTest::Case("SOCOM2Audio", ...)`, with `#include "runtime/audio_volume.h"`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         tc.Run("volumeGain: 0-100 percent to a linear gain, out of range clamped", [](TestCase &t)
@@ -2480,9 +2480,9 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run them and watch them fail.** Task 8 Step 2's command. Expected: `fatal error: 'runtime/audio_volume.h' file not found`, and once that is past, `error: no member named 'audioVolume' in 'launcher::Config'`.
+- [x] **Step 2: Run them and watch them fail.** Task 8 Step 2's command. Expected: `fatal error: 'runtime/audio_volume.h' file not found`, and once that is past, `error: no member named 'audioVolume' in 'launcher::Config'`. *(done 2026-09-18, agent-executed; suite 538)*
 
-- [ ] **Step 3: Implement `audio_volume.h` and apply it.**
+- [x] **Step 3: Implement `audio_volume.h` and apply it.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
 #pragma once
@@ -2517,7 +2517,7 @@ inline float volumeGain(int percent)
 ```
   (`#include "runtime/audio_volume.h"` and `<cmath>` at the top; a gain of at most 1.0 cannot push an `int16_t` out of range, which is why no saturation step is needed.) Run Step 2's command: the `volumeGain` case is green.
 
-- [ ] **Step 4: The launcher's config half.** `launcher_config.h` `Config`, after `fpsOverlay`:
+- [x] **Step 4: The launcher's config half.** `launcher_config.h` `Config`, after `fpsOverlay`: *(done 2026-09-18, agent-executed; suite 538)*
 
 ```cpp
         int audioVolume = 100;                 // Sprint 7 Task 11: PS2X_AUDIO_VOLUME, 0-100, 100 = unity
@@ -2530,7 +2530,7 @@ inline float volumeGain(int percent)
 ```
 Run Step 2's command: green.
 
-- [ ] **Step 5: The Video panel.** In `main.cpp`:
+- [x] **Step 5: The Video panel.** In `main.cpp`: *(done 2026-09-18, agent-executed; suite 538)*
 
   An integer slider beside the other widgets — the existing `slider` quantises to steps of 0.05, which is meaningless on a 0-100 range:
 
@@ -2586,7 +2586,7 @@ Run Step 2's command: green.
 ```
   `kHeight` goes `898 -> 932`. Run Step 2's command: green.
 
-- [ ] **Step 6: Suite, then build.**
+- [x] **Step 6: Suite, then build.** *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "11: build.sh test" -- ./build.sh test
@@ -2594,7 +2594,7 @@ scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh 
 ```
 Expected: exit 0. **No launch and no measurement beyond the suite**: the presentation scale was measured in Task 1c Step 8 (`s7_scale_both`, mean |diff| 0.83 against a bar of 3) and 4x is that same code path at a larger clamp; the window size and the volume are knobs the owner's hands-on checks cover (Tasks 8 and 9's `docs/HUMAN_TASKS.md` items and the existing launcher item).
 
-- [ ] **Step 7: Check that nothing moved.** Before committing, confirm every default in this task is the old behaviour: `Config{}.gsScale == 1`, `Config{}.windowSize == "1280x896"` (Task 1c's, untouched), `Config{}.audioVolume == 100` → `volumeGain(100) == 1.0f` → the multiply is skipped entirely, and `PS2X_AUDIO_VOLUME` unset gives exactly the same. **No ruling is due for this task**; the numbering stands at R95 from Task 8, so the next ruling anyone writes is R96.
+- [x] **Step 7: Check that nothing moved.** Before committing, confirm every default in this task is the old behaviour: `Config{}.gsScale == 1`, `Config{}.windowSize == "1280x896"` (Task 1c's, untouched), `Config{}.audioVolume == 100` → `volumeGain(100) == 1.0f` → the multiply is skipped entirely, and `PS2X_AUDIO_VOLUME` unset gives exactly the same. **No ruling is due for this task**; the numbering stands at R95 from Task 8, so the next ruling anyone writes is R96. *(done 2026-09-18, agent-executed; suite 538)*
 
 ```bash
 third_party/ps2recomp/build-clang/ps2xTest/ps2x_tests.exe 2>&1 | grep -E "Failed\]|Total Tests"
@@ -2602,7 +2602,7 @@ third_party/ps2recomp/build-clang/ps2xTest/ps2x_tests.exe 2>&1 | grep -E "Failed
 ```
 Expected: `0 Failed`, and `PS2X_GS_SCALE=1`, `PS2X_WINDOW_SIZE=1280x896`, `PS2X_AUDIO_VOLUME=100` from a default `config.json`.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.** *(done: 206de19, one commit for Tasks 8-11)*
 
 ```bash
 git commit -m "feat(video/audio): a fourth scale, Match display, and a master volume in the launcher
@@ -2646,8 +2646,8 @@ git push
   3. **971 × `play request for unknown bank`** for banks 0xa30000/0xa00000 that were loaded (log 868-883) with no unload in between: bank sound effects were being dropped in the mission too; unexplained.
   4. **Task 2c's `sceCdGetReadPos`** is stream-wins-while-open (`CD.cpp:405`), not "whichever the caller last moved"; a plain reader with a stream open gets the stream's cursor. Latent (the log has no plain `sceCdRead` during the menus), to correct before any path mixes the two.
 - [ ] **Step 2: The repeat detector** (`audio_corr.py --repeat`, Opus, in progress): the autocorrelation peak at lags 256..4096 per 4 s window; a looping block reads r > 0.9 at its length.
-- [ ] **Step 3: The three small fixes, each under a RED test.** (a) `stopSound` frees a stream slot: init 2 slots, play, `snd_StopSound(handle)`, the next play returns non-zero -- fails today. (b) `sceCdGetReadPos` returns the cursor the caller last moved: stream open, plain `sceCdRead` at X, `GetReadPos` == X's end; then `sceCdStRead`, `GetReadPos` == the stream cursor. (c) The unknown-bank reject logs the bank table once (handle, loaded flag) so one launch says whether the slot was cleared or the handle is stale. `./build.sh test`, build.
-- [ ] **Step 4: The PCM ring's underrun policy** (a design change; ruling R97). Track the high-water mark of `pcmStreamWrite` per wrap; when `render` reaches a block that was not rewritten since the head last passed it, output silence for that block and count it (`pcm_underruns` on the audio stat line) instead of replaying stale bytes -- a gap where the console would also have had to wait, never a loop. RED test: fill 1 block, render 2 blocks, the second is silence and the counter is 1; a fill that arrives before the head is played verbatim.
+- [x] **Step 3: The three small fixes, each under a RED test.** (a) `stopSound` frees a stream slot: init 2 slots, play, `snd_StopSound(handle)`, the next play returns non-zero -- fails today. (b) `sceCdGetReadPos` returns the cursor the caller last moved: stream open, plain `sceCdRead` at X, `GetReadPos` == X's end; then `sceCdStRead`, `GetReadPos` == the stream cursor. (c) The unknown-bank reject logs the bank table once (handle, loaded flag) so one launch says whether the slot was cleared or the handle is stale. `./build.sh test`, build. *(done: b3e3797; RED 3 failed of 538, GREEN 537 + the ring case)*
+- [x] **Step 4: The PCM ring's underrun policy** (a design change; ruling R97). Track the high-water mark of `pcmStreamWrite` per wrap; when `render` reaches a block that was not rewritten since the head last passed it, output silence for that block and count it (`pcm_underruns` on the audio stat line) instead of replaying stale bytes -- a gap where the console would also have had to wait, never a loop. RED test: fill 1 block, render 2 blocks, the second is silence and the counter is 1; a fill that arrives before the head is played verbatim. *(done: b3e3797, R97; RED 'a block played once and not rewritten is silence' then GREEN 538)*
 - [ ] **Step 5: Reproduce and re-measure, driven (launches 37-38).** `logs/s7_audio_online.sh`: `online_control_round.sh`'s login path with `PS2X_AUDIO_DUMP`, `PS2X_AUDIO_TRACE=1`, `PS2X_AUDIO_PCM_DUMP` (write offset vs play offset crossings), on the fixed exe; `logs/s7_audio_mission.sh`: the mission gate stage with a dump and the trace. Bars: the repeat detector under 0.9 in every scored window of the online dump; `pcm_underruns` reported; no `no free VAG stream slot` and no `unknown bank` line in the mission log; the mission dump's RMS never at zero for 10 s while the HUD is up; the title correlation still 1.000 (`s7_audio_title`'s command).
 - [ ] **Step 6: Commit** with the launch names; KNOWN §1 rows (the slot leak, the ring policy, the read-position rule); the unknown-bank finding to §1 or §2 by what Step 3c's launch says; `docs/HUMAN_TASKS.md`: the owner's re-listen of the online menus and one mission, quoting the three sentences and the numbers now standing against them. The menus' 80-133 ms/s of uploads (the reason the fill is late) stays Sprint 8's task unless Step 5 shows the ring still underruns at 60 fps.
 
