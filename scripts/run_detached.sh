@@ -60,8 +60,11 @@ QUIET_MARKER="${RUN_QUIET_MARKER:-$ROOT/logs/.quiet}"
 _free_gb() {
   if [ -n "${RUN_FREE_GB_CMD:-}" ]; then
     eval "$RUN_FREE_GB_CMD" | tail -n1
-  else
+  elif command -v powershell.exe >/dev/null 2>&1; then
     powershell.exe -NoProfile -Command "[math]::Round((Get-PSDrive -Name C).Free/1GB,2)" 2>/dev/null
+  else
+    # Linux (Sprint 8): the same number from df, whole gigabytes.
+    df -BG --output=avail "$ROOT" 2>/dev/null | tail -n1 | tr -d 'G '
   fi
 }
 
@@ -89,6 +92,11 @@ while ($true) {
   Start-Sleep -Seconds 1
 }
 PS1EOF
+  if ! command -v powershell.exe >/dev/null 2>&1; then
+    # Linux (Sprint 8): no host sampler yet -- the CSV stays absent and nothing is started.
+    echo ""
+    return 0
+  fi
   powershell.exe -NoProfile -WindowStyle Hidden -File "$ps1" -Csv "$csv" </dev/null >/dev/null 2>&1 &
   echo $!
 }

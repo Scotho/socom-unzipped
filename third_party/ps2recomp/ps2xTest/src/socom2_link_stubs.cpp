@@ -4,6 +4,7 @@
 // self-registration objects would be dropped from a static lib). vu1_replay.cpp carries the same
 // kind of definition for the same reason. The unit tests never run SOCOM code, so inert
 // definitions are all the link needs.
+#include <thread>
 #include "ps2_runtime.h"
 #include "ps2_runtime_macros.h"
 #include "ps2_stubs.h"
@@ -12,7 +13,7 @@
 #include <cstdint>
 
 // PS2X_HOST_PROF host-thread sampler (ps2_runtime.cpp): never started in the test binary.
-void ps2HostProfStart(void *) {}
+void ps2HostProfStart(std::thread::native_handle_type) {}   // the runtime's signature (a HANDLE on Windows, a pthread_t on Linux)
 
 // Set by PS2X_TRIGGER in the runner, read by the "trig" trace modes in the VIF1/VU1/GS code.
 // Never armed here.

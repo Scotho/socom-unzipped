@@ -12,7 +12,7 @@ SSH="ssh -i $KEY -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o 
 case "${1:-tree}" in
   tree)
     $SSH 'mkdir -p ~/socom_pc' &&
-    tar --exclude=./third_party/ps2recomp/build-clang --exclude=./third_party/ps2recomp/build-tools --exclude=./.git \
+    tar --exclude=./third_party/ps2recomp/build-clang --exclude=./third_party/ps2recomp/build-tools \
         --exclude=./vm --exclude=./logs --exclude=./dist --exclude=./dist-linux --exclude=./recomp/output \
         --exclude=./tools/llvm-mingw --exclude=./tools/cmake --exclude=./tools/ninja --exclude=./tools/pcsx2 \
         --exclude=./server --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
