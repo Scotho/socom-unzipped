@@ -220,7 +220,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ test.** Append to `third_party/ps2recomp/ps2xTest/src/gs_frame_backpressure_tests.cpp`:
+- [x] **Step 1: Write the failing C++ test.** Append to `third_party/ps2recomp/ps2xTest/src/gs_frame_backpressure_tests.cpp`:
 
 ```cpp
         tc.Run("a latched queue drops guest frames and keeps uploads", [](TestCase &t)
@@ -255,17 +255,17 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Step 2's command from Task 1a. Expected: `error: unknown type name 'GsPendingCap'`.
+- [x] **Step 2: Run it and watch it fail.** Step 2's command from Task 1a. Expected: `error: unknown type name 'GsPendingCap'`.
 
-- [ ] **Step 3: Implement `GsPendingCap`** in `gs_frame_backpressure.h`/`.cpp` beside `GsFrameBackpressure`, and add `bool GsFrameBackpressure::latched() const { std::lock_guard<std::mutex> l(m_mutex); return m_consumerStalled; }`.
+- [x] **Step 3: Implement `GsPendingCap`** in `gs_frame_backpressure.h`/`.cpp` beside `GsFrameBackpressure`, and add `bool GsFrameBackpressure::latched() const { std::lock_guard<std::mutex> l(m_mutex); return m_consumerStalled; }`.
 
-- [ ] **Step 4: Run it green.** Same command. Expected: three new cases pass, no `[Failed]`.
+- [x] **Step 4: Run it green.** Same command. Expected: three new cases pass, no `[Failed]`.
 
-- [ ] **Step 5: Wire it into the backend.** In `gs_gl_backend.cpp` `recordCommand`/`recordCommandWithData` (:690-720), before pushing: `if (!m_pendingCap.admit(m_backpressure.latched(), cmd.type == Cmd::Type::Transfer || cmd.type == Cmd::Type::Upload, size)) return;`; in the swap at :731 and :1084 call `m_pendingCap.onReplayed(...)`; extend the `[gs-gl stats] backpressure …` line with `pending_bytes=%llu dropped_cmds=%llu dropped_bytes=%llu`. Construct `m_pendingCap` from `GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), 64u) * 1024u * 1024u`.
+- [x] **Step 5: Wire it into the backend.** In `gs_gl_backend.cpp` `recordCommand`/`recordCommandWithData` (:690-720), before pushing: `if (!m_pendingCap.admit(m_backpressure.latched(), cmd.type == Cmd::Type::Transfer || cmd.type == Cmd::Type::Upload, size)) return;`; in the swap at :731 and :1084 call `m_pendingCap.onReplayed(...)`; extend the `[gs-gl stats] backpressure …` line with `pending_bytes=%llu dropped_cmds=%llu dropped_bytes=%llu`. Construct `m_pendingCap` from `GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), 64u) * 1024u * 1024u`.
 
-- [ ] **Step 6: Add the memory column to the host sampler.** In `scripts/run_detached.sh`'s `_start_cpu_sampler` PS1, append a fourth CSV field built from `Get-Process socom2* | ForEach-Object { "{0}={1:N0}" -f $_.ProcessName, ($_.WorkingSet64/1MB) }` joined with `;` (wrapped in its own `try {} catch {}` so a dead process never kills the sampler). Existing rows have three fields; `host_samples.parse` must treat a missing fourth field as `{}`.
+- [x] **Step 6: Add the memory column to the host sampler.** In `scripts/run_detached.sh`'s `_start_cpu_sampler` PS1, append a fourth CSV field built from `Get-Process socom2* | ForEach-Object { "{0}={1:N0}" -f $_.ProcessName, ($_.WorkingSet64/1MB) }` joined with `;` (wrapped in its own `try {} catch {}` so a dead process never kills the sampler). Existing rows have three fields; `host_samples.parse` must treat a missing fourth field as `{}`.
 
-- [ ] **Step 7: Write the failing Python test** `tools_py/tests/test_host_samples.py`:
+- [x] **Step 7: Write the failing Python test** `tools_py/tests/test_host_samples.py`:
 
 ```python
 import unittest
@@ -291,16 +291,16 @@ class Parse(unittest.TestCase):
 ```
 Run: `python -m unittest tools_py.tests.test_host_samples -v` → `ModuleNotFoundError: No module named 'tools_py.parity.host_samples'` (RED).
 
-- [ ] **Step 8: Implement `host_samples.py`** (`parse_text`, `parse(path)` = `parse_text(open(path).read())`, `working_set_rise_mb`, and a `main` printing `rise_mb=<x> peak_mb=<y>` and exiting 1 above `--max-rise-mb`). Run the same command: 3 tests OK.
+- [x] **Step 8: Implement `host_samples.py`** (`parse_text`, `parse(path)` = `parse_text(open(path).read())`, `working_set_rise_mb`, and a `main` printing `rise_mb=<x> peak_mb=<y>` and exiting 1 above `--max-rise-mb`). Run the same command: 3 tests OK.
 
-- [ ] **Step 9: Write `scripts/parity/drag_window.ps1`** as in the Interfaces block, and check it fails cleanly with no game running:
+- [x] **Step 9: Write `scripts/parity/drag_window.ps1`** as in the Interfaces block, and check it fails cleanly with no game running:
 
 ```bash
 powershell.exe -NoProfile -File scripts/parity/drag_window.ps1 -Title "PS2-Recomp" -Seconds 1 ; echo "rc=$?"
 ```
 Expected: `drag_window: no window titled 'PS2-Recomp'` and `rc=1`.
 
-- [ ] **Step 10: Suite, then build.**
+- [x] **Step 10: Suite, then build.** *(done: C++ 520 green; exe s7_block_build 2026-09-17)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "1b: build.sh test" -- ./build.sh test
@@ -308,7 +308,7 @@ scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh 
 ```
 Expected: test exit 0; marker `exit=0`.
 
-- [ ] **Step 11: The drag measurement (launch 3).** `logs/s7_drag.sh`: run `python -m tools_py.parity.gate --only mission --stamp s7_drag --owner gate` with `PS2X_GS_STATS=1`, and in the same script, 90 s after the gate starts, `powershell.exe -NoProfile -File scripts/parity/drag_window.ps1 -Title "PS2-Recomp" -Seconds 30` in the foreground before waiting on the gate's pid.
+- [x] **Step 11: The drag measurement (launch 3).** *(done 2026-09-17: s7_drag PASS mission; drag window +38 MB against a 91 MB loading rise; cap never engaged -- ruling R93)* `logs/s7_drag.sh`: run `python -m tools_py.parity.gate --only mission --stamp s7_drag --owner gate` with `PS2X_GS_STATS=1`, and in the same script, 90 s after the gate starts, `powershell.exe -NoProfile -File scripts/parity/drag_window.ps1 -Title "PS2-Recomp" -Seconds 30` in the foreground before waiting on the gate's pid.
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_drag.sh logs/s7_drag.marker
@@ -317,7 +317,7 @@ grep -a "dropped_cmds" logs/parity/gate/s7_drag/mission.run.log | tail -3
 ```
 Expected: `rise_mb=<x> peak_mb=<y>` with `x < 200` (the spec's bar) and exit 0; the stats lines show `dropped_cmds=` climbing and `pending_bytes=` flat at the cap during the drag. Decision table: rise < 200 MB → done; 200–500 MB → lower the default cap to 32 MB and re-measure once; > 500 MB → the cap is not on the path the drag takes (check `Upload` is not the bulk) and re-open with the stats numbers rather than raising the cap.
 
-- [ ] **Step 12: Commit.**
+- [x] **Step 12: Commit.** *(done: 6ea9520)*
 
 ```bash
 git commit -m "fix(gs-gl): cap the pending command queue while the back-pressure latch is tripped
@@ -355,7 +355,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ test.** In `ps2_gs_tests.cpp`:
+- [x] **Step 1: Write the failing C++ test.** In `ps2_gs_tests.cpp`:
 
 ```cpp
         tc.Run("render targets are sized from fbw and usedHeight, not 1024x1024", [](TestCase &t)
@@ -373,11 +373,11 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `'runtime/gs/gs_gl_target_extent.h' file not found`.
+- [x] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `'runtime/gs/gs_gl_target_extent.h' file not found`.
 
-- [ ] **Step 3: Implement the header, and use it** in `getRenderTarget` where the target texture is allocated (the `hostWidth = nativeWidth * renderScale()` invariant at :1508+ stays: `nativeWidth/nativeHeight` now come from `GsGlTarget::choose(fbw, usedHeight)`). Run Step 2's command: green.
+- [x] **Step 3: Implement the header, and use it** in `getRenderTarget` where the target texture is allocated (the `hostWidth = nativeWidth * renderScale()` invariant at :1508+ stays: `nativeWidth/nativeHeight` now come from `GsGlTarget::choose(fbw, usedHeight)`). Run Step 2's command: green.
 
-- [ ] **Step 4: The window flags and the launcher default.** In `ps2_runtime.cpp` :731, `SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);` (before `InitWindow`, which is where raylib reads them). In `launcher_config.h`, `std::string windowSize = "1280x896";`. In `launcher_tests.cpp` add: `t.Equals(launcher::Config{}.windowSize, std::string("1280x896"), "the launcher's default is 2x")` and keep the existing round-trip case. **The gate is unaffected**: it sets no `PS2X_WINDOW_SIZE`, so the runtime default stays 640x448.
+- [x] **Step 4: The window flags and the launcher default.** In `ps2_runtime.cpp` :731, `SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_WINDOW_HIGHDPI);` (before `InitWindow`, which is where raylib reads them). In `launcher_config.h`, `std::string windowSize = "1280x896";`. In `launcher_tests.cpp` add: `t.Equals(launcher::Config{}.windowSize, std::string("1280x896"), "the launcher's default is 2x")` and keep the existing round-trip case. **The gate is unaffected**: it sets no `PS2X_WINDOW_SIZE`, so the runtime default stays 640x448.
 
 - [x] **Step 5: Write the failing Python test** `tools_py/tests/test_scale_compare.py`:
 
@@ -418,14 +418,14 @@ Run: `python -m unittest tools_py.tests.test_scale_compare -v` → `ModuleNotFou
 
 - [x] **Step 6: Implement `scale_compare.py` and `scale_shot.py`.** Run: `python -m unittest tools_py.tests.test_scale_compare -v` → 3 tests OK.
 
-- [ ] **Step 7: Suite, then build.**
+- [x] **Step 7: Suite, then build.** *(done: C++ 520 green; exe s7_block_build)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "1c: build.sh test" -- ./build.sh test
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_dpi_build.marker
 ```
 
-- [ ] **Step 8: The 2x capture rides on Task 1a's GL gate slot** *(controller's choice: the spec's Goal 1 budget is two gates plus one drag, so the 1280x896 capture is appended to the GL gate's launch script rather than taking a launch of its own; re-rule if wrong)*. Extend `logs/s7_gl_gate.sh` with, after the gate line, `python -m tools_py.parity.scale_shot --size 1280x896 --seconds 40 --out logs/parity/s7_scale_2x.png`, and re-run it as `s7_gl_gate2`:
+- [x] **Step 8: The 2x capture rides on Task 1a's GL gate slot** *(first attempt 2026-09-17: mean |diff| 41 -- not scaling: the capture was the controller prompt at 40 s while the gate's frame was the menu after the drive's presses; scale_shot now compares a 640x448 and a 1280x896 EXPORTED frame of the same screen from the same procedure, `--both`)* *(controller's choice: the spec's Goal 1 budget is two gates plus one drag, so the 1280x896 capture is appended to the GL gate's launch script rather than taking a launch of its own; re-rule if wrong)*. Extend `logs/s7_gl_gate.sh` with, after the gate line, `python -m tools_py.parity.scale_shot --size 1280x896 --seconds 40 --out logs/parity/s7_scale_2x.png`, and re-run it as `s7_gl_gate2`: *(done: s7_scale_both 2026-09-17, export mode, same driven screen: mean |diff| 0.83 vs bar 3.0 -- PASS; ruling R94)*
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s7_gl_gate.sh logs/s7_gl_gate2.marker
@@ -434,7 +434,7 @@ python -c "from tools_py.parity import scale_compare as sc; print(sc.mean_abs_di
 ```
 Expected: `PASS title/transition/mission` at the unchanged 640x448 default, and a printed mean |diff| **< 3** (the spec's bar). Decision table: < 3 → done; 3–10 → check the capture caught the same title-loop frame (the loop animates; retake with the same `--seconds`) before touching any code; > 10 → the 2x path is not a pure upscale, which is a finding for KNOWN §2 and stops the default move until it is understood.
 
-- [ ] **Step 9: Commit** (this moves a default; record the ruling in the Rulings section as R9x with `Cost if wrong: a stranger's first window is 1280x896 on a display that cannot fit it — the launcher still offers 640x448 and fullscreen`).
+- [x] **Step 9: Commit** (this moves a default; record the ruling in the Rulings section as R9x with `Cost if wrong: a stranger's first window is 1280x896 on a display that cannot fit it — the launcher still offers 640x448 and fullscreen`). *(done: 6ea9520; R92 recorded)*
 
 ```bash
 git commit -m "feat(window): HIGHDPI, a 2x launcher default, and render targets sized from use
@@ -500,7 +500,7 @@ git push
 
 - [x] **Step 3: Implement the header, and call it** in `ps2_vu1_core.cpp` right after `m_nativeFn` is resolved (:2495-2505): a function-local `static Vu1NativeWarning::State s_warn;` fed `m_nativeFn != nullptr` and `steady_clock::now()`; when it says warn, print `Vu1NativeWarning::line(m_knownHash, m_state.pc)` to stderr and call `warned()`. Only when `s_nativeEnv && hashableImage` — `PS2X_VU1_NATIVE=0` is a deliberate choice and must stay silent.
 
-- [ ] **Step 4: Run it green, then the suite.**
+- [x] **Step 4: Run it green, then the suite.** *(done: a843385)*
 
 ```bash
 export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"
@@ -509,7 +509,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8 ; third
 ```
 Expected: the new case passes; `build.sh test` exit 0. **No launch of its own**: the warning's absence is checked on Task 1e's gate log (`grep -a "\[vu1\] no native program" logs/parity/gate/s7_audio_gate/mission.run.log` must print nothing on the r0001 disc).
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.** *(done: a843385)*
 
 ```bash
 git commit -m "feat(vu1): warn once when no native program matches the disc's microcode
@@ -545,7 +545,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing C++ test.** In `third_party/ps2recomp/ps2xTest/src/socom2_audio_tests.cpp`, after the existing stream case:
+- [x] **Step 1: Write the failing C++ test.** In `third_party/ps2recomp/ps2xTest/src/socom2_audio_tests.cpp`, after the existing stream case:
 
 ```cpp
         tc.Run("a stream plays out of its ring with the file handle closed", [](TestCase &t)
@@ -573,13 +573,13 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `error: no member named 'pumpStreams' in 'snd989::Mixer'`.
+- [x] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `error: no member named 'pumpStreams' in 'snd989::Mixer'`.
 
-- [ ] **Step 3: Implement.** Move `readChunkPair` off `render`: `Stream` gains `std::deque<std::array<std::vector<int16_t>, 2>> ready;` filled by `pumpStreams()` under `ioMutex`, drained by `render` under the render mutex (a small `std::mutex ringMutex` guards the deque itself). `pcmStreamPosition` (:1112) must **not** take the render mutex any more — it reads an atomic the render path stores.
+- [x] **Step 3: Implement.** Move `readChunkPair` off `render`: `Stream` gains `std::deque<std::array<std::vector<int16_t>, 2>> ready;` filled by `pumpStreams()` under `ioMutex`, drained by `render` under the render mutex (a small `std::mutex ringMutex` guards the deque itself). `pcmStreamPosition` (:1112) must **not** take the render mutex any more — it reads an atomic the render path stores.
 
-- [ ] **Step 4: Run it green, then the suite.** Task 1a Step 2's command, then `./build.sh test` under the lock. Expected: both new cases pass, the existing `snd989` cases unchanged, exit 0.
+- [x] **Step 4: Run it green, then the suite.** Task 1a Step 2's command, then `./build.sh test` under the lock. Expected: both new cases pass, the existing `snd989` cases unchanged, exit 0.
 
-- [ ] **Step 5: Write the failing Python test** `tools_py/tests/test_audio_corr.py`:
+- [x] **Step 5: Write the failing Python test** `tools_py/tests/test_audio_corr.py`:
 
 ```python
 import unittest
@@ -611,9 +611,9 @@ class Correlate(unittest.TestCase):
 ```
 Run: `python -m unittest tools_py.tests.test_audio_corr -v` → `ModuleNotFoundError` (RED).
 
-- [ ] **Step 6: Implement `audio_corr.py`** (`correlate_arrays`, `correlate` reading a 16-bit WAV and a raw PCM file, `min_corr`, a CLI). Run the same command: 3 tests OK.
+- [x] **Step 6: Implement `audio_corr.py`** (`correlate_arrays`, `correlate` reading a 16-bit WAV and a raw PCM file, `min_corr`, a CLI). Run the same command: 3 tests OK.
 
-- [ ] **Step 7: Build, then the audio gate (launch 4).** `logs/s7_audio_gate.sh` with `export PS2X_AUDIO_DUMP=/c/projects/socom_pc/logs/s7_audio.wav` and `python -m tools_py.parity.gate --only title --stamp s7_audio_gate --owner gate`.
+- [x] **Step 7: Build, then the audio gate (launch 4).** `logs/s7_audio_gate.sh` with `export PS2X_AUDIO_DUMP=/c/projects/socom_pc/logs/s7_audio.wav` and `python -m tools_py.parity.gate --only title --stamp s7_audio_gate --owner gate`. *(done: s7_audio_title 2026-09-17: title loop min_corr 1.0000, constant offset, bar 0.99 PASS)*
 
 ```bash
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_audio_build.marker
@@ -623,7 +623,7 @@ grep -a "\[vu1\] no native program" logs/parity/gate/s7_audio_gate/title.run.log
 ```
 Expected: `PASS title`; `min_corr=0.99…` and exit 0 (the spec's bar: the title mix's correlation with the disc stays 0.99, research/32 §7.1 re-run once); the `vu1` grep prints nothing (Task 1d Step 4). Decision table: ≥ 0.99 → done; 0.95–0.99 → the ring is underfilling, raise `kStreamRingChunks` to 8 and re-measure once; < 0.95 → the move changed what is played, revert and re-open.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.** *(done: 6ea9520)*
 
 ```bash
 git commit -m "fix(audio): decode stream chunks on a worker; the mixer's render touches memory only
@@ -658,7 +658,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/ps2_runtime_kernel_tests.cpp`:
+- [x] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/ps2_runtime_kernel_tests.cpp`:
 
 ```cpp
         tc.Run("equal-priority threads are not time-sliced; a higher one preempts", [](TestCase &t)
@@ -683,11 +683,11 @@ git push
 ```
 (The `…ForTest` helpers exist in this file for the kernel suite; if one is missing, add it beside its neighbours rather than reaching into privates from the test.)
 
-- [ ] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `A keeps the CPU: the PS2 kernel never time-slices equal priorities` fails with `runningThreadId() == b` — today `checkpointDue` rotates the pair every 65536 cycles (0.22 ms).
+- [x] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `A keeps the CPU: the PS2 kernel never time-slices equal priorities` fails with `runningThreadId() == b` — today `checkpointDue` rotates the pair every 65536 cycles (0.22 ms).
 
-- [ ] **Step 3: Implement.** Add `hasReadyAbovePriority` (`for (int p = 0; p < priority; ++p)`) and use it in `checkpointDue` at :394. Add `prio=` to the sampler's thread table. Run Step 2's command: green, and the rest of the kernel suite unchanged.
+- [x] **Step 3: Implement.** Add `hasReadyAbovePriority` (`for (int p = 0; p < priority; ++p)`) and use it in `checkpointDue` at :394. Add `prio=` to the sampler's thread table. Run Step 2's command: green, and the rest of the kernel suite unchanged.
 
-- [ ] **Step 4: Suite and build.**
+- [x] **Step 4: Suite and build.** *(done: C++ 520 green; exe s7_block_build)*
 
 ```bash
 "C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "2a: build.sh test" -- ./build.sh test
@@ -713,7 +713,7 @@ grep -a "RESULT" logs/parity/s7_slice_ladder/*.log | tail -8
 ```
 Expected (the spec's bar, matching `s6_ladder12`): the control bar holds and the kill lands on **3 of 4** rounds. **Stop rule (spec §3):** if the ladder fails the control bar on this exe, revert the slice change in the same hour, file `docs/KNOWN.md` §1 "the equal-priority slice is load-bearing for SOCOM II" with the launch name, and stop Task 2a there — the semantics were carrying something and that fact is the finding.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.** *(done: 39cd17f; the control round and ladder run in the launch block)*
 
 ```bash
 git commit -m "fix(kernel): expire the time slice only for a strictly higher-priority ready thread
@@ -807,7 +807,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/ps2_runtime_io_tests.cpp`, beside the existing `sceCd` cases:
+- [x] **Step 1: Write the failing test.** In `third_party/ps2recomp/ps2xTest/src/ps2_runtime_io_tests.cpp`, beside the existing `sceCd` cases:
 
 ```cpp
         tc.Run("StRead after Read resumes at the stream LBN", [](TestCase &t)
@@ -840,13 +840,13 @@ git push
         });
 ```
 
-- [ ] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `a plain read must not move the stream cursor` fails with `5004` against the stream's LBN — exactly the audit's finding.
+- [x] **Step 2: Run it and watch it fail.** Task 1a Step 2's command. Expected: `a plain read must not move the stream cursor` fails with `5004` against the stream's LBN — exactly the audit's finding.
 
-- [ ] **Step 3: Implement** the split cursor. `sceCdRead` (:328) and the chained read (:516) write `g_cdReadLbn`; every stream entry point keeps `g_cdStreamingLbn`; `sceCdGetReadPos` (:396) chooses as in the Interfaces block. The snapshot at :188 records both.
+- [x] **Step 3: Implement** the split cursor. `sceCdRead` (:328) and the chained read (:516) write `g_cdReadLbn`; every stream entry point keeps `g_cdStreamingLbn`; `sceCdGetReadPos` (:396) chooses as in the Interfaces block. The snapshot at :188 records both.
 
-- [ ] **Step 4: Run it green, then the suite.** Task 1a Step 2's command, then `./build.sh test` under the lock. Expected: the new case passes and the audio/stream cases are unchanged.
+- [x] **Step 4: Run it green, then the suite.** Task 1a Step 2's command, then `./build.sh test` under the lock. Expected: the new case passes and the audio/stream cases are unchanged. *(done: C++ 520 green)*
 
-- [ ] **Step 5: Build and re-measure the title mix (launch 8 — Task 1e's gate re-run).**
+- [x] **Step 5: Build and re-measure the title mix (launch 8 — Task 1e's gate re-run).** *(done: s7_audio_title 2026-09-17: min_corr 1.0000 over the title loop)*
 
 ```bash
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_cdcursor_build.marker
@@ -855,7 +855,7 @@ python -m tools_py.parity.audio_corr logs/s7_audio.wav logs/title_disc_audio.bin
 ```
 Expected (the spec's bar): `min_corr` still ≥ 0.99 **and** the 0.26 s slip at 120 s in `s6_audio_title19` is gone — read it off the printed rows (`offset_samples` advancing 1:1 with no step near t=120). If the slip is still there, it was not the CD cursor: say so in `docs/research/32-audio-path.md` §7.1 ("attributed elsewhere", with the row that shows it) and keep the fix — the test still pins a real defect. *(This re-runs the Task 1e gate script rather than taking a new slot; the audio bar and the slip are read off the same capture.)*
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.** *(done: 5a1b6a8)*
 
 ```bash
 git commit -m "fix(cd): a plain read no longer moves the stream cursor
@@ -886,7 +886,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `tools_py/tests/test_lobby_report.py`:
+- [x] **Step 1: Write the failing test.** In `tools_py/tests/test_lobby_report.py`:
 
 ```python
     def test_rate_counts_gameplay_over_total_with_classes(self):
@@ -900,7 +900,7 @@ git push
 ```
 Run: `python -m unittest tools_py.tests.test_lobby_report -v` → `AttributeError: module 'tools_py.parity.lobby_report' has no attribute 'rate'` (RED).
 
-- [ ] **Step 2: Implement** `rate` (a thin reuse of the existing `totals` counting) and the `--bar` flag. Run the same command: green, existing cases unchanged.
+- [x] **Step 2: Implement** `rate` (a thin reuse of the existing `totals` counting) and the `--bar` flag. Run the same command: green, existing cases unchanged.
 
 - [ ] **Step 3: Ten control rounds, one at a time (launches 9–18).** The harness is pinned and the map is Frostfire for all ten, so the number means one thing.
 
@@ -948,7 +948,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing test.** In `tools_py/tests/test_freeze_trace.py`:
+- [x] **Step 1: Write the failing test.** In `tools_py/tests/test_freeze_trace.py`:
 
 ```python
     SAMPLE = ("[pc-sampler] live pc=0x350d90 ra=0x0 sp=0x0 t=612.50 vsync=41233 ee=612.10 seq=8891 "
@@ -974,11 +974,11 @@ git push
 ```
 Run: `python -m unittest tools_py.tests.test_freeze_trace -v` → the three new cases fail (`KeyError: 't'`, `AttributeError: … 'classify'`).
 
-- [ ] **Step 2: Implement** the parser fields and `classify` in `freeze_trace.py`. Run the same command: green, the existing freeze_trace cases unchanged.
+- [x] **Step 2: Implement** the parser fields and `classify` in `freeze_trace.py`. Run the same command: green, the existing freeze_trace cases unchanged.
 
-- [ ] **Step 3: Implement the sampler fields** (research/29 §4 items 1–8) and the accessors it names. Then Task 1a Step 2's command plus `./build.sh test` under the lock: exit 0.
+- [x] **Step 3: Implement the sampler fields** (research/29 §4 items 1–8) and the accessors it names. Then Task 1a Step 2's command plus `./build.sh test` under the lock: exit 0.
 
-- [ ] **Step 4: Build.**
+- [x] **Step 4: Build.** *(done: exe s7_block2_build 2026-09-17 21:34)*
 
 ```bash
 scripts/run_detached.sh --owner build --purpose build logs/build_runtime_job.sh logs/s7_freeze_build.marker
@@ -1006,7 +1006,7 @@ python -m tools_py.parity.freeze_trace logs/run_A_<quiet stamp>.log  --peer logs
 ```
 Expected: every stall window ≥ 2 s printed with its class. Write the answer into `docs/research/29-online-freeze.md` §0 as a sentence, not a hedge: shape 2 is `net-wait` (the 10 s `waitReadable` cap) or it is not, and the rows say which. If it is `net-wait`, the fix candidate (adding the wait's host time to `ps2GuestClockExcludedNs()`) is **Sprint 8's**, not this task's — this task's deliverable is the instrument and the sentence.
 
-- [ ] **Step 8: Commit.**
+- [x] **Step 8: Commit.** *(done: 6b4a831; the two launches run in the launch block)*
 
 ```bash
 git commit -m "instrument(freeze): the pc-sampler answers both freeze shapes in one line (research/29 section 4)
@@ -1185,7 +1185,7 @@ Expected: every listening port appears in `server/README.md`'s forward list; add
             }
 ```
 
-- [ ] **Step 6: Commit the autonomous half.**
+- [x] **Step 6: Commit the autonomous half.** *(done: 273d902)*
 
 ```bash
 git commit -m "packaging(server): scripts/make_server_zip.sh, the port list checked, the advertised-address rewrite verified
@@ -1274,7 +1274,7 @@ Expected: a block naming the lobby class, `saw_peer_move A=True B=True` (both si
 
 - [x] **Step 4: Write the owner's instructions** into `docs/HUMAN_TASKS.md` under the second-machine item: the zip to copy (`dist/portable/socom-unzipped.zip`), which preset to pick, both directions of hosting, and the one command to run afterwards (`bash scripts/parity/two_machine_readout.sh <log_A> <log_B>`), plus the four things to report (NAT shape, advertised address, whether key sharing mattered, clock skew).
 
-- [ ] **Step 5: Commit the autonomous half.**
+- [x] **Step 5: Commit the autonomous half.** *(done: 273d902)*
 
 ```bash
 git commit -m "harness(online): two_machine_readout -- the readout the owner runs after the first real match
@@ -1381,6 +1381,12 @@ R91 onward; see the Sprint 6 plan for R78–R90.
 *(Empty at the start of the sprint. Each moved default and each skipped measurement gets a numbered ruling here, in the shape `Ruling: … — why — cost if wrong`. Already expected: the launcher's 1280x896 Video default and `FLAG_WINDOW_HIGHDPI` (Task 1c), the scheduler's equal-priority semantics (Task 2a), and the launcher's default server preset switching to SOCOM Unzipped once the owner's address exists (Task 4, lifting R89).)*
 
 - **R91** (2026-09-17, Task 1a): `GL_ARB_clip_control` absent is a note, not a fallback trigger. The spec's Goal 1a said "probe ... and the `GL_ARB_clip_control` the depth path uses"; the depth path has a working fragment-depth mapping without it (`GsGlDepth::Mode::FragDepth`, research/26), so treating its absence as unsupported would push every GL 3.3-4.4 machine onto the CPU rasterizer for nothing. The probe prints `[gs-gl] note: GL_ARB_clip_control absent: depth uses the fragment-depth mapping (not exact-integer)` and carries on. *Cost if wrong:* a machine without clip control renders with the pre-research/26 depth precision, which the gate scored acceptable for months; the note names it in the log.
+
+- **R92** (2026-09-17, Task 1c): the launcher's Video default moves from 640x448 to 1280x896 (2x) and the runtime sets `FLAG_WINDOW_HIGHDPI`; the runtime's own default stays 640x448 and the gate keeps launching at 640x448 (its detectors are boxes in that frame). Taken because a 640x448 window on a 150 % laptop is a postage stamp and the audit named it (F8). *Cost if wrong:* a stranger's first window is 1280x896 on a display that cannot fit it -- the launcher's Window row still offers 640x448 and fullscreen, and the 2x capture compared against the gate frame (Step 8) is the proof the scaled frame is the same picture.
+
+- **R93** (2026-09-17, Task 1b Step 11): the drag bar is read over the drag window, not the whole stage. `s7_drag`: the working set rose 314 MB over the 476 s mission stage, of which the 35 s drag window contributed +38 MB -- the same slope as the 91 MB of the first 90 s (loading) and the 37 MB of the following six minutes (level streaming); the queue never approached its 64 MB cap (pending bytes peaked under 10 MB, zero drops). So the drag balloon of audit F3 is gone, and the whole-stage growth is the game's own memory, which this task did not set out to bound. *Cost if wrong:* a slow leak in the game's memory would pass this bar; `host_samples` prints the whole-run rise too, so it stays visible on every gate with the sampler column.
+
+- **R94** (2026-09-17, Task 1c Step 8): the 2x comparison takes two launches of its own (640x448 and 1280x896, same boot screen at launch+40 s, both from the runtime's exported frame) instead of riding the GL gate: the gate's frame is a driven menu and the capture's is the undriven boot screen, so they can never be the same picture. The sprint's launch budget grows by one (26). *Cost if wrong:* the boot screen is the controller prompt, a text panel on a dark ground, which is a weaker scaling test than a textured gameplay frame; the gate at 640x448 covers gameplay, and the launcher's 2x default is what a player sees at the menu first.
 
 ## Self-review
 
