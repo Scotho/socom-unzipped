@@ -1,3 +1,7 @@
+// Sprint 8 Task 1: the whole file is Windows-only. On Linux src/posix_glue.cpp defines the same
+// win32glue interface, so this translation unit must contribute nothing there -- the per-function
+// "#else" arms below are unreachable now and their behaviour lives in posix_glue.cpp.
+#ifdef _WIN32
 #include "win32_glue.h"
 
 #include <ctime>
@@ -206,3 +210,4 @@ namespace win32glue
 #endif
     }
 }
+#endif // _WIN32

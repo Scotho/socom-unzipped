@@ -22,7 +22,12 @@ import time
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import keys, screen_bands, winshot
+from tools_py.parity import hostplatform, keys, screen_bands
+
+# The host's capture primitive: winshot (Windows ctypes) or x11shot (Linux xdotool/import), Sprint 8
+# Task 9. The name stays `winshot` so every call below -- and every test that patches
+# drive.winshot.grab -- is unchanged.
+winshot = hostplatform.shot_module()
 
 ISO = os.path.abspath("game/SOCOM II - U.S. Navy SEALs (USA).iso")
 PCSX2 = os.path.abspath("tools/pcsx2/pcsx2-qt.exe")
@@ -233,9 +238,10 @@ def build_parser():
 
 def main():
     a = build_parser().parse_args()
-    for exe in ("socom2.exe", "pcsx2-qt.exe"):
-        if exe in subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower():
-            raise SystemExit(f"{exe} is already running; refusing to start a second game instance")
+    for base in ("socom2", "pcsx2-qt"):
+        if hostplatform.process_running(base):
+            raise SystemExit(f"{hostplatform.exe_name(base)} is already running; "
+                             "refusing to start a second game instance")
     os.makedirs(a.out, exist_ok=True)
     steps = parse(open(a.script).read())
     proc = launch(a.target, a.seconds)
@@ -266,8 +272,7 @@ def main():
         # Always take the game down, even when a step raises: a stray instance blocks every
         # later drive.py run ("already running"). Git Bash mangles "/F": call taskkill via cmd.
         proc.terminate()
-        subprocess.run(["cmd", "/c", "taskkill /F /IM " + ("pcsx2-qt.exe" if a.target == "pcsx2" else "socom2.exe")],
-                       capture_output=True)
+        hostplatform.kill_process_by_name("pcsx2-qt" if a.target == "pcsx2" else "socom2")
 
 
 def run_steps(a, steps, proc, hwnd, t0, last, manifest):

@@ -11,7 +11,9 @@ import os
 import subprocess
 import time
 
-from . import drive, keys, winshot
+from . import drive, hostplatform, keys
+
+winshot = hostplatform.shot_module()   # winshot on Windows, x11shot on Linux (Sprint 8 Task 9)
 
 # On-screen keyboard rows as index lists; the cursor moves by index between rows and CAPS/SHIFT/
 # accent keys are index 0. ENTER is index 12 of the a-row.
@@ -127,7 +129,7 @@ def main():
         keys.press(hwnd, b, "pcsx2"); time.sleep(float(w)); shot(f"10_then_{n:02d}_{b}")
     for i in range(a.hold // 5):
         time.sleep(5); shot(f"11_hold_{i:02d}")
-    subprocess.run(["taskkill", "/F", "/IM", "pcsx2-qt.exe"], capture_output=True)
+    hostplatform.kill_process_by_name("pcsx2-qt")
 
 
 if __name__ == "__main__":

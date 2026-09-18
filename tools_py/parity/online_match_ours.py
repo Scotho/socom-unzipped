@@ -31,7 +31,10 @@ import numpy as np
 from . import online_ladder
 from . import online_login_ours as L
 from . import verdict_core as vc
-from . import winshot
+from . import hostplatform
+
+# winshot on Windows, x11shot on Linux (Sprint 8 Task 9); the name stays so callers are unchanged.
+winshot = hostplatform.shot_module()
 
 # ---------------------------------------------------------------------------
 # Instruments
@@ -4572,8 +4575,8 @@ def main():
     globals()["ENGAGE_DY_UNITS"] = a.engage_dy
     globals()["ENGAGE_3D_UNITS"] = a.engage
     os.makedirs(a.out, exist_ok=True)
-    if subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
-        raise SystemExit("socom2.exe is already running")
+    if hostplatform.process_running("socom2"):
+        raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running")
     if a.converge and not a.only:
         # Refuse BEFORE a launch, not after: a match whose move-path watch cannot see a stall, or
         # whose round valves cannot be identified, is a match spent proving nothing.
@@ -5141,7 +5144,7 @@ def main():
     finally:
         A.kill()
         B.kill()
-        subprocess.run(["taskkill", "/F", "/IM", "socom2.exe"], capture_output=True)
+        hostplatform.kill_process_by_name("socom2")
     if failed and a.control_round:
         raise SystemExit("--control-round: the negative control did not hold (see RESULT CONTROL-ROUND)")
     if failed:

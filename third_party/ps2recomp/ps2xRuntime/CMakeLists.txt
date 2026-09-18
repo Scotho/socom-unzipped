@@ -464,6 +464,17 @@ else()
     set(PS2X_GENERATED_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/include")
 endif()
 
+# Sprint 8 Task 1 (Goal 1 design item 1): the runner IS the recompiled game, and the generated code is
+# not in the repository. Where it is absent -- CI, a fresh clone -- the runner target and every rule that
+# hangs off it is SKIPPED, not configured into a build that cannot link. ps2_runtime, ps2x_tests and the
+# launcher still configure and build.
+if(PS2X_RUNNER_GENERATED_DIR AND RUNNER_SRC_FILES)
+    set(PS2X_BUILD_RUNNER ON)
+else()
+    set(PS2X_BUILD_RUNNER OFF)
+    message(STATUS "ps2EntryRunner skipped: no generated code (PS2X_RUNNER_GENERATED_DIR='${PS2X_RUNNER_GENERATED_DIR}')")
+endif()
+
 set(RUNNER_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/runner/main.cpp")
 set(ROOT_MAIN_CPP "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp")
 
@@ -473,6 +484,7 @@ elseif(EXISTS "${ROOT_MAIN_CPP}")
     list(APPEND RUNNER_SRC_FILES "${ROOT_MAIN_CPP}")
 endif()
 
+if(PS2X_BUILD_RUNNER)
 if(PS2X_IS_ANDROID)
     add_library(ps2EntryRunner SHARED
         ${RUNNER_SRC_FILES}
@@ -485,17 +497,28 @@ else()
     )
 endif()
 target_include_directories(ps2EntryRunner PRIVATE "${PS2X_GENERATED_INCLUDE_DIR}")
+if(UNIX AND NOT APPLE)
+    # The portable folder keeps its non-system .so files in lib/ next to the binary.
+    set_target_properties(ps2EntryRunner PROPERTIES
+        BUILD_RPATH "\$ORIGIN/lib"
+        INSTALL_RPATH "\$ORIGIN/lib"
+    )
+endif()
+endif() # PS2X_BUILD_RUNNER
 if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
     # generated code uses SSE4.1 intrinsics (MMI/VU0 lowering)
-    target_compile_options(ps2EntryRunner PRIVATE -msse4.1)
+    if(PS2X_BUILD_RUNNER)
+        target_compile_options(ps2EntryRunner PRIVATE -msse4.1)
+    endif()
     target_compile_options(ps2_runtime PRIVATE -msse4.1)
 endif()
 set(PS2X_GENERATED_OPT "" CACHE STRING "Optimization flag override for the generated (recompiled) code, e.g. -O1 for fast bring-up builds")
-if(PS2X_GENERATED_OPT AND NOT MSVC)
+if(PS2X_BUILD_RUNNER AND PS2X_GENERATED_OPT AND NOT MSVC)
     # Later flags win on clang: this overrides the configuration's -O3 for the runner only.
     target_compile_options(ps2EntryRunner PRIVATE ${PS2X_GENERATED_OPT})
     message("> generated code optimization override: ${PS2X_GENERATED_OPT}")
 endif()
+if(PS2X_BUILD_RUNNER)
 # Game-specific override modules self-register via static objects; they must live in the
 # executable (not the static runtime library) or the linker drops them.
 target_sources(ps2EntryRunner PRIVATE src/lib/game_overrides_socom2.cpp)
@@ -545,6 +568,7 @@ endif()
 if(MSVC)
     target_compile_options(ps2EntryRunner PRIVATE /FS)
 endif()
+endif() # PS2X_BUILD_RUNNER
 
 target_include_directories(ps2_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -558,6 +582,7 @@ target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop)
 if(TARGET raylib)
     target_include_directories(ps2_runtime PRIVATE $<TARGET_PROPERTY:raylib,SOURCE_DIR>/external)
 endif()
+if(PS2X_BUILD_RUNNER)
 target_link_libraries(ps2EntryRunner
     PRIVATE
     ps2_runtime
@@ -572,12 +597,13 @@ if(PS2X_ENABLE_DEBUG_UI AND NOT PS2X_IS_VITA AND NOT PS2X_IS_ANDROID)
 endif()
 
 ps2x_stage_ffmpeg_runtime_dlls(ps2EntryRunner)
+endif() # PS2X_BUILD_RUNNER
 
 if(PS2X_IS_VITA)
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d PARENTAL_LEVEL=1") 
     set(VITA_MKSFOEX_FLAGS "${VITA_MKSFOEX_FLAGS} -d ATTRIBUTE2=12")
 
-    if(PS2X_VITA_CREATE_PACKAGE)
+    if(PS2X_VITA_CREATE_PACKAGE AND PS2X_BUILD_RUNNER)
         set(PS2X_VITA_VPK_FILES "")
 
         foreach(PS2X_VITA_MODULE IN ITEMS
@@ -607,9 +633,11 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     EnableFastReleaseMode(ps2_runtime)
-    EnableFastReleaseMode(ps2EntryRunner)
+    if(PS2X_BUILD_RUNNER)
+        EnableFastReleaseMode(ps2EntryRunner)
+    endif()
 
-    if(WIN32 AND NOT PS2X_SHOW_WINDOWS_CONSOLE)
+    if(PS2X_BUILD_RUNNER AND WIN32 AND NOT PS2X_SHOW_WINDOWS_CONSOLE)
         if(MSVC)
             target_link_options(ps2EntryRunner PRIVATE
                 $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>>:/SUBSYSTEM:WINDOWS>
@@ -623,15 +651,18 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebI
     endif()
 endif()
 
-# Work around WinAPI vs raylib symbol clash for CloseWindow/ShowCursor on x64
+# Work around WinAPI vs raylib symbol clash for CloseWindow/ShowCursor on x64 (Windows only by
+# construction: there is no such clash on Linux, so the flag never reaches that link).
+if(PS2X_BUILD_RUNNER)
 if(MSVC)
     target_link_options(ps2EntryRunner PRIVATE "/FORCE:MULTIPLE")
 elseif(WIN32)
     target_link_options(ps2EntryRunner PRIVATE "-Wl,--allow-multiple-definition")
 endif()
+endif() # PS2X_BUILD_RUNNER
 
 # Vita: Work around for GCC 10's LTO plugin
-if(PS2X_IS_VITA)
+if(PS2X_IS_VITA AND PS2X_BUILD_RUNNER)
     target_link_options(ps2EntryRunner PRIVATE "-Wl,--allow-multiple-definition")
     target_sources(ps2EntryRunner PRIVATE src/lib/ps2_vita_runtime.cpp)
     set_source_files_properties(src/lib/ps2_vita_runtime.cpp PROPERTIES
@@ -640,15 +671,23 @@ if(PS2X_IS_VITA)
     )
 endif()
 
-if(PS2X_IS_ANDROID)
+if(PS2X_IS_ANDROID AND PS2X_BUILD_RUNNER)
     target_sources(ps2EntryRunner PRIVATE src/lib/ps2_android_runtime.cpp)
 endif()
 
-install(TARGETS ps2_runtime ps2EntryRunner
+install(TARGETS ps2_runtime
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib
 )
+
+if(PS2X_BUILD_RUNNER)
+    install(TARGETS ps2EntryRunner
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib
+    )
+endif()
 
 if(WIN32 AND PS2X_ENABLE_FFMPEG)
     install(DIRECTORY "${FFMPEG_BIN_DIR}/"

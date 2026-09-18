@@ -20,9 +20,13 @@ import time
 import numpy as np
 from PIL import Image
 
-from . import drive, keys, winshot
+from . import drive, hostplatform, keys
 from .compare import score
 from .online_login import OSK_START, osk_moves, osk_pos, osk_type
+
+# winshot on Windows, x11shot on Linux (Sprint 8 Task 9). The name stays, so every call below and
+# every test that patches L.winshot.grab is unchanged.
+winshot = hostplatform.shot_module()
 
 T = "ours"
 REFS = os.path.join("scripts", "parity", "refs")
@@ -1677,8 +1681,9 @@ def main():
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    if not a.instance and subprocess.run(["tasklist"], capture_output=True, text=True).stdout.lower().count("socom2.exe"):
-        raise SystemExit("socom2.exe is already running; refusing to start a second game instance")
+    if not a.instance and hostplatform.process_running("socom2"):
+        raise SystemExit(f"{hostplatform.exe_name('socom2')} is already running; "
+                         "refusing to start a second game instance")
     proc, title = launch(a.seconds, a.instance or None)
     try:
         sh = attach(proc, title, a.out)
@@ -1702,7 +1707,7 @@ def main():
         sh.shot("final")
     finally:
         proc.terminate()
-        subprocess.run(["taskkill", "/F", "/IM", "socom2.exe"], capture_output=True)
+        hostplatform.kill_process_by_name("socom2")
 
 
 if __name__ == "__main__":

@@ -5,9 +5,16 @@ socom2_host_input keyboard map (arrows, Enter=START, Backspace=SELECT, Z/X/C/V =
 Circle/Triangle, Q/E = L1/R1, 1/3 = L2/R2)."""
 import ctypes
 import time
-from ctypes import wintypes as wt
 
-user32 = ctypes.windll.user32
+from . import hostplatform
+
+if hostplatform.is_windows():
+    from ctypes import wintypes as wt
+    user32 = ctypes.windll.user32
+else:
+    # Linux (Sprint 8 Task 9): ctypes.wintypes does not import and there is no user32; the X twin
+    # in x11shot does the injecting, so press() never reaches the PostMessage path below.
+    wt = user32 = None
 WM_KEYDOWN, WM_KEYUP = 0x0100, 0x0101
 _ARROWS = {"UP": 0x26, "DOWN": 0x28, "LEFT": 0x25, "RIGHT": 0x27}
 MAPS = {
@@ -40,6 +47,9 @@ def child_windows(main_hwnd):
 
 
 def press(main_hwnd, button, target, hold_s=0.15):
+    if not hostplatform.is_windows():       # Linux: xdotool keydown/keyup on the X window id
+        from . import x11shot
+        return x11shot.press(main_hwnd, button, target, hold_s)
     vk = MAPS[target][button.upper()]
     scan = user32.MapVirtualKeyW(vk, 0)
     ext = (1 << 24) if vk in _ARROWS.values() else 0   # arrows are extended keys

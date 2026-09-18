@@ -1,0 +1,61 @@
+# Sprint 8 Goal 1, design item 6(a): the first verification ring for the Linux client.
+# Configure and build ps2_runtime, ps2x_tests and the launcher WITHOUT the generated game code (14,882
+# files produced from the owner's disc, not in the repository), then run the suite.
+name: linux
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: linux-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install the toolchain and the client's dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential clang lld cmake ninja-build pkg-config \
+            libgl1-mesa-dev libglu1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev \
+            libwayland-dev libxkbcommon-dev \
+            libasound2-dev libpulse-dev \
+            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev \
+            libavfilter-dev libavdevice-dev \
+            python3 python3-pip
+
+      # What tools_py/parity and tools_py/tests import beyond the standard library.
+      - name: Install the Python packages the suite imports
+        run: python3 -m pip install --break-system-packages numpy pillow zstandard
+
+      - name: Build (no generated code)
+        run: bash scripts/build_linux.sh --no-runner
+
+      - name: Test
+        run: |
+          mkdir -p logs/ci
+          set -o pipefail
+          bash scripts/build_linux.sh test 2>&1 | tee logs/ci/build_linux_test.log
+
+      - name: Upload the launcher
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: socom-unzipped-launcher-linux
+          path: dist-linux/socom_unzipped_launcher
+          if-no-files-found: error
+
+      - name: Upload the test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-test-output
+          path: logs/ci/build_linux_test.log
+          if-no-files-found: warn

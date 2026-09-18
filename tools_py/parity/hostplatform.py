@@ -1,0 +1,75 @@
+"""Which host are we driving the game on -- and the two things the harness does to the OS.
+
+Sprint 8 Goal 1 Task 9. The gate's capture, key and process paths were Windows-only (winshot's
+ctypes user32/gdi32, `tasklist`, `taskkill /F /IM x.exe`). The Linux VM is the second verification
+ring, so each of those grew a Linux half and every caller asks here which half to use.
+
+Pure and testable: every function takes an optional `system=` override (`platform.system()` by
+default) and the process helpers are split into a command builder that returns the argv list and a
+thin `run` that does the subprocess -- so both branches are exercised on a Windows host without
+launching or killing anything.
+
+The Linux game binary is `socom2`, no `.exe` (spec item 4: "The child is `./socom2`, no `.exe`"),
+so callers pass the BASE name everywhere and `exe_name` adds the suffix when there is one.
+"""
+import platform
+import subprocess
+
+
+def is_windows(system=None):
+    return (system or platform.system()) == "Windows"
+
+
+def exe_name(base, system=None):
+    """'socom2' -> 'socom2.exe' on Windows, 'socom2' on Linux."""
+    return base + ".exe" if is_windows(system) else base
+
+
+def shot_module(system=None):
+    """The window-capture primitive for this host: winshot (ctypes user32/gdi32) on Windows,
+    x11shot (xdotool + ImageMagick `import`) on Linux. Imported lazily -- winshot's
+    `ctypes.windll` does not exist on Linux, and x11shot must not touch X to be imported."""
+    if is_windows(system):
+        from tools_py.parity import winshot
+        return winshot
+    from tools_py.parity import x11shot
+    return x11shot
+
+
+def kill_argv(base, system=None):
+    """argv that takes the game down by name. Windows goes through `cmd` because Git Bash mangles
+    a bare "/F" (drive.py has carried that note since Sprint 5)."""
+    if is_windows(system):
+        return ["cmd", "/c", "taskkill /F /IM " + exe_name(base, system)]
+    return ["pkill", "-f", base]
+
+
+def running_argv(base, system=None):
+    """argv that lists (Windows) or matches (Linux) the process."""
+    if is_windows(system):
+        return ["tasklist"]
+    return ["pgrep", "-f", base]
+
+
+def running_from_output(base, stdout, returncode, system=None):
+    """Read `running_argv`'s result: `tasklist` prints every process, so look for the image name;
+    `pgrep` answers with its exit code."""
+    if is_windows(system):
+        return exe_name(base, system).lower() in (stdout or "").lower()
+    return returncode == 0
+
+
+def run(argv):
+    """The one place the harness shells out for process control."""
+    return subprocess.run(argv, capture_output=True, text=True)
+
+
+def kill_process_by_name(base, system=None):
+    """taskkill /F /IM <base>.exe | pkill -f <base>. Best effort: a missing process is not an error."""
+    return run(kill_argv(base, system))
+
+
+def process_running(base, system=None):
+    """True when a process of that name is up (the 'already running' guard of every drive)."""
+    p = run(running_argv(base, system))
+    return running_from_output(base, p.stdout, p.returncode, system)
