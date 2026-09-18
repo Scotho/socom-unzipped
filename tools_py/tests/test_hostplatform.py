@@ -41,7 +41,7 @@ class KillArgv(unittest.TestCase):
                          ["cmd", "/c", "taskkill /F /IM pcsx2-qt.exe"])
 
     def test_linux_pkill_on_the_bare_name(self):
-        self.assertEqual(hp.kill_argv("socom2", system=LIN), ["pkill", "-f", "socom2"])
+        self.assertEqual(hp.kill_argv("socom2", system=LIN), ["pkill", "-x", "socom2"])
 
 
 class RunningArgv(unittest.TestCase):
@@ -49,7 +49,7 @@ class RunningArgv(unittest.TestCase):
         self.assertEqual(hp.running_argv("socom2", system=WIN), ["tasklist"])
 
     def test_linux_pgrep(self):
-        self.assertEqual(hp.running_argv("socom2", system=LIN), ["pgrep", "-f", "socom2"])
+        self.assertEqual(hp.running_argv("socom2", system=LIN), ["pgrep", "-x", "socom2"])
 
     def test_windows_reads_the_exe_name_out_of_tasklist(self):
         out = "socom2.exe                    5000 Console                    1    412,000 K\n"

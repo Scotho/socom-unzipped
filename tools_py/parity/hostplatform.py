@@ -12,8 +12,11 @@ launching or killing anything.
 The Linux game binary is `socom2`, no `.exe` (spec item 4: "The child is `./socom2`, no `.exe`"),
 so callers pass the BASE name everywhere and `exe_name` adds the suffix when there is one.
 """
+import os
 import platform
 import subprocess
+
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def is_windows(system=None):
@@ -23,6 +26,24 @@ def is_windows(system=None):
 def exe_name(base, system=None):
     """'socom2' -> 'socom2.exe' on Windows, 'socom2' on Linux."""
     return base + ".exe" if is_windows(system) else base
+
+
+def runtime_exe(system=None):
+    """The game binary this host launches, relative to the repo root: the Windows build writes
+    `dist/socom2.exe` and the Linux build `dist-linux/socom2` (Sprint 8 Task 1), and the two never
+    overwrite each other -- so the gate's drive must ask which one it is looking at."""
+    if is_windows(system):
+        return os.path.join("dist", "socom2.exe")
+    return os.path.join("dist-linux", "socom2")
+
+
+def free_space_path(system=None):
+    """The path whose free space a launch checks before it starts (gate.py's disk refusal). On
+    Windows that is the system drive the runs are written to; on Linux the C: drive is not a path,
+    so the question is asked of the filesystem the repo itself lives on."""
+    if is_windows(system):
+        return "C:\\"
+    return ROOT
 
 
 def shot_module(system=None):
@@ -38,17 +59,20 @@ def shot_module(system=None):
 
 def kill_argv(base, system=None):
     """argv that takes the game down by name. Windows goes through `cmd` because Git Bash mangles
-    a bare "/F" (drive.py has carried that note since Sprint 5)."""
+    a bare "/F" (drive.py has carried that note since Sprint 5). Linux matches the process NAME
+    exactly (`-x`), the way `taskkill /IM` matches an image name: `-f` matches whole command lines,
+    so a concurrent `clang ... game_overrides_socom2.cpp` in the same VM is "socom2 running" (it
+    refused the second VM gate run of Task 10) and, worse, `pkill -f` would have killed it."""
     if is_windows(system):
         return ["cmd", "/c", "taskkill /F /IM " + exe_name(base, system)]
-    return ["pkill", "-f", base]
+    return ["pkill", "-x", base]
 
 
 def running_argv(base, system=None):
     """argv that lists (Windows) or matches (Linux) the process."""
     if is_windows(system):
         return ["tasklist"]
-    return ["pgrep", "-f", base]
+    return ["pgrep", "-x", base]
 
 
 def running_from_output(base, stdout, returncode, system=None):

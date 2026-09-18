@@ -21,8 +21,10 @@ import time
 
 from PIL import Image
 
-# Names this module adds on top of winshot's surface: the Linux twin of keys.press.
-KEY_INJECTION_NAMES = ("press", "vk_to_xdotool")
+# Names this module adds on top of winshot's surface: the Linux twin of keys.press, its VK table and
+# the pad-file writer that press() injects through (winshot has no counterpart -- on Windows the
+# harness posts key messages straight to the window).
+KEY_INJECTION_NAMES = ("press", "vk_to_xdotool", "write_pad_state")
 
 # socom2_host_input.cpp's keyboard map (arrows/WASD/IJKL, Enter=START, Backspace=SELECT,
 # ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3) and PCSX2's [Pad1] bindings,
@@ -62,10 +64,19 @@ def window_pid(hwnd):
     return int(out.strip()) if out and out.strip().isdigit() else 0
 
 
+def _ci_pattern(text):
+    """A case-insensitive POSIX extended regex for a literal substring, letter by letter
+    ("PS2-Recomp" -> "[Pp][Ss]2[-][Rr]..."). xdotool compiles its --name pattern with regcomp, which
+    has no inline flags: "(?i)" is not a modifier there but a syntax error -- "Failed to compile
+    regex (return code 13)" on the first VM gate run, whose title stage then found no window at all
+    and wrote no captures."""
+    return "".join("[%s%s]" % (c.lower(), c.upper()) if c.isalpha() else re.escape(c) for c in text)
+
+
 def find_window(title_substring, pid=None):
     """First visible top-level window whose title contains the substring; `pid` restricts the
     search to one process (two instances share a title)."""
-    out = _out(["xdotool", "search", "--onlyvisible", "--name", "(?i)" + re.escape(title_substring)])
+    out = _out(["xdotool", "search", "--onlyvisible", "--name", _ci_pattern(title_substring)])
     for line in (out or "").split():
         if not line.strip().isdigit():
             continue
@@ -207,11 +218,59 @@ def capture_by_title(title_substring, path):
     return path
 
 
+# The runtime's own pad-state file (PS2X_SOCOM2_INPUT_FILE, socom2_host_input.cpp): button ids are
+# the kPad* ids and the axes are 0..255 with 0x80 neutral, the same one-line format
+# online_login_ours.write_pad_file writes for the online harness.
+PAD_BUTTON = {"SELECT": 0, "L3": 1, "R3": 2, "START": 3, "UP": 4, "RIGHT": 5, "DOWN": 6, "LEFT": 7,
+              "L2": 8, "R2": 9, "L1": 10, "R1": 11, "TRIANGLE": 12, "CIRCLE": 13, "CROSS": 14, "SQUARE": 15}
+PAD_AXIS = {"J": ("rx", 0), "L": ("rx", 255), "I": ("ry", 0), "K": ("ry", 255),
+            "A": ("lx", 0), "D": ("lx", 255), "W": ("ly", 0), "S": ("ly", 255)}
+
+
+def write_pad_state(path, button=None):
+    """One pad state into `path`, atomically (the exe re-reads the file on every sample). `button` is
+    a harness button name -- a face/shoulder button, or one of the stick keys W/A/S/D and I/J/K/L --
+    or None for neutral."""
+    axes = {"rx": 0x80, "ry": 0x80, "lx": 0x80, "ly": 0x80}
+    mask = 0
+    if button:
+        name = button.upper()
+        if name in PAD_BUTTON:
+            mask = 1 << PAD_BUTTON[name]
+        elif name in PAD_AXIS:
+            axis, value = PAD_AXIS[name]
+            axes[axis] = value
+        else:
+            raise KeyError("no pad-file mapping for button %r" % button)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        f.write("b=%04x rx=%d ry=%d lx=%d ly=%d" % (mask, axes["rx"], axes["ry"], axes["lx"], axes["ly"]) + chr(10))
+    os.replace(tmp, path)
+
+
 def press(main_hwnd, button, target, hold_s=0.15, run=None):
-    """keys.press's Linux twin: `xdotool keydown/keyup --window <id>` sends to the window without
-    taking focus, as PostMessage does on Windows. `run` is injectable so the mapping is tested
-    without an X server."""
+    """keys.press's Linux twin.
+
+    Preferred path: the runtime's pad file (PS2X_SOCOM2_INPUT_FILE), which a sampler thread reads and
+    LATCHES, so a press is seen by at least one guest poll however slowly the guest is presenting.
+    That is what the gate needs in the VM: measured there on 2026-09-18 the runner presents about
+    3 frames a second, raylib's IsKeyDown is sampled once per frame, and a 0.15 s hold falls between
+    two samples -- with [socom2-input] tracing on, an `xdotool keydown/keyup --window` pair and a
+    focused XTEST press both left the pad state untouched while a pad-file write of the same button
+    printed its `buttons=4000` / `buttons=0000` pair. (The first VM title run drove 12 CROSS presses
+    that way and reached the main menu on none of them; the one press that did land arrived at the
+    menu and walked the drive into SELECT RANK.)
+
+    Fallback, when no pad file is configured: `xdotool keydown/keyup --window <id>`, which sends to
+    the window without taking focus as PostMessage does on Windows. `run` is injectable so the
+    mapping is tested without an X server; passing it keeps the xdotool path."""
     from tools_py.parity import keys
+    pad_file = os.environ.get("PS2X_SOCOM2_INPUT_FILE")
+    if pad_file and run is None and target == "ours":
+        write_pad_state(pad_file, button)
+        time.sleep(hold_s)
+        write_pad_state(pad_file)
+        return
     send = run or _run
     key = vk_to_xdotool(keys.MAPS[target][button.upper()])
     send(["xdotool", "keydown", "--window", str(main_hwnd), key])

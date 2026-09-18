@@ -40,8 +40,63 @@ def launch(target, seconds):
     # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
     os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
     env = dict(os.environ, PS2X_SOCOM2_PAD="1")
-    return subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if not hostplatform.is_windows():
+        # Linux: press() injects through the runtime's latched pad file rather than X key events,
+        # which the VM's ~3 fps poll drops (x11shot.press). The file must exist and be neutral
+        # before the exe starts, and its path must be in BOTH environments -- the child's (it reads
+        # it) and ours (press() looks it up there).
+        from tools_py.parity import x11shot
+        pad_file = env.get("PS2X_SOCOM2_INPUT_FILE") or os.path.abspath(os.path.join("logs", "pad_drive.txt"))
+        os.makedirs(os.path.dirname(pad_file), exist_ok=True)
+        x11shot.write_pad_state(pad_file)
+        env["PS2X_SOCOM2_INPUT_FILE"] = pad_file
+        os.environ["PS2X_SOCOM2_INPUT_FILE"] = pad_file
+    if hostplatform.is_windows():
+        return subprocess.Popen(["bash", "./run.sh", str(seconds)], env=env,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # Linux (Sprint 8 Task 10): run.sh is the Windows launcher -- it puts tools/llvm-mingw on PATH
+    # and runs dist/socom2.exe, neither of which exists in the VM. Same contract, nothing else:
+    # timeout <seconds> <runtime_exe> game/disc/socom2_game.elf, with the run log where gate.py
+    # looks for it (logs/run_<stamp>.log, honouring PS2X_RUN_LOG, plus the logs/latest.log link).
+    log = env.get("PS2X_RUN_LOG") or os.path.abspath(
+        os.path.join("logs", "run_%s.log" % time.strftime("%Y%m%d_%H%M%S")))
+    os.makedirs(os.path.dirname(log), exist_ok=True)
+    latest = os.path.join("logs", "latest.log")
+    try:
+        if os.path.islink(latest) or os.path.exists(latest):
+            os.remove(latest)
+        os.symlink(log, latest)
+    except OSError:
+        pass
+    handle = open(log, "wb")
+    return subprocess.Popen(["timeout", str(seconds), os.path.abspath(hostplatform.runtime_exe()),
+                             os.path.abspath(os.path.join("game", "disc", "socom2_game.elf"))],
+                            env=env, stdout=handle, stderr=subprocess.STDOUT)
+
+
+# untilref's press budget comes from the script (12 by default) and its pause between presses from the
+# step's delay, both calibrated on the host, where the boot reaches the main menu in 23 s. The VM boots
+# in 119 s with no GPU, so on the host's cadence all twelve presses are spent in the first half-minute
+# on a black loading screen -- and the last of them is still in flight when the menu finally arrives,
+# which is how the first VM title runs walked straight through the menu into SELECT RANK. Off Windows
+# the pause becomes "up to this many times the delay, watching for the reference and stopping the
+# moment it shows", which spreads the same budget across the same boot and takes the press out of the
+# menu's mouth. Windows keeps the literal sleep.
+SLOW_HOST_PRESS_FACTOR = 12
+SLOW_HOST_PRESS_POLL_S = 1.0
+
+
+def settle_after_press(delay, at_ref):
+    """The pause between two untilref presses: the script's delay on Windows, a reference-watching
+    wait of up to SLOW_HOST_PRESS_FACTOR x that off it."""
+    if hostplatform.is_windows():
+        time.sleep(delay)
+        return
+    deadline = time.time() + delay * SLOW_HOST_PRESS_FACTOR
+    while time.time() < deadline:
+        time.sleep(min(SLOW_HOST_PRESS_POLL_S, max(0.0, deadline - time.time())))
+        if at_ref():
+            return
 
 
 def parse(text):
@@ -341,7 +396,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
                 for b in buttons:
                     keys.press(hwnd, b, a.target)
                 presses += 1
-                time.sleep(delay)
+                settle_after_press(delay, at_ref)
             final = hud_match(winshot.grab(hwnd), ref_im, (r0, r1, c0, c1), thresh, lit)
             band = "" if final[2] is None else f" bands={final[2]:.2f}"
             print(f"untilref({ref_path}): {presses} presses, dist={final[1]:.1f}{band}, matched={final[0]}", flush=True)

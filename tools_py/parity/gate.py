@@ -27,14 +27,17 @@ import time
 import numpy as np
 from PIL import Image
 
-from tools_py.parity import black_rows, compare, console_compare, drive, guest_probe, mission_fail, screen_bands
+from tools_py.parity import (black_rows, compare, console_compare, drive, guest_probe, hostplatform,
+                             mission_fail, screen_bands)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DEFAULT_MIN_FREE_GB = 4.0
 
 
-def free_gb(drive_path="C:\\"):
-    """Free space on `drive_path`, in GiB. RUN_FREE_GB_CMD, if set, overrides the query with a shell
+def free_gb(drive_path=None):
+    """Free space on `drive_path`, in GiB (default: hostplatform.free_space_path() -- the C: drive on
+    Windows, the repo's own filesystem on Linux, where the C: drive is not a path and disk_usage raises).
+    RUN_FREE_GB_CMD, if set, overrides the query with a shell
     command whose last stdout line is the figure (used by tests, and shared with
     scripts/run_detached.sh's own override of the same name); otherwise shutil.disk_usage. Tests
     normally patch this function directly rather than going through RUN_FREE_GB_CMD."""
@@ -42,7 +45,7 @@ def free_gb(drive_path="C:\\"):
     if cmd:
         out = subprocess.run(cmd, shell=True, capture_output=True, text=True, check=True).stdout
         return float(out.strip().splitlines()[-1])
-    return shutil.disk_usage(drive_path).free / (1024.0 ** 3)
+    return shutil.disk_usage(drive_path or hostplatform.free_space_path()).free / (1024.0 ** 3)
 
 
 TITLE_REF = os.path.join("scripts", "parity", "ref_main_menu_ours.png")
@@ -342,12 +345,26 @@ def score_fade(run_dir):
         len(run), scope, max((p for _, p in run), default=0))
 
 
+# How much longer a stage's game may live off Windows. `seconds` is the run length the drive gives the
+# exe, calibrated on the host: the title stage's 23 captures end at t=156 s there, inside 170. The VM
+# has no GPU and boots to the main menu in 119 s against the host's 23 (s8_vm_title3 vs s7_final_gate),
+# so the same 23 captures run past 170 and the game dies mid-stage -- 15 of the 23 captures of the first
+# VM run are one frozen frame. The multiplier only lengthens a timeout; the drive still takes the game
+# down itself when the script ends, so a fast Linux box pays nothing for it.
+SLOW_HOST_SECONDS_FACTOR = 3
+
+
+def stage_seconds(name, system=None):
+    cfg = GATES[name]
+    return cfg["seconds"] if hostplatform.is_windows(system) else cfg["seconds"] * SLOW_HOST_SECONDS_FACTOR
+
+
 def drive_command(name, out_dir):
     """drive.py's command line for a stage; the transition stage captures its settle waits at 5 fps."""
     cfg = GATES[name]
     cmd = [sys.executable, "-m", "tools_py.parity.drive", "--target", "ours",
            "--script", cfg["script"], "--out", out_dir,
-           "--seconds", str(cfg["seconds"]), "--tail", str(cfg["tail"])]
+           "--seconds", str(stage_seconds(name)), "--tail", str(cfg["tail"])]
     if cfg.get("wait_period"):
         cmd += ["--wait-period", str(cfg["wait_period"])]
     return cmd
@@ -624,7 +641,8 @@ def main(argv=None):
     min_free = float(os.environ.get("RUN_MIN_FREE_GB", DEFAULT_MIN_FREE_GB))
     free = free_gb()
     if free < min_free:
-        print("gate: refusing to start: %.2f GB free on C: < RUN_MIN_FREE_GB=%.2f GB" % (free, min_free))
+        print("gate: refusing to start: %.2f GB free on %s < RUN_MIN_FREE_GB=%.2f GB"
+              % (free, hostplatform.free_space_path(), min_free))
         return 3
 
     # Make the output root before taking the lock: a makedirs failure must not leak the lock.
