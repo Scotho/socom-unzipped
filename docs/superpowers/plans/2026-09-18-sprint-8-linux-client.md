@@ -1640,6 +1640,8 @@ git push
 
 ## Task 8 — The VM ring: first build, suite, boot, frame compare (spec Design item 6b, first two bars)
 
+*(Task 8 ticked wholesale 2026-09-18 15:00: the VM's build, the C++ suite (554 under ASan, the double free fixed), the boot, the frame at 0.008; the audio bar moved to Task 10 by R106.)*
+
 *(2026-09-18 12:40-13:10: the VM built the runner (224 MB socom2, lld, the link about 15 min on 8 cores) and the launcher; the game booted under a bare X session on the VMSVGA GL 4.1 driver -- `[gs-gl] initialised: 4.1 (Core Profile) Mesa 25.2.8`, the probe passed with only the clip-control note -- and its exported boot frame differs from the Windows export of the same screen (logs/parity/s7_scale_1x.png) by mean |diff| 0.008 grey levels, bar 3: PASS. The audio dump needed a null PulseAudio sink first (a headless VM has no device: `WARNING: AUDIO: Failed to initialize playback device`). Seen on the VM's screen: the runtime debugger panel open at boot, where Windows keeps it closed until F1 -- noted for Task 11.)*
 
 **Files:**
@@ -1655,7 +1657,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: Sync the tree, the generated code and the disc.** Three separate transfers, because they have three different costs and only the first is repeated:
+- [x] **Step 1: Sync the tree, the generated code and the disc.** Three separate transfers, because they have three different costs and only the first is repeated:
 
 ```bash
 rsync -az -e "ssh -i vm/keys/socom_linux -p 2222" --exclude build-clang --exclude build-tools \
@@ -1668,7 +1670,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: `14882`, `576M recomp/output`, `4.1G game/SOCOM II - U.S. Navy SEALs (USA).iso`. **A count under 14,882 is a stop** — a partial generated tree links a runner with holes in its function table and every later result is worthless. The ISO transfer is once; the other two are re-run before each later VM step in one line each.
 
-- [ ] **Step 2: The first full Linux build, detached.** The generated code is 12.5 M lines at `-O1` on 8 cores; the spec's stop rule is three hours.
+- [x] **Step 2: The first full Linux build, detached.** The generated code is 12.5 M lines at `-O1` on 8 cores; the spec's stop rule is three hours.
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -1679,7 +1681,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: `exit=0`, and `ls -l ~/socom_pc/dist-linux/` showing `socom2` and `socom_unzipped_launcher`. **Stop rule (spec §Goal 1):** past three hours, give the VM more cores (the host has 28) before changing anything else, and record the wall time either way — it is the number the owner needs to decide whether ring (b) is a habit or a one-off.
 
-- [ ] **Step 3: The suite in the VM.**
+- [x] **Step 3: The suite in the VM.**
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -1687,7 +1689,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
 ```
   Expected: the Python suite's `OK`, then `ps2x_tests` reporting `Failed: 0` at the same total the host reports. **Bar: all green.** A case that fails only here is the sprint's most valuable finding — record its name and message verbatim before touching anything.
 
-- [ ] **Step 4: Bring up X and openbox.** The VM is a server install with no display manager; `xinit` starts one on the console.
+- [x] **Step 4: Bring up X and openbox.** The VM is a server install with no display manager; `xinit` starts one on the console.
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 \
@@ -1696,7 +1698,7 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'DISPLAY=:0 glxinfo -B'
 ```
   Expected: `xdpyinfo` naming a screen, and `glxinfo -B` printing the renderer and `OpenGL core profile version string`. **Write the renderer and the GL version into the ledger now** — they are what the stop rule below is judged against, and they are the first thing the owner will ask.
 
-- [ ] **Step 5: The boot launch, 40 s, exported frame.** `logs/s8_vm_boot.sh`, synced with the tree:
+- [x] **Step 5: The boot launch, 40 s, exported frame.** `logs/s8_vm_boot.sh`, synced with the tree:
 
 ```bash
 #!/usr/bin/env bash
@@ -1720,7 +1722,7 @@ scp -i vm/keys/socom_linux -P 2222 socom@127.0.0.1:~/socom_pc/logs/s8_vm_boot.lo
 ```
   **Read the log before the picture.** It must carry, in order: `Using argv boot path`; `[gs-gl] OpenGL backend active (PS2X_GS_BACKEND=cpu for the rasterizer)` **or** the probe's refusal and `exit 65`; `[socom2] applying SOCOM II overrides`; `[socom2/hostnet] BSD sockets ready; retail hostnames -> 127.0.0.1` (Task 3's line — its presence is the port's first end-to-end proof); and at least one `[vu1-stats]` line with **non-zero `thread=` and `proc=`** (Task 5's `clock_gettime` arm, which has no unit test and is verified here).
 
-- [ ] **Step 6: The Windows reference, same screen, same size.** One host launch through the lock:
+- [x] **Step 6: The Windows reference, same screen, same size.** One host launch through the lock:
 
 ```bash
 cat > logs/s8_win_boot.sh <<'SH'
@@ -1736,14 +1738,14 @@ scripts/run_detached.sh --owner gate --purpose launch logs/s8_win_boot.sh logs/s
 ```
   The two runs must reach the **same screen**: no drive script, no presses, the same 40 s, the same `PS2X_WINDOW_SIZE`. That is what makes the comparison a comparison (Sprint 7's R94 is the precedent — the 2x capture failed at mean 41 the first time because two different screens were compared).
 
-- [ ] **Step 7: The frame comparison. Bar: mean |diff| < 3.**
+- [x] **Step 7: The frame comparison. Bar: mean |diff| < 3.**
 
 ```bash
 python -c "from tools_py.parity import scale_compare as sc; print(sc.mean_abs_diff('logs/parity/s8_win_boot.png','logs/parity/s8_vm_boot.png',1))"
 ```
   `scale_compare` has **no CLI** — it is `mean_abs_diff`, `upsample_nearest` and `_grey` only, and `upsample_nearest` at scale 1 is the identity, so scale 1 is the right call for two 640x448 frames. It raises `ValueError` on a shape mismatch, which is the guard that catches a VM window that came up at some other size. Decision table: **< 3 → the bar is met**; **3-10 → check the two captures are the same screen** (the boot sequence animates; re-take both at the same `--seconds` before touching any code); **> 10 → a finding**, which goes to `docs/KNOWN.md` §2 with both PNGs and stops Task 10 until it is understood.
 
-- [ ] **Step 8: The audio dump. Bar: correlation ≥ 0.99 over the intro.** A second VM launch, 120 s, because the intro's music is what `logs/title_loop_pcm.bin` is a reference for and 40 s may not reach it:
+- [x] **Step 8: The audio dump. Bar: correlation ≥ 0.99 over the intro.** A second VM launch, 120 s, because the intro's music is what `logs/title_loop_pcm.bin` is a reference for and 40 s may not reach it:
 
 ```bash
 # logs/s8_vm_audio.sh: as s8_vm_boot.sh but timeout 120, PS2X_AUDIO_DUMP=$HOME/socom_pc/logs/parity/s8_vm_audio.wav,
@@ -1753,7 +1755,7 @@ python -m tools_py.parity.audio_corr logs/parity/s8_vm_audio.wav logs/title_loop
 ```
   Expected: one `mix <t> s: ref <t> s corr <x>` row per 4 s window and a final `min_corr=<x>` at or above 0.99, exit 0. If every row prints `silent`, the boot did not reach the intro inside 120 s — that is a finding about the VM's speed, not about audio: record the wall time the log shows for the first `[snd989]`/stream line and re-run at 240 s once only.
 
-- [ ] **Step 9: Verify Task 5's two untested Linux paths, deliberately.** While a VM run is live:
+- [x] **Step 9: Verify Task 5's two untested Linux paths, deliberately.** While a VM run is live:
 
 ```bash
 ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'pkill -SEGV -f "dist-linux/socom2"; sleep 2; grep -c "^\[crash\]" ~/socom_pc/logs/s8_vm_boot.log'
@@ -1766,9 +1768,9 @@ ssh -i vm/keys/socom_linux -p 2222 socom@127.0.0.1 'head -3 ~/socom_pc/dist-linu
 ```
   Expected: `base 0x<hex> total <n>` then `<rva> <count>` lines — the same format `tools_py/hostprof_symbolize.py` reads, which is what `HostProfLine::format` exists to guarantee.
 
-- [ ] **Step 10: The GL stop rule.** If Step 4's `glxinfo -B` is below the probe's floor, or the boot log carries the probe's refusal, the runner exits **65** and falls back to the CPU rasterizer (Sprint 7 Task 1a, `GsGlCaps::kExitCode`). **That is accepted**: the frame comparison in Step 7 is then made against the CPU rasterizer's frame on both sides (re-run Step 6 with `PS2X_GS_BACKEND=cpu`), the same mean |diff| < 3 bar applies, and the GL bar moves to the owner's real Linux machine as a `docs/HUMAN_TASKS.md` item written in Task 12. Record the exit code, the renderer string and which path produced the compared frames — a mean |diff| of 0.8 means two different things depending on that answer.
+- [x] **Step 10: The GL stop rule.** If Step 4's `glxinfo -B` is below the probe's floor, or the boot log carries the probe's refusal, the runner exits **65** and falls back to the CPU rasterizer (Sprint 7 Task 1a, `GsGlCaps::kExitCode`). **That is accepted**: the frame comparison in Step 7 is then made against the CPU rasterizer's frame on both sides (re-run Step 6 with `PS2X_GS_BACKEND=cpu`), the same mean |diff| < 3 bar applies, and the GL bar moves to the owner's real Linux machine as a `docs/HUMAN_TASKS.md` item written in Task 12. Record the exit code, the renderer string and which path produced the compared frames — a mean |diff| of 0.8 means two different things depending on that answer.
 
-- [ ] **Step 11: Commit the launch scripts and the numbers.** No source changes here; the commit carries the three scripts and the ledger's numbers land in `docs/KNOWN.md` in Task 12.
+- [x] **Step 11: Commit the launch scripts and the numbers.** No source changes here; the commit carries the three scripts and the ledger's numbers land in `docs/KNOWN.md` in Task 12.
 
 ```bash
 git commit -m "test(linux): the VM ring -- first build, suite, boot, frame and audio compared to Windows
