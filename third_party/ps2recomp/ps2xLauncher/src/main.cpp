@@ -630,6 +630,8 @@ int main(int argc, char **argv)
             for (int i = 0; i < ui::kPageCount; ++i)
                 shots.push_back(Shot{ui::pageAt(i), size[0], size[1], ""});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_playstation"});
+        // The owner's own config named the community server; this is what the page does with it.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
     }
     const char *selfShot = std::getenv("PS2X_LAUNCHER_SHOT");
     unsigned selfShotFrames = 0;
@@ -1006,7 +1008,15 @@ int main(int argc, char **argv)
                 }
                 resizeWaits = 0;
                 app.nav.goTo(graph, shot.page);
-                app.pad = std::strlen(shot.suffix) > 0 ? fakePlayStationPad() : fakeXboxPad();
+                app.pad = std::strcmp(shot.suffix, "_playstation") == 0 ? fakePlayStationPad() : fakeXboxPad();
+                if (std::strcmp(shot.suffix, "_community_healed") == 0)
+                {
+                    // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
+                    launcher::Config saved;
+                    launcher::fromJson("{\"serverPreset\": \"community\", \"server\": \"192.168.2.10\"}", saved);
+                    app.config.serverPreset = saved.serverPreset;
+                    app.config.server = saved.server;
+                }
             }
             if (++shotFrame >= 3)
             {

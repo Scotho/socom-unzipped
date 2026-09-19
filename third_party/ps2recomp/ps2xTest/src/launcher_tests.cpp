@@ -272,7 +272,9 @@ void register_launcher_tests()
             launcher::Config c;
             c.serverPreset = "community";
             c.server = "10.0.0.5";
-            t.Equals(serverOf(c), std::string("COMMUNITY_SERVER_ADDRESS_TBC"), "community wins over whatever is in the text field");
+            // Fourth pass: a preset still carrying a placeholder is not playable, so it does not win the
+            // field -- it resolves to the project's own server rather than sending the game a placeholder.
+            t.Equals(serverOf(c), std::string("3.143.65.100"), "an unavailable preset resolves to the one that exists");
             c.serverPreset = "unzipped";
             t.Equals(serverOf(c), std::string("3.143.65.100"), "our own hosted server (Lightsail, US East)");
             t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("3.143.65.100"), "a fresh config resolves to it");
@@ -735,6 +737,78 @@ void register_launcher_tests()
             t.IsTrue(at(l.close.cx(), 1.0f) == ui::ChromeHit::Top, "but the top two pixels still resize");
             t.IsTrue(at(l.minimize.cx(), 1.0f) == ui::ChromeHit::Top, "away from the corner, that is the top edge too");
             t.IsTrue(at(1099.0f, 1.0f) == ui::ChromeHit::TopRight, "and the very corner is the corner grab");
+        });
+
+        // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
+        // game. The community server runs r0004, which this client cannot play yet.
+        tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)
+        {
+            const launcher::ServerPreset *community = launcher::findServerPreset("community");
+            const launcher::ServerPreset *unzipped = launcher::findServerPreset("unzipped");
+            const launcher::ServerPreset *custom = launcher::findServerPreset("custom");
+            t.IsTrue(community != nullptr && unzipped != nullptr && custom != nullptr, "the three presets are there");
+            t.IsFalse(launcher::presetAvailable(*community), "community is not playable: its address is still a placeholder");
+            t.IsTrue(launcher::presetAvailable(*unzipped), "the project's own server is");
+            t.IsTrue(launcher::presetAvailable(*custom), "and so is an address the player types");
+
+            launcher::Config c;
+            c.serverPreset = "community";
+            c.server = "192.168.2.10";
+            t.Equals(launcher::effectiveServer(c), std::string("3.143.65.100"),
+                     "a config still naming community plays on the project's server, not on a placeholder");
+            const std::vector<std::string> env = launcher::environmentFor(c);
+            for (const std::string &kv : env)
+                t.IsTrue(kv.find("_TBC") == std::string::npos, "no placeholder ever reaches the game's environment");
+
+            // Every preset id, including one that is not ours at all.
+            for (const char *id : {"community", "unzipped", "custom", "nonsense"})
+            {
+                launcher::Config each;
+                each.serverPreset = id;
+                for (const std::string &kv : launcher::environmentFor(each))
+                    t.IsTrue(kv.find("_TBC") == std::string::npos, std::string("no placeholder for preset ") + id);
+            }
+
+            launcher::Config loaded;
+            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"community\"}", loaded), "a saved community config parses");
+            t.Equals(loaded.serverPreset, std::string("unzipped"),
+                     "and is healed on load: the owner's saved choice moves to the server that exists");
+            launcher::Config kept;
+            t.IsTrue(launcher::fromJson("{\"serverPreset\": \"custom\", \"server\": \"192.168.2.10\"}", kept), "a custom config parses");
+            t.Equals(kept.serverPreset, std::string("custom"), "and a playable preset is left alone");
+            t.Equals(launcher::effectiveServer(kept), std::string("192.168.2.10"), "with the address the player typed");
+        });
+
+        tc.Run("the ONLINE page does not offer the preset that cannot be played", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padChoices = 2;
+            in.micChoices = 3;
+            in.customServer = false;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsFalse(ui::hasNode(nodes, "online.preset.0"), "community has no focusable row: it cannot be chosen");
+            t.IsTrue(ui::hasNode(nodes, "online.preset.1"), "the project's server has one");
+            t.IsTrue(ui::hasNode(nodes, "online.preset.2"), "and so does Custom");
+            // The row is still drawn, in its own place, so the page can say why it is unavailable.
+            const ui::Rect disabled = ui::onlinePresetRow(window, 0);
+            const ui::Rect enabled = ui::rectOf(nodes, "online.preset.1");
+            t.IsTrue(disabled.y < enabled.y && std::fabs(disabled.x - enabled.x) < 0.001f,
+                     "and it is drawn above the others, on the same grid");
+
+            // Nothing on the page is stranded by the gap in the list.
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            std::vector<std::string> seen = {ui::railId(ui::Page::Online)};
+            for (size_t head = 0; head < seen.size(); ++head)
+                for (ui::Dir d : {ui::Dir::Up, ui::Dir::Down, ui::Dir::Left, ui::Dir::Right})
+                {
+                    const std::string to = g.move(seen[head], d);
+                    if (std::find(seen.begin(), seen.end(), to) == seen.end())
+                        seen.push_back(to);
+                }
+            for (const std::string &id : g.idsOn(ui::Page::Online))
+                t.IsTrue(std::find(seen.begin(), seen.end(), id) != seen.end(),
+                         std::string("still reachable from the rail: ") + id);
         });
 
         tc.Run("the glyph family follows the pad's name: Xbox letters, PlayStation shapes, neither otherwise", [](TestCase &t)

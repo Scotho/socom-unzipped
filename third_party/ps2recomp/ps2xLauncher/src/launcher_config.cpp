@@ -158,9 +158,32 @@ namespace launcher
         return nullptr;
     }
 
+    bool presetAvailable(const ServerPreset &preset)
+    {
+        if (preset.address[0] == '\0')
+            return true;   // Custom: the player types the address
+        return std::string(preset.address).find("_TBC") == std::string::npos;
+    }
+
+    namespace
+    {
+        // The preset a config falls back to when the one it names cannot be played.
+        const ServerPreset &playableFallback()
+        {
+            for (const ServerPreset &p : kServerPresets)
+                if (p.address[0] != '\0' && presetAvailable(p))
+                    return p;
+            return kServerPresets[0];
+        }
+    }
+
     std::string effectiveServer(const Config &c)
     {
         const ServerPreset *preset = findServerPreset(c.serverPreset);
+        // A preset whose server does not exist yet must never reach the game: a config that still names one
+        // (the owner's did) plays on the project's own server instead of on a placeholder string.
+        if (preset && !presetAvailable(*preset))
+            preset = &playableFallback();
         if (preset && preset->address[0] != '\0')
             return preset->address;
         return c.server.empty() ? std::string("127.0.0.1") : c.server;
@@ -243,7 +266,15 @@ namespace launcher
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
                     // a preset we do not know (an older or newer build's) falls back to the typed address
-                    else if (key == "serverPreset") { c.serverPreset = findServerPreset(v) ? v : std::string("custom"); sawPreset = true; }
+                    else if (key == "serverPreset")
+                    {
+                        // An unknown id means an older or hand-edited file: keep the typed address. A KNOWN
+                        // but unplayable one heals to the server that exists, so the picker opens on it.
+                        const ServerPreset *saved = findServerPreset(v);
+                        c.serverPreset = saved == nullptr ? std::string("custom")
+                                                          : (presetAvailable(*saved) ? v : std::string(playableFallback().id));
+                        sawPreset = true;
+                    }
                     else if (key == "micDevice") c.micDevice = v;
                     else c.profile = v;
                 }
