@@ -52,6 +52,13 @@ namespace snd989
         void pause(uint32_t handle);
         void resume(uint32_t handle);
         void setVolPan(uint32_t handle, int32_t vol, int32_t pan);   // kVolDontChange / kPanDontChange leave a value
+        // snd_AutoVol (fno 0x22, research/06 section 3): a TIMED volume ramp, not an instant set. `vol` is the
+        // target 0..0x400 (-4 = fade to silence and then stop the sound or stream), `ticks` its length in mixer
+        // ticks (240 a second, as 989snd's own handlers run: the game's [handle, 0, 0x168, 2] is 1.5 s and
+        // [handle, 0, 0x1e0, 2] is 2 s). `ticks` <= 0 applies the target at once. `how` is the call's 4th
+        // argument (the game always passes 2); its meaning is not established by any reference we can reach, so
+        // it is recorded and not acted on. setVolPan and stop cancel a ramp in flight.
+        void autoVol(uint32_t handle, int32_t vol, int32_t ticks, int32_t how);
         void setMasterVolume(uint32_t group, int32_t vol);           // 0..0x400; group 16 = every group
         void stopAll();
 
@@ -76,6 +83,15 @@ namespace snd989
         // The PCM stream (snd_PcmStreamOpen/Start/Position/Stop, research/32 section 7): the EE DMAs 16-bit PCM into a
         // ring the IRX plays through sceSdBlockTrans; stereo data is 512 bytes of left then 512 of right (the movie
         // audio's SShd interleave). The mixer plays the ring at `rate` from offset 0 and reports the play position in bytes.
+        //
+        // The ring exists from Open, not from Start: the game opens it, stops it, reads the CD stream and DMAs a
+        // whole ring in, and only then starts it (any run log: snd_PcmStreamOpen -> snd_PcmStreamStop -> the
+        // sceCdStRead fills -> snd_PcmStreamStart). On the console the ring is IOP memory, so those bytes are what
+        // plays first; allocating at Start threw them away -- the "blip at each menu stream's start".
+        void pcmStreamOpen(uint32_t ringBytes, uint32_t channels);   // allocate and zero; not active yet
+        void pcmStreamClose();                                       // free the ring: a later write needs a new Open
+        // Start keeps the bytes an Open-to-Start fill left and their fresh flags, and only restarts the play head.
+        // A size (or channel count) the ring was not opened with re-allocates, and only then zeroes.
         void pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol);
         void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
         uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped

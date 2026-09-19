@@ -941,6 +941,12 @@ namespace ps2x::iop::detail
                         m_model.pcmBuffer = kFakePcmBuffer;
                     value = m_model.pcmBuffer != 0u ? m_model.pcmBuffer : kFakePcmBuffer;
                     hasResult = true;
+                    // The host mixer needs the ring's shape HERE, not at Start: the EE DMAs a whole ring in between
+                    // the two calls (the sceCdStRead fills in any run log) and a ring allocated at Start dropped it.
+                    {
+                        const int32_t words[2] = {static_cast<int32_t>(m_model.pcmBufferBytes), static_cast<int32_t>(m_model.pcmChannels)};
+                        m_host.audioNotify(kPcmStreamOpen, words, 2u);
+                    }
                     break;
                 }
 

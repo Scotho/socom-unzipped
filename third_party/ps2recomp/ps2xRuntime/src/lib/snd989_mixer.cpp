@@ -522,6 +522,21 @@ namespace snd989
             bool silentBlock = false;
             uint64_t underruns = 0;
             uint32_t blockBytes() const { return 512u * std::max<uint32_t>(channels, 1u); }
+            // (Re)allocate the ring and zero it. `channels` must already be set: it sets the block size.
+            void reshape(uint32_t ringBytes)
+            {
+                bytes.assign(std::min<uint32_t>(ringBytes, 4u << 20), 0u);
+                fresh.assign(bytes.empty() ? 0u : (bytes.size() + blockBytes() - 1u) / blockBytes(), 0u);
+                rewind();
+            }
+            // The play head back to the top; the bytes the game wrote and their fresh flags survive.
+            void rewind()
+            {
+                pos = 0.0;
+                currentBlock = 0xffffffffu;
+                silentBlock = false;
+                underruns = 0;
+            }
             uint32_t frames() const { return channels == 0 || bytes.empty() ? 0u : static_cast<uint32_t>(bytes.size() / (2u * channels)); }
             int16_t sample(uint32_t frame, uint32_t channel) const
             {
@@ -587,6 +602,97 @@ namespace snd989
             return nullptr;
         }
 
+        // snd_AutoVol (fno 0x22): the game fades a music cue with a TIMED ramp -- [handle, 0, 0x168, 2] and
+        // [handle, 0, 0x1e0, 2] in the owner's 2026-09-18 mission, 360 and 480 of the 240 Hz ticks, 1.5 s and 2 s.
+        // Applying the target at once cut the cue dead ("skips and almost plays two different spliced segments").
+        // A ramp is a multiplier on whatever volume play/playStream/SetSoundVolPan set for that handle, so it
+        // composes with them instead of fighting over one field.
+        struct VolRamp
+        {
+            uint32_t handle = 0;
+            double scale = 1.0;                       // in force now, 0..1
+            double from = 1.0, to = 0.0;
+            uint32_t ticksTotal = 0, ticksDone = 0;
+            bool stopAtEnd = false;                   // the target -4: fade out, then stop
+        };
+        std::vector<VolRamp> volRamps;
+
+        // 0..0x400; a handle with no ramp is at full scale, which multiplies out to exactly the old gain.
+        int32_t volScale(uint32_t handle) const
+        {
+            for (const VolRamp &r : volRamps)
+                if (r.handle == handle)
+                    return static_cast<int32_t>(std::lround(std::clamp(r.scale, 0.0, 1.0) * 1024.0));
+            return 0x400;
+        }
+
+        double rampScale(uint32_t handle) const
+        {
+            for (const VolRamp &r : volRamps)
+                if (r.handle == handle)
+                    return std::clamp(r.scale, 0.0, 1.0);
+            return 1.0;
+        }
+
+        void clearRamp(uint32_t handle)
+        {
+            volRamps.erase(std::remove_if(volRamps.begin(), volRamps.end(),
+                                          [handle](const VolRamp &r) { return r.handle == handle; }),
+                           volRamps.end());
+        }
+
+        // Ends a sound or a stream by handle, the one place stop / a finished fade-out both go through.
+        void stopHandle(uint32_t handle)
+        {
+            if (Stream *st = findStream(handle))
+            {
+                closeStream(*st);
+                return;
+            }
+            if (Handler *h = find(handle))
+            {
+                h->done = true;
+                keyOffHandler(handle);
+            }
+        }
+
+        // One 240 Hz tick of every ramp. A ramp that has arrived STAYS at its target (that is the volume now in
+        // force); only a fade-out-and-stop ends the sound and drops its ramp.
+        void tickVolRamps()
+        {
+            for (size_t i = 0; i < volRamps.size();)
+            {
+                VolRamp &r = volRamps[i];
+                if (r.ticksDone < r.ticksTotal)
+                    ++r.ticksDone;
+                const double t = r.ticksTotal ? static_cast<double>(r.ticksDone) / static_cast<double>(r.ticksTotal) : 1.0;
+                r.scale = r.from + (r.to - r.from) * t;
+                if (r.ticksDone >= r.ticksTotal && r.stopAtEnd)
+                {
+                    const uint32_t handle = r.handle;
+                    volRamps.erase(volRamps.begin() + static_cast<std::ptrdiff_t>(i));
+                    stopHandle(handle);   // the fade has reached silence: only now does the handle stop playing
+                    continue;
+                }
+                ++i;
+            }
+        }
+
+        // A ramp outlives nothing: once no stream, handler or voice carries the handle it is dropped, so a later
+        // handle that reuses the number does not inherit a fade.
+        void dropDeadRamps()
+        {
+            volRamps.erase(std::remove_if(volRamps.begin(), volRamps.end(), [this](const VolRamp &r) {
+                               if (find(r.handle) != nullptr || findStream(r.handle) != nullptr)
+                                   return false;
+                               for (const Voice &v : voices)
+                                   if (v.handler == r.handle)
+                                       return false;
+                               return true;
+                           }),
+                           volRamps.end());
+        }
+
         int32_t groupModifier(uint8_t group) const
         {
             const int32_t g = std::min<int>(group, 15);
@@ -595,7 +701,8 @@ namespace snd989
 
         void applyVoiceVolume(Voice &v, int32_t &left, int32_t &right) const
         {
-            const int32_t modifier = groupModifier(v.group);
+            // The AutoVol ramp rides on top of the group modifier: no ramp is 0x400, i.e. the gain unchanged.
+            const int32_t modifier = groupModifier(v.group) * volScale(v.handler) / 0x400;
             // The SPU voice takes (left >> 1, right >> 1): full volume is half of full scale (StartTone, research/32 section 3).
             left = ((v.base.left * modifier) / 0x400) >> 1;
             right = ((v.base.right * modifier) / 0x400) >> 1;
@@ -756,6 +863,7 @@ namespace snd989
 
         void tick()
         {
+            tickVolRamps();
             for (Handler &h : handlers)
             {
                 if (h.done || h.paused)
@@ -804,6 +912,7 @@ namespace snd989
             voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) { return v.env.phase == Envelope::Off; }), voices.end());
             handlers.erase(std::remove_if(handlers.begin(), handlers.end(), [this](const Handler &h) { return !handlerAlive(h); }), handlers.end());
             dropDoneStreams();
+            dropDeadRamps();
         }
     };
 
@@ -933,6 +1042,7 @@ namespace snd989
     void Mixer::stop(uint32_t handle)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        m_impl->clearRamp(handle);   // an explicit stop ends any fade with it
         if (Stream *st = m_impl->findStream(handle))
         {
             m_impl->closeStream(*st);
@@ -973,6 +1083,12 @@ namespace snd989
     void Mixer::setVolPan(uint32_t handle, int32_t vol, int32_t pan)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        // An explicit volume cancels a fade in flight: the value the game just asked for is the one in force from
+        // here (a pan-only call, vol = kVolDontChange, leaves the fade running). Not established by a reference --
+        // the open 989snd reimplementation has no snd_AutoVol at all -- but it is the only reading under which the
+        // game's own "set the volume" call means anything while a fade runs.
+        if (vol != kVolDontChange)
+            m_impl->clearRamp(handle);
         Handler *h = m_impl->find(handle);
         if (!h)
             return;
@@ -992,6 +1108,43 @@ namespace snd989
         m_impl->updateHandlerVoices(*h);
     }
 
+    // snd_AutoVol(handle, vol, ticks, how), fno 0x22. See the header: a ramp over `ticks` of the 240 Hz mixer
+    // tick, not an instant set. `how` (2 in every call the game makes) is not acted on -- the open 989snd
+    // reimplementation (open-goal/jak-project, game/sound/989snd) does not implement snd_AutoVol, so nothing we
+    // can reach establishes its meaning; its 240 Hz tick, which this ramp is counted in, IS confirmed there
+    // ("The handlers expect to tick at 240hz // 48000/240 = 200", player.cpp).
+    void Mixer::autoVol(uint32_t handle, int32_t vol, int32_t ticks, int32_t how)
+    {
+        (void)how;
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        const bool fadeOutAndStop = (vol == -4);
+        const double to = fadeOutAndStop ? 0.0 : static_cast<double>(std::clamp(vol, 0, 0x400)) / 1024.0;
+        const double from = m_impl->rampScale(handle);   // a ramp already running continues from where it is
+        m_impl->clearRamp(handle);
+        if (ticks <= 0)
+        {
+            // No time to ramp over: the target at once, which is what this call used to do for every length.
+            if (fadeOutAndStop)
+            {
+                m_impl->stopHandle(handle);
+                m_impl->dropDoneStreams();
+                return;
+            }
+            Impl::VolRamp now;
+            now.handle = handle;
+            now.scale = now.from = now.to = to;
+            m_impl->volRamps.push_back(now);
+            return;
+        }
+        Impl::VolRamp r;
+        r.handle = handle;
+        r.scale = r.from = from;
+        r.to = to;
+        r.ticksTotal = static_cast<uint32_t>(ticks);
+        r.stopAtEnd = fadeOutAndStop;
+        m_impl->volRamps.push_back(r);
+    }
+
     void Mixer::setMasterVolume(uint32_t group, int32_t vol)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
@@ -1005,6 +1158,7 @@ namespace snd989
     void Mixer::stopAll()
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
+        m_impl->volRamps.clear();
         for (Handler &h : m_impl->handlers)
             h.done = true;
         for (Voice &v : m_impl->voices)
@@ -1063,7 +1217,7 @@ namespace snd989
                     continue;
                 int32_t left = 0, right = 0;
                 {
-                    const int32_t modifier = m_impl->groupModifier(st.group);
+                    const int32_t modifier = m_impl->groupModifier(st.group) * m_impl->volScale(st.handle) / 0x400;
                     left = ((st.base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
                     right = ((st.base.right * modifier) / 0x400) >> 1;
                 }
@@ -1323,20 +1477,52 @@ namespace snd989
 
 namespace snd989
 {
+    // snd_PcmStreamOpen: the EE gets a ring address back and DMAs its first whole fill in before it ever calls
+    // Start (any run log: Open -> Stop -> the sceCdStRead fills -> Start). On the console that ring is IOP memory,
+    // so the fill is what plays first; the mixer's ring has to exist from here for those writes to land.
+    void Mixer::pcmStreamOpen(uint32_t ringBytes, uint32_t channels)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        Impl::PcmRing &ring = m_impl->pcm;
+        ring.channels = std::clamp<uint32_t>(channels ? channels : 2u, 1u, 2u);
+        ring.reshape(ringBytes);
+        ring.active = false;
+        m_impl->pcmActive.store(false, std::memory_order_relaxed);
+        m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
+        m_impl->pcmUnderrunCount.store(0u, std::memory_order_relaxed);
+    }
+
+    // snd_PcmStreamClose: the ring is gone. A write before the next Open has nowhere to land, as on the console.
+    void Mixer::pcmStreamClose()
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        Impl::PcmRing &ring = m_impl->pcm;
+        ring.bytes.clear();
+        ring.bytes.shrink_to_fit();
+        ring.fresh.clear();
+        ring.rewind();
+        ring.active = false;
+        m_impl->pcmActive.store(false, std::memory_order_relaxed);
+        m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);
+        m_impl->pcmUnderrunCount.store(0u, std::memory_order_relaxed);
+    }
+
     void Mixer::pcmStreamStart(uint32_t ringBytes, uint32_t rate, uint32_t channels, int32_t vol)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         Impl::PcmRing &ring = m_impl->pcm;
-        ring.bytes.assign(std::min<uint32_t>(ringBytes, 4u << 20), 0u);
+        const uint32_t ch = std::clamp<uint32_t>(channels ? channels : 2u, 1u, 2u);
+        // Start's size confirms the Open's (0 means "the one you were opened with").
+        const uint32_t want = ringBytes ? std::min<uint32_t>(ringBytes, 4u << 20) : static_cast<uint32_t>(ring.bytes.size());
+        const bool reshape = ring.bytes.size() != static_cast<size_t>(want) || ring.channels != ch;
+        ring.channels = ch;
         ring.rate = rate ? rate : 48000u;
-        ring.channels = std::clamp<uint32_t>(channels ? channels : 2u, 1u, 2u);
         // vol 0..0x400 -> 0..0x7ffe (MakeVolume's scale) then the SPU's >> 1: 0..0x3fff
         ring.gain = static_cast<int32_t>((static_cast<int64_t>(0x7ffe) * std::clamp(vol, 0, 0x400)) / 0x400) >> 1;
-        ring.pos = 0.0;
-        ring.fresh.assign(ring.bytes.empty() ? 0u : (ring.bytes.size() + ring.blockBytes() - 1u) / ring.blockBytes(), 0u);
-        ring.currentBlock = 0xffffffffu;
-        ring.silentBlock = false;
-        ring.underruns = 0;
+        if (reshape)
+            ring.reshape(want);   // a ring of a shape this one was not opened with: allocate, and only then zero
+        else
+            ring.rewind();        // the Open-to-Start fill and its fresh flags stay; only the play head restarts
         ring.active = !ring.bytes.empty();
         m_impl->pcmActive.store(ring.active, std::memory_order_relaxed);
         m_impl->pcmPositionBytes.store(0u, std::memory_order_relaxed);

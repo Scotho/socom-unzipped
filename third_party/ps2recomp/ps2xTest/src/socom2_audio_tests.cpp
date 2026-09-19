@@ -66,7 +66,9 @@ namespace
     // A stereo VPK on disk: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000,
     // channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
     // block carries the data's end flag. Task 1e's ring cases need a file longer than the ring holds.
-    bool writeVpk(const std::string &path, int chunkPairs)
+    // `shift` is the ADPCM block shift: the decoder scales a nibble by 1 << (12 - shift), so 12 is the quietest
+    // (the level cases want a loud file, the ring cases only care about the sign of each channel).
+    bool writeVpk(const std::string &path, int chunkPairs, uint8_t shift = 12)
     {
         int8_t up[28], down[28];
         for (int i = 0; i < 28; ++i)
@@ -87,7 +89,7 @@ namespace
                 for (int b = 0; b < 0x800 / 16; ++b)
                 {
                     const bool last = c == chunkPairs - 1 && b == 0x800 / 16 - 1;
-                    const std::vector<uint8_t> blk = block(12, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
+                    const std::vector<uint8_t> blk = block(shift, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
                     file.insert(file.end(), blk.begin(), blk.end());
                 }
         FILE *fp = std::fopen(path.c_str(), "wb");
@@ -770,6 +772,103 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // Sprint 8, the owner's 2026-09-18 mission ("skips and almost plays two different spliced segments"):
+        // snd_AutoVol (fno 0x22) is a TIMED ramp. The game fades its music cues with [handle, 0, 0x168, 2] and
+        // [handle, 0, 0x1e0, 2] -- target 0 over 360 and 480 of the 240 Hz mixer ticks, 1.5 s and 2 s -- and the
+        // handler applied the target at once (and stopped at once for the -4 target), cutting a cue dead mid
+        // phrase. 240 Hz is the rate 989snd's own handlers run at, which the open reimplementation confirms
+        // (open-goal/jak-project game/sound/989snd/player.cpp: "The handlers expect to tick at 240hz",
+        // "48000/240 = 200") -- it does not implement snd_AutoVol itself, so the ramp's shape here is the plain
+        // reading: linear, from the volume in force, to the target, over `ticks` ticks.
+        tc.Run("Mixer: snd_AutoVol fades over its ticks instead of applying the target at once; the fade lands on the target", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_autovol_stream.vpk";
+            t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade, loud enough to measure a level on");
+            snd989::Mixer mixer;
+            std::vector<int16_t> buf(2 * 2400);
+            // 2400 frames = 12 of the 240 Hz ticks. Renders `slices` of them, keeping the decode-ahead ring
+            // filled by hand, and answers the mean |sample| of the LAST slice: the level at the window's end.
+            auto renderLevel = [&](int slices) {
+                double level = 0.0;
+                for (int i = 0; i < slices; ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                    if (i == slices - 1)
+                    {
+                        double sum = 0.0;
+                        for (size_t k = 0; k < 2u * 2400u; ++k)
+                            sum += std::fabs(static_cast<double>(buf[k]));
+                        level = sum / (2.0 * 2400.0);
+                    }
+                }
+                return level;
+            };
+            t.IsTrue(mixer.playStream(0x04000019u, path, 0u, 0x400, -1, 1u), "the cue plays");
+            const double full = renderLevel(1);
+            t.IsTrue(full > 100.0, "loud before the fade (" + std::to_string(full) + ")");
+            mixer.autoVol(0x04000019u, 0, 240, 2);            // the game's fade, one second of it
+            const double justAfter = renderLevel(1);          // ticks 0..12 of 240
+            t.IsTrue(justAfter > 0.8 * full, "the call itself does not cut the cue (" + std::to_string(justAfter) + " of " + std::to_string(full) + ")");
+            const double half = renderLevel(9);               // through tick 120: the middle of the ramp
+            t.IsTrue(half > 0.35 * full && half < 0.65 * full, "half way through it is about half as loud (" + std::to_string(half) + " of " + std::to_string(full) + ")");
+            const double landed = renderLevel(11);            // past tick 240
+            t.IsTrue(landed < 1e-9, "the fade lands on silence (" + std::to_string(landed) + ")");
+            t.IsTrue(mixer.isPlaying(0x04000019u), "a fade to 0 does not end the cue -- only the -4 target does");
+            mixer.stop(0x04000019u);
+
+            // A ramp is per handle: fading one cue leaves every other one alone.
+            t.IsTrue(mixer.playStream(0x0400001Au, path, 0u, 0x400, -1, 1u), "cue A");
+            t.IsTrue(mixer.playStream(0x0400001Bu, path, 0u, 0x400, -1, 1u), "cue B");
+            mixer.autoVol(0x0400001Au, 0, 240, 2);
+            const double bothFaded = renderLevel(22);         // A is silent by now; B never was asked to fade
+            t.IsTrue(bothFaded > 0.5 * full, "the cue that was not faded still plays (" + std::to_string(bothFaded) + " of " + std::to_string(full) + ")");
+            mixer.stopAllStreams();
+
+            // An explicit snd_SetSoundVolPan cancels a fade in flight (unverified against a reference: the open
+            // 989snd reimplementation has no snd_AutoVol -- see the header).
+            t.IsTrue(mixer.playStream(0x0400001Cu, path, 0u, 0x400, -1, 1u), "a cue to interrupt");
+            mixer.autoVol(0x0400001Cu, 0, 240, 2);
+            const double mid = renderLevel(10);               // through tick 120
+            t.IsTrue(mid < 0.8 * full, "the fade is under way (" + std::to_string(mid) + ")");
+            mixer.setVolPan(0x0400001Cu, 0x400, snd989::kPanDontChange);
+            const double cancelled = renderLevel(1);
+            t.IsTrue(cancelled > 0.8 * full, "setVolPan cancels it: full volume again (" + std::to_string(cancelled) + " of " + std::to_string(full) + ")");
+            mixer.stopAllStreams();
+            std::remove(path.c_str());
+        });
+
+        tc.Run("Mixer: snd_AutoVol's -4 target fades out and stops -- the handle plays until the ramp lands, not from the call", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_autovol_stop.vpk";
+            t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade out");
+            snd989::Mixer mixer;
+            std::vector<int16_t> buf(2 * 2400);
+            auto render = [&](int slices) {
+                for (int i = 0; i < slices; ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                }
+            };
+            t.IsTrue(mixer.playStream(0x0401005Cu, path, 0u, 0x400, -1, 1u), "the cue plays");
+            render(1);
+            mixer.autoVol(0x0401005Cu, -4, 240, 2);            // fade out and stop
+            t.IsTrue(mixer.isPlaying(0x0401005Cu), "still playing at the call: the stop is at the END of the fade");
+            render(10);                                        // through tick 120: half way
+            t.IsTrue(mixer.isPlaying(0x0401005Cu), "still playing half way through the fade");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "and the stream is still there");
+            render(11);                                        // past tick 240
+            t.IsTrue(!mixer.isPlaying(0x0401005Cu), "stopped once the fade landed");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "the stream is gone");
+            // ticks <= 0 has no ramp to run: the target applies at once, which is what -4 used to do for every length.
+            t.IsTrue(mixer.playStream(0x0401005Du, path, 0u, 0x400, -1, 1u), "another cue");
+            mixer.pumpStreams();
+            mixer.autoVol(0x0401005Du, -4, 0, 2);
+            t.IsTrue(!mixer.isPlaying(0x0401005Du), "a zero-tick -4 stops at once");
+            std::remove(path.c_str());
+        });
+
         // Task 1e (audit 2026-09-17 section 2.3): the disc read moved off the audio callback. pumpStreams() decodes
         // ahead into each stream's ring on a worker; render() touches memory only.
         tc.Run("a stream plays out of its ring with the file handle closed", [](TestCase &t)
@@ -980,6 +1079,40 @@ void register_socom2_audio_tests()
             t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "stop resets the count");
         });
 
+        // Sprint 8: the "blip at each menu stream's start" (KNOWN / HUMAN_TASKS: "the first ~10 s after a stream
+        // start fill a little short"). The game opens the ring, DMAs a whole ring of movie audio into it, and only
+        // then starts it -- any run log: snd_PcmStreamOpen [0x6000] -> 0xa0000, snd_PcmStreamStop, the sceCdStRead
+        // fills, snd_PcmStreamStart. A ring allocated and zeroed at Start threw that first fill away: one ring of
+        // silence and an underrun a block. On the console the ring is IOP memory -- what the EE wrote plays first.
+        tc.Run("Mixer: the fill the game makes between PcmStreamOpen and PcmStreamStart is what plays first; a restart with nothing rewritten is still stale (R97)", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            std::vector<int16_t> buf(2 * 256);
+            auto peak = [&] { int32_t p = 0; for (size_t i = 0; i < 2u * 256u; ++i) p = std::max<int32_t>(p, buf[i] < 0 ? -buf[i] : buf[i]); return p; };
+            mixer.pcmStreamOpen(0x6000u, 2u);
+            t.IsTrue(!mixer.pcmStreamActive(), "open alone does not start the stream");
+            mixer.pcmStreamStop();                                  // the snd_PcmStreamStop the game sends right after the open
+            std::vector<uint8_t> ring(0x6000u);
+            for (size_t i = 0; i < ring.size(); i += 2) { ring[i] = 0x40; ring[i + 1] = 0x1f; }   // +8000 everywhere
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());     // the EE's DMA, before the start
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            mixer.render(buf.data(), 256);
+            t.IsTrue(peak() > 3000, "the pre-start fill plays (peak " + std::to_string(peak()) + ")");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(0), "and costs no underrun");
+            // R97's policy survives a restart: a block played once and never rewritten is silence, counted.
+            mixer.pcmStreamStop();
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            mixer.render(buf.data(), 256);
+            t.Equals(peak(), 0, "a restart replays nothing: block 0 was consumed and never rewritten");
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1), "counted as an underrun");
+            // Close frees the ring: a write before the next open has nowhere to land, as on the console.
+            mixer.pcmStreamClose();
+            mixer.pcmStreamWrite(0u, ring.data(), ring.size());
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            mixer.render(buf.data(), 256);
+            t.Equals(peak(), 0, "after close the write is dropped: a fresh Start ring is silence");
+        });
+
         tc.Run("Mixer: the PCM ring plays block-interleaved stereo (512-byte L and R blocks, as the movie audio is laid out) at its rate, reports its position, wraps, and stops", [](TestCase &t)
         {
             snd989::Mixer mixer;
@@ -1058,6 +1191,28 @@ void register_socom2_audio_tests()
             const int32_t none[1] = {0};
             backend.onNotify(0x3Du, none, 1u);
             t.IsTrue(!backend.pcmPosition(position), "snd_PcmStreamStop: no stream");
+        });
+
+        tc.Run("PS2AudioBackend routes snd_PcmStreamOpen: the ring the EE fills before the start is not thrown away by it", [](TestCase &t)
+        {
+            PS2AudioBackend backend;
+            const int32_t open[2] = {0x6000, 2};
+            backend.onNotify(0x3Bu, open, 2u);                 // snd_PcmStreamOpen, forwarded by the IOP module
+            const int32_t none[1] = {0};
+            backend.onNotify(0x3Du, none, 1u);                 // the snd_PcmStreamStop that follows it
+            std::vector<uint8_t> fill(0x6000u);
+            for (size_t i = 0; i < fill.size(); i += 2) { fill[i] = 0x40; fill[i + 1] = 0x1f; }   // +8000
+            backend.onPcmWrite(0u, fill.data(), fill.size());   // the EE's SIF DMA into the ring
+            const int32_t start[5] = {0x6000, 0, 2, 0x400, 0x000a0000};
+            backend.onNotify(0x3Eu, start, 5u);
+            std::vector<int16_t> buf(2 * 256);
+            backend.mixerRender(buf.data(), 256);
+            int32_t peak = 0;
+            for (size_t i = 0; i < 2u * 256u; ++i) peak = std::max<int32_t>(peak, buf[i] < 0 ? -buf[i] : buf[i]);
+            t.IsTrue(peak > 3000, "the pre-start fill plays through the backend (peak " + std::to_string(peak) + ")");
+            uint32_t position = 0;
+            backend.onNotify(0x3Cu, none, 1u);                 // snd_PcmStreamClose
+            t.IsTrue(!backend.pcmPosition(position), "close leaves no stream");
         });
 
         tc.Run("volumeGain: 0-100 percent to a linear gain, out of range clamped", [](TestCase &t)

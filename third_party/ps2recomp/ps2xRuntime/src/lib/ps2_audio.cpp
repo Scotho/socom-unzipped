@@ -465,11 +465,11 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
         m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), (mask & 1) ? arg(2) : snd989::kVolDontChange, (mask & 2) ? arg(3) : snd989::kPanDontChange);
         break;
     }
-    case 0x22u:   // snd_AutoVol {handle, vol, ticks, how}: -4 = fade out and stop
-        if (arg(1) == -4)
-            m_mixer.stop(static_cast<uint32_t>(arg(0)));
-        else
-            m_mixer.setVolPan(static_cast<uint32_t>(arg(0)), arg(1), snd989::kPanDontChange);
+    case 0x22u:   // snd_AutoVol {handle, vol, ticks, how}: a ramp over `ticks` 240 Hz ticks; vol -4 = fade out, then stop
+        // The game fades its music cues with this ([handle, 0, 0x168, 2] = 1.5 s, [handle, 0, 0x1e0, 2] = 2 s in
+        // the owner's 2026-09-18 mission). Applying the target at once, and stopping at once for -4, cut a cue
+        // dead mid-phrase -- the owner's "skips and almost plays two different spliced segments".
+        m_mixer.autoVol(static_cast<uint32_t>(arg(0)), arg(1), count >= 3 ? arg(2) : 0, count >= 4 ? arg(3) : 0);
         break;
     case 0x09u: m_mixer.setMasterVolume(static_cast<uint32_t>(arg(0)), arg(1)); break;
     case 0x2Cu:   // snd_PlayVAGStreamByLoc {handle, sector1, sector2, off1, vol, off2, pan, group, flags}
@@ -494,7 +494,14 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
             std::cout << "[audio] 989snd pcm stream: ring " << arg(0) << " B at " << std::hex << static_cast<uint32_t>(arg(4)) << std::dec << ", " << (arg(1) ? arg(1) : 48000) << " Hz, " << arg(2) << " ch, vol " << arg(3) << std::endl;
         }
         break;
-    case 0x3Cu:
+    case 0x3Bu:   // snd_PcmStreamOpen {ringBytes, channels}: the ring the EE fills BEFORE it starts the stream
+        if (count >= 1)
+        {
+            m_mixer.pcmStreamOpen(static_cast<uint32_t>(arg(0)), count >= 2 ? static_cast<uint32_t>(arg(1)) : 0u);
+            std::cout << "[audio] 989snd pcm stream open: ring " << arg(0) << " B, " << (count >= 2 ? arg(1) : 2) << " ch" << std::endl;
+        }
+        break;
+    case 0x3Cu: m_mixer.pcmStreamClose(); break;   // snd_PcmStreamClose: the ring is freed
     case 0x3Du: m_mixer.pcmStreamStop(); break;
     case 0x06u: m_mixer.unloadBank(static_cast<uint32_t>(arg(0))); break;
     default:
