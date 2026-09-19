@@ -23,6 +23,9 @@ cp -r "$SERVER/horizon-server" "$PKG/horizon-server"
 find "$PKG/horizon-server" -type d \( -name obj -o -name .git \) -prune -exec rm -rf {} +
 find "$PKG/horizon-server" -type d -path '*/bin/Debug' -prune -exec rm -rf {} +
 cp "$SERVER/start-servers.ps1" "$SERVER/seed-simulated-db.ps1" "$SERVER/README.md" "$PKG/"
+# Sprint 8 Goal 12: the Linux glue (systemd units, horizon-ctl.sh, install.sh) rides along.
+[ -f "$SERVER/linux/install.sh" ] || { echo "make_server_zip: $SERVER/linux/install.sh missing" >&2; exit 2; }
+cp -r "$SERVER/linux" "$PKG/linux"
 # config: every *.json, and deliberately NOT simulated.db (accounts + per-app settings are the host's own).
 cp "$SERVER"/config/*.json "$PKG/config/"
 cat > "$PKG/config/README.txt" <<'CFG'
@@ -54,6 +57,13 @@ SOCOM Unzipped -- the hosted server (Horizon Private Server for SOCOM II, app id
 4. Forward the ports listed in README.md ("Hosting it on another machine: ports to forward") and open the
    Windows firewall for the server processes.
 5. .\start-servers.ps1 -Status to see what is listening, -Stop to stop, -ShowIp to check the advertised address.
+
+On Linux (Ubuntu 24.04; the same prebuilt binaries run under the .NET 9 runtime): seed simulated.db on a Windows
+machine (step 2) and copy it into config/, then
+    sudo bash linux/install.sh                                   # runtime, 'horizon' user, /opt/socom-unzipped-server, systemd units
+    sudo /opt/socom-unzipped-server/linux/horizon-ctl.sh public-ip <public IP or hostname>
+    sudo /opt/socom-unzipped-server/linux/horizon-ctl.sh start   # then: status | show-ip | stop | restart
+Open the same ports in the host's firewall (README.md, "Hosting it on Linux").
 
 README.md is the full write-up: layout, ports, the advertised-address fields, the database, what is verified.
 Logs land in logs\.

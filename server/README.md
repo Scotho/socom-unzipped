@@ -103,11 +103,33 @@ above, so the forward list is complete. The 50000+ DME UDP sockets are bound per
 only while a client is connected - none were, which is why they are absent from that capture rather than from the
 list.
 
+### Hosting it on Linux (Sprint 8 Goal 12, 2026-09-19)
+
+The binaries are framework-dependent `net9.0` and run unchanged under the .NET 9 runtime (`dotnet <Proj>.dll <config dir>`);
+only the glue is per-platform. `linux/` is that glue for Ubuntu 24.04:
+
+| File | What |
+|---|---|
+| `linux/install.sh` | As root, from the unpacked server folder: the runtime, a `horizon` user, the folder under `/opt/socom-unzipped-server`, the units, a logrotate rule. Idempotent; never overwrites an installed `config/`. |
+| `linux/horizon-{nat,muis,medius,dme}.service`, `horizon.target` | The Separate mode as four units (the unified launcher's race applies on Linux too). DME waits for MPS on 10077 (`wait-for-port.sh`). Consoles go to the journal: `journalctl -u horizon-medius`. |
+| `linux/horizon-ctl.sh` | `start`, `stop`, `restart`, `status`, `show-ip`, `public-ip <ip or hostname>` -- `start-servers.ps1`'s verbs, with the same six-field rewrite, the same untouched `MPS.Ip`, the same refusal to write JSON that does not parse (`tools_py/tests/test_horizon_ctl.py`). |
+
+`seed-simulated-db.ps1` stays PowerShell: seed on a Windows machine (inside the package folder, so the repo's own
+database is not involved) and copy `config/simulated.db` up. On a cloud box the advertised address is the public
+(static) one, never the private address the interface carries; open the same ports in the provider's firewall
+(the table above, the UDP range included) and leave 10077 closed.
+
+**Verified on the project's hosted box (3.143.65.100, 2 vCPU / 2 GB, 2026-09-19):** from outside, 10071, 10073, 10075 and
+10078 accept and 10077 does not; any datagram to 10070/udp is answered with the sender's public address and port;
+`Server.Test` completes the MAS handshake for app id 10472 against the public address; the four processes hold about
+335 MB resident between them; a reboot brings every listener back unattended. **Not yet verified there:** a SOCOM II
+client in the lobby, a round, the per-client 50000+ UDP sockets under two clients behind one NAT -- the plan's Task 6.
+
 Packaging this folder for the hosting machine: `bash scripts/make_server_zip.sh [out dir]` (default `dist/server`)
 writes `socom-unzipped-server/` and `socom-unzipped-server.zip` -- `horizon-server/` with its Release binaries (no
 `obj/`, no `bin/Debug/`), the empty `dme-plugins/`, `medius-plugins/`, `files/`, `logs/`, `config/` **without
 `simulated.db`** (the host seeds their own; `config/README.txt` in the zip says how), plus `start-servers.ps1`,
-`seed-simulated-db.ps1` and this README.
+`seed-simulated-db.ps1`, `linux/` and this README.
 
 **10077/TCP (MPS) does not need forwarding** as long as DME runs on the same machine as Medius: `dme.json` has
 `"MPS": { "Ip": "127.0.0.1" }`, so that connection never leaves the host. It only becomes an external port if DME

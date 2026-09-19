@@ -246,6 +246,51 @@ again / loads the saved options. The gate, with its prepared card, is unchanged.
 **Stop rule.** If the save flow uses an operation whose semantics cannot be settled from the game's calls and the two
 implementations in the tree, stop at the listing of what it asked for and file it.
 
+### Goal 12 — the hosted server, on a machine that exists (owner 2026-09-19; autonomous bar the owner's own match)
+
+The owner's words: "Lightsail 2GB. Setup a sprint to create the machine and bring the server online, making the required
+linux changes. [...] Validation is the public server available in this list of servers in the launcher, and a tested
+match starting (and hopefully a kill) on the server." This is Sprint 7's Goals 4 and 5, carried twice because no machine
+existed; the owner's AWS account (free plan, $78.46 of credit on 2026-09-19, plan expiry 2027-03-05) now pays for one.
+
+**What is known.** `server/` is Windows-only in its glue, not in its binaries: the four Horizon processes are
+framework-dependent `net9.0` assemblies that take the config directory as their one argument and resolve `logs/`,
+`files/`, the plugin folders and `simulated.db` from the working directory; `start-servers.ps1` (Get-NetTCPConnection,
+Start-Process, the `-PublicIp` rewrite of six fields) and `seed-simulated-db.ps1` are PowerShell. Nothing has run off the
+LAN; `server/README.md` names the NAT echo (10070/udp) and the per-client DME sockets (50000+/udp) as where a hosted
+bring-up bites first. The harness has one knob for the server (`SOCOM_SERVER_IP`, `scripts/parity/env.sh`) and the
+launcher's picker one placeholder (`UNZIPPED_SERVER_ADDRESS_TBC`).
+
+**Design.** One Lightsail instance: Ubuntu 24.04, the 2 GB / 2 vCPU bundle (~$12/month, IPv4 and 3 TB included; ~$66 to
+the plan's expiry, inside the credit), us-east-2, a static IP attached, the instance firewall open for 10071, 10075,
+10078, 10073/tcp, 10070/udp, 50000-50100/udp and 22/tcp from the owner's address only; 10077 (MPS) stays closed. On it:
+`dotnet-runtime-9.0`, the server folder under `/opt/socom-unzipped-server` owned by a `horizon` user, four systemd units
+(`horizon-nat`, `-muis`, `-medius`, `-dme`; DME `After=` Medius with a wait on 10077; `Restart=on-failure`;
+`WorkingDirectory=` the folder), journald for the consoles and logrotate for `logs/`. In the tree: `server/linux/` holds
+the units, `horizon-ctl.sh` (start/stop/status/show-ip/public-ip, the PowerShell script's verbs with the same six-field
+rewrite and the same refusal to write JSON that does not parse) and `install.sh`; `make_server_zip.sh` ships them. The
+database is seeded on Windows with the existing script and copied up (no PowerShell on the box); `simulated.db` is backed
+up by a nightly Lightsail snapshot. The launcher's *SOCOM Unzipped* preset takes the static IP (a DNS name later is a
+one-line change and the reason `-PublicIp` takes hostnames) and becomes the default. The machine's particulars -- the key,
+the address, the names, the door -- live where the VM's do: git-ignored under `vm/lightsail/`, with a memory note.
+
+**Bars.** (1) From outside AWS, every listed TCP port accepts and 10070/udp echoes; `horizon-ctl.sh status` shows five
+listeners and a reboot brings them back unattended. (2) The scripted client (`Server.Test`) completes the MAS handshake
+against the public address. (3) The launcher's list shows *SOCOM Unzipped (project server)* with the real address, under
+a test, and `--screenshot` shows it. (4) `online_match_ours` with `SOCOM_SERVER_IP=<the address>`: both instances reach
+the lobby, a game is created and joined, the round starts -- the bar; a kill registered on the hosted server -- the hope.
+Both clients sit behind the owner's one NAT, which is the hard case for the UDP path and is recorded as such. (5) The
+owner's own match from the launcher is a HUMAN_TASKS item.
+
+**Coordination.** Another session (socom-pc-d1) holds the misc-fixes work and the launcher redesign's uncommitted files
+in this checkout. Host launches stay one at a time under the loop lock; the two online launches are agreed with that
+session before they run, and the one-line preset change lands through whichever session owns `launcher_config.h` and
+`launcher_tests.cpp` at that moment. No commit stages a file the other session is editing.
+
+**Stop rule.** If the round does not start against the hosted server but does against the LAN server on the same exe,
+stop at the packet-level difference (the advertised address in each reply, the NAT echo's answer, which 50000+ sockets
+bound) and file it; do not tune the game. If the credit's burn rate exceeds $15/month, stop and tell the owner.
+
 ### Audio finding folded into Goal 4 (2026-09-19): the music fade
 
 The owner's "music issue re-occurred in the mission" was measured three ways the same day: missions do have music (210

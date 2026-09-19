@@ -1,0 +1,8 @@
+# SOCOM Unzipped hosted server: the four Horizon units as one thing. systemctl start|stop horizon.target
+[Unit]
+Description=Horizon Private Server stack for SOCOM II (NAT, MUIS, Medius, DME)
+Wants=horizon-nat.service horizon-muis.service horizon-medius.service horizon-dme.service
+After=network-online.target
+
+[Install]
+WantedBy=multi-user.target

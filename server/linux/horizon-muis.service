@@ -1,0 +1,24 @@
+# SOCOM Unzipped hosted server (Sprint 8 Goal 12): Horizon MUIS (universe information, 10071/tcp). Installed by linux/install.sh.
+# The servers resolve logs/, files/, the plugin folders and simulated.db from the working directory, and take
+# the config directory as their one argument. Console output goes to the journal: journalctl -u horizon-muis
+[Unit]
+Description=Horizon MUIS (universe information, 10071/tcp) (SOCOM II, app id 10472)
+After=network-online.target
+Wants=network-online.target
+PartOf=horizon.target
+
+[Service]
+User=horizon
+Group=horizon
+WorkingDirectory=/opt/socom-unzipped-server
+Environment=DOTNET_gcServer=0 DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+ExecStart=/usr/bin/dotnet /opt/socom-unzipped-server/horizon-server/Server.UniverseInformation/bin/Release/net9.0/Server.UniverseInformation.dll /opt/socom-unzipped-server/config
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=horizon.target
