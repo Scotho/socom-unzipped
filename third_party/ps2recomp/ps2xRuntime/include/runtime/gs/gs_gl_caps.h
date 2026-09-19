@@ -16,12 +16,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include "ps2x/exit_codes.h"
 
 namespace GsGlCaps
 {
-    // The process exit code that says "the game ran, but on the CPU rasterizer". The launcher maps
-    // it to a sentence the owner of the machine can act on.
-    constexpr int kExitCode = 65;
+    // The process exit code that says "the game ran, but on the CPU rasterizer". The number and its
+    // sentence live in ps2x/exit_codes.h; this name stays because ps2_runtime.cpp:2628 sets it.
+    constexpr int kExitCode = ExitCodes::kNoUsableGl;
+    static_assert(kExitCode == 65, "Sprint 7 Task 1a's code does not move");
 
     struct Report
     {

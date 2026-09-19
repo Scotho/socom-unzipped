@@ -1,4 +1,5 @@
 #include "launcher/launcher_config.h"
+#include "ps2x/exit_codes.h"
 
 #include <cctype>
 #include <cstdio>
@@ -311,11 +312,8 @@ namespace launcher
 
     std::string exitMessage(int exitCode)
     {
-        // Kept in step with GsGlCaps::kExitCode (ps2xRuntime/include/runtime/gs/gs_gl_caps.h); the
-        // launcher does not include the runtime's headers.
-        if (exitCode == 65)
-            return "Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer.";
-        return std::string();
+        // Sprint 9 Goal 1: the sentence lives in the one table the runner also reads (ps2x/exit_codes.h).
+        return ExitCodes::describe(exitCode);
     }
 
     std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)

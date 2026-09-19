@@ -581,7 +581,7 @@ target_include_directories(ps2_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/Kernel
 )
 
-target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop)
+target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_shared)
 if(UNIX AND NOT APPLE)
     # Sprint 8 Goal 1: dladdr (the crash handler and the sampler's module base), timer_create (glibc < 2.34 keeps it
     # in librt), pthreads -- on the library so the runner, the tests and the tools inherit them.

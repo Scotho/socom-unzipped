@@ -290,8 +290,8 @@ void register_launcher_tests()
             t.Equals(launcher::exitMessage(65),
                      std::string("Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."),
                      "65 (GsGlCaps::kExitCode) names the missing capability and what happened");
-            t.IsTrue(launcher::exitMessage(0).empty(), "a clean exit says nothing");
-            t.IsTrue(launcher::exitMessage(1).empty(), "a crash is the log's business, not this sentence");
+            t.Equals(launcher::exitMessage(0), std::string("The last run exited normally."), "a clean exit says so");
+            t.IsTrue(launcher::exitMessage(1).find("SAVE DIAGNOSTICS") != std::string::npos, "an unnamed failure points at the diagnostics (Sprint 9 Goal 1: no ending is silent)");
         });
 
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
