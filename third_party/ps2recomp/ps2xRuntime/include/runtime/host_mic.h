@@ -89,7 +89,7 @@ public:
     size_t read(int16_t *out, size_t frames);
     // PS2X_MIC_DUMP, Sprint 8 Goal 3 Task 1 Step 6: a TEE off the capture callback into a ring of its own, so
     // the dump and the game are not two consumers splitting one ring between them. Same knob, new mechanism.
-    void startDumpTee(const std::string &wavPath);
+    void startDumpTee(const std::string &pattern);
     void stopDumpTee();
     void stop();
     bool running() const { return m_running; }
@@ -118,8 +118,19 @@ HostMic *hostMic();
 // PS2X_MIC_FAKE fed in is what shows the game really took the microphone out of the ring, with no human
 // speaking (Sprint 8 Goal 3). The knob is read here, on the runtime side, so the IOP module stays free of
 // the environment. Inert, and free, when the variable is unset. Opened lazily, closed by stopHostMic().
-void hostMicGameReadDump(const int16_t *frames, size_t count);
+void hostMicGameReadDump(const int16_t *frames, size_t count, uint32_t rate);
 void hostMicGameReadDumpClose();
+
+// PS2X_MIC_DUMP_PLAYBACK=<file.wav>: what the game handed the headset through lgaud 0x09 Write -- the other
+// player's voice, already decoded and duplicated L/R by the game. The proof's third file: correlating it
+// against the same reference shows A's microphone reached B's headset (Sprint 8 Goal 3).
+void hostMicPlaybackDump(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels);
+void hostMicPlaybackDumpClose();
+
+// Two instances of the game share one environment, so one exported dump knob has to name two files. The
+// runtime does the one substitution the harness would otherwise have to learn: "{title}" in any of the three
+// dump paths becomes PS2X_WINDOW_TITLE (instance B runs with SOCOM-B; instance A sets none and is "A").
+std::string hostMicDumpPath(const std::string &pattern);
 
 // PS2X_MIC_FAKE / PS2X_MIC_DEVICE / PS2X_MIC_DUMP, read once at start-up. Does nothing at all when neither
 // PS2X_MIC_FAKE nor PS2X_MIC_DEVICE is set -- which is the default, and what the gate runs with.

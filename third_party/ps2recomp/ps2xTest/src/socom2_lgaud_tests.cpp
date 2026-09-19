@@ -31,6 +31,25 @@ namespace
         bool micOn = false;
         std::vector<std::string> logs;
 
+        // What the module served to 0x08, at the rate lgAudOpen asked for, and what it was handed for 0x09.
+        std::vector<int16_t> gameRead;
+        uint32_t gameReadRate = 0u;
+        std::vector<uint8_t> playback;
+        uint32_t playbackRate = 0u;
+        uint8_t playbackChannels = 0u;
+
+        void micGameRead(const int16_t *frames, size_t count, uint32_t rate) override
+        {
+            gameRead.insert(gameRead.end(), frames, frames + count);
+            gameReadRate = rate;
+        }
+        void micPlaybackWrite(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels) override
+        {
+            playback.insert(playback.end(), pcm, pcm + bytes);
+            playbackRate = rate;
+            playbackChannels = channels;
+        }
+
         [[nodiscard]] bool micAvailable() const override { return micOn; }
         size_t micRead(int16_t *out, size_t frames) override
         {
@@ -108,6 +127,26 @@ namespace
         uint32_t m_nextAlloc = 0x4000u;
     };
 
+    // The EE side of the state word, transcribed from the listing: EVERY lgaud client call merges the
+    // reply's +0x04 into DAT_003dcfb8 as `DAT_003dcfb8 = DAT_003dcfb8 & ~2 | reply[+4]`
+    // (decomp :90991, :91037, :91067, :91108, ... and :91760 for the async EnumHint), the async end
+    // function FUN_00245568 then writes the merged word into the voice object's +0x44 (:91762) and clears
+    // the latch only when it is EXACTLY 1 (:91761-91764). lgAudGetState (FUN_00243be8, :90921-90924) reads
+    // it with the same rule and no RPC.
+    struct EeStateWord
+    {
+        uint32_t latch = 0u;                       // DAT_003dcfb8, zero before the first call
+
+        uint32_t merge(uint32_t replyState)
+        {
+            latch = (latch & 0xfffffffdu) | replyState;
+            const uint32_t observed = latch;       // what lands in the voice object's +0x44
+            if (latch == 1u)
+                latch = 0u;
+            return observed;
+        }
+    };
+
     struct LgAudHarness
     {
         static constexpr uint32_t kSid = 0x50494c42u;      // 'BLIP'
@@ -135,6 +174,8 @@ namespace
             (void)host.readGuest(kBuf + off, &v, sizeof(v));
             return v;
         }
+        // The reply's state word fed through the EE's merge, i.e. what the game would see at voice+0x44.
+        uint32_t merged(EeStateWord &ee) const { return ee.merge(word(0x04)); }
         uint8_t byte(uint32_t off) const
         {
             uint8_t v = 0u;
@@ -238,15 +279,107 @@ void register_socom2_lgaud_tests()
             t.Equals(static_cast<int>(sample), 1234, "and the payload is the microphone's, not the send block's");
         });
 
-        tc.Run("EnumHint says changed once and present thereafter", [](TestCase &t)
+        tc.Run("the merged state word passes through exactly 1 once, which is what makes the game open", [](TestCase &t)
         {
+            // The per-frame voice tick FUN_0030ec10 polls 0x0f while voice+0x44 != 1 (:211016) and opens the
+            // device -- Enumerate(0) then lgAudOpen, FUN_0030fef0 :211683-211695 -- only when it finds
+            // +0x44 == 1 (:211024), after which it writes 2 there itself (:211025-211028). So the module's
+            // job is to make the MERGED word read exactly 1 once after a device appears, and never again:
+            // 1 twice is an open every frame, 1 never is the 30x-0x0f / 0x-0x02 signature of s8_voice_read.
+            LgAudHarness h;
+            EeStateWord ee;
+            h.host.micOn = true;
+
+            (void)h.call(0x10, 0x20u, 0x30u);
+            t.Equals(h.merged(ee), 0u, "lgAudInit leaves the latch alone");
+            h.put32(0x08, 0u);
+            (void)h.call(0x01, 0x20u, 0x170u);
+            const uint32_t afterEnumerate = h.merged(ee);
+            t.IsTrue(afterEnumerate != 1u, "Enumerate alone must not trigger the rescan");
+
+            (void)h.call(0x0f, 0x20u, 0x20u);
+            t.Equals(h.merged(ee), 1u, "the first hint after a device appears merges to exactly 1");
+
+            // Everything after it -- more hints, and the Open/gain calls the tick makes on the way through,
+            // each of which merges its own reply state (:91037, :91498, :91527) -- must never read 1 again.
+            const uint32_t handle = h.openAt(8000u);
+            t.IsTrue(handle != 0u, "the device opens at the voice path's own 8000 Hz");
+            for (int i = 0; i < 64; ++i)
+            {
+                (void)h.call(0x0f, 0x20u, 0x20u);
+                const uint32_t m = h.merged(ee);
+                t.IsTrue(m != 1u, "a steady hint never re-triggers the open");
+                t.Equals(m, 2u, "and settles on 2, the value the tick writes to +0x44 itself (:211025)");
+            }
+        });
+
+        tc.Run("the voice path's own openparam: mode 3, 8000 Hz record and playback (decomp :211843-211852)", [](TestCase &t)
+        {
+            // FUN_00310080's defaults, never overwritten on the voice path: record 1ch/16bit/8000/2000 and
+            // playback 2ch/16bit/8000/2000, Mode 3 (FUN_0030fef0 :211683). 11025 is the TUNER path's
+            // openparam (FUN_001e7f98 :48336-48342), not this one -- the module must honour whatever it is
+            // sent rather than assume either.
             LgAudHarness h;
             h.host.micOn = true;
-            (void)h.call(0x0f, 0x20u, 0x20u);
-            t.Equals(h.word(0x04), 3u, "first hint: present (2) + changed (1), decomp :91757");
-            for (int i = 0; i < 5; ++i)
+            h.host.micFrames.resize(16000);
+            for (size_t i = 0; i < h.host.micFrames.size(); ++i)
+                h.host.micFrames[i] = static_cast<int16_t>((i % 211) * 140 - 14000);
+
+            h.put32(0x08, 0u);
+            (void)h.call(0x01, 0x20u, 0x170u);
+            h.put32(0x08, 0u);
+            h.put8(0x20, 3u);          // Mode 3: capture AND playback
+            h.put8(0x22, 1u);          // record channels
+            h.put8(0x23, 0x10u);       // record bits
+            h.put16(0x24, 8000u);      // record rate
+            h.put16(0x26, 2000u);      // record latency
+            h.put8(0x28, 2u);          // playback channels
+            h.put8(0x29, 0x10u);       // playback bits
+            h.put16(0x2a, 8000u);      // playback rate
+            h.put16(0x2c, 2000u);      // playback latency
+            t.Equals(h.call(0x02, 0x30u, 0x20u), 0u, "Open succeeds at the voice path's own format");
+            const uint32_t handle = h.word(0x0c);
+            h.put32(0x0c, handle);
+            t.Equals(h.call(0x04, 0x20u, 0x20u), 0u, "StartRecording succeeds");
+
+            h.put32(0x0c, handle);
+            h.put8(0x12, 1u);
+            h.put32(0x20, 0x500u);
+            t.Equals(h.call(0x08, 0x30u, 0x530u), 0u, "Read succeeds");
+            const uint32_t served = h.word(0x20);
+            t.IsTrue(served > 0u, "and serves bytes");
+            t.Equals(h.host.gameRead.size(), size_t(served / 2u), "the host was handed exactly what was served");
+            t.Equals(h.host.gameReadRate, 8000u, "at the rate lgAudOpen asked for, not the ring's 16000");
+            // 640 output frames at 8000 Hz cost exactly 2x that many at the ring's 16 kHz: the resample
+            // really happened, and micFramesNeeded asked for neither more nor less than it could use.
+            t.Equals(h.host.micCursor, size_t(served / 2u) * 2u, "two input frames per output frame, 16k -> 8k");
+
+            // 0x09 Write: the playback half, decoded PCM on its way to the headset (:211380).
+            std::vector<uint8_t> pcm(0x200);
+            for (size_t i = 0; i < pcm.size(); ++i)
+                pcm[i] = static_cast<uint8_t>(i & 0xFFu);
+            h.put32(0x0c, handle);
+            h.put8(0x12, 1u);
+            h.put32(0x20, static_cast<uint32_t>(pcm.size()));
+            for (size_t i = 0; i < pcm.size(); ++i)
+                h.put8(static_cast<uint32_t>(0x30u + i), pcm[i]);
+            t.Equals(h.call(0x09, 0x230u, 0x30u), 0u, "Write is accepted");
+            t.Equals(h.host.playback.size(), pcm.size(), "and the payload reaches the host");
+            t.Equals(uint32_t(h.host.playback[7]), 7u, "byte for byte");
+            t.Equals(h.host.playbackRate, 8000u, "at the playback rate from openparam +0x0a");
+            t.Equals(uint32_t(h.host.playbackChannels), 2u, "and its channel count from openparam +0x08");
+        });
+
+        tc.Run("with no device the merged state word never reaches 1, so the tick never opens", [](TestCase &t)
+        {
+            LgAudHarness h;
+            EeStateWord ee;
+            h.host.micOn = false;
+            for (int i = 0; i < 16; ++i)
+            {
                 (void)h.call(0x0f, 0x20u, 0x20u);
-            t.Equals(h.word(0x04), 2u, "and steady at present, so the game stops re-enumerating");
+                t.Equals(h.merged(ee), 0u, "no device: no change event, no rescan, no open");
+            }
         });
 
         tc.Run("Open refuses a format we cannot serve, and never with a half-open handle", [](TestCase &t)

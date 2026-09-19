@@ -2981,6 +2981,10 @@ def control_round(clients, log, clock=time.time, wait=time.sleep, cap_s=CONTROL_
     i, end = 0, None
     log(f"CONTROL-ROUND start: strafe legs {CONTROL_ROUND_LEG_S}s alternating {'/'.join(tags)}, "
         f"no buttons, cap {cap_s:g}s")
+    # Sprint 8 Goal 3 Task 4 Step B: anchor the PTT probe here, so `start=+N` in SOCOM_PAD_OVERLAY counts
+    # from the moment BOTH players are controllable rather than from some pad write during the menus.
+    # A no-op when the knob is unset, so the control round is otherwise unchanged.
+    L.set_overlay_epoch(time.time())
     while clock() - t0 < cap_s:
         tag = tags[i % len(tags)]
         left = ((i // len(tags)) % 2 == 0) != flipped[tag]

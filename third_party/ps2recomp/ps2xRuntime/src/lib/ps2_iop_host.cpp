@@ -302,11 +302,21 @@ size_t PS2IopHostAdapter::micRead(int16_t *out, size_t frames)
     HostMic *mic = hostMic();
     if (mic == nullptr)
         return 0u;
-    const size_t got = mic->read(out, frames);
-    // PS2X_MIC_GAMEREAD_DUMP: exactly the frames the headset module was handed for lgaud 0x08, and nothing
-    // the dump tee wrote -- this is the file the >= 0.95 correlation against the fake source is run on.
-    hostMicGameReadDump(out, got);
-    return got;
+    return mic->read(out, frames);
+}
+
+// PS2X_MIC_GAMEREAD_DUMP: exactly the frames the module SERVED to lgaud 0x08, after the resample, so the
+// file's rate is the rate the game opened with and it can be correlated against the reference directly.
+void PS2IopHostAdapter::micGameRead(const int16_t *frames, size_t count, uint32_t rate)
+{
+    hostMicGameReadDump(frames, count, rate);
+}
+
+// PS2X_MIC_DUMP_PLAYBACK: what the other player's voice looked like by the time it reached the headset --
+// already Nellymoser-decoded and duplicated L/R by the game (:211305-211380).
+void PS2IopHostAdapter::micPlaybackWrite(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels)
+{
+    hostMicPlaybackDump(pcm, bytes, rate, channels);
 }
 
 std::string PS2IopHostAdapter::hostPath(ps2x::iop::HostPathKind kind) const

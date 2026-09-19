@@ -125,6 +125,129 @@ def pad_axes(sticks=(), axes=None):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Sprint 8 Goal 3 Task 4 Step B: the PTT probe, as an overlay on every pad write rather than a feature of
+# the match driver. SOCOM II's talk button is logical action 0xb (decomp :84210), and which PHYSICAL button
+# that is cannot be read statically -- the map is the runtime preset table DAT_004415a8+0x12 (FUN_002c64e0
+# :166675). So the probe holds each candidate in turn during ordinary gameplay and the run log says which
+# hold produced lgAudStartRecording.
+#
+# It is an overlay because the control round rewrites the pad file every strafe leg (0.5-0.9 s): OR-ing the
+# schedule's current button into whatever the driver is writing keeps it effectively held across legs, and
+# the runtime latches everything it sees between polls (socom2_host_input.cpp: "Buttons are OR-ed").
+#
+# SOCOM_PAD_OVERLAY="start=+150;hold=3.0;gap=2.0;buttons=L3:0x0002,R3:0x0004,..."
+#   start   "+<seconds>" = that many seconds after the first pad write (or after set_overlay_epoch), or a
+#           bare unix time. hold/gap in seconds. buttons: NAME:mask pairs, held in the order given, once.
+# Unset, every byte written is exactly what it is today.
+#
+# The bit order is the PS2 pad's, verified against PAD_BUTTON above and the runtime's own enum
+# (third_party/ps2recomp/ps2xRuntime/src/lib/socom2_host_input.h:38-41): SELECT=0 L3=1 R3=2 START=3
+# UP=4 RIGHT=5 DOWN=6 LEFT=7 L2=8 R2=9 L1=10 R1=11 TRIANGLE=12 CIRCLE=13 CROSS=14 SQUARE=15.
+# START, SELECT and the face buttons go LAST in a probe list: they open menus and the scoreboard, which
+# would wreck the round before the useful candidates were tried.
+
+PAD_OVERLAY_ENV = "SOCOM_PAD_OVERLAY"
+
+
+def parse_pad_overlay(spec):
+    """"start=+150;hold=3;gap=2;buttons=L3:0x0002,R3:0x0004" -> schedule dict, or None when empty/unset.
+
+    Raises ValueError on a malformed spec: a probe that silently held nothing would read as "no button
+    starts recording", which is the one conclusion this experiment must never reach by accident."""
+    if not spec or not spec.strip():
+        return None
+    fields = {}
+    for part in spec.split(";"):
+        part = part.strip()
+        if not part:
+            continue
+        if "=" not in part:
+            raise ValueError(f"{PAD_OVERLAY_ENV}: {part!r} is not key=value")
+        key, value = part.split("=", 1)
+        fields[key.strip()] = value.strip()
+    if "buttons" not in fields:
+        raise ValueError(f"{PAD_OVERLAY_ENV}: no buttons=")
+    buttons = []
+    for pair in fields["buttons"].split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if ":" not in pair:
+            raise ValueError(f"{PAD_OVERLAY_ENV}: button {pair!r} is not NAME:mask")
+        name, mask = pair.split(":", 1)
+        buttons.append((name.strip(), int(mask, 0)))
+    if not buttons:
+        raise ValueError(f"{PAD_OVERLAY_ENV}: buttons= is empty")
+    start = fields.get("start", "+0")
+    relative = start.startswith("+")
+    return {"buttons": buttons,
+            "hold": float(fields.get("hold", 3.0)),
+            "gap": float(fields.get("gap", 2.0)),
+            "relative": relative,
+            "start": float(start[1:] if relative else start),
+            "epoch": None}
+
+
+def pad_overlay_mask(now, schedule):
+    """(mask, name) for `now`. Pure: no clock, no file, no state. (0, None) outside every hold."""
+    if not schedule or schedule.get("epoch") is None:
+        return 0, None
+    begin = schedule["epoch"] + schedule["start"] if schedule["relative"] else schedule["start"]
+    step = schedule["hold"] + schedule["gap"]
+    offset = now - begin
+    if offset < 0 or step <= 0:
+        return 0, None
+    index = int(offset // step)
+    if index >= len(schedule["buttons"]):
+        return 0, None                      # the list ran out: never press anything again
+    if offset - index * step >= schedule["hold"]:
+        return 0, None                      # inside the gap
+    name, mask = schedule["buttons"][index]
+    return mask, name
+
+
+def set_overlay_epoch(when):
+    """Anchor a relative `start=+N` to `when` (a unix time). Called once, from the round's own start."""
+    if _OVERLAY is not None and _OVERLAY.get("epoch") is None:
+        _OVERLAY["epoch"] = when
+        print(f"[ptt] overlay armed: epoch={when:.3f} start=+{_OVERLAY['start']}s "
+              f"hold={_OVERLAY['hold']}s gap={_OVERLAY['gap']}s "
+              f"buttons={','.join(n for n, _ in _OVERLAY['buttons'])}", flush=True)
+
+
+try:
+    _OVERLAY = parse_pad_overlay(os.environ.get(PAD_OVERLAY_ENV, ""))
+except ValueError as exc:
+    raise SystemExit(f"[ptt] {exc}")
+_OVERLAY_LAST = [None]
+
+
+def _overlay_for(path):
+    """The overlay applies to instance A only -- B is the listener, and a button held on both sides would
+    make "who started recording" unreadable. A's pad file is logs/pad_A.txt (INSTANCES above)."""
+    if _OVERLAY is None:
+        return 0, None
+    if "pad_a" not in os.path.basename(str(path)).lower():
+        return 0, None
+    if _OVERLAY.get("epoch") is None:
+        # NEVER arm on the first pad write. The driver writes the pad all through the menus -- the on-screen
+        # keyboard the login types on is driven by the same file -- and a button held there wrecks the login
+        # before gameplay is ever reached (s8_voice_round2, LOBBY-FAIL login:keyboard-typing). The epoch is
+        # set once, from the control round's own start, when both players are controllable.
+        return 0, None
+    now = time.time()
+    mask, name = pad_overlay_mask(now, _OVERLAY)
+    if name != _OVERLAY_LAST[0]:
+        _OVERLAY_LAST[0] = name
+        elapsed = now - _OVERLAY["epoch"]
+        if name is None:
+            print(f"[ptt] t={elapsed:.2f} released", flush=True)
+        else:
+            print(f"[ptt] t={elapsed:.2f} holding {name} mask=0x{mask:04x}", flush=True)
+    return mask, name
+
+
 def write_pad_file(path, buttons=(), axes=None):
     """Write the injected pad state atomically (tmp + replace); buttons by name, axes {rx,ry,lx,ly}."""
     a = {"rx": 0x80, "ry": 0x80, "lx": 0x80, "ly": 0x80}
@@ -132,6 +255,10 @@ def write_pad_file(path, buttons=(), axes=None):
     mask = 0
     for b in buttons:
         mask |= 1 << PAD_BUTTON[b.upper()]
+    # Sprint 8 Goal 3 Task 4 Step B: the PTT probe's current candidate, OR-ed into whatever the driver is
+    # writing. With SOCOM_PAD_OVERLAY unset this adds 0 and the bytes below are identical to today's.
+    overlay, _overlay_name = _overlay_for(path)
+    mask |= overlay
     tmp = path + ".tmp"
     with open(tmp, "w") as f:
         f.write(f"b={mask:04x} rx={a['rx']} ry={a['ry']} lx={a['lx']} ly={a['ly']}" + chr(10))
