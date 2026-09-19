@@ -156,6 +156,27 @@ drives both windows at once.**
   set yet. Which cues (move, select, back, error) and their level are part of the pass; raylib's audio is already in
   the launcher, so nothing new is vendored.
 
+- **The mouse leaves; the keyboard stays, narrowed** (owner 2026-09-20): "remove mouse options from the launcher
+  entirely, but permanently persist keyboard support but ONLY for menu navigation and typing on the keyboard in the
+  game." The whole mouse surface, located: the CONTROLLER page's "Mouse look" toggle and "MOUSE SENSITIVITY" slider
+  (`ui/page_controller.cpp:15`, `:72-78`), their focus nodes (`ui/focus.cpp:151`, and the graph's down/up chain), the
+  two config fields (`launcher/launcher_config.h:39-40`), their JSON both ways (`launcher_config.cpp:202-205`,
+  `:284-291`), the two environment variables they set (`:439-445` — `PS2X_SOCOM2_MOUSE`, `PS2X_SOCOM2_MOUSE_SENS`),
+  and the tests that assert all of it (`ps2xTest/src/launcher_tests.cpp:229`, `:238`, `:264`, `:567-569`). A config
+  file that still holds the old keys must load without complaint (they are simply ignored), so the round-trip test
+  gains a case rather than losing one.
+- **The keyboard's narrowing needs a decision before it is coded, because the harness plays the game with it.** Today
+  the keyboard is always on and mapped to the whole pad — WASD/arrows to the sticks, ZXCV to the face buttons, Enter
+  to START (`ps2xRuntime/src/lib/socom2_host_input.cpp:234`, `:304-414`) — and the driven runs that produce every
+  gate, ladder and control-round result post exactly those keystrokes into the window. "Keyboard for menu navigation
+  and typing only" therefore means one of: (a) the gameplay mapping stays but becomes harness-only, behind the
+  scripted-input path that already exists, so players get menus and text and the gate keeps its instrument; or (b) it
+  is removed for everyone and the harness moves to the pad path first, which is a Sprint-sized change to prove. **(a)
+  unless the owner says otherwise** — record it as a ruling with this cost written down, and do not silently break the
+  instrument the project measures itself with.
+- **Relay to the site session** (`../scotho`, `sites/s2u`): the s2u.scotho.com page advertises keyboard/mouse support;
+  the owner wants that claim removed. Not this repository's file — passed on, and recorded here so it is not lost.
+
 **Bar:** the pad-focus defect proven with the game running (the launcher's own `--screenshot` proof cannot show it —
 it needs a driven launch and a pad); the two alignment fixes asserted in the top-bar tests, not eyeballed; every new
 string through the same theme and focus model as Sprint 8 Goal 9. **Owner checks:** the guide-button toggle on their
