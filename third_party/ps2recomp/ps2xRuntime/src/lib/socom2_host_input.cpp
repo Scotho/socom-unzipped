@@ -282,13 +282,10 @@ namespace ps2_stubs
         Socom2PadState next;
 
         // Keyboard.
-        static const struct { int key; uint8_t button; } kKeys[] = {
-            {KEY_ENTER, kPadStart}, {KEY_BACKSPACE, kPadSelect},
-            {KEY_UP, kPadUp}, {KEY_RIGHT, kPadRight}, {KEY_DOWN, kPadDown}, {KEY_LEFT, kPadLeft},
-            {KEY_Z, kPadSquare}, {KEY_X, kPadCross}, {KEY_SPACE, kPadCross}, {KEY_C, kPadCircle}, {KEY_V, kPadTriangle},
-            {KEY_Q, kPadL1}, {KEY_E, kPadR1}, {KEY_ONE, kPadL2}, {KEY_THREE, kPadR2}, {KEY_TWO, kPadL3}, {KEY_FOUR, kPadR3},
-        };
-        for (const auto &entry : kKeys)
+        static_assert(KEY_ENTER == 257 && KEY_ESCAPE == 256 && KEY_BACKSPACE == 259 && KEY_UP == 265 && KEY_RIGHT == 262 &&
+                      KEY_DOWN == 264 && KEY_LEFT == 263 && KEY_SPACE == 32 && KEY_Z == 'Z' && KEY_ONE == '1',
+                      "kSocom2Keys (socom2_host_input.h) is written in raylib's key codes");
+        for (const auto &entry : kSocom2Keys)
         {
             if (IsKeyDown(entry.key))
                 next.button[entry.button] = 1u;

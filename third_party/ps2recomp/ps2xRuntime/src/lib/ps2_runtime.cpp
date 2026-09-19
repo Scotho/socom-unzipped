@@ -765,6 +765,10 @@ bool PS2Runtime::initialize(const char *title)
         // the parity gate depends on.
         const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
         InitWindow(windowSize.width, windowSize.height, title);
+        // Owner 2026-09-20: Escape must not close the game. raylib's default exit key is KEY_ESCAPE, which made
+        // WindowShouldClose() true on a key a PC player presses by reflex; the window's own close button and
+        // Alt+F4 still end the run (the launcher already does the same, ps2xLauncher/src/main.cpp).
+        SetExitKey(KEY_NULL);
         if (windowSize.borderless)
             SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
         if (windowSize.set)

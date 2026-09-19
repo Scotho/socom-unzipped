@@ -44,6 +44,16 @@ namespace ps2_stubs
         kPadTriangle = 12, kPadCircle = 13, kPadCross = 14, kPadSquare = 15,
     };
 
+    // The keyboard map, as data so a test can read it. Key codes are raylib's (== GLFW's), written as numbers so this
+    // header stays free of raylib; socom2_host_input.cpp static_asserts them against raylib's enum.
+    struct Socom2KeyBinding { int key; uint8_t button; };
+    inline constexpr Socom2KeyBinding kSocom2Keys[] = {
+        {257, kPadStart}, {256, kPadStart}, {259, kPadSelect},                      // Enter, Escape (owner 2026-09-20: the pause a PC player expects), Backspace
+        {265, kPadUp}, {262, kPadRight}, {264, kPadDown}, {263, kPadLeft},            // arrows
+        {'Z', kPadSquare}, {'X', kPadCross}, {32, kPadCross}, {'C', kPadCircle}, {'V', kPadTriangle},
+        {'Q', kPadL1}, {'E', kPadR1}, {'1', kPadL2}, {'3', kPadR2}, {'2', kPadL3}, {'4', kPadR3},
+    };
+
     // Pressure field order (ids 0x14..0x1f) -> digital button id.
     inline constexpr uint8_t kSocom2PressureButton[12] = {
         kPadRight, kPadLeft, kPadUp, kPadDown, kPadTriangle, kPadCircle,

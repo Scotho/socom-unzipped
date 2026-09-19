@@ -682,6 +682,20 @@ void register_pad_input_tests()
             t.IsTrue(crouchShortcutFromEnv("L3") == CrouchShortcut::Off, "the launcher writes lower case; nothing else is accepted");
         });
 
+        // Owner 2026-09-20: Escape no longer closes the game (SetExitKey(KEY_NULL)); it is Start, the pause a PC
+        // player expects from that key. Enter stays Start as well.
+        tc.Run("the keyboard map: Escape and Enter are both Start, and every PS2 button has a key", [](TestCase &t)
+        {
+            using namespace ps2_stubs;
+            auto buttonsFor = [](int key) { std::vector<int> out; for (const auto &k : kSocom2Keys) if (k.key == key) out.push_back(k.button); return out; };
+            t.IsTrue(buttonsFor(256) == std::vector<int>{kPadStart}, "Escape (256) is Start");
+            t.IsTrue(buttonsFor(257) == std::vector<int>{kPadStart}, "Enter (257) is still Start");
+            t.IsTrue(buttonsFor(259) == std::vector<int>{kPadSelect}, "Backspace is Select");
+            bool seen[16] = {};
+            for (const auto &k : kSocom2Keys) { t.IsTrue(k.button < 16, "a button index is in range"); if (k.button < 16) seen[k.button] = true; }
+            for (int i = 0; i < 16; ++i) t.IsTrue(seen[i], "PS2 button " + std::to_string(i) + " is reachable from the keyboard");
+        });
+
         tc.Run("off is today's pad, for every button and with or without the touchpad", [](TestCase &t)
         {
             for (int id = 0; id < 16; ++id)
