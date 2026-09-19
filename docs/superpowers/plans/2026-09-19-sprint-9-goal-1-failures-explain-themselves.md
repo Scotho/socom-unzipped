@@ -142,9 +142,9 @@ Anything else: `The game closed with code <n>. Press SAVE DIAGNOSTICS to collect
 
 **Steps:**
 
-- [ ] **Step 1: Record the baselines.** `bash scripts/check_quiet_gate.sh`, then `./build.sh test` under the loop lock (command set). Write `B = <Total Tests>` and `P = <Ran N tests>` into the ledger. Expected: `Failed: 0`, `OK`.
+- [x] **Step 1: Record the baselines.** `bash scripts/check_quiet_gate.sh`, then `./build.sh test` under the loop lock (command set). Write `B = <Total Tests>` and `P = <Ran N tests>` into the ledger. Expected: `Failed: 0`, `OK`.
 
-- [ ] **Step 2: Move the six files.**
+- [x] **Step 2: Move the six files.**
 
 ```bash
 cd third_party/ps2recomp
@@ -157,7 +157,7 @@ git mv ps2xLauncher/src/sha256.cpp          ps2xShared/src/sha256.cpp
 git mv ps2xLauncher/src/launcher_config.cpp ps2xShared/src/launcher_config.cpp
 ```
 
-- [ ] **Step 3: Write `ps2xShared/CMakeLists.txt`.**
+- [x] **Step 3: Write `ps2xShared/CMakeLists.txt`.**
 
 ```cmake
 # Sprint 9 Goal 1: what the runner (socom2) and the launcher both need, and nothing either of them owns.
@@ -175,14 +175,14 @@ target_compile_features(ps2x_shared PUBLIC cxx_std_20)
 set_target_properties(ps2x_shared PROPERTIES POSITION_INDEPENDENT_CODE ON)
 ```
 
-- [ ] **Step 4: Add it to the top-level `CMakeLists.txt`**, unconditionally, immediately **above** the block that reads `if(PS2X_BUILD_RUNTIME)` / `add_subdirectory("ps2xIOP")` (so the target exists when `ps2xRuntime` is configured):
+- [x] **Step 4: Add it to the top-level `CMakeLists.txt`**, unconditionally, immediately **above** the block that reads `if(PS2X_BUILD_RUNTIME)` / `add_subdirectory("ps2xIOP")` (so the target exists when `ps2xRuntime` is configured):
 
 ```cmake
 # Sprint 9 Goal 1: shared by the runner and the launcher; depends on nothing in this tree.
 add_subdirectory("ps2xShared")
 ```
 
-- [ ] **Step 5: `ps2xLauncher/CMakeLists.txt`.** Replace the `add_library(ps2x_launcher_core STATIC …)` source list (lines 6-12) so the three moved files are gone, and link the new library PUBLIC directly under `target_compile_features(ps2x_launcher_core PUBLIC cxx_std_20)`:
+- [x] **Step 5: `ps2xLauncher/CMakeLists.txt`.** Replace the `add_library(ps2x_launcher_core STATIC …)` source list (lines 6-12) so the three moved files are gone, and link the new library PUBLIC directly under `target_compile_features(ps2x_launcher_core PUBLIC cxx_std_20)`:
 
 ```cmake
 add_library(ps2x_launcher_core STATIC
@@ -198,7 +198,7 @@ target_link_libraries(ps2x_launcher_core PUBLIC ps2x_shared)
 
 Also correct the comment on lines 2-3 of that file: `ps2x_launcher_core` now holds the pure UI logic (focus, pad geometry); the ISO 9660 lookup, SHA-256, `config.json` and the environment live in `ps2x_shared`.
 
-- [ ] **Step 6: No RED exists for a move; the proof is that nothing changed.** Build and run:
+- [x] **Step 6: No RED exists for a move; the proof is that nothing changed.** Build and run:
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests socom_unzipped_launcher -j 8
@@ -207,7 +207,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2x_tests socom_unzipp
 
 Expected: `Total Tests: B`, `Failed: 0`. Then `git -C . status --short third_party/ps2recomp | grep '^R'` lists exactly six renames, and `grep -rn "ps2xLauncher/src/launcher_config\|ps2xLauncher/include/launcher/launcher_config" --include=CMakeLists.txt --include=*.cmake --include=*.sh --include=*.py --include=*.yml .` prints nothing (no script names the old paths; verified when this plan was written).
 
-- [ ] **Step 7: `./build.sh test` exit 0, then commit.**
+- [x] **Step 7: `./build.sh test` exit 0, then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/CMakeLists.txt
