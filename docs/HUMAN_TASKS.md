@@ -116,8 +116,10 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   fraction of a second is no longer thrown away either. Play the same mission (M51) with the pad, through the in-game
   cutscene if you can: report whether cue changes now fade, and anything at the cutscene (a dropout or distortion while the
   movie plays over music is the one case no measurement covers yet). Then the save: pick the difficulty that asks to save and
-  accept -- the card is the folder `cards/<your profile>/` beside the launcher; it should save without complaint and not ask
-  again next time. One line each.
+  accept -- after YES the game asks "Select MEMORY CARD slot": take slot 1 (the second slot is empty by design). The card is the
+  folder `cards/<your profile>/` beside the launcher; it should save without complaint and not ask again next time. A driven
+  run already did exactly this on a fresh card (12 files, 3 MB written; a second launch read them back with no prompt). One
+  line each.
 - [ ] **Re-listen after the sound fixes** (Sprint 7 Task 12; your report of 2026-09-18 01:52: "sound is off on the online menu just after
   signing in, skips and almost plays two different spliced segments"; "a persistent buzz during the create game playlist, also in
   the lobby"; "mid mission, sound stopped working altogether"). What was found and fixed, each under a test: the buzz and the
