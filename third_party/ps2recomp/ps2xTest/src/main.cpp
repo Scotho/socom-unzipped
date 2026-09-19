@@ -29,6 +29,7 @@ void register_launcher_tests();
 void register_exit_codes_tests();
 void register_preflight_tests();
 void register_bare_run_tests();
+void register_zip_store_tests();
 void reset_ps2_test_function_table();
 
 namespace
@@ -100,6 +101,7 @@ int main()
     register_exit_codes_tests();
     register_preflight_tests();
     register_bare_run_tests();
+    register_zip_store_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();
