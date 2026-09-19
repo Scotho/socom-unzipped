@@ -594,6 +594,30 @@ void register_launcher_tests()
             t.Equals(g.move("rail.play", ui::Dir::Up), std::string("rail.play"), "the top of the rail stays put");
             t.Equals(g.move("rail.about", ui::Dir::Down), std::string("rail.about"), "and so does the bottom");
 
+            // Sprint 9 Goal 8: REPORT A BUG sits after ONLINE and before ABOUT, and is a column of the site's
+            // own fields -- TITLE, WHAT HAPPENED, CONTACT (OPTIONAL), the log checkbox, SEND REPORT.
+            t.Equals(ui::kPageCount, 9, "nine pages");
+            t.Equals(std::string(ui::pageName(ui::Page::Report)), std::string("REPORT A BUG"), "the rail's label");
+            t.Equals(ui::pageSlug(ui::Page::Report), std::string("report"), "the page's short name: screenshots and ids");
+            t.Equals(ui::pageSlug(ui::Page::Play), std::string("play"), "as every other page's already was");
+            t.Equals(g.move("rail.online", ui::Dir::Down), std::string("rail.report"), "below ONLINE");
+            t.Equals(g.move("rail.report", ui::Dir::Down), std::string("rail.about"), "above ABOUT");
+            t.Equals(g.move("rail.report", ui::Dir::Right), std::string("report.title"), "the rail opens onto TITLE");
+            t.Equals(g.move("report.title", ui::Dir::Down), std::string("report.description"), "then WHAT HAPPENED");
+            t.Equals(g.move("report.description", ui::Dir::Down), std::string("report.contact"), "then CONTACT");
+            t.Equals(g.move("report.contact", ui::Dir::Down), std::string("report.attach"), "then the log checkbox");
+            t.Equals(g.move("report.attach", ui::Dir::Down), std::string("report.send"), "then SEND REPORT");
+            t.Equals(g.move("report.send", ui::Dir::Up), std::string("report.attach"), "and back up");
+            t.Equals(g.move("report.send", ui::Dir::Down), std::string("bar.launch.report"), "the bar's LAUNCH is under it");
+            t.Equals(g.move("report.title", ui::Dir::Left), std::string("rail.report"), "left goes back to the rail");
+            t.IsTrue(!ui::adjustsHorizontally("report.description"), "a text field is not a slider");
+            {
+                const ui::Node *what = g.find("report.description");
+                const ui::Node *title = g.find("report.title");
+                t.IsTrue(what != nullptr && title != nullptr && what->r.h >= title->r.h * 2.5f,
+                         "WHAT HAPPENED has room for several lines");
+            }
+
             // Nothing is stranded: from its rail entry, every control on every page is reachable by moving.
             for (int i = 0; i < ui::kPageCount; ++i)
             {

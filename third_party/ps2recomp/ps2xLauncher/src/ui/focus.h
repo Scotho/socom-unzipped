@@ -20,15 +20,17 @@ namespace ui
         Controller,
         Microphone,
         Online,
+        Report,   // Sprint 9 Goal 8: REPORT A BUG
         About
     };
-    constexpr int kPageCount = 8;
+    constexpr int kPageCount = 9;
 
     Page pageAt(int index);
     int pageIndex(Page page);
     const char *pageName(Page page);    // the rail's label: "PLAY"
     const char *pageTitle(Page page);   // the content band's line: "PLAY -- everything at a glance"
     std::string railId(Page page);        // "rail.play"
+    std::string pageSlug(Page page);      // "play", "report": the rail id without "rail." -- ids and screenshot names
     std::string barLaunchId(Page page);   // "bar.launch.play" -- the bar is on every page, its node is per page
 
     enum class Dir
@@ -65,7 +67,7 @@ namespace ui
 
     // Every focusable control on `page`, in reading order, plus the bottom bar's LAUNCH (id "bar.launch").
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in);
-    // The rail's eight entries.
+    // The rail's entries, one per page.
     std::vector<Node> railLayout(Rect window);
 
     // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
@@ -75,7 +77,7 @@ namespace ui
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id);
     bool hasNode(const std::vector<Node> &nodes, const std::string &id);
 
-    // The rail and all eight pages at once: the whole navigable surface of the launcher.
+    // The rail and every page at once: the whole navigable surface of the launcher.
     class FocusGraph
     {
     public:

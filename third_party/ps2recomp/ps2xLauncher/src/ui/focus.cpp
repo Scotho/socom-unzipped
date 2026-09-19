@@ -25,6 +25,7 @@ namespace ui
             {"CONTROLLER", "CONTROLLER -- what the game will read from your pad", "rail.controller"},
             {"MICROPHONE", "MICROPHONE -- the capture device, and proof it hears you", "rail.microphone"},
             {"ONLINE", "ONLINE -- the server, your profile, a second instance", "rail.online"},
+            {"REPORT A BUG", "REPORT A BUG -- tell us what went wrong; nothing is sent until you press SEND", "rail.report"},
             {"ABOUT", "ABOUT -- what this is, where it keeps things", "rail.about"},
         };
 
@@ -55,13 +56,9 @@ namespace ui
     const char *pageTitle(Page page) { return kPages[pageIndex(page)].title; }
     std::string railId(Page page) { return kPages[pageIndex(page)].id; }
 
-    std::string barLaunchId(Page page)
-    {
-        std::string name = pageName(page);
-        for (char &c : name)
-            c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
-        return "bar.launch." + name;
-    }
+    std::string pageSlug(Page page) { return railId(page).substr(5); }
+
+    std::string barLaunchId(Page page) { return "bar.launch." + pageSlug(page); }
 
     Frame frameFor(Rect window)
     {
@@ -177,6 +174,18 @@ namespace ui
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
             add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});
             add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 112.0f, 460.0f, 34.0f});
+            break;
+        }
+        case Page::Report:
+        {
+            // The site's own form, top to bottom (sites/s2u/src/report.ts FIELDS), plus the log checkbox.
+            const float x = b.x + metrics::labelW;
+            const float w = b.w - metrics::labelW;
+            add(out, page, "report.title", Rect{x, b.y + 4.0f, w, 40.0f});
+            add(out, page, "report.description", Rect{x, b.y + 56.0f, w, 148.0f});
+            add(out, page, "report.contact", Rect{x, b.y + 216.0f, 420.0f, 40.0f});
+            add(out, page, "report.attach", Rect{x, b.y + 268.0f, 420.0f, 34.0f});
+            add(out, page, "report.send", Rect{x, b.y + 384.0f, 240.0f, 44.0f});
             break;
         }
         case Page::About:
@@ -312,6 +321,11 @@ namespace ui
                 if (primary <= 1.0f)
                     continue;
                 if (requireOverlap && !overlap)
+                    continue;
+                // Sprint 9 Goal 8: a control stacked above or below this one (their spans overlap across the
+                // move) is not "to the left" of it merely because it is narrower -- REPORT A BUG is a column
+                // of fields of different widths, and left off any of them is the rail.
+                if (!overlap && (dir == Dir::Left || dir == Dir::Right) && n.r.right() > f->r.x && n.r.x < f->r.right())
                     continue;
                 // Distance in the direction moved dominates: the row under this control wins even when a
                 // row further down happens to line up with it exactly (the VIDEO page's cells do).
