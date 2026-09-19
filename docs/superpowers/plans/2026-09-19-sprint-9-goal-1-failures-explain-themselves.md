@@ -683,7 +683,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED.** In `ps2xTest/src/launcher_tests.cpp`, directly after the case that ends at line 295 (`"exit code 65 tells the player…"`), add:
+- [x] **Step 1: RED.** In `ps2xTest/src/launcher_tests.cpp`, directly after the case that ends at line 295 (`"exit code 65 tells the player…"`), add:
 
 ```cpp
         tc.Run("LAST RUN: the code's sentence, a crash by its native status, a stranger by number, a notice appended", [](TestCase &t)
@@ -714,7 +714,7 @@ git push
 
 Build `ps2x_tests`. **Expected RED:** `error: no member named 'lastRunLine' in namespace 'launcher'`.
 
-- [ ] **Step 2: Implement.** In `ps2xShared/include/launcher/launcher_config.h`, under `exitMessage`'s declaration:
+- [x] **Step 2: Implement.** In `ps2xShared/include/launcher/launcher_config.h`, under `exitMessage`'s declaration:
 
 ```cpp
     // Sprint 9 Goal 1: the PLAY page's LAST RUN line. `rawExitStatus` is GameProcess::exitCode() as the
@@ -751,7 +751,7 @@ In `ps2xShared/src/launcher_config.cpp`, under `exitMessage`:
     }
 ```
 
-- [ ] **Step 3: Wire `ps2xLauncher/src/main.cpp`.** Four edits:
+- [x] **Step 3: Wire `ps2xLauncher/src/main.cpp`.** Four edits:
 
   (a) Under `readText` (after line 68), a bounded reader — a run log can be hundreds of megabytes and the notice is printed at boot:
 
@@ -794,9 +794,9 @@ In `ps2xShared/src/launcher_config.cpp`, under `exitMessage`:
         app.exitLine = launcher::exitMessage(0);
 ```
 
-- [ ] **Step 4: GREEN.** Build `ps2x_tests` and `socom_unzipped_launcher`; `PS2X_TEST_SUITE=Launcher` -> `Failed: 0`. Then, with no game running, `dist/socom_unzipped_launcher.exe --selftest | grep -c "^exit "` prints `11` (the bar's "the launcher's selftest shows each sentence"; `--selftest` rewrites `dist/config.json` through `toJson`, as it always has).
+- [x] **Step 4: GREEN.** Build `ps2x_tests` and `socom_unzipped_launcher`; `PS2X_TEST_SUITE=Launcher` -> `Failed: 0`. Then, with no game running, `dist/socom_unzipped_launcher.exe --selftest | grep -c "^exit "` prints `11` (the bar's "the launcher's selftest shows each sentence"; `--selftest` rewrites `dist/config.json` through `toJson`, as it always has).
 
-- [ ] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 7`), then commit.**
+- [x] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 7`), then commit.**
 
 ```bash
 git commit -m "feat(launcher): LAST RUN shows the exit code's sentence instead of 'the game exited', with the log's notices appended; --selftest lists every sentence

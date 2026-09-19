@@ -67,6 +67,18 @@ namespace
         return ss.str();
     }
 
+    // The first `maxBytes` of a file: the run log's head, where the boot lines (GL, audio, notices) are.
+    std::string readHead(const fs::path &p, size_t maxBytes)
+    {
+        std::ifstream in(p, std::ios::binary);
+        if (!in)
+            return {};
+        std::string out(maxBytes, '\0');
+        in.read(out.data(), static_cast<std::streamsize>(maxBytes));
+        out.resize(static_cast<size_t>(in.gcount()));
+        return out;
+    }
+
     bool writeText(const fs::path &p, const std::string &text)
     {
         std::ofstream out(p, std::ios::binary | std::ios::trunc);
@@ -464,7 +476,7 @@ namespace
         app.discOk = true;
         app.discMessage = "SOCOM II U.S. Navy SEALs NTSC r0001";
         app.status = "ready";
-        app.exitLine = "the last run exited normally";
+        app.exitLine = launcher::exitMessage(0);
         app.padLabels = {"first available", "[0] Xbox Wireless Controller"};
         app.padSlots = {-1, 0};
         app.pad = fakeXboxPad();
@@ -501,6 +513,8 @@ int main(int argc, char **argv)
         std::printf("disc: %s -> %s\n", config.isoPath.c_str(), st.message.c_str());
         for (const std::string &kv : launcher::environmentFor(config))
             std::printf("env: %s\n", kv.c_str());
+        for (const std::string &line : launcher::selftestExitLines())
+            std::printf("%s\n", line.c_str());
         return writeText(configPath, launcher::toJson(config)) ? 0 : 1;
     }
 
@@ -585,6 +599,8 @@ int main(int argc, char **argv)
 
     win32glue::GameProcess game;
     std::string lastLog;
+    long long lastExitRaw = 0;
+    bool haveLastExit = false;
     std::unique_ptr<launcher::MicDevices> mic;
     bool meterOn = false;
 
@@ -675,11 +691,12 @@ int main(int argc, char **argv)
             app.running = game.running();
             if (!app.running && game.process)
             {
-                // Task 1a: 65 means the run happened but on the CPU rasterizer -- say so rather than
-                // leaving the player with a slideshow and no reason.
-                const std::string why = launcher::exitMessage(game.exitCode());
+                // Sprint 9 Goal 1: every ending has a sentence (ps2x/exit_codes.h), and a non-fatal notice
+                // in the log -- no audio device -- rides along with it.
+                lastExitRaw = game.exitCode();
+                haveLastExit = true;
                 game.close();
-                app.exitLine = why.empty() ? "the game exited" : why;
+                app.exitLine = launcher::lastRunLine(lastExitRaw, readHead(lastLog, 256u * 1024u));
                 app.status = app.exitLine;
                 // Review F8: the meter gives the capture device back to the game while it runs; take it now.
                 meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);

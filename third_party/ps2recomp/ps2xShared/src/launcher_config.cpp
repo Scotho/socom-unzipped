@@ -316,6 +316,27 @@ namespace launcher
         return ExitCodes::describe(exitCode);
     }
 
+    std::string lastRunLine(long long rawExitStatus, const std::string &logText)
+    {
+        std::string line = ExitCodes::describe(rawExitStatus);
+        for (const std::string &notice : ExitCodes::noticesIn(logText))
+            line += " " + notice;
+        return line;
+    }
+
+    std::vector<std::string> selftestExitLines()
+    {
+        std::vector<std::string> lines;
+        for (const ExitCodes::Entry &e : ExitCodes::kTable)
+        {
+            char head[64];
+            std::snprintf(head, sizeof(head), "exit %3d %s: ", e.code, e.slug);
+            lines.push_back(std::string(head) + e.sentence);
+        }
+        return lines;
+    }
+
+
     std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
     {
         // Ours, minus anything that is not a KEY=VALUE pair: execve would carry a bare "D" into the child's
