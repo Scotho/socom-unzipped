@@ -7,8 +7,21 @@ namespace ui
     {
         launcher::Config &c = app.config;
 
-        const Rect preset0 = rectOf(nodes, "online.preset.0");
+        // The first ROW, not the first node: a preset that cannot be played has a row but no node, and the
+        // community one is first -- rectOf() answered an empty rect and this heading was drawn off the window.
+        const Rect preset0 = onlinePresetRow(app.frame.window, 0);
         text(ctx, "SERVER", Vec2{preset0.x, preset0.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+        // Sprint 9 Goal 8: the hosted server's own word on itself (GET /api/stats, fetched off this thread).
+        // Blank when the site cannot be reached: a player who is offline is not told anything is wrong.
+        if (!app.serverStatus.empty())
+        {
+            const bool up = app.serverStatus.find(": online") != std::string::npos;
+            const float size = metrics::captionSize;
+            const float w = textWidth(ctx, app.serverStatus.c_str(), size);
+            const float right = app.frame.body.right();
+            fillCircle(ctx, Vec2{right - w - 12.0f, preset0.y - 17.0f}, 4.0f, up ? theme::lampGreen : theme::warn);
+            text(ctx, app.serverStatus.c_str(), Vec2{right - w, preset0.y - 26.0f}, size, up ? theme::text : theme::caption);
+        }
 
         int presetSel = 2;   // "Custom" unless one of the ids matches
         for (int i = 0; i < 3; ++i)

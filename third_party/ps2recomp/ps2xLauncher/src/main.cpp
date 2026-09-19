@@ -7,8 +7,12 @@
 //   socom_unzipped_launcher.exe --selftest   load config.json, verify the ISO if one is set, print the environment, exit
 //   socom_unzipped_launcher.exe --screenshot <dir>   every page at both sizes, on a fixed fake state, as PNGs
 //   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window
+//   socom_unzipped_launcher.exe --report-bug <form.json> [dir]   send one bug report for <dir>, print the reply, no window
+//                                                                (a PROOF unless the form says "test": false)
+//   socom_unzipped_launcher.exe --server-status                  print the hosted server's status line, no window
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
+#include "launcher/bug_report.h"
 #include "launcher/diagnostics.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
@@ -40,7 +44,9 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -154,6 +160,8 @@ namespace
         return best.empty() ? std::string() : (logs / best).string();
     }
 
+    std::string homeDirectory();   // USERPROFILE, else HOME (defined with the bug report's helpers below)
+
     // "Save diagnostics": one zip -- the last log, config.json through the allowlist, the GL lines, the
     // crash record if any, versions (launcher/diagnostics.h). `outZip` empty = diagnostics/ under `home`.
     // The log goes in whole: diagnostics::entries() is what clips it to its head and tail and scrubs the
@@ -180,10 +188,7 @@ namespace
         while (!in.version.empty() && (in.version.back() == '\n' || in.version.back() == '\r'))
             in.version.pop_back();
         in.platform = ExeDir::platformName();
-        const char *homeDir = std::getenv("USERPROFILE");
-        if (homeDir == nullptr || *homeDir == '\0')
-            homeDir = std::getenv("HOME");
-        in.homeDir = homeDir ? homeDir : "";
+        in.homeDir = homeDirectory();
         in.haveLastExit = haveLastExit;
         in.lastExit = lastExit;
 
@@ -205,6 +210,190 @@ namespace
         }
         message = "saved " + out.string();
         return true;
+    }
+
+    // ---- Sprint 9 Goal 8: the bug report and the server's status line ----------------------------------------
+    namespace br = launcher::bugreport;
+
+    std::string homeDirectory()
+    {
+        const char *homeDir = std::getenv("USERPROFILE");
+        if (homeDir == nullptr || *homeDir == '\0')
+            homeDir = std::getenv("HOME");
+        return homeDir ? homeDir : "";
+    }
+
+    // The log as the report needs it: the head (where the GL lines are) and the tail (what went wrong, and
+    // what is attached), without reading a gigabyte to get them.
+    std::string readLogForReport(const fs::path &p)
+    {
+        constexpr size_t kHead = 256u * 1024u, kTail = 256u * 1024u;
+        std::error_code ec;
+        const uintmax_t size = fs::file_size(p, ec);
+        if (ec)
+            return {};
+        if (size <= kHead + kTail)
+            return readText(p);
+        std::ifstream in(p, std::ios::binary);
+        if (!in)
+            return {};
+        std::string tail(kTail, '\0');
+        in.seekg(static_cast<std::streamoff>(size - kTail));
+        in.read(tail.data(), static_cast<std::streamsize>(kTail));
+        tail.resize(static_cast<size_t>(in.gcount()));
+        return launcher::diagnostics::joinClipped(readHead(p, kHead), tail, size - kHead - kTail);
+    }
+
+    br::Inputs reportInputs(const fs::path &home, const std::string &lastLog, bool haveLastExit, long long lastExit)
+    {
+        br::Inputs in;
+        in.version = readText(home / "version.txt");
+        while (!in.version.empty() && (in.version.back() == '\n' || in.version.back() == '\r'))
+            in.version.pop_back();
+        in.platform = ExeDir::platformName();
+        in.homeDir = homeDirectory();
+        const std::string log = (!lastLog.empty() && fs::exists(lastLog)) ? lastLog : newestRunLog(home / "logs");
+        if (!log.empty())
+            in.logText = readLogForReport(log);
+        in.haveLastExit = haveLastExit;
+        in.lastExit = lastExit;
+        return in;
+    }
+
+    std::string apiUrl(const char *path)
+    {
+        return br::apiBase(std::getenv(br::kApiBaseEnv)) + path;
+    }
+
+    struct ReportOutcome
+    {
+        br::Reply reply;
+        std::string savedPath;        // set when the report was written to logs/ instead
+        std::string transportError;   // for stderr; never shown as the reason on the page
+    };
+
+    // Blocking: the POST, and on anything but a receipt or a field to fix, the file. Runs on the worker
+    // thread (the page) or on the main one (--report-bug).
+    ReportOutcome sendReport(const fs::path &home, const std::string &json)
+    {
+        ReportOutcome out;
+        const win32glue::HttpResult http = win32glue::httpRequest("POST", apiUrl(br::kBugsPath), json, 15000);
+        out.transportError = http.error;
+        out.reply = br::parseReply(http.status, http.body, http.retryAfter);
+        if (out.reply.kind == br::Reply::Kind::Failed || out.reply.kind == br::Reply::Kind::RateLimited)
+        {
+            std::error_code ec;
+            fs::create_directories(home / "logs", ec);
+            const fs::path file = home / "logs" / br::savedFileName(win32glue::stamp());
+            if (writeText(file, json))
+                out.savedPath = file.string();
+        }
+        return out;
+    }
+
+    // GET /api/stats -> the body, or "" when there was no 200. Blocking; the page runs it on a worker.
+    std::string fetchStats()
+    {
+        const win32glue::HttpResult http = win32glue::httpRequest("GET", apiUrl(br::kStatsPath), std::string(), 4000);
+        return http.status == 200 ? http.body : std::string();
+    }
+
+    // One request at a time, off the UI thread. The UI thread starts it and polls the slot; nothing else is
+    // shared. join() waits for the request's own timeout at most, so closing the launcher mid-send neither
+    // crashes (the thread never outlives what it writes to) nor hangs for longer than that.
+    template <typename T>
+    class Worker
+    {
+    public:
+        ~Worker() { join(); }
+        bool busy() const { return m_busy; }
+        void start(std::function<T()> fn)
+        {
+            join();
+            m_busy = true;
+            m_done = false;
+            m_thread = std::thread([this, fn]()
+            {
+                T result{};
+                try
+                {
+                    result = fn();
+                }
+                catch (...)
+                {
+                }
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_result = std::move(result);
+                m_done = true;
+            });
+        }
+        bool poll(T &out)
+        {
+            if (!m_busy)
+                return false;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (!m_done)
+                    return false;
+            }
+            m_thread.join();
+            m_busy = false;
+            out = std::move(m_result);
+            return true;
+        }
+        void join()
+        {
+            if (m_thread.joinable())
+                m_thread.join();
+            m_busy = false;
+        }
+
+    private:
+        std::thread m_thread;
+        std::mutex m_mutex;
+        bool m_done = false;
+        bool m_busy = false;
+        T m_result{};
+    };
+
+    int exitCodeFor(const br::Reply &reply)
+    {
+        switch (reply.kind)
+        {
+        case br::Reply::Kind::Sent: return 0;
+        case br::Reply::Kind::FieldError: return 2;
+        case br::Reply::Kind::RateLimited: return 3;
+        case br::Reply::Kind::Failed: return 4;
+        }
+        return 4;
+    }
+
+    // --report-bug <form.json> [dir]: one report, built exactly as the page builds it, and the reply's line.
+    int reportBugHeadless(const fs::path &formFile, const fs::path &home)
+    {
+        br::Form form;
+        if (!br::formFromJson(readText(formFile), form))
+        {
+            std::printf("cannot read the form file %s\n", formFile.string().c_str());
+            return 5;
+        }
+        const std::string problem = br::checkForm(form);
+        if (!problem.empty())
+        {
+            std::printf("NOT SENT. %s\n", problem.c_str());
+            return 2;
+        }
+        launcher::Config config;
+        launcher::fromJson(readText(home / "config.json"), config);
+        const br::Payload payload = br::build(config, form, reportInputs(home, std::string(), false, 0));
+        std::printf("%s\n", br::previewLine(payload, form).c_str());
+        const ReportOutcome outcome = sendReport(home, payload.json);
+        if (!outcome.transportError.empty())
+            std::fprintf(stderr, "[report] %s\n", outcome.transportError.c_str());
+        std::printf("%s\n", outcome.reply.text.c_str());
+        if (!outcome.savedPath.empty())
+            std::printf("%s\n", br::savedLocallyLine(outcome.savedPath).c_str());
+        return exitCodeFor(outcome.reply);
     }
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
@@ -443,6 +632,7 @@ namespace
         case ui::Page::Controller: ui::drawControllerPage(ctx, app, nodes); break;
         case ui::Page::Microphone: ui::drawMicrophonePage(ctx, app, nodes); break;
         case ui::Page::Online: ui::drawOnlinePage(ctx, app, nodes); break;
+        case ui::Page::Report: ui::drawReportPage(ctx, app, nodes); break;
         case ui::Page::About: ui::drawAboutPage(ctx, app, nodes); break;
         }
     }
@@ -568,6 +758,16 @@ int main(int argc, char **argv)
         return ok ? 0 : 1;
     }
 
+    if (argc > 2 && std::strcmp(argv[1], "--report-bug") == 0)
+        return reportBugHeadless(fs::path(argv[2]), argc > 3 ? fs::path(argv[3]) : dir);
+    if (argc > 1 && std::strcmp(argv[1], "--server-status") == 0)
+    {
+        const std::string line = br::statusLine(fetchStats());
+        if (!line.empty())
+            std::printf("%s\n", line.c_str());
+        return line.empty() ? 1 : 0;   // silent when unreachable, as the ONLINE page is
+    }
+
     launcher::Config config;
     {
         const std::string text = readText(configPath);
@@ -690,6 +890,13 @@ int main(int argc, char **argv)
         app.meterOn = meterOn;
     }
 
+    // Sprint 9 Goal 8: the two requests this window ever makes, each on its own worker.
+    Worker<ReportOutcome> reportJob;
+    Worker<std::string> statsJob;
+    br::Inputs reportIn;
+    double statsAskedAt = -1000.0;
+    ui::Page previousPage = ui::Page::Play;
+
     ui::Nav &nav = app.nav;
     nav.page = ui::Page::Play;
     nav.focus = ui::railId(ui::Page::Play);
@@ -726,6 +933,15 @@ int main(int argc, char **argv)
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l2"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
+        // Sprint 9 Goal 8: the hosted server's status line, and the REPORT A BUG page in each of its states
+        // (the plain report_<size>.png above is the empty form).
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_status"});
+        shots.push_back(Shot{ui::Page::Online, 800, 520, "_status"});
+        for (const char *state : {"_filled", "_sent", "_saved", "_fielderror", "_ratelimited", "_sending"})
+        {
+            shots.push_back(Shot{ui::Page::Report, 1100, 700, state});
+            shots.push_back(Shot{ui::Page::Report, 800, 520, state});
+        }
     }
     const char *selfShot = std::getenv("PS2X_LAUNCHER_SHOT");
     unsigned selfShotFrames = 0;
@@ -1048,6 +1264,93 @@ int main(int argc, char **argv)
             }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
+
+            // ---- Sprint 9 Goal 8: the status line. Asked for when ONLINE opens (never within 5 s of the
+            // last ask) and every 10 s while it stays open; the answer lands in a slot this thread polls.
+            const bool pageEntered = nav.page != previousPage;
+            previousPage = nav.page;
+            if (nav.page == ui::Page::Online && !statsJob.busy() &&
+                ctx.time - statsAskedAt >= (pageEntered ? 5.0 : static_cast<double>(br::kStatsPollSeconds)))
+            {
+                statsAskedAt = ctx.time;
+                statsJob.start(fetchStats);
+            }
+            std::string statsBody;
+            if (statsJob.poll(statsBody))
+                app.serverStatus = br::statusLine(statsBody);   // "" when unreachable: the line is not drawn
+
+            // ---- the report: what would be sent, the send, the reply ------------------------------------
+            ui::ReportUi &report = app.report;
+            if (nav.page == ui::Page::Report && pageEntered)
+            {
+                reportIn = reportInputs(dir, lastLog, haveLastExit, lastExitRaw);
+                report.changed = true;
+            }
+            if (nav.page == ui::Page::Report && report.changed)
+            {
+                report.preview = br::previewLine(br::build(app.config, report.form, reportIn), report.form);
+                report.changed = false;
+            }
+            if (report.requestSend && report.state != ui::ReportUi::State::Sending)
+            {
+                const std::string problem = br::checkForm(report.form);
+                if (!problem.empty())
+                {
+                    report.state = ui::ReportUi::State::FieldError;
+                    report.message = problem;
+                    const std::string field = br::fieldOf(problem);
+                    if (field == "title" || field == "description" || field == "contact")
+                        nav.focus = app.activeField = "report." + field;
+                }
+                else
+                {
+                    reportIn = reportInputs(dir, lastLog, haveLastExit, lastExitRaw);
+                    const std::string json = br::buildPayload(app.config, report.form, reportIn);
+                    report.state = ui::ReportUi::State::Sending;
+                    report.message.clear();
+                    report.savedPath.clear();
+                    app.activeField.clear();
+                    reportJob.start([dir, json]() { return sendReport(dir, json); });
+                }
+            }
+            report.requestSend = false;
+            ReportOutcome outcome;
+            if (reportJob.poll(outcome))
+            {
+                if (!outcome.transportError.empty())
+                    std::fprintf(stderr, "[report] %s\n", outcome.transportError.c_str());
+                report.message = outcome.reply.text;
+                report.savedPath = outcome.savedPath;
+                switch (outcome.reply.kind)
+                {
+                case br::Reply::Kind::Sent:
+                    report.state = ui::ReportUi::State::Sent;
+                    report.id = outcome.reply.id;
+                    report.copied = !report.id.empty();
+                    if (report.copied)
+                        SetClipboardText(report.id.c_str());
+                    // The report is in: the form empties so a second press cannot send it twice.
+                    report.form.title.clear();
+                    report.form.description.clear();
+                    report.changed = true;
+                    app.status = outcome.reply.text;
+                    break;
+                case br::Reply::Kind::FieldError:
+                {
+                    report.state = ui::ReportUi::State::FieldError;
+                    const std::string field = outcome.reply.field;
+                    if (nav.page == ui::Page::Report && (field == "title" || field == "description" || field == "contact"))
+                        nav.focus = app.activeField = "report." + field;
+                    break;
+                }
+                case br::Reply::Kind::RateLimited:
+                    report.state = ui::ReportUi::State::RateLimited;
+                    break;
+                case br::Reply::Kind::Failed:
+                    report.state = ui::ReportUi::State::SavedLocally;
+                    break;
+                }
+            }
             if (app.requestLaunch && !app.running && app.discOk)
             {
                 writeText(configPath, launcher::toJson(app.config));
@@ -1095,6 +1398,64 @@ int main(int argc, char **argv)
                 }
                 resizeWaits = 0;
                 app.nav.goTo(graph, shot.page);
+                {
+                    // Sprint 9 Goal 8: canned states, no request made.
+                    const std::string suffix = shot.suffix;
+                    app.activeField.clear();
+                    app.serverStatus = suffix == "_status" ? "SOCOM Unzipped: online, 3 players, 1 game" : "";
+                    ui::ReportUi &report = app.report;
+                    report = ui::ReportUi{};
+                    br::Inputs fakeIn;
+                    fakeIn.version = app.version;
+                    fakeIn.platform = "windows";
+                    fakeIn.logText = "INFO:     > Renderer: NVIDIA GeForce RTX 4070 SUPER/PCIe/SSE2\nthe last run\n";
+                    fakeIn.haveLastExit = true;
+                    if (shot.page == ui::Page::Report && !suffix.empty())
+                    {
+                        report.form.title = "The game closes when I join a second round";
+                        report.form.description =
+                            "I hosted a Suppression room on Frostfire, played one round to the end, and when the second round "
+                            "started loading the game window closed without a message. It happened twice in a row. The first "
+                            "round was fine both times and voice chat worked.";
+                        report.form.contact = "viper#1234 on Discord";
+                        report.form.attachLog = true;
+                    }
+                    if (suffix == "_filled")
+                        app.nav.focus = app.activeField = "report.description";
+                    else if (shot.page == ui::Page::Report)
+                        app.nav.focus = "report.send";
+                    if (suffix == "_sending")
+                        report.state = ui::ReportUi::State::Sending;
+                    if (suffix == "_sent")
+                    {
+                        report.state = ui::ReportUi::State::Sent;
+                        report.id = "BR-20260919-A1B2C3";
+                        report.copied = true;
+                        report.form.title.clear();
+                        report.form.description.clear();
+                    }
+                    if (suffix == "_saved")
+                    {
+                        report.state = ui::ReportUi::State::SavedLocally;
+                        report.message = br::parseReply(0, "").text;
+                        report.savedPath = "C:\\games\\socom2\\logs\\bugreport_20260919_101500.json";
+                    }
+                    if (suffix == "_fielderror")
+                    {
+                        report.form.title = "abc";
+                        report.state = ui::ReportUi::State::FieldError;
+                        report.message = br::checkForm(report.form);
+                        app.nav.focus = app.activeField = "report.title";
+                    }
+                    if (suffix == "_ratelimited")
+                    {
+                        report.state = ui::ReportUi::State::RateLimited;
+                        report.message = br::parseReply(429, "", 1500).text;
+                        report.savedPath = "C:\\games\\socom2\\logs\\bugreport_20260919_101500.json";
+                    }
+                    report.preview = br::previewLine(br::build(app.config, report.form, fakeIn), report.form);
+                    report.changed = false;
+                }
                 const bool touchpadShot = std::strcmp(shot.suffix, "_crouch_touchpad") == 0;
                 app.pad = (std::strcmp(shot.suffix, "_playstation") == 0 || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
                 app.config.crouchShortcut = std::strncmp(shot.suffix, "_crouch_", 8) == 0 ? shot.suffix + 8 : "off";
@@ -1110,7 +1471,8 @@ int main(int argc, char **argv)
             if (++shotFrame >= 3)
             {
                 char path[512];
-                std::snprintf(path, sizeof(path), "%s/%s%s_%dx%d.png", screenshotDir, ui::pageName(shot.page),
+                // The page's slug ("play", "report"): every page's name but REPORT A BUG's was already that.
+                std::snprintf(path, sizeof(path), "%s/%s%s_%dx%d.png", screenshotDir, ui::pageSlug(shot.page).c_str(),
                               shot.suffix, shot.w, shot.h);
                 for (char *p = path; *p != '\0'; ++p)
                     *p = static_cast<char>(*p >= 'A' && *p <= 'Z' ? *p + 32 : *p);
@@ -1131,5 +1493,8 @@ int main(int argc, char **argv)
     game.close();
     fonts.clear();
     CloseWindow();
+    // A request still in flight: the window is gone already, and each join is bounded by its request's timeout.
+    reportJob.join();
+    statsJob.join();
     return 0;
 }

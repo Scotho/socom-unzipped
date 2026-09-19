@@ -50,4 +50,17 @@ namespace win32glue
 
     std::string stamp();
     void terminate(GameProcess &game);   // kills the game (the launch test)
+
+    // Sprint 9 Goal 8: one blocking HTTP(S) request, for the bug report and the server's status line. Call it
+    // off the UI thread. Windows: WinHTTP, certificate validation ON (no SECURITY_FLAG_IGNORE_* is ever set).
+    // POSIX: a `curl` subprocess started with an argv (no shell), the body on its stdin; no curl = `error`.
+    // Plain http:// is refused unless the host is 127.0.0.1 or localhost (the tests' loopback server).
+    struct HttpResult
+    {
+        int status = 0;          // the HTTP status; 0 when there was no answer
+        std::string body;        // the response body, at most 1 MB
+        int retryAfter = 0;      // the Retry-After header in seconds, 0 when absent
+        std::string error;       // why there was no answer, for the log; empty when status != 0
+    };
+    HttpResult httpRequest(const std::string &method, const std::string &url, const std::string &body, int timeoutMs);
 }

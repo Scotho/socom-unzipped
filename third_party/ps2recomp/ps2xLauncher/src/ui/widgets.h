@@ -12,6 +12,7 @@
 #include "raylib.h"
 
 #include <string>
+#include <vector>
 
 namespace ui
 {
@@ -84,6 +85,13 @@ namespace ui
     bool radioCell(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool selected);
     bool listRow(const Ctx &ctx, Rect r, const std::string &label, const std::string &id, bool selected);
     bool slider(const Ctx &ctx, Rect r, const std::string &id, double &value, double lo, double hi, double step);
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true);
+    // maxLen 0 = no cap and no paste: the ONLINE page's fields, as they were. Above 0 the field stops there
+    // and takes Ctrl+V -- the REPORT A BUG fields, capped at the contract's lengths.
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true,
+                   size_t maxLen = 0);
+    // Sprint 9 Goal 8: a long text shown wrapped over several lines -- not an editor: typing appends, backspace
+    // removes, Ctrl+V pastes (line breaks become spaces), and while it is typed in, the END is what is shown.
+    void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen);
+    std::vector<std::string> wrapText(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);
     void meterBar(const Ctx &ctx, Rect r, float fraction, Rgba fill);
 }
