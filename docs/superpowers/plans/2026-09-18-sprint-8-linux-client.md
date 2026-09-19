@@ -2148,18 +2148,18 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: `docs/KNOWN.md` §1 — one row per fact, each naming its artefact.** Four rows, and they are written only with the numbers actually measured:
+- [x] **Step 1: `docs/KNOWN.md` §1 — one row per fact, each naming its artefact.** Four rows, and they are written only with the numbers actually measured: *(done across the day: the KNOWN §1 rows for the boot frame, the gate stage and launcher run, the double free, the VBlank tests, the review's three serious findings)*
   - **The client builds and its suite passes on Linux with no generated code** — artefact: CI run `<id>` on `ubuntu-24.04`, `ps2x_tests <N>/<N>`, the launcher artifact attached; the Windows binaries' sha256 unchanged across Tasks 1-4 and 6-7.
   - **The Linux runner boots SOCOM II to the same screen as Windows** — artefact: `logs/parity/s8_vm_boot.png` vs `logs/parity/s8_win_boot.png`, mean |diff| `<X>` (bar 3), both 640x448 exported frames of an undriven 40 s boot; the VM's GL renderer `<renderer>` at `<version>`; `<the probe passed | exit 65 and the CPU rasterizer>`.
   - **The gate's title stage `<passes | fails at detector D>` in the VM** — artefact: `logs/parity/gate/s8_vm_title/summary.txt`, and on a failure the capture's path and its score against the calibrated 93.2-99.4 band.
   - **The tarball runs unpacked from a fresh directory** — artefact: the `--selftest` exit 0 with the r0001 verdict, and the child log's lines 1 and 3 equal to a Windows run's.
-- [ ] **Step 2: `docs/KNOWN.md` §2 — what the VM refused, and what is still Windows-only.** At minimum: the six `taskkill` sites Task 9 left alone (`online_login.py:130`, `online_login_ours.py:1705`, `online_match_ours.py:5144`, `pcsx2_ctl.py:233`, `scale_shot.py:101`, `sp_death_probe.py:1061`), so the online harness is Windows-only and nobody assumes a Linux ladder run is a command away; `PS2X_HOST_PROF_ALL` and `_STACKS` (Task 5, Windows-only by decision); PCSX2 as the console reference (no Linux key map, `keys.py` raises); `keep_on_top` being a momentary raise rather than a sticky topmost; and the VM's GL result with its consequence.
-- [ ] **Step 3: `docs/STATUS.md`.** Replace the current-state bullet's opening with the branch and the Goal 1 verdict in one sentence, and add a dated entry in the file's own voice: what landed, the four bars and their numbers, and what the next goal is (Goal 2, the menus' render cost — `docs/CURRENT_SPRINT.md`'s Sprint 8 item 2).
-- [ ] **Step 4: `docs/CURRENT_SPRINT.md`'s Sprint 8 block.** Mark Goal 1 done or partly done with its bars' numbers, note that `docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md` is the plan it names at :14 and is now ticked, and move the pointer to Goal 2. Update the "human tasks" line's count.
-- [ ] **Step 5: `docs/HUMAN_TASKS.md` — the owner's item, ring (c).** One entry in the file's existing shape (what to do, what to look for, the command, and the number being confirmed):
+- [x] **Step 2: `docs/KNOWN.md` §2 — what the VM refused, and what is still Windows-only.** At minimum: the six `taskkill` sites Task 9 left alone (`online_login.py:130`, `online_login_ours.py:1705`, `online_match_ours.py:5144`, `pcsx2_ctl.py:233`, `scale_shot.py:101`, `sp_death_probe.py:1061`), so the online harness is Windows-only and nobody assumes a Linux ladder run is a command away; `PS2X_HOST_PROF_ALL` and `_STACKS` (Task 5, Windows-only by decision); PCSX2 as the console reference (no Linux key map, `keys.py` raises); `keep_on_top` being a momentary raise rather than a sticky topmost; and the VM's GL result with its consequence. *(done: the 'still Windows-only' row (this commit); the VM's refusals are the falsified dump-freeze row, the unbounded admission row, R107)*
+- [x] **Step 3: `docs/STATUS.md`.** Replace the current-state bullet's opening with the branch and the Goal 1 verdict in one sentence, and add a dated entry in the file's own voice: what landed, the four bars and their numbers, and what the next goal is (Goal 2, the menus' render cost — `docs/CURRENT_SPRINT.md`'s Sprint 8 item 2). *(done: d53b045, 529f95b)*
+- [x] **Step 4: `docs/CURRENT_SPRINT.md`'s Sprint 8 block.** Mark Goal 1 done or partly done with its bars' numbers, note that `docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md` is the plan it names at :14 and is now ticked, and move the pointer to Goal 2. Update the "human tasks" line's count. *(done: this commit)*
+- [x] **Step 5: `docs/HUMAN_TASKS.md` — the owner's item, ring (c).** One entry in the file's existing shape (what to do, what to look for, the command, and the number being confirmed): *(done: 8973839, ae597a1 (the tarball run and the audio number))*
 
 ```markdown
-- [ ] **Run the Linux tarball on a real machine** (Sprint 8 Goal 1, ring (c)). Any Linux PC or a Steam
+- [x] **Run the Linux tarball on a real machine** *(the entry as written into HUMAN_TASKS; the box there stays the owner's)* (Sprint 8 Goal 1, ring (c)). Any Linux PC or a Steam
   Deck in desktop mode. Download `socom2-linux.tar.gz` from the branch's CI artifacts (or copy it from
   `dist-linux/portable/`), `tar xzf` it anywhere, `cd` in and run `./socom_unzipped_launcher`. Point it
   at your own SOCOM II ISO — the file picker appears only if `zenity` is installed; otherwise type the
@@ -2171,8 +2171,8 @@ git push
   itself lives here rather than in the VM>. If anything needs installing before it runs, that line is
   the most valuable thing in the report: it becomes the README's prerequisites.
 ```
-- [ ] **Step 6: Tick this plan's boxes, and leave a reason on every one that stays open.** A box with neither a tick nor a reason is the failure mode the Sprint 6 close-out audit found; a `STOP:` line pointing at `docs/HUMAN_TASKS.md` is a valid reason.
-- [ ] **Step 7: Commit.**
+- [x] **Step 6: Tick this plan's boxes, and leave a reason on every one that stays open.** A box with neither a tick nor a reason is the failure mode the Sprint 6 close-out audit found; a `STOP:` line pointing at `docs/HUMAN_TASKS.md` is a valid reason. *(done: this commit; the one open box is Task 10's two harness follow-ups, kept open with their reason)*
+- [x] **Step 7: Commit.** *(done: this commit)*
 
 ```bash
 git commit -m "docs: Sprint 8 Goal 1 closed -- the Linux client builds, boots and packages
