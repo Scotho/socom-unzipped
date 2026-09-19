@@ -158,6 +158,14 @@ namespace win32glue
         ::waitpid(middle, &ignored, 0);
     }
 
+    // Sprint 8 Goal 9, third pass: X11/Wayland have no equivalent of the Windows caption trick, and this
+    // file must stay free of raylib (the tests link it without one). So: no native chrome here -- main.cpp
+    // asks raylib for an undecorated window and moves it itself when the drag region is held.
+    bool installCustomChrome(void *, ChromeHitFn) { return false; }
+    void minimizeWindow() {}
+    void maximizeToggleWindow() {}
+    bool isWindowMaximized() { return false; }
+
     std::string stamp()
     {
         char buf[32];

@@ -7,6 +7,7 @@
 #include "launcher/sha256.h"
 // Sprint 8 Goal 9: the redesigned launcher's pure halves -- the layout and the focus model, the pad's
 // geometry, the glyph family, the scale factor. None of these headers touches raylib.
+#include "ui/chrome.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
 #include "ui/pad_render.h"
@@ -543,66 +544,105 @@ void register_launcher_tests()
             }
         });
 
-        tc.Run("the pad's geometry: a DualShock silhouette, every input on it, the two sticks symmetric", [](TestCase &t)
+        tc.Run("the pad's outline: one symmetric closed path, every input on it, the sticks a mirrored pair", [](TestCase &t)
         {
-            const ui::Rect bounds{100.0f, 50.0f, 560.0f, 280.0f};
+            const ui::Rect bounds{100.0f, 50.0f, 540.0f, 262.0f};
             const ui::PadGeometry g = ui::padGeometry(bounds);
 
+            t.IsTrue(g.outlineCount > 300, "the curve is flattened finely enough to read as a curve");
             t.IsTrue(g.hull.inside(bounds) && g.header.inside(bounds), "the silhouette and the shoulder strip stay inside what was asked for");
             t.IsTrue(g.header.bottom() <= g.hull.y + 0.001f, "the strip is above the pad, not on it");
-            t.IsTrue(g.body.inside(g.hull), "the body is part of the hull");
-            t.IsTrue(g.plate.inside(g.body), "the centre plate is on the body");
-            t.IsTrue(g.wingRadius > 0.0f && g.wing[0].x < g.wing[1].x, "two wings, left before right");
-            t.IsTrue(g.dpadWell.x < g.faceWell.x, "the d-pad well is left of the face well");
-            t.IsTrue(g.dpadWellRadius > 0.0f && g.faceWellRadius > 0.0f, "both wells have a size");
+            t.IsTrue(std::fabs(g.width / g.height - 1.55f) < 0.02f, "a DualShock is about 1.55:1");
 
-            auto insideCircle = [](ui::Vec2 c, float r, ui::Vec2 centre, float radius)
+            // Symmetric about the centre line, to within half a pixel.
+            float worst = 0.0f;
+            for (int i = 0; i < g.outlineCount; ++i)
             {
-                const float dx = c.x - centre.x, dy = c.y - centre.y;
-                return std::sqrt(dx * dx + dy * dy) + r <= radius + 0.001f;
+                const ui::Vec2 p = g.outline[i];
+                const ui::Vec2 mirrored{2.0f * g.centre.x - p.x, p.y};
+                float best = 1e9f;
+                for (int j = 0; j < g.outlineCount; ++j)
+                {
+                    const float dx = g.outline[j].x - mirrored.x;
+                    const float dy = g.outline[j].y - mirrored.y;
+                    const float d = std::sqrt(dx * dx + dy * dy);
+                    if (d < best)
+                        best = d;
+                }
+                if (best > worst)
+                    worst = best;
+            }
+            t.IsTrue(worst < 0.5f, "every point on the outline has its mirror image on the other half");
+
+            // A simple polygon: no segment crosses another (adjacent ones share an endpoint).
+            auto crosses = [](ui::Vec2 a, ui::Vec2 b, ui::Vec2 c, ui::Vec2 d)
+            {
+                auto side = [](ui::Vec2 p, ui::Vec2 q, ui::Vec2 r)
+                {
+                    const float v = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+                    return v > 1e-4f ? 1 : (v < -1e-4f ? -1 : 0);
+                };
+                return side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0;
             };
-            auto insideHull = [&](const ui::PadCircle &c)
+            bool selfIntersects = false;
+            for (int i = 0; i < g.outlineCount && !selfIntersects; ++i)
             {
-                return ui::Rect{c.c.x - c.r, c.c.y - c.r, c.r * 2.0f, c.r * 2.0f}.inside(g.hull);
+                const ui::Vec2 a = g.outline[i];
+                const ui::Vec2 b = g.outline[(i + 1) % g.outlineCount];
+                for (int j = i + 2; j < g.outlineCount; ++j)
+                {
+                    if (i == 0 && j == g.outlineCount - 1)
+                        continue;
+                    if (crosses(a, b, g.outline[j], g.outline[(j + 1) % g.outlineCount]))
+                    {
+                        selfIntersects = true;
+                        break;
+                    }
+                }
+            }
+            t.IsFalse(selfIntersects, "the outline is a simple closed path: it never crosses itself");
+
+            // Every interactive element is ON the pad: its whole hit circle inside the polygon.
+            auto circleInside = [&](const ui::PadCircle &c, const char *what)
+            {
+                bool ok = ui::padContains(g, c.c);
+                for (int k = 0; k < 16 && ok; ++k)
+                {
+                    const float a = static_cast<float>(k) * 3.14159265f / 8.0f;
+                    ok = ui::padContains(g, ui::Vec2{c.c.x + std::cos(a) * c.r, c.c.y + std::sin(a) * c.r});
+                }
+                t.IsTrue(ok, std::string("on the pad's outline: ") + what);
             };
             for (int i = 0; i < 4; ++i)
             {
-                t.IsTrue(insideCircle(g.dpad[i].c, g.dpad[i].r, g.wing[0], g.wingRadius), "a d-pad segment sits inside the left wing");
-                t.IsTrue(insideCircle(g.dpad[i].c, g.dpad[i].r, g.dpadWell, g.dpadWellRadius), "and inside the d-pad's own well");
-                t.IsTrue(insideCircle(g.face[i].c, g.face[i].r, g.wing[1], g.wingRadius), "a face button sits inside the right wing");
-                t.IsTrue(insideCircle(g.face[i].c, g.face[i].r, g.faceWell, g.faceWellRadius), "and inside the face cluster's well");
-                t.IsTrue(insideHull(g.dpad[i]) && insideHull(g.face[i]), "and both are on the silhouette");
+                circleInside(g.dpad[i], "a d-pad segment");
+                circleInside(g.face[i], "a face button");
             }
             for (int i = 0; i < 2; ++i)
             {
-                t.IsTrue(g.center[i].c.x >= g.plate.x && g.center[i].c.x <= g.plate.right(), "select and start are on the centre plate");
-                t.IsTrue(insideHull(g.stickClick[i]), "a stick cap is on the silhouette");
-                t.IsTrue(ui::Rect{g.well[i].x - g.wellRadius, g.well[i].y - g.wellRadius, g.wellRadius * 2.0f, g.wellRadius * 2.0f}.inside(g.hull),
-                         "and so is its whole well");
+                circleInside(g.center[i], "select or start");
+                circleInside(g.stickClick[i], "a stick cap");
+                circleInside(ui::PadCircle{ui::PadElement::LeftStickClick, g.well[i], g.wellRadius}, "a whole stick well");
                 t.IsTrue(g.shoulder[i].inside(g.header), "the shoulder bar is in the strip");
                 t.IsTrue(g.trigger[i].inside(g.header), "and so is the trigger");
                 t.IsTrue(g.trigger[i].bottom() <= g.shoulder[i].y + 0.001f, "the trigger is drawn above its shoulder");
             }
+            t.IsTrue(ui::padContains(g, ui::Vec2{g.plate.x, g.plate.y}) && ui::padContains(g, ui::Vec2{g.plate.right(), g.plate.bottom()}),
+                     "the centre plate is on the pad");
+            t.IsFalse(ui::padContains(g, ui::Vec2{g.hull.x + 1.0f, g.hull.bottom() - 1.0f}),
+                      "and the corner between a handle and the hull's box is NOT on the pad -- the outline is the shape, not the box");
 
-            // The sticks are the pair the player's thumbs rest on: they have to be a mirrored pair.
-            const float centreX = g.hull.cx();
-            t.IsTrue(std::fabs((centreX - g.well[0].x) - (g.well[1].x - centreX)) < 0.001f,
+            // The wells are where a DualShock has them, and the sticks are a mirrored pair.
+            t.IsTrue(g.dpadWell.x < g.faceWell.x, "the d-pad well is left of the face well");
+            t.IsTrue(std::fabs((g.centre.x - g.well[0].x) - (g.well[1].x - g.centre.x)) < 0.001f,
                      "the two sticks are symmetric about the pad's centre line");
             t.IsTrue(std::fabs(g.well[0].y - g.well[1].y) < 0.001f, "and level with each other");
             t.IsTrue(g.well[0].x > g.dpadWell.x && g.well[1].x < g.faceWell.x, "and inboard of the two wells");
-            t.IsTrue(g.well[0].y > g.dpadWell.y && g.well[1].y > g.faceWell.y, "and below them, where a DualShock has them");
-            t.IsTrue(std::fabs((centreX - g.wing[0].x) - (g.wing[1].x - centreX)) < 0.001f, "the wings are a mirrored pair too");
-            t.IsTrue(g.handleTip[0].y > g.body.bottom() && g.handleTip[1].y > g.body.bottom(),
-                     "the handles reach below the body");
-            t.IsTrue(g.handleTip[0].x < g.handle[0].x && g.handleTip[1].x > g.handle[1].x,
-                     "and splay outwards as they go");
-            t.IsTrue(g.handleTip[0].y <= bounds.bottom() + 0.001f, "without leaving the drawing's bounds");
+            t.IsTrue(g.well[0].y > g.dpadWell.y && g.well[1].y > g.faceWell.y, "and below them");
 
-            // The dead zone the ring shows is the dead zone the game applies.
             t.IsTrue(std::fabs(ui::deadZoneRingRadius(0.15f, 40.0f) - 6.0f) < 0.001f, "the ring is deadZone x the well's radius");
             t.IsTrue(std::fabs(ui::deadZoneRingRadius(0.0f, 40.0f)) < 0.001f, "no dead zone, no ring");
 
-            // The drawn stick offset is the axis the game will read, times the well's radius.
             auto close = [](float a, float b) { return std::fabs(a - b) < 0.001f; };
             const float well = 40.0f;
             ui::Vec2 off = ui::stickOffset(ui::Vec2{0.1f, 0.0f}, 0.2f, well);
@@ -615,8 +655,86 @@ void register_launcher_tests()
             t.IsTrue(close(off.x, 20.0f), "with no dead zone it is simply the axis times the radius");
             off = ui::stickOffset(ui::Vec2{2.0f, 0.0f}, 0.0f, well);
             t.IsTrue(close(off.x, well), "and it never leaves the well, whatever the driver reports");
-            off = ui::stickOffset(ui::Vec2{0.0f, 0.0f}, 0.15f, well);
-            t.IsTrue(close(off.x, 0.0f) && close(off.y, 0.0f), "a centred stick is centred");
+        });
+
+        tc.Run("the theme's contrast: every text colour clears 4.5:1 on the surface it is drawn on", [](TestCase &t)
+        {
+            using namespace ui::theme;
+            auto pair = [&t](ui::Rgba ink, ui::Rgba on, const char *what)
+            {
+                const float ratio = ui::contrastRatio(ink, on);
+                t.IsTrue(ratio >= 4.5f, std::string(what) + " must clear 4.5:1");
+            };
+            t.IsTrue(std::fabs(ui::contrastRatio(ui::Rgba{0, 0, 0, 255}, ui::Rgba{255, 255, 255, 255}) - 21.0f) < 0.01f,
+                     "black on white is 21:1 -- the ratio itself is right");
+            t.IsTrue(std::fabs(ui::contrastRatio(panel, panel) - 1.0f) < 0.001f, "a colour on itself is 1:1");
+
+            pair(text, ground, "body text on the ground");
+            pair(text, panel, "body text on a panel");
+            pair(text, panelHi, "body text on a raised panel");
+            pair(caption, ground, "captions on the ground");
+            pair(caption, panel, "captions on a panel");
+            pair(caption, panelHi, "captions on a raised panel");
+            pair(dim, ground, "secondary text on the ground");
+            pair(dim, panel, "secondary text on a panel");
+            pair(gold, panel, "the accent on a panel");
+            pair(goldHi, panel, "the bright accent on a panel");
+            pair(goldHi, panelHi, "the bright accent on a raised panel");
+            pair(ground, gold, "dark ink on a gold button");
+            pair(ground, goldHi, "dark ink on a hovered gold button");
+            pair(lampGreen, panel, "the ready lamp on a panel");
+            pair(badInk, panel, "an error on a panel");
+            pair(text, blueDeep, "the LAUNCH label on the bottom of its gradient");
+            pair(text, blueFill, "the LAUNCH label on the top of its gradient");
+        });
+
+        tc.Run("the custom title bar's hit test: the buttons, the drag region, the resize edges", [](TestCase &t)
+        {
+            const int w = 1100, h = 700;
+            const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+            auto at = [&](float x, float y, float scale = 1.0f, bool maximized = false)
+            {
+                return ui::chromeHitTest(static_cast<int>(x), static_cast<int>(y), static_cast<int>(w * scale),
+                                         static_cast<int>(h * scale), scale, maximized);
+            };
+
+            t.IsTrue(at(l.close.cx(), l.close.cy()) == ui::ChromeHit::Close, "the close button");
+            t.IsTrue(at(l.maximize.cx(), l.maximize.cy()) == ui::ChromeHit::Maximize, "the maximise button");
+            t.IsTrue(at(l.minimize.cx(), l.minimize.cy()) == ui::ChromeHit::Minimize, "the minimise button");
+            t.IsTrue(at(l.pill.cx(), l.pill.cy()) == ui::ChromeHit::UnsavedPill, "the unsaved pill");
+            t.IsTrue(at(l.caption.cx(), l.caption.cy()) == ui::ChromeHit::Caption, "the drag region between the mark and the status");
+            t.IsTrue(at(l.mark.cx(), l.mark.cy()) == ui::ChromeHit::Client, "the mark is not draggable");
+            t.IsTrue(at(l.status.cx(), l.status.cy()) == ui::ChromeHit::Client, "and neither is the status block");
+            t.IsTrue(at(l.caption.cx(), l.bar.bottom() + 40.0f) == ui::ChromeHit::Client, "below the bar is the page");
+
+            // The same boxes at 1.5x: the bar scales with everything else.
+            t.IsTrue(at(l.close.cx() * 1.5f, l.close.cy() * 1.5f, 1.5f) == ui::ChromeHit::Close, "the close button at 1.5x");
+            t.IsTrue(at(l.minimize.cx() * 1.5f, l.minimize.cy() * 1.5f, 1.5f) == ui::ChromeHit::Minimize, "the minimise button at 1.5x");
+            t.IsTrue(at(l.caption.cx() * 1.5f, l.caption.cy() * 1.5f, 1.5f) == ui::ChromeHit::Caption, "the drag region at 1.5x");
+            t.IsTrue(at(l.close.cx(), l.close.cy(), 1.5f) != ui::ChromeHit::Close,
+                     "and a 1x position is NOT the close button once the window is scaled");
+
+            // The resize frame.
+            t.IsTrue(at(1.0f, 300.0f) == ui::ChromeHit::Left, "the left edge resizes");
+            t.IsTrue(at(w - 1.0f, 300.0f) == ui::ChromeHit::Right, "so does the right");
+            t.IsTrue(at(400.0f, 1.0f) == ui::ChromeHit::Top, "so does the top, above the bar");
+            t.IsTrue(at(400.0f, h - 1.0f) == ui::ChromeHit::Bottom, "and the bottom");
+            t.IsTrue(at(1.0f, 1.0f) == ui::ChromeHit::TopLeft, "the corners are corners");
+            t.IsTrue(at(w - 1.0f, 1.0f) == ui::ChromeHit::TopRight, "top right");
+            t.IsTrue(at(1.0f, h - 1.0f) == ui::ChromeHit::BottomLeft, "bottom left");
+            t.IsTrue(at(w - 1.0f, h - 1.0f) == ui::ChromeHit::BottomRight, "bottom right");
+            t.IsTrue(at(400.0f, 8.0f) == ui::ChromeHit::Caption, "past the 6 px border the bar takes over");
+
+            // A maximised window has no resize frame at all.
+            t.IsTrue(at(1.0f, 300.0f, 1.0f, true) == ui::ChromeHit::Client, "maximised: no left edge");
+            t.IsTrue(at(400.0f, 1.0f, 1.0f, true) == ui::ChromeHit::Caption, "maximised: the top row is still the drag region");
+            t.IsTrue(at(w - 1.0f, h - 1.0f, 1.0f, true) == ui::ChromeHit::Client, "maximised: no corner");
+
+            // The buttons win over the top resize border, except in its top two pixels.
+            t.IsTrue(at(l.close.cx(), 4.0f) == ui::ChromeHit::Close, "the close button wins inside its box");
+            t.IsTrue(at(l.close.cx(), 1.0f) == ui::ChromeHit::Top, "but the top two pixels still resize");
+            t.IsTrue(at(l.minimize.cx(), 1.0f) == ui::ChromeHit::Top, "away from the corner, that is the top edge too");
+            t.IsTrue(at(1099.0f, 1.0f) == ui::ChromeHit::TopRight, "and the very corner is the corner grab");
         });
 
         tc.Run("the glyph family follows the pad's name: Xbox letters, PlayStation shapes, neither otherwise", [](TestCase &t)

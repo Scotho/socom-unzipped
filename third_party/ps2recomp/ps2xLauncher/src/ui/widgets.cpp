@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 namespace ui
 {
@@ -14,22 +15,37 @@ namespace ui
         }
         Vector2 px(const Ctx &ctx, Vec2 v) { return Vector2{v.x * ctx.scale, v.y * ctx.scale}; }
 
-        const Font &fontOf(const Ctx &ctx, Face face)
+        // A circle's edge is only as smooth as its segment count, and a centre landing exactly on a pixel
+        // boundary makes the top and bottom rows disagree -- so centres sit on pixel centres.
+        Vector2 circleCentre(const Ctx &ctx, Vec2 v)
         {
-            if (face == Face::Display)
-                return ctx.fonts->display;
-            if (face == Face::Bold)
-                return ctx.fonts->bodyBold;
-            return ctx.fonts->body;
+            const float k = ctx.scale * ctx.dpi;
+            return Vector2{(std::floor(v.x * k) + 0.5f) / ctx.dpi, (std::floor(v.y * k) + 0.5f) / ctx.dpi};
         }
 
-        float spacingFor(Face face, float sizePx)
+        int segmentsFor(const Ctx &ctx, float radius) { return circleSegments(radius * ctx.scale * ctx.dpi); }
+
+        // Text: rasterised at the pixel size it is drawn at, never below the floor, on the pixel grid.
+        int pixelSize(const Ctx &ctx, float size)
         {
-            return face == Face::Display ? sizePx * 0.08f : sizePx * 0.02f;
+            const int wanted = static_cast<int>(std::lround(size * ctx.scale * ctx.dpi));
+            return wanted < metrics::minTextPx ? metrics::minTextPx : wanted;
+        }
+
+        float snap(const Ctx &ctx, float screenValue)
+        {
+            return std::round(screenValue * ctx.dpi) / ctx.dpi;
         }
     }
 
     void fillRect(const Ctx &ctx, Rect r, Rgba color) { DrawRectangleRec(px(ctx, r), rl(color)); }
+
+    void fillRectGradient(const Ctx &ctx, Rect r, Rgba top, Rgba bottom)
+    {
+        const Rectangle p = px(ctx, r);
+        DrawRectangleGradientV(static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.width),
+                               static_cast<int>(p.height), rl(top), rl(bottom));
+    }
 
     void strokeRect(const Ctx &ctx, Rect r, Rgba color, float thick)
     {
@@ -38,14 +54,14 @@ namespace ui
 
     void fillCircle(const Ctx &ctx, Vec2 c, float radius, Rgba color)
     {
-        DrawCircleV(px(ctx, c), radius * ctx.scale, rl(color));
+        DrawCircleSector(circleCentre(ctx, c), radius * ctx.scale, 0.0f, 360.0f, segmentsFor(ctx, radius), rl(color));
     }
 
     void strokeCircle(const Ctx &ctx, Vec2 c, float radius, Rgba color, float thick)
     {
         const float r = radius * ctx.scale;
-        const float t = std::max(1.0f, thick * ctx.scale);
-        DrawRing(px(ctx, c), r - t, r, 0.0f, 360.0f, 48, rl(color));
+        const float t = std::max(1.2f, thick * ctx.scale);
+        DrawRing(circleCentre(ctx, c), r - t, r, 0.0f, 360.0f, segmentsFor(ctx, radius), rl(color));
     }
 
     void fillRound(const Ctx &ctx, Rect r, float radius, Rgba color)
@@ -53,7 +69,7 @@ namespace ui
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
-        DrawRectangleRounded(p, roundness, 12, rl(color));
+        DrawRectangleRounded(p, roundness, std::max(8, circleSegments(radius * ctx.scale * ctx.dpi) / 4), rl(color));
     }
 
     void strokeRound(const Ctx &ctx, Rect r, float radius, Rgba color, float thick)
@@ -61,12 +77,13 @@ namespace ui
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
-        DrawRectangleRoundedLinesEx(p, roundness, 12, std::max(1.0f, thick * ctx.scale), rl(color));
+        DrawRectangleRoundedLinesEx(p, roundness, std::max(8, circleSegments(radius * ctx.scale * ctx.dpi) / 4),
+                                    std::max(1.2f, thick * ctx.scale), rl(color));
     }
 
     void drawLine(const Ctx &ctx, Vec2 a, Vec2 b, Rgba color, float thick)
     {
-        DrawLineEx(px(ctx, a), px(ctx, b), std::max(1.0f, thick * ctx.scale), rl(color));
+        DrawLineEx(px(ctx, a), px(ctx, b), std::max(1.5f, thick * ctx.scale), rl(color));
     }
 
     void fillTriangle(const Ctx &ctx, Vec2 a, Vec2 b, Vec2 c, Rgba color)
@@ -81,7 +98,7 @@ namespace ui
 
     void strokePoly(const Ctx &ctx, Vec2 centre, int sides, float radius, float rotation, Rgba color, float thick)
     {
-        DrawPolyLinesEx(px(ctx, centre), sides, radius * ctx.scale, rotation, std::max(1.0f, thick * ctx.scale), rl(color));
+        DrawPolyLinesEx(px(ctx, centre), sides, radius * ctx.scale, rotation, std::max(1.2f, thick * ctx.scale), rl(color));
     }
 
     void fillQuad(const Ctx &ctx, Vec2 tl, Vec2 bl, Vec2 br, Vec2 tr, Rgba color)
@@ -91,29 +108,49 @@ namespace ui
         DrawTriangle(px(ctx, tr), px(ctx, bl), px(ctx, br), rl(color));
     }
 
-    float textWidth(const Ctx &ctx, const char *s, float size, Face face)
+    void strokePath(const Ctx &ctx, const Vec2 *points, int count, Rgba color, float thick, bool closed)
     {
-        const float sizePx = size * ctx.scale;
-        const Vector2 m = MeasureTextEx(fontOf(ctx, face), s, sizePx, spacingFor(face, sizePx));
+        if (count < 2)
+            return;
+        std::vector<Vector2> pts;
+        pts.reserve(static_cast<size_t>(count) + 1);
+        for (int i = 0; i < count; ++i)
+            pts.push_back(px(ctx, points[i]));
+        if (closed)
+            pts.push_back(pts.front());
+        DrawSplineLinear(pts.data(), static_cast<int>(pts.size()), std::max(1.5f, thick * ctx.scale), rl(color));
+    }
+
+    float textWidth(const Ctx &ctx, const char *s, float size, Face face, float tracking)
+    {
+        const int pixels = pixelSize(ctx, size);
+        const float screenSize = static_cast<float>(pixels) / ctx.dpi;
+        const Font &font = ctx.fonts->at(face, pixels);
+        const Vector2 m = MeasureTextEx(font, s, screenSize, screenSize * tracking);
         return m.x / ctx.scale;
     }
 
-    void text(const Ctx &ctx, const char *s, Vec2 at, float size, Rgba color, Face face)
+    void text(const Ctx &ctx, const char *s, Vec2 at, float size, Rgba color, Face face, float tracking)
     {
-        const float sizePx = size * ctx.scale;
-        DrawTextEx(fontOf(ctx, face), s, px(ctx, at), sizePx, spacingFor(face, sizePx), rl(color));
+        const int pixels = pixelSize(ctx, size);
+        const float screenSize = static_cast<float>(pixels) / ctx.dpi;
+        const Font &font = ctx.fonts->at(face, pixels);
+        const Vector2 where{snap(ctx, at.x * ctx.scale), snap(ctx, at.y * ctx.scale)};
+        DrawTextEx(font, s, where, screenSize, screenSize * tracking, rl(color));
     }
 
-    void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face)
+    void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face, float tracking)
     {
-        const float w = textWidth(ctx, s, size, face);
-        text(ctx, s, Vec2{r.x + (r.w - w) * 0.5f, r.y + (r.h - size * 1.12f) * 0.5f}, size, color, face);
+        const float w = textWidth(ctx, s, size, face, tracking);
+        const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);   // design units
+        text(ctx, s, Vec2{r.x + (r.w - w) * 0.5f, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face, tracking);
     }
 
     void textRightIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face)
     {
         const float w = textWidth(ctx, s, size, face);
-        text(ctx, s, Vec2{r.right() - w, r.y + (r.h - size * 1.12f) * 0.5f}, size, color, face);
+        const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
+        text(ctx, s, Vec2{r.right() - w, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face);
     }
 
     std::string ellipsizeEnd(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face)
@@ -142,12 +179,11 @@ namespace ui
 
     void groundGrid(const Ctx &ctx, Rect window)
     {
-        const Rgba faint = theme::alpha(theme::line, 42);
+        const Rgba faint = theme::alpha(theme::line, 40);
         for (float x = 0.0f; x <= window.w; x += metrics::gridStep)
             drawLine(ctx, Vec2{x, 0.0f}, Vec2{x, window.h}, faint, 1.0f);
         for (float y = 0.0f; y <= window.h; y += metrics::gridStep)
             drawLine(ctx, Vec2{0.0f, y}, Vec2{window.w, y}, faint, 1.0f);
-        // A vignette: four bands of the ground colour fading in from the edges.
         const int bands = 10;
         for (int i = 0; i < bands; ++i)
         {
@@ -159,6 +195,18 @@ namespace ui
             fillRect(ctx, Rect{0.0f, window.h - inset - 4.6f, window.w, 4.6f}, c);
             fillRect(ctx, Rect{inset, 0.0f, 4.6f, window.h}, c);
             fillRect(ctx, Rect{window.w - inset - 4.6f, 0.0f, 4.6f, window.h}, c);
+        }
+    }
+
+    void glow(const Ctx &ctx, Vec2 centre, float radius, Rgba color, unsigned char peak)
+    {
+        // The halo behind the game's trident, as rings of falling alpha: procedural, no artwork.
+        const int rings = 16;
+        for (int i = rings; i >= 1; --i)
+        {
+            const float t = static_cast<float>(i) / static_cast<float>(rings);
+            const float a = static_cast<float>(peak) * (1.0f - t) * (1.0f - t);
+            fillCircle(ctx, centre, radius * t, theme::alpha(color, static_cast<unsigned char>(a)));
         }
     }
 
@@ -190,32 +238,41 @@ namespace ui
     {
         const bool isFocused = focused(ctx, id);
         const bool isHover = enabled && hovered(ctx, r);
+        const bool live = isHover || isFocused;
+        if (primary)
+        {
+            // The logo's signature: the letters' blue-to-navy gradient inside a gold outline.
+            if (enabled)
+            {
+                fillRectGradient(ctx, r, theme::blueFill, theme::blueDeep);
+                strokeRect(ctx, r, live ? theme::goldHi : theme::gold, 2.0f);
+                textCenteredIn(ctx, label, r, metrics::bodySize + 5.0f, theme::text, Face::Bold, 0.06f);
+            }
+            else
+            {
+                fillRect(ctx, r, theme::mix(theme::panel, theme::ground, 0.35f));
+                strokeRect(ctx, r, theme::line, 2.0f);
+                textCenteredIn(ctx, label, r, metrics::bodySize + 5.0f, theme::dim, Face::Bold, 0.06f);
+            }
+            return hit(ctx, r, id, enabled);
+        }
         Rgba fill = theme::panelHi;
         Rgba edge = theme::line;
         Rgba ink = theme::text;
-        if (primary)
+        if (!enabled)
         {
-            fill = enabled ? (isHover || isFocused ? theme::gold : theme::mix(theme::gold, theme::panel, 0.25f)) : theme::panel;
-            edge = enabled ? theme::goldHi : theme::line;
-            ink = enabled ? theme::ground : theme::dim;
+            fill = theme::mix(theme::panel, theme::ground, 0.4f);
+            ink = theme::dim;
         }
-        else
+        else if (live)
         {
-            if (!enabled)
-            {
-                fill = theme::mix(theme::panel, theme::ground, 0.4f);
-                ink = theme::mix(theme::dim, theme::ground, 0.35f);
-            }
-            else if (isHover || isFocused)
-            {
-                fill = theme::mix(theme::panelHi, theme::gold, 0.16f);
-                edge = theme::gold;
-                ink = theme::goldHi;
-            }
+            fill = theme::mix(theme::panelHi, theme::gold, 0.18f);
+            edge = theme::gold;
+            ink = theme::goldHi;
         }
         fillRect(ctx, r, fill);
         strokeRect(ctx, r, edge, 2.0f);
-        textCenteredIn(ctx, label, r, primary ? 24.0f : 18.0f, ink, Face::Bold);
+        textCenteredIn(ctx, label, r, metrics::labelSize + 1.0f, ink, Face::Bold, 0.04f);
         return hit(ctx, r, id, enabled);
     }
 
@@ -228,8 +285,10 @@ namespace ui
         strokeRect(ctx, box, live ? theme::gold : theme::line, 2.0f);
         if (value)
             fillRect(ctx, Rect{box.x + 5.0f, box.y + 5.0f, box.w - 10.0f, box.h - 10.0f}, theme::goldHi);
-        text(ctx, label, Vec2{box.right() + 12.0f, r.y + (r.h - 18.0f * 1.12f) * 0.5f}, 18.0f,
-             live ? theme::text : theme::dim);
+        const float size = metrics::bodySize - 1.0f;
+        const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
+        text(ctx, label, Vec2{box.right() + 12.0f, r.y + (r.h - drawn * 1.12f) * 0.5f}, size,
+             live ? theme::text : theme::caption);
         if (hit(ctx, r, id))
         {
             value = !value;
@@ -241,29 +300,34 @@ namespace ui
     bool radioCell(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool selected)
     {
         const bool live = hovered(ctx, r) || focused(ctx, id);
-        fillRect(ctx, r, selected ? theme::mix(theme::panelHi, theme::gold, 0.22f) : theme::mix(theme::panel, theme::ground, 0.3f));
-        strokeRect(ctx, r, selected ? theme::gold : (live ? theme::mix(theme::line, theme::gold, 0.5f) : theme::line), 2.0f);
-        const Rgba ink = selected ? theme::goldHi : (live ? theme::text : theme::dim);
-        const float size = 18.0f;
-        const std::string shown = ellipsizeEnd(ctx, label, r.w - 16.0f, size, Face::Bold);
-        textCenteredIn(ctx, shown.c_str(), r, size, ink, Face::Bold);
         if (selected)
-            fillRect(ctx, Rect{r.x, r.bottom() - 3.0f, r.w, 3.0f}, theme::gold);
+            fillRectGradient(ctx, r, theme::blueFill, theme::blueDeep);
+        else
+            fillRect(ctx, r, live ? theme::panelHi : theme::mix(theme::panel, theme::ground, 0.25f));
+        strokeRect(ctx, r, selected ? theme::gold : (live ? theme::mix(theme::line, theme::gold, 0.5f) : theme::line), 2.0f);
+        const Rgba ink = selected ? theme::text : (live ? theme::text : theme::caption);
+        const float size = metrics::labelSize + 1.0f;
+        const std::string shown = ellipsizeEnd(ctx, label, r.w - 16.0f, size, Face::Bold);
+        textCenteredIn(ctx, shown.c_str(), r, size, ink, Face::Bold, 0.04f);
         return hit(ctx, r, id);
     }
 
     bool listRow(const Ctx &ctx, Rect r, const std::string &label, const std::string &id, bool selected)
     {
         const bool live = hovered(ctx, r) || focused(ctx, id);
-        if (selected || live)
-            fillRect(ctx, r, selected ? theme::mix(theme::panelHi, theme::gold, 0.14f) : theme::panelHi);
+        if (selected)
+            fillRect(ctx, r, theme::mix(theme::panelHi, theme::blue, 0.30f));
+        else if (live)
+            fillRect(ctx, r, theme::panelHi);
         const Rect mark{r.x + 6.0f, r.y + r.h * 0.5f - 5.0f, 10.0f, 10.0f};
         strokeRect(ctx, mark, selected ? theme::gold : theme::line, 2.0f);
         if (selected)
             fillRect(ctx, Rect{mark.x + 3.0f, mark.y + 3.0f, 4.0f, 4.0f}, theme::goldHi);
-        const std::string shown = ellipsizeEnd(ctx, label, r.w - 36.0f, 18.0f);
-        text(ctx, shown.c_str(), Vec2{mark.right() + 12.0f, r.y + (r.h - 18.0f * 1.12f) * 0.5f}, 18.0f,
-             selected ? theme::goldHi : (live ? theme::text : theme::dim));
+        const float size = metrics::bodySize - 1.0f;
+        const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
+        const std::string shown = ellipsizeEnd(ctx, label, r.w - 36.0f, size);
+        text(ctx, shown.c_str(), Vec2{mark.right() + 12.0f, r.y + (r.h - drawn * 1.12f) * 0.5f}, size,
+             selected ? theme::text : (live ? theme::text : theme::caption));
         return hit(ctx, r, id);
     }
 
@@ -272,15 +336,12 @@ namespace ui
         const bool isFocused = focused(ctx, id);
         const bool live = isFocused || hovered(ctx, r);
         const double before = value;
-        // The control is the whole row: a recessed well with the track down its middle, so the focus ring
-        // encloses something rather than hanging in space.
         fillRect(ctx, r, theme::mix(theme::panel, theme::ground, 0.45f));
         strokeRect(ctx, r, live ? theme::line : theme::alpha(theme::line, 150), 2.0f);
         const Rect track{r.x + 14.0f, r.y + r.h * 0.5f - 3.0f, r.w - 28.0f, 6.0f};
         fillRect(ctx, track, theme::ground);
-        strokeRect(ctx, track, theme::line, 1.0f);
         const float t = hi > lo ? static_cast<float>((value - lo) / (hi - lo)) : 0.0f;
-        fillRect(ctx, Rect{track.x, track.y, track.w * t, track.h}, live ? theme::gold : theme::mix(theme::gold, theme::panel, 0.35f));
+        fillRect(ctx, Rect{track.x, track.y, track.w * t, track.h}, live ? theme::gold : theme::mix(theme::gold, theme::panel, 0.3f));
         const Vec2 knob{track.x + track.w * t, track.cy()};
         fillCircle(ctx, knob, 9.0f, live ? theme::goldHi : theme::gold);
         strokeCircle(ctx, knob, 9.0f, theme::ground, 2.0f);
@@ -336,12 +397,12 @@ namespace ui
         }
 
         const float inset = 10.0f;
-        const float size = 19.0f;
-        // A path is read from its end while it is typed, and from its front when it is not.
+        const float size = metrics::bodySize;
+        const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
         const std::string shown = isActive ? ellipsizeStart(ctx, value, r.w - inset * 2.0f, size)
                                            : ellipsizeEnd(ctx, value, r.w - inset * 2.0f, size);
-        text(ctx, shown.c_str(), Vec2{r.x + inset, r.y + (r.h - size * 1.12f) * 0.5f}, size,
-             editable ? theme::text : theme::dim);
+        text(ctx, shown.c_str(), Vec2{r.x + inset, r.y + (r.h - drawn * 1.12f) * 0.5f}, size,
+             editable ? theme::text : theme::caption);
         if (isActive && (ctx.fake || (static_cast<int>(ctx.time * 2.0) & 1)))
         {
             const float w = textWidth(ctx, shown.c_str(), size);
@@ -355,7 +416,6 @@ namespace ui
         fillRect(ctx, r, theme::ground);
         fillRect(ctx, Rect{r.x + 2.0f, r.y + 2.0f, (r.w - 4.0f) * fraction, r.h - 4.0f}, fill);
         strokeRect(ctx, r, theme::line, 2.0f);
-        // Tick marks every tenth: a level meter reads as a scale, not as a bar.
         for (int i = 1; i < 10; ++i)
         {
             const float x = r.x + r.w * (static_cast<float>(i) / 10.0f);

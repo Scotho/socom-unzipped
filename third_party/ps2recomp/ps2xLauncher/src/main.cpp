@@ -15,6 +15,7 @@
 #include "launcher/sha256.h"
 #include "win32_glue.h"
 
+#include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
@@ -44,6 +45,18 @@ namespace fs = std::filesystem;
 
 namespace
 {
+    // What the Win32 window procedure needs to answer WM_NCHITTEST between frames. The system asks in real
+    // pixels, the UI works in screen units, so the scale it is asked with carries the DPI factor too.
+    float g_uiScale = 1.0f;
+    float g_uiDpi = 1.0f;
+    bool g_uiMaximized = false;
+    bool g_nativeChrome = false;
+
+    int chromeHitForSystem(int x, int y, int w, int h)
+    {
+        return static_cast<int>(ui::chromeHitTest(x, y, w, h, g_uiScale * g_uiDpi, g_uiMaximized));
+    }
+
     std::string readText(const fs::path &p)
     {
         std::ifstream in(p, std::ios::binary);
@@ -126,46 +139,115 @@ namespace
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
 
-    void drawHeader(const ui::Ctx &ctx, ui::App &app)
+    // ---- the launcher's own title bar (there is no OS caption above it) -----------------------------------
+
+    void drawWindowButton(const ui::Ctx &ctx, ui::Rect r, int kind, bool hover, bool maximized)
     {
         using namespace ui;
-        const Rect h = app.frame.header;
-        fillRect(ctx, h, theme::panel);
-        fillRect(ctx, Rect{0.0f, h.bottom() - 2.0f, h.w, 2.0f}, theme::line);
+        if (hover)
+            fillRect(ctx, r, kind == 2 ? theme::bad : theme::panelHi);
+        const Rgba ink = hover && kind == 2 ? Rgba{0xFF, 0xFF, 0xFF, 0xFF} : theme::text;
+        const float cx = r.cx();
+        const float cy = r.cy();
+        const float s = 5.0f;
+        if (kind == 0)   // minimise
+        {
+            drawLine(ctx, Vec2{cx - s, cy + 0.5f}, Vec2{cx + s, cy + 0.5f}, ink, 1.5f);
+        }
+        else if (kind == 1)   // maximise / restore
+        {
+            if (maximized)
+            {
+                strokeRect(ctx, Rect{cx - s + 1.5f, cy - s - 1.0f, s * 2.0f - 1.5f, s * 2.0f - 1.5f}, ink, 1.5f);
+                strokeRect(ctx, Rect{cx - s - 1.5f, cy - s + 2.0f, s * 2.0f - 1.5f, s * 2.0f - 1.5f}, ink, 1.5f);
+            }
+            else
+            {
+                strokeRect(ctx, Rect{cx - s, cy - s, s * 2.0f, s * 2.0f}, ink, 1.5f);
+            }
+        }
+        else   // close
+        {
+            drawLine(ctx, Vec2{cx - s, cy - s}, Vec2{cx + s, cy + s}, ink, 1.6f);
+            drawLine(ctx, Vec2{cx - s, cy + s}, Vec2{cx + s, cy - s}, ink, 1.6f);
+        }
+    }
 
-        text(ctx, "SOCOM II", Vec2{metrics::margin, 8.0f}, 38.0f, theme::gold, Face::Display);
-        const float wordmarkW = textWidth(ctx, "SOCOM II", 38.0f, Face::Display);
-        text(ctx, "UNZIPPED", Vec2{metrics::margin + 3.0f, 50.0f}, 16.0f, theme::goldHi, Face::Bold);
-        fillRect(ctx, Rect{metrics::margin, 46.0f, wordmarkW, 2.0f}, theme::alpha(theme::gold, 120));
+    void drawTopBar(const ui::Ctx &ctx, ui::App &app, ui::ChromeHit hover, bool maximized)
+    {
+        using namespace ui;
+        const ChromeLayout l = chromeLayout(app.frame.window.w);
+        fillRect(ctx, l.bar, theme::mix(theme::panel, theme::ground, 0.5f));
+        fillRect(ctx, Rect{0.0f, l.bar.bottom() - 1.0f, l.bar.w, 1.0f}, theme::line);
 
-        // The state, with its lamp, at the right.
+        // The mark, small: the big wordmark lives at the head of the rail.
+        const float markX = 16.0f;
+        text(ctx, "SOCOM II", Vec2{markX, 10.0f}, 15.0f, theme::gold, Face::Bold, 0.08f);
+        const float markW = textWidth(ctx, "SOCOM II", 15.0f, Face::Bold, 0.08f);
+        text(ctx, "UNZIPPED", Vec2{markX + markW + 10.0f, 12.0f}, 13.0f, theme::dim, Face::Bold, 0.10f);
+
+        // The page, centred in the drag region: where you are, without taking a click.
+        if (l.caption.w > 220.0f)
+        {
+            const char *name = pageName(app.nav.page);
+            textCenteredIn(ctx, name, l.caption, 13.0f, theme::alpha(theme::caption, 150), Face::Bold, 0.12f);
+        }
+
+        // The state lamp and its line, moved here from the old header band.
         const char *state = app.running ? "RUNNING" : (app.discOk ? "READY" : "NOT READY");
         const Rgba lamp = app.running ? theme::goldHi : (app.discOk ? theme::lampGreen : theme::warn);
-        const float sw = textWidth(ctx, state, 20.0f, Face::Bold);
-        const float sx = h.w - metrics::margin - sw;
-        text(ctx, state, Vec2{sx, 40.0f}, 20.0f, theme::text, Face::Bold);
-        const Vec2 lampAt{h.w - metrics::margin - 9.0f, 24.0f};
-        fillCircle(ctx, lampAt, 7.0f, lamp);
-        strokeCircle(ctx, lampAt, 13.0f, theme::alpha(lamp, 110), 2.0f);
-        const char *what = app.running ? "the game has the screen" : (app.discOk ? "disc verified" : "disc not verified");
-        text(ctx, what, Vec2{h.w - metrics::margin - 30.0f - textWidth(ctx, what, 15.0f), 17.0f}, 15.0f, theme::dim);
+        const float stateW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
+        const float lampX = l.status.right() - 14.0f - stateW - 20.0f;
+        fillCircle(ctx, Vec2{lampX, l.bar.cy()}, 5.0f, lamp);
+        strokeCircle(ctx, Vec2{lampX, l.bar.cy()}, 9.0f, theme::alpha(lamp, 110), 1.5f);
+        text(ctx, state, Vec2{l.status.right() - 14.0f - stateW, 12.0f}, 14.0f, theme::text, Face::Bold, 0.06f);
+
+        // UNSAVED: only when there is something to save, and clicking it saves.
+        if (app.dirty)
+        {
+            const bool over = hover == ChromeHit::UnsavedPill;
+            fillRound(ctx, l.pill, l.pill.h * 0.5f, over ? theme::mix(theme::panelHi, theme::gold, 0.25f) : theme::panel);
+            strokeRound(ctx, l.pill, l.pill.h * 0.5f, theme::gold, 1.5f);
+            textCenteredIn(ctx, "UNSAVED", l.pill, 13.0f, theme::goldHi, Face::Bold, 0.06f);
+        }
+
+        drawWindowButton(ctx, l.minimize, 0, hover == ChromeHit::Minimize, maximized);
+        drawWindowButton(ctx, l.maximize, 1, hover == ChromeHit::Maximize, maximized);
+        drawWindowButton(ctx, l.close, 2, hover == ChromeHit::Close, maximized);
     }
 
     void drawRail(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &rail)
     {
         using namespace ui;
-        fillRect(ctx, app.frame.rail, theme::alpha(theme::panel, 150));
+        fillRect(ctx, app.frame.rail, theme::alpha(theme::panel, 170));
         fillRect(ctx, Rect{app.frame.rail.right() - 2.0f, app.frame.rail.y, 2.0f, app.frame.rail.h}, theme::line);
+
+        // The wordmark, where it finally has room to be read: the stencil face is only used above 28 px.
+        // Behind it, the blue halo the game puts behind its trident -- drawn, never traced.
+        const Rect head{app.frame.rail.x, app.frame.rail.y, app.frame.rail.w, metrics::railTop};
+        glow(ctx, Vec2{head.cx(), head.cy() - 4.0f}, 96.0f, theme::blue, 46);
+        const float wordSize = 32.0f;
+        const float wordW = textWidth(ctx, "SOCOM II", wordSize, Face::Display, 0.04f);
+        text(ctx, "SOCOM II", Vec2{head.cx() - wordW * 0.5f, head.y + 16.0f}, wordSize, theme::gold, Face::Display, 0.04f);
+        const float subW = textWidth(ctx, "UNZIPPED", 14.0f, Face::Bold, 0.34f);
+        text(ctx, "UNZIPPED", Vec2{head.cx() - subW * 0.5f, head.y + 54.0f}, 14.0f, theme::goldHi, Face::Bold, 0.34f);
+        fillRect(ctx, Rect{head.cx() - wordW * 0.5f, head.y + 50.0f, wordW, 1.0f}, theme::alpha(theme::gold, 120));
         for (const Node &n : rail)
         {
             const bool current = n.page == app.nav.page;
             const bool live = hovered(ctx, n.r) || focused(ctx, n.id);
-            fillRect(ctx, n.r, current ? theme::panelHi : (live ? theme::panel : theme::alpha(theme::panel, 190)));
-            strokeRect(ctx, n.r, current || live ? theme::line : theme::alpha(theme::line, 120), 2.0f);
+            if (current)
+                fillRectGradient(ctx, n.r, theme::panelHi, theme::mix(theme::panelHi, theme::blue, 0.22f));
+            else
+                fillRect(ctx, n.r, live ? theme::panel : theme::alpha(theme::panel, 190));
+            strokeRect(ctx, n.r, current ? theme::gold : (live ? theme::line : theme::alpha(theme::line, 120)), 2.0f);
             fillRect(ctx, Rect{n.r.x, n.r.y, 5.0f, n.r.h}, current ? theme::gold : theme::alpha(theme::line, 160));
-            const float size = 19.0f;
-            text(ctx, pageName(n.page), Vec2{n.r.x + 20.0f, n.r.y + (n.r.h - size * 1.2f) * 0.5f}, size,
-                 current ? theme::goldHi : (live ? theme::text : theme::dim), Face::Display);
+            // Rajdhani, not the stencil: at this size the stencil's gaps eat the letters (the owner's
+            // "illegible at smaller resolutions").
+            const float size = metrics::bodySize - 1.0f;
+            const float drawn = size;
+            text(ctx, pageName(n.page), Vec2{n.r.x + 20.0f, n.r.y + (n.r.h - drawn * 1.2f) * 0.5f}, size,
+                 current ? theme::goldHi : (live ? theme::text : theme::caption), Face::Bold, 0.06f);
             if (hit(ctx, n.r, n.id) && app.graph != nullptr)
                 app.nav.goTo(*app.graph, n.page);
         }
@@ -265,19 +347,14 @@ namespace
         const Rect band{c.x + 2.0f, c.y + 2.0f, c.w - 4.0f, 42.0f};
         fillRect(ctx, band, theme::panelHi);
         fillRect(ctx, Rect{band.x, band.bottom(), band.w, 2.0f}, theme::line);
-        text(ctx, pageName(app.nav.page), Vec2{band.x + 18.0f, band.y + 8.0f}, 24.0f, theme::goldHi, Face::Display);
-        const float nameW = textWidth(ctx, pageName(app.nav.page), 24.0f, Face::Display);
+        text(ctx, pageName(app.nav.page), Vec2{band.x + 18.0f, band.y + 9.0f}, 22.0f, theme::goldHi, Face::Bold, 0.08f);
+        const float nameW = textWidth(ctx, pageName(app.nav.page), 22.0f, Face::Bold, 0.08f);
         const char *title = pageTitle(app.nav.page);
         const char *dash = std::strstr(title, "-- ");
         const std::string sub = dash != nullptr ? std::string(dash + 3) : std::string(title);
-        const float room = band.w - nameW - 60.0f - (app.dirty ? 190.0f : 0.0f);
-        text(ctx, ellipsizeEnd(ctx, sub, room, 16.0f).c_str(), Vec2{band.x + 30.0f + nameW, band.y + 13.0f}, 16.0f, theme::dim);
-        if (app.dirty)
-        {
-            const char *hint = "UNSAVED CHANGES";
-            const float w = textWidth(ctx, hint, 14.0f, Face::Bold);
-            text(ctx, hint, Vec2{band.right() - 16.0f - w, band.y + 14.0f}, 14.0f, theme::warn, Face::Bold);
-        }
+        const float room = band.w - nameW - 60.0f;
+        text(ctx, ellipsizeEnd(ctx, sub, room, metrics::captionSize).c_str(),
+             Vec2{band.x + 30.0f + nameW, band.y + 13.0f}, metrics::captionSize, theme::caption);
     }
 
     void drawPage(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
@@ -397,7 +474,7 @@ namespace
         app.monitorSize = "2560x1440";
         app.layout.padChoices = static_cast<int>(app.padLabels.size());
         app.layout.micChoices = static_cast<int>(app.micLabels.size());
-        app.layout.customServer = true;
+        app.layout.customServer = false;   // the default preset owns the address
     }
 }
 
@@ -448,7 +525,10 @@ int main(int argc, char **argv)
 
     // HIGHDPI is what a player wants and what a screenshot must not have: the PNGs are asked for at exact
     // pixel sizes.
-    SetConfigFlags(screenshotDir != nullptr ? FLAG_WINDOW_RESIZABLE : (FLAG_WINDOW_HIGHDPI | FLAG_WINDOW_RESIZABLE));
+    // MSAA for every curved edge (the owner: "the circle at the top right ... jagged at odd resolutions");
+    // HIGHDPI so the type is rasterised at real pixels, except under --screenshot where the PNGs must come
+    // out at exactly the asked-for size.
+    SetConfigFlags(FLAG_MSAA_4X_HINT | FLAG_WINDOW_RESIZABLE | (screenshotDir != nullptr ? 0u : FLAG_WINDOW_HIGHDPI));
     InitWindow(static_cast<int>(ui::metrics::designW), static_cast<int>(ui::metrics::designH), "SOCOM Unzipped");
     SetWindowMinSize(static_cast<int>(ui::metrics::minW), static_cast<int>(ui::metrics::minH));
     if (screenshotDir == nullptr)
@@ -463,7 +543,32 @@ int main(int argc, char **argv)
     SetTargetFPS(60);
     SetExitKey(KEY_NULL);
 
-    ui::Fonts fonts = ui::loadFonts();
+    // The custom title bar. On Windows the window keeps its frame (resize, snap, shadow) and only loses the
+    // caption; everywhere else raylib gives us an undecorated window and we drag it ourselves.
+    // --screenshot asks for exact client sizes; the Windows frame trick makes the client cover the whole
+    // window, and the two disagree by the frame's thickness for a frame or two -- which lands in the PNG as
+    // a shifted capture. The screenshots use an undecorated window instead: the bar below is ours either way.
+    if (screenshotDir == nullptr)
+    {
+        g_nativeChrome = win32glue::installCustomChrome(GetWindowHandle(), chromeHitForSystem);
+        if (!g_nativeChrome)
+            SetWindowState(FLAG_WINDOW_UNDECORATED);
+    }
+    else
+    {
+        SetWindowState(FLAG_WINDOW_UNDECORATED);
+    }
+
+    {
+        // The owner's report was "illegible at the default resolution", so the default resolution says so.
+        const Vector2 dpi = GetWindowScaleDPI();
+        std::fprintf(stderr, "[launcher] window %dx%d screen, %dx%d render, dpi %.2f, scale %.3f, monitor %dx%d\n",
+                     GetScreenWidth(), GetScreenHeight(), GetRenderWidth(), GetRenderHeight(), dpi.x,
+                     static_cast<double>(ui::scaleFor(GetScreenWidth(), GetScreenHeight())),
+                     GetMonitorWidth(GetCurrentMonitor()), GetMonitorHeight(GetCurrentMonitor()));
+    }
+
+    ui::Fonts fonts;   // rasterised per pixel size, rebuilt when the scale changes
 
     ui::App app;
     app.config = config;
@@ -501,6 +606,10 @@ int main(int argc, char **argv)
 
     ui::Rect shownFocus{};
     bool focusShownValid = false;
+    float lastScale = -1.0f;
+    bool quitRequested = false;
+    bool dragging = false;
+    Vector2 dragGrab{};
     double pageChangedAt = -1.0;
     ui::Page lastPage = nav.page;
     Vector2 lastMouse = GetMousePosition();
@@ -522,13 +631,24 @@ int main(int argc, char **argv)
                 shots.push_back(Shot{ui::pageAt(i), size[0], size[1], ""});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_playstation"});
     }
+    const char *selfShot = std::getenv("PS2X_LAUNCHER_SHOT");
+    unsigned selfShotFrames = 0;
     size_t shotIndex = 0;
     int shotFrame = 0;
     int resizeWaits = 0;
 
-    while (!WindowShouldClose())
+    while (!WindowShouldClose() && !quitRequested)
     {
         const float scale = ui::scaleFor(GetScreenWidth(), GetScreenHeight());
+        if (scale != lastScale)
+        {
+            fonts.clear();   // every raster in the cache is the wrong size now
+            lastScale = scale;
+        }
+        const float dpiScale = GetWindowScaleDPI().x > 0.1f ? GetWindowScaleDPI().x : 1.0f;
+        g_uiScale = scale;
+        g_uiDpi = dpiScale;
+        g_uiMaximized = win32glue::isWindowMaximized() || IsWindowMaximized();
         const ui::Rect window{0.0f, 0.0f, static_cast<float>(GetScreenWidth()) / scale,
                               static_cast<float>(GetScreenHeight()) / scale};
         app.frame = ui::frameFor(window);
@@ -580,6 +700,7 @@ int main(int argc, char **argv)
         // ---- input ----------------------------------------------------------------------------------------
         ui::Ctx ctx;
         ctx.scale = scale;
+        ctx.dpi = dpiScale;
         ctx.fonts = &fonts;
         const Vector2 mouse = GetMousePosition();
         ctx.mouse = ui::Vec2{mouse.x / scale, mouse.y / scale};
@@ -596,6 +717,65 @@ int main(int argc, char **argv)
         ctx.activeField = &app.activeField;
         ctx.time = GetTime();
         ctx.fake = app.fake;
+
+        // The bar's own mouse handling: the same hit test the system asks, in screen units.
+        const ui::ChromeHit chromeHover =
+            app.fake ? ui::ChromeHit::Client
+                     : ui::chromeHitTest(static_cast<int>(mouse.x), static_cast<int>(mouse.y), GetScreenWidth(),
+                                         GetScreenHeight(), scale, g_uiMaximized);
+        if (!app.fake && ctx.click)
+        {
+            switch (chromeHover)
+            {
+            case ui::ChromeHit::Minimize:
+                if (g_nativeChrome)
+                    win32glue::minimizeWindow();
+                else
+                    MinimizeWindow();
+                ctx.click = false;
+                break;
+            case ui::ChromeHit::Maximize:
+                if (g_nativeChrome)
+                    win32glue::maximizeToggleWindow();
+                else if (IsWindowMaximized())
+                    RestoreWindow();
+                else
+                    MaximizeWindow();
+                ctx.click = false;
+                break;
+            case ui::ChromeHit::Close:
+                quitRequested = true;
+                ctx.click = false;
+                break;
+            case ui::ChromeHit::UnsavedPill:
+                if (app.dirty)
+                    app.requestSave = true;
+                ctx.click = false;
+                break;
+            case ui::ChromeHit::Caption:
+                // Without native chrome the launcher drags its own window.
+                if (!g_nativeChrome)
+                {
+                    dragging = true;
+                    dragGrab = Vector2{mouse.x, mouse.y};
+                }
+                ctx.click = false;
+                break;
+            default:
+                break;
+            }
+        }
+        if (dragging)
+        {
+            if (!IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+                dragging = false;
+            else
+            {
+                const Vector2 at = GetWindowPosition();
+                SetWindowPosition(static_cast<int>(at.x + mouse.x - dragGrab.x),
+                                  static_cast<int>(at.y + mouse.y - dragGrab.y));
+            }
+        }
 
         if (!app.fake)
         {
@@ -695,7 +875,7 @@ int main(int argc, char **argv)
         BeginDrawing();
         ClearBackground(ui::rl(ui::theme::ground));
         ui::groundGrid(ctx, window);
-        drawHeader(ctx, app);
+        drawTopBar(ctx, app, chromeHover, g_uiMaximized);
         drawRail(ctx, app, rail);
         drawContentFrame(ctx, app);
         drawPage(ctx, app, nodes);
@@ -769,6 +949,12 @@ int main(int argc, char **argv)
                 meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
                 app.micStatus = app.config.micDevice.empty() ? "" : (meterOn ? "listening" : "that device will not open");
             }
+            if (app.requestSave)
+            {
+                writeText(configPath, launcher::toJson(app.config));
+                app.dirty = false;
+                app.status = "settings saved";
+            }
             if (app.requestDiagnostics)
                 app.status = copyDiagnostics(dir, lastLog);
             if (app.requestOpenLogs)
@@ -789,9 +975,20 @@ int main(int argc, char **argv)
                     app.status = game.error;
             }
         }
-        app.requestBrowse = app.requestVerify = app.requestLaunch = false;
+        app.requestBrowse = app.requestVerify = app.requestLaunch = app.requestSave = false;
         app.requestDiagnostics = app.requestOpenLogs = false;
         app.requestMicChanged = app.requestMicRescan = false;
+
+        // PS2X_LAUNCHER_SHOT=<file>: the REAL window, with its own chrome, at whatever size it opened at --
+        // a GDI or BitBlt grab of a GL window comes back white on this machine, so the launcher takes it.
+        if (selfShot != nullptr && ++selfShotFrames == 120u)
+        {
+            Image shot = LoadImageFromScreen();
+            if (!ExportImage(shot, selfShot))
+                std::fprintf(stderr, "[launcher] could not write %s\n", selfShot);
+            UnloadImage(shot);
+            quitRequested = true;
+        }
 
         // ---- --screenshot: three frames a page, then the PNG ------------------------------------------------
         if (screenshotDir != nullptr)
@@ -833,7 +1030,7 @@ int main(int argc, char **argv)
     if (mic)
         mic->stopMeter();
     game.close();
-    ui::unloadFonts(fonts);
+    fonts.clear();
     CloseWindow();
     return 0;
 }
