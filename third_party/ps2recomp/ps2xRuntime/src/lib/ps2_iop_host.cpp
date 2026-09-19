@@ -305,6 +305,18 @@ size_t PS2IopHostAdapter::micRead(int16_t *out, size_t frames)
     return mic->read(out, frames);
 }
 
+// Sprint 8 review MUST FIX: capture runs from boot, so when the game opens the headset and asks to record
+// the ring is holding up to a second of audio from before it asked -- and that stale second is what the
+// first Reads served, which is the ~1 s lateness heard on the voice path. lgaud drops it at Open and at
+// StartRecording; with no capture source at all there is nothing to drop.
+void PS2IopHostAdapter::micDiscardPending()
+{
+    HostMic *mic = hostMic();
+    if (mic == nullptr)
+        return;
+    (void)mic->discardPending();
+}
+
 // PS2X_MIC_GAMEREAD_DUMP: exactly the frames the module SERVED to lgaud 0x08, after the resample, so the
 // file's rate is the rate the game opened with and it can be correlated against the reference directly.
 void PS2IopHostAdapter::micGameRead(const int16_t *frames, size_t count, uint32_t rate)

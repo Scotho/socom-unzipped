@@ -23,9 +23,14 @@ CMD_NAMES = {
     0x0A: "Flush", 0x0B: "Mkdir", 0x0C: "Chdir", 0x0D: "GetDir", 0x0E: "SetFileInfo",
     0x0F: "Delete", 0x10: "Format", 0x11: "Unformat", 0x12: "GetEntSpace", 0x13: "Rename",
 }
-# libmc results the stub returns: 0 succeed, -1 not ready/none, -2 not formatted, -4 no entry.
-RESULT_NAMES = {0: "OK", -1: "NOT-READY", -2: "NOT-FORMATTED", -3: "DENIED", -4: "NO-ENTRY",
-                -5: "NO-FORMAT", -10: "NO-SPACE"}
+# The libmc results the stub can return, read off its own kMcResult* constants
+# (ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp:27-33, 2026-09-19): 0 Succeed, -1 ChangedCard,
+# -2 NoFormat, -4 NoEntry, -5 DeniedPermit, -6 NotEmpty, -7 UpLimitHandle. -3 and -10 are NOT
+# defined there and the stub never answers them, so like an unknown cmd they are reported as the
+# raw code rather than guessed. (The old table had -5 as "NO-FORMAT" and -3 as "DENIED"; both were
+# wrong -- -2 is the no-format code and -5 is the denied-permission one.)
+RESULT_NAMES = {0: "OK", -1: "CHANGED-CARD", -2: "NOT-FORMATTED", -4: "NO-ENTRY",
+                -5: "DENIED", -6: "NOT-EMPTY", -7: "HANDLE-LIMIT"}
 # A POSITIVE result is a value, not a code: Open returns the file descriptor, Write/Read the byte
 # count, GetDir the number of entries filled in (measured on the 2026-09-19 driven save).
 
@@ -101,7 +106,7 @@ def failures(events):
     A non-zero result is not a failure: the driven save of 2026-09-19 shows `Sync cmd=2 result=1`
     (Open returns the file descriptor), `Sync cmd=6 result=964` (Write returns the byte count) and
     `Sync cmd=13 result=13` (GetDir returns the number of entries filled in). Only libmc's negative
-    codes are errors -- -4 NO-ENTRY, -5 NO-FORMAT, -2 NOT-FORMATTED. "log" events carry no result."""
+    codes are errors -- -4 NO-ENTRY, -5 DENIED, -2 NOT-FORMATTED. "log" events carry no result."""
     return [ev for ev in events if ev["kind"] != "log" and ev.get("result", 0) < 0]
 
 

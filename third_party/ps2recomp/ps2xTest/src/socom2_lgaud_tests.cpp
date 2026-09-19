@@ -51,6 +51,15 @@ namespace
         }
 
         [[nodiscard]] bool micAvailable() const override { return micOn; }
+        // Sprint 8 review MUST FIX: what the runtime's HostMic ring does when the game starts recording --
+        // every unread frame is dropped, so the game is not handed the second that was captured before it
+        // asked. The scripted source models that by moving its cursor to the end of what is already there.
+        void micDiscardPending() override
+        {
+            micDiscards += 1u;
+            micCursor = micFrames.size();
+        }
+        size_t micDiscards = 0u;
         size_t micRead(int16_t *out, size_t frames) override
         {
             const size_t have = micFrames.size() - micCursor;
@@ -219,9 +228,6 @@ void register_socom2_lgaud_tests()
         {
             LgAudHarness h;
             h.host.micOn = true;
-            h.host.micFrames.resize(16000);                        // one second at the ring's rate
-            for (size_t i = 0; i < h.host.micFrames.size(); ++i)
-                h.host.micFrames[i] = static_cast<int16_t>(i % 1000 * 30 - 15000);
 
             h.put32(0x08, 0u);
             t.Equals(h.call(0x01, 0x20u, 0x170u), 0u, "Enumerate(0) answers one device");
@@ -242,6 +248,13 @@ void register_socom2_lgaud_tests()
             h.put32(0x0c, handle);
             t.Equals(h.call(0x04, 0x20u, 0x20u), 0u, "StartRecording succeeds");
 
+            // The scripted source is pushed AFTER StartRecording: Open and StartRecording now drop
+            // whatever the host had buffered before the game asked for it (the stale-second MUST FIX),
+            // so audio loaded before them is discarded exactly as the real ring's would be.
+            h.host.micFrames.resize(16000);                        // one second at the ring's rate
+            for (size_t i = 0; i < h.host.micFrames.size(); ++i)
+                h.host.micFrames[i] = static_cast<int16_t>(i % 1000 * 30 - 15000);
+
             h.put32(0x0c, handle);
             h.put8(0x12, 1u);
             h.put32(0x20, 0x500u);                                  // what the capture loop asks for (:211485)
@@ -260,6 +273,50 @@ void register_socom2_lgaud_tests()
             t.Equals(h.metric("mic_bytes_read"), uint64_t(got), "and the module counted what it served");
         });
 
+        // Sprint 8 review MUST FIX: capture runs from boot and the ring never overwrote unread frames, so
+        // the moment the game opened the headset and asked to record, the first thing it was handed was the
+        // second of audio captured BEFORE it asked -- which is the ~1 s lateness heard on the voice path.
+        // Open and StartRecording both drop what is pending, so the first Read is live audio.
+        tc.Run("StartRecording drops the audio captured before the game asked for it", [](TestCase &t)
+        {
+            LgAudHarness h;
+            h.host.micOn = true;
+            // A second of the stale pattern, already in the "ring" when the game opens the device.
+            h.host.micFrames.assign(16000, int16_t{-9000});
+
+            h.put32(0x08, 0u);
+            (void)h.call(0x01, 0x20u, 0x170u);
+            h.put32(0x08, 0u);
+            h.put8(0x20, 2u);
+            h.put8(0x22, 1u);
+            h.put8(0x23, 0x10u);
+            h.put16(0x24, 0x2b11u);
+            t.Equals(h.call(0x02, 0x30u, 0x20u), 0u, "Open succeeds");
+            const uint32_t handle = h.word(0x0c);
+            t.Equals(h.host.micDiscards, size_t{1}, "Open drops what was captured before the device was opened");
+
+            h.put32(0x0c, handle);
+            t.Equals(h.call(0x04, 0x20u, 0x20u), 0u, "StartRecording succeeds");
+            t.Equals(h.host.micDiscards, size_t{2}, "and StartRecording drops it again, at the moment it matters");
+
+            // Only now does the player speak: a distinct pattern pushed AFTER the recording started.
+            h.host.micFrames.insert(h.host.micFrames.end(), 16000u, int16_t{9000});
+
+            h.put32(0x0c, handle);
+            h.put8(0x12, 1u);
+            h.put32(0x20, 0x500u);
+            t.Equals(h.call(0x08, 0x30u, 0x530u), 0u, "Read succeeds");
+            const uint32_t got = h.word(0x20);
+            t.IsTrue(got > 0u, "and served some audio");
+            std::vector<int16_t> served(got / 2u);
+            (void)h.host.readGuest(LgAudHarness::kBuf + 0x30u, served.data(), served.size() * 2u);
+            int16_t worst = 9000;
+            for (int16_t sample : served)
+                worst = sample < worst ? sample : worst;
+            t.IsTrue(worst > 0, "every frame served is the AFTER pattern, not the stale second (worst " +
+                                std::to_string(static_cast<int>(worst)) + ")");
+        });
+
         tc.Run("R112: the send block is read before a byte of reply is written", [](TestCase &t)
         {
             // Send and receive are ONE buffer. A module that zeroed the receive buffer first would destroy
@@ -267,8 +324,11 @@ void register_socom2_lgaud_tests()
             // back "no device" (handle 0 is not open).
             LgAudHarness h;
             h.host.micOn = true;
-            h.host.micFrames.assign(16000, int16_t{1234});
             const uint32_t handle = h.openAt(11025u);
+            // The scripted source is pushed AFTER StartRecording: Open and StartRecording now drop
+            // whatever the host had buffered before the game asked for it (the stale-second MUST FIX),
+            // so audio loaded before them is discarded exactly as the real ring's would be.
+            h.host.micFrames.assign(16000, int16_t{1234});
             h.put32(0x0c, handle);
             h.put8(0x12, 1u);
             h.put32(0x20, 0x200u);
@@ -321,9 +381,6 @@ void register_socom2_lgaud_tests()
             // sent rather than assume either.
             LgAudHarness h;
             h.host.micOn = true;
-            h.host.micFrames.resize(16000);
-            for (size_t i = 0; i < h.host.micFrames.size(); ++i)
-                h.host.micFrames[i] = static_cast<int16_t>((i % 211) * 140 - 14000);
 
             h.put32(0x08, 0u);
             (void)h.call(0x01, 0x20u, 0x170u);
@@ -341,6 +398,13 @@ void register_socom2_lgaud_tests()
             const uint32_t handle = h.word(0x0c);
             h.put32(0x0c, handle);
             t.Equals(h.call(0x04, 0x20u, 0x20u), 0u, "StartRecording succeeds");
+
+            // The scripted source is pushed AFTER StartRecording: Open and StartRecording now drop
+            // whatever the host had buffered before the game asked for it (the stale-second MUST FIX),
+            // so audio loaded before them is discarded exactly as the real ring's would be.
+            h.host.micFrames.resize(16000);
+            for (size_t i = 0; i < h.host.micFrames.size(); ++i)
+                h.host.micFrames[i] = static_cast<int16_t>((i % 211) * 140 - 14000);
 
             h.put32(0x0c, handle);
             h.put8(0x12, 1u);

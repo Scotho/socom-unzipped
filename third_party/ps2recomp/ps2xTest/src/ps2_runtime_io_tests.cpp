@@ -3,6 +3,7 @@
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/CD.h"
+#include "Kernel/Stubs/MemoryCard.h"
 
 #include <filesystem>
 #include <fstream>
@@ -744,6 +745,28 @@ void register_ps2_runtime_io_tests()
             t.IsTrue(syncMc(test.rdram) < 0, "an absolute host path is refused as a guest card path");
             t.IsFalse(std::filesystem::exists(outside, ec),
                       "an absolute host path must not write outside the card root");
+        });
+
+        // Sprint 8 review MUST FIX: a component that ends in a space or a dot is NOT the name it looks
+        // like on Win32 -- the Win32 path parser strips trailing spaces and dots, so ".. " is ".." and
+        // "a." is "a". A guest component the card stub accepted as an ordinary name therefore became a
+        // climb out of the card root once the host filesystem saw it. Rejected on BOTH platforms, so the
+        // Linux build refuses the same paths the Windows build does rather than quietly diverging.
+        tc.Run("a memory-card path component may not end in a space or a dot", [](TestCase &t)
+        {
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent(".. "),
+                      "'.. ' is '..' to Win32: a climb wearing a trailing space");
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent("..."),
+                      "'...' collapses to '..' too");
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent("a."), "a trailing dot is not part of the name on Win32");
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent("a "), "and neither is a trailing space");
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent(""), "an empty component is still refused");
+            t.IsFalse(ps2_stubs::isSafeMcPathComponent("C:"), "and a drive letter still is");
+
+            t.IsTrue(ps2_stubs::isSafeMcPathComponent("a.b"), "a dot INSIDE the name is ordinary");
+            t.IsTrue(ps2_stubs::isSafeMcPathComponent("BASCUS-97275SOCOMII"),
+                     "the game's own save folder is still a legal component");
+            t.IsTrue(ps2_stubs::isSafeMcPathComponent("SOCOM2.CFG"), "and so is its save file");
         });
 
         tc.Run("sceMcFormat empties the card directory", [](TestCase &t)

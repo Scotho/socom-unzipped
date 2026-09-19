@@ -36,6 +36,11 @@ namespace ps2_stubs
         std::vector<MemoryCardDebugOpenFile> openFiles;
     };
 
+    // One component of a guest memory-card path, checked before it is ever joined onto a host path.
+    // Exposed so the refusals can be tested directly rather than inferred from whatever the host
+    // filesystem happens to do with an illegal name.
+    bool isSafeMcPathComponent(const std::string &part);
+
     MemoryCardDebugSnapshot getMemoryCardDebugSnapshot();
     void sceMcChangeThreadPriority(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);
     void sceMcChdir(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime);

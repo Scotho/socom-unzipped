@@ -107,6 +107,11 @@ namespace ps2x::iop
             (void)out; (void)frames;
             return 0u;
         }
+        // Sprint 8 review MUST FIX: drop every frame the capture source has buffered but nobody has read.
+        // The host's ring fills from boot, so without this the first thing a game that has just asked to
+        // record is handed is the second of audio captured before it asked. A host with no capture source
+        // has nothing to drop, so the default is a no-op.
+        virtual void micDiscardPending() {}
         // What the module actually served to the game, at the rate lgAudOpen asked for (the voice path asks
         // for 8000 Hz mono, decomp :211843-211852; the tuner path asks for 11025, :48341), and what the game
         // handed back for playback through 0x09. The module counts and forwards; the runtime decides whether

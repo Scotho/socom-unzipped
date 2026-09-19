@@ -53,6 +53,7 @@ public:
     // Sprint 8 Goal 3 Task 1: the headset's capture seam, forwarded to the runtime's HostMic.
     bool micAvailable() const override;
     size_t micRead(int16_t *out, size_t frames) override;
+    void micDiscardPending() override;
     void micGameRead(const int16_t *frames, size_t count, uint32_t rate) override;
     void micPlaybackWrite(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels) override;
     bool writeGuest(uint32_t address, const void *source, size_t size) override;

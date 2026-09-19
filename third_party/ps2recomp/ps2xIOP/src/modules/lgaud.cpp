@@ -343,6 +343,10 @@ namespace ps2x::iop::detail
                     m_recording = true;
                     m_bytesRead = 0u;
                     m_phase = 0.0;
+                    // And again here, which is the one that matters: the game opens the headset long
+                    // before it presses talk, so whatever accumulated in between is the stale second the
+                    // first Reads used to serve -- heard as voice arriving ~1 s late.
+                    m_host.micDiscardPending();
                     m_host.log(LogLevel::Info, "[lgaud] lgAudStartRecording");
                     answer(kStatusOk, kStateSteady);
                     return;
@@ -522,6 +526,9 @@ namespace ps2x::iop::detail
                 m_recording = false;
                 m_phase = 0.0;
                 m_bytesRead = 0u;
+                // The host has been capturing since boot; nothing it buffered before the game opened the
+                // headset belongs to this session (Sprint 8 review MUST FIX).
+                m_host.micDiscardPending();
                 {
                     // The first time this project has ever seen the game's real openparam.
                     std::ostringstream m;

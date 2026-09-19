@@ -288,14 +288,6 @@ namespace ps2_stubs
             return joined;
         }
 
-        // A single path component may never carry a drive or a root: on Windows
-        // `root /= "C:/x"` replaces the root outright, which would let a guest
-        // path write anywhere on the host.
-        bool isSafeMcPathComponent(const std::string &part)
-        {
-            return !part.empty() && part.find(':') == std::string::npos;
-        }
-
         // Returns false for any guest path that would leave the card root: a ".."
         // that climbs above "/", or a component carrying a host drive. Callers turn
         // that into sceMcResDeniedPermit instead of silently rewriting the path.
@@ -580,6 +572,29 @@ namespace ps2_stubs
 
             return std::fopen(hostPath.string().c_str(), mode);
         }
+    }
+
+    // A single path component may never carry a drive or a root: on Windows
+    // `root /= "C:/x"` replaces the root outright, which would let a guest
+    // path write anywhere on the host.
+    //
+    // Nor may it END in a space or a dot. The Win32 path parser strips both before it ever
+    // reaches the filesystem, so ".. " and "..." are "..", and "a." and "a " are "a": a
+    // component this function let through as an ordinary name became a climb out of the card
+    // root, or a write to a different file than the one the guest named. Refused on BOTH
+    // platforms, so the Linux build accepts exactly the paths the Windows build does instead
+    // of quietly diverging on the one case that matters.
+    //
+    // "." and ".." themselves never reach here: normalizeGuestMcPathLocked skips "." and pops
+    // for ".." before it asks (see the loop above), and that stays as it was.
+    bool isSafeMcPathComponent(const std::string &part)
+    {
+        if (part.empty() || part.find(':') != std::string::npos)
+        {
+            return false;
+        }
+        const char last = part.back();
+        return last != ' ' && last != '.';
     }
 
     MemoryCardDebugSnapshot getMemoryCardDebugSnapshot()

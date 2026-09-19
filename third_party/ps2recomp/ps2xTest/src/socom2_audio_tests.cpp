@@ -1252,6 +1252,28 @@ void register_socom2_audio_tests()
             t.Equals(ring.read(out, 16), static_cast<size_t>(8), "reading more than there is yields what there is");
         });
 
+        // Sprint 8 review MUST FIX: capture runs from boot, so by the time the game asks to record the ring
+        // is holding a whole second of whatever was said before -- and that stale second is what got sent,
+        // which is exactly the ~1 s lateness heard on the voice path. clear() drops it, from the CONSUMER
+        // side only (advance the read index; the capture callback owns the write index and is never touched).
+        tc.Run("MicRing::clear drops every unread frame and leaves the ring usable", [](TestCase &t)
+        {
+            MicRing ring(8);
+            int16_t out[16] = {};
+            const int16_t stale[5] = {-1, -2, -3, -4, -5};
+            t.Equals(ring.write(stale, 5), static_cast<size_t>(5), "five stale frames in");
+            t.Equals(ring.available(), static_cast<size_t>(5), "five waiting");
+            t.Equals(ring.clear(), static_cast<size_t>(5), "clear reports what it discarded");
+            t.Equals(ring.available(), static_cast<size_t>(0), "the ring is empty after clear");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(0), "and reads nothing");
+            const int16_t fresh[4] = {7, 8, 9, 10};
+            t.Equals(ring.write(fresh, 4), static_cast<size_t>(4), "a write after clear is taken");
+            t.Equals(ring.read(out, 4), static_cast<size_t>(4), "and read back");
+            for (int i = 0; i < 4; ++i)
+                t.Equals(static_cast<int>(out[i]), 7 + i, "intact, in order, across the cleared cursor");
+            t.Equals(ring.clear(), static_cast<size_t>(0), "clearing an empty ring discards nothing");
+        });
+
         // Sprint 8 Goal 3 Task 1: the microphone arithmetic, device-free so it runs in CI, in the VM and on a
         // machine with no microphone at all. The game asks lgAudOpen for 11025 Hz mono 16-bit
         // (game/analysis/socom2_game.elf.decomp.c:48341, openparam+0x04 = 0x2b11), so the ring's 16 kHz is
@@ -1518,6 +1540,49 @@ void register_socom2_audio_tests()
             std::string reason;
             t.IsTrue(!micWavRead(path + ".missing", nothing, bad, reason), "a missing file is refused");
             t.IsTrue(!reason.empty(), "and it says why, because that string reaches the player on stderr");
+        });
+
+        // Sprint 8 review MUST FIX: micWavRead's data branch set `remaining` to the chunk size in BYTES and
+        // then compared and decremented it in SAMPLES, so it read twice the data chunk and carried straight
+        // on into whatever followed. A WAV with a trailing LIST chunk -- what every tagging tool writes --
+        // therefore had its metadata decoded as audio.
+        tc.Run("micWavRead stops at the end of the data chunk when a LIST chunk follows it", [](TestCase &t)
+        {
+            const std::string path = "socom2_mic_trailing_list.wav";
+            std::vector<int16_t> written(600);
+            for (size_t i = 0; i < written.size(); ++i)
+                written[i] = static_cast<int16_t>((i % 100) * 300 - 15000);
+            const uint32_t dataBytes = static_cast<uint32_t>(written.size() * 2u);
+            // 'LIST' + size + "INFO" + an INAM tag: plain ASCII, so reading it as audio is audible garbage.
+            const std::string info = std::string("INFOINAM") + std::string("   ", 4) +
+                                     "a stale second !";
+            {
+                uint8_t header[44] = {};
+                hostMicWavHeader(header, dataBytes, 11025u);
+                // RIFF size covers the LIST chunk too: 36 + data + (8 + info).
+                const uint32_t riff = 36u + dataBytes + 8u + static_cast<uint32_t>(info.size());
+                std::memcpy(header + 4, &riff, 4);
+                std::FILE *f = std::fopen(path.c_str(), "wb");
+                t.IsTrue(f != nullptr, "the trailing-LIST WAV opens for writing");
+                if (f == nullptr)
+                    return;
+                std::fwrite(header, 1, 44, f);
+                std::fwrite(written.data(), 2, written.size(), f);
+                const uint32_t listSize = static_cast<uint32_t>(info.size());
+                std::fwrite("LIST", 1, 4, f);
+                std::fwrite(&listSize, 4, 1, f);
+                std::fwrite(info.data(), 1, info.size(), f);
+                std::fclose(f);
+            }
+            std::vector<int16_t> read;
+            MicFormat fmt{};
+            std::string error;
+            t.IsTrue(micWavRead(path, read, fmt, error), "the file reads: " + error);
+            t.Equals(read.size(), written.size(),
+                     "exactly the data chunk's samples -- the LIST chunk is metadata, not audio");
+            t.Equals(read.front(), written.front(), "the first sample is the first sample");
+            t.Equals(read.back(), written.back(), "and the last is the data chunk's last");
+            std::remove(path.c_str());
         });
 
         // Sprint 8 Goal 3 Task 1 Steps 4 and 6: PS2X_MIC_FAKE is a microphone that is a file, so CI, the Linux
