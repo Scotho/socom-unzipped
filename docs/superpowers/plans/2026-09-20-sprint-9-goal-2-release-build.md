@@ -129,7 +129,7 @@ Tasks 1 and 2 are independent. Task 3 needs 2. Task 4 is independent of 1-3 (dif
 
 **Steps:**
 
-- [ ] **Step 1: RED (`runtime_exe`).** Append to `tools_py/tests/test_hostplatform.py`, above its `if __name__` block:
+- [x] **Step 1: RED (`runtime_exe`).** Append to `tools_py/tests/test_hostplatform.py`, above its `if __name__` block:
 
 ```python
 class RuntimeExeOverrideTest(unittest.TestCase):
@@ -164,7 +164,7 @@ class RuntimeExeOverrideTest(unittest.TestCase):
 
 (If the file does not already `import os`, add it.) Run `python -m unittest tools_py.tests.test_hostplatform -v`. Expected RED: four errors, each `TypeError: runtime_exe() got an unexpected keyword argument 'env'`.
 
-- [ ] **Step 2: GREEN.** In `tools_py/parity/hostplatform.py` replace `runtime_exe` (:30-38) with:
+- [x] **Step 2: GREEN.** In `tools_py/parity/hostplatform.py` replace `runtime_exe` (:30-38) with:
 
 ```python
 EXE_OVERRIDE_ENV = "SOCOM_EXE"
@@ -194,7 +194,7 @@ def runtime_exe(system=None, env=None):
 
 Run the module: `P + 4`, all pass.
 
-- [ ] **Step 3: RED (`run.sh`).** Create `tools_py/tests/test_run_sh_exe.py`:
+- [x] **Step 3: RED (`run.sh`).** Create `tools_py/tests/test_run_sh_exe.py`:
 
 ```python
 """Sprint 9 Goal 2: run.sh starts $SOCOM_EXE when it is set. On Windows the gate's drive launches through
@@ -234,7 +234,7 @@ if __name__ == "__main__":
 
 Run it. Expected RED: `AssertionError: 'exe=…/socom2' not found in 'exit=… log=… lines=…'` (and, where `dist/socom2.exe` exists, run.sh starts the **real game** for 5 seconds — so run this RED only when `bash scripts/check_quiet_gate.sh` allows, and expect a window; after GREEN no window opens).
 
-- [ ] **Step 4: GREEN.** In `run.sh` replace lines 12-13 (`timeout "$SECS" "$ROOT/dist/socom2.exe" …` and the `echo "exit=$? …"` line) with:
+- [x] **Step 4: GREEN.** In `run.sh` replace lines 12-13 (`timeout "$SECS" "$ROOT/dist/socom2.exe" …` and the `echo "exit=$? …"` line) with:
 
 ```bash
 # Sprint 9 Goal 2: SOCOM_EXE names another runner (the release build in dist-release/); the default is unchanged.
@@ -245,7 +245,7 @@ echo "exit=$? log=$LOG exe=$EXE lines=$(wc -l < "$LOG")"
 
 Also change the comment on line 2 to `# Run the recompiled game for N seconds and keep the log.  Usage: [SOCOM_EXE=<runner>] ./run.sh [seconds] [extra args]`. Run the test: passes.
 
-- [ ] **Step 5: RED (`exe_line`).** Create `tools_py/tests/test_gate_exe_line.py`:
+- [x] **Step 5: RED (`exe_line`).** Create `tools_py/tests/test_gate_exe_line.py`:
 
 ```python
 """Sprint 9 Goal 2: a gate record says which executable it scored -- the release build is gated as itself."""
@@ -280,7 +280,7 @@ if __name__ == "__main__":
 
 Expected RED: `AttributeError: module 'tools_py.parity.gate' has no attribute 'exe_line'`.
 
-- [ ] **Step 6: GREEN.** In `tools_py/parity/gate.py`: add `import hashlib` to the imports if it is not there; directly above `def main(argv=None):` add
+- [x] **Step 6: GREEN.** In `tools_py/parity/gate.py`: add `import hashlib` to the imports if it is not there; directly above `def main(argv=None):` add
 
 ```python
 def exe_line(env=None):
@@ -314,7 +314,7 @@ and change the summary write (:669-670) to
 
 Run `python -m unittest tools_py.tests.test_gate_exe_line tools_py.tests.test_hostplatform tools_py.tests.test_run_sh_exe -v`: all pass; Python total `P + 7`.
 
-- [ ] **Step 7: Suite and commit.** `./build.sh test` exit 0 (under the loop lock, quiet gate permitting).
+- [x] **Step 7: Suite and commit.** `./build.sh test` exit 0 (under the loop lock, quiet gate permitting).
 
 ```bash
 git add tools_py/tests/test_run_sh_exe.py tools_py/tests/test_gate_exe_line.py

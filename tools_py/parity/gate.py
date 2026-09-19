@@ -17,6 +17,7 @@ an existing run, no game launch, nothing large written) are exempt.
 """
 import argparse
 import glob
+import hashlib
 import os
 import re
 import shutil
@@ -611,6 +612,21 @@ def score_baseline(stamp):
     return 1 if failed else 0
 
 
+def exe_line(env=None):
+    """Which runner this gate scores: path, size, SHA-256. Sprint 9 Goal 2 gates the release build through
+    $SOCOM_EXE (hostplatform.runtime_exe), and a record that does not say which binary it ran proves nothing."""
+    path = hostplatform.runtime_exe(env=env)
+    full = path if os.path.isabs(path) else os.path.join(hostplatform.ROOT, path)
+    try:
+        digest = hashlib.sha256()
+        with open(full, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                digest.update(chunk)
+        return "EXE %s bytes=%d sha256=%s" % (path, os.path.getsize(full), digest.hexdigest())
+    except OSError as e:
+        return "EXE %s UNREADABLE (%s)" % (path, e.strerror or e)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="title,transition,mission")
@@ -652,6 +668,8 @@ def main(argv=None):
     if take.returncode != 0:
         print("gate: lock busy: " + take.stdout.strip())
         return 2
+    exe = exe_line()
+    print(exe, flush=True)
     wanted = [g.strip() for g in args.only.split(",") if g.strip()]
     results = []
     try:
@@ -667,7 +685,7 @@ def main(argv=None):
             results.append((False, "FAIL %s (gate did not run)" % name))
         failed = [line for ok, line in results if not ok]
         with open(os.path.join(out_root, "summary.txt"), "w", encoding="utf-8") as f:
-            f.write("\n".join(line for _, line in results) + "\n")
+            f.write("\n".join(line for _, line in results) + "\n" + exe + "\n")
         print("GATE %s (%d/%d) -> %s" % ("FAIL" if failed else "PASS",
                                          len(results) - len(failed), len(results), out_root))
     return 1 if failed else 0
