@@ -680,7 +680,8 @@ void main()
 // ---------------------------------------------------------------------------------------------
 GSGlBackend::GSGlBackend()
     : m_cpu(std::make_unique<GSCpuBackend>()), m_shadow(std::make_unique<GSCpuBackend>()),
-      m_pendingCap(GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), GsPendingCap::kDefaultCapMb) * 1024ull * 1024ull)
+      m_pendingCap(GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_CAP_MB"), GsPendingCap::kDefaultCapMb) * 1024ull * 1024ull,
+                   GsPendingCap::parseCapMb(std::getenv("PS2X_GS_PENDING_HARD_CAP_MB"), GsPendingCap::kDefaultHardCapMb) * 1024ull * 1024ull)
 {
     m_backpressure.setMaxPendingFrames(GsFrameBackpressure::parseMaxPendingFrames(std::getenv("PS2X_GS_MAX_PENDING_FRAMES")));
 }
@@ -708,6 +709,8 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
                  m_backpressure.maxPendingFrames());
     std::fprintf(stderr, "[gs-gl] PS2X_GS_PENDING_CAP_MB=%llu (pending command bytes kept while the replay is latched stalled; 0 = unbounded)\n",
                  static_cast<unsigned long long>(m_pendingCap.capBytes() / (1024ull * 1024ull)));
+    std::fprintf(stderr, "[gs-gl] PS2X_GS_PENDING_HARD_CAP_MB=%llu (hard ceiling: the recorder waits for the replay rather than pend more; 0 = no ceiling)\n",
+                 static_cast<unsigned long long>(m_pendingCap.hardCapBytes() / (1024ull * 1024ull)));
 }
 
 void GSGlBackend::Reset()
@@ -768,7 +771,27 @@ void GSGlBackend::record(Cmd &&cmd, const uint8_t *data, size_t size)
     static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
     const bool traceThis = s_uploadTrace && (cmd.type == CmdType::Upload || cmd.type == CmdType::BeginTransfer);
     RecordTimer recordTimer{traceThis, traceThis ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}};
-    std::lock_guard<std::mutex> lock(m_queueMutex);
+    std::unique_lock<std::mutex> lock(m_queueMutex);
+    // Sprint 8 Goal 5, ruling R124: the hard ceiling, checked before anything is admitted. The
+    // soft cap below may never drop a state-carrying command -- dropping an upload or a CLUT load
+    // would corrupt every frame the game draws after the stall -- so a replay that stays stalled
+    // grows the pending buffer on that stream alone until the allocator gives up (KNOWN: "once the
+    // replay latched stalled, GsPendingCap::admit keeps every state-carrying command unbounded",
+    // ending in std::bad_alloc). Above the ceiling the recorder therefore WAITS for the replay to
+    // drain instead of admitting: back-pressure, not loss.
+    //
+    // The wait is bounded twice over so it can never become the deadlock it is protecting against:
+    // each slice is 50 ms (the replay's swap notifies m_queueCv, so a live GL thread releases it at
+    // once), and the whole wait for one command is capped at 5 s, after which the command is
+    // admitted anyway and recording carries on. That matters at shutdown, when the GL thread is
+    // already gone and nothing will ever drain the queue again.
+    if (m_pendingCap.mustWait())
+    {
+        m_pendingCap.noteHardWait(); // once per command that waited, not once per slice
+        const auto hardWaitDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        while (m_pendingCap.mustWait() && std::chrono::steady_clock::now() < hardWaitDeadline)
+            m_queueCv.wait_for(lock, std::chrono::milliseconds(50));
+    }
     // Task 1b: while the replay is latched stalled (the modal size-move loop a title-bar drag puts
     // the GL thread in) the pending buffer is bounded in bytes. Draw work (Submit, Clear) is dropped
     // past the cap: the next guest frame records it again, so the only cost is frames the stalled
@@ -825,6 +848,9 @@ void GSGlBackend::waitForToken(uint64_t token)
             m_pendingCap.onReplayed(buffer.commands.size() * sizeof(Cmd) + buffer.data.size());
             framesTaken = m_backpressure.recordedFrames();
         }
+        // R124: the bytes are gone from the queue, so a recorder parked at the hard ceiling may go
+        // now -- it must not have to wait out executeCommands (which notifies for the tokens).
+        m_queueCv.notify_all();
         executeCommands(buffer);
         m_backpressure.framesReplayed(framesTaken);
         return;
@@ -1234,6 +1260,10 @@ bool GSGlBackend::HostRenderFrame()
         m_pendingCap.onReplayed(buffer.commands.size() * sizeof(Cmd) + buffer.data.size());
         framesTaken = m_backpressure.recordedFrames();
     }
+    // R124: as above. Note executeCommands is skipped for an empty buffer, so this is the only
+    // notify on that path -- and an empty swap is exactly when a waiter needs telling that the
+    // queue it is parked behind is already drained.
+    m_queueCv.notify_all();
     if (!buffer.commands.empty())
         executeCommands(buffer);
     m_backpressure.framesReplayed(framesTaken);
@@ -1678,10 +1708,11 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      s_time[4], (unsigned long long)s_count[4], s_time[5], (unsigned long long)s_count[5],
                      s_time[6], (unsigned long long)s_count[6], m_textures.size(), m_renderTargets.size());
         const GsFrameBackpressure::Stats bp = m_backpressure.takeStats();
-        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu unlatched=%llu pending=%llu pending_bytes=%llu dropped_cmds=%llu dropped_bytes=%llu\n",
+        std::fprintf(stderr, "[gs-gl stats] backpressure N=%u guest_frames=%llu waits=%llu wait_ms=%.1f timeouts=%llu skipped=%llu unlatched=%llu pending=%llu pending_bytes=%llu dropped_cmds=%llu dropped_bytes=%llu hard_waits=%llu\n",
                      m_backpressure.maxPendingFrames(), (unsigned long long)bp.frames, (unsigned long long)bp.waits, bp.waitMs,
                      (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)bp.unlatched, (unsigned long long)m_backpressure.pendingFrames(),
-                     (unsigned long long)m_pendingCap.bytes(), (unsigned long long)m_pendingCap.droppedCommands(), (unsigned long long)m_pendingCap.droppedBytes());
+                     (unsigned long long)m_pendingCap.bytes(), (unsigned long long)m_pendingCap.droppedCommands(), (unsigned long long)m_pendingCap.droppedBytes(),
+                     (unsigned long long)m_pendingCap.hardWaits());
         if (s_uploadTrace)
         {
             g_uploadTrace.recordUs += g_recordUsGameThread.exchange(0.0);
@@ -3328,6 +3359,16 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     key.clutId = state.context.clutId;
 
     bool wasInvalidation = false;
+    // Review 2026-09-19: a cached or revalidated texture never reaches decodeTexture, the only place that
+    // stamped its palette snapshot as in use -- so a menu texture that stopped re-decoding (R123) let its
+    // snapshot age out after 256 loads, and the next real decode read the live slot (research/31 section 9).
+    const auto touchClutSnapshot = [&]() {
+        if (state.context.clutId == 0u)
+            return;
+        auto use = m_clutUse.find(state.context.clutId);
+        if (use != m_clutUse.end())
+            use->second = m_clutLoadSeq;
+    };
     auto it = m_textures.find(key);
     if (it != m_textures.end())
     {
@@ -3342,6 +3383,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         if (newest <= it->second.generation)
         {
             it->second.lastUse = m_frameCounter;
+            touchClutSnapshot();
             return it->second.texture;
         }
         // Sprint 8 Goal 2b R123. This is the root Task 1 measured: markShadowPages (:1843-1848)
@@ -3359,6 +3401,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
             {
                 it->second.generation = m_generation;
                 it->second.lastUse = m_frameCounter;
+                touchClutSnapshot();
                 if (s_uploadTraceResolve)
                     GsGlUploadTrace::noteRevalidate(g_uploadTrace,
                         std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRev0).count());

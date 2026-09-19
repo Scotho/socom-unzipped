@@ -435,6 +435,74 @@ void register_gs_frame_backpressure_tests()
             t.Equals(static_cast<int>(cap.droppedBytes()), static_cast<int>((200u - admittedDraws) * 64u), "the dropped bytes are counted");
         });
 
+        // Sprint 8 Goal 5 (ruling R124): the hard ceiling. The soft cap above may never drop a
+        // state-carrying command, so a replay that stays stalled grows the queue until
+        // std::bad_alloc. Above the ceiling the recorder WAITS instead; GsPendingCap only owns the
+        // predicate (mustWait) and the counter, because the waiting needs the backend's queue lock.
+        tc.Run("R124: the hard ceiling makes the recorder wait and drains again after a replay", [](TestCase &t)
+        {
+            GsPendingCap cap(0u, 1024u); // no soft cap, a 1 KiB ceiling
+            t.Equals(static_cast<int>(cap.hardCapBytes()), 1024, "the ceiling is reported in bytes");
+            t.IsFalse(cap.mustWait(), "an empty queue never waits");
+            for (int i = 0; i < 15; ++i)
+                cap.admit(false, true, 64u); // 960 bytes: still under the ceiling
+            t.IsFalse(cap.mustWait(), "below the ceiling: no wait");
+            cap.admit(false, true, 64u); // 1024 bytes: at the ceiling
+            t.IsTrue(cap.mustWait(), "at the ceiling: wait");
+            cap.admit(false, true, 4096u); // far above it
+            t.IsTrue(cap.mustWait(), "above the ceiling: wait");
+            cap.onReplayed(cap.bytes());
+            t.IsFalse(cap.mustWait(), "the replay drained the queue: no wait");
+        });
+
+        tc.Run("R124: a zero hard ceiling never waits, however much pends", [](TestCase &t)
+        {
+            GsPendingCap cap(0u, 0u);
+            t.Equals(static_cast<int>(cap.hardCapBytes()), 0, "0 = no ceiling");
+            for (int i = 0; i < 1000; ++i)
+                cap.admit(true, true, 1024u * 1024u); // a gigabyte of state-carrying commands
+            t.IsFalse(cap.mustWait(), "no ceiling: a gigabyte pending still does not wait");
+        });
+
+        tc.Run("R124: the hard ceiling is independent of the latch", [](TestCase &t)
+        {
+            GsPendingCap unlatched(0u, 1024u);
+            for (int i = 0; i < 16; ++i)
+                unlatched.admit(false, true, 64u);
+            t.IsTrue(unlatched.mustWait(), "an unlatched but slow replay hits the same ceiling");
+            t.Equals(static_cast<int>(unlatched.droppedCommands()), 0, "the ceiling drops nothing");
+
+            GsPendingCap latched(0u, 1024u);
+            for (int i = 0; i < 16; ++i)
+                latched.admit(true, true, 64u);
+            t.IsTrue(latched.mustWait(), "a latched replay hits it too");
+            t.Equals(static_cast<int>(latched.droppedCommands()), 0, "state-carrying commands are still never dropped");
+        });
+
+        tc.Run("R124: noteHardWait counts the commands that waited", [](TestCase &t)
+        {
+            GsPendingCap cap(0u, 1024u);
+            t.Equals(static_cast<int>(cap.hardWaits()), 0, "nothing waited yet");
+            cap.noteHardWait();
+            t.Equals(static_cast<int>(cap.hardWaits()), 1, "one command waited");
+            for (int i = 0; i < 9; ++i)
+                cap.noteHardWait();
+            t.Equals(static_cast<int>(cap.hardWaits()), 10, "ten commands waited");
+        });
+
+        tc.Run("PS2X_GS_PENDING_HARD_CAP_MB parses with the 1024 MB fallback", [](TestCase &t)
+        {
+            t.Equals(static_cast<int>(GsPendingCap::kDefaultHardCapMb), 1024, "the default ceiling is 1024 MB");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb(nullptr, GsPendingCap::kDefaultHardCapMb)), 1024,
+                     "unset -> the 1024 MB default");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb("0", GsPendingCap::kDefaultHardCapMb)), 0,
+                     "'0' -> no ceiling");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb("2048", GsPendingCap::kDefaultHardCapMb)), 2048,
+                     "a decimal is taken");
+            t.Equals(static_cast<int>(GsPendingCap::parseCapMb("abc", GsPendingCap::kDefaultHardCapMb)), 1024,
+                     "garbage -> the 1024 MB default");
+        });
+
         tc.Run("an unlatched queue admits everything and the replay releases bytes", [](TestCase &t)
         {
             GsPendingCap cap(1024u);
