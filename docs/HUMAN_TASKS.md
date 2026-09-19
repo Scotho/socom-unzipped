@@ -4,6 +4,30 @@ Things only the owner can do: hands-on checks on the real machine with real ears
 adds items here when it reaches a step it cannot verify itself, and moves on. Report back in one line each; the
 loop picks the answer up from the next session's prompt or from a note in `docs/STATUS.md`.
 
+## Start here (2026-09-20)
+
+**A playtest is planned, and `docs/PLAYTEST.md` is its script**: one sitting, fourteen steps, that answers most of the
+open items below in the order that makes sense at the keyboard, instead of one errand each. The items below stay as the
+detailed reference each step points back to. The build to play is the archive the controller tags `playtest-1`
+(Sprint 9 item P7); `docs/PLAYTEST.md`'s first block says when it is ready.
+
+**Decisions only you can make, soonest first** (the reasoning for each is in `docs/HANDOFF.md` section 10 and
+`docs/PLAYTEST.md`): who besides you gets the playtest archive (it contains code recompiled from the game and the
+game's decrypted ELF -- Sprint 11's decision D2, which arrives early if the answer is "a friend"); the keyboard ruling
+(players get menus and typing; the test harness keeps the gameplay keys behind developer mode -- or the harness moves
+to the pad first, about a sprint); whether a profile viewer is wanted; whether the download should drop the debugger
+and the dump/trace probes once you have the size number; and, before the repository goes public, D1-D6 in
+`docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md` (which history is published, the legal
+position, the licence, how much of the development record is published, signing, the site's deploy and wording).
+
+**Yours on GitHub, when the repository is about to go public** (`docs/GIT_STRATEGY.md` section 6 -- an agent can do
+them with `gh` under your login, but only when you say so in words, because they are permissions): branch protection
+on `main`, secret scanning and push protection, private vulnerability reporting, approval for first-time contributors'
+workflows, and the visibility flip itself. Publishing any Release is always your click.
+
+**Relayed to the site session, not yet confirmed done:** s2u.scotho.com must drop its "keyboard/mouse support" claim
+(your instruction, 2026-09-20).
+
 ## Open
 
 - [ ] **Listen to the title screen and the intro** (Task 6c Step 4; research/32 §7.1). Launch `dist/socom2.exe`
@@ -22,7 +46,6 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   title screen. Same reporting: when and what. Command: `dist/socom2.exe`, NEW GAME, any mission; five minutes is
   enough. No correlation number exists for mission audio (its sounds are mixed from many voices, not one stream);
   the driven mission stage passes the gate 3/3 daily (`s7_gl_gate2`), which says nothing about how it sounds.
-- [x] **The server's name: one DNS record -- DONE 2026-09-20 by the controller at the owner's instruction ("you add it").** `socom.scotho.com` A 3.143.65.100, **DNS only** (not proxied: the game speaks its own TCP/UDP), TTL auto, Cloudflare record id 55bb0543c852450bc3917567b55ffb78, created through the API with the credential inside this machine's `cloudflared` login (`~/.cloudflared/cert.pem`; it is scoped to the scotho.com zone and was never printed or stored elsewhere). Resolves on 1.1.1.1 and 8.8.8.8. To undo: delete that record in Cloudflare's dashboard. Next is mine: whether saved personas follow the name, then the launcher's default (Goal 7).
 - [ ] **The release download: three things that are yours (Sprint 9 Goal 2, 2026-09-20).** (a) Signing is still your money and identity; unsigned, Windows SmartScreen will warn a stranger. (b) Each release must keep its `dist-release/symbols/` folder somewhere safe: a crash report from a stripped exe is only readable with the symbols of that exact build. (c) From another machine, download the zip and its `SHA256SUMS` and check one against the other (`certutil -hashfile socom2-portable.zip SHA256` on Windows, `sha256sum -c SHA256SUMS` on Linux) -- it proves the file arrived whole, not who made it.
 - [ ] **Crouch on a pad (2026-09-20, R139).** Found while building your crouch option: SOCOM II reads how HARD Triangle is pressed (light = crouch, firm = prone) and a PC pad always pressed it fully, so a pad could never crouch. CONTROLLER > CROUCH SHORTCUT now defaults to L-STICK CLICK, as you chose. **Xbox pad:** in a mission, a stick click should toggle stand/crouch (it acts when you let go); Y should still go prone and stand up from prone; the stick click no longer changes fire mode (keyboard 2 still does). Try L2 as well (it stops swapping the second weapon; keyboard 1 still does) and OFF (nothing changes from before). **DualSense / DualShock 4,** over USB and Bluetooth, with Steam Input and DS4Windows OFF: set TOUCHPAD; the touchpad click should crouch and every other button stay as it was. If it does nothing, tell me what the launcher's pad list calls the pad -- the code assumes a Sony vendor id and raw button 13.
 - [ ] **Failures that explain themselves: three things only you can see (Sprint 9 Goal 1, 2026-09-20).** (a) In `dist/`, double-click `socom2.exe` (no launcher): the game should start on the launcher's saved settings, and no black console window should stay behind it. (b) In the launcher, point DISC at a path that does not exist (or rename the ISO) and press LAUNCH: LAST RUN should read the disc-not-found sentence instead of "the game exited"; press SAVE DIAGNOSTICS and open the zip it shows you -- your Windows user name should appear nowhere in it. (c) On the real Linux box, with the audio device disabled, LAST RUN should end with "No audio device was found; the game ran without sound."
@@ -171,9 +194,6 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   `logs/parity/launcher_ui/` if you want to look before running it. Report: does it look right to you (the SOCOM feel, the
   type, the colours), anything hard to read or find, whether pad navigation felt natural, and what you would change first.
 
-## Done
-
-(none yet)
 - [ ] **Play a match on the hosted server, from the launcher** (Sprint 8 Goal 12; the harness already has: a control round
   `s8_hosted_control2` and two kills in four rounds `s8_hosted_kill`, two instances on this PC). Open
   `socom_unzipped_launcher.exe`, ONLINE page: *SOCOM Unzipped (project server)* should be selected with ADDRESS 3.143.65.100.
@@ -186,6 +206,10 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   in; (2) the AWS credit: the box costs ~$12/month against $78.46 (plan expiry 2027-03-05);
   `aws freetier get-account-plan-state --region us-east-1` shows what is left. Agent instructions for the box are git-ignored
   in `vm/lightsail/README.md`.
+
+## Done
+
+- [x] **The server's name: one DNS record -- DONE 2026-09-20 by the controller at the owner's instruction ("you add it").** `socom.scotho.com` A 3.143.65.100, **DNS only** (not proxied: the game speaks its own TCP/UDP), TTL auto, Cloudflare record id 55bb0543c852450bc3917567b55ffb78, created through the API with the credential inside this machine's `cloudflared` login (`~/.cloudflared/cert.pem`; it is scoped to the scotho.com zone and was never printed or stored elsewhere). Resolves on 1.1.1.1 and 8.8.8.8. To undo: delete that record in Cloudflare's dashboard. Next is mine: whether saved personas follow the name, then the launcher's default (Goal 7).
 
 ## Later / wishlist (not scheduled)
 
