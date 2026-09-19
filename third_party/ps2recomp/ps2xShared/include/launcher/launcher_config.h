@@ -73,9 +73,7 @@ namespace launcher
     std::string toJson(const Config &config);
     bool fromJson(const std::string &json, Config &out);
 
-    // Sprint 7 Task 1a: what the game's exit code means, in a sentence for the player. Empty when the code
-    // carries no message of its own (0, or a crash the log already explains).
-    //   65 -- GsGlCaps::kExitCode: the GL probe failed and the run fell back to the CPU rasterizer.
+    // What the game's exit status means, in a sentence for the player: ExitCodes::describe (ps2x/exit_codes.h). Never empty.
     std::string exitMessage(int exitCode);
 
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;

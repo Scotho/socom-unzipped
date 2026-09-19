@@ -245,7 +245,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED (C++).** Create `ps2xTest/src/exit_codes_tests.cpp`:
+- [x] **Step 1: RED (C++).** Create `ps2xTest/src/exit_codes_tests.cpp`:
 
 ```cpp
 // Sprint 9 Goal 1: the exit-code taxonomy -- one table, shared by the runner and the launcher.
@@ -348,7 +348,7 @@ Register it: in `ps2xTest/src/main.cpp` add `void register_exit_codes_tests();` 
 
 Run: `cmake --build third_party/ps2recomp/build-clang --target ps2x_tests -j 8`. **Expected RED:** the build fails with `fatal error: 'ps2x/exit_codes.h' file not found` in `exit_codes_tests.cpp`.
 
-- [ ] **Step 2: RED (Python).** Create `tools_py/tests/test_exit_codes_table.py`:
+- [x] **Step 2: RED (Python).** Create `tools_py/tests/test_exit_codes_table.py`:
 
 ```python
 """Sprint 9 Goal 1: the exit-code table in ps2xShared/include/ps2x/exit_codes.h, read from Python.
@@ -400,7 +400,7 @@ if __name__ == "__main__":
 
 Run: `python -m unittest tools_py.tests.test_exit_codes_table -v`. **Expected RED:** `ImportError: cannot import name 'exit_codes' from 'tools_py'`.
 
-- [ ] **Step 3: Write `ps2xShared/include/ps2x/exit_codes.h`.**
+- [x] **Step 3: Write `ps2xShared/include/ps2x/exit_codes.h`.**
 
 ```cpp
 #pragma once
@@ -545,7 +545,7 @@ namespace ExitCodes
 }
 ```
 
-- [ ] **Step 4: `gs_gl_caps.h` takes its number from the table.** In `ps2xRuntime/include/runtime/gs/gs_gl_caps.h` add `#include "ps2x/exit_codes.h"` after `#include <string>` (line 18) and replace line 24:
+- [x] **Step 4: `gs_gl_caps.h` takes its number from the table.** In `ps2xRuntime/include/runtime/gs/gs_gl_caps.h` add `#include "ps2x/exit_codes.h"` after `#include <string>` (line 18) and replace line 24:
 
 ```cpp
     // The process exit code that says "the game ran, but on the CPU rasterizer". The number and its
@@ -560,7 +560,7 @@ In `ps2xRuntime/CMakeLists.txt` line 584 becomes:
 target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_shared)
 ```
 
-- [ ] **Step 5: `launcher::exitMessage` becomes the lookup.** In `ps2xShared/src/launcher_config.cpp` add `#include "ps2x/exit_codes.h"` under the first include and replace the body of `exitMessage`:
+- [x] **Step 5: `launcher::exitMessage` becomes the lookup.** In `ps2xShared/src/launcher_config.cpp` add `#include "ps2x/exit_codes.h"` under the first include and replace the body of `exitMessage`:
 
 ```cpp
     std::string exitMessage(int exitCode)
@@ -572,14 +572,14 @@ target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_sh
 
 In `ps2xShared/include/launcher/launcher_config.h` replace the comment at lines 76-78 with: `// What the game's exit status means, in a sentence for the player: ExitCodes::describe (ps2x/exit_codes.h). Never empty.`
 
-- [ ] **Step 6: The old case's two assertions change on purpose.** `ps2xTest/src/launcher_tests.cpp:293-294` assert that 0 and 1 say nothing; that was Sprint 7's contract and this goal replaces it. Replace those two lines with:
+- [x] **Step 6: The old case's two assertions change on purpose.** `ps2xTest/src/launcher_tests.cpp:293-294` assert that 0 and 1 say nothing; that was Sprint 7's contract and this goal replaces it. Replace those two lines with:
 
 ```cpp
             t.Equals(launcher::exitMessage(0), std::string("The last run exited normally."), "a clean exit says so");
             t.IsTrue(launcher::exitMessage(1).find("SAVE DIAGNOSTICS") != std::string::npos, "an unnamed failure points at the diagnostics (Sprint 9 Goal 1: no ending is silent)");
 ```
 
-- [ ] **Step 7: Write `tools_py/exit_codes.py`.**
+- [x] **Step 7: Write `tools_py/exit_codes.py`.**
 
 ```python
 """The game's exit codes, read out of the C++ header that defines them.
@@ -639,7 +639,7 @@ def describe(returncode, path=HEADER):
     return "The game closed with code %d. Press SAVE DIAGNOSTICS to collect the log." % value
 ```
 
-- [ ] **Step 8: GREEN.**
+- [x] **Step 8: GREEN.**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target ps2x_tests ps2_runtime -j 8
@@ -650,7 +650,7 @@ python -m unittest tools_py.tests.test_exit_codes_table -v
 
 Expected: `Total Tests: 5` / `Failed: 0`; the Launcher suite `Failed: 0`; Python `Ran 5 tests … OK`. Building `ps2_runtime` proves `gs_gl_caps.h`'s new include resolves for the library the runner is made of (the runner itself is rebuilt in Task 6).
 
-- [ ] **Step 9: `./build.sh test` exit 0 (`Total Tests: B + 5`, Python `P + 5`), then commit.**
+- [x] **Step 9: `./build.sh test` exit 0 (`Total Tests: B + 5`, Python `P + 5`), then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/exit_codes.h third_party/ps2recomp/ps2xTest/src/exit_codes_tests.cpp tools_py/exit_codes.py tools_py/tests/test_exit_codes_table.py
