@@ -2104,7 +2104,7 @@ No archiver is vendored (Handoff note 9), and the launcher takes no new dependen
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `ps2xTest/src/zip_store_tests.cpp`:
+- [x] **Step 1: RED.** Create `ps2xTest/src/zip_store_tests.cpp`:
 
 ```cpp
 // Sprint 9 Goal 1: the diagnostics zip's writer. STORE only; checked here byte by byte against the
@@ -2236,7 +2236,7 @@ void register_zip_store_tests()
 
 Register it (`void register_zip_store_tests();`, the call, `    src/zip_store_tests.cpp`). Build. **Expected RED:** `fatal error: 'ps2x/zip_store.h' file not found`.
 
-- [ ] **Step 2: Write `ps2xShared/include/ps2x/zip_store.h`.**
+- [x] **Step 2: Write `ps2xShared/include/ps2x/zip_store.h`.**
 
 ```cpp
 #pragma once
@@ -2272,7 +2272,7 @@ namespace ZipStore
 }
 ```
 
-- [ ] **Step 3: Write `ps2xShared/src/zip_store.cpp`** and add `    src/zip_store.cpp` to `ps2x_shared`'s source list.
+- [x] **Step 3: Write `ps2xShared/src/zip_store.cpp`** and add `    src/zip_store.cpp` to `ps2x_shared`'s source list.
 
 ```cpp
 #include "ps2x/zip_store.h"
@@ -2432,9 +2432,9 @@ namespace ZipStore
 }
 ```
 
-- [ ] **Step 4: GREEN.** `PS2X_TEST_SUITE=ZipStore ./ps2x_tests.exe` -> `Total Tests: 5`, `Failed: 0`.
+- [x] **Step 4: GREEN.** `PS2X_TEST_SUITE=ZipStore ./ps2x_tests.exe` -> `Total Tests: 5`, `Failed: 0`.
 
-- [ ] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 23`), then commit.**
+- [x] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 23`), then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/zip_store.h third_party/ps2recomp/ps2xShared/src/zip_store.cpp third_party/ps2recomp/ps2xTest/src/zip_store_tests.cpp
