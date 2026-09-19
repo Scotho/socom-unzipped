@@ -28,10 +28,26 @@ def exe_name(base, system=None):
     return base + ".exe" if is_windows(system) else base
 
 
-def runtime_exe(system=None):
+EXE_OVERRIDE_ENV = "SOCOM_EXE"
+
+
+def runtime_exe(system=None, env=None):
     """The game binary this host launches, relative to the repo root: the Windows build writes
     `dist/socom2.exe` and the Linux build `dist-linux/socom2` (Sprint 8 Task 1), and the two never
-    overwrite each other -- so the gate's drive must ask which one it is looking at."""
+    overwrite each other -- so the gate's drive must ask which one it is looking at.
+
+    Sprint 9 Goal 2: $SOCOM_EXE names another runner (the release build in dist-release/), absolute or
+    relative to the repo root, returned as given. Its file name must still be socom2[.exe]: the
+    harness finds and kills the game by that name (kill_argv, running_argv)."""
+    env = os.environ if env is None else env
+    override = env.get(EXE_OVERRIDE_ENV)
+    if override:
+        want = exe_name("socom2", system)
+        got = override.replace("\\", "/").rsplit("/", 1)[-1]
+        if got.lower() != want.lower():
+            raise ValueError("%s=%s: the runner must be called %s (the harness finds and kills it by name); "
+                             "put it in its own folder instead" % (EXE_OVERRIDE_ENV, override, want))
+        return override
     if is_windows(system):
         return os.path.join("dist", "socom2.exe")
     return os.path.join("dist-linux", "socom2")

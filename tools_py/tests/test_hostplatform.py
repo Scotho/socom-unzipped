@@ -140,5 +140,35 @@ class MirrorsWinshot(unittest.TestCase):
         self.assertIsInstance(x11shot.FRAME_RETRY_S, float)
 
 
+class RuntimeExeOverrideTest(unittest.TestCase):
+    """Sprint 9 Goal 2: SOCOM_EXE names the runner the gate and the harness start (the release build lives
+    in dist-release/, and the developer's dist/socom2.exe stays the default)."""
+
+    def test_default_is_unchanged_with_an_empty_environment(self):
+        self.assertEqual(hp.runtime_exe("Windows", env={}), os.path.join("dist", "socom2.exe"))
+        self.assertEqual(hp.runtime_exe("Linux", env={}), os.path.join("dist-linux", "socom2"))
+
+    def test_an_empty_value_is_not_an_override(self):
+        self.assertEqual(hp.runtime_exe("Windows", env={"SOCOM_EXE": ""}),
+                         os.path.join("dist", "socom2.exe"))
+
+    def test_the_override_is_returned_as_given(self):
+        self.assertEqual(hp.runtime_exe("Windows", env={"SOCOM_EXE": "C:/x/dist-release/socom2.exe"}),
+                         "C:/x/dist-release/socom2.exe")
+        self.assertEqual(hp.runtime_exe("Windows", env={"SOCOM_EXE": "dist-release\SOCOM2.EXE"}),
+                         "dist-release\SOCOM2.EXE")
+        self.assertEqual(hp.runtime_exe("Linux", env={"SOCOM_EXE": "dist-linux-release/socom2"}),
+                         "dist-linux-release/socom2")
+
+    def test_a_runner_under_another_name_is_refused(self):
+        # process_running / kill_process_by_name look for "socom2": a runner called anything else would be
+        # started and then never seen, never killed.
+        with self.assertRaises(ValueError) as caught:
+            hp.runtime_exe("Windows", env={"SOCOM_EXE": "dist/socom2_release.exe"})
+        self.assertIn("socom2.exe", str(caught.exception))
+        with self.assertRaises(ValueError):
+            hp.runtime_exe("Linux", env={"SOCOM_EXE": "dist-linux-release/socom2.exe"})
+
+
 if __name__ == "__main__":
     unittest.main()
