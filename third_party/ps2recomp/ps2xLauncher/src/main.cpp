@@ -186,21 +186,26 @@ namespace
         const float markW = textWidth(ctx, "SOCOM II", 15.0f, Face::Bold, 0.08f);
         text(ctx, "UNZIPPED", Vec2{markX + markW + 10.0f, 12.0f}, 13.0f, theme::dim, Face::Bold, 0.10f);
 
-        // The page, centred in the drag region: where you are, without taking a click.
-        if (l.caption.w > 220.0f)
-        {
-            const char *name = pageName(app.nav.page);
-            textCenteredIn(ctx, name, l.caption, 13.0f, theme::alpha(theme::caption, 150), Face::Bold, 0.12f);
-        }
-
-        // The state lamp and its line, moved here from the old header band.
+        // Where the measured halves of the bar go: the tab group and the state cluster, from the widths this
+        // font actually draws (ui::topBarPlaces does the arithmetic, and the tests assert on it).
         const char *state = app.running ? "RUNNING" : (app.discOk ? "READY" : "NOT READY");
+        const char *name = pageName(app.nav.page);
+        TopBarText measured;
+        measured.markRight = markX + markW + 10.0f + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
+        measured.statusW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
+        measured.showPill = app.dirty;
+        measured.tabW.push_back(textWidth(ctx, name, 13.0f, Face::Bold, 0.12f));
+        const TopBarPlaces places = topBarPlaces(l, measured);
+
+        // The page tab: where you are, without taking a click.
+        if (!places.tab.empty())
+            textCenteredIn(ctx, name, places.tab[0], 13.0f, theme::alpha(theme::caption, 150), Face::Bold, 0.12f);
+
+        // The state lamp and its word, moved here from the old header band.
         const Rgba lamp = app.running ? theme::goldHi : (app.discOk ? theme::lampGreen : theme::warn);
-        const float stateW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
-        const float lampX = l.status.right() - 14.0f - stateW - 20.0f;
-        fillCircle(ctx, Vec2{lampX, l.bar.cy()}, 5.0f, lamp);
-        strokeCircle(ctx, Vec2{lampX, l.bar.cy()}, 9.0f, theme::alpha(lamp, 110), 1.5f);
-        text(ctx, state, Vec2{l.status.right() - 14.0f - stateW, 12.0f}, 14.0f, theme::text, Face::Bold, 0.06f);
+        fillCircle(ctx, places.lamp, 5.0f, lamp);
+        strokeCircle(ctx, places.lamp, chrome::lampR, theme::alpha(lamp, 110), 1.5f);
+        textCenteredIn(ctx, state, places.status, 14.0f, theme::text, Face::Bold, 0.06f);
 
         // UNSAVED: only when there is something to save, and clicking it saves.
         if (app.dirty)
@@ -604,8 +609,7 @@ int main(int argc, char **argv)
     nav.page = ui::Page::Play;
     nav.focus = ui::railId(ui::Page::Play);
 
-    ui::Rect shownFocus{};
-    bool focusShownValid = false;
+    ui::FocusRing ring;
     float lastScale = -1.0f;
     bool quitRequested = false;
     bool dragging = false;
@@ -883,25 +887,6 @@ int main(int argc, char **argv)
         drawPage(ctx, app, nodes);
         drawBar(ctx, app, nodes);
 
-        // The focus ring, eased into place over 120 ms (nothing else on the page moves).
-        const ui::Node *focusNode = graph.find(nav.focus);
-        if (focusNode != nullptr)
-        {
-            const ui::Rect target = focusNode->r;
-            if (!focusShownValid || app.fake)
-                shownFocus = target;
-            else
-            {
-                const float k = std::min(1.0f, GetFrameTime() / 0.12f);
-                shownFocus.x += (target.x - shownFocus.x) * k;
-                shownFocus.y += (target.y - shownFocus.y) * k;
-                shownFocus.w += (target.w - shownFocus.w) * k;
-                shownFocus.h += (target.h - shownFocus.h) * k;
-            }
-            focusShownValid = true;
-            ui::focusRing(ctx, shownFocus);
-        }
-
         // A 120 ms wipe on a page change, so the pane arrives rather than snapping.
         if (nav.page != lastPage)
         {
@@ -917,6 +902,12 @@ int main(int argc, char **argv)
             else
                 pageChangedAt = -1.0;
         }
+
+        // The focus ring: on the focused control's rect, this frame, whole -- and drawn last, after the
+        // pane's wipe, so nothing fades it in on the frame it lands (Sprint 8 owner feedback).
+        ring.update(graph, nav.focus, GetFrameTime());
+        if (ring.visible)
+            ui::focusRing(ctx, ring.shown);
         EndDrawing();
 
         // ---- what the pages asked for ---------------------------------------------------------------------

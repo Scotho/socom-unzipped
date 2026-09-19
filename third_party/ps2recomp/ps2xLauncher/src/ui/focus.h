@@ -107,6 +107,21 @@ namespace ui
         bool onRail() const;
     };
 
+    // Where the gold focus ring is drawn, frame by frame. Pure, so a test asserts on the very rect the
+    // renderer strokes -- including the frame a page change lands on.
+    //
+    // There is NO travel: the ring is at the focused control's rect on the very frame the focus changes,
+    // inside a page and across a page change alike (owner, Sprint 8: "takes too long to adjust and awkwardly
+    // flys with a delay, remove that animation").
+    struct FocusRing
+    {
+        Rect shown{};          // the rect to stroke this frame
+        bool visible = false;  // false when the focus names nothing in the graph
+
+        // `dt` is this frame's time in seconds; it is ignored, and the test says so.
+        void update(const FocusGraph &g, const std::string &focusId, float dt);
+    };
+
     // Why LAUNCH is disabled, in the player's words; empty when it is not. The running game comes first: it is
     // the blocker the player just created, whatever the disc field says.
     std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty);
