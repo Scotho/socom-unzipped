@@ -40,6 +40,9 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   `socom-unzipped-server.zip` (~17 MB, prebuilt binaries, no seeded database) for whatever machine hosts it, the
   `-PublicIp`/`-ShowIp` rewrite was verified end to end on a test address, and `server/README.md`'s forward list
   matches what the stack actually binds. Only the two addresses and the hosting machine are missing.
+  **2026-09-19:** ours is supplied and real -- 3.143.65.100 (AWS Lightsail, us-east-2; Sprint 8 Goal 12), the *SOCOM Unzipped*
+  preset and the launcher's default since aa2b7f4. The community address is still the owner's to confirm (and Goal 10's).
+
 - [ ] **A second machine for the first two-machine match** (audit §1 G5, Sprint 7 Task 5 / spec Goal 5). Every online
   result so far is two instances on one PC, so NAT, the advertised address, the clock skew between two machines and two
   clients on one account key have never been exercised at all. When a second PC (or a friend) can run the portable zip:
@@ -160,6 +163,18 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
 ## Done
 
 (none yet)
+- [ ] **Play a match on the hosted server, from the launcher** (Sprint 8 Goal 12; the harness already has: a control round
+  `s8_hosted_control2` and two kills in four rounds `s8_hosted_kill`, two instances on this PC). Open
+  `socom_unzipped_launcher.exe`, ONLINE page: *SOCOM Unzipped (project server)* should be selected with ADDRESS 3.143.65.100.
+  Launch, go online. **Your first login on this server asks for a player name and then a password** -- the game saves personas
+  per server address, so it does not know the one you use on the LAN server; any name works, the server creates the account.
+  Host a game, and if a second machine or a friend is to hand (ideally on another network -- everything so far came from this
+  house's one public address), have them join from the portable zip with the same preset. Worth a line back: did you reach
+  the lobby, did the round start, anything that felt like lag (the box is in Ohio). Two decisions only you can make: (1) a
+  domain name for the server -- moving the address later orphans every player's saved persona, so decide before strangers log
+  in; (2) the AWS credit: the box costs ~$12/month against $78.46 (plan expiry 2027-03-05);
+  `aws freetier get-account-plan-state --region us-east-1` shows what is left. Agent instructions for the box are git-ignored
+  in `vm/lightsail/README.md`.
 
 ## Later / wishlist (not scheduled)
 
