@@ -1,6 +1,7 @@
 #pragma once
 
 #include "runtime/gs/gs_backend.h"
+#include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
 #include "runtime/gs/gs_gl_caps.h"
@@ -207,6 +208,7 @@ private:
         uint32_t pageCount = 0;
         uint64_t generation = 0;
         uint64_t lastUse = 0;
+        uint64_t sourceHash = 0;   // R123: the shadow bytes this entry was decoded from
     };
 
     struct DrawKey
@@ -275,6 +277,8 @@ private:
     void refreshDirtyRows(RenderTarget &rt);
     void noteGpuRows(RenderTarget &rt, uint32_t y0, uint32_t y1);
     void markShadowPages(uint32_t page, uint32_t pageCount);
+    // Sprint 8 Goal 2b R123: the hash of the source bytes a decode of this texture would read now.
+    uint64_t textureSourceHash(const GSDrawState &state, uint32_t width, uint32_t height);
     void setupDrawState(const GSDrawState &state);
     void appendVertex(const GSVertex &v, const GSDrawState &state, bool flatColorFromLast, const GSVertex &colorSource);
 
@@ -379,6 +383,9 @@ private:
     // mark the wrong rectangle dirty and the block never reaches the GL texture (research/16
     // section 9).
     GSTransferCommand m_currentTransfer{};
+    // Sprint 8 Goal 2b Task 1's identical= counter: the last packet written to each destination
+    // rectangle. Diagnostic only, filled only with PS2X_GS_UPLOAD_TRACE set. Render thread only.
+    GsGlUploadIdentity::LastUploads m_uploadIdentity;
     std::string m_blendLog;
     std::string m_stateLog;
     uint64_t m_uploadExpectedBytes = 0;

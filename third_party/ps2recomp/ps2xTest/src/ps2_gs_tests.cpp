@@ -13,6 +13,8 @@
 #include "runtime/gs/gs_gl_caps.h"
 #include "runtime/gs/gs_gl_target_extent.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
+#include "runtime/gs/gs_gl_upload_identity.h"
+#include "runtime/gs/gs_gl_texture_identity.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -5634,5 +5636,183 @@ void register_ps2_gs_tests()
             t.IsTrue(half.find("uploads=1000/s") != std::string::npos, "per-second figures scale with elapsed");
             t.IsTrue(half.find("shadow=6.0") != std::string::npos, "per-call figures do not");
         });
+        // --- Sprint 8 Goal 2b Task 1: the transfer= column, split, and the identical-bytes question ---
+
+        tc.Run("GsGlUploadTrace splits the transfer bucket into flush and body, by direction", [](TestCase &t)
+        {
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 400; ++i)
+            {
+                // gs_gl_backend.cpp:1535-1538 -- the BeginTransfer case is flushBatch() then
+                // executeTransfer(), and the clock at :1402 charges both to transfer=.
+                GsGlUploadTrace::noteTransfer(a, 0u, 18.0, 2.0);
+                GsGlUploadTrace::noteFlushPhases(a, 6.0, 9.0, 3.0, false);
+            }
+            for (int i = 0; i < 100; ++i)
+            {
+                GsGlUploadTrace::noteTransfer(a, 2u, 0.0, 40.0);   // a local->local VRAM move
+                GsGlUploadTrace::noteFlushPhases(a, 0.0, 0.0, 0.0, true);
+            }
+            t.Equals(static_cast<int>(a.transfers), 500, "500 transfers counted");
+            t.Equals(static_cast<int>(a.transfersByDir[0]), 400, "400 host->local");
+            t.Equals(static_cast<int>(a.transfersByDir[2]), 100, "100 local->local");
+            t.Equals(static_cast<int>(a.flushesEmpty), 100, "100 flushes had nothing to draw");
+            t.Equals(static_cast<int>(a.flushesReal), 400, "400 flushes actually drew");
+            const std::string line = GsGlUploadTrace::formatTransfer(a, 1000.0);
+            t.IsTrue(line.find("[gs-transfer]") == 0u, "the line is tagged [gs-transfer]");
+            t.IsTrue(line.find("transfers=500/s") != std::string::npos, "transfers per second");
+            t.IsTrue(line.find("dir0=400") != std::string::npos, "the direction histogram names host->local");
+            t.IsTrue(line.find("dir2=100") != std::string::npos, "and local->local");
+            // 400 x 18 us of flush = 7.2 ms/s; 400 x 2 + 100 x 40 = 4.8 ms/s of body.
+            t.IsTrue(line.find("flush=7.2ms/s") != std::string::npos, "the flush half of transfer= in ms/s");
+            t.IsTrue(line.find("body=4.8ms/s") != std::string::npos, "the executeTransfer half in ms/s");
+            t.IsTrue(line.find("dirty_rows=2.4ms/s") != std::string::npos, "refreshDirtyRows inside the flush");
+            t.IsTrue(line.find("decode=3.6ms/s") != std::string::npos, "decodeTexture inside the flush");
+            t.IsTrue(line.find("draw=1.2ms/s") != std::string::npos, "the draw itself inside the flush");
+        });
+
+        tc.Run("GsGlUploadTrace counts whole vs chunked uploads and identical bytes", [](TestCase &t)
+        {
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 90; ++i)
+                GsGlUploadTrace::noteUploadShape(a, true, i < 72);    // 80% identical, all whole
+            for (int i = 0; i < 10; ++i)
+                GsGlUploadTrace::noteUploadShape(a, false, false);    // chunked, never skippable (R119)
+            t.Equals(static_cast<int>(a.uploadsWhole), 90, "90 whole-transfer uploads");
+            t.Equals(static_cast<int>(a.uploadsChunked), 10, "10 arrived in pieces");
+            t.Equals(static_cast<int>(a.uploadsIdentical), 72, "72 carried bytes the shadow already held");
+            const std::string line = GsGlUploadTrace::formatTransfer(a, 1000.0);
+            t.IsTrue(line.find("whole=90") != std::string::npos, "the whole-transfer count is on the line");
+            t.IsTrue(line.find("chunked=10") != std::string::npos, "and the chunked one");
+            t.IsTrue(line.find("identical=72") != std::string::npos, "and the identical-bytes count");
+        });
+
+        tc.Run("GsGlUploadTrace counts texture-cache invalidations against decodes", [](TestCase &t)
+        {
+            // gs_gl_backend.cpp:3209-3222: a cached entry whose pages carry a newer generation is
+            // deleted and re-decoded. markShadowPages (:1843) bumps that generation on EVERY upload,
+            // identical bytes or not, so this pair is the suspected root of the transfer= column.
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 30; ++i)
+                GsGlUploadTrace::noteDecode(a, true);
+            for (int i = 0; i < 4; ++i)
+                GsGlUploadTrace::noteDecode(a, false);
+            t.Equals(static_cast<int>(a.decodes), 34, "34 decodes");
+            t.Equals(static_cast<int>(a.cacheInvalidations), 30, "30 of them replaced a live cache entry");
+            const std::string line = GsGlUploadTrace::formatTransfer(a, 1000.0);
+            t.IsTrue(line.find("decodes=34/s") != std::string::npos, "decodes per second");
+            t.IsTrue(line.find("invalidations=30/s") != std::string::npos, "invalidations per second");
+        });
+
+        tc.Run("GsGlUploadIdentity::hash64 separates a one-byte change and is order-sensitive", [](TestCase &t)
+        {
+            std::vector<uint8_t> a(1024u, 0x5Au);
+            std::vector<uint8_t> b = a;
+            t.IsTrue(GsGlUploadIdentity::hash64(a.data(), a.size()) ==
+                     GsGlUploadIdentity::hash64(b.data(), b.size()), "equal bytes hash equal");
+            b[517] ^= 0x01u;
+            t.IsTrue(GsGlUploadIdentity::hash64(a.data(), a.size()) !=
+                     GsGlUploadIdentity::hash64(b.data(), b.size()), "one flipped bit in the middle changes the hash");
+            std::vector<uint8_t> c{1u, 2u, 3u, 4u}, d{4u, 3u, 2u, 1u};
+            t.IsTrue(GsGlUploadIdentity::hash64(c.data(), 4u) != GsGlUploadIdentity::hash64(d.data(), 4u),
+                     "the same bytes in a different order hash differently");
+            t.IsTrue(GsGlUploadIdentity::hash64(nullptr, 0u) == GsGlUploadIdentity::hash64(nullptr, 0u),
+                     "an empty buffer is well defined");
+        });
+
+        // --- Sprint 8 Goal 2b, R123: the fix moves to the CONSUMER ---
+        //
+        // R122 (overlap-keyed upload skip) is implemented, measured and superseded: it fired on 4%
+        // of uploads and its per-upload invalidation sweep cost ~84 ms/s, more than it saved. The
+        // cost was never the upload -- it is resolveTexture deleting and re-decoding a cached
+        // texture because a GENERATION STAMP moved, not because the CONTENT did (551-1385
+        // invalidations a second against 26-52 cached textures: the whole cache, every frame).
+        // A cache entry now carries a 64-bit hash of the exact source bytes it was decoded from,
+        // and the stale-generation branch re-hashes before it throws anything away.
+
+        tc.Run("R123: the texel source hash is what decodeTexture reads, row by row", [](TestCase &t)
+        {
+            // decodeTexture's loop is GSMem::ReadSpan(psm, vram, tbp0, tbw, 0, y, width, row) for
+            // y in [0, height), and the hash walks exactly that, in that order.
+            std::vector<uint8_t> vram(PS2_GS_VRAM_SIZE, 0u);
+            std::vector<uint32_t> scratch(64u);
+            for (uint32_t y = 0; y < 64u; ++y)
+                for (uint32_t x = 0; x < 64u; ++x)
+                    GSMem::WriteCT32(vram.data(), 0x0c0u, 1u, x, y, 0x11223344u + x + y * 64u);
+            const uint64_t h0 = GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                                scratch.data(), GsGlTextureIdentity::seed());
+            t.IsTrue(h0 != 0u, "a hashable source returns a hash");
+            const uint64_t again = GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                                   scratch.data(), GsGlTextureIdentity::seed());
+            t.IsTrue(h0 == again, "the same bytes hash the same");
+
+            // (2) one changed source texel -> a different hash -> a decode.
+            GSMem::WriteCT32(vram.data(), 0x0c0u, 1u, 33u, 17u, 0xDEADBEEFu);
+            const uint64_t h1 = GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                               scratch.data(), GsGlTextureIdentity::seed());
+            t.IsTrue(h1 != h0, "one changed source texel changes the hash");
+
+            // (5) the render-target case, at the level this seam can see it: a write into the
+            // source pages between two resolves -- which is what downloadRenderTargetToShadow does,
+            // and resolveTexture runs that download BEFORE the cache gate -- changes the hash, so
+            // the entry is never revalidated against bytes a decode would not read.
+            GSMem::WriteCT32(vram.data(), 0x0c0u, 1u, 0u, 0u, 0x01020304u);
+            t.IsTrue(GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                     scratch.data(), GsGlTextureIdentity::seed()) != h1,
+                     "a render-target download into the source pages changes the hash");
+
+            // The extent is part of the identity: the same bytes at a different size are not it.
+            t.IsTrue(GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 32u, 64u,
+                                                     scratch.data(), GsGlTextureIdentity::seed()) !=
+                     GsGlTextureIdentity::hashTexels(vram.data(), GS_PSM_CT32, 0x0c0u, 1u, 64u, 64u,
+                                                     scratch.data(), GsGlTextureIdentity::seed()),
+                     "width is part of the hash");
+        });
+
+        tc.Run("R123: the CLUT is part of the hash, and only the window the texture uses", [](TestCase &t)
+        {
+            // (3) and (4). The backend mixes the 256 CLUT entries it actually resolved -- through
+            // resolveClutIndex, so csa/csm/cou/cov are already applied -- into the same running
+            // hash. Mixing the RESOLVED entries and not the raw palette block is the choice: a
+            // change to a palette entry outside this texture's csa window is never read by its
+            // decode, so it must not force one.
+            uint64_t h = GsGlTextureIdentity::seed();
+            uint32_t clut[256];
+            for (uint32_t i = 0; i < 256u; ++i)
+                clut[i] = 0xFF000000u | i;
+            const uint64_t base = GsGlTextureIdentity::hashClut(clut, h);
+            clut[7] ^= 0x00000100u;                       // an entry the texture resolved
+            t.IsTrue(GsGlTextureIdentity::hashClut(clut, h) != base, "a changed CLUT entry changes the hash");
+            clut[7] ^= 0x00000100u;
+            t.IsTrue(GsGlTextureIdentity::hashClut(clut, h) == base, "and restoring it restores the hash");
+            // An entry outside the resolved window never reaches hashClut at all: the 256 values
+            // handed in ARE the window (resolveClutIndex maps i through csa).
+            t.Equals(static_cast<int>(sizeof(clut) / sizeof(clut[0])), 256, "the window is 256 resolved entries");
+        });
+
+        tc.Run("R123: mix and seed are order-sensitive so row order is part of the identity", [](TestCase &t)
+        {
+            const uint64_t a = GsGlTextureIdentity::mix(GsGlTextureIdentity::mix(GsGlTextureIdentity::seed(), 1u), 2u);
+            const uint64_t b = GsGlTextureIdentity::mix(GsGlTextureIdentity::mix(GsGlTextureIdentity::seed(), 2u), 1u);
+            t.IsTrue(a != b, "the same values in a different order hash differently");
+            t.IsTrue(GsGlTextureIdentity::seed() != 0u, "the seed is not the sentinel");
+        });
+
+        tc.Run("R123: the trace carries revalidations beside decodes", [](TestCase &t)
+        {
+            // (1): a texture whose generation moved but whose source bytes did not is revalidated
+            // instead of deleted and re-decoded. The line has to show both or the A/B says nothing.
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 500; ++i)
+                GsGlUploadTrace::noteRevalidate(a, 12.0);
+            for (int i = 0; i < 20; ++i)
+                GsGlUploadTrace::noteDecode(a, true);
+            t.Equals(static_cast<int>(a.revalidated), 500, "500 revalidations");
+            t.Equals(static_cast<int>(a.decodes), 20, "20 decodes still happened");
+            const std::string line = GsGlUploadTrace::format(a, 1000.0);
+            t.IsTrue(line.find("revalidated=500/s") != std::string::npos, "revalidations per second");
+            t.IsTrue(line.find("revalidate_us=12.0") != std::string::npos, "and the cost of one");
+        });
+
     });
 }
