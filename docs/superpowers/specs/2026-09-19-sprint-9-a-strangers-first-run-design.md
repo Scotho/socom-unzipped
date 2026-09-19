@@ -296,6 +296,37 @@ Two more the sweep found, which is why this is a universal fix and not a mission
    (`snd989.cpp:1003-1013`). Two live copies of one cue at slightly different offsets comb-filter, which swells; three
    full-scale streams clip on an accumulator with no headroom (`:1293-1294`).
 
+**Fixed, 2026-09-20, strictly test-first — each RED watched failing as an assertion, not as a compile error. In the
+tree for the controller's review, not committed.**
+- **R169 — `parentHandle` is a queue, and the wire says so.** The module keeps reusing the parent's slot and handle
+  (right: that is what the game polls) and now sends a **tenth word** on the `snd_PlayVAGStreamByLoc` notify saying
+  the play is a queue (`reused`). The mixer holds queued segments as a chain on the playing `Stream` (`next`), decodes
+  them ahead like any stream, and promotes at the seam **inside the render loop, on the output frame after the
+  parent's last sample** — sample-accurate, not block-aligned: the per-stream loop was changed to walk by index with
+  a rebindable pointer so the entry in `streams` can change mid-block. A `stop` takes the whole chain (a stop is a
+  stop, not "skip to the next"); a play with **no** parent still replaces, and now says so in the log. RED seen:
+  *"queueing does not cut the parent dead (peak 2 against 2413)"* — the defect itself, in a unit test.
+- **R170 — a fade belongs to the cue, not to the handle.** `playStream` clears the handle's AutoVol ramp on a
+  replace, as `stop()` and `setVolPan()` already did, and the **seam** clears it at promotion — so a queued segment
+  cannot inherit the fade that ended its parent, while the parent keeps fading normally while it waits. RED seen:
+  *"peak 1206 against 2413"* (half a fade inherited) and *"peak 0 against 2413"* (a completed fade inherited: music
+  that simply vanishes).
+- **R171 — the stream decoder reads the VAG flags the bank decoder always read.** Bit 2 marks the loop start, bit 0
+  ends the run, **bit 1 says the run repeats**; a repeating run returns to the mark (chunk-grid, which is the
+  producer's unit) instead of ending the stream. The play call's `flags` word stays unused and is still worth a look.
+  RED seen: the looping fixture stopped after one pass and fell silent.
+
+**R172 — PROPOSED, not taken: the concurrency cap and the clip.** This one needs a decision, so it stopped here.
+`snd_SetGroupVoiceRange(group, 0x18, 0x2F)` caps music to 24 voices on the console and we record and drop it;
+`Tone::priority` and `Sound::instanceLimit` are parsed and unused; the accumulator hard-clips with no headroom.
+Three ways: **(A)** enforce the group range with an eviction policy — closest to the console, but the policy is a
+guess and a wrong guess cuts a live cue; **(B)** leave the count alone and change only headroom — but the SPU clips
+too, so "fixing" the clip may be less faithful, not more; **(C)** cap **streams** at the six slots the game itself
+asks for (`snd_InitVAGStreamingEx(6, ...)`) — the number is the game's, not ours, the IOP model already keeps six,
+and it bounds exactly the thing that swells (two copies of one music cue comb-filtering). **Recommended: (C) now,
+(A) deferred behind a measurement, (B) not until the instrument says the mission mix reaches the ceiling.** Changing
+what the mix sounds like should follow a number, not a hunch.
+
 **The cheapest discriminating experiment, before any fix:** one trace line in `playVagStream` printing `parent`,
 `reused`, the handle and the sector, and one in `Mixer::playStream` printing the ramp scale in force when it replaces
 a live stream. If `reused == true` appears during mission music, 1 and 2 are confirmed together — and they are roughly
