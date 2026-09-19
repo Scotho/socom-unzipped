@@ -16,6 +16,17 @@ meets first.
 
 ## 2. Goals, in order
 
+> **Order superseded 2026-09-20 (controller handoff).** The goals below keep their numbers and their text; the ORDER
+> they are worked in is `docs/CURRENT_SPRINT.md`'s: milestone P (what the owner hears and sees, ending in the tag
+> `playtest-1`) is Goal 10's fixes, Goal 9's pad-focus defect and small launcher defects, Goal 8's close-out, Goal 7,
+> then the playtest candidate; milestone Q is Goal 10's instrument, Goal 3, Goal 9's mouse/keyboard change (after
+> Goal 3, because its proposed ruling rests on Goal 3's developer mode), the rest of Goal 9, Goal 4, Goal 11, Goal 6.
+> **Goal 5 moved to Sprint 10** (it is that sprint's title, serves no part of a first run, and had not started).
+> **Goal 11 is new:** a latched render stall must not grow the working set without bound (`GsPendingCap::admit`,
+> `gs_gl_backend.cpp:771,789`; promoted from a KNOWN section 2 row that named a Sprint 8 goal and was never scheduled).
+> Goal 6's "per-stage sound regression fixture" is built under Goal 10. Goal 9's open debugger question (does the
+> release build carry imgui?) is answered by a size measurement inside Goal 3.
+
 ### Goal 1 — a failure explains itself (autonomous)
 - An exit-code taxonomy in one header (65 "no usable GL" exists; add: disc not found / not r0001, ELF missing,
   config unreadable, card directory unwritable, audio device absent (non-fatal, reported), crash (the handler's

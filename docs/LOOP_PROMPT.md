@@ -1,116 +1,65 @@
-# Autonomous loop prompt (SOCOM II PC) — fired every 30 minutes by the session cron
+# The loop — one iteration, for whoever is the controller (SOCOM Unzipped)
 
-You are continuing the SOCOM II PC static-recompilation project at C:/projects/socom_pc
-autonomously. The user (Craig) is away and has given full authority to use best judgement;
-plans are suggestions.
+Rewritten 2026-09-20. The previous text was last touched on 2026-09-14 and still aimed the loop at Sprint 6, a runtime
+freeze that was lifted long ago and a ban on speed work that Sprint 8 broke on purpose; `docs/process-audit.md` §8 had
+predicted exactly that. This file therefore carries **no state at all**: no sprint, no goal, no number. State lives in
+`docs/CURRENT_SPRINT.md` (what to do), `docs/KNOWN.md` (what is true) and `docs/HANDOFF.md` (where things are, the
+rules with their reasons, the traps). If you find yourself writing a fact about the project into this file, it belongs
+in one of those.
 
-Ordered goals (user, 2026-09-11; restated 2026-09-13 at Sprint 5 close-out). **The sprint in flight,
-its branch, spec, plan and ledger are named in `docs/CURRENT_SPRINT.md`** — read it first; this file
-carries no sprint pointer of its own. Follow that plan's task order. Sprints 1-5 are history: the `2026-09-10-sprint-1-…`,
-`2026-09-11-sprint-2-…`, `2026-09-11-sprint-3-…`, `2026-09-12-sprint-4-visible-defects-and-first-kill` and
-`2026-09-13-sprint-5-control-readout-and-first-kill` spec/plan pairs in the same two directories; Sprint 4's
-and Sprint 5's plans each end with an `## Outcome` section. **Sprint 5 is closed pending merge**
-(`docs/CURRENT_SPRINT.md`); the next work is **Sprint 6**, `docs/ROADMAP.md` §6, with **repeatability of
-the acceptance test as a standing goal** (goal 1 below) until a Sprint 6 plan exists to carry it.
+**How it actually runs.** Nothing in the repository schedules this -- there is no cron, no hook, no ledger. The loop is
+a controller session working this page one iteration after another, for as long as the owner leaves it running. The
+owner (Craig) is usually away and has given the controller full authority to use its judgement; plans are
+suggestions, stop rules and the owner-only list are not.
 
-1. **The acceptance test PASSED in Sprint 5; making it repeatable is now the active goal.**
-   `tools_py/parity/online_match_ours.py --until-kill` (now driven via
-   `scripts/parity/ladder_frostfire.sh` for the ladder). State at 2026-09-13
-   (`docs/STATUS.md` "Sprint 5 landed", `docs/research/22-kill-readout.md`, `docs/KNOWN.md` §1 and §4):
-   - **Frostfire, the default test map: a two-instance online match ends in a kill**, read from
-     guest memory and confirmed by two independent scorers (KillWatch on the actor fields, `total_mp_kills`
-     0→1 on the killer's instance, `aiteam_08` 1→0 on both, screens "socomc fragged socome with M4A1").
-     Ladder launch 2 killed on **3 of its 4 rounds** — round 4 missed at a **-4.1° aim error that sat
-     inside tolerance and never corrected** across 111 bursts. **The kill is not yet repeatable on
-     demand** (`docs/KNOWN.md` §4); before any "N consecutive passes" work, the close-range aim loop
-     needs a tighter tolerance or a burst-to-burst correction (`docs/ROADMAP.md` §6 Sprint 7).
-   - Two instances on local Horizon reach gameplay (~4 launches in 10, lobby hardening is Sprint 6
-     item 1) and **the round runs**. Never write "frozen at round start" — that was retracted; the
-     true sentence is "the round runs and the local player cannot move", which was true on Frostfire
-     until this sprint fixed it (below).
-   - **Frostfire control is fixed** (`b625291`): the lead this sprint opened with — an uninitialised
-     `CZNetGame` "ghost flag" `+0xd2` — was real but never fired; the actual cause was VU0 `vf0.w = 0`
-     on non-main-thread guest contexts, which meant the ground models at the Frostfire spawn were
-     linked into the collision grid by their untranslated bounds, so the local player's ground probe
-     never hit and the online snap-back suppressed movement.
-   - **Kill readout: sourced, armed by default, and now proven online.** Health `actor+0x1044`
-     (float, `<= 0` dead) and alive byte `actor+0xF7A` (`docs/research/19` F1) are read live
-     online (`+0x1044` 1.0 → 0.298 → 0.0, `+0xF7A` 1 → 2). `actor+0x204/+0x208` stay retracted.
-     `RESULT PASS` is reserved for a kill; a round ending on its clock still prints
-     `ROUND-END (unattributed -- NOT a kill)` and exits non-zero.
-   - **The runtime is frozen at `92d30f0`** for the ladder that produced the kill (R45/R61); do not
-     touch `third_party/ps2recomp/`/`recomp/` for Sprint 6 work that doesn't need to, without first
-     checking whether the freeze still applies (`docs/CURRENT_SPRINT.md`, the Sprint 6 plan once it
-     exists).
-2. Hygiene: `./build.sh test` green, `python -m tools_py.parity.gate` green. Both are REQUIRED
-   before any commit that touches third_party/ps2recomp/ or recomp/. A red gate is fixed first.
-   `./build.sh runtime` MUST precede the gate when the runtime changed: the gate launches
-   `dist/socom2.exe`, and `./build.sh test` does not rebuild it. `./build.sh test` runs the Python
-   tests first (`python -m unittest discover -s tools_py/tests -t .`; unittest only, no pytest —
-   `tools_py/tests/test_test_hygiene.py` fails on a test file that line would not find).
-3. FROZEN: emulator speed work (VU1/VU0 interpreter, scheduler batching, GS/GL caching or upload
-   performance). 36-42 fps single instance is enough; two of our instances run a match at 19-21
-   each, which the harness tolerates. A mixed match (ours against PCSX2) is Sprint 6, not now.
-4. Native render path — **maintained, not open work**. The VU1 command dispatcher (entry pc 0x1b50
-   of image d418194495c25213, `third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/`) runs 162/166
-   lists natively, bit-exact `--regs all`; the residual 4 (`52 66 08 40 42`) are a documented ruling
-   (`docs/research/15`). `PS2X_VU1_HOST_DRAW` (default off) and `PS2X_GS_SCALE=1..4` (default 1; S=2
-   sharpens 3D only, not HUD/menus/title) are unchanged since Sprint 3. Any change here is verified
-   with `dist/vu1_replay.exe --verify --native` on tests/fixtures/vu1/title and
-   tests/fixtures/vu1/dispatch_0x1b50, `--vram-diff` (**checked=15 skipped=0** since Sprint 4, with
-   the seam clause budgeted so a one-pixel offset still fails), and the gates.
-Long term: N64-recomp model — game logic stays recompiled, renderer/audio/input/network native.
+## Every iteration
 
-Acceptance for "playable" (user, 2026-09-09): visual accuracy of the game itself (not just the
-shell) AND an automated test that drives a two-instance online match to its END by one player
-shooting the other or killing them with a grenade (extend tools_py/parity/online_match_ours.py:
-scripted movement/aim/fire, read the kill/round-end state from guest memory or the Horizon
-world state, capture the screens). Expect many gameplay issues on the way; each is a bounded
-hypothesis->build->run->evidence step.
+1. **Look before you touch.** `git status --short`, `git log --oneline -5`, `bash scripts/loop_lock.sh check`. Other
+   sessions share this working tree: a modified file you did not modify is someone else's -- do not edit or stage it.
+   If the lock is held, or a `socom2*` / `pcsx2-qt` process is running, start no build and no run; **do not idle** --
+   take lock-free work (step 3).
+2. **Read the aim.** The first open item in `docs/CURRENT_SPRINT.md`, in its order. `docs/KNOWN.md` before forming any
+   hypothesis -- it is the fastest way to avoid re-deriving a dead one. The item's spec section and plan, if it has one.
+   A new item that needs more than an hour gets a plan first (`docs/superpowers/plans/`, the existing ones are the
+   pattern: handoff notes, global constraints, tasks with RED/GREEN steps and exact commands, rulings).
+3. **Work in bounded steps:** one hypothesis -> a failing test -> the change -> one build -> one run -> read the
+   evidence. Builds and runs go through the lock (`docs/HANDOFF.md` §5 rule 6), `scripts/check_quiet_gate.sh` first.
+   While one is running, do lock-free work rather than waiting: pure scorers and their tests, reading the decompilation,
+   analysis of logs already on disk, documents, the filler list in the sprint file. Never return control to wait on a
+   detached run -- poll its marker.
+4. **Green before the commit:** `./build.sh test`, and the three-stage gate on the rebuilt exe
+   (`./build.sh runtime` first) for anything touching the runtime, `recomp/`, `tools_py/parity/`, `scripts/parity/` or
+   `build.sh`. A red gate is fixed before anything else. Never regress: title labels clean, online reaches the lobby,
+   a mission loads, the online local player moves.
+5. **Commit and push** by `docs/HANDOFF.md` §5 rules 1-4 (explicit pathspec; the never-commit list; your session's own
+   trailer; `git push origin <sprint branch>`; check CI when the push was not documentation-only).
+6. **Write it down where it will be read:** a dated entry on top of `docs/STATUS.md` and its "Current state" block if
+   the state changed; **audit `docs/KNOWN.md`** -- promote, retire or retract every row this step touched; tick the
+   plan's boxes; update the item's row in `docs/CURRENT_SPRINT.md`; a numbered ruling for every moved default or
+   skipped measurement; `docs/HUMAN_TASKS.md` for anything only the owner can verify; `docs/HANDOFF.md` §2, §4, §8, §10
+   when the pick-up point changes. **A committed sentence found false is corrected the same hour, where it is
+   written**, with a `> Superseded by ...` blockquote -- never queued for a close-out that may not come.
+7. **Then the next item.** Do not wait on the owner; do not perform what is the owner's (publish, make public,
+   permissions, signing, money, the site's deploy, any server that is not ours).
 
-## Every firing
-1. `bash scripts/loop_lock.sh check`. If the lock is HELD (a live heartbeat — see "Lock protocol"),
-   or a `socom2*.exe`/`pcsx2-qt.exe` is running, do NOT start a build or a run: only one game
-   instance and no builds during runs. **Do not idle waiting for it** — pick the next lock-free
-   step of the plan (decomp reading, pure scorers and their tests, analysis of logs already on
-   disk, docs) and do that this firing.
-2. Read `docs/KNOWN.md` (the live proven / believed / retracted list — it is the fastest way to
-   avoid re-deriving a dead hypothesis, and its §3 is what the other docs used to state as fact),
-   then `docs/CURRENT_SPRINT.md`, `docs/HANDOFF.md` "START HERE" and the newest `docs/STATUS.md`
-   entries; `git log -5`.
-3. Pick the next task in the plan `docs/CURRENT_SPRINT.md` names, which serves goal 1 (goals 2 and 3
-   are constraints, goal 4 is maintenance). Work in bounded steps, in this order (builds and runs
-   under the lock, through `run` / `run_detached.sh`): one hypothesis -> one build -> one run ->
-   read the evidence -> `./build.sh test` and (after `./build.sh runtime`) `gate` green ->
-   commit -> push -> STATUS entry (newest on top) -> **audit `docs/KNOWN.md`: promote, retire or
-   retract the entries this step touched** -> refresh the "START HERE" section of
-   HANDOFF.md when the pick-up changes. Tests and the gate come BEFORE the commit (goal 2).
-   **If you find a committed sentence is false, correct it in the same hour, where it is written**
-   (a `> Superseded by …` blockquote, never a silent delete) — do not queue it for a close-out that
-   may never arrive. `docs/process-audit.md` has the rule and the two weeks it cost.
-4. Subagents are welcome for offline/static work (decomp reading, native VU1 handler work under
-   third_party/ps2recomp/ps2xRuntime/src/lib/vu/native/ verified with `dist/vu1_replay.exe
-   --verify --native` on both fixture sets, server-side Horizon checks) but builds of the
-   runtime and game runs are SERIAL: they run under the loop lock (see "Lock protocol").
-5. Commit from the repo root C:\projects\socom_pc (its own git repo, remote
-   github.com/Scotho/socom-unzipped; never `git add -A`; leave `server/config/simulated.db`
-   unstaged), then `git push`. **Commit with an explicit pathspec — `git commit -m "…" -- <paths>`,**
-   never a bare `git commit` after `git add`: several agents share this working tree, and a bare
-   commit takes the whole index (it swept another agent's files under the wrong message on
-   2026-09-13). Trailers and every other commit rule: the current plan's "Commit conventions"
-   (handoff notes) and the attribution your session is given — do not copy a trailer from an older
-   commit or doc.
-6. Never regress: title labels clean (s05/s06 of every run sheet), online reaches SELECT
-   UNIVERSE, mission loads, and on Medley the online local player moves (`research/18` §3.12a is
-   the regression recipe). A regression is fixed before moving on.
+## Delegation
 
-## Run recipes and gotchas
-See docs/HANDOFF.md ("The run you will repeat", "Build", "Gotchas"). Key ones: `./build.sh
-runtime` (3 min; header change = 10 min); `python -m tools_py.parity.drive --target ours
---script scripts/parity/<script> --out logs/parity/runs/<stamp> --seconds N`; montage with
-`python -m tools_py.parity.montage <run> <sheet.png>` then Read the sheet; kill stray
-`pcsx2-qt.exe` before drive.py; `PS2X_VU1_DUMP`/`PS2X_RDRAM_DUMP` need existing directories;
-RDRAM dump paths must be Windows paths.
+Sub-agents are welcome for bounded work with an exact brief and a verification command: offline and static work
+freely; builds of the runtime and game runs are SERIAL and go through the lock whoever starts them; at most two
+C++-building agents at once. For any number a decision rests on, have a fresh agent re-derive it rather than re-read
+it. A sub-agent never commits a file it was not given, and never stages with `git add -A`.
+
+## When the sprint closes
+
+`docs/CURRENT_SPRINT.md`'s close-out item; `docs/GIT_STRATEGY.md` for the merge and the tag; then open the next sprint:
+its spec is already drafted, its plan is written against the tree as it then is, and the sprint file's header block is
+rewritten -- it is the only sprint pointer in the project.
+
+## The acceptance bar that has never changed (owner, 2026-09-09)
+
+"Playable" means visual accuracy of the game itself, not just the shell, AND an automated test that drives a
+two-instance online match to its end by one player killing the other. Both were met in Sprint 5 and must stay met.
+Long term: the N64-recomp model -- game logic stays recompiled; renderer, audio, input and network are native.
 
 ## Lock protocol
 The lock serializes every build and every game run (`scripts/loop_lock.sh`; its header is the
