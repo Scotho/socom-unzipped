@@ -1,12 +1,18 @@
 # SOCOM Unzipped launcher (Task 8b): the window that owns the game's configuration and starts socom2.exe.
 # ps2x_launcher_core holds the logic the tests cover (ISO 9660 lookup, SHA-256, config.json, the environment);
 # the raylib window is socom_unzipped_launcher.
+# Sprint 8 Goal 9: src/ui/focus.cpp joins it -- the page layout, the focus model and the launch-blocked
+# reasons are pure (no raylib), and launcher_tests.cpp asserts on the very rects the pages draw.
 add_library(ps2x_launcher_core STATIC
     src/iso9660.cpp
     src/sha256.cpp
     src/launcher_config.cpp
+    src/ui/focus.cpp
 )
-target_include_directories(ps2x_launcher_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(ps2x_launcher_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/src        # "ui/focus.h", "ui/theme.h", "ui/pad_render.h", "ui/glyphs.h"
+)
 target_compile_features(ps2x_launcher_core PUBLIC cxx_std_20)
 
 # The window. WIN32 keeps the console away; the runner's raylib target is available here (ps2xRuntime fetched it).
@@ -17,7 +23,24 @@ if(WIN32)
 else()
     set(PS2X_LAUNCHER_EXE_TYPE "")
 endif()
-add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE} src/main.cpp src/win32_glue.cpp src/mic_devices.cpp)
+add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE}
+    src/main.cpp
+    src/win32_glue.cpp
+    src/mic_devices.cpp
+    # Sprint 8 Goal 9: the redesigned UI. focus.cpp is in ps2x_launcher_core above (it is pure and tested).
+    src/ui/fonts.cpp
+    src/ui/widgets.cpp
+    src/ui/glyphs.cpp
+    src/ui/pad_render.cpp
+    src/ui/page_play.cpp
+    src/ui/page_disc.cpp
+    src/ui/page_video.cpp
+    src/ui/page_audio.cpp
+    src/ui/page_controller.cpp
+    src/ui/page_microphone.cpp
+    src/ui/page_online.cpp
+    src/ui/page_about.cpp
+)
 if(UNIX)
     target_sources(socom_unzipped_launcher PRIVATE src/posix_glue.cpp)
 endif()

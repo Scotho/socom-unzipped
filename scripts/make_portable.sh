@@ -48,6 +48,8 @@ case "$(uname -s)" in
     NLIBS="$(ls "$PKG/lib" | wc -l)"
     rm -f "$OUT/.libs.txt"
     cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
+cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-sairastencilone.txt" "$PKG/LICENSES/SairaStencilOne-OFL-1.1.txt"
+cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-rajdhani.txt" "$PKG/LICENSES/Rajdhani-OFL-1.1.txt"
     cat > "$PKG/LICENSES/README.txt" <<'LIC'
 SOCOM Unzipped ships these components; their licence texts are the ones named here.
   socom2, socom2_game.elf, socom_unzipped_launcher -- the PS2Recomp fork: GPL-3.0 (PS2Recomp-GPL-3.0.txt)
@@ -58,6 +60,7 @@ SOCOM Unzipped ships these components; their licence texts are the ones named he
   freetype                                                  -- FTL
   harfbuzz                                                  -- MIT
   brotli                                                    -- MIT
+  Saira Stencil One, Rajdhani (the launcher type)           -- SIL OFL 1.1 (SairaStencilOne-OFL-1.1.txt, Rajdhani-OFL-1.1.txt)
 The libraries in lib/ carry their own licences from the distribution they were built by; glibc,
 libstdc++, the OpenGL driver, X11 and the sound libraries are the host's and are not shipped.
 The game's disc image is not included: point the launcher at your own SOCOM II (NTSC, r0001) ISO.
@@ -94,6 +97,8 @@ mkdir -p "$PKG/cards" "$PKG/logs" "$PKG/LICENSES"
 cp "$DIST/socom2.exe" "$DIST/socom2_game.elf" "$DIST/socom_unzipped_launcher.exe" "$PKG/"
 cp "$DIST"/*.dll "$PKG/"
 cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
+cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-sairastencilone.txt" "$PKG/LICENSES/SairaStencilOne-OFL-1.1.txt"
+cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-rajdhani.txt" "$PKG/LICENSES/Rajdhani-OFL-1.1.txt"
 cat > "$PKG/LICENSES/README.txt" <<'LIC'
 SOCOM Unzipped ships these components; their licence texts are the ones named here.
   socom2.exe, socom2_game.elf, socom_unzipped_launcher.exe -- the PS2Recomp fork: GPL-3.0 (PS2Recomp-GPL-3.0.txt)
@@ -104,6 +109,7 @@ SOCOM Unzipped ships these components; their licence texts are the ones named he
   freetype                                                  -- FTL
   harfbuzz                                                  -- MIT
   brotli                                                    -- MIT
+  Saira Stencil One, Rajdhani (the launcher type)           -- SIL OFL 1.1 (SairaStencilOne-OFL-1.1.txt, Rajdhani-OFL-1.1.txt)
   libc++, libunwind, libwinpthread                          -- Apache-2.0 with LLVM exception / MIT
 The game's disc image is not included: point the launcher at your own SOCOM II (NTSC, r0001) ISO.
 LIC

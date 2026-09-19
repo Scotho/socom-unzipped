@@ -5,6 +5,12 @@
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+// Sprint 8 Goal 9: the redesigned launcher's pure halves -- the layout and the focus model, the pad's
+// geometry, the glyph family, the scale factor. None of these headers touches raylib.
+#include "ui/focus.h"
+#include "ui/glyphs.h"
+#include "ui/pad_render.h"
+#include "ui/theme.h"
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
 #include <cerrno>
@@ -421,6 +427,221 @@ void register_launcher_tests()
             t.Equals(launcher::mergeEnvironment(none, {"A=1"}).size(), static_cast<size_t>(1), "an empty base is just ours");
             t.Equals(launcher::mergeEnvironment(base, {}).size(), static_cast<size_t>(2), "no knobs is just the base");
         });
+
+
+        // ---- Sprint 8 Goal 9: the redesigned launcher -----------------------------------------------------
+
+        tc.Run("the scale factor: 1.0 at the design size, 2.0 at double, never below the minimum window's", [](TestCase &t)
+        {
+            auto close = [](float a, float b) { return std::fabs(a - b) < 0.0005f; };
+            t.IsTrue(close(ui::scaleFor(1100, 700), 1.0f), "1100x700 is the design: everything is drawn 1:1");
+            t.IsTrue(close(ui::scaleFor(2200, 1400), 2.0f), "twice the design is twice the scale");
+            t.IsTrue(close(ui::scaleFor(1100, 1400), 1.0f), "the smaller axis decides: a tall window does not stretch");
+            t.IsTrue(close(ui::scaleFor(2200, 700), 1.0f), "and neither does a wide one");
+            const float minimum = ui::scaleFor(800, 520);
+            t.IsTrue(close(minimum, 800.0f / 1100.0f), "the 800x520 minimum's own factor is width-bound");
+            t.IsTrue(close(ui::scaleFor(640, 400), minimum), "smaller than the minimum draws the minimum, not a squashed window");
+            t.IsTrue(close(ui::scaleFor(320, 200), minimum), "and however small the ask, the clamp holds");
+        });
+
+        tc.Run("the focus model: each direction lands where the layout says, and nothing is unreachable", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padChoices = 2;    // "first available" and one connected pad
+            in.micChoices = 3;    // "None" and two capture devices
+            in.customServer = true;
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+
+            // VIDEO: a row of cells, three rows down the page, and the rail to the left of all of them.
+            t.Equals(g.move("rail.video", ui::Dir::Right), std::string("video.detail.0"), "the rail opens onto the page's first control");
+            t.Equals(g.move("video.detail.0", ui::Dir::Right), std::string("video.detail.1"), "right walks the detail row");
+            t.Equals(g.move("video.detail.1", ui::Dir::Left), std::string("video.detail.0"), "and left walks back");
+            t.Equals(g.move("video.detail.0", ui::Dir::Left), std::string("rail.video"), "left off the first cell goes back to the rail");
+            t.Equals(g.move("video.detail.0", ui::Dir::Down), std::string("video.filter.0"), "down from detail is the filter row under it");
+            t.Equals(g.move("video.filter.0", ui::Dir::Down), std::string("video.window.0"), "and the window row under that");
+            t.Equals(g.move("video.window.0", ui::Dir::Up), std::string("video.filter.0"), "up retraces it");
+            t.Equals(g.move("video.window.3", ui::Dir::Down), std::string("video.fps"), "the overlay toggle is the last row");
+            t.Equals(g.move("video.fps", ui::Dir::Down), std::string("bar.launch.video"), "and below the last row is the bar's LAUNCH");
+            t.Equals(g.move("bar.launch.video", ui::Dir::Up), std::string("video.fps"), "which comes back up into the page");
+            t.IsTrue(ui::barLaunchId(ui::Page::Play) != ui::barLaunchId(ui::Page::Video),
+                     "the bar is on every page, so its node is named per page -- one id, one node, one rect");
+            t.IsTrue(!hasNode(ui::layoutFor(ui::Page::Play, window, in), ui::barLaunchId(ui::Page::Play)),
+                     "PLAY has its own large LAUNCH, so the bar shows the run's state there instead of a second button");
+            t.IsTrue(hasNode(ui::layoutFor(ui::Page::Video, window, in), ui::barLaunchId(ui::Page::Video)),
+                     "every other page keeps the bar's LAUNCH");
+
+            // CONTROLLER: a list on the left, three knobs on the right.
+            t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.pick.0"), "the pad list is the first control");
+            t.Equals(g.move("pad.pick.0", ui::Dir::Down), std::string("pad.pick.1"), "down walks the pad list");
+            t.Equals(g.move("pad.pick.0", ui::Dir::Right), std::string("pad.deadzone"), "right crosses to the knobs");
+            t.Equals(g.move("pad.deadzone", ui::Dir::Left), std::string("pad.pick.0"), "and left crosses back to the list");
+            t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
+            t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
+            t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
+            t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
+                         ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
+                     "left/right ADJUSTS the three sliders rather than navigating away from them");
+
+            // The rail itself walks up and down and stops at its ends.
+            t.Equals(g.move("rail.play", ui::Dir::Down), std::string("rail.disc"), "the rail walks down");
+            t.Equals(g.move("rail.disc", ui::Dir::Up), std::string("rail.play"), "and up");
+            t.Equals(g.move("rail.play", ui::Dir::Up), std::string("rail.play"), "the top of the rail stays put");
+            t.Equals(g.move("rail.about", ui::Dir::Down), std::string("rail.about"), "and so does the bottom");
+
+            // Nothing is stranded: from its rail entry, every control on every page is reachable by moving.
+            for (int i = 0; i < ui::kPageCount; ++i)
+            {
+                const ui::Page page = ui::pageAt(i);
+                std::vector<std::string> seen = {ui::railId(page)};
+                for (size_t head = 0; head < seen.size(); ++head)
+                {
+                    const ui::Dir dirs[4] = {ui::Dir::Up, ui::Dir::Down, ui::Dir::Left, ui::Dir::Right};
+                    for (ui::Dir d : dirs)
+                    {
+                        const std::string to = g.move(seen[head], d);
+                        if (std::find(seen.begin(), seen.end(), to) == seen.end())
+                            seen.push_back(to);
+                    }
+                }
+                for (const std::string &id : g.idsOn(page))
+                    t.IsTrue(std::find(seen.begin(), seen.end(), id) != seen.end(),
+                             std::string("reachable from the rail: ") + id);
+            }
+
+            // A page change keeps the rail in step, and Back returns to the page's own rail entry.
+            ui::Nav nav;
+            nav.goTo(g, ui::Page::Video);
+            t.IsTrue(nav.page == ui::Page::Video, "goTo picks the page");
+            t.Equals(nav.focus, std::string("video.detail.0"), "and focuses its first control");
+            nav.back(g);
+            t.Equals(nav.focus, std::string("rail.video"), "Back from a page returns focus to its rail entry");
+            t.IsTrue(nav.page == ui::Page::Video, "without changing the page under it");
+            nav.move(g, ui::Dir::Down);
+            t.Equals(nav.focus, std::string("rail.audio"), "moving down the rail moves the rail selection");
+            t.IsTrue(nav.page == ui::Page::Audio, "and the page follows it: the highlight and the pane never disagree");
+            nav.move(g, ui::Dir::Right);
+            t.Equals(nav.focus, std::string("audio.volume"), "right enters the page the rail landed on");
+
+            // And every control is inside the window's bands at both sizes -- nothing hangs off the panel.
+            const float minScale = ui::scaleFor(800, 520);
+            const ui::Rect sizes[2] = {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f},
+                                       ui::Rect{0.0f, 0.0f, ui::metrics::minW / minScale, ui::metrics::minH / minScale}};
+            for (const ui::Rect &win : sizes)
+            {
+                const ui::Frame f = ui::frameFor(win);
+                for (int i = 0; i < ui::kPageCount; ++i)
+                    for (const ui::Node &n : ui::layoutFor(ui::pageAt(i), win, in))
+                        t.IsTrue(n.r.inside(f.content) || n.r.inside(f.bar),
+                                 std::string("inside the content pane or the bottom bar: ") + n.id);
+            }
+        });
+
+        tc.Run("the pad's geometry: a DualShock silhouette, every input on it, the two sticks symmetric", [](TestCase &t)
+        {
+            const ui::Rect bounds{100.0f, 50.0f, 560.0f, 280.0f};
+            const ui::PadGeometry g = ui::padGeometry(bounds);
+
+            t.IsTrue(g.hull.inside(bounds) && g.header.inside(bounds), "the silhouette and the shoulder strip stay inside what was asked for");
+            t.IsTrue(g.header.bottom() <= g.hull.y + 0.001f, "the strip is above the pad, not on it");
+            t.IsTrue(g.body.inside(g.hull), "the body is part of the hull");
+            t.IsTrue(g.plate.inside(g.body), "the centre plate is on the body");
+            t.IsTrue(g.wingRadius > 0.0f && g.wing[0].x < g.wing[1].x, "two wings, left before right");
+            t.IsTrue(g.dpadWell.x < g.faceWell.x, "the d-pad well is left of the face well");
+            t.IsTrue(g.dpadWellRadius > 0.0f && g.faceWellRadius > 0.0f, "both wells have a size");
+
+            auto insideCircle = [](ui::Vec2 c, float r, ui::Vec2 centre, float radius)
+            {
+                const float dx = c.x - centre.x, dy = c.y - centre.y;
+                return std::sqrt(dx * dx + dy * dy) + r <= radius + 0.001f;
+            };
+            auto insideHull = [&](const ui::PadCircle &c)
+            {
+                return ui::Rect{c.c.x - c.r, c.c.y - c.r, c.r * 2.0f, c.r * 2.0f}.inside(g.hull);
+            };
+            for (int i = 0; i < 4; ++i)
+            {
+                t.IsTrue(insideCircle(g.dpad[i].c, g.dpad[i].r, g.wing[0], g.wingRadius), "a d-pad segment sits inside the left wing");
+                t.IsTrue(insideCircle(g.dpad[i].c, g.dpad[i].r, g.dpadWell, g.dpadWellRadius), "and inside the d-pad's own well");
+                t.IsTrue(insideCircle(g.face[i].c, g.face[i].r, g.wing[1], g.wingRadius), "a face button sits inside the right wing");
+                t.IsTrue(insideCircle(g.face[i].c, g.face[i].r, g.faceWell, g.faceWellRadius), "and inside the face cluster's well");
+                t.IsTrue(insideHull(g.dpad[i]) && insideHull(g.face[i]), "and both are on the silhouette");
+            }
+            for (int i = 0; i < 2; ++i)
+            {
+                t.IsTrue(g.center[i].c.x >= g.plate.x && g.center[i].c.x <= g.plate.right(), "select and start are on the centre plate");
+                t.IsTrue(insideHull(g.stickClick[i]), "a stick cap is on the silhouette");
+                t.IsTrue(ui::Rect{g.well[i].x - g.wellRadius, g.well[i].y - g.wellRadius, g.wellRadius * 2.0f, g.wellRadius * 2.0f}.inside(g.hull),
+                         "and so is its whole well");
+                t.IsTrue(g.shoulder[i].inside(g.header), "the shoulder bar is in the strip");
+                t.IsTrue(g.trigger[i].inside(g.header), "and so is the trigger");
+                t.IsTrue(g.trigger[i].bottom() <= g.shoulder[i].y + 0.001f, "the trigger is drawn above its shoulder");
+            }
+
+            // The sticks are the pair the player's thumbs rest on: they have to be a mirrored pair.
+            const float centreX = g.hull.cx();
+            t.IsTrue(std::fabs((centreX - g.well[0].x) - (g.well[1].x - centreX)) < 0.001f,
+                     "the two sticks are symmetric about the pad's centre line");
+            t.IsTrue(std::fabs(g.well[0].y - g.well[1].y) < 0.001f, "and level with each other");
+            t.IsTrue(g.well[0].x > g.dpadWell.x && g.well[1].x < g.faceWell.x, "and inboard of the two wells");
+            t.IsTrue(g.well[0].y > g.dpadWell.y && g.well[1].y > g.faceWell.y, "and below them, where a DualShock has them");
+            t.IsTrue(std::fabs((centreX - g.wing[0].x) - (g.wing[1].x - centreX)) < 0.001f, "the wings are a mirrored pair too");
+            t.IsTrue(g.handleTip[0].y > g.body.bottom() && g.handleTip[1].y > g.body.bottom(),
+                     "the handles reach below the body");
+            t.IsTrue(g.handleTip[0].x < g.handle[0].x && g.handleTip[1].x > g.handle[1].x,
+                     "and splay outwards as they go");
+            t.IsTrue(g.handleTip[0].y <= bounds.bottom() + 0.001f, "without leaving the drawing's bounds");
+
+            // The dead zone the ring shows is the dead zone the game applies.
+            t.IsTrue(std::fabs(ui::deadZoneRingRadius(0.15f, 40.0f) - 6.0f) < 0.001f, "the ring is deadZone x the well's radius");
+            t.IsTrue(std::fabs(ui::deadZoneRingRadius(0.0f, 40.0f)) < 0.001f, "no dead zone, no ring");
+
+            // The drawn stick offset is the axis the game will read, times the well's radius.
+            auto close = [](float a, float b) { return std::fabs(a - b) < 0.001f; };
+            const float well = 40.0f;
+            ui::Vec2 off = ui::stickOffset(ui::Vec2{0.1f, 0.0f}, 0.2f, well);
+            t.IsTrue(close(off.x, 0.0f) && close(off.y, 0.0f), "inside the dead zone the dot does not move at all");
+            off = ui::stickOffset(ui::Vec2{0.6f, 0.0f}, 0.2f, well);
+            t.IsTrue(close(off.x, 20.0f), "outside it the axis is rescaled over the travel that is left: (0.6-0.2)/0.8 = half");
+            off = ui::stickOffset(ui::Vec2{-0.6f, 0.0f}, 0.2f, well);
+            t.IsTrue(close(off.x, -20.0f), "and the sign is kept");
+            off = ui::stickOffset(ui::Vec2{0.5f, 0.0f}, 0.0f, well);
+            t.IsTrue(close(off.x, 20.0f), "with no dead zone it is simply the axis times the radius");
+            off = ui::stickOffset(ui::Vec2{2.0f, 0.0f}, 0.0f, well);
+            t.IsTrue(close(off.x, well), "and it never leaves the well, whatever the driver reports");
+            off = ui::stickOffset(ui::Vec2{0.0f, 0.0f}, 0.15f, well);
+            t.IsTrue(close(off.x, 0.0f) && close(off.y, 0.0f), "a centred stick is centred");
+        });
+
+        tc.Run("the glyph family follows the pad's name: Xbox letters, PlayStation shapes, neither otherwise", [](TestCase &t)
+        {
+            t.IsTrue(ui::glyphFamilyFor("Xbox Wireless Controller") == ui::GlyphFamily::Xbox, "the owner's pad");
+            t.IsTrue(ui::glyphFamilyFor("XINPUT CONTROLLER (Controller)") == ui::GlyphFamily::Xbox, "XInput, in any case");
+            t.IsTrue(ui::glyphFamilyFor("X-Box 360 pad") == ui::GlyphFamily::Xbox, "the hyphenated spelling");
+            t.IsTrue(ui::glyphFamilyFor("Microsoft SideWinder") == ui::GlyphFamily::Xbox, "and the maker's own name");
+            t.IsTrue(ui::glyphFamilyFor("Sony DualShock 4") == ui::GlyphFamily::PlayStation, "DualShock");
+            t.IsTrue(ui::glyphFamilyFor("DualSense Edge") == ui::GlyphFamily::PlayStation, "DualSense");
+            t.IsTrue(ui::glyphFamilyFor("PLAYSTATION(R)3 Controller") == ui::GlyphFamily::PlayStation, "PlayStation, in any case");
+            t.IsTrue(ui::glyphFamilyFor("PS4 Controller") == ui::GlyphFamily::PlayStation, "ps4");
+            t.IsTrue(ui::glyphFamilyFor("ps5 controller") == ui::GlyphFamily::PlayStation, "ps5");
+            t.IsTrue(ui::glyphFamilyFor("Wireless Controller") == ui::GlyphFamily::PlayStation,
+                     "the bare name SDL reports for a DualShock 4 -- but only when it is the whole name");
+            t.IsTrue(ui::glyphFamilyFor("8BitDo Pro 2") == ui::GlyphFamily::Generic, "anything else is generic");
+            t.IsTrue(ui::glyphFamilyFor("") == ui::GlyphFamily::Generic, "and so is no pad at all");
+        });
+
+        tc.Run("why LAUNCH is disabled, in the player's words", [](TestCase &t)
+        {
+            t.Equals(ui::launchBlockedReason(false, false, true), std::string("choose your SOCOM II disc image first"),
+                     "no image chosen: the first thing to do, not an error about a file");
+            t.Equals(ui::launchBlockedReason(false, false, false), std::string("that file is not SOCOM II (NTSC, r0001)"),
+                     "a file that is not the game");
+            t.Equals(ui::launchBlockedReason(true, true, false), std::string("the game is running"), "one game at a time");
+            t.Equals(ui::launchBlockedReason(false, true, true), std::string("the game is running"),
+                     "the running game comes first: it is the blocker the player just created");
+            t.Equals(ui::launchBlockedReason(true, false, false), std::string(), "verified and idle: nothing in the way");
+        });
+
 
 #ifndef _WIN32
         // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in
