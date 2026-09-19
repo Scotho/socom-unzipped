@@ -2037,7 +2037,7 @@ Then three one-line changes below it: the `loadELF` failure (line 229-230) becom
 
 **There is no RED for this line**: driving it needs a machine with no audio endpoint, and neither this host, the VM under PulseAudio's null sink, nor CI (which has no runner) is one. What is tested is both ends of the pipe — `noticeLine`'s exact text and `noticesIn`/`lastRunLine` reading it back (Tasks 2 and 3). Task 10 files the hands-on check under the owner's Linux run.
 
-- [ ] **Step 5: Build the runner, detached, and watch GREEN.** *(2026-09-19: built with `./build.sh runtime`, `test_runner_exit_codes` Ran 8 OK, `./build.sh test` 641 / 1312 OK; the 60 s bare-run launch, the gate and the commit are the controller's and are not done.)*
+- [x] **Step 5: Build the runner, detached, and watch GREEN.** *(2026-09-20: the bare-run launch was taken in the VM -- `--home`, 30 s, `[bare-run]` and `[preflight] ok:` in its own log, the game started; the Windows double-click is the owner's check (a) in HUMAN_TASKS.)* *(2026-09-19: built with `./build.sh runtime`, `test_runner_exit_codes` Ran 8 OK, `./build.sh test` 641 / 1312 OK; the 60 s bare-run launch, the gate and the commit are the controller's and are not done.)*
 
 ```bash
 bash scripts/check_quiet_gate.sh
@@ -2050,7 +2050,7 @@ Then the two checks no unit test can make, by hand, once each, recorded in the l
   - `cmd //c "cd /d C:\projects\socom_pc\dist && socom2.exe"` from a terminal: `socom2: logging to …\dist\logs\run_<stamp>.log` is printed, the game starts on the owner's `dist/config.json` (their ISO, their window size), and the new log's first lines are `[bare-run] home …, config.json read`, `[bare-run] N of M settings…`, `[preflight] ok: … is SOCOM II NTSC r0001`. Close it from its window; `echo $?` is 0. **This is a host launch: it goes through `scripts/run_detached.sh --owner gate --purpose launch` with a 60 s `timeout`, like any other** (script `logs/s9_g1_bare.sh`, the shape in the command set, its body `cd dist && timeout 60 ./socom2.exe; echo "rc=$?"`; `timeout`'s 124 is the expected result for a game that was still running).
   - The console detach (R132) cannot be seen from a terminal at all — it fires only for Explorer's own console. It is one line in `docs/HUMAN_TASKS.md` (Task 10): double-click `socom2.exe`, expect the game and no black window behind it.
 
-- [ ] **Step 6: The full suite, then the gate.** `./build.sh test` exit 0 (`Total Tests: B + 18` unchanged from Task 5 — this task adds no C++ case; Python `P + 13`). Create `logs/s9_g1_gate.sh` (the text is in the command set), then:
+- [x] **Step 6: The full suite, then the gate.** `./build.sh test` exit 0 (`Total Tests: B + 18` unchanged from Task 5 — this task adds no C++ case; Python `P + 13`). Create `logs/s9_g1_gate.sh` (the text is in the command set), then:
 
 ```bash
 scripts/run_detached.sh --owner gate --purpose launch logs/s9_g1_gate.sh logs/s9_g1_gate.marker
@@ -2060,7 +2060,7 @@ grep -n "\[preflight\]" "$(ls -t logs/run_A_*.log | head -1)"  # "[preflight] ok
 
 **Bar: 3/3.** The gate's launches pass `PS2X_CD_IMAGE` (`tools_py/parity/drive.py:42-53`) and the ELF as `argv[1]`, so they take the preflight and not the bare run; the `grep` proves the preflight ran and passed on the real disc. A gate stage that now exits 66/67/72 is this task's bug, not the gate's: read the `[preflight]` line in its log, fix, rebuild, and spend the gate again only after `test_runner_exit_codes` is green.
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/process_fatal.h third_party/ps2recomp/ps2xShared/src/process_fatal.cpp tools_py/tests/test_runner_exit_codes.py
@@ -2076,7 +2076,7 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
 git push
 ```
 
-- [ ] **Step 8: The Linux ring for this commit.** CI compiles `ps2x_shared`, `ps2_runtime` and the suites but **not** `ps2xRuntime/src/main.cpp` (`--no-runner` skips `ps2EntryRunner`), so the runner's POSIX half is proven only in the VM:
+- [x] **Step 8: The Linux ring for this commit.** CI compiles `ps2x_shared`, `ps2_runtime` and the suites but **not** `ps2xRuntime/src/main.cpp` (`--no-runner` skips `ps2EntryRunner`), so the runner's POSIX half is proven only in the VM:
 
 ```bash
 scripts/vm_sync.sh tree
@@ -3131,13 +3131,13 @@ git push
 
 **Files:** `docs/KNOWN.md`, `docs/STATUS.md`, `docs/CURRENT_SPRINT.md`, `docs/HUMAN_TASKS.md`, this plan.
 
-- [ ] **Step 1: CI.** The `linux` workflow on the Task 9 commit is green: `ps2x_shared` compiles under system clang, `ps2x_tests` runs the six new suites (`ExitCodes`, `Preflight`, `BareRun`, `ZipStore`, `Diagnostics`, and the grown `Launcher`), and `test_diagnostics_zip` **runs** there (the launcher is built; `--diagnostics` needs no display). `test_runner_exit_codes` is skipped there by design. Read `logs/ci`'s uploaded `build_linux_test.log` for `Failed: 0` and for `test_the_zip_opens… ok` — a skip of the zip test in CI is a failure of this step (it means `LAUNCHER`'s path is wrong on Linux).
-- [ ] **Step 2: The VM.** `scripts/vm_sync.sh tree`, then in the VM `bash scripts/build_linux.sh all && bash scripts/build_linux.sh test` (Task 6 Step 8 already built the runner there): C++ `B_linux + 30`, Python with `test_runner_exit_codes` **run, not skipped** (8 tests). Then `bash scripts/make_portable.sh` in the VM and `tar -tzf dist-linux/portable/socom2-linux.tar.gz | grep version.txt` prints one line. Then, from the unpacked tarball with no `DISPLAY`: `./socom2 --home "$PWD/nowhere"; echo $?` prints `68` and `./socom_unzipped_launcher --diagnostics /tmp/d.zip && python3 -m zipfile -l /tmp/d.zip` lists the entries.
-- [ ] **Step 3: `docs/HUMAN_TASKS.md`**, three lines under the owner's launcher item: (a) double-click `socom2.exe` in the portable folder — the game starts on the launcher's settings and no black console window stays behind it (R132); (b) rename the ISO and press LAUNCH — LAST RUN reads the disc-not-found sentence; (c) on the real Linux box, with the audio device disabled, LAST RUN ends with "No audio device was found; the game ran without sound."
-- [ ] **Step 4: `docs/KNOWN.md` (controller only).** New proven rows, each naming its artefact: the taxonomy (`ps2x/exit_codes.h`, suites `ExitCodes` + `test_exit_codes_table`); the preflight and the bare run (`test_runner_exit_codes`, gate `s9_g1_gate`); the diagnostics zip (`test_diagnostics_zip`). New believed-not-proven rows: the console detach and the audio notice (Step 3's owner checks); "a gate or harness flow that drives a non-r0001 image now exits 67" (R130, no such flow exists today). Retract nothing unless a step above killed something.
-- [ ] **Step 5: `docs/STATUS.md` and `docs/CURRENT_SPRINT.md`.** A dated entry: what landed, the suite totals, the gate stamp, R126-R138 by one-line title; Goal 1 marked DONE in the Sprint 9 block with `next ruling: R139`; the pointer moved to Goal 2's plan.
-- [ ] **Step 6: Tick this plan's boxes; leave a reason on every one that stays open.** A box with neither a tick nor a reason is the failure mode the Sprint 6 close-out audit found.
-- [ ] **Step 7: Commit.**
+- [x] **Step 1: CI.** The `linux` workflow on the Task 9 commit is green: `ps2x_shared` compiles under system clang, `ps2x_tests` runs the six new suites (`ExitCodes`, `Preflight`, `BareRun`, `ZipStore`, `Diagnostics`, and the grown `Launcher`), and `test_diagnostics_zip` **runs** there (the launcher is built; `--diagnostics` needs no display). `test_runner_exit_codes` is skipped there by design. Read `logs/ci`'s uploaded `build_linux_test.log` for `Failed: 0` and for `test_the_zip_opens… ok` — a skip of the zip test in CI is a failure of this step (it means `LAUNCHER`'s path is wrong on Linux).
+- [x] **Step 2: The VM.** `scripts/vm_sync.sh tree`, then in the VM `bash scripts/build_linux.sh all && bash scripts/build_linux.sh test` (Task 6 Step 8 already built the runner there): C++ `B_linux + 30`, Python with `test_runner_exit_codes` **run, not skipped** (8 tests). Then `bash scripts/make_portable.sh` in the VM and `tar -tzf dist-linux/portable/socom2-linux.tar.gz | grep version.txt` prints one line. Then, from the unpacked tarball with no `DISPLAY`: `./socom2 --home "$PWD/nowhere"; echo $?` prints `68` and `./socom_unzipped_launcher --diagnostics /tmp/d.zip && python3 -m zipfile -l /tmp/d.zip` lists the entries.
+- [x] **Step 3: `docs/HUMAN_TASKS.md`**, three lines under the owner's launcher item: (a) double-click `socom2.exe` in the portable folder — the game starts on the launcher's settings and no black console window stays behind it (R132); (b) rename the ISO and press LAUNCH — LAST RUN reads the disc-not-found sentence; (c) on the real Linux box, with the audio device disabled, LAST RUN ends with "No audio device was found; the game ran without sound."
+- [x] **Step 4: `docs/KNOWN.md` (controller only).** New proven rows, each naming its artefact: the taxonomy (`ps2x/exit_codes.h`, suites `ExitCodes` + `test_exit_codes_table`); the preflight and the bare run (`test_runner_exit_codes`, gate `s9_g1_gate`); the diagnostics zip (`test_diagnostics_zip`). New believed-not-proven rows: the console detach and the audio notice (Step 3's owner checks); "a gate or harness flow that drives a non-r0001 image now exits 67" (R130, no such flow exists today). Retract nothing unless a step above killed something.
+- [x] **Step 5: `docs/STATUS.md` and `docs/CURRENT_SPRINT.md`.** A dated entry: what landed, the suite totals, the gate stamp, R126-R138 by one-line title; Goal 1 marked DONE in the Sprint 9 block with `next ruling: R139`; the pointer moved to Goal 2's plan.
+- [x] **Step 6: Tick this plan's boxes; leave a reason on every one that stays open.** A box with neither a tick nor a reason is the failure mode the Sprint 6 close-out audit found.
+- [x] **Step 7: Commit.**
 
 ```bash
 git commit -m "docs: Sprint 9 Goal 1 closed -- a failure explains itself (the taxonomy, the bare run, the diagnostics zip); R126-R138
