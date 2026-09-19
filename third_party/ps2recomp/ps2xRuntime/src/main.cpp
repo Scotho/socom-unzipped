@@ -14,6 +14,14 @@
 #include <exception>
 #include <algorithm>
 #include <cstdlib>
+#include <cstdio>
+#include <cstring>
+
+#include "ps2x/bare_run.h"
+#include "ps2x/exe_dir.h"
+#include "ps2x/exit_codes.h"
+#include "ps2x/preflight.h"
+#include "ps2x/process_fatal.h"
 
 #if defined(__ANDROID__)
 #include <android/log.h>
@@ -162,6 +170,22 @@ namespace
         throw std::runtime_error("Unable to determine executable path. Pass the guest ELF as argv[1] or define PS2X_DEFAULT_BOOT_ELF.");
 #endif
     }
+
+    // Sprint 9 Goal 1: every early ending goes through here -- one log line in Preflight's shape, then
+    // the code. _Exit, as the end of main() does: no static destructors race the runtime's threads.
+    [[noreturn]] void leaveWith(int code, const std::string &detail)
+    {
+        Preflight::Result result;
+        result.code = code;
+        result.detail = detail;
+        std::cout.flush();
+        std::cerr << Preflight::logLine(result) << std::endl;
+        std::cerr.flush();
+        // _Exit flushes nothing: a bare run's stdout is a fully buffered file (BareRun::redirectOutput).
+        std::fflush(stdout);
+        std::fflush(stderr);
+        std::_Exit(code);
+    }
 }
 
 int main(int argc, char *argv[])
@@ -170,10 +194,77 @@ int main(int argc, char *argv[])
     redirectStdioToLogcat();
 #endif
     setupTerminateLogger();
+    // Sprint 9 Goal 1: running out of memory is exit 71 with a sentence, from whichever thread it happens on.
+    ProcessFatal::installOutOfMemoryHandler();
+
+    // socom2 --fail-test crash|oom: drives codes 70 and 71 for tools_py/tests/test_runner_exit_codes.py.
+    if (argc > 2 && std::strcmp(argv[1], "--fail-test") == 0)
+    {
+        const int code = ProcessFatal::failTest(argv[2]);
+        std::_Exit(code);
+    }
 
     try
     {
-        std::filesystem::path pathObj = getExecutablePath(argc, argv);
+        std::filesystem::path pathObj;
+#if !defined(PS2X_DEFAULT_BOOT_ELF) && !defined(PLATFORM_VITA) && !defined(__ANDROID__)
+        // The bare run: no argument (a double-click), or --home <dir> (the same, as if the executable lived
+        // in <dir>). The launcher's config.json beside it becomes the environment -- only where the
+        // environment has not already chosen -- and the output goes where the launcher would have put it.
+        const bool homeArg = argc > 2 && std::strcmp(argv[1], "--home") == 0;
+        if (argc < 2 || homeArg)
+        {
+            std::filesystem::path home = homeArg ? std::filesystem::path(argv[2]) : ExeDir::get();
+            {
+                // BareRun::plan makes the card folder absolute by joining it to home, and the process
+                // changes directory below: a relative --home must be pinned first.
+                std::error_code homeEc;
+                const std::filesystem::path pinned = std::filesystem::absolute(home, homeEc);
+                if (!homeEc && !pinned.empty())
+                    home = pinned;
+            }
+            const BareRun::Plan plan = BareRun::plan(home);
+            BareRun::redirectOutput(plan.logDir);
+            if (!homeArg)
+                BareRun::detachOwnConsole();
+            std::cout << "[bare-run] home " << plan.home.string() << ", config.json "
+                      << (plan.configFound ? "read" : (plan.code == ExitCodes::kOk ? "absent: the defaults" : "unreadable")) << std::endl;
+            if (plan.code != ExitCodes::kOk)
+                leaveWith(plan.code, plan.detail);
+            const int applied = BareRun::applyEnvironment(plan.environment);
+            std::cout << "[bare-run] " << applied << " of " << plan.environment.size()
+                      << " settings taken from config.json (the rest were already in the environment)" << std::endl;
+            std::error_code cwdEc;
+            std::filesystem::current_path(plan.home, cwdEc);   // what both launcher glues give the child
+            pathObj = plan.elf;
+        }
+        else
+#endif
+        {
+            pathObj = getExecutablePath(argc, argv);
+        }
+
+#if !defined(PLATFORM_VITA) && !defined(__ANDROID__)
+        // Before a window exists: the ELF, the card folder, the disc, and that the disc is r0001 (R130).
+        {
+            Preflight::Input pre;
+            pre.elfPath = pathObj;
+            // The same rule as configureCdImage (game_overrides_socom2.cpp): an empty value is unset.
+            if (const char *cd = std::getenv("PS2X_CD_IMAGE"); cd != nullptr && *cd != '\0')
+                pre.cdImageEnv = cd;
+            std::error_code absEc;
+            const char *mc = std::getenv("PS2X_MC_DIR");   // the same rule as PS2Runtime::configureIoPathsFromElf
+            pre.cardDir = (mc != nullptr && *mc != '\0')
+                              ? std::filesystem::absolute(std::filesystem::path(mc), absEc)
+                              : std::filesystem::absolute(pathObj, absEc).parent_path() / "mc0";
+            pre.checkDisc = pathObj.filename() == "socom2_game.elf";   // the override's own key (PS2_REGISTER_GAME_OVERRIDE, game_overrides_socom2.cpp)
+            const Preflight::Result checked = Preflight::run(pre);
+            if (checked.code != ExitCodes::kOk)
+                leaveWith(checked.code, checked.detail);
+            if (!checked.disc.empty())
+                std::cout << "[preflight] ok: " << checked.disc.lexically_normal().string() << " is SOCOM II NTSC r0001" << std::endl;
+        }
+#endif
 
         std::string filePathStr = pathObj.string();
         std::string elfName = pathObj.filename().string();
@@ -221,13 +312,13 @@ int main(int argc, char *argv[])
         if (!runtime.initialize(windowTitle.c_str()))
         {
             std::cerr << "Failed to initialize PS2 runtime" << std::endl;
-            return 1;
+            leaveWith(ExitCodes::kFailed, "PS2Runtime::initialize");
         }
 
         if (!runtime.loadELF(filePathStr))
         {
             std::cerr << "Failed to load ELF file: " << filePathStr << std::endl;
-            return 1;
+            leaveWith(ExitCodes::kElfMissing, filePathStr);
         }
 
         runtime.run();
@@ -251,5 +342,5 @@ int main(int argc, char *argv[])
 
     std::cout.flush();
     std::cerr.flush();
-    std::_Exit(1);
+    std::_Exit(ExitCodes::kFailed);
 }

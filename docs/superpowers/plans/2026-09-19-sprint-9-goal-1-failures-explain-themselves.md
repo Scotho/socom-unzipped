@@ -1695,7 +1695,7 @@ The one task that touches `ps2xRuntime/src/`, so the one task that needs the run
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `tools_py/tests/test_runner_exit_codes.py`:
+- [x] **Step 1: RED.** Create `tools_py/tests/test_runner_exit_codes.py`:
 
 ```python
 """Sprint 9 Goal 1: a test per exit code that drives the failing condition on the real runner and asserts
@@ -1825,7 +1825,7 @@ if __name__ == "__main__":
 
 Run (quiet gate first): `bash scripts/check_quiet_gate.sh && python -m unittest tools_py.tests.test_runner_exit_codes -v`. **Expected RED against the old `dist/socom2.exe`:** 8 failures; the first six read `AssertionError: 1 != 68` (…`69`, `72`, `66`, `66`, `67`) — or `AssertionError: [] is not true : the bare run writes logs/run_<stamp>.log` where the code comparison is reached second — and the last two `AssertionError: 1 != 70` / `1 != 71`. Paste the summary line into the ledger.
 
-- [ ] **Step 2: Write `ps2xShared/include/ps2x/process_fatal.h` and `ps2xShared/src/process_fatal.cpp`**; add `    src/process_fatal.cpp` to `ps2x_shared`'s source list.
+- [x] **Step 2: Write `ps2xShared/include/ps2x/process_fatal.h` and `ps2xShared/src/process_fatal.cpp`**; add `    src/process_fatal.cpp` to `ps2x_shared`'s source list.
 
 ```cpp
 #pragma once
@@ -1917,7 +1917,7 @@ namespace ProcessFatal
 }
 ```
 
-- [ ] **Step 3: `ps2xRuntime/src/main.cpp`.** Add to the includes (after `#include <cstdlib>`, line 16): `#include <cstring>`, `#include "ps2x/bare_run.h"`, `#include "ps2x/exe_dir.h"`, `#include "ps2x/exit_codes.h"`, `#include "ps2x/preflight.h"`, `#include "ps2x/process_fatal.h"`. Add to the anonymous namespace, directly above its closing brace (line 165):
+- [x] **Step 3: `ps2xRuntime/src/main.cpp`.** Add to the includes (after `#include <cstdlib>`, line 16): `#include <cstring>`, `#include "ps2x/bare_run.h"`, `#include "ps2x/exe_dir.h"`, `#include "ps2x/exit_codes.h"`, `#include "ps2x/preflight.h"`, `#include "ps2x/process_fatal.h"`. Add to the anonymous namespace, directly above its closing brace (line 165):
 
 ```cpp
     // Sprint 9 Goal 1: every early ending goes through here -- one log line in Preflight's shape, then
@@ -2023,7 +2023,7 @@ Then three one-line changes below it: the `loadELF` failure (line 229-230) becom
 
 `return 1;` after "Failed to initialize PS2 runtime" (line 224) becomes `leaveWith(ExitCodes::kFailed, "PS2Runtime::initialize");`, and the final `std::_Exit(1);` (line 254) becomes `std::_Exit(ExitCodes::kFailed);`. (The "lines 182-198 unchanged" comment above is an instruction to you, not text to paste.)
 
-- [ ] **Step 4: The audio notice, `ps2xRuntime/src/lib/ps2_runtime.cpp:771-772`.** Add `#include "ps2x/exit_codes.h"` with the file's other includes and replace the two lines:
+- [x] **Step 4: The audio notice, `ps2xRuntime/src/lib/ps2_runtime.cpp:771-772`.** Add `#include "ps2x/exit_codes.h"` with the file's other includes and replace the two lines:
 
 ```cpp
         InitAudioDevice();
@@ -2037,7 +2037,7 @@ Then three one-line changes below it: the `loadELF` failure (line 229-230) becom
 
 **There is no RED for this line**: driving it needs a machine with no audio endpoint, and neither this host, the VM under PulseAudio's null sink, nor CI (which has no runner) is one. What is tested is both ends of the pipe — `noticeLine`'s exact text and `noticesIn`/`lastRunLine` reading it back (Tasks 2 and 3). Task 10 files the hands-on check under the owner's Linux run.
 
-- [ ] **Step 5: Build the runner, detached, and watch GREEN.**
+- [ ] **Step 5: Build the runner, detached, and watch GREEN.** *(2026-09-19: built with `./build.sh runtime`, `test_runner_exit_codes` Ran 8 OK, `./build.sh test` 641 / 1312 OK; the 60 s bare-run launch, the gate and the commit are the controller's and are not done.)*
 
 ```bash
 bash scripts/check_quiet_gate.sh

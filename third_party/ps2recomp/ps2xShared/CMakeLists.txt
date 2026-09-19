@@ -9,6 +9,7 @@ add_library(ps2x_shared STATIC
     src/preflight.cpp
     src/exe_dir.cpp
     src/bare_run.cpp
+    src/process_fatal.cpp
     src/zip_store.cpp
     src/diagnostics.cpp
 )
