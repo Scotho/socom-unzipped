@@ -76,6 +76,16 @@ namespace launcher
     // What the game's exit status means, in a sentence for the player: ExitCodes::describe (ps2x/exit_codes.h). Never empty.
     std::string exitMessage(int exitCode);
 
+    // Sprint 9 Goal 1: the PLAY page's LAST RUN line. `rawExitStatus` is GameProcess::exitCode() as the
+    // glue reports it (an NT status on Windows, 128 + signal on POSIX, else the runner's own code);
+    // `logText` is the head of that run's log, read for "[notice] " lines (no audio device), whose
+    // sentences follow the exit's own.
+    std::string lastRunLine(long long rawExitStatus, const std::string &logText);
+
+    // What --selftest prints: "exit <code> <slug>: <sentence>" for every row of ExitCodes::kTable.
+    std::vector<std::string> selftestExitLines();
+
+
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);

@@ -294,6 +294,31 @@ void register_launcher_tests()
             t.IsTrue(launcher::exitMessage(1).find("SAVE DIAGNOSTICS") != std::string::npos, "an unnamed failure points at the diagnostics (Sprint 9 Goal 1: no ending is silent)");
         });
 
+        tc.Run("LAST RUN: the code's sentence, a crash by its native status, a stranger by number, a notice appended", [](TestCase &t)
+        {
+            t.Equals(launcher::lastRunLine(0, ""), std::string("The last run exited normally."), "a clean run");
+            t.Equals(launcher::lastRunLine(67, ""),
+                     std::string("That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc."), "67");
+            t.Equals(launcher::lastRunLine(static_cast<int>(0xC0000005u), ""),
+                     std::string("The game crashed. Press SAVE DIAGNOSTICS and send the zip; it holds the crash record."), "Windows' access violation");
+            t.Equals(launcher::lastRunLine(139, ""), launcher::lastRunLine(static_cast<int>(0xC0000005u), ""), "and Linux's SIGSEGV read the same");
+            t.Equals(launcher::lastRunLine(42, ""), std::string("The game closed with code 42. Press SAVE DIAGNOSTICS to collect the log."), "never 'the game exited'");
+            const std::string log = "INFO: AUDIO: Failed to initialize playback device\n[notice] no-audio-device: No audio device was found; the game ran without sound.\n";
+            t.Equals(launcher::lastRunLine(0, log),
+                     std::string("The last run exited normally. No audio device was found; the game ran without sound."),
+                     "audio absent is not an exit: it rides on whatever the exit was");
+        });
+
+        tc.Run("the selftest lists every exit code with its sentence", [](TestCase &t)
+        {
+            const std::vector<std::string> lines = launcher::selftestExitLines();
+            t.Equals(static_cast<int>(lines.size()), 11, "one line per code in the table");
+            auto has = [&](const std::string &l) { return std::find(lines.begin(), lines.end(), l) != lines.end(); };
+            t.IsTrue(has("exit   0 ok: The last run exited normally."), "0");
+            t.IsTrue(has("exit  65 no-usable-gl: Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."), "65");
+            t.IsTrue(has("exit  72 card-dir-unwritable: The memory-card folder cannot be written. Move the game out of a protected folder and try again."), "72");
+        });
+
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
         {
             launcher::Config c;
