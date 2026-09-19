@@ -114,7 +114,13 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
     mv -f "$RELDIST/$exe.new" "$RELDIST/$exe"
     printf '%s %s %s\n' "$tag" "$(sha256sum "$RELDIST/$exe" | cut -d' ' -f1)" "$exe" >> "$RELDIST/symbols/INDEX.txt"
   done
-  if [ -f "$ROOT/dist/socom2_game.elf" ]; then cp "$ROOT/dist/socom2_game.elf" "$RELDIST/"; fi
+  # The game ELF comes from the recomp step on the owner's machine. In the VM there is no dist/ (the
+  # tree sync leaves it on the host), so fall back to the developer Linux folder's copy -- it is the same
+  # platform-neutral file, and without it scripts/make_portable.sh --release has nothing to package.
+  for elf in "$ROOT/dist/socom2_game.elf" "$DIST/socom2_game.elf"; do
+    [ -f "$elf" ] || continue
+    cp "$elf" "$RELDIST/"; break
+  done
   echo "built $RELDIST: $(ls "$RELDIST" | tr '\n' ' ') (genopt=$genopt lto=$lto/$scope icf=${icf:-off})"
 }
 
