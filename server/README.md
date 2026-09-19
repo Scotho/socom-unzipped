@@ -5,7 +5,7 @@ This folder is a self-contained, Docker-free bring-up of the
 (Medius/DME/NAT/MUIS emulator, C#/.NET 9, MIT) configured for SOCOM II NTSC
 (Medius app id **10472**, "Medius Client Library Version 1.50.0013", DME client 1.32.0070).
 
-Status as of 2026-09-04: **builds and runs**; all listeners verified; DME authenticates with MPS;
+Status as of 2026-09-19: **hosted on Linux at 3.143.65.100 and played on** (see "Hosting it on Linux"). Status as of 2026-09-04: **builds and runs**; all listeners verified; DME authenticates with MPS;
 a scripted client completes the MAS RT handshake for app id 10472. No SOCOM II client has been
 connected yet.
 
@@ -122,8 +122,11 @@ database is not involved) and copy `config/simulated.db` up. On a cloud box the 
 **Verified on the project's hosted box (3.143.65.100, 2 vCPU / 2 GB, 2026-09-19):** from outside, 10071, 10073, 10075 and
 10078 accept and 10077 does not; any datagram to 10070/udp is answered with the sender's public address and port;
 `Server.Test` completes the MAS handshake for app id 10472 against the public address; the four processes hold about
-335 MB resident between them; a reboot brings every listener back unattended. **Not yet verified there:** a SOCOM II
-client in the lobby, a round, the per-client 50000+ UDP sockets under two clients behind one NAT -- the plan's Task 6.
+335 MB resident between them; a reboot brings every listener back unattended. **And played on (same day):** two instances of the PC client behind one home NAT logged in (a first login on a
+new server address is a create-persona login: the game saves personas per server address, so moving the address
+orphans them), hosted and joined on Frostfire, played a full five-minute control round (`s8_hosted_control2`) and a
+four-round ladder with two kills (`s8_hosted_kill`); two 50000+ sockets bound per round, 537 MB resident after it.
+Ubuntu's `needrestart` restarted the units during an unattended upgrade once; `install.sh` now excludes them.
 
 Packaging this folder for the hosting machine: `bash scripts/make_server_zip.sh [out dir]` (default `dist/server`)
 writes `socom-unzipped-server/` and `socom-unzipped-server.zip` -- `horizon-server/` with its Release binaries (no
