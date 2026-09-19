@@ -4,6 +4,7 @@
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/SIF.h"
 #include "runtime/ps2_memory.h"
+#include "runtime/host_mic.h"
 #include "Kernel/Stubs/MemoryCard.h"
 #include "Kernel/Syscalls/Common.h"
 
@@ -285,6 +286,27 @@ void PS2IopHostAdapter::audioPcmWrite(uint32_t offset, const uint8_t *data, size
 bool PS2IopHostAdapter::audioPcmPosition(uint32_t &position) const
 {
     return m_runtime.audioBackend().pcmPosition(position);
+}
+
+// Sprint 8 Goal 3 Task 1: the runtime owns HostMic (PS2X_MIC_FAKE / PS2X_MIC_DEVICE decide whether there is
+// one at all), the module only asks. With neither knob set hostMic() is nullptr and lgaud.cpp answers the
+// game "no device", byte for byte as it did before this goal.
+bool PS2IopHostAdapter::micAvailable() const
+{
+    const HostMic *mic = hostMic();
+    return mic != nullptr && mic->running();
+}
+
+size_t PS2IopHostAdapter::micRead(int16_t *out, size_t frames)
+{
+    HostMic *mic = hostMic();
+    if (mic == nullptr)
+        return 0u;
+    const size_t got = mic->read(out, frames);
+    // PS2X_MIC_GAMEREAD_DUMP: exactly the frames the headset module was handed for lgaud 0x08, and nothing
+    // the dump tee wrote -- this is the file the >= 0.95 correlation against the fake source is run on.
+    hostMicGameReadDump(out, got);
+    return got;
 }
 
 std::string PS2IopHostAdapter::hostPath(ps2x::iop::HostPathKind kind) const

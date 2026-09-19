@@ -50,6 +50,9 @@ public:
     bool audioIsPlaying(uint32_t handle, bool &playing) const override;
     void audioPcmWrite(uint32_t offset, const uint8_t *data, size_t bytes) override;
     bool audioPcmPosition(uint32_t &position) const override;
+    // Sprint 8 Goal 3 Task 1: the headset's capture seam, forwarded to the runtime's HostMic.
+    bool micAvailable() const override;
+    size_t micRead(int16_t *out, size_t frames) override;
     bool writeGuest(uint32_t address, const void *source, size_t size) override;
     bool zeroGuest(uint32_t address, size_t size) override;
     bool normalizeGuestAddress(uint32_t address, uint32_t &normalized) const override;

@@ -29,6 +29,10 @@ target_include_directories(ps2_iop
         $<INSTALL_INTERFACE:include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # Sprint 8 Goal 3: modules/lgaud.cpp includes runtime/mic_format.h. That header is header-only and
+        # device-free by construction (no miniaudio, no raylib, no thread), so this is an include path and
+        # not a link dependency -- ps2_iop still links nothing from ps2_runtime.
+        ${CMAKE_CURRENT_SOURCE_DIR}/../ps2xRuntime/include
 )
 
 add_library(ps2x::iop ALIAS ps2_iop)

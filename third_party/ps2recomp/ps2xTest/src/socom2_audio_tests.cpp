@@ -8,14 +8,17 @@
 #include "runtime/ps2_audio.h"
 #include "runtime/audio_volume.h"
 #include "runtime/host_mic.h"
+#include "runtime/mic_format.h"
 #include "ps2x/iop/iop_subsystem.h"
 #include "ps2_runtime.h"
 #include "ps2_iop_transport.h"
 #include "ps2_syscalls.h"
 #include "ps2_stubs.h"
 
+#include <chrono>
 #include <cmath>
 #include <cstring>
+#include <thread>
 
 #include <algorithm>
 #include <cstdio>
@@ -1248,6 +1251,44 @@ void register_socom2_audio_tests()
             t.Equals(ring.dropped(), static_cast<size_t>(1), "and counts what it dropped");
             t.Equals(ring.read(out, 16), static_cast<size_t>(8), "reading more than there is yields what there is");
         });
+
+        // Sprint 8 Goal 3 Task 1: the microphone arithmetic, device-free so it runs in CI, in the VM and on a
+        // machine with no microphone at all. The game asks lgAudOpen for 11025 Hz mono 16-bit
+        // (game/analysis/socom2_game.elf.decomp.c:48341, openparam+0x04 = 0x2b11), so the ring's 16 kHz is
+        // always resampled down -- which retracts host_mic.h's "16 kHz" FORMAT ASSUMPTION.
+        tc.Run("micResampleLinear carries its phase across calls and never clicks at the seam", [](TestCase &t)
+        {
+            // A 16 kHz ramp resampled to 11025 Hz: the game's rate (decomp :48341, 0x2b11).
+            std::vector<int16_t> in(1600);
+            for (size_t i = 0; i < in.size(); ++i)
+                in[i] = static_cast<int16_t>(i * 10);
+            MicFormat fmt{11025u, 1u, 16u};
+            t.IsTrue(fmt.supported(), "11025 Hz mono 16-bit is what the game asks for");
+            t.Equals(fmt.bytesPerFrame(), size_t{2}, "mono 16-bit is two bytes a frame");
+
+            std::vector<int16_t> out(1102);
+            double phase = 0.0;
+            const size_t firstHalf = micResampleLinear(in.data(), 800u, 16000u, out.data(), 551u, 11025u, phase);
+            t.Equals(firstHalf, size_t{551}, "the first half fills");
+            t.IsTrue(phase > 0.0, "the fractional position is carried, not dropped");
+            const size_t consumed = micFramesNeeded(551u, 16000u, 11025u, 0.0);
+            t.IsTrue(consumed <= 800u, "the arithmetic never asks for more input than it was given");
+
+            const size_t secondHalf = micResampleLinear(in.data() + consumed, 800u - consumed + 800u, 16000u,
+                                                        out.data() + 551u, 551u, 11025u, phase);
+            t.Equals(secondHalf, size_t{551}, "the second half fills");
+            // A ramp stays a ramp: every step is positive and within one input step of the last.
+            for (size_t i = 1; i < out.size(); ++i)
+                t.IsTrue(out[i] > out[i - 1], "the resampled ramp is still monotonic across the seam");
+        });
+
+        tc.Run("MicFormat refuses what we cannot serve", [](TestCase &t)
+        {
+            t.IsTrue(!MicFormat{11025u, 2u, 16u}.supported(), "stereo capture is refused");
+            t.IsTrue(!MicFormat{11025u, 1u, 8u}.supported(), "8-bit capture is refused");
+            t.IsTrue(!MicFormat{96000u, 1u, 16u}.supported(), "a rate outside 4000..48000 is refused");
+            t.IsTrue(MicFormat{16000u, 1u, 16u}.supported(), "the ring's own rate is of course supported");
+        });
         // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
         // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
         // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
@@ -1423,6 +1464,153 @@ void register_socom2_audio_tests()
             hostMicWavHeader(header, 32000u, HostMic::kSampleRate);
             t.Equals(u32(4), 36u + 32000u, "a clean stop patches the real RIFF size back in");
             t.Equals(u32(40), 32000u, "and the real data size");
+        });
+
+        // Sprint 8 Goal 3 Task 1 Step 3: the reader half of the same 44-byte header, so PS2X_MIC_FAKE can put a
+        // known WAV where a device would be. raudio.c:167 defines MA_NO_WAV, so there is no decoder in the
+        // binary to lean on -- this is hand-written the way hostMicWavHeader is.
+        tc.Run("micWavRead reads back what hostMicWavHeader wrote, patched sizes or not", [](TestCase &t)
+        {
+            const std::string path = "socom2_mic_roundtrip.wav";
+            std::vector<int16_t> written(4410);
+            for (size_t i = 0; i < written.size(); ++i)
+                written[i] = static_cast<int16_t>((i % 128) * 200 - 12800);
+            {
+                uint8_t header[44] = {};
+                hostMicWavHeader(header, static_cast<uint32_t>(written.size() * 2u), 11025u);
+                std::FILE *f = std::fopen(path.c_str(), "wb");
+                t.IsTrue(f != nullptr, "the temp WAV opens for writing");
+                if (f == nullptr)
+                    return;
+                std::fwrite(header, 1, 44, f);
+                std::fwrite(written.data(), 2, written.size(), f);
+                std::fclose(f);
+            }
+            std::vector<int16_t> read;
+            MicFormat fmt{};
+            std::string error;
+            t.IsTrue(micWavRead(path, read, fmt, error), "a well-formed 16-bit mono WAV reads: " + error);
+            t.Equals(fmt.rate, 11025u, "the rate comes out of the header, not out of a default");
+            t.Equals(read.size(), written.size(), "every sample comes back");
+            t.Equals(read[100], written[100], "and they are the same samples");
+
+            // A killed run leaves 0xFFFFFFFF in both size fields (host_mic.h:94-98): read to end of file.
+            {
+                uint8_t header[44] = {};
+                hostMicWavHeader(header, 0u, 11025u);
+                std::FILE *f = std::fopen(path.c_str(), "r+b");
+                t.IsTrue(f != nullptr, "the temp WAV reopens to unpatch its sizes");
+                if (f != nullptr)
+                {
+                    std::fwrite(header, 1, 44, f);
+                    std::fclose(f);
+                }
+            }
+            std::vector<int16_t> unpatched;
+            MicFormat unpatchedFmt{};
+            std::string unpatchedError;
+            t.IsTrue(micWavRead(path, unpatched, unpatchedFmt, unpatchedError),
+                     "an unfinished dump still reads: " + unpatchedError);
+            t.Equals(unpatched.size(), written.size(), "0xFFFFFFFF means 'to the end of the file', not zero bytes");
+
+            std::vector<int16_t> nothing;
+            MicFormat bad{};
+            std::string reason;
+            t.IsTrue(!micWavRead(path + ".missing", nothing, bad, reason), "a missing file is refused");
+            t.IsTrue(!reason.empty(), "and it says why, because that string reaches the player on stderr");
+        });
+
+        // Sprint 8 Goal 3 Task 1 Steps 4 and 6: PS2X_MIC_FAKE is a microphone that is a file, so CI, the Linux
+        // VM and the driven harness all have a capture source with a KNOWN signal -- which is what lets the
+        // game-read dump be correlated against it without a human speaking. And PS2X_MIC_DUMP must TEE off the
+        // capture callback rather than drain the ring: host_mic.cpp:163-165 said the dump thread was the ring's
+        // only consumer, which silently halves both files the moment the game starts reading too.
+        tc.Run("PS2X_MIC_FAKE feeds the ring from a WAV, and the PS2X_MIC_DUMP tee does not steal its frames", [](TestCase &t)
+        {
+            const std::string path = "socom2_mic_fake_source.wav";
+            {
+                std::vector<int16_t> written(11025);
+                for (size_t i = 0; i < written.size(); ++i)
+                    written[i] = static_cast<int16_t>((i % 128) * 200 - 12800);
+                uint8_t header[44] = {};
+                hostMicWavHeader(header, static_cast<uint32_t>(written.size() * 2u), 11025u);
+                std::FILE *f = std::fopen(path.c_str(), "wb");
+                t.IsTrue(f != nullptr, "the fake source WAV opens for writing");
+                if (f == nullptr)
+                    return;
+                std::fwrite(header, 1, 44, f);
+                std::fwrite(written.data(), 2, written.size(), f);
+                std::fclose(f);
+            }
+
+            HostMic mic;
+            t.IsTrue(mic.startFromFile(path), "a 11025 Hz mono WAV opens as a capture source: " + mic.error());
+            t.IsTrue(mic.running(), "and running() is true exactly as it is for a device");
+            mic.startDumpTee("socom2_mic_tee.wav");
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            std::vector<int16_t> blockOut(4096);
+            const size_t got = mic.read(blockOut.data(), blockOut.size());
+            t.IsTrue(got > 1000u, "the game's read still gets the frames the dump also wrote");
+            mic.stop();
+            t.IsTrue(!mic.running(), "stop() joins the feeder");
+
+            HostMic bad;
+            t.IsTrue(!bad.startFromFile(path + ".missing"), "a missing WAV is refused, never fatal");
+            t.IsTrue(!bad.error().empty(), "with a reason for the player's stderr");
+        });
+
+        // Sprint 8 Goal 3 Task 1 Step 7: the seam lgaud.cpp asks its two questions through. Nothing in the IOP
+        // module reads the environment -- whether a microphone exists is a question it asks IopHost, exactly as
+        // snd989.cpp asks audioIsPlaying rather than owning a mixer (snd989.cpp:1271). The OFF path is pinned
+        // here, before the on path exists: with no override, a host answers "no device" and serves no frames,
+        // which is what the gate (which exports no mic knob) must keep seeing.
+        tc.Run("IopHost::micAvailable/micRead default to no microphone at all", [](TestCase &t)
+        {
+            Snd989TestHost host;
+            ps2x::iop::IopHost &seam = host;
+            t.IsTrue(!seam.micAvailable(), "a host that overrides nothing has no capture device");
+            int16_t frames[64] = {};
+            frames[0] = 0x4141;
+            t.Equals(seam.micRead(frames, 64u), size_t{0}, "and serves no frames");
+            t.Equals(static_cast<int>(frames[0]), 0x4141, "leaving the caller's buffer untouched");
+        });
+
+        // Sprint 8 Goal 3: PS2X_MIC_GAMEREAD_DUMP is the proof's second file -- every frame the IOP module's
+        // Read (lgaud 0x08) was handed, recorded on the runtime side so the module stays environment-free
+        // (Task 2's Interfaces: "the module hands the bytes it served to IopHost ... the knob stays on the
+        // runtime side"). Correlating it against what PS2X_MIC_FAKE fed in is what proves the capture path
+        // without a human speaking. Written at HostMic::kSampleRate, which is the rate micRead serves.
+        tc.Run("PS2X_MIC_GAMEREAD_DUMP records exactly the frames the module was handed", [](TestCase &t)
+        {
+            const std::string path = "socom2_mic_gameread.wav";
+#ifdef _WIN32
+            _putenv_s("PS2X_MIC_GAMEREAD_DUMP", path.c_str());
+#else
+            setenv("PS2X_MIC_GAMEREAD_DUMP", path.c_str(), 1);
+#endif
+            std::vector<int16_t> served(2048);
+            for (size_t i = 0; i < served.size(); ++i)
+                served[i] = static_cast<int16_t>((i % 97) * 300 - 14000);
+            hostMicGameReadDump(served.data(), served.size());
+            hostMicGameReadDump(served.data(), served.size());
+            hostMicGameReadDumpClose();
+#ifdef _WIN32
+            _putenv_s("PS2X_MIC_GAMEREAD_DUMP", "");
+#else
+            unsetenv("PS2X_MIC_GAMEREAD_DUMP");
+#endif
+            std::vector<int16_t> back;
+            MicFormat fmt{};
+            std::string error;
+            t.IsTrue(micWavRead(path, back, fmt, error), "the game-read dump is a readable WAV: " + error);
+            t.Equals(fmt.rate, HostMic::kSampleRate, "at the rate micRead serves");
+            t.Equals(back.size(), served.size() * 2u, "every frame from both calls, appended in order");
+            t.Equals(back[0], served[0], "and they are the frames that were handed over");
+            t.Equals(back[served.size()], served[0], "including the second call's");
+
+            // With the knob unset the dump is inert: no file, and nothing to slow the RPC path down.
+            hostMicGameReadDump(served.data(), served.size());
+            hostMicGameReadDumpClose();
         });
 
         // Sprint 7 Task 12b, the bank table: in the same run bank 0xa30000 was loaded and 66 lines later every play

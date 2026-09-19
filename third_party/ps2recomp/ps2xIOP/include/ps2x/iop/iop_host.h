@@ -97,6 +97,17 @@ namespace ps2x::iop
             (void)function; (void)args; (void)count;
         }
 
+        // Sprint 8 Goal 3: the USB headset's capture side. lgaud.cpp asks these two questions and nothing
+        // else -- it never opens a device and never reads the environment, exactly as snd989.cpp asks
+        // audioIsPlaying rather than owning a mixer. micRead() returns frames of 16 kHz mono s16 from
+        // HostMic's ring; the module resamples to whatever rate lgAudOpen asked for (11025, decomp :48341).
+        [[nodiscard]] virtual bool micAvailable() const { return false; }
+        virtual size_t micRead(int16_t *out, size_t frames)
+        {
+            (void)out; (void)frames;
+            return 0u;
+        }
+
         virtual std::string hostPath(HostPathKind kind) const = 0;
         virtual std::string translateGuestPath(std::string_view path) const = 0;
         virtual uint64_t openHostFile(std::string_view path) = 0;

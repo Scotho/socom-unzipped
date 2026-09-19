@@ -5,6 +5,7 @@
 // follows: raylib's raudio.c (:178) already compiled it into libraylib, and its defines remove the decoders
 // and the high-level engine but not device I/O, so capture is there.
 #include "runtime/host_mic.h"
+#include "runtime/mic_format.h"
 
 #include <atomic>
 #include <chrono>
@@ -42,26 +43,168 @@ void hostMicWavHeader(uint8_t *p, uint32_t dataSize, uint32_t sampleRate)
     put32(40, unknown ? 0xFFFFFFFFu : dataSize);
 }
 
+// Sprint 8 Goal 3 Task 1: the reader for the header above, so PS2X_MIC_FAKE can put a known WAV where a
+// capture device would be (and so the dumps this goal writes can be read back by ps2x_tests). Declared in
+// runtime/mic_format.h, defined here because it touches <cstdio>, which that header stays free of.
+// 16-bit PCM only; a data size of 0 or 0xFFFFFFFF means "to the end of the file" -- the two values
+// hostMicWavHeader leaves behind when a run was killed before the sizes were patched (host_mic.h:94-98).
+bool micWavRead(const std::string &path, std::vector<int16_t> &samples, MicFormat &format, std::string &error)
+{
+    samples.clear();
+    error.clear();
+    std::FILE *f = std::fopen(path.c_str(), "rb");
+    if (f == nullptr)
+    {
+        error = "cannot open " + path;
+        return false;
+    }
+    auto fail = [&](const char *why) {
+        std::fclose(f);
+        error = std::string(why) + " (" + path + ")";
+        samples.clear();
+        return false;
+    };
+    auto u32 = [](const uint8_t *p) {
+        return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) |
+               (static_cast<uint32_t>(p[2]) << 16) | (static_cast<uint32_t>(p[3]) << 24);
+    };
+    auto u16 = [](const uint8_t *p) {
+        return static_cast<uint16_t>(static_cast<uint16_t>(p[0]) | (static_cast<uint16_t>(p[1]) << 8));
+    };
+
+    uint8_t riff[12] = {};
+    if (std::fread(riff, 1, 12, f) != 12u)
+        return fail("shorter than a RIFF header");
+    if (std::memcmp(riff, "RIFF", 4) != 0 || std::memcmp(riff + 8, "WAVE", 4) != 0)
+        return fail("not a RIFF/WAVE file");
+
+    bool haveFormat = false;
+    for (;;)
+    {
+        uint8_t chunk[8] = {};
+        const size_t got = std::fread(chunk, 1, 8, f);
+        if (got != 8u)
+            break;                       // a clean end of file: no more chunks
+        const uint32_t size = u32(chunk + 4);
+        if (std::memcmp(chunk, "fmt ", 4) == 0)
+        {
+            if (size < 16u)
+                return fail("the fmt chunk is too short");
+            uint8_t fmt[16] = {};
+            if (std::fread(fmt, 1, 16, f) != 16u)
+                return fail("the fmt chunk is truncated");
+            if (u16(fmt) != 1u)
+                return fail("not uncompressed PCM");
+            if (u16(fmt + 14) != 16u)
+                return fail("not 16-bit samples");
+            format.channels = static_cast<uint8_t>(u16(fmt + 2));
+            format.rate = u32(fmt + 4);
+            format.bits = 16u;
+            haveFormat = true;
+            if (size > 16u && std::fseek(f, static_cast<long>(size - 16u), SEEK_CUR) != 0)
+                return fail("the fmt chunk runs past the end of the file");
+        }
+        else if (std::memcmp(chunk, "data", 4) == 0)
+        {
+            if (!haveFormat)
+                return fail("a data chunk before its fmt chunk");
+            // 0 and 0xFFFFFFFF both mean "not known": read every byte that is actually there.
+            const bool unknown = size == 0u || size == 0xFFFFFFFFu;
+            size_t remaining = unknown ? static_cast<size_t>(-1) : static_cast<size_t>(size);
+            int16_t block[1024];
+            while (remaining != 0u)
+            {
+                const size_t want = remaining < sizeof(block) / sizeof(block[0]) ? remaining
+                                                                                 : sizeof(block) / sizeof(block[0]);
+                const size_t read = std::fread(block, sizeof(int16_t), want, f);
+                if (read == 0u)
+                    break;
+                samples.insert(samples.end(), block, block + read);
+                if (!unknown)
+                    remaining -= read;
+                if (read < want)
+                    break;
+            }
+            break;
+        }
+        else if (std::fseek(f, static_cast<long>(size + (size & 1u)), SEEK_CUR) != 0)
+        {
+            return fail("a chunk runs past the end of the file");
+        }
+    }
+    std::fclose(f);
+    if (!haveFormat)
+    {
+        error = "no fmt chunk (" + path + ")";
+        return false;
+    }
+    if (samples.empty())
+    {
+        error = "no samples (" + path + ")";
+        return false;
+    }
+    if (!format.supported())
+    {
+        error = "unsupported format: " + std::to_string(format.rate) + " Hz, " +
+                std::to_string(static_cast<unsigned>(format.channels)) + " channel(s), " +
+                std::to_string(static_cast<unsigned>(format.bits)) + "-bit (" + path + ")";
+        samples.clear();
+        return false;
+    }
+    return true;
+}
+
+namespace
+{
+    // Sprint 8 Goal 3 Task 1 Step 6: the capture callback's two destinations. The dump used to be a SECOND
+    // CONSUMER of the game's ring (host_mic.cpp:163-165 said so in its own comment), so the moment the game
+    // started reading, the two split the audio between them and both files were wrong. It is a tee now: one
+    // producer, two rings, one consumer each.
+    struct MicSink
+    {
+        MicRing ring{HostMic::kRingFrames};
+        MicRing dumpRing{HostMic::kRingFrames};
+        std::atomic<bool> dumpOn{false};
+
+        void push(const int16_t *frames, size_t count)
+        {
+            ring.write(frames, count);
+            if (dumpOn.load(std::memory_order_acquire))
+                dumpRing.write(frames, count);
+        }
+    };
+
+    void micDataCallback(ma_device *device, void *pOutput, const void *pInput, ma_uint32 frameCount)
+    {
+        (void)pOutput;
+        auto *sink = static_cast<MicSink *>(device->pUserData);
+        if (sink == nullptr || pInput == nullptr)
+            return;
+        sink->push(static_cast<const int16_t *>(pInput), static_cast<size_t>(frameCount));
+    }
+}
+
 struct HostMic::Impl
 {
     ma_context ctx{};
     ma_device device{};
     bool ctxOpen = false;
     bool deviceOpen = false;
-    MicRing ring{HostMic::kRingFrames};
-};
+    MicSink sink;
 
-namespace
-{
-    void micDataCallback(ma_device *device, void *pOutput, const void *pInput, ma_uint32 frameCount)
-    {
-        (void)pOutput;
-        auto *ring = static_cast<MicRing *>(device->pUserData);
-        if (ring == nullptr || pInput == nullptr)
-            return;
-        ring->write(static_cast<const int16_t *>(pInput), static_cast<size_t>(frameCount));
-    }
-}
+    // PS2X_MIC_FAKE: the file, already at kSampleRate, and the thread that feeds it in at real time.
+    std::vector<int16_t> fake;
+    size_t fakeCursor = 0u;
+    std::thread feeder;
+    std::atomic<bool> feederStop{false};
+
+    // PS2X_MIC_DUMP: the tee's own consumer.
+    std::thread dumpThread;
+    std::atomic<bool> dumpStop{false};
+    std::FILE *dumpFile = nullptr;
+    std::string dumpPath;
+    size_t dumpFrames = 0u;
+};
 
 HostMic::HostMic() : m_impl(new Impl()) {}
 
@@ -116,7 +259,7 @@ bool HostMic::start(const std::string &deviceName)
     cfg.capture.channels = 1;
     cfg.sampleRate = kSampleRate;
     cfg.dataCallback = &micDataCallback;
-    cfg.pUserData = &m_impl->ring;
+    cfg.pUserData = &m_impl->sink;
     if (ma_device_init(&m_impl->ctx, &cfg, &m_impl->device) != MA_SUCCESS)
     {
         m_error = "the device would not open 16 kHz mono 16-bit";
@@ -134,17 +277,140 @@ bool HostMic::start(const std::string &deviceName)
     return true;
 }
 
+// PS2X_MIC_FAKE: a microphone that is a file. The WAV is read and resampled to kSampleRate ONCE, here, so the
+// feeder thread does no arithmetic at all; it then writes 1024 frames every 64 ms -- the real-time pace of a
+// 16 kHz capture device, and the same block the device callback delivers -- and wraps at the end.
+bool HostMic::startFromFile(const std::string &wavPath)
+{
+    stop();
+    m_error.clear();
+    std::vector<int16_t> samples;
+    MicFormat format{};
+    if (!micWavRead(wavPath, samples, format, m_error))
+        return false;
+
+    std::vector<int16_t> atRingRate;
+    if (format.rate == kSampleRate)
+    {
+        atRingRate = std::move(samples);
+    }
+    else
+    {
+        const double ratio = static_cast<double>(kSampleRate) / static_cast<double>(format.rate);
+        atRingRate.resize(static_cast<size_t>(static_cast<double>(samples.size()) * ratio) + 2u);
+        double phase = 0.0;
+        const size_t written = micResampleLinear(samples.data(), samples.size(), format.rate,
+                                                 atRingRate.data(), atRingRate.size(), kSampleRate, phase);
+        atRingRate.resize(written);
+    }
+    if (atRingRate.size() < 2u)
+    {
+        m_error = "too few samples to loop";
+        return false;
+    }
+    m_impl->fake = std::move(atRingRate);
+    m_impl->fakeCursor = 0u;
+    m_impl->feederStop.store(false, std::memory_order_release);
+    m_running = true;
+
+    Impl *impl = m_impl.get();
+    m_impl->feeder = std::thread([impl]()
+    {
+        std::vector<int16_t> block(1024);
+        while (!impl->feederStop.load(std::memory_order_acquire))
+        {
+            for (size_t i = 0; i < block.size(); ++i)
+            {
+                block[i] = impl->fake[impl->fakeCursor];
+                impl->fakeCursor = (impl->fakeCursor + 1u) % impl->fake.size();
+            }
+            impl->sink.push(block.data(), block.size());
+            std::this_thread::sleep_for(std::chrono::milliseconds(64));
+        }
+    });
+    return true;
+}
+
 size_t HostMic::read(int16_t *out, size_t frames)
 {
     if (!m_impl)
         return 0;
-    return m_impl->ring.read(out, frames);
+    return m_impl->sink.ring.read(out, frames);
+}
+
+void HostMic::startDumpTee(const std::string &wavPath)
+{
+    if (!m_impl || m_impl->sink.dumpOn.load(std::memory_order_acquire))
+        return;
+    m_impl->dumpFile = std::fopen(wavPath.c_str(), "wb");
+    if (m_impl->dumpFile == nullptr)
+    {
+        std::cerr << "[mic] PS2X_MIC_DUMP: cannot write " << wavPath << std::endl;
+        return;
+    }
+    uint8_t header[44] = {};
+    hostMicWavHeader(header, 0, HostMic::kSampleRate);   // 0 = unknown: 0xFFFFFFFF sizes, patched on a clean stop
+    std::fwrite(header, 1, 44, m_impl->dumpFile);
+    m_impl->dumpPath = wavPath;
+    m_impl->dumpFrames = 0u;
+    m_impl->dumpStop.store(false, std::memory_order_release);
+    m_impl->sink.dumpOn.store(true, std::memory_order_release);
+
+    Impl *impl = m_impl.get();
+    m_impl->dumpThread = std::thread([impl]()
+    {
+        std::vector<int16_t> block(1024);
+        for (;;)
+        {
+            const bool last = impl->dumpStop.load(std::memory_order_acquire);
+            for (;;)
+            {
+                const size_t got = impl->sink.dumpRing.read(block.data(), block.size());
+                if (got == 0)
+                    break;
+                std::fwrite(block.data(), sizeof(int16_t), got, impl->dumpFile);
+                impl->dumpFrames += got;
+            }
+            if (last)
+                return;
+            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        }
+    });
+    std::cout << "[mic] PS2X_MIC_DUMP -> " << wavPath << " (tee off the capture callback, "
+              << HostMic::kSampleRate << " Hz mono 16-bit)" << std::endl;
+}
+
+void HostMic::stopDumpTee()
+{
+    if (!m_impl || !m_impl->sink.dumpOn.load(std::memory_order_acquire))
+        return;
+    m_impl->dumpStop.store(true, std::memory_order_release);
+    if (m_impl->dumpThread.joinable())
+        m_impl->dumpThread.join();
+    m_impl->sink.dumpOn.store(false, std::memory_order_release);
+    if (m_impl->dumpFile != nullptr)
+    {
+        // The two sizes patched on stop, exactly as closeMixerStream does (ps2_audio.cpp :425-435).
+        const uint32_t dataSize = static_cast<uint32_t>(m_impl->dumpFrames * 2u);
+        uint8_t header[44] = {};
+        hostMicWavHeader(header, dataSize, HostMic::kSampleRate);
+        std::fseek(m_impl->dumpFile, 0, SEEK_SET);
+        std::fwrite(header, 1, 44, m_impl->dumpFile);
+        std::fclose(m_impl->dumpFile);
+        m_impl->dumpFile = nullptr;
+        std::cout << "[mic] wrote " << m_impl->dumpPath << " (" << m_impl->dumpFrames << " frames, "
+                  << dataSize << " bytes)" << std::endl;
+    }
 }
 
 void HostMic::stop()
 {
     if (!m_impl)
         return;
+    stopDumpTee();
+    m_impl->feederStop.store(true, std::memory_order_release);
+    if (m_impl->feeder.joinable())
+        m_impl->feeder.join();
     if (m_impl->deviceOpen)
     {
         ma_device_uninit(&m_impl->device);
@@ -162,106 +428,107 @@ namespace
 {
     HostMic *g_hostMic = nullptr;
 
-    // PS2X_MIC_DUMP: while this thread runs it is the ring's only consumer -- it drains every 20 ms and
-    // appends the frames to a 16 kHz mono 16-bit WAV whose two sizes are patched when it stops.
-    struct MicDump
-    {
-        std::thread thread;
-        std::atomic<bool> stop{false};
-        std::FILE *file = nullptr;
-        std::string path;
-        size_t frames = 0;
-    };
-    MicDump *g_dump = nullptr;
+    // PS2X_MIC_GAMEREAD_DUMP, read once on the first frame the module is handed. "Off" is latched as well as
+    // "on", so an unset knob costs one atomic load per Read and never a getenv on the RPC path.
+    std::mutex g_gameReadMutex;
+    std::FILE *g_gameReadFile = nullptr;
+    std::string g_gameReadPath;
+    size_t g_gameReadFrames = 0u;
+    bool g_gameReadChecked = false;
+}
 
-    void startDump(HostMic &mic, const char *path)
+void hostMicGameReadDump(const int16_t *frames, size_t count)
+{
+    std::lock_guard<std::mutex> lock(g_gameReadMutex);
+    if (!g_gameReadChecked)
     {
-        MicDump *dump = new MicDump();
-        dump->path = path;
-        dump->file = std::fopen(path, "wb");
-        if (dump->file == nullptr)
+        g_gameReadChecked = true;
+        const char *path = std::getenv("PS2X_MIC_GAMEREAD_DUMP");
+        if (path != nullptr && path[0] != 0)
         {
-            std::cerr << "[mic] PS2X_MIC_DUMP: cannot write " << path << std::endl;
-            delete dump;
-            return;
-        }
-        uint8_t header[44] = {};
-        hostMicWavHeader(header, 0, HostMic::kSampleRate);   // 0 = unknown: 0xFFFFFFFF sizes, patched on a clean stop
-        std::fwrite(header, 1, 44, dump->file);
-        g_dump = dump;
-        dump->thread = std::thread([dump, &mic]()
-        {
-            std::vector<int16_t> block(1024);
-            for (;;)
+            g_gameReadFile = std::fopen(path, "wb");
+            if (g_gameReadFile == nullptr)
             {
-                const bool last = dump->stop.load(std::memory_order_acquire);
-                for (;;)
-                {
-                    const size_t got = mic.read(block.data(), block.size());
-                    if (got == 0)
-                        break;
-                    std::fwrite(block.data(), sizeof(int16_t), got, dump->file);
-                    dump->frames += got;
-                }
-                if (last)
-                    return;
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
+                std::cerr << "[mic] PS2X_MIC_GAMEREAD_DUMP: cannot write " << path << std::endl;
             }
-        });
-        std::cout << "[mic] PS2X_MIC_DUMP -> " << path << " (16 kHz mono 16-bit)" << std::endl;
-    }
-
-    void stopDump()
-    {
-        if (g_dump == nullptr)
-            return;
-        MicDump *dump = g_dump;
-        g_dump = nullptr;
-        dump->stop.store(true, std::memory_order_release);
-        if (dump->thread.joinable())
-            dump->thread.join();
-        if (dump->file != nullptr)
-        {
-            // The two sizes patched on stop, exactly as closeMixerStream does (ps2_audio.cpp :425-435).
-            const uint32_t dataSize = static_cast<uint32_t>(dump->frames * 2u);
-            uint8_t header[44] = {};
-            hostMicWavHeader(header, dataSize, HostMic::kSampleRate);
-            std::fseek(dump->file, 0, SEEK_SET);
-            std::fwrite(header, 1, 44, dump->file);
-            std::fclose(dump->file);
-            std::cout << "[mic] wrote " << dump->path << " (" << dump->frames << " frames, " << dataSize << " bytes)" << std::endl;
+            else
+            {
+                g_gameReadPath = path;
+                uint8_t header[44] = {};
+                hostMicWavHeader(header, 0, HostMic::kSampleRate);   // 0 = unknown until a clean close
+                std::fwrite(header, 1, 44, g_gameReadFile);
+                std::cout << "[mic] PS2X_MIC_GAMEREAD_DUMP -> " << path << " (what lgaud 0x08 was handed, "
+                          << HostMic::kSampleRate << " Hz mono 16-bit)" << std::endl;
+            }
         }
-        delete dump;
     }
+    if (g_gameReadFile == nullptr || frames == nullptr || count == 0u)
+        return;
+    std::fwrite(frames, sizeof(int16_t), count, g_gameReadFile);
+    g_gameReadFrames += count;
+}
+
+void hostMicGameReadDumpClose()
+{
+    std::lock_guard<std::mutex> lock(g_gameReadMutex);
+    g_gameReadChecked = false;
+    if (g_gameReadFile == nullptr)
+        return;
+    const uint32_t dataSize = static_cast<uint32_t>(g_gameReadFrames * 2u);
+    uint8_t header[44] = {};
+    hostMicWavHeader(header, dataSize, HostMic::kSampleRate);
+    std::fseek(g_gameReadFile, 0, SEEK_SET);
+    std::fwrite(header, 1, 44, g_gameReadFile);
+    std::fclose(g_gameReadFile);
+    g_gameReadFile = nullptr;
+    std::cout << "[mic] wrote " << g_gameReadPath << " (" << g_gameReadFrames << " frames, "
+              << dataSize << " bytes the game read)" << std::endl;
+    g_gameReadFrames = 0u;
+    g_gameReadPath.clear();
+}
+
+HostMic *hostMic()
+{
+    return g_hostMic;
 }
 
 void startHostMicFromEnvironment()
 {
+    const char *fake = std::getenv("PS2X_MIC_FAKE");
     const char *name = std::getenv("PS2X_MIC_DEVICE");
-    if (name == nullptr || name[0] == 0)
-        return;   // the default, and what the gate runs with: no capture device is opened at all
+    const bool haveFake = fake != nullptr && fake[0] != 0;
+    const bool haveDevice = name != nullptr && name[0] != 0;
+    if (!haveFake && !haveDevice)
+        return;   // the default, and what the gate runs with: no capture source of any kind
     if (g_hostMic != nullptr)
         return;
     g_hostMic = new HostMic();
-    if (!g_hostMic->start(name))
+    // R115: PS2X_MIC_FAKE beats PS2X_MIC_DEVICE when both are set -- every driven run sets the fake one
+    // deliberately, and a stale device name in the environment must not silently win. The "(fake source)"
+    // on the line below is how an operator who did not mean it finds out, on the first line of the log.
+    const bool ok = haveFake ? g_hostMic->startFromFile(fake) : g_hostMic->start(name);
+    if (!ok)
     {
         // Never fatal: a missing microphone must not stop the game starting.
-        std::cerr << "[mic] PS2X_MIC_DEVICE: " << g_hostMic->error() << " (" << name << ")" << std::endl;
+        std::cerr << "[mic] " << (haveFake ? "PS2X_MIC_FAKE" : "PS2X_MIC_DEVICE") << ": " << g_hostMic->error()
+                  << " (" << (haveFake ? fake : name) << ")" << std::endl;
         delete g_hostMic;
         g_hostMic = nullptr;
         return;
     }
-    std::cout << "[mic] capturing \"" << name << "\" at " << HostMic::kSampleRate << " Hz mono" << std::endl;
+    std::cout << "[mic] capturing \"" << (haveFake ? fake : name) << "\" at " << HostMic::kSampleRate
+              << " Hz mono" << (haveFake ? " (fake source)" : "") << std::endl;
     const char *dumpPath = std::getenv("PS2X_MIC_DUMP");
     if (dumpPath != nullptr && dumpPath[0] != 0)
-        startDump(*g_hostMic, dumpPath);
+        g_hostMic->startDumpTee(dumpPath);
 }
 
 void stopHostMic()
 {
-    stopDump();
+    hostMicGameReadDumpClose();
     if (g_hostMic == nullptr)
         return;
+    g_hostMic->stopDumpTee();
     g_hostMic->stop();
     delete g_hostMic;
     g_hostMic = nullptr;
