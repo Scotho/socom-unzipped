@@ -1,0 +1,79 @@
+name: Bug report
+description: Something in the game, the launcher or the build does not work. No game files, and no logs with personal paths.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        No game data in issues, please: no ISO links, no ELF, no extracted assets, no memory-card saves.
+        If you already sent a report from the launcher, its BR- id below saves you pasting a log in public.
+  - type: input
+    id: br_id
+    attributes:
+      label: Launcher report id (optional)
+      description: The id REPORT A BUG gave you, like BR-20260920-abc123.
+      placeholder: BR-YYYYMMDD-xxxxxx
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The line in version.txt inside the portable folder, or the commit you built.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - Linux (desktop)
+        - Steam Deck
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and driver
+      description: The first [gs-gl] lines of logs/run_*.log name them.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Launcher
+        - Boot / title / menus
+        - Single-player mission
+        - "Online: login or lobby"
+        - "Online: in a round"
+        - Audio / music
+        - Voice / microphone
+        - Controller / input
+        - Saves / memory card
+        - Build from source
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+      description: When (which screen, how far in) and what (what you saw or heard). If the launcher's LAST RUN showed a sentence or an exit code, quote it.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: From starting the launcher. Every time, or sometimes?
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: My disc is the NTSC r0001 revision (the launcher accepted it)
+        - label: I have not attached or linked any game files
+          required: true
