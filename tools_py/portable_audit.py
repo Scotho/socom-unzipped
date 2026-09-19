@@ -126,6 +126,33 @@ def elf_needed(path):
         raise ValueError("%s: not an ELF file this reader understands (%s)" % (path, e))
 
 
+def system_of(path):
+    """"Windows" or "Linux", from the file's own magic (MZ / \\x7fELF). The reader is chosen by what the
+    FILE is, never by what the host is: CI (Linux) audits a Windows folder, and the Windows host a Linux one."""
+    with open(path, "rb") as fh:
+        magic = fh.read(4)
+    if magic[:2] == b"MZ":
+        return "Windows"
+    if magic == b"\x7fELF":
+        return "Linux"
+    raise ValueError("%s: neither a PE (MZ) nor an ELF file" % path)
+
+
+def folder_system(folder):
+    """The platform a portable folder was built for, from the first shipped executable found in it."""
+    for system, names in SHIPPED.items():
+        for name in names:
+            path = os.path.join(folder, name)
+            if os.path.isfile(path):
+                return system_of(path)
+    return platform.system()
+
+
+def imports_of(path):
+    """The libraries `path` imports, read by the reader its magic calls for."""
+    return pe_imports(path) if system_of(path) == "Windows" else elf_needed(path)
+
+
 def is_windows_system(name):
     lowered = name.lower()
     return lowered in WINDOWS_SYSTEM or lowered.startswith(WINDOWS_SYSTEM_PREFIXES)
@@ -149,14 +176,14 @@ def closure(exes, folder, system):
     for names that are neither in `folder` nor provided by the operating system. Windows matches names without
     regard to case, as its loader does."""
     windows = system == "Windows"
-    imports, provided = (pe_imports, is_windows_system) if windows else (elf_needed, is_linux_host)
+    provided = is_windows_system if windows else is_linux_host
     fold = (lambda s: s.lower()) if windows else (lambda s: s)
     local = {fold(n): n for n in os.listdir(folder) if os.path.isfile(os.path.join(folder, n))}
     needed, missing, todo = {}, {}, list(exes)
     while todo:
         path = todo.pop(0)
         importer = os.path.basename(path)
-        for name in imports(path):
+        for name in imports_of(path):
             if fold(name) in local:
                 found = local[fold(name)]
                 if found not in needed:
@@ -168,7 +195,7 @@ def closure(exes, folder, system):
 
 
 def audit(folder, system=None):
-    system = system or platform.system()
+    system = system or folder_system(folder)
     windows = system == "Windows"
     libs = folder if windows else os.path.join(folder, "lib")
     exes = [os.path.join(folder, n) for n in SHIPPED["Windows" if windows else "Linux"]]
@@ -233,7 +260,7 @@ def main(argv=None):
     v.add_argument("out_dir")
     args = ap.parse_args(argv)
     if args.cmd == "closure":
-        needed, missing = closure(args.exes, args.dir, args.system or platform.system())
+        needed, missing = closure(args.exes, args.dir, args.system or system_of(args.exes[0]))
         if missing:
             for name, importer in sorted(missing.items()):
                 print("missing: %s (imported by %s)" % (name, importer), file=sys.stderr)

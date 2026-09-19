@@ -118,6 +118,49 @@ class LinuxFolderTest(unittest.TestCase):
         self.assertEqual(result["missing"], {"libvpx.so.9": "libavcodec.so.60"})
 
 
+class OtherPlatformTest(unittest.TestCase):
+    """Sprint 9 Goal 2 (R151 follow-up): the reader is chosen by the FILE's magic, not by the host, so CI
+    (Linux) audits a Windows folder and the Windows host audits a Linux one. The CI failure was the CLI
+    reaching for the ELF reader on socom2.exe because it ran on Linux."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        self.windows = os.path.join(self.dir, "win")
+        put(self.windows, "socom2.exe", tiny_pe(["KERNEL32.dll", "avcodec-61.dll"]))
+        put(self.windows, "socom_unzipped_launcher.exe", tiny_pe(["USER32.dll"]))
+        put(self.windows, "avcodec-61.dll", tiny_pe(["bcrypt.dll"]))
+        self.linux = os.path.join(self.dir, "lin")
+        put(self.linux, "socom2", tiny_elf(["libavcodec.so.60", "libc.so.6"]))
+        put(self.linux, "socom_unzipped_launcher", tiny_elf(["libc.so.6"]))
+        put(self.linux, "lib/libavcodec.so.60", tiny_elf(["libc.so.6"]))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_magic_names_the_platform(self):
+        self.assertEqual(portable_audit.system_of(os.path.join(self.windows, "socom2.exe")), "Windows")
+        self.assertEqual(portable_audit.system_of(os.path.join(self.linux, "socom2")), "Linux")
+        with self.assertRaises(ValueError):
+            portable_audit.system_of(put(self.dir, "junk.bin", b"x"))
+
+    def test_audit_with_no_system_reads_the_folder_it_was_given(self):
+        for folder, needed in ((self.windows, ["avcodec-61.dll"]), (self.linux, ["libavcodec.so.60"])):
+            result = portable_audit.audit(folder)
+            self.assertEqual((result["needed"], result["missing"], result["orphans"]), (needed, {}, []))
+
+    def test_the_cli_audits_either_folder_with_no_system_flag(self):
+        tool = os.path.join(ROOT, "tools_py", "portable_audit.py")
+        for folder, count in ((self.windows, 1), (self.linux, 1)):
+            r = subprocess.run([sys.executable, tool, "audit", folder], capture_output=True)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn(b"%d needed, 0 missing, 0 orphans" % count, r.stdout)
+        exes = [os.path.join(self.windows, n) for n in ("socom2.exe", "socom_unzipped_launcher.exe")]
+        r = subprocess.run([sys.executable, tool, "closure", "--dir", self.windows] + exes, capture_output=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout, b"avcodec-61.dll\n")
+
+
 class Sha256SumsTest(unittest.TestCase):
     def test_written_in_sha256sum_format_and_verified(self):
         with tempfile.TemporaryDirectory() as tmp:
