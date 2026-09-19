@@ -24,6 +24,7 @@ from PIL import Image
 from tools_py.parity import online_login_ours as L
 from tools_py.tests import test_online_login_lobby as T
 from tools_py.tests import test_login_connect as C
+from tools_py.tests import test_first_login as F
 
 frame, gray, Grabs = T.frame, T.gray, T.Grabs
 ROW_NEW_GAME, ROW_ONLINE, ROW_LAN = (262, 278, 368, 296), (262, 312, 368, 332), (262, 348, 368, 364)
@@ -346,10 +347,11 @@ class LoginFlow(unittest.TestCase):
         sh.press_until_gone = lambda *a, **k: True
         sh.wait_for = lambda *a, **k: True
         sh.is_screen = lambda name, thresh=None: name == "eula"
+        # the 02_persona frame decides the path (Sprint 8): this one is the LAN form, PLAYER NAME prefilled
         with mock.patch.object(L, "press_persona") as persona, mock.patch.object(L, "press_connect") as connect, \
-                mock.patch.object(L.time, "sleep"):
+                mock.patch.object(L.winshot, "grab", T.Grabs(F.FORM_SAVED)), mock.patch.object(L.time, "sleep"):
             L.login(sh, "socomc", "socom", True)
-        persona.assert_called_once_with(sh, True)
+        persona.assert_called_once_with(sh, True, False)          # False: the list CROSS is still press_persona's
         connect.assert_called_once_with(sh)
         self.assertEqual(sh.presses, [("type", "socom")])
         self.assertEqual(sh.shots, ["01_universe", "02_persona", "03_name", "04_pw_kbd", "05_password", "08_eula",
