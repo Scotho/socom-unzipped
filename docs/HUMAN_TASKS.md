@@ -22,6 +22,7 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   title screen. Same reporting: when and what. Command: `dist/socom2.exe`, NEW GAME, any mission; five minutes is
   enough. No correlation number exists for mission audio (its sounds are mixed from many voices, not one stream);
   the driven mission stage passes the gate 3/3 daily (`s7_gl_gate2`), which says nothing about how it sounds.
+- [ ] **The server's name: one DNS record (2026-09-20).** You chose `socom.scotho.com`. At Namecheap, Advanced DNS for scotho.com (the same panel as `../scotho/DOMAINS.md`), add: Type **A**, Host **socom**, Value **3.143.65.100**, TTL automatic. It does not resolve yet (checked 2026-09-20). Say when it is in; I then test whether saved personas follow the name and switch the launcher's default to it.
 - [ ] **The launcher, second look (2026-09-19).** Your three notes are in (`e3495a1`): the gold ring no longer flies -- it is on the option the frame you move; READY sits against the window buttons; the page title is on the window's middle. Your open launcher held `dist/socom_unzipped_launcher.exe` locked, so the new build is beside it as `dist/socom_unzipped_launcher_new.exe`: close the old one and run that (or rename it over). Say what still looks off.
 - [ ] **The launcher with the Xbox pad** (Task 8b Step 4). Run `dist/socom_unzipped_launcher.exe`: point it at the
   ISO, check the controller test area sees the pad (sticks, triggers, every button), pick a video size, press
