@@ -127,18 +127,24 @@ namespace launcher::bugreport
             double number = 0.0;
             std::string string;
             std::vector<Value> items;
-            std::vector<std::pair<std::string, Value>> members;
+            // An object's members as two parallel lists, NOT a vector of pair<string, Value>: Value is still
+            // incomplete here, a vector of an incomplete type is allowed (C++17) and a pair holding one is
+            // not. libc++ let the pair through and libstdc++ 14 refused it -- the Linux CI build, 2026-09-19.
+            std::vector<std::string> keys;
+            std::vector<Value> values;
 
-            const Value *get(const char *key) const
-            {
-                if (type != Type::Object)
-                    return nullptr;
-                for (const auto &m : members)
-                    if (m.first == key)
-                        return &m.second;
-                return nullptr;
-            }
+            const Value *get(const char *key) const;
         };
+
+        const Value *Value::get(const char *key) const
+        {
+            if (type != Type::Object)
+                return nullptr;
+            for (size_t k = 0; k < keys.size() && k < values.size(); ++k)
+                if (keys[k] == key)
+                    return &values[k];
+            return nullptr;
+        }
 
         struct Reader
         {
@@ -259,7 +265,8 @@ namespace launcher::bugreport
                         Value member;
                         if (!value(member, depth + 1))
                             return false;
-                        out.members.emplace_back(std::move(key), std::move(member));
+                        out.keys.push_back(std::move(key));
+                        out.values.push_back(std::move(member));
                         ws();
                         if (i < s.size() && s[i] == ',')
                         {
