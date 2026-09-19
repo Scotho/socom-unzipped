@@ -2098,8 +2098,8 @@ namespace Server.Database
                 {
                     return new DimAnnouncements()
                     {
-                        AnnouncementTitle = "Horizon Medius Server",
-                        AnnouncementBody = "Source available on GitHub",
+                        AnnouncementTitle = _settings.SimulatedAnnouncementTitle ?? "Horizon Medius Server", // LOCAL FIX (socom_pc)
+                        AnnouncementBody = _settings.SimulatedAnnouncementBody ?? "Source available on GitHub",
                         CreateDt = DateTime.UtcNow
                     };
                 }
@@ -2131,8 +2131,8 @@ namespace Server.Database
                     {
                         new DimAnnouncements()
                         {
-                            AnnouncementTitle = "Horizon Medius Server",
-                            AnnouncementBody = "Source available on GitHub",
+                            AnnouncementTitle = _settings.SimulatedAnnouncementTitle ?? "Horizon Medius Server", // LOCAL FIX (socom_pc)
+                            AnnouncementBody = _settings.SimulatedAnnouncementBody ?? "Source available on GitHub",
                             CreateDt = DateTime.UtcNow
                         }
                     };
@@ -2399,7 +2399,7 @@ namespace Server.Database
                         {
                             AppId = 0,
                             Id = 0,
-                            Name = "Channel 1",
+                            Name = _settings.SimulatedChannelName ?? "Channel 1", // LOCAL FIX (socom_pc)
                             MaxPlayers = 256,
                             GenericFieldFilter = 32
                         }
@@ -2432,7 +2432,7 @@ namespace Server.Database
                         {
                             AppId = 0,
                             Id = 0,
-                            Name = "Location 1"
+                            Name = _settings.SimulatedLocationName ?? "Location 1" // LOCAL FIX (socom_pc)
                         }
                     };
                 }
@@ -2463,7 +2463,7 @@ namespace Server.Database
                         {
                             AppId = appId,
                             Id = 0,
-                            Name = "Location 1"
+                            Name = _settings.SimulatedLocationName ?? "Location 1" // LOCAL FIX (socom_pc)
                         }
                     };
                 }

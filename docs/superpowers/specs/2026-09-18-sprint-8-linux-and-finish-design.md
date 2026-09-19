@@ -291,6 +291,29 @@ session before they run, and the one-line preset change lands through whichever 
 stop at the packet-level difference (the advertised address in each reply, the NAT echo's answer, which 50000+ sockets
 bound) and file it; do not tune the game. If the credit's burn rate exceeds $15/month, stop and tell the owner.
 
+### Goal 13 -- the hosted server says who it is, and the site shows it live (owner 2026-09-19; autonomous)
+
+The owner's words: "Can we adjust the medius message of the day? Saying welcome to the Socom Unzipped Project (+ the
+previous medius accreditation that was there) - and if possible, adjust the channel name to the location of our aws
+server. Next, can we see live stats on the server? could we build an addition to ../scotho the s2u.scotho.com project
+that includes live server stats? player count/lobby count or whatever else is available".
+
+**Design.** Simulated mode hard-codes the announcement, the channel and the location in `DbController`; three
+nullable `DbSettings` keys make them configuration, null meaning upstream's value (a LOCAL FIX in the README's table).
+Stats: a `StatsServer` inside Medius (the process that owns players, games and channels) builds one JSON snapshot on
+the tick thread every 2 s and an `HttpListener` serves that string on `StatsPrefix`; nothing else in Horizon is
+touched, no handler is instrumented, and the snapshot holds only what a player in the lobby sees. The browser cannot
+reach it (an https page, a plain-http port closed to the world), so the site's nginx proxies it as `/api/stats` with a
+two-second micro-cache and a canned offline answer; the game box's firewall opens 10080 to the site's box alone. The
+site's roller already had a dead SERVER STATS row: it opens a screen in the MISSION BRIEFING frame (status column,
+games with map/slots/roster, operatives online), polled every 5 s, every server string cut to length and written as
+text. No new AWS resource.
+
+**Bars.** The game is sent the new announcement and channel name (the box's journal), and a driven login shows the
+channel name on screen (d1's queue, `s8_hosted_motd`). `GET /stats` answers on the box; 10080 is closed from the
+owner's address and open from the site's. The site: `stats.ts` under tests (parse hostile input, the rows), typecheck
+and lint clean, screenshots of the live and offline states, and the deployed page showing the real server.
+
 ### Audio finding folded into Goal 4 (2026-09-19): the music fade
 
 The owner's "music issue re-occurred in the mission" was measured three ways the same day: missions do have music (210

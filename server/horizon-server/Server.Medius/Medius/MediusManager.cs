@@ -37,6 +37,30 @@ namespace Server.Medius
 
         private ConcurrentQueue<ClientObject> _addQueue = new ConcurrentQueue<ClientObject>();
 
+        #region Stats (LOCAL FIX (socom_pc): read-only views for StatsServer; call from the tick thread only)
+
+        public List<ClientObject> GetAllClients() => _lookupsByAppId.Values.SelectMany(x => x.AccountIdToClient.Values).ToList();
+
+        public List<Game> GetAllGames()
+        {
+            var games = new List<Game>();
+            foreach (var lookup in _lookupsByAppId.Values)
+                lock (lookup.GameIdToGame)
+                    games.AddRange(lookup.GameIdToGame.Values);
+            return games;
+        }
+
+        public List<Channel> GetAllChannels()
+        {
+            var channels = new List<Channel>();
+            foreach (var lookup in _lookupsByAppId.Values)
+                lock (lookup.ChannelIdToChannel)
+                    channels.AddRange(lookup.ChannelIdToChannel.Values);
+            return channels;
+        }
+
+        #endregion
+
         #region Clients
 
         public List<ClientObject> GetClients(int appId)
