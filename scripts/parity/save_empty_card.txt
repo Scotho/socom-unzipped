@@ -1,0 +1,50 @@
+# Sprint 8 Goal 11's launch bar: the owner's save, driven, on a FRESH EMPTY card.
+#
+# Not a gate stage (it is not in gate.GATES) -- a standalone step script run through
+# `python -m tools_py.parity.drive --script scripts/parity/save_empty_card.txt`, because it
+# answers the controller-configuration "Would you like to save to the memory card (8MB)?" dialog
+# YES, which is the owner's path and the opposite of what transition_probe.txt does (that stage
+# answers NO on purpose: a YES there takes the probe into slot select and it never reaches the
+# briefing).
+#
+# The boot is walked by untilref, not by counted steps: the number of screens before the dialog
+# moves with the card's contents, so a step index cannot be pinned. untilref presses CROSS on each
+# settled screen -- loading logo, memory-card notice, the two publisher screens, the intro movie,
+# the main menu (NEW GAME is the top item: the owner's path), the rank choice -- and STOPS the
+# moment rows 47..62, cols 36..125 of the 160x112 thumbnail (the dialog's TEXT only; rows 63..75
+# are the buttons, so the band survives a highlight move) match ref_save_prompt_ours.png.
+# Measured on this binary: 0.0 on the dialog (s8_save_yes: 7 presses, dist 0.0), 25.0 on the slot
+# chooser, 27.3 on "overwritten data will be lost", 30.6..53.0 on every other screen of
+# s8_save_empty1 -- threshold 8.
+untilref(scripts/parity/ref_save_prompt_ours.png,47,62,36,125,14,8)+1.0:CROSS
+
+# The dialog, settled, YES already highlighted (the capture sNN_CROSS.png is taken BEFORE the
+# press): a blind CROSS is YES. This is the press the owner made.
+wait+1.5:CROSS
+
+# YES leads to "Select MEMORY CARD slot: (triangle) Abort." with `slot 1` highlighted (s8_save_yes
+# s02_none.png, 2026-09-19). Answering it is what the first attempt at this script was missing: it
+# pressed nothing here, the game sat on the chooser for the rest of the run and not one byte was
+# written. CROSS takes slot 1, the only port this runtime gives a card to (port 1 needs
+# PS2X_MC_DIR_SLOT1).
+ifref(scripts/parity/refs/ref_save_slot_ours.png,47,62,36,125,8)+1.0:CROSS
+
+# If the card already holds this save the game asks again, with NO highlighted -- LEFT moves the
+# highlight NO -> YES, then CROSS confirms. On a genuinely empty card neither fires and neither
+# costs a press; on the SECOND launch over the same folder, they are the ones that do.
+ifref(scripts/parity/refs/ref_save_overwrite_ours.png,47,62,36,125,8)+1.0:LEFT
+ifref(scripts/parity/refs/ref_save_overwrite_ours.png,47,62,36,125,8)+1.0:CROSS
+
+# The save itself, at 5 fps: a "saving, do not remove the memory card" banner, or an error dialog.
+burst+12.0:NONE
+stable+2.0:NONE
+wait+4.0:NONE
+wait+4.0:NONE
+
+# ... and the game carrying on past it (CONTINUE off the configuration screen), which is the other
+# half of "written without an error dialog".
+stable+2.0:CROSS
+wait+4.0:NONE
+stable+2.0:CROSS
+wait+4.0:NONE
+wait+4.0:NONE
