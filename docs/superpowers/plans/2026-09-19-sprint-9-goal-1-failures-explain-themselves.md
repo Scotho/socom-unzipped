@@ -1259,7 +1259,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `ps2xTest/src/bare_run_tests.cpp`:
+- [x] **Step 1: RED.** Create `ps2xTest/src/bare_run_tests.cpp`:
 
 ```cpp
 // Sprint 9 Goal 1: socom2 with no argument reads the launcher's config.json beside it.
@@ -1405,7 +1405,7 @@ Register it (`void register_bare_run_tests();`, the call, `    src/bare_run_test
 
 (On Windows `_putenv_s(name, "")` *removes* the variable, which is what the second line relies on.)
 
-- [ ] **Step 2: Write `ps2xShared/include/ps2x/exe_dir.h` and `ps2xShared/src/exe_dir.cpp`.**
+- [x] **Step 2: Write `ps2xShared/include/ps2x/exe_dir.h` and `ps2xShared/src/exe_dir.cpp`.**
 
 ```cpp
 #pragma once
@@ -1472,7 +1472,7 @@ namespace ExeDir
 }
 ```
 
-- [ ] **Step 3: Write `ps2xShared/include/ps2x/bare_run.h`.**
+- [x] **Step 3: Write `ps2xShared/include/ps2x/bare_run.h`.**
 
 ```cpp
 #pragma once
@@ -1520,7 +1520,7 @@ namespace BareRun
 }
 ```
 
-- [ ] **Step 4: Write `ps2xShared/src/bare_run.cpp`** and add `src/bare_run.cpp` and `src/exe_dir.cpp` to `ps2x_shared`'s source list.
+- [x] **Step 4: Write `ps2xShared/src/bare_run.cpp`** and add `src/bare_run.cpp` and `src/exe_dir.cpp` to `ps2x_shared`'s source list.
 
 ```cpp
 #include "ps2x/bare_run.h"
@@ -1656,9 +1656,9 @@ namespace BareRun
 }
 ```
 
-- [ ] **Step 5: GREEN.** Build; `PS2X_TEST_SUITE=BareRun ./ps2x_tests.exe` -> `Total Tests: 5`, `Failed: 0`.
+- [x] **Step 5: GREEN.** Build; `PS2X_TEST_SUITE=BareRun ./ps2x_tests.exe` -> `Total Tests: 5`, `Failed: 0`.
 
-- [ ] **Step 6: `./build.sh test` exit 0 (`Total Tests: B + 18`), then commit.**
+- [x] **Step 6: `./build.sh test` exit 0 (`Total Tests: B + 18`), then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/bare_run.h third_party/ps2recomp/ps2xShared/include/ps2x/exe_dir.h \

@@ -7,6 +7,8 @@ add_library(ps2x_shared STATIC
     src/sha256.cpp
     src/launcher_config.cpp
     src/preflight.cpp
+    src/exe_dir.cpp
+    src/bare_run.cpp
 )
 target_include_directories(ps2x_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ps2x_shared PUBLIC cxx_std_20)
