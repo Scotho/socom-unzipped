@@ -67,7 +67,7 @@ namespace ui
         if (!blocked.empty())
             text(ctx, blocked.c_str(), Vec2{launch.x, launch.y - 24.0f}, 16.0f, app.running ? theme::warn : theme::bad);
 
-        if (button(ctx, rectOf(nodes, "play.diagnostics"), "COPY DIAGNOSTICS", "play.diagnostics"))
+        if (button(ctx, rectOf(nodes, "play.diagnostics"), "SAVE DIAGNOSTICS", "play.diagnostics"))
             app.requestDiagnostics = true;
         if (button(ctx, rectOf(nodes, "play.logs"), "OPEN LOGS", "play.logs"))
             app.requestOpenLogs = true;

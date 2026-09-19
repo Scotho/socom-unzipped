@@ -30,6 +30,8 @@ case "$(uname -s)" in
     # -p keeps the executable bits; the tarball must unpack runnable.
     cp -p "$LDIST/socom2" "$LDIST/socom2_game.elf" "$LDIST/socom_unzipped_launcher" "$PKG/"
     chmod +x "$PKG/socom2" "$PKG/socom_unzipped_launcher"
+    # Sprint 9 Goal 1: the launcher's About page and its diagnostics zip read version.txt; until now nothing wrote it.
+    printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%d)" > "$PKG/version.txt"
     # Every shared library the runner AND the launcher pull in, minus the host's own stack.
     # RPATH $ORIGIN/lib (set by CMake) is what finds these at run time.
     LDD_OUT="$(ldd "$LDIST/socom2"; ldd "$LDIST/socom_unzipped_launcher")"
@@ -96,6 +98,8 @@ rm -rf "$PKG"
 mkdir -p "$PKG/cards" "$PKG/logs" "$PKG/LICENSES"
 cp "$DIST/socom2.exe" "$DIST/socom2_game.elf" "$DIST/socom_unzipped_launcher.exe" "$PKG/"
 cp "$DIST"/*.dll "$PKG/"
+# Sprint 9 Goal 1: the launcher's About page and its diagnostics zip read version.txt; until now nothing wrote it.
+printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%d)" > "$PKG/version.txt"
 cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
 cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-sairastencilone.txt" "$PKG/LICENSES/SairaStencilOne-OFL-1.1.txt"
 cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-rajdhani.txt" "$PKG/LICENSES/Rajdhani-OFL-1.1.txt"

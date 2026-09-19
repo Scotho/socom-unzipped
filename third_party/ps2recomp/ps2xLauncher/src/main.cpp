@@ -6,13 +6,17 @@
 //   socom_unzipped_launcher.exe              the window
 //   socom_unzipped_launcher.exe --selftest   load config.json, verify the ISO if one is set, print the environment, exit
 //   socom_unzipped_launcher.exe --screenshot <dir>   every page at both sizes, on a fixed fake state, as PNGs
+//   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
+#include "launcher/diagnostics.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+#include "ps2x/exe_dir.h"
+#include "ps2x/zip_store.h"
 #include "win32_glue.h"
 
 #include "ui/chrome.h"
@@ -29,6 +33,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -134,19 +139,72 @@ namespace
         return st;
     }
 
-    // "Copy diagnostics": the last run log and config.json into diagnostics/<stamp>/ (no archiver dependency).
-    std::string copyDiagnostics(const fs::path &dir, const std::string &lastLog)
+    // The newest logs/run_<stamp>.log by name (the stamp sorts), for a launcher that has not started a
+    // game this session -- or a game that was double-clicked (the bare run writes the same names).
+    std::string newestRunLog(const fs::path &logs)
     {
-        const fs::path out = dir / "diagnostics" / win32glue::stamp();
+        std::string best;
         std::error_code ec;
-        fs::create_directories(out, ec);
-        if (ec)
-            return "cannot create " + out.string();
-        if (!lastLog.empty() && fs::exists(lastLog))
-            fs::copy_file(lastLog, out / fs::path(lastLog).filename(), fs::copy_options::overwrite_existing, ec);
-        if (fs::exists(dir / "config.json"))
-            fs::copy_file(dir / "config.json", out / "config.json", fs::copy_options::overwrite_existing, ec);
-        return "copied to " + out.string();
+        for (fs::directory_iterator it(logs, ec), end; !ec && it != end; it.increment(ec))
+        {
+            const std::string name = it->path().filename().string();
+            if (name.rfind("run_", 0) == 0 && it->path().extension() == ".log" && name > best)
+                best = name;
+        }
+        return best.empty() ? std::string() : (logs / best).string();
+    }
+
+    // "Save diagnostics": one zip -- the last log, config.json through the allowlist, the GL lines, the
+    // crash record if any, versions (launcher/diagnostics.h). `outZip` empty = diagnostics/ under `home`.
+    // The log goes in whole: diagnostics::entries() is what clips it to its head and tail and scrubs the
+    // home directory out of every entry, and it must see the real byte count to say how much it dropped.
+    bool saveDiagnostics(const fs::path &home, const fs::path &outZip, const std::string &lastLog,
+                         bool haveLastExit, long long lastExit, std::string &message)
+    {
+        namespace diag = launcher::diagnostics;
+        const std::string stamp = win32glue::stamp();
+        const fs::path out = outZip.empty() ? home / "diagnostics" / ("socom_unzipped_" + stamp + ".zip") : outZip;
+        std::error_code ec;
+        if (out.has_parent_path())
+            fs::create_directories(out.parent_path(), ec);
+
+        diag::Inputs in;
+        const std::string log = (!lastLog.empty() && fs::exists(lastLog)) ? lastLog : newestRunLog(home / "logs");
+        if (!log.empty())
+        {
+            in.logName = fs::path(log).filename().string();
+            in.logText = readText(log);
+        }
+        in.configText = readText(home / "config.json");
+        in.version = readText(home / "version.txt");
+        while (!in.version.empty() && (in.version.back() == '\n' || in.version.back() == '\r'))
+            in.version.pop_back();
+        in.platform = ExeDir::platformName();
+        const char *homeDir = std::getenv("USERPROFILE");
+        if (homeDir == nullptr || *homeDir == '\0')
+            homeDir = std::getenv("HOME");
+        in.homeDir = homeDir ? homeDir : "";
+        in.haveLastExit = haveLastExit;
+        in.lastExit = lastExit;
+
+        uint16_t date = 0x0021, time = 0;
+        ZipStore::dosDateTime(stamp, date, time);
+        const std::string bytes = ZipStore::build(diag::entries(in), date, time);
+        std::ofstream file(out, std::ios::binary | std::ios::trunc);
+        if (bytes.empty() || !file)
+        {
+            message = "cannot write " + out.string();
+            return false;
+        }
+        file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        file.flush();
+        if (!file)
+        {
+            message = "cannot write " + out.string();
+            return false;
+        }
+        message = "saved " + out.string();
+        return true;
     }
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
@@ -499,6 +557,17 @@ int main(int argc, char **argv)
 {
     const fs::path dir = win32glue::exeDirectory();
     const fs::path configPath = dir / "config.json";
+    if (argc > 2 && std::strcmp(argv[1], "--diagnostics") == 0)
+    {
+        // Sprint 9 Goal 1: the zip without the window -- for a report from a machine where the launcher
+        // itself will not open, and for tools_py/tests/test_diagnostics_zip.py. Answered before this
+        // launcher's own config.json is read, so <dir> is the only folder it looks at.
+        std::string message;
+        const bool ok = saveDiagnostics(argc > 3 ? fs::path(argv[3]) : dir, fs::path(argv[2]), std::string(), false, 0, message);
+        std::printf("%s\n", message.c_str());
+        return ok ? 0 : 1;
+    }
+
     launcher::Config config;
     {
         const std::string text = readText(configPath);
@@ -966,7 +1035,12 @@ int main(int argc, char **argv)
                 app.status = "settings saved";
             }
             if (app.requestDiagnostics)
-                app.status = copyDiagnostics(dir, lastLog);
+            {
+                std::string message;
+                if (saveDiagnostics(dir, fs::path(), lastLog, haveLastExit, lastExitRaw, message))
+                    win32glue::openFolder((dir / "diagnostics").string());
+                app.status = message;
+            }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
             if (app.requestLaunch && !app.running && app.discOk)
