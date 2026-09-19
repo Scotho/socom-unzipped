@@ -163,6 +163,58 @@ buttons lit. The owner's verdict on the look is a HUMAN_TASKS item, with the PNG
 **Stop rule.** If embedding the fonts fails on either platform (raylib's LoadFontFromMemory, the OFL download), ship the
 redesign on the default font scaled up rather than block it, and say so in KNOWN.
 
+### Goal 10 — the community server and its r0004 (owner request 2026-09-19; autonomous up to the owner's file)
+
+The owner's words: "https://psrewired.com/servers/10472 this is the community server that is in the launcher with a
+placeholder. i'm noticing they run r004 though, so we may need to include an option to play on that patch in the
+launcher."
+
+**What was established (2026-09-19; sources in the investigation, repo evidence in research/02, /03, /05, /19).**
+PSRewired is reached by DNS: PS2s set 67.222.156.250 as primary DNS. Resolved through it, `socom2-prod.pdonline.scea.com`,
+`socom2-prod.muis.pdonline.scea.com` and `gate1.us.dnas.playstation.org` all answer 67.222.156.250 itself, so our
+single-address redirect (`PS2X_SOCOM2_SERVER`, every game hostname to one IP) fits and the preset's value is that address.
+Their DNS does not serve `updates.pdonline.scea.com` or the svo name (NXDOMAIN): the update does not travel the retail
+path; their guide gives PS2 and PCSX2 users a patch that enables the download from their server. r0004 is not a delta:
+the disc's `SCUS_972.75` is a loader, the game is `RUN/RAW/APACHE00.ZDB` (two DNAS-layered, compressed overlays,
+ftscore at 0x1e7000 and zsealetc at 0x4c5380), and the boot code looks for `BASCUS-97275SOCOMII/APACHE00.ZDB` on a memory
+card first -- r0004 is a whole replacement package, about 1.5 MB, with code and statics moved throughout (ftscore statics
++0x2C9C0 on four verified addresses; the DNAS check relocated; three more maps; a render-fix option). There is no
+version field to declare: the revision is the loaded code, and r0001 against r0004 peers would run different code with
+different layouts. Whether their server refuses an r0001 login outright is not documented. No r0004 package exists on
+this machine (the four PCSX2 cards hold r0001 saves only).
+
+**Design.** A second recompilation, selected in the launcher; never a spoof.
+1. *The preset*: `kServerPresets`' community entry becomes 67.222.156.250, with a test; the launcher shows the server's
+   required revision beside each preset (community: r0004; SOCOM Unzipped and Custom: r0001 unless told otherwise).
+2. *A revision-parameterised pipeline*: `scripts/build_revision.sh <rev> <APACHE00.ZDB>` runs `decrypt_apache.py`,
+   `make_overlay_elf.py` and `ps2_recomp` into `recomp/output_<rev>/` and builds `dist/socom2_<rev>.exe` beside its
+   `socom2_game_<rev>.elf`, leaving today's r0001 paths exactly as they are. Proof without the owner's file: run it on
+   the DISC's package as `r0001check` and compare -- the decrypted overlays and the ELF must be byte-identical to
+   `game/overlays/*.bin` and `dist/socom2_game.elf`, and the generated tree must be identical to `recomp/output/`.
+3. *The address map*: the HLE overrides, probes and harness peeks name r0001 addresses. They move behind a per-revision
+   table (`socom2_addresses.h`: a struct of named addresses, one instance per revision, chosen at start from the ELF's
+   identity). Filling r0004's instance is a function-matching job: a fingerprint matcher (normalised instruction hashes,
+   call-graph neighbours, the +0x2C9C0 statics rule as a seed) between the two images, with every override's address
+   resolved and each unresolved one listed. The matcher and the table land first and are proven on r0001 against itself
+   (identity) and against a shifted copy (a synthetic relocation), so they are ready when the r0004 image arrives.
+4. *The launcher option*: "Game version" on the PLAY and ONLINE pages: r0001 (your disc) or r0004 (community update),
+   the second enabled only when `socom2_r0004.exe` exists, with the reason when it does not; choosing the community
+   preset with r0001 selected warns, and the reverse. The r0004 memory-card load stays answered "no update present" in
+   both builds (the package is compiled in, never hot-loaded).
+5. *The r0004 build itself* (owner-gated on the file): the pipeline on the owner's package, the matcher filling the
+   table, the unresolved overrides fixed by hand, then the gate's three stages on the r0004 exe and one control round
+   on our own Horizon (r0004 against r0004), before any connection to PSRewired.
+6. *Connecting to PSRewired* (owner-gated): their rules are not public (Discord); a non-console client on a community
+   server is theirs to allow. The owner asks; the first login is the owner's, hands-on, with their account.
+
+**Bars.** The pipeline's r0001 reproduction is byte-identical. The matcher resolves 100% on identity and on the synthetic
+relocation. The preset and the revision option carry tests and appear in the launcher's screenshot mode. With the
+owner's file: `socom2_r0004.exe` reaches the main menu showing r0004, gate 3/3, one r0004 control round.
+
+**Stop rules.** If the r0004 package's DNAS layering does not decrypt with the disc's keys, stop at the pipeline and
+file what differs. If the matcher leaves more than a tenth of the overrides unresolved on the real image, stop and list
+them: that is a hand job with its own sprint. No connection to PSRewired before the owner reports their answer.
+
 ## 3. Budget and stop rules
 
 Launches on Windows: Goal 2's login-screen measurements (about four), Goal 3's dump (one). In the VM: the boot, the

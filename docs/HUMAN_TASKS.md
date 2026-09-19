@@ -137,6 +137,18 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   through the logos, the intro and a minute of the title loop, then send the WAV (or run `python3 -m tools_py.parity.audio_corr
   /tmp/title.wav logs/title_loop_pcm.bin` on a checkout and send its last line). The VM renders at two frames a second on a
   software rasteriser, which starves the music ring, so the correlation bar cannot be read there.
+- [ ] **The r0004 package from your own memory card** (Sprint 8 Goal 10). PSRewired runs SOCOM II r0004, which is a whole
+  replacement of the game's code (about 1.5 MB), not a setting, so playing there needs a second recompilation made from the
+  r0004 package. None exists on this PC: the PCSX2 cards under `tools/pcsx2*/memcards/` hold r0001 saves only. If you have
+  updated SOCOM II on PSRewired under PCSX2 (or can: their guide is https://psrewired.com/guides/socom2 -- DNS 67.222.156.250,
+  their patch, go online once, accept the update), the file is `BASCUS-97275SOCOMII/APACHE00.ZDB` on that memory card. Either
+  copy the card (`Mcd001.ps2`) to `game/r0004/Mcd001.ps2`, or, with a folder memory card, the file itself to
+  `game/r0004/APACHE00.ZDB`. The loop extracts it, runs `scripts/build_revision.sh r0004 ...` and takes it from there.
+- [ ] **Ask PSRewired about a non-console client** (Sprint 8 Goal 10). Their rules live in their Discord, not on the site. Two
+  questions: may a PC-native client (a recompilation, not an emulator, no cheats, same network protocol) connect to the
+  SOCOM II server; and can an r0001 client log in at all, or is r0004 required. Until you report the answer the loop does
+  not connect anything to their server; the launcher's community preset only stores the address (67.222.156.250).
+
 ## Done
 
 (none yet)
