@@ -8,7 +8,19 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
 order, and this file's order follows it.
 
-## 2026-09-18 (midday) — Sprint 8 OPEN: "Linux, then it looks and sounds finished"
+## 2026-09-19 (midday) — Sprint 8 CLOSED; Sprint 9 OPEN: "A stranger's first run"
+
+branch: sprint-9 (off develop after Sprint 8's merge)
+spec: docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md (opened by the controller under the owner's standing instruction; owner review when convenient)
+plan: written per goal as each opens; Goal 1 (a failure explains itself) first
+human tasks: docs/HUMAN_TASKS.md
+next ruling: R126
+
+**What Sprint 8 delivered:** the client on Linux with CI (Goal 1); the menus' cost fixed at its root, 58-60 fps on the login screen under a four-core load (Goal 2b, R123/R125); the microphone reaching the game's headset, opened in a match, no pad button talks (Goal 3, carried: the headset's own button); the music fade and ring start (Goal 4 part); a hard ceiling on pending render bytes (Goal 5 part, R124); the launcher redesigned plus two owner feedback passes (Goal 9); simulated memory cards that persist (Goal 11); the hosted server live and played on (Goal 12). A read-only branch review before the merge found one defect worth fixing (a stale microphone ring) and three small ones, fixed in `7f2d907`; the rest is a KNOWN row. Close-out: suite 611/0, Python 1299, gate 3/3 `s8_close_gate`.
+
+**Not started in Sprint 8 and now Sprint 9's:** the exit-code taxonomy, the bare run, the diagnostics zip, the release build and SHA256SUMS, knob retirement (190 names), the audio and window residuals.
+
+## 2026-09-18 (midday) — Sprint 8 (closed 2026-09-19; record) OPEN: "Linux, then it looks and sounds finished"
 
 branch: sprint-8 (off develop at `b65fe46`)
 spec: docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md
