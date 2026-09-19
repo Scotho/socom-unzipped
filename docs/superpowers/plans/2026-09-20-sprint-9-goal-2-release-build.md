@@ -1207,7 +1207,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: The switches.** In `third_party/ps2recomp/CMakeLists.txt`, directly after `option(PS2X_BUILD_STUDIO "Build ps2xStudio" ON)` add:
+- [x] **Step 1: The switches.** In `third_party/ps2recomp/CMakeLists.txt`, directly after `option(PS2X_BUILD_STUDIO "Build ps2xStudio" ON)` add:
 
 ```cmake
 # Sprint 9 Goal 2: the release configuration's link hygiene. OFF in the developer build (build.sh runtime,
@@ -1251,7 +1251,7 @@ set(PS2X_LTO_SCOPE "all" CACHE STRING "all: LTO every target EnableFastReleaseMo
 
   (the rest of the `if` chain is unchanged).
 
-- [ ] **Step 2: Prove the developer tree did not move (this step's verification; there is no RED for a switch that is off).** Quiet gate permitting, and with no other agent building in `build-clang`:
+- [x] **Step 2: Prove the developer tree did not move (this step's verification; there is no RED for a switch that is off).** Quiet gate permitting, and with no other agent building in `build-clang`:
 
 ```bash
 export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"
@@ -1261,7 +1261,7 @@ cmake --build third_party/ps2recomp/build-clang --target ps2EntryRunner socom_un
 
   Expected last line: `ninja: no work to do.` If ninja lists compile edges, a flag reached the developer build: stop, read `build.ninja`'s diff, fix the `if()`. Paste the line into the ledger. (If another agent left `build-clang` with genuinely stale objects, `-n` lists those; tell them apart by running the same `-n` on a stash of Step 1 first.)
 
-- [ ] **Step 3: `build.sh release`.** In `build.sh`: change line 3 to `# Usage: ./build.sh [tools|recomp|runtime|release|test|all]   (default all; release is never part of all)`; after `RTBUILD=…` add
+- [x] **Step 3: `build.sh release`.** In `build.sh`: change line 3 to `# Usage: ./build.sh [tools|recomp|runtime|release|test|all]   (default all; release is never part of all)`; after `RTBUILD=…` add
 
 ```bash
 RELBUILD="$PS2R/build-release"     # Sprint 9 Goal 2: the release configuration -- its own tree, never the developer's
@@ -1321,7 +1321,7 @@ release() {
 
   and in the `case` add `release) release ;;` after the `runtime)` line. (`set -o pipefail` is on: a closure failure — exit 3 — fails the step, as it should.)
 
-- [ ] **Step 4: `scripts/build_linux.sh release`.** Usage comment: add `#   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped, symbols kept`. After `DIST="$ROOT/dist-linux"` add `RELBUILD="$PS2R/build-linux-release"` and `RELDIST="$ROOT/dist-linux-release"`. In the argument loop change `tools|runtime|test|all)` to `tools|runtime|release|test|all)`. After `runtime()` add
+- [x] **Step 4: `scripts/build_linux.sh release`.** Usage comment: add `#   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped, symbols kept`. After `DIST="$ROOT/dist-linux"` add `RELBUILD="$PS2R/build-linux-release"` and `RELDIST="$ROOT/dist-linux-release"`. In the argument loop change `tools|runtime|test|all)` to `tools|runtime|release|test|all)`. After `runtime()` add
 
 ```bash
 release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the system toolchain, ELF strip
@@ -1359,9 +1359,9 @@ release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the syst
 
   and `release) release ;;` in the `case`. `bash -n build.sh && bash -n scripts/build_linux.sh` must both exit 0.
 
-- [ ] **Step 5: `.gitignore`.** After the `/dist/` line add three lines: `/dist-release/`, `/dist-linux/`, `/dist-linux-release/`. (`/third_party/ps2recomp/build*/` already covers the new trees; `dist-linux/` was never ignored because it only ever existed in the VM and CI.)
+- [x] **Step 5: `.gitignore`.** After the `/dist/` line add three lines: `/dist-release/`, `/dist-linux/`, `/dist-linux-release/`. (`/third_party/ps2recomp/build*/` already covers the new trees; `dist-linux/` was never ignored because it only ever existed in the VM and CI.)
 
-- [ ] **Step 6: Configure only, and read the flags (the verification for Step 1's ON side; no compile yet).** Needs the network once (the FFmpeg zip is fetched at *build* time, not here; the fetched sources are reused):
+- [x] **Step 6: Configure only, and read the flags (the verification for Step 1's ON side; no compile yet).** Needs the network once (the FFmpeg zip is fetched at *build* time, not here; the fetched sources are reused):
 
 ```bash
 cmake -S third_party/ps2recomp -B third_party/ps2recomp/build-release -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -1376,7 +1376,7 @@ ls third_party/ps2recomp/build-release/_deps | grep -c -- '-src$'
 
   Expected: the first count is in the thousands (every compile command); the second prints a line in which `-O2` follows `-O3` for a runner unit (the override wins, `ps2xRuntime/CMakeLists.txt:523`); the third prints link lines carrying `--gc-sections`; the fourth prints **0** (no source was cloned into the release tree). Anything else: stop and fix before Task 5 spends an hour of CPU on it.
 
-- [ ] **Step 7: Suite and commit.** `./build.sh test` exit 0 (it builds in `build-clang`, which Step 2 showed unchanged).
+- [x] **Step 7: Suite and commit.** `./build.sh test` exit 0 (it builds in `build-clang`, which Step 2 showed unchanged).
 
 ```bash
 git commit -m "feat(build): a release configuration in its own tree (build-release -> dist-release): PS2X_RELEASE_LINK, PS2X_LINK_ICF, PS2X_LTO_SCOPE, all off in the developer build; build.sh release and build_linux.sh release strip the two executables and keep symbols/<name>.debug (Sprint 9 Goal 2 Task 4, R140, R146)
@@ -1386,6 +1386,8 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   build.sh scripts/build_linux.sh .gitignore
 git push
 ```
+
+**Task 4 as executed (2026-09-19).** Step 2: `ninja -n` always lists `Re-running CMake` in this tree (the glob re-check is an always-dirty edge, before the edit too), so the proof was taken the stronger way: after re-configuring with the edited lists, `build-clang/build.ninja` and `compile_commands.json` are **byte-identical** to the copies saved before the edit, `ninja -t commands` for `ps2EntryRunner`, `socom_unzipped_launcher` and `ps2x_tests` compare equal, and a real `cmake --build` of the three says `ninja: no work to do.` Step 6: 967 of 968 compile commands carry `-ffunction-sections` (the other is `windres`; the runner is 470 unity units, so "thousands" was never reachable), `-O3 … -O2` on the runner units, `--gc-sections` on all 8 links, 0 sources cloned. At the controller's direction M1 was built once in this task (`logs/s9_g2_t4_build_M1.sh`, `REL_JOBS=14`, detached): see the Results row. Not pushed (controller's instruction).
 
 ---
 
@@ -1628,7 +1630,7 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 |---|---|---|---|---|---|---|---|---|---|---|
 | P0 | developer exe, `*.dll` (2026-09-17 zip) | 236,405,760 | 191,886,198 | 297,839,981 | 65,494,194 | — | 0.93-0.96 | `s9_g1_gate` 3/3 | 46.3 | 0.999 |
 | P1 | developer exe, closure only (Task 3) | 236,409,856 | 191,886,198 | 277,687,904 | 58,221,191 | — | — | (same exe) | — | — |
-| M1_O2 | | | | | | | | | | |
+| M1_O2 | runtime `-O3`, generated `-O3 … -O2` (last wins), `-ffunction-sections -fdata-sections`, `-Wl,--gc-sections`, no LTO, no ICF, stripped; `REL_JOBS=14` (Task 4, at `210000f`+Task 4) | 212,989,440 (221,612,544 before strip) | 174,959,574 | 253,077,088 | 62,787,774 | 1,640 | 3.06 | not gated (Task 5) | — | — |
 | M2_Os | | | | | | | | | | |
 | M3_icf | | | | | | | | | | |
 | M4_lto_rt | | | | | | | | | | |
@@ -1636,6 +1638,8 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 | **Shipped** | | | | | | | | | | |
 | L0 | Linux developer tarball (Sprint 8: 109 MB, runner 224 MB) | | | | | | | — | — | — |
 | L1 | Linux release tarball | | | | | | | — | — | — |
+
+M1 measured 2026-09-19 in Task 4: the executable is 23.4 MB smaller than P1's raw (−9.9 %; `.text` −16.9 MB, strip −8.6 MB) and the folder −24.6 MB (−8.9 %), **but the archive is 4,566,583 bytes LARGER than P1 (+7.8 %)**: inside the zip `socom2.exe` deflates to 46,286,824 bytes against the developer executable's 41,224,772 — `-O2` code is smaller and less repetitive than `-O1` code, and the download is the compressed figure. Compile cost: 7,304 CPU-seconds over the 470 runner units (4,477 at `-O1`); the wall time is one unit, `unity_393` at 1,546 s (526 s at `-O1`), then `unity_267` 1,399 s and `unity_463` 720 s. Exit codes on the stripped runner: `--fail-test oom` 71, `--home <empty>` 68; audit `16 needed, 0 missing, 0 orphans`; `symbols/socom2.exe.debug` 8,625,664 bytes, 84,935 text symbols, `main` at 0x140001460.
 
 P1 measured 2026-09-19 after `bash scripts/make_portable.sh` at `8220078`: 16 DLLs instead of 31, folder −20,152,077 bytes (−6.8 %), zip −7,273,003 bytes (−11.1 %), `16 needed, 0 missing, 0 orphans`. The exe is 4,096 bytes larger than P0's figure (the runner was relinked by `c40a318`, the crouch shortcut) and 176,128 bytes larger than the one P0's *folder* carried (that folder was packed 2026-09-17, before Goal 1's preflight landed), so the DLL saving alone is 20,328,205 folder bytes.
 

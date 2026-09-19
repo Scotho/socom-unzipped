@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [tools|recomp|runtime|test|all]   (default all)
+# Usage: ./build.sh [tools|recomp|runtime|release|test|all]   (default all; release is never part of all)
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
@@ -9,6 +9,8 @@ STEP="${1:-all}"
 PS2R="$ROOT/third_party/ps2recomp"
 TOOLBUILD="$PS2R/build-tools"      # ps2_recomp / ps2_analyzer
 RTBUILD="$PS2R/build-clang"        # runtime + runner with generated code
+RELBUILD="$PS2R/build-release"     # Sprint 9 Goal 2: the release configuration -- its own tree, never the developer's
+RELDIST="$ROOT/dist-release"       # ... and its own folder; dist/socom2.exe stays the gate's and the harness's default
 GEN="$ROOT/recomp/output"
 
 build_tools() {
@@ -46,6 +48,53 @@ runtime() {
     [ -f "$ROOT/tools/llvm-mingw/bin/$d" ] && cp "$ROOT/tools/llvm-mingw/bin/$d" "$ROOT/dist/"
   done
   echo "built dist/socom2.exe"
+}
+
+# Sprint 9 Goal 2. The same sources and the same Release build type as runtime(); what differs is the generated
+# code's -O level, the link hygiene (PS2X_RELEASE_LINK), optionally ICF and ThinLTO, and that the two executables
+# are stripped with their symbols kept beside them. Every value is an environment variable so the measurement
+# matrix (the Goal 2 plan, Task 5) builds each candidate with this one function.
+release() {
+  local genopt="${REL_GENOPT:--O2}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
+  local fc=() src name
+  # Reuse the developer tree's fetched sources read-only (raylib, imgui, ...): a second tree would clone them all again.
+  for src in "$RTBUILD"/_deps/*-src; do
+    [ -d "$src" ] || continue
+    name="$(basename "$src")"; name="${name%-src}"
+    fc+=("-DFETCHCONTENT_SOURCE_DIR_$(printf '%s' "$name" | tr 'a-z' 'A-Z')=$src")
+  done
+  cmake -S "$PS2R" -B "$RELBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+        -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
+        -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
+        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" ${fc[@]+"${fc[@]}"} >/dev/null
+  cmake --build "$RELBUILD" --target ps2EntryRunner socom_unzipped_launcher -j "${REL_JOBS:-$(nproc)}"
+  local stage="$RELDIST/.stage" tag
+  tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
+  rm -rf "$stage"; mkdir -p "$stage" "$RELDIST/symbols"
+  cp "$RELBUILD/ps2xRuntime/ps2EntryRunner.exe" "$stage/socom2.exe"
+  cp "$RELBUILD/ps2xLauncher/socom_unzipped_launcher.exe" "$stage/"
+  cp "$RELBUILD/ps2xRuntime/"*.dll "$stage/" 2>/dev/null || true
+  for d in libc++.dll libunwind.dll libwinpthread-1.dll; do
+    [ -f "$ROOT/tools/llvm-mingw/bin/$d" ] && cp "$ROOT/tools/llvm-mingw/bin/$d" "$stage/"
+  done
+  rm -f "$RELDIST"/*.dll
+  python "$ROOT/tools_py/portable_audit.py" closure --system Windows --dir "$stage" \
+      "$stage/socom2.exe" "$stage/socom_unzipped_launcher.exe" | tr -d '\r' | while read -r dll; do
+    [ -n "$dll" ] && cp "$stage/$dll" "$RELDIST/"
+  done
+  for exe in socom2.exe socom_unzipped_launcher.exe; do
+    # The symbol table leaves the shipped file and stays here: llvm-nm -n symbols/<exe>.debug turns a crash
+    # line's module+0x<rva> back into a function, and tools_py/hostprof_symbolize.py --exe takes the same file.
+    llvm-objcopy --only-keep-debug "$stage/$exe" "$RELDIST/symbols/$exe.debug"
+    llvm-strip --strip-all "$stage/$exe"
+    ( cd "$RELDIST/symbols" && llvm-objcopy --add-gnu-debuglink="$exe.debug" "$stage/$exe" )
+    cp "$stage/$exe" "$RELDIST/$exe"
+    printf '%s %s %s\n' "$tag" "$(sha256sum "$RELDIST/$exe" | cut -d' ' -f1)" "$exe" >> "$RELDIST/symbols/INDEX.txt"
+  done
+  [ -f "$ROOT/dist/socom2_game.elf" ] && cp "$ROOT/dist/socom2_game.elf" "$RELDIST/"
+  rm -rf "$stage"
+  echo "built dist-release/socom2.exe ($(wc -c < "$RELDIST/socom2.exe") bytes; genopt=$genopt lto=$lto/$scope icf=${icf:-off}; symbols in dist-release/symbols)"
 }
 
 test_step() {
@@ -252,6 +301,7 @@ case "$STEP" in
   tools)   build_tools ;;
   recomp)  recomp ;;
   runtime) runtime ;;
+  release) release ;;
   test)    test_step ;;
   all)     recomp; runtime ;;
   *) echo "unknown step $STEP"; exit 2 ;;
