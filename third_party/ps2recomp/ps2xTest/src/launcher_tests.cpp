@@ -127,6 +127,60 @@ void register_launcher_tests()
             t.Equals(partial.gamepadIndex, -1, "a config written before this task keeps the old behaviour");
         });
 
+        // Owner request 2026-09-19, R139: the crouch shortcut.
+        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is silent, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
+        {
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+
+            launcher::Config c;
+            t.Equals(c.crouchShortcut, std::string("l3"), "the left stick click by default: without it a pad cannot crouch at all (owner 2026-09-20)");
+            t.IsTrue(has(launcher::environmentFor(c), "PS2X_PAD_CROUCH_SHORTCUT=l3"), "and the default reaches the game");
+            launcher::Config offConfig;
+            offConfig.crouchShortcut = "off";
+            const std::vector<std::string> before = launcher::environmentFor(offConfig);
+            t.IsTrue(!hasKey(before, "PS2X_PAD_CROUCH_SHORTCUT"), "off sends nothing: the game's environment is what it was before the option");
+
+            const char *values[3] = {"l3", "touchpad", "l2"};
+            for (const char *v : values)
+            {
+                c.crouchShortcut = v;
+                const std::vector<std::string> env = launcher::environmentFor(c);
+                t.IsTrue(has(env, std::string("PS2X_PAD_CROUCH_SHORTCUT=") + v), std::string("reaches the environment: ") + v);
+                t.Equals(env.size(), before.size() + 1, "and is the only thing it adds");
+                launcher::Config back;
+                t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+                t.Equals(back.crouchShortcut, std::string(v), std::string("survives the round trip: ") + v);
+            }
+
+            t.Equals(launcher::normalizeCrouchShortcut("l3"), std::string("l3"), "a known value is itself");
+            t.Equals(launcher::normalizeCrouchShortcut("R3"), std::string("off"), "an unknown value is off");
+            t.Equals(launcher::normalizeCrouchShortcut(""), std::string("off"), "and so is an empty one");
+            launcher::Config junk;
+            junk.crouchShortcut = "l3";
+            t.IsTrue(launcher::fromJson("{\"crouchShortcut\": \"banana\"}", junk), "a config with a value from nowhere still parses");
+            t.Equals(junk.crouchShortcut, std::string("off"), "and the value is off, not kept and not guessed");
+            junk.crouchShortcut = "banana";   // set in memory by a bug, not by the file
+            t.IsTrue(!hasKey(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT"), "junk never reaches the game either");
+            launcher::Config partial;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", partial), "an older config.json parses");
+            t.Equals(partial.crouchShortcut, std::string("l3"), "a config written before the option gets the default, like a new one");
+
+            // The words on the page: a label per cell, and the one line that states the trade (R139).
+            for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+            {
+                t.IsTrue(std::strlen(launcher::crouchShortcutLabel(launcher::kCrouchShortcuts[i])) > 0, "every value has a label");
+                t.IsTrue(std::strlen(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])) > 0, "and a hint");
+                t.IsTrue(std::strlen(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])) <= 104, "that fits one caption line");
+            }
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l3")).find("fire mode") != std::string::npos ||
+                         std::string(launcher::crouchShortcutHint("l3")).find("Fire mode") != std::string::npos,
+                     "l3 says what it costs: fire mode leaves the pad");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l3")).find("2") != std::string::npos, "and where it went: the keyboard's 2");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l2")).find("weapon") != std::string::npos, "l2 says what it costs: the second weapon swap");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("touchpad")).find("othing") != std::string::npos, "touchpad says it costs nothing");
+        });
+
         tc.Run("iso9660: the root directory lookup finds SCUS_972.75 (with its ;1), rejects the rest", [](TestCase &t)
         {
             const std::vector<uint8_t> img = syntheticImage();
@@ -513,6 +567,23 @@ void register_launcher_tests()
             t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
             t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
             t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
+            // R139: the crouch shortcut is a row of four cells under both columns, the last thing on the page.
+            t.Equals(g.move("pad.pick.1", ui::Dir::Down), std::string("pad.crouch.0"), "below the pad list is the crouch row's first cell");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Right), std::string("pad.crouch.1"), "right walks the row");
+            t.Equals(g.move("pad.crouch.1", ui::Dir::Right), std::string("pad.crouch.2"), "off, stick click, touchpad");
+            t.Equals(g.move("pad.crouch.2", ui::Dir::Right), std::string("pad.crouch.3"), "and L2");
+            t.Equals(g.move("pad.crouch.3", ui::Dir::Left), std::string("pad.crouch.2"), "left walks back");
+            t.Equals(g.move("pad.sensitivity", ui::Dir::Down).rfind("pad.crouch.", 0), static_cast<size_t>(0), "below the knobs is the crouch row too");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Up).rfind("pad.pick.", 0), static_cast<size_t>(0), "up from its left end is the pad list");
+            t.Equals(g.move("pad.crouch.3", ui::Dir::Up), std::string("pad.sensitivity"), "up from its right end is the last knob");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and below it is the bar's LAUNCH");
+            t.IsTrue(!ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
+            {
+                const ui::Node *sens = g.find("pad.sensitivity");
+                const ui::Node *crouch = g.find("pad.crouch.0");
+                t.IsTrue(sens != nullptr && crouch != nullptr && crouch->r.y >= sens->r.bottom() + 8.0f,
+                         "the row clears the knobs above it");
+            }
             t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
                          ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
                      "left/right ADJUSTS the three sliders rather than navigating away from them");

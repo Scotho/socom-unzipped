@@ -49,7 +49,7 @@ namespace ui
         }
     }
 
-    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone)
+    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, PadMark mark)
     {
         const PadGeometry g = padGeometry(bounds);
         const bool on = pad.present;
@@ -188,6 +188,33 @@ namespace ui
             const float numberSize = size * 0.9f;
             text(ctx, number, Vec2{t.right() - inset - 6.0f - textWidth(ctx, number, numberSize, Face::Bold), t.cy() - size * 0.6f},
                  numberSize, A(value > 0.55f ? theme::ground : theme::caption), Face::Bold);
+        }
+
+        // ---- R139: where the crouch shortcut is ----------------------------------------------------------
+        if (on && mark != PadMark::None)
+        {
+            const char *tag = "CROUCH";
+            const float size = 13.0f;
+            const float tagW = textWidth(ctx, tag, size, Face::Bold, 0.06f);
+            Vec2 at;
+            if (mark == PadMark::LeftStick)
+            {
+                strokeCircle(ctx, g.well[0], g.wellRadius + 5.0f, theme::goldHi, 2.0f);
+                at = Vec2{g.well[0].x - tagW * 0.5f, g.well[0].y + g.wellRadius + 9.0f};
+            }
+            else if (mark == PadMark::L2)
+            {
+                const Rect t = g.trigger[0];
+                strokeRect(ctx, Rect{t.x - 4.0f, t.y - 4.0f, t.w + 8.0f, t.h + 8.0f}, theme::goldHi, 2.0f);
+                at = Vec2{t.x - tagW - 12.0f, t.cy() - size * 0.6f};
+            }
+            else
+            {
+                const Rect r{g.plate.x - 4.0f, g.plate.y - 4.0f, g.plate.w + 8.0f, g.plate.h + 8.0f};
+                strokeRound(ctx, r, 8.0f, theme::goldHi, 2.0f);
+                at = Vec2{r.cx() - tagW * 0.5f, r.bottom() + 5.0f};
+            }
+            text(ctx, tag, at, size, theme::goldHi, Face::Bold, 0.06f);
         }
 
         if (!on)

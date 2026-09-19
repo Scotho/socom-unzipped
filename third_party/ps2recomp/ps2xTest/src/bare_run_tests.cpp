@@ -55,6 +55,7 @@ void register_bare_run_tests()
             c.profile = "viper";
             c.serverPreset = "custom";
             c.server = "10.0.0.5";
+            c.crouchShortcut = "l3";
             writeText(home / "config.json", launcher::toJson(c));
             const BareRun::Plan p = BareRun::plan(home);
             t.Equals(p.code, 0, "a readable config is a plan");
@@ -65,6 +66,8 @@ void register_bare_run_tests()
             t.Equals(valueOf(p.environment, "PS2X_GS_SCALE"), std::string("2"), "the render scale");
             t.Equals(valueOf(p.environment, "PS2X_SOCOM2_SERVER"), std::string("10.0.0.5"), "the server");
             t.Equals(valueOf(p.environment, "PS2X_SOCOM2_PAD"), std::string("1"), "the pad, always");
+            t.Equals(valueOf(p.environment, "PS2X_PAD_CROUCH_SHORTCUT"), std::string("l3"),
+                     "the crouch shortcut (R139): a double-clicked game crouches the way the launcher's does");
             t.Equals(fs::path(valueOf(p.environment, "PS2X_MC_DIR")), (home / "cards" / "viper").lexically_normal(),
                      "cards/<profile> is made absolute against the folder: a double-click promises no working directory");
             std::vector<std::string> theirs = launcher::environmentFor(c);

@@ -207,6 +207,7 @@ namespace launcher
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
         out += std::string("  \"padDeadZone\": ") + dz + ",\n";
+        out += "  \"crouchShortcut\": " + quote(normalizeCrouchShortcut(c.crouchShortcut)) + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
@@ -256,13 +257,14 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut")
                 {
                     std::string v;
                     if (!p.string(v))
                         return false;
                     if (key == "isoPath") c.isoPath = v;
                     else if (key == "presentFilter") c.presentFilter = v;
+                    else if (key == "crouchShortcut") c.crouchShortcut = normalizeCrouchShortcut(v);
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
@@ -368,6 +370,38 @@ namespace launcher
         return merged;
     }
 
+    std::string normalizeCrouchShortcut(const std::string &value)
+    {
+        for (const char *known : kCrouchShortcuts)
+            if (value == known)
+                return known;
+        return "off";
+    }
+
+    const char *crouchShortcutLabel(const std::string &value)
+    {
+        const std::string v = normalizeCrouchShortcut(value);
+        if (v == "l3")
+            return "L-STICK CLICK";
+        if (v == "touchpad")
+            return "TOUCHPAD";
+        if (v == "l2")
+            return "L2";
+        return "OFF";
+    }
+
+    const char *crouchShortcutHint(const std::string &value)
+    {
+        const std::string v = normalizeCrouchShortcut(value);
+        if (v == "l3")
+            return "Left stick click crouches (the community's Xbox layout). Fire mode moves to the keyboard's 2 key.";
+        if (v == "touchpad")
+            return "Touchpad click crouches (DualShock 4 / DualSense, Windows). Nothing else changes.";
+        if (v == "l2")
+            return "L2 crouches. The second weapon swap moves to the keyboard's 1 key.";
+        return "Crouch is a LIGHT press of Triangle, which a PC pad cannot make: Y only goes prone. Pick a control.";
+    }
+
     std::vector<std::string> environmentFor(const Config &c)
     {
         std::vector<std::string> env;
@@ -395,6 +429,10 @@ namespace launcher
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone < 0.0 ? 0.0 : (c.padDeadZone > 0.5 ? 0.5 : c.padDeadZone));
         env.push_back(std::string("PS2X_PAD_DEADZONE=") + dz);
+        // R139: only when a shortcut is on -- "off" sends nothing, so the default environment is what it was.
+        const std::string crouch = normalizeCrouchShortcut(c.crouchShortcut);
+        if (crouch != "off")
+            env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + crouch);
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);
