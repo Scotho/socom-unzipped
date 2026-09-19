@@ -51,6 +51,16 @@ OSK_ENTER_SETTLE_S = 3.0         # the keyboard's close after ENTER, before its 
 OSK_SLOW_HOLD_S, OSK_SLOW_WAIT_S = 0.18, 0.5   # retype pacing: 0.09 s / 0.35 s doubled (5-6 frames at 32 fps)
 OSK_CROSS_WAIT_S = 0.6                          # after a key's CROSS, both pacings (the keyboard redraws the field)
 
+# The keyboard panel's title, which says WHICH field it is editing (Sprint 8, the first-login path): bright
+# text at y 202-222 starting at column 32. Its right edge separates the two the login stage opens --
+# "Enter Player Name" ends at column 163 (s8_hosted_control A_04_pw_kbd), "Enter Player Password" at 195
+# (s8_lan_login_check A_04_pw_kbd). Only meaningful with the keyboard up (osk_open_of): the form behind it
+# has its own text in this band. A read-back for the log, never a gate -- the field the harness types into
+# is decided by the form's lit row, which it read before pressing CROSS.
+OSK_TITLE = (202, 222, 24, 400)
+OSK_TITLE_LUMA = 140.0
+OSK_TITLE_NAME_MAX_EDGE = 180                   # midway between the two measured edges
+
 # Per-instance environment: window title tag (the harness finds windows by title substring),
 # memory-card directory and the UDP port shift (two clients on one host must not both bind the
 # game's fixed 3658/3659, like PCSX2 client B's 0F6FC6CF.clientB.pnach).
@@ -193,9 +203,25 @@ LOBBY_ROWS = {"create_game": (106, 128, 18, 135),     # BRIEFING ROOM menu row 0
               # 19 (s6_ladder6: cursor on GENDER), 24 or 31 (older Sprint 4 runs) without; GENDER reads 68
               # lit (s6_ladder6) and 23 unlit (s5_t5_ladder2).
               "connect": (366, 390, 20, 160),
-              "gender": (226, 246, 20, 160)}
+              "gender": (226, 246, 20, 160),
+              # ... and the four rows above GENDER, 30 px apart, for the first-login path (Sprint 8): the
+              # form's rows read exactly like CONNECT and GENDER -- 68 lit, 19-25 unlit on the 2026-09-19
+              # reference pair (s8_lan_login_check A_02_persona: PASSWORD lit, PLAYER NAME 23;
+              # s8_hosted_control A_02_persona: PLAYER NAME lit, PASSWORD 24).
+              "player_name": (106, 128, 20, 160),
+              "password": (136, 158, 20, 160),
+              "save_password": (166, 188, 20, 160),
+              "hometown": (196, 218, 20, 160)}
 LOBBY_ROW_LIT_MEDIAN = {"create_game": 50.0, "choose_games": 50.0, "games_list": 27.0, "ready": 50.0,
-                        "connect": 50.0, "gender": 50.0}
+                        "connect": 50.0, "gender": 50.0, "player_name": 50.0, "password": 50.0,
+                        "save_password": 50.0, "hometown": 50.0}
+# The CONNECT TO SOCOM II form top to bottom: `login_focus_row` names whichever one is lit.
+LOGIN_ROW_ORDER = ("player_name", "password", "save_password", "hometown", "gender", "connect")
+# The PLAYER NAME value strip, right of the row labels and left of the diver photo that fills the panel's
+# right half: the glyph-run counter reads 6 columns of glyphs for "socomc" (the LAN card's persona, x
+# 181-232), 5 for the "socom" the old path mistyped into it, and 0 on a fresh server's empty field (whose
+# brightest column is 51, under the counter's ink floor of 60). 172-400 fits a 20-glyph name.
+LOGIN_NAME_VALUE = (106, 128, 172, 400)
 # The form's prompt band ("Connect.", "Specify your gender.", "Enter your password.": bright centred text at
 # y 74-90) tells the form from what follows the CONNECT: 52-117 columns above 80 within x 230-415 on every form
 # capture, 0 on the write-down / save-card / slot notices, 7 on the EULA (a panel edge), and 0 with a keyboard
@@ -439,6 +465,33 @@ def login_form_prompt_cols(gray):
 def login_form_up(gray):
     """The CONNECT TO SOCOM II form is on screen with no keyboard over it."""
     return login_form_prompt_cols(gray) >= LOGIN_FORM_PROMPT_MIN_COLS
+
+
+def login_focus_row(gray):
+    """Name of the CONNECT TO SOCOM II form's lit row, or None when none or several read lit (a transition,
+    a keyboard dimming the form, a frame that is not the form at all). The CONNECT button's lit-fill read,
+    generalised over the six rows."""
+    lit = [row for row in LOGIN_ROW_ORDER if lobby_row_lit(gray, row)]
+    return lit[0] if len(lit) == 1 else None
+
+
+def login_name_glyphs(gray):
+    """Glyphs in the form's PLAYER NAME field (0 when it is empty). Only meaningful with the form up and no
+    keyboard over it: the keyboard's overlay dims the strip to a brightest column of 26, which also reads 0."""
+    return glyph_run_count(gray, LOGIN_NAME_VALUE)
+
+
+def login_name_empty(gray):
+    return login_name_glyphs(gray) == 0
+
+
+def login_persona_mode(gray):
+    """"create" when the form offers no saved persona (PLAYER NAME empty), "saved" when it is prefilled, None
+    when this frame is not the form -- the game keeps personas per server, so the same card arrives prefilled
+    on the LAN box and empty on a server it has never logged into."""
+    if not login_form_up(gray):
+        return None
+    return "create" if login_name_empty(gray) else "saved"
 
 
 def lobby_notice_up(gray):
@@ -909,13 +962,33 @@ def osk_open_of(gray):
     return min(osk_ref_dists(gray)) < Shell.OSK_OPEN_MAX
 
 
+def osk_title_edge(gray):
+    """Rightmost column of the keyboard panel's title text, or None when the band holds no bright text."""
+    y0, y1, x0, x1 = OSK_TITLE
+    cols = np.where((np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1] > OSK_TITLE_LUMA).any(axis=0))[0]
+    return int(cols.max()) + x0 if len(cols) else None
+
+
+def osk_title_is_name(gray):
+    """The open keyboard is "Enter Player Name" (edge 163) rather than "Enter Player Password" (195)."""
+    edge = osk_title_edge(gray)
+    return edge is not None and edge <= OSK_TITLE_NAME_MAX_EDGE
+
+
 def osk_typed_count(gray):
-    """Characters in the on-screen keyboard's text row of a full 640x448 grey frame: the number of runs of
+    """Characters in the on-screen keyboard's text row of a full 640x448 grey frame."""
+    return glyph_run_count(gray, (OSK_TEXT_ROWS[0], OSK_TEXT_ROWS[1], OSK_TEXT_COLS[0], OSK_TEXT_COLS[1]))
+
+
+def glyph_run_count(gray, box):
+    """Characters written in a (y0, y1, x0, x1) band of a full 640x448 grey frame: the number of runs of
     glyph columns (max between OSK_INK_MIN and OSK_CURSOR_MIN, at least OSK_GLYPH_MIN_WIDTH wide, separated by
     a column with no ink). The blinking white cursor block is not a glyph, so an empty field reads 0 whether
-    or not its cursor is on. A space has no ink and is not counted (no harness text carries one)."""
-    y0, y1 = OSK_TEXT_ROWS
-    x0, x1 = OSK_TEXT_COLS
+    or not its cursor is on. A space has no ink and is not counted (no harness text carries one).
+
+    Written for the keyboard's text row (OSK_TEXT_ROWS/COLS) and reused unchanged, band and all thresholds,
+    for the form's PLAYER NAME value strip (LOGIN_NAME_VALUE) -- the same font on the same ground."""
+    y0, y1, x0, x1 = box
     colmax = np.asarray(gray, dtype=np.float32)[y0:y1, x0:x1].max(axis=0)
     ink, glyph = colmax > OSK_INK_MIN, (colmax > OSK_INK_MIN) & (colmax <= OSK_CURSOR_MIN)
     count, x = 0, 0
@@ -1036,21 +1109,26 @@ def login(sh, name, password, existing):
     # this one timeout stays a log line. Every other screen's timeout occurred only in failed launches.
     sh.wait_for("persona", 60, required=False)
     sh.shot("02_persona")
-    press_persona(sh, existing)
-    if existing:
-        sh.shot("03_name")
-        sh.shot("04_pw_kbd")
+    mode, listed = persona_form_mode(sh, existing)
+    if mode == "create":
+        sh.log(f"[login] persona: none saved -> creating {name}")
+        create_persona(sh, name, listed)
     else:
-        sh.type(name, sh.out, sh.tag + "name")
+        sh.log("[login] persona: prefilled -> the saved-persona path")
+        press_persona(sh, True, listed)
         sh.shot("03_name")
-        sh.press("down", 1.0)
-        sh.press("cross", 4.0)
         sh.shot("04_pw_kbd")
     sh.type(password)
     sh.shot("05_password")
     press_connect(sh)
-    # Prompts between CONNECT and the EULA vary (write-down notice, save to card?, slot,
-    # overwrite?): answer whichever is on screen until the EULA shows.
+    login_prompts(sh)
+    login_to_lobby(sh)
+
+
+def login_prompts(sh):
+    """Prompts between CONNECT and the EULA vary (write-down notice, save to card?, slot, overwrite?):
+    answer whichever is on screen until the EULA shows. A first login adds the account-created notice and
+    the save-persona prompts -- all CROSS-to-continue, all answered here."""
     t = time.time()
     seen = set()
     quiet = 0
@@ -1072,6 +1150,9 @@ def login(sh, name, password, existing):
                 sh.press("cross", 3.0)
                 quiet = 0
             time.sleep(1.0)
+
+
+def login_to_lobby(sh):
     sh.wait_for("eula", 30)
     sh.shot("08_eula")
     sh.press_until_gone("cross", "eula")                         # ACCEPT
@@ -1082,16 +1163,70 @@ def login(sh, name, password, existing):
     sh.shot("09_lobby_no_news")
 
 
-def press_persona(sh, existing):
-    """The two CROSSes after the universe, each read back on a fresh frame and re-sent through the pad (at most
-    LOBBY_RESEND_MAX times, then login:persona:<stage>). They were the last blind presses of the login stage.
+def persona_form_mode(sh, existing):
+    """Which login path this server needs -- ("create"|"saved", whether the persona-list CROSS is already
+    spent) -- READ off the CONNECT TO SOCOM II form rather than assumed from --existing (Sprint 8,
+    s8_hosted_control): the game keeps personas per server, so the card that arrives prefilled on the LAN
+    box arrives empty on the hosted Horizon, and the old path typed the password into the empty PLAYER NAME.
 
-    The first ("list") is verified by the frame changing from the one read before it (frame_diff over
-    PERSONA_CHANGED_MIN_DIFF); the second by the keyboard being open (osk_open_of): the saved persona's password
-    keyboard, or <New Persona>'s name keyboard. On the launches with a saved persona the "persona" screen the
-    reference names is the CONNECT TO SOCOM II form with the cursor on PASSWORD (s6_ladder7 B_02_persona): the first
-    CROSS opens the password keyboard and the second lands on its accent key, which osk_normal_mode toggles back --
-    so a dropped second CROSS is harmless and a dropped first one is the one this catches."""
+    Normally the 02_persona frame IS the form. When it is not, the run is not lost: the `persona` reference
+    misses on good launches (see login()'s required=False) and SELECT UNIVERSE can still be up 60 s later
+    (s8_lan_login_recheck). The persona-list CROSS, which BOTH paths send first, is then taken here and the
+    frame after it read -- the form, or the keyboard that CROSS opened, whose title names the field it edits.
+    Only if that frame says nothing either does --existing decide, as it did before this path existed."""
+    gray = lobby_gray(sh)
+    for listed in (False, True):
+        mode = login_persona_mode(gray)
+        if mode is not None:
+            sh.log(f"[login] persona: PLAYER NAME {login_name_glyphs(gray)} glyphs, "
+                   f"focus {login_focus_row(gray) or 'unread'} -> {mode}")
+            return mode, listed
+        if listed:
+            break
+        sh.log("[login] persona: the form is not on screen -> reading it after the persona-list CROSS")
+        press_persona_list(sh)
+        gray = lobby_gray(sh)
+    if osk_open_of(gray):
+        mode = "create" if osk_title_is_name(gray) else "saved"
+        sh.log(f"[login] persona: no form, keyboard title edge {osk_title_edge(gray)} -> {mode}")
+        return mode, True
+    sh.log(f"[login] persona: form unread and no keyboard -> --existing={existing}")
+    return ("saved" if existing else "create"), True
+
+
+def create_persona(sh, name, listed=False):
+    """The first login on a server that keeps no persona for this card: PLAYER NAME is empty and focused and
+    the header reads "Choose a different persona or create a new one." (s8_hosted_control A_02_persona).
+
+    The two persona CROSSes open the "Enter Player Name" keyboard instead of the password one; the name is
+    typed and ENTERed by the same verified walk as the password, and then READ BACK OFF THE FORM -- the
+    keyboard's own text row can only say what it holds, not that ENTER committed it to the field. A DOWN
+    verified on the PASSWORD row's fill and a CROSS verified on the keyboard leave the caller exactly where
+    the saved-persona path leaves it: the password keyboard open."""
+    press_persona(sh, False, listed)                             # -> the name keyboard
+    gray = lobby_gray(sh)
+    edge = osk_title_edge(gray)
+    sh.log(f"[login] persona: keyboard title edge {edge} -> "
+           f"{'Enter Player Name' if osk_title_is_name(gray) else 'NOT Enter Player Name'}")
+    sh.shot("03_name_kbd")
+    sh.type(name, sh.out, sh.tag + "name")
+    n = login_name_glyphs(lobby_gray(sh))
+    sh.log(f"[login] persona: PLAYER NAME reads {n} glyphs, expected {len(name)}")
+    if n != len(name):
+        raise lobby_fail(sh, f"{CLASS_PERSONA}:name-value",
+                         f"the ENTER did not put {name!r} in PLAYER NAME: the field reads {n} glyphs")
+    sh.shot("03_name")
+    press_verified(sh, f"{CLASS_PERSONA}:password-row", "down", 1.0,
+                   lambda g: lobby_row_lit(g, "password"), "the PASSWORD row lit")
+    press_verified(sh, f"{CLASS_PERSONA}:password-keyboard", "cross", PERSONA_CROSS_WAIT_S, osk_open_of,
+                   "the password keyboard")
+    sh.shot("04_pw_kbd")
+
+
+def press_persona_list(sh):
+    """The first of the two persona CROSSes, verified by the frame changing from the one read before it
+    (frame_diff over PERSONA_CHANGED_MIN_DIFF) and re-sent through the pad at most LOBBY_RESEND_MAX times.
+    Common to both paths, which is why persona_form_mode may spend it before either one starts."""
     pre = lobby_gray(sh)
 
     def changed(gray):
@@ -1100,6 +1235,21 @@ def press_persona(sh, existing):
         return d > PERSONA_CHANGED_MIN_DIFF
 
     press_verified(sh, f"{CLASS_PERSONA}:list", "cross", PERSONA_CROSS_WAIT_S, changed, "a changed screen")
+
+
+def press_persona(sh, existing, listed=False):
+    """The two CROSSes after the universe, each read back on a fresh frame and re-sent through the pad (at most
+    LOBBY_RESEND_MAX times, then login:persona:<stage>). They were the last blind presses of the login stage.
+    `listed`: persona_form_mode already spent the first one to get a frame it could read.
+
+    The first ("list") is verified by the frame changing from the one read before it (frame_diff over
+    PERSONA_CHANGED_MIN_DIFF); the second by the keyboard being open (osk_open_of): the saved persona's password
+    keyboard, or <New Persona>'s name keyboard. On the launches with a saved persona the "persona" screen the
+    reference names is the CONNECT TO SOCOM II form with the cursor on PASSWORD (s6_ladder7 B_02_persona): the first
+    CROSS opens the password keyboard and the second lands on its accent key, which osk_normal_mode toggles back --
+    so a dropped second CROSS is harmless and a dropped first one is the one this catches."""
+    if not listed:
+        press_persona_list(sh)
     if existing:
         press_verified(sh, f"{CLASS_PERSONA}:password-keyboard", "cross", PERSONA_CROSS_WAIT_S, osk_open_of,
                        "the password keyboard")
