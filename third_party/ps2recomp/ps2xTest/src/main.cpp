@@ -31,6 +31,7 @@ void register_preflight_tests();
 void register_bare_run_tests();
 void register_zip_store_tests();
 void register_diagnostics_tests();
+void register_bug_report_tests();
 void reset_ps2_test_function_table();
 
 namespace
@@ -104,6 +105,7 @@ int main()
     register_bare_run_tests();
     register_zip_store_tests();
     register_diagnostics_tests();
+    register_bug_report_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();
