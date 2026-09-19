@@ -182,6 +182,64 @@ it needs a driven launch and a pad); the two alignment fixes asserted in the top
 string through the same theme and focus model as Sprint 8 Goal 9. **Owner checks:** the guide-button toggle on their
 own pad, the tooltip wording, and whether the profile viewer is wanted at all.
 
+### Goal 10 — the music, fixed where it breaks for everyone (owner 2026-09-20)
+**The report.** A play session: first mission, X through the dialog, walking toward the first two targets — "the music
+sounded like it was getting louder and quieter and jumping between different tracks. It was not coherent. Glitched
+between different samples it sounds like." Voice and sound effects are fine. It also happens between menus, and once
+on first entering an online lobby. The owner's instruction: research why, read what we have already tried, and
+**target a fix that resolves this universally instead of these particular segments.**
+
+**What is already fixed, so no one spends a day re-finding it** (the full timeline is in research/32 and the commits):
+the title music's packet-order, delivery and refusal faults (`4478bff`, `75fe03d`) — that path now correlates 1.000
+against the disc (`6ea9520`); the ring's fill/play interlock, R97 (`b3e3797`); two stream-slot leaks and
+`sceSifInitRpc` wiping the sound model mid-mission (`23a860d`); a double-closed `FILE*` on a refused stream
+(`8f8981c`); and the most recent one, the `snd_AutoVol` fade that was applied instantly and never reached streams at
+all, plus the menu stream's discarded first fill (`54d77a2`, gate 3/3 `s8_audio_mc_gate2`). **No audio source file has
+changed since.**
+
+**Why none of that explains this report.** Every measurement the project has made is either the fidelity of ONE cue
+decoded in isolation (sample-exact, drift < 2.1 ppm — `KNOWN.md:32`) or a correlation of ONE stream against a
+reference (the title path). Nothing has ever measured *what the game asked for* against *what was mixed*. The four
+things that could produce "louder and quieter + jumping between samples" all sit in that blind spot, and three are
+already written down as unmeasured:
+1. **Two live cues summing.** Mission music is 210 short stereo cues fired adaptively (`KNOWN.md:32`); the per-stream
+   sum is unclamped and every stream shares master group 16 — named as a hazard, never measured
+   (`snd989_mixer.cpp:1255`, `:1294`; the Sprint 8 spec says explicitly that a cutscene ring opening over live music
+   streams is covered by no measurement).
+2. **`pcmStreamStart` after a Stop with no Open replays old blocks** — filed in the Sprint 8 branch review
+   (`KNOWN.md:110(e)`) as a consequence of the very fix in `54d77a2`. That is, precisely, "glitched between different
+   samples", and it would fire on every screen change that restarts the menu stream — which is where the owner also
+   hears it.
+3. **The AutoVol curve.** The ramp added in `54d77a2` is linear and its fourth argument (always 2) is recorded as
+   **unverified** (`KNOWN.md:33`). A ramp of the wrong shape, or one re-triggered per tick, is "getting louder and
+   quieter" exactly.
+4. **Cue selection itself.** Nothing checks that the cue the game asked for is the cue that played, or that a cue is
+   not restarted from the wrong offset — the fidelity work proved the opposite thing.
+
+**Method — the instrument before the patch, because the symptom appears in three unrelated places.** A per-segment
+patch is what the owner has refused, and three appearances (mission, menu change, lobby entry) with one description
+say the fault is in the shared path, not in any one caller.
+- **Make the defect a number.** `tools_py/parity/audio_corr.py` can correlate against a reference and can detect a
+  repeating block (`--repeat`, the buzz). It cannot see either half of this report. Add, reference-free: an **envelope**
+  track (short-window RMS) whose oscillation is scored, so "louder and quieter" has a threshold; and a **splice**
+  detector (sample-step and spectral-flux spikes at block and chunk boundaries), so "glitched between different
+  samples" has a count and a timestamp. Both belong with the existing tool and its tests, and both run on any dump.
+- **Log what the game asked for.** A mixer-side event trace (cue start/stop with handle, bank and offset, every
+  AutoVol call with its arguments and the ramp it produced, every stream open/start/stop, every ring fill and miss),
+  timestamped on the same clock as the dump, so an anomaly the instrument finds can be read against the call that
+  caused it. Much of this already exists behind `PS2X_AUDIO_TRACE`/`PS2X_MPEG_TRACE` — this is one trace with one
+  clock, not a new subsystem.
+- **Then reproduce, driven:** M51 to the first contact (the owner's own path), a menu-to-menu sweep, and a lobby
+  entry — each with dump plus trace. The fix is whatever the pair shows, at the root, once, for all three.
+- **Bar:** the envelope and splice numbers inside their thresholds on all three captures, the trace showing no cue
+  played that was not asked for; the gate's title stage staying 23/23 (`s8_audio_mc_gate2` is the standing figure);
+  and the regression fixture the audio residuals list has wanted since Sprint 8 — *a per-stage sound check on every
+  gate dump* — finally built, so this cannot silently return. **Owner check:** the same play session, by ear. Until
+  they say it is right, it is not.
+- **If the instrument says the mix is clean and the ear still says it is not,** the next suspect is the host side (the
+  callback's own timing and the mixer mutex the disk I/O shares — `AUDIT-2026-09-17.md:80`), and that is where the
+  next pass goes. Say so rather than declaring victory on a number.
+
 ## 3. Owner-gated, unchanged
 The listens, the pad pick, the mic meter, the launcher verdict, the Linux tarball on a real GPU, the first
 two-machine match, the domain and AWS credit decisions (`docs/HUMAN_TASKS.md`). r0004 and the community server
