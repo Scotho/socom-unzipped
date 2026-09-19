@@ -1,10 +1,12 @@
 #pragma once
 // Sprint 7 Task 9b (owner request 2026-09-18): the host microphone, captured but not yet spoken.
 //
-// FORMAT ASSUMPTION: 16 kHz, mono, signed 16-bit. SOCOM II's headset path is liblgaud 1.08 (LGAUD.IRX +
-// HEADSETO.IRX, research/05 section 2), and the stubbed lgAudInit advertises a 0x800-byte stream buffer
-// (ps2xIOP/src/modules/lgaud.cpp:21) -- 1024 frames of 16-bit mono, 64 ms at 16 kHz. Nothing in the tree has
-// yet READ a rate off the module, so this is an assumption; Task 9c's spike is what settles it.
+// CAPTURE RATE: 16 kHz, mono, signed 16-bit -- the rate the RING runs at, not the rate the game asks for.
+// Sprint 8 Goal 3 RETRACTS the old "FORMAT ASSUMPTION: 16 kHz" here: Task 9c's spike is settled, and the
+// game's own lgAudOpen callers build an openparam of {Mode=2, channels=1, bits=0x10, rate=0x2b11, latency=500}
+// (game/analysis/socom2_game.elf.decomp.c:48336-48342, byte-identically at :86590-86594) -- 0x2b11 is 11025.
+// So lgaud.cpp ALWAYS resamples this ring down to 11025 Hz; see runtime/mic_format.h for that arithmetic.
+#include "runtime/mic_format.h"
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -79,7 +81,16 @@ public:
     // reason in error(), when the device is not there or will not open -- never fatal: a missing microphone
     // must not stop the game starting.
     bool start(const std::string &deviceName);
+    // PS2X_MIC_FAKE=<file.wav>: the capture device replaced by a WAV, looped in real time. This is what gives
+    // CI, the Linux VM and the driven harness a "microphone" with a KNOWN signal, so the game-read dump can be
+    // correlated against it without a human speaking (Sprint 8 Goal 3 Task 1). Resampled once, on open, to
+    // kSampleRate, then fed in at real time; running() and read() are the device's, byte for byte.
+    bool startFromFile(const std::string &wavPath);
     size_t read(int16_t *out, size_t frames);
+    // PS2X_MIC_DUMP, Sprint 8 Goal 3 Task 1 Step 6: a TEE off the capture callback into a ring of its own, so
+    // the dump and the game are not two consumers splitting one ring between them. Same knob, new mechanism.
+    void startDumpTee(const std::string &wavPath);
+    void stopDumpTee();
     void stop();
     bool running() const { return m_running; }
     const std::string &error() const { return m_error; }
@@ -97,6 +108,20 @@ private:
 // such a file to EOF, which is what a killed run needs, instead of seeing a header that claims zero bytes.
 void hostMicWavHeader(uint8_t *header44, uint32_t dataSize, uint32_t sampleRate);
 
-// PS2X_MIC_DEVICE / PS2X_MIC_DUMP, read once at start-up. Does nothing at all when PS2X_MIC_DEVICE is unset.
+// The process's capture source, or nullptr when none was started. g_hostMic was a file static with no accessor,
+// which is why nothing outside host_mic.cpp could reach the ring; this is the missing link between the runtime
+// and the IOP module (Sprint 8 Goal 3 Task 1 Step 7).
+HostMic *hostMic();
+
+// PS2X_MIC_GAMEREAD_DUMP=<file.wav>: every frame handed to the IOP headset module's Read (lgaud 0x08) is
+// appended here, at HostMic::kSampleRate. This is the proof's second file -- correlating it against what
+// PS2X_MIC_FAKE fed in is what shows the game really took the microphone out of the ring, with no human
+// speaking (Sprint 8 Goal 3). The knob is read here, on the runtime side, so the IOP module stays free of
+// the environment. Inert, and free, when the variable is unset. Opened lazily, closed by stopHostMic().
+void hostMicGameReadDump(const int16_t *frames, size_t count);
+void hostMicGameReadDumpClose();
+
+// PS2X_MIC_FAKE / PS2X_MIC_DEVICE / PS2X_MIC_DUMP, read once at start-up. Does nothing at all when neither
+// PS2X_MIC_FAKE nor PS2X_MIC_DEVICE is set -- which is the default, and what the gate runs with.
 void startHostMicFromEnvironment();
 void stopHostMic();

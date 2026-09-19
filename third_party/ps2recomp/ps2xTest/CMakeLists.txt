@@ -63,6 +63,7 @@ add_library(ps2_test_lib STATIC
     src/ps2_runtime_expansion_tests.cpp
     src/socom2_libnetb_tests.cpp
     src/socom2_audio_tests.cpp
+    src/socom2_lgaud_tests.cpp
     src/host_config_tests.cpp
     src/launcher_tests.cpp
 )
@@ -73,6 +74,9 @@ target_include_directories(ps2_test_lib PRIVATE
     ${CMAKE_SOURCE_DIR}/ps2xAnalyzer/include
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/include
     ${CMAKE_SOURCE_DIR}/ps2xRuntime/src/lib
+    # Sprint 8 Goal 3 Task 2: socom2_lgaud_tests.cpp drives the module through its own factory
+    # (detail::createLgAudService), which lives beside the modules rather than in the public headers.
+    ${CMAKE_SOURCE_DIR}/ps2xIOP/src
 )
 
 target_link_libraries(ps2_test_lib PRIVATE
