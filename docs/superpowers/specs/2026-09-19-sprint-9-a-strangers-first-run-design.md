@@ -216,7 +216,48 @@ already written down as unmeasured:
 4. **Cue selection itself.** Nothing checks that the cue the game asked for is the cue that played, or that a cue is
    not restarted from the wrong offset — the fidelity work proved the opposite thing.
 
-**Method — the instrument before the patch, because the symptom appears in three unrelated places.** A per-segment
+**The code sweep then found it — and it is not in the blind spot's fourth corner, it is two concrete bugs that
+explain both halves of the owner's sentence together.** Both are in the stream path, both are small, and each one
+alone would have survived every measurement made so far, because every measurement drove one cue through a handle the
+test chose.
+
+1. **`parentHandle` means QUEUE; we start immediately and keep the parent's handle.** The protocol note is explicit
+   (`research/06-989snd-rpc.md:142`): *"if `parentHandle` != 0 the stream is queued after that stream instead."*
+   `Snd989Service::playVagStream` (`ps2xIOP/src/modules/snd989.cpp:1555-1587`) instead finds the parent's slot, and
+   when that slot is live (`reused == true`) it leaves the handle unchanged and notifies the host with the **parent's**
+   handle. The mixer treats a play on a live handle as a replacement: `Mixer::playStream`
+   (`snd989_mixer.cpp:1378-1386`) closes the old stream and pushes the new one. **So the moment the adaptive score
+   queues the next segment, the one that is playing is cut dead mid-sample and the next starts.** That is "jumping
+   between different tracks... glitched between different samples", literally, and with 210 short cues it happens
+   constantly. Second failure of the same code: if the parent slot was already reaped, the queued cue takes a fresh
+   slot and plays *concurrently* — two cues summing, which was candidate 1 above.
+2. **A new stream inherits the dead one's AutoVol ramp.** `Mixer::stop` clears the handle's ramp
+   (`snd989_mixer.cpp:1045`) and `setVolPan` clears it (`:1090-1091`); **`playStream` does not**, and `dropDeadRamps`
+   (`:683-694`) deliberately keeps a ramp alive while any stream carries the handle. So the game fades the current cue
+   with `snd_AutoVol(h, 0, 0x168, 2)` — the exact call in `KNOWN.md:33` — then queues the next cue on `h`; the new cue
+   arrives on the same handle, is never `stop`ped, and inherits a ramp already at 0.4 and still heading for 0. The
+   next segment starts quiet and keeps fading; the one after starts full. **"Getting louder and quieter", with no
+   single cue misbehaving** — which is exactly why the 0.998-1.000 per-cue fidelity measurement passed and the owner
+   still hears it.
+
+Two more the sweep found, which is why this is a universal fix and not a mission-only one:
+3. **The stream decoder cannot loop.** It ends on any block whose flag carries bit 0 (`snd989_mixer.cpp:447-451`),
+   while the bank decoder on the same format correctly separates end from loop-end (`ps2_audio_vag.cpp:166-169`);
+   `Stream` has no loop-start field and the play call's `flags` word is dropped at `ps2_audio.cpp:481`. A looping cue —
+   the likely shape of **menu and lobby** music — is truncated at its first loop point and re-fired by the game. That
+   is the same symptom in the two places the mission bugs cannot reach.
+4. **Nothing caps concurrency and the sum hard-clips.** Voices and streams are unbounded vectors
+   (`snd989_mixer.cpp:487, 735, 491, 1385`), `Tone::priority` and `Sound::instanceLimit` are parsed and never used,
+   and `snd_SetGroupVoiceRange` — the console's cap of music to 24 voices — is recorded and dropped
+   (`snd989.cpp:1003-1013`). Two live copies of one cue at slightly different offsets comb-filter, which swells; three
+   full-scale streams clip on an accumulator with no headroom (`:1293-1294`).
+
+**The cheapest discriminating experiment, before any fix:** one trace line in `playVagStream` printing `parent`,
+`reused`, the handle and the sector, and one in `Mixer::playStream` printing the ramp scale in force when it replaces
+a live stream. If `reused == true` appears during mission music, 1 and 2 are confirmed together — and they are roughly
+ten lines each (honour the queue instead of replacing; clear the handle's ramp in `playStream`).
+
+**Method — the instrument still gets built, because a fix nobody can see return is how this defect keeps coming back.** A per-segment
 patch is what the owner has refused, and three appearances (mission, menu change, lobby entry) with one description
 say the fault is in the shared path, not in any one caller.
 - **Make the defect a number.** `tools_py/parity/audio_corr.py` can correlate against a reference and can detect a
