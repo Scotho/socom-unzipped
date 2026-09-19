@@ -28,14 +28,18 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 - **Sprint 9, "A stranger's first run", is open on branch `sprint-9`.** Done: Goal 1 (failures explain themselves:
   exit codes 65-72, preflight, bare run, diagnostics zip), Goal 2 (release build, import-closure archives,
   `SHA256SUMS`; Windows zip 55.7 MB). Landed but not closed out: Goal 8 (the launcher's REPORT A BUG page and the
-  ONLINE status line). Found but not fixed when this was written: Goal 10 (the music). Everything else: not started.
-- **Baselines:** C++ **661/661**, Python **1360 OK**, CI green on `c81b17a` (later commits on the branch are
-  documentation). Last gates 3/3: `s9_g1_gate`, `s9_g2_release_gate`. Next free ruling number: **R170**.
-- **In flight in someone else's hands when this was written (2026-09-20 evening):** a session is implementing
-  Goal 10's fixes -- `snd989.cpp`, `snd989_mixer.h/.cpp`, `ps2_audio.cpp`, `socom2_audio_tests.cpp` are modified and
-  uncommitted in the shared working tree, and it has claimed ruling R169 for "`parentHandle` means queue". Check
-  `git log` and `git status` before you touch audio: if that work has been committed, P1 in the sprint file may be
-  done; if the files are still dirty and have gone quiet, read the diff before deciding anything.
+  ONLINE status line). Goal 10 (the music): root cause found AND three of its four fixes written test-first, uncommitted in the tree for review (R169-R171); the fourth is a proposal (R172). Everything else: not started.
+- **Baselines:** committed, C++ **661/661** and Python **1360 OK**, CI green on `c81b17a`. **With the uncommitted
+  audio work in the tree (below): C++ 666/666, Python 1368 OK, `./build.sh test` exit 0.** Last gates 3/3:
+  `s9_g1_gate`, `s9_g2_release_gate`. Next free ruling number: **R173** (R169-R171 are taken by the music fixes and
+  R172 is an open proposal; this line said R170 for the twenty minutes before those landed).
+- **In flight in someone else's hands (2026-09-20 evening), and further along than the P1/P2 rows say:** the music
+  session has **three of Goal 10's four fixes done, test-first, in the shared working tree and deliberately not
+  committed** -- `snd989.cpp`, `snd989_mixer.h/.cpp`, `ps2_audio.cpp`, `socom2_audio_tests.cpp`. R169 the queue,
+  R170 the ramp ownership, R171 the stream loop flags; the rulings are committed in the Goal 10 spec section
+  (`3d71fa8`) with each RED assertion quoted. **Do not stage or edit those five files.** What is left of Goal 10 is
+  the controller's: read the diff, run the driven M51 capture and the gate, then commit. The fourth fix (the
+  concurrency cap and the hard clip) is **R172, a proposal that needs a decision, not code** -- see the spec.
 - **A playtest by the owner is planned.** The order of work exists to make that session worth their time.
 
 ## 3. Your first hour (all of it lock-free; start nothing heavy)
@@ -104,7 +108,7 @@ eleven in the order they matter. Nothing was dropped.
    (git-ignored).
 8. **Nothing connects to a server that is not ours.** The community server (PSRewired) preset stores an address and
    that is all, until the owner reports their answer.
-9. **Every moved default and every skipped measurement gets a numbered ruling** (next: R170) in the plan's "Rulings
+9. **Every moved default and every skipped measurement gets a numbered ruling** (next: R173) in the plan's "Rulings
    made on the owner's behalf", or in `docs/CURRENT_SPRINT.md` when there is no plan. A ruling says what was decided,
    what it cost, and that the owner can overturn it.
 10. **What only the owner can verify goes to `docs/HUMAN_TASKS.md` and the loop moves on.** Do not wait on a person.
