@@ -13,6 +13,9 @@ __pycache__/
 /third_party/ps2recomp/build*/
 *.log
 /dist/
+/dist-release/
+/dist-linux/
+/dist-linux-release/
 /logs/
 /server/horizon-server-database-middleware/
 /server/horizon-docker/

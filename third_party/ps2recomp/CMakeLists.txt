@@ -19,6 +19,28 @@ option(PS2X_BUILD_ANALYZER "Build ps2xAnalyzer" ON)
 option(PS2X_BUILD_TEST "Build ps2xTest" ON)
 option(PS2X_BUILD_STUDIO "Build ps2xStudio" ON)
 
+# Sprint 9 Goal 2: the release configuration's link hygiene. OFF in the developer build (build.sh runtime,
+# scripts/build_linux.sh runtime), which must not change; ON only from `build.sh release` /
+# `scripts/build_linux.sh release`, in their own build trees. Declared here, before any add_subdirectory,
+# so raylib and every library in the tree are compiled into sections too.
+option(PS2X_RELEASE_LINK "Release link hygiene: function/data sections, --gc-sections, --as-needed on ELF" OFF)
+set(PS2X_LINK_ICF "" CACHE STRING "Identical-code folding at link: empty (off), safe or all")
+if(PS2X_RELEASE_LINK AND NOT MSVC)
+    add_compile_options(-ffunction-sections -fdata-sections)
+    add_link_options(-Wl,--gc-sections)
+    if(UNIX AND NOT APPLE)
+        # Link only what is called: the runner names libavformat and libswresample (pkg_check_modules) and
+        # calls neither, and without this both become DT_NEEDED and drag their closure into the tarball's lib/.
+        add_link_options(-Wl,--as-needed)
+    endif()
+endif()
+if(PS2X_LINK_ICF AND NOT MSVC)
+    if(UNIX AND NOT APPLE)
+        add_link_options(-fuse-ld=lld)      # GNU ld has no --icf
+    endif()
+    add_link_options(-Wl,--icf=${PS2X_LINK_ICF})
+endif()
+
 if(ANDROID)
     message(STATUS "Android target detected, building runtime only")
     set(PS2X_BUILD_RECOMP OFF)
