@@ -92,9 +92,76 @@ pages, break the cost down per call, batch the tiles. Bar: the login screen at 6
 As drafted from Task 9c's spike: Enumerate answers one device when `PS2X_MIC_DEVICE` is set, Open succeeds, Read serves
 HostMic's ring; a WAV of what the game read is the proof; then the owner's "can you hear me" on two machines.
 
-### Goals 4-8 — audio residuals, window policy, bare-run robustness, knob retirement, the rest
+### Goals 4-8 — audio residuals, window policy, bare-run robustness, knob retirement, the rest (Goal 9 follows them in number only; it runs as soon as Goal 1 merges)
 
 As drafted in `docs/CURRENT_SPRINT.md`'s Sprint 8 block (items 3-8), in that order, after Goals 1-3.
+
+### Goal 9 — the launcher, redesigned (owner request 2026-09-19; autonomous, the owner judges the look)
+
+The owner's words: "A full UI revamp of the launcher to give it a socom-inspired appearance but with modern ui
+sensibilities and prioritizing usability and appearance. A full controller render would be cool if such a thing exists."
+
+**What it is today.** One 680-line `main.cpp` of hand-rolled immediate-mode widgets in raylib's default bitmap font on a
+flat grey ground: six stacked panels (Disc, Video, Controller, Microphone, Online, Launch) in a 960 px column that
+scrolls on a short display. Everything works and is tested at the config layer; none of it looks like anything.
+
+**The reference.** SOCOM II's own front end (the owner's screenshot of SOCOM II ONLINE is the touchstone): a near-black
+teal ground with a faint grid and a ghosted photograph behind it; a gold, condensed, italic stencil headline; a left
+rail of stacked slab buttons in dim teal with pale stencil labels, the selected one brighter with a gold label; a
+content pane of table rows under a header band; a green status lamp top right; a bottom bar with the player's name at
+the left and glyph-plus-verb prompts at the right (BACK, SELECT).
+
+**The design.**
+- *Layout*: a 1100x700 window, resizable, scaled by one factor from the window height (and DPI), minimum 800x520. Header
+  band (the wordmark "SOCOM II" in gold with "UNZIPPED" small beneath, the status lamp and its one-line state at the
+  right). Left rail, 220 px: PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, ABOUT. Content pane to the right:
+  one page at a time, no scrolling in the common case. Bottom bar: the profile name at the left, context prompts in the
+  middle (the keys or pad buttons that act on the focused control), LAUNCH at the right, always visible, disabled with a
+  reason when the disc is not verified.
+- *PLAY page* (the landing page): the disc verdict, the server in use, the pad in use, the video mode, each as a row
+  with a CHANGE affordance that jumps to its page; the last run's exit line; a large LAUNCH. A stranger's whole path is
+  this page plus DISC once.
+- *Theme*: palette constants in one header (ground #0B1416, panel #12262A, panel-hi #1B3A40, line #2C5158, text #C9D6D2,
+  dim #7D918D, gold #C9A24A, gold-hi #E8C76A, lamp-green #3BE06A, warn #E0A030, bad #D0503A); 2 px lines, no rounded
+  corners beyond 2 px, a 1 px inner highlight on the focused control, a subtle 32 px grid and a vignette drawn
+  procedurally (no photograph: nothing from the game's disc ships in the launcher). Motion: 120 ms eased transitions on
+  focus and page change, nothing else moves.
+- *Type*: two open-licensed (SIL OFL) families embedded in the exe as byte arrays so the portable folder stays
+  self-contained: a condensed stencil or military display face for the wordmark and rail (first choice Saira Stencil
+  One; fallback Black Ops One), and a clean condensed sans for everything else (first choice Rajdhani; fallback Saira
+  Condensed). Their OFL texts go into LICENSES/. Loaded at 2x and drawn with bilinear filtering so they stay sharp under
+  the scale factor.
+- *Input*: every control reachable by mouse, by keyboard (arrows or tab to move, enter or space to act, escape to go
+  back to the rail) and by gamepad (d-pad or left stick to move, the bottom face button to act, the right one to go
+  back, the shoulders to change page, START to launch). One focus model drives all three; the bottom bar's prompts show
+  the glyphs of whichever device was used last.
+- *The controller page*: a procedurally drawn pad, front view, about 520 px wide: the body silhouette from arcs and
+  rounded rectangles, the d-pad, four face buttons, two sticks that move with the axes inside their wells (the dead zone
+  drawn as a ring that the slider resizes live), two shoulder buttons and two triggers drawn above the body as bars that
+  fill with the analog value, START/SELECT, stick clicks; every element lights gold while pressed. The face glyphs follow
+  the detected pad's family (A/B/X/Y for XInput-style names, the PlayStation shapes otherwise), since the owner plays on
+  an Xbox pad and the game prompts with PlayStation shapes; a small legend maps one to the other. Beside it: the pad
+  picker (the connected pads by name), the dead-zone slider, mouse-look and its sensitivity. With no pad connected the
+  drawing is dim with "connect a controller" across it.
+- *Code shape*: `main.cpp` shrinks to the loop; new `src/ui/` files: `theme.h` (palette, metrics, scale), `fonts.cpp`
+  (the embedded faces), `widgets.cpp/.h` (button, toggle, slider, radio row, text field, list row, all focus-aware),
+  `focus.cpp/.h` (the navigation model, pure), `pages_*.cpp` (one per page), `pad_render.cpp/.h` (the drawing, with a
+  pure geometry function the tests use), `glyphs.cpp/.h` (the prompt glyphs). The config layer, the process glue, the
+  microphone and the disc check are untouched.
+- *Proof without eyes*: a `--screenshot <dir>` mode renders every page once at 1100x700 and at 800x520 with a fixed fake
+  state (a verified disc, one pad named "Xbox Wireless Controller" with a few buttons held, a microphone at -18 dB) and
+  writes PNGs; the loop reads them, and HUMAN_TASKS carries them for the owner.
+
+**Bars.** Every existing launcher test still passes and `--selftest` prints the same environment. New tests: the focus
+model (from each control, each direction lands where the layout says; no control is unreachable; page change keeps the
+rail in step), the scale function (1100x700 gives 1.0, 800x520 clamps to the minimum, 2200x1400 gives 2.0), the pad
+geometry (every button's hit circle lies inside the body's bounds; the stick's drawn offset is the axis times the well's
+radius, zero inside the dead zone), the glyph family choice by pad name, the launch-disabled reason strings. The Linux CI
+job builds the new launcher. The screenshots exist for every page at both sizes and the controller page shows the held
+buttons lit. The owner's verdict on the look is a HUMAN_TASKS item, with the PNGs.
+
+**Stop rule.** If embedding the fonts fails on either platform (raylib's LoadFontFromMemory, the OFL download), ship the
+redesign on the default font scaled up rather than block it, and say so in KNOWN.
 
 ## 3. Budget and stop rules
 
