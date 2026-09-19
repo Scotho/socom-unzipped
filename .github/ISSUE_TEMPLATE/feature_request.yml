@@ -1,0 +1,26 @@
+name: Feature or change request
+description: Something the project should do, or do differently. Large changes start here, before a pull request.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem, from the player's or contributor's side
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: And how anyone would know it worked -- a test, a measurement, a screen.
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - label: This does not require shipping game code or game data
+          required: true
+        - label: This does not connect to a server the project does not run
+          required: true
