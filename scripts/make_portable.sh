@@ -49,7 +49,10 @@ case "$(uname -s)" in
       printf '  %s\n' $MISSING >&2
       exit 3
     fi
-    printf '%s\n' "$LDD_OUT" | python3 "$ROOT/scripts/portable_libs.py" > "$OUT/.libs.txt"
+    # The executables are the roots of the walk: a library is carried only when they reach it through
+    # libraries we carry ourselves (ldd's flat list also names what only a host library needs -- libXau).
+    printf '%s\n' "$LDD_OUT" | python3 "$ROOT/scripts/portable_libs.py" \
+      "$LDIST/socom2" "$LDIST/socom_unzipped_launcher" > "$OUT/.libs.txt"
     while read -r so; do
       [ -n "$so" ] || continue
       cp -L "$so" "$PKG/lib/"
