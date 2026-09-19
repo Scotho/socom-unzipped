@@ -2470,7 +2470,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `ps2xTest/src/diagnostics_tests.cpp`:
+- [x] **Step 1: RED.** Create `ps2xTest/src/diagnostics_tests.cpp`:
 
 ```cpp
 // Sprint 9 Goal 1: what the launcher's SAVE DIAGNOSTICS puts in its zip -- and what it must not.
@@ -2653,7 +2653,7 @@ void register_diagnostics_tests()
 
 Register it (`void register_diagnostics_tests();`, the call, `    src/diagnostics_tests.cpp`). Build. **Expected RED:** `fatal error: 'launcher/diagnostics.h' file not found`.
 
-- [ ] **Step 2: Write `ps2xShared/include/launcher/diagnostics.h`.**
+- [x] **Step 2: Write `ps2xShared/include/launcher/diagnostics.h`.**
 
 ```cpp
 #pragma once
@@ -2702,7 +2702,7 @@ namespace launcher::diagnostics
 }
 ```
 
-- [ ] **Step 3: Write `ps2xShared/src/diagnostics.cpp`** and add `    src/diagnostics.cpp` to `ps2x_shared`'s source list.
+- [x] **Step 3: Write `ps2xShared/src/diagnostics.cpp`** and add `    src/diagnostics.cpp` to `ps2x_shared`'s source list.
 
 ```cpp
 #include "launcher/diagnostics.h"
@@ -2851,9 +2851,9 @@ namespace launcher::diagnostics
 }
 ```
 
-- [ ] **Step 4: GREEN.** `PS2X_TEST_SUITE=Diagnostics ./ps2x_tests.exe` -> `Total Tests: 7`, `Failed: 0`.
+- [x] **Step 4: GREEN.** `PS2X_TEST_SUITE=Diagnostics ./ps2x_tests.exe` -> `Total Tests: 7`, `Failed: 0`.
 
-- [ ] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 30`), then commit.**
+- [x] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 30`), then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/launcher/diagnostics.h third_party/ps2recomp/ps2xShared/src/diagnostics.cpp third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp
