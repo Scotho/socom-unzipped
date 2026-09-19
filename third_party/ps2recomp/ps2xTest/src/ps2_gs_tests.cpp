@@ -12,6 +12,7 @@
 #include "runtime/gs/gs_gl_depth.h"
 #include "runtime/gs/gs_gl_caps.h"
 #include "runtime/gs/gs_gl_target_extent.h"
+#include "runtime/gs/gs_gl_upload_trace.h"
 #include "Stubs/Helpers/Support.h"
 #include "Stubs/GS.h"
 
@@ -5586,6 +5587,52 @@ void register_ps2_gs_tests()
             t.Equals(static_cast<int>(unknown.width), 1024, "an unknown target keeps the old full allocation");
             t.Equals(static_cast<int>(unknown.height), 1024, "an unknown target keeps the old full allocation");
             t.Equals(static_cast<int>(GsGlTarget::choose(10u, 100u).height), 128, "rows round up to 32");
+        });
+    });
+
+    // Sprint 8 Goal 2 Task 1: the per-call cost of a texture upload -- the size histogram, the
+    // five per-call terms and the distinct destinations, checked without a GL context.
+    MiniTest::Case("GsGlUploadTrace", [](TestCase &tc)
+    {
+        tc.Run("GsGlUploadTrace buckets a 16x16 1 KB tile apart from a full-page upload", [](TestCase &t)
+        {
+            t.Equals(GsGlUploadTrace::bucketFor(1024u), 0, "16x16 PSMCT32 = 1024 bytes is bucket 0");
+            t.Equals(GsGlUploadTrace::bucketFor(1u), 0, "a partial chunk still counts as the smallest bucket");
+            t.Equals(GsGlUploadTrace::bucketFor(1025u), 1, "just over 1 KB moves up one bucket");
+            t.Equals(GsGlUploadTrace::bucketFor(2048u), 1, "32x16 = 2 KB is bucket 1");
+            t.Equals(GsGlUploadTrace::bucketFor(8192u), 3, "8 KB is bucket 3");
+            t.Equals(GsGlUploadTrace::bucketFor(65536u), 6, "64 KB is bucket 6");
+            t.Equals(GsGlUploadTrace::bucketFor(65537u), 7, "anything larger lands in the last bucket");
+            t.Equals(std::string(GsGlUploadTrace::kBucketLabels[0]), std::string("1k"), "bucket 0 is labelled 1k");
+            t.Equals(std::string(GsGlUploadTrace::kBucketLabels[7]), std::string("big"), "the last bucket is labelled big");
+        });
+
+        tc.Run("GsGlUploadTrace reports microseconds per call and destinations per second", [](TestCase &t)
+        {
+            GsGlUploadTrace::Accum a;
+            for (int i = 0; i < 500; ++i)
+            {
+                GsGlUploadTrace::noteUpload(a, 1024u, 6.0, 2.0);   // 8 us of CPU per tile
+                GsGlUploadTrace::noteRecord(a, 2.0);
+                GsGlUploadTrace::noteGlUpload(a, 7u + static_cast<uint32_t>(i % 3), 1.0, 4.0);
+            }
+            t.Equals(static_cast<int>(a.uploads), 500, "500 uploads counted");
+            t.Equals(static_cast<int>(a.sizes[0]), 500, "all of them in the 1 KB bucket");
+            t.Equals(static_cast<int>(a.dstTextures.size()), 3, "three distinct destination textures");
+            const std::string line = GsGlUploadTrace::format(a, 1000.0);
+            t.IsTrue(line.find("[gs-upload]") == 0u, "the line is tagged [gs-upload]");
+            t.IsTrue(line.find("uploads=500/s") != std::string::npos, "uploads per second");
+            t.IsTrue(line.find("1k=500") != std::string::npos, "the histogram names the 1 KB bucket");
+            t.IsTrue(line.find("shadow=6.0") != std::string::npos, "6 us of shadow swizzle per upload");
+            t.IsTrue(line.find("mark=2.0") != std::string::npos, "2 us of page+rect marking per upload");
+            t.IsTrue(line.find("record=2.0") != std::string::npos, "2 us of record per upload");
+            t.IsTrue(line.find("convert=1.0") != std::string::npos, "1 us of CPU convert per GL upload call");
+            t.IsTrue(line.find("gl=4.0") != std::string::npos, "4 us of glTexSubImage2D per GL upload call");
+            t.IsTrue(line.find("dst_textures=3") != std::string::npos, "the destination count is on the line");
+            // Half a second of wall clock doubles every per-second figure and leaves the per-call ones alone.
+            const std::string half = GsGlUploadTrace::format(a, 500.0);
+            t.IsTrue(half.find("uploads=1000/s") != std::string::npos, "per-second figures scale with elapsed");
+            t.IsTrue(half.find("shadow=6.0") != std::string::npos, "per-call figures do not");
         });
     });
 }

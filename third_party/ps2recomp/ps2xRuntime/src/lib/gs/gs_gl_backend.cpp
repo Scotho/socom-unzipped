@@ -7,6 +7,7 @@
 #include "external/glad.h"
 #include "runtime/gs/gs_gl_depth.h"
 #include "runtime/gs/gs_gl_target_extent.h"
+#include "runtime/gs/gs_gl_upload_trace.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
 // at runtime through GLFW, which raylib links on desktop.
@@ -41,6 +42,35 @@ extern "C" void (*glfwGetProcAddress(const char *procname))(void);
 // ---------------------------------------------------------------------------------------------
 namespace
 {
+    // Sprint 8 Goal 2 Task 1 (PS2X_GS_UPLOAD_TRACE=1): the per-call cost of the tile upload path.
+    // The render thread is the accumulator's only writer; record()'s term is produced on the game
+    // thread and arrives through the atomic below, drained once per report by the formatter.
+    GsGlUploadTrace::Accum g_uploadTrace;
+    // The game thread writes this one; the render thread's formatter drains it. Relaxed is right:
+    // the line is a diagnostic, and a torn microsecond does not change a verdict.
+    std::atomic<double> g_recordUsGameThread{0.0};
+    inline void addRecordUs(double us)
+    {
+        double cur = g_recordUsGameThread.load(std::memory_order_relaxed);
+        while (!g_recordUsGameThread.compare_exchange_weak(cur, cur + us, std::memory_order_relaxed,
+                                                           std::memory_order_relaxed))
+        {
+        }
+    }
+    // Times GSGlBackend::record from before the queue mutex is taken to after it is released --
+    // destroyed after the lock_guard it is declared ahead of, so the contention is inside the
+    // measurement, and so is the early return past the pending cap.
+    struct RecordTimer
+    {
+        bool on = false;
+        std::chrono::steady_clock::time_point t0{};
+        ~RecordTimer()
+        {
+            if (on)
+                addRecordUs(std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count());
+        }
+    };
+
     constexpr uint32_t kMaxRtWidth = 1024u;
     constexpr uint32_t kRtHeight = 1024u;
     // Integer render scale (S3-c): every render target's GL colour texture is renderScale()
@@ -721,6 +751,12 @@ uint32_t GSGlBackend::pageSpan(uint32_t psm, uint32_t bufferWidth64, uint32_t he
 // ---------------------------------------------------------------------------------------------
 void GSGlBackend::record(Cmd &&cmd, const uint8_t *data, size_t size)
 {
+    // Sprint 8 Goal 2 Task 1: term (c) -- the queue-mutex push on the GAME thread, the one term of
+    // the tile path that is not on the render thread. Only Upload and BeginTransfer are timed:
+    // every tile costs one of each, and timing Submit would fold the draw stream into the answer.
+    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    const bool traceThis = s_uploadTrace && (cmd.type == CmdType::Upload || cmd.type == CmdType::BeginTransfer);
+    RecordTimer recordTimer{traceThis, traceThis ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{}};
     std::lock_guard<std::mutex> lock(m_queueMutex);
     // Task 1b: while the replay is latched stalled (the modal size-move loop a title-bar drag puts
     // the GL thread in) the pending buffer is bounded in bytes. Draw work (Submit, Clear) is dropped
@@ -1313,6 +1349,10 @@ long GSGlBackend::traceSkip(const char *env) const
 void GSGlBackend::executeCommands(CommandBuffer &buffer)
 {
     static const bool s_stats = std::getenv("PS2X_GS_STATS") != nullptr;
+    // Sprint 8 Goal 2 Task 1: PS2X_GS_UPLOAD_TRACE=1 -- the per-call breakdown of the tile upload
+    // path, on the same 60-call cadence as [gs-gl stats]. Read once; with it unset nothing below
+    // reads a clock or touches a counter.
+    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
     static double s_time[8] = {0};
     static uint64_t s_count[8] = {0};
     static uint64_t s_calls = 0;
@@ -1604,6 +1644,12 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                      m_backpressure.maxPendingFrames(), (unsigned long long)bp.frames, (unsigned long long)bp.waits, bp.waitMs,
                      (unsigned long long)bp.timeouts, (unsigned long long)bp.skipped, (unsigned long long)bp.unlatched, (unsigned long long)m_backpressure.pendingFrames(),
                      (unsigned long long)m_pendingCap.bytes(), (unsigned long long)m_pendingCap.droppedCommands(), (unsigned long long)m_pendingCap.droppedBytes());
+        if (s_uploadTrace)
+        {
+            g_uploadTrace.recordUs += g_recordUsGameThread.exchange(0.0);
+            std::fprintf(stderr, "%s\n", GsGlUploadTrace::format(g_uploadTrace, elapsed).c_str());
+            GsGlUploadTrace::reset(g_uploadTrace);
+        }
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
         s_bytes = 0;
     }
@@ -1826,11 +1872,21 @@ void GSGlBackend::executeTransfer(const GSTransferCommand &command)
 
 void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
 {
+    // Sprint 8 Goal 2 Task 1: term (a) of the tile path, split -- the CPU swizzle into shadow VRAM,
+    // and the page + rect marking. These two are the whole of the [gs-gl stats] upload= column.
+    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    double traceShadowUs = 0.0, traceMarkUs = 0.0;
+    const auto tShadow0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     m_shadow->UploadImage(data, static_cast<uint32_t>(size));
+    if (s_uploadTrace)
+        traceShadowUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tShadow0).count();
     const GSTransferCommand &t = m_currentTransfer;
     const uint32_t page = t.bitbltbuf.dbp >> 5;
     const uint32_t span = pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, t.trxpos.dsay + t.trxreg.rrh);
+    const auto tMark0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     markShadowPages(page, span);
+    if (s_uploadTrace)
+        traceMarkUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tMark0).count();
     if (tracePagesHit(page, span))
         std::fprintf(stderr, "[gs-pages] frame=%llu upload dbp=%05x dbw=%u psm=%02x dst=(%u,%u) %ux%u pages %03x+%u bytes=%zu\n",
                      (unsigned long long)m_frameCounter, t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.bitbltbuf.dpsm,
@@ -1840,7 +1896,10 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     if (m_uploadExpectedBytes != 0u && m_uploadReceivedBytes >= m_uploadExpectedBytes)
     {
         m_uploadReceivedBytes = 0u;
+        const auto tRects0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         refreshRenderTargetsFromShadow(page, span, t);
+        if (s_uploadTrace)
+            traceMarkUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRects0).count();
         // PS2X_GS_TRACE_PRESENT: after the last 16x16 block of a movie frame (dsax 624, dsay 208),
         // the first non-black row per 64-px page column of the frame area in the shadow VRAM.
         const long s_upSkip = traceSkip("PS2X_GS_TRACE_PRESENT");
@@ -1870,6 +1929,8 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
             std::fprintf(stderr, "%s\n", line);
         }
     }
+    if (s_uploadTrace)
+        GsGlUploadTrace::noteUpload(g_uploadTrace, size, traceShadowUs, traceMarkUs);
 }
 
 // A transfer wrote into pages a render target covers (video frames are uploaded straight into the
@@ -1878,6 +1939,9 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
 // into that target or the next present (refreshDirtyRows).
 void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCount, const GSTransferCommand &transfer)
 {
+    // Sprint 8 Goal 2 Task 1: how many exact rectangles a second there are to batch. Task 2's claim
+    // is that rects/s is large and gl_calls/s equals it today.
+    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
     for (RenderTarget &rt : m_renderTargets)
     {
         const uint32_t pagesPerRow = std::max<uint32_t>(1u, (rt.fbw * 64u + 63u) / 64u);
@@ -1910,6 +1974,8 @@ void GSGlBackend::refreshRenderTargetsFromShadow(uint32_t page, uint32_t pageCou
                 if (rt.dirtyRects.size() < 4096u)
                 {
                     rt.dirtyRects.push_back({x0, y0, x1, std::min<uint32_t>(y1, kRtHeight)});
+                    if (s_uploadTrace)
+                        GsGlUploadTrace::noteRect(g_uploadTrace);
                     exact = true;
                 }
             }
@@ -1948,6 +2014,10 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
 {
     if (!rt.dirtyRows)
         return;
+    // Sprint 8 Goal 2 Task 1: terms (a-convert) and (b). The two glTexSubImage2D sites of this file
+    // are both below, so this is the only place the GL half of a tile upload can be timed -- and
+    // its milliseconds are charged to clear=, submit= and present=, never to upload=.
+    static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
     // PS2X_GS_NO_DIRTY_REFRESH=1: A/B switch — drop the pending rows instead of re-reading them.
     static const bool s_noRefresh = std::getenv("PS2X_GS_NO_DIRTY_REFRESH") != nullptr;
     if (s_noRefresh)
@@ -1991,14 +2061,21 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     // pixels, so an upload DESTROYS sub-native detail in the rows it covers -- any region the game
     // re-uploads (the movie path re-uploads a full frame every frame) loses the Sx draw beneath it.
     const uint32_t uploadScale = renderScale();
-    auto uploadScaled = [&](const std::vector<uint32_t> &src, uint32_t sw, uint32_t sh, uint32_t dx, uint32_t dy)
+    auto uploadScaled = [&](const std::vector<uint32_t> &src, uint32_t sw, uint32_t sh, uint32_t dx, uint32_t dy, double convertUs)
     {
         if (uploadScale == 1u)
         {
+            const auto tGl0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
             glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(dx), static_cast<GLint>(dy),
                             static_cast<GLsizei>(sw), static_cast<GLsizei>(sh), GL_RGBA, GL_UNSIGNED_BYTE, src.data());
+            if (s_uploadTrace)
+                GsGlUploadTrace::noteGlUpload(g_uploadTrace, rt.color, convertUs,
+                                              std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tGl0).count());
             return;
         }
+        // The replication loop below is CPU work that happens to sit in this lambda: it belongs to
+        // convert, not to gl.
+        const auto tRep0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const size_t stride = static_cast<size_t>(sw) * uploadScale;
         std::vector<uint32_t> big(stride * sh * uploadScale);
         for (uint32_t y = 0; y < sh; ++y)
@@ -2013,9 +2090,15 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
             for (uint32_t sy = 1u; sy < uploadScale; ++sy)
                 std::memcpy(row0 + static_cast<size_t>(sy) * stride, row0, stride * sizeof(uint32_t));
         }
+        if (s_uploadTrace)
+            convertUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRep0).count();
+        const auto tGl0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         glTexSubImage2D(GL_TEXTURE_2D, 0, static_cast<GLint>(dx * uploadScale), static_cast<GLint>(dy * uploadScale),
                         static_cast<GLsizei>(sw * uploadScale), static_cast<GLsizei>(sh * uploadScale),
                         GL_RGBA, GL_UNSIGNED_BYTE, big.data());
+        if (s_uploadTrace)
+            GsGlUploadTrace::noteGlUpload(g_uploadTrace, rt.color, convertUs,
+                                          std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tGl0).count());
     };
     auto convert = [&](uint32_t p) -> uint32_t
     {
@@ -2032,11 +2115,15 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
         const uint32_t y0 = r.y0, y1 = std::min<uint32_t>(r.y1, rt.nativeHeight);
         if (x1 <= x0 || y1 <= y0)
             continue;
+        const auto tConv0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         std::vector<uint32_t> px(static_cast<size_t>(x1 - x0) * (y1 - y0));
         for (uint32_t y = y0; y < y1; ++y)
             for (uint32_t x = x0; x < x1; ++x)
                 px[static_cast<size_t>(y - y0) * (x1 - x0) + (x - x0)] = convert(readVramRaw(m_shadowMemory.data(), rt.psm, base, rt.fbw, x, y));
-        uploadScaled(px, x1 - x0, y1 - y0, x0, y0);
+        const double convertUs = s_uploadTrace
+                                     ? std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tConv0).count()
+                                     : 0.0;
+        uploadScaled(px, x1 - x0, y1 - y0, x0, y0, convertUs);
         rt.usedHeight = std::max(rt.usedHeight, y1);
     }
     // Re-read each run of dirty 32-row bands on its own; bands nobody uploaded into keep the
@@ -2063,6 +2150,7 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
                 std::fprintf(stderr, "[gs-pages] frame=%llu refresh shadow->gpu rt fbp=%03x rows %u..%u pages %03x+%u\n",
                              (unsigned long long)m_frameCounter, rt.fbp, y0, y1, p0, p1 - p0);
         }
+        const auto tBand0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         std::vector<uint32_t> pixels(static_cast<size_t>(w) * (y1 - y0));
         for (uint32_t y = y0; y < y1; ++y)
             for (uint32_t x = 0; x < w; ++x)
@@ -2074,7 +2162,10 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
                     p |= 0x80000000u;
                 pixels[static_cast<size_t>(y - y0) * w + x] = p;
             }
-        uploadScaled(pixels, w, y1 - y0, 0u, y0);
+        const double bandConvertUs = s_uploadTrace
+                                         ? std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tBand0).count()
+                                         : 0.0;
+        uploadScaled(pixels, w, y1 - y0, 0u, y0, bandConvertUs);
         rt.usedHeight = std::max(rt.usedHeight, y1);
     }
 }
