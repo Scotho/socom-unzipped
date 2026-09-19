@@ -55,6 +55,25 @@ the tree as it is then.
   notices (SOCOM, Sony, Zipper, PlayStation); credits for the community work this stands on.
 - Bar: a test that fails when a DLL or vendored directory ships without an inventory row.
 
+### Goal 6 — the progress story (owner, 2026-09-20)
+- A linear, readable timeline of the project from the first commit (2026-09-02) to the release: the first render,
+  then each improvement and milestone in order -- the first menu, the first mission, sound, the first online
+  login, the first lobby, the first kill between two instances, the water and terrain fixes, the launcher, Linux,
+  memory cards, the hosted server, the redesign, voice -- told as a story a player enjoys, with the complicated
+  details buried (a one-line "how" per entry at most, each linking to the commit or research note for the curious).
+- Sources, read by a script and not by memory: this repository's commit history (677 commits at the time of the
+  request) and the read-only monitor project at `../socom_monitor`, which indexes every run under `logs/parity/`
+  and `logs/parity/gate/` with verdicts, contact sheets and A/B screenshots. The script proposes the timeline's
+  candidate entries (first passing gate, first ladder kill, score jumps, new stages) with the screenshot that shows
+  each; the editorial pass chooses and writes. Every dated claim carries its commit or run id, so the story is
+  checkable, and a test fails if an entry cites something that does not exist.
+- One picture per milestone where a run captured one (before/after pairs for the visual fixes), checked against
+  Goal 1's rule that no disc-derived asset ships beyond what fair illustration of our own output needs -- the
+  owner decides that line.
+- Delivered as a page on the landing site (Goal 3) and a `docs/STORY.md` linked from the README (Goal 2).
+- Bar: the owner reads it start to finish and it is fun; a stranger can tell what happened and in what order
+  without knowing what a GS or an IOP is.
+
 ## Owner-gated
 The project's licence; what of the development record is published; the landing page's deploy; signing; the
 wording about the community server.
