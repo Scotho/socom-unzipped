@@ -118,7 +118,13 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   Task 9c's `docs/KNOWN.md` section 2 row scopes.
 
 - [ ] **Mission music after the fade fix, and the save prompt** (2026-09-19; your reports: "the music issue re-occurred in the
-  mission" and "it said no memory card was inserted"). Missions are meant to have music -- 210 short stereo cues the game
+  mission" and "it said no memory card was inserted"). **The music half is ANSWERED, 2026-09-20, and the answer is no:**
+  you played the first mission and heard the music "getting louder and quieter and jumping between different tracks...
+  glitched between different samples", between menus too and once on entering a lobby. The fade fix was not it. That
+  report opened **Sprint 9 Goal 10**, which builds the measurement that can see it (an envelope score and a splice
+  detector that need no reference, plus a trace of what the game asked the mixer for) before it touches the code, and
+  fixes it in the shared path rather than per segment. Nothing to do here until that goal asks you to listen again --
+  **the save-prompt half below is still open and still worth one line.** Missions are meant to have music -- 210 short stereo cues the game
   fires adaptively -- and our decoding of them measures sample-exact. What was wrong is the FADE: the game fades a cue out over
   1.5-2 s and ours cut it dead, so cue changes sounded like splices. Fixed under tests (54d77a2); a menu stream's first
   fraction of a second is no longer thrown away either. Play the same mission (M51) with the pad, through the in-game
