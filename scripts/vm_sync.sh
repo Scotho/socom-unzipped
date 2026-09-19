@@ -16,7 +16,12 @@ case "${1:-tree}" in
         --exclude=./vm --exclude=./logs --exclude=./dist --exclude=./dist-linux --exclude=./recomp/output \
         --exclude=./tools/llvm-mingw --exclude=./tools/cmake --exclude=./tools/ninja --exclude=./tools/pcsx2 \
         --exclude=./server --exclude=./research --exclude=./node_modules --exclude='*.wav' --exclude='*.iso' \
-        -czf - . | $SSH 'tar -xzf - -C ~/socom_pc' && echo "tree synced" ;;
+        -czf - . | $SSH 'tar -xzf - -C ~/socom_pc' && echo "tree synced" &&
+    # Sprint 9: the untar never deleted, so a `git mv` left the old file in the guest (a stale header shadowed
+    # the moved one and broke the VM build). Prune what the host no longer has, under the source roots only.
+    $SSH 'cd ~/socom_pc && find third_party/ps2recomp/ps2xLauncher third_party/ps2recomp/ps2xShared third_party/ps2recomp/ps2xRuntime third_party/ps2recomp/ps2xTest third_party/ps2recomp/ps2xIOP tools_py scripts src -type f 2>/dev/null' \
+      | python -m tools_py.vm_prune "$ROOT" > "$ROOT/vm/.prune_list" &&
+    { [ ! -s "$ROOT/vm/.prune_list" ] || { tr '\n' '\0' < "$ROOT/vm/.prune_list" | $SSH 'cd ~/socom_pc && xargs -0 rm -f --' && echo "pruned $(wc -l < "$ROOT/vm/.prune_list") stale guest files"; }; } ;;
   generated)
     $SSH 'mkdir -p ~/socom_pc/recomp/output' &&
     tar -C recomp -czf - output | $SSH 'tar -xzf - -C ~/socom_pc/recomp' && $SSH 'ls ~/socom_pc/recomp/output | wc -l' ;;
