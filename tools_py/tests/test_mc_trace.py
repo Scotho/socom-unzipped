@@ -88,12 +88,34 @@ class Sequence(unittest.TestCase):
 
     def test_a_positive_result_prints_as_a_value(self):
         self.assertEqual(mc_trace.result_name(964), "ok:964")
-        self.assertEqual(mc_trace.result_name(-5), "NO-FORMAT")
+        self.assertEqual(mc_trace.result_name(-5), "DENIED")
 
     def test_write_ops_drop_the_getinfo_polling(self):
         self.assertEqual([e["name"] for e in mc_trace.write_ops(mc_trace.parse_log(SAVE_LOG))],
                          ["Mkdir", "Chdir", "Open", "Write", "Close", "Delete", "Open", "Write",
                           "Close"])
+
+
+class ResultNames(unittest.TestCase):
+    """The negative codes MemoryCard.cpp actually returns, read off its own kMcResult* constants
+    (ps2xRuntime/src/lib/Kernel/Stubs/MemoryCard.cpp:27-33): -1 ChangedCard, -2 NoFormat,
+    -4 NoEntry, -5 DeniedPermit, -6 NotEmpty, -7 UpLimitHandle. -3 is not defined there and the
+    stub never returns it, so it is reported as the raw code rather than guessed."""
+
+    def test_minus_three_is_not_a_code_this_runtime_returns(self):
+        self.assertEqual(mc_trace.result_name(-3), "-3")
+
+    def test_minus_four_is_no_entry(self):
+        self.assertEqual(mc_trace.result_name(-4), "NO-ENTRY")
+
+    def test_minus_five_is_denied_permit_not_no_format(self):
+        self.assertEqual(mc_trace.result_name(-5), "DENIED")
+
+    def test_minus_six_is_not_empty(self):
+        self.assertEqual(mc_trace.result_name(-6), "NOT-EMPTY")
+
+    def test_minus_seven_is_the_handle_limit(self):
+        self.assertEqual(mc_trace.result_name(-7), "HANDLE-LIMIT")
 
 
 if __name__ == "__main__":

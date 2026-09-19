@@ -110,7 +110,14 @@ bool micWavRead(const std::string &path, std::vector<int16_t> &samples, MicForma
                 return fail("a data chunk before its fmt chunk");
             // 0 and 0xFFFFFFFF both mean "not known": read every byte that is actually there.
             const bool unknown = size == 0u || size == 0xFFFFFFFFu;
-            size_t remaining = unknown ? static_cast<size_t>(-1) : static_cast<size_t>(size);
+            // Sprint 8 review MUST FIX: `remaining` is counted in SAMPLES, because that is what the loop
+            // below compares it against and decrements it by. It used to be set to the chunk size in
+            // BYTES, so the loop read twice the data chunk and carried straight on into whatever chunk
+            // followed -- a WAV with a trailing LIST chunk had its metadata decoded as audio. The format
+            // handling above has already refused anything but 16-bit PCM, so a sample is two bytes.
+            const size_t kBytesPerSample = 2u;
+            size_t remaining = unknown ? static_cast<size_t>(-1)
+                                       : static_cast<size_t>(size) / kBytesPerSample;
             int16_t block[1024];
             while (remaining != 0u)
             {
@@ -336,6 +343,16 @@ size_t HostMic::read(int16_t *out, size_t frames)
     if (!m_impl)
         return 0;
     return m_impl->sink.ring.read(out, frames);
+}
+
+// Only the game's ring is drained. The PS2X_MIC_DUMP tee is a SECOND ring with its own consumer and its
+// own file (the tee of Task 1 Step 6): draining it here would punch a hole in the dump every time the
+// game started recording, which is the one thing that file exists to rule out.
+size_t HostMic::discardPending()
+{
+    if (!m_impl)
+        return 0u;
+    return m_impl->sink.ring.clear();
 }
 
 void HostMic::startDumpTee(const std::string &pattern)

@@ -55,6 +55,24 @@ public:
         return take;
     }
 
+    // Sprint 8 review MUST FIX: drop every frame that is waiting to be read, and say how many that was.
+    // Capture runs from boot, so a game that has just asked to record would otherwise be handed the
+    // second of audio captured BEFORE it asked -- which is the ~1 s lateness heard on the voice path.
+    //
+    // CONSUMER SIDE ONLY. This ring is single-producer/single-consumer and lock-free: the capture
+    // callback owns m_write and this side owns m_read, and that is the whole of its synchronisation.
+    // So the drain advances m_read to wherever m_write has reached and never touches m_write. A frame
+    // the callback writes while this runs is simply not discarded, which is correct -- it is live audio.
+    size_t clear()
+    {
+        const size_t cap = m_buf.size();
+        const size_t r = m_read.load(std::memory_order_relaxed);
+        const size_t w = m_write.load(std::memory_order_acquire);
+        const size_t discarded = (w + cap - r) % cap;
+        m_read.store(w, std::memory_order_release);
+        return discarded;
+    }
+
     size_t available() const
     {
         const size_t cap = m_buf.size();
@@ -87,6 +105,10 @@ public:
     // kSampleRate, then fed in at real time; running() and read() are the device's, byte for byte.
     bool startFromFile(const std::string &wavPath);
     size_t read(int16_t *out, size_t frames);
+    // Drop whatever the capture ring is holding but nobody has read: what lgAudOpen and
+    // lgAudStartRecording do, so the game's first Read is live audio and not the second that was
+    // captured before it asked. Safe with no device: there is no ring to drain then.
+    size_t discardPending();
     // PS2X_MIC_DUMP, Sprint 8 Goal 3 Task 1 Step 6: a TEE off the capture callback into a ring of its own, so
     // the dump and the game are not two consumers splitting one ring between them. Same knob, new mechanism.
     void startDumpTee(const std::string &pattern);
