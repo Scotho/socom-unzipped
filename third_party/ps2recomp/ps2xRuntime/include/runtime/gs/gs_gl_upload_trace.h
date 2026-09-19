@@ -56,6 +56,33 @@ namespace GsGlUploadTrace
         // Distinct destination texture objects touched in the interval. Bounded: a menu screen has
         // a handful of render targets, and an unbounded set would be the trace's own hot spot.
         std::vector<uint32_t> dstTextures;
+
+        // --- Sprint 8 Goal 2b Task 1: the transfer= column, split ---
+        // transfer= is NOT what executeTransfer does. executeCommands takes its per-command clock at
+        // gs_gl_backend.cpp:1402, BEFORE the dispatch switch, and the CmdType::BeginTransfer case at
+        // :1535-1538 is two statements -- flushBatch() and then executeTransfer(). Both land in the
+        // bucket. executeTransfer's own body moves no pixels for a host->local transfer, which is
+        // what a menu upload is (gs_cpu_backend.cpp:1441-1456), so the milliseconds are the draw
+        // batch the transfer interrupted: flushBatch (:3572) -> setupDrawState (:3389) ->
+        // refreshDirtyRows (:3393) and resolveTexture (:3125).
+        uint64_t transfers = 0;             // CmdType::BeginTransfer commands replayed
+        uint64_t transfersByDir[4] = {0, 0, 0, 0};   // 0 host->local, 1 local->host, 2 local->local, 3 other
+        double flushUs = 0.0;               // the flushBatch() half of the transfer= bucket
+        double transferBodyUs = 0.0;        // the executeTransfer() half
+        double dirtyRowsUs = 0.0;           // refreshDirtyRows, inside the flush
+        double decodeUs = 0.0;              // resolveTexture + decodeTexture, inside the flush
+        double drawUs = 0.0;                // everything left in setupDrawState + the draw call
+        uint64_t flushesEmpty = 0;          // flushBatch had nothing to draw
+        uint64_t flushesReal = 0;           // ... and how many actually drew
+        uint64_t decodes = 0;               // decodeTexture calls (:3105-3122)
+        uint64_t cacheInvalidations = 0;    // ... of which threw away a live cache entry (:3209-3222)
+        uint64_t uploadsWhole = 0;          // R119's population split: the whole transfer in one call
+        uint64_t uploadsChunked = 0;        // ... against one chunk of several
+        uint64_t uploadsIdentical = 0;      // the same bytes as the last upload to that rectangle
+        // R123: a cached texture whose generation moved but whose source bytes did not, handed
+        // back instead of deleted and re-decoded, and what the re-hash cost.
+        uint64_t revalidated = 0;
+        double revalidateUs = 0.0;
     };
 
     inline void noteDst(Accum &a, uint32_t texture)
@@ -87,6 +114,50 @@ namespace GsGlUploadTrace
         noteDst(a, texture);
     }
 
+    inline void noteTransfer(Accum &a, uint32_t direction, double flushUs, double bodyUs)
+    {
+        ++a.transfers;
+        ++a.transfersByDir[direction < 3u ? direction : 3u];
+        a.flushUs += flushUs;
+        a.transferBodyUs += bodyUs;
+    }
+
+    inline void noteFlushPhases(Accum &a, double dirtyRowsUs, double decodeUs, double drawUs, bool empty)
+    {
+        if (empty)
+        {
+            ++a.flushesEmpty;
+            return;
+        }
+        ++a.flushesReal;
+        a.dirtyRowsUs += dirtyRowsUs;
+        a.decodeUs += decodeUs;
+        a.drawUs += drawUs;
+    }
+
+    inline void noteDecode(Accum &a, bool wasInvalidation)
+    {
+        ++a.decodes;
+        if (wasInvalidation)
+            ++a.cacheInvalidations;
+    }
+
+    inline void noteUploadShape(Accum &a, bool whole, bool identical)
+    {
+        if (whole)
+            ++a.uploadsWhole;
+        else
+            ++a.uploadsChunked;
+        if (identical)
+            ++a.uploadsIdentical;
+    }
+
+    inline void noteRevalidate(Accum &a, double us)
+    {
+        ++a.revalidated;
+        a.revalidateUs += us;
+    }
+
     inline void reset(Accum &a) { a = Accum{}; }
 
     // One line: every count per second, every per-call figure in microseconds to one decimal.
@@ -104,9 +175,41 @@ namespace GsGlUploadTrace
             if (a.sizes[b])
                 n += std::snprintf(buf + n, sizeof(buf) - n, " %s=%llu", kBucketLabels[b], (unsigned long long)a.sizes[b]);
         std::snprintf(buf + n, sizeof(buf) - n,
-                      " us/upload: shadow=%.1f mark=%.1f record=%.1f us/gl_call: convert=%.1f gl=%.1f dst_textures=%zu",
+                      " us/upload: shadow=%.1f mark=%.1f record=%.1f us/gl_call: convert=%.1f gl=%.1f dst_textures=%zu"
+                      " revalidated=%.0f/s revalidate_us=%.1f",
                       per(a.shadowUs, a.uploads), per(a.markUs, a.uploads), per(a.recordUs, a.uploads),
-                      per(a.convertUs, a.glCalls), per(a.glUs, a.glCalls), a.dstTextures.size());
+                      per(a.convertUs, a.glCalls), per(a.glUs, a.glCalls), a.dstTextures.size(),
+                      static_cast<double>(a.revalidated) * perSec, per(a.revalidateUs, a.revalidated));
+        return std::string(buf);
+    }
+
+    // The second line, tagged [gs-transfer]: the transfer= column split by phase and by direction,
+    // the texture-cache churn the generation bump causes, and the upload population's shape. Kept
+    // apart from format() above so the [gs-upload] line's shape -- parsed by eye and by grep in a
+    // dozen places (R107) -- does not change. Phase terms are MILLISECONDS PER SECOND, the unit the
+    // [gs-gl stats] transfer= column is already read in; counts are per second or raw totals.
+    inline std::string formatTransfer(const Accum &a, double elapsedMs)
+    {
+        const double perSec = elapsedMs > 0.0 ? 1000.0 / elapsedMs : 0.0;
+        auto ms = [&](double us) { return us * perSec / 1000.0; };
+        char buf[768];
+        int n = std::snprintf(buf, sizeof(buf),
+                              "[gs-transfer] elapsed=%.0fms transfers=%.0f/s dir0=%llu dir1=%llu dir2=%llu dir3=%llu"
+                              " flush=%.1fms/s body=%.1fms/s dirty_rows=%.1fms/s decode=%.1fms/s draw=%.1fms/s"
+                              " flush_empty=%llu flush_real=%llu decodes=%.0f/s invalidations=%.0f/s",
+                              elapsedMs, static_cast<double>(a.transfers) * perSec,
+                              (unsigned long long)a.transfersByDir[0], (unsigned long long)a.transfersByDir[1],
+                              (unsigned long long)a.transfersByDir[2], (unsigned long long)a.transfersByDir[3],
+                              ms(a.flushUs), ms(a.transferBodyUs), ms(a.dirtyRowsUs), ms(a.decodeUs), ms(a.drawUs),
+                              (unsigned long long)a.flushesEmpty, (unsigned long long)a.flushesReal,
+                              static_cast<double>(a.decodes) * perSec,
+                              static_cast<double>(a.cacheInvalidations) * perSec);
+        if (n < 0 || n >= static_cast<int>(sizeof(buf)))
+            n = static_cast<int>(sizeof(buf)) - 1;
+        std::snprintf(buf + n, sizeof(buf) - static_cast<size_t>(n),
+                      " whole=%llu chunked=%llu identical=%llu",
+                      (unsigned long long)a.uploadsWhole, (unsigned long long)a.uploadsChunked,
+                      (unsigned long long)a.uploadsIdentical);
         return std::string(buf);
     }
 }

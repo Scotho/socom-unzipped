@@ -8,6 +8,8 @@
 #include "runtime/gs/gs_gl_depth.h"
 #include "runtime/gs/gs_gl_target_extent.h"
 #include "runtime/gs/gs_gl_upload_trace.h"
+#include "runtime/gs/gs_gl_upload_identity.h"
+#include "runtime/gs/gs_gl_texture_identity.h"
 
 // raylib's glad stops short of GL 4.5, so glClipControl (GL 4.5 / ARB_clip_control) is looked up
 // at runtime through GLFW, which raylib links on desktop.
@@ -46,6 +48,14 @@ namespace
     // The render thread is the accumulator's only writer; record()'s term is produced on the game
     // thread and arrives through the atomic below, drained once per report by the formatter.
     GsGlUploadTrace::Accum g_uploadTrace;
+    // Sprint 8 Goal 2b Task 1: the flush half of the transfer= bucket, split by phase. ARMED ONLY
+    // around the flushBatch() the CmdType::BeginTransfer case runs (:1535-1538): flushBatch is
+    // called from a dozen other command cases and only the transfer one is billed to transfer=, so
+    // arming it there is what makes dirty_rows + decode + draw add up to flush.
+    thread_local bool g_flushPhasesArmed = false;
+    thread_local bool g_flushHadBatch = false;
+    thread_local double g_flushDirtyRowsUs = 0.0;
+    thread_local double g_flushDecodeUs = 0.0;
     // The game thread writes this one; the render thread's formatter drains it. Relaxed is right:
     // the line is a diagnostic, and a torn microsecond does not change a verdict.
     std::atomic<double> g_recordUsGameThread{0.0};
@@ -688,6 +698,7 @@ void GSGlBackend::Initialize(uint8_t *vram, uint32_t vramSize)
     m_shadow->Initialize(m_shadowMemory.data(), vramSize);
     m_gpuDirtyPages.fill(0u);
     m_shadowPageGeneration.fill(0u);
+    m_uploadIdentity.clear();
     std::fprintf(stderr, "[gs-gl] OpenGL backend active (PS2X_GS_BACKEND=cpu for the rasterizer)\n");
     // The CPU backend (PS2X_GS_BACKEND=cpu, used by the unit tests and vu1_replay) ignores
     // PS2X_GS_SCALE and always rasterises at 1x; this banner only ever prints from the GL path.
@@ -1534,9 +1545,35 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
             break;
         }
         case CmdType::BeginTransfer:
+        {
+            // Sprint 8 Goal 2b Task 1: transfer= is these TWO statements, because the per-command
+            // clock is taken at :1402 before this switch. executeTransfer's body moves no pixels
+            // for a host->local transfer (gs_cpu_backend.cpp:1441-1456), so the milliseconds are
+            // the draw batch this transfer interrupted. Split them.
+            if (s_uploadTrace)
+            {
+                g_flushDirtyRowsUs = 0.0;
+                g_flushDecodeUs = 0.0;
+                g_flushHadBatch = false;
+                g_flushPhasesArmed = true;
+            }
+            const auto tFlush0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
             flushBatch();
+            const auto tFlush1 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
             executeTransfer(cmd.transfer);
+            if (s_uploadTrace)
+            {
+                const auto tBody1 = std::chrono::steady_clock::now();
+                g_flushPhasesArmed = false;
+                const double flushUs = std::chrono::duration<double, std::micro>(tFlush1 - tFlush0).count();
+                const double bodyUs = std::chrono::duration<double, std::micro>(tBody1 - tFlush1).count();
+                GsGlUploadTrace::noteTransfer(g_uploadTrace, cmd.transfer.direction, flushUs, bodyUs);
+                const double restUs = flushUs - g_flushDirtyRowsUs - g_flushDecodeUs;
+                GsGlUploadTrace::noteFlushPhases(g_uploadTrace, g_flushDirtyRowsUs, g_flushDecodeUs,
+                                                 restUs > 0.0 ? restUs : 0.0, !g_flushHadBatch);
+            }
             break;
+        }
         case CmdType::Upload:
             flushBatch();
             executeUpload(buffer.data.data() + cmd.dataOffset, cmd.dataSize);
@@ -1608,6 +1645,7 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
                 glDeleteTextures(1, &dt.texture);
             m_depthTargets.clear();
             m_shadow->Reset();
+            m_uploadIdentity.clear();
             m_presentTexture = 0u;
             break;
         }
@@ -1648,6 +1686,9 @@ void GSGlBackend::executeCommands(CommandBuffer &buffer)
         {
             g_uploadTrace.recordUs += g_recordUsGameThread.exchange(0.0);
             std::fprintf(stderr, "%s\n", GsGlUploadTrace::format(g_uploadTrace, elapsed).c_str());
+            // Sprint 8 Goal 2b Task 1: the second line, same knob and same 60-call cadence, printed
+            // before the reset so both lines describe the same interval.
+            std::fprintf(stderr, "%s\n", GsGlUploadTrace::formatTransfer(g_uploadTrace, elapsed).c_str());
             GsGlUploadTrace::reset(g_uploadTrace);
         }
         for (int i = 0; i < 8; ++i) { s_time[i] = 0; s_count[i] = 0; }
@@ -1875,14 +1916,30 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
     // Sprint 8 Goal 2 Task 1: term (a) of the tile path, split -- the CPU swizzle into shadow VRAM,
     // and the page + rect marking. These two are the whole of the [gs-gl stats] upload= column.
     static const bool s_uploadTrace = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
+    const GSTransferCommand &t = m_currentTransfer;
+    const uint32_t page = t.bitbltbuf.dbp >> 5;
+    const uint32_t span = pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, t.trxpos.dsay + t.trxreg.rrh);
+    // R119 kept as the population split the [gs-transfer] line reports: a rectangle split across
+    // several IMAGE GIF tags (gs_frontend.cpp:938-943) arrives as several calls.
+    const bool wholeTransfer = (m_uploadReceivedBytes == 0u && m_uploadExpectedBytes != 0u &&
+                                static_cast<uint64_t>(size) == m_uploadExpectedBytes);
+    // Task 1's identical= counter, and nothing else: computed only with the trace on, so the
+    // production upload path is exactly what it was before this goal touched it.
+    bool identicalBytes = false;
+    if (s_uploadTrace)
+    {
+        const GsGlUploadIdentity::Key identityKey{t.bitbltbuf.dbp, t.bitbltbuf.dbw, t.trxpos.dsax,
+                                                  t.trxpos.dsay, t.trxreg.rrw, t.trxreg.rrh, t.bitbltbuf.dpsm};
+        const uint64_t identityHash = GsGlUploadIdentity::hash64(data, size);
+        identicalBytes = m_uploadIdentity.matches(identityKey, identityHash, size);
+        if (wholeTransfer)
+            m_uploadIdentity.store(identityKey, identityHash, size);
+    }
     double traceShadowUs = 0.0, traceMarkUs = 0.0;
     const auto tShadow0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     m_shadow->UploadImage(data, static_cast<uint32_t>(size));
     if (s_uploadTrace)
         traceShadowUs = std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tShadow0).count();
-    const GSTransferCommand &t = m_currentTransfer;
-    const uint32_t page = t.bitbltbuf.dbp >> 5;
-    const uint32_t span = pageSpan(t.bitbltbuf.dpsm, t.bitbltbuf.dbw, t.trxpos.dsay + t.trxreg.rrh);
     const auto tMark0 = s_uploadTrace ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
     markShadowPages(page, span);
     if (s_uploadTrace)
@@ -1930,7 +1987,10 @@ void GSGlBackend::executeUpload(const uint8_t *data, size_t size)
         }
     }
     if (s_uploadTrace)
+    {
         GsGlUploadTrace::noteUpload(g_uploadTrace, size, traceShadowUs, traceMarkUs);
+        GsGlUploadTrace::noteUploadShape(g_uploadTrace, wholeTransfer, identicalBytes);
+    }
 }
 
 // A transfer wrote into pages a render target covers (video frames are uploaded straight into the
@@ -2877,6 +2937,66 @@ void GSGlBackend::executePresent(const GSPresentationRequest &request)
 // ---------------------------------------------------------------------------------------------
 // Textures
 // ---------------------------------------------------------------------------------------------
+// Sprint 8 Goal 2b R123: the hash of the exact source bytes a decode of this texture would read,
+// right now, out of the shadow -- the texel spans in decodeTexture's own order, then the 256 CLUT
+// entries it would resolve. Returns GsGlTextureIdentity::kUnhashable (0) when the source cannot be
+// walked, and the caller then decodes as it always did.
+//
+// WHY THE SHADOW BYTES HASHED HERE ARE THE BYTES A DECODE WOULD READ: resolveTexture runs its
+// render-target reconciliation BEFORE the cache gate -- the RT-as-texture fast path returns first,
+// and the loop below it walks m_renderTargets for any shadowStale target overlapping the texture's
+// pages and calls downloadRenderTargetToShadow + markShadowPages on it. So by the time the gate
+// looks at a cached entry, every pending GPU->shadow download for those pages has already been
+// performed, and a decode taken at this instant would read exactly these bytes. (That download is
+// also what moves the generation that brought us to the gate in the first place, and it changes
+// the bytes, so such a texture re-hashes differently and is decoded, not revalidated.)
+uint64_t GSGlBackend::textureSourceHash(const GSDrawState &state, uint32_t width, uint32_t height)
+{
+    const GSTex0Reg &tex = state.context.tex0;
+    static thread_local std::vector<uint32_t> s_row;
+    if (s_row.size() < width)
+        s_row.resize(width);
+    uint64_t h = GsGlTextureIdentity::hashTexels(m_shadowMemory.data(), tex.psm, tex.tbp0, tex.tbw,
+                                                 width, height, s_row.data(), GsGlTextureIdentity::seed());
+    if (h == GsGlTextureIdentity::kUnhashable)
+        return GsGlTextureIdentity::kUnhashable;
+    const bool indexed = tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 ||
+                         tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH;
+    if (!indexed)
+        return h;
+    // The palette this decode would use, resolved exactly as decodeTexture resolves it: the
+    // frontend's snapshot when the draw carries a clutId (immutable, and already part of the cache
+    // key), otherwise the live slot in the shadow.
+    const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
+    const GSClutLoad *clutLoad = nullptr;
+    if (state.context.clutId != 0u && tex.csm == 0u && state.texclut.cou == 0u && state.texclut.cov == 0u)
+    {
+        auto cl = m_cluts.find(state.context.clutId);
+        if (cl != m_cluts.end())
+            clutLoad = &cl->second;
+    }
+    uint8_t *clutVram = clutLoad ? const_cast<uint8_t *>(clutLoad->bytes.data()) : m_shadowMemory.data();
+    const uint32_t clutBp = clutLoad ? 0u : tex.cbp;
+    const uint32_t clutBw = clutLoad ? 1u : clutWidth;
+    const uint8_t clutPsm = clutLoad ? clutLoad->cpsm : tex.cpsm;
+    uint32_t clut[256];
+    for (uint32_t i = 0; i < 256u; ++i)
+    {
+        const uint32_t clutIndex = resolveClutIndex(static_cast<uint8_t>(i), clutPsm, tex.csm, tex.csa, tex.psm);
+        const uint32_t clutX = static_cast<uint32_t>(state.texclut.cou) + (clutIndex & 0x0Fu);
+        const uint32_t clutY = static_cast<uint32_t>(state.texclut.cov) + (clutIndex >> 4);
+        switch (clutPsm)
+        {
+        case GS_PSM_CT32: clut[i] = GSMem::ReadCT32(clutVram, clutBp, clutBw, clutX, clutY); break;
+        case GS_PSM_CT24: clut[i] = GSMem::ReadCT24(clutVram, clutBp, clutBw, clutX, clutY); break;
+        case GS_PSM_CT16: clut[i] = GSMem::ReadCT16(clutVram, clutBp, clutBw, clutX, clutY); break;
+        case GS_PSM_CT16S: clut[i] = GSMem::ReadCT16S(clutVram, clutBp, clutBw, clutX, clutY); break;
+        default: clut[i] = 0xFFFF00FFu; break;
+        }
+    }
+    return GsGlTextureIdentity::hashClut(clut, h);
+}
+
 uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &key, uint32_t width, uint32_t height, uint32_t pageStart, uint32_t pageCount)
 {
     const GSTex0Reg &tex = state.context.tex0;
@@ -3118,12 +3238,16 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
     entry.pageCount = pageCount;
     entry.generation = m_generation;
     entry.lastUse = m_frameCounter;
+    // R123: what this decode read. The next time a generation bump brings the gate here, the same
+    // walk over the shadow answers "did the CONTENT change?" instead of "did a stamp move?".
+    entry.sourceHash = textureSourceHash(state, width, height);
     m_textures[key] = entry;
     return texture;
 }
 
 uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidth, uint32_t &outHeight)
 {
+    static const bool s_uploadTraceResolve = std::getenv("PS2X_GS_UPLOAD_TRACE") != nullptr;
     const GSTex0Reg &tex = state.context.tex0;
     const uint32_t width = std::min<uint32_t>(1024u, 1u << std::min<uint32_t>(tex.tw, 10u));
     const uint32_t height = std::min<uint32_t>(1024u, 1u << std::min<uint32_t>(tex.th, 10u));
@@ -3203,6 +3327,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
     key.texclut = static_cast<uint32_t>(state.texclut.cbw) | (static_cast<uint32_t>(state.texclut.cou) << 8) | (static_cast<uint32_t>(state.texclut.cov) << 16);
     key.clutId = state.context.clutId;
 
+    bool wasInvalidation = false;
     auto it = m_textures.find(key);
     if (it != m_textures.end())
     {
@@ -3219,6 +3344,30 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
             it->second.lastUse = m_frameCounter;
             return it->second.texture;
         }
+        // Sprint 8 Goal 2b R123. This is the root Task 1 measured: markShadowPages (:1843-1848)
+        // bumps m_generation on EVERY upload, identical bytes or not, so a menu that re-uploads its
+        // atlas each frame lands here every frame and paid a full decode + glTexImage2D below --
+        // 551-1385 of them a second against 26-52 cached textures. Before throwing the texture
+        // away, ask whether the CONTENT actually changed. PS2X_GS_NO_TEX_REVALIDATE=1 restores the
+        // old behaviour for the A/B and the bisect.
+        static const bool s_noRevalidate = std::getenv("PS2X_GS_NO_TEX_REVALIDATE") != nullptr;
+        if (!s_noRevalidate && it->second.sourceHash != GsGlTextureIdentity::kUnhashable)
+        {
+            const auto tRev0 = s_uploadTraceResolve ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+            const uint64_t now = textureSourceHash(state, width, height);
+            if (now == it->second.sourceHash)
+            {
+                it->second.generation = m_generation;
+                it->second.lastUse = m_frameCounter;
+                if (s_uploadTraceResolve)
+                    GsGlUploadTrace::noteRevalidate(g_uploadTrace,
+                        std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRev0).count());
+                return it->second.texture;
+            }
+            // A miss falls through to the decode below, which dominates its own re-hash; only
+            // successful revalidations are counted and timed.
+        }
+        wasInvalidation = true;
         glDeleteTextures(1, &it->second.texture);
         m_textures.erase(it);
     }
@@ -3237,6 +3386,8 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
                 ++e;
         }
     }
+    if (s_uploadTraceResolve)
+        GsGlUploadTrace::noteDecode(g_uploadTrace, wasInvalidation);
     return decodeTexture(state, key, width, height, pageStart, pageCount);
 }
 
@@ -3392,7 +3543,13 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     RenderTarget *rt = getRenderTarget(ctx.frame.fbp, ctx.frame.fbw, ctx.frame.psm, true,
                                       std::min<uint32_t>(kRtHeight, static_cast<uint32_t>(ctx.scissor.y1) + 1u));
     m_batchRt = rt;
-    refreshDirtyRows(*rt);
+    {
+        // Sprint 8 Goal 2b Task 1: phase 1 of the flush the transfer interrupted.
+        const auto tRows0 = g_flushPhasesArmed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+        refreshDirtyRows(*rt);
+        if (g_flushPhasesArmed)
+            g_flushDirtyRowsUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tRows0).count();
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, rt->fbo);
     // Depth attachment keyed by ZBP.
     const bool zte = (ctx.test >> 16) & 1u;
@@ -3550,7 +3707,14 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     if (state.prim.tme)
     {
         uint32_t tw = 1u, th = 1u;
+        // Sprint 8 Goal 2b Task 1: phase 2 -- the cache gate at :3209-3222 and, on a miss, the whole
+        // decodeTexture + glTexImage2D. (resolveTexture calls refreshDirtyRows of its own on the
+        // RT-as-texture path; that time lands here rather than in dirty_rows, deliberately: it is
+        // part of resolving the batch's texture.)
+        const auto tTex0 = g_flushPhasesArmed ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
         const uint32_t texture = resolveTexture(state, tw, th);
+        if (g_flushPhasesArmed)
+            g_flushDecodeUs += std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - tTex0).count();
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
         const GLint filter = state.linearFilter ? GL_LINEAR : GL_NEAREST;
@@ -3576,6 +3740,9 @@ void GSGlBackend::flushBatch()
     m_hasBatch = false;
     if (m_vertices.empty())
         return;
+    // Sprint 8 Goal 2b Task 1: past both early returns, so this flush really drew. The two returns
+    // above are the "empty" case the [gs-transfer] line counts as flush_empty.
+    g_flushHadBatch = true;
     setupDrawState(m_batchState);
     // PS2X_GS_GL_DEBUG_PSM=<psm>: print the first batches drawn with that texture format (state,
     // bound texture, blend and the vertices actually submitted), to compare with the CPU path.
