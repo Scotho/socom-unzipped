@@ -28,6 +28,9 @@ class MakePortableTest(unittest.TestCase):
             for d in ("cards", "logs"):
                 self.assertTrue(os.path.isdir(os.path.join(pkg, d)), d)
             self.assertIn("Run socom_unzipped_launcher.exe", open(os.path.join(pkg, "README.txt")).read())
+            # Sprint 9 Goal 1: the About page and the diagnostics zip read version.txt; nothing wrote it before.
+            with open(os.path.join(pkg, "version.txt")) as fh:
+                self.assertRegex(fh.read(), "^SOCOM Unzipped \\S+ \\(\\d{4}-\\d{2}-\\d{2}\\)\\n$")
             self.assertTrue(os.path.isfile(os.path.join(out, "socom2-portable.zip")))
 
     def test_refuses_without_a_build(self):

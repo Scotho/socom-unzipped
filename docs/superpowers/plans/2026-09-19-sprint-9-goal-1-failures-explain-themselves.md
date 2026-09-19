@@ -2879,12 +2879,12 @@ git push
 
 **Interfaces:**
 - `socom_unzipped_launcher --diagnostics <out.zip> [home]` — headless: writes the zip for `home` (default: the launcher's own folder), prints one line, exits 0 (written) or 1. No window, no raylib call: it runs in CI.
-- The PLAY page's button reads **SAVE DIAGNOSTICS** (the spec's words; the node id `play.diagnostics` and its rect are unchanged, so the focus-model cases do not move), writes `diagnostics/socom2_diagnostics_<stamp>.zip` and opens that folder (R137).
+- The PLAY page's button reads **SAVE DIAGNOSTICS** (the spec's words; the node id `play.diagnostics` and its rect are unchanged, so the focus-model cases do not move), writes `diagnostics/socom_unzipped_<stamp>.zip` and opens that folder (R137).
 - `scripts/make_portable.sh` writes `version.txt` — `SOCOM Unzipped <git describe --always --dirty> (<UTC date>)` — into the portable folder on both platforms (R138).
 
 **Steps:**
 
-- [ ] **Step 1: RED (the zip, opened by a test).** Create `tools_py/tests/test_diagnostics_zip.py`:
+- [x] **Step 1: RED (the zip, opened by a test).** Create `tools_py/tests/test_diagnostics_zip.py`:
 
 ```python
 """Sprint 9 Goal 1: the launcher's diagnostics zip, written by the real launcher and opened by Python's
@@ -2960,7 +2960,7 @@ if __name__ == "__main__":
 
 Run: `python -m unittest tools_py.tests.test_diagnostics_zip -v`. **Expected RED against the old launcher:** it does not know `--diagnostics`, so it opens its window and the test fails with `subprocess.TimeoutExpired: … timed out after 20 seconds` (a launcher window appears for 20 s and is killed; mind the quiet gate).
 
-- [ ] **Step 2: RED (`version.txt`).** In `tools_py/tests/test_make_portable.py`, inside `test_folder_has_the_game_the_launcher_the_dlls_the_readme_and_the_licences`, after the `README.txt` assertion (line 31), add:
+- [x] **Step 2: RED (`version.txt`).** In `tools_py/tests/test_make_portable.py`, inside `test_folder_has_the_game_the_launcher_the_dlls_the_readme_and_the_licences`, after the `README.txt` assertion (line 31), add:
 
 ```python
             # Sprint 9 Goal 1: the About page and the diagnostics zip read version.txt; nothing wrote it before.
@@ -2970,14 +2970,14 @@ Run: `python -m unittest tools_py.tests.test_diagnostics_zip -v`. **Expected RED
 
 Run: `python -m unittest tools_py.tests.test_make_portable -v`. **Expected RED:** `FileNotFoundError: … version.txt`.
 
-- [ ] **Step 3: `scripts/make_portable.sh`.** In the Linux branch directly after `chmod +x "$PKG/socom2" "$PKG/socom_unzipped_launcher"` (line 32), and in the Windows branch directly after `cp "$DIST"/*.dll "$PKG/"` (line 98), the same two lines:
+- [x] **Step 3: `scripts/make_portable.sh`.** In the Linux branch directly after `chmod +x "$PKG/socom2" "$PKG/socom_unzipped_launcher"` (line 32), and in the Windows branch directly after `cp "$DIST"/*.dll "$PKG/"` (line 98), the same two lines:
 
 ```bash
 # Sprint 9 Goal 1: the launcher's About page and its diagnostics zip read version.txt; until now nothing wrote it.
 printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%d)" > "$PKG/version.txt"
 ```
 
-- [ ] **Step 4: `ps2xLauncher/src/main.cpp`.** Add `#include "launcher/diagnostics.h"`, `#include "ps2x/exe_dir.h"` and `#include "ps2x/zip_store.h"` after `#include "launcher/sha256.h"` (line 15), and `#include <cstdint>` among the standard headers. Replace `copyDiagnostics` (lines 125-138) with:
+- [x] **Step 4: `ps2xLauncher/src/main.cpp`.** Add `#include "launcher/diagnostics.h"`, `#include "ps2x/exe_dir.h"` and `#include "ps2x/zip_store.h"` after `#include "launcher/sha256.h"` (line 15), and `#include <cstdint>` among the standard headers. Replace `copyDiagnostics` (lines 125-138) with:
 
 ```cpp
     // The newest logs/run_<stamp>.log by name (the stamp sorts), for a launcher that has not started a
@@ -3025,7 +3025,7 @@ printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>
     {
         namespace diag = launcher::diagnostics;
         const std::string stamp = win32glue::stamp();
-        const fs::path out = outZip.empty() ? home / "diagnostics" / ("socom2_diagnostics_" + stamp + ".zip") : outZip;
+        const fs::path out = outZip.empty() ? home / "diagnostics" / ("socom_unzipped_" + stamp + ".zip") : outZip;
         std::error_code ec;
         if (out.has_parent_path())
             fs::create_directories(out.parent_path(), ec);
@@ -3098,9 +3098,9 @@ The request handler (lines 951-952) becomes:
 
 Add the third usage line to the file's header comment (after line 8): `//   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window`.
 
-- [ ] **Step 5: `ps2xLauncher/src/ui/page_play.cpp:70`** — the label only: `"COPY DIAGNOSTICS"` becomes `"SAVE DIAGNOSTICS"`. Then look at it: `dist/socom_unzipped_launcher.exe --screenshot logs/parity/launcher_ui_s9` and open `play_1100x700.png` and `play_900x600.png` (the names `main.cpp:1015` writes): the label fits its 200-unit button at both sizes, and LAST RUN reads "The last run exited normally." If the label is ellipsized or overflows at 900x600, shorten it to `DIAGNOSTICS` and say so in the ledger — do not resize the node (`focus.cpp:112`), the focus cases assert on it.
+- [x] **Step 5: `ps2xLauncher/src/ui/page_play.cpp:70`** — the label only: `"COPY DIAGNOSTICS"` becomes `"SAVE DIAGNOSTICS"`. Then look at it: `dist/socom_unzipped_launcher.exe --screenshot logs/parity/launcher_ui_s9` and open `play_1100x700.png` and `play_900x600.png` (the names `main.cpp:1015` writes): the label fits its 200-unit button at both sizes, and LAST RUN reads "The last run exited normally." If the label is ellipsized or overflows at 900x600, shorten it to `DIAGNOSTICS` and say so in the ledger — do not resize the node (`focus.cpp:112`), the focus cases assert on it.
 
-- [ ] **Step 6: GREEN.**
+- [x] **Step 6: GREEN.**
 
 ```bash
 cmake --build third_party/ps2recomp/build-clang --target socom_unzipped_launcher -j 8 \
@@ -3110,7 +3110,7 @@ python -m unittest tools_py.tests.test_diagnostics_zip tools_py.tests.test_make_
 
 Expected: `OK` (3 tests; `test_make_portable` is skipped where there is no PowerShell).
 
-- [ ] **Step 7: `./build.sh test` exit 0 (`Total Tests: B + 30`, Python `P + 14`), then commit.**
+- [x] **Step 7: `./build.sh test` exit 0 (`Total Tests: B + 30`, Python `P + 14`), then commit.**
 
 ```bash
 git add tools_py/tests/test_diagnostics_zip.py
@@ -3176,7 +3176,7 @@ R126 onward (Sprint 8's last was R125, in the Goal 2b plan). Each is a decision 
 
 - **R136** (Task 6): **`socom2 --fail-test crash|oom` ships in the release executable.** The spec's bar is "a test per code that drives the failing condition"; a crash and an exhausted heap cannot be arranged from outside the process on both platforms. Two argv words, handled before anything is initialised, reachable only by someone who types them. *Cost if wrong:* a player who types `--fail-test crash` crashes a game they had not started.
 
-- **R137** (Task 9): **the button is renamed SAVE DIAGNOSTICS, writes `diagnostics/socom2_diagnostics_<stamp>.zip`, and opens that folder.** The spec calls it "Save diagnostics"; "copy" promised a clipboard. Opening the folder is the difference between a status line that scrolls away and a file the player can drag into a message. The node id and rect are unchanged so no layout or focus case moves. *Cost if wrong:* a label the owner preferred; one string.
+- **R137** (Task 9): **the button is renamed SAVE DIAGNOSTICS, writes `diagnostics/socom_unzipped_<stamp>.zip`, and opens that folder.** The spec calls it "Save diagnostics"; "copy" promised a clipboard. Opening the folder is the difference between a status line that scrolls away and a file the player can drag into a message. The node id and rect are unchanged so no layout or focus case moves. *Cost if wrong:* a label the owner preferred; one string.
 
 - **R138** (Task 9): **`scripts/make_portable.sh` writes `version.txt` (`SOCOM Unzipped <git describe> (<UTC date>)`).** The launcher has read that file since Sprint 8 and nothing has ever written it (Handoff note 7), so every shipped About page says "development build" and the zip's `versions.txt` would too. Written by the packaging script rather than compiled in, so a rebuild with no source change stays byte-identical (Goal 2's `SHA256SUMS` will care). *Cost if wrong:* the runner itself still prints no version; Goal 2's release configuration is the place to add one if a report ever needs it.
 
