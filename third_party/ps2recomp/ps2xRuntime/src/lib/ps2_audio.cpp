@@ -472,15 +472,19 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
         m_mixer.autoVol(static_cast<uint32_t>(arg(0)), arg(1), count >= 3 ? arg(2) : 0, count >= 4 ? arg(3) : 0);
         break;
     case 0x09u: m_mixer.setMasterVolume(static_cast<uint32_t>(arg(0)), arg(1)); break;
-    case 0x2Cu:   // snd_PlayVAGStreamByLoc {handle, sector1, sector2, off1, vol, off2, pan, group, flags}
+    case 0x2Cu:   // snd_PlayVAGStreamByLoc {handle, sector1, sector2, off1, vol, off2, pan, group, flags, queued}
         if (count >= 9)
         {
             if (m_discImagePath.empty())
                 m_discImagePath = PS2Runtime::getIoPaths().cdImage.string();
             const uint64_t offset = static_cast<uint64_t>(static_cast<uint32_t>(arg(1))) * 2048ull + static_cast<uint32_t>(arg(3));
-            const bool ok = m_mixer.playStream(static_cast<uint32_t>(arg(0)), m_discImagePath, offset, arg(4), arg(6), static_cast<uint8_t>(arg(7)));
+            // Goal 10 (R169): the tenth word is the module's parentHandle, as a yes/no. Queued means the segment
+            // waits for the one in the air and starts on the frame after its last sample; without it a play on a
+            // live handle replaces what is there, which is the cue being cut dead.
+            const bool queued = count >= 10 && arg(9) != 0;
+            const bool ok = m_mixer.playStream(static_cast<uint32_t>(arg(0)), m_discImagePath, offset, arg(4), arg(6), static_cast<uint8_t>(arg(7)), queued);
             std::cout << "[audio] 989snd stream " << std::hex << static_cast<uint32_t>(arg(0)) << " sector " << static_cast<uint32_t>(arg(1))
-                      << std::dec << "+" << static_cast<uint32_t>(arg(3)) << (ok ? " playing" : " not a VPK or VAGp") << std::endl;
+                      << std::dec << "+" << static_cast<uint32_t>(arg(3)) << (queued ? " queued" : "") << (ok ? " playing" : " not a VPK or VAGp") << std::endl;
         }
         break;
     case 0x2Du: m_mixer.pause(static_cast<uint32_t>(arg(0))); break;

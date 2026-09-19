@@ -64,7 +64,12 @@ namespace snd989
 
         // snd_PlayVAGStreamByLoc: a VPK file in the disc image ("VPK " header: data size, 0x800-byte interleave, header size,
         // sample rate, channels; research/32 section 5) at `byteOffset` of `path`, read as it plays. vol 0..0x400, pan as play().
-        bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
+        // Sprint 9 Goal 10 (R169): `queueBehind` is snd_PlayVAGStreamByLoc's parentHandle, as the protocol means it
+        // (research/06 section 142: "if parentHandle != 0 the stream is QUEUED after that stream instead"). A queued
+        // segment waits behind whatever the handle is playing and starts on the very next output frame after it ends;
+        // without it, a play on a live handle replaces what is there, which is what cut every mission cue dead.
+        bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group,
+                        bool queueBehind = false);
         void stopAllStreams();
 
         // The decode-ahead half of the streams (audit 2026-09-17 section 2.3): reads and decodes the next chunk
