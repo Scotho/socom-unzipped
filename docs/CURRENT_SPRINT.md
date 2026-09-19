@@ -126,6 +126,8 @@ next ruling: R126
 
 **Not started in Sprint 8 and now Sprint 9's:** the exit-code taxonomy, the bare run, the diagnostics zip, the release build and SHA256SUMS, knob retirement (190 names), the audio and window residuals.
 
+**Goal 8 DONE, 2026-09-20** (`6eaa60c`..`1efc37a`): REPORT A BUG and the ONLINE status line over the site's endpoints; CI green; one live test report `BR-20260919-C6D666`. **Goal 7 half done:** `socom.scotho.com` exists (DNS only, created by the controller at the owner's instruction); the persona test and the launcher's default follow. **In flight:** Goal 10 (the music: queued segments cut the playing one, new cues inherit dead fades -- fixes under test, the controller gates and runs the driven mission). **Queued:** Goal 9 (pad focus first), Goal 3 (knob retirement, plan committed `20479a9`).
+
 **Goal 2 DONE, 2026-09-20** (`5b31ca1`..`6fe42d3`, R140-R151): the download is 15% smaller on Windows (55.7 MB) and 13% on Linux (99.4 MB), each archive carries exactly its import closure and a `SHA256SUMS`, the release executable is stripped with its symbols kept, and the gate is 3/3 on that exact file (`s9_g2_release_gate`). `-O2` lost on compressed size and was not shipped (R151). Owner items filed. next ruling: R152. Next: Goal 8 (the bug report section) when its endpoint is live, Goal 3 (knob retirement) meanwhile.
 
 **Goal 1 DONE, 2026-09-20** (`405b03e`..`11077e1`, R126-R138): the taxonomy, the preflight, the bare run, the LAST RUN sentence, the diagnostics zip; gate 3/3 `s9_g1_gate`; Linux proven in the VM (the 8 exit-code cases, the zip with no display, a bare run). Three owner checks filed. next ruling: R140 (R139 is the crouch shortcut's). Next: Goal 2, the release build.
