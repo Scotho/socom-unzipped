@@ -2,18 +2,25 @@
 # Task 8b Step 5 / packaging outline section 2 A: the portable folder. Assembles <out>/socom2/ from dist/ --
 # socom2.exe, socom2_game.elf, the DLLs, the launcher, README.txt, LICENSES/, empty cards/ and logs/ -- and zips
 # it. No registry, no admin; the user points the launcher at their ISO once. Usage:
-#   scripts/make_portable.sh [out dir]      (default: dist/portable, dist-linux/portable on Linux)
+#   scripts/make_portable.sh [--release] [out dir]   (default: dist/portable, dist-linux/portable on Linux;
+#                                                     --release: dist-release/portable, dist-linux-release/portable)
+# Sprint 9 Goal 2: the folder carries the import closure of socom2 and the launcher and nothing else
+# (tools_py/portable_audit.py: closure, then an audit of what was assembled -- exit 4 on a finding), and
+# SHA256SUMS is written beside the archive. Exit 2 = no build, 3 = an imported library is nowhere.
 # Sprint 8 Goal 1 item 5: on Linux it assembles dist-linux/portable/socom2-linux/ instead -- the same three
 # binaries with their executable bits, lib/ filled from ldd through scripts/portable_libs.py, and a .tar.gz
 # instead of a zip. The Windows branch below is unchanged (its here-docs need column-0 terminators).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SUFFIX=""
+if [ "${1:-}" = "--release" ]; then SUFFIX="-release"; shift; fi
+AUDIT="$ROOT/tools_py/portable_audit.py"
 case "$(uname -s)" in
   Linux)
     # Sprint 8 Goal 1 item 5: the same folder as a tarball. dist-linux/ holds the native build;
     # socom2_game.elf is platform-neutral, so take dist/'s copy when only Windows has built it.
     DIST="${DIST:-$ROOT/dist}"
-    LDIST="${LDIST:-$ROOT/dist-linux}"
+    LDIST="${LDIST:-$ROOT/dist-linux$SUFFIX}"
     OUT="${1:-$LDIST/portable}"
     PKG="$OUT/socom2-linux"
     mkdir -p "$LDIST"
@@ -21,7 +28,7 @@ case "$(uname -s)" in
       cp "$DIST/socom2_game.elf" "$LDIST/socom2_game.elf"
     fi
     for f in socom2 socom2_game.elf socom_unzipped_launcher; do
-      [ -f "$LDIST/$f" ] || { echo "make_portable: $LDIST/$f missing -- run scripts/build_linux.sh first" >&2; exit 2; }
+      [ -f "$LDIST/$f" ] || { echo "make_portable: $LDIST/$f missing -- run scripts/build_linux.sh first${SUFFIX:+ (or scripts/build_linux.sh release)}" >&2; exit 2; }
     done
     command -v ldd >/dev/null || { echo "make_portable: ldd not found" >&2; exit 2; }
     command -v python3 >/dev/null || { echo "make_portable: python3 not found (scripts/portable_libs.py)" >&2; exit 2; }
@@ -83,21 +90,35 @@ Online: enter the server address in the launcher's Online panel; your profile na
 directory under cards/. Logs land in logs/ -- send the newest run_*.log with any report.
 Nothing is installed and nothing is written outside this folder; delete the folder to remove it.
 RD
-    rm -f "$OUT/socom2-linux.tar.gz"
+    python3 "$AUDIT" audit "$PKG" --system Linux || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
+    rm -f "$OUT/socom2-linux.tar.gz" "$OUT/SHA256SUMS"
     tar -C "$OUT" -czf "$OUT/socom2-linux.tar.gz" socom2-linux
-    echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries, $NLIBS libraries in lib/), tarball: $OUT/socom2-linux.tar.gz ($(du -h "$OUT/socom2-linux.tar.gz" | cut -f1))"
+    python3 "$AUDIT" sha256sums "$OUT" socom2-linux.tar.gz >/dev/null
+    echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries, $NLIBS libraries in lib/), tarball: $OUT/socom2-linux.tar.gz ($(wc -c < "$OUT/socom2-linux.tar.gz") bytes), $OUT/SHA256SUMS"
     ;;
   *)
-DIST="${DIST:-$ROOT/dist}"
-OUT="${1:-$ROOT/dist/portable}"
+DIST="${DIST:-$ROOT/dist$SUFFIX}"
+OUT="${1:-$ROOT/dist$SUFFIX/portable}"
+PY="${PYTHON:-python}"
 PKG="$OUT/socom2"
 for f in socom2.exe socom2_game.elf socom_unzipped_launcher.exe; do
-  [ -f "$DIST/$f" ] || { echo "make_portable: $DIST/$f missing -- run ./build.sh runtime first" >&2; exit 2; }
+  [ -f "$DIST/$f" ] || { echo "make_portable: $DIST/$f missing -- run ./build.sh runtime first${SUFFIX:+ (or ./build.sh release)}" >&2; exit 2; }
 done
 rm -rf "$PKG"
 mkdir -p "$PKG/cards" "$PKG/logs" "$PKG/LICENSES"
 cp "$DIST/socom2.exe" "$DIST/socom2_game.elf" "$DIST/socom_unzipped_launcher.exe" "$PKG/"
-cp "$DIST"/*.dll "$PKG/"
+# Sprint 9 Goal 2: only what the two executables reach through their import tables (16 of dist/'s 31 DLLs on
+# 2026-09-19 -- the rest is the FFmpeg zip's whole bin/ and a libwinpthread nothing imports).
+if NEEDED="$("$PY" "$AUDIT" closure --system Windows --dir "$DIST" "$DIST/socom2.exe" "$DIST/socom_unzipped_launcher.exe")"; then
+  :
+else
+  echo "make_portable: an imported library is neither in $DIST nor part of Windows (see above)" >&2
+  exit 3
+fi
+printf '%s\n' "$NEEDED" | tr -d '\r' | while read -r dll; do
+  [ -n "$dll" ] || continue
+  cp "$DIST/$dll" "$PKG/"
+done
 # Sprint 9 Goal 1: the launcher's About page and its diagnostics zip read version.txt; until now nothing wrote it.
 printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%d)" > "$PKG/version.txt"
 cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
@@ -128,7 +149,9 @@ Online: enter the server address in the launcher's Online panel; your profile na
 directory under cards/. Logs land in logs/ -- send the newest run_*.log with any report.
 Everything lives in this folder; delete it to uninstall.
 RD
-( cd "$OUT" && rm -f socom2-portable.zip && powershell -NoProfile -Command "Compress-Archive -Path 'socom2' -DestinationPath 'socom2-portable.zip' -Force" )
-echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries), zip: $OUT/socom2-portable.zip"
+"$PY" "$AUDIT" audit "$PKG" --system Windows || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
+( cd "$OUT" && rm -f socom2-portable.zip SHA256SUMS && powershell -NoProfile -Command "Compress-Archive -Path 'socom2' -DestinationPath 'socom2-portable.zip' -Force" )
+"$PY" "$AUDIT" sha256sums "$OUT" socom2-portable.zip >/dev/null
+echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries), zip: $OUT/socom2-portable.zip ($(wc -c < "$OUT/socom2-portable.zip") bytes), $OUT/SHA256SUMS"
     ;;
 esac
