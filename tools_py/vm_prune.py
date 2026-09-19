@@ -37,7 +37,6 @@ def host_files(root):
 
 
 if __name__ == "__main__":
-    sys.stdout.reconfigure(newline="
-")   # the list goes to a Linux xargs: no CR
+    sys.stdout.reconfigure(newline=chr(10))   # the list goes to a Linux xargs: no CR
     for path in stale(host_files(sys.argv[1]), sys.stdin.read().splitlines()):
         print(path)
