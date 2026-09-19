@@ -189,10 +189,23 @@ uint64_t GsPendingCap::parseCapMb(const char *value, uint64_t fallbackMb)
     return static_cast<uint64_t>(parsed);
 }
 
-GsPendingCap::GsPendingCap(uint64_t capBytes)
-    : m_capBytes(capBytes)
+GsPendingCap::GsPendingCap(uint64_t capBytes, uint64_t hardCapBytes)
+    : m_capBytes(capBytes), m_hardCapBytes(hardCapBytes)
 {
 }
+
+// Sprint 8 Goal 5, ruling R124. A pure predicate, deliberately blind to the latch: the soft cap's
+// drops only ever apply while the consumer is latched, but the unbounded growth this ceiling exists
+// to stop is the state-carrying stream, which no latch state makes droppable. A replay that is
+// merely slow reaches the ceiling the same way a latched one does, and the recorder waits either
+// way. The caller (GSGlBackend::record) holds the queue mutex, so the load only has to be atomic,
+// not ordered against anything else.
+bool GsPendingCap::mustWait() const
+{
+    return m_hardCapBytes != 0u && m_bytes.load(std::memory_order_relaxed) >= m_hardCapBytes;
+}
+
+void GsPendingCap::noteHardWait() { m_hardWaits.fetch_add(1u, std::memory_order_relaxed); }
 
 bool GsPendingCap::admit(bool latched, bool carriesState, uint64_t bytes)
 {
@@ -222,5 +235,7 @@ void GsPendingCap::onReplayed(uint64_t bytes)
 
 uint64_t GsPendingCap::bytes() const { return m_bytes.load(std::memory_order_relaxed); }
 uint64_t GsPendingCap::capBytes() const { return m_capBytes; }
+uint64_t GsPendingCap::hardCapBytes() const { return m_hardCapBytes; }
+uint64_t GsPendingCap::hardWaits() const { return m_hardWaits.load(std::memory_order_relaxed); }
 uint64_t GsPendingCap::droppedCommands() const { return m_droppedCommands.load(std::memory_order_relaxed); }
 uint64_t GsPendingCap::droppedBytes() const { return m_droppedBytes.load(std::memory_order_relaxed); }

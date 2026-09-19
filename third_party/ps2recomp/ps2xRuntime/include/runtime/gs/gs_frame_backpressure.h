@@ -110,12 +110,22 @@ private:
 //
 // The counters are atomic: admit() runs on the recorder's thread (under the queue lock) and the
 // stats line reads them on the render thread.
+// Sprint 8 Goal 5, ruling R124: the soft cap above drops only state-free draw work, so a replay
+// that stays latched for minutes still grows without bound on the state-carrying commands it may
+// never drop (dropping one would corrupt what the game draws after the stall: KNOWN's
+// "GsPendingCap::admit keeps every state-carrying command unbounded", which ends in
+// std::bad_alloc). The answer is not a second kind of drop but a HARD ceiling the RECORDER waits
+// at: above hardCapBytes the recorder blocks until the replay drains the queue, whatever the
+// latch says. mustWait() is the pure predicate; the waiting itself lives in GSGlBackend::record,
+// which owns the queue mutex and the condition variable the replay notifies.
+// hardCapBytes == 0 is no ceiling; PS2X_GS_PENDING_HARD_CAP_MB sets it, default 1024 MB.
 class GsPendingCap
 {
 public:
     static constexpr uint64_t kDefaultCapMb = 64u;
+    static constexpr uint64_t kDefaultHardCapMb = 1024u;
 
-    explicit GsPendingCap(uint64_t capBytes);
+    explicit GsPendingCap(uint64_t capBytes, uint64_t hardCapBytes = 0u);
 
     // Returns false when the command must be dropped: only ever when the consumer is latched, the
     // command carries no state, and the pending bytes are already at the cap.
@@ -123,17 +133,27 @@ public:
     // The replay took `bytes` of the pending buffer (call it with the buffer's size at the swap).
     void onReplayed(uint64_t bytes);
 
+    // R124: true iff a hard ceiling is configured and the pending bytes have reached it. Pure and
+    // independent of the latch -- an unlatched replay that is merely slow hits the same ceiling.
+    bool mustWait() const;
+    // One command waited at the ceiling (counted once per command, not once per wait slice).
+    void noteHardWait();
+
     uint64_t bytes() const;    // pending, as accounted by admit()/onReplayed()
     uint64_t capBytes() const; // 0 = unbounded
+    uint64_t hardCapBytes() const; // 0 = no ceiling
     uint64_t droppedCommands() const;
     uint64_t droppedBytes() const;
+    uint64_t hardWaits() const;
 
     // nullptr (unset) or an unparsable value -> fallbackMb; "0" -> 0 (unbounded); "<n>" -> n.
     static uint64_t parseCapMb(const char *value, uint64_t fallbackMb = kDefaultCapMb);
 
 private:
     uint64_t m_capBytes;
+    uint64_t m_hardCapBytes;
     std::atomic<uint64_t> m_bytes{0};
     std::atomic<uint64_t> m_droppedCommands{0};
     std::atomic<uint64_t> m_droppedBytes{0};
+    std::atomic<uint64_t> m_hardWaits{0};
 };
