@@ -67,6 +67,14 @@ Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
      D2). For each fixture the engineering answer is the same: **generate it from the contributor's own disc at test
      time, skip the test cleanly when there is no disc, and keep a disc-free synthetic fixture for CI** -- which is
      work, so it is scheduled here and not assumed;
+  3a. **personal data, a known hit (2026-09-20):** the owner's home address was written in one tracked file
+      (`docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md`, a Goal 12 results line) and redacted in
+      `db603f5`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
+      cover personal data as well as secrets: `git log --all -S` for the address string, the owner's name and e-mail
+      beyond commit metadata, the AWS account id (in no tracked file today; it lives under the git-ignored `vm/`),
+      phone numbers, and the Windows user name in absolute paths. This hit alone means D1 cannot be "as it is":
+      either a targeted `git filter-repo --replace-text` with an owner-approved force-push, or a fresh history.
+      Nothing has been rewritten -- that is destructive on a shared branch and the owner's decision.
   4. the result decides **D1**: publish this history as it is, publish it after a targeted `git filter-repo`, or start
      the public repository from one import commit and keep this repository private as the archive. The progress story
      (Goal 6) cites commits by hash; a fresh-history public repository keeps those citations true only if the story
