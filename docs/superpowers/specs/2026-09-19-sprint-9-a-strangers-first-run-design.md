@@ -59,6 +59,34 @@ meets first.
   PBO ring, the invocation stack pool, the stub-state header into a `.cpp`. The pixel-identity console-replay
   test that has never run (KNOWN hazard): regenerate its dump or delete the test.
 
+### Goal 7 — the server by name: `socom.scotho.com` (owner 2026-09-20)
+- The owner creates the A record (HUMAN_TASKS). Then: measure whether the game keys saved personas on the name or on
+  the resolved address (one driven login by name against a card holding a by-address persona); switch the launcher's
+  default preset and the server's DNS answers to the name; keep the raw address as a fallback only if personas survive.
+
+### Goal 8 — a bug report section in the launcher, and the server's status (owner request, relayed 2026-09-20 by the hosted-server session)
+- The owner, to that session: "include a bug report section in the launcher that queries the same api endpoints the
+  site does and reports in the same way." Recorded here as relayed; the contract is that session's and lives with the
+  site (`../scotho`, `sites/s2u`): `GET https://s2u.scotho.com/api/stats` (live; the hosted server's snapshot, safe to
+  poll every 5 s or slower) and `POST https://s2u.scotho.com/api/bugs` (being built; JSON, <= 96 KB: title 4..120,
+  description 10..4000, optional contact, source "launcher", version, platform, up to 16 short context pairs, an
+  optional log <= 65,536 bytes, an empty honeypot field; 201 with a `BR-YYYYMMDD-xxxxxx` id, 400/413/429/5xx).
+- The launcher: an ONLINE-page status line from `/api/stats` ("SOCOM Unzipped: online, N players, M games"), parsed
+  defensively, never blocking the UI, silent when unreachable. A REPORT A BUG page with the site's own fields and
+  wording (TITLE, WHAT HAPPENED, CONTACT (OPTIONAL), an "attach the last run's log" checkbox that is OFF by default,
+  SEND, then the id). Nothing leaves the machine until SEND is pressed; what would be sent is shown first.
+- Privacy is Goal 1's machinery, not new code: the context comes from the allowlisted config (the ISO cut to its file
+  name, never card contents, never a password), the log is `diagnostics::clipLog` then `scrub` with the home directory
+  removed and cut to the contract's 65,536 bytes from the tail. On any failure to send, the report is written to
+  `logs/bugreport_<stamp>.json` and the player is told where, so nothing typed is lost.
+- Transport: HTTPS with certificate checks ON and no new vendored dependency -- WinHTTP in the Windows glue, a `curl`
+  subprocess in the POSIX glue (absent curl = the save-to-file path, stated plainly). The request body is a pure
+  function of Config + the form, tested against the contract's limits (lengths, 16 pairs, 96 KB, the honeypot); the
+  call runs off the UI thread.
+- Bar: the pure builder's tests; a loopback test server (plain HTTP, test-only seam) driving 201/400/429/5xx through
+  the page's state machine; one real report sent to the live endpoint from each platform once that session says it is
+  up, its id recorded. **Owner check:** the wording and that the default-off log checkbox is what was wanted.
+
 ## 3. Owner-gated, unchanged
 The listens, the pad pick, the mic meter, the launcher verdict, the Linux tarball on a real GPU, the first
 two-machine match, the domain and AWS credit decisions (`docs/HUMAN_TASKS.md`). r0004 and the community server
