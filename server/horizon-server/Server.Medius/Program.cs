@@ -70,6 +70,10 @@ namespace Server.Medius
 
         static readonly IInternalLogger Logger = InternalLoggerFactory.GetInstance<Program>();
 
+        // LOCAL FIX (socom_pc): SOCOM II's app ids (NTSC, NTSC beta, PAL, PAL beta, JP, KOR); the stats count these only
+        static readonly int[] _statsAppIds = new[] { 10472, 10202, 10481, 10540, 10501, 10511 };
+        public static void LogStats(string message) => Logger.Info(message);
+
         static async Task TickAsync()
         {
             try
@@ -138,6 +142,9 @@ namespace Server.Medius
                 // Tick manager
                 await Manager.Tick();
 
+                // LOCAL FIX (socom_pc): live stats snapshot (a no-op unless StatsPrefix is set)
+                StatsServer.Publish(Manager, _statsAppIds, Settings.StatsServerName, Settings.StatsLocation);
+
                 // Tick plugins
                 await Plugins.Tick();
 
@@ -184,6 +191,9 @@ namespace Server.Medius
             Logger.Info($"Starting MPS on port {ProxyServer.Port}.");
             ProxyServer.Start();
             Logger.Info($"MPS started.");
+
+            // LOCAL FIX (socom_pc): live stats JSON for s2u.scotho.com
+            StatsServer.Start(Settings.StatsPrefix);
 
             // 
             Logger.Info("Started.");

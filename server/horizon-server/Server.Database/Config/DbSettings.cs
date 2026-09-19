@@ -22,6 +22,15 @@ namespace Server.Database.Config
         public string SimulatedEncryptionKey { get; set; } = null;
 
         /// <summary>
+        /// LOCAL FIX (socom_pc): what simulated mode answers for the announcement (the game's message of the day),
+        /// the lobby channel's name and the location's name. Null keeps upstream's canned value.
+        /// </summary>
+        public string SimulatedAnnouncementTitle { get; set; } = null;
+        public string SimulatedAnnouncementBody { get; set; } = null;
+        public string SimulatedChannelName { get; set; } = null;
+        public string SimulatedLocationName { get; set; } = null;
+
+        /// <summary>
         /// Database url.
         /// </summary>
         public string DatabaseUrl { get; set; } = "http://localhost:80";
