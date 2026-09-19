@@ -104,11 +104,15 @@ drives both windows at once.**
   (`../scotho`, the SERVER STATS screen). Same endpoint, `GET https://s2u.scotho.com/api/stats` (the owner wrote
   "s2u.socom.com"; the host is `s2u.scotho.com`). Goal 8 owns the transport — this goal only asks that the launcher
   show what the site shows, not that a second reader be written.
-- **A switch for the debugger.** Today the debug panel is compile-time: `ps2xRuntime/src/lib/ps2_debug_panel.cpp`
-  behind `PS2X_ENABLE_DEBUG_UI`, so there is nothing for a checkbox to toggle yet. Either it becomes a runtime knob
-  the launcher sets (Goal 3 is retiring knobs, so it must be one of the named ones, not a new stray), or the setting
-  is honest about being a developer build's. Decide before drawing the checkbox; the release build's size (R151) is
-  part of the decision.
+- **The debugger must not be open at launch** (owner, 2026-09-20, answering the question below: *"it can stay a
+  debugger build. just don't want players to have the debugger open on launch."*). It was worse than a missing
+  checkbox: `PS2X_ENABLE_DEBUG_UI` is an `option(... ON)` (`ps2xRuntime/CMakeLists.txt:18`), so the shipped runner
+  carries the panel, and `m_visible = true` (`include/ps2_debug_panel.h:19`) opened the Runtime Debugger window over
+  the game on every launch. **Done:** the default is now `false`; F1 still toggles it
+  (`ps2_debug_panel.cpp:2176`). What is left for this goal: (a) whether the release configuration should build with
+  `PS2X_ENABLE_DEBUG_UI=OFF` — imgui and rlImGui are in the 55.7 MB download for a window players must not see, so
+  this is a size ruling as much as a UI one (R151's measurements are the precedent); (b) if a launcher switch is
+  still wanted after (a), it is a named runtime knob, not a new stray one (Goal 3 is retiring 190 names).
 - **The game window styled like the launcher.** "Stylize the actual game client window if possible like the client.
   Use the same UI." The game's window chrome, its title and its borders follow the launcher's theme (`ui/theme.h`);
   what is reachable depends on how much of the window the runtime owns versus raylib.
