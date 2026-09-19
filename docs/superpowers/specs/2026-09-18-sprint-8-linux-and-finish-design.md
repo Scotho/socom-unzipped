@@ -163,7 +163,12 @@ buttons lit. The owner's verdict on the look is a HUMAN_TASKS item, with the PNG
 **Stop rule.** If embedding the fonts fails on either platform (raylib's LoadFontFromMemory, the OFL download), ship the
 redesign on the default font scaled up rather than block it, and say so in KNOWN.
 
-### Goal 10 — the community server and its r0004 (owner request 2026-09-19; autonomous up to the owner's file)
+### Goal 10 — WISHLIST, not this sprint: the community server and its r0004 (owner 2026-09-19)
+
+> **Deferred by the owner the same day:** "Put the r0004 and community integration as a future wishlist item instead of an
+> actionable task. we will work to get the memory card package and tackle that a later day." Nothing below is scheduled. What
+> was established and the design are kept so the later day starts from them; the pipeline agent was stopped before it ran.
+> The launcher's community preset keeps its placeholder until then (the address, 67.222.156.250, is recorded here).
 
 The owner's words: "https://psrewired.com/servers/10472 this is the community server that is in the launcher with a
 placeholder. i'm noticing they run r004 though, so we may need to include an option to play on that patch in the
@@ -214,6 +219,45 @@ owner's file: `socom2_r0004.exe` reaches the main menu showing r0004, gate 3/3, 
 **Stop rules.** If the r0004 package's DNAS layering does not decrypt with the disc's keys, stop at the pipeline and
 file what differs. If the matcher leaves more than a tenth of the overrides unresolved on the real image, stop and list
 them: that is a hand job with its own sprint. No connection to PSRewired before the owner reports their answer.
+
+### Goal 11 — simulated memory cards that persist (owner report 2026-09-19; autonomous)
+
+The owner's words: "when i selected precision shooter before starting a mission, it asked if i would like to save to memory
+card and i tried, but it said no memory card was inserted. we should simulate memory cards and retain that on disk for
+people to save options and online credentials."
+
+**What is known.** The launcher exports `PS2X_MC_DIR=cards/<profile>` and the folder exists (`dist/cards/craig/`), empty;
+the session log shows only `[MCSERV] op=0 ... -> 0`; the gate has always run with a prepared card copy, so an empty card
+was never exercised. The game read the service's answers as "no card".
+
+**Design.** A simulated card is a directory. An existing or missing directory (created on demand) is an inserted,
+formatted, empty 8 MB PS2 card; every card operation the game's save flow uses works against it (info with the real
+card-changed sequence, directory listing with '.' and '..', mkdir, open/read/write/seek/close, delete, rename, format),
+unknown operations log once and fail sanely instead of answering 0-as-success, and a guest path can never leave the card's
+root. What the game saves (options, the online profile and credentials) is there on the next run because it is files in
+`cards/<profile>/`. The launcher's ABOUT page names the folder; its PLAY page says which profile's card is in use.
+
+**Bars.** Tests: an empty directory reads as a formatted PS2 card with free space; a save written by one service instance is
+read back by a second one on the same directory; delete, format and the path-escape refusal. One driven launch: from a
+fresh empty card, the drive walks to the options save prompt (the owner's path: single player, the difficulty choice that
+asks to save), accepts, and the card folder holds `BASCUS-97275SOCOMII` with the game's files; a second launch does not ask
+again / loads the saved options. The gate, with its prepared card, is unchanged. The owner's re-try is a HUMAN_TASKS item.
+
+**Stop rule.** If the save flow uses an operation whose semantics cannot be settled from the game's calls and the two
+implementations in the tree, stop at the listing of what it asked for and file it.
+
+### Audio finding folded into Goal 4 (2026-09-19): the music fade
+
+The owner's "music issue re-occurred in the mission" was measured three ways the same day: missions do have music (210
+stereo 32 kHz one-shot cues in VAGSTORE.ZAR, fired adaptively); none of Sprint 7's fixed defects recurred in the owner's
+logs; and the driven mission's dump plays those cues sample-exact (offset constant to 2 samples over 30 s, no drift, no
+gaps, no repeats, 0.998-1.000 where music plays alone). What is wrong is `snd_AutoVol`: the game fades cues with a timed
+ramp (`[handle, 0, 0x168, 2]` and `0x1e0` in the owner's session) and our handler applied the target instantly, so a cue
+that should fade out over 1.5-2 s is cut dead -- "skips and almost plays two different spliced segments". The ramp is
+implemented under tests with the semantics taken from the open 989snd reimplementation; the menu stream's start no
+longer discards the game's first fill (the known blip). Not yet covered by any measurement: a cutscene opening the PCM
+ring while music streams are live (the shared render mutex against a 448 ms decode-ahead, the shared master group 16, the
+unclamped sum) -- the owner's M51 cutscene; a driven mission to that cutscene with a dump is the follow-up.
 
 ## 3. Budget and stop rules
 
