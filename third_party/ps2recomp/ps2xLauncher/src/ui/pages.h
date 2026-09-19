@@ -4,6 +4,7 @@
 // A page never touches the process glue, the microphone or the disc: it reads App and raises a request flag,
 // and main.cpp's loop is the only thing that acts on the world.
 #include "focus.h"
+#include "launcher/bug_report.h"
 #include "launcher/launcher_config.h"
 #include "pad_render.h"
 #include "widgets.h"
@@ -13,6 +14,30 @@
 
 namespace ui
 {
+    // Sprint 9 Goal 8: the REPORT A BUG page's state. The page edits `form` and raises `requestSend`; the loop
+    // owns everything else (the check, the payload, the worker thread, the reply).
+    struct ReportUi
+    {
+        launcher::bugreport::Form form;   // attachLog is OFF by default
+        enum class State
+        {
+            Idle,
+            Sending,        // the request is on its worker thread; SEND is disabled
+            Sent,           // `id` is the reference
+            FieldError,     // `message` says what to fix; the focus went to the field
+            RateLimited,    // `message` says when to retry
+            SavedLocally    // could not send: `savedPath` is where the report was written
+        };
+        State state = State::Idle;
+        std::string message;
+        std::string id;
+        std::string savedPath;
+        bool copied = false;      // the reference is on the clipboard
+        std::string preview;      // what SEND would send, rebuilt by the loop when `changed`
+        bool changed = true;
+        bool requestSend = false;
+    };
+
     struct App
     {
         launcher::Config config;
@@ -39,6 +64,11 @@ namespace ui
         float micDb = 0.0f;
         bool micDbValid = false;
         std::string micStatus;
+
+        // Sprint 9 Goal 8: the hosted server's status line on ONLINE ("" = unreachable: nothing is drawn),
+        // and the REPORT A BUG page
+        std::string serverStatus;
+        ReportUi report;
 
         // what ABOUT shows
         std::string configPath, logsPath, version, monitorSize;
@@ -84,5 +114,6 @@ namespace ui
     void drawControllerPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawMicrophonePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
+    void drawReportPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawAboutPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
 }

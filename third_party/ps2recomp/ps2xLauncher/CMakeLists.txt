@@ -40,6 +40,7 @@ add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE}
     src/ui/page_controller.cpp
     src/ui/page_microphone.cpp
     src/ui/page_online.cpp
+    src/ui/page_report.cpp
     src/ui/page_about.cpp
 )
 if(UNIX)
@@ -51,7 +52,9 @@ target_link_libraries(socom_unzipped_launcher PRIVATE ps2x_launcher_core raylib)
 # MINIAUDIO_IMPLEMENTATION.
 target_include_directories(socom_unzipped_launcher PRIVATE $<TARGET_PROPERTY:raylib,SOURCE_DIR>/external)
 if(WIN32)
-    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32)
+    # winhttp: Sprint 9 Goal 8's bug report and status line (win32glue::httpRequest). Windows only -- the POSIX
+    # glue starts curl instead, so the Linux build links nothing new.
+    target_link_libraries(socom_unzipped_launcher PRIVATE comdlg32 shell32 winhttp)
 endif()
 if(UNIX AND NOT APPLE)
     # The portable folder keeps its non-system .so files in lib/ next to the binary.

@@ -364,7 +364,129 @@ namespace ui
         return value != before;
     }
 
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable)
+    namespace
+    {
+        // What a focused field takes from the keyboard this frame: typed characters, Ctrl+V, backspace.
+        // Printable ASCII only, as the launcher's fonts are; a pasted line break becomes a space.
+        bool typeInto(std::string &value, size_t maxLen, bool paste)
+        {
+            bool changed = false;
+            auto room = [&]() { return maxLen == 0 || value.size() < maxLen; };
+            for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
+                if (c >= 32 && c < 127 && room())
+                {
+                    value.push_back(static_cast<char>(c));
+                    changed = true;
+                }
+            if (paste && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_V))
+            {
+                const char *clip = GetClipboardText();
+                for (const char *p = clip; p != nullptr && *p != '\0' && room(); ++p)
+                {
+                    unsigned char c = static_cast<unsigned char>(*p);
+                    if (c == '\n' || c == '\t')
+                        c = ' ';
+                    if (c >= 32 && c < 127)
+                    {
+                        value.push_back(static_cast<char>(c));
+                        changed = true;
+                    }
+                }
+            }
+            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !value.empty())
+            {
+                value.pop_back();
+                changed = true;
+            }
+            return changed;
+        }
+    }
+
+    std::vector<std::string> wrapText(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face)
+    {
+        std::vector<std::string> lines;
+        std::string line;
+        size_t at = 0;
+        while (at < s.size())
+        {
+            if (s[at] == '\n')
+            {
+                lines.push_back(line);
+                line.clear();
+                ++at;
+                continue;
+            }
+            size_t end = at;
+            while (end < s.size() && s[end] != ' ' && s[end] != '\n')
+                ++end;
+            while (end < s.size() && s[end] == ' ')
+                ++end;   // a word carries its trailing spaces, so the caret sits where the next letter goes
+            std::string word = s.substr(at, end - at);
+            at = end;
+            if (!line.empty() && textWidth(ctx, (line + word).c_str(), size, face) > maxWidth)
+            {
+                lines.push_back(line);
+                line.clear();
+            }
+            // A word wider than the field is broken where it stops fitting.
+            while (word.size() > 1 && textWidth(ctx, word.c_str(), size, face) > maxWidth)
+            {
+                size_t fit = word.size() - 1;
+                while (fit > 1 && textWidth(ctx, word.substr(0, fit).c_str(), size, face) > maxWidth)
+                    --fit;
+                lines.push_back(word.substr(0, fit));
+                word.erase(0, fit);
+            }
+            line += word;
+        }
+        lines.push_back(line);
+        return lines;
+    }
+
+    void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen)
+    {
+        const bool isFocused = focused(ctx, id);
+        const bool isActive = ctx.activeField != nullptr && *ctx.activeField == id;
+        fillRect(ctx, r, theme::ground);
+        strokeRect(ctx, r, isActive ? theme::goldHi : (isFocused ? theme::gold : theme::line), 2.0f);
+
+        if (!ctx.fake && ctx.click && r.contains(ctx.mouse))
+        {
+            if (ctx.focusOut != nullptr)
+                *ctx.focusOut = id;
+            if (ctx.activeField != nullptr)
+                *ctx.activeField = id;
+        }
+        if (isFocused && ctx.activate && ctx.activeField != nullptr)
+            *ctx.activeField = id;
+        if (isActive && typeInto(value, maxLen, true))
+            changed = true;
+
+        const float inset = 10.0f;
+        const float size = metrics::bodySize - 2.0f;
+        const float lineH = size * 1.22f;
+        const int room = static_cast<int>((r.h - inset * 2.0f + 2.0f) / lineH);
+        const std::vector<std::string> lines = wrapText(ctx, value, r.w - inset * 2.0f - 4.0f, size, Face::Body);
+        const int total = static_cast<int>(lines.size());
+        // While typing, the END is what matters (there is no caret to move); at rest, the beginning.
+        const int first = (isActive && total > room) ? total - room : 0;
+        for (int i = 0; i < room && first + i < total; ++i)
+        {
+            std::string shown = lines[static_cast<size_t>(first + i)];
+            if (!isActive && i == room - 1 && first + i + 1 < total)
+                shown = ellipsizeEnd(ctx, shown, r.w - inset * 2.0f - 60.0f, size) + " ...";
+            text(ctx, shown.c_str(), Vec2{r.x + inset, r.y + inset + lineH * static_cast<float>(i)}, size, theme::text);
+        }
+        if (isActive && (ctx.fake || (static_cast<int>(ctx.time * 2.0) & 1)))
+        {
+            const int row = total - 1 - first;
+            const float w = textWidth(ctx, lines.back().c_str(), size);
+            fillRect(ctx, Rect{r.x + inset + w + 2.0f, r.y + inset + lineH * static_cast<float>(row < 0 ? 0 : row), 2.0f, lineH - 2.0f},
+                     theme::goldHi);
+        }
+    }
+
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen)
     {
         const bool isFocused = focused(ctx, id);
         const bool isActive = editable && ctx.activeField != nullptr && *ctx.activeField == id;
@@ -381,20 +503,9 @@ namespace ui
         if (editable && isFocused && ctx.activate && ctx.activeField != nullptr)
             *ctx.activeField = id;
 
-        if (isActive)
-        {
-            for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
-                if (c >= 32 && c < 127)
-                {
-                    value.push_back(static_cast<char>(c));
-                    changed = true;
-                }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !value.empty())
-            {
-                value.pop_back();
-                changed = true;
-            }
-        }
+        // maxLen > 0 marks the REPORT A BUG fields: capped at the contract's length, and they take Ctrl+V.
+        if (isActive && typeInto(value, maxLen, maxLen > 0))
+            changed = true;
 
         const float inset = 10.0f;
         const float size = metrics::bodySize;
