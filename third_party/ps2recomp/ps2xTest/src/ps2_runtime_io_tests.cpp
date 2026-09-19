@@ -147,6 +147,28 @@ namespace
             PS2Runtime::setIoPaths(ioPaths);
         }
     };
+
+    // The game's IsMemCardInserted (0x27E1B0 -> func_3A1650) issues exactly this:
+    // sceMcGetInfo(port, slot=0, &type, &free, &format) with the fifth argument
+    // in $t0, then sceMcSync, and decides on `type == 2` alone.
+    void mcGetInfo(TestContext &test,
+                   int32_t port,
+                   uint32_t typeAddr,
+                   uint32_t freeAddr,
+                   uint32_t formatAddr)
+    {
+        writeGuestU32(test.rdram.data(), typeAddr, 0xDEADBEEFu);
+        writeGuestU32(test.rdram.data(), freeAddr, 0xDEADBEEFu);
+        writeGuestU32(test.rdram.data(), formatAddr, 0xDEADBEEFu);
+
+        clearContext(test.ctx);
+        setRegU32(test.ctx, 4, static_cast<uint32_t>(port));
+        setRegU32(test.ctx, 5, 0u);
+        setRegU32(test.ctx, 6, typeAddr);
+        setRegU32(test.ctx, 7, freeAddr);
+        setRegU32(test.ctx, 8, formatAddr);
+        ps2_stubs::sceMcGetInfo(test.rdram.data(), &test.ctx, nullptr);
+    }
 }
 
 void register_ps2_runtime_io_tests()
@@ -501,6 +523,277 @@ void register_ps2_runtime_io_tests()
 
             t.Equals(syncMc(test.rdram, &cmd), -2, "unformatted cards should report sceMcResNoFormat through sceMcSync");
             t.Equals(readGuestS32(test.rdram.data(), formatAddr), 0, "sceMcGetInfo should report an unformatted card after sceMcUnformat");
+        });
+
+        // --- Simulated memory cards that persist (Sprint 8 Goal 11) -------------
+        // The owner's save prompt reported "no memory card inserted". The game's
+        // IsMemCardInserted (0x27E1B0 -> func_3A1650) is sceMcGetInfo + sceMcSync
+        // and decides on `type == 2` alone, so these cover the answers the save
+        // flow actually reads off an empty, a missing and a written card folder.
+
+        tc.Run("an empty card directory is an inserted, formatted 8 MB PS2 card", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0x980;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0x984;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0x988;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            std::error_code ec;
+            t.IsTrue(std::filesystem::is_empty(test.paths.mcRoot, ec),
+                     "the card root starts empty, as a fresh launcher profile leaves it");
+
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            int32_t cmd = 0;
+            t.Equals(syncMc(test.rdram, &cmd), 0, "an empty card directory is a card, not an error");
+            t.Equals(cmd, 0x01, "sceMcSync should report GETINFO as the last command");
+            t.Equals(readGuestS32(test.rdram.data(), typeAddr), 2,
+                     "an empty card directory must report type 2 (IsMemCardInserted accepts nothing else)");
+            t.Equals(readGuestS32(test.rdram.data(), formatAddr), 1,
+                     "an empty card directory is a formatted card");
+
+            const int32_t freeClusters = readGuestS32(test.rdram.data(), freeAddr);
+            t.IsTrue(freeClusters > 0, "an empty card reports free space");
+            t.IsTrue(freeClusters <= 8000,
+                     "an 8 MB PS2 card has at most 8000 free 1 KB clusters");
+        });
+
+        tc.Run("a missing card directory is created by the first card query", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0x9A0;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0x9A4;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0x9A8;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            std::error_code ec;
+            std::filesystem::remove_all(test.paths.mcRoot, ec);
+            t.IsFalse(std::filesystem::exists(test.paths.mcRoot, ec),
+                      "the card directory is gone before the query");
+
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(syncMc(test.rdram), 0, "a missing card directory is still an inserted card");
+            t.Equals(readGuestS32(test.rdram.data(), typeAddr), 2,
+                     "a missing card directory must report type 2");
+            t.IsTrue(std::filesystem::exists(test.paths.mcRoot, ec),
+                     "the runtime creates the card directory so the save can persist");
+        });
+
+        tc.Run("the save folder survives a second run and free space tracks its contents", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0x9C0;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0x9C4;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0x9C8;
+            constexpr uint32_t dirAddr = GUEST_STRING_AREA_START + 0xC00;
+            constexpr uint32_t fileAddr = GUEST_STRING_AREA_START + 0xC40;
+            constexpr uint32_t patternAddr = GUEST_STRING_AREA_START + 0xCC0;
+            constexpr uint32_t payloadAddr = GUEST_BUFFER_AREA_START + 0x3000;
+            constexpr int32_t kPayloadBytes = 1000;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(syncMc(test.rdram), 0, "the empty card answers sceMcGetInfo");
+            const int32_t freeBefore = readGuestS32(test.rdram.data(), freeAddr);
+
+            writeGuestString(test.rdram.data(), dirAddr, "/BASCUS-97275SOCOMII");
+            writeGuestString(test.rdram.data(), fileAddr, "/BASCUS-97275SOCOMII/SOCOM2.CFG");
+            writeGuestString(test.rdram.data(), patternAddr, "/BASCUS-97275SOCOMII/*");
+            for (int32_t i = 0; i < kPayloadBytes; ++i)
+            {
+                test.rdram[payloadAddr + static_cast<uint32_t>(i)] = static_cast<uint8_t>(i & 0xFF);
+            }
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, dirAddr);
+            ps2_stubs::sceMcMkdir(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "sceMcMkdir should create the SOCOM II save folder");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, fileAddr);
+            setRegU32(test.ctx, 7, PS2_FIO_WRITE_CREATE_TRUNC);
+            ps2_stubs::sceMcOpen(test.rdram.data(), &test.ctx, nullptr);
+            const int32_t writeFd = syncMc(test.rdram);
+            t.IsTrue(writeFd > 0, "sceMcOpen should open the save file for writing");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, static_cast<uint32_t>(writeFd));
+            setRegU32(test.ctx, 5, payloadAddr);
+            setRegU32(test.ctx, 6, static_cast<uint32_t>(kPayloadBytes));
+            ps2_stubs::sceMcWrite(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), kPayloadBytes, "sceMcWrite should write the whole save");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, static_cast<uint32_t>(writeFd));
+            ps2_stubs::sceMcClose(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "sceMcClose should close the save");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, patternAddr);
+            setRegU32(test.ctx, 7, 0u);
+            setRegU32(test.ctx, 8, 8u);
+            setRegU32(test.ctx, 9, GUEST_MC_TABLE_ADDR);
+            ps2_stubs::sceMcGetDir(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 3, "sceMcGetDir should list the dot entries and the save file");
+            const auto *entries = reinterpret_cast<const SceMcTblGetDir *>(test.rdram.data() + GUEST_MC_TABLE_ADDR);
+            t.Equals(std::string(entries[2].entryName), std::string("SOCOM2.CFG"),
+                     "sceMcGetDir should name the save file");
+            t.Equals(entries[2].fileSizeByte, static_cast<uint32_t>(kPayloadBytes),
+                     "sceMcGetDir should report the save's size");
+
+            mcGetInfo(test, 0, typeAddr, freeAddr, formatAddr);
+            t.Equals(syncMc(test.rdram), 0, "the written card still answers sceMcGetInfo");
+            const int32_t freeAfter = readGuestS32(test.rdram.data(), freeAddr);
+            t.IsTrue(freeAfter < freeBefore,
+                     "free clusters must drop once the card holds a save folder and a file");
+
+            // A second run: libmc torn down and brought back up over the same directory.
+            clearContext(test.ctx);
+            ps2_stubs::sceMcEnd(test.rdram.data(), &test.ctx, nullptr);
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, fileAddr);
+            setRegU32(test.ctx, 7, PS2_FIO_O_RDONLY);
+            ps2_stubs::sceMcOpen(test.rdram.data(), &test.ctx, nullptr);
+            const int32_t readFd = syncMc(test.rdram);
+            t.IsTrue(readFd > 0, "the next run should reopen the persisted save");
+
+            constexpr uint32_t readbackAddr = GUEST_BUFFER_AREA_START + 0x3800;
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, static_cast<uint32_t>(readFd));
+            setRegU32(test.ctx, 5, readbackAddr);
+            setRegU32(test.ctx, 6, static_cast<uint32_t>(kPayloadBytes));
+            ps2_stubs::sceMcRead(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), kPayloadBytes, "the next run should read the whole save back");
+            t.IsTrue(std::memcmp(test.rdram.data() + payloadAddr,
+                                 test.rdram.data() + readbackAddr,
+                                 static_cast<size_t>(kPayloadBytes)) == 0,
+                     "the next run should read back the same bytes");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, static_cast<uint32_t>(readFd));
+            ps2_stubs::sceMcClose(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "sceMcClose should close the reopened save");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, fileAddr);
+            ps2_stubs::sceMcDelete(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "sceMcDelete should remove the save");
+            std::error_code ec;
+            t.IsFalse(std::filesystem::exists(test.paths.mcRoot / "BASCUS-97275SOCOMII" / "SOCOM2.CFG", ec),
+                      "sceMcDelete should remove the host file");
+        });
+
+        tc.Run("guest memory-card paths cannot escape the card root", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t climbAddr = GUEST_STRING_AREA_START + 0xD00;
+            constexpr uint32_t absoluteAddr = GUEST_STRING_AREA_START + 0xD80;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            const std::filesystem::path outside = test.paths.base / "escape.bin";
+            writeGuestString(test.rdram.data(), climbAddr, "/../escape.bin");
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, climbAddr);
+            setRegU32(test.ctx, 7, PS2_FIO_WRITE_CREATE_TRUNC);
+            ps2_stubs::sceMcOpen(test.rdram.data(), &test.ctx, nullptr);
+            t.IsTrue(syncMc(test.rdram) < 0, "a guest path that climbs above the card root is refused");
+
+            std::error_code ec;
+            t.IsFalse(std::filesystem::exists(outside, ec),
+                      "a climbing path must not create a file beside the card root");
+            t.IsFalse(std::filesystem::exists(test.paths.mcRoot / "escape.bin", ec),
+                      "a climbing path must not be silently rewritten into the card root");
+
+            // An absolute host path smuggled in as a guest path: on Windows
+            // operator/= replaces the whole root when the component carries a drive.
+            writeGuestString(test.rdram.data(), absoluteAddr, "/" + outside.generic_string());
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            setRegU32(test.ctx, 6, absoluteAddr);
+            setRegU32(test.ctx, 7, PS2_FIO_WRITE_CREATE_TRUNC);
+            ps2_stubs::sceMcOpen(test.rdram.data(), &test.ctx, nullptr);
+            t.IsTrue(syncMc(test.rdram) < 0, "an absolute host path is refused as a guest card path");
+            t.IsFalse(std::filesystem::exists(outside, ec),
+                      "an absolute host path must not write outside the card root");
+        });
+
+        tc.Run("sceMcFormat empties the card directory", [](TestCase &t)
+        {
+            TestContext test;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            std::filesystem::create_directories(test.paths.mcRoot / "BASCUS-97275SOCOMII");
+            {
+                std::ofstream out(test.paths.mcRoot / "BASCUS-97275SOCOMII" / "SOCOM2.CFG", std::ios::binary);
+                const std::string payload = "options";
+                out.write(payload.data(), static_cast<std::streamsize>(payload.size()));
+            }
+
+            clearContext(test.ctx);
+            setRegU32(test.ctx, 4, 0u);
+            setRegU32(test.ctx, 5, 0u);
+            ps2_stubs::sceMcFormat(test.rdram.data(), &test.ctx, nullptr);
+            t.Equals(syncMc(test.rdram), 0, "sceMcFormat should succeed");
+
+            std::error_code ec;
+            t.IsTrue(std::filesystem::exists(test.paths.mcRoot, ec),
+                     "sceMcFormat should leave the card directory in place");
+            t.IsTrue(std::filesystem::is_empty(test.paths.mcRoot, ec),
+                     "sceMcFormat should empty the card directory");
+        });
+
+        tc.Run("the second card slot reads as empty unless PS2X_MC_DIR_SLOT1 names a card", [](TestCase &t)
+        {
+            TestContext test;
+
+            constexpr uint32_t typeAddr = GUEST_BUFFER_AREA_START + 0xA00;
+            constexpr uint32_t freeAddr = GUEST_BUFFER_AREA_START + 0xA04;
+            constexpr uint32_t formatAddr = GUEST_BUFFER_AREA_START + 0xA08;
+
+            clearContext(test.ctx);
+            ps2_stubs::sceMcInit(test.rdram.data(), &test.ctx, nullptr);
+
+            mcGetInfo(test, 1, typeAddr, freeAddr, formatAddr);
+            t.IsTrue(syncMc(test.rdram) < 0, "port 1 has no card, so sceMcGetInfo fails");
+            t.Equals(readGuestS32(test.rdram.data(), typeAddr), 0,
+                     "port 1 must report card type 0 (no card) without PS2X_MC_DIR_SLOT1");
+
+            std::error_code ec;
+            const std::filesystem::path slot1 =
+                test.paths.mcRoot.parent_path() / (test.paths.mcRoot.filename().string() + "_slot1");
+            t.IsFalse(std::filesystem::exists(slot1, ec),
+                      "port 1 must not litter a _slot1 directory when nothing is plugged into it");
         });
 
         tc.Run("sceMcEnd resets libmc state so sync reports no active command", [](TestCase &t)

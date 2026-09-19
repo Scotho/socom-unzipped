@@ -32,10 +32,15 @@ namespace ps2_stubs
         constexpr int32_t kMcResultNotEmpty = -6;
         constexpr int32_t kMcResultUpLimitHandle = -7;
 
+        constexpr int32_t kMcTypeNone = 0;
         constexpr int32_t kMcTypePs2 = 2;
         constexpr int32_t kMcFormatted = 1;
         constexpr int32_t kMcUnformatted = 0;
-        constexpr int32_t kMcFreeClusters = 0x2000;
+        // A simulated card is a host directory sized like the retail 8 MB PS2 card:
+        // 8000 usable 1 KB clusters. Free space is the total minus what the
+        // directory actually holds, so the game's free-space checks mean something.
+        constexpr int64_t kMcClusterBytes = 1024;
+        constexpr int32_t kMcTotalClusters = 8000;
         constexpr size_t kMcMaxPathLen = 1024;
         constexpr size_t kMcMaxOpenFiles = 32;
 
@@ -114,8 +119,35 @@ namespace ps2_stubs
             return port >= 0 && port < static_cast<int32_t>(g_mcPorts.size()) && slot == 0;
         }
 
+        // PS2X_MC_DIR_SLOT1=<dir>: the card in the second physical port. Without it
+        // nothing is plugged in there, which is what a stock console with one card
+        // reports, and what keeps the runtime from inventing a card the player
+        // never inserted.
+        const char *mcSlot1DirOverride()
+        {
+            const char *value = std::getenv("PS2X_MC_DIR_SLOT1");
+            return (value && *value) ? value : nullptr;
+        }
+
+        bool isMcCardPresent(int32_t port, int32_t slot)
+        {
+            if (!isValidMcPortSlot(port, slot))
+            {
+                return false;
+            }
+            return port == 0 || mcSlot1DirOverride() != nullptr;
+        }
+
         std::filesystem::path getMcRootPath(int32_t port)
         {
+            if (port > 0)
+            {
+                if (const char *override = mcSlot1DirOverride())
+                {
+                    return std::filesystem::path(override).lexically_normal();
+                }
+            }
+
             const PS2Runtime::IoPaths &paths = PS2Runtime::getIoPaths();
             std::filesystem::path root = paths.mcRoot;
             if (root.empty())
@@ -153,10 +185,60 @@ namespace ps2_stubs
             return (parent / (leaf + "_slot" + std::to_string(port))).lexically_normal();
         }
 
+        // A simulated card IS its directory: if the launcher's profile folder is
+        // missing, create it rather than reporting an empty card slot.
         void ensureMcRootExists(int32_t port)
         {
+            if (port > 0 && mcSlot1DirOverride() == nullptr)
+            {
+                return;
+            }
             std::error_code ec;
             std::filesystem::create_directories(getMcRootPath(port), ec);
+        }
+
+        int32_t mcUsedClusters(const std::filesystem::path &root)
+        {
+            std::error_code ec;
+            if (!std::filesystem::exists(root, ec) || ec)
+            {
+                return 0;
+            }
+
+            int64_t clusters = 0;
+            ec.clear();
+            auto it = std::filesystem::recursive_directory_iterator(
+                root, std::filesystem::directory_options::skip_permission_denied, ec);
+            const std::filesystem::recursive_directory_iterator end;
+            for (; !ec && it != end; it.increment(ec))
+            {
+                std::error_code entryEc;
+                if (it->is_directory(entryEc) && !entryEc)
+                {
+                    // A save folder costs its own directory entry cluster.
+                    clusters += 1;
+                    continue;
+                }
+
+                entryEc.clear();
+                const uintmax_t size = it->file_size(entryEc);
+                if (entryEc)
+                {
+                    continue;
+                }
+                clusters += static_cast<int64_t>((static_cast<int64_t>(size) + kMcClusterBytes - 1) / kMcClusterBytes);
+                if (clusters >= kMcTotalClusters)
+                {
+                    return kMcTotalClusters;
+                }
+            }
+
+            return static_cast<int32_t>(std::min<int64_t>(clusters, kMcTotalClusters));
+        }
+
+        int32_t mcFreeClusters(int32_t port)
+        {
+            return kMcTotalClusters - mcUsedClusters(getMcRootPath(port));
         }
 
         std::vector<std::string> splitMcPathComponents(const std::string &value)
@@ -206,7 +288,18 @@ namespace ps2_stubs
             return joined;
         }
 
-        std::string normalizeGuestMcPathLocked(int32_t port, std::string path)
+        // A single path component may never carry a drive or a root: on Windows
+        // `root /= "C:/x"` replaces the root outright, which would let a guest
+        // path write anywhere on the host.
+        bool isSafeMcPathComponent(const std::string &part)
+        {
+            return !part.empty() && part.find(':') == std::string::npos;
+        }
+
+        // Returns false for any guest path that would leave the card root: a ".."
+        // that climbs above "/", or a component carrying a host drive. Callers turn
+        // that into sceMcResDeniedPermit instead of silently rewriting the path.
+        bool normalizeGuestMcPathLocked(int32_t port, std::string path, std::string &normalized)
         {
             std::replace(path.begin(), path.end(), '\\', '/');
             const std::string lower = toLowerAscii(path);
@@ -231,25 +324,34 @@ namespace ps2_stubs
 
                 if (part == "..")
                 {
-                    if (!parts.empty())
+                    if (parts.empty())
                     {
-                        parts.pop_back();
+                        return false;
                     }
+                    parts.pop_back();
                     continue;
+                }
+
+                if (!isSafeMcPathComponent(part))
+                {
+                    return false;
                 }
 
                 parts.push_back(part);
             }
 
-            return joinMcPathComponents(parts);
+            normalized = joinMcPathComponents(parts);
+            return true;
         }
 
         std::filesystem::path guestMcPathToHostPath(int32_t port, const std::string &guestPath)
         {
+            // Appended one validated component at a time: no component can carry a
+            // root of its own, so the result always stays under the card root.
             std::filesystem::path resolved = getMcRootPath(port);
-            if (guestPath.size() > 1u)
+            for (const std::string &part : splitMcPathComponents(guestPath))
             {
-                resolved /= std::filesystem::path(guestPath.substr(1));
+                resolved /= std::filesystem::path(part, std::filesystem::path::generic_format);
             }
             return resolved.lexically_normal();
         }
@@ -529,7 +631,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 currentDir = state.currentDir;
@@ -540,16 +642,23 @@ namespace ps2_stubs
                 else
                 {
                     ensureMcRootExists(port);
-                    const std::string resolvedDir =
-                        requestedDir.empty() ? state.currentDir : normalizeGuestMcPathLocked(port, requestedDir);
-                    const std::filesystem::path hostDir = guestMcPathToHostPath(port, resolvedDir);
-                    std::error_code ec;
-                    if (std::filesystem::exists(hostDir, ec) && !ec &&
-                        std::filesystem::is_directory(hostDir, ec))
+                    std::string resolvedDir = state.currentDir;
+                    if (!requestedDir.empty() &&
+                        !normalizeGuestMcPathLocked(port, requestedDir, resolvedDir))
                     {
-                        state.currentDir = resolvedDir;
-                        currentDir = resolvedDir;
-                        result = kMcResultSucceed;
+                        result = kMcResultDeniedPermit;
+                    }
+                    else
+                    {
+                        const std::filesystem::path hostDir = guestMcPathToHostPath(port, resolvedDir);
+                        std::error_code ec;
+                        if (std::filesystem::exists(hostDir, ec) && !ec &&
+                            std::filesystem::is_directory(hostDir, ec))
+                        {
+                            state.currentDir = resolvedDir;
+                            currentDir = resolvedDir;
+                            result = kMcResultSucceed;
+                        }
                     }
                 }
             }
@@ -592,7 +701,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -601,8 +710,12 @@ namespace ps2_stubs
                 }
                 else
                 {
-                    const std::string guestPath = normalizeGuestMcPathLocked(port, path);
-                    if (guestPath != "/")
+                    std::string guestPath;
+                    if (!normalizeGuestMcPathLocked(port, path, guestPath))
+                    {
+                        result = kMcResultDeniedPermit;
+                    }
+                    else if (guestPath != "/")
                     {
                         const std::filesystem::path hostPath = guestMcPathToHostPath(port, guestPath);
                         std::error_code ec;
@@ -674,7 +787,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 closeMcFilesForPortLocked(port);
                 const std::filesystem::path root = getMcRootPath(port);
@@ -708,7 +821,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -718,8 +831,13 @@ namespace ps2_stubs
                 else
                 {
                     ensureMcRootExists(port);
-                    const std::string guestQuery =
-                        normalizeGuestMcPathLocked(port, rawPath.empty() ? "." : rawPath);
+                    std::string guestQuery;
+                    if (!normalizeGuestMcPathLocked(port, rawPath.empty() ? "." : rawPath, guestQuery))
+                    {
+                        result = kMcResultDeniedPermit;
+                    }
+                    else
+                    {
                     const bool hasWildcard =
                         guestQuery.find('*') != std::string::npos || guestQuery.find('?') != std::string::npos;
 
@@ -839,6 +957,7 @@ namespace ps2_stubs
                             result = kMcResultDeniedPermit;
                         }
                     }
+                    }
                 }
             }
 
@@ -873,13 +992,22 @@ namespace ps2_stubs
 
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
+                // An existing-but-empty directory, and a directory that is not
+                // there yet, are both an inserted, formatted, empty 8 MB card.
+                // The game's IsMemCardInserted (0x27E1B0) reads nothing but this
+                // type, so anything else here is "no memory card inserted".
+                ensureMcRootExists(port);
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 cardType = kMcTypePs2;
-                freeBlocks = state.formatted ? kMcFreeClusters : 0;
+                freeBlocks = state.formatted ? mcFreeClusters(port) : 0;
                 format = state.formatted ? kMcFormatted : kMcUnformatted;
                 result = state.formatted ? kMcResultSucceed : kMcResultNoFormat;
+            }
+            else
+            {
+                cardType = kMcTypeNone;
             }
 
             setMcCommandResultLocked(kMcCmdGetInfo, result);
@@ -947,7 +1075,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -957,7 +1085,13 @@ namespace ps2_stubs
                 else
                 {
                     ensureMcRootExists(port);
-                    const std::string guestPath = normalizeGuestMcPathLocked(port, path);
+                    std::string guestPath;
+                    if (!normalizeGuestMcPathLocked(port, path, guestPath))
+                    {
+                        result = kMcResultDeniedPermit;
+                    }
+                    else
+                    {
                     const std::filesystem::path hostPath = guestMcPathToHostPath(port, guestPath);
                     std::error_code ec;
                     if (std::filesystem::exists(hostPath, ec) && !ec)
@@ -973,6 +1107,7 @@ namespace ps2_stubs
                         result = std::filesystem::exists(hostPath.parent_path(), ec) && !ec
                                      ? kMcResultDeniedPermit
                                      : kMcResultNoEntry;
+                    }
                     }
                 }
             }
@@ -992,7 +1127,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -1001,12 +1136,19 @@ namespace ps2_stubs
                 }
                 else
                 {
-                    const std::string guestPath = normalizeGuestMcPathLocked(port, path);
-                    const std::filesystem::path hostPath = guestMcPathToHostPath(port, guestPath);
+                    ensureMcRootExists(port);
+                    std::string guestPath;
+                    const bool safePath = normalizeGuestMcPathLocked(port, path, guestPath);
+                    const std::filesystem::path hostPath =
+                        safePath ? guestMcPathToHostPath(port, guestPath) : std::filesystem::path{};
                     std::error_code ec;
                     const bool create = (flags & PS2_FIO_O_CREAT) != 0u;
-                    const bool exists = std::filesystem::exists(hostPath, ec) && !ec;
-                    if (guestPath == "/")
+                    const bool exists = safePath && std::filesystem::exists(hostPath, ec) && !ec;
+                    if (!safePath)
+                    {
+                        result = kMcResultDeniedPermit;
+                    }
+                    else if (guestPath == "/")
                     {
                         result = kMcResultDeniedPermit;
                     }
@@ -1093,7 +1235,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -1102,16 +1244,24 @@ namespace ps2_stubs
                 }
                 else
                 {
-                    const std::filesystem::path oldHostPath =
-                        guestMcPathToHostPath(port, normalizeGuestMcPathLocked(port, oldPath));
-                    const std::filesystem::path newHostPath =
-                        guestMcPathToHostPath(port, normalizeGuestMcPathLocked(port, newPath));
-                    std::error_code ec;
-                    if (std::filesystem::exists(oldHostPath, ec) && !ec &&
-                        std::filesystem::exists(newHostPath.parent_path(), ec) && !ec)
+                    std::string oldGuestPath;
+                    std::string newGuestPath;
+                    if (!normalizeGuestMcPathLocked(port, oldPath, oldGuestPath) ||
+                        !normalizeGuestMcPathLocked(port, newPath, newGuestPath))
                     {
-                        std::filesystem::rename(oldHostPath, newHostPath, ec);
-                        result = ec ? kMcResultDeniedPermit : kMcResultSucceed;
+                        result = kMcResultDeniedPermit;
+                    }
+                    else
+                    {
+                        const std::filesystem::path oldHostPath = guestMcPathToHostPath(port, oldGuestPath);
+                        const std::filesystem::path newHostPath = guestMcPathToHostPath(port, newGuestPath);
+                        std::error_code ec;
+                        if (std::filesystem::exists(oldHostPath, ec) && !ec &&
+                            std::filesystem::exists(newHostPath.parent_path(), ec) && !ec)
+                        {
+                            std::filesystem::rename(oldHostPath, newHostPath, ec);
+                            result = ec ? kMcResultDeniedPermit : kMcResultSucceed;
+                        }
                     }
                 }
             }
@@ -1168,7 +1318,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                 if (!state.formatted)
@@ -1177,12 +1327,19 @@ namespace ps2_stubs
                 }
                 else
                 {
-                    const std::filesystem::path hostPath =
-                        guestMcPathToHostPath(port, normalizeGuestMcPathLocked(port, path));
-                    std::error_code ec;
-                    if (std::filesystem::exists(hostPath, ec) && !ec)
+                    std::string guestPath;
+                    if (!normalizeGuestMcPathLocked(port, path, guestPath))
                     {
-                        result = kMcResultSucceed;
+                        result = kMcResultDeniedPermit;
+                    }
+                    else
+                    {
+                        const std::filesystem::path hostPath = guestMcPathToHostPath(port, guestPath);
+                        std::error_code ec;
+                        if (std::filesystem::exists(hostPath, ec) && !ec)
+                        {
+                            result = kMcResultSucceed;
+                        }
                     }
                 }
             }
@@ -1244,7 +1401,7 @@ namespace ps2_stubs
         int32_t result = kMcResultNoEntry;
         {
             std::lock_guard<std::mutex> lock(g_mcStateMutex);
-            if (isValidMcPortSlot(port, slot))
+            if (isMcCardPresent(port, slot))
             {
                 closeMcFilesForPortLocked(port);
                 const std::filesystem::path root = getMcRootPath(port);

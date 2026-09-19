@@ -527,8 +527,10 @@ void register_ps2_sif_rpc_tests()
                      "get info result should succeed");
             t.Equals(readGuestStruct<int32_t>(env.rdram.data(), kEndParamAddr + 0u), 2,
                      "get info should report PS2 card type");
-            t.Equals(readGuestStruct<int32_t>(env.rdram.data(), kEndParamAddr + 4u), 0x2000,
-                     "get info should report free clusters");
+            // An empty card directory is an empty 8 MB card: 8000 free 1 KB
+            // clusters, not a fixed constant. Free space now tracks the directory.
+            t.Equals(readGuestStruct<int32_t>(env.rdram.data(), kEndParamAddr + 4u), 8000,
+                     "get info should report the free clusters of an empty 8 MB card");
             t.Equals(readGuestStruct<int32_t>(env.rdram.data(), kEndParamAddr + 144u), 1,
                      "get info should report formatted card");
         });
