@@ -181,6 +181,36 @@ void register_launcher_tests()
             t.IsTrue(std::string(launcher::crouchShortcutHint("touchpad")).find("othing") != std::string::npos, "touchpad says it costs nothing");
         });
 
+        tc.Run("the profile names a directory, so it cannot leave cards/: separators, dots and junk are refused", [](TestCase &t)
+        {
+            // PS2X_MC_DIR is built as "cards/" + profile (launcher_config.cpp) and the runner resolves a relative
+            // value under its own home (bare_run.cpp). The profile is free text in a config.json a player may well
+            // have been sent by someone else, so "../.." there would put the game's memory-card writes anywhere the
+            // player can write. It is a name, not a path: it stays one.
+            t.Equals(launcher::normalizeProfile("craig"), std::string("craig"), "an ordinary name is itself");
+            t.Equals(launcher::normalizeProfile("Craig 2_b-a.1"), std::string("Craig 2_b-a.1"), "letters, digits, space, _ - . are kept");
+            t.Equals(launcher::normalizeProfile(""), std::string("player"), "an empty profile is the default");
+            t.Equals(launcher::normalizeProfile(".."), std::string("player"), "so is the parent directory");
+            t.Equals(launcher::normalizeProfile("."), std::string("player"), "and the current one");
+            t.Equals(launcher::normalizeProfile("../../Windows"), std::string("player"), "a climb out is refused whole, not patched up");
+            t.Equals(launcher::normalizeProfile("a/b"), std::string("player"), "a separator is refused");
+            t.Equals(launcher::normalizeProfile("a\\b"), std::string("player"), "the other separator too");
+            t.Equals(launcher::normalizeProfile("C:evil"), std::string("player"), "and a drive letter");
+            t.Equals(launcher::normalizeProfile(std::string(300, 'x')).size(), static_cast<size_t>(64), "a very long name is cut to 64");
+
+            launcher::Config c;
+            c.profile = "../../../Users/Public";
+            const std::vector<std::string> env = launcher::environmentFor(c);
+            auto has = [&env](const std::string &kv) {
+                return std::find(env.begin(), env.end(), kv) != env.end();
+            };
+            t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the environment carries the safe name, never the climb");
+
+            launcher::Config loaded;
+            t.IsTrue(launcher::fromJson("{\"profile\": \"../../../etc\"}", loaded), "such a config still parses");
+            t.Equals(loaded.profile, std::string("player"), "and what it loaded is already safe");
+        });
+
         tc.Run("iso9660: the root directory lookup finds SCUS_972.75 (with its ;1), rejects the rest", [](TestCase &t)
         {
             const std::vector<uint8_t> img = syntheticImage();

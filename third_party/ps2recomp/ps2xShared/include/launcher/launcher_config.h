@@ -67,6 +67,13 @@ namespace launcher
     constexpr int kCrouchShortcutCount = 4;
     // One of kCrouchShortcuts; anything else (a typo, a value from a newer build) is "off".
     std::string normalizeCrouchShortcut(const std::string &value);
+
+    // The profile names a directory -- PS2X_MC_DIR is "cards/" + profile, and the runner resolves a relative
+    // value under its own home -- so it must stay a NAME. Letters, digits, space, '_', '-' and '.' are kept and
+    // the result is cut to 64; anything else (a separator, a drive letter, "." or ".." alone, empty) is refused
+    // whole and becomes "player". Refused whole, not patched up: a config.json can be handed to a player by
+    // someone else, and half-cleaning a path is how a cleaner gets walked around.
+    std::string normalizeProfile(const std::string &value);
     // The cell's label and the one line under the row that states the trade. Never empty.
     const char *crouchShortcutLabel(const std::string &value);
     const char *crouchShortcutHint(const std::string &value);

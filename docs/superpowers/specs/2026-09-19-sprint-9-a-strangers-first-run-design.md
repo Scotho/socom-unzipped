@@ -40,6 +40,39 @@ meets first.
 - Bar: a generated table in `docs/KNOBS.md` checked by a test against the source (a knob read in code and absent
   from the table fails the suite); the gate 3/3 with an empty environment.
 
+**The exposure question (owner 2026-09-20: "we are exposing quite a few PS2X options that may be security issues...
+maybe split a private dev build that is gitignored... unless you agree otherwise"). Answered here, because this goal
+already owns the knobs and a second mechanism would fight it.** Measured surface: **126** distinct `getenv("PS2X_*")`
+call sites in the runtime, shared and IOP code, of which **29** name a path or a dump. What the reading says:
+- **An environment variable is not a privilege boundary.** Whoever can set one already runs code as the player, so
+  a knob is not a way *in*; and hiding a knob does not remove it — the strings stay in the binary and the variable
+  still works. A private build whose only difference is that the options are *less visible* buys obscurity, not
+  safety. Compiling them **out** is a real reduction; that is a different and more expensive thing than hiding.
+- **The one real vector is a config file, not the environment, and it was open.** `config.json` is the file a player
+  is most likely to be *sent* by someone else (it is in the diagnostics zip, and "send me your config" is how support
+  works), and the runner applies a fixed, code-written list of variables from it — no arbitrary keys, so no
+  `PATH`/`LD_PRELOAD` injection, which is the right design and worth keeping. But one *value* was a path: the profile
+  is free text and becomes `PS2X_MC_DIR=cards/<profile>`, which the runner resolves under its home
+  (`bare_run.cpp`), so `"profile": "../../.."` put the game's memory-card writes anywhere the player can write.
+  **Fixed under a test** (`normalizeProfile`: a name, not a path; refused whole, never patched up).
+- **Do not gitignore a build configuration.** This sprint's own precedent is better: R140 made the release tree a
+  committed CMake option, default off, so CI can build it and `ninja: no work to do` proves the developer build is
+  untouched. An untracked build option cannot be built by CI, cannot be reviewed, rots, and — the part that matters
+  here — means the binary players run is one nobody can reproduce.
+- **What a public build should actually drop is the heavy diagnostics, and that is a size decision with a
+  measurement, not a security one:** the dump/trace families (29 knobs) and the imgui debug panel
+  (`PS2X_ENABLE_DEBUG_UI`, `option(... ON)` today) are dead weight in a 55.7 MB download. Measure what compiling them
+  out saves, the way R151 measured `-O2`, and decide on the number.
+- **What must stay in the shipped build is the ability to diagnose it.** Goal 1 exists because a stranger's failure
+  has to explain itself; a runner that cannot be instrumented on the machine that failed makes every bug report a
+  dead end, and a gate that scores a differently-built binary is not scoring what shipped (R148, R151). So:
+  classify, constrain, and compile out the heavy ones — do not build a second secret product.
+- **The hardening that is worth doing, in order:** every knob that names a path is constrained to the portable folder
+  (the dumps, `PS2X_MC_DIR`, the input script) or refused; `config.json` values stay typed and validated at the edge
+  as the profile now is; and the `--dev` switch above gates the probes so an environment a player did not set cannot
+  change behaviour. **If the owner still wants a private build after that, it should be a committed option with a
+  default, not an untracked file.**
+
 ### Goal 4 — voice: the headset's own button (autonomous up to the two-machine check)
 - Sprint 8 proved no pad button talks. Read the lgaud function table for what reports a button: the status
   word's bits above bit 1, the device-info block's 0x00-0x61 span, GetMixer's u16 at reply +0x2c. Then a
