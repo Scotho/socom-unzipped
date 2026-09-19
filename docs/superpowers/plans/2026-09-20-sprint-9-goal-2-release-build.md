@@ -854,7 +854,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED (Windows).** Replace `tools_py/tests/test_make_portable.py` with:
+- [x] **Step 1: RED (Windows).** Replace `tools_py/tests/test_make_portable.py` with:
 
 ```python
 """Task 8b Step 5: scripts/make_portable.sh assembles the portable folder (outline section 2 A) from dist/.
@@ -967,7 +967,7 @@ if __name__ == "__main__":
 
 Run it. Expected RED against today's script: `test_what_nothing_imports_stays_behind` fails on `avformat-61.dll` (the script copies `*.dll`); `test_sha256sums…` fails with `FileNotFoundError … SHA256SUMS`; `test_an_import_that_is_nowhere…` fails `0 != 3`; `test_release_flag…` fails because `--release` is taken as the output directory (`out/socom2-portable.zip` absent). The first and last cases pass.
 
-- [ ] **Step 2: GREEN (the flag, and the Windows branch).** In `scripts/make_portable.sh`:
+- [x] **Step 2: GREEN (the flag, and the Windows branch).** In `scripts/make_portable.sh`:
 
   (a) Replace the usage comment's line `#   scripts/make_portable.sh [out dir]      (default: dist/portable, dist-linux/portable on Linux)` with
 
@@ -1025,7 +1025,7 @@ echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries), zip: $OUT/socom2-por
 
   Keep the column-0 here-doc terminators exactly where they are. Run the module on the host: 6 pass.
 
-- [ ] **Step 3: RED (Linux, in CI).** Create `tools_py/tests/test_make_portable_linux.py`:
+- [x] **Step 3: RED (Linux, in CI).** Create `tools_py/tests/test_make_portable_linux.py`:
 
 ```python
 """Sprint 9 Goal 2: the Linux branch of scripts/make_portable.sh, run for real. test_make_portable.py needs
@@ -1104,7 +1104,7 @@ if __name__ == "__main__":
 
   RED is watched **in the VM or in CI**, not on the Windows host (where the class is skipped): before Step 4, `test_sha256sums…` fails with `FileNotFoundError: …/SHA256SUMS`; the other two pass (R138's `version.txt` is already written, and today's `lib/` is whatever `ldd` says, which is closed by construction).
 
-- [ ] **Step 4: GREEN (the Linux branch).** In `scripts/make_portable.sh`'s `Linux)` branch: replace `LDIST="${LDIST:-$ROOT/dist-linux}"` with `LDIST="${LDIST:-$ROOT/dist-linux$SUFFIX}"`; change the missing-build message to `… run scripts/build_linux.sh first${SUFFIX:+ (or scripts/build_linux.sh release)}`; and replace the last three lines of the branch (`rm -f "$OUT/socom2-linux.tar.gz"`, `tar …`, `echo …`) with
+- [x] **Step 4: GREEN (the Linux branch).** In `scripts/make_portable.sh`'s `Linux)` branch: replace `LDIST="${LDIST:-$ROOT/dist-linux}"` with `LDIST="${LDIST:-$ROOT/dist-linux$SUFFIX}"`; change the missing-build message to `… run scripts/build_linux.sh first${SUFFIX:+ (or scripts/build_linux.sh release)}`; and replace the last three lines of the branch (`rm -f "$OUT/socom2-linux.tar.gz"`, `tar …`, `echo …`) with
 
 ```bash
     python3 "$AUDIT" audit "$PKG" --system Linux || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
@@ -1114,7 +1114,7 @@ if __name__ == "__main__":
     echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries, $NLIBS libraries in lib/), tarball: $OUT/socom2-linux.tar.gz ($(wc -c < "$OUT/socom2-linux.tar.gz") bytes), $OUT/SHA256SUMS"
 ```
 
-- [ ] **Step 5: RED then GREEN (the real folders on this machine).** Create `tools_py/tests/test_portable_folder.py`:
+- [x] **Step 5: RED then GREEN (the real folders on this machine).** Create `tools_py/tests/test_portable_folder.py`:
 
 ```python
 """Sprint 9 Goal 2: every portable folder that exists on this machine is closed -- the shipped executables
@@ -1176,9 +1176,9 @@ if __name__ == "__main__":
 
   RED on the host: `dist/portable/socom2` is the 2026-09-17 folder, so the first case fails listing the fifteen orphans of Task 2 Step 4 (`AssertionError: Lists differ: ['Iex-3_3.dll', …] != []`). The second case is expected to **pass** even now (a loader failure here — `0xC0000135`, which `classify` does not fold onto 68 — would be a finding about today's folder: stop and tell the controller). GREEN: `bash scripts/make_portable.sh` (quiet gate permitting; it needs `dist/` built at HEAD, which it is), then the module passes both cases, and the script's own line reads `16 needed, 0 missing, 0 orphans`.
 
-- [ ] **Step 6: Record the first "after".** `python -m tools_py.release_metrics` does not exist yet; use `wc -c < dist/portable/socom2-portable.zip` and `du -sb dist/portable/socom2`. Write both into this plan's Results table, row **P1** (before: 65,494,194 / 297,839,981; expected after: about 57.4 MB / 275.8 MB). The developer executable is the same file, so this row isolates the DLL change.
+- [x] **Step 6: Record the first "after".** `python -m tools_py.release_metrics` does not exist yet; use `wc -c < dist/portable/socom2-portable.zip` and `du -sb dist/portable/socom2`. Write both into this plan's Results table, row **P1** (before: 65,494,194 / 297,839,981; expected after: about 57.4 MB / 275.8 MB). The developer executable is the same file, so this row isolates the DLL change.
 
-- [ ] **Step 7: Suite and commit.** `./build.sh test` exit 0; Python total `P + 7 + 12 + 6` on the host (`test_make_portable` 2 -> 6 is +4, `test_portable_folder` +2), and `+3` more where Linux has a launcher.
+- [x] **Step 7: Suite and commit.** `./build.sh test` exit 0; Python total `P + 7 + 12 + 6` on the host (`test_make_portable` 2 -> 6 is +4, `test_portable_folder` +2), and `+3` more where Linux has a launcher.
 
 ```bash
 git add tools_py/tests/test_make_portable_linux.py tools_py/tests/test_portable_folder.py
@@ -1191,6 +1191,8 @@ git push
 ```
 
 - [ ] **Step 8: CI.** On that commit the `linux` workflow's test log (`linux-test-output` artefact) shows `test_the_tarball_unpacks_runnable_with_a_version … ok`, `test_sha256sums_sits_beside_the_tarball_and_verifies … ok`, `test_lib_holds_what_the_binaries_need_and_nothing_else … ok`. **A skip of these three in CI is a failure of this step** — it means `LAUNCHER`'s path is wrong there.
+
+  *Open (2026-09-19): the Task 3 commit was made but not pushed (the dispatch forbade pushing), so no CI run exists yet. Check this step on the first push of `sprint-9`; the VM was off and must not be started, so the Linux RED was not watched there either — the three cases skip on the Windows host.*
 
 ---
 
@@ -1625,7 +1627,7 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 | Row | Configuration | `socom2` bytes | `.text` | Folder bytes | Archive bytes | Build wall s | Link s | Gate | tail vsync/s | tail ee/t |
 |---|---|---|---|---|---|---|---|---|---|---|
 | P0 | developer exe, `*.dll` (2026-09-17 zip) | 236,405,760 | 191,886,198 | 297,839,981 | 65,494,194 | — | 0.93-0.96 | `s9_g1_gate` 3/3 | 46.3 | 0.999 |
-| P1 | developer exe, closure only (Task 3) | 236,405,760 | 191,886,198 | | | — | — | (same exe) | — | — |
+| P1 | developer exe, closure only (Task 3) | 236,409,856 | 191,886,198 | 277,687,904 | 58,221,191 | — | — | (same exe) | — | — |
 | M1_O2 | | | | | | | | | | |
 | M2_Os | | | | | | | | | | |
 | M3_icf | | | | | | | | | | |
@@ -1634,6 +1636,8 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 | **Shipped** | | | | | | | | | | |
 | L0 | Linux developer tarball (Sprint 8: 109 MB, runner 224 MB) | | | | | | | — | — | — |
 | L1 | Linux release tarball | | | | | | | — | — | — |
+
+P1 measured 2026-09-19 after `bash scripts/make_portable.sh` at `8220078`: 16 DLLs instead of 31, folder −20,152,077 bytes (−6.8 %), zip −7,273,003 bytes (−11.1 %), `16 needed, 0 missing, 0 orphans`. The exe is 4,096 bytes larger than P0's figure (the runner was relinked by `c40a318`, the crouch shortcut) and 176,128 bytes larger than the one P0's *folder* carried (that folder was packed 2026-09-17, before Goal 1's preflight landed), so the DLL saving alone is 20,328,205 folder bytes.
 
 ---
 
