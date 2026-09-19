@@ -221,6 +221,7 @@ namespace launcher
     {
         out = Config{};   // malformed input leaves the defaults
         Config c;
+        bool sawServer = false, sawPreset = false;   // a pre-picker config: a typed server and no preset
         Parser p(json);
         if (!p.take('{'))
             return false;
@@ -240,9 +241,9 @@ namespace launcher
                     else if (key == "presentFilter") c.presentFilter = v;
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
-                    else if (key == "server") c.server = v;
+                    else if (key == "server") { c.server = v; sawServer = true; }
                     // a preset we do not know (an older or newer build's) falls back to the typed address
-                    else if (key == "serverPreset") c.serverPreset = findServerPreset(v) ? v : std::string("custom");
+                    else if (key == "serverPreset") { c.serverPreset = findServerPreset(v) ? v : std::string("custom"); sawPreset = true; }
                     else if (key == "micDevice") c.micDevice = v;
                     else c.profile = v;
                 }
@@ -269,6 +270,10 @@ namespace launcher
                 break;
             }
         }
+        // Sprint 8 Goal 12: the default preset became the hosted server. A config written before the picker existed
+        // carries the player's own address and no preset; it stays theirs instead of silently moving to ours.
+        if (sawServer && !sawPreset)
+            c.serverPreset = "custom";
         out = c;
         return true;
     }

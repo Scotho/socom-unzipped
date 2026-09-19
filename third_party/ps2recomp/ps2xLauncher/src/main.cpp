@@ -375,8 +375,7 @@ namespace
         app.fake = true;
         app.config = launcher::Config{};
         app.config.isoPath = "D:\\games\\SOCOM II - U.S. Navy SEALs (USA).iso";
-        app.config.serverPreset = "custom";
-        app.config.server = "127.0.0.1";
+        // the default preset (the project's hosted server), so the ONLINE page's screenshot shows what a stranger sees
         app.config.profile = "player";
         app.config.micDevice = "Headset (USB)";
         app.discChecked = true;

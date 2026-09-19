@@ -201,7 +201,7 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_GS_SCALE=1"), "native scale");
             t.IsTrue(has("PS2X_PRESENT_FILTER=linear"), "the filter");
             t.IsTrue(has("PS2X_WINDOW_SIZE=1280x896"), "the window size: the launcher's 2x default (the gate sets none and stays 640x448)");
-            t.IsTrue(has("PS2X_SOCOM2_SERVER=127.0.0.1"), "the server");
+            t.IsTrue(has("PS2X_SOCOM2_SERVER=3.143.65.100"), "the server: a fresh config plays on the project's hosted server (Sprint 8 Goal 12)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
             t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");
             t.IsTrue(!hasKey("PS2X_SOCOM2_UDP_SHIFT") && !hasKey("PS2X_SOCOM2_RSA_KEY"), "first instance: no shift, no second key");
@@ -219,7 +219,12 @@ void register_launcher_tests()
         tc.Run("server presets: the picker's choice round-trips and an unknown one falls back to custom", [](TestCase &t)
         {
             launcher::Config c;
-            t.Equals(c.serverPreset, std::string("custom"), "the default preset is custom (the old hand-typed address)");
+            t.Equals(c.serverPreset, std::string("unzipped"), "the default preset is the project's hosted server, now that it is real");
+            // A config.json from before the picker existed carries a typed server and no preset: it must stay the player's own.
+            launcher::Config legacy;
+            t.IsTrue(launcher::fromJson("{\"server\": \"192.168.2.10\"}", legacy), "a pre-picker config parses");
+            t.Equals(legacy.serverPreset, std::string("custom"), "a typed server with no preset stays custom");
+            t.Equals(launcher::effectiveServer(legacy), std::string("192.168.2.10"), "and its address still applies");
             c.serverPreset = "unzipped";
             c.server = "192.168.2.10";
             launcher::Config back;
@@ -268,7 +273,8 @@ void register_launcher_tests()
             c.server = "10.0.0.5";
             t.Equals(serverOf(c), std::string("COMMUNITY_SERVER_ADDRESS_TBC"), "community wins over whatever is in the text field");
             c.serverPreset = "unzipped";
-            t.Equals(serverOf(c), std::string("UNZIPPED_SERVER_ADDRESS_TBC"), "our own server, not hosted yet");
+            t.Equals(serverOf(c), std::string("3.143.65.100"), "our own hosted server (Lightsail, US East)");
+            t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("3.143.65.100"), "a fresh config resolves to it");
             c.serverPreset = "custom";
             t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
             c.server.clear();

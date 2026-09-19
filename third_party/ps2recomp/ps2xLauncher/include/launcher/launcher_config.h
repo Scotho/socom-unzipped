@@ -17,11 +17,12 @@ namespace launcher
         const char *note;
     };
 
-    // The servers a player can pick. Addresses: the community server's is the one the SOCOM community's Horizon
-    // ("PS2 Online Network" / socom.community) publishes for SOCOM II -- CONFIRM before release; ours is not hosted yet.
+    // The servers a player can pick. Ours is hosted (AWS Lightsail, us-east-2, a static address; Sprint 8 Goal 12). The
+    // community server is PSRewired (67.222.156.250), which runs SOCOM II r0004 -- a different code package from the r0001
+    // this client is built from -- so its preset keeps a placeholder until an r0004 build exists (a wishlist item).
     constexpr ServerPreset kServerPresets[] = {
         {"community", "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
-        {"unzipped",  "SOCOM Unzipped (project server)",  "UNZIPPED_SERVER_ADDRESS_TBC",  "not hosted yet"},
+        {"unzipped",  "SOCOM Unzipped (project server)",  "3.143.65.100",                 "the project's hosted server (US East)"},
         {"custom",    "Custom",                            "",                             "any address or hostname"},
     };
 
@@ -43,7 +44,7 @@ namespace launcher
         double padDeadZone = 0.15;
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;
-        std::string serverPreset = "custom";   // an id out of kServerPresets; "custom" means the address below
+        std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
         std::string server = "127.0.0.1";
         std::string profile = "player";
         bool secondInstance = false;
