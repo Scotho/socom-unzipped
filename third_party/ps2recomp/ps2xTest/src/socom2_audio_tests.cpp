@@ -201,6 +201,32 @@ namespace
         }
     };
 
+    // Sprint 9 Goal 10 (R169): what the module actually told the host. snd_PlayVAGStreamByLoc with a
+    // parentHandle is a QUEUE, and the host cannot know that from the nine words the module used to send --
+    // it saw a play on a handle it was already playing, and replaced it.
+    class Snd989NotifyRecorderHost final : public Snd989TestHost
+    {
+    public:
+        struct Notify
+        {
+            uint32_t function = 0u;
+            std::vector<int32_t> args;
+        };
+        std::vector<Notify> notifies;
+
+        void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+        {
+            notifies.push_back({function, std::vector<int32_t>(args, args + count)});
+        }
+        const Notify *last(uint32_t function) const
+        {
+            for (size_t i = notifies.size(); i-- > 0;)
+                if (notifies[i].function == function)
+                    return &notifies[i];
+            return nullptr;
+        }
+    };
+
     // Sprint 7 review finding F3: the same mixer host, except that snd_PlayVAGStreamByLoc never reaches the
     // mixer (a failed open, a notify the host dropped). The handle the model minted is then one the mixer has
     // never seen, and the reaper must not read "no answer" as "finished".
@@ -685,6 +711,233 @@ void register_socom2_audio_tests()
             backend.onNotify(0x06u, unload, 1u);
             backend.onNotify(0x12u, play, 7u);
             t.Equals(backend.mixerActiveVoices(), static_cast<size_t>(0u), "after snd_UnloadBank the bank plays nothing");
+        });
+
+        // Sprint 9 Goal 10 (R169), the owner's 2026-09-19 mission: "the music... jumping between different tracks...
+        // glitched between different samples". snd_PlayVAGStreamByLoc's parentHandle means QUEUE -- research/06
+        // section 142, "if parentHandle != 0 the stream is queued after that stream instead" -- but the IOP module
+        // reused the parent's slot AND its handle, and a play on a live handle replaced what was there. So the very
+        // act of queueing the next segment of an adaptive score cut the playing one dead mid-sample. A queued
+        // segment must wait, and then start on the next output frame after its parent's last, with no gap.
+        tc.Run("Mixer: a queued stream waits for its parent and starts on the next frame after it, sample-accurate", [](TestCase &t)
+        {
+            const std::string loud = "socom2_audio_queue_a.vpk";
+            const std::string quiet = "socom2_audio_queue_b.vpk";
+            // Two chunk pairs each: 2 x 128 blocks x 28 samples = 7168 samples at 32 kHz = 224 ms, 10752 frames at
+            // 48 kHz. Shift 2 decodes loud, shift 12 quiet: the level says WHICH segment is playing.
+            t.IsTrue(writeVpk(loud, 2, 2), "the parent VPK (loud)");
+            t.IsTrue(writeVpk(quiet, 2, 12), "the queued VPK (quiet)");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000011u;
+            t.IsTrue(mixer.playStream(h, loud, 0u, 0x400, -1, 1u), "the parent plays");
+            mixer.pumpStreams();
+            std::vector<int16_t> buf(2 * 1200);
+            auto peak = [&buf](size_t frames) {
+                int32_t p = 0;
+                for (size_t i = 0; i < frames * 2; ++i)
+                    p = std::max(p, std::abs(static_cast<int32_t>(buf[i])));
+                return p;
+            };
+            mixer.render(buf.data(), 1200);            // 25 ms of the parent
+            const int32_t parentPeak = peak(1200);
+            t.IsTrue(parentPeak > 200, "the parent is audible before anything is queued (peak " + std::to_string(parentPeak) + ")");
+
+            // The game queues the next segment on the SAME handle while the parent still plays.
+            t.IsTrue(mixer.playStream(h, quiet, 0u, 0x400, -1, 1u, true), "the next segment queues behind it");
+            mixer.pumpStreams();
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "one stream is playing, not two: the queued one waits");
+            mixer.render(buf.data(), 1200);            // 25 ms more -- still the parent, untouched
+            const int32_t afterQueue = peak(1200);
+            t.IsTrue(afterQueue > parentPeak / 2, "queueing does not cut the parent dead (peak " + std::to_string(afterQueue) +
+                                                      " against " + std::to_string(parentPeak) + ")");
+
+            // Play both out, window by window, and find the seam: the level drops to the quiet segment's and
+            // NOTHING is silent in between.
+            int32_t silentWindows = 0, quietWindows = 0;
+            size_t frames = 2400;
+            bool sawQuiet = false;
+            while (mixer.isPlaying(h) && frames < 96000u)
+            {
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 1200);
+                frames += 1200;
+                const int32_t p = peak(1200);
+                if (p == 0)
+                    ++silentWindows;
+                else if (p < parentPeak / 8)
+                {
+                    ++quietWindows;
+                    sawQuiet = true;
+                }
+            }
+            t.IsTrue(sawQuiet, "the queued segment did play: the level dropped to its own (" + std::to_string(quietWindows) + " windows)");
+            t.Equals(silentWindows, 0, "and there is no silence at the seam: the queued segment starts on the next frame");
+            // 224 ms + 224 ms at 32 kHz = 21504 frames at 48 kHz, in 1200-frame windows.
+            t.IsTrue(frames >= 19000u && frames <= 24000u,
+                     "both segments played, one after the other (" + std::to_string(frames) + " frames)");
+            t.IsTrue(!mixer.isPlaying(h), "and the handle is done only when the queue is empty");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "no stream left");
+
+            // A stop while a segment is queued stops the whole chain -- stop means stop, not "skip to the next".
+            t.IsTrue(mixer.playStream(h, loud, 0u, 0x400, -1, 1u), "a parent again");
+            t.IsTrue(mixer.playStream(h, quiet, 0u, 0x400, -1, 1u, true), "with one queued behind it");
+            mixer.stop(h);
+            t.IsTrue(!mixer.isPlaying(h), "stop ends the handle");
+            t.Equals(mixer.activeStreams(), static_cast<size_t>(0u), "and takes the queued segment with it");
+            std::remove(loud.c_str());
+            std::remove(quiet.c_str());
+        });
+
+        // Sprint 9 Goal 10 (R170): the other half of the owner's sentence -- "getting louder and quieter". A
+        // fade belongs to the cue it was asked for, not to the handle for ever. stop() and setVolPan() already
+        // drop a handle's ramp; playStream did not, and dropDeadRamps keeps a ramp alive while ANY stream
+        // carries the handle. So the game faded a cue out with snd_AutoVol(h, 0, 0x168, 2) and started the next
+        // one on h, and the new cue picked up a fade already part way to silence: it began quiet and got
+        // quieter, while every cue measured perfect on its own.
+        tc.Run("Mixer: a new cue on a handle starts at its own volume, never on the fade that ended the one before", [](TestCase &t)
+        {
+            const std::string a = "socom2_audio_ramp_a.vpk";
+            const std::string b = "socom2_audio_ramp_b.vpk";
+            t.IsTrue(writeVpk(a, 6, 2), "a 672 ms parent");
+            t.IsTrue(writeVpk(b, 6, 2), "and an equally loud successor");
+            std::vector<int16_t> buf(2 * 1200);
+            auto peak = [&buf](size_t frames) {
+                int32_t p = 0;
+                for (size_t i = 0; i < frames * 2; ++i)
+                    p = std::max(p, std::abs(static_cast<int32_t>(buf[i])));
+                return p;
+            };
+            const uint32_t h = 0x04000021u;
+
+            // (a) A play that REPLACES what the handle was playing.
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.playStream(h, a, 0u, 0x400, -1, 1u), "the first cue plays");
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 1200);
+            const int32_t full = peak(1200);
+            t.IsTrue(full > 200, "at its own level (peak " + std::to_string(full) + ")");
+            mixer.autoVol(h, 0, 240, 2);               // the game's fade: to silence over 240 ticks = 1 s
+            for (int i = 0; i < 20; ++i)               // 24000 frames = 120 ticks: half way down
+            {
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 1200);
+            }
+            const int32_t faded = peak(1200);
+            t.IsTrue(faded < full * 3 / 4, "the fade is in force (peak " + std::to_string(faded) + " against " + std::to_string(full) + ")");
+            t.IsTrue(mixer.playStream(h, b, 0u, 0x400, -1, 1u), "the next cue takes the handle");
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 1200);
+            const int32_t fresh = peak(1200);
+            t.IsTrue(fresh > full * 4 / 5, "and it starts at ITS volume, not on the dead cue's fade (peak " +
+                                               std::to_string(fresh) + " against " + std::to_string(full) + ")");
+
+            // (b) The same, queued: the parent must keep fading (the fade is its own), and the segment that
+            // takes over afterwards must start clean.
+            snd989::Mixer m2;
+            const std::string shortA = "socom2_audio_ramp_short.vpk";
+            t.IsTrue(writeVpk(shortA, 2, 2), "a 224 ms parent to fade out and run out");
+            t.IsTrue(m2.playStream(h, shortA, 0u, 0x400, -1, 1u), "the parent plays");
+            m2.pumpStreams();
+            m2.render(buf.data(), 1200);
+            const int32_t full2 = peak(1200);
+            t.IsTrue(m2.playStream(h, b, 0u, 0x400, -1, 1u, true), "the next segment is queued behind it");
+            m2.autoVol(h, 0, 30, 2);                   // fade the PARENT out over 30 ticks = 6000 frames
+            m2.pumpStreams();
+            m2.render(buf.data(), 1200);
+            const int32_t stillParent = peak(1200);
+            t.IsTrue(stillParent > 0, "queueing does not silence the parent mid-fade (peak " + std::to_string(stillParent) + ")");
+            int32_t afterSeam = 0;
+            for (int i = 0; i < 20 && afterSeam == 0; ++i)   // past the parent's 10752 frames: the seam
+            {
+                m2.pumpStreams();
+                m2.render(buf.data(), 1200);
+                if (i >= 9)
+                    afterSeam = std::max(afterSeam, peak(1200));
+            }
+            t.IsTrue(afterSeam > full2 * 4 / 5, "the queued segment starts at its own volume, not on the fade that ended its parent (peak " +
+                                                    std::to_string(afterSeam) + " against " + std::to_string(full2) + ")");
+            std::remove(a.c_str());
+            std::remove(b.c_str());
+            std::remove(shortA.c_str());
+        });
+
+        // Sprint 9 Goal 10 (R171): the same symptom between menus and on entering a lobby. The bank decoder has
+        // always read the VAG flags properly -- bit 2 marks the loop start, bit 0 ends the run, bit 1 says the
+        // run repeats (ps2_audio_vag.cpp) -- but the STREAM decoder ended on bit 0 alone and had nowhere to
+        // remember a loop start. A looping cue therefore stopped at its first loop point and the game re-fired
+        // it: a jump, in the two places the mission's queue bugs cannot reach.
+        tc.Run("Mixer: a stream whose data says it repeats loops at its loop start instead of ending", [](TestCase &t)
+        {
+            // A mono VPK of two 0x800 chunks: chunk 0 loud, chunk 1 quiet, the loop start marked at the first
+            // block of chunk 1 and the last block carrying end|repeat. Played out it should be loud once and
+            // quiet for ever after -- which also proves it loops to the MARK, not to the beginning.
+            const std::string path = "socom2_audio_loop.vpk";
+            int8_t ramp[28];
+            for (int i = 0; i < 28; ++i)
+                ramp[i] = static_cast<int8_t>(i % 8);
+            std::vector<uint8_t> file(0xB0, 0u);
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);
+            put32(4, 2u * 0x800u);
+            put32(8, 0x800u);
+            put32(12, 0xB0u);
+            put32(16, 32000u);
+            put32(20, 1u);
+            for (int c = 0; c < 2; ++c)
+                for (int b = 0; b < 0x800 / 16; ++b)
+                {
+                    uint8_t flags = 0x00;
+                    if (c == 1 && b == 0)
+                        flags = 0x04;                        // the loop starts here
+                    if (c == 1 && b == 0x800 / 16 - 1)
+                        flags = 0x03;                        // end of the run, and it repeats
+                    const std::vector<uint8_t> blk = block(c == 0 ? 2 : 12, 0, flags, ramp);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+            {
+                FILE *fp = std::fopen(path.c_str(), "wb");
+                t.IsTrue(fp != nullptr, "the looping VPK can be written");
+                if (!fp)
+                    return;
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000031u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "the looping stream plays");
+            std::vector<int16_t> buf(2 * 1200);
+            auto peak = [&buf](size_t frames) {
+                int32_t p = 0;
+                for (size_t i = 0; i < frames * 2; ++i)
+                    p = std::max(p, std::abs(static_cast<int32_t>(buf[i])));
+                return p;
+            };
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 1200);
+            const int32_t loud = peak(1200);
+            t.IsTrue(loud > 200, "the first chunk is the loud one (peak " + std::to_string(loud) + ")");
+            // Its whole data is 7168 samples at 32 kHz = 10752 frames out. Play three times that.
+            int32_t silent = 0, afterFirstPass = 0;
+            size_t frames = 1200;
+            for (int i = 0; i < 26; ++i)
+            {
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 1200);
+                frames += 1200;
+                const int32_t p = peak(1200);
+                if (p == 0)
+                    ++silent;
+                if (frames > 12000)
+                    afterFirstPass = std::max(afterFirstPass, p);
+            }
+            t.IsTrue(mixer.isPlaying(h), "it is still playing after three times its own length: it loops");
+            t.Equals(silent, 0, "and never falls silent");
+            t.IsTrue(afterFirstPass > 0 && afterFirstPass < loud / 4,
+                     "after the first pass only the quiet half repeats: it looped to the mark, not to the start (peak " +
+                         std::to_string(afterFirstPass) + " against " + std::to_string(loud) + ")");
+            mixer.stop(h);
+            t.IsTrue(!mixer.isPlaying(h), "and a stop still ends it");
+            std::remove(path.c_str());
         });
 
         tc.Run("Mixer: a VPK stream plays its interleaved channels left and right at its own rate, then ends", [](TestCase &t)
@@ -1398,6 +1651,80 @@ void register_socom2_audio_tests()
             t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
                      "and so does the next one: the ended stream's slot was reused, not leaked");
 
+            std::remove(path.c_str());
+        });
+
+        // Sprint 9 Goal 10 (R169): the module and the host have to agree on what parentHandle means. The module
+        // reuses the parent's slot and keeps its handle -- correct, the game polls that handle -- but it told the
+        // host nothing about the queue, so the host saw a second play on a live handle and replaced it. The word
+        // goes on the wire.
+        tc.Run("989snd: a play with a parentHandle tells the host it is QUEUED behind the parent, not a replacement", [](TestCase &t)
+        {
+            Snd989HarnessT<Snd989NotifyRecorderHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u});
+            t.IsTrue(first != 0u, "the parent gets a slot");
+            const Snd989NotifyRecorderHost::Notify *fresh = h.host.last(kPlayVagStreamByLoc);
+            t.IsTrue(fresh != nullptr, "the host was told about it");
+            if (fresh != nullptr)
+            {
+                t.IsTrue(fresh->args.size() >= 10u, "the play carries a tenth word: is this a queue? (" +
+                                                        std::to_string(fresh->args.size()) + " words)");
+                if (fresh->args.size() >= 10u)
+                    t.Equals(fresh->args[9], 0, "a play with no parent is not a queue");
+            }
+
+            const uint32_t queued = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, first, 0u, 0u});
+            t.Equals(queued, first, "the queued segment keeps the parent's handle: that is what the game polls");
+            const Snd989NotifyRecorderHost::Notify *behind = h.host.last(kPlayVagStreamByLoc);
+            t.IsTrue(behind != nullptr, "the host was told about the queued one too");
+            if (behind != nullptr && behind->args.size() >= 10u)
+                t.Equals(behind->args[9], 1, "and it is marked a queue, so the host does not replace what is playing");
+        });
+
+        // The same thing end to end: the module, the backend and the mixer. Queued, the two segments play one
+        // after the other; replaced, only the second one's worth of audio ever comes out.
+        tc.Run("989snd: a queued segment plays AFTER its parent, so the handle carries both segments' audio", [](TestCase &t)
+        {
+            const std::string path = "ps2x_test_stream_queue_e2e.bin";
+            t.IsTrue(writeOneChunkVpkImage(path), "the one-chunk VPK image is written");
+            Snd989HarnessT<Snd989MixerHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            h.host.backend.setDiscImagePath(path);
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "snd_InitVAGStreamingEx takes its two slots");
+
+            const uint32_t first = h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, 0u, 0u, 0u});
+            t.IsTrue(first != 0u, "the parent plays");
+            // Queued at once, before a frame is rendered: one chunk is 3584 samples at 32 kHz = 5376 frames out,
+            // so a queue must yield about 10752 frames and a replacement only about 5376.
+            t.Equals(h.call(kPlayVagStreamByLoc, {2u, 0u, 0x04000000u, 0u, 0u, first, 0u, 0u}), first, "one queued behind it");
+            t.Equals(h.host.backend.mixerActiveStreams(), static_cast<size_t>(1u), "one stream plays; the queued one waits");
+
+            std::vector<int16_t> buf(2 * 600);
+            size_t frames = 0, silent = 0;
+            bool playing = true;
+            while (frames < 48000u)
+            {
+                h.host.backend.mixerPumpStreams();
+                h.host.backend.mixerRender(buf.data(), 600);
+                int32_t peak = 0;
+                for (int16_t v : buf)
+                    peak = std::max<int32_t>(peak, v < 0 ? -v : v);
+                (void)h.host.backend.isPlaying(first, playing);
+                if (!playing)
+                    break;
+                if (peak == 0)
+                    ++silent;
+                frames += 600;
+            }
+            t.IsTrue(frames >= 9000u, "both segments were heard, one after the other (" + std::to_string(frames) + " frames)");
+            t.Equals(silent, static_cast<size_t>(0u), "with no silence where they meet");
             std::remove(path.c_str());
         });
 

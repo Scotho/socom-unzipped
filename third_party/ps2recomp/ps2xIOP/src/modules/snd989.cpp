@@ -1598,11 +1598,16 @@ namespace ps2x::iop::detail
                 target->flags = args.u32(7);
                 ++m_metrics.streamsPlayed;
                 forwardAudio(kPlayVagStreamByLoc, args);
-                const int32_t words[9] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(target->sector1),
-                                          static_cast<int32_t>(target->sector2), static_cast<int32_t>(target->offset1), target->volume,
-                                          static_cast<int32_t>(target->offset2), target->pan, static_cast<int32_t>(target->group),
-                                          static_cast<int32_t>(target->flags)};
-                m_host.audioNotify(kPlayVagStreamByLoc, words, 9u);
+                // Sprint 9 Goal 10 (R169): the tenth word says whether this play is a QUEUE. `reused` is exactly
+                // that -- the slot was found through the parentHandle and is still playing (findStream only
+                // answers for an active slot), so the segment chains onto what is in the air instead of
+                // replacing it. Without this word the host saw a second play on a live handle and cut the cue
+                // dead mid-sample, which is the music the owner reported on 2026-09-19.
+                const int32_t words[10] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(target->sector1),
+                                           static_cast<int32_t>(target->sector2), static_cast<int32_t>(target->offset1), target->volume,
+                                           static_cast<int32_t>(target->offset2), target->pan, static_cast<int32_t>(target->group),
+                                           static_cast<int32_t>(target->flags), reused ? 1 : 0};
+                m_host.audioNotify(kPlayVagStreamByLoc, words, 10u);
                 return target->handle;
             }
 

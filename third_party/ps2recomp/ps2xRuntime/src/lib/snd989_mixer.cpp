@@ -361,6 +361,13 @@ namespace snd989
             uint32_t dataSize = 0;       // bytes of chunk data
             uint32_t interleave = 0x800;
             uint32_t consumed = 0;       // chunk bytes read so far
+            // Sprint 9 Goal 10 (R171): the VAG flags, as the bank decoder has always read them. Bit 2 marks the
+            // block a repeat goes back to, bit 0 ends the run and bit 1 says the run repeats. A stream used to
+            // end on bit 0 alone, so a looping cue -- the shape of the menu and lobby music -- stopped at its
+            // first loop point and the game re-fired it. `loopStart` is a byte offset into the chunk data, on
+            // the chunk-pair grid: the producer reads whole chunks, so a repeat resumes at the chunk that
+            // carried the mark (its first block for mono, its left chunk for stereo).
+            uint32_t loopStart = 0;
             std::vector<int16_t> s1, s2;             // per channel ADPCM history
 
             // --- shared ---
@@ -371,6 +378,10 @@ namespace snd989
             std::deque<ChunkPair> ready;             // the decode-ahead ring, guarded by Impl::ringMutex
 
             // --- consumer side: render() only, under Impl::mutex ---
+            // Sprint 9 Goal 10 (R169): the segment queued behind this one on the same handle (parentHandle), if
+            // any. It is decoded ahead like any stream but plays no frame until this one's data runs out, and
+            // then takes over on the very next output frame. A chain, so a score may queue several deep.
+            std::shared_ptr<Stream> next;
             bool paused = false;
             uint8_t group = 0;
             VolPair base{};
@@ -390,6 +401,8 @@ namespace snd989
                 const size_t chunkBytes = static_cast<size_t>(interleave);
                 std::vector<uint8_t> raw(chunkBytes);
                 bool any = false;
+                bool repeat = false;              // R171: this chunk pair ended a run that says it repeats
+                const uint32_t chunkPairStart = consumed;
                 for (uint32_t ch = 0; ch < channels; ++ch)
                 {
                     std::vector<int16_t> &pcmCh = out[ch];
@@ -444,15 +457,24 @@ namespace snd989
                             h1 = v;
                             pcmCh.push_back(v);
                         }
+                        if (block[1] & 0x04)
+                            loopStart = chunkPairStart;          // R171: a repeat comes back to this chunk
                         if (block[1] & 0x01)
                         {
-                            ended.store(true, std::memory_order_release);   // the end flag inside the data: the last chunk
+                            // Bit 1 with it means the run repeats (ps2_audio_vag.cpp reads the same two bits for
+                            // a bank sample). Only a run that does NOT repeat is the end of the stream.
+                            if (block[1] & 0x02)
+                                repeat = true;
+                            else
+                                ended.store(true, std::memory_order_release);
                             break;
                         }
                     }
                     s1[ch] = h1;
                     s2[ch] = h2;
                 }
+                if (repeat && !ended.load(std::memory_order_relaxed))
+                    consumed = loopStart;   // R171: back to the mark (0 = the top of the data) and keep playing
                 return any;
             }
         };
@@ -885,6 +907,11 @@ namespace snd989
         // fclose ever waits behind a read in flight (and no close happens under the render mutex while it might).
         void closeStream(Stream &st)
         {
+            // R169: the queued segments go with it. A stop means the handle is silent, not that the score
+            // advances; the game restarts what it wants.
+            for (std::shared_ptr<Stream> q = st.next; q; q = q->next)
+                q->done.store(true, std::memory_order_relaxed);
+            st.next.reset();
             st.done.store(true, std::memory_order_relaxed);
         }
 
@@ -1210,43 +1237,71 @@ namespace snd989
                     v.pos += v.step;
                 }
             }
-            for (const std::shared_ptr<Stream> &sp : m_impl->streams)
+            // R169: a stream may carry a queue (parentHandle), so the entry in `streams` can change inside this
+            // loop -- by index and by pointer, never by a reference that cannot be rebound.
+            for (size_t si = 0; si < m_impl->streams.size(); ++si)
             {
-                Stream &st = *sp;
-                if (st.paused || st.done.load(std::memory_order_relaxed))
+                Stream *cur = m_impl->streams[si].get();
+                if (cur->paused || cur->done.load(std::memory_order_relaxed))
                     continue;
                 int32_t left = 0, right = 0;
-                {
-                    const int32_t modifier = m_impl->groupModifier(st.group) * m_impl->volScale(st.handle) / 0x400;
-                    left = ((st.base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
-                    right = ((st.base.right * modifier) / 0x400) >> 1;
-                }
+                auto takeGains = [&]() {
+                    const int32_t modifier = m_impl->groupModifier(cur->group) * m_impl->volScale(cur->handle) / 0x400;
+                    left = ((cur->base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
+                    right = ((cur->base.right * modifier) / 0x400) >> 1;
+                };
+                takeGains();
                 for (size_t i = 0; i < chunk; ++i)
                 {
-                    if (st.pcm[0].empty() || st.pos >= static_cast<double>(st.pcm[0].size()))
+                    bool haveSamples = true;
+                    while (cur->pcm[0].empty() || cur->pos >= static_cast<double>(cur->pcm[0].size()))
                     {
-                        const double carry = st.pcm[0].empty() ? 0.0 : st.pos - static_cast<double>(st.pcm[0].size());
+                        const double carry = cur->pcm[0].empty() ? 0.0 : cur->pos - static_cast<double>(cur->pcm[0].size());
                         // Memory only (audit section 2.3): the next chunk pair comes off the ring the worker
                         // filled, never off the disc. An empty ring on a stream that has not ended yet is an
                         // underrun -- silence until the worker catches up, not the end of the stream.
-                        if (!m_impl->popChunk(st))
+                        if (m_impl->popChunk(*cur))
                         {
-                            if (st.ended.load(std::memory_order_acquire))
-                                st.done.store(true, std::memory_order_relaxed);
+                            cur->pos = std::max(0.0, carry);
                             break;
                         }
-                        st.pos = std::max(0.0, carry);
+                        if (!cur->ended.load(std::memory_order_acquire))
+                        {
+                            haveSamples = false;
+                            break;
+                        }
+                        cur->done.store(true, std::memory_order_relaxed);
+                        if (!cur->next)
+                        {
+                            haveSamples = false;
+                            break;
+                        }
+                        // R169: the segment queued behind this one takes over on THIS output frame -- the frame
+                        // after the parent's last sample, with no gap and no overlap. Sample-accurate: the seam
+                        // falls wherever the data ends, not on a block boundary.
+                        std::shared_ptr<Stream> nxt = cur->next;
+                        // The other half of the proof: the handover itself, once per segment.
+                        std::fprintf(stderr, "[audio] 989snd stream %08x seam: queued segment took over\n", cur->handle);
+                        m_impl->clearRamp(cur->handle);   // R170: the fade ended the parent; it is not the next one's
+                        nxt->pos = 0.0;
+                        nxt->pcm[0].clear();
+                        nxt->pcm[1].clear();
+                        m_impl->streams[si] = nxt;
+                        cur = nxt.get();
+                        takeGains();
                     }
-                    const std::vector<int16_t> &l = st.pcm[0];
-                    const std::vector<int16_t> &r = st.pcm[st.channels > 1 ? 1 : 0];
-                    const size_t i0 = static_cast<size_t>(st.pos);
+                    if (!haveSamples)
+                        break;
+                    const std::vector<int16_t> &l = cur->pcm[0];
+                    const std::vector<int16_t> &r = cur->pcm[cur->channels > 1 ? 1 : 0];
+                    const size_t i0 = static_cast<size_t>(cur->pos);
                     const size_t i1 = std::min(i0 + 1, l.size() - 1);
-                    const double frac = st.pos - static_cast<double>(i0);
+                    const double frac = cur->pos - static_cast<double>(i0);
                     const double sl = l[i0] * (1.0 - frac) + l[i1] * frac;
                     const double sr = (i0 < r.size() ? r[i0] : 0) * (1.0 - frac) + (i1 < r.size() ? r[i1] : 0) * frac;
                     mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
                     mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
-                    st.pos += st.step;
+                    cur->pos += cur->step;
                 }
             }
             if (m_impl->pcm.active && m_impl->pcm.frames() > 0)
@@ -1320,8 +1375,10 @@ namespace snd989
 
 namespace snd989
 {
-    bool Mixer::playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group)
+    bool Mixer::playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group,
+                           bool queueBehind)
     {
+        (void)queueBehind;   // Sprint 9 Goal 10 (R169): honoured below once its RED test is watched failing
         FILE *fp = std::fopen(path.c_str(), "rb");
         if (!fp)
             return false;
@@ -1377,11 +1434,42 @@ namespace snd989
         st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
         {
             std::lock_guard<std::mutex> lock(m_impl->mutex);
-            if (Stream *old = m_impl->findStream(handle))
+            Stream *old = m_impl->findStream(handle);
+            if (old != nullptr && queueBehind && !old->done.load(std::memory_order_relaxed))
             {
+                // R169: parentHandle means QUEUE. Append at the tail of the chain -- the playing segment is not
+                // touched, and this one starts on the frame after its last. Replacing here is what cut every
+                // mission cue dead mid-sample (the owner, 2026-09-19).
+                Stream *tail = old;
+                int depth = 1;
+                while (tail->next)
+                {
+                    tail = tail->next.get();
+                    ++depth;
+                }
+                tail->next = std::move(sp);
+                // Goal 10's proof line: rare (once per cue change), so no rate limit. Its absence in a mission
+                // log means the adaptive score never queued, not that the queue is broken.
+                std::fprintf(stderr, "[audio] 989snd stream %08x QUEUED behind a live stream (depth %d)\n", handle, depth);
+                startStreamWorker();
+                return true;
+            }
+            if (old != nullptr)
+            {
+                // Goal 10: the line the M51 proof run greps for. A play that REPLACES a stream still in the air
+                // is the old defect's signature -- during mission music it should never appear, because every
+                // segment of an adaptive score arrives with a parentHandle and is queued instead.
+                if (!old->done.load(std::memory_order_relaxed))
+                    std::fprintf(stderr, "[audio] 989snd stream %08x REPLACED a live stream (not queued)\n", handle);
                 m_impl->closeStream(*old);
                 m_impl->dropDoneStreams();   // the handle is being reused: the old entry must not answer for it
             }
+            // R170: a fade belongs to the cue it was asked for. stop() and setVolPan() already drop the handle's
+            // ramp; this did not, so a cue started on a handle the game had just faded out began part way to
+            // silence and kept fading -- the owner's "getting louder and quieter", with every cue measuring
+            // perfect on its own. A queued segment is the exception: its parent is still playing and still owns
+            // the fade, so that one is cleared at the seam instead (render()).
+            m_impl->clearRamp(handle);
             m_impl->streams.push_back(std::move(sp));
         }
         startStreamWorker();
@@ -1421,8 +1509,9 @@ namespace snd989
             std::lock_guard<std::mutex> lock(m_impl->mutex);
             live.reserve(m_impl->streams.size());
             for (const std::shared_ptr<Stream> &st : m_impl->streams)
-                if (!st->done.load(std::memory_order_relaxed))
-                    live.push_back(st);
+                for (std::shared_ptr<Stream> q = st; q; q = q->next)   // R169: the queued segments decode ahead too
+                    if (!q->done.load(std::memory_order_relaxed))
+                        live.push_back(q);
         }
         for (const std::shared_ptr<Stream> &sp : live)
         {
