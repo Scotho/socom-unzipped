@@ -97,3 +97,52 @@ def process_running(base, system=None):
     """True when a process of that name is up (the 'already running' guard of every drive)."""
     p = run(running_argv(base, system))
     return running_from_output(base, p.stdout, p.returncode, system)
+
+
+# ---------------------------------------------------------------------------
+# The disc image (Sprint 8 Task 10 follow-up (a)).
+#
+# The harness resolved the disc by ONE fixed relative path (drive.ISO) while the runtime resolved
+# it by its own directory scan (`configureCdImage`, game_overrides_socom2.cpp:551-581: the ELF's
+# directory, then its parent, first `*.iso` wins). Two answers to one question: in the VM, where
+# the repo's `game/` carries no image, the drive was content and the runtime found nothing, so the
+# title stage booted BLACK and was scored as a freeze (docs/KNOWN.md, the falsified AUDIO_DUMP row).
+# One resolver, asked before the launch, and the answer exported as PS2X_CD_IMAGE so the runtime
+# stops guessing.
+ISO_NAME = "SOCOM II - U.S. Navy SEALs (USA).iso"
+LINUX_HOME_ISO = "~/socom2.iso"           # where scripts/vm_sync.sh iso puts it in the VM
+
+
+def iso_candidates(env=None, root=None, system=None):
+    """The places a disc image is looked for, in order, as (where, path, consulted) triples.
+
+    `consulted` is False for a place this host does not use -- the VM's `~/socom2.iso` is a Linux
+    fallback (`vm_sync.sh iso` writes it there and the VM's repo has no image of its own), and
+    consulting it on Windows would be a new way for the daily gate to pick up a stray file. It is
+    still reported, so the error names all three places wherever it is raised."""
+    env = os.environ if env is None else env
+    root = root or ROOT
+    return [
+        ("SOCOM_ISO", env.get("SOCOM_ISO") or None, True),
+        ("the repo's game/", os.path.join(root, "game", ISO_NAME), True),
+        (LINUX_HOME_ISO, os.path.expanduser(LINUX_HOME_ISO), not is_windows(system)),
+    ]
+
+
+def iso_path(env=None, root=None, system=None):
+    """The disc image this run drives, absolute: $SOCOM_ISO if it is set and exists, else the
+    repo's own `game/<ISO_NAME>`, else (Linux only) `~/socom2.iso`. Raises FileNotFoundError
+    naming all three places -- a run with no disc must fail at the launch, with the reason, rather
+    than boot to a black screen that every scorer then has to interpret."""
+    tried = []
+    for where, path, consulted in iso_candidates(env, root, system):
+        if path is None:
+            tried.append("%s (not set)" % where)
+            continue
+        if not consulted:
+            tried.append("%s -> %s (Linux only)" % (where, path))
+            continue
+        tried.append("%s -> %s" % (where, path))
+        if os.path.isfile(path):
+            return os.path.abspath(path)
+    raise FileNotFoundError("no SOCOM II disc image; looked at: " + "; ".join(tried))

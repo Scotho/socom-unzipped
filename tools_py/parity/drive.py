@@ -14,6 +14,7 @@ was stable. Screens on both sides align by step index.
 Usage: python -m tools_py.parity.drive --target pcsx2|ours --script <file> --out <dir>
 """
 import argparse
+import collections
 import json
 import os
 import subprocess
@@ -29,17 +30,40 @@ from tools_py.parity import hostplatform, keys, screen_bands
 # drive.winshot.grab -- is unchanged.
 winshot = hostplatform.shot_module()
 
-ISO = os.path.abspath("game/SOCOM II - U.S. Navy SEALs (USA).iso")
+# The repo's own image, kept under its old name because gsdump_capture / probe_poll / state_poll /
+# online_match import it. Nothing in a LAUNCH reads it any more: the disc is resolved once, at the
+# launch, by hostplatform.iso_path() (Sprint 8 Task 10 follow-up (a)) -- a module-level resolve
+# would raise at import time on a machine with no disc, which is not the same thing as a run.
+ISO = os.path.abspath(os.path.join("game", hostplatform.ISO_NAME))
 PCSX2 = os.path.abspath("tools/pcsx2/pcsx2-qt.exe")
 
 
+def cd_image_env(env, resolve=None):
+    """Export the resolved disc image into the launched game's environment as PS2X_CD_IMAGE --
+    on EVERY platform, and only when the caller has not set one already.
+
+    The runtime honours PS2X_CD_IMAGE before its own scan (`configureCdImage`), so this replaces a
+    guess with the path the harness actually resolved. On Windows it changes nothing today: the
+    ELF is `game/disc/socom2_game.elf`, so the scan reads `game/disc/` (no image there) and then
+    `game/`, which holds exactly the one file `iso_path()` returns. An operator's own
+    PS2X_CD_IMAGE always wins -- that is the only way to drive a different image without moving
+    files about, and a run that sets it must not need the repo's own disc to exist."""
+    if env.get("PS2X_CD_IMAGE"):
+        return env
+    env["PS2X_CD_IMAGE"] = (resolve or hostplatform.iso_path)()
+    return env
+
+
 def launch(target, seconds):
+    # Resolved before anything is started: no disc is a launch failure naming the three places it
+    # looked, not a black boot (the VM's title stage, twice, with no image under game/).
+    iso = hostplatform.iso_path()
     if target == "pcsx2":
-        return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", ISO],
+        return subprocess.Popen([PCSX2, "-batch", "-nogui", "-fastboot", iso],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     # The exe rewrites its current frame to this file; grab() reads it instead of PrintWindow.
     os.environ.setdefault("PS2X_HOST_SCREENSHOT_LATEST", os.path.abspath(os.path.join("logs", "parity", "latest_frame.png")))
-    env = dict(os.environ, PS2X_SOCOM2_PAD="1")
+    env = cd_image_env(dict(os.environ, PS2X_SOCOM2_PAD="1"))
     if not hostplatform.is_windows():
         # Linux: press() injects through the runtime's latched pad file rather than X key events,
         # which the VM's ~3 fps poll drops (x11shot.press). The file must exist and be neutral
@@ -74,29 +98,120 @@ def launch(target, seconds):
                             env=env, stdout=handle, stderr=subprocess.STDOUT)
 
 
-# untilref's press budget comes from the script (12 by default) and its pause between presses from the
-# step's delay, both calibrated on the host, where the boot reaches the main menu in 23 s. The VM boots
-# in 119 s with no GPU, so on the host's cadence all twelve presses are spent in the first half-minute
-# on a black loading screen -- and the last of them is still in flight when the menu finally arrives,
-# which is how the first VM title runs walked straight through the menu into SELECT RANK. Off Windows
-# the pause becomes "up to this many times the delay, watching for the reference and stopping the
-# moment it shows", which spreads the same budget across the same boot and takes the press out of the
-# menu's mouth. Windows keeps the literal sleep.
+# untilref's press budget was a COUNT: 12 presses, each followed by a fixed pause, both calibrated on
+# the host, where the boot reaches the main menu in 23 s. The VM boots in 119 s at ~1.6 fps, and against
+# that the count is marginal in both directions: paced slowly, all twelve presses are spent before the
+# menu exists and the reference is never matched; paced quickly, the twelfth is still in flight when the
+# menu finally arrives and it walks straight through into SELECT RANK / MISSION BRIEFING (s8_frz_D,
+# s8_vm_title3). Off Windows the budget is WALL-CLOCK instead, and a press waits for the screen to hold
+# still: a press is never repeated into a transition (the overshoot) and the budget does not run out
+# because the boot was slow (the undershoot). Windows keeps the count and the literal sleep -- the
+# Windows gate is the daily instrument and nothing about it moves here.
 SLOW_HOST_PRESS_FACTOR = 12
 SLOW_HOST_PRESS_POLL_S = 1.0
+# Two consecutive captures closer than this on the 160x112 grey thumbnail are "the same screen" --
+# wait_stable's own `thresh` default, so "stable" means here what it means everywhere else in the drive.
+PRESS_STABLE_DIST = 1.0
+# A settled screen that swallowed a press is asked again after this many per-press timeouts, and only
+# this many times, before the loop goes quiet -- see paced_press_times.
+IDLE_REPRESS_FACTOR = 3.0
+IDLE_REPRESS_LIMIT = 1
+
+PacedPresses = collections.namedtuple("PacedPresses", "press_times matched")
 
 
-def settle_after_press(delay, at_ref):
-    """The pause between two untilref presses: the script's delay on Windows, a reference-watching
-    wait of up to SLOW_HOST_PRESS_FACTOR x that off it."""
-    if hostplatform.is_windows():
-        time.sleep(delay)
-        return
-    deadline = time.time() + delay * SLOW_HOST_PRESS_FACTOR
-    while time.time() < deadline:
-        time.sleep(min(SLOW_HOST_PRESS_POLL_S, max(0.0, deadline - time.time())))
-        if at_ref():
-            return
+def press_pacing(env=None, system=None):
+    """Which untilref budget this run uses: "fixed-count" (at most <loops> presses, each followed by
+    the script's delay: today's Windows instrument, unchanged) or "paced" (the wall-clock budget
+    below). Off Windows it is always paced; `SOCOM_DRIVE_SLOW_HOST=1` asks for paced on Windows too,
+    which is how the tests exercise it on this host."""
+    env = os.environ if env is None else env
+    if env.get("SOCOM_DRIVE_SLOW_HOST") == "1":
+        return "paced"
+    return "fixed-count" if hostplatform.is_windows(system) else "paced"
+
+
+def untilref_budget(seconds, tail, steps, index):
+    """The wall seconds the untilref step at `index` may spend: the run's own length, less its tail
+    and less every delay the later steps still need. The stage's `seconds` is already the slow-host
+    figure (gate.stage_seconds multiplies it), so this is "the stage's seconds x factor" minus what
+    the rest of the script is owed -- a boot that never reaches the reference still leaves the 22
+    `wait+6.0` captures of the title script their time instead of eating the whole run."""
+    return max(0.0, float(seconds) - float(tail) - sum(float(d) for _m, d, _b in steps[index + 1:]))
+
+
+def ref_observations(sample, poll_s=SLOW_HOST_PRESS_POLL_S, now=time.time, sleep=time.sleep):
+    """(t, distance to the PREVIOUS capture, distance to the REFERENCE) every `poll_s`, forever.
+
+    `sample()` returns (thumbnail, distance-to-reference); a non-match reports `inf`, so a caller
+    whose match test is more than a distance (untilref's `lit` band check) still yields one number.
+    The first observation has no predecessor and reports `inf` -- never "stable"."""
+    prev = None
+    while True:
+        cur, d_ref = sample()
+        yield now(), (float("inf") if prev is None else float(np.abs(cur - prev).mean())), d_ref
+        prev = cur
+        sleep(poll_s)
+
+
+def paced_press_times(observations, press, stable_dist=PRESS_STABLE_DIST, ref_dist=14.0,
+                      per_press_timeout=12.0, wall_budget=300.0, idle_timeout=None,
+                      idle_repress_limit=IDLE_REPRESS_LIMIT):
+    """The paced press loop, as a pure function over observations -> PacedPresses(times, matched).
+
+    A press is issued in exactly three situations, and the reference is checked before all of them:
+
+    * **the screen settled on something new** -- this observation is within `stable_dist` of the one
+      before it, and the screen has moved since the last press. One press per screen, issued as soon
+      as it holds still: never into a transition (the overshoot), and never twice for one screen.
+    * **the screen will not hold still** -- `per_press_timeout` since the last press with no settled
+      observation at all: the intro movie, which is what a CROSS is for in the first place.
+    * **the press was ignored** -- the screen settled, was pressed and has not moved in
+      `idle_timeout` (3 x the per-press timeout). At most `idle_repress_limit` of these before the
+      loop goes quiet and simply waits, because a settled screen that swallows a press is a guest
+      that is LOADING and not polling its pad: the Linux runtime latches the press and hands it to
+      the first poll of the NEXT screen. That is how s8_vm_title_paced1 pressed 15 times through a
+      120 s boot and walked the main menu into SELECT RANK on the last of them. The boot reaches the
+      menu by itself; the budget is there to be waited out, not spent.
+
+    The loop ends on the reference, or when `wall_budget` seconds have passed since the first
+    observation -- time, not a count, so a slow boot spends the budget rather than exhausting it.
+
+    `press(t)` is the press callback; `observations` may be infinite (ref_observations is)."""
+    if idle_timeout is None:
+        idle_timeout = per_press_timeout * IDLE_REPRESS_FACTOR
+    press_times = []
+    t0 = None
+    wait_since = None
+    moved = True                 # nothing pressed yet: the screen owes us no transition
+    idle_presses = 0
+    for t, d_prev, d_ref in observations:
+        if t0 is None:
+            t0, wait_since = t, t
+        if d_ref < ref_dist:
+            return PacedPresses(press_times, True)
+        if t - t0 >= wall_budget:
+            return PacedPresses(press_times, False)
+        stable = d_prev < stable_dist
+        if not stable:
+            moved, idle_presses = True, 0
+        waited = t - wait_since
+        if stable and moved:
+            kind = "settled"
+        elif not stable and waited >= per_press_timeout:
+            kind = "moving"
+        elif stable and idle_presses < idle_repress_limit and waited >= idle_timeout:
+            kind = "idle"
+        else:
+            continue
+        press(t)
+        press_times.append(t)
+        wait_since = t
+        if kind == "settled":
+            moved, idle_presses = False, 0
+        elif kind == "idle":
+            idle_presses += 1
+    return PacedPresses(press_times, False)
 
 
 def parse(text):
@@ -374,6 +489,8 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             # Full form: untilref(<png>,<y0>,<y1>,<x0>,<x1>,<loops>,<thresh>) on the 160x112 thumbnail.
             # A trailing `lit` flag -- untilref(<png>,...,lit) -- also requires the letterbox bands of
             # the uncropped frame to be lit (hud_match): the in-game HUD, not the intro cinematic.
+            # <loops> is the budget of the FIXED-COUNT pacing only (Windows); off Windows, and with
+            # SOCOM_DRIVE_SLOW_HOST=1, the budget is wall-clock instead -- see press_pacing.
             parts = [v.strip() for v in mode[9:-1].split(",")]
             ref_path = parts[0]
             lit = "lit" in parts[1:]
@@ -388,15 +505,39 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             def at_ref():
                 return hud_match(winshot.grab(hwnd), ref_im, (r0, r1, c0, c1), thresh, lit)[0]
 
-            presses = 0
-            while not at_ref() and presses < max_loops:
-                wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
-                if at_ref():
-                    break
+            def press_buttons(_t=None):
                 for b in buttons:
                     keys.press(hwnd, b, a.target)
-                presses += 1
-                settle_after_press(delay, at_ref)
+
+            if press_pacing() == "paced":
+                # The slow-host budget: wall clock, one press per settled screen (press_pacing).
+                # No wait_stable here, so this step writes no w<step>_<k>.png frames -- its own
+                # polling is the diagnostic, and the title scorer reads only s<NN>_*.png.
+                def sample():
+                    im = winshot.grab(hwnd)
+                    matched, dist, _band = hud_match(im, ref_im, (r0, r1, c0, c1), thresh, lit)
+                    return thumb(im), (dist if matched else float("inf"))
+
+                paced = paced_press_times(
+                    ref_observations(sample), press_buttons, ref_dist=thresh,
+                    per_press_timeout=delay * SLOW_HOST_PRESS_FACTOR,
+                    wall_budget=untilref_budget(a.seconds, a.tail, steps, i))
+                presses = len(paced.press_times)
+                # The pacing itself, beside the untilref line: WHEN each press went in, relative to
+                # the step. A press close to the match is the overshoot caught in the act.
+                base = paced.press_times[0] if paced.press_times else 0.0
+                print("untilref pacing: presses at t+%s (step t0+%.1fs)"
+                      % (",".join("%.1f" % (p - base) for p in paced.press_times),
+                         base - t0), flush=True)
+            else:
+                presses = 0
+                while not at_ref() and presses < max_loops:
+                    wait_stable(hwnd, 1.5, 20.0, on_frame=cap)
+                    if at_ref():
+                        break
+                    press_buttons()
+                    presses += 1
+                    time.sleep(delay)
             final = hud_match(winshot.grab(hwnd), ref_im, (r0, r1, c0, c1), thresh, lit)
             band = "" if final[2] is None else f" bands={final[2]:.2f}"
             print(f"untilref({ref_path}): {presses} presses, dist={final[1]:.1f}{band}, matched={final[0]}", flush=True)
