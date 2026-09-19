@@ -146,6 +146,15 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   through the logos, the intro and a minute of the title loop, then send the WAV (or run `python3 -m tools_py.parity.audio_corr
   /tmp/title.wav logs/title_loop_pcm.bin` on a checkout and send its last line). The VM renders at two frames a second on a
   software rasteriser, which starves the music ring, so the correlation bar cannot be read there.
+- [ ] **The redesigned launcher: your verdict on the look** (Sprint 8 Goal 9; your request of 2026-09-19). Run
+  `dist/socom_unzipped_launcher.exe`. It opens on PLAY (disc, video, controller, online at a glance, one LAUNCH); the rail
+  on the left has DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, ABOUT. Everything works by mouse, by keyboard (arrows,
+  enter, escape) and by pad (d-pad or stick, the bottom face button, the right one to go back, the shoulders to change
+  page, START to launch). The CONTROLLER page draws a live pad: press buttons, move the sticks, squeeze the triggers, drag
+  the dead-zone slider and watch the ring. The loop's own screenshots of every page at two sizes are in
+  `logs/parity/launcher_ui/` if you want to look before running it. Report: does it look right to you (the SOCOM feel, the
+  type, the colours), anything hard to read or find, whether pad navigation felt natural, and what you would change first.
+
 ## Done
 
 (none yet)
