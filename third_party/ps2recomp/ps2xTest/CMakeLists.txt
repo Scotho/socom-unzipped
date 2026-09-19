@@ -67,6 +67,7 @@ add_library(ps2_test_lib STATIC
     src/host_config_tests.cpp
     src/launcher_tests.cpp
     src/exit_codes_tests.cpp
+    src/preflight_tests.cpp
 )
 
 target_include_directories(ps2_test_lib PRIVATE

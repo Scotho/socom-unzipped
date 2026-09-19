@@ -27,6 +27,7 @@ void register_socom2_lgaud_tests();
 void register_host_config_tests();
 void register_launcher_tests();
 void register_exit_codes_tests();
+void register_preflight_tests();
 void reset_ps2_test_function_table();
 
 namespace
@@ -96,6 +97,7 @@ int main()
     register_host_config_tests();
     register_launcher_tests();
     register_exit_codes_tests();
+    register_preflight_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

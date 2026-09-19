@@ -827,7 +827,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `ps2xTest/src/preflight_tests.cpp`:
+- [x] **Step 1: RED.** Create `ps2xTest/src/preflight_tests.cpp`:
 
 ```cpp
 // Sprint 9 Goal 1: the checks the runner makes before it opens a window, each driven through the failing
@@ -1036,7 +1036,7 @@ void register_preflight_tests()
 
 Register it exactly as Task 2 Step 1 did (`void register_preflight_tests();`, the call, and `    src/preflight_tests.cpp` in `ps2_test_lib`). Build `ps2x_tests`. **Expected RED:** `fatal error: 'ps2x/preflight.h' file not found`.
 
-- [ ] **Step 2: Write `ps2xShared/include/ps2x/preflight.h`.**
+- [x] **Step 2: Write `ps2xShared/include/ps2x/preflight.h`.**
 
 ```cpp
 #pragma once
@@ -1086,7 +1086,7 @@ namespace Preflight
 }
 ```
 
-- [ ] **Step 3: Write `ps2xShared/src/preflight.cpp`** and add `    src/preflight.cpp` to `ps2x_shared`'s source list.
+- [x] **Step 3: Write `ps2xShared/src/preflight.cpp`** and add `    src/preflight.cpp` to `ps2x_shared`'s source list.
 
 ```cpp
 #include "ps2x/preflight.h"
@@ -1221,9 +1221,9 @@ namespace Preflight
 }
 ```
 
-- [ ] **Step 4: GREEN.** Build; `PS2X_TEST_SUITE=Preflight ./ps2x_tests.exe` -> `Total Tests: 6`, `Failed: 0`.
+- [x] **Step 4: GREEN.** Build; `PS2X_TEST_SUITE=Preflight ./ps2x_tests.exe` -> `Total Tests: 6`, `Failed: 0`.
 
-- [ ] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 13`), then commit.**
+- [x] **Step 5: `./build.sh test` exit 0 (`Total Tests: B + 13`), then commit.**
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/preflight.h third_party/ps2recomp/ps2xShared/src/preflight.cpp third_party/ps2recomp/ps2xTest/src/preflight_tests.cpp
