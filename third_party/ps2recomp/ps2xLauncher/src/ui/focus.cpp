@@ -1,6 +1,8 @@
 // Sprint 8 Goal 9: the layout and the focus model. Pure -- no raylib, no globals, no drawing.
 #include "focus.h"
 
+#include "launcher/launcher_config.h"   // which server presets can be played at all
+
 #include <algorithm>
 #include <cmath>
 
@@ -164,7 +166,8 @@ namespace ui
         case Page::Online:
         {
             for (int i = 0; i < 3; ++i)
-                add(out, page, "online.preset." + std::to_string(i), Rect{b.x, b.y + 26.0f + static_cast<float>(i) * 38.0f, b.w, 32.0f});
+                if (launcher::presetAvailable(launcher::kServerPresets[i]))
+                    add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, i));
             const float y = b.y + 26.0f + 3.0f * 38.0f + 22.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
@@ -184,6 +187,12 @@ namespace ui
         if (page != Page::Play)
             add(out, page, barLaunchId(page), Rect{f.bar.right() - metrics::margin - 220.0f, f.bar.y + 10.0f, 220.0f, 36.0f});
         return out;
+    }
+
+    Rect onlinePresetRow(Rect window, int index)
+    {
+        const Frame f = frameFor(window);
+        return Rect{f.body.x, f.body.y + 26.0f + static_cast<float>(index) * 38.0f, f.body.w, 32.0f};
     }
 
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id)

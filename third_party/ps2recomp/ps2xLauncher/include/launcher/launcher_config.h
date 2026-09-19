@@ -57,6 +57,11 @@ namespace launcher
     // had, and "<w>x<h>" otherwise.
     std::string monitorSizeOrEmpty(int width, int height);
 
+    // Sprint 8 Goal 9 (fourth pass): can this preset actually be played? A preset carries a placeholder
+    // address until its server exists -- the community one still does, because PSRewired runs game revision
+    // r0004 and this client cannot play that yet. Custom is always available: the player types the address.
+    bool presetAvailable(const ServerPreset &preset);
+
     // The preset with that id, or nullptr when the id is not one of ours.
     const ServerPreset *findServerPreset(const std::string &id);
     // The address the game is actually pointed at: the preset's for community/unzipped, the typed one for custom

@@ -12,12 +12,25 @@ namespace ui
 
         int presetSel = 2;   // "Custom" unless one of the ids matches
         for (int i = 0; i < 3; ++i)
-            if (c.serverPreset == launcher::kServerPresets[i].id)
+            if (c.serverPreset == launcher::kServerPresets[i].id && launcher::presetAvailable(launcher::kServerPresets[i]))
                 presetSel = i;
         for (int i = 0; i < 3; ++i)
         {
             const std::string id = "online.preset." + std::to_string(i);
-            const Rect r = rectOf(nodes, id);
+            const bool available = launcher::presetAvailable(launcher::kServerPresets[i]);
+            const Rect r = available ? rectOf(nodes, id) : onlinePresetRow(app.frame.window, i);
+            if (!available)
+            {
+                // Drawn, but not on offer: the community server runs a game revision this client cannot
+                // play, and a preset the player cannot use must say so rather than fail at launch.
+                const Rgba off = theme::mix(theme::dim, theme::ground, 0.45f);
+                strokeRect(ctx, Rect{r.x + 6.0f, r.cy() - 5.0f, 10.0f, 10.0f}, off, 2.0f);
+                text(ctx, launcher::kServerPresets[i].label, Vec2{r.x + 34.0f, r.cy() - metrics::bodySize * 0.58f},
+                     metrics::bodySize - 1.0f, off);
+                textRightIn(ctx, "needs the r0004 game update -- planned", Rect{r.x, r.y, r.w - 12.0f, r.h},
+                            metrics::captionSize - 1.0f, off);
+                continue;
+            }
             if (listRow(ctx, r, launcher::kServerPresets[i].label, id, i == presetSel) && i != presetSel)
             {
                 c.serverPreset = launcher::kServerPresets[i].id;
@@ -25,8 +38,9 @@ namespace ui
                 if (app.activeField == "online.server")
                     app.activeField.clear();   // the preset took the field away mid-edit
             }
-            textRightIn(ctx, launcher::kServerPresets[i].note, Rect{r.x, r.y, r.w - 12.0f, r.h}, 15.0f,
-                        i == presetSel ? theme::dim : theme::mix(theme::dim, theme::ground, 0.3f));
+            textRightIn(ctx, launcher::kServerPresets[i].note, Rect{r.x, r.y, r.w - 12.0f, r.h},
+                        metrics::captionSize - 1.0f,
+                        i == presetSel ? theme::caption : theme::mix(theme::caption, theme::ground, 0.3f));
         }
 
         const launcher::ServerPreset *preset = launcher::findServerPreset(c.serverPreset);

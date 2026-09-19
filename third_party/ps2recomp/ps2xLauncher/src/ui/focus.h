@@ -68,6 +68,10 @@ namespace ui
     // The rail's eight entries.
     std::vector<Node> railLayout(Rect window);
 
+    // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
+    // actually be played get a focusable node (see launcher::presetAvailable).
+    Rect onlinePresetRow(Rect window, int index);
+
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id);
     bool hasNode(const std::vector<Node> &nodes, const std::string &id);
 
