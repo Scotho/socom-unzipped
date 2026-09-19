@@ -134,6 +134,28 @@ drives both windows at once.**
   is no ADVANCED page or section in the launcher today, so this goal creates one; what else belongs there
   (`fpsOverlay`, the debugger switch above, `gsScale`'s experimental 3) is the pass's judgment, recorded as a ruling.
 
+- **A flash at the top left when the page changes** (owner 2026-09-20): "changing between menus causes a weird
+  graphical bug that's visible for a moment somewhere around the top left of the page." Prime suspect, from reading:
+  `rectOf(nodes, id)` returns a default `Rect{}` — the origin — when the id is not in the node list
+  (`ui/focus.cpp:211-217`), and on the first frame after a page change the nodes are the NEW page's while several
+  callers still hold an id from the OLD one (e.g. `main.cpp:579`, the bottom bar's LAUNCH rect). Anything drawn from
+  such a rect lands at (0,0) for exactly one frame, which is where and how long the owner sees it. The page-change
+  veil itself (`main.cpp:1203-1211`, 0.12 s over `app.frame.content`) is the other candidate and is easy to rule in
+  or out. **Method:** reproduce it in `--screenshot` mode by capturing the first frame after a page change (the
+  launcher can already drive itself), fix the rect discipline at the root — an unknown id must not produce a drawable
+  rect — and keep the capture as the regression test. Do not "fix" it by clearing the frame.
+- **The launcher speaks with the game's own voice** (owner 2026-09-20): sound effects for focus movement and
+  selection, "drawn directly from the game sound for menu sounds. Feel free to extract them and render them to a
+  usable modern format." The bank is already identified: HUDUI, cut from the r0001 disc at sector 2010461, and the
+  readers exist (`runtime/socom2_bank.h`, `runtime/ps2_vag.h`; the test fixtures `tests/fixtures/audio/hudui_block.bin`
+  and `hudui_vag.bin` are chunks 0 and 1 of it — research/32 §1). **One constraint the owner should weigh:** the
+  project ships no game assets ("the game's disc image is not included"; the portable README and LICENSES say so), and
+  baking extracted SOCOM II audio into the launcher binary would put the game's audio in the download. The design that
+  keeps that promise: the launcher already knows the player's ISO, so it decodes the cues it wants from **their** disc
+  on first run, caches them beside the config (WAV or Ogg), and runs silent — never with a substitute — when no ISO is
+  set yet. Which cues (move, select, back, error) and their level are part of the pass; raylib's audio is already in
+  the launcher, so nothing new is vendored.
+
 **Bar:** the pad-focus defect proven with the game running (the launcher's own `--screenshot` proof cannot show it —
 it needs a driven launch and a pad); the two alignment fixes asserted in the top-bar tests, not eyeballed; every new
 string through the same theme and focus model as Sprint 8 Goal 9. **Owner checks:** the guide-button toggle on their
