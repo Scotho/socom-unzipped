@@ -107,6 +107,19 @@ namespace ps2x::iop
             (void)out; (void)frames;
             return 0u;
         }
+        // What the module actually served to the game, at the rate lgAudOpen asked for (the voice path asks
+        // for 8000 Hz mono, decomp :211843-211852; the tuner path asks for 11025, :48341), and what the game
+        // handed back for playback through 0x09. The module counts and forwards; the runtime decides whether
+        // a dump is open. PS2X_MIC_GAMEREAD_DUMP and PS2X_MIC_DUMP_PLAYBACK stay on the runtime side, so
+        // nothing in the module reads the environment.
+        virtual void micGameRead(const int16_t *frames, size_t count, uint32_t rate)
+        {
+            (void)frames; (void)count; (void)rate;
+        }
+        virtual void micPlaybackWrite(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels)
+        {
+            (void)pcm; (void)bytes; (void)rate; (void)channels;
+        }
 
         virtual std::string hostPath(HostPathKind kind) const = 0;
         virtual std::string translateGuestPath(std::string_view path) const = 0;

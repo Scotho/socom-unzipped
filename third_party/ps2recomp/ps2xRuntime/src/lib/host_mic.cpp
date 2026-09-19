@@ -338,10 +338,11 @@ size_t HostMic::read(int16_t *out, size_t frames)
     return m_impl->sink.ring.read(out, frames);
 }
 
-void HostMic::startDumpTee(const std::string &wavPath)
+void HostMic::startDumpTee(const std::string &pattern)
 {
     if (!m_impl || m_impl->sink.dumpOn.load(std::memory_order_acquire))
         return;
+    const std::string wavPath = hostMicDumpPath(pattern);
     m_impl->dumpFile = std::fopen(wavPath.c_str(), "wb");
     if (m_impl->dumpFile == nullptr)
     {
@@ -428,63 +429,132 @@ namespace
 {
     HostMic *g_hostMic = nullptr;
 
-    // PS2X_MIC_GAMEREAD_DUMP, read once on the first frame the module is handed. "Off" is latched as well as
-    // "on", so an unset knob costs one atomic load per Read and never a getenv on the RPC path.
-    std::mutex g_gameReadMutex;
-    std::FILE *g_gameReadFile = nullptr;
-    std::string g_gameReadPath;
-    size_t g_gameReadFrames = 0u;
-    bool g_gameReadChecked = false;
+    // A lazily-opened PCM WAV sink for the two proof dumps. The knob is read once, on the first frame that
+    // arrives, so an unset variable costs one bool test per call and never a getenv on the RPC path. The
+    // rate and the channel count come from the caller, because these files carry whatever lgAudOpen asked
+    // for (8000 Hz mono on the voice path, 8000 Hz stereo coming back) and not the ring's 16 kHz.
+    const char kTitleToken[] = "{title}";
+    struct WavSink
+    {
+        const char *knob;
+        const char *what;
+        std::mutex mutex;
+        std::FILE *file = nullptr;
+        std::string path;
+        size_t bytes = 0u;
+        uint32_t rate = 0u;
+        uint8_t channels = 1u;
+        bool checked = false;
+
+        void write(const void *data, size_t byteCount, uint32_t sampleRate, uint8_t channelCount)
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            if (!checked)
+            {
+                checked = true;
+                const char *where = std::getenv(knob);
+                if (where != nullptr && where[0] != 0)
+                {
+                    const std::string resolved = hostMicDumpPath(where);
+                    file = std::fopen(resolved.c_str(), "wb");
+                    if (file == nullptr)
+                    {
+                        std::cerr << "[mic] " << knob << ": cannot write " << resolved << std::endl;
+                    }
+                    else
+                    {
+                        path = resolved;
+                        rate = sampleRate;
+                        channels = channelCount == 0u ? 1u : channelCount;
+                        uint8_t header[44] = {};
+                        wavHeader(header, 0u, rate, channels);   // 0 = unknown until a clean close
+                        std::fwrite(header, 1, 44, file);
+                        std::cout << "[mic] " << knob << " -> " << path << " (" << what << ", " << rate
+                                  << " Hz " << (channels == 1u ? "mono" : "stereo") << " 16-bit)" << std::endl;
+                    }
+                }
+            }
+            if (file == nullptr || data == nullptr || byteCount == 0u)
+                return;
+            std::fwrite(data, 1, byteCount, file);
+            bytes += byteCount;
+        }
+
+        void close()
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            checked = false;
+            if (file == nullptr)
+                return;
+            uint8_t header[44] = {};
+            wavHeader(header, static_cast<uint32_t>(bytes), rate, channels);
+            std::fseek(file, 0, SEEK_SET);
+            std::fwrite(header, 1, 44, file);
+            std::fclose(file);
+            file = nullptr;
+            std::cout << "[mic] wrote " << path << " (" << bytes << " bytes of " << what << ")" << std::endl;
+            bytes = 0u;
+            path.clear();
+        }
+
+        // hostMicWavHeader is mono-only by construction; the playback dump is whatever the game opened.
+        static void wavHeader(uint8_t *p, uint32_t dataSize, uint32_t sampleRate, uint8_t channelCount)
+        {
+            if (channelCount <= 1u)
+            {
+                hostMicWavHeader(p, dataSize, sampleRate);
+                return;
+            }
+            hostMicWavHeader(p, dataSize, sampleRate);
+            const uint32_t blockAlign = 2u * channelCount;
+            const uint32_t byteRate = sampleRate * blockAlign;
+            p[22] = static_cast<uint8_t>(channelCount);
+            p[23] = 0u;
+            p[28] = static_cast<uint8_t>(byteRate);
+            p[29] = static_cast<uint8_t>(byteRate >> 8);
+            p[30] = static_cast<uint8_t>(byteRate >> 16);
+            p[31] = static_cast<uint8_t>(byteRate >> 24);
+            p[32] = static_cast<uint8_t>(blockAlign);
+            p[33] = 0u;
+        }
+    };
+
+    WavSink g_gameRead{"PS2X_MIC_GAMEREAD_DUMP", "what lgaud 0x08 served the game"};
+    WavSink g_playback{"PS2X_MIC_DUMP_PLAYBACK", "what lgaud 0x09 asked the headset to play"};
 }
 
-void hostMicGameReadDump(const int16_t *frames, size_t count)
+std::string hostMicDumpPath(const std::string &pattern)
 {
-    std::lock_guard<std::mutex> lock(g_gameReadMutex);
-    if (!g_gameReadChecked)
-    {
-        g_gameReadChecked = true;
-        const char *path = std::getenv("PS2X_MIC_GAMEREAD_DUMP");
-        if (path != nullptr && path[0] != 0)
-        {
-            g_gameReadFile = std::fopen(path, "wb");
-            if (g_gameReadFile == nullptr)
-            {
-                std::cerr << "[mic] PS2X_MIC_GAMEREAD_DUMP: cannot write " << path << std::endl;
-            }
-            else
-            {
-                g_gameReadPath = path;
-                uint8_t header[44] = {};
-                hostMicWavHeader(header, 0, HostMic::kSampleRate);   // 0 = unknown until a clean close
-                std::fwrite(header, 1, 44, g_gameReadFile);
-                std::cout << "[mic] PS2X_MIC_GAMEREAD_DUMP -> " << path << " (what lgaud 0x08 was handed, "
-                          << HostMic::kSampleRate << " Hz mono 16-bit)" << std::endl;
-            }
-        }
-    }
-    if (g_gameReadFile == nullptr || frames == nullptr || count == 0u)
-        return;
-    std::fwrite(frames, sizeof(int16_t), count, g_gameReadFile);
-    g_gameReadFrames += count;
+    const std::string::size_type at = pattern.find(kTitleToken);
+    if (at == std::string::npos)
+        return pattern;
+    const char *title = std::getenv("PS2X_WINDOW_TITLE");
+    const std::string tag = (title == nullptr || title[0] == 0) ? std::string("A") : std::string(title);
+    std::string out = pattern;
+    for (std::string::size_type i = out.find(kTitleToken); i != std::string::npos;
+         i = out.find(kTitleToken, i + tag.size()))
+        out.replace(i, std::strlen(kTitleToken), tag);
+    return out;
+}
+
+void hostMicGameReadDump(const int16_t *frames, size_t count, uint32_t rate)
+{
+    g_gameRead.write(frames, count * sizeof(int16_t), rate, 1u);
 }
 
 void hostMicGameReadDumpClose()
 {
-    std::lock_guard<std::mutex> lock(g_gameReadMutex);
-    g_gameReadChecked = false;
-    if (g_gameReadFile == nullptr)
-        return;
-    const uint32_t dataSize = static_cast<uint32_t>(g_gameReadFrames * 2u);
-    uint8_t header[44] = {};
-    hostMicWavHeader(header, dataSize, HostMic::kSampleRate);
-    std::fseek(g_gameReadFile, 0, SEEK_SET);
-    std::fwrite(header, 1, 44, g_gameReadFile);
-    std::fclose(g_gameReadFile);
-    g_gameReadFile = nullptr;
-    std::cout << "[mic] wrote " << g_gameReadPath << " (" << g_gameReadFrames << " frames, "
-              << dataSize << " bytes the game read)" << std::endl;
-    g_gameReadFrames = 0u;
-    g_gameReadPath.clear();
+    g_gameRead.close();
+}
+
+void hostMicPlaybackDump(const uint8_t *pcm, size_t bytes, uint32_t rate, uint8_t channels)
+{
+    g_playback.write(pcm, bytes, rate, channels);
+}
+
+void hostMicPlaybackDumpClose()
+{
+    g_playback.close();
 }
 
 HostMic *hostMic()
@@ -526,6 +596,7 @@ void startHostMicFromEnvironment()
 void stopHostMic()
 {
     hostMicGameReadDumpClose();
+    hostMicPlaybackDumpClose();
     if (g_hostMic == nullptr)
         return;
     g_hostMic->stopDumpTee();

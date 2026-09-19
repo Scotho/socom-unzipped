@@ -186,8 +186,23 @@ def correlate_arrays(mix, ref, window_s=DEFAULT_WINDOW_S, rate=DEFAULT_RATE,
     return rows
 
 
+def resample_linear(samples, in_rate, out_rate):
+    """Mono linear resample, the arithmetic runtime/mic_format.h's micResampleLinear does on the C++ side.
+    Sprint 8 Goal 3 Task 4: the voice reference is generated at 11025 Hz but the game opens the headset at
+    8000 (decomp :211849), so the reference has to be moved to the dump's rate before either is scored."""
+    samples = np.asarray(samples, dtype=np.float64)
+    if in_rate == out_rate or len(samples) == 0:
+        return samples
+    n = int(len(samples) * float(out_rate) / float(in_rate))
+    if n <= 1:
+        return samples[:1]
+    at = np.arange(n, dtype=np.float64) * (float(in_rate) / float(out_rate))
+    return np.interp(at, np.arange(len(samples), dtype=np.float64), samples)
+
+
 def correlate(wav_path, pcm_path, window_s=DEFAULT_WINDOW_S, rate=DEFAULT_RATE,
-              decimate=DEFAULT_DECIMATE, silent_rms=DEFAULT_SILENT_RMS, from_s=None, to_s=None):
+              decimate=DEFAULT_DECIMATE, silent_rms=DEFAULT_SILENT_RMS, from_s=None, to_s=None,
+              ref_wav=None):
     """The mixed WAV's left channel against the disc PCM's left channel, window by window. `from_s`/`to_s`
     restrict the mix to a span: a title-stage dump carries three streams (the logos, the intro, the title loop)
     and the bar applies to the span the reference stream plays in; rows keep their absolute t_s."""
@@ -195,7 +210,16 @@ def correlate(wav_path, pcm_path, window_s=DEFAULT_WINDOW_S, rate=DEFAULT_RATE,
     start = int(round((from_s or 0.0) * rate))
     stop = int(round(to_s * rate)) if to_s is not None else len(mix_left)
     mix_left = mix_left[start:stop]
-    ref_left, _ = read_disc_pcm(pcm_path)
+    if ref_wav is not None:
+        # A plain 16-bit WAV reference instead of the disc's PCM concatenation: what Goal 3's proof needs,
+        # because the thing being matched is a file we generated, not a stream cut off the disc. Its own
+        # header rate is honoured and it is moved to the mix's rate.
+        ref_left, _ = read_wav(ref_wav)
+        with wave.open(str(ref_wav), "rb") as w:
+            ref_rate = w.getframerate()
+        ref_left = resample_linear(ref_left, ref_rate, rate)
+    else:
+        ref_left, _ = read_disc_pcm(pcm_path)
     rows = correlate_arrays(mix_left, ref_left, window_s=window_s, rate=rate,
                             decimate=decimate, silent_rms=silent_rms)
     return [(t + start / float(rate), c, o) for t, c, o in rows]
@@ -307,6 +331,8 @@ def main(argv=None):
     ap.add_argument("pcm", nargs="?", default=None,
                     help="the disc PCM: the stream's private-stream-1 payloads concatenated "
                          "(not needed with --repeat)")
+    ap.add_argument("--ref-wav", default=None,
+                    help="score against this 16-bit WAV (resampled to --rate) instead of the disc PCM")
     ap.add_argument("--window-s", type=float, default=DEFAULT_WINDOW_S)
     ap.add_argument("--rate", type=int, default=DEFAULT_RATE)
     ap.add_argument("--decimate", type=int, default=DEFAULT_DECIMATE)
@@ -324,11 +350,11 @@ def main(argv=None):
 
     if args.repeat:
         return _repeat_main(args)
-    if args.pcm is None:
-        ap.error("pcm is required unless --repeat is given")
+    if args.pcm is None and args.ref_wav is None:
+        ap.error("pcm is required unless --repeat or --ref-wav is given")
 
     rows = correlate(args.wav, args.pcm, from_s=args.from_s, to_s=args.to_s, window_s=args.window_s, rate=args.rate,
-                     decimate=args.decimate, silent_rms=args.silent_rms)
+                     decimate=args.decimate, silent_rms=args.silent_rms, ref_wav=args.ref_wav)
     previous = None
     for t_s, corr, offset in rows:
         if np.isnan(corr):

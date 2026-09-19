@@ -1575,11 +1575,37 @@ void register_socom2_audio_tests()
             t.Equals(static_cast<int>(frames[0]), 0x4141, "leaving the caller's buffer untouched");
         });
 
+        // Sprint 8 Goal 3 Task 4 Step A: two instances of the game share one environment, so the three dump
+        // knobs need a per-instance path without the harness having to learn about them. The runtime does the
+        // one substitution: "{title}" becomes PS2X_WINDOW_TITLE (instance B runs with SOCOM-B; instance A
+        // sets none, and is "A"), so one exported PS2X_MIC_GAMEREAD_DUMP serves both sides of a round.
+        tc.Run("a dump path's {title} becomes the instance's window title, or A when it has none", [](TestCase &t)
+        {
+#ifdef _WIN32
+            _putenv_s("PS2X_WINDOW_TITLE", "SOCOM-B");
+#else
+            setenv("PS2X_WINDOW_TITLE", "SOCOM-B", 1);
+#endif
+            t.Equals(hostMicDumpPath("logs/parity/r1/{title}_gameread.wav"),
+                     std::string("logs/parity/r1/SOCOM-B_gameread.wav"), "B's dump carries B's title");
+            t.Equals(hostMicDumpPath("{title}"), std::string("SOCOM-B"), "the token can be the whole path");
+            t.Equals(hostMicDumpPath("logs/plain.wav"), std::string("logs/plain.wav"),
+                     "a path without the token is untouched, byte for byte");
+#ifdef _WIN32
+            _putenv_s("PS2X_WINDOW_TITLE", "");
+#else
+            unsetenv("PS2X_WINDOW_TITLE");
+#endif
+            t.Equals(hostMicDumpPath("logs/parity/r1/{title}_gameread.wav"),
+                     std::string("logs/parity/r1/A_gameread.wav"), "instance A sets no title and is 'A'");
+        });
+
         // Sprint 8 Goal 3: PS2X_MIC_GAMEREAD_DUMP is the proof's second file -- every frame the IOP module's
         // Read (lgaud 0x08) was handed, recorded on the runtime side so the module stays environment-free
         // (Task 2's Interfaces: "the module hands the bytes it served to IopHost ... the knob stays on the
         // runtime side"). Correlating it against what PS2X_MIC_FAKE fed in is what proves the capture path
-        // without a human speaking. Written at HostMic::kSampleRate, which is the rate micRead serves.
+        // without a human speaking. Written at the rate lgAudOpen asked for -- the module hands over what it
+        // SERVED, after the resample, so the file needs no rate argument at correlation time.
         tc.Run("PS2X_MIC_GAMEREAD_DUMP records exactly the frames the module was handed", [](TestCase &t)
         {
             const std::string path = "socom2_mic_gameread.wav";
@@ -1591,8 +1617,8 @@ void register_socom2_audio_tests()
             std::vector<int16_t> served(2048);
             for (size_t i = 0; i < served.size(); ++i)
                 served[i] = static_cast<int16_t>((i % 97) * 300 - 14000);
-            hostMicGameReadDump(served.data(), served.size());
-            hostMicGameReadDump(served.data(), served.size());
+            hostMicGameReadDump(served.data(), served.size(), 8000u);
+            hostMicGameReadDump(served.data(), served.size(), 8000u);
             hostMicGameReadDumpClose();
 #ifdef _WIN32
             _putenv_s("PS2X_MIC_GAMEREAD_DUMP", "");
@@ -1603,13 +1629,13 @@ void register_socom2_audio_tests()
             MicFormat fmt{};
             std::string error;
             t.IsTrue(micWavRead(path, back, fmt, error), "the game-read dump is a readable WAV: " + error);
-            t.Equals(fmt.rate, HostMic::kSampleRate, "at the rate micRead serves");
+            t.Equals(fmt.rate, 8000u, "at the rate lgAudOpen asked for (the voice path's 8000, decomp :211849)");
             t.Equals(back.size(), served.size() * 2u, "every frame from both calls, appended in order");
             t.Equals(back[0], served[0], "and they are the frames that were handed over");
             t.Equals(back[served.size()], served[0], "including the second call's");
 
             // With the knob unset the dump is inert: no file, and nothing to slow the RPC path down.
-            hostMicGameReadDump(served.data(), served.size());
+            hostMicGameReadDump(served.data(), served.size(), 8000u);
             hostMicGameReadDumpClose();
         });
 

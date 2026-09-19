@@ -79,8 +79,20 @@ namespace ps2x::iop::detail
         constexpr uint32_t kEnumEntryCount = 0x62u;      // :247063, the bound of the vendor-extension scan
         constexpr uint32_t kEnumNameBytes = 98u;         // block 0x00..0x61, no reader anywhere in the image
 
-        constexpr uint32_t kStateChanged = 1u;
-        constexpr uint32_t kStatePresent = 2u;
+        // The state word at reply +0x04, and what the EE does with it. EVERY client call merges it as
+        // DAT_003dcfb8 = DAT_003dcfb8 & ~2 | reply[+0x04] (:90991, :91037, :91067, :91108, :91760, ...);
+        // the async EnumHint's end function then writes the merged word into the voice object's +0x44
+        // (:91762) and clears the latch only when it is EXACTLY 1 (:91761-91764). The per-frame voice tick
+        // FUN_0030ec10 polls 0x0f while +0x44 != 1 (:211016) and runs Enumerate + lgAudOpen only when it
+        // reads exactly 1 (:211024), writing 2 to +0x44 itself straight afterwards (:211025-211028).
+        //
+        // So bit0 is a CHANGE EVENT, sticky on the EE side until the word reads 1; bit1 is refreshed from
+        // every reply by the `& ~2` and SUPPRESSES that trigger. Sprint 8 Goal 3 Task 2 shipped bit1 named
+        // "present" and answered 3 then 2, which pins the merged word at 3 and means the tick NEVER opens:
+        // that is the 30x-0x0f / 0x-0x02 signature of the s8_voice_read launch. Retracted here. The
+        // sequence that works is 1 once, then 2 for ever, and 2 on every other successful call.
+        constexpr uint32_t kStateChanged = 1u;   // bit0: the device list changed, rescan
+        constexpr uint32_t kStateSteady = 2u;    // bit1: nothing to rescan -- the tick's own idle value
         constexpr uint32_t kStatusOk = 0u;
         constexpr uint32_t kStatusNoDevice = 0x80000001u;
         constexpr uint32_t kStatusBadParam = 0x80000004u;
@@ -130,12 +142,15 @@ namespace ps2x::iop::detail
                 m_bytesRead = 0u;
                 m_phase = 0.0;
                 m_format = MicFormat{};
+                m_playbackFormat = MicFormat{};
+                m_payload.clear();
                 m_gain.fill(0u);
                 m_mixer.fill(0u);
                 m_bytesWritten = 0u;
                 m_openLogged = false;
                 m_enumLogged = false;
                 m_readCalls = 0u;
+                m_seen.fill(false);
             }
 
             [[nodiscard]] RpcResult handleRpc(const RpcRequest &request) override
@@ -165,6 +180,13 @@ namespace ps2x::iop::detail
                     readBlock(request.send, kMsgOpenParam, in.openParam.data(), in.openParam.size());
                 else if (request.function == kRpcSetMixer)
                     readBlock(request.send, kMsgMixerStruct, in.mixerStruct.data(), in.mixerStruct.size());
+                else if (request.function == kRpcWrite || request.function == kRpcWriteVag)
+                {
+                    const uint32_t bytes = std::min<uint32_t>(in.byteCount, kMaxPayload);
+                    m_payload.assign(bytes, 0u);
+                    if (bytes != 0u)
+                        readBlock(request.send, kMsgPayload, m_payload.data(), m_payload.size());
+                }
 
                 // Only now is the reply built. The buffer is zeroed first, as snd989's services do.
                 const uint32_t replyRoom = std::min<uint32_t>(request.receive.size, kMaxReplyBytes);
@@ -238,6 +260,20 @@ namespace ps2x::iop::detail
                 // The OFF path, pinned: with no capture source the module answers exactly what it answered
                 // before this goal -- 0x80000001 to every function but 0x10, and the same [lgaud:stub] line
                 // for the first 32 of them. The gate exports no mic knob, so this is the path it exercises.
+                // Observability, with a device attached, that [lgaud:stub] used to give for free: ONE line
+                // the first time the game reaches each function number, at most 0x20 lines a run. Without it
+                // a run cannot tell "the game never called 0x02" from "0x02 was refused silently", which is
+                // exactly the question s8_voice_open left open.
+                if (in.function < m_seen.size() && !m_seen[in.function])
+                {
+                    m_seen[in.function] = true;
+                    std::ostringstream m;
+                    m << "[lgaud] first call fn=0x" << std::hex << in.function
+                      << " send=0x" << request.send.address << "/" << request.send.size
+                      << " recv=0x" << request.receive.address << "/" << request.receive.size
+                      << " index=" << std::dec << in.deviceIndex << " handle=0x" << std::hex << in.handle;
+                    m_host.log(LogLevel::Info, m.str());
+                }
                 if (in.function != kRpcInit && !deviceHere())
                 {
                     unknown(request);
@@ -273,12 +309,14 @@ namespace ps2x::iop::detail
                     }
                     if (!m_hintSent)
                     {
+                        // Exactly 1, on its own: with bit1 clear the EE's merge reads 1, the latch resets and
+                        // the tick opens. Answering 3 here (bit1 set) is what kept it from ever opening.
                         m_hintSent = true;
-                        m_host.log(LogLevel::Info, "[lgaud] lgAudEnumHint -> present + changed (once)");
-                        answer(kStatusOk, kStatePresent | kStateChanged);
+                        m_host.log(LogLevel::Info, "[lgaud] lgAudEnumHint -> change event (state 1, once)");
+                        answer(kStatusOk, kStateChanged);
                         return;
                     }
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcOpen:
@@ -293,33 +331,33 @@ namespace ps2x::iop::detail
                     m_recording = false;
                     m_handle = 0u;
                     m_phase = 0.0;
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcStartRecording:
                     if (!m_open || in.handle != m_handle)
                     {
-                        answer(kStatusNoDevice, kStatePresent);
+                        answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
                     m_recording = true;
                     m_bytesRead = 0u;
                     m_phase = 0.0;
                     m_host.log(LogLevel::Info, "[lgaud] lgAudStartRecording");
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcStopRecording:
                     // 0x05 shares 0x04's error string and is only ever called on the way out, so treating it
                     // as StopRecording is harmless if the ASSUMED name is wrong (docs/KNOWN.md:101).
                     m_recording = false;
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcStartPlayback:
                 case kRpcStopPlayback:
                 case kRpcResumePlayback:
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcRead:
@@ -337,38 +375,45 @@ namespace ps2x::iop::detail
                     // stalls waiting for us.
                     if (!m_open)
                     {
-                        answer(kStatusNoDevice, kStatePresent);
+                        answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
-                    m_bytesWritten += std::min<uint32_t>(in.byteCount, kMaxPayload);
-                    answer(kStatusOk, kStatePresent);
-                    putWord(kMsgByteCount, std::min<uint32_t>(in.byteCount, kMaxPayload));
+                    // The game has already Nellymoser-decoded the other player and duplicated each sample
+                    // L/R (:211305-211380), so this payload is plain PCM at the playback half of the
+                    // openparam. Handing it to the host is what writes PS2X_MIC_DUMP_PLAYBACK; the host
+                    // discards it when no dump is open. Mixing it into 989snd is Task 5.
+                    m_bytesWritten += static_cast<uint32_t>(m_payload.size());
+                    if (!m_payload.empty())
+                        m_host.micPlaybackWrite(m_payload.data(), m_payload.size(), m_playbackFormat.rate,
+                                                m_playbackFormat.channels);
+                    answer(kStatusOk, kStateSteady);
+                    putWord(kMsgByteCount, static_cast<uint32_t>(m_payload.size()));
                     return;
 
                 case kRpcRemainingPlayback:
                     // 0 remaining, so the game never waits on us.
-                    answer(m_open ? kStatusOk : kStatusNoDevice, kStatePresent);
+                    answer(m_open ? kStatusOk : kStatusNoDevice, kStateSteady);
                     putWord(kMsgByteCount, 0u);
                     return;
 
                 case kRpcGetMixer:
                     if (!m_open)
                     {
-                        answer(kStatusNoDevice, kStatePresent);
+                        answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     putBlock(kMsgMixerStruct, m_mixer.data(), m_mixer.size());
                     return;
 
                 case kRpcSetMixer:
                     if (!m_open)
                     {
-                        answer(kStatusNoDevice, kStatePresent);
+                        answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
                     m_mixer = in.mixerStruct;
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 case kRpcSetPlaybackVolume:
@@ -377,12 +422,12 @@ namespace ps2x::iop::detail
                     // (:211504-211527). A module that refuses it leaves the game fighting its own AGC.
                     if (!m_open)
                     {
-                        answer(kStatusNoDevice, kStatePresent);
+                        answer(kStatusNoDevice, kStateSteady);
                         return;
                     }
                     if (in.mixerChannel < m_gain.size())
                         m_gain[in.mixerChannel] = in.mixerLevel;
-                    answer(kStatusOk, kStatePresent);
+                    answer(kStatusOk, kStateSteady);
                     return;
 
                 default:
@@ -418,7 +463,7 @@ namespace ps2x::iop::detail
                     m_enumLogged = true;
                     m_host.log(LogLevel::Info, "[lgaud] lgAudGetDeviceInfo(0) -> one device, 0 vendor entries");
                 }
-                answer(kStatusOk, kStatePresent);
+                answer(kStatusOk, kStateSteady);
                 std::array<uint8_t, kEnumBlockBytes> block{};
                 const size_t nameBytes = std::min<size_t>(std::strlen(kDeviceName), kEnumNameBytes - 1u);
                 std::memcpy(block.data(), kDeviceName, nameBytes);
@@ -435,6 +480,9 @@ namespace ps2x::iop::detail
             {
                 if (in.deviceIndex != 0u || !deviceHere())
                 {
+                    std::ostringstream m;
+                    m << "[lgaud] lgAudOpen(index " << in.deviceIndex << ") -> no device";
+                    m_host.log(LogLevel::Info, m.str());
                     answer(kStatusNoDevice, 0u);
                     return;
                 }
@@ -457,10 +505,18 @@ namespace ps2x::iop::detail
                           << "bit/" << format.rate << "Hz is outside mono 16-bit 4000..48000";
                         m_host.log(LogLevel::Warning, m.str());
                     }
-                    answer(kStatusBadParam, kStatePresent);
+                    answer(kStatusBadParam, kStateSteady);
                     return;
                 }
                 m_format = format;
+                // The playback half (openparam +0x08..+0x0d, :91031-91032). On the voice path it is
+                // 2ch/16-bit/8000 Hz (:211843-211852); the tuner path leaves it zero.
+                m_playbackFormat.channels = in.openParam[8] == 0u ? 1u : in.openParam[8];
+                m_playbackFormat.bits = in.openParam[9] == 0u ? 16u : in.openParam[9];
+                m_playbackFormat.rate = (static_cast<uint32_t>(in.openParam[10]) |
+                                         (static_cast<uint32_t>(in.openParam[11]) << 8));
+                if (m_playbackFormat.rate == 0u)
+                    m_playbackFormat.rate = format.rate;
                 m_handle = m_host.allocateIopHandle(IopHandleKind::RpcPacket) | kHandleTag;
                 m_open = true;
                 m_recording = false;
@@ -476,7 +532,7 @@ namespace ps2x::iop::detail
                       << "Hz -> handle 0x" << std::hex << m_handle;
                     m_host.log(LogLevel::Info, m.str());
                 }
-                answer(kStatusOk, kStatePresent);
+                answer(kStatusOk, kStateSteady);
                 putWord(kMsgHandle, m_handle);
             }
 
@@ -484,7 +540,7 @@ namespace ps2x::iop::detail
             {
                 if (!m_open || in.handle != m_handle)
                 {
-                    answer(kStatusNoDevice, kStatePresent);
+                    answer(kStatusNoDevice, kStateSteady);
                     return;
                 }
                 // The game asks for `byteCount` bytes at the rate it opened with; our ring is 16 kHz mono s16.
@@ -508,10 +564,14 @@ namespace ps2x::iop::detail
                 // Reply words first, then the payload -- the EE memcpys from reply+0x30 for reply[0x20] bytes.
                 // A short read, including a read of nothing, is a success: the capture loop simply does not
                 // advance its fill (:211489).
-                answer(kStatusOk, kStatePresent);
+                answer(kStatusOk, kStateSteady);
                 putWord(kMsgByteCount, bytes);
                 if (bytes != 0u)
+                {
                     putBlock(kMsgPayload, m_out.data(), bytes);
+                    // Exactly what the game is about to read, at the rate it opened with.
+                    m_host.micGameRead(m_out.data(), bytes / 2u, m_format.rate);
+                }
                 m_bytesRead += bytes;
                 // One line per 256 Reads: the capture loop asks about 17 times a second (:211485), so this is
                 // a heartbeat every ~15 s rather than a log the size of the run.
@@ -533,14 +593,14 @@ namespace ps2x::iop::detail
             {
                 if (!m_open || in.handle != m_handle)
                 {
-                    answer(kStatusNoDevice, kStatePresent);
+                    answer(kStatusNoDevice, kStateSteady);
                     return;
                 }
                 // R116: IopHost has no "how full is the ring" seam, and FUN_00244820 (:91320) has NO CALLER
                 // anywhere in the image -- the live capture path calls 0x08 directly and reads the actual
                 // count back out of the reply. So this answers the payload cap: "as much as you may ask for",
                 // which is true, costs nothing, and is never on the path the proof runs through.
-                answer(kStatusOk, kStatePresent);
+                answer(kStatusOk, kStateSteady);
                 putWord(kMsgByteCount, kMaxPayload);
                 replyBytes = std::max<uint32_t>(replyBytes, std::min<uint32_t>(
                                                                 static_cast<uint32_t>(m_reply.size()), 0x30u));
@@ -568,13 +628,16 @@ namespace ps2x::iop::detail
             bool m_openLogged = false;
             bool m_enumLogged = false;
             uint32_t m_readCalls = 0u;
+            std::array<bool, 0x20> m_seen{};
             uint32_t m_handle = 0u;
             MicFormat m_format{};
+            MicFormat m_playbackFormat{};
             uint64_t m_bytesRead = 0u;
             uint64_t m_bytesWritten = 0u;
             double m_phase = 0.0;
             std::array<uint8_t, 4> m_gain{};
             std::array<uint8_t, 16> m_mixer{};
+            std::vector<uint8_t> m_payload;
             std::vector<int16_t> m_scratch;
             std::vector<int16_t> m_out;
             std::vector<uint8_t> m_reply;
