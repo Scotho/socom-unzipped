@@ -83,6 +83,9 @@ if(PS2X_BUILD_RECOMP)
     add_subdirectory("ps2xRecomp")
 endif()
 
+# Sprint 9 Goal 1: shared by the runner and the launcher; depends on nothing in this tree.
+add_subdirectory("ps2xShared")
+
 if(PS2X_BUILD_RUNTIME)
     add_subdirectory("ps2xIOP")
     add_subdirectory("ps2xRuntime")

@@ -1,12 +1,10 @@
 # SOCOM Unzipped launcher (Task 8b): the window that owns the game's configuration and starts socom2.exe.
-# ps2x_launcher_core holds the logic the tests cover (ISO 9660 lookup, SHA-256, config.json, the environment);
-# the raylib window is socom_unzipped_launcher.
+# ps2x_launcher_core holds the launcher's pure UI logic (focus, pad geometry); the ISO 9660 lookup, SHA-256,
+# config.json and the environment live in ps2x_shared (Sprint 9 Goal 1), which it links PUBLIC.
+# The raylib window is socom_unzipped_launcher.
 # Sprint 8 Goal 9: src/ui/focus.cpp joins it -- the page layout, the focus model and the launch-blocked
 # reasons are pure (no raylib), and launcher_tests.cpp asserts on the very rects the pages draw.
 add_library(ps2x_launcher_core STATIC
-    src/iso9660.cpp
-    src/sha256.cpp
-    src/launcher_config.cpp
     src/ui/focus.cpp
     src/ui/pad_geometry.cpp
 )
@@ -15,6 +13,8 @@ target_include_directories(ps2x_launcher_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src        # "ui/focus.h", "ui/theme.h", "ui/pad_render.h", "ui/glyphs.h"
 )
 target_compile_features(ps2x_launcher_core PUBLIC cxx_std_20)
+# Sprint 9 Goal 1: iso9660, sha256 and launcher_config moved to ps2x_shared (the runner reads config.json too).
+target_link_libraries(ps2x_launcher_core PUBLIC ps2x_shared)
 
 # The window. WIN32 keeps the console away; the runner's raylib target is available here (ps2xRuntime fetched it).
 # Sprint 8 Task 1: the WIN32 keyword exists only on Windows, so it is passed through a variable that is empty
