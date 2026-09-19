@@ -109,6 +109,15 @@ loop picks the answer up from the next session's prompt or from a note in `docs/
   in that file the capture half works and only the game-side plumbing is missing -- which is the Sprint 8 job
   Task 9c's `docs/KNOWN.md` section 2 row scopes.
 
+- [ ] **Mission music after the fade fix, and the save prompt** (2026-09-19; your reports: "the music issue re-occurred in the
+  mission" and "it said no memory card was inserted"). Missions are meant to have music -- 210 short stereo cues the game
+  fires adaptively -- and our decoding of them measures sample-exact. What was wrong is the FADE: the game fades a cue out over
+  1.5-2 s and ours cut it dead, so cue changes sounded like splices. Fixed under tests (54d77a2); a menu stream's first
+  fraction of a second is no longer thrown away either. Play the same mission (M51) with the pad, through the in-game
+  cutscene if you can: report whether cue changes now fade, and anything at the cutscene (a dropout or distortion while the
+  movie plays over music is the one case no measurement covers yet). Then the save: pick the difficulty that asks to save and
+  accept -- the card is the folder `cards/<your profile>/` beside the launcher; it should save without complaint and not ask
+  again next time. One line each.
 - [ ] **Re-listen after the sound fixes** (Sprint 7 Task 12; your report of 2026-09-18 01:52: "sound is off on the online menu just after
   signing in, skips and almost plays two different spliced segments"; "a persistent buzz during the create game playlist, also in
   the lobby"; "mid mission, sound stopped working altogether"). What was found and fixed, each under a test: the buzz and the
