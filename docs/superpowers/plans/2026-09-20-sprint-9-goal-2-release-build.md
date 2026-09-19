@@ -344,7 +344,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: The fixtures.** Create `tools_py/tests/binfmt_fixtures.py` (a helper, not a test module — `online_rows.py` is the precedent):
+- [x] **Step 1: The fixtures.** Create `tools_py/tests/binfmt_fixtures.py` (a helper, not a test module — `online_rows.py` is the precedent):
 
 ```python
 """Sprint 9 Goal 2: the smallest PE and ELF files that carry an import list -- so the packaging tests can
@@ -396,7 +396,7 @@ def tiny_elf(needed):
     return bytes(ehdr) + strtab + dynamic + sections
 ```
 
-- [ ] **Step 2: RED.** Create `tools_py/tests/test_portable_audit.py`:
+- [x] **Step 2: RED.** Create `tools_py/tests/test_portable_audit.py`:
 
 ```python
 """Sprint 9 Goal 2: what the portable folder must carry is read from the import tables of the two shipped
@@ -548,7 +548,7 @@ if __name__ == "__main__":
 
 Run `python -m unittest tools_py.tests.test_portable_audit -v`. Expected RED: `ImportError: cannot import name 'portable_audit' from 'tools_py'`.
 
-- [ ] **Step 3: GREEN.** Create `tools_py/portable_audit.py`:
+- [x] **Step 3: GREEN.** Create `tools_py/portable_audit.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -817,9 +817,9 @@ if __name__ == "__main__":
 
 Run the module: 12 cases pass on the host (11 where there is no `dist/socom2.exe`); Python total `P + 7 + 12`.
 
-- [ ] **Step 4: The real folder, read by the new reader (no RED; this is the measurement the plan was written from, re-taken by the tool that will enforce it).** `python tools_py/portable_audit.py audit dist/portable/socom2 --system Windows`. Expected: exit 4, `0 missing`, and **15 orphans** — exactly `Iex-3_3.dll IlmThread-3_3.dll Imath-3_1.dll OpenEXR-3_3.dll OpenEXRCore-3_3.dll OpenEXRUtil-3_3.dll SDL2.dll avdevice-61.dll avfilter-10.dll avformat-61.dll freetype.dll harfbuzz.dll libwebpdecoder.dll libwebpdemux.dll libwinpthread-1.dll`. A different list means `dist/` changed since `e8e60b8`: paste it into the ledger and tell the controller before Task 3.
+- [x] **Step 4: The real folder, read by the new reader (no RED; this is the measurement the plan was written from, re-taken by the tool that will enforce it).** `python tools_py/portable_audit.py audit dist/portable/socom2 --system Windows`. Expected: exit 4, `0 missing`, and **15 orphans** — exactly `Iex-3_3.dll IlmThread-3_3.dll Imath-3_1.dll OpenEXR-3_3.dll OpenEXRCore-3_3.dll OpenEXRUtil-3_3.dll SDL2.dll avdevice-61.dll avfilter-10.dll avformat-61.dll freetype.dll harfbuzz.dll libwebpdecoder.dll libwebpdemux.dll libwinpthread-1.dll`. A different list means `dist/` changed since `e8e60b8`: paste it into the ledger and tell the controller before Task 3.
 
-- [ ] **Step 5: Suite and commit.**
+- [x] **Step 5: Suite and commit.**
 
 ```bash
 git add tools_py/portable_audit.py tools_py/tests/binfmt_fixtures.py tools_py/tests/test_portable_audit.py
