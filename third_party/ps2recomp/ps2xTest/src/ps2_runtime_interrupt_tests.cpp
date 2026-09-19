@@ -901,6 +901,31 @@ void register_ps2_runtime_interrupt_tests()
             gameThread.join();
 
             t.IsTrue(becameIdle, "VSync wait should leave the sole guest thread waiting");
+
+            // F2: the crash handler cannot call snapshot() -- a lock and three mallocs inside a
+            // SIGSEGV handler deadlock the process. crashThreadTable() is the lock-free,
+            // preallocated POD the handler prints from, published by the same publishSnapshot().
+            // It must carry the same threads the snapshot carries.
+            {
+                const EeKernelSnapshot snapshot = env.runtime.eeScheduler().snapshot();
+                const EeCrashThreadTable &table = env.runtime.eeScheduler().crashThreadTable();
+                t.Equals(static_cast<size_t>(table.count), snapshot.threads.size(),
+                         "the crash table must carry every thread the snapshot carries");
+                t.Equals(table.runningThreadId, snapshot.runningThreadId,
+                         "the crash table must name the same running thread");
+                t.IsTrue(table.sequence != 0ull, "the crash table must carry the publish sequence");
+                if (table.count > 0 && !snapshot.threads.empty())
+                {
+                    t.Equals(table.threads[0].id, static_cast<int32_t>(snapshot.threads.front().id),
+                             "thread 0 must be the same thread in both views");
+                    t.Equals(table.threads[0].pc, snapshot.threads.front().pc,
+                             "and carry the same pc");
+                    t.Equals(table.threads[0].sp, snapshot.threads.front().sp,
+                             "and the sp the handler prints");
+                    t.Equals(table.threads[0].wait, static_cast<int32_t>(snapshot.threads.front().waitReason),
+                             "and the wait reason, as the int a signal handler can print");
+                }
+            }
             t.IsTrue(schedulerDone.load(std::memory_order_acquire),
                      "requestStop should wake the scheduler's event wait");
             t.IsFalse(schedulerThrew.load(std::memory_order_acquire),

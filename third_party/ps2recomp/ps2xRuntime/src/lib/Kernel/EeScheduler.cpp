@@ -1630,6 +1630,13 @@ EeKernelSnapshot EeScheduler::snapshot() const
     return m_snapshot;
 }
 
+const EeCrashThreadTable &EeScheduler::crashThreadTable() const noexcept
+{
+    // F2: no lock, no allocation -- this is what the POSIX crash handler calls. The index names
+    // the half publishSnapshot() finished writing; the other half is where the next publish goes.
+    return m_crashTables[m_crashTableIndex.load(std::memory_order_acquire) & 1u];
+}
+
 void EeScheduler::publishSnapshot()
 {
     // The snapshot only feeds 1 Hz samplers, the debug panel and the crash report: publishing it
@@ -1692,6 +1699,32 @@ void EeScheduler::publishSnapshot()
     }
     std::sort(next.eventFlags.begin(), next.eventFlags.end(), [](const auto &left, const auto &right)
               { return left.id < right.id; });
+    // F2: the crash handler's copy first -- a fixed-size POD table, written into the half that is
+    // not current and made current with one release store. The handler reads it without taking
+    // m_snapshotMutex (which this function is about to take) and without allocating.
+    {
+        const uint32_t stable = m_crashTableIndex.load(std::memory_order_relaxed) & 1u;
+        EeCrashThreadTable &spare = m_crashTables[stable ^ 1u];
+        spare.sequence = next.sequence;
+        spare.runningThreadId = next.runningThreadId;
+        uint32_t count = 0;
+        for (const EeThreadSnapshot &t : next.threads)
+        {
+            if (count >= kEeCrashThreadMax)
+                break;
+            EeCrashThread &slot = spare.threads[count++];
+            slot.id = static_cast<int32_t>(t.id);
+            slot.pc = t.pc;
+            slot.ra = t.ra;
+            slot.sp = t.sp;
+            slot.state = static_cast<int32_t>(t.status);
+            slot.prio = static_cast<int32_t>(t.currentPriority);
+            slot.wait = static_cast<int32_t>(t.waitReason);
+        }
+        spare.count = count;
+        m_crashTableIndex.store(stable ^ 1u, std::memory_order_release);
+    }
+
     {
         std::lock_guard lock(m_snapshotMutex);
         m_snapshot = std::move(next);

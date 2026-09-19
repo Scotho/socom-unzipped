@@ -503,6 +503,12 @@ if(UNIX AND NOT APPLE)
         BUILD_RPATH "\$ORIGIN/lib"
         INSTALL_RPATH "\$ORIGIN/lib"
     )
+    # F5: with the modern linker default that search path is emitted as DT_RUNPATH, which
+    # applies ONLY to this binary -- its dependencies do not inherit it. lib/libavcodec would
+    # then look for lib/libvpx through the host's own search path and fail on a machine that
+    # has no libvpx installed, which is exactly the machine the tarball exists for. DT_RPATH is
+    # inherited by the whole dependency chain, so the old dtags are asked for explicitly.
+    target_link_options(ps2EntryRunner PRIVATE "-Wl,--disable-new-dtags")
 endif()
 endif() # PS2X_BUILD_RUNNER
 if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
@@ -580,7 +586,14 @@ if(UNIX AND NOT APPLE)
     # Sprint 8 Goal 1: dladdr (the crash handler and the sampler's module base), timer_create (glibc < 2.34 keeps it
     # in librt), pthreads -- on the library so the runner, the tests and the tools inherit them.
     find_package(Threads REQUIRED)
-    target_link_libraries(ps2_runtime PUBLIC ${CMAKE_DL_LIBS} rt Threads::Threads)
+    # F10: timer_create lives in librt only on glibc < 2.34; newer glibc folded it into libc and
+    # some distributions ship no librt at all, where an unconditional -lrt fails the link. Ask
+    # for it, link it when it is there.
+    find_library(PS2X_RT_LIB rt)
+    target_link_libraries(ps2_runtime PUBLIC ${CMAKE_DL_LIBS} Threads::Threads)
+    if(PS2X_RT_LIB)
+        target_link_libraries(ps2_runtime PUBLIC ${PS2X_RT_LIB})
+    endif()
 endif()
 
 # Sprint 7 Task 9b: host_mic.cpp includes raylib's own miniaudio.h (without MINIAUDIO_IMPLEMENTATION --

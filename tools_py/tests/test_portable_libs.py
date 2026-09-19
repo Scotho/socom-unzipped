@@ -21,7 +21,8 @@ def _load():
 
 
 # One `ldd dist-linux/socom2` as the VM prints it: the FFmpeg family and its codecs, the host's
-# glibc/GL/X/audio stack, the vdso and the loader with no "=>", and one library nothing provides.
+# glibc/GL/X/audio stack, its driver-coupled decode and SDL libraries, the vdso and the loader
+# with no "=>", and one library nothing provides.
 LDD = """\
 \tlinux-vdso.so.1 (0x00007ffd0b5f4000)
 \tlibavcodec.so.60 => /usr/lib/x86_64-linux-gnu/libavcodec.so.60 (0x00007f3a41000000)
@@ -29,6 +30,8 @@ LDD = """\
 \tlibGL.so.1 => /usr/lib/x86_64-linux-gnu/libGL.so.1 (0x00007f3a40800000)
 \tlibX11.so.6 => /usr/lib/x86_64-linux-gnu/libX11.so.6 (0x00007f3a406c0000)
 \tlibpulse.so.0 => /usr/lib/x86_64-linux-gnu/libpulse.so.0 (0x00007f3a40660000)
+\tlibva-drm.so.2 => /usr/lib/x86_64-linux-gnu/libva-drm.so.2 (0x00007f3a40640000)
+\tlibSDL2-2.0.so.0 => /usr/lib/x86_64-linux-gnu/libSDL2-2.0.so.0 (0x00007f3a40500000)
 \tlibstdc++.so.6 => /usr/lib/x86_64-linux-gnu/libstdc++.so.6 (0x00007f3a40400000)
 \tlibm.so.6 => /lib/x86_64-linux-gnu/libm.so.6 (0x00007f3a40318000)
 \tlibpthread.so.0 => /lib/x86_64-linux-gnu/libpthread.so.0 (0x00007f3a402f0000)
@@ -52,7 +55,11 @@ class SelectTest(unittest.TestCase):
     def test_skips_the_host_stack_by_name(self):
         picked = " ".join(self.m.select(LDD))
         for excluded in ("libc.so", "libm.so", "libpthread", "libdl.so", "ld-linux",
-                         "linux-vdso", "libstdc++", "libGL.so", "libX11", "libpulse"):
+                         "linux-vdso", "libstdc++", "libGL.so", "libX11", "libpulse",
+                         # Driver-coupled and host-audio libraries FFmpeg's closure drags
+                         # in: a copied libva-drm talks to the wrong kernel driver and a
+                         # copied SDL2 to the wrong video stack. The host owns both.
+                         "libva-drm", "libSDL2"):
             self.assertNotIn(excluded, picked)
 
     def test_missing_reports_the_not_found_names(self):

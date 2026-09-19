@@ -35,5 +35,8 @@ if(UNIX AND NOT APPLE)
         BUILD_RPATH "\$ORIGIN/lib"
         INSTALL_RPATH "\$ORIGIN/lib"
     )
+    # F5: DT_RPATH rather than the default DT_RUNPATH -- a RUNPATH is not inherited by this
+    # binary's dependencies, so lib/*.so could not find each other on a host without them.
+    target_link_options(socom_unzipped_launcher PRIVATE "-Wl,--disable-new-dtags")
 endif()
 target_compile_features(socom_unzipped_launcher PRIVATE cxx_std_20)

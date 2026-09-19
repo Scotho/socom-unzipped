@@ -23,6 +23,7 @@
 #endif
 
 #include <array>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
@@ -253,6 +254,50 @@ namespace socom2_hostnet
 #endif
     }
 
+#ifndef _WIN32
+    // F6: poll(2) is NOT restarted by SA_RESTART -- a signal always makes it return EINTR. The
+    // Linux host sampler (PS2X_HOST_PROF) raises SIGPROF on every thread hundreds of times a
+    // second, so without this retry every online poll() that overlapped a tick fell out of
+    // mapError()'s default arm as -5 (EIO) and the guest read a live socket as dead: turning the
+    // profiler on broke multiplayer. The retry recomputes the timeout from a MONOTONIC deadline,
+    // so an interrupted 100 ms wait still lasts 100 ms in total rather than 100 ms per signal,
+    // and a deadline already passed answers "timeout" (0) rather than an error.
+    //
+    // Not in socom2_hostnet.h: exposed at namespace scope so socom2_libnetb_tests.cpp can drive
+    // it with a real signal, which is the only way to observe an EINTR at all.
+    int hostnetPollRestarting(int nativeFd, short events, short *revents, int timeoutMs)
+    {
+        pollfd pfd{};
+        pfd.fd = nativeFd;
+        pfd.events = events;
+        if (revents)
+            *revents = 0;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs < 0 ? 0 : timeoutMs);
+        int remaining = timeoutMs;
+        for (;;)
+        {
+            pfd.revents = 0;
+            const int n = ::poll(&pfd, 1, remaining);
+            if (n >= 0)
+            {
+                if (revents)
+                    *revents = pfd.revents;
+                return n;
+            }
+            if (errno != EINTR)
+                return n;
+            if (timeoutMs < 0)
+                continue;   // an infinite wait has no deadline to recompute
+            const auto left = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                  deadline - std::chrono::steady_clock::now())
+                                  .count();
+            if (left <= 0)
+                return 0;   // the wait the caller asked for has elapsed: a timeout, not an error
+            remaining = static_cast<int>(left);
+        }
+    }
+#endif
+
     // PS2X_SOCOM2_SERVER is a numeric IPv4 literal or a DNS name -- a hosted server is reached by
     // name. Returns host byte order IPv4, or 0 when the value is neither, so the caller keeps
     // whatever it had. Winsock is already up where it has to be: init() runs WSAStartup before
@@ -468,16 +513,16 @@ namespace socom2_hostnet
         // same thing without the FD_SETSIZE ceiling. A refused connect surfaces as POLLERR here
         // and, on some kernels, only as SO_ERROR on a descriptor that also reads as writable, so
         // both are consulted before the socket is called connected.
-        pollfd pfd{};
-        pfd.fd = e->s;
-        pfd.events = POLLOUT;
-        const int n = ::poll(&pfd, 1, 0);
+        // F6: through hostnetPollRestarting so a SIGPROF tick cannot turn "still connecting"
+        // into an EIO. A zero timeout is still interruptible.
+        short revents = 0;
+        const int n = hostnetPollRestarting(e->s, POLLOUT, &revents, 0);
         if (n <= 0)
             return 1;
         int err = 0;
         SockLen len = sizeof(err);
         getsockopt(e->s, SOL_SOCKET, SO_ERROR, reinterpret_cast<char *>(&err), &len);
-        if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0 || err != 0)
+        if ((revents & (POLLERR | POLLHUP | POLLNVAL)) != 0 || err != 0)
         {
             e->connecting = false;
             hostnetSetLastError(err);
@@ -609,16 +654,16 @@ namespace socom2_hostnet
         if (FD_ISSET(e->s, &x)) mask |= 4;
         return mask;
 #else
-        pollfd pfd{};
-        pfd.fd = e->s;
-        pfd.events = POLLIN | POLLOUT;
-        const int n = ::poll(&pfd, 1, timeoutMs);
+        // F6: hostnetPollRestarting, not ::poll -- an interrupted wait resumes with the time it
+        // has left instead of falling through mapError() as -5 (EIO).
+        short revents = 0;
+        const int n = hostnetPollRestarting(e->s, POLLIN | POLLOUT, &revents, timeoutMs);
         if (n < 0)
             return mapError();
         int mask = 0;
-        if (pfd.revents & POLLIN) mask |= 1;
-        if (pfd.revents & POLLOUT) mask |= 2;
-        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) mask |= 4;
+        if (revents & POLLIN) mask |= 1;
+        if (revents & POLLOUT) mask |= 2;
+        if (revents & (POLLERR | POLLHUP | POLLNVAL)) mask |= 4;
         return mask;
 #endif
     }

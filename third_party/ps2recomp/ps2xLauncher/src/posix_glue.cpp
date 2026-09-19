@@ -190,9 +190,14 @@ namespace win32glue
 
     void GameProcess::close()
     {
-        // Reap what is reapable -- without blocking the UI thread: a game still running is left to
-        // terminate() or to the launcher's exit, where init inherits it.
-        pollChild(pid, exited, status);
+        // F9: this used to poll once with WNOHANG and then clear the pid, which ABANDONS a game that
+        // is still running -- the launcher drops the only handle it has, so nothing can stop the
+        // child, its exit status is never collected (a zombie until the launcher itself exits), and
+        // the player is left with an idle launcher while the game still owns the screen and the pad.
+        // A child that has not exited is ended the way terminate() ends one -- SIGTERM, two seconds
+        // to flush its log, then SIGKILL -- and reaped before the pid is dropped.
+        if (pollChild(pid, exited, status))
+            terminate(*this);
         if (logFd >= 0)
             ::close(logFd);
         logFd = -1;
@@ -233,7 +238,11 @@ namespace win32glue
         envp.push_back(nullptr);
 
         out.logPath = (dir / "logs" / ("run_" + stamp() + ".log")).string();
-        const int logFd = ::open(out.logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+        // F9: O_CLOEXEC. The spawn dup2s this descriptor onto the child's 1 and 2, and dup2 clears
+        // close-on-exec on the copies, so the game still writes its log -- but the descriptor itself
+        // no longer leaks into every other process the launcher starts, where it would pin the log
+        // file open long after close().
+        const int logFd = ::open(out.logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
         if (logFd < 0)
         {
             out.error = "cannot create the log file (" + std::string(std::strerror(errno)) + ")";

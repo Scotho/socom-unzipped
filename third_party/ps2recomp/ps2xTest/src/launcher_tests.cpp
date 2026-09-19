@@ -7,6 +7,13 @@
 #include "launcher/sha256.h"
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
+#include <cerrno>
+#include <chrono>
+#include <csignal>
+#include <fstream>
+#include <sys/wait.h>
+#include <thread>
+#include <unistd.h>
 #endif
 
 #include <algorithm>
@@ -428,6 +435,68 @@ void register_launcher_tests()
             t.IsTrue(!win32glue::startGame(dir, config, game), "no socom2 in the folder is a false, not a spawn");
             t.IsTrue(game.error.find("socom2") != std::string::npos, "the message names socom2, so the player knows what is missing");
             std::filesystem::remove_all(dir, ec);
+        });
+
+        // F9: close() used to poll once with WNOHANG and then set pid = 0, abandoning a child that
+        // was still running -- the launcher lost its only handle on the game, nothing could stop it,
+        // and its status was never collected. close() must end the child and reap it.
+        tc.Run("close() ends and reaps a game that is still running", [](TestCase &t)
+        {
+            namespace fs = std::filesystem;
+            const fs::path dir = fs::temp_directory_path() / ("ps2x_f9_" + win32glue::stamp());
+            std::error_code ec;
+            fs::create_directories(dir, ec);
+
+            // A stand-in for the game: it outlives the test on purpose, so an abandoned child would
+            // still be alive when the assertions run.
+            {
+                std::ofstream script((dir / "socom2").string());
+                script << "#!/bin/sh\n" << "sleep 30\n";
+            }
+            fs::permissions(dir / "socom2",
+                            fs::perms::owner_all | fs::perms::group_read | fs::perms::group_exec,
+                            fs::perm_options::replace, ec);
+            { std::ofstream elf((dir / "socom2_game.elf").string()); }   // startGame only checks that it exists
+
+            launcher::Config config;
+            win32glue::GameProcess game;
+            const bool started = win32glue::startGame(dir.string(), config, game);
+            t.IsTrue(started, "the stand-in game must spawn (" + game.error + ")");
+            if (!started)
+            {
+                fs::remove_all(dir, ec);
+                return;
+            }
+            const pid_t child = static_cast<pid_t>(game.pid);
+            t.IsTrue(child > 0, "and report a pid");
+            t.IsTrue(game.running(), "and be running before close() is called");
+
+            const auto start = std::chrono::steady_clock::now();
+            game.close();
+            const long long closeMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                          std::chrono::steady_clock::now() - start)
+                                          .count();
+
+            // Reaped by close() means there is nothing left to wait for: ECHILD, not a live pid.
+            bool gone = false;
+            for (int i = 0; i < 30 && !gone; ++i)
+            {
+                int raw = 0;
+                errno = 0;
+                const pid_t r = ::waitpid(child, &raw, WNOHANG);
+                gone = (r < 0 && errno == ECHILD) || r == child;
+                if (!gone)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            }
+            t.IsTrue(gone, "close() must have reaped the child: waitpid has nothing left to report");
+            t.IsTrue(closeMs < 3000, "and it must not have taken longer than the SIGTERM grace period");
+            t.IsFalse(game.running(), "and the launcher must no longer believe a game is running");
+
+            // Nothing of the stand-in survives: an abandoned `sleep 30` would still answer kill(0).
+            t.IsTrue(::kill(child, 0) != 0 && errno == ESRCH,
+                     "and the process itself must be gone, not left running without a handle");
+
+            fs::remove_all(dir, ec);
         });
 
         tc.Run("exeDirectory is a directory that exists", [](TestCase &t)

@@ -68,13 +68,14 @@ runtime() {
   mkdir -p "$DIST"
   if [ -n "$GEN" ] && compgen -G "$GEN/*.cpp" >/dev/null; then
     cmake --build "$RTBUILD" --target ps2EntryRunner -j "$JOBS"
-    cp "$RTBUILD/ps2xRuntime/ps2EntryRunner" "$DIST/socom2"
+    # copy then rename: a running game holds dist-linux/socom2 open ("Text file busy"); mv replaces the name atomically
+    cp "$RTBUILD/ps2xRuntime/ps2EntryRunner" "$DIST/socom2.new" && mv -f "$DIST/socom2.new" "$DIST/socom2"
   else
     echo "build_linux: no generated code in '${GEN:-<unset>}' -- building ps2_runtime only (no socom2)"
     cmake --build "$RTBUILD" --target ps2_runtime -j "$JOBS"
   fi
   cmake --build "$RTBUILD" --target socom_unzipped_launcher -j "$JOBS"
-  cp "$RTBUILD/ps2xLauncher/socom_unzipped_launcher" "$DIST/"
+  cp "$RTBUILD/ps2xLauncher/socom_unzipped_launcher" "$DIST/socom_unzipped_launcher.new" && mv -f "$DIST/socom_unzipped_launcher.new" "$DIST/socom_unzipped_launcher"
   # The game ELF is produced by the recomp step on the owner's machine; carry it over when it is there.
   if [ -f "$ROOT/dist/socom2_game.elf" ]; then
     cp "$ROOT/dist/socom2_game.elf" "$DIST/"

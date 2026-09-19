@@ -14,6 +14,17 @@
 #include <thread>
 #include <vector>
 
+#ifndef _WIN32
+// F6: the EINTR case below needs a raw socket, a real signal and a real timer.
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <signal.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
+#endif
+
 namespace socom2_hostnet
 {
     // Not in socom2_hostnet.h: the PS2X_SOCOM2_SERVER parse used by loadHosts(), exposed for this
@@ -26,6 +37,13 @@ namespace socom2_hostnet
     // platform half a test can pin down without a network.
     int hostnetLastError();
     bool hostnetWouldBlock(int err);
+
+#ifndef _WIN32
+    // F6, also not in the header: the poll(2) wrapper that resumes across EINTR. A signal
+    // is the only way to observe the retry, so the test drives this directly -- the public
+    // poll() would answer "writable" at once on any socket and never reach the wait.
+    int hostnetPollRestarting(int nativeFd, short events, short *revents, int timeoutMs);
+#endif
 }
 
 namespace
@@ -180,14 +198,72 @@ void register_socom2_libnetb_tests()
 
             char buf[8] = {};
             Endpoint from{};
-            t.Equals(recvFrom(fd, buf, sizeof(buf), &from), -11,
-                     "an empty non-blocking socket must map to the guest's EAGAIN");
-
+            const int got = recvFrom(fd, buf, sizeof(buf), &from);
+            // F8: the platform error code belongs to THAT recvFrom, so it is read before any
+            // assertion -- MiniTest reports through stdio, which is free to set errno itself.
             const int err = hostnetLastError();
+            t.Equals(got, -11, "an empty non-blocking socket must map to the guest's EAGAIN");
             t.IsTrue(hostnetWouldBlock(err), "hostnetWouldBlock must recognise the code the empty socket just set");
-            t.IsTrue(!hostnetWouldBlock(0), "hostnetWouldBlock must not treat success (0) as would-block");
 
             t.Equals(closeSocket(fd), 0, "closeSocket must release the table entry");
+        });
+
+        // F6: SA_RESTART does not restart poll(2). The Linux host sampler (PS2X_HOST_PROF) raises
+        // SIGPROF on every thread ~200 times a second, so a bare ::poll() came back -1/EINTR and
+        // mapError() turned that into -5 (EIO): switching the profiler on killed online play. The
+        // wait must instead resume with the time it has left and end as a plain timeout.
+        tc.Run("a poll wait interrupted by a signal times out rather than failing", [](TestCase &t)
+        {
+#ifdef _WIN32
+            t.IsTrue(true, "skipped on Windows: EINTR is a POSIX condition -- Winsock select() never "
+                           "returns it, and the SIGPROF sampler that provokes it is Linux-only");
+            return;
+#else
+            using namespace socom2_hostnet;
+            const int fd = ::socket(AF_INET, SOCK_DGRAM, 0);
+            t.IsTrue(fd >= 0, "a UDP socket to wait on");
+            if (fd < 0)
+                return;
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(0x7f000001u);
+            addr.sin_port = 0;
+            ::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+
+            // A 10 ms repeating SIGALRM stands in for the sampler: the 100 ms wait below is
+            // interrupted roughly ten times. The handler does nothing; being delivered is the point.
+            struct sigaction sa;
+            struct sigaction previous;
+            std::memset(&sa, 0, sizeof(sa));
+            std::memset(&previous, 0, sizeof(previous));
+            sa.sa_handler = [](int) {};
+            sigemptyset(&sa.sa_mask);
+            sa.sa_flags = 0;   // SA_RESTART would change nothing here: poll() is never restarted
+            ::sigaction(SIGALRM, &sa, &previous);
+            itimerval timer{};
+            timer.it_value.tv_usec = 10000;
+            timer.it_interval.tv_usec = 10000;
+            ::setitimer(ITIMER_REAL, &timer, nullptr);
+
+            const auto start = std::chrono::steady_clock::now();
+            short revents = 0;
+            const int n = hostnetPollRestarting(fd, POLLIN, &revents, 100);
+            const long long elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                            std::chrono::steady_clock::now() - start)
+                                            .count();
+
+            const itimerval off{};
+            ::setitimer(ITIMER_REAL, &off, nullptr);
+            ::sigaction(SIGALRM, &previous, nullptr);
+            ::close(fd);
+
+            t.Equals(n, 0, "an interrupted wait on a socket with no data must report a timeout (0), "
+                           "not an error the guest reads as a dead socket");
+            t.IsTrue(elapsedMs >= 90, "and it must have waited out the 100 ms it was given, not "
+                                      "returned at the first signal");
+            t.IsTrue(elapsedMs < 2000, "and it must recompute the remaining time, not restart the "
+                                       "full timeout on every signal");
+#endif
         });
 
         tc.Run("PS2X_SOCOM2_SERVER accepts a DNS name as well as a numeric IP", [](TestCase &t)

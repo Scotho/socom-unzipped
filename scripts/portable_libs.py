@@ -30,6 +30,18 @@ HOST_PREFIXES = (
     "libxcb", "libxkbcommon", "libwayland",
     # sound and the session bus
     "libasound.", "libpulse", "libdbus", "libsystemd", "libudev",
+    # hardware video decode: each of these talks to the installed GPU driver over a private
+    # interface, so a copied one is a mismatch with the driver on the player's machine.
+    "libva",        # VA-API, and its libva-drm/libva-x11/libva-wayland backends
+    "libvdpau",     # VDPAU, the NVIDIA-side decode dispatch, which dlopens the driver's backend
+    "libdrm",       # the kernel DRM ioctl wrapper: it must match the running kernel, not ours
+    "libgbm",       # buffer allocation through the same kernel driver
+    "libvulkan",    # the Vulkan loader, which reads the host's own ICD manifests
+    # windowing and audio servers the host owns, which FFmpeg's avdevice closure pulls in
+    "libSDL2",      # avdevice's SDL output; the host's SDL is the one wired to its video stack
+    "libjack",      # the JACK client library must match the JACK server that is running
+    "libpipewire",  # likewise PipeWire: the client and the session manager are a matched pair
+    "libsndio",     # sndio's client library talks to the host's sndiod socket
 )
 
 

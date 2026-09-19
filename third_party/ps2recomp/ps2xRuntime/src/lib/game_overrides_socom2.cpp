@@ -1032,16 +1032,30 @@ namespace
             const R5900Context *c = &g_runtimeForCrash->cpu();
             n = std::snprintf(buf, sizeof(buf), "[crash] guest live pc=0x%x ra=0x%x",
                               static_cast<unsigned>(c->pc), static_cast<unsigned>(GPR_U32(c, 31)));
-            const EeKernelSnapshot snap = g_runtimeForCrash->eeScheduler().snapshot();
-            n += std::snprintf(buf + n, sizeof(buf) - n, " running=%d threads:",
-                               static_cast<int>(snap.runningThreadId));
-            for (const auto &t : snap.threads)
+            // F2: NOT snapshot(). That takes m_snapshotMutex and returns three std::vectors --
+            // three mallocs -- and a fault taken while publishSnapshot() holds that mutex, or
+            // inside the allocator, would deadlock this handler and hang the process instead of
+            // printing the report. crashThreadTable() is a preallocated POD double buffer read
+            // with one acquire load: no lock, no allocation, nothing to deadlock on.
+            const EeCrashThreadTable &table = g_runtimeForCrash->eeScheduler().crashThreadTable();
+            n += std::snprintf(buf + n, sizeof(buf) - n, " running=%d seq=%llu threads:",
+                               static_cast<int>(table.runningThreadId),
+                               static_cast<unsigned long long>(table.sequence));
+            const uint32_t count = table.count <= kEeCrashThreadMax
+                                       ? table.count
+                                       : static_cast<uint32_t>(kEeCrashThreadMax);
+            if (count == 0)
+                n += std::snprintf(buf + n, sizeof(buf) - n, " unavailable (never published)");
+            for (uint32_t i = 0; i < count; ++i)
             {
                 if (n >= static_cast<int>(sizeof(buf)) - 96)
                     break;
-                n += std::snprintf(buf + n, sizeof(buf) - n, " [%d pc=0x%x ra=0x%x st=%d]", static_cast<int>(t.id),
-                                   static_cast<unsigned>(t.pc), static_cast<unsigned>(t.ra),
-                                   static_cast<int>(t.status));
+                const EeCrashThread &t = table.threads[i];
+                n += std::snprintf(buf + n, sizeof(buf) - n, " [%d pc=0x%x ra=0x%x sp=0x%x st=%d prio=%d wait=%d]",
+                                   static_cast<int>(t.id), static_cast<unsigned>(t.pc),
+                                   static_cast<unsigned>(t.ra), static_cast<unsigned>(t.sp),
+                                   static_cast<int>(t.state), static_cast<int>(t.prio),
+                                   static_cast<int>(t.wait));
             }
             n += std::snprintf(buf + n, sizeof(buf) - n, "\n");
             crashWrite(buf, n);
@@ -1065,6 +1079,13 @@ namespace
         ss.ss_flags = 0;
         if (::sigaltstack(&ss, nullptr) != 0)
             std::cerr << "[crash] sigaltstack failed: " << errno << std::endl;
+        // F3: the first ::backtrace() in a process makes libgcc load and allocate its unwinder.
+        // Doing that INSIDE the SIGSEGV handler is a malloc on a possibly-corrupt heap, so it is
+        // done here instead -- the same pre-warm the SIGPROF sampler does before arming its timers.
+        {
+            void *warm[4];
+            (void)::backtrace(warm, 4);
+        }
         struct sigaction sa;
         std::memset(&sa, 0, sizeof(sa));
         sa.sa_sigaction = crashHandler;

@@ -228,6 +228,38 @@ struct EeKernelSnapshot
     std::vector<EeEventFlagSnapshot> eventFlags;
 };
 
+// Sprint 8 Goal 1 (F2): the thread table as a POSIX signal handler can read it.
+//
+// snapshot() takes m_snapshotMutex and returns an EeKernelSnapshot holding three std::vectors --
+// three mallocs. A SIGSEGV handler must do neither: the fault can land while publishSnapshot()
+// holds that mutex, or inside the allocator, and the handler would then deadlock and hang the
+// process instead of printing a report and dying. So the same table is ALSO published into this
+// fixed-size, preallocated double buffer: publishSnapshot() fills the half that is not current
+// and then flips the index, and the handler reads the half the index names with no lock and no
+// allocation. A torn read is bounded by the publish rate (50 ms of guest time) and, in the common
+// case, impossible: the crashing thread is usually the executor, which is the only publisher.
+struct EeCrashThread
+{
+    int32_t id = 0;
+    uint32_t pc = 0;
+    uint32_t ra = 0;
+    uint32_t sp = 0;
+    int32_t state = 0;   // EeThreadStatus as an int: a POD the handler prints without a lookup
+    int32_t prio = 0;    // currentPriority
+    int32_t wait = 0;    // EeWaitReason as an int
+};
+
+// SOCOM II runs well under 32 EE threads; the cap is a fixed allocation, not a limit on the kernel.
+inline constexpr size_t kEeCrashThreadMax = 64;
+
+struct EeCrashThreadTable
+{
+    uint64_t sequence = 0;       // EeKernelSnapshot::sequence this half was filled from
+    int32_t runningThreadId = 0;
+    uint32_t count = 0;          // entries in threads[], <= kEeCrashThreadMax
+    EeCrashThread threads[kEeCrashThreadMax]{};
+};
+
 enum class EeEventType : uint8_t
 {
     Stop,
@@ -382,6 +414,10 @@ public:
     [[nodiscard]] EeKernelSnapshot snapshot() const;
     void publishSnapshot();
 
+    // F2: the lock-free, allocation-free half of the same publication, for the crash handler.
+    // Safe to call from a signal handler; every other caller should use snapshot().
+    [[nodiscard]] const EeCrashThreadTable &crashThreadTable() const noexcept;
+
 private:
     struct ScheduledEvent
     {
@@ -475,6 +511,10 @@ private:
 
     mutable std::mutex m_snapshotMutex;
     EeKernelSnapshot m_snapshot;
+    // F2: the crash handler's view. Two preallocated halves and the index of the stable one; the
+    // storage never moves and is never resized, so a handler holding a reference stays valid.
+    EeCrashThreadTable m_crashTables[2];
+    std::atomic<uint32_t> m_crashTableIndex{0};
     uint64_t m_snapshotSequence = 0;
     uint64_t m_snapshotPublishedCycle = ~0ull; // eeCycle of the last published snapshot (rate limit)
     uint64_t m_accountBatchedCycles = 0;       // accountCycles: estimated cycles since the last clock read

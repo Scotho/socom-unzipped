@@ -4,8 +4,12 @@
 name: linux
 
 on:
+  # A documentation-only change cannot break the client build, and this job takes the best
+  # part of an hour on a hosted runner.
   push:
+    paths-ignore: ['docs/**']
   pull_request:
+    paths-ignore: ['docs/**']
 
 concurrency:
   group: linux-${{ github.ref }}
@@ -42,7 +46,10 @@ jobs:
         run: |
           mkdir -p logs/ci
           set -o pipefail
-          bash scripts/build_linux.sh test 2>&1 | tee logs/ci/build_linux_test.log
+          # --no-runner here too: without it this step reconfigures with
+          # PS2X_RUNNER_GENERATED_DIR pointing at recomp/output, which CI does not have, and
+          # the build step above is undone and redone on every job.
+          bash scripts/build_linux.sh test --no-runner 2>&1 | tee logs/ci/build_linux_test.log
 
       - name: Upload the launcher
         if: always()
