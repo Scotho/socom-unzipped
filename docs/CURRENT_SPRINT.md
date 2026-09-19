@@ -20,6 +20,8 @@ next ruling: R126
 
 **Not started in Sprint 8 and now Sprint 9's:** the exit-code taxonomy, the bare run, the diagnostics zip, the release build and SHA256SUMS, knob retirement (190 names), the audio and window residuals.
 
+**2026-09-20 additions (owner).** (1) *The server's name is `socom.scotho.com`* -- Sprint 9 Goal 7: the owner creates the A record at Namecheap (HUMAN_TASKS); then measure whether the game keys saved personas on the name or on the resolved address (one driven login by name against a card that holds a by-address persona), switch the launcher's preset and the server's DNS answers to the name, and keep the raw address as a fallback preset entry only if the measurement says personas survive. (2) *The sprint stack:* Sprint 9 (this), Sprint 10 "Console players in the same lobby, and it stays up" (the 2026-09-17 draft below, less what Sprint 9 Goal 5 takes), and last **Sprint 11 "Release hardening"** -- the repository cleaned for a public release, the project and the agentic loop explained, the s2u.scotho.com landing page revised and a full build tested from a fresh install, foolproof install instructions and FAQs, every licence and accreditation in git. Spec (drafted, not opened): docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md.
+
 ## 2026-09-18 (midday) — Sprint 8 (closed 2026-09-19; record) OPEN: "Linux, then it looks and sounds finished"
 
 branch: sprint-8 (off develop at `b65fe46`)
