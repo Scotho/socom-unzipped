@@ -50,6 +50,15 @@ cat > /etc/logrotate.d/horizon <<'ROT'
     su horizon horizon
 }
 ROT
+# Ubuntu's unattended upgrades run needrestart, which restarts every service using an upgraded library -- it took
+# the whole stack down in the middle of the first driven round (2026-09-19 06:03 UTC). A match does not survive a
+# Medius restart, so these units are restarted by hand (horizon-ctl.sh restart), never by needrestart.
+if [ -d /etc/needrestart/conf.d ]; then
+  cat > /etc/needrestart/conf.d/50-horizon.conf <<'NR'
+# SOCOM Unzipped: never restart the Horizon units automatically (players are connected).
+$nrconf{override_rc}{qr(^horizon-)} = 0;
+NR
+fi
 systemctl daemon-reload
 systemctl enable horizon.target horizon-nat.service horizon-muis.service horizon-medius.service horizon-dme.service
 [ -f "$DEST/config/simulated.db" ] || echo "NOTE: $DEST/config/simulated.db is missing -- seed one and copy it up before the first start."
