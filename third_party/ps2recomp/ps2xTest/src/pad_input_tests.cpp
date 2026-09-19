@@ -3,6 +3,7 @@
 #include "ps2_syscalls.h"
 #include "Stubs/Pad.h"
 #include "runtime/host_gamepad.h"
+#include "runtime/host_crouch_shortcut.h"
 #include "runtime/host_gamepad_select.h"
 #include "runtime/injected_pad_latch.h"
 #include "socom2_host_input.h"
@@ -662,6 +663,120 @@ void register_pad_input_tests()
             t.IsTrue(!ps2_stubs::socom2HostInputSamplerRunning(), "a second shutdown is a no-op");
 
             std::remove(path.c_str());
+        });
+    });
+    // Owner request 2026-09-19, ruling R139 (runtime/host_crouch_shortcut.h): the crouch shortcut. SOCOM II's
+    // stance is Triangle's PRESSURE -- a peak under 0.3 crouches, 0.3 or more goes prone (FUN_00594cf0) -- so the
+    // shortcut is a light Triangle on a host control, sent INSTEAD of that control's own PS2 button.
+    MiniTest::Case("CrouchShortcut", [](TestCase &tc)
+    {
+        tc.Run("PS2X_PAD_CROUCH_SHORTCUT parses its three values and treats everything else as off", [](TestCase &t)
+        {
+            t.IsTrue(crouchShortcutFromEnv(nullptr) == CrouchShortcut::Off, "unset is off");
+            t.IsTrue(crouchShortcutFromEnv("") == CrouchShortcut::Off, "empty is off");
+            t.IsTrue(crouchShortcutFromEnv("off") == CrouchShortcut::Off, "off is off");
+            t.IsTrue(crouchShortcutFromEnv("l3") == CrouchShortcut::L3, "l3");
+            t.IsTrue(crouchShortcutFromEnv("touchpad") == CrouchShortcut::Touchpad, "touchpad");
+            t.IsTrue(crouchShortcutFromEnv("l2") == CrouchShortcut::L2, "l2");
+            t.IsTrue(crouchShortcutFromEnv("r3") == CrouchShortcut::Off, "an unknown value is off, not a guess");
+            t.IsTrue(crouchShortcutFromEnv("L3") == CrouchShortcut::Off, "the launcher writes lower case; nothing else is accepted");
+        });
+
+        tc.Run("off is today's pad, for every button and with or without the touchpad", [](TestCase &t)
+        {
+            for (int id = 0; id < 16; ++id)
+            {
+                const uint16_t bit = static_cast<uint16_t>(1u << id);
+                for (int touch = 0; touch < 2; ++touch)
+                {
+                    const HostPadButtons r = applyCrouchShortcut(bit, touch != 0, CrouchShortcut::Off);
+                    t.Equals(static_cast<int>(r.mask), static_cast<int>(bit), "off: the mask passes through untouched");
+                    t.Equals(static_cast<int>(r.trianglePressure), 0xFF, "off: Triangle is a full press, as it always was");
+                }
+            }
+            const HostPadButtons all = applyCrouchShortcut(0xFFFFu, true, CrouchShortcut::Off);
+            t.Equals(static_cast<int>(all.mask), 0xFFFF, "off: every button at once, still untouched");
+        });
+
+        tc.Run("l3: the stick click is a light Triangle instead of L3, and nothing else moves", [](TestCase &t)
+        {
+            HostPadButtons r = applyCrouchShortcut(kCrouchBitL3, false, CrouchShortcut::L3);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitTriangle), "down: Triangle, and NOT L3 (fire mode does not also fire)");
+            t.Equals(static_cast<int>(r.trianglePressure), static_cast<int>(kCrouchShortcutPressure), "at the light pressure");
+            t.IsTrue(kCrouchShortcutPressure > 0 && kCrouchShortcutPressure / 255.0 < 0.3, "which is under the game's 0.3 prone threshold");
+
+            r = applyCrouchShortcut(0u, false, CrouchShortcut::L3);
+            t.Equals(static_cast<int>(r.mask), 0, "up: nothing is pressed");
+
+            for (int id = 0; id < 16; ++id)
+            {
+                const uint16_t bit = static_cast<uint16_t>(1u << id);
+                if (bit == kCrouchBitL3 || bit == kCrouchBitTriangle)
+                    continue;
+                r = applyCrouchShortcut(bit, true, CrouchShortcut::L3);
+                t.Equals(static_cast<int>(r.mask), static_cast<int>(bit), "every other button (and the touchpad) is left alone");
+                r = applyCrouchShortcut(static_cast<uint16_t>(bit | kCrouchBitL3), false, CrouchShortcut::L3);
+                t.Equals(static_cast<int>(r.mask), static_cast<int>(bit | kCrouchBitTriangle), "and rides along with the shortcut unchanged");
+            }
+
+            r = applyCrouchShortcut(static_cast<uint16_t>(kCrouchBitL3 | kCrouchBitTriangle), false, CrouchShortcut::L3);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitTriangle), "the pad's own Triangle with the shortcut: still one Triangle");
+            t.Equals(static_cast<int>(r.trianglePressure), 0xFF, "and the real, full press wins -- prone stays reachable");
+            r = applyCrouchShortcut(kCrouchBitTriangle, false, CrouchShortcut::L3);
+            t.Equals(static_cast<int>(r.trianglePressure), 0xFF, "the pad's own Triangle alone is a full press under every option");
+        });
+
+        tc.Run("l2: the trigger is a light Triangle instead of L2", [](TestCase &t)
+        {
+            HostPadButtons r = applyCrouchShortcut(kCrouchBitL2, false, CrouchShortcut::L2);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitTriangle), "down: Triangle, and NOT L2");
+            t.Equals(static_cast<int>(r.trianglePressure), static_cast<int>(kCrouchShortcutPressure), "light");
+            r = applyCrouchShortcut(kCrouchBitL3, false, CrouchShortcut::L2);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitL3), "L3 is still L3: only the chosen control is taken");
+            r = applyCrouchShortcut(0u, false, CrouchShortcut::L2);
+            t.Equals(static_cast<int>(r.mask), 0, "up: released");
+        });
+
+        tc.Run("touchpad: the click adds a light Triangle and takes nothing away", [](TestCase &t)
+        {
+            HostPadButtons r = applyCrouchShortcut(0u, true, CrouchShortcut::Touchpad);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitTriangle), "down: Triangle");
+            t.Equals(static_cast<int>(r.trianglePressure), static_cast<int>(kCrouchShortcutPressure), "light");
+            r = applyCrouchShortcut(0u, false, CrouchShortcut::Touchpad);
+            t.Equals(static_cast<int>(r.mask), 0, "up: released");
+            r = applyCrouchShortcut(static_cast<uint16_t>(kCrouchBitL3 | kCrouchBitL2), true, CrouchShortcut::Touchpad);
+            t.Equals(static_cast<int>(r.mask), static_cast<int>(kCrouchBitL3 | kCrouchBitL2 | kCrouchBitTriangle), "L3 and L2 keep their own buttons");
+            r = applyCrouchShortcut(0u, true, CrouchShortcut::L3);
+            t.Equals(static_cast<int>(r.mask), 0, "and the touchpad does nothing under another option");
+        });
+
+        tc.Run("a full Triangle from any other source wins, so the harness's injected pad is unaffected", [](TestCase &t)
+        {
+            t.Equals(static_cast<int>(trianglePressureFor(false, true)), static_cast<int>(kCrouchShortcutPressure), "only the shortcut: light");
+            t.Equals(static_cast<int>(trianglePressureFor(true, true)), 0xFF, "the keyboard, a script or the injected file as well: full");
+            t.Equals(static_cast<int>(trianglePressureFor(true, false)), 0xFF, "a full source alone: full");
+            t.Equals(static_cast<int>(trianglePressureFor(false, false)), 0xFF, "nobody: the default the state has always carried");
+        });
+
+        tc.Run("the HLE reports the state's Triangle pressure and 0xFF for every other button", [](TestCase &t)
+        {
+            ps2_stubs::Socom2PadState pad;
+            t.Equals(static_cast<int>(pad.trianglePressure), 0xFF, "a fresh state is a full Triangle: the default is today's");
+            for (int field = 0; field < 12; ++field)
+                t.Equals(static_cast<int>(ps2_stubs::socom2PressureOf(pad, field)), 0, "up is 0");
+            for (int id = 0; id < 16; ++id)
+                pad.button[id] = 1u;
+            for (int field = 0; field < 12; ++field)
+                t.Equals(static_cast<int>(ps2_stubs::socom2PressureOf(pad, field)), 0xFF, "down is 0xFF, Triangle included, by default");
+            pad.trianglePressure = kCrouchShortcutPressure;
+            for (int field = 0; field < 12; ++field)
+            {
+                const bool triangle = ps2_stubs::kSocom2PressureButton[field] == ps2_stubs::kPadTriangle;
+                t.Equals(static_cast<int>(ps2_stubs::socom2PressureOf(pad, field)),
+                         triangle ? static_cast<int>(kCrouchShortcutPressure) : 0xFF,
+                         triangle ? "the light Triangle reaches the game" : "and no other pressure moves");
+            }
+            t.Equals(static_cast<int>(ps2_stubs::socom2PressureOf(pad, 12)), 0, "out of range is 0");
         });
     });
 }

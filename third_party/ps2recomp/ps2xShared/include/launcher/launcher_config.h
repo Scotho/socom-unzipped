@@ -42,6 +42,9 @@ namespace launcher
         // and the stick dead zone the three pad paths apply.
         int gamepadIndex = -1;
         double padDeadZone = 0.15;
+        // Owner request 2026-09-19, R139: the host control that crouches -- "off" | "l3" | "touchpad" | "l2".
+        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" sends no variable and is the runtime exactly as it was before the option.
+        std::string crouchShortcut = "l3";   // owner 2026-09-20: without a shortcut a pad cannot crouch at all
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
@@ -49,6 +52,24 @@ namespace launcher
         std::string profile = "player";
         bool secondInstance = false;
     };
+
+    // R139, the crouch shortcut (owner request 2026-09-19; runtime/host_crouch_shortcut.h has the mechanism).
+    // SOCOM II's stance is TRIANGLE's pressure: a light press crouches, a firm one goes prone, and a PC pad's
+    // digital Y / Triangle is always firm -- so on a PC pad crouch is unreachable, which is why the community binds
+    // "Triangle, lightly" to a spare control. The ruling: the chosen host control sends that light Triangle INSTEAD
+    // of its own PS2 button, never as well as it. "l3" therefore trades away fire mode on the pad and "l2" the
+    // second weapon swap; both remain on the keyboard (2 and 1), which the runtime always reads, and the launcher
+    // says so under the option. "touchpad" trades nothing: that control is unmapped today. The player's own
+    // Triangle stays a firm press, so prone is always reachable. -- why: a plain rebind is what the convention is
+    // on PCSX2, and one control doing two things at once is the surprise to avoid. -- cost if wrong: a player who
+    // wanted fire mode moved somewhere else on the pad; the mapping is one table in host_crouch_shortcut.h.
+    constexpr const char *kCrouchShortcuts[] = {"off", "l3", "touchpad", "l2"};
+    constexpr int kCrouchShortcutCount = 4;
+    // One of kCrouchShortcuts; anything else (a typo, a value from a newer build) is "off".
+    std::string normalizeCrouchShortcut(const std::string &value);
+    // The cell's label and the one line under the row that states the trade. Never empty.
+    const char *crouchShortcutLabel(const std::string &value);
+    const char *crouchShortcutHint(const std::string &value);
 
     // Sprint 7 review finding F5: "Match display" resolved to TextFormat("%dx%d", GetMonitorWidth(...),
     // GetMonitorHeight(...)) in main.cpp, and raylib answers 0 for both before a monitor is known -- so a click

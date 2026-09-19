@@ -3,6 +3,7 @@
 #include "pages.h"
 
 #include <cstdio>
+#include <string>
 
 namespace ui
 {
@@ -19,7 +20,10 @@ namespace ui
         // legend in its own strip underneath so nothing ever sits on top of the drawing.
         const Rect padArea{firstPick.x + (sensitivity.right() - firstPick.x) * 0.5f - 280.0f,
                            firstPick.y - 342.0f, 560.0f, 294.0f};
-        drawPad(ctx, padArea, app.pad, static_cast<float>(c.padDeadZone));
+        const std::string crouch = launcher::normalizeCrouchShortcut(c.crouchShortcut);
+        const PadMark mark = crouch == "l3" ? PadMark::LeftStick
+                                            : (crouch == "touchpad" ? PadMark::Plate : (crouch == "l2" ? PadMark::L2 : PadMark::None));
+        drawPad(ctx, padArea, app.pad, static_cast<float>(c.padDeadZone), mark);
 
         // The legend: the owner plays on an Xbox pad and the game prompts with PlayStation shapes.
         const GlyphFamily family = glyphFamilyFor(app.pad.name);
@@ -74,9 +78,37 @@ namespace ui
         if (slider(ctx, sensitivity, "pad.sensitivity", c.mouseSensitivity, 0.25, 3.0, 0.05))
             app.dirty = true;
 
-        caption(ctx, Vec2{firstPick.x, firstPick.y + 112.0f},
-                app.pad.present
-                    ? "Press a button: what lights up above is what the game reads. The ring is the dead zone."
-                    : "No pad: WASD move, IJKL look, Z/X/C/V = square/cross/circle/triangle, Q/E = L1/R1, Enter = start.");
+        // ---- the crouch shortcut (owner request 2026-09-19, R139) ------------------------------------------
+        // One line of help serves the page. It states the shortcut's trade while a crouch cell is under the focus
+        // or the mouse (so the cost is read BEFORE it is chosen) and for as long as a shortcut is on; otherwise it
+        // is the page's own line.
+        const Rect crouch0 = rectOf(nodes, "pad.crouch.0");
+        const char *hint = crouch == "off" ? nullptr : launcher::crouchShortcutHint(crouch);
+        if (crouch0.w > 0.0f)
+        {
+            text(ctx, "CROUCH SHORTCUT", Vec2{firstPick.x, crouch0.y + 6.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+            for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+            {
+                const std::string id = "pad.crouch." + std::to_string(i);
+                const Rect r = rectOf(nodes, id);
+                const char *value = launcher::kCrouchShortcuts[i];
+                const bool selected = crouch == value;
+                if (hovered(ctx, r) || focused(ctx, id))
+                    hint = launcher::crouchShortcutHint(value);
+                if (radioCell(ctx, r, launcher::crouchShortcutLabel(value), id, selected) && !selected)
+                {
+                    c.crouchShortcut = value;
+                    app.dirty = true;
+                }
+            }
+        }
+
+        // +123, not +112: a line longer than the pad list is wide has to clear the sensitivity slider (ends at +120).
+        caption(ctx, Vec2{firstPick.x, firstPick.y + 123.0f},
+                hint != nullptr
+                    ? hint
+                    : (app.pad.present
+                           ? "Press a button: what lights up above is what the game reads. The ring is the dead zone."
+                           : "No pad: WASD move, IJKL look, Z/X/C/V = square/cross/circle/triangle, Q/E = L1/R1, Enter = start."));
     }
 }

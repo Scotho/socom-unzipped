@@ -153,6 +153,10 @@ namespace ui
             add(out, page, "pad.deadzone", Rect{rx, below, rw, 28.0f});
             add(out, page, "pad.mouselook", Rect{rx, below + 44.0f, rw, 28.0f});
             add(out, page, "pad.sensitivity", Rect{rx, below + 92.0f, rw, 28.0f});
+            // R139: the crouch shortcut, four cells across both columns, under the page's one line of help.
+            const Rect crouch{b.x + metrics::labelW, below + 144.0f, b.w - metrics::labelW, 28.0f};
+            for (int i = 0; i < 4; ++i)
+                add(out, page, "pad.crouch." + std::to_string(i), cell(crouch, i, 4));
             break;
         }
         case Page::Microphone:
