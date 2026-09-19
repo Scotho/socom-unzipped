@@ -546,6 +546,66 @@ void register_launcher_tests()
             }
         });
 
+        // Sprint 8, owner feedback: "the yellow circle ... takes too long to adjust and awkwardly flys with a
+        // delay". There is no travel left to see: the ring is at the focused control's rect on the very frame
+        // the focus changes, inside a page and across a page change alike, whatever the frame time was.
+        tc.Run("the focus ring does not travel: it is on the focused control's rect the frame focus changes", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padChoices = 2;
+            in.micChoices = 3;
+            in.customServer = true;
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            auto same = [](ui::Rect a, ui::Rect b)
+            {
+                return std::fabs(a.x - b.x) < 0.001f && std::fabs(a.y - b.y) < 0.001f &&
+                       std::fabs(a.w - b.w) < 0.001f && std::fabs(a.h - b.h) < 0.001f;
+            };
+            const float tinyDt = 0.001f;   // one millisecond: a fast frame must not hold the ring back
+
+            ui::Nav nav;
+            nav.goTo(g, ui::Page::Video);
+            ui::FocusRing ring;
+            ring.update(g, nav.focus, tinyDt);
+            t.IsTrue(ring.visible, "the ring is drawn wherever the focus is");
+            t.IsTrue(same(ring.shown, g.find(nav.focus)->r), "the first frame is already on the focused control");
+
+            // A move inside the page: one update, one millisecond, and the ring is there.
+            nav.move(g, ui::Dir::Down);
+            t.IsTrue(same(g.find(nav.focus)->r, ui::rectOf(ui::layoutFor(ui::Page::Video, window, in), nav.focus)),
+                     "the rect the ring aims at is the rect the page draws");
+            ring.update(g, nav.focus, tinyDt);
+            t.IsTrue(same(ring.shown, g.find(nav.focus)->r),
+                     "a move inside a page puts the ring on the new control at once, with no interpolation");
+
+            // A page change: onto the new page's control, never a stale rect, never collapsed at the origin.
+            const ui::Rect before = ring.shown;
+            nav.goTo(g, ui::Page::Online);
+            ring.update(g, nav.focus, tinyDt);
+            t.IsTrue(same(ring.shown, g.find(nav.focus)->r),
+                     "a page change puts the ring straight onto the new page's focused control");
+            t.IsFalse(same(ring.shown, before), "not on the rect it held on the page before");
+            t.IsTrue(ring.shown.w > 1.0f && ring.shown.h > 1.0f, "and never collapsed at 0,0 for a frame");
+
+            // The rail is a page change too: back out of a page and the ring is on the rail entry immediately.
+            nav.back(g);
+            ring.update(g, nav.focus, tinyDt);
+            t.IsTrue(same(ring.shown, g.find("rail.online")->r), "Back lands the ring on the rail entry the same frame");
+
+            // Whatever the frame time was, the whole move happens: a zero-length frame moves it all the way.
+            ui::FocusRing fresh;
+            fresh.update(g, "rail.play", 0.0f);
+            fresh.update(g, "play.launch", 0.0f);
+            t.IsTrue(same(fresh.shown, g.find("play.launch")->r),
+                     "a zero-length frame still moves the ring the whole way: nothing is eased");
+
+            // And a focus id the graph does not know draws nothing, rather than a stale rect.
+            ui::FocusRing unknown;
+            unknown.update(g, "nothing.at.all", tinyDt);
+            t.IsFalse(unknown.visible, "an id the graph does not know draws no ring at all");
+        });
+
         tc.Run("the pad's outline: one symmetric closed path, every input on it, the sticks a mirrored pair", [](TestCase &t)
         {
             const ui::Rect bounds{100.0f, 50.0f, 540.0f, 262.0f};
@@ -737,6 +797,99 @@ void register_launcher_tests()
             t.IsTrue(at(l.close.cx(), 1.0f) == ui::ChromeHit::Top, "but the top two pixels still resize");
             t.IsTrue(at(l.minimize.cx(), 1.0f) == ui::ChromeHit::Top, "away from the corner, that is the top edge too");
             t.IsTrue(at(1099.0f, 1.0f) == ui::ChromeHit::TopRight, "and the very corner is the corner grab");
+        });
+
+        // Sprint 8, owner feedback: the READY label "sits too far right", and the PLAY tab is "in a weird
+        // spot". Both are placed from widths measured with the real font, so the arithmetic is asserted here.
+        tc.Run("the top bar: the tab group is centred in the free width, the state word one padding from the buttons", [](TestCase &t)
+        {
+            auto close = [](float a, float b, float tol) { return std::fabs(a - b) <= tol; };
+            // What the bar's font actually draws, in design units: the mark's two words, "READY", "PLAY".
+            const float markRight = 16.0f + 86.0f + 10.0f + 74.0f;
+            const float statusW = 46.0f;
+            const float tabW = 34.0f;
+
+            const float widths[2] = {1100.0f, ui::metrics::minW / ui::scaleFor(800, 520)};
+            for (float barW : widths)
+            {
+                const ui::ChromeLayout l = ui::chromeLayout(barW);
+                ui::TopBarText m;
+                m.markRight = markRight;
+                m.statusW = statusW;
+                m.tabW.push_back(tabW);
+                const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+
+                // The state word: right-aligned against the window buttons, one padding away, measured.
+                t.IsTrue(close(p.status.right(), l.minimize.x - ui::chrome::pad, 0.001f),
+                         "the state word's right edge is exactly one padding left of the caption buttons");
+                t.IsTrue(close(p.status.w, statusW, 0.001f), "its box is the width the font measured, not a fixed guess");
+                t.IsTrue(close(p.status.y, 0.0f, 0.001f) && close(p.status.h, ui::metrics::barH, 0.001f),
+                         "and it is the full height of the bar, so the word sits on its centre line");
+                t.IsTrue(close(p.lamp.y, l.bar.cy(), 0.001f), "the lamp is on the bar's centre line");
+                t.IsTrue(close(p.lamp.x, p.status.x - ui::chrome::lampGap, 0.001f), "and one gap to the left of the word");
+
+                // The tab group: centred in what is free between the mark and the state cluster.
+                const float freeL = markRight + ui::chrome::pad;
+                const float freeR = p.lamp.x - ui::chrome::lampR - ui::chrome::pad;
+                t.IsTrue(p.tabsCentred, "there is room at this width, so the group is centred");
+                t.IsTrue(close(p.tabs.cx(), std::clamp(l.bar.cx(), freeL + p.tabs.w * 0.5f, freeR - p.tabs.w * 0.5f), 1.0f),
+                         "the tab group is on the BAR's middle (the window's), pushed aside only as far as the mark or the cluster requires");
+                t.IsTrue(p.tabs.x >= freeL - 0.001f, "it never runs into the wordmark");
+                t.IsTrue(p.tabs.right() <= freeR + 0.001f, "nor into the state cluster");
+                t.IsTrue(close(p.tabs.w, tabW, 0.001f) && p.tab.size() == 1u, "one tab, its own measured width");
+                t.IsTrue(close(p.tab[0].x, p.tabs.x, 0.001f) && close(p.tab[0].w, tabW, 0.001f),
+                         "and the group is the tab itself when there is only one");
+            }
+
+            // With unsaved changes the pill is in the bar, so the state word clears it by the same padding
+            // and the two never overlap.
+            {
+                const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+                ui::TopBarText m;
+                m.markRight = markRight;
+                m.statusW = statusW;
+                m.showPill = true;
+                m.tabW.push_back(tabW);
+                const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+                t.IsTrue(close(p.status.right(), l.pill.x - ui::chrome::pad, 0.001f),
+                         "the UNSAVED pill takes the slot by the buttons, and the state word clears it by one padding");
+                t.IsTrue(p.status.right() <= l.pill.x + 0.001f, "the word and the pill never overlap");
+                t.IsTrue(p.tabs.right() <= p.lamp.x - ui::chrome::lampR - ui::chrome::pad + 0.001f,
+                         "and the tab group still clears the cluster that just grew");
+            }
+
+            // Several tabs: laid out in order, one gap apart, the group still centred.
+            {
+                const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+                ui::TopBarText m;
+                m.markRight = markRight;
+                m.statusW = statusW;
+                m.tabW = {34.0f, 30.0f, 40.0f};
+                const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+                t.IsTrue(p.tab.size() == 3u, "a tab box for every label");
+                t.IsTrue(close(p.tabs.w, 34.0f + 30.0f + 40.0f + 2.0f * ui::chrome::tabGap, 0.001f),
+                         "the group is the labels plus the gaps between them");
+                t.IsTrue(close(p.tab[1].x, p.tab[0].right() + ui::chrome::tabGap, 0.001f), "the second follows the first");
+                t.IsTrue(close(p.tab[2].x, p.tab[1].right() + ui::chrome::tabGap, 0.001f), "and the third the second");
+                t.IsTrue(close(p.tabs.x, p.tab[0].x, 0.001f) && close(p.tabs.right(), p.tab[2].right(), 0.001f),
+                         "the group's box is exactly what the tabs span");
+                const float freeL = markRight + ui::chrome::pad;
+                const float freeR = p.lamp.x - ui::chrome::lampR - ui::chrome::pad;
+                t.IsTrue(close(p.tabs.cx(), std::clamp(l.bar.cx(), freeL + p.tabs.w * 0.5f, freeR - p.tabs.w * 0.5f), 1.0f), "and it is on the bar's middle unless the mark or the cluster pushes it");
+            }
+
+            // No room: the group falls back to sitting after the wordmark rather than sliding under it.
+            {
+                const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+                ui::TopBarText m;
+                m.markRight = markRight;
+                m.statusW = statusW;
+                m.tabW.push_back(900.0f);
+                const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+                t.IsFalse(p.tabsCentred, "a group too wide for the free width is not pretending to be centred");
+                t.IsTrue(close(p.tabs.x, markRight + ui::chrome::pad, 0.001f),
+                         "it is left-aligned one padding after the wordmark instead");
+            }
         });
 
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the

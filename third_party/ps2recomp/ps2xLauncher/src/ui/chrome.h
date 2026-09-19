@@ -6,7 +6,10 @@
 // ONE hit test. The Win32 window procedure answers WM_NCHITTEST from it, and the UI decides what the mouse
 // is over from the same function, so what is drawn and what the system believes can never disagree. Pure:
 // no raylib, no windows.h.
+#include <algorithm>
 #include "theme.h"
+
+#include <vector>
 
 namespace ui
 {
@@ -48,6 +51,10 @@ namespace ui
         constexpr float statusW = 230.0f;
         constexpr float borderPx = 6.0f;      // the resize grab, in real pixels
         constexpr float buttonTopPx = 2.0f;   // the top resize border still wins in the button's top 2 px
+        constexpr float pad = 16.0f;          // the one padding the bar's clusters are spaced by
+        constexpr float lampGap = 20.0f;      // the lamp's centre to the state word
+        constexpr float lampR = 9.0f;         // the lamp's outer ring
+        constexpr float tabGap = 18.0f;       // between the tabs of the group
     }
 
     inline ChromeLayout chromeLayout(float designW)
@@ -65,6 +72,62 @@ namespace ui
         if (l.caption.w < 0.0f)
             l.caption.w = 0.0f;
         return l;
+    }
+
+    // The half of the bar that only measured text can place: the page tabs, the state lamp and its word.
+    // The caller measures with the real font and hands the widths over; everything here is arithmetic, so the
+    // test asserts on the very numbers the bar draws.
+    struct TopBarText
+    {
+        float markRight = chrome::markW;   // where the drawn mark ends, its left padding included
+        float statusW = 0.0f;              // the state word ("READY") at its drawn size
+        bool showPill = false;             // the UNSAVED pill is only drawn when there is something to save
+        std::vector<float> tabW;           // the tab labels' drawn widths, in order
+        float tabGap = chrome::tabGap;
+    };
+
+    struct TopBarPlaces
+    {
+        Rect status;             // the state word's own box, the full height of the bar
+        Vec2 lamp;               // the lamp's centre
+        Rect tabs;               // the tab group as a whole
+        std::vector<Rect> tab;   // each label's box, in order
+        bool tabsCentred = false;
+    };
+
+    inline TopBarPlaces topBarPlaces(const ChromeLayout &l, const TopBarText &m)
+    {
+        TopBarPlaces o;
+        const float h = l.bar.h;
+
+        // Right to left: the three window buttons, the UNSAVED pill when there is one, then the state word
+        // exactly one padding clear of whichever of them it follows, and its lamp one gap left of that. The
+        // word's box is the width the font measured and the full height of the bar, so it sits on the centre
+        // line (owner, Sprint 8: "the READY status label sits too far right").
+        const float clusterRight = (m.showPill ? l.pill.x : l.minimize.x) - chrome::pad;
+        o.status = Rect{clusterRight - m.statusW, 0.0f, m.statusW, h};
+        o.lamp = Vec2{o.status.x - chrome::lampGap, l.bar.cy()};
+
+        // The tab group, centred in what is free between the wordmark and that cluster -- at every window
+        // width, and never over either of them. Too wide to fit there, it sits after the wordmark instead.
+        float groupW = 0.0f;
+        for (size_t i = 0; i < m.tabW.size(); ++i)
+            groupW += m.tabW[i] + (i + 1 < m.tabW.size() ? m.tabGap : 0.0f);
+        const float freeL = m.markRight + chrome::pad;
+        const float freeR = o.lamp.x - chrome::lampR - chrome::pad;
+        o.tabsCentred = groupW <= freeR - freeL;
+        // On the bar's own middle -- the window's, which is where the eye expects it -- and pushed aside only as
+        // far as the mark or the cluster requires (the cluster is the wider of the two, so the free width's
+        // middle sits left of the window's and read as misplaced: owner, Sprint 8).
+        const float x = o.tabsCentred ? std::clamp(l.bar.cx() - groupW * 0.5f, freeL, freeR - groupW) : freeL;
+        o.tabs = Rect{x, 0.0f, groupW, h};
+        float cursor = x;
+        for (float w : m.tabW)
+        {
+            o.tab.push_back(Rect{cursor, 0.0f, w, h});
+            cursor += w + m.tabGap;
+        }
+        return o;
     }
 
     // `x`, `y`, `w`, `h` in real pixels; `scale` the window's factor. Resize borders disappear when the

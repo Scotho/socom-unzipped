@@ -354,6 +354,22 @@ namespace ui
 
     bool Nav::onRail() const { return focus == railId(page); }
 
+    void FocusRing::update(const FocusGraph &g, const std::string &focusId, float dt)
+    {
+        const Node *n = g.find(focusId);
+        if (n == nullptr)
+        {
+            visible = false;
+            return;
+        }
+        // No travel, by owner's request ("takes too long to adjust and awkwardly flys with a delay"): the
+        // ring is the focused control's rect, whole, on the frame the focus changed. `dt` is taken and
+        // ignored on purpose, so no frame time can put a delay back without the test noticing.
+        (void)dt;
+        shown = n->r;
+        visible = true;
+    }
+
     std::string launchBlockedReason(bool discOk, bool running, bool isoPathEmpty)
     {
         if (running)
