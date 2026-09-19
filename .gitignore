@@ -26,3 +26,5 @@ __pycache__/
 /server/config/simulated.db
 imgui.ini
 vm/
+# a local Claude skill that names a host and an SSH key (owner 2026-09-19)
+/.claude/skills/s2u-bug-reports/
