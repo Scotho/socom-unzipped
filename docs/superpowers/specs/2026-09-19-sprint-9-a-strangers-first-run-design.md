@@ -87,6 +87,54 @@ meets first.
   the page's state machine; one real report sent to the live endpoint from each platform once that session says it is
   up, its id recorded. **Owner check:** the wording and that the default-off log checkbox is what was wanted.
 
+### Goal 9 — the launcher finished, and the game window that follows it (owner 2026-09-20)
+The owner's list, after living with the redesigned launcher. One defect in it is not cosmetic and leads: **the pad
+drives both windows at once.**
+
+- **Pad focus (defect, first).** "When the game is active, both the game and the launcher receive input commands from
+  the controller. When the game is active the launcher should not receive focus." So: while `App::running`, the
+  launcher takes no pad input at all (and does not steal the foreground). "Pressing the XBOX or PLAYSTATION button
+  should toggle the launcher focus if possible, and again should swap back to the game" — the guide button becomes the
+  switch between the two windows. The launcher reads the pad through raylib/GLFW, which reads it whether or not the
+  window has focus; the guide button is not a standard GLFW button on every backend, so what it costs is a measurement
+  before it is a promise (Windows: XInput's guide bit is not exposed by XInput itself — `raylib`'s mapping, SDL's
+  `SDL_GAMEPAD_BUTTON_GUIDE`, or the raw HID report; Linux: `BTN_MODE` through evdev). If the guide button cannot be
+  read on a platform, say so and give the toggle a second binding rather than pretending.
+- **Live server stats.** Already Goal 8's ONLINE status line; the owner points at the site session's work
+  (`../scotho`, the SERVER STATS screen). Same endpoint, `GET https://s2u.scotho.com/api/stats` (the owner wrote
+  "s2u.socom.com"; the host is `s2u.scotho.com`). Goal 8 owns the transport — this goal only asks that the launcher
+  show what the site shows, not that a second reader be written.
+- **A switch for the debugger.** Today the debug panel is compile-time: `ps2xRuntime/src/lib/ps2_debug_panel.cpp`
+  behind `PS2X_ENABLE_DEBUG_UI`, so there is nothing for a checkbox to toggle yet. Either it becomes a runtime knob
+  the launcher sets (Goal 3 is retiring knobs, so it must be one of the named ones, not a new stray), or the setting
+  is honest about being a developer build's. Decide before drawing the checkbox; the release build's size (R151) is
+  part of the decision.
+- **The game window styled like the launcher.** "Stylize the actual game client window if possible like the client.
+  Use the same UI." The game's window chrome, its title and its borders follow the launcher's theme (`ui/theme.h`);
+  what is reachable depends on how much of the window the runtime owns versus raylib.
+- **A button on the game client's header that focuses options**, if the header can carry one — the pair of the pad
+  toggle above, for the mouse.
+- **Two alignment defects, from the owner's screenshot.**
+  1. "In the title, the UNZIPPED part after SOCOM II is lower than the SOCOM II text." The top bar draws
+     `SOCOM II` at `y=10.0` size 15 and `UNZIPPED` at `y=12.0` size 13 (`ps2xLauncher/src/main.cpp:443-446`); the
+     baselines, not the tops, are what should line up (the rail's big wordmark, `main.cpp:496-497`, is the other
+     candidate — the screenshot decides which one the owner means; fix both if both are off).
+  2. "The running text is not aligned with the yellow circle, it appears higher." The lamp is a circle of radius 5 at
+     `places.lamp` and the word is `textCenteredIn(..., places.status, 14.0f)` (`main.cpp:463-467`, placed by
+     `topBarPlaces`) — centre the text on the lamp's centre, and let the top-bar test assert it.
+- **Tooltips where the launcher is unclear**, "what is a profile?" first: the profile names the memory-card directory
+  under `cards/` and the persona the server sees. The owner also asks whether the launcher should have a **profile
+  viewer** (what is saved, which server each persona belongs to, how to remove one) — an open question, not a
+  decision; the simulated cards (Sprint 8 Goal 11) are what it would read.
+- **Move "Second instance on this machine (for testing)" into an advanced section** (`ui/page_online.cpp:82`). There
+  is no ADVANCED page or section in the launcher today, so this goal creates one; what else belongs there
+  (`fpsOverlay`, the debugger switch above, `gsScale`'s experimental 3) is the pass's judgment, recorded as a ruling.
+
+**Bar:** the pad-focus defect proven with the game running (the launcher's own `--screenshot` proof cannot show it —
+it needs a driven launch and a pad); the two alignment fixes asserted in the top-bar tests, not eyeballed; every new
+string through the same theme and focus model as Sprint 8 Goal 9. **Owner checks:** the guide-button toggle on their
+own pad, the tooltip wording, and whether the profile viewer is wanted at all.
+
 ## 3. Owner-gated, unchanged
 The listens, the pad pick, the mic meter, the launcher verdict, the Linux tarball on a real GPU, the first
 two-machine match, the domain and AWS credit decisions (`docs/HUMAN_TASKS.md`). r0004 and the community server
