@@ -12,7 +12,7 @@ namespace ui
 
         text(ctx, "SOCOM UNZIPPED", Vec2{x, y}, 34.0f, theme::gold, Face::Display);
         y += 44.0f;
-        text(ctx, app.version.empty() ? "development build" : app.version.c_str(), Vec2{x, y}, 18.0f, theme::dim);
+        text(ctx, app.version.empty() ? "development build" : app.version.c_str(), Vec2{x, y}, metrics::bodySize - 1.0f, theme::caption);
         y += 34.0f;
         text(ctx, "SOCOM II: U.S. Navy SEALs, recompiled for the PC. Not affiliated with Sony or Zipper Interactive.",
              Vec2{x, y}, 17.0f, theme::text);

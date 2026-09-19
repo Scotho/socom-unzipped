@@ -35,6 +35,19 @@ namespace win32glue
     // stdout+stderr to <dir>/logs/run_<stamp>.log. False with `error` set when it cannot.
     bool startGame(const std::string &dir, const launcher::Config &config, GameProcess &out);
 
+
+    // Sprint 8 Goal 9, third pass: the custom title bar. The window keeps the system's borders, snap and
+    // shadow -- only the caption is removed (WM_NCCALCSIZE), and WM_NCHITTEST is answered from the launcher's
+    // own ui::chromeHitTest through this callback, so the system and the drawing agree by construction.
+    //   `hitTest` takes client-area pixels and the client size and returns a ui::ChromeHit as an int.
+    using ChromeHitFn = int (*)(int x, int y, int w, int h);
+    // True when native chrome was installed (Windows). False elsewhere: the caller then asks raylib for an
+    // undecorated window and drags it itself.
+    bool installCustomChrome(void *windowHandle, ChromeHitFn hitTest);
+    void minimizeWindow();
+    void maximizeToggleWindow();
+    bool isWindowMaximized();
+
     std::string stamp();
     void terminate(GameProcess &game);   // kills the game (the launch test)
 }

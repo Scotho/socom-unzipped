@@ -56,6 +56,145 @@ namespace win32glue
 #endif
     }
 
+    // ---- Sprint 8 Goal 9, third pass: the custom title bar -------------------------------------------------
+    // The technique: keep WS_OVERLAPPEDWINDOW (so Windows keeps resize, snap, the drop shadow and the
+    // animations) and take the caption away by answering WM_NCCALCSIZE with a client area that covers the
+    // whole window. WM_NCHITTEST then has to say which part of our own bar the mouse is over -- that answer
+    // comes from ui::chromeHitTest through the callback, the same function the drawing uses.
+    namespace
+    {
+        HWND g_chromeWindow = nullptr;
+        WNDPROC g_originalProc = nullptr;
+        ChromeHitFn g_hitTest = nullptr;
+
+        // ui::ChromeHit, as an int, without including the header here (windows.h and raylib.h do not mix,
+        // and this file must stay free of both the UI and raylib).
+        enum ChromeHitCode
+        {
+            HitClient = 0,
+            HitCaption,
+            HitMinimize,
+            HitMaximize,
+            HitClose,
+            HitUnsavedPill,
+            HitLeft,
+            HitRight,
+            HitTop,
+            HitBottom,
+            HitTopLeft,
+            HitTopRight,
+            HitBottomLeft,
+            HitBottomRight
+        };
+
+        int frameThickness(HWND window)
+        {
+            // The maximised window hangs its frame off-screen; without this inset the top row of our bar
+            // would be cut off by exactly that much.
+            UINT dpi = 96;
+            HMODULE user32 = GetModuleHandleW(L"user32.dll");
+            if (user32 != nullptr)
+            {
+                using GetDpiForWindowFn = UINT(WINAPI *)(HWND);
+                auto getDpi = reinterpret_cast<GetDpiForWindowFn>(
+                    reinterpret_cast<void *>(GetProcAddress(user32, "GetDpiForWindow")));
+                if (getDpi != nullptr)
+                    dpi = getDpi(window);
+                using GetMetricsFn = int(WINAPI *)(int, UINT);
+                auto getMetric = reinterpret_cast<GetMetricsFn>(
+                    reinterpret_cast<void *>(GetProcAddress(user32, "GetSystemMetricsForDpi")));
+                if (getMetric != nullptr)
+                    return getMetric(SM_CXSIZEFRAME, dpi) + getMetric(SM_CXPADDEDBORDER, dpi);
+            }
+            return GetSystemMetrics(SM_CXSIZEFRAME) + GetSystemMetrics(SM_CXPADDEDBORDER);
+        }
+
+        LRESULT CALLBACK chromeProc(HWND window, UINT message, WPARAM wParam, LPARAM lParam)
+        {
+            switch (message)
+            {
+            case WM_NCCALCSIZE:
+                if (wParam == TRUE)
+                {
+                    // The client area becomes the whole window: no caption, no top border drawn by Windows.
+                    if (IsZoomed(window))
+                    {
+                        NCCALCSIZE_PARAMS *params = reinterpret_cast<NCCALCSIZE_PARAMS *>(lParam);
+                        const int inset = frameThickness(window);
+                        params->rgrc[0].left += inset;
+                        params->rgrc[0].top += inset;
+                        params->rgrc[0].right -= inset;
+                        params->rgrc[0].bottom -= inset;
+                    }
+                    return 0;
+                }
+                break;
+            case WM_NCHITTEST:
+            {
+                if (g_hitTest != nullptr)
+                {
+                    POINT p{static_cast<int>(static_cast<short>(LOWORD(lParam))), static_cast<int>(static_cast<short>(HIWORD(lParam)))};
+                    ScreenToClient(window, &p);
+                    RECT client{};
+                    GetClientRect(window, &client);
+                    switch (g_hitTest(p.x, p.y, client.right - client.left, client.bottom - client.top))
+                    {
+                    case HitCaption: return HTCAPTION;
+                    case HitLeft: return HTLEFT;
+                    case HitRight: return HTRIGHT;
+                    case HitTop: return HTTOP;
+                    case HitBottom: return HTBOTTOM;
+                    case HitTopLeft: return HTTOPLEFT;
+                    case HitTopRight: return HTTOPRIGHT;
+                    case HitBottomLeft: return HTBOTTOMLEFT;
+                    case HitBottomRight: return HTBOTTOMRIGHT;
+                    default: return HTCLIENT;   // our own buttons and the pages: raylib gets the clicks
+                    }
+                }
+                return HTCLIENT;
+            }
+            default:
+                break;
+            }
+            return CallWindowProcW(g_originalProc, window, message, wParam, lParam);
+        }
+    }
+
+    bool installCustomChrome(void *windowHandle, ChromeHitFn hitTest)
+    {
+        HWND window = reinterpret_cast<HWND>(windowHandle);
+        if (window == nullptr || g_originalProc != nullptr)
+            return window != nullptr;
+        g_chromeWindow = window;
+        g_hitTest = hitTest;
+        g_originalProc = reinterpret_cast<WNDPROC>(
+            SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(chromeProc)));
+        if (g_originalProc == nullptr)
+            return false;
+        // Ask for the frame to be recalculated now that WM_NCCALCSIZE answers differently.
+        SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                     SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        return true;
+    }
+
+    void minimizeWindow()
+    {
+        if (g_chromeWindow != nullptr)
+            ShowWindow(g_chromeWindow, SW_MINIMIZE);
+    }
+
+    void maximizeToggleWindow()
+    {
+        if (g_chromeWindow == nullptr)
+            return;
+        ShowWindow(g_chromeWindow, IsZoomed(g_chromeWindow) ? SW_RESTORE : SW_MAXIMIZE);
+    }
+
+    bool isWindowMaximized()
+    {
+        return g_chromeWindow != nullptr && IsZoomed(g_chromeWindow) != 0;
+    }
+
     std::string stamp()
     {
         char buf[32];

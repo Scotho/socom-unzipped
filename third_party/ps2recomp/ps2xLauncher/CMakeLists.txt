@@ -8,6 +8,7 @@ add_library(ps2x_launcher_core STATIC
     src/sha256.cpp
     src/launcher_config.cpp
     src/ui/focus.cpp
+    src/ui/pad_geometry.cpp
 )
 target_include_directories(ps2x_launcher_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include

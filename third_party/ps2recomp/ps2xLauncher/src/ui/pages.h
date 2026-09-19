@@ -51,6 +51,7 @@ namespace ui
         bool requestOpenLogs = false;
         bool requestMicChanged = false;
         bool requestMicRescan = false;
+        bool requestSave = false;   // the top bar's UNSAVED pill
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;
@@ -66,13 +67,13 @@ namespace ui
     // the grid the pages line up on.
     inline void rowLabel(const Ctx &ctx, Rect control, const char *label)
     {
-        text(ctx, label, Vec2{control.x - metrics::labelW, control.y + (control.h - 18.0f * 1.12f) * 0.5f}, 18.0f,
-             theme::dim, Face::Bold);
+        text(ctx, label, Vec2{control.x - metrics::labelW, control.y + (control.h - metrics::labelSize * 1.12f) * 0.5f},
+             metrics::labelSize, theme::dim, Face::Bold, 0.06f);
     }
 
     inline void caption(const Ctx &ctx, Vec2 at, const char *s)
     {
-        text(ctx, s, at, 15.0f, theme::mix(theme::dim, theme::ground, 0.2f));
+        text(ctx, s, at, metrics::captionSize, theme::caption);
     }
 
     // ---- one per page -------------------------------------------------------------------------------------

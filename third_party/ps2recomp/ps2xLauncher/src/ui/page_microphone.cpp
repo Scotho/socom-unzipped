@@ -11,7 +11,7 @@ namespace ui
         const Rect first = rectOf(nodes, "mic.pick.0");
         const Rect rescan = rectOf(nodes, "mic.rescan");
 
-        text(ctx, "CAPTURE DEVICE", Vec2{first.x, first.y - 26.0f}, 15.0f, theme::dim, Face::Bold);
+        text(ctx, "CAPTURE DEVICE", Vec2{first.x, first.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
         int micSel = 0;
         for (size_t i = 1; i < app.micLabels.size(); ++i)
             if (app.micLabels[i] == app.config.micDevice)
@@ -35,7 +35,7 @@ namespace ui
 
         // The meter: -60 dB (silence) to 0 dB (full scale), redrawn every frame from the capture callback.
         const Rect column{rescan.x - 200.0f, rescan.bottom() + 28.0f, rescan.right() - (rescan.x - 200.0f), 140.0f};
-        text(ctx, "LEVEL", Vec2{column.x, column.y}, 15.0f, theme::dim, Face::Bold);
+        text(ctx, "LEVEL", Vec2{column.x, column.y}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
         const Rect meter{column.x, column.y + 22.0f, column.w, 26.0f};
         float filled = 0.0f;
         if (app.meterOn && app.micDbValid)

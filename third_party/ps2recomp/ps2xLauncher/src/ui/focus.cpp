@@ -66,11 +66,11 @@ namespace ui
         using namespace metrics;
         Frame f;
         f.window = window;
-        f.header = Rect{0.0f, 0.0f, window.w, headerH};
-        f.bar = Rect{0.0f, window.h - barH, window.w, barH};
-        f.rail = Rect{0.0f, headerH, railW, window.h - headerH - barH};
-        f.content = Rect{railW + margin, headerH + 24.0f, window.w - railW - margin - margin,
-                         (window.h - barH - 16.0f) - (headerH + 24.0f)};
+        f.header = Rect{0.0f, 0.0f, window.w, barH};              // the launcher's own title bar
+        f.bar = Rect{0.0f, window.h - bottomH, window.w, bottomH};
+        f.rail = Rect{0.0f, barH, railW, window.h - barH - bottomH};
+        f.content = Rect{railW + margin, barH + 20.0f, window.w - railW - margin - margin,
+                         (window.h - bottomH - 16.0f) - (barH + 20.0f)};
         f.body = Rect{f.content.x + 20.0f, f.content.y + 54.0f, f.content.w - 40.0f, f.content.h - 54.0f - 20.0f};
         return f;
     }
@@ -82,7 +82,7 @@ namespace ui
         for (int i = 0; i < kPageCount; ++i)
         {
             const Page p = pageAt(i);
-            const Rect r{12.0f, f.rail.y + 22.0f + static_cast<float>(i) * (metrics::railRowH + metrics::railGap),
+            const Rect r{12.0f, f.rail.y + metrics::railTop + static_cast<float>(i) * (metrics::railRowH + metrics::railGap),
                          metrics::railW - 24.0f, metrics::railRowH};
             out.push_back(Node{railId(p), r, p, true});
         }
@@ -142,7 +142,7 @@ namespace ui
         }
         case Page::Controller:
         {
-            const float below = b.y + 310.0f;   // under the drawn pad, its legend and the section labels
+            const float below = b.y + 342.0f;   // under the drawn pad, its legend and the section labels
             const int pads = in.padChoices < 1 ? 1 : in.padChoices;
             for (int i = 0; i < pads; ++i)
                 add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, below + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
@@ -150,7 +150,7 @@ namespace ui
             const float rw = b.w - 440.0f;
             add(out, page, "pad.deadzone", Rect{rx, below, rw, 28.0f});
             add(out, page, "pad.mouselook", Rect{rx, below + 44.0f, rw, 28.0f});
-            add(out, page, "pad.sensitivity", Rect{rx, below + 104.0f, rw, 28.0f});
+            add(out, page, "pad.sensitivity", Rect{rx, below + 92.0f, rw, 28.0f});
             break;
         }
         case Page::Microphone:

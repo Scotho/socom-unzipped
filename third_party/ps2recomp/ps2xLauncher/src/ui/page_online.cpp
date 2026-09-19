@@ -8,7 +8,7 @@ namespace ui
         launcher::Config &c = app.config;
 
         const Rect preset0 = rectOf(nodes, "online.preset.0");
-        text(ctx, "SERVER", Vec2{preset0.x, preset0.y - 26.0f}, 15.0f, theme::dim, Face::Bold);
+        text(ctx, "SERVER", Vec2{preset0.x, preset0.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
 
         int presetSel = 2;   // "Custom" unless one of the ids matches
         for (int i = 0; i < 3; ++i)
