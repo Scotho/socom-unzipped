@@ -279,7 +279,7 @@ namespace launcher
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;
-                    else c.profile = v;
+                    else c.profile = normalizeProfile(v);
                 }
                 else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
                 {
@@ -378,6 +378,24 @@ namespace launcher
         return "off";
     }
 
+    std::string normalizeProfile(const std::string &value)
+    {
+        // A name, not a path. Anything with a separator, a colon, a control character or any other punctuation
+        // is refused WHOLE -- no stripping, no collapsing -- because a half-cleaned path is the one that gets
+        // walked around. "." and ".." are refused for the same reason even though their characters are allowed.
+        if (value.empty() || value == "." || value == "..")
+            return "player";
+        for (const char c : value)
+        {
+            const unsigned char u = static_cast<unsigned char>(c);
+            const bool ok = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9') ||
+                            c == ' ' || c == '_' || c == '-' || c == '.';
+            if (!ok)
+                return "player";
+        }
+        return value.size() > 64 ? value.substr(0, 64) : value;
+    }
+
     const char *crouchShortcutLabel(const std::string &value)
     {
         const std::string v = normalizeCrouchShortcut(value);
@@ -420,7 +438,7 @@ namespace launcher
         if (c.fpsOverlay)
             env.push_back("PS2X_FPS_OVERLAY=1");
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
-        const std::string profile = c.profile.empty() ? std::string("player") : c.profile;
+        const std::string profile = normalizeProfile(c.profile);
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
         // Sprint 7 Task 8: the pad the player picked (only when they picked one -- unset means the runtime's
         // own "first available" rule), and the dead zone, always, so what they tuned is what the game gets.
