@@ -17,7 +17,7 @@ human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the next sprint") while Sprint 9's
               milestone Q is CARRIED -- spec docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md,
               plan docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md (Goal 1 built, first run tonight).
-              Sprint 9's Q8 is DONE 2026-09-20 13:55: PR #1 merged to main with a merge commit (cc9d7ff), v0.9.0 tagged on it,
+              Sprint 9's Q8 is DONE 2026-09-20 09:00 UTC: PR #1 merged to main with a merge commit (cc9d7ff), v0.9.0 tagged on it,
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md

@@ -46,6 +46,21 @@ class TitleWordsTest(unittest.TestCase):
         for other in ("briefing_room", "create_game", "play_list"):
             self.assertGreater(L.lobby_title_dist(g, other), 0.3, other)
 
+    def test_the_console_reads_its_own_game_lobby_reference(self):
+        # The console draws the lobby ~7% narrower (KNOWN section 2): its title misses ours' reference and hits its own.
+        console = frame(("title_pcsx2_game_lobby.png", TITLE), ("notice_gone_8c.png", NOTICE))
+        g = gray(console)
+        self.assertGreater(L.lobby_title_dist(g, "game_lobby", "ours"), 0.4)
+        self.assertLessEqual(L.lobby_title_dist(g, "game_lobby", "pcsx2"), 0.05)
+        self.assertGreater(L.lobby_title_dist(g, "briefing_room", "pcsx2"), 0.3)
+        # lobby_gray() records the shell's target; a title without a console reference falls back to ours'.
+        L._current_target = "pcsx2"
+        try:
+            self.assertTrue(L.lobby_title_is(g, "game_lobby"))
+            self.assertTrue(L.lobby_title_is(gray(T.CREATE_GAME), "create_game"), "no console CREATE GAME reference yet: ours' serves")
+        finally:
+            L._current_target = "ours"
+
     def test_create_game_and_its_play_list_still_read_the_whole_band(self):
         self.assertIsNone(L.LOBBY_TITLE_COLS.get("create_game"))
         self.assertIsNone(L.LOBBY_TITLE_COLS.get("play_list"))

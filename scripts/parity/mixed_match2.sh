@@ -30,6 +30,10 @@ if ! netstat -an | grep -q "$LAN:53 "; then
   echo "done 5" > "logs/${NAME}.done"; exit 5
 fi
 python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
+# A host left over from the previous leg keeps its game up on the server, and the console client would join THAT
+# (mixed2_ours_hosts_b joined socomc's game while this run's host refused to start: "socom2.exe is already running").
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 > /dev/null 2>&1
+python -c "from tools_py.parity import hostplatform; hostplatform.kill_process_by_name('socom2')" > /dev/null 2>&1
 python -m tools_py.parity.pcsx2_ctl launch B > "$OUT/pcsx2_launch.txt" 2>&1 || { echo "done 6" > "logs/${NAME}.done"; exit 6; }
 # Ours logs in and hosts (verified), holds the lobby and then walks; the console client joins beside it.
 python -m tools_py.parity.online_match_ours --existing-b --foreign-b --hold 30 --play 4 --map "Frostfire" \

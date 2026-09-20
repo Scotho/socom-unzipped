@@ -495,7 +495,9 @@ def lobby_gray_of(im):
 
 def lobby_gray(sh):
     """A frame rendered after the press. A StaleFrameError (an instance stall) is waited out under the
-    stage deadline, never read as a dropped press."""
+    stage deadline, never read as a dropped press. Records the shell's target for the title matchers."""
+    global _current_target
+    _current_target = getattr(sh, "target", "ours")
     while True:
         try:
             return lobby_gray_of(winshot.grab(sh.hwnd, max_age=LOBBY_FRAME_MAX_AGE_S))
@@ -569,23 +571,36 @@ def press_map_cross_verified(sh, wait=4.0):
 # ---------------------------------------------------------------------------
 # Verified fixed presses (Sprint 6 Task 2, research/28 §4 ranks 1-3)
 # ---------------------------------------------------------------------------
+# Sprint 10 Goal 3: the console (PCSX2) draws the online screens ~7% NARROWER than ours and centred -- the GAME
+# LOBBY's title glyphs span x 51..576 on a console frame against 31..595 on ours (PCSX2 honours the CRTC's display
+# window; our presentation draws the framebuffer edge to edge, KNOWN section 2). A text mask cut from our renderer
+# reads the console's title at 0.54 (best over +-24 px; a 1.06x stretch brings it to 0.17), so a title that a
+# console shell must read gets its own reference beside ours', `title_<name>.pcsx2.png`, cut from a console frame
+# at the same band. `lobby_gray(sh)` records which target the frame came from; the matchers pick the reference.
+_current_target = "ours"
+
+
 @functools.lru_cache(maxsize=None)
-def lobby_title_ref(name):
-    return np.asarray(Image.open(os.path.join(LOBBY_REF_DIR, f"title_{name}.png")).convert("L"), dtype=np.float32)
+def lobby_title_ref(name, target="ours"):
+    path = os.path.join(LOBBY_REF_DIR, f"title_{name}.{target}.png") if target != "ours" else ""
+    if not path or not os.path.exists(path):
+        path = os.path.join(LOBBY_REF_DIR, f"title_{name}.png")
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float32)
 
 
-def lobby_title_dist(gray, name):
+def lobby_title_dist(gray, name, target=None):
     """Text-mask distance of the frame's title band to the `name` reference (0 = the same title); the titles that
-    carry the channel name compare their words only (LOBBY_TITLE_COLS)."""
+    carry the channel name compare their words only (LOBBY_TITLE_COLS). `target` defaults to the target of the
+    last frame lobby_gray() read."""
     cols = LOBBY_TITLE_COLS.get(name)
-    band, ref = gray[LOBBY_TITLE], lobby_title_ref(name)
+    band, ref = gray[LOBBY_TITLE], lobby_title_ref(name, target or _current_target)
     if cols:
         band, ref = band[:, :cols], ref[:, :cols]
     return map_mask_distance(band, ref)
 
 
-def lobby_title_is(gray, name):
-    return lobby_title_dist(gray, name) <= LOBBY_TITLE_MAX_DIST
+def lobby_title_is(gray, name, target=None):
+    return lobby_title_dist(gray, name, target) <= LOBBY_TITLE_MAX_DIST
 
 
 def lobby_row_median(gray, row):

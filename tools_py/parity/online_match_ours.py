@@ -4642,6 +4642,9 @@ def main():
             A.sh.log("RESULT MIXED-MATCH host=ours joiner=foreign lobby=ok")
         finally:
             A.kill()
+            # Sprint 10 Goal 3: the game outlives its wrapper; a host left running keeps its game on the server and
+            # the next leg's console client joins THAT (mixed2_ours_hosts_b, 2026-09-20).
+            hostplatform.kill_process_by_name("socom2")
         return
     try:
         A.launch()

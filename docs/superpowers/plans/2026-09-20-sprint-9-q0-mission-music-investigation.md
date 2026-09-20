@@ -156,7 +156,7 @@ that pairs done(N) -> start(N+1) into boundary holes in ms, and a driven M51 run
 
 `launch_to_mission_xl` on ours, recorded at the JBL, 50 windows scored against the console's 48: **FAIL, 10/48.** Two readings. (1) A harness bug: `drive.py --seconds` defaults to 400 and killed our game while the script and the recorder ran on, so s33-s47 are digital silence (-99.7 dB) on ours -- fixed in `audio_parity.sh` (`--seconds 600`), re-run queued. (2) The real finding, in the windows that are honest: **menus and settings PASS** (s06, s08, s10, s12, s14, s15 -- holes 0/0, levels within a dB or two), **the cinematic PASSES** (s20, s22, s23, s25), and **the mission windows FAIL on content**: standing still after the flyover, ours reads -34/-36/-39/-30 dB where the console reads -22/-23/-28/-24 (s24, s26, s27, s31), with 3-6 s of silence per 8 s window (s24 5.5 s, s31 4.1 s, s32 6.1 s) where the console has none, and oscillation 14-25 against 1-5. **The console plays something continuously at the mission start that ours does not play at all.** Not a timing defect of the mixer -- a request or a subsystem: either the game on ours does not ask for it, or we drop what it asks for. Leading suspect: 989DSTRM, the second streaming engine the game initialises through `snd_CallExtension` (fn 0) and, on ours, never asks to play (fn 1 absent from every log; only fn 6 stops) -- the shape of a game that was told the engine failed to init. Next: what fn 0 returns on ours, against research/06 and the IRX.
 
-## 6f. THE MISSING BED, FOUND AND MODELLED (10:00-12:30) -- the ambience is a CONDUCTOR sound our mixer never ran
+## 6f. THE MISSING BED, FOUND AND MODELLED (07:30-08:10 UTC) -- the ambience is a CONDUCTOR sound our mixer never ran
 
 What the verdict's honest windows said, taken window by window with each target's own step times (the first
 spectral pass used ours' times for the console and read a loading screen -- retracted before it was written up):
@@ -206,7 +206,7 @@ the EE's own attenuation (`FUN_00342670` behind `FUN_00346ea0`) says they are ou
 same code runs on the console; whether it says the same there is unmeasured (a listener-position divergence
 would show as exactly this). Not chased tonight -- the conductor's bed is the measured gap.
 
-**Verdicts (13:40, the chain `logs/s9_final_chain.sh`):** C++ suite 686/686 (three times over with the Python
+**Verdicts (08:50 UTC, the chain `logs/s9_final_chain.sh`):** C++ suite 686/686 (three times over with the Python
 suite, `PS2X_TEST_REPEAT=3`, exit 0); gate `s9_q0_children_gate` PASS 3/3 on `dist/socom2.exe` sha256
 `b3abebd5...`; CI green at `3e93b51` (its first run caught a test whose sink vector died before the mixer -- a
 Linux double free, fixed in the test). **Audio parity `s9_q1_parity_ours2`: 31/48 windows within tolerance,
