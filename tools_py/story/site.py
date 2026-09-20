@@ -170,12 +170,16 @@ CSS = r"""
 /* Timeline-only styles. Everything shared with the site (tokens, top bar, sections, cards, buttons, footer) comes
    from the site's ui.css, linked on the site and inlined in the repository's own copy. */
 html{scroll-padding-top:120px}
-.wrap{max-width:900px;margin:0 auto;padding-block:84px 96px}
-.story-hero{padding-top:8px}
+.wrap{max-width:900px;margin:0 auto;padding-block:96px 96px}
+/* the landing region is centred, like web.html's hero (owner, 2026-09-20); the logo's size and glow come from ui.css */
+.story-hero{text-align:center}
+.story-hero .logo{margin:0 auto 6px}
+.story-hero .brief-sub{justify-content:center}
+.story-hero .brief-title{margin-inline:auto}
 .brief-title{font:800 clamp(34px,7vw,64px)/.98 var(--disp);font-style:italic;letter-spacing:.5px;color:var(--lit);margin:0;
 text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wrap:balance}
 .brief-title small{display:block;font:700 clamp(15px,2.6vw,22px)/1.2 var(--disp);font-style:italic;color:var(--glow);letter-spacing:1px;margin-top:8px;text-shadow:none}
-.lede{color:var(--dim);font-style:italic;margin:20px 0 0;max-width:62ch}
+.lede{color:var(--dim);font-style:italic;margin:20px auto 0;max-width:62ch}
 .preface{margin-top:22px;display:grid;gap:12px}
 .preface p{margin:0;max-width:70ch}
 .preface strong{color:var(--lit);font-family:var(--head);font-weight:600;letter-spacing:.4px;font-style:normal}
