@@ -27,11 +27,17 @@ case "$cmd" in
     python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" 480 > "$OUT/loopback.log" 2>&1 &
     REC=$!
     sleep 1
+    # The per-app session volume Windows remembers for the exe on this endpoint sits BEFORE the loopback tap: hold
+    # the launched game at 1.0 / unmuted while it runs and log what it was (music round four, 2026-09-20).
+    exe=socom2.exe; [ "$target" = pcsx2 ] && exe=pcsx2-qt.exe
+    PYTHONPATH="$ROOT" python -m tools_py.parity.app_volume hold "$exe" --seconds 600 > "$OUT/app_volume.log" 2>&1 &
+    VOL=$!
     date +%s.%N > "$OUT/.drive_started"
     # --seconds is OUR game's run length (drive.py defaults to 400): launch_to_mission_xl runs past 400 s, and a game
     # killed at 400 s leaves the last eleven windows as digital silence that reads as a FAIL of the mix (s9_q1_parity_ours).
     python -m tools_py.parity.drive --target "$target" --script "$script" --out "$OUT" --tail 10 --seconds 600 > "$OUT/drive.stdout" 2>&1
     rc=$?
+    kill $VOL 2>/dev/null
     wait $REC
     if [ -n "$restore" ] && [ -s "$restore" ]; then
       powershell -NoProfile -Command "\$b='HKCU:\Software\Microsoft\Internet Explorer\LowRegistry\Audio\PolicyConfig\PropertyStore'; Get-Content '$restore' | ForEach-Object { \$i=\$_.IndexOf('|'); \$k=\$_.Substring(0,\$i); \$v=\$_.Substring(\$i+1); \$p=Join-Path \$b \$k; if (-not (Test-Path \$p)) { New-Item -Path \$p -Force | Out-Null }; Set-ItemProperty -Path \$p -Name '(default)' -Value \$v }" >/dev/null 2>&1
