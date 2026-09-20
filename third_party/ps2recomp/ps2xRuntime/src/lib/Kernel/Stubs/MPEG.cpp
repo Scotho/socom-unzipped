@@ -494,12 +494,20 @@ namespace ps2_stubs
         // NTSC-style fields at ~59.94 Hz to keep MPEG timing yet (29.97 fps).
         constexpr uint64_t kDefaultPictureIntervalQ32 = 2ull * kPictureClockOne;
         constexpr size_t kMpegTimingScanLimit = 4096u;
-        // How far the demux may run ahead of the presenter. Two pictures (the hardware IPU's depth) starved the presenter
-        // here, since the game's demux loop is time-budgeted per frame and our decode lands in bursts: pictures came
-        // every 2.4-2.8 fields instead of 2, and SOCOM II services its audio ring once per served picture. Eight is
-        // the depth the healthy runs had; the audio the demux runs ahead of is set aside when the game's staging ring
-        // is full (research/32 section 7.1).
-        constexpr size_t kMaxDecodedPicturesAhead = 8u;
+        // How far the DECODER may run ahead of the presenter (research/36 item 16, 2026-09-21). A raw count of eight
+        // pictures (the depth the healthy 30 fps intro had) shut the demux for 7-13 frames on the briefing's
+        // low-bitrate stream, where one 16 KB read holds several tiny pictures, and the audio interleaved with the
+        // video waited behind the gate until the game's 48 KB staging ring ran dry. The gate is now the stream's own
+        // picture clock: video is fed to the decoder while the pictures decoded or being decoded cover less than
+        // kMaxDecodeAheadTicks of presentation time (6 pictures at 30 fps, 3 at 15, 12 at 60), under a hard cap.
+        // Video the gate holds back stays in the runtime's own copy (MpegPlaybackState::heldVideo), in order, and
+        // the audio behind it keeps flowing to the game; the game's reads are refused only when that copy is full or
+        // the game itself has refused enough audio (kMaxAsideAudioForInput) to say its ring is full.
+        constexpr size_t kMaxDecodedPicturesAhead = 32u;
+        constexpr uint64_t kMaxDecodeAheadTicksQ32 = 12ull * kPictureClockOne;   // ~200 ms of 59.94 Hz fields
+        constexpr size_t kMaxHeldVideoBytes = 1u << 20u;                          // the held-video copy: 1 MB ...
+        constexpr size_t kMaxHeldVideoPackets = 512u;                             // ... or 512 PES packets
+        constexpr size_t kMaxAsideAudioForInput = 32u;                            // audio the game refused, still owed
 
         // A PES packet parked at the front of the PSS buffer while its stream callbacks run on the guest: accepted, it
         // is fed (video) and erased; refused, the demux call stops before it (research/32 section 7.1).
@@ -535,6 +543,16 @@ namespace ps2_stubs
             uint32_t asideScratchBytes = 0u;
             bool asideAudioBlocked = false;      // refused: offered again on a later vsync tick
             uint64_t asideRefusedTick = 0u;
+            // Video PES payloads the decode gate held back (item 16): fed to the decoder, in order, as the
+            // presenter makes room; every new video packet queues behind them.
+            struct HeldVideo
+            {
+                std::vector<uint8_t> bytes;
+                int64_t pts90k = -1;
+                int64_t dts90k = -1;
+            };
+            std::deque<HeldVideo> heldVideo;
+            size_t heldVideoBytes = 0u;
             uint32_t width = 320u;
             uint32_t height = 240u;
             uint32_t decodeMode = 0u;
@@ -1064,16 +1082,37 @@ namespace ps2_stubs
             return result;
         }
 
-        void flushDecoderIfEnded(MpegPlaybackState &playback)
+        void feedElementaryStream(MpegPlaybackState &playback, const uint8_t *data, size_t size, int64_t pts90k = -1,
+                                  int64_t dts90k = -1, bool flushIfEnded = true);
+
+        // Every video packet the gate held back goes to the decoder before the flush: the end of the stream is the
+        // end of ALL its pictures, held ones included.
+        void feedAllHeldVideo(MpegPlaybackState &playback)
         {
-            if (playback.streamEnded && playback.decoder)
+            while (!playback.heldVideo.empty())
             {
-                playback.decoder->flush();
-                playback.decoder->drain(playback.decodedFrames);
+                MpegPlaybackState::HeldVideo held = std::move(playback.heldVideo.front());
+                playback.heldVideo.pop_front();
+                playback.heldVideoBytes -= std::min(playback.heldVideoBytes, held.bytes.size());
+                feedElementaryStream(playback, held.bytes.data(), held.bytes.size(), held.pts90k, held.dts90k, false);
             }
         }
 
-        void feedElementaryStream(MpegPlaybackState &playback, const uint8_t *data, size_t size, int64_t pts90k = -1, int64_t dts90k = -1)
+        void flushDecoderIfEnded(MpegPlaybackState &playback)
+        {
+            if (playback.streamEnded)
+            {
+                feedAllHeldVideo(playback);
+                if (playback.decoder)
+                {
+                    playback.decoder->flush();
+                    playback.decoder->drain(playback.decodedFrames);
+                }
+            }
+        }
+
+        void feedElementaryStream(MpegPlaybackState &playback, const uint8_t *data, size_t size, int64_t pts90k,
+                                  int64_t dts90k, bool flushIfEnded)
         {
             if (!data || size == 0)
             {
@@ -1170,7 +1209,57 @@ namespace ps2_stubs
             }
 
             playback.videoSequenceSyncBuffer.clear();
-            flushDecoderIfEnded(playback);
+            if (flushIfEnded)
+            {
+                flushDecoderIfEnded(playback);
+            }
+        }
+
+        // The decode gate (item 16): true while the decoder may take another video packet.
+        bool mpegVideoFeedOpen(const MpegPlaybackState &playback)
+        {
+            if (playback.streamEnded || g_mpeg_stub_state.currentCdStreamEofSeen)
+            {
+                return true;   // the tail drains whatever the presenter does
+            }
+            const size_t ahead = playback.decodedFrames.size() + (playback.decoder ? playback.decoder->pending() : 0u);
+            if (ahead >= kMaxDecodedPicturesAhead)
+            {
+                return false;
+            }
+            const uint64_t interval = playback.pictureIntervalQ32 != 0u ? playback.pictureIntervalQ32 : kDefaultPictureIntervalQ32;
+            return static_cast<uint64_t>(ahead) * interval < kMaxDecodeAheadTicksQ32;
+        }
+
+        // Feeds held video to the decoder while the gate is open. Called wherever the presenter may have made room:
+        // every demux call and every sceMpegGetPicture.
+        void feedHeldVideo(MpegPlaybackState &playback)
+        {
+            while (!playback.heldVideo.empty() && mpegVideoFeedOpen(playback))
+            {
+                MpegPlaybackState::HeldVideo held = std::move(playback.heldVideo.front());
+                playback.heldVideo.pop_front();
+                playback.heldVideoBytes -= std::min(playback.heldVideoBytes, held.bytes.size());
+                feedElementaryStream(playback, held.bytes.data(), held.bytes.size(), held.pts90k, held.dts90k);
+            }
+        }
+
+        // A video packet from the PSS buffer: to the decoder if the gate is open and nothing is held, else held
+        // behind what is already held (picture order is the stream's).
+        void feedVideoPacket(MpegPlaybackState &playback, const uint8_t *data, size_t size, int64_t pts90k, int64_t dts90k)
+        {
+            if (!data || size == 0)
+            {
+                return;
+            }
+            feedHeldVideo(playback);
+            if (playback.heldVideo.empty() && mpegVideoFeedOpen(playback))
+            {
+                feedElementaryStream(playback, data, size, pts90k, dts90k);
+                return;
+            }
+            playback.heldVideo.push_back(MpegPlaybackState::HeldVideo{std::vector<uint8_t>(data, data + size), pts90k, dts90k});
+            playback.heldVideoBytes += size;
         }
 
         void erasePssPrefix(MpegPlaybackState &playback, size_t count)
@@ -1422,7 +1511,7 @@ namespace ps2_stubs
                                 return;
                             }
                         }
-                        feedElementaryStream(
+                        feedVideoPacket(
                             playback,
                             buffer.data() + payloadStart,
                             packetEnd - payloadStart,
@@ -1460,11 +1549,11 @@ namespace ps2_stubs
             }
             if (pending.video && pending.payloadStart < pending.end)
             {
-                feedElementaryStream(playback,
-                                     playback.pssBuffer.data() + pending.payloadStart,
-                                     pending.end - pending.payloadStart,
-                                     pending.pts90k,
-                                     pending.dts90k);
+                feedVideoPacket(playback,
+                                playback.pssBuffer.data() + pending.payloadStart,
+                                pending.end - pending.payloadStart,
+                                pending.pts90k,
+                                pending.dts90k);
             }
             erasePssPrefix(playback, pending.end);
         }
@@ -1495,25 +1584,28 @@ namespace ps2_stubs
             }
         }
 
-        bool mpegDemuxBackpressured(const MpegPlaybackState &playback)
+        // The input gate (item 16): whether a demux call's input is refused (0 consumed, the game re-offers it).
+        // Let EOF finalization drain any tail that is already in the guest ring. Otherwise the input is refused
+        // only when the runtime cannot hold more of it: the held-video copy is full, or the game has refused
+        // (and the runtime set aside) enough audio to say its staging ring is full. The decoder's own lead is
+        // mpegVideoFeedOpen's business, not the input's: a low-bitrate GOP no longer shuts the game's reads.
+        //
+        // Important: do not park sceMpegDemuxPss/Ring here. Code Veronica explicitly wakes its video thread before
+        // every demux call and that thread sleeps again after presenting one picture; parking the producer leaves
+        // the consumer asleep with nobody left to issue the next WakeupThread. Returning 0 bytes consumed leaves the
+        // guest ring intact and lets the game's producer loop wake the consumer again. Backpressure still propagates
+        // naturally to sceCdStRead because the ring does not advance while this is true.
+        bool mpegDemuxInputRefused(const MpegPlaybackState &playback)
         {
-            // Let EOF finalization drain any tail that is already in the guest
-            // ring, otherwise bound decode lead to a handful of pictures.
-            //
-            // Important: do not park sceMpegDemuxPss/Ring here. Code Veronica
-            // explicitly wakes its video thread before every demux call and that
-            // thread sleeps again after presenting one picture. A single host
-            // decoder feed can enqueue more than kMaxDecodedPicturesAhead frames;
-            // parking the producer then leaves the consumer asleep after draining
-            // just one frame, with nobody left to issue the next WakeupThread.
-            // Returning 0 bytes consumed instead leaves the guest ring intact and
-            // lets the game's producer loop wake the consumer again. Backpressure
-            // still propagates naturally to sceCdStRead because the ring does not
-            // advance while this is true.
-            // research/36 item 14: packets the worker has not decoded yet are pictures ahead too, or the demux
-            // would run kMaxDecodedPicturesAhead past the presenter while the decoder catches up.
-            return !g_mpeg_stub_state.currentCdStreamEofSeen &&
-                   playback.decodedFrames.size() + (playback.decoder ? playback.decoder->pending() : 0u) >= kMaxDecodedPicturesAhead;
+            if (g_mpeg_stub_state.currentCdStreamEofSeen)
+            {
+                return false;
+            }
+            if (playback.asideAudio.size() >= kMaxAsideAudioForInput)
+            {
+                return true;
+            }
+            return playback.heldVideoBytes >= kMaxHeldVideoBytes || playback.heldVideo.size() >= kMaxHeldVideoPackets;
         }
 
         void recordCdStreamBytesDemuxedUnlocked(
@@ -2101,8 +2193,9 @@ namespace ps2_stubs
                 {
                     playback.asideAudioBlocked = false;   // the audio thread drains at 30 Hz: one re-offer per vsync is plenty
                 }
+                feedHeldVideo(playback);   // item 16: the presenter may have made room since the last call
                 call.decodedBefore = playback.decodedFrames.size();
-                backpressured = mpegDemuxBackpressured(playback);
+                backpressured = mpegDemuxInputRefused(playback);
                 if (!backpressured)
                 {
                     std::vector<MpegStreamCallbackEvent> none;
@@ -2111,11 +2204,8 @@ namespace ps2_stubs
                         : appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, none, false);
                 }
             }
-            if (backpressured)
-            {
-                finishDemuxCall(rdram, ctx, runtime, call, 0u);
-                return;
-            }
+            // A refused call still runs the loop (item 16): the set-aside audio is re-offered once per vsync tick and
+            // whatever the PSS buffer already holds is demuxed; it just took no new input, so it answers 0.
             continueDemuxCall(rdram, ctx, runtime, call);
         }
 
@@ -2372,6 +2462,28 @@ namespace ps2_stubs
         return playback.decodedFrames.size();
     }
 
+    size_t mpegHeldVideoPacketsForTesting(uint32_t mpegAddr)
+    {
+        std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+        return getPlaybackState(mpegAddr).heldVideo.size();
+    }
+
+    size_t mpegAsideAudioPacketsForTesting(uint32_t mpegAddr)
+    {
+        std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+        return getPlaybackState(mpegAddr).asideAudio.size();
+    }
+
+    void mpegDropDecodedFramesForTesting(uint32_t mpegAddr, size_t count)
+    {
+        std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
+        MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+        while (count-- > 0u && !playback.decodedFrames.empty())
+        {
+            playback.decodedFrames.pop_front();
+        }
+    }
+
     void enqueueMpegDecodedFrameForTesting(uint32_t mpegAddr)
     {
         constexpr int kTestFrameWidth = 16;
@@ -2462,6 +2574,7 @@ namespace ps2_stubs
             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
             const size_t framesBefore = playback.decodedFrames.size();
+            feedAllHeldVideo(playback);   // item 16: a flush is of every picture, held ones first
             if (playback.decoder)
             {
                 playback.decoder->flush();
@@ -2729,8 +2842,9 @@ namespace ps2_stubs
         {
             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+            feedHeldVideo(playback);
             decodedBefore = playback.decodedFrames.size();
-            backpressured = mpegDemuxBackpressured(playback);
+            backpressured = mpegDemuxInputRefused(playback);
             if (!backpressured)
             {
                 consumed = appendGuestBytes(mpegAddr, playback, rdram, dataAddr, byteCount, callbackEvents);
@@ -2817,8 +2931,9 @@ namespace ps2_stubs
         {
             std::lock_guard<std::mutex> lock(g_mpeg_stub_mutex);
             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+            feedHeldVideo(playback);
             decodedBefore = playback.decodedFrames.size();
-            backpressured = mpegDemuxBackpressured(playback);
+            backpressured = mpegDemuxInputRefused(playback);
             if (!backpressured)
             {
                 consumed = appendGuestRingBytes(
@@ -2941,6 +3056,7 @@ namespace ps2_stubs
         {
             std::unique_lock<std::mutex> lock(g_mpeg_stub_mutex);
             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
+            feedHeldVideo(playback);   // item 16: the last served picture made room for held video
             {
                 // PS2X_MPEG_PIC_TRACE=1: every 100th GetPicture — decoded queue depth and state.
                 static const bool s_picTrace = std::getenv("PS2X_MPEG_PIC_TRACE") != nullptr;
@@ -2998,7 +3114,7 @@ namespace ps2_stubs
                     // research/36 item 14: with the decoder on its worker, "no picture after N rounds" can mean the
                     // pictures are still being decoded, not that the stream is dry. End only once the worker is
                     // idle; otherwise answer "no picture" and let the game's next call find the frames.
-                    if (!playback.decoder || playback.decoder->idle())
+                    if (playback.heldVideo.empty() && (!playback.decoder || playback.decoder->idle()))
                     {
                         std::cerr << "[MPEG:GetPicture] no picture after " << playback.starveInvocations
                                   << " STOPDMA rounds, ending mp=0x" << std::hex << mpegAddr << std::dec << std::endl;
@@ -3135,6 +3251,7 @@ namespace ps2_stubs
             }
 
             guestEnded = playback.decodedFrames.empty() &&
+                         playback.heldVideo.empty() &&                        // item 16: nor while the gate holds pictures
                          (!playback.decoder || playback.decoder->idle()) &&   // research/36 item 14: not while the worker still holds pictures
                          (playback.streamEnded ||
                           playback.decoderFailed ||
