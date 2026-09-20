@@ -999,8 +999,10 @@ void register_socom2_audio_tests()
         {
             const std::string two = "socom2_audio_clock_a.vpk";
             t.IsTrue(writeVpk(two, 2, 2), "a two-chunk-pair VPK: 7168 samples at 32 kHz, 10752 output frames at 48 kHz");
-            snd989::Mixer mixer;
+            // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
+            // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
             std::vector<snd989::StreamEvent> events;
+            snd989::Mixer mixer;
             mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
             std::vector<int16_t> buf(2 * 1200);
 
@@ -1044,8 +1046,10 @@ void register_socom2_audio_tests()
             // Longer than the ring, so pumping once cannot hold the whole stem.
             const std::string longStem = "socom2_audio_clock_b.vpk";
             t.IsTrue(writeVpk(longStem, 12, 2), "a twelve-chunk-pair VPK");
-            snd989::Mixer mixer;
+            // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
+            // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
             std::vector<snd989::StreamEvent> events;
+            snd989::Mixer mixer;
             mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
             std::vector<int16_t> buf(2 * 1200);
             const uint32_t h = 0x04000022u;
@@ -1158,8 +1162,10 @@ void register_socom2_audio_tests()
         {
             const std::string clip = "socom2_audio_prefill.vpk";
             t.IsTrue(writeVpk(clip, 4, 2), "a loud four-chunk-pair VPK");
-            snd989::Mixer mixer;
+            // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
+            // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
             std::vector<snd989::StreamEvent> events;
+            snd989::Mixer mixer;
             mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
             const uint32_t h = 0x04000051u;
             t.IsTrue(mixer.playStream(h, clip, 0u, 0x400, -1, 1u), "the stream plays");
