@@ -202,6 +202,17 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       fires no voice cue after that. A lost RPC completion on the console's side -- its own behaviour, not a model
       difference; item 1's model (a played-out stream answers 0) stands, and ours' sequencer, which does get its
       answers, simply moves on. The mission MUSIC is not this sequencer's (item 15 is where the pauses live).
+      **Item 14 (`ac53a9d`, ~04:30 UTC): the MPEG decode-ahead worker is in and correct (a 300 ms fake decode
+      returns in < 5 ms; 698 C++ green) and it did NOT clear the bar** -- run `s10_r4p_music_ours` (134/177) has the
+      same four PCM starvations and the same 0.2-0.7 s stream-read gaps (12 totalling 4.8 s over 304 s of movie),
+      VSync ticks advancing at the host rate across each: the demux GUEST THREAD is absent, not parked, not
+      decoding, not reading. Ruled out: the drive, picture waits, the decode, the screenshot exports. Next: a
+      per-guest-thread run trace from the EE scheduler across a gap (which thread ran, in which stub, how long) --
+      a fresh agent (item 16); the mixer-side delay line (~400 ms FIFO on the PCM route, lip-sync cost on the
+      briefing's speaker) stays the fallback, not taken. **Item 15, first link:** the 8 mission stems all come
+      from `ra 0x343590` (FUN_00343550+0x40, a play-def-at-1.0 wrapper via the def's vtable), the title loop and
+      the briefing music from `ra 0x265cd8` (FUN_002659c0+0x318, a scripted sound-command executor); both are
+      virtual-dispatched, so the firing condition sits one link up -- the next run traces those.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
