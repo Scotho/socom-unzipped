@@ -266,7 +266,8 @@ describe('relocation type 1: the LINE_STRIP packet', () => {
     // The normal is (a.w, b.z, b.w) as in §4, but already float, so nothing is divided by 32768.
     expect(Array.from(strip!.normals).map((v) => +v.toFixed(5))).toEqual([0, 0, -1, 0, 1, 0, 0.6, 0.8, 0]);
     // Colours keep the mesh contract: RGB on a full of 255, alpha on 128, alpha clamped.
-    // 128 is unity on every lane, RGB included: the first point's red is raw 255, which doubles.
+    // 128 is unity on every lane, RGB included: the first point's red is raw 255, which doubles the
+    // texel. Alpha clamps, because nothing is more opaque than opaque.
     expect(Array.from(strip!.colors)).toEqual([
       1.9921875, 1, 0, 1,
       0.078125, 0.15625, 0.234375, 0.5,

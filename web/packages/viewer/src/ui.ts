@@ -117,10 +117,10 @@ export class Ui {
     widen(this.sliders.fogfar.input, far);
     find<HTMLInputElement>('fogcolour').value =
       `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
-    for (const name of ['fognear', 'fogfar'] as const) {
-      const { input, out, fmt } = this.sliders[name];
-      out.textContent = fmt(Number(input.value));
-    }
+    // The readout says what the fog *is*, not where the control could sit: the input has snapped the
+    // value to its step, and it is the decoded number that is being drawn.
+    this.sliders.fognear.out.textContent = this.sliders.fognear.fmt(near);
+    this.sliders.fogfar.out.textContent = this.sliders.fogfar.fmt(far);
   }
 
   /** Calls `handler` with the slider that moved, and keeps its readout in step. */

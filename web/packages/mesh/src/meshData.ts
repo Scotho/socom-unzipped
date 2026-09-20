@@ -13,7 +13,8 @@ export interface MeshData {
   uvs: Float32Array;
   /**
    * rgba per vertex as floats, **1.0 being the PS2's unity on every lane** — the stored byte over 128.
-   * Every texture binds `TEX0.TFX = MODULATE`, which is `C = (Ct * Cf) >> 7`, so 128 leaves the texel
+   * Every texture binds `TEX0.TFX = MODULATE` (241 of 241 TEX0 register writes over the three extracted
+   * maps), which is `C = (Ct * Cf) >> 7`, so 128 leaves the texel
    * alone (SEMANTICS §4). RGB is not clamped, because the GS clamps the *product* rather than the
    * vertex; alpha is, because nothing is more opaque than opaque.
    *

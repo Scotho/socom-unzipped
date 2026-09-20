@@ -1,5 +1,5 @@
 import {
-  AxesHelper, Box3, BufferAttribute, BufferGeometry, CanvasTexture, GridHelper, LineBasicMaterial,
+  Box3, BufferAttribute, BufferGeometry, CanvasTexture, GridHelper, LineBasicMaterial,
   LineSegments, Mesh, MeshBasicMaterial, Object3D, Scene, SphereGeometry, Sprite, SpriteMaterial,
   Vector3,
 } from 'three';
@@ -9,7 +9,6 @@ import type { Spawns } from '@s2u/scene';
 const GRID_Y = 100;
 /** Game units: 100 units is 10 m at `MetersPerUnit` 0.1, so a square is a room. */
 const GRID_STEP = 100;
-const AXES_LENGTH = 300;
 /** A spawn marker, in game units: 8 is about a player's shoulders at `MetersPerUnit` 0.1. */
 const SPAWN_RADIUS = 4;
 /** The label floats clear of its sphere rather than inside it. */
@@ -19,24 +18,21 @@ const LABEL_SIZE = 22;
 const SPAWN_COLOURS = { a: 0x4d9bff, b: 0xff6a3d } as const;
 
 /**
- * What the viewer draws on top of a map: a grid at the floor height, the world axes, the collision hull
+ * What the viewer draws on top of a map: a grid at the floor height, the collision hull
  * as coloured line segments, and the two measured spawns as labelled spheres.
  *
  * Everything here is an answer to "is what I am looking at in the right place?", so all of it is off by
  * default and each piece is its own toggle. The collision hull and the spawns come from the map; the
- * grid and the axes come from nothing but the frame itself.
+ * grid comes from nothing but the frame itself.
  */
 export class Overlays {
   private grid: GridHelper | null = null;
-  private readonly axes = new AxesHelper(AXES_LENGTH);
   private collision: LineSegments | null = null;
   private spawns: Object3D | null = null;
   private collisionOn = false;
   private spawnsOn = false;
 
   constructor(private readonly scene: Scene) {
-    this.axes.visible = false;   // no control shows it any more; setAxes still turns it on
-    scene.add(this.axes);
   }
 
   /** Re-sizes the grid to the map that is now loaded and centres it on that map. */
@@ -101,10 +97,6 @@ export class Overlays {
 
   setGrid(visible: boolean): void {
     if (this.grid) this.grid.visible = visible;
-  }
-
-  setAxes(visible: boolean): void {
-    this.axes.visible = visible;
   }
 
   setCollision(visible: boolean): void {

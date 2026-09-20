@@ -188,7 +188,8 @@ For a viewer that does not emulate lighting, use the raw RGB as a baked vertex c
 `RGBAQ` as 0..255 with 128 = 1.0 alpha, so `rgb/255` and `a/128` are the browser values.
 
 **[corrected 2026-09-20]** Read that as a statement about *alpha*. 128 is unity on RGB too: every texture
-binds `TEX0.TFX = MODULATE` (241/241, `web/tools/dump-bindpacket.ts`) and MODULATE is `C = (Ct × Cf) >> 7`,
+binds `TEX0.TFX = MODULATE` (every one of the 241 TEX0 register writes in the three maps' bind packets,
+`web/tools/dump-bindpacket.ts`) and MODULATE is `C = (Ct × Cf) >> 7`,
 so `rgb/128` is the browser value and `rgb/255` draws 1.992× dark. See §11's bullet.
 
 **[data]** Alpha is 128 for 14,423 of 15,071 Frostfire vertices; the remainder (20, 0, 35, 30, …)
@@ -506,8 +507,10 @@ Everything above is Task 11's research document, copied verbatim. This section r
   alike. RGB is **not** clamped, because the GS clamps the product of texel and vertex rather than the
   vertex; alpha **is**, because nothing is more opaque than opaque.
 
-  **[data]** Every texture in Frostfire, Desert Glory and Crossroads binds `TEX0.TFX = MODULATE` — 241
-  of 241, measured with `web/tools/dump-bindpacket.ts` — and MODULATE is `C = (Ct × Cf) >> 7`, so a lane
+  **[data]** Every texture in Frostfire, Desert Glory and Crossroads binds `TEX0.TFX = MODULATE`. The
+  measurement is over the **TEX0 register writes** in the maps' texture bind packets — 241 of 241, both
+  `TEX0_1` and `TEX0_2`, across the 240 textures research/36 counts — with
+  `web/tools/dump-bindpacket.ts`. MODULATE is `C = (Ct × Cf) >> 7`, so a lane
   of 128 leaves the texel unchanged and 255 doubles it. Alpha's "128 is opaque" is that same unity point,
   not a second convention: the blend equation simply has nowhere to put a value above opaque.
 

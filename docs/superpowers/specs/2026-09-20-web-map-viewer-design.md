@@ -382,7 +382,8 @@ second cause already recorded above -- five textures a map cites but its own `_T
 
 An intermediate change divided RGB by 255 and alpha by 128, on a reading of section 4's "`rgb/255` and
 `a/128` are the browser values". That was wrong and made the pipeline 1.992x dark. Every texture in the
-three maps binds `TEX0.TFX = MODULATE` -- 241 of 241, measured with `web/tools/dump-bindpacket.ts` --
+three maps binds `TEX0.TFX = MODULATE` -- 241 of 241 TEX0 register writes (`TEX0_1` and `TEX0_2`) over
+the 240 textures research/36 counts, measured with `web/tools/dump-bindpacket.ts` --
 and MODULATE is `C = (Ct x Cf) >> 7`, so **128 is unity on every lane**. RGB is now `c/128`, unclamped
 (the GS clamps the product, not the vertex); alpha is `min(c/128, 1)`. `SEMANTICS` sections 4 and 11
 carry the correction.

@@ -223,6 +223,7 @@ function show(map: LoadedMap): void {
   // A map with no `cameras/camera` key takes a range off its own size rather than the last map's.
   if (!map.camera) {
     Object.assign(fog, fogForExtent(view.box.min.distanceTo(view.box.max)));
+    fogIsMine = false;                          // the fallback is the map's too, until a slider moves
     ui.setFog(fog.near, fog.far, fog.color);
   }
   overlays.place(view.box);

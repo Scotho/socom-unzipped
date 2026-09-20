@@ -48,7 +48,8 @@ const INDEX_STRIDE = 3;
 /**
  * SEMANTICS §4 quadword c: **128 is unity on every lane**, RGB included.
  *
- * Every texture in the three extracted maps binds `TEX0.TFX = MODULATE` (241 of 241, measured with
+ * Every texture in the three extracted maps binds `TEX0.TFX = MODULATE` (241 of 241 TEX0 register
+ * writes, `TEX0_1` and `TEX0_2` both, over the 240 textures research/36 counts; measured with
  * `tools/dump-bindpacket.ts`), and MODULATE is `C = (Ct * Cf) >> 7` — so a vertex lane of 128 leaves the
  * texel unchanged and 255 would double it. Alpha's 128-is-opaque is the same unity point, not a separate
  * convention; what differs is only that the blend equation has nowhere to put a value above opaque.
@@ -103,7 +104,7 @@ export interface LineStrip {
   positions: Float32Array;
   /** uv per point; unlike a mesh's these run well outside 0..1, so the texture repeats along the strip. */
   uvs: Float32Array;
-  /** rgba per point, on the same two scales `MeshData.colors` uses: RGB of 255, alpha of 128. */
+  /** rgba per point, on the same scale `MeshData.colors` uses: 1.0 is the PS2's unity, the byte over 128. */
   colors: Float32Array;
   /** xyz per point, unit length or exactly zero, as for a mesh vertex. */
   normals: Float32Array;

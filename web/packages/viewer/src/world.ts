@@ -91,7 +91,7 @@ export function buildWorld(map: LoadedMap): WorldView {
   /** The materials whose texture alpha is a ramp: the only ones the switch moves. */
   const graded: MeshBasicMaterial[] = [];
   /** Their flags, so the switch can put the alpha test back exactly as it was. */
-  const gradedFlags = new Map<MeshBasicMaterial, { transparent: boolean } | undefined>();
+  const gradedFlags = new Map<MeshBasicMaterial, { transparent: boolean; graded: boolean } | undefined>();
   // Every drawn part beside the buffer its lit colours go into, so a slider can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
   const materials: MeshBasicMaterial[] = [];
@@ -234,31 +234,48 @@ export function buildWorld(map: LoadedMap): WorldView {
 }
 
 /**
- * How one material treats its texture's alpha. Blended when the alpha is a ramp and the switch is on;
+ * How one material treats its texture's alpha. Blended when the alpha is a ramp *and* the switch is on;
  * otherwise punched through at the halfway point when the record calls the texture transparent, which
  * is what the viewer has always done and needs no sorting.
+ *
+ * The `graded` argument is what keeps a plain opaque wall out of the transparent queue: without it the
+ * function would turn every material transparent whenever the switch went on, and only the order the
+ * materials happen to be built in stops that today.
  */
 function applyBlend(
   material: MeshBasicMaterial,
-  flags: { transparent: boolean } | undefined,
+  flags: { transparent: boolean; graded: boolean } | undefined,
   blendGraded: boolean,
 ): void {
-  material.transparent = blendGraded;
+  const blend = blendGraded && (flags?.graded ?? false);
+  material.transparent = blend;
   // A blended draw does not write depth, or the ones drawn first cut holes in the ones behind.
-  material.depthWrite = !blendGraded;
-  material.alphaTest = blendGraded ? 0.004 : (flags?.transparent ?? false) ? 0.5 : 0;
+  material.depthWrite = !blend;
+  material.alphaTest = blend ? 0.004 : (flags?.transparent ?? false) ? 0.5 : 0;
 }
 
-/** The part with its normals turned by a placement's 3x3, so the lighting sees where it really faces. */
+/**
+ * The part with its normals turned by a placement's 3x3, so the lighting sees where it really faces.
+ *
+ * Renormalised afterwards: a placement matrix is not always a pure rotation. Clutter carries a uniform
+ * scale -- Desert Glory's rocks come through at about 0.93 -- and a scaled normal would dim every
+ * surface of that prop by the same factor, which reads as the prop being in shadow rather than smaller.
+ * A zero normal (SEMANTICS section 4 allows them, 16 of Frostfire's are exactly zero) stays zero.
+ */
 function rotateNormals(part: MeshData, m: Matrix4): MeshData {
   if (!part.normals) return part;
   const e = m.elements;                                 // column-major, as three stores it
   const out = new Float32Array(part.normals.length);
   for (let i = 0; i < out.length; i += 3) {
     const [x, y, z] = [part.normals[i]!, part.normals[i + 1]!, part.normals[i + 2]!];
-    out[i] = x * e[0]! + y * e[4]! + z * e[8]!;
-    out[i + 1] = x * e[1]! + y * e[5]! + z * e[9]!;
-    out[i + 2] = x * e[2]! + y * e[6]! + z * e[10]!;
+    const nx = x * e[0]! + y * e[4]! + z * e[8]!;
+    const ny = x * e[1]! + y * e[5]! + z * e[9]!;
+    const nz = x * e[2]! + y * e[6]! + z * e[10]!;
+    const len = Math.hypot(nx, ny, nz);
+    const k = len > 1e-6 ? 1 / len : 0;
+    out[i] = nx * k;
+    out[i + 1] = ny * k;
+    out[i + 2] = nz * k;
   }
   return { ...part, normals: out };
 }
