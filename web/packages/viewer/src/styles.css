@@ -4,8 +4,20 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
 #view { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
 #view:active { cursor: grabbing; }
 
+/*
+ * Site navigation, so it keeps the top-left corner and the panel starts below it. It is not part of the
+ * chrome the backtick hides: someone looking at a clean picture should still be able to get back.
+ */
+#home {
+  position: fixed; top: 12px; left: 12px; z-index: 2;
+  padding: 4px 9px; border: 1px solid #333a44; border-radius: 6px;
+  background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px);
+  font-size: 12px; line-height: 1.4; color: #9aa4b1; text-decoration: none; white-space: nowrap;
+}
+#home:hover, #home:focus-visible { color: #d8dde4; border-color: #4b5563; }
+
 #panel {
-  position: fixed; top: 12px; left: 12px; width: min(420px, calc(100vw - 24px));
+  position: fixed; top: 48px; left: 12px; width: min(420px, calc(100vw - 24px));
   padding: 10px 12px; border: 1px solid #333a44; border-radius: 8px;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
 }
@@ -19,7 +31,7 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
 #warning strong { color: #ffb04d; letter-spacing: 0.06em; }
 .rights { margin: 8px 0 0; color: #6d757f; font-size: 10px; line-height: 1.45; }
 .rights strong { color: #838c97; font-weight: normal; }
-/* The backtick hides the chrome for a clean look at the map. `#loading` is not chrome. */
+/* The backtick hides the chrome for a clean look at the map. `#home` and `#loading` are not chrome. */
 body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
 
 /*

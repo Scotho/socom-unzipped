@@ -8,6 +8,11 @@
   </head>
   <body>
     <canvas id="view"></canvas>
+    <!--
+      Site navigation, not a viewer control, so it sits outside #panel: the backtick hides the panel
+      and this stays, and it is the first thing in the top-left corner whichever way the panel is set.
+    -->
+    <a id="home" href="https://s2u.scotho.com/">&larr; Unzipped Project</a>
     <div id="fps" aria-live="off">-- fps</div>
     <!--
       The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
@@ -85,8 +90,8 @@
       </details>
       <p class="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
         audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
-        Zipper Interactive. This viewer ships none of them: it reads the disc you already own. Not
-        affiliated with, endorsed by, or connected to Sony Interactive Entertainment.</p>
+        Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
+        Entertainment.</p>
       <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; ` hides this</p>
     </div>
     <script type="module" src="./src/main.ts"></script>
