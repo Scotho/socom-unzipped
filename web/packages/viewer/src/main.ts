@@ -1,5 +1,6 @@
 import { Clock, Scene } from 'three';
 import type { MapInfo } from '@s2u/archive';
+import { sortByPopularity } from './mapOrder';
 import { spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
@@ -193,8 +194,9 @@ async function served(): Promise<boolean> {
 }
 
 function showMaps(maps: MapInfo[]): void {
-  const first = maps.find((m) => m.archive === DEFAULT_ARCHIVE) ?? maps[0];
-  ui.setMaps(maps, first?.path ?? null);
+  const ordered = sortByPopularity(maps); // the owner's popularity ranking, most played first
+  const first = ordered.find((m) => m.archive === DEFAULT_ARCHIVE) ?? ordered[0];
+  ui.setMaps(ordered, first?.path ?? null);
   if (!first) {
     ui.setStatus('the served index lists no MP archives', 'error');
     return;
@@ -289,3 +291,4 @@ window.__viewer = {
   flares: () => view?.flarePositions() ?? [],
   sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;
+(window as unknown as Record<string, unknown>).__scene = scene;  // AB-PROBE

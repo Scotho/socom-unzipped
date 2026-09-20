@@ -61,7 +61,7 @@ test('all three extracted maps render from the served archives', async ({ page }
   for (const map of MAPS) {
     const label = `${map.name} (${map.archive})`;
     await expect(maps.locator('option', { hasText: map.name })).toHaveCount(1);
-    await maps.selectOption({ label });
+    await maps.selectOption(`RUN/${map.archive}.ZDB`); // by value: the option label now carries the game type too
     await expect(status).toContainText(label);
     await expect(status).toContainText('triangles');
 
@@ -112,7 +112,7 @@ test('all three extracted maps render from the served archives', async ({ page }
 
   // Back to Frostfire with the two map-derived overlays on: the collision hull over the deck it guards,
   // and the two spawn markers. The same camera as `frostfire-top.png`, so the pair is a before and after.
-  await maps.selectOption({ label: 'FROSTFIRE (MP2)' });
+  await maps.selectOption('RUN/MP2.ZDB');
   await expect(status).toContainText('FROSTFIRE (MP2)');
   await openPanel(page);
   await page.locator('#collision').check();

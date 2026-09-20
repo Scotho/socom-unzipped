@@ -1,4 +1,5 @@
 import type { MapInfo } from '@s2u/archive';
+import { labelFor } from './mapOrder';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -53,7 +54,7 @@ export class Ui {
     this.maps.replaceChildren(...maps.map((m) => {
       const option = document.createElement('option');
       option.value = m.path;
-      option.textContent = `${m.name} (${m.archive})`;
+      option.textContent = labelFor(m);
       option.selected = m.path === selected;
       return option;
     }));
