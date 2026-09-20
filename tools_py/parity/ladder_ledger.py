@@ -29,9 +29,15 @@ _OUTCOMES_WITH_CLASS = {"LOBBY-FAIL"}
 
 def read_run(run_dir: str, server: str) -> Dict:
     stamp = os.path.basename(run_dir.rstrip("/\\"))
-    done_text = open(run_dir + ".done", encoding="utf-8", errors="replace").read() if os.path.exists(run_dir + ".done") else ""
-    drive_path = os.path.join(run_dir, "drive.log")
-    drive = open(drive_path, encoding="utf-8", errors="replace").read() if os.path.exists(drive_path) else ""
+    # Where the ladder really writes (scripts/parity/ladder_frostfire.sh): the done marker at logs/<stamp>.done, a
+    # level above the run's logs/parity/<stamp>/, and the drive log at logs/parity/drive_<stamp>.txt beside the run
+    # directory. The first scheduled run (ladder_20260920_043246) was ledgered UNKNOWN 0/0 because this reader
+    # looked only next to and inside the run directory; both places are read, the run's own first.
+    parent = os.path.dirname(run_dir.rstrip("/\\"))
+    done_candidates = [run_dir + ".done", os.path.join(os.path.dirname(parent), stamp + ".done")]
+    drive_candidates = [os.path.join(run_dir, "drive.log"), os.path.join(parent, "drive_" + stamp + ".txt")]
+    done_text = next((open(p, encoding="utf-8", errors="replace").read() for p in done_candidates if os.path.exists(p)), "")
+    drive = next((open(p, encoding="utf-8", errors="replace").read() for p in drive_candidates if os.path.exists(p)), "")
     rec = {"stamp": stamp, "server": server, "when": _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
            "rc": None, "outcome": "UNKNOWN", "lobby_class": None, "rounds": 0, "rounds_asked": 0, "usable": 0, "kills": 0,
            "best_rung": None, "harness": None, "exe_sha256": None}
