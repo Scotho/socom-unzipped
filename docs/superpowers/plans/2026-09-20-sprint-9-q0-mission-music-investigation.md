@@ -206,8 +206,33 @@ the EE's own attenuation (`FUN_00342670` behind `FUN_00346ea0`) says they are ou
 same code runs on the console; whether it says the same there is unmeasured (a listener-position divergence
 would show as exactly this). Not chased tonight -- the conductor's bed is the measured gap.
 
-**Verdicts:** the chain `logs/s9_children_chain.sh` (rebuild, C++ suite, gate `s9_q0_children_gate`, audio
-parity `s9_q1_parity_ours2`, PCM dump) -- PENDING at the time of writing; the results are appended below.
+**Verdicts (13:40, the chain `logs/s9_final_chain.sh`):** C++ suite 686/686 (three times over with the Python
+suite, `PS2X_TEST_REPEAT=3`, exit 0); gate `s9_q0_children_gate` PASS 3/3 on `dist/socom2.exe` sha256
+`b3abebd5...`; CI green at `3e93b51` (its first run caught a test whose sink vector died before the mixer -- a
+Linux double free, fixed in the test). **Audio parity `s9_q1_parity_ours2`: 31/48 windows within tolerance,
+from 10/48.** Not one mission window reports silence any more (s24 was 69% silent, s31 64%): the bed is
+there. What remains is LEVEL: s24 -28.9 vs -22.1 dB, s26 -34.4 vs -23.1, s30 -28.2 vs -21.6, s31 -38.4 vs
+-23.7, s32 -41.7 vs -35.3, the 3-8 kHz band (the chirps) 11 dB under the console's in s26-s27 -- our bed
+plays about 7-12 dB quieter than the console's. The candidate is the child volume chain: the reference's
+`params.vol = app * orig / 127` then `play_vol = (spec vol * params.vol) >> 10` (a child of the 0x31 conductor
+at vol 0x400 lands at 53/127 before its own tone volume and group 5's master) may not be what the IRX does;
+the IRX's own START_CHILD_SOUND handler is the authority and is the next reading (`game/analysis/989SND.IRX.decomp.c`,
+the grain dispatcher was not located tonight). s27-s29 PASS outright.
+
+**The movie audio, measured at the ring (`logs/parity/s9_pcm_dump/`, `tools_py/parity/pcm_dump.py`):** the EE
+keeps the ring 100% full at every second (no starvation), and what it writes for the logo movies is
+**-38 dBFS** (peak -26) against **-20 dBFS** (peak -7) for the title loop that follows on the same ring at the same
+vol 0x366 -- and the title matched the console while the logos are 22 dB under it. The deficit is in the samples
+the EE produces for the movies, not in the ring or its gain: ~18 dB is x1/8, three bits, the shape of a shift in
+the recompiled movie-audio path. Sprint 10 work, recorded in KNOWN section 4.
+
+**Q0b, second bursts (`logs/parity/q0b_arrow2_*`):** the PCSX2 burst covers the first 180 s of gameplay with the
+script standing still -- no arrow appears; the HELP pop-up arrives at ~110 s and stays. The blue spikes the
+scorer found are the compass icon. The cue is presumably tied to approaching the first enemies, which no
+script does yet. Our burst captured 720 WHITE frames while the driver's own step screenshots of the same run
+are fine: `frame_burst` on ours found a window whose PrintWindow came back blank this time (the first bursts
+worked) -- a harness defect to fix before the next try (KNOWN section 4). Q0b stays open, tracked.
+
 
 **Q0b, the blue arrow:** both bursts ran out at the cinematic's end (`launch_to_mission.txt` reaches only
 the flyover; ours 87 s, PCSX2 144 s of 220), so neither saw gameplay. The pixel scorer is calibrated on
