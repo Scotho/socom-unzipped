@@ -7,5 +7,5 @@
     "types": ["vite/client", "node"],
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["src", "e2e", "vite.config.ts"]
+  "include": ["src", "e2e", "test", "vite.config.ts", "vitest.config.ts"]
 }

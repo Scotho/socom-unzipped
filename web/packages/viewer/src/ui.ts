@@ -10,6 +10,7 @@ export class Ui {
   private readonly status = find<HTMLParagraphElement>('status');
   private readonly diagnostics = find<HTMLUListElement>('diagnostics');
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
+  private readonly hint = find<HTMLParagraphElement>('hint');
   /**
    * The overlay checkboxes, by the name the debug hook reports them under. Held as one record rather
    * than six fields so `toggles()` cannot drift out of step with what the page actually shows.
@@ -61,6 +62,17 @@ export class Ui {
   /** What the page is showing, for the debug hook and the screenshot test. */
   toggles(): Record<ToggleName, boolean> {
     return Object.fromEntries(TOGGLES.map((name) => [name, this.checks[name].checked])) as Record<ToggleName, boolean>;
+  }
+
+  /**
+   * The camera's line. It reads differently once the mouse is captured, because the way back out —
+   * Esc — is the one control a player cannot guess from the others.
+   */
+  setCameraHint(multiplier: number, locked: boolean): void {
+    const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
+    this.hint.textContent = locked
+      ? `esc to release · WASD fly · space/shift up/down · ctrl boost · ${speed}`
+      : `click to look · WASD fly · space/shift up/down · ctrl boost · ${speed}`;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

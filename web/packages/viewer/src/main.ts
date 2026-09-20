@@ -22,7 +22,10 @@ if (!canvas) throw new Error('the page has no #view canvas');
 
 const ui = new Ui();
 const scene = new Scene();
-const fly = new FlyCamera(canvas);
+const fly = new FlyCamera(canvas, {
+  onSpeedChange: (m) => ui.setCameraHint(m, fly.isLocked()),
+  onLockChange: (locked) => ui.setCameraHint(fly.multiplier(), locked),
+});
 const overlays = new Overlays(scene);
 const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 

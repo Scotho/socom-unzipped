@@ -26,7 +26,36 @@ Run from `web/`:
 | `npm test` | vitest over every package; the fixture-backed tests skip when the extractor has not run |
 | `npm run typecheck` | `tsc` over the five packages, the viewer and `tools` |
 | `npm run dev` | Vite at `http://localhost:5173` |
+| `npm run build` | the viewer as a self-contained static site in `dist/viewer/` (~830 kB, 220 kB gzipped) |
 | `npm run e2e` | Playwright: loads all three fixture maps, asserts the stats, writes screenshots |
+
+## The viewer stands on its own
+
+The viewer is a **standalone project** and is meant to stay one. `npm run build` emits a static
+`dist/viewer/` that needs nothing but a web server and a `maps/` directory beside it — no recompiled game,
+no WebAssembly, no server code. It is useful by itself, to anyone who wants to look at the maps, and it is
+the only part of this repository that a browser can already run end to end. Whatever the full-game route
+does, the viewer keeps its own entry point, its own build and its own deployable output rather than being
+absorbed into it.
+
+## Controls
+
+The camera flies like a creative-mode build camera: momentum, not teleporting.
+
+| input | what it does |
+|---|---|
+| click the canvas | captures the mouse; look is then free. **Esc** gives it back |
+| drag | looks, for touch screens and anywhere pointer lock is refused |
+| `W`/`S` | fly along the look direction — nose down and `W` descends |
+| `A`/`D` | strafe, always level with the horizon whatever the pitch |
+| `Space` / `Shift` | up and down in world space |
+| `Ctrl` | boost, with the field of view widening to match |
+| wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
+| `Q`/`E` | down and up, kept from the earlier bindings |
+
+Starts ramp and stops glide rather than snapping. The velocity is integrated in closed form, so the camera
+covers the same ground per second at 30 fps as at 240 — and `setCamera` from the debug hook clears the
+momentum outright, which is what keeps the Playwright poses exact.
 | `npm run dump-textures -- RUN/MP2.ZDB` | every texture to PNG, both pixel orders and both CLUT orders, plus contact sheets |
 | `npm run export-gltf -- RUN/MP2.ZDB` | one map's world mesh to a `.glb`, for Blender or a glTF validator |
 
@@ -42,7 +71,9 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
 - **`gs`** — GS texture and palette decode: PSMT8 with CT16/CT32 CLUTs, PSMCT16 and PSMCT32 direct.
 - **`mesh`** — the DMA-chain walk, the VIF1 unpack, and the vertex-lane interpretation that yields `MeshData`.
 - **`scene`** — world root, scene graph and node matrices, clutter, collision, the measured spawn table.
-- **`viewer`** — the Vite app: three.js renderer, fly camera, map picker, overlays, diagnostics panel.
+- **`viewer`** — the Vite app: three.js renderer, the build-camera fly controls above, map picker, overlays,
+  diagnostics panel. `test/camera.test.ts` pins the motion model — ramp, glide, frame-rate independence,
+  which axis each key moves along — rather than the tuning constants, which are meant to be tuned.
 
 ## Known gaps
 
