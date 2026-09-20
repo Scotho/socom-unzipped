@@ -67,6 +67,85 @@ namespace
         return b;
     }
 
+    // Sprint 9 Q0: an SBlk v3 block built by hand (the layout of research/32 section 1) with three sounds -- sound 0
+    // a CONDUCTOR of the shape of the M51 ambience's (child sounds, a register test on a global, markers, a loop),
+    // sounds 1 and 2 one TONE each on a HUDUI sample. The program:
+    //   g0  START_CHILD_SOUND  spec A -> sound 1 (vol 100)
+    //   g1  TEST_REGISTER      global 2 (register -2), action 0: skip the next grain when the value is >= 5
+    //   g2  GOTO_MARKER 1
+    //   g3  MARKER 0
+    //   g4  SET_REGISTER       register 0 = 90
+    //   g5  START_CHILD_SOUND  spec B -> sound 2 (vol 100; its tone's Vol is -1 = register 0)
+    //   g6  LOOP_START (delay 10)   g7 LOOP_END
+    //   g8  MARKER 1
+    //   g9  STOP_CHILD_SOUND   spec A
+    //   g10 LOOP_START (delay 10)   g11 LOOP_END
+    // So with global 2 >= 5 the conductor runs children 1 and 2 forever; below 5 it starts child 1, stops it at
+    // once and idles -- the two branches of the mission conductor in miniature.
+    std::vector<uint8_t> conductorBlock(const socom2_bank::Tone &sample)
+    {
+        std::vector<uint8_t> b(0x160, 0u);
+        auto put16 = [&b](size_t at, uint16_t v) { b[at] = static_cast<uint8_t>(v & 0xFF); b[at + 1] = static_cast<uint8_t>(v >> 8); };
+        auto put32 = [&b](size_t at, uint32_t v) { for (int i = 0; i < 4; ++i) b[at + static_cast<size_t>(i)] = static_cast<uint8_t>((v >> (8 * i)) & 0xFF); };
+        auto arg3 = [](int a0, int a1, int a2) {
+            return static_cast<uint32_t>(a0 & 0xFF) | (static_cast<uint32_t>(a1 & 0xFF) << 8) | (static_cast<uint32_t>(a2 & 0xFF) << 16);
+        };
+        std::memcpy(b.data(), "SBlk", 4);
+        put32(0x04, 3u);
+        put16(0x16, 3u);      // NumSounds
+        put16(0x18, 14u);     // NumGrains
+        put32(0x1C, 0x40u);   // FirstSound
+        put32(0x20, 0x70u);   // FirstGrain
+        put32(0x34, 0xE0u);   // GrainData
+        put32(0x38, 0x150u);  // BlockNames
+        std::memcpy(b.data() + 0x150, "COND", 4);
+        // Sound records: {s8 vol, s8 group, s16 pan, s8 numGrains, s8 limit, u16 flags, s32 firstSfxGrain}
+        auto sound = [&](size_t index, int8_t vol, int8_t numGrains, int32_t firstGrain) {
+            const size_t at = 0x40 + index * 12;
+            b[at] = static_cast<uint8_t>(vol);
+            b[at + 4] = static_cast<uint8_t>(numGrains);
+            put32(at + 8, static_cast<uint32_t>(firstGrain));
+        };
+        sound(0, 100, 12, 0);
+        sound(1, 100, 1, 12 * 8);
+        sound(2, 100, 1, 13 * 8);
+        struct G { uint8_t type; uint32_t arg; int32_t delay; };
+        const G grains[14] = {
+            {5, 0x00u, 0}, {34, arg3(-2, 0, 5), 0}, {36, 1u, 0}, {35, 0u, 0}, {30, arg3(0, 90, 0), 0}, {5, 0x20u, 0},
+            {21, 0u, 10}, {22, 0u, 0}, {35, 1u, 0}, {6, 0x00u, 0}, {21, 0u, 10}, {22, 0u, 0},
+            {1, 0x40u, 0},   // sound 1: TONE at pool +0x40
+            {1, 0x58u, 0},   // sound 2: TONE at pool +0x58, Vol -1
+        };
+        for (size_t i = 0; i < 14; ++i)
+        {
+            put32(0x70 + i * 8, (static_cast<uint32_t>(grains[i].type) << 24) | (grains[i].arg & 0xFFFFFFu));
+            put32(0x70 + i * 8 + 4, static_cast<uint32_t>(grains[i].delay));
+        }
+        // The pool: two PlaySoundParams {s32 vol, s32 pan, s8 regs[4], s32 soundId, char name[16]}, two 24-byte tones.
+        put32(0xE0 + 0x00, 100u);
+        put32(0xE0 + 0x0C, 1u);
+        put32(0xE0 + 0x20, 100u);
+        put32(0xE0 + 0x2C, 2u);
+        auto tone = [&](size_t at, int8_t vol) {
+            b[at + 0] = static_cast<uint8_t>(sample.priority);
+            b[at + 1] = static_cast<uint8_t>(vol);
+            b[at + 2] = static_cast<uint8_t>(sample.centerNote);
+            b[at + 3] = static_cast<uint8_t>(sample.centerFine);
+            put16(at + 4, static_cast<uint16_t>(sample.pan));
+            b[at + 6] = static_cast<uint8_t>(sample.mapLow);
+            b[at + 7] = static_cast<uint8_t>(sample.mapHigh);
+            b[at + 8] = static_cast<uint8_t>(sample.pbLow);
+            b[at + 9] = static_cast<uint8_t>(sample.pbHigh);
+            put16(at + 10, sample.adsr1);
+            put16(at + 12, sample.adsr2);
+            put16(at + 14, sample.flags);
+            put32(at + 16, sample.sampleOffset);
+        };
+        tone(0xE0 + 0x40, 100);
+        tone(0xE0 + 0x58, -1);
+        return b;
+    }
+
     // A stereo VPK on disk: 0xB0-byte header {"VPK ", dataSize, interleave 0x800, headerSize 0xB0, rate 32000,
     // channels 2}, then `chunkPairs` pairs of 0x800-byte chunks (left ramp up, right ramp down); the very last
     // block carries the data's end flag. Task 1e's ring cases need a file longer than the ring holds.
@@ -687,6 +766,124 @@ void register_socom2_audio_tests()
             t.Equals(mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0), 0u, "and it no longer plays");
         });
 
+        tc.Run("Mixer: a conductor sound starts and stops child sounds, tests a global register and jumps to markers (Sprint 9 Q0)", [](TestCase &t)
+        {
+            const std::vector<uint8_t> hud = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            socom2_bank::Bank hudui;
+            t.IsTrue(socom2_bank::parse(hud.data(), hud.size(), hudui) && hudui.sounds.size() > 8u, "HUDUI parses");
+            socom2_bank::Tone click;
+            t.IsTrue(hudui.tone(hudui.sounds[8].grains[0], click), "sound 8's tone is the sample the children play");
+            const std::vector<uint8_t> blk = conductorBlock(click);
+            socom2_bank::Bank cond;
+            t.IsTrue(socom2_bank::parse(blk.data(), blk.size(), cond), "the hand-built block parses");
+            t.Equals(cond.sounds.size(), static_cast<size_t>(3u), "three sounds");
+            t.Equals(cond.sounds[0].grains.size(), static_cast<size_t>(12u), "the conductor's twelve grains");
+            t.Equals(cond.name, std::string("COND"), "its name");
+
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.loadBank(0x00a30000u, blk.data(), blk.size(), vag.data(), vag.size()), "loads with HUDUI's samples");
+            std::vector<int16_t> buf(2 * 4096);
+
+            // Global 2 below 5: child 1 is started and stopped again before it joins; the conductor idles in its loop, alive.
+            mixer.setGlobalReg(2u, 0);
+            const uint32_t idle = mixer.play(0x00a30000u, 0u, 0x400, -1, 0, 0);
+            t.IsTrue(idle != 0u && mixer.isPlaying(idle), "the conductor plays");
+            t.Equals(mixer.activeChildren(idle), static_cast<size_t>(0u), "global 2 = 0: the one child was started and stopped at once");
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(0u), "no voice: it never played");
+            for (int i = 0; i < 12; ++i)
+                mixer.render(buf.data(), 4096);
+            t.IsTrue(mixer.isPlaying(idle), "the conductor loops on, alive with no voice of its own (the game polls it and never restarts it)");
+            mixer.stop(idle);
+            mixer.render(buf.data(), 4096);
+            t.IsTrue(!mixer.isPlaying(idle), "stop ends it");
+
+            // Global 2 at 6: the test passes, register 0 is set, both children run; the second's tone reads its
+            // volume (-1) from register 0, copied from the conductor at the start.
+            mixer.setGlobalReg(2u, 6);
+            t.Equals(mixer.globalReg(2u), 6, "the global reads back");
+            const uint32_t h = mixer.play(0x00a30000u, 0u, 0x400, -1, 0, 0);
+            t.Equals(mixer.activeChildren(h), static_cast<size_t>(2u), "global 2 = 6: two children");
+            const uint32_t c0 = mixer.childSound(h, 0), c1 = mixer.childSound(h, 1);
+            t.IsTrue((c0 == 1u && c1 == 2u) || (c0 == 2u && c1 == 1u), "sounds 1 and 2 (" + std::to_string(c0) + ", " + std::to_string(c1) + ")");
+            t.Equals(mixer.activeVoices(), static_cast<size_t>(2u), "one voice each");
+            mixer.render(buf.data(), 4096);
+            int32_t peak = 0;
+            for (int16_t s : buf)
+                peak = std::max<int32_t>(peak, s < 0 ? -s : s);
+            t.IsTrue(peak > 500, "the children are audible (peak " + std::to_string(peak) + ")");
+            t.IsTrue(mixer.isPlaying(h), "the conductor is alive");
+            // Stopping the conductor stops its children with it.
+            mixer.stop(h);
+            for (int i = 0; i < 12; ++i)
+                mixer.render(buf.data(), 4096);
+            t.IsTrue(!mixer.isPlaying(h), "stopped");
+            t.Equals(mixer.activeChildren(h), static_cast<size_t>(0u), "no child survives its conductor");
+            t.Equals(mixer.activeHandlers(), static_cast<size_t>(0u), "nothing left");
+
+            // Register sentinel: register 0 = 0 makes child 2's tone silent while child 1 still sounds.
+            // (Played with the conductor's branch that sets the register, then the register re-set by hand is not
+            // reachable; instead play sound 2 directly: its tone's Vol -1 reads the handler's register 0, which a
+            // sound the game plays starts at 0.)
+            const uint32_t direct = mixer.play(0x00a30000u, 2u, 0x400, -1, 0, 0);
+            t.IsTrue(direct != 0u, "sound 2 plays on its own");
+            mixer.render(buf.data(), 4096);
+            int32_t peak2 = 0;
+            for (int16_t s : buf)
+                peak2 = std::max<int32_t>(peak2, s < 0 ? -s : s);
+            t.Equals(peak2, 0, "with register 0 at 0 its tone is silent: the sentinel resolved to the register, not to a negative volume");
+            mixer.stopAll();
+        });
+
+        tc.Run("the M51 ambience conductor (bank M51_AM sound 0x31, cut from the disc): global 2 selects the child set (Sprint 9 Q0)", [](TestCase &t)
+        {
+            // The parity check's finding: the console plays a continuous bed at the mission start that ours did not
+            // -- this sound, whose grains are START/STOP_CHILD_SOUND, TEST_REGISTER, GOTO_MARKER and LOOP. With no
+            // VAG chunk the children's tones find no sample; the programs still run and the child set is visible.
+            const std::vector<uint8_t> blk = readFixture("m51_am_block.bin");
+            t.Equals(blk.size(), static_cast<size_t>(25968u), "fixture m51_am_block.bin is present (25968 bytes)");
+            socom2_bank::Bank bank;
+            t.IsTrue(socom2_bank::parse(blk.data(), blk.size(), bank), "parses");
+            t.Equals(bank.name, std::string("M51_AM"), "the block name");
+            t.Equals(bank.sounds.size(), static_cast<size_t>(123u), "123 sounds");
+            t.Equals(bank.sounds[0x31].grains.size(), static_cast<size_t>(33u), "the conductor's 33 grains");
+            t.Equals(static_cast<int>(bank.sounds[0x31].grains[0].type), static_cast<int>(socom2_bank::kStartChild), "its first grain starts a child");
+
+            static const uint8_t none[1] = {0u};
+            snd989::Mixer mixer;
+            t.IsTrue(mixer.loadBank(0x00a30000u, blk.data(), blk.size(), none, 0u), "loads without its samples");
+            auto childSet = [&](int32_t global2) {
+                mixer.setGlobalReg(2u, global2);
+                const uint32_t h = mixer.play(0x00a30000u, 0x31u, 0x400, -1, 0, 0);
+                std::vector<uint32_t> sounds;
+                for (size_t i = 0; i < mixer.activeChildren(h); ++i)
+                    sounds.push_back(mixer.childSound(h, i));
+                std::sort(sounds.begin(), sounds.end());
+                mixer.stop(h);
+                std::vector<int16_t> buf(2 * 512);
+                mixer.render(buf.data(), 512);
+                return sounds;
+            };
+            const std::vector<uint32_t> day = childSet(6);   // what the game writes to global 2 through the first mission
+            t.Equals(day.size(), static_cast<size_t>(8u), "global 2 = 6: eight children");
+            t.IsTrue(day.size() == 8u && day[0] == 0x32u && day[6] == 0x38u && day[7] == 0x52u, "sounds 0x32..0x38 and 0x52 -- the bed, the birds, the insects");
+            const std::vector<uint32_t> other = childSet(40);
+            t.Equals(other.size(), static_cast<size_t>(2u), "global 2 = 40 (the register test's other side): two children");
+            t.IsTrue(other.size() == 2u && other[0] == 0x52u && other[1] == 0x73u, "sounds 0x52 and 0x73");
+            t.Equals(mixer.activeHandlers(), static_cast<size_t>(0u), "every conductor and child stopped");
+        });
+
+        tc.Run("PS2AudioBackend routes snd_SetGlobalReg into the mixer (Sprint 9 Q0)", [](TestCase &t)
+        {
+            PS2AudioBackend backend;
+            const int32_t reg[2] = {2, 6};
+            backend.onNotify(0x67u, reg, 2u);
+            t.Equals(backend.mixerGlobalReg(2u), 6, "global 2 reads back as 6");
+            const int32_t bad[2] = {0, 9};
+            backend.onNotify(0x67u, bad, 2u);
+            t.Equals(backend.mixerGlobalReg(0u), 0, "index 0 is not a register (the API counts from 1)");
+        });
+
         tc.Run("PS2AudioBackend routes a bank and the play family from the IOP module into the mixer", [](TestCase &t)
         {
             const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
@@ -951,6 +1148,30 @@ void register_socom2_audio_tests()
             t.IsTrue(d.periodMs >= 20u, "a period of at least 20 ms (raylib's 10 ms missed ~40 times a minute under load; got " + std::to_string(d.periodMs) + ")");
             t.IsTrue(d.bufferMs() >= 60u, "at least 60 ms of buffer in flight (got " + std::to_string(d.bufferMs()) + " ms)");
             t.IsTrue(d.bufferMs() <= 200u, "and not so much that the game's own timing drifts audibly (got " + std::to_string(d.bufferMs()) + " ms)");
+        });
+        // Sprint 9 Q0 (2026-09-20, the owner's second listen): every stream's FIRST callback found the ring empty --
+        // 21 underruns in the owner's run, one per stream start, 20 ms each (one device period) -- because the push
+        // happens on the RPC thread and the worker fills the ring on its own 10 ms cadence. A stem that starts on
+        // the heels of another therefore opens with a 20 ms hole, and a voice line starts 20 ms late: the owner's
+        // "stuttering, skipping a bit". The push decodes the first chunk pair itself, so the first render has data.
+        tc.Run("Mixer: a stream has sound in its very first render call, before any worker pump", [](TestCase &t)
+        {
+            const std::string clip = "socom2_audio_prefill.vpk";
+            t.IsTrue(writeVpk(clip, 4, 2), "a loud four-chunk-pair VPK");
+            snd989::Mixer mixer;
+            std::vector<snd989::StreamEvent> events;
+            mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
+            const uint32_t h = 0x04000051u;
+            t.IsTrue(mixer.playStream(h, clip, 0u, 0x400, -1, 1u), "the stream plays");
+            // No pumpStreams() here: this is the callback that lands before the worker has run.
+            std::vector<int16_t> buf(2 * 960);
+            mixer.render(buf.data(), 960);
+            int32_t peak = 0;
+            for (int16_t v : buf) peak = std::max(peak, std::abs(static_cast<int32_t>(v)));
+            t.IsTrue(peak > 200, "the first 20 ms render already carries the stream (peak " + std::to_string(peak) + ")");
+            size_t underruns = 0;
+            for (const snd989::StreamEvent &e : events) if (e.handle == h && e.kind == snd989::StreamEvent::Underrun) ++underruns;
+            t.Equals(underruns, static_cast<size_t>(0u), "and no underrun was reported for it");
         });
         // Sprint 9 Goal 10 (R170): the other half of the owner's sentence -- "getting louder and quieter". A
         // fade belongs to the cue it was asked for, not to the handle for ever. stop() and setVolPan() already
@@ -1325,13 +1546,18 @@ void register_socom2_audio_tests()
             t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
             snd989::Mixer mixer;
             t.IsTrue(mixer.playStream(2u, path, 0ull, 0x400, 0, 0u), "the stream starts");
-            mixer.closeStreamFilesForTest();          // nothing pumped: the ring is empty
+            mixer.closeStreamFilesForTest();          // nothing pumped past the pre-fill: the ring holds one chunk pair
             std::vector<int16_t> buf(4096 * 2, 0x7F);
+            auto anyNonZero = [&]() { for (int16_t s : buf) if (s != 0) return true; return false; };
+            // Sprint 9 Q0: playStream decodes the first chunk pair on the caller's thread (the pre-fill), so the
+            // first render has sound without a pump -- one chunk pair of a 32 kHz stream is 5376 frames at 48 kHz.
+            mixer.render(buf.data(), 4096);
+            t.IsTrue(anyNonZero(), "the pre-filled chunk plays on the first render");
+            mixer.render(buf.data(), 4096);           // the pre-fill runs out inside this one
+            std::fill(buf.begin(), buf.end(), static_cast<int16_t>(0x7F));
             mixer.render(buf.data(), 4096);           // must not crash, must not read, must go quiet
             t.Equals(static_cast<int>(buf[0]), 0, "an empty ring renders silence, not a disc read");
-            bool anyNonZero = false;
-            for (int16_t s : buf) if (s != 0) { anyNonZero = true; break; }
-            t.IsTrue(!anyNonZero, "the whole buffer is silence");
+            t.IsTrue(!anyNonZero(), "the whole buffer is silence");
             t.Equals(mixer.activeStreams(), static_cast<size_t>(1u), "an underrun is not the end of the stream");
             std::remove(path.c_str());
         });

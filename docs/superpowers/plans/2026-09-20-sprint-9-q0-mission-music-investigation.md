@@ -146,6 +146,74 @@ that pairs done(N) -> start(N+1) into boundary holes in ms, and a driven M51 run
 
 `s9_q0_m51_trace2`, the same driven mission on the runtime that opens its own device (20 ms x 4, `mix_device.h`): endpoint dropouts in the mission minute **42 -> 2**, the endpoint now mirroring the dump (3 silences / 4 at the speaker, against 5 / 46 before). The mix-open line names the device, the period and the engine rate from now on. Gate `s9_q0_device_gate` 3/3, suite 682/682. Still open and small: every stem starves its first callback (10-20 ms) while the worker's first fill lands -- pre-fill one chunk pair at play time.
 
+## 6d. THE AUDIO PARITY CHECK (08:30) -- the owner's ask, built
+
+`scripts/parity/audio_parity.sh capture|compare` + `tools_py/parity/audio_parity.py` (7 tests): the same step script on PCSX2 and ours, each recorded at the endpoint, cut into per-step windows by the drive's step times, scored, and ours compared to the console's pinned JSON with tolerances (holes: ref + 2 + 50% -- 41 against 0 fails at once; splices, silences, oscillation likewise; rms within 6 dB). Reference pinned from tonight's console capture. It is the visual gate's shape applied to sound, and it measures the path the owner hears rather than the mixer's output.
+
+**The owner's second listen (08:10), same words as asked:** better, not fixed -- "stuttering, skipping a bit" walking to the first enemies; "two segments playing at once and then both stopped abruptly" on the briefing; a stop at the HELP pop-up (the game pauses there; PCSX2 stood still and never opened one -- unmeasured). His log carried the trace: the device line is right, and **every stream's first callback starved -- 21 underruns, one per stream start, 20 ms each** (the worker fills on its own 10 ms cadence; with a 20 ms period the hole doubled). Fixed: `playStream` decodes the first chunk pair itself before the push (RED: "the first 20 ms render already carries the stream (peak 0)"). The briefing's two-at-once: his log shows the 29 s briefing cue `1159a2` under two voice lines, the second starting 0.4 s before the game stopped the first (`done detail=0xFFFFFFFF`) -- the game's own interrupt, or our `SoundIsStillPlaying` answering early; the parity check's briefing windows will say which.
+
+## 6e. THE FIRST AUDIO PARITY VERDICT (09:55) -- `logs/parity/s9_q1_parity_ours/audio_parity.txt`
+
+`launch_to_mission_xl` on ours, recorded at the JBL, 50 windows scored against the console's 48: **FAIL, 10/48.** Two readings. (1) A harness bug: `drive.py --seconds` defaults to 400 and killed our game while the script and the recorder ran on, so s33-s47 are digital silence (-99.7 dB) on ours -- fixed in `audio_parity.sh` (`--seconds 600`), re-run queued. (2) The real finding, in the windows that are honest: **menus and settings PASS** (s06, s08, s10, s12, s14, s15 -- holes 0/0, levels within a dB or two), **the cinematic PASSES** (s20, s22, s23, s25), and **the mission windows FAIL on content**: standing still after the flyover, ours reads -34/-36/-39/-30 dB where the console reads -22/-23/-28/-24 (s24, s26, s27, s31), with 3-6 s of silence per 8 s window (s24 5.5 s, s31 4.1 s, s32 6.1 s) where the console has none, and oscillation 14-25 against 1-5. **The console plays something continuously at the mission start that ours does not play at all.** Not a timing defect of the mixer -- a request or a subsystem: either the game on ours does not ask for it, or we drop what it asks for. Leading suspect: 989DSTRM, the second streaming engine the game initialises through `snd_CallExtension` (fn 0) and, on ours, never asks to play (fn 1 absent from every log; only fn 6 stops) -- the shape of a game that was told the engine failed to init. Next: what fn 0 returns on ours, against research/06 and the IRX.
+
+## 6f. THE MISSING BED, FOUND AND MODELLED (10:00-12:30) -- the ambience is a CONDUCTOR sound our mixer never ran
+
+What the verdict's honest windows said, taken window by window with each target's own step times (the first
+spectral pass used ours' times for the console and read a loading screen -- retracted before it was written up):
+
+| window | console | ours | what ours had playing (stream trace, `logs/run_20260920_041306.log`) |
+|---|---|---|---|
+| s22-s25 (radio lines) | -22..-26 dB, 0% silent | -25..-26 dB, 0% silent, same band shape | the group-6 / group-2 dialogue streams, full length, right level -- **these PASS** |
+| s24 | -22 dB, 0% silent | -34 dB, **69% silent** | M51_071 ended at 175.8 s, the next line at 181.2 s: a 5.4 s gap the console does not have |
+| s26-s27 (one music stem) | -25 dB, 0% silent, energy up to 8 kHz | -37 dB, dark (3-8 kHz 17 dB lower) | stem 04010311 alone, 29.0 s = its disc length exactly |
+| s31-s32 | -27 dB, 0% silent | -33 dB, **64% silent** | stems + lines with gaps between |
+
+Every stream the game asked for plays its full on-disc length (eight checked against the VAGp / VPK headers,
+all within 0.1 s) at the level the menu music calibrated. So the console's continuous floor is not a stream at
+all. It is **bank M51_AM sound 0x31** -- `05120309` in the trace, played once at mission load at vol 0x400, polled
+by the game every frame and never restarted because we always answered "still playing". Parsed from the disc
+(fixture `tests/fixtures/audio/m51_am_block.bin`): 33 grains, and they are START_CHILD_SOUND x9,
+STOP_CHILD_SOUND x9, TEST_REGISTER on **global register 2** (which the game writes every frame:
+`snd_SetGlobalReg(2, 6)`, 632 calls), GOTO_MARKER, MARKER, LOOP. A conductor. Its children are the bed and the
+wildlife: sounds 0x32..0x38 and 0x52 on one branch (looping tones, RAND_DELAY chirps, register-driven
+volumes), 0x52 and 0x73 on the other. Our grain interpreter had `default: break; // ... children ... not
+modelled` -- so the conductor looped forever in silence, alive, and the game was satisfied.
+
+**Modelled** (`snd989_mixer.cpp`, from the open 989snd reimplementation's `sfxgrain.cpp` /
+`blocksound_handler.cpp`, fetched and read whole, not summarised): START/STOP_CHILD_SOUND (a child is a
+Handler with `parent`; its volume the spec's scaled by the parent's app volume, `app * orig / 127`, as the
+reference's MakeHandler computes it; it keeps the parent alive; stop/pause/setVolPan reach it),
+TEST/SET/SET_RAND/INC/DEC/ADD/COPY_REGISTER (four handler registers, 32 globals; a grain's register -N is
+global N-1, which the IRX confirms: `snd_SetGlobalReg(index 1..32)` stores at `table[index-1]`, FUN_000042b8),
+MARKER / GOTO_MARKER / GOTO_RANDOM_MARKER, RAND_PLAY / PLAY_CYCLE (the skip bookkeeping), WAIT_FOR_ALL_VOICES,
+ON_STOP_MARKER, BRANCH, the tone Vol/Pan sentinels (-1..-4 a register, -5 random, -6.. a global -- the
+chirps' tones are `vol -2 pan -3`, silent before as a negative volume), LOOP_END landing on LOOP_START itself
+so its delay paces every pass (the conductor's is 120 ticks), RAND_DELAY as `arg + 1`. `snd_SetGlobalReg`
+now reaches the mixer (IOP forward, backend 0x67). Three tests: a hand-built conductor block on HUDUI's
+samples (both branches, the sentinel, stop reaching the children), the real M51_AM block with no samples
+(global 2 = 6 -> the eight children 0x32..0x38, 0x52; 40 -> 0x52, 0x73), the backend route.
+
+**Not the whole of it.** Two more things the same pass measured: (a) **the movie audio is ~20 dB under the
+console** on the logo movies (s02: -50 vs -28 dB) and the cinematic (s19: -47 vs -26, the same band shape),
+the only PCM-ring content in the script; the ring's gain arithmetic gives x0.425 for its vol 0x366, so the
+deficit is in what the EE writes or in stale blocks -- a PCM dump run (`PS2X_AUDIO_PCM_DUMP`) is queued in
+the chain to read the ring's level and fill rate. (b) **the 5 s dialogue gaps** (s24, s31) are the game's own
+schedule on ours; whether the console's differs is masked by its bed. Re-measure after the bed is back.
+
+(c) The five positioned emitters the game starts after the flyover (sound 0x42, two looping tones each,
+handles `0500030b..0504030f`) get `snd_SetSoundParams(mask 5, vol 0, pan 313..318)` from the EE every frame:
+the EE's own attenuation (`FUN_00342670` behind `FUN_00346ea0`) says they are out of range at the spawn. The
+same code runs on the console; whether it says the same there is unmeasured (a listener-position divergence
+would show as exactly this). Not chased tonight -- the conductor's bed is the measured gap.
+
+**Verdicts:** the chain `logs/s9_children_chain.sh` (rebuild, C++ suite, gate `s9_q0_children_gate`, audio
+parity `s9_q1_parity_ours2`, PCM dump) -- PENDING at the time of writing; the results are appended below.
+
+**Q0b, the blue arrow:** both bursts ran out at the cinematic's end (`launch_to_mission.txt` reaches only
+the flyover; ours 87 s, PCSX2 144 s of 220), so neither saw gameplay. The pixel scorer is calibrated on
+the sky (12,400 "blue" pixels at the title). Next: burst the first 60 s of gameplay from
+`launch_to_mission_xl` on both, then look, not count.
+
 ## 7. Stop rules
 
 - No mixer behaviour changes (latency, headroom, caps) until the PCSX2 reference and the instrument agree on what is

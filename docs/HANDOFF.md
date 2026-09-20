@@ -194,12 +194,25 @@ rather than rule. At most two C++-building agents at once.
   (`scripts/parity/online_control_round.sh "<map>"`): two instances, online, against our server only.
   `scripts/parity/env.sh` sets the server address for the harness. `mixed_match.sh` (ours against PCSX2) has never
   produced a result (Sprint 10 Goal 3).
-- **Audio:** `tools_py/parity/audio_corr.py` (correlation against a reference; `--repeat` for the buzz). It cannot yet
-  see an envelope wobble or a splice -- that is Q1.
+- **Audio (rebuilt 2026-09-20, Q0/Q1):** the ear's path is measured now, not the mixer's. `tools_py/parity/audio_envelope.py`
+  scores any WAV reference-free (envelope oscillation, splices, silences, sub-second holes); `loopback_record.py`
+  records what Windows sends to the default endpoint (WASAPI loopback -- this is what the owner hears);
+  `stream_events.py` reads the runtime's stream trace (`[audio] 989snd stream <h> start|done|UNDERRUN frame=N`, on
+  the WAV clock) into boundary gaps and starvation per stem; and **`scripts/parity/audio_parity.sh capture|compare`**
+  is the audio parity check against PCSX2: the same step script on both targets, per-step windows scored, ours
+  compared to the console's pinned scores (`scripts/parity/refs/audio_<script>.pcsx2.json`) with tolerances --
+  PASS/FAIL per window. `audio_corr.py` (correlation, `--repeat`) still exists for the title path. The old driven
+  dump alone (`PS2X_AUDIO_DUMP`) cannot see the device path; record the endpoint beside it.
 - **Run recipes, the env-gated diagnostics list, landmarks and gotchas from the first two weeks:**
   `docs/archive/HANDOFF-reference-to-2026-09-13.md` ("The run you will repeat", "Diagnostics", "Gotchas",
   "Landmarks"). Every recipe there that sets a `PS2X_*` probe works through `./run.sh` unchanged; once Goal 3 lands,
   a runner started any other way needs `--dev` or `PS2X_DEV=1` for a probe to be honoured.
+- **The ladder, scheduled (Sprint 10 Goal 1):** `scripts/ladder_job.sh [rounds]` is what the Task Scheduler entry
+  `SOCOM Unzipped ladder` (disabled until the owner names the windows) fires: quiet gate, lock free, no game, then
+  `scripts/parity/ladder_frostfire.sh` pinned and detached against the hosted server, then
+  `tools_py/parity/ladder_ledger.py add` -- one record per run in `logs/ladder/ledger.jsonl`, the three rates and
+  the clean streak rendered to `docs/LADDER.md` (a person commits it). The bar is seven consecutive runs with no
+  LOBBY-FAIL and no CRASH.
 - **Logs:** `logs/` is 27 GB and git-ignored. `scripts/archive_logs.ps1` (dry-run by default; refuses to move anything
   KNOWN §1 names as evidence) has not been applied since it was written. Run its dry run, read it, then `-Apply` in a
   quiet window -- it is filler, and it is evidence you are moving, so read before you apply.
