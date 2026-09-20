@@ -308,7 +308,7 @@ def chrome_footer(base, fine):
             '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>\n'
             '    </div>\n    <nav aria-label="Footer">\n'
             '      <a href="%s/story.html">The story</a>\n      <a href="%s/">Classic menu</a>\n'
-            '      <span class="soon">GitHub (coming soon)</span>\n      <a href="%s#report">Report a bug</a>\n'
+            '      <span class="soon">GitHub (soon)</span>\n      <a href="%s#report">Report a bug</a>\n'
             '    </nav>\n  </div>\n  <div class="foot-fine">%s</div>\n</footer>\n' % (base, base, w, fine))
 
 
