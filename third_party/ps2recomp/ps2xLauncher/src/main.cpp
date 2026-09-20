@@ -27,6 +27,7 @@
 #include "ui/fonts.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
+#include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/pages.h"
 #include "ui/theme.h"
@@ -1095,7 +1096,29 @@ int main(int argc, char **argv)
             const bool typing = !app.activeField.empty();
             const int padSlot = shownSlot(app.config);
             const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
-            auto padPressed = [&](int button) { return padPresent && IsGamepadButtonPressed(padSlot, button); };
+
+            // Sprint 9 Goal 9 (P3): every pad reading goes through ONE gate, which knows the game may own
+            // the pad. raylib reads the pad whether or not this window has focus, so before this the
+            // player's stick walked the launcher's focus ring while they were aiming with it.
+            ui::PadFrame padFrame;
+            padFrame.present = padPresent;
+            if (padPresent)
+            {
+                auto edge = [&](ui::PadNav nav_, int button)
+                { padFrame.pressed[static_cast<int>(nav_)] = IsGamepadButtonPressed(padSlot, button); };
+                edge(ui::PadNav::Left, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+                edge(ui::PadNav::Right, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+                edge(ui::PadNav::Up, GAMEPAD_BUTTON_LEFT_FACE_UP);
+                edge(ui::PadNav::Down, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
+                edge(ui::PadNav::Activate, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+                edge(ui::PadNav::Back, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
+                edge(ui::PadNav::PagePrev, GAMEPAD_BUTTON_LEFT_TRIGGER_1);
+                edge(ui::PadNav::PageNext, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+                edge(ui::PadNav::Launch, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+                padFrame.leftX = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
+                padFrame.leftY = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
+            }
+            const ui::PadIntent padWants = ui::padIntent(padFrame, app.running, ctx.time, padRepeatAt);
 
             if (typing)
             {
@@ -1114,33 +1137,11 @@ int main(int argc, char **argv)
                     dy -= 1;
                 if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN))
                     dy += 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_LEFT))
-                    dx -= 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_RIGHT))
-                    dx += 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_UP))
-                    dy -= 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_DOWN))
-                    dy += 1;
-                // The left stick, with a repeat so a held stick walks rather than sprints.
-                if (padPresent)
-                {
-                    const float ax = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
-                    const float ay = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
-                    const bool pushed = std::fabs(ax) > 0.55f || std::fabs(ay) > 0.55f;
-                    if (!pushed)
-                        padRepeatAt = 0.0;
-                    else if (ctx.time >= padRepeatAt)
-                    {
-                        padRepeatAt = ctx.time + (padRepeatAt == 0.0 ? 0.32 : 0.13);
-                        if (std::fabs(ax) > std::fabs(ay))
-                            dx += ax < 0.0f ? -1 : 1;
-                        else
-                            dy += ay < 0.0f ? -1 : 1;
-                    }
-                }
+                // The d-pad and the left stick (with its repeat) arrive already gated.
+                dx += padWants.dx;
+                dy += padWants.dy;
                 if (dx != 0 || dy != 0)
-                    app.padPrompts = padPresent && !(IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN));
+                    app.padPrompts = padWants.prompts && !(IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN));
 
                 if (adjusts && dx != 0)
                     ctx.adjust = dx;
@@ -1163,19 +1164,18 @@ int main(int argc, char **argv)
                     if (!ids.empty())
                         nav.focus = ids[at % ids.size()];
                 }
-                ctx.activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
-                               padPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-                if (IsKeyPressed(KEY_ESCAPE) || padPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+                ctx.activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || padWants.activate;
+                if (IsKeyPressed(KEY_ESCAPE) || padWants.back)
                     nav.back(graph);
-                if (padPressed(GAMEPAD_BUTTON_LEFT_TRIGGER_1))
+                if (padWants.pagePrev)
                     nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) - 1));
-                if (padPressed(GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+                if (padWants.pageNext)
                     nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) + 1));
-                if (padPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT))
+                if (padWants.launch)
                     app.requestLaunch = true;
                 if (IsKeyPressed(KEY_F5))
                     app.requestVerify = true;
-                if (padPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || padPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+                if (padWants.activate || padWants.back)
                     app.padPrompts = true;
             }
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_TAB) ||
