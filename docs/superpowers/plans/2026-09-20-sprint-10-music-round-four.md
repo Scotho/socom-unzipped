@@ -245,6 +245,19 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       **Nothing in the mission music's decisions differs between the machines any more; what remains is
       item 16 (the PCM ring's 300-700 ms feed stalls on the intro and briefing: the demux guest thread's absence)
       and the owner's ear on the stereo fix (the fifth listen).**
+      **ITEM 16 ANSWERED (`ecf7505`, ~08:10 UTC; the scheduler trace `PS2X_SCHED_TRACE=1`, research/36):** the
+      demux thread is NOT absent -- it is guest thread 1, awake every frame, spending its whole 31.5 ms feed
+      window polling `sceMpegDemuxPssRing` (~4000 calls/s), which the MPEG HLE answers with 0 bytes consumed while
+      `decodedFrames + pending >= kMaxDecodedPicturesAhead = 8` (MPEG.cpp:502, :1498, :2105-2116). In the intro a
+      16 KB read holds <= 1 picture and the gate breathes; the briefing's low-bitrate GOP packs 5-10 pictures per
+      read, the queue overshoots to 10-17 and the gate stays shut 7-13 frames -- and while shut NO audio moves
+      (the set-aside audio is re-offered only from inside an admitted call, :1964), so the game gets ~10 frames
+      of audio in one burst, its 48 KB staging ring takes what fits, and the 128 ms PCM ring starves before the
+      next burst. On hardware the IPU ring is many pictures deep and the audio flows at the drain rate. The
+      scheduler is innocent (7532 switches over the mission, thread 1 vsync-paced; one 2.0 s `sceGsExecStoreImage`
+      at the mission load, once). Fix in progress: re-offer aside audio every tick while backpressured, and gate
+      the demux on stream time (~200 ms of PTS ahead) instead of a picture count; bar = zero PCM starvation on
+      the intro and the briefing (`s10_r4v`).
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
