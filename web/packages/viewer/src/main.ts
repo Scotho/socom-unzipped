@@ -125,6 +125,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
   else if (name === 'linestrips') view?.setLineStrips(on);
+  else if (name === 'billboards') view?.setBillboards(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else { view?.setLinearLight(on); setLinearLight?.(on); }
 }
@@ -158,6 +159,7 @@ async function boot(): Promise<void> {
   const frame = (): void => {
     const dt = Math.min(clock.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
     fly.update(dt);
+    view?.faceCamera(fly.camera);   // the flares turn before the frame is drawn, not after
     render(scene, fly.camera);
 
     if (dt > 0) {

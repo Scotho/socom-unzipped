@@ -8,6 +8,7 @@ import {
 import type { Rgba } from '@s2u/gs';
 import type { MeshData } from '@s2u/mesh';
 import { applyLighting, DEFAULT_LIGHTING, type Lightable, type Lighting } from './lighting';
+import type { Camera } from 'three';
 import type { LoadedMap } from './loadMap';
 
 /**
@@ -76,6 +77,16 @@ export interface WorldView {
    */
   setLineStrips(on: boolean): void;
   /**
+   * Turns every flare quad to face the camera. Called once a frame, before the render.
+   *
+   * A flare on disc is a single quad on a single plane -- `lightcage`'s `lightrays.tif` node is 4
+   * vertices and 2 triangles, normal (0, 0.96, -0.24) -- so a fixed quad that nearly faces the sky is
+   * edge-on from a standing player. The hardware turns them; so does this.
+   */
+  faceCamera(camera: Camera): void;
+  /** Whether the flares are turned at all, for seeing the pose the disc actually holds. */
+  setBillboards(on: boolean): void;
+  /**
    * Re-runs the VU's lighting over every vertex: `record2 * lit`, the material colour on disc times a
    * `lit` built from the vertex normal and four colours (see `./lighting`). Cheap enough to call from a
    * slider -- it is one pass over the vertex arrays, about a millisecond on the largest map.
@@ -102,6 +113,8 @@ export function buildWorld(map: LoadedMap): WorldView {
   let lighting = DEFAULT_LIGHTING;
   let lineMaterial: LineBasicMaterial | null = null;
   let lineSegments: LineSegments | null = null;
+  const billboards: Mesh[] = [];
+  let billboardsOn = true;
   let blendGraded = false;
   /** The materials whose texture alpha is a ramp: the only ones the switch moves. */
   const graded: MeshBasicMaterial[] = [];
@@ -155,6 +168,25 @@ export function buildWorld(map: LoadedMap): WorldView {
     // a mesh per placement would cost 26 draws to fix a shading error of a few degrees.
     const rotation = new Matrix4().fromArray(prop.matrices, 0);
     for (const part of prop.parts) {
+      const partFlags = part.textureName === null ? undefined : map.textureFlags[part.textureName];
+      if (isBillboard(part, partFlags)) {
+        // A lamp flare is one quad on one plane, and the hardware turns it to face the camera: left
+        // where it was modelled it is edge-on from most of the map and a flat card from the rest. Each
+        // placement becomes its own mesh, centred on the quad so a spin about that centre keeps it
+        // where it belongs, and `faceCamera` turns them every frame.
+        const flareMaterial = materialFor(part.textureName);
+        for (let i = 0; i < count; i++) {
+          const m = new Matrix4().fromArray(prop.matrices, i * 16);
+          const { geometry: flat, centre: at } = centredQuad(rotateNormals(part, m), lighting, lit);
+          const mesh = new Mesh(flat, flareMaterial);
+          mesh.name = `${prop.modelName} (flare)`;
+          mesh.position.copy(at.applyMatrix4(m));
+          billboards.push(mesh);
+          group.add(mesh);
+        }
+        triangles += (part.indices.length / 3) * count;
+        continue;
+      }
       const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
       const material = materialFor(part.textureName);
       if (count === 1) {
@@ -219,6 +251,14 @@ export function buildWorld(map: LoadedMap): WorldView {
         applyLighting(part, lighting, attribute.array as Float32Array);
         attribute.needsUpdate = true;
       }
+    },
+    faceCamera: (camera) => {
+      if (!billboardsOn) return;
+      for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
+    },
+    setBillboards: (on) => {
+      billboardsOn = on;
+      if (!on) for (const mesh of billboards) mesh.quaternion.identity();   // back to the pose on disc
     },
     setLineStrips: (on) => {
       if (lineSegments) lineSegments.visible = on;
@@ -298,6 +338,37 @@ function rotateNormals(part: MeshData, m: Matrix4): MeshData {
     out[i + 2] = nz * k;
   }
   return { ...part, normals: out };
+}
+
+/**
+ * Whether a part is a flare: one quad, one plane, and a texture whose alpha is a ramp rather than a
+ * switch. The three together separate a lamp's glow from a window or a ceiling panel, which are also
+ * single quads but whose textures are not graded, and from a graded floor decal, which is not a quad.
+ */
+function isBillboard(part: MeshData, flags: { graded: boolean } | undefined): boolean {
+  return (flags?.graded ?? false)
+    && part.positions.length === 4 * 3
+    && part.indices.length === 2 * 3;
+}
+
+/** A quad moved so its centre is the origin, with that centre, so a mesh can be spun about it. */
+function centredQuad(
+  part: MeshData,
+  light: Lighting,
+  lit: { part: Lightable; attribute: BufferAttribute }[],
+): { geometry: BufferGeometry; centre: Vector3 } {
+  const centre = new Vector3();
+  for (let i = 0; i < part.positions.length; i += 3) {
+    centre.x += part.positions[i]!; centre.y += part.positions[i + 1]!; centre.z += part.positions[i + 2]!;
+  }
+  centre.divideScalar(part.positions.length / 3);
+  const positions = new Float32Array(part.positions.length);
+  for (let i = 0; i < positions.length; i += 3) {
+    positions[i] = part.positions[i]! - centre.x;
+    positions[i + 1] = part.positions[i + 1]! - centre.y;
+    positions[i + 2] = part.positions[i + 2]! - centre.z;
+  }
+  return { geometry: geometryOf({ ...part, positions }, light, lit), centre };
 }
 
 /** The centre of a box, for framing a map whose spawns are not known. */
