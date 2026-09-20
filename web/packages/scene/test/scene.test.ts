@@ -4,23 +4,51 @@ import { bounds, interpretChain, mergeMeshes, walkChain, type MeshData } from '@
 import { fixture, FIXTURES_ABSENT } from '../../archive/test/fixtures';
 import {
   countInstances, expectedChunks, flattenScene, loadModelLibrary, multiply, parseSceneGraph,
-  parseWorldRoot, placeCollision, placeInstances, toColumnMajor, transformPoint, IDENTITY,
-  NODE_INSTANCE, type SceneNode,
+  parseWorldRoot, placeCollision, placeInstances, toColumnMajor, transformPoint, visualNodes,
+  IDENTITY, NODE_INSTANCE, type ModelLibrary, type PlacedModel, type SceneNode,
 } from '../src/index';
 
 /** Frostfire's two measured spawns (36 section 6), in game units, feet on the floor. */
 const SPAWN_A: [number, number, number] = [796, 100, 614];
 const SPAWN_B: [number, number, number] = [536, 143, 1254];
 
-const mp2 = fixture('RUN/MP2.ZDB');
-const archives = (bytes: Uint8Array) => {
+/**
+ * The map archives, or null where the fixture has not been extracted. Reading the file is safe here;
+ * *parsing* it is not, because vitest runs a suite's body at collection even when the suite is skipped.
+ * So every archive is opened lazily, from inside a test, behind `it.skipIf`.
+ */
+const MP2 = fixture('RUN/MP2.ZDB');
+const MP6 = fixture('RUN/MP6.ZDB');
+const MP72 = fixture('RUN/MP72.ZDB');
+
+interface Opened {
+  /** Any member of the archive, by the suffix `zdbMember` matches on. */
+  zar(suffix: string): Zar;
+  models: SceneNode[];
+  library: ModelLibrary;
+  placed: PlacedModel[];
+}
+
+const opened = new Map<string, Opened>();
+
+/** Opens a map once and remembers it. Only ever called from inside a test. */
+function open(stem: string): Opened {
+  const known = opened.get(stem);
+  if (known) return known;
+  const bytes = fixture(`RUN/${stem}.ZDB`);
+  if (!bytes) throw new Error(`${FIXTURES_ABSENT} (RUN/${stem}.ZDB)`);
   const toc = parseZdb(bytes);
-  const zar = (suffix: string) => Zar.parse(zdbMember(bytes, toc, suffix));
-  return {
-    root: zar('MP2.ZED'), geo: zar('MP2_GEO.ZED'), worl: zar('WORL_MDL.ZED'),
-    mdl: zar('MP2_MDL.ZED'), flib: zar('FLIB_MDL.ZED'), clib: zar('CLIB_MDL.ZED'),
+  const zar = (suffix: string): Zar => Zar.parse(zdbMember(bytes, toc, suffix));
+  const models = parseSceneGraph(zar(`${stem}_GEO.ZED`));
+  const made: Opened = {
+    zar,
+    models,
+    library: loadModelLibrary([zar('WORL_MDL.ZED'), zar(`${stem}_MDL.ZED`), zar('FLIB_MDL.ZED')]),
+    placed: placeInstances(models),
   };
-};
+  opened.set(stem, made);
+  return made;
+}
 
 /** Every node of the forest, depth first, the roots included. */
 function everyNode(nodes: SceneNode[]): SceneNode[] {
@@ -59,20 +87,18 @@ describe('matrices (24 section 1.1: row-vector, world = local x parent)', () => 
   });
 });
 
-describe.skipIf(mp2 === null)('Frostfire scene graph', () => {
-  const { root, geo, worl, mdl, flib, clib } = archives(mp2 ?? new Uint8Array());
-  const models = parseSceneGraph(geo);
-  const library = loadModelLibrary([worl, mdl, flib]);
-
-  it('reads the world root (36 section 2)', () => {
-    const world = parseWorldRoot(root);
+describe('Frostfire scene graph', () => {
+  it.skipIf(!MP2)('reads the world root (36 section 2)', () => {
+    const { zar } = open('MP2');
+    const world = parseWorldRoot(zar('MP2.ZED'));
     expect(world.metersPerUnit).toBeCloseTo(0.1, 6);
     expect(world.defaultMaterial).toBe('METAL_THICK');
     expect(world.nightMission).toBe(false);
     expect(world.shadowVector.map((v) => Number(v.toFixed(3)))).toEqual([-0.811, -0.2, 0.55]);
   });
 
-  it('yields 46 prototypes, 206 instance nodes and 2,756 collision polygons (36 section 2)', () => {
+  it.skipIf(!MP2)('yields 46 prototypes, 206 instance nodes and 2,756 collision polygons (36 section 2)', () => {
+    const { models } = open('MP2');
     expect(models.length).toBe(46);
     const all = everyNode(models);
     expect(all.filter((n) => n.modelName !== null).length).toBe(206);
@@ -93,15 +119,17 @@ describe.skipIf(mp2 === null)('Frostfire scene graph', () => {
       .toEqual([['2,4', 1743], ['3,4', 736], ['2,3', 184], ['3,3', 43], ['3,6', 22], ['3,5', 15]]);
   });
 
-  it('resolves every instance name in the model library, with nothing missing', () => {
+  it.skipIf(!MP2)('resolves every instance name in the model library, with nothing missing', () => {
+    const { zar, models, library } = open('MP2');
     const wanted = new Set(everyNode(models).map((n) => n.modelName).filter((n): n is string => n !== null));
     expect([...wanted].filter((n) => library.get(n) === undefined)).toEqual([]);
     expect(library.skipped).toEqual([]);
     // 36 section 2: character models are a MESH_ chain form and are not part of a map's scene graph.
-    expect(loadModelLibrary([clib]).names()).toEqual([]);
+    expect(loadModelLibrary([zar('CLIB_MDL.ZED')]).names()).toEqual([]);
   });
 
-  it('numbers the 194 worldmodel children the way SEMANTICS section 8 counted them', () => {
+  it.skipIf(!MP2)('numbers the 194 worldmodel children the way SEMANTICS section 8 counted them', () => {
+    const { models } = open('MP2');
     const children = models.find((m) => m.name === 'worldmodel')!.children;
     expect(children.length).toBe(194);
     expect(new Set(children.map((c) => [...c.matrix].join(','))).size).toBe(70);
@@ -113,13 +141,9 @@ describe.skipIf(mp2 === null)('Frostfire scene graph', () => {
   });
 });
 
-describe.skipIf(mp2 === null)('Frostfire placement', () => {
-  const { geo, worl, mdl, flib } = archives(mp2 ?? new Uint8Array());
-  const models = parseSceneGraph(geo);
-  const library = loadModelLibrary([worl, mdl, flib]);
-  const placed = placeInstances(models);
-
-  it('gives every world chunk its own node matrix, so all 123 are placed and none is left over', () => {
+describe('Frostfire placement', () => {
+  it.skipIf(!MP2)('gives every world chunk its own node matrix, so all 123 are placed and none is left over', () => {
+    const { library, placed } = open('MP2');
     const world = placed.filter((p) => p.modelName === 'worldmodel');
     expect(world.length).toBe(101);                               // visual-bearing nodes, vis_main.cpp:88-105
     const chunks = world.flatMap((p) => p.chunks);
@@ -130,7 +154,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     expect(new Set(world.map((p) => [...p.world].join(','))).size).toBeGreaterThan(1);
   });
 
-  it('places every prop chunk against a chain the library actually holds', () => {
+  it.skipIf(!MP2)('places every prop chunk against a chain the library actually holds', () => {
+    const { library, placed } = open('MP2');
     const props = placed.filter((p) => p.modelName !== 'worldmodel');
     expect(props.length).toBeGreaterThan(200);
     for (const p of props) {
@@ -139,7 +164,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     }
   });
 
-  it('counts the instance contexts the exporter wrote keys for (vis_main.cpp:77-111)', () => {
+  it.skipIf(!MP2)('counts the instance contexts the exporter wrote keys for (vis_main.cpp:77-111)', () => {
+    const { models, library } = open('MP2');
     const counts = countInstances(models);
     // The six models whose key count only comes out right once nested instancing is expanded.
     expect(counts.get('tankrailsupport')).toBe(28);
@@ -157,7 +183,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     }
   });
 
-  it('puts a collision polygon under both spawns, at their measured heights (36 section 6)', () => {
+  it.skipIf(!MP2)('puts a collision polygon under both spawns, at their measured heights (36 section 6)', () => {
+    const { models } = open('MP2');
     const polys = placeCollision(models);
     expect(polys.length).toBeGreaterThan(2756);       // an instanced model contributes its polys per instance
     for (const [spawn, expected] of [[SPAWN_A, 100], [SPAWN_B, 142]] as [[number, number, number], number][]) {
@@ -174,7 +201,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     }
   });
 
-  it('still has a world floor under each spawn once the chunks are placed one by one (task 12)', () => {
+  it.skipIf(!MP2)('still has a world floor under each spawn once the chunks are placed one by one (task 12)', () => {
+    const { library, placed } = open('MP2');
     const entry = library.get('worldmodel')!;
     const offsets = new Map(entry.nodes.map((n) => [n.name, n.offset]));
     const world = placed.filter((q) => q.modelName === 'worldmodel');
@@ -197,7 +225,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     expect(floors[1]).toEqual({ y: 142, chunk: 'N038_000', texture: 'floor_oilgrime.tif' });
   });
 
-  it('keeps every placed prop over the deck, which only the row-vector order does', () => {
+  it.skipIf(!MP2)('keeps every placed prop over the deck, which only the row-vector order does', () => {
+    const { models, library, placed } = open('MP2');
     // The world's own collision polygons are the tight extent to test against -- the drawn world also
     // holds the sky chunk at y = 1442 and a skirt biased to +-2000, which would let anything through.
     const deck = extentOf(placeCollision(models).filter((p) => p.modelName === 'worldmodel').map((p) => p.points));
@@ -227,7 +256,8 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     expect(strayed).toEqual([]);
   });
 
-  it('realises the scene as a forest rooted at worldmodel, with the instance matrices accumulated', () => {
+  it.skipIf(!MP2)('realises the scene as a forest rooted at worldmodel, with the instance matrices accumulated', () => {
+    const { models } = open('MP2');
     const flat = flattenScene(models, 'worldmodel');
     // The root's world matrix is its own: nothing above it to multiply by but the identity.
     expect([...flat[0]!.world]).toEqual([...multiply(models.find((m) => m.name === 'worldmodel')!.matrix, IDENTITY)]);
@@ -235,6 +265,82 @@ describe.skipIf(mp2 === null)('Frostfire placement', () => {
     expect(flat.filter((f) => f.modelName === 'grate_midlod' && f.node.visuals > 0).length).toBe(26);
     expect(new Set(flat.map((f) => f.modelName)).size).toBeGreaterThan(30);
   });
+});
+
+/**
+ * The naming rule, checked on every map in the fixtures rather than only on the one it was read off.
+ *
+ * This is the assertion that tells the two possible failures apart. Desert Glory and Crossroads have
+ * prop chains the `mesh` decoder cannot read (15 and 29 of them); if the numbering were wrong instead,
+ * the *key sets* would not line up, and they do -- exactly, for all 203 models of the three maps. So the
+ * bad chains are a decoder gap, not a placement one.
+ */
+describe('the N-I-V naming rule across the fixtures', () => {
+  for (const [stem, bytes, models] of [
+    ['MP2', MP2, 46], ['MP6', MP6, 87], ['MP72', MP72, 70],
+  ] as [string, Uint8Array | null, number][]) {
+    it.skipIf(!bytes)(`${stem}: every model's chunk keys are what the rule predicts`, () => {
+      const map = open(stem);
+      expect(map.models.length).toBe(models);
+      const counts = countInstances(map.models);
+      const wrong: string[] = [];
+      let checked = 0;
+      for (const model of map.models) {
+        const entry = map.library.get(model.name);
+        if (!entry) continue;
+        checked++;
+        const actual = new Set(entry.nodes.map((n) => n.name));
+        const predicted = new Set(expectedChunks(model, counts.get(model.name) ?? 0));
+        const missing = [...predicted].filter((k) => !actual.has(k));
+        const extra = [...actual].filter((k) => !predicted.has(k));
+        if (missing.length > 0 || extra.length > 0) {
+          wrong.push(`${model.name}: ${visualNodes(model).length} visual nodes x ${counts.get(model.name)} contexts` +
+            ` predicts ${predicted.size} keys, the buffer has ${actual.size}` +
+            ` -- missing [${missing.slice(0, 6).join(' ')}], extra [${extra.slice(0, 6).join(' ')}]`);
+        }
+      }
+      expect(checked).toBe(models);
+      expect(wrong).toEqual([]);
+      expect(map.library.skipped).toEqual([]);
+    });
+
+    /**
+     * `hookupVisuals:73-75` reads `node->m_visual.size() != 0 || node->m_hasVisuals`, and `m_hasVisuals`
+     * is *not* "this node has visuals": `AddVisual` calls `SetParentHasVisuals`, which walks up and sets
+     * it on every ancestor (`zNode/node_main.cpp:133-145`, `:538-545`). Taken literally the `||` would
+     * number visual-less ancestors too, and the keys would shift. There are 10 such ancestors on MP2, 63
+     * on MP6 and 7 on MP72, so if the wider predicate were right the test above could not pass. It does,
+     * so the archives are numbered by the `visuals` key alone -- which is what `visualNodes` uses.
+     */
+    it.skipIf(!bytes)(`${stem}: the numbering counts nodes with visuals, not nodes with visuals below`, () => {
+      const map = open(stem);
+      const below = (n: SceneNode): boolean =>
+        n.visuals > 0 || n.children.some((c) => c.type !== NODE_INSTANCE && below(c));
+      let ancestors = 0;
+      const walk = (n: SceneNode): void => {
+        if (n.visuals === 0 && n.children.some((c) => c.type !== NODE_INSTANCE && below(c))) ancestors++;
+        for (const c of n.children) if (c.type !== NODE_INSTANCE) walk(c);
+      };
+      for (const model of map.models) walk(model);
+      expect(ancestors).toBe({ MP2: 10, MP6: 63, MP72: 7 }[stem]);
+      // And no bit of `nparams`' flag word is a usable `m_hasVisuals` either: none is set on exactly the
+      // nodes that carry a `visuals` key, on any of the three maps.
+      const flagged: number[] = [];
+      for (let bit = 0; bit < 32; bit++) {
+        let hit = 0, falsePositive = 0, falseNegative = 0;
+        const count = (n: SceneNode): void => {
+          const on = ((n.flags >>> bit) & 1) === 1;
+          if (on && n.visuals > 0) hit++;
+          else if (on) falsePositive++;
+          else if (n.visuals > 0) falseNegative++;
+          for (const c of n.children) count(c);
+        };
+        for (const model of map.models) count(model);
+        if (hit > 0 && falsePositive === 0 && falseNegative === 0) flagged.push(bit);
+      }
+      expect(flagged).toEqual([]);
+    });
+  }
 });
 
 /** The height of a polygon's plane over (x, z), or null when the polygon is vertical there. */

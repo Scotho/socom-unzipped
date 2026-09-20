@@ -35,7 +35,11 @@ export interface LoadedMap {
   loadMs: number;
 }
 
-/** SEMANTICS section 8 / 36 section 2: `nparams` is a 64-byte row-major 4x4 then a 32-byte bbox. */
+/**
+ * `nparams` is 96 bytes: a 64-byte row-major 4x4, a 24-byte bbox, then the u32 `m_type` and a u32 of
+ * flags (`tag_NODE_PARAMS`, `zNode/znode.h:73-105`; SEMANTICS section 11.2). 36 section 2 and
+ * SEMANTICS section 8 call the 32-byte tail one bbox, which it is not. Only the matrix matters here.
+ */
 const NPARAMS_SIZE = 96;
 /** Row-vector convention: the translation is the matrix's fourth row, floats 12, 13, 14. */
 const TRANSLATION_AT = 12 * 4;
