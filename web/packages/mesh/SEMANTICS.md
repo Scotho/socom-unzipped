@@ -169,6 +169,15 @@ for all but 17 (which are exactly `(0,0,0)`, in two chunks). Nothing else in the
 vector. Independently, the per-vertex normal agrees in sign with the triangle's own face normal
 (dot > 0) for 99.8 % of the 26,295 vertex/triangle pairs.
 
+**2026-09-20: the matrix `vf5..vf7` is not the identity, and its numbers are on the disc.** Read
+against a live VU1 capture, its *columns* are three unit light directions, so `normal.k` comes out
+as `dot(direction[k], n)` and the lighting is three directional lights plus an ambient, not three
+axis lights. They come from `MP*.ZED`'s 112-byte `GlobalLighting` key (`_globalLight` in
+`zNode/znode.h:66`, fetched at `node_saveload.cpp:289`): `-normalize(dir[k])` and the colours
+verbatim reproduce VU1 quadwords 16 to 23 bit-exactly. Section 9's "game state, not map data" was
+wrong about these. See the map viewer's spec, "The lighting values are on the disc".
+
+
 ### Vertex quadword **c** — `TOP+4+3k+2`, from the `V4-8 USN` unpack (unsigned bytes)
 
 | lane | raw | meaning | conversion | citation |

@@ -7,8 +7,7 @@ export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured'
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
-export const SLIDERS = ['ambient', 'lightx', 'lighty', 'lightz', 'lightgain',
-  'fognear', 'fogfar'] as const;
+export const SLIDERS = ['ambient', 'lightgain', 'fognear', 'fogfar'] as const;
 export type SliderName = (typeof SLIDERS)[number];
 
 /** The page's controls, found once and typed, so the rest of the viewer never touches `getElementById`. */
@@ -24,10 +23,7 @@ export class Ui {
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
    */
   private readonly sliders: Record<SliderName, { input: HTMLInputElement; out: HTMLOutputElement; fmt: (v: number) => string }> = {
-    ambient: { input: find('ambient'), out: find('ambient-out'), fmt: (v) => v.toFixed(2) },
-    lightx: { input: find('lightx'), out: find('lightx-out'), fmt: (v) => v.toFixed(2) },
-    lighty: { input: find('lighty'), out: find('lighty-out'), fmt: (v) => v.toFixed(2) },
-    lightz: { input: find('lightz'), out: find('lightz-out'), fmt: (v) => v.toFixed(2) },
+    ambient: { input: find('ambient'), out: find('ambient-out'), fmt: (v) => `+${v.toFixed(2)}` },
     lightgain: { input: find('lightgain'), out: find('lightgain-out'), fmt: (v) => `${v.toFixed(2)}×` },
     fognear: { input: find('fognear'), out: find('fognear-out'), fmt: (v) => String(Math.round(v)) },
     fogfar: { input: find('fogfar'), out: find('fogfar-out'), fmt: (v) => String(Math.round(v)) },

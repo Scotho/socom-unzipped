@@ -5,9 +5,11 @@ import {
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
 import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
-  collisionLines, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseSceneGraph, placeClutter,
+  collisionLines, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseGlobalLighting,
+  parseSceneGraph, placeClutter,
   placeInstances, transformPoint, worldCollision,
-  type CameraParams, type CollisionLines, type ModelLibrary, type PlacedModel, type SceneNode,
+  type CameraParams, type CollisionLines, type GlobalLighting, type ModelLibrary, type PlacedModel,
+  type SceneNode,
 } from '@s2u/scene';
 
 /**
@@ -44,6 +46,8 @@ export interface LoadedMap {
    */
   textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean; opaque: boolean }>;
   metersPerUnit: number;
+  /** `MP*.ZED/GlobalLighting`: the map's own light rig, or null when the key is missing or short. */
+  lightRig: GlobalLighting | null;
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
   collision: CollisionLines;
@@ -208,6 +212,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
     textures,
     textureFlags,
     metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
+    lightRig: lightRig(bytes, toc, stem, notes),
     origin: placement.origin,
     collision: placement.collision,
     diagnostics: notes.lines,
@@ -378,6 +383,21 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
     notes.add(`MetersPerUnit: ${say(e)}`);
   }
   return DEFAULT_METERS_PER_UNIT;
+}
+
+/**
+ * `MP*.ZED/GlobalLighting`, the map's three directional lights and its ambient. All 34 maps carry it,
+ * so an absence is worth a diagnostic rather than a silent fallback.
+ */
+function lightRig(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): GlobalLighting | null {
+  try {
+    const rig = parseGlobalLighting(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+    if (!rig) notes.add(`${stem}.ZED: no GlobalLighting key, lighting with a stand-in rig`);
+    return rig;
+  } catch (e) {
+    notes.add(`GlobalLighting: ${say(e)}`);
+    return null;
+  }
 }
 
 /**

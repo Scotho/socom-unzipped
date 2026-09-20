@@ -5,7 +5,8 @@
  *
  * The two shots are framed differently, so what is compared is not brightness at a pixel but the
  * *relation* between surfaces that face different ways: ground against wall is the number that says
- * whether the +y light is too strong relative to the axis lights and the ambient.
+ * the lighting has the right shape: the PS2 draws a vertical wall brighter than the ground, and
+ * a rig that does not is wrong however bright it is overall.
  *
  * Decoding happens in Chromium rather than through an image library, so this needs no dependency the
  * repo does not already have.

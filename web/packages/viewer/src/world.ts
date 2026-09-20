@@ -113,7 +113,8 @@ export function buildWorld(map: LoadedMap): WorldView {
 
   const textures = new Map<string, Texture>();
   let linearLight = false;
-  let lighting = DEFAULT_LIGHTING;
+  // The map's own rig, from its `GlobalLighting` record; the panel's trims arrive with `setLighting`.
+  let lighting: Lighting = { ...DEFAULT_LIGHTING, rig: map.lightRig };
   let lineMaterial: LineBasicMaterial | null = null;
   let lineSegments: LineSegments | null = null;
   const billboards: Mesh[] = [];

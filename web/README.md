@@ -78,11 +78,13 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
 
 ## Known gaps
 
-- **Lighting is not the game's lighting.** The VU's model is emulated (`viewer/src/lighting.ts`:
-  `lit = light[0]*n.x + light[1]*n.y + light[2]*n.z + light[3]`, then `material * lit`), but the values it
-  needs — the normal/light matrix and the colour block — are uploaded by the EE at VU1 entry 0 and are not
-  on the disc. The matrix is taken as identity and the four colours are sliders. Extracting the EE's own
-  would finish it.
+- **The lighting is the game's, except for one factor of eight.** The VU's model is emulated
+  (`viewer/src/lighting.ts`) with the map's own rig: `MP*.ZED/GlobalLighting` holds three light
+  directions, three colours and an ambient, and `-normalize(dir[k])` with the colours verbatim
+  reproduces the VU1 quadwords a live capture shows, bit for bit. What the disc does not explain is
+  the magnitude: the rig on its own renders about eight times darker than the PS2 capture, so the
+  exposure slider opens at 8. The relation between surfaces is right — the capture's vertical wall is
+  brighter than its ground, and so is ours — and only the overall scale is a guess.
 
 - **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
   dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out

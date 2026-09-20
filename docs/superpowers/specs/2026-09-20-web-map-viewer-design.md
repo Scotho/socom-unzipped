@@ -531,3 +531,51 @@ Ruins 471 (347), MP64 Shadow Falls 482 (473), MP82 Guidance 482 (283), MP10 Bloo
 MP11 Death Trap 397 (392), MP5 Abandoned 363 (324), MP52 The Mixer 344 (all), MP1 Blizzard 211
 (none), MP7 193 (all), MP61 Sujo 103 (none), MP6 Desert Glory 110 (none), MP9 92 (all). The other
 eight maps carry no clutter.
+
+## The lighting values are on the disc, and the matrix is not the identity
+
+2026-09-20. `viewer/src/lighting.ts` emulated the VU's `lit` with four sliders, because SEMANTICS
+section 9 said the numbers behind it were EE state and nowhere on a disc. Both halves of that were
+wrong.
+
+**The matrix holds light directions in its columns.** Read against a live VU1 capture of mission
+M51, `vf5`-`vf7` are not an identity and not three axis lights: the VU computes
+`normal.x = vf5.x*n.x + vf6.x*n.y + vf7.x*n.z`, which is `dot(column0, n)`, so the three columns are
+three unit light directions and
+
+```
+lit = C0*max(dot(D0,N),0) + C1*max(dot(D1,N),0) + C2*max(dot(D2,N),0) + ambient
+```
+
+**The numbers are map data.** `MP*.ZED` carries a 112-byte `GlobalLighting` key on all 34 maps --
+`struct _globalLight { CPnt4D dir[3]; CPnt4D col[3]; CPnt4D ambient; }` (`zNode/znode.h:66`), fetched
+by name at `node_saveload.cpp:289`. Applying `Dk = -normalize(dir[k])` and taking the colours
+verbatim reproduces the captured VU1 quadwords 16 to 23 **bit-exactly, all 32 float words including
+the sign of zero**, and only `M51.ZDB`'s record does -- so the derivation is a fingerprint, not a
+coincidence. The title screen and lobby capture a different rig, which is `RUN/UI/UI.ZED`'s own
+record byte for byte: the shell is just another world. `sub_0031EE00` is the EE routine that does
+it (negate, normalise, store as rows, transpose in place), gated on dirty bytes that only map load
+sets, which is why the rig is static per map.
+
+`params.y`/`params.z` are 0.0 or 1.0 across 900 captured dumps -- a lighting enable, not a scale --
+so there is no hardware gain.
+
+**What the rig fixes.** The old sliders were fitted against a PS2 capture of Frostfire that showed a
+vertical wall *brighter* than the up-facing ground (ground 67.8, right wall 95.9), and three axis
+lights plus an ambient could not produce that: the fit reached a wall/ground ratio of 0.29. The rig
+gives 1.73 against the capture's 1.41, on the first try, because Frostfire's key light is nearly
+horizontal (`D0 = (0.81, 0.20, -0.55)` at colour 0.627) with a bounce fill from below and a
+near-black top light.
+
+**What it does not fix, and this is the honest part.** The magnitude is about eight times short. At
+the sweep pose the rig alone reads ground 7.0 and wall 12.1 where the capture reads 67.8 and 95.9;
+at 8x they read 54.9 and 96.7 -- the wall within one percent, the ground nineteen percent low -- and
+the two surfaces bracket the true figure between 8 and 10. The viewer takes 8, as `LIT_SCALE`,
+because it is a power of two and so the only candidate with a mechanical explanation rather than a
+fitted one, and it is carried in the exposure slider so that setting it to 1.00x shows the bare
+model. Where the missing shift is has not been found; the obvious suspect, the normal's `ITOF15`, is
+ruled out by SEMANTICS section 4, which cites it to the microcode and measures 15,054 of 15,071
+Frostfire normals as unit length at `/32768`.
+
+The four sliders are now two trims: an additive ambient, and the exposure. `tools/light-sweep.ts`,
+which existed to fit the four, is deleted.

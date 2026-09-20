@@ -52,17 +52,12 @@
           <label title="off: the GS's own arithmetic, texel times vertex colour in 8-bit space. on: decode the texture to linear first, which brightens every shaded surface."><input type="checkbox" id="linearlight" /> linear light (off = the GS's own arithmetic)</label>
         </div>
       <details id="sliders-box">
-        <summary>lighting (VU1 command 0x18: material &times; lit)</summary>
-        <label class="slider" title="light[3]: reaches every surface whichever way it faces."><span>ambient</span>
-          <input type="range" id="ambient" min="0" max="2" step="0.01" value="0.5" /><output id="ambient-out"></output></label>
-        <label class="slider" title="light[0]: the +x axis light. A face pointing -x takes nothing from it."><span>light +x</span>
-          <input type="range" id="lightx" min="0" max="2" step="0.01" value="0.75" /><output id="lightx-out"></output></label>
-        <label class="slider" title="light[1]: the +y axis light, the one that reads as the sky."><span>light +y</span>
-          <input type="range" id="lighty" min="0" max="2" step="0.01" value="1.15" /><output id="lighty-out"></output></label>
-        <label class="slider" title="light[2]: the +z axis light."><span>light +z</span>
-          <input type="range" id="lightz" min="0" max="2" step="0.01" value="0.75" /><output id="lightz-out"></output></label>
-        <label class="slider" title="An exposure on the whole result: the EE's params.y/params.z scales are not on the disc either."><span>gain</span>
-          <input type="range" id="lightgain" min="0.25" max="4" step="0.05" value="1.35" /><output id="lightgain-out"></output></label>
+        <summary>lighting (the map's own rig, trimmed)</summary>
+        <p class="note">Three directional lights and an ambient, read from the map's own <code>GlobalLighting</code> record &mdash; the same numbers the game hands VU1. The ambient slider is a trim. The exposure is not: the rig on its own comes out about eight times too dark against the PS2 capture, and 8.00&times; is that unexplained factor, so 1.00&times; shows the bare model.</p>
+        <label class="slider" title="Added to the map's own ambient. 0 is the hardware."><span>ambient trim</span>
+          <input type="range" id="ambient" min="0" max="1" step="0.01" value="0" /><output id="ambient-out"></output></label>
+        <label class="slider" title="An exposure on the whole lit result. 1.00x is the map's rig with nothing added, which comes out about eight times too dark against the PS2 capture; 8 is that unexplained factor. The EE's params.y/params.z are a lighting enable, never a scale."><span>exposure</span>
+          <input type="range" id="lightgain" min="0.25" max="12" step="0.05" value="8" /><output id="lightgain-out"></output></label>
       </details>
       <details id="fog-box">
         <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>
