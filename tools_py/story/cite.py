@@ -61,6 +61,18 @@ JARGON = ["GS", "IOP", "VU0", "VU1", "DMAC", "VIF", "GIF", "CLUT", "XGKICK", "sc
 # Items on a Cited: line are separated by a middle dot (or a pipe). Not a comma and not a semicolon: commit
 # subjects in this project contain both, and the readable fragment beside a hash quotes the subject.
 SEPARATORS = "·|"
+
+# The release entry is written from a template whose fields are marked like this; a document that still
+# carries one of these was never finished.
+PLACEHOLDERS = ["{{", "}}", "TODO(release)", "RELEASE-TAG-HERE"]
+
+# Pictures: an entry may carry one image line, ![caption](docs/story/img/<file>), and every image the story
+# shows must be tracked, must exist, must be under the size budget, and must have a row in
+# docs/story/PICTURES.md -- the inventory spec 5.3 asks for, which is also the disc-derived decision table's
+# input. The line is the owner's; the test only keeps the list honest.
+PICTURE_DIR = "docs/story/img/"
+PICTURE_MAX_BYTES = 1_000_000
+_IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
 _ENTRY_RE = re.compile(r"^###\s+(\d{4}-\d{2}-\d{2})\s+[—–-]+\s+(.+?)\s*$")
 _CITED_RE = re.compile(r"^`?Cited:`?\s*(.*)$")
 # `<sha>` [(YYYY-MM-DD)] <subject fragment>. The optional date marks a deliberate forward or backward
@@ -259,6 +271,18 @@ class GitResolver(object):
     def logs_present(self):
         return os.path.isdir(os.path.join(self.root, "logs"))
 
+    def size(self, path):
+        full = os.path.join(self.root, path)
+        return os.path.getsize(full) if os.path.isfile(full) else None
+
+    def picture_inventory(self):
+        """The file names that have a row in docs/story/PICTURES.md (a markdown table, file name in backticks)."""
+        p = os.path.join(self.root, "docs", "story", "PICTURES.md")
+        if not os.path.exists(p):
+            return set()
+        with open(p, encoding="utf-8") as f:
+            return set(re.findall(r"`([^`/]+\.(?:png|jpg|jpeg|webp))`", f.read()))
+
     def digest(self, path):
         """(bytes, sha256) of a file under logs/, or of a directory's sorted listing; None when absent."""
         return digest_path(os.path.join(self.root, path))
@@ -363,6 +387,32 @@ def check_witness(cit, resolver, where, problems):
                                 "missing one" % (path, size, digest[:8], w["bytes"], w["sha256"][:8])))
 
 
+def check_pictures(entries, resolver, problems):
+    inventory = resolver.picture_inventory()
+    for entry in entries:
+        imgs = _IMG_RE.findall("\n".join(entry.lines))
+        if len(imgs) > 1:
+            problems.append(Problem(entry.where, "too-many-pictures", "one picture per entry (spec 5.3)"))
+        for caption, path in imgs:
+            if not path.startswith(PICTURE_DIR):
+                problems.append(Problem(entry.where, "picture-outside-dir",
+                                        "%s is not under %s, the one published path" % (path, PICTURE_DIR)))
+                continue
+            if not caption.strip():
+                problems.append(Problem(entry.where, "picture-uncaptioned", "%s has no caption" % path))
+            if not resolver.tracked(path):
+                problems.append(Problem(entry.where, "picture-untracked", "%s is not tracked by git" % path))
+            size = resolver.size(path)
+            if size is None:
+                problems.append(Problem(entry.where, "picture-missing", "%s does not exist" % path))
+            elif size > PICTURE_MAX_BYTES:
+                problems.append(Problem(entry.where, "picture-too-large",
+                                        "%s is %d bytes; the budget is %d" % (path, size, PICTURE_MAX_BYTES)))
+            if os.path.basename(path) not in inventory:
+                problems.append(Problem(entry.where, "picture-not-inventoried",
+                                        "%s has no row in docs/story/PICTURES.md" % path))
+
+
 def check_prose(entry, problems):
     prose = "\n".join(entry.prose_lines())
     low = prose.lower()
@@ -444,6 +494,12 @@ def check(markdown, timeline=None, resolver=None):
     dates = [e.date for e in entries]
     if dates != sorted(dates):
         problems.append(Problem("(document)", "out-of-order", "entries are not in date order"))
+    for token in PLACEHOLDERS:
+        if token in markdown:
+            problems.append(Problem("(document)", "placeholder",
+                                    "%r is in the document -- the release entry's template was pasted in and not "
+                                    "filled (docs/story/release-entry.template.md)" % token))
+    check_pictures(entries, resolver, problems)
     check_timeline(entries, timeline, resolver, problems)
     return problems
 

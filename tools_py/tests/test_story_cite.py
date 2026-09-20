@@ -46,6 +46,9 @@ class FakeResolver(object):
         if witnesses is not None:
             self.witnesses = witnesses
         self.logs = logs          # None: no logs/ on this machine; else {path: (bytes, sha256)}
+        self.sizes = {"docs/story/img/2026-09-13-first-kill.png": 491420}
+        self.inventory = ["2026-09-13-first-kill.png"]
+        self._tracked.add("docs/story/img/2026-09-13-first-kill.png")
 
     def commit(self, sha):
         return self.commits.get(sha)
@@ -64,6 +67,12 @@ class FakeResolver(object):
 
     def digest(self, path):
         return (self.logs or {}).get(path)
+
+    def size(self, path):
+        return self.sizes.get(path)
+
+    def picture_inventory(self):
+        return set(self.inventory)
 
 
 def kinds(problems):
@@ -193,6 +202,46 @@ class TestEachDefectIsCaught(unittest.TestCase):
     def test_the_same_entry_twice(self):
         doc = GOOD + GOOD.split("## 2026-09-12 .. 2026-09-14 - From picture to game", 1)[1]
         self.assertIn("duplicate-entry", kinds(cite.check(doc, None, FakeResolver())))
+
+
+class TestPictures(unittest.TestCase):
+    """One captioned, tracked, inventoried, budgeted image per entry, under the one published path."""
+
+    IMG = "\n![Both screens, a third of a second apart.](docs/story/img/2026-09-13-first-kill.png)\n"
+
+    def with_image(self, line=None):
+        return GOOD.replace("*How:*", (line if line is not None else self.IMG) + "\n*How:*")
+
+    def test_a_good_picture_passes(self):
+        self.assertEqual(cite.check(self.with_image(), None, FakeResolver()), [])
+
+    def test_a_picture_outside_the_published_dir(self):
+        doc = self.with_image("\n![c](docs/research/assets/22-first-kill.png)\n")
+        self.assertIn("picture-outside-dir", kinds(cite.check(doc, None, FakeResolver())))
+
+    def test_an_uncaptioned_picture(self):
+        doc = self.with_image("\n![](docs/story/img/2026-09-13-first-kill.png)\n")
+        self.assertIn("picture-uncaptioned", kinds(cite.check(doc, None, FakeResolver())))
+
+    def test_an_untracked_or_missing_picture(self):
+        doc = self.with_image("\n![c](docs/story/img/nothing.png)\n")
+        ks = kinds(cite.check(doc, None, FakeResolver()))
+        self.assertIn("picture-untracked", ks)
+        self.assertIn("picture-missing", ks)
+        self.assertIn("picture-not-inventoried", ks)
+
+    def test_a_picture_over_budget(self):
+        r = FakeResolver()
+        r.sizes["docs/story/img/2026-09-13-first-kill.png"] = cite.PICTURE_MAX_BYTES + 1
+        self.assertIn("picture-too-large", kinds(cite.check(self.with_image(), None, r)))
+
+    def test_two_pictures_in_one_entry(self):
+        doc = self.with_image(self.IMG + self.IMG)
+        self.assertIn("too-many-pictures", kinds(cite.check(doc, None, FakeResolver())))
+
+    def test_a_pasted_template_placeholder(self):
+        doc = GOOD.replace("The scorer read", "Tag {{tag}}. The scorer read")
+        self.assertIn("placeholder", kinds(cite.check(doc, None, FakeResolver())))
 
 
 class TestKnownDead(unittest.TestCase):
