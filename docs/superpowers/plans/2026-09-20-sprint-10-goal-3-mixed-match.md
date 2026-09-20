@@ -72,7 +72,14 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
       The movement half of the bar: ours' walk is read from its own peek (`0x416054:3`); the console's from PINE
       (`cam_poll --port 28012`); "seen by the other" needs the peer entity's position in each guest -- the next
       reading (research/18 section 3.5 has the local half).
-- [ ] 4. **Leg 2, reversed:** PCSX2 hosts (`pcsx2_shell host A`), ours joins (`online_login_ours` with join). Same bar.
+      - (e), ~16:50 UTC: the console's join:enter CROSS on ours' listed game registered nothing four times and ours
+        saw no joiner for 420 s (`A_[lobby] waiting for a joiner ... T+420s`). The list showed the game, the lobby
+        never came: a server-side refusal, not a harness miss -- the likeliest reading is the console's persona still
+        "in game" on Medius from run (d), whose client was killed mid-round. One of the stop rule's three.
+- [ ] 4. **Leg 2, reversed:** PCSX2 hosts (`pcsx2_shell host A`), ours joins (`online_login_ours --join`). Same bar.
+      - `mixed2_pcsx2_hosts` (a), ~16:35 UTC: the console logged in as `socomp` (persona created) and reached CREATE
+        GAME, and its harness could not see it: no console reference for that title (the miss frames show the screen).
+        `title_create_game.pcsx2.png` cut from them; the PLAY LIST title will need the same on the next run.
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
 - [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
