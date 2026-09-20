@@ -10,6 +10,7 @@
 #include "ui/chrome.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
+#include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/theme.h"
 #ifndef _WIN32
@@ -1143,6 +1144,52 @@ void register_launcher_tests()
             t.Equals(ui::launchBlockedReason(true, false, false), std::string(), "verified and idle: nothing in the way");
         });
 
+
+        // Sprint 9 Goal 9 (P3), the owner's defect, 2026-09-20: "When the game is active, both the game
+        // and the launcher receive input commands from the controller." The launcher reads the pad through
+        // raylib/GLFW, which reads it whether or not the window has focus -- so a stick push walked the
+        // launcher's focus ring while the player was aiming with it. The gate is `ui::padIntent`: every pad
+        // reading in the frame loop goes through it, and while the game runs it answers with nothing.
+        tc.Run("the pad drives the launcher only while no game is running", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Right)] = true;
+
+            double repeatAt = 0.0;
+            const ui::PadIntent idle = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/1.0, repeatAt);
+            t.Equals(idle.dx, 1, "with no game running, a d-pad right is one step right");
+            t.IsTrue(idle.prompts, "and a pad that moved the focus asks for the pad's prompts");
+
+            double repeatAtRunning = 0.0;
+            const ui::PadIntent running = ui::padIntent(pad, /*gameRunning=*/true, /*now=*/1.0, repeatAtRunning);
+            t.Equals(running.dx, 0, "while the game runs the same press moves nothing");
+            t.Equals(running.dy, 0, "and nothing vertically either");
+            t.IsFalse(running.activate, "it does not activate");
+            t.IsFalse(running.back, "it does not go back");
+            t.IsFalse(running.launch, "and Start does not ask for a second launch");
+            t.IsFalse(running.prompts, "a pad the launcher did not read cannot change the prompts");
+        });
+
+        // The same gate, for the half that is easy to get wrong: a HELD stick. The repeat clock must not
+        // run while the game has the pad, or the frame the game exits would deliver the burst it banked.
+        tc.Run("a stick held through a whole game session delivers nothing, and no burst when it ends", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.leftX = -1.0f;   // hard left, well past the 0.55 threshold
+
+            double repeatAt = 0.0;
+            for (double now = 0.0; now < 5.0; now += 0.1)
+            {
+                const ui::PadIntent held = ui::padIntent(pad, /*gameRunning=*/true, now, repeatAt);
+                t.Equals(held.dx, 0, "a stick held while the game runs never steps the launcher's focus");
+            }
+            t.Equals(repeatAt, 0.0, "and the repeat clock never started, so nothing is owed");
+
+            const ui::PadIntent after = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/5.0, repeatAt);
+            t.Equals(after.dx, -1, "the frame the game ends, the still-held stick is one step, not a burst");
+        });
 
 #ifndef _WIN32
         // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in

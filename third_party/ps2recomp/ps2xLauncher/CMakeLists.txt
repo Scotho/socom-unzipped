@@ -7,6 +7,9 @@
 add_library(ps2x_launcher_core STATIC
     src/ui/focus.cpp
     src/ui/pad_geometry.cpp
+    # Sprint 9 Goal 9 (P3): the pad-to-intent gate. Pure, and in the core so the tests can hold a stick
+    # down for five simulated seconds and prove the launcher reads nothing while the game has the pad.
+    src/ui/pad_input.cpp
 )
 target_include_directories(ps2x_launcher_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
