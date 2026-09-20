@@ -213,6 +213,18 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       from `ra 0x343590` (FUN_00343550+0x40, a play-def-at-1.0 wrapper via the def's vtable), the title loop and
       the briefing music from `ra 0x265cd8` (FUN_002659c0+0x318, a scripted sound-command executor); both are
       virtual-dispatched, so the firing condition sits one link up -- the next run traces those.
+      **Item 15 read to the source (runs `s10_r4p/q/r`, ~05:40 UTC):** the title loop and the briefing music are
+      fired by the menu/briefing SCRIPT runner (FUN_00269da0 -> the command stepper FUN_0026a6e0 -> the "play sound"
+      handler FUN_002659c0) on the script's own sequence. The 8 mission stems come from the mission-music state
+      machine (decomp :245347-246077; `DAT_0048e090` current level -1/0-3, `DAT_0048e080` the single stem,
+      `DAT_0048e088` a playlist with a cursor at +0xc, `DAT_0048e0a0` the alert level from the AI's threat float via
+      FUN_00348ce0, `DAT_0048e0a8` level-changed): the per-frame tick FUN_003492b0, when nothing plays (the entry's
+      handle word = our 0x19 answer), sets level -1 and re-dispatches FUN_00348dc0: levels 3/1 play a single stem,
+      levels 2/0 roll a playlist (FUN_00348b20, the game's LCG PRNG against a per-level weight table) that
+      FUN_00349db0 advances entry by entry as each stem ends. **No timer, no rest in the reading** -- so the 10-27 s
+      gaps on ours are not yet explained by the logic as read; candidates: a rest field in the playlist entries,
+      the idle test on the entry's handle word (item 1's answer), the dispatch failing on ours. The state poll gets
+      a `--what music` mode for both machines to compare level / stem / playlist cursor / alert on the same walk.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
