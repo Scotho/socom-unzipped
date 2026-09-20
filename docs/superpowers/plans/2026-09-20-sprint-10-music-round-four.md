@@ -187,6 +187,13 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       which the runtime parks in `sceMpegGetPicture` until a picture's presentation tick -- the one place a 300-400
       ms hole can come from with the EE clock normal (`4e446cc` traces the parks; the correlation run is in flight);
       the console's ring is the same 0x6000 bytes, so a ~400 ms delay line on the PCM route is the fallback.
+      **Item 11 answered (`s10_r4m_music_ours`, ~03:20 UTC):** the feeder waits on NOTHING modelled -- 11958 stamped
+      stream reads, zero cd-stream parks, zero mpeg parks, `[clock]` normal -- and around each PCM starvation the
+      demux thread's reads simply stop for 0.42-0.70 s (26-41 VSync ticks pass) then resume: the calling thread is
+      absent. The MPEG HLE decodes pictures with ffmpeg ON THE CALLING THREAD (MPEG.cpp:320-350, no worker); a slow
+      decode burst under load starves the 128 ms ring. Item 14: a decode-ahead worker filling `decodedFrames` so
+      `sceMpegGetPicture` only pops (the delay line as fallback). Item 15: `PS2X_CALL_TRACE` on the play-sound API's
+      callers to attribute every group-1 stem play and read the condition that fires the next one.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
