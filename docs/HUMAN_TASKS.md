@@ -59,9 +59,12 @@ workflows, and the visibility flip itself. Publishing any Release is always your
   the two channels now line up within 3 ms on a stem decoded from the disc, and against the console's music-only
   capture 123 of 177 windows are within tolerance (6 this morning). Also in this build: the played-out-stem answer
   the console gives, volume updates reaching running stems, the square-law volume curve, the hard-panned voice pair.
-  Still open, being worked: the title/options and briefing music (the PCM ring) stalls for 300-400 ms a few times a
-  minute (a bursty feed, 5 starvations in a run); and the mission's 10-47 s pauses, which the trace shows are the
-  game's own logic not asking for a cue -- the console's decisions are being polled next to compare. What to report:
+  Still open, being worked: the title/options and briefing music (the PCM ring) stalls for 300-700 ms a few times a
+  minute (the movie's demux thread goes absent; a scheduler trace is on it). **The mission's pauses are the game's
+  design, proven on both machines:** at stealth level the mission's own playlist is a 3 s stinger, ~10 s of rest,
+  a stinger (`rest 9.0 s | MGEN0014 | rest 8.5 s | ...`), and only a fight (the AI's alert) plays a continuous
+  stem -- the console does exactly the same on the same walk. So expect silence between stingers while sneaking;
+  what should NOT happen any more is a stem sounding like two songs, or cutting off mid-stem. What to report:
   does the mission music now sound like music (one score, in time with itself); the briefing and options music;
   and whether the pauses you hear are longer or more frequent than on the console.
 

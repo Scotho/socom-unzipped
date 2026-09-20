@@ -233,6 +233,18 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       ours may be the mission's own `rest N s` entry -- the console's capture had silences of the same order --
       or a dispatch/idle-test difference; the music-state rows (every entry, the rest's elapsed, the cursor)
       separate the two. Runs `s10_r4s` (ours) and `s10_r4t` (console) carry the music-state poll.
+      **ITEM 15 CLOSED (~07:20 UTC): the mission's pauses are the mission's own design, identical on both
+      machines.** Both polls read the same STEALTH playlists from the mission's `.rdr`: `[rest 9.0 s | MGEN0014 |
+      rest 8.5 s | MGEN0009 | rest 9.5 s | MGEN0012]` and `[rest 11.5 s | MGEN0039 | rest 9.0 s | MGEN0032 |
+      rest 11.5 s | MGEN0010 | rest 10.0 s | ...]` -- at stealth level the music is a 3 s stinger, ~10 s of
+      silence, a stinger; only the fight levels (alert 2/3 from the AI's threat) play a continuous stem
+      (ours: fight-list MGEN0045 at HUD+86.5 s on contact, single-forced MGEN0004 at +89.9, back to stealth at
+      +117.4 as the alert fell). Ours' cursor advanced through every rest and stem in order; the console's list
+      started during its flyover (before its HUD), a timing difference in the level-0 dispatch, not a mechanism
+      difference. Scores: ours run 14 (`s10_r4s`) 131/177 against run 12c, 137/177 against run 12d (`s10_r4t`).
+      **Nothing in the mission music's decisions differs between the machines any more; what remains is
+      item 16 (the PCM ring's 300-700 ms feed stalls on the intro and briefing: the demux guest thread's absence)
+      and the owner's ear on the stereo fix (the fifth listen).**
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
