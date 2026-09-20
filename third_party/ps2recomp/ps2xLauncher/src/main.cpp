@@ -968,6 +968,10 @@ int main(int argc, char **argv)
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l2"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
+        // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
+        // capture above; this one has the second instance switched ON, which forces the section open
+        // and marks it "in use" -- the state a disclosure must never be able to hide.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_advanced"});
         // Sprint 9 Goal 8: the hosted server's status line, and the REPORT A BUG page in each of its states
         // (the plain report_<size>.png above is the empty form).
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_status"});
@@ -1044,6 +1048,12 @@ int main(int argc, char **argv)
             const launcher::ServerPreset *preset = launcher::findServerPreset(app.config.serverPreset);
             app.layout.customServer = preset == nullptr || preset->address[0] == '\0';
         }
+
+        // Sprint 9 P4: the player's drawer, unless something inside it is doing something. This is
+        // derived from state the launcher already holds, not polled from the world, so it belongs
+        // OUT here -- inside the block above it would be skipped under --screenshot, and the
+        // ADVANCED capture would show a section that says "in use" over nothing at all.
+        app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
 
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         app.graph = &graph;
@@ -1518,6 +1528,7 @@ int main(int argc, char **argv)
                 const bool touchpadShot = std::strcmp(shot.suffix, "_crouch_touchpad") == 0;
                 app.pad = (std::strcmp(shot.suffix, "_playstation") == 0 || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
                 app.config.crouchShortcut = std::strncmp(shot.suffix, "_crouch_", 8) == 0 ? shot.suffix + 8 : "off";
+                app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.

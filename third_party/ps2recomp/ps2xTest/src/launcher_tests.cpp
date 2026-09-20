@@ -1138,6 +1138,66 @@ void register_launcher_tests()
                      "and the word's ink is still inside the bar");
         });
 
+        // Sprint 9 P4 (owner, 2026-09-20): "move 'Second instance on this machine (for testing)' into an
+        // advanced section". There was no advanced anything in the launcher, so this makes one: a labelled
+        // disclosure at the foot of a page, shut by default, holding the settings a stranger should not
+        // meet on their first run. The rule that keeps a disclosure honest is that it never hides a setting
+        // that is DOING something -- a section holding a non-default value opens itself and cannot be shut,
+        // so nobody turns on a second instance, collapses the section and then wonders why two games start.
+        tc.Run("ONLINE's ADVANCED section is shut by default, and the second instance lives inside it", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = false;
+
+            const std::vector<ui::Node> shut = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(shut, "online.advanced"), "the disclosure itself is always there to be focused");
+            t.IsFalse(ui::hasNode(shut, "online.second"),
+                      "and while it is shut the second-instance toggle is not a control on the page at all");
+
+            in.advancedOpen = true;
+            const std::vector<ui::Node> open = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(open, "online.second"), "opened, the toggle is back");
+            const ui::Rect disclosure = ui::rectOf(open, "online.advanced");
+            const ui::Rect second = ui::rectOf(open, "online.second");
+            t.IsTrue(ui::drawable(disclosure) && ui::drawable(second), "both are real rects");
+            t.IsTrue(second.y > disclosure.y, "the toggle sits below the disclosure that reveals it");
+            t.IsTrue(second.y > ui::rectOf(open, "online.profile").y,
+                     "and the whole section is below the settings a stranger does need");
+
+            // The focus order: ADVANCED is the last thing on the page before the bottom bar's LAUNCH, so
+            // walking down the page never lands in it on the way to something ordinary.
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            const std::vector<std::string> ids = g.idsOn(ui::Page::Online);
+            t.IsTrue(!ids.empty(), "the page has controls");
+            size_t advancedAt = ids.size(), profileAt = ids.size();
+            for (size_t i = 0; i < ids.size(); ++i)
+            {
+                if (ids[i] == "online.advanced") advancedAt = i;
+                if (ids[i] == "online.profile") profileAt = i;
+            }
+            t.IsTrue(advancedAt < ids.size() && profileAt < ids.size(), "both are in the graph");
+            t.IsTrue(advancedAt > profileAt, "ADVANCED comes after the ordinary settings, not before them");
+        });
+
+        tc.Run("an ADVANCED section holding a non-default setting opens itself and cannot be shut", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.IsFalse(c.secondInstance, "a fresh config does not run a second instance");
+            t.IsFalse(ui::advancedForced(c), "so nothing forces the section open");
+
+            c.secondInstance = true;
+            t.IsTrue(ui::advancedForced(c),
+                     "a second instance switched on forces it open -- a disclosure must never hide a setting that is doing something");
+
+            // And the layout agrees: forced open, the toggle is present whatever the player last chose.
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = ui::advancedForced(c);   // the player's collapse does not get a vote here
+            t.IsTrue(ui::hasNode(ui::layoutFor(ui::Page::Online, window, in), "online.second"),
+                     "the toggle a player switched on is always on the page they switched it on");
+        });
+
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
         // game. The community server runs r0004, which this client cannot play yet.
         tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)

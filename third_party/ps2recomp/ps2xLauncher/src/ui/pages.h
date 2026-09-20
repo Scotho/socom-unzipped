@@ -90,6 +90,10 @@ namespace ui
         LayoutInputs layout;
         bool padPrompts = false;   // the last input came from a pad: the bar shows its glyphs
         bool fake = false;         // --screenshot: fixed state, no config written, no devices touched
+        // Sprint 9 P4: whether the player has opened a page's ADVANCED section this session. Deliberately
+        // NOT in Config: which drawers you left open is not a setting, and a launcher that reopens them for
+        // a stranger would defeat the point. `advancedForced` can override it -- see focus.h.
+        bool advancedOpen = false;
     };
 
     // ---- the shared furniture of a settings page ----------------------------------------------------------
@@ -104,6 +108,44 @@ namespace ui
     inline void caption(const Ctx &ctx, Vec2 at, const char *s)
     {
         text(ctx, s, at, metrics::captionSize, theme::caption);
+    }
+
+    // Sprint 9 P4 (owner: "move 'Second instance on this machine (for testing)' into an advanced section").
+    // The head of one: a caret, the word, and a rule to the edge of the body. Returns true on the frame it
+    // was acted on. `forced` means something inside is not at its default -- it is then drawn open, marked
+    // "in use", and refuses to close, because a disclosure that can hide a live setting is a trap.
+    inline bool advancedHeader(const Ctx &ctx, Rect r, const std::string &id, bool open, bool forced)
+    {
+        if (!drawable(r))
+            return false;
+        const bool live = hovered(ctx, r) || focused(ctx, id);
+        const Rgba ink = forced ? theme::gold : (live ? theme::text : theme::dim);
+        const float cx = r.x + 7.0f;
+        const float cy = r.cy();
+        // Wound the way fillQuad documents for this backend -- top-left, then the lower point, then the
+        // top-right. The other order draws nothing at all: the first pass of this caret was invisible.
+        if (open)   // pointing down: the section below is showing
+            fillTriangle(ctx, Vec2{cx - 5.0f, cy - 2.5f}, Vec2{cx, cy + 3.5f}, Vec2{cx + 5.0f, cy - 2.5f}, ink);
+        else        // pointing right: there is more this way
+            fillTriangle(ctx, Vec2{cx - 2.5f, cy - 5.0f}, Vec2{cx - 2.5f, cy + 5.0f}, Vec2{cx + 3.5f, cy}, ink);
+
+        const float wordX = r.x + 20.0f;
+        text(ctx, "ADVANCED", Vec2{wordX, r.y + (r.h - metrics::labelSize * 1.12f) * 0.5f}, metrics::labelSize, ink,
+             Face::Bold, 0.12f);
+        float ruleRight = r.right();
+        if (forced)
+        {
+            const char *note = "in use";
+            const float noteW = textWidth(ctx, note, metrics::captionSize - 1.0f);
+            textRightIn(ctx, note, r, metrics::captionSize - 1.0f, theme::gold);
+            ruleRight -= noteW + 14.0f;
+        }
+        const float ruleX = wordX + textWidth(ctx, "ADVANCED", metrics::labelSize, Face::Bold, 0.12f) + 14.0f;
+        if (ruleRight > ruleX)
+            fillRect(ctx, Rect{ruleX, cy, ruleRight - ruleX, 1.0f}, theme::alpha(theme::line, live ? 220 : 130));
+
+        // A forced-open section still takes the focus (it is a landmark on the page); it just will not shut.
+        return hit(ctx, r, id) && !forced;
     }
 
     // ---- one per page -------------------------------------------------------------------------------------
