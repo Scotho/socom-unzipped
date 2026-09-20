@@ -23,6 +23,16 @@
       <div id="loading-track"><div id="loading-bar"></div></div>
     </div>
     <div id="panel">
+      <!--
+        The whole overlay folds to this one bar. It is a real button so it takes a tap, a click, Enter
+        and Space without any of that being written here, and `aria-expanded` tells a screen reader
+        which way it is.
+      -->
+      <button id="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-body">
+        <span id="panel-title">Unzipped Project Map Viewer</span>
+        <span id="panel-chevron" aria-hidden="true">&#9662;</span>
+      </button>
+      <div id="panel-body">
       <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <div class="row">
         <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
@@ -93,6 +103,7 @@
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive
         Entertainment.</p>
       <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; ` hides this</p>
+      </div>
     </div>
     <script type="module" src="./src/main.ts"></script>
   </body>

@@ -126,6 +126,7 @@ ui.onMapChange((path) => {
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
+ui.onPanelToggle();
 ui.onSlider((name, value) => {
   if (name === 'fognear' || name === 'fogfar') fogIsMine = true;
   applySlider(name, value);
@@ -297,6 +298,7 @@ function show(map: LoadedMap): void {
   }
 
   ui.select(map.path);
+  ui.setPanelTitle(`${map.name} (${map.archive})`);   // what the collapsed bar reads
   ui.setDiagnostics(map.diagnostics);
 
   // The status line is written **when the world is on screen**, not when the map is decoded. Everything
@@ -363,6 +365,7 @@ window.__viewer = {
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
+  panelCollapsed: () => ui.panelCollapsed(),
   flares: () => view?.flarePositions() ?? [],
   sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;

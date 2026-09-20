@@ -20,6 +20,7 @@ export interface ViewerHook {
   };
   toggles(): Record<ToggleName, boolean>;
   chromeHidden(): boolean;
+  panelCollapsed(): boolean;
   flares(): [number, number, number][];
   sliders(): Record<SliderName, number>;
 }

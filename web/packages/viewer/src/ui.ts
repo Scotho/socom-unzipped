@@ -21,6 +21,8 @@ export class Ui {
   private readonly loading = find<HTMLElement>('loading');
   private readonly loadingWhat = find<HTMLElement>('loading-what');
   private readonly loadingBar = find<HTMLElement>('loading-bar');
+  private readonly panelToggle = find<HTMLButtonElement>('panel-toggle');
+  private readonly panelTitle = find<HTMLElement>('panel-title');
   /**
    * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
@@ -91,6 +93,41 @@ export class Ui {
       e.preventDefault();
       document.body.classList.toggle('chrome-hidden');
     });
+  }
+
+  /**
+   * The whole overlay folded to one bar, and back. Two ways in, because they answer different wants:
+   * the backtick takes *everything* away for a clean picture, and this leaves a bar behind that says
+   * which map is on screen and can be tapped to bring the panel back -- which is the one that works
+   * with a thumb.
+   *
+   * The state is remembered, in `localStorage` and so best-effort: a private window, blocked site data
+   * or a browser that throws on access all end up with the panel open, which is the right default
+   * anyway. Nothing here fails if storage does.
+   */
+  onPanelToggle(): void {
+    this.setPanelCollapsed(read(PANEL_KEY) === '1');
+    this.panelToggle.addEventListener('click', () => {
+      const collapsed = !document.body.classList.contains('panel-collapsed');
+      this.setPanelCollapsed(collapsed);
+      write(PANEL_KEY, collapsed ? '1' : '0');
+    });
+  }
+
+  private setPanelCollapsed(collapsed: boolean): void {
+    document.body.classList.toggle('panel-collapsed', collapsed);
+    this.panelToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
+  }
+
+  /** What the collapsed bar reads: the map on screen, so the bar is worth leaving up. */
+  setPanelTitle(text: string): void {
+    this.panelTitle.textContent = text;
+  }
+
+  /** Whether the panel is folded, for the debug hook. */
+  panelCollapsed(): boolean {
+    return document.body.classList.contains('panel-collapsed');
   }
 
   /** Whether the chrome is hidden, for the debug hook. */
@@ -228,4 +265,13 @@ function find<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`the page has no #${id}`);
   return element as T;
+}
+
+/** `localStorage`, best-effort both ways: it throws in a private window and returns null when cleared. */
+const PANEL_KEY = 's2u.viewer.panelCollapsed';
+function read(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function write(key: string, value: string): void {
+  try { localStorage.setItem(key, value); } catch { /* the panel just opens next time */ }
 }

@@ -21,6 +21,26 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
   padding: 10px 12px; border: 1px solid #333a44; border-radius: 8px;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
 }
+/*
+ * The collapse control. A 44px minimum because a thumb is about that wide, and full width so the whole
+ * bar is the target rather than the chevron alone.
+ */
+#panel-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  width: 100%; min-height: 44px; margin: -4px 0 6px; padding: 6px 4px;
+  background: none; border: none; border-radius: 6px; color: #9aa4b1;
+  font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+#panel-toggle:hover, #panel-toggle:focus-visible { color: #d8dde4; }
+#panel-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#panel-chevron { transition: transform 120ms ease; }
+@media (prefers-reduced-motion: reduce) { #panel-chevron { transition: none; } }
+/* Collapsed: the body goes, the bar stays, and the panel shrinks to it. */
+body.panel-collapsed #panel-body { display: none; }
+body.panel-collapsed #panel { width: min(300px, calc(100vw - 24px)); padding-bottom: 4px; }
+body.panel-collapsed #panel-toggle { margin-bottom: 0; }
+body.panel-collapsed #panel-chevron { transform: rotate(-90deg); }
+
 #panel .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 #panel select, #panel button { font: inherit; padding: 3px 6px; background: #1d2027; color: inherit; border: 1px solid #39414d; border-radius: 4px; }
 #panel button[disabled] { opacity: 0.55; cursor: not-allowed; }
