@@ -82,9 +82,10 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
   (`viewer/src/lighting.ts`) with the map's own rig: `MP*.ZED/GlobalLighting` holds three light
   directions, three colours and an ambient, and `-normalize(dir[k])` with the colours verbatim
   reproduces the VU1 quadwords a live capture shows, bit for bit. What the disc does not explain is
-  the magnitude: the rig on its own renders about eight times darker than the PS2 capture, so the
-  exposure slider opens at 8. The relation between surfaces is right — the capture's vertical wall is
-  brighter than its ground, and so is ours — and only the overall scale is a guess.
+  the magnitude: the rig on its own renders about eight times darker than the PS2 capture. The
+  relation between surfaces is right — the capture's vertical wall is brighter than its ground, and so
+  is ours — and only the overall scale is a guess. The two sliders open at the owner's picks (ambient
+  trim +0.10, exposure 1.90×) rather than at the calibrated pair (0 and 8.00×).
 
 - **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
   dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out

@@ -53,11 +53,11 @@
         </div>
       <details id="sliders-box">
         <summary>lighting (the map's own rig, trimmed)</summary>
-        <p class="note">Three directional lights and an ambient, read from the map's own <code>GlobalLighting</code> record &mdash; the same numbers the game hands VU1. The ambient slider is a trim. The exposure is not: the rig on its own comes out about eight times too dark against the PS2 capture, and 8.00&times; is that unexplained factor, so 1.00&times; shows the bare model.</p>
+        <p class="note">Three directional lights and an ambient, read from the map's own <code>GlobalLighting</code> record &mdash; the same numbers the game hands VU1. Both sliders are trims on top of it, and both open at the owner's picks. The rig on its own comes out about eight times too dark against the PS2 capture: 1.00&times; with no trim shows the bare model, and 8.00&times; with no trim is the calibrated pair.</p>
         <label class="slider" title="Added to the map's own ambient. 0 is the hardware."><span>ambient trim</span>
-          <input type="range" id="ambient" min="0" max="1" step="0.01" value="0" /><output id="ambient-out"></output></label>
+          <input type="range" id="ambient" min="0" max="1" step="0.01" value="0.10" /><output id="ambient-out"></output></label>
         <label class="slider" title="An exposure on the whole lit result. 1.00x is the map's rig with nothing added, which comes out about eight times too dark against the PS2 capture; 8 is that unexplained factor. The EE's params.y/params.z are a lighting enable, never a scale."><span>exposure</span>
-          <input type="range" id="lightgain" min="0.25" max="12" step="0.05" value="8" /><output id="lightgain-out"></output></label>
+          <input type="range" id="lightgain" min="0.25" max="12" step="0.05" value="1.9" /><output id="lightgain-out"></output></label>
       </details>
       <details id="fog-box">
         <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>

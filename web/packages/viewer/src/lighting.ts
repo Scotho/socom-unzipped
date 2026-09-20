@@ -72,8 +72,14 @@ export interface Lighting {
  */
 export const LIT_SCALE = 8;
 
-/** No trim, and the exposure at the measured scale: what the viewer opens with. */
-export const DEFAULT_LIGHTING: Lighting = { rig: null, ambient: 0, gain: LIT_SCALE };
+/**
+ * What the viewer opens with: **the owner's picks**, chosen by looking at the maps rather than at the
+ * capture. They are not `LIT_SCALE`: the exposure is well under the 8 the Frostfire patches ask for
+ * and the ambient carries part of the difference, which trades some of the rig's contrast for a
+ * picture that reads on the darker maps. Both are sliders; `ambient 0, gain LIT_SCALE` is the
+ * calibrated pair, and `ambient 0, gain 1` is the bare model.
+ */
+export const DEFAULT_LIGHTING: Lighting = { rig: null, ambient: 0.1, gain: 1.9 };
 
 /**
  * The rig a map with no `GlobalLighting` key falls back to: one white light from above and a little

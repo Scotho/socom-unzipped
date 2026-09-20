@@ -104,17 +104,20 @@ describe('applyLighting', () => {
   });
 
   it('lights with a stand-in rig, not with nothing, when a map has no GlobalLighting record', () => {
-    const none: Lighting = { ...DEFAULT_LIGHTING, rig: null };
+    // The bare model, not the shipped trims: this is about the rig standing in, not about the sliders.
+    const none: Lighting = { rig: null, ambient: 0, gain: 1 };
     const up = lit(one([0.5, 0.5, 0.5, 1], [0, 1, 0]), none)[0]!;
     const down = lit(one([0.5, 0.5, 0.5, 1], [0, -1, 0]), none)[0]!;
-    expect(up).toBeCloseTo(0.5 * (FALLBACK_RIG.ambient[0] + FALLBACK_RIG.colours[0]![0]) * LIT_SCALE, 6);
-    expect(down).toBeCloseTo(0.5 * FALLBACK_RIG.ambient[0] * LIT_SCALE, 6);
+    expect(up).toBeCloseTo(0.5 * (FALLBACK_RIG.ambient[0] + FALLBACK_RIG.colours[0]![0]), 6);
+    expect(down).toBeCloseTo(0.5 * FALLBACK_RIG.ambient[0], 6);
     expect(up).toBeGreaterThan(down);
   });
 
-  it('the shipped defaults add no trim, and carry the measured scale as the exposure', () => {
-    expect(DEFAULT_LIGHTING.ambient).toBe(0);
-    expect(DEFAULT_LIGHTING.gain).toBe(LIT_SCALE);
+  it('the shipped defaults are the owner picks, and the calibrated scale is still named', () => {
+    // Chosen by looking at the maps, not fitted: a lower exposure with some of it carried as ambient.
+    expect(DEFAULT_LIGHTING.ambient).toBe(0.1);
+    expect(DEFAULT_LIGHTING.gain).toBe(1.9);
+    // ... and what the Frostfire patches actually measured, which the slider can still be set to.
     expect(LIT_SCALE).toBe(8);
   });
 });
