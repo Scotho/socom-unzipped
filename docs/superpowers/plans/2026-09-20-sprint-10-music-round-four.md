@@ -38,7 +38,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
   voice ends (`FUN_0001107c`, the tick, deactivates when nothing is queued at handler+0x44). The EE's music manager
   (`FUN_0034afd0`) polls 0x19 every frame and starts the next stem FRESH through 0x2c with queue = 0 (its only
   0x2c caller, `FUN_00342240`, never passes a parent) -- so "parentHandle 0 on all 55 plays" was the console's
-  own behaviour, not a symptom. `e39a8dc` (StreamSlot::ended answering the handle) is WRONG and inverted the
+  own behaviour, not a symptom. `77d5522` (StreamSlot::ended answering the handle) is WRONG and inverted the
   symptom: the manager never sees 0, stays in "playing" after one stem, and only an enemy-contact cue restarts
   the music -- the owner's third listen exactly. Reverted by the fix agent (see the audit's diff list: the
   0x21 SetSoundParams answer for live streams, the squared volume curve of vol.c:434, the AutoVol step schedule).
@@ -68,7 +68,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       (`logs/parity/s10_r4_music_*`, 2026-09-20 ~22:10 UTC) was INVALID: the boot's counted CROSS presses overshot
       the main menu on both targets (ours ended at MISSION BRIEFING, PCSX2 at MAPS/INTEL when the "sliders as set"
       frame was taken), so no slider was moved and ours' -99.7 dB windows were a muted game, not a verdict. Fixed
-      (`d8e10ef`): the main menu is reached by `untilref` on the logo band (proven in `options_explore.txt`), the
+      (`2c8e256`): the main menu is reached by `untilref` on the logo band (proven in `options_explore.txt`), the
       SOUND and DIALOG rows by `until(box)` on their teal highlight. Runs 2-6 (`s10_r4b`..`s10_r4f`, all on
       PCSX2, each killed at its first invalid frame) taught the page one fact each: the rows sit 44 px apart
       (the first boxes straddled a gap); a slow PCSX2 boot outruns untilref's count of 12 (the chain now sets
@@ -78,7 +78,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       the card). Run 7 = `s10_r4g`: the reference re-pinned, ours compared. Chain: `logs/s10_music_round4_captures.sh`.
 - [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
-      **First valid reading, run 8 (`s10_r4h`, 2026-09-20 ~20:50 UTC; ours on the 13:40 exe = the e39a8dc model,
+      **First valid reading, run 8 (`s10_r4h`, 2026-09-20 ~20:50 UTC; ours on the 13:40 exe = the 77d5522 model,
       before the fix agent's commits):** 6/177 windows within tolerance. Two facts, both new:
       (a) **ours' music track is ~31 dB low everywhere** -- median ours-minus-PCSX2 rms: title/menu (the PCM
       ring) -31.1 dB, AUDIO OPTIONS -31.2, briefing -24.4, mission (VAG stems) -30.1 -- while SFX/dialog matched
@@ -86,8 +86,8 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       (handed to the fix agent as item 5; the group-1 master is 0x2f5 in the trace, the plays carry vol 0x400).
       (b) **the stems stop:** 53 streams, 7 group-1 stems, gaps of 70.5 s, 74.9 s, 59.0 s and 24.2 s between
       consecutive stems on ours; ours' windows s128-s176 carry 4-21 s of silence each where the console has none
-      (the e39a8dc still-playing answer kept the EE's manager waiting -- item 1, `a0e0d0b`, is the fix to measure).
-      **Run 9b (`s10_r4j`, ~22:50 UTC; ours rebuilt at 15:44 local from `25a8cd5` = the three model commits; the game's
+      (the 77d5522 still-playing answer kept the EE's manager waiting -- item 1, `378a87b`, is the fix to measure).
+      **Run 9b (`s10_r4j`, ~22:50 UTC; ours rebuilt at 15:44 local from `1fae355` = the three model commits; the game's
       per-app session held at 1.0):** 77/177 within tolerance. (a) was Windows: `socom2.exe session first seen: vol 0.03`
       on the endpoint -- the capture now holds it (`app_volume`), and the residual is ~6 dB on both routes (title ring
       -3.9 dB median, options page -6.5, mission stems -5.9). (b) the stems now chain: 11 group-1 stems, 8 of 11
@@ -106,9 +106,9 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       cue queue, which only mission/AI logic fills (`FUN_0034b6c0` via the generic play-sound API). Not ours to fix; the
       console does the same on its own walk. Item 7, the 6 dB on the stems: a stereo stream on the console is a VOICE
       PAIR -- the main voice forced to pan 270 (`FUN_000152fc`) = table[0] = (32766, 0) and the doubling voice on the
-      right -- while ours centre-panned one voice (table[90] = 23167, squared: exactly 0.5). `8a43b09`: a two-channel
+      right -- while ours centre-panned one voice (table[90] = 23167, squared: exactly 0.5). `6ef6419`: a two-channel
       stream's main voice at pan+270 and the pair mixed L/R. The title ring's -4..-6.5 dB is NOT explained (the agent's
-      arithmetic predicts ours 1.5 dB louder) and stays open. Run 10 = `s10_r4k` (ours only on `8a43b09`):
+      arithmetic predicts ours 1.5 dB louder) and stays open. Run 10 = `s10_r4k` (ours only on `6ef6419`):
       **126/177** (6 -> 77 -> 126 over the day).
       **The owner's own recordings (2026-09-20 ~23:10-23:30 UTC, five phone clips of run 10 playing on the speakers;
       envelope cross-correlation places each in the loopback at corr 0.90-1.00):** the dips they hear are in OURS'
@@ -126,7 +126,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       73.5 s over the briefing/loading (275 s) and 68 s from 411 s (60 s after its HUD; cut by the recorder's end, so
       >= 68 s). Ours' are shorter and more frequent (3.2, 1.6, 3.1, 10.7, 1.8, 10.9, 12.6, 17.9, 9.7, 16.2, 2.0, 33.6 s
       over the same span). Whether a given stop is the game's decision or ours' is what the state poll answers.
-      The recorder's 480 s cap (fixed to 620, `5daf39b`) made run 8's late reference windows silent; re-pin = `s10_r4l`.
+      The recorder's 480 s cap (fixed to 620, `9b63420`) made run 8's late reference windows silent; re-pin = `s10_r4l`.
       **THE LEAD (2026-09-20 ~23:55 UTC, after the owner's "it doesn't even sound like music"): ours plays the two
       channels of every stereo VAG music stream OUT OF SYNC.** Content analysis of the loopback captures (L against R,
       decimated to 4 kHz, lag search +/-2 s, 25-30 s windows): the console's mission music correlates at lag 0
@@ -135,23 +135,23 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       briefing music and on later mission stems, +136 / +674 / +109 ms on others; side/mid energy ~0 dB vs the
       console's -2 dB. Per-file, deterministic first offsets (one interleave block?) that then drift: the two channel
       cursors start apart and do not advance together. The title loop (the PCM ring) is aligned on both (+0.37 vs
-      +0.42). Before `8a43b09` the desynced pair was centre-mixed -- the phasey "choppy, jumping" smear of the earlier
+      +0.42). Before `6ef6419` the desynced pair was centre-mixed -- the phasey "choppy, jumping" smear of the earlier
       listens; after it, hard-panned and still desynced. Level, modulation (3-5 Hz music rhythm on both), spectral
       flatness (tonal on both), clicks (none) and spectral peaks (coincident) all read the same on both machines --
       which is why every level instrument passed it. Handed to the fix agent as item 10 (test first: a two-channel
       VPK with identical L/R renders sample-aligned across chunks, the pre-fill and an underrun); a third agent adds
       `lr_corr0 / lr_lag_ms / lr_best / side_mid_db` per window to the parity scorer with a stereo-desync compare rule.
-      **THE CAUSE (`ce6ed95`, 2026-09-21 ~00:40 UTC):** a two-channel VPK is interleaved per STREAMING BUFFER, not per
+      **THE CAUSE (`c6502ea`, 2026-09-21 ~00:40 UTC):** a two-channel VPK is interleaved per STREAMING BUFFER, not per
       0x800 chunk. Every SOCOM stem has header word 2 = 0x800, word 3 = 0xb000, 2 channels; the IRX's stream open
       (`FUN_00013334`) requires word 3 to equal the streaming buffer the game passed to InitVAGStreamingEx (0xb000)
       and splits each buffer per channel (`>> 1`): 0x5800 bytes of LEFT then 0x5800 of RIGHT per 0xb000 of file, the
       last partial buffer split in halves. Ours read alternate 0x800 chunks as L/R -- so the right channel played a
       different part of the song, an offset that depends on the position in the buffer (the +561 / +61 / +674 ms
       lags), and every listen since the mission music first played was two copies of the score out of step. The
-      scorer now flags it (`005b454`; run 10 against the 620 s reference: 118/177 with six stereo-desync windows:
+      scorer now flags it (`37579aa`; run 10 against the 620 s reference: 118/177 with six stereo-desync windows:
       s127/s139/s140 at +560 ms, s141 -21, s147 -90, s158 -102 ms). The fix agent's instrumented run on the fixed exe
-      (buffer occupancy + starvation events `a486c6d`, the dip classifier `tools_py/parity/audio_dips.py`) is next.
-      **The instrumented run (`s10_r4l_music_ours`, exe 16:58 = `ce6ed95`+`a486c6d`, ~01:00 UTC 2026-09-21):**
+      (buffer occupancy + starvation events `04512ad`, the dip classifier `tools_py/parity/audio_dips.py`) is next.
+      **The instrumented run (`s10_r4l_music_ours`, exe 16:58 = `c6502ea`+`04512ad`, ~01:00 UTC 2026-09-21):**
       123/177 against the 620 s reference; the stereo rule now trips on ONE window (s156: +610 ms during a 5.8 s
       silence -- a stem boundary; item 12) instead of six. Item 8 answered: all 11 cue pushes were QUEUED (free 20,
       enable 1, none refused); every push comes from the play-sound API caller `ra 0x3432d8` (FUN_00343140); the
@@ -185,7 +185,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       change to settle it. Item 12: NOT a desync -- s156 holds a wide-by-nature stem (its own channels 0.08 at lag 0
       from the disc). Item 11 so far: the PCM ring's feeder in the intro/briefing is the game's PSS demux thread,
       which the runtime parks in `sceMpegGetPicture` until a picture's presentation tick -- the one place a 300-400
-      ms hole can come from with the EE clock normal (`4e446cc` traces the parks; the correlation run is in flight);
+      ms hole can come from with the EE clock normal (`feb22d8` traces the parks; the correlation run is in flight);
       the console's ring is the same 0x6000 bytes, so a ~400 ms delay line on the PCM route is the fallback.
       **Item 11 answered (`s10_r4m_music_ours`, ~03:20 UTC):** the feeder waits on NOTHING modelled -- 11958 stamped
       stream reads, zero cd-stream parks, zero mpeg parks, `[clock]` normal -- and around each PCM starvation the
@@ -194,7 +194,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       decode burst under load starves the 128 ms ring. Item 14: a decode-ahead worker filling `decodedFrames` so
       `sceMpegGetPicture` only pops (the delay line as fallback). Item 15: `PS2X_CALL_TRACE` on the play-sound API's
       callers to attribute every group-1 stem play and read the condition that fires the next one.
-      **The console's cue 4 riddle, answered by the extended poll (`0ffbf27`; run `s10_r4q`, 132/177 for ours run
+      **The console's cue 4 riddle, answered by the extended poll (`73beea6`; run `s10_r4q`, 132/177 for ours run
       13 against its re-pin):** the console plays the same file, `M51_048` (9.15 s, group 2). Its sound ENTRY's
       handle word alternates -1 (a 0x19 poll in flight) and 0x84000006 (the IOP's answer: type 4, bit 31 set) from
       351.5 s to 367.0 s, then reads -1 for the rest of the run (to 470 s) with no further change: the console's
@@ -202,7 +202,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       fires no voice cue after that. A lost RPC completion on the console's side -- its own behaviour, not a model
       difference; item 1's model (a played-out stream answers 0) stands, and ours' sequencer, which does get its
       answers, simply moves on. The mission MUSIC is not this sequencer's (item 15 is where the pauses live).
-      **Item 14 (`ac53a9d`, ~04:30 UTC): the MPEG decode-ahead worker is in and correct (a 300 ms fake decode
+      **Item 14 (`a6833cc`, ~04:30 UTC): the MPEG decode-ahead worker is in and correct (a 300 ms fake decode
       returns in < 5 ms; 698 C++ green) and it did NOT clear the bar** -- run `s10_r4p_music_ours` (134/177) has the
       same four PCM starvations and the same 0.2-0.7 s stream-read gaps (12 totalling 4.8 s over 304 s of movie),
       VSync ticks advancing at the host rate across each: the demux GUEST THREAD is absent, not parked, not
@@ -225,7 +225,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       gaps on ours are not yet explained by the logic as read; candidates: a rest field in the playlist entries,
       the idle test on the entry's handle word (item 1's answer), the dispatch failing on ours. The state poll gets
       a `--what music` mode for both machines to compare level / stem / playlist cursor / alert on the same walk.
-      **The playlist entries DO carry a rest (`1e310d6`, ~06:20 UTC):** each 0x10-byte entry is {def (0 = REST),
+      **The playlist entries DO carry a rest (`2502698`, ~06:20 UTC):** each 0x10-byte entry is {def (0 = REST),
       sound entry, PAUSETIME s, elapsed s}, filled from the mission's `.rdr` node's SNDNAME/PAUSETIME
       (FUN_00349e90 :246077); FUN_00349b90 (:245922) counts a rest entry done when elapsed > PAUSETIME, a stem
       entry done when its handle is dead; FUN_00349db0 plays the next at once; a finished list re-rolls the same
@@ -245,7 +245,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       **Nothing in the mission music's decisions differs between the machines any more; what remains is
       item 16 (the PCM ring's 300-700 ms feed stalls on the intro and briefing: the demux guest thread's absence)
       and the owner's ear on the stereo fix (the fifth listen).**
-      **ITEM 16 ANSWERED (`ecf7505`, ~08:10 UTC; the scheduler trace `PS2X_SCHED_TRACE=1`, research/36):** the
+      **ITEM 16 ANSWERED (`a384dfb`, ~08:10 UTC; the scheduler trace `PS2X_SCHED_TRACE=1`, research/36):** the
       demux thread is NOT absent -- it is guest thread 1, awake every frame, spending its whole 31.5 ms feed
       window polling `sceMpegDemuxPssRing` (~4000 calls/s), which the MPEG HLE answers with 0 bytes consumed while
       `decodedFrames + pending >= kMaxDecodedPicturesAhead = 8` (MPEG.cpp:502, :1498, :2105-2116). In the intro a
@@ -258,7 +258,7 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       at the mission load, once). Fix in progress: re-offer aside audio every tick while backpressured, and gate
       the demux on stream time (~200 ms of PTS ahead) instead of a picture count; bar = zero PCM starvation on
       the intro and the briefing (`s10_r4v`).
-      **ITEM 16 FIXED (`9e66a3a`, ~09:50 UTC):** the decoder gate is stream time (fed while the pictures ahead of
+      **ITEM 16 FIXED (`619c139`, ~09:50 UTC):** the decoder gate is stream time (fed while the pictures ahead of
       the presenter cover < 12 fields, ~200 ms, cap 32, open at EOF); a refused video packet is HELD in stream
       order and fed on every demux call and every GetPicture; the game's read is refused only when the held copy
       is full or the game has refused 32 audio packets, and a refused call still re-offers the aside audio every

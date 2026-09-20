@@ -26,7 +26,7 @@ Date: 2026-09-20. Read-only audit; no code changed. Sources: Ziemas' decompilati
 ## Q1. When does a played-out VAG stream's handle stop answering?
 
 **Verdict: on the first 240 Hz tick after the SPU voice's envelope reaches zero on the final buffer -- and
-the handle answers 0 from that tick on. Commit e39a8dc's premise ("the IRX leaves the handle word in the
+the handle answers 0 from that tick on. Commit 77d5522's premise ("the IRX leaves the handle word in the
 slot, so the handle keeps answering until the slot is retaken") is wrong: the IRX leaves the handle word
 but CLEARS BIT 31 of it, and the handle the EE holds has bit 31 SET, so the equality test fails.**
 
@@ -75,13 +75,13 @@ When the streamer deactivates (IRX `FUN_0001107c` = the per-tick stream update, 
 
 - `soundIsStillPlaying` (line 1276-1310): when the host says the stream is not playing, answer **0** and
   mark the slot free. Delete the `ended` branch (1292-1296) and `StreamSlot::ended` (278), and
-  `reapEndedStreams` (1545-1560) should free (`active = false`), not mark ended. The pre-e39a8dc behaviour
+  `reapEndedStreams` (1545-1560) should free (`active = false`), not mark ended. The pre-77d5522 behaviour
   ("0 at the last rendered sample") was right to within one 240 Hz tick (<= 4.2 ms).
 - `playVagStream` (1562-1625): the parent lookup must fail for a finished stream (as `FUN_0000d6b4` does),
   and the IRX's behaviour on that failure is: if `flags & 0x10` return 0, else `param_8 = 0` and start a
   FRESH stream (`FUN_0000f7e0`, the `if ((param_10 & 0x10) != 0) return 0; param_8 = 0;` fall-through).
-  Ours instead chains onto the ended slot ("a play queued behind an ended handle is accepted", e39a8dc).
-- The tests that pin e39a8dc (`socom2_audio_tests.cpp:1970-2030`, `2074-2120`) assert the wrong answer and
+  Ours instead chains onto the ended slot ("a play queued behind an ended handle is accepted", 77d5522).
+- The tests that pin 77d5522 (`socom2_audio_tests.cpp:1970-2030`, `2074-2120`) assert the wrong answer and
   must be rewritten to assert 0 after the end.
 - Also (moot for SOCOM, see Q2, but the model claims otherwise): a QUEUED play returns **1**, not the parent's
   handle (`FUN_0000f7e0`, `LAB_0000faec: return 1`). Ours returns `target->handle`
@@ -136,9 +136,9 @@ and stored by the callback; the following frame `FUN_0034afd0` frees the entry (
 that it pops the next cue and issues 0x2c; the IRX allocates, seeks and reads the first buffers from
 VAGSTORE.ZAR, DMAs them and keys the voice on. Roughly **2-3 frames (33-50 ms at 60 Hz) plus the read and
 prebuffer (tens of ms on PCSX2)** -- a short, audible seam, not a crossfade and not gapless. The EE relies
-on `snd_SoundIsStillPlaying` turning 0 promptly; with e39a8dc in place it never does, so the manager stays
+on `snd_SoundIsStillPlaying` turning 0 promptly; with 77d5522 in place it never does, so the manager stays
 in state 1 forever and only an interrupting cue (a type-1/2 event: enemy contact) breaks it. That is the
-owner's "plays a while, abruptly stops, restarts on enemy contact", made worse rather than better by e39a8dc.
+owner's "plays a while, abruptly stops, restarts on enemy contact", made worse rather than better by 77d5522.
 
 Ours must reproduce: 0 from the first poll after the last sample; a fresh 0x2c starting within a frame or
 two; and no reuse of the dead handle.
@@ -283,7 +283,7 @@ latent, not live.
    is read as dead on its first poll. Same class of bug as Q1, in the other direction.
 5. **A queued play behind a dead or unknown handle** (`FUN_0000f7e0`): `flags & 0x10` -> return 0; otherwise
    the request degrades to a fresh play (`param_8 = 0`). Ours accepts the chain onto an ended slot
-   (e39a8dc). Moot for SOCOM's EE (never queues) but the model and tests state the opposite of the IRX.
+   (77d5522). Moot for SOCOM's EE (never queues) but the model and tests state the opposite of the IRX.
 6. **`snd_UpdateHandlers` order** (`sndhand.c:540-575`): the type-specific tick first, then the effect chain
    (`snd_UpdateEffect`, only when not paused), then a stop if either asked. So a fade-to-stop on a stream
    ends it through `snd_StopHandlerPtr` -> `snd_StopVAGStream` (the deferred kill), not through the
@@ -300,7 +300,7 @@ latent, not live.
 
 ## Diff list (ordered by likely impact on the mission music's choppiness)
 
-1. **`snd989.cpp` `soundIsStillPlaying` / `StreamSlot::ended` / `reapEndedStreams` -- revert e39a8dc.**
+1. **`snd989.cpp` `soundIsStillPlaying` / `StreamSlot::ended` / `reapEndedStreams` -- revert 77d5522.**
    A stream the host has finished answers **0** on the next 0x19 and its slot is free (`active = false`);
    delete `ended`. This is what lets the EE's manager leave state 1 and start the next stem; with `ended`
    the music stops after one stem until an enemy-contact cue interrupts. Rewrite the two tests that pin the

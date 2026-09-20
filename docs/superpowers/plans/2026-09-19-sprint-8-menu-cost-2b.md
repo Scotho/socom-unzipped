@@ -32,7 +32,7 @@
 
 - **Commit conventions.** `git commit -m "…" -- <paths>` with an explicit pathspec; never `git add -A`; `server/config/simulated.db` stays unstaged (it is modified in the working tree right now and must stay that way); `ONBOARDING.md` stays untracked; `vm/` is gitignored and nothing under it is ever staged. Push after each commit. Trailer: `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
 
-- **Line numbers.** Every line number in this plan is the number at `01b7033` (the branch tip when it was written). Other Sprint 8 goals are landing in the same checkout; before starting a task, `git diff -- <the task's files>` and reconcile, saying so in the ledger rather than writing a step twice.
+- **Line numbers.** Every line number in this plan is the number at `94937ec` (the branch tip when it was written). Other Sprint 8 goals are landing in the same checkout; before starting a task, `git diff -- <the task's files>` and reconcile, saying so in the ledger rather than writing a step twice.
 
 - **Test binary and its baseline.** `ps2x_tests` takes no filter and runs every case. Windows: `third_party/ps2recomp/build-clang/ps2xTest/ps2x_tests.exe`. Linux: `third_party/ps2recomp/build-linux/ps2xTest/ps2x_tests`. **Record the baseline total `B` in the ledger before Task 1 Step 2** (build and run once, read `Total Tests:`); every later step states its expected total as `B + n`, because Goals 3 and 5 are adding cases in the same checkout and a hard-coded number would be wrong by the time it is read.
 

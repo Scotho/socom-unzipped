@@ -208,7 +208,7 @@ would show as exactly this). Not chased tonight -- the conductor's bed is the me
 
 **Verdicts (08:50 UTC, the chain `logs/s9_final_chain.sh`):** C++ suite 686/686 (three times over with the Python
 suite, `PS2X_TEST_REPEAT=3`, exit 0); gate `s9_q0_children_gate` PASS 3/3 on `dist/socom2.exe` sha256
-`b3abebd5...`; CI green at `3e93b51` (its first run caught a test whose sink vector died before the mixer -- a
+`b3abebd5...`; CI green at `7de8492` (its first run caught a test whose sink vector died before the mixer -- a
 Linux double free, fixed in the test). **Audio parity `s9_q1_parity_ours2`: 31/48 windows within tolerance,
 from 10/48.** Not one mission window reports silence any more (s24 was 69% silent, s31 64%): the bed is
 there. What remains is LEVEL: s24 -28.9 vs -22.1 dB, s26 -34.4 vs -23.1, s30 -28.2 vs -21.6, s31 -38.4 vs

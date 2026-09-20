@@ -452,7 +452,7 @@ An Ubuntu 24.04 machine, a build job on GitHub's Linux runners and the port itse
 
 *But:* every Linux number came from a VM on a software renderer at 0.8 to 2.9 fps. No real Linux machine or GPU has run it.
 
-`Cited:` `2aa02c3` the Linux client, part one · `8f8981c` a refused stream header closed its file twice · `955c010` the gate's title stage runs on Linux · `f8e1bec` (2026-09-19) the tree sync re-stamps what it changed · logs/parity/vm/s8_vm_title5_summary.txt
+`Cited:` `2aa02c3` the Linux client, part one · `8f8981c` a refused stream header closed its file twice · `955c010` the gate's title stage runs on Linux · `9e70730` (2026-09-19) the tree sync re-stamps what it changed · logs/parity/vm/s8_vm_title5_summary.txt
 
 ### 2026-09-19 - The menus stop dropping frames
 
@@ -464,7 +464,7 @@ The login and lobby screens were the expensive part of the program, and the plan
 
 *But:* measured on the login screen and in the lobby, not in a mission. There's still no steady gameplay frame rate on a clean host.
 
-`Cited:` `d238135` PS2X_GS_UPLOAD_TRACE -- the upload path's cost split per term · `4cd42b4` Goal 2 stopped by its own measurement · `9626327` cached textures revalidate by a hash of the bytes their decode read · `a2d12af` the login screen holds 58-60 fps under a four-core load · docs/KNOWN.md
+`Cited:` `d238135` PS2X_GS_UPLOAD_TRACE -- the upload path's cost split per term · `4cd42b4` Goal 2 stopped by its own measurement · `759e218` cached textures revalidate by a hash of the bytes their decode read · `06f4072` the login screen holds 58-60 fps under a four-core load · docs/KNOWN.md
 
 ### 2026-09-19 - It can save, and it can hear you
 
@@ -476,7 +476,7 @@ The owner tried to save and was told no memory card was inserted. The card stub 
 
 *But:* no voice has ever travelled. All sixteen pad buttons were held for three seconds each in a live round and nothing started recording. The talk action isn't bound in the control preset the disc loads.
 
-`Cited:` `cef8d83` an empty or missing card folder is an inserted, formatted card · `c753808` a driven save on an empty memory card · `01b7033` the host microphone reaches the game's headset module · `cc79c68` the headset's status word · run s8_save_yes · run s8_save_second · run s8_voice_round4 · docs/KNOWN.md
+`Cited:` `cef8d83` an empty or missing card folder is an inserted, formatted card · `c753808` a driven save on an empty memory card · `94937ec` the host microphone reaches the game's headset module · `79a9e26` the headset's status word · run s8_save_yes · run s8_save_second · run s8_voice_round4 · docs/KNOWN.md
 
 ### 2026-09-19 - The launcher gets a face
 
@@ -490,7 +490,7 @@ A rail of pages (PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, ABOUT
 
 *But:* proven by tests and by screenshots the loop reviewed itself. The mouse support it advertises is scheduled to be deleted.
 
-`Cited:` `a8350cd` Sprint 8 spec, Goal 9 -- the launcher redesigned · `4c7a190` the launcher redesigned -- a rail and pages · `23a5cf7` the owner's feedback pass · `d2d9e87` a preset whose address is still a placeholder is unavailable · `ca7dd5a` the page-change flash is a stale node list · run launcher_ui
+`Cited:` `a8350cd` Sprint 8 spec, Goal 9 -- the launcher redesigned · `4c7a190` the launcher redesigned -- a rail and pages · `841d080` the owner's feedback pass · `dafb724` a preset whose address is still a placeholder is unavailable · `1966fa6` the page-change flash is a stale node list · run launcher_ui
 
 ### 2026-09-19 - A server of its own, on the internet
 
@@ -504,7 +504,7 @@ A small rented machine went up in Ohio with a static address, start-up units, an
 
 *But:* both players were driven copies on the owner's one PC behind one home network. Saved personas are keyed per server, so the box's address is load-bearing: move it and you risk orphaning every one.
 
-`Cited:` `9bf44a9` the hosted Horizon server on Linux · `aa2b7f4` the SOCOM Unzipped preset is real · `f77a63f` needrestart never restarts the Horizon units · `829e65b` a first-time login · `42ca327` the hosted server is listed by the launcher and was played on · `f24cd1b` the message of the day, the channel and the location are configuration · run s8_hosted_control2 · run s8_hosted_kill
+`Cited:` `9bf44a9` the hosted Horizon server on Linux · `aa2b7f4` the SOCOM Unzipped preset is real · `52bd232` needrestart never restarts the Horizon units · `ff514f7` a first-time login · `6d31d06` the hosted server is listed by the launcher and was played on · `36559f8` the message of the day, the channel and the location are configuration · run s8_hosted_control2 · run s8_hosted_kill
 
 ### 2026-09-19 - It says why it won't start, and it weighs less
 
@@ -516,7 +516,7 @@ Every way the program can refuse now has a number and a plain sentence, shared b
 
 *But:* the download is unsigned, so Windows warns anyone who runs it. Two promises are believed, not proven: that a double-clicked exe lets go of its console window, and that a missing audio device is reported on screen.
 
-`Cited:` `8a05a7a` the exit-code taxonomy in one header · `0d93fb6` a failure explains itself · `11077e1` SAVE DIAGNOSTICS writes one zip · `8220078` portable_audit -- PE and ELF import readers · `210000f` the portable folder carries the import closure and nothing else · `7bdad9f` the candidate's zip is 55.7 MB (-15%) · gate s9_g2_release_gate
+`Cited:` `bbc98ad` the exit-code taxonomy in one header · `6f9996d` a failure explains itself · `434bc3e` SAVE DIAGNOSTICS writes one zip · `8bec122` portable_audit -- PE and ELF import readers · `b3e7906` the portable folder carries the import closure and nothing else · `645ca27` the candidate's zip is 55.7 MB (-15%) · gate s9_g2_release_gate
 
 ### 2026-09-19 - A way to report what went wrong
 
@@ -528,7 +528,7 @@ A REPORT A BUG page joined the rail, mirroring the form on the project's website
 
 *But:* exactly one real report has ever been sent, from Windows. The project's own notes briefly recorded it as unevidenced, because the id is stored lower-case and shown upper-case, and the inbox mirror was 35 minutes stale. Found the next day.
 
-`Cited:` `6eaa60c` the bug report's pure half · `3d7fc6e` REPORT A BUG on the rail, after ONLINE and before ABOUT · `7be30bc` the REPORT A BUG page, the ONLINE status line · `1efc37a` the bug report's JSON reader builds under libstdc++ · `340d22b` Goal 8's live proof exists after all · docs/KNOWN.md
+`Cited:` `778ebcb` the bug report's pure half · `b34ef2d` REPORT A BUG on the rail, after ONLINE and before ABOUT · `ec773ee` the REPORT A BUG page, the ONLINE status line · `c3faf9a` the bug report's JSON reader builds under libstdc++ · `61fe083` Goal 8's live proof exists after all · docs/KNOWN.md
 
 ### 2026-09-19 - The things the owner actually noticed
 
@@ -540,7 +540,7 @@ Escape closed the game instead of pausing it, because raylib's default exit key 
 
 *But:* the pause key has no test of its own; it needs a window. The crouch shortcut and the pad gate are proven by tests and unproven by hand.
 
-`Cited:` `1f82d88` Escape no longer closes the game; it is Start · `d9ff7cc` the Runtime Debugger starts closed · `c40a318` a crouch shortcut · `02cd9ae` while the game runs the pad belongs to the game · `54d77a2` snd_AutoVol is a timed ramp and reaches streams · `013f86e` a stream played with a parentHandle queues behind the playing one · run s9_p1_m51_audio2 · gate s9_p1_gate
+`Cited:` `8bf72c5` Escape no longer closes the game; it is Start · `2d0463f` the Runtime Debugger starts closed · `c64373a` a crouch shortcut · `3b12fa4` while the game runs the pad belongs to the game · `54d77a2` snd_AutoVol is a timed ramp and reaches streams · `eca5450` a stream played with a parentHandle queues behind the playing one · run s9_p1_m51_audio2 · gate s9_p1_gate
 
 ### 2026-09-20 - The first build made for a person to play
 
@@ -554,7 +554,7 @@ The last code change before the candidate pointed the launcher at socom.scotho.c
 
 *But:* the packaging failure is the one to remember: the build script had already emptied the folder it was about to refill, the packaging step then refused, and the previous archive, twelve hours old and looking perfectly normal, stayed exactly where it was. A tag on that folder rather than on the run would have shipped it with no symptom.
 
-`Cited:` `8c3693c` the project's server is reached by name · `7fff701` socom.scotho.com exists -- a DNS-only A record · `667106b` P6's persona measurement was the wrong question · docs/PLAYTEST.md · docs/CURRENT_SPRINT.md · `8429717` the playtest candidate could not be packaged and was built at the optimisation R151 rejected · gate s9_p7_playtest_gate · docs/KNOWN.md
+`Cited:` `b723a5d` the project's server is reached by name · `80b1971` socom.scotho.com exists -- a DNS-only A record · `67c0182` P6's persona measurement was the wrong question · docs/PLAYTEST.md · docs/CURRENT_SPRINT.md · `210cb78` the playtest candidate could not be packaged and was built at the optimisation R151 rejected · gate s9_p7_playtest_gate · docs/KNOWN.md
 
 ### 2026-09-20 - The music, chased to the speaker
 
@@ -566,7 +566,7 @@ Four hours of measuring instead of reading. Recording what Windows actually sent
 
 *But:* the owner listened again an hour later: better, not done. "Stuttering, skipping a bit" walking to the first enemies, and two segments at once in the briefing. The rest of the night is the next entry.
 
-`Cited:` `4da1bff` the mission music, investigated to the speaker · `d811660` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `c611ad6` the mission music, investigated to the speaker · `7c0620f` R177 -- the mix device buffer · gate s9_q0_device_gate · gate s9_q0_trace_gate · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - An audio parity test, and the sound that was never there
 
@@ -578,7 +578,7 @@ The picture gate compares our frames to the console's. The new check does the sa
 
 *But:* the bed plays 7-12 dB quieter than the console's, the logo movies' audio is about 18 dB low at the source, and the still-playing fix is in verification as this is written. The owner's ear closes this, not a number.
 
-`Cited:` `c328828` an audio parity check against the console · `a352b4d` the mission ambience is a CONDUCTOR sound · `e39a8dc` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
+`Cited:` `19ae5f6` an audio parity check against the console · `842174c` the mission ambience is a CONDUCTOR sound · `77d5522` a VAG stream that played out still answers snd_SoundIsStillPlaying · gate s9_q0_children_gate · scripts/parity/audio_parity.sh · docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md
 
 ### 2026-09-20 - Version 0.9.0, and a robot that plays every night
 
@@ -590,7 +590,7 @@ The sprint that started as "a stranger's first run" closed with the playtest's v
 
 *But:* no GitHub release; that waits on a decision about what can legally ship. The ladder's bar is seven clean runs in a row, and the streak is one.
 
-`Cited:` `cc9d7ff` Merge sprint-9: A stranger's first run (v0.9.0) · `9596f51` Sprint 9 closed · `91307c0` the first clean ladder row · run ladder_20260920_101741 · docs/LADDER.md
+`Cited:` `4415254` Merge sprint-9: A stranger's first run (v0.9.0) · `19b4270` Sprint 9 closed · `0c20a6a` the first clean ladder row · run ladder_20260920_101741 · docs/LADDER.md
 
 ### 2026-09-20 - A console and a PC in the same match
 
@@ -604,7 +604,7 @@ The console side is the reference emulator running the retail disc, driven by th
 
 *But:* the "console" is an emulator on the same PC as ours, not a PlayStation 2 on a couch. Still owed: each guest's copy of the other's position, so "seen by the other" is measured rather than assumed. And still: no two humans have ever played each other.
 
-`Cited:` `fdadb13` the mixed match's leg 1 on the verified flow · `ffd1b90` leg 1 reached · `52ef84f` leg 2 reached · `b7e4d3e` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
+`Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
 
 
 ---
@@ -614,7 +614,7 @@ The console side is the reference emulator running the retail disc, driven by th
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
 replaced by real entries as things land.*
 
-The tree is at `0ffbf27`, 840 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
+The tree is at `73beea6`, 840 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted
 server. The scheduled ladder has one clean run of the seven it needs.
 

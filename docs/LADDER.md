@@ -6,6 +6,6 @@ One row per scheduled run of the engagement ladder against the hosted server (tw
 
 | when (UTC) | run | outcome | rounds | usable | kills | best rung | harness | exe sha256 | server |
 |---|---|---|---|---|---|---|---|---|---|
-| 2026-09-20T08:34:39Z | `ladder_20260920_043246` | LOBBY-FAIL create-game:create | 0/4 | 0 | 0 | 0 | `e4fc806e` | `8c05a3e5` | 3.143.65.100 |
-| 2026-09-20T13:12:19Z | `ladder_20260920_100713` | LOBBY-FAIL create-game:create | 0/4 | 0 | 0 | 0 | `9596f51e` | `b3abebd5` | 3.143.65.100 |
-| 2026-09-20T13:45:54Z | `ladder_20260920_101741` | KILL | 4/4 | 4 | 1 | 3 | `32ba0d12` | `b3abebd5` | 3.143.65.100 |
+| 2026-09-20T08:34:39Z | `ladder_20260920_043246` | LOBBY-FAIL create-game:create | 0/4 | 0 | 0 | 0 | `8287de92` | `8c05a3e5` | 3.143.65.100 |
+| 2026-09-20T13:12:19Z | `ladder_20260920_100713` | LOBBY-FAIL create-game:create | 0/4 | 0 | 0 | 0 | `19b4270f` | `b3abebd5` | 3.143.65.100 |
+| 2026-09-20T13:45:54Z | `ladder_20260920_101741` | KILL | 4/4 | 4 | 1 | 3 | `739a1ce5` | `b3abebd5` | 3.143.65.100 |

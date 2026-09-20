@@ -69,7 +69,7 @@ Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
      work, so it is scheduled here and not assumed;
   3a. **personal data, a known hit (2026-09-20):** the owner's home address was written in one tracked file
       (`docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md`, a Goal 12 results line) and redacted in
-      `db603f5`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
+      `a87e4b2`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
       cover personal data as well as secrets: `git log --all -S` for the address string, the owner's name and e-mail
       beyond commit metadata, the AWS account id (in no tracked file today; it lives under the git-ignored `vm/`),
       phone numbers, and the Windows user name in absolute paths. This hit alone means D1 cannot be "as it is":
@@ -229,7 +229,7 @@ not less -- and `self_test` is part of the report, so an aggregator can refuse a
 
 **Owner-specific literals** (the street address, an old account name) live in a git-ignored file, as they do for the
 monitor -- committing a secret in order to scrub it defeats the exercise. The seeded file for the monitor already holds
-the home IP recovered from `db603f5`.
+the home IP recovered from `a87e4b2`.
 
 **Bar:** one command, documented in `CONTRIBUTING.md` and wired into the release workflow, that sweeps all six and
 exits non-zero on any hit naming `file:line: rule: excerpt`; a negative control in CI that plants a secret of each

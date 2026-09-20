@@ -33,7 +33,7 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
 
 ## Tasks
 
-- [x] 1. `Shell.target` / `press_hold_s`; `Pcsx2Shell`; the `login|host|join|ready` driver; four tests (`f07bc76`).
+- [x] 1. `Shell.target` / `press_hold_s`; `Pcsx2Shell`; the `login|host|join|ready` driver; four tests (`273e50c`).
 - [x] 2. **The first verified PCSX2 login -- PASSED 2026-09-20 ~14:40 UTC** (`logs/parity/s10_pcsx2_login1`, the
       hosted server through the DNS stub, `logs/s10_pcsx2_login1.sh`): boot read to the main menu after 3 presses
       (the blind recipe pressed 4), ONLINE lit and read, the login screen, a persona created on the card through the

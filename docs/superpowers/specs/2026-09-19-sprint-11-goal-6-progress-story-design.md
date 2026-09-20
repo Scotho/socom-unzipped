@@ -3,7 +3,7 @@
 Written 2026-09-19 (host clock) by the controller, as the full design for the Sprint 11 spec's
 **"Goal 6 — the progress story (owner, 2026-09-20)"**
 (`docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md`). The goal entered the record in
-`38cc7aa` — *"Sprint 11 Goal 6 -- the progress story: a linear, fun timeline from the first render, drawn from the
+`91b038d` — *"Sprint 11 Goal 6 -- the progress story: a linear, fun timeline from the first render, drawn from the
 commit history and the monitor project's run index (owner 2026-09-20)"*.
 
 **Authority.** `docs/KNOWN.md` wins over this document wherever they disagree, as it wins over every spec. Where this
@@ -34,7 +34,7 @@ Repo-level facts, measured while writing (they move; re-measure before quoting):
 | Commits on `sprint-9` | `git rev-list --count HEAD` | **742** |
 | Days with commits | `git log --format=%ad --date=short \| sort \| uniq -c` | 2026-09-02 .. 2026-09-20, **17 of 18 calendar days** (there is no 09-03) |
 | Tags | `git tag` | **none** |
-| Where `main` is | `git log -1 --format=%h main` / `develop` | both **871f9f8**; Sprint 9 is unmerged |
+| Where `main` is | `git log -1 --format=%h main` / `develop` | both **0e14323**; Sprint 9 is unmerged |
 | `logs/` in the repository | `git ls-files logs \| wc -l` | **0** — `/logs/` is git-ignored |
 | Pictures in the repository | `git ls-files docs/research/assets` | **8 files** |
 | Run directories on this host | `ls -d logs/parity/*/` | **250**, plus 150 under `logs/parity/gate/` |
@@ -458,7 +458,7 @@ hash; a fresh-history public repository keeps those citations true only if the s
 instead of linking. Say which before writing the story."* This section is that answer.
 
 **What actually happens, mechanically.** `git filter-repo --replace-text` rewrites every commit from the first
-affected commit forward. The address landed in a Sprint 8 plan and was redacted in `db603f5`, but the rewrite is not
+affected commit forward. The address landed in a Sprint 8 plan and was redacted in `a87e4b2`, but the rewrite is not
 local to those two commits: every descendant is re-parented and re-hashed, so in practice **every hash in the story
 changes**. A fresh-import public repository is worse and simpler: there is one commit, and every citation is dangling.
 In both cases the citation test goes red. **That is the test working.** The design goal is not to avoid the red; it is
@@ -705,7 +705,7 @@ this table disagree, KNOWN wins and this table is what gets fixed.
 | "Two strangers can play each other" | **No human pair has ever played.** Every online result is two driven instances on the owner's PC. The two-machine match is `docs/AUDIT-2026-09-17.md` G5, open since Sprint 7. |
 | "A round has been played on the hosted server" (unqualified) | True — `s8_hosted_control2`, `s8_hosted_kill` — with both instances **behind one home NAT on one machine**. KNOWN's own row ends *"Still unexercised: two DIFFERENT networks."* |
 | "The kill is repeatable" | `s6_ladder8` was 4/4 on KillWatch and **KILL, KILL, NO-KILL unattributed, NO-DATA** on the second scorer. The plan's two-scorer bar is recorded as **not met**. On the hosted server it was 2 kills in 4 rounds. |
-| "The music is fixed" | Three fixes landed under watched RED tests (R169-R171, `013f86e`) and are **measured INERT in the only mission driven**: 55 stream requests, 55 played, 0 refused, 0 queued, 0 replaced. The owner's verdict on the previous round of fixes was *"no"*. **No ear has confirmed the current build.** |
+| "The music is fixed" | Three fixes landed under watched RED tests (R169-R171, `eca5450`) and are **measured INERT in the only mission driven**: 55 stream requests, 55 played, 0 refused, 0 queued, 0 replaced. The owner's verdict on the previous round of fixes was *"no"*. **No ear has confirmed the current build.** |
 | "The audio is sample-exact" | True of the *decode* against the disc (the title loop correlates 1.000). There is **no correlation number for mission audio**. |
 | "Voice chat works" | No pad button talks — all sixteen bits, both talk routes, four peek rounds. The expected result of speaking into a lobby is written in `docs/HUMAN_TASKS.md`: *"the other side hears NOTHING."* |
 | "The Linux client is done" | It builds, boots, matches Windows' boot frame to 0.008 grey levels and passes the title stage at Windows' 19/23 — **inside a VirtualBox VM on a software rasteriser**. No real Linux machine or GPU has run it; R107 defers the audio bar to one. |

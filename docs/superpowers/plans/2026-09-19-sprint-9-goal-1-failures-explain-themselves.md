@@ -31,7 +31,7 @@
 
 - **Subagents (owner 2026-09-17).** Bounded mechanical work goes to Opus subagents with an exact brief and a verification command; judgment stays with the controller. Each task below is marked **[Opus]** (the code and tests are written out; the brief is "make this text compile and these cases pass, change nothing else") or **[Judgment]** (touches `ps2xRuntime/src/`, needs a build, a gate, or a decision about what a stranger sees). A subagent never decides whether a bar is met, never writes `docs/KNOWN.md`, never commits, and never starts a launch.
 
-- **Line numbers** are the numbers at `871f9f8` (the branch tip when this was written). Before starting a task, `git diff 871f9f8 -- <the task's files>` and reconcile, saying so in the ledger.
+- **Line numbers** are the numbers at `0e14323` (the branch tip when this was written). Before starting a task, `git diff 0e14323 -- <the task's files>` and reconcile, saying so in the ledger.
 
 - **Test binary and its baseline.** Windows: `third_party/ps2recomp/build-clang/ps2xTest/ps2x_tests.exe`. Linux: `third_party/ps2recomp/build-linux/ps2xTest/ps2x_tests`. Sprint 8 closed at suite 611 / Python 1299. **Record the baselines `B` (C++ `Total Tests:`) and `P` (Python `Ran N tests`) in the ledger before Task 1**; every step states its expected total as `B + n` / `P + n`.
 
@@ -2527,7 +2527,7 @@ namespace
         in.logName = "run_20260919_084912.log";
         in.logText = kLog;
         in.configText = kConfigWithSecrets;
-        in.version = "SOCOM Unzipped 871f9f8 (2026-09-19)";
+        in.version = "SOCOM Unzipped 0e14323 (2026-09-19)";
         in.platform = "windows";
         in.homeDir = "C:\\Users\\secretuser";
         in.haveLastExit = true;
@@ -2619,7 +2619,7 @@ void register_diagnostics_tests()
             const ZipStore::Entry *versions = find(entries, "versions.txt");
             if (versions)
             {
-                t.IsTrue(versions->data.find("launcher: SOCOM Unzipped 871f9f8 (2026-09-19)\n") != std::string::npos, "the launcher's version.txt");
+                t.IsTrue(versions->data.find("launcher: SOCOM Unzipped 0e14323 (2026-09-19)\n") != std::string::npos, "the launcher's version.txt");
                 t.IsTrue(versions->data.find("platform: windows\n") != std::string::npos, "the platform");
                 t.IsTrue(versions->data.find("last exit: -1073741819 -> 70 crashed: The game crashed.") != std::string::npos, "the raw status, the code and the sentence");
             }

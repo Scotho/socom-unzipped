@@ -110,7 +110,7 @@ class ReleaseConfigurationTest(unittest.TestCase):
     """Sprint 9 P7. R151 was decided on a measurement -- `-O2` made the generated code's exe 9.9% smaller
     and the ZIP 4.6 MB LARGER, so the release keeps `-O1` -- and `docs/KNOWN.md` records it as settled.
     The ruling was never applied to the script: `build.sh`'s release default was introduced as `-O2` in
-    443238e and never changed, so every `./build.sh release` since has built the configuration R151
+    285382e and never changed, so every `./build.sh release` since has built the configuration R151
     rejected. Found when the playtest candidate came out 62.8 MB against Goal 2's recorded 55.7 MB.
     A ruling that is written down but not wired to anything is not a decision, it is a note."""
 

@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "0ffbf27",
+ "head": "73beea6",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -1792,8 +1792,8 @@
     },
     {
      "kind": "commit",
-     "ref": "f8e1bec",
-     "sha": "f8e1bec934e67fbbb1db9d4da6896df858176279",
+     "ref": "9e70730",
+     "sha": "9e707302b39db0d2f38688c021e2ece32b79a006",
      "date": "2026-09-19",
      "subject": "fix(vm): the tree sync re-stamps what it changed, so ninja in the guest cannot miss it (Sprint 9 Goal 2 Task 6)"
     },
@@ -1831,15 +1831,15 @@
     },
     {
      "kind": "commit",
-     "ref": "9626327",
-     "sha": "962632722594845b3100a10b08cbc1ae006c75e7",
+     "ref": "759e218",
+     "sha": "759e21825cb8cc19222d2fdc7ccb9264cd928051",
      "date": "2026-09-19",
      "subject": "perf(gs): cached textures revalidate by a hash of the bytes their decode read -- the menus stop re-decoding the whole cache every frame (Sprint 8 Goal 2b, R123)"
     },
     {
      "kind": "commit",
-     "ref": "a2d12af",
-     "sha": "a2d12af98042eb9b5f55bd78fea16fc995a1bde7",
+     "ref": "06f4072",
+     "sha": "06f4072d1cc2e101654994a585a64a16c1c04e70",
      "date": "2026-09-19",
      "subject": "docs: Goal 2b closed on the symptom (R125) -- the login screen holds 58-60 fps under a four-core load with no back-pressure waiter; voice as far as it goes this sprint"
     },
@@ -1872,15 +1872,15 @@
     },
     {
      "kind": "commit",
-     "ref": "01b7033",
-     "sha": "01b70333e4f3bc6d481bef582645cbb9e04633eb",
+     "ref": "94937ec",
+     "sha": "94937ec6cfc189d3e0a3d760dc730f34642eef7f",
      "date": "2026-09-19",
      "subject": "feat(voice): the host microphone reaches the game's headset module -- a mic seam with a fake source, and lgaud's state machine against the recovered shared block (Sprint 8 Goal 3 Tasks 1-2)"
     },
     {
      "kind": "commit",
-     "ref": "cc79c68",
-     "sha": "cc79c68162037bba5fa171e80f32671e79d5612c",
+     "ref": "79a9e26",
+     "sha": "79a9e267ffe1a33ec31ce447e5d7ca360bdf39d9",
      "date": "2026-09-19",
      "subject": "fix(voice): the headset's status word -- the game opens it when a session starts; the voice format honoured; a pad-overlay probe and a WAV reference for the harness (Sprint 8 Goal 3 Task 3)"
     },
@@ -1928,22 +1928,22 @@
     },
     {
      "kind": "commit",
-     "ref": "23a5cf7",
-     "sha": "23a5cf7a3ad70bcebc200ce049b1829406c8ba58",
+     "ref": "841d080",
+     "sha": "841d080aa4057623a0a39c8355185a1afd49a54f",
      "date": "2026-09-19",
      "subject": "feat(launcher): the owner's feedback pass -- crisp type, a custom top bar on a frameless window, one authored controller outline, antialiased curves, a bolder palette sampled from the SOCOM II logo (Sprint 8 Goal 9)"
     },
     {
      "kind": "commit",
-     "ref": "d2d9e87",
-     "sha": "d2d9e871831beab7c074fe400733bdd3a4719549",
+     "ref": "dafb724",
+     "sha": "dafb724273df89b4378da860b5743052cd3253d9",
      "date": "2026-09-19",
      "subject": "fix(launcher): a preset whose address is still a placeholder is unavailable, never exported (Sprint 8 Goal 9/12)"
     },
     {
      "kind": "commit",
-     "ref": "ca7dd5a",
-     "sha": "ca7dd5acabd606195c989a72333bd65d4f9cbfc2",
+     "ref": "1966fa6",
+     "sha": "1966fa669fbb17703ba336e37ab757555d4e919e",
      "date": "2026-09-19",
      "subject": "fix(launcher): the page-change flash is a stale node list, not just rectOf's empty rect -- and the top bar aligns line boxes where a reader sees ink (Sprint 9 P4)"
     },
@@ -1981,29 +1981,29 @@
     },
     {
      "kind": "commit",
-     "ref": "f77a63f",
-     "sha": "f77a63f8ff9257f3a6132bdeca355cae7d3e5d7a",
+     "ref": "52bd232",
+     "sha": "52bd23223dcb096bf1b3e9d9020c8efdaf3cc091",
      "date": "2026-09-19",
      "subject": "fix(server): needrestart never restarts the Horizon units -- an unattended upgrade took the stack down mid-round on the hosted box (Sprint 8 Goal 12)"
     },
     {
      "kind": "commit",
-     "ref": "829e65b",
-     "sha": "829e65bead626ee2c432633209f61668dda5491b",
+     "ref": "ff514f7",
+     "sha": "ff514f7fa9724da55937d784ad4493aef8a8e743",
      "date": "2026-09-19",
      "subject": "harness: a first-time login -- the form's state is read from pixels and a fresh server gets a created persona (Sprint 8 Goal 12)"
     },
     {
      "kind": "commit",
-     "ref": "42ca327",
-     "sha": "42ca327ee0b9159cf020c2b42cffda94179a30f8",
+     "ref": "6d31d06",
+     "sha": "6d31d06f5658995c8af3e68bc92d54ab8b12aaad",
      "date": "2026-09-19",
      "subject": "docs: Sprint 8 Goal 12 met -- the hosted server is listed by the launcher and was played on: a control round and two kills in four rounds against 3.143.65.100"
     },
     {
      "kind": "commit",
-     "ref": "f24cd1b",
-     "sha": "f24cd1bdc43c383773072a71eac9dc3cd626eefc",
+     "ref": "36559f8",
+     "sha": "36559f8740b31d177d8a004a34f94882f1e7dd94",
      "date": "2026-09-19",
      "subject": "feat(server): the message of the day, the channel and the location are configuration; Medius serves live stats as JSON (Sprint 8 Goal 13)"
     },
@@ -2032,43 +2032,43 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "8a05a7a",
-     "sha": "8a05a7a2660ef27458be1c1282dc9d693aa68280",
+     "ref": "bbc98ad",
+     "sha": "bbc98ad8b2532d9dacb553a4fa49391886716058",
      "date": "2026-09-19",
      "subject": "feat: the exit-code taxonomy in one header -- 65 kept, 66-72 added, 1 and 3 named, native crash statuses classified as 70 (R127, R128); the launcher's sentence is a lookup and Python reads the same table"
     },
     {
      "kind": "commit",
-     "ref": "0d93fb6",
-     "sha": "0d93fb63e8aad9ef19f2b89cdfcbe33c3e9faa0f",
+     "ref": "6f9996d",
+     "sha": "6f9996d0b3fb382933b7d66a0fd6c2ef99014433",
      "date": "2026-09-19",
      "subject": "feat(runner): a failure explains itself -- a preflight before the window opens (66/67/68/72), the bare run from config.json (69), out of memory as 71, the audio notice (Sprint 9 Goal 1 Task 6)"
     },
     {
      "kind": "commit",
-     "ref": "11077e1",
-     "sha": "11077e1a2a71dcefa9c481a993a664037bb1f88b",
+     "ref": "434bc3e",
+     "sha": "434bc3e6ad314a013c399e913674ec3b0ef9ad65",
      "date": "2026-09-19",
      "subject": "feat(launcher): SAVE DIAGNOSTICS writes one zip (log, config through the allowlist, GL lines, crash record, versions) instead of copying a folder; --diagnostics writes it with no window; make_portable writes version.txt (Sprint 9 Goal 1 Task 9, R137, R138)"
     },
     {
      "kind": "commit",
-     "ref": "8220078",
-     "sha": "82200780246e0134ee483545569070ebfbf1ce84",
+     "ref": "8bec122",
+     "sha": "8bec1224d107dea625b770e6c90e5ce52759fe60",
      "date": "2026-09-19",
      "subject": "feat(packaging): portable_audit -- PE and ELF import readers, the import closure, the folder audit (missing / orphans) and SHA256SUMS, in pure Python (Sprint 9 Goal 2 Task 2)"
     },
     {
      "kind": "commit",
-     "ref": "210000f",
-     "sha": "210000fdba7ea188024b9016f3feed29ca947479",
+     "ref": "b3e7906",
+     "sha": "b3e79061149e5d40616019eaeb641ebbf8a192ca",
      "date": "2026-09-19",
      "subject": "feat(packaging): the portable folder carries the import closure and nothing else (15 DLLs stay behind), is audited as assembled, and gets SHA256SUMS beside the archive -- both branches; --release; a Linux packaging test that runs in CI (Sprint 9 Goal 2 Task 3, R145, R147, R150)"
     },
     {
      "kind": "commit",
-     "ref": "7bdad9f",
-     "sha": "7bdad9fea5f139a373467c46c5673d4b2e09db16",
+     "ref": "645ca27",
+     "sha": "645ca27037a82a52fb0f63577f428b703c2342f3",
      "date": "2026-09-19",
      "subject": "docs: R151 -- the release executable keeps -O1: -O2 compressed 4.6 MB worse, ICF bought 0.2 MB; the candidate's zip is 55.7 MB (-15%) and its gate is 3/3 on that exact file"
     },
@@ -2088,36 +2088,36 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "6eaa60c",
-     "sha": "6eaa60ce8d1174f81e357c8213d0c8df0a289e0b",
+     "ref": "778ebcb",
+     "sha": "778ebcb2d336baf89f7bd218311c1a6dfb58e8dd",
      "date": "2026-09-19",
      "subject": "feat(launcher): the bug report's pure half -- the site's limits and words, the allowlisted context, the scrubbed log tail, the 96 KB guard, reply and stats parsing (Sprint 9 Goal 8)"
     },
     {
      "kind": "commit",
-     "ref": "3d7fc6e",
-     "sha": "3d7fc6ef7f47b38486fd45978be5a137b38605f4",
+     "ref": "b34ef2d",
+     "sha": "b34ef2da35ce4cab6a103c98dc56ab60d754a8ea",
      "date": "2026-09-19",
      "subject": "feat(launcher): REPORT A BUG on the rail, after ONLINE and before ABOUT -- the site's fields as a column in the focus model (Sprint 9 Goal 8)"
     },
     {
      "kind": "commit",
-     "ref": "7be30bc",
-     "sha": "7be30bcf6f0044257874509000a4a009f2137356",
+     "ref": "ec773ee",
+     "sha": "ec773ee4852c60da065a133c9024d5f83e1383df",
      "date": "2026-09-19",
      "subject": "feat(launcher): the REPORT A BUG page, the ONLINE status line, and the transport under them (Sprint 9 Goal 8)"
     },
     {
      "kind": "commit",
-     "ref": "1efc37a",
-     "sha": "1efc37a2058771bfc4cb4c5ff93cf88bba45b12d",
+     "ref": "c3faf9a",
+     "sha": "c3faf9ae2b831334a2371fa7d60d3a64b530677c",
      "date": "2026-09-19",
      "subject": "fix(launcher): the bug report's JSON reader builds under libstdc++ -- an object's members are two parallel vectors, not a vector of pair<string, Value> (Sprint 9 Goal 8)"
     },
     {
      "kind": "commit",
-     "ref": "340d22b",
-     "sha": "340d22b4b5beefaff3f181f7db344dafa933a3a4",
+     "ref": "61fe083",
+     "sha": "61fe0831a91eca0abb28dd1a3ceba5a344929f47",
      "date": "2026-09-20",
      "subject": "docs: Goal 8's live proof exists after all -- it was stored lower-case and the mirror predated it; P5 is down to the Linux send"
     },
@@ -2136,29 +2136,29 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "1f82d88",
-     "sha": "1f82d8820518710cb655c7dab403edcda28314ac",
+     "ref": "8bf72c5",
+     "sha": "8bf72c5206eefbc1f28682ffceab1e7ac640025a",
      "date": "2026-09-19",
      "subject": "fix(input): Escape no longer closes the game; it is Start, the pause a PC player expects (owner 2026-09-20)"
     },
     {
      "kind": "commit",
-     "ref": "d9ff7cc",
-     "sha": "d9ff7cc473d6d2b110cb3c1bd5582763d310e2ff",
+     "ref": "2d0463f",
+     "sha": "2d0463f35753d0c2fd49d48f7eff437d2a636d58",
      "date": "2026-09-19",
      "subject": "fix(runtime): the Runtime Debugger starts closed -- a player must not find it open over their game (owner 2026-09-20)"
     },
     {
      "kind": "commit",
-     "ref": "c40a318",
-     "sha": "c40a318a10c95e27d711fea09931b367af033abb",
+     "ref": "c64373a",
+     "sha": "c64373a732f78d25bc5b9ad414d80c74b06bf622",
      "date": "2026-09-19",
      "subject": "feat(input): a crouch shortcut -- the game reads Triangle's pressure and a PC pad could never crouch; the launcher's option sends a light Triangle from the left stick click (default), the touchpad or L2 (R139, owner request)"
     },
     {
      "kind": "commit",
-     "ref": "02cd9ae",
-     "sha": "02cd9ae6c22ec49ff968a4bc29f050ab31f9624d",
+     "ref": "3b12fa4",
+     "sha": "3b12fa43f10d2596ae713aaf00d832fbc7637752",
      "date": "2026-09-19",
      "subject": "fix(launcher): while the game runs the pad belongs to the game -- every pad reading goes through one gate (Sprint 9 Goal 9 P3, R173)"
     },
@@ -2171,8 +2171,8 @@
     },
     {
      "kind": "commit",
-     "ref": "013f86e",
-     "sha": "013f86ecd1b8c1bec6f726be428e14fd44efcf72",
+     "ref": "eca5450",
+     "sha": "eca54506255a814b96de2fa0fde5eea3ea51d209",
      "date": "2026-09-19",
      "subject": "fix(audio): a stream played with a parentHandle queues behind the playing one, a new cue never inherits a dead cue's fade, and a looping stream loops (Sprint 9 Goal 10, R169-R171)"
     },
@@ -2197,22 +2197,22 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "8c3693c",
-     "sha": "8c3693cd65979e8c3dfe3a62a131698b26ee1de6",
+     "ref": "b723a5d",
+     "sha": "b723a5dd3fe737b876b9eae3434a6c33d60c1554",
      "date": "2026-09-20",
      "subject": "feat(launcher): the project's server is reached by name, with its raw address kept as the preset for when a name will not resolve (Sprint 9 P6, Goal 7, R175)"
     },
     {
      "kind": "commit",
-     "ref": "7fff701",
-     "sha": "7fff7014b0cbf0eca6f49d6669fff5ef7043bfae",
+     "ref": "80b1971",
+     "sha": "80b1971364dafd19a14ac06a555ea0c4df1909bd",
      "date": "2026-09-19",
      "subject": "docs: socom.scotho.com exists -- a DNS-only A record to the hosted server, created at the owner's instruction"
     },
     {
      "kind": "commit",
-     "ref": "667106b",
-     "sha": "667106bc394d197df631ba8fe080c3fd6180462a",
+     "ref": "67c0182",
+     "sha": "67c0182f39979500ccc82a4398d5e9c42a598b17",
      "date": "2026-09-19",
      "subject": "docs: P6's persona measurement was the wrong question -- the launcher's preset string never reaches the game (R175), and three other committed sentences corrected where they were written"
     },
@@ -2226,8 +2226,8 @@
     },
     {
      "kind": "commit",
-     "ref": "8429717",
-     "sha": "84297178560613bb442dd1030cfad57b0ddbb038",
+     "ref": "210cb78",
+     "sha": "210cb784562b5e64b8ad8ce9ce85af32791d96ed",
      "date": "2026-09-20",
      "subject": "fix(release): the playtest candidate could not be packaged and was built at the optimisation R151 rejected -- both found by building it (Sprint 9 P7, playtest-1)"
     },
@@ -2255,15 +2255,15 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "4da1bff",
-     "sha": "4da1bffed5e09b22c9d48b3038578a68cd432771",
+     "ref": "c611ad6",
+     "sha": "c611ad695f04a1b1ebce2f98940b234ab4f0dc53",
      "date": "2026-09-20",
      "subject": "fix(audio): the mission music, investigated to the speaker -- the owner's skips were the device buffer, and three more things the numbers found (Sprint 9 Q0)"
     },
     {
      "kind": "commit",
-     "ref": "d811660",
-     "sha": "d811660c5abe7413d24297da8c562df6208a8f58",
+     "ref": "7c0620f",
+     "sha": "7c0620fd95b9d69bbd1e83ddb25569006f08f5f5",
      "date": "2026-09-20",
      "subject": "docs: R177 -- the mix device buffer is a moved default and gets its ruling: 20 ms x 4, measured 42 -> 2 dropouts a minute at the owner's speaker"
     },
@@ -2292,22 +2292,22 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "c328828",
-     "sha": "c328828ded1c0cabaa27f3118a342d638bb6c917",
+     "ref": "19ae5f6",
+     "sha": "19ae5f6396acb3c32ab1192349f6a6d21b8739ef",
      "date": "2026-09-20",
      "subject": "feat(parity): an audio parity check against the console, and the scheduled ladder's job (Sprint 9 Q1, Sprint 10 Goal 1)"
     },
     {
      "kind": "commit",
-     "ref": "a352b4d",
-     "sha": "a352b4d60d2b32cf7d159af411b528977f88b5b2",
+     "ref": "842174c",
+     "sha": "842174c3785d029dbd580fcf298b6cfb65c3239c",
      "date": "2026-09-20",
      "subject": "fix(audio): the mission ambience is a CONDUCTOR sound and the mixer ran none of its grains -- child sounds, registers, markers modelled from the open reference (Sprint 9 Q0, R178)"
     },
     {
      "kind": "commit",
-     "ref": "e39a8dc",
-     "sha": "e39a8dcd6366a7493d32f4802ff617cc439378be",
+     "ref": "77d5522",
+     "sha": "77d552214d25ddf20b36a18732b6a92893ef1a18",
      "date": "2026-09-20",
      "subject": "fix(audio): a VAG stream that played out still answers snd_SoundIsStillPlaying until its slot is retaken -- the IRX's answer, which the EE's music manager relies on to queue the next stem (the music, round four)"
     },
@@ -2335,22 +2335,22 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "cc9d7ff",
-     "sha": "cc9d7ffdbcacefb9e2638e4a138686743f715210",
+     "ref": "4415254",
+     "sha": "4415254b7748a88772b9f3be56c281056933fab1",
      "date": "2026-09-20",
      "subject": "Merge sprint-9: A stranger's first run (v0.9.0)"
     },
     {
      "kind": "commit",
-     "ref": "9596f51",
-     "sha": "9596f51ea9dcda52e382c8470a38e8560e84f52c",
+     "ref": "19b4270",
+     "sha": "19b4270f138bd4fba4e7c8345bf94d3f9ca34f6f",
      "date": "2026-09-20",
-     "subject": "docs: Sprint 9 closed -- merged to main at cc9d7ff with a merge commit, v0.9.0 tagged on it, develop deleted, sprint-10 open"
+     "subject": "docs: Sprint 9 closed -- merged to main at 4415254 with a merge commit, v0.9.0 tagged on it, develop deleted, sprint-10 open"
     },
     {
      "kind": "commit",
-     "ref": "91307c0",
-     "sha": "91307c03f862ff06a3042c34c885a20d5f774097",
+     "ref": "0c20a6a",
+     "sha": "0c20a6a8ba9d044388978a1174bcb2a95455fcef",
      "date": "2026-09-20",
      "subject": "docs: the first clean ladder row (run 3, KILL 4/4), the Goal 1 plan's three runs, the Sprint 10 status entry"
     },
@@ -2374,29 +2374,29 @@
    "citations": [
     {
      "kind": "commit",
-     "ref": "fdadb13",
-     "sha": "fdadb13ba23e987e6e1b81d1e6272067c07736af",
+     "ref": "93677a5",
+     "sha": "93677a534b4104b437ba7f409cb5919a998425cb",
      "date": "2026-09-20",
      "subject": "feat(harness): the mixed match's leg 1 on the verified flow (mixed_match2.sh); the first screen-verified PCSX2 login reached the hosted server's briefing room (Sprint 10 Goal 3 task 2)"
     },
     {
      "kind": "commit",
-     "ref": "ffd1b90",
-     "sha": "ffd1b9021fea120a58985e1bb6710bc45613a454",
+     "ref": "136c635",
+     "sha": "136c635be0aa20ba4e30926990e38f94e86ac524",
      "date": "2026-09-20",
      "subject": "docs: leg 1 reached -- a console client in ours' hosted game, the round running with both moving (Sprint 10 Goal 3 run d)"
     },
     {
      "kind": "commit",
-     "ref": "52ef84f",
-     "sha": "52ef84fe9f8472029fb72d80d016489e0b24e204",
+     "ref": "25690ad",
+     "sha": "25690ad6dd8b59405aa976b2c81231fae93483a9",
      "date": "2026-09-20",
      "subject": "docs: leg 2 reached -- ours in a console-hosted game on the hosted server, the round running with both moving (Sprint 10 Goal 3 run f)"
     },
     {
      "kind": "commit",
-     "ref": "b7e4d3e",
-     "sha": "b7e4d3e9b87beb2019fb37105123a30d544ab736",
+     "ref": "984a342",
+     "sha": "984a342306a7e720dda2faead93a526664389a74",
      "date": "2026-09-20",
      "subject": "docs: Sprint 10 Goal 3's bar met -- both legs of the mixed match twice in a row on the hosted server; the sprint file, status and handoff say where Sprint 10 stands"
     },
