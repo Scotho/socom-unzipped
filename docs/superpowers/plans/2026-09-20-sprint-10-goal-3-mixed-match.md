@@ -66,7 +66,7 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         the 30 s notice; ours' READY check saw the lobby leave under it ("game lobby gone during READY check") --
         the match launched. Positions: the console's camera position over PINE, 100 in-game rows, 17 distinct,
         x 509 -> 564 across its four LUP holds; ours' own peek, 140 in-game rows, 39 distinct positions across its
-        four W bursts. Leg 1 reached once; the bar wants twice (run e, queued behind leg 2).
+        four W bursts. Leg 1 reached once; the bar wants twice in a row.
         "Seen by the other" is still measured only by each side's own position; the old screen-motion score
         (`console-sees-ours-moving`) stays "no" because the spawns do not face each other -- it is not the bar.
       The movement half of the bar: ours' walk is read from its own peek (`0x416054:3`); the console's from PINE
@@ -76,7 +76,9 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         saw no joiner for 420 s (`A_[lobby] waiting for a joiner ... T+420s`). The list showed the game, the lobby
         never came: a server-side refusal, not a harness miss -- the likeliest reading is the console's persona still
         "in game" on Medius from run (d), whose client was killed mid-round. One of the stop rule's three.
-- [ ] 4. **Leg 2, reversed:** PCSX2 hosts (`pcsx2_shell host A`), ours joins (`online_login_ours --join`). Same bar.
+      - (f), ~19:15 UTC: reached again -- joiner in after 10 s, the launch under ours' READY check, ours 140 in-game
+        rows / 34 positions, the console 100 / 17. Run g follows it for the consecutive pair.
+- [x] 4. **Leg 2, reversed -- DONE 2026-09-20 (runs f, g):** PCSX2 hosts (`pcsx2_shell host B`), ours joins (`online_login_ours --join`). Same bar.
       - `mixed2_pcsx2_hosts` (a), ~16:35 UTC: the console logged in as `socomp` (persona created) and reached CREATE
         GAME, and its harness could not see it: no console reference for that title (the miss frames show the screen).
         `title_create_game.pcsx2.png` cut from them; the PLAY LIST title will need the same on the next run.
@@ -101,6 +103,8 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         (the launch); 341 in-game peek rows, 27 distinct positions over its walk. The console: readied after ours'
         notice, the lobby left under its READY check (the launch), 100 in-game rows, 24 distinct positions over its
         four stick holds. Leg 2 reached once; run g queued for the bar, then leg 1's second.
+      - (g), ~19:05 UTC: the same again -- verified join, the launch, ours 339 in-game rows / 28 positions, the console
+        100 / 22. **Leg 2's bar met: twice in a row (f, g).**
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
 - [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
