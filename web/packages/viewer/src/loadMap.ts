@@ -393,8 +393,15 @@ function hull(models: SceneNode[], notes: Notes): CollisionLines {
  */
 function clutter(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): PlacedModel[] {
   try {
-    const { placed, missing } = placeClutter(models, parseClutter(Zar.parse(zdbMember(bytes, toc, 'CLUTTER.ZAR'))));
+    const { placed, missing, malformed } = placeClutter(
+      models, parseClutter(Zar.parse(zdbMember(bytes, toc, 'CLUTTER.ZAR'))));
     for (const name of missing) notes.add(`clutter ${name}: named by CLUTTER.ZAR but not in the scene graph`);
+    // Records that are not the affine matrix the format says. Drawn, they compose into basis rows
+    // thousands of units long and streak across the map; this is Abandoned's whole problem.
+    for (const m of malformed) {
+      notes.add(`clutter ${m.modelName}: ${m.instances} instance(s) whose params are not an affine`
+        + ' matrix, so they are not placed (scene/clutter.ts isAffineRowVector)');
+    }
     return placed;
   } catch (e) {
     notes.add(`clutter: ${say(e)}`);
