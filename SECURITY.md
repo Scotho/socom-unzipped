@@ -15,6 +15,20 @@ through the contact on https://s2u.scotho.com. Expect an acknowledgement within 
 - The bug-report path: anything that makes the launcher send what the player was not shown.
 - The hosted project server (`socom.scotho.com`) and the site (`s2u.scotho.com`): report, do not test destructively.
 
+## Known, unfixed: the game's own network code
+
+The multiplayer code is SOCOM II's, recompiled as-is, and it has known vulnerabilities that the community console
+servers patched years ago and this project has not (reported to the project by a community moderator, 2026-09-20):
+
+- **Chat packet overflow -> arbitrary code execution on every client in the room.** The game reserves 32 bytes for a
+  chat message; the chat packet carries 64. A crafted message from any peer overflows a buffer on the other clients.
+  Here that buffer lives in a native process on the player's PC.
+- Others are believed to exist; nothing in the recompiled network path has been audited for them.
+
+Until fixed, the README tells players to play online only with people and servers they trust. A report that
+identifies another such path, or the game-side fix the community applied, is exactly what the Reporting section
+above is for.
+
 ## What is not a vulnerability here
 
 - `PS2X_*` environment variables changing the game's behaviour. An environment variable is not a privilege boundary:

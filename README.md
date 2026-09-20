@@ -5,6 +5,20 @@ hosted server.**
 
 [![linux](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml/badge.svg)](https://github.com/Scotho/socom-unzipped/actions/workflows/linux.yml)
 
+> ## ⚠️ Multiplayer is UNTESTED for security. Proceed at your own risk.
+>
+> SOCOM II's original network code has **known, exploitable vulnerabilities**. The one the community has documented:
+> the game reserves 32 bytes for a chat message but the chat packet carries 64, so a crafted message from anyone in
+> the room overflows a buffer on **every other client in that room** -- a path to arbitrary code execution. The
+> community servers patched this on the console years ago. **This project has not.** Its network code is the game's
+> own, recompiled as-is, and here it runs as a native program on your PC, so a successful exploit is not a crashed
+> console -- it is code running on your machine with your user's access.
+>
+> Until this is audited and fixed: **only play online with people you trust**, on a server you trust, and never
+> with a build you did not compile or verify yourself. Do not point this at any community server. Other SOCOM II
+> multiplayer vulnerabilities are believed to exist beyond the one above; nothing here has been reviewed for them.
+> See `SECURITY.md`.
+
 > **Early stage.** This is a working prototype, not a finished port. It boots, renders the menus and missions, and two
 > players have finished online rounds against each other on the hosted server -- but audio, some maps, and the rough
 > edges of a first release are still being worked through, and things break between builds. Read [Status](#status)
