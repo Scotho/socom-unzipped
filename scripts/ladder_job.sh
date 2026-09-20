@@ -31,9 +31,12 @@ out="logs/parity/$stamp"
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/kill_stale_drivers.ps1 >/dev/null 2>&1
 bash scripts/parity/ladder_frostfire.sh "$out"
 rc=$?
-echo "ladder_job: launch rc=$rc; waiting for $out.done"
+# The ladder writes its done marker at logs/<stamp>.done (ladder_frostfire.sh's last act), not beside the run
+# directory under logs/parity/ -- the first scheduled run waited its whole hour on the wrong path.
+done_marker="logs/$stamp.done"
+echo "ladder_job: launch rc=$rc; waiting for $done_marker"
 deadline=$(( $(date +%s) + 3600 ))
-while [ ! -f "$out.done" ] && [ "$(date +%s)" -lt "$deadline" ]; do sleep 30; done
-if [ -f "$out.done" ]; then cat "$out.done"; else echo "ladder_job: no done marker after an hour"; fi
+while [ ! -f "$done_marker" ] && [ "$(date +%s)" -lt "$deadline" ]; do sleep 30; done
+if [ -f "$done_marker" ]; then cat "$done_marker"; else echo "ladder_job: no done marker after an hour"; fi
 python -m tools_py.parity.ladder_ledger add "$out" "$SOCOM_SERVER_IP"
 echo "ladder_job: done $(date -u +%FT%TZ)"

@@ -35,6 +35,27 @@ class LedgerTest(unittest.TestCase):
         self.assertEqual(r["server"], "3.143.65.100")
         self.assertEqual(r["stamp"], "ladder_20260920_090000")
 
+    def test_the_ladders_real_paths_are_read_too(self):
+        # ladder_frostfire.sh writes logs/<stamp>.done and logs/parity/drive_<stamp>.txt; the run dir is logs/parity/<stamp>/
+        os.remove(self.run + ".done")
+        os.remove(os.path.join(self.run, "drive.log"))
+        logs = os.path.join(self.tmp.name, "logs")
+        run = os.path.join(logs, "parity", "ladder_20260920_043246")
+        os.makedirs(run)
+        with open(os.path.join(logs, "ladder_20260920_043246.done"), "w") as fh:
+            fh.write("done 4 mpexit=4 LOBBY-FAIL create-game:create harness=e4fc806e409eab65363c3c1a17bce430546d03bc "
+                     "path=/c/x/dist/socom2.exe mtime=2026-09-20T06:56:09Z sha256=8c05a3e5286939a23d6c9a6b45971ba7029a2f90b6a875b839d20a0bfcb37fbb\n")
+        with open(os.path.join(logs, "parity", "drive_ladder_20260920_043246.txt"), "w") as fh:
+            fh.write(" 382.8s A_RESULT LOBBY-FAIL create-game:create -- still not registered after 3 re-sends\n"
+                     " 382.8s A_LOBBY class=create-game:create\n"
+                     " 382.8s A_LADDER-SUMMARY rounds=0/4 usable=0 best_rung=0 kills=0 rungs=- movers=- stop=LOBBY-FAIL create-game:create harness=e4fc806e409e exe=8c05a3e5286939a2\n")
+        rec = ll.read_run(run, "3.143.65.100")
+        self.assertEqual(rec["outcome"], "LOBBY-FAIL")
+        self.assertEqual(rec["lobby_class"], "create-game:create")
+        self.assertEqual((rec["rounds"], rec["rounds_asked"], rec["usable"], rec["kills"]), (0, 4, 0, 0))
+        self.assertEqual(rec["rc"], 4)
+        self.assertTrue(rec["exe_sha256"].startswith("8c05a3e5"))
+
     def test_a_lobby_fail_run_records_zero_rounds_and_its_class(self):
         with open(self.run + ".done", "w") as fh:
             fh.write("done 4 mpexit=4 LOBBY-FAIL timeout harness=abc path=x mtime=y sha256=z\n")
