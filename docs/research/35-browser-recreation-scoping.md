@@ -105,6 +105,31 @@ event loop, the GS, VU1, DMAC and IOP services), memory (180 MB of wasm plus its
 RAM in one renderer), and getting the player's disc image to the page. The web map viewer's archive and asset
 layers (`web/`) are the start of the third.
 
+### 1.8 Measured 2026-09-21: the runtime almost compiles, and the one real blocker is the rounding mode
+A follow-up probe compiled the runtime's translation units for wasm: **86 of 88 unchanged, 88 of 88 with a
+20-line patch** (proposed, not applied). What does not port is semantic, not syntactic:
+
+- **Round-toward-zero.** The EE and VU1 paths set the host FPU to chop through the control register
+  (`ps2_runtime.cpp:2555`, `ps2_vu1_core.cpp:2044-2061`) with no software fallback. WebAssembly is permanently
+  round-to-nearest with no way to change it, and Emscripten's `xmmintrin.h` lists `_mm_setcsr` as unavailable
+  (its `_mm_getcsr` returns a constant). That exposes about 19,600 float-op sites in the generated code. The tree
+  already records that SOCOM II's title-screen labels only compose correctly under chop
+  (`ps2_runtime.cpp:2548-2553`, `PS2X_EE_ROUND=nearest` breaks them). Flush-to-zero is already software
+  (`ps2_runtime_macros.h:150-161`, `:750-760`) and ports free.
+- **A non-ulp hazard from the same cause.** The VU1 FMAC fast path detects overflow by comparing against
+  `0x7F7FFFFF` (`ps2_vu1_ops.h:196-222`), sound only because chop can never exceed `FLT_MAX`; under
+  round-to-nearest a product can become `+inf`, the check misses, and an infinity lands in a VU register on a unit
+  that has none. Reasoned from source; `vu1_replay` would confirm it.
+- **Threads are not the problem.** Of the runtime's twelve host threads only the EE thread is gameplay-essential;
+  the rest are env-gated diagnostics, a test fixture, or platform-only, and the IOP creates none. A
+  single-threaded wasm build without SharedArrayBuffer is reachable, but `EeScheduler::run()` must be inverted
+  from "loop and wait on a condition variable" to a `step()` driven by the browser's frame callback, since all
+  three of its waits are illegal on the main thread; presentation already lives there.
+
+So the browser route's honest state: size and compile time are solved (1.7), the runtime almost compiles, and the
+two real tasks are **a software chop for the EE FPU and VU float paths** (the correctness-critical one) and **the
+scheduler inversion**. Both belong in the runtime-port spec.
+
 ## 2. GPU-in-the-browser options (as of 2026-09-20)
 
 Sources: gpuweb Implementation Status wiki (2026-08-13), Chrome "New in WebGPU" posts through 149-150 (2026-06-17),
