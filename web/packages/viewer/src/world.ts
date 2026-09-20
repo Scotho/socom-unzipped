@@ -141,27 +141,12 @@ function geometryOf(part: MeshData): BufferGeometry {
   const geometry = new BufferGeometry();
   geometry.setAttribute('position', new BufferAttribute(part.positions, 3));
   geometry.setAttribute('uv', new BufferAttribute(part.uvs, 2));
-  geometry.setAttribute('color', new BufferAttribute(vertexColors(part.colors), 4, true));
+  // `mesh` hands colour over as plain 0..255 RGBA, the PS2's 128-is-full already undone (SEMANTICS section 4),
+  // so the bytes go up as a normalised attribute untouched.
+  geometry.setAttribute('color', new BufferAttribute(part.colors, 4, true));
   geometry.setIndex(new BufferAttribute(part.indices, 1));
   geometry.computeBoundingSphere();
   return geometry;
-}
-
-/**
- * The PS2 writes vertex colour with 128, not 255, as full brightness (the same convention `mesh` already
- * undid for alpha, SEMANTICS section 4). A normalised three.js byte attribute reads 128 as 0.5, so the
- * whole map would render at half light; doubling the three colour bytes puts it back, clamped because a
- * few vertices are written brighter than full on purpose.
- */
-function vertexColors(colors: Uint8Array): Uint8Array {
-  const out = new Uint8Array(colors.length);
-  for (let i = 0; i < colors.length; i += 4) {
-    out[i] = Math.min(255, colors[i]! * 2);
-    out[i + 1] = Math.min(255, colors[i + 1]! * 2);
-    out[i + 2] = Math.min(255, colors[i + 2]! * 2);
-    out[i + 3] = colors[i + 3]!;                          // alpha is already 0..255
-  }
-  return out;
 }
 
 function makeTexture(rgba: Rgba, bilinear: boolean): DataTexture {

@@ -40,8 +40,12 @@ const UV_SCALE = 4096;
 const NORMAL_SCALE = 32768;
 /** SEMANTICS §5 entry [0]: a vertex is named by its quadword offset from `TOP+4`, stride 3. */
 const INDEX_STRIDE = 3;
-/** SEMANTICS §4 quadword c w: the PS2 writes alpha with 128 = opaque; a browser reads 255. */
-const PS2_ALPHA_OPAQUE = 128;
+/**
+ * SEMANTICS §4 quadword c: the PS2 writes vertex colour with 128, not 255, as full — alpha 128 is opaque and
+ * rgb 128 is full brightness. A browser reads 255, so both are rescaled here, once, and `MeshData.colors` is
+ * plain 0..255 RGBA for every consumer (the viewer's attribute, the glTF exporter's `COLOR_0`).
+ */
+const PS2_FULL = 128;
 const BYTE_MAX = 255;
 
 /** A packet whose lanes do not hold what SEMANTICS says a map geometry packet holds. */
@@ -102,10 +106,11 @@ export function interpretPacket(packet: VuPacket): MeshData {
     normals[k * 3 + Z] = mem[b + W]! / NORMAL_SCALE;
     uvs[k * 2 + X] = mem[b + X]! / UV_SCALE;
     uvs[k * 2 + Y] = mem[b + Y]! / UV_SCALE;
-    colors[k * 4 + X] = mem[c + X]!;
-    colors[k * 4 + Y] = mem[c + Y]!;
-    colors[k * 4 + Z] = mem[c + Z]!;
-    colors[k * 4 + W] = Math.round(Math.min(mem[c + W]! / PS2_ALPHA_OPAQUE, 1) * BYTE_MAX);
+    // Doubled and clamped: a few vertices are written brighter than full on purpose, and they stay at white.
+    colors[k * 4 + X] = Math.min(mem[c + X]! * 2, BYTE_MAX);
+    colors[k * 4 + Y] = Math.min(mem[c + Y]! * 2, BYTE_MAX);
+    colors[k * 4 + Z] = Math.min(mem[c + Z]! * 2, BYTE_MAX);
+    colors[k * 4 + W] = Math.round(Math.min(mem[c + W]! / PS2_FULL, 1) * BYTE_MAX);
   }
 
   // SEMANTICS §6: one triangle per tail pair, in index order, CCW front-facing. Entry [0].w is the runtime

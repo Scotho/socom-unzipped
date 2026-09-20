@@ -3,7 +3,12 @@ import type { PaletteRecord } from './palette';
 import type { PaletteTable } from './paletteTable';
 import type { TextureRecord } from './texture';
 
-/** A decoded texture: straight RGBA8, top-left origin, `width * height * 4` bytes. */
+/**
+ * A decoded texture: straight RGBA8, `width * height * 4` bytes, rows in the order the record stores them.
+ * Row 0 of `data` is row 0 of the stored pixels, which is what GL and glTF both call V = 0 -- so a consumer
+ * uploads it with `flipY = false` and uses the UVs unflipped (spec §9, M3; R36 §5's "a viewer flips V" is
+ * superseded). Nothing here is re-ordered top to bottom.
+ */
 export interface Rgba { width: number; height: number; data: Uint8ClampedArray }
 
 /** The decode plus everything it had to work around, for the viewer to report (never thrown). */
@@ -36,6 +41,18 @@ export function csm1ClutIndex(i: number): number {
 }
 
 const bit = (v: number, n: number): number => (v >>> n) & 1;
+
+/*
+ * The three functions below undo the GS PSMT8 page layout. The reference is the **GS User's Manual**'s
+ * description of PSMT8 local-memory addressing -- 128x64-texel pages, 32 blocks a page in the 8x4
+ * interleave, 16x16 texels a block laid out as four 16x4 columns -- and the cross-check is the runtime's
+ * own table in `third_party/ps2recomp/ps2xRuntime/include/runtime/gs/ps2_gs_psmt8.h`, which these
+ * reproduce. Written from the layout; no code copied from either.
+ *
+ * `DEFAULT_PIXEL_ORDER` is `'raster'`, so none of this runs on the shipped path (M2, above); it stays
+ * reachable as `decodeTexture(..., 'swizzled')` because a map whose pixels *are* swizzled would otherwise
+ * be undecodable, and because it is the evidence the raster reading was chosen over.
+ */
 
 /**
  * Where texel (x, y) of a 16x16 PSMT8 block sits among that block's 256 bytes. The block is four 16x4

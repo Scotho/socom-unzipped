@@ -96,8 +96,9 @@ describe('interpretPacket', () => {
     // §4 normal = (a.w, b.z, b.w)/32768
     expect(Array.from(m.normals!).map((v) => +v.toFixed(5)))
       .toEqual([0, 0, 0.99997, 0, 0, 0.99997, 0, 0, 0.99997, 0.5, -0.5, 0]);
-    // §4 quadword c: RGB raw, alpha min(a/128,1) on the 0..255 scale the browser reads
-    expect(Array.from(m.colors)).toEqual([255, 128, 0, 255, 10, 20, 30, 128, 1, 2, 3, 255, 4, 5, 6, 0]);
+    // §4 quadword c: 128 is full on every lane, so RGB is min(2c, 255) and alpha min(a/128,1)*255 --
+    // the 0..255 scale the browser reads, rescaled here rather than in each consumer.
+    expect(Array.from(m.colors)).toEqual([255, 255, 0, 255, 20, 40, 60, 128, 2, 4, 6, 255, 8, 10, 12, 0]);
     // §5/§6: one triangle per tail pair, index = byte/3, emitted in stored order
     expect(Array.from(m.indices)).toEqual([0, 2, 1, 1, 2, 3]);
     expect(Array.from(m.faceNormals!).map((v) => +v.toFixed(5))).toEqual([0, 0.99997, 0, 0, -0.99997, 0]);

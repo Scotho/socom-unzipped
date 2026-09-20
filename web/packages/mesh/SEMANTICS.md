@@ -289,11 +289,18 @@ which concatenates `M_proj × M_obj` into data quadwords 0..3 and leaves `M_view
 **Where the object matrix actually is, for a viewer:** `MP*_GEO.ZED`, in each node's `nparams`
 (96 bytes = a 4×4 row-major matrix followed by a 32-byte bbox; R36 §2, `node_io.cpp:275-276`).
 
+> **Superseded 2026-09-21:** the tail is a **24**-byte bbox (`CBBox` is two `CPnt3D`) followed by the u32
+> `m_type` and a u32 flag word; `m_type == 2` marks an instance node. See §11.2 / the viewer spec §9.
+
 **[data]**, Frostfire:
 
 - All **118** `nparams` in the `worldmodel` subtree's direct children carry the **same** matrix:
   identity 3×3, translation **(960, 0, 800)**. Deeper descendants (instanced props referencing
   `MP2_MDL` prototypes) have their own.
+  **Superseded 2026-09-21:** they do not. The 123 chunks belong to 101 visual-bearing nodes carrying
+  **6** distinct matrices; (960, 0, 800) is only the modal one, and "one translation serves all" held
+  by luck of arithmetic. The `N%03d_%03d` → node mapping is `hookupVisuals`. See §11.2 / the
+  viewer spec §9, and `web/packages/scene/`.
 - With that translation applied, the decoded floor under spawn A `(796, 100, 614)` is
   **`floor_oilgrime.tif` at y = 100.0** (chunk `N013_000`) and under spawn B `(536, 143, 1254)` is
   **`floor_oilgrime.tif` at y = 142.0** (chunk `N038_000`). The known spawn heights are 100 and

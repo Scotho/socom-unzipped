@@ -1,5 +1,10 @@
 {
+  // Type checking only, and part of `npm run typecheck`. `composite` and `incremental` are off so that
+  // `tsc --noEmit -p tools` leaves no `.tsbuildinfo` beside the sources.
   "extends": "../tsconfig.base.json",
-  "compilerOptions": { "noEmit": true, "types": ["node"] },
+  "compilerOptions": {
+    "composite": false, "incremental": false, "declaration": false,
+    "noEmit": true, "types": ["node"]
+  },
   "include": ["*.ts"]
 }

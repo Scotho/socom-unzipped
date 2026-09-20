@@ -42,18 +42,22 @@ WebGL2 fallback), Playwright for rendered-frame checks. No GPL code enters `web/
 
 ## File structure
 
+Planned (and corrected against what was built, 2026-09-21 — the tree below is the real one; `packet.ts`
+was planned and never existed, its work landing in `vif.ts` and `interpret.ts`):
+
 ```
 web/
-  package.json, tsconfig.base.json, vitest.workspace.ts, .gitignore (in repo root .gitignore)
+  package.json, tsconfig.base.json, vitest.config.ts, playwright.config.ts (.gitignore in repo root)
   packages/archive/src/{bytes.ts, zdb.ts, zar.ts, rdr.ts, assetSource.ts, fsAssetSource.ts, httpAssetSource.ts,
-                        mapIndex.ts, index.ts}   + test/*.test.ts, test/fixtures.ts
-  packages/gs/src/{tex0.ts, texture.ts, palette.ts, decode.ts, index.ts} + test/
-  packages/mesh/src/{dma.ts, vif.ts, packet.ts, interpret.ts, SEMANTICS.md, index.ts} + test/
+                        mapIndex.ts, node.ts, index.ts}   + test/*.test.ts, test/fixtures.ts
+  packages/gs/src/{tex0.ts, texture.ts, palette.ts, paletteTable.ts, decode.ts, index.ts} + test/
+  packages/mesh/src/{dma.ts, vif.ts, interpret.ts, meshData.ts, index.ts}, SEMANTICS.md + test/
   packages/scene/src/{worldRoot.ts, sceneGraph.ts, modelLibrary.ts, clutter.ts, collision.ts, spawns.ts,
                       buildScene.ts, index.ts} + test/
   packages/viewer/{index.html, vite.config.ts, src/{main.ts, renderer.ts, camera.ts, ui.ts, worker.ts,
-                   loadMap.ts, overlays.ts}}
-  tools/{extract-maps.ts, dump-textures.ts, export-gltf.ts}
+                   loadMap.ts, overlays.ts, world.ts, hook.ts, styles.css}, e2e/viewer.spec.ts}
+  tools/{extract-maps.ts, dump-textures.ts, export-gltf.ts, gltf.ts, png.ts}
+  README.md
   test-fixtures/ (ignored), public/maps/ (ignored)
 ```
 

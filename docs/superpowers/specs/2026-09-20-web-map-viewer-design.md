@@ -54,19 +54,30 @@ Everything lives under `web/` in the repository, one npm workspace, TypeScript t
 for tests, Playwright for rendered-frame checks. No game data is committed: `web/public/maps/` and
 `web/test-fixtures/` are git-ignored and populated by a script from the owner's disc tree.
 
+The tree below is the built one (corrected 2026-09-21; the plan's `packages/mesh/src/packet.ts` was never
+written -- its work is `vif.ts` and `interpret.ts` -- and `meshData.ts`, `paletteTable.ts`, `node.ts` and
+`world.ts` were added as the packages landed).
+
 ```
 web/
   package.json            workspace root: vite, vitest, typescript, playwright, three
+  README.md               how to run it: prerequisites, the commands, the known gaps
   packages/
     archive/              ZDB, ZAR/ZED, compiled .rdr readers; ISO9660 reader; AssetSource interface
+      src/{bytes,zdb,zar,rdr,assetSource,fsAssetSource,httpAssetSource,mapIndex,node,index}.ts
     gs/                   GS texture and palette decode (PSMT8, PSMCT16, PSMCT32); CLUT handling
+      src/{tex0,texture,palette,paletteTable,decode,index}.ts
     mesh/                 DMA-chain walker, VIF1 unpack, vertex-lane interpretation -> MeshData
+      src/{dma,vif,interpret,meshData,index}.ts, SEMANTICS.md
     scene/                world root, scene graph, clutter, collision -> a SceneDescription
+      src/{worldRoot,sceneGraph,modelLibrary,clutter,collision,spawns,buildScene,index}.ts
     viewer/               the Vite app: three.js renderer, camera, UI, overlays, diagnostics
+      src/{main,renderer,camera,ui,worker,loadMap,overlays,world,hook}.ts, e2e/viewer.spec.ts
   tools/
-    extract-maps.ts       disc tree -> web/public/maps/<name>/... (testing source)
-    export-gltf.ts        map -> glTF (debugging aid and golden generator)
-  test-fixtures/          git-ignored: copies of MP2/MP6/MP72 archives, reference PNGs
+    extract-maps.ts       disc tree -> web/public/maps/RUN/*.ZDB + index.json (testing source)
+    dump-textures.ts      every texture of one map to PNG, both orders, plus contact sheets
+    export-gltf.ts        map -> glTF (debugging aid and golden generator); gltf.ts, png.ts are its writers
+  test-fixtures/          git-ignored: copies of MP2/MP6/MP72 archives, reference PNGs, screenshots
 ```
 
 Dependency direction is strictly downward: `viewer -> scene -> mesh, gs -> archive`. `archive`, `gs`, `mesh` and

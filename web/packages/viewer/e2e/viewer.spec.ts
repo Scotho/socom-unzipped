@@ -2,26 +2,13 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
+// The shape `src/main.ts` puts on `window`, taken from the one declaration of it rather than copied.
+// `src/hook.ts` is types only, and its `declare global` is what makes `window.__viewer` exist inside
+// `page.evaluate`; the import is type-only, so nothing of the page's runtime is pulled into the test.
+import type {} from '../src/hook';
 
 /** Screenshots are evidence, not fixtures: `web/test-fixtures/` is git-ignored. */
 const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens', import.meta.url));
-
-/** The shape `src/main.ts` puts on `window`; repeated here because the page's types do not cross over. */
-interface Spawns { a: [number, number, number]; b: [number, number, number] }
-interface ViewerStats {
-  triangles: number; backend: string; diagnostics: string[]; loadMs: number; map: string | null;
-  collisionPolys: number; untexturedDraws: number; spawns: Spawns | null;
-}
-interface ViewerPose { x: number; y: number; z: number; yaw: number; pitch: number }
-interface ViewerHook {
-  setCamera(pose: Partial<ViewerPose>): void;
-  pose(): ViewerPose;
-  stats(): ViewerStats;
-  toggles(): Record<string, boolean>;
-}
-declare global {
-  interface Window { __viewer: ViewerHook }
-}
 
 /**
  * The three extracted fixtures, by the name `mission.rdr` shows (36 section 0). Frostfire is the map the

@@ -1,17 +1,31 @@
 import { copyFileSync, mkdirSync, readdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { listMaps } from '@s2u/archive';
+import { FsAssetSource } from '@s2u/archive/node';
 
+/**
+ * Copies the owner's disc tree into `web/public/maps/` for the viewer to fetch, and three archives into
+ * `web/test-fixtures/` for the tests. Both are git-ignored: no game data is committed.
+ *
+ * The index it writes beside them is `MapInfo[]` — `{ archive, path, name }` — not a bare list of paths.
+ * The name is the `description` of each archive's own `mission.rdr`, read here, once, by `listMaps`:
+ * reading it in the browser instead would mean fetching all 22 archives (224 MB) to draw a menu.
+ */
 const disc = process.env.SOCOM_DISC ?? 'C:/projects/socom_pc/game/disc';
 const web = resolve(import.meta.dirname, '..');
 const run = join(disc, 'RUN');
 if (!existsSync(run)) { console.error(`no disc tree at ${disc} (set SOCOM_DISC)`); process.exit(2); }
 
 const mp = readdirSync(run).filter((f) => /^MP\d+\.ZDB$/.test(f)).sort();
-const publicRun = join(web, 'public/maps/RUN');
+const publicMaps = join(web, 'public/maps');
+const publicRun = join(publicMaps, 'RUN');
 const fixtureRun = join(web, 'test-fixtures/RUN');
 mkdirSync(publicRun, { recursive: true });
 mkdirSync(fixtureRun, { recursive: true });
 for (const f of mp) copyFileSync(join(run, f), join(publicRun, f));
 for (const f of ['MP2.ZDB', 'MP6.ZDB', 'MP72.ZDB']) copyFileSync(join(run, f), join(fixtureRun, f));
-writeFileSync(join(web, 'public/maps/index.json'), JSON.stringify(mp.map((f) => `RUN/${f}`), null, 2));
+
+const maps = await listMaps(new FsAssetSource(publicMaps));
+writeFileSync(join(publicMaps, 'index.json'), JSON.stringify(maps, null, 2));
 console.log(`copied ${mp.length} archives to public/maps, 3 fixtures`);
+console.log(`indexed ${maps.length} maps: ${maps.map((m) => `${m.name} (${m.archive})`).join(', ')}`);

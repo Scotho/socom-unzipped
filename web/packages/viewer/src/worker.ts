@@ -43,7 +43,12 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
   void (async () => {
     try {
       if (request.kind === 'index') {
-        ctx.postMessage({ kind: 'index', id: request.id, maps: await listMaps(sourceFor(request.baseUrl)) });
+        // The served index already carries every map's name (`extract-maps.ts` read each `mission.rdr`
+        // once), so filling the picker costs one small fetch. `listMaps` -- which reads all 22 archives,
+        // 224 MB -- is what a source with no such index needs, and that is the ISO of M5.
+        const source = sourceFor(request.baseUrl);
+        const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
+        ctx.postMessage({ kind: 'index', id: request.id, maps });
       } else {
         const map = await loadMap(sourceFor(request.baseUrl), request.path);
         ctx.postMessage({ kind: 'map', id: request.id, map }, transferables(map));

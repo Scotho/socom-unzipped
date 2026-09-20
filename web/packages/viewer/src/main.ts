@@ -2,6 +2,7 @@ import { Clock, Scene } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
+import type { ViewerHook } from './hook';
 import type { LoadedMap } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, type Backend } from './renderer';
@@ -172,21 +173,10 @@ function show(map: LoadedMap): void {
 }
 
 /**
- * The debug hook Playwright drives: an exact camera pose, and the numbers the screenshot test asserts on.
- * The one `any` in the viewer lives here, because `window` has no viewer property to widen; `satisfies`
- * keeps the shape honest against the interface the e2e spec depends on.
+ * The debug hook Playwright drives. `./hook` declares its shape and widens `Window` to hold it, so this is
+ * a checked assignment to a real property rather than a cast of the global object.
  */
-interface ViewerHook {
-  setCamera(pose: Partial<Pose>): void;
-  pose(): Pose;
-  stats(): {
-    triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null;
-    collisionPolys: number; untexturedDraws: number; spawns: Spawns | null;
-  };
-  toggles(): Record<ToggleName, boolean>;
-}
-// The one `any` in the viewer: casting the global object is the only way to hang a property on it.
-(globalThis as any).__viewer = {
+window.__viewer = {
   setCamera: (pose: Partial<Pose>) => fly.setPose(pose),
   pose: () => fly.pose(),
   stats: () => ({

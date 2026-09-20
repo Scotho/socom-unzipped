@@ -11,7 +11,12 @@ export interface MeshData {
   positions: Float32Array;
   /** uv per vertex, normalised (SEMANTICS §7), unflipped. */
   uvs: Float32Array;
-  /** rgba per vertex, 0..255 with 255 opaque: the PS2's `128 = opaque` alpha already rescaled (§4). */
+  /**
+   * rgba per vertex, 0..255 on every lane. The PS2 writes colour with 128, not 255, as full (SEMANTICS §4):
+   * alpha 128 is opaque and rgb 128 is full brightness, so `interpret.ts` rescales alpha and doubles the
+   * three colour bytes (clamped — a few are written brighter than full) once, here, rather than in each
+   * consumer. A renderer uploads these straight as a normalised byte attribute.
+   */
   colors: Uint8Array;
   /** xyz per vertex, unit length or exactly zero (§4); null when a merge lost them. */
   normals: Float32Array | null;

@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseZdb, zdbMember, Zar, type ZarKey } from '@s2u/archive';
-import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba, type TextureRecord } from '@s2u/gs';
+import { decodeTexture, parseTextureRecord, PaletteTable, type TextureRecord } from '@s2u/gs';
 import { bounds, interpretChain, mergeMeshes, modelNodes, walkModel, type MeshData } from '@s2u/mesh';
 import { encodePng } from './png';
 import {
@@ -54,22 +54,6 @@ for (const key of txr.find('textures')?.children ?? [] as ZarKey[]) {
   if (texdat) records.set(key.name, parseTextureRecord(key.name, txr.data(texdat)));
 }
 
-/**
- * The single V convention, decided here and nowhere else. The decoded texture rows are stored **bottom-up**
- * (R36 §5: `sign04.tif` decodes upside down, "so a viewer flips V"), while the decoded UVs are left exactly
- * as `int16 / 4096` with no flip (SEMANTICS §7 and its implementation note). glTF wants V = 0 at the top of
- * the image, so the flip goes **into the embedded PNG**: the rows are reversed once, right here, and the UVs
- * then go into the accessor verbatim. Reversing rows is exactly v -> 1 - v (texel centre (s+0.5)/H), so this
- * is the same net flip R36 asks for, and the embedded image is also the right way up for a human looking at
- * the glb's texture list.
- */
-function flippedPng(img: Rgba): Uint8Array {
-  const row = img.width * 4;
-  const rows = new Uint8Array(img.height * row);
-  for (let y = 0; y < img.height; y++) rows.set(img.data.subarray(y * row, (y + 1) * row), (img.height - 1 - y) * row);
-  return encodePng(img.width, img.height, rows);
-}
-
 const glb = new GlbWriter(`s2u export-gltf (${map})`);
 glb.useExtension('KHR_materials_unlit');                    // the map's colour is baked into COLOR_0; no lighting
 const diagnostics: string[] = [];
@@ -89,7 +73,11 @@ function material(textureName: string | null): number {
   if (rec) {
     const decoded = decodeTexture(rec, palettes);
     diagnostics.push(...decoded.diagnostics);
-    const image = glb.addImage(flippedPng(decoded.rgba), rec.name);
+    // The V convention, the viewer's (spec §9, M3): the decoder's rows are in memory order, V = 0 the first
+    // row, and the UVs are `int16 / 4096` unflipped (SEMANTICS §7). glTF also maps V = 0 to the PNG's first
+    // row, so the rows are written out as they are decoded and the UVs go into the accessor verbatim --
+    // exactly what the viewer draws with `flipY = false`. (R36 §5's "so a viewer flips V" is superseded.)
+    const image = glb.addImage(encodePng(decoded.rgba.width, decoded.rgba.height, decoded.rgba.data), rec.name);
     const filter = rec.bilinear ? LINEAR : NEAREST;         // R36 §5: the record's own bilinear flag
     const sampler = glb.samplers.push({ magFilter: filter, minFilter: filter, wrapS: REPEAT, wrapT: REPEAT }) - 1;
     pbr['baseColorTexture'] = { index: glb.textures.push({ source: image, sampler }) - 1 };
@@ -141,6 +129,9 @@ for (const [textureName, group] of [...groups].sort((a, b) => String(a[0]).local
   const attributes: Json = {
     POSITION: accessor(mesh.positions, FLOAT, 'VEC3', count, { target: ARRAY_BUFFER, min: [...box.min], max: [...box.max] }),
     TEXCOORD_0: accessor(mesh.uvs, FLOAT, 'VEC2', count, { target: ARRAY_BUFFER }),
+    // `MeshData.colors` is plain 0..255 RGBA -- `mesh` has already undone the PS2's 128-is-full on every
+    // lane (SEMANTICS §4) -- so a normalised UNSIGNED_BYTE accessor is the whole of COLOR_0, and the glb
+    // is lit exactly as the viewer is.
     COLOR_0: accessor(mesh.colors, UNSIGNED_BYTE, 'VEC4', count, { target: ARRAY_BUFFER, normalized: true }),
   };
   // SEMANTICS §11.5: 16 of Frostfire's vertex normals are exactly zero, which glTF forbids
