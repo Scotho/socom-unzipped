@@ -14,7 +14,6 @@ export default defineConfig({
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:5173',
-    viewport: { width: 1280, height: 800 },
     launchOptions: {
       // Headless chromium has no GPU: ANGLE over SwiftShader is what draws, and recent Chrome versions
       // refuse WebGL on SwiftShader without being told the risk is accepted.
@@ -25,7 +24,7 @@ export default defineConfig({
   webServer: {
     command: 'npx vite --config packages/viewer/vite.config.ts --port 5173',
     url: 'http://localhost:5173/maps/index.json',
-    reuseExistingServer: true,
+    reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     stdout: 'pipe',
   },

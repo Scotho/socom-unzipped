@@ -221,7 +221,9 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   arguments, and its 65 decodes are frozen as sha256-16 goldens in
   `packages/gs/test/goldens/frostfire-textures.json`. Two asides the dump settled for free: all 65 records
   carry a usable TEX0 and every CBP names a loaded palette (no diagnostic fired on Frostfire), and the rows
-  are stored bottom-up, so the viewer flips V rather than the decoder flipping rows.
+  are stored bottom-up, so the viewer flips V rather than the decoder flipping rows (superseded by
+  the M3 entry: bottom-up rows with `flipY = false` need no extra flip, because that is already
+  what GL calls V = 0).
 - 2026-09-20, M2 shape: `decodeTexture` returns `{ rgba, diagnostics: string[] }`, not a bare `Rgba`. A record
   with no TEX0 in its bind packet, or a CBP no loaded palette answers, still decodes -- by `m_texelBitSize`
   and by the first palette -- and says so in a string, so the viewer reports a bad texture instead of the
@@ -232,7 +234,7 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   handrails on the walkway, rusted elbow pipes, a wet concrete yard, an overcast sky. `frostfire-top.png`
   (straight down from y = 1400 over the spawn midpoint) is a level-shaped footprint -- roofs, two round
   tanks, a container yard, a stair tower -- inside the dark disc of the sky chunk's underside, with the
-  distant skirt beyond it. 8,764 triangles in 37 draws (one per cited texture), 53-64 ms to decode the
+  distant skirt beyond it. 8,764 triangles in 37 draws (one per cited texture), 53-69 ms to decode the
   8 MB archive, zero diagnostics, zero console errors.
   - **Texture orientation, settled by looking:** the decoder's bottom-up rows are exactly GL's V = 0, so
     the viewer uses `DataTexture` with `flipY = false` and the UVs `interpret.ts` produces, unflipped.
@@ -252,3 +254,11 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
     the same build.
   - **Decode thread:** the archive read, VIF walk and texture decode run in a module Web Worker and come
     back in the transfer list, so nothing is copied and the frame loop never stalls.
+- 2026-09-20, M3 review round 1: three findings fixed on top of M4's scene-graph landing. A bad DMA
+  chain now costs one chunk, not the map -- the walk happens inside `decoder`'s per-chunk `try` (M4 had
+  already moved it there; the same guard was extended to the model archives and to the texture archive,
+  so an unreadable `MP*_TXR.ZED` leaves a map drawn in vertex colour rather than no map at all). The
+  viewer package joined `npm run typecheck`, appended as `tsc --noEmit -p packages/viewer` because its
+  config is `noEmit` and `tsc -b` will not take it. And every worker request now carries a monotonic id
+  its answer repeats, so the boot auto-load and the map the player picks a moment later cannot land out
+  of order -- the page drops any answer that is not the one it is still waiting for.

@@ -20,10 +20,6 @@ export class Ui {
     }));
   }
 
-  get selectedMap(): string {
-    return this.maps.value;
-  }
-
   select(path: string): void {
     this.maps.value = path;
   }

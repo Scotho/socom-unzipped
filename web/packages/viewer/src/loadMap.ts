@@ -55,8 +55,11 @@ const say = (e: unknown): string => (e instanceof Error ? e.message : String(e))
  * tests for the geometry half: ZDB table of contents, `WORL_MDL.ZED` -> `worldmodel` -> DMA chains ->
  * VIF packets -> `MeshData`, and `MP*_TXR.ZED` + `MP*_PAL.ZED` -> `TextureRecord` -> RGBA.
  *
- * Nothing here throws for bad map data if it can help it: a chunk that fails to interpret, or a texture
- * that is missing or complains, becomes a diagnostic string and the rest of the map still draws.
+ * Nothing here throws for bad map data if it can help it, and that promise is kept one chunk at a time:
+ * the DMA walk and the VIF interpretation of a chunk both happen inside `decoder`'s per-chunk `try`, so a
+ * malformed tag costs that chunk and nothing else. The same holds a level up -- a model archive, the
+ * scene graph, the texture archive, a single texture: each failure is a diagnostic string, and whatever
+ * else decoded still draws. Only a ZDB whose table of contents will not parse ends the load.
  */
 export async function loadMap(source: AssetSource, path: string): Promise<LoadedMap> {
   const started = Date.now();
@@ -107,33 +110,35 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   }));
 
   // The textures those meshes name, and only those: a map's TXR holds every texture the mission uses.
+  // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
+  // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, { bilinear: boolean; transparent: boolean }> = {};
-  const txr = Zar.parse(zdbMember(bytes, toc, `${stem}_TXR.ZED`));
-  const palettes = PaletteTable.fromZars([Zar.parse(zdbMember(bytes, toc, `${stem}_PAL.ZED`))]);
-  const keys = new Map<string, ZarKey>();
-  for (const key of txr.find('textures')?.children ?? []) keys.set(textureKey(key.name), key);
-  for (const mesh of [...world, ...props.flatMap((p) => p.parts)]) {
-    const name = mesh.textureName;
-    if (name === null || name in textures) continue;
-    const key = keys.get(name);
-    if (!key) {
-      diagnostics.push(`texture ${name}: not in ${stem}_TXR.ZED`);
-      continue;
-    }
-    const texdat = txr.child(key, 'texdat');
-    if (!texdat) {
-      diagnostics.push(`texture ${name}: no texdat key`);
-      continue;
-    }
-    try {
-      const record = parseTextureRecord(key.name, txr.data(texdat));
-      const decoded = decodeTexture(record, palettes);
-      for (const d of decoded.diagnostics) diagnostics.push(`texture ${name}: ${d}`);
-      textures[name] = decoded.rgba;
-      textureFlags[name] = { bilinear: record.bilinear, transparent: record.transparent };
-    } catch (e) {
-      diagnostics.push(`texture ${name}: ${say(e)}`);
+  const texlib = textureLibrary(bytes, toc, stem, diagnostics);
+  if (texlib) {
+    const { txr, palettes, keys } = texlib;
+    for (const mesh of [...world, ...props.flatMap((p) => p.parts)]) {
+      const name = mesh.textureName;
+      if (name === null || name in textures) continue;
+      const key = keys.get(name);
+      if (!key) {
+        diagnostics.push(`texture ${name}: not in ${stem}_TXR.ZED`);
+        continue;
+      }
+      const texdat = txr.child(key, 'texdat');
+      if (!texdat) {
+        diagnostics.push(`texture ${name}: no texdat key`);
+        continue;
+      }
+      try {
+        const record = parseTextureRecord(key.name, txr.data(texdat));
+        const decoded = decodeTexture(record, palettes);
+        for (const d of decoded.diagnostics) diagnostics.push(`texture ${name}: ${d}`);
+        textures[name] = decoded.rgba;
+        textureFlags[name] = { bilinear: record.bilinear, transparent: record.transparent };
+      } catch (e) {
+        diagnostics.push(`texture ${name}: ${say(e)}`);
+      }
     }
   }
 
@@ -165,6 +170,24 @@ export function transferables(map: LoadedMap): Transferable[] {
   return out;
 }
 
+/**
+ * The map's texture archive and its palettes, keyed lower-case the way the meshes name them, or null and
+ * one diagnostic if either member is unreadable.
+ */
+function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]):
+{ txr: Zar; palettes: PaletteTable; keys: Map<string, ZarKey> } | null {
+  try {
+    const txr = Zar.parse(zdbMember(bytes, toc, `${stem}_TXR.ZED`));
+    const palettes = PaletteTable.fromZars([Zar.parse(zdbMember(bytes, toc, `${stem}_PAL.ZED`))]);
+    const keys = new Map<string, ZarKey>();
+    for (const key of txr.find('textures')?.children ?? []) keys.set(textureKey(key.name), key);
+    return { txr, palettes, keys };
+  } catch (e) {
+    diagnostics.push(`textures: ${say(e)} -- the map draws in vertex colour alone`);
+    return null;
+  }
+}
+
 /** 36 section 6: the shown name is `READERM.ZAR/mission.rdr`'s `description`, as `listMaps` reads it. */
 function missionName(bytes: Uint8Array, toc: ZdbEntry[], diagnostics: string[]): string | null {
   try {
@@ -192,12 +215,16 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnos
   return DEFAULT_METERS_PER_UNIT;
 }
 
-/** 36 section 2: the model buffers a map draws from. Only the world's is required. */
+/**
+ * 36 section 2: the model buffers a map draws from. None of the three is required: a map missing its
+ * world buffer still draws its props, and one missing a prop library still draws its world, each absence
+ * costing one diagnostic. `decoder` names whatever the scene graph then asks for and cannot find.
+ *
+ * `CLIB_MDL.ZED` is deliberately absent, its models being the `MESH_` form the scene graph never names.
+ */
 function mdlArchives(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]): Zar[] {
-  const out: Zar[] = [Zar.parse(zdbMember(bytes, toc, 'WORL_MDL.ZED'))];
-  // The prop library and the mission asset library; `CLIB_MDL.ZED` is deliberately absent, its models
-  // being the `MESH_` form the scene graph never names.
-  for (const member of [`${stem}_MDL.ZED`, 'FLIB_MDL.ZED']) {
+  const out: Zar[] = [];
+  for (const member of ['WORL_MDL.ZED', `${stem}_MDL.ZED`, 'FLIB_MDL.ZED']) {
     try {
       out.push(Zar.parse(zdbMember(bytes, toc, member)));
     } catch (e) {

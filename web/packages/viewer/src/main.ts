@@ -32,25 +32,40 @@ let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
 let backend: Backend = 'webgl2';
 
+/**
+ * Which request the page is still waiting for, one per kind. Loads overlap -- the boot auto-load is
+ * already running when the player picks a map, and a small archive can overtake a large one -- so an
+ * answer whose id is no longer the wanted one is dropped rather than drawn over the newer map.
+ */
+let requests = 0;
+let wantedIndex = -1;
+let wantedMap = -1;
 const ask = (request: ViewerRequest): void => worker.postMessage(request);
+const load = (path: string): void => {
+  wantedMap = ++requests;
+  ask({ kind: 'load', id: wantedMap, baseUrl: MAPS, path });
+};
 
 worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   const message = event.data;
   if (message.kind === 'error') {
+    if (message.id !== wantedIndex && message.id !== wantedMap) return;
     ui.setStatus(`failed while ${message.doing}: ${message.message}`, 'error');
     return;
   }
   if (message.kind === 'index') {
+    if (message.id !== wantedIndex) return;
     showMaps(message.maps);
     return;
   }
+  if (message.id !== wantedMap) return;
   show(message.map);
 });
 
 ui.onMapChange((path) => {
   if (!path) return;
   ui.setStatus(`loading ${path} ...`);
-  ask({ kind: 'load', baseUrl: MAPS, path });
+  load(path);
 });
 ui.onGrid((on) => overlays.setGrid(on));
 ui.onAxes((on) => overlays.setAxes(on));
@@ -81,7 +96,8 @@ async function boot(): Promise<void> {
 
   if (await served()) {
     ui.setStatus(`${backend}: indexing the archives ...`);
-    ask({ kind: 'index', baseUrl: MAPS });
+    wantedIndex = ++requests;
+    ask({ kind: 'index', id: wantedIndex, baseUrl: MAPS });
   } else {
     ui.setStatus(`no maps served at ${MAPS}/index.json -- run the extractor, or open an ISO (milestone M5)`, 'error');
   }
@@ -104,7 +120,7 @@ function showMaps(maps: MapInfo[]): void {
     return;
   }
   ui.setStatus(`loading ${first.name} ...`);
-  ask({ kind: 'load', baseUrl: MAPS, path: first.path });
+  load(first.path);
 }
 
 function show(map: LoadedMap): void {
@@ -134,7 +150,9 @@ function show(map: LoadedMap): void {
     `${map.name} (${map.archive})`,
     backend,
     `${view.triangles.toLocaleString('en-GB')} triangles`,
-    `${map.world.length} draws`,
+    // Every child of the group is one draw: a world mesh per texture, and an `InstancedMesh` (or a plain
+    // one, for a prop placed once) per prop model-node. `map.world.length` counted only the world's.
+    `${view.group.children.length} draws`,
     `${map.loadMs} ms load`,
   ].join('  |  '));
 }
