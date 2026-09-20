@@ -24,16 +24,15 @@
     </div>
     <div id="panel">
       <!--
-        The whole overlay folds to this one bar. It is a real button so it takes a tap, a click, Enter
-        and Space without any of that being written here, and `aria-expanded` tells a screen reader
-        which way it is.
+        The panel's title bar, and the whole of it when the panel is folded. It is a real button so it
+        takes a tap, a click, Enter and Space without any of that being written here, and
+        `aria-expanded` tells a screen reader which way it is.
       -->
       <button id="panel-toggle" type="button" aria-expanded="true" aria-controls="panel-body">
-        <span id="panel-title">Unzipped Project Map Viewer</span>
+        <span id="panel-title">Settings</span>
         <span id="panel-chevron" aria-hidden="true">&#9662;</span>
       </button>
       <div id="panel-body">
-      <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <div class="row">
         <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
         <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
@@ -98,6 +97,7 @@
         <summary><span id="diagnostics-count">0</span> diagnostics</summary>
         <ul id="diagnostics"></ul>
       </details>
+      <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <p class="rights">SOCOM II: U.S. Navy SEALs and all of its assets &mdash; models, textures, maps,
         audio &mdash; are the property of <strong>Sony Interactive Entertainment</strong>, developed by
         Zipper Interactive. Not affiliated with, endorsed by, or connected to Sony Interactive

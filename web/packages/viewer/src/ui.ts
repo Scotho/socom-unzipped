@@ -1,5 +1,6 @@
 import type { MapInfo } from '@s2u/archive';
 import { labelFor } from './mapOrder';
+import { wantsTouchControls } from './touch';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
@@ -106,7 +107,10 @@ export class Ui {
    * anyway. Nothing here fails if storage does.
    */
   onPanelToggle(): void {
-    this.setPanelCollapsed(read(PANEL_KEY) === '1');
+    // Folded to start with on a phone, where the open panel is most of the screen, and open on a
+    // desktop, where it is the thing you came for. A remembered choice beats both.
+    const stored = read(PANEL_KEY);
+    this.setPanelCollapsed(stored === null ? wantsTouchControls() : stored === '1');
     this.panelToggle.addEventListener('click', () => {
       const collapsed = !document.body.classList.contains('panel-collapsed');
       this.setPanelCollapsed(collapsed);
@@ -120,9 +124,25 @@ export class Ui {
     this.panelToggle.title = collapsed ? 'show the panel' : 'collapse the panel';
   }
 
-  /** What the collapsed bar reads: the map on screen, so the bar is worth leaving up. */
-  setPanelTitle(text: string): void {
-    this.panelTitle.textContent = text;
+  /**
+   * The title bar's label. It is always "Settings", so the strip says what pressing it gets you, with
+   * the map's name after it when one is loaded -- that is the bit worth reading while the panel is
+   * folded, and the bit that gives way to the ellipsis when there is no room for both.
+   */
+  setPanelTitle(map: string | null): void {
+    this.panelTitle.textContent = map ? `Settings · ${map}` : 'Settings';
+  }
+
+  /**
+   * A narrow screen, where the status line has to earn every character or it wraps to four lines and
+   * pushes everything else out of the top strip.
+   */
+  isNarrow(): boolean {
+    try {
+      return globalThis.matchMedia?.('(max-width: 480px)').matches ?? false;
+    } catch {
+      return false;
+    }
   }
 
   /** Whether the panel is folded, for the debug hook. */

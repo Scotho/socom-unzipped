@@ -310,13 +310,21 @@ function show(map: LoadedMap): void {
   const say = (suffix: string): void => ui.setStatus([
     `${map.name} (${map.archive})`,
     backend,
-    `${built.triangles.toLocaleString('en-GB')} triangles`,
+    // Abbreviated on a phone for the same reason two of the parts are dropped there: the line has to
+    // fit on one row inside a 360px strip, and "tris" says as much as "triangles" does.
+    `${built.triangles.toLocaleString('en-GB')} ${ui.isNarrow() ? 'tris' : 'triangles'}`,
     // One draw per queued object: a world mesh per texture, and an `InstancedMesh` (or a plain one, for
     // a prop placed once) per prop model-node. `map.world.length` counted only the world's.
-    `${draws} draws`,
-    `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
-    `${map.loadMs} ms load${suffix}`,
-  ].join('  |  '));
+    // These two go first on a narrow screen: they are the diagnosing eye's numbers, not the visitor's,
+    // and on a phone the line has to fit in the top strip beside everything else.
+    ...(ui.isNarrow() ? [] : [
+      `${draws} draws`,
+      `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
+    ]),
+    ui.isNarrow() ? `${map.loadMs} ms` : `${map.loadMs} ms load${suffix}`,
+    // A thinner separator on a phone as well as fewer parts: "  |  " five times over is most of what
+    // pushes the line onto a second row at 360px.
+  ].join(ui.isNarrow() ? ' · ' : '  |  '));
 
   // The world first.
   //

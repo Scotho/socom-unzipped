@@ -20,37 +20,48 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
   /* Above the touch stick's zone: on a phone the open panel and the zone overlap, and a tap on a
      checkbox must reach the checkbox rather than starting the stick under it. */
   position: fixed; top: 48px; left: 12px; z-index: 5; width: min(420px, calc(100vw - 24px));
-  padding: 10px 12px; border: 1px solid #333a44; border-radius: 8px;
+  border: 1px solid #333a44; border-radius: 8px; overflow: hidden;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
 }
+#panel-body { padding: 10px 12px; }
 /*
- * The collapse control. A 44px minimum because a thumb is about that wide, and full width so the whole
- * bar is the target rather than the chevron alone.
+ * The title bar. It is meant to read as the top of a window rather than as the first line of a box:
+ * its own slightly lighter background, a rule under it, the label in small caps, and the whole strip
+ * lighting up under a cursor so it is plainly the thing you press. 44px minimum because a thumb is
+ * about that wide, and full width so the target is the strip rather than the chevron alone.
  */
 #panel-toggle {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  width: 100%; min-height: 44px; margin: -4px 0 6px; padding: 6px 4px;
-  background: none; border: none; border-radius: 6px; color: #9aa4b1;
-  font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  width: 100%; min-height: 44px; padding: 6px 12px;
+  background: #1d2027; border: none; border-bottom: 1px solid #333a44; color: #9aa4b1;
+  font: inherit; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  text-align: left; cursor: pointer;
   /* A tap leaves the browser's blue wash across the whole bar, which reads as a selection. */
   -webkit-tap-highlight-color: transparent;
 }
-#panel-toggle:hover, #panel-toggle:focus-visible { color: #d8dde4; }
-#panel-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#panel-chevron { transition: transform 120ms ease; }
+#panel-toggle:hover, #panel-toggle:focus-visible { background: #242832; color: #d8dde4; }
+#panel-toggle:active { background: #2a2f3a; }
+/* The map's name rides along after the label and gives way first when there is no room for both. */
+#panel-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#panel-chevron { flex: none; font-size: 13px; letter-spacing: 0; transition: transform 120ms ease; }
 @media (prefers-reduced-motion: reduce) { #panel-chevron { transition: none; } }
-/* Collapsed: the body goes, the bar stays, and the panel shrinks to it. */
+/* Collapsed: the body goes and the title bar is the whole panel, so it loses its rule. */
 body.panel-collapsed #panel-body { display: none; }
-body.panel-collapsed #panel { width: min(300px, calc(100vw - 24px)); padding-bottom: 4px; }
-body.panel-collapsed #panel-toggle { margin-bottom: 0; }
+body.panel-collapsed #panel { width: min(320px, calc(100vw - 24px)); }
+body.panel-collapsed #panel-toggle { border-bottom: none; }
 body.panel-collapsed #panel-chevron { transform: rotate(-90deg); }
 
 #panel .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 #panel select, #panel button { font: inherit; padding: 3px 6px; background: #1d2027; color: inherit; border: 1px solid #39414d; border-radius: 4px; }
 #panel button[disabled] { opacity: 0.55; cursor: not-allowed; }
+/*
+ * Not a headline any more. It sits at the foot of the body, under the diagnostics and over the legal
+ * notice, so it is a small callout marked by a rule down its left rather than a box round the whole
+ * of it -- the panel's own header is the loud thing now.
+ */
 #warning {
-  margin: 0 0 8px; padding: 4px 7px; border: 1px solid #6b4a1e; border-radius: 4px;
-  background: rgba(120, 78, 22, 0.22); color: #ffca8a; font-size: 11px; line-height: 1.45;
+  margin: 8px 0 0; padding: 2px 0 2px 8px; border-left: 2px solid #6b4a1e;
+  color: #c79a63; font-size: 10px; line-height: 1.45;
 }
 #warning strong { color: #ffb04d; letter-spacing: 0.06em; }
 .rights { margin: 8px 0 0; color: #6d757f; font-size: 10px; line-height: 1.45; }
@@ -117,7 +128,9 @@ label.slider output { min-width: 56px; text-align: right; color: #9fe6b0; font-v
 #touch { display: none; }
 body.touch #touch { display: block; }
 #stick-zone {
-  position: fixed; left: 0; bottom: 0; width: 50vw; height: 66vh; z-index: 4;
+  /* The bottom 45vh of the left half: the part of a phone a thumb reaches, and clear of the panel,
+     whose body is capped at 45vh below a title bar in the top strip. */
+  position: fixed; left: 0; bottom: 0; width: 50vw; height: 45vh; z-index: 4;
   touch-action: none;
 }
 #stick-base {
@@ -132,7 +145,9 @@ body.touch #touch { display: block; }
   background: rgba(159, 230, 176, 0.18); transform: translate(-50%, -50%);
 }
 #touch-lift {
-  position: fixed; right: 12px; bottom: 16px; z-index: 4; display: flex; flex-direction: column; gap: 10px;
+  /* Above the browser's own bottom bar on a phone, which `env()` measures and which is 0 everywhere else. */
+  position: fixed; right: 12px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 4; display: flex; flex-direction: column; gap: 10px;
 }
 #touch-lift button {
   width: 56px; height: 56px; border-radius: 50%; touch-action: none;
@@ -141,3 +156,29 @@ body.touch #touch { display: block; }
   -webkit-tap-highlight-color: transparent;
 }
 #touch-lift button:active { background: rgba(159, 230, 176, 0.18); }
+
+/*
+ * Phones and other coarse pointers: everything the viewer draws over the map goes in one strip along
+ * the top, so the middle and the bottom of the screen -- where the thumb lives and where you are
+ * actually looking -- stay clear.
+ *
+ * The back link and the title bar are *stacked* rather than side by side, and that is a measurement
+ * rather than a preference: the link is 147px and the header wants 244px for
+ * "Settings . FROSTFIRE (MP2)", which with the chevron and the padding needs 442px. None of 360, 390
+ * or 430 has it, and a header that wraps is worse than one below the link.
+ */
+@media (max-width: 480px), (pointer: coarse) {
+  #home { top: 8px; left: 8px; padding: 3px 8px; }
+  #panel { top: 42px; left: 8px; width: calc(100vw - 16px); }
+  body.panel-collapsed #panel { width: calc(100vw - 16px); }
+  /*
+   * Capped and scrolling, and the cap is arithmetic rather than a round number: the stick's zone is
+   * the bottom 45vh, the panel starts 42px down and its title bar is 44px, so anything over
+   * `55vh - 86px` reaches the stick. Ten pixels are left over for luck. Whatever is unfolded inside
+   * the body scrolls within it instead of pushing the panel down the screen.
+   */
+  #panel-body { max-height: calc(55vh - 96px); overflow-y: auto; overscroll-behavior: contain; }
+  /* The status line has to fit on one: a smaller face and a thinner separator, set in `main.ts`. */
+  #status { font-size: 10px; }
+  #fps { top: 8px; right: 8px; }
+}

@@ -86,9 +86,15 @@ same velocity model the keys drive, so the ramp, the glide and the frame-rate in
 that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
 
 They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
-and not at all on a mouse. The whole overlay folds to one bar (the button across its top edge, or the
-backtick), which is what makes the viewer usable on a phone at all — expanded, the panel is most of
-the screen.
+and not at all on a mouse.
+
+Everything the viewer draws over the map goes in one strip along the top: the back link, then the
+panel's title bar beneath it. Beneath and not beside — the link is 147px and the header wants 244px,
+which with the chevron and the padding needs 442px, and none of 360, 390 or 430 has it. The panel
+opens folded on a coarse pointer (a remembered choice still wins), its body is capped at
+`55vh - 96px` and scrolls inside itself so it can never reach the stick's zone, and the status line
+drops the draw and collision counts and abbreviates the rest so it fits on one row at 360px. The
+lift buttons clear the browser's own bottom bar with `env(safe-area-inset-bottom)`.
 
 Deliberately minimal: no sprint, no gestures, no tuning pass.
 
