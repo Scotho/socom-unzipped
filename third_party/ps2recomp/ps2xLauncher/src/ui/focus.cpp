@@ -202,6 +202,14 @@ namespace ui
         return out;
     }
 
+    std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in)
+    {
+        // Every node a page's layout emits carries that page, so the front one answers whose list this is.
+        if (!computed.empty() && computed.front().page == page)
+            return computed;
+        return layoutFor(page, window, in);
+    }
+
     Rect onlinePresetRow(Rect window, int index)
     {
         const Frame f = frameFor(window);

@@ -84,6 +84,20 @@ namespace ui
         bool showPill = false;             // the UNSAVED pill is only drawn when there is something to save
         std::vector<float> tabW;           // the tab labels' drawn widths, in order
         float tabGap = chrome::tabGap;
+
+        // Sprint 9 P4. The ink, not the line box. `text()` is given the top of the LINE box, and a line box
+        // is not the letters: the ascent above the capitals and the descender space below them are not
+        // equal. So two sizes drawn at one y do not share a baseline ("UNZIPPED ... is lower than the SOCOM
+        // II text"), and an all-caps word centred in a bar-height box sits above the lamp it is meant to sit
+        // beside ("the running text ... appears higher"). The caller measures each word's capital ink with
+        // ui::capInk and hands it over, exactly as it already hands over the widths.
+        float markY = 10.0f;               // where SOCOM II's line box is drawn -- the mark's anchor
+        float markCapTop = 0.0f;           // SOCOM II: the capitals' top, below the line box's top
+        float markCapH = 0.0f;             // and their height
+        float markSubCapTop = 0.0f;        // UNZIPPED, at its own smaller size
+        float markSubCapH = 0.0f;
+        float statusCapTop = 0.0f;         // the state word ("RUNNING")
+        float statusCapH = 0.0f;
     };
 
     struct TopBarPlaces
@@ -93,6 +107,8 @@ namespace ui
         Rect tabs;               // the tab group as a whole
         std::vector<Rect> tab;   // each label's box, in order
         bool tabsCentred = false;
+        float markSubY = 0.0f;   // the y to draw UNZIPPED at, so its baseline is SOCOM II's
+        float statusY = 0.0f;    // the y to draw the state word at, so its capitals centre on the lamp
     };
 
     inline TopBarPlaces topBarPlaces(const ChromeLayout &l, const TopBarText &m)
@@ -107,6 +123,13 @@ namespace ui
         const float clusterRight = (m.showPill ? l.pill.x : l.minimize.x) - chrome::pad;
         o.status = Rect{clusterRight - m.statusW, 0.0f, m.statusW, h};
         o.lamp = Vec2{o.status.x - chrome::lampGap, l.bar.cy()};
+
+        // The word beside the lamp is centred on the LAMP, by its capitals: the lamp is a circle on the
+        // bar's centre line, and the eye lines the letters up with it, not the invisible box they sit in.
+        o.statusY = o.lamp.y - m.statusCapH * 0.5f - m.statusCapTop;
+
+        // The mark's second word sits on the first word's baseline, which is where the capitals END.
+        o.markSubY = (m.markY + m.markCapTop + m.markCapH) - m.markSubCapH - m.markSubCapTop;
 
         // The tab group, centred in what is free between the wordmark and that cluster -- at every window
         // width, and never over either of them. Too wide to fit there, it sits after the wordmark instead.

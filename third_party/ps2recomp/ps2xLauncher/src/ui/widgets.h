@@ -61,6 +61,17 @@ namespace ui
     void text(const Ctx &ctx, const char *s, Vec2 at, float size, Rgba color, Face face = Face::Body, float tracking = 0.0f);
     void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face = Face::Body, float tracking = 0.0f);
     void textRightIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face = Face::Body);
+
+    // Where a capital's ink actually lies, in design units, relative to the y `text()` is handed. DrawTextEx
+    // places the LINE box at that y; the capitals begin `top` below it and stand `height` tall. Aligning two
+    // words by their tops or centring one in a box is aligning line boxes, which is not what a reader sees
+    // (Sprint 9 P4). `top + height` is the baseline. Falls back to the line box when the face has no metrics.
+    struct InkBox
+    {
+        float top = 0.0f;
+        float height = 0.0f;
+    };
+    InkBox capInk(const Ctx &ctx, float size, Face face);
     // The head that fits, with "..." (a path's tail) or the tail that fits (a field being typed in).
     std::string ellipsizeEnd(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);
     std::string ellipsizeStart(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);

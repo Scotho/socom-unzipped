@@ -38,10 +38,21 @@ namespace ui
         }
     }
 
-    void fillRect(const Ctx &ctx, Rect r, Rgba color) { DrawRectangleRec(px(ctx, r), rl(color)); }
+    // Sprint 9 P4: a rect that is not drawable places no ink. rectOf() answers Rect{} -- the window's
+    // origin, zero by zero -- for an id the node list does not hold, and a label centred in one of those
+    // is the flash the owner saw at the top left on every page change. The discipline is here, at the
+    // root, rather than at each of the fifty call sites that look a control up by id.
+    void fillRect(const Ctx &ctx, Rect r, Rgba color)
+    {
+        if (!drawable(r))
+            return;
+        DrawRectangleRec(px(ctx, r), rl(color));
+    }
 
     void fillRectGradient(const Ctx &ctx, Rect r, Rgba top, Rgba bottom)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         DrawRectangleGradientV(static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.width),
                                static_cast<int>(p.height), rl(top), rl(bottom));
@@ -49,6 +60,8 @@ namespace ui
 
     void strokeRect(const Ctx &ctx, Rect r, Rgba color, float thick)
     {
+        if (!drawable(r))
+            return;
         DrawRectangleLinesEx(px(ctx, r), std::max(1.0f, thick * ctx.scale), rl(color));
     }
 
@@ -66,6 +79,8 @@ namespace ui
 
     void fillRound(const Ctx &ctx, Rect r, float radius, Rgba color)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
@@ -74,6 +89,8 @@ namespace ui
 
     void strokeRound(const Ctx &ctx, Rect r, float radius, Rgba color, float thick)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
@@ -141,13 +158,37 @@ namespace ui
 
     void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face, float tracking)
     {
+        if (!drawable(r))
+            return;
         const float w = textWidth(ctx, s, size, face, tracking);
         const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);   // design units
         text(ctx, s, Vec2{r.x + (r.w - w) * 0.5f, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face, tracking);
     }
 
+    InkBox capInk(const Ctx &ctx, float size, Face face)
+    {
+        const int pixels = pixelSize(ctx, size);
+        const float screenSize = static_cast<float>(pixels) / ctx.dpi;
+        const Font &font = ctx.fonts->at(face, pixels);
+        InkBox o;
+        const int i = GetGlyphIndex(font, 'H');   // a capital with no overshoot: the cap height itself
+        if (i < 0 || font.glyphs == nullptr || font.recs == nullptr || font.baseSize <= 0)
+        {
+            // raylib's default face, or a face that would not load (the spec's stop rule): the line box is
+            // all there is to go on, which is exactly what the launcher used before this existed.
+            o.height = screenSize / ctx.scale;
+            return o;
+        }
+        const float f = screenSize / static_cast<float>(font.baseSize);
+        o.top = static_cast<float>(font.glyphs[i].offsetY) * f / ctx.scale;
+        o.height = font.recs[i].height * f / ctx.scale;
+        return o;
+    }
+
     void textRightIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face)
     {
+        if (!drawable(r))
+            return;
         const float w = textWidth(ctx, s, size, face);
         const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
         text(ctx, s, Vec2{r.right() - w, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face);
@@ -173,6 +214,8 @@ namespace ui
 
     void panel(const Ctx &ctx, Rect r, bool raised)
     {
+        if (!drawable(r))
+            return;
         fillRect(ctx, r, raised ? theme::panelHi : theme::panel);
         strokeRect(ctx, r, theme::line, 2.0f);
     }
@@ -212,12 +255,16 @@ namespace ui
 
     void focusRing(const Ctx &ctx, Rect r)
     {
+        if (!drawable(r))
+            return;
         strokeRect(ctx, Rect{r.x - 3.0f, r.y - 3.0f, r.w + 6.0f, r.h + 6.0f}, theme::gold, 2.0f);
         strokeRect(ctx, Rect{r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f}, theme::alpha(theme::goldHi, 90), 1.0f);
     }
 
     bool hovered(const Ctx &ctx, Rect r)
     {
+        if (!drawable(r))
+            return false;
         return !ctx.fake && ctx.mouseMoved && r.contains(ctx.mouse);
     }
 
@@ -225,6 +272,8 @@ namespace ui
 
     bool hit(const Ctx &ctx, Rect r, const std::string &id, bool enabled)
     {
+        if (!drawable(r))
+            return false;
         if (!enabled)
             return false;
         const bool byMouse = !ctx.fake && ctx.click && r.contains(ctx.mouse);
@@ -236,6 +285,8 @@ namespace ui
 
     bool button(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool enabled, bool primary)
     {
+        if (!drawable(r))
+            return false;
         const bool isFocused = focused(ctx, id);
         const bool isHover = enabled && hovered(ctx, r);
         const bool live = isHover || isFocused;
@@ -278,6 +329,8 @@ namespace ui
 
     bool toggle(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool &value)
     {
+        if (!drawable(r))
+            return false;
         const float boxSide = std::min(24.0f, r.h - 6.0f);
         const Rect box{r.x, r.y + (r.h - boxSide) * 0.5f, boxSide, boxSide};
         const bool live = hovered(ctx, r) || focused(ctx, id);
@@ -299,6 +352,8 @@ namespace ui
 
     bool radioCell(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool selected)
     {
+        if (!drawable(r))
+            return false;
         const bool live = hovered(ctx, r) || focused(ctx, id);
         if (selected)
             fillRectGradient(ctx, r, theme::blueFill, theme::blueDeep);
@@ -314,6 +369,8 @@ namespace ui
 
     bool listRow(const Ctx &ctx, Rect r, const std::string &label, const std::string &id, bool selected)
     {
+        if (!drawable(r))
+            return false;
         const bool live = hovered(ctx, r) || focused(ctx, id);
         if (selected)
             fillRect(ctx, r, theme::mix(theme::panelHi, theme::blue, 0.30f));
@@ -333,6 +390,8 @@ namespace ui
 
     bool slider(const Ctx &ctx, Rect r, const std::string &id, double &value, double lo, double hi, double step)
     {
+        if (!drawable(r))
+            return false;
         const bool isFocused = focused(ctx, id);
         const bool live = isFocused || hovered(ctx, r);
         const double before = value;
@@ -445,6 +504,8 @@ namespace ui
 
     void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen)
     {
+        if (!drawable(r))
+            return;
         const bool isFocused = focused(ctx, id);
         const bool isActive = ctx.activeField != nullptr && *ctx.activeField == id;
         fillRect(ctx, r, theme::ground);
@@ -488,6 +549,8 @@ namespace ui
 
     void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen)
     {
+        if (!drawable(r))
+            return;
         const bool isFocused = focused(ctx, id);
         const bool isActive = editable && ctx.activeField != nullptr && *ctx.activeField == id;
         fillRect(ctx, r, theme::ground);
@@ -523,6 +586,8 @@ namespace ui
 
     void meterBar(const Ctx &ctx, Rect r, float fraction, Rgba fill)
     {
+        if (!drawable(r))
+            return;
         fraction = fraction < 0.0f ? 0.0f : (fraction > 1.0f ? 1.0f : fraction);
         fillRect(ctx, r, theme::ground);
         fillRect(ctx, Rect{r.x + 2.0f, r.y + 2.0f, (r.w - 4.0f) * fraction, r.h - 4.0f}, fill);

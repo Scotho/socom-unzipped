@@ -6,6 +6,9 @@
 //   socom_unzipped_launcher.exe              the window
 //   socom_unzipped_launcher.exe --selftest   load config.json, verify the ISO if one is set, print the environment, exit
 //   socom_unzipped_launcher.exe --screenshot <dir>   every page at both sizes, on a fixed fake state, as PNGs
+//   socom_unzipped_launcher.exe --screenshot <dir> --shot-frames 2   capture the FIRST frame drawn after each
+//                                                   page change rather than the settled one (Sprint 9 P4:
+//                                                   the default is why a one-frame defect never showed up)
 //   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window
 //   socom_unzipped_launcher.exe --report-bug <form.json> [dir]   send one bug report for <dir>, print the reply, no window
 //                                                                (a PROOF unless the form says "test": false)
@@ -440,22 +443,41 @@ namespace
         fillRect(ctx, l.bar, theme::mix(theme::panel, theme::ground, 0.5f));
         fillRect(ctx, Rect{0.0f, l.bar.bottom() - 1.0f, l.bar.w, 1.0f}, theme::line);
 
-        // The mark, small: the big wordmark lives at the head of the rail.
+        // The mark, small: the big wordmark lives at the head of the rail. Neither word is drawn yet --
+        // where the second one goes depends on where the first one's BASELINE falls, and that is
+        // arithmetic ui::topBarPlaces does and the top-bar test asserts (Sprint 9 P4, from the owner's
+        // screenshot: "the UNZIPPED part after SOCOM II is lower than the SOCOM II text").
         const float markX = 16.0f;
-        text(ctx, "SOCOM II", Vec2{markX, 10.0f}, 15.0f, theme::gold, Face::Bold, 0.08f);
+        const float markY = 10.0f;
         const float markW = textWidth(ctx, "SOCOM II", 15.0f, Face::Bold, 0.08f);
-        text(ctx, "UNZIPPED", Vec2{markX + markW + 10.0f, 12.0f}, 13.0f, theme::dim, Face::Bold, 0.10f);
+        const float subX = markX + markW + 10.0f;
 
         // Where the measured halves of the bar go: the tab group and the state cluster, from the widths this
         // font actually draws (ui::topBarPlaces does the arithmetic, and the tests assert on it).
         const char *state = app.running ? "RUNNING" : (app.discOk ? "READY" : "NOT READY");
         const char *name = pageName(app.nav.page);
         TopBarText measured;
-        measured.markRight = markX + markW + 10.0f + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
+        measured.markRight = subX + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
         measured.statusW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
         measured.showPill = app.dirty;
         measured.tabW.push_back(textWidth(ctx, name, 13.0f, Face::Bold, 0.12f));
+        // The ink, not the line box: what a reader lines up is the capitals, and the face's ascent above
+        // them is not its descender space below (Sprint 9 P4). The bar hands the measurements over exactly
+        // as it already hands over the widths, and the arithmetic stays where the test can reach it.
+        const InkBox markInk = capInk(ctx, 15.0f, Face::Bold);
+        const InkBox subInk = capInk(ctx, 13.0f, Face::Bold);
+        const InkBox stateInk = capInk(ctx, 14.0f, Face::Bold);
+        measured.markY = markY;
+        measured.markCapTop = markInk.top;
+        measured.markCapH = markInk.height;
+        measured.markSubCapTop = subInk.top;
+        measured.markSubCapH = subInk.height;
+        measured.statusCapTop = stateInk.top;
+        measured.statusCapH = stateInk.height;
         const TopBarPlaces places = topBarPlaces(l, measured);
+
+        text(ctx, "SOCOM II", Vec2{markX, markY}, 15.0f, theme::gold, Face::Bold, 0.08f);
+        text(ctx, "UNZIPPED", Vec2{subX, places.markSubY}, 13.0f, theme::dim, Face::Bold, 0.10f);
 
         // The page tab: where you are, without taking a click.
         if (!places.tab.empty())
@@ -465,7 +487,11 @@ namespace
         const Rgba lamp = app.running ? theme::goldHi : (app.discOk ? theme::lampGreen : theme::warn);
         fillCircle(ctx, places.lamp, 5.0f, lamp);
         strokeCircle(ctx, places.lamp, chrome::lampR, theme::alpha(lamp, 110), 1.5f);
-        textCenteredIn(ctx, state, places.status, 14.0f, theme::text, Face::Bold, 0.06f);
+        // Not textCenteredIn: that centres the LINE box in the bar, and an all-caps word's line box carries
+        // empty descender space that pushes its letters above the lamp they sit beside (owner, 2026-09-20:
+        // "the running text is not aligned with the yellow circle, it appears higher"). places.status is
+        // exactly the measured width, so its left edge IS the centred position.
+        text(ctx, state, Vec2{places.status.x, places.statusY}, 14.0f, theme::text, Face::Bold, 0.06f);
 
         // UNSAVED: only when there is something to save, and clicking it saves.
         if (app.dirty)
@@ -811,6 +837,14 @@ int main(int argc, char **argv)
     }
 
     const char *screenshotDir = (argc > 2 && std::strcmp(argv[1], "--screenshot") == 0) ? argv[2] : nullptr;
+    // How many frames the walk settles before it captures. Three by default, as it always was -- and that
+    // default is exactly why a one-frame defect never appeared in a screenshot. The page is set AFTER the
+    // frame at count 0 is drawn, so count 1 is the last frame of the OLD page and count 2 is the FIRST
+    // frame of the new one: --shot-frames 2 is the repro for the top-left flash, and the proof it is gone.
+    int shotFrames = 3;
+    for (int i = 1; i + 1 < argc; ++i)
+        if (std::strcmp(argv[i], "--shot-frames") == 0)
+            shotFrames = std::max(1, std::atoi(argv[i + 1]));
 
     // HIGHDPI is what a player wants and what a screenshot must not have: the PNGs are asked for at exact
     // pixel sizes.
@@ -949,6 +983,13 @@ int main(int argc, char **argv)
     size_t shotIndex = 0;
     int shotFrame = 0;
     int resizeWaits = 0;
+    // Sprint 9 P4: the walk used to change the page straight after a frame was drawn, which is a
+    // moment no player can produce -- the next frame then built its node list from the new page and
+    // everything lined up. Real input changes the page in the MIDDLE of a frame, after that list is
+    // built, and that is the frame the owner's top-left flash lives on. The walk now asks for the
+    // page the same way, so a PNG can see what a player sees.
+    int shotPendingPage = -1;
+    std::string shotPendingFocus;
 
     while (!WindowShouldClose() && !quitRequested)
     {
@@ -1007,7 +1048,7 @@ int main(int argc, char **argv)
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         app.graph = &graph;
         const std::vector<ui::Node> rail = ui::railLayout(window);
-        const std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
+        std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
         if (graph.find(nav.focus) == nullptr)
             nav.focus = ui::railId(nav.page);   // the list under the focus changed (a pad was unplugged)
 
@@ -1182,7 +1223,24 @@ int main(int argc, char **argv)
                 IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
                 app.padPrompts = false;
         }
+        // --screenshot's page change, applied exactly where the pad's and the keyboard's is.
+        if (shotPendingPage >= 0)
+        {
+            nav.goTo(graph, ui::pageAt(shotPendingPage));
+            if (!shotPendingFocus.empty())
+                nav.focus = shotPendingFocus;
+            shotPendingPage = -1;
+            shotPendingFocus.clear();
+        }
         ctx.focus = nav.focus;
+
+        // The input above can have changed the page (the pad's shoulder tabs, Escape, a rail entry). The
+        // list built at the top of this frame is then the PREVIOUS page's, and drawing the new page out of
+        // it makes every lookup miss: rectOf answers the origin, and a label centred there is the one-frame
+        // flash at the top left the owner reported (Sprint 9 P4). The list the frame draws from is the
+        // page's own; widgets.cpp's drawable() guard covers what this cannot -- the rail click at
+        // drawRail(), which changes the page in the middle of the draw itself.
+        nodes = ui::nodesForFrame(std::move(nodes), nav.page, window, app.layout);
 
         // ---- draw -----------------------------------------------------------------------------------------
         BeginDrawing();
@@ -1397,7 +1455,8 @@ int main(int argc, char **argv)
                     continue;   // let the resize land before the state is set
                 }
                 resizeWaits = 0;
-                app.nav.goTo(graph, shot.page);
+                shotPendingPage = ui::pageIndex(shot.page);
+                shotPendingFocus.clear();
                 {
                     // Sprint 9 Goal 8: canned states, no request made.
                     const std::string suffix = shot.suffix;
@@ -1421,9 +1480,9 @@ int main(int argc, char **argv)
                         report.form.attachLog = true;
                     }
                     if (suffix == "_filled")
-                        app.nav.focus = app.activeField = "report.description";
+                        shotPendingFocus = app.activeField = "report.description";
                     else if (shot.page == ui::Page::Report)
-                        app.nav.focus = "report.send";
+                        shotPendingFocus = "report.send";
                     if (suffix == "_sending")
                         report.state = ui::ReportUi::State::Sending;
                     if (suffix == "_sent")
@@ -1445,7 +1504,7 @@ int main(int argc, char **argv)
                         report.form.title = "abc";
                         report.state = ui::ReportUi::State::FieldError;
                         report.message = br::checkForm(report.form);
-                        app.nav.focus = app.activeField = "report.title";
+                        shotPendingFocus = app.activeField = "report.title";
                     }
                     if (suffix == "_ratelimited")
                     {
@@ -1468,7 +1527,7 @@ int main(int argc, char **argv)
                     app.config.server = saved.server;
                 }
             }
-            if (++shotFrame >= 3)
+            if (++shotFrame >= shotFrames)
             {
                 char path[512];
                 // The page's slug ("play", "report"): every page's name but REPORT A BUG's was already that.
