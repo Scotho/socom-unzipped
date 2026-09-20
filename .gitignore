@@ -45,3 +45,6 @@ vm/
 .pytest_cache/
 # a generic onboarding template, the owner's, never the project's
 /ONBOARDING.md
+
+# Sprint 9 Q0: the audio tests write their VPK fixtures to the working directory
+/socom2_audio_*.vpk

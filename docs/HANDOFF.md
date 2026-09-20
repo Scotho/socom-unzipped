@@ -31,11 +31,9 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
   `02cd9ae`), and **the first half of P4** (`ca7dd5a`: the page-change flash and the top bar's two alignments).
   Landed but not closed out: Goal 8 (REPORT A BUG and the ONLINE status line) -- see P5, and read its row first,
   because three of its four documentation artefacts turn out to be already written.
-- **Baselines: C++ 672/672, Python 1368 OK, `./build.sh test` exit 0.** Last gates 3/3: `s9_g1_gate`,
-  `s9_g2_release_gate`, `s9_p1_gate`. Next free ruling number: **R176** (R175 is P6's, below).
-- **Where the loop is now:** the rest of P4 -- an ADVANCED section on the ONLINE page with "Second instance" moved
-  into it, and tooltips starting with "what is a profile?". Then P5, then P6, which R175 has turned into a
-  lock-free launcher change rather than the driven measurement it used to be.
+- **Baselines: C++ 682/682, Python 1436 OK, `./build.sh test` exit 0.** Last gates 3/3: `s9_q0_device_gate`,
+  `s9_q0_trace_gate`, `s9_p7_playtest_gate`. Next free ruling number: **R176** (R175 is P6's, below).
+- **Where the loop is now (2026-09-20 07:00):** milestone P is done through P7 (`playtest-1` tagged); P8 was played and failed on the mission music; **Q0 is investigated and four things are fixed** -- read `docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md` before touching audio again, it is the record of what was measured, what was ruled out, and the three instruments that now exist. The owner's ear on the new build is the next input (HUMAN_TASKS); Q0b (the blue arrow) is next after that.
 - **Nobody else is known to be in the tree** as of 2026-09-19: `git status` showed only `server/config/simulated.db`,
   which is always modified and is never committed. The Goal 10 session's work is committed; the Goal 3 plan is
   committed and not started.

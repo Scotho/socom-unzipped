@@ -1590,9 +1590,12 @@ namespace ps2x::iop::detail
                 target->sector1 = args.u32(0);
                 target->sector2 = args.u32(1);
                 target->offset1 = args.u32(2) & 0xFFFFu;
-                target->volume = static_cast<int32_t>(args.u32(2) >> 16);
+                // Sprint 9 Q0: the upper halves are SIGNED 16-bit words. The game passes pan 0xffff (-1, the
+                // default) on every music cue; split without a sign it reached the host as 65535, which the
+                // pan table wrapped to 105 degrees -- every music cue ~2.3 dB to the right, for three sprints.
+                target->volume = static_cast<int32_t>(static_cast<int16_t>(args.u32(2) >> 16));
                 target->offset2 = args.u32(3) & 0xFFFFu;
-                target->pan = static_cast<int32_t>(args.u32(3) >> 16);
+                target->pan = static_cast<int32_t>(static_cast<int16_t>(args.u32(3) >> 16));
                 target->group = args.u32(4);
                 target->parent = parent;
                 target->flags = args.u32(7);

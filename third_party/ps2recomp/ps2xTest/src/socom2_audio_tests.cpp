@@ -4,6 +4,7 @@
 #include "MiniTest.h"
 #include "runtime/ps2_vag.h"
 #include "runtime/socom2_bank.h"
+#include "runtime/mix_device.h"
 #include "runtime/snd989_mixer.h"
 #include "runtime/ps2_audio.h"
 #include "runtime/audio_volume.h"
@@ -788,6 +789,169 @@ void register_socom2_audio_tests()
             std::remove(quiet.c_str());
         });
 
+        // Sprint 9 Q0 (2026-09-20): the owner failed playtest-1 on the mission music with the original symptoms
+        // intact, and the driven capture that had been called clean turned out to be blind to the two things that
+        // matter. The mission's music is ~4-second VPK stems (2.6-4.3 s each, read off the disc headers) that the
+        // game chains by polling snd_SoundIsStillPlaying and starting the next stem the moment we answer "done" --
+        // so every four seconds the music crosses a stem boundary, and a hole there is "skips" exactly. Nothing
+        // stamped a stem's start or end, and a starved stream (the ring empty, the worker behind) played silence
+        // and counted NOTHING. This is the instrument: every stream start, end and underrun is reported on the
+        // mixer's own output-frame clock -- the clock the PS2X_AUDIO_DUMP WAV is written on -- so a boundary is a
+        // WAV offset a person can open, and a starved stem is a number instead of a feeling.
+        tc.Run("Mixer: stream start, end and underrun are reported on the output-frame clock the dump is written on", [](TestCase &t)
+        {
+            const std::string two = "socom2_audio_clock_a.vpk";
+            t.IsTrue(writeVpk(two, 2, 2), "a two-chunk-pair VPK: 7168 samples at 32 kHz, 10752 output frames at 48 kHz");
+            snd989::Mixer mixer;
+            std::vector<snd989::StreamEvent> events;
+            mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
+            std::vector<int16_t> buf(2 * 1200);
+
+            // Some silence first, so a start frame of 0 cannot pass by accident.
+            mixer.render(buf.data(), 1200);
+            mixer.render(buf.data(), 1200);
+            t.Equals(mixer.renderedFrames(), static_cast<uint64_t>(2400u), "the clock counts what render was asked for");
+
+            const uint32_t h = 0x04000021u;
+            t.IsTrue(mixer.playStream(h, two, 0u, 0x400, -1, 1u), "the stem plays");
+            mixer.pumpStreams();
+            size_t calls = 0;
+            while (mixer.isPlaying(h) && calls < 40)
+            {
+                mixer.render(buf.data(), 1200);
+                ++calls;
+            }
+            t.IsFalse(mixer.isPlaying(h), "the stem played out");
+
+            size_t starts = 0, dones = 0, underruns = 0;
+            uint64_t startFrame = 0, doneFrame = 0;
+            for (const snd989::StreamEvent &e : events)
+            {
+                if (e.handle != h) continue;
+                if (e.kind == snd989::StreamEvent::Start) { ++starts; startFrame = e.frame; }
+                if (e.kind == snd989::StreamEvent::Done) { ++dones; doneFrame = e.frame; }
+                if (e.kind == snd989::StreamEvent::Underrun) ++underruns;
+            }
+            t.Equals(starts, static_cast<size_t>(1u), "one start");
+            t.Equals(dones, static_cast<size_t>(1u), "one end");
+            t.Equals(underruns, static_cast<size_t>(0u), "and, with the ring kept full, no underrun");
+            t.Equals(startFrame, static_cast<uint64_t>(2400u), "the start is stamped with the frames rendered before it -- its WAV offset");
+            // The end is reported in the very render call where the data ran out: the stem is 10752 frames long,
+            // so its last sample lands in the call that begins at frame 2400 + 9600 = 12000 and covers 12000..13199.
+            t.IsTrue(doneFrame >= 2400u + 10752u - 1200u && doneFrame < 2400u + 10752u + 1200u,
+                     "the end is stamped within one render call of the last sample (done at frame " + std::to_string(doneFrame) + ")");
+        });
+
+        tc.Run("Mixer: a starved stream reports every underrun with its frame, stretches by exactly the starved frames, and is not 'done'", [](TestCase &t)
+        {
+            // Longer than the ring, so pumping once cannot hold the whole stem.
+            const std::string longStem = "socom2_audio_clock_b.vpk";
+            t.IsTrue(writeVpk(longStem, 12, 2), "a twelve-chunk-pair VPK");
+            snd989::Mixer mixer;
+            std::vector<snd989::StreamEvent> events;
+            mixer.setStreamEventSink([&events](const snd989::StreamEvent &e) { events.push_back(e); });
+            std::vector<int16_t> buf(2 * 1200);
+            const uint32_t h = 0x04000022u;
+            t.IsTrue(mixer.playStream(h, longStem, 0u, 0x400, -1, 1u), "the stem plays");
+            mixer.pumpStreams();   // the ring fills to its depth, and then the worker "falls behind" -- we never pump again
+
+            size_t calls = 0;
+            while (mixer.isPlaying(h) && calls < 200)
+            {
+                mixer.render(buf.data(), 1200);
+                ++calls;
+            }
+            t.IsTrue(mixer.isPlaying(h), "a stream whose ring ran dry before its data did is NOT done -- it is waiting");
+            size_t underruns = 0;
+            uint64_t firstUnderrun = 0;
+            for (const snd989::StreamEvent &e : events)
+                if (e.handle == h && e.kind == snd989::StreamEvent::Underrun)
+                {
+                    if (underruns == 0) firstUnderrun = e.frame;
+                    ++underruns;
+                }
+            t.IsTrue(underruns >= 1u, "the starvation was reported (" + std::to_string(underruns) + " underrun events)");
+            t.IsTrue(firstUnderrun > 0u && firstUnderrun < 200u * 1200u, "with the frame it began at");
+
+            // The worker catches up: the stream resumes from where it stopped and plays to its end.
+            const uint64_t starvedUntil = mixer.renderedFrames();
+            mixer.pumpStreams();
+            calls = 0;
+            while (mixer.isPlaying(h) && calls < 200)
+            {
+                if (calls % 4 == 3) mixer.pumpStreams();   // keep it fed from here on
+                mixer.render(buf.data(), 1200);
+                ++calls;
+            }
+            t.IsFalse(mixer.isPlaying(h), "fed again, it plays out");
+            uint64_t startFrame = 0, doneFrame = 0, reportedSilent = 0, summedSilent = 0;
+            for (const snd989::StreamEvent &e : events)
+            {
+                if (e.handle != h) continue;
+                if (e.kind == snd989::StreamEvent::Start) startFrame = e.frame;
+                if (e.kind == snd989::StreamEvent::Done) { doneFrame = e.frame; reportedSilent = e.detail; }
+                if (e.kind == snd989::StreamEvent::Underrun) summedSilent += e.detail;
+            }
+            // 12 chunk pairs = 43008 samples at 32 kHz = 64512 output frames. The stem took longer than that by
+            // exactly the frames it spent starved -- the audible stall, now a number the Done event carries.
+            const uint64_t nominal = 64512u;
+            (void)starvedUntil; (void)firstUnderrun;
+            t.Equals(reportedSilent, summedSilent, "the Done event's total is the sum of the underruns it reported");
+            const uint64_t took = doneFrame - startFrame;
+            const uint64_t expect = nominal + reportedSilent;
+            t.IsTrue(took + 1200u >= expect && took <= expect + 1200u,
+                     "the stem stretched by its starved frames, to within one render call (took " + std::to_string(took) +
+                         ", nominal " + std::to_string(nominal) + " + starved " + std::to_string(reportedSilent) + ")");
+        });
+
+        // Sprint 9 Q0 (2026-09-20). The game starts its positioned voice streams SILENT -- snd_PlayVAGStreamByLoc with
+        // vol 0, flags 2, a pan in degrees -- and then raises them with snd_SetSoundParams(handle, mask bit0, vol, pan),
+        // one call per stream in the driven mission's first 30 s. Mixer::setVolPan looked up only bank handlers, so on
+        // a stream handle it returned at find() and the line stayed silent. The PCSX2 reference has voices where ours
+        // has nothing; this is one of the mechanisms.
+        tc.Run("Mixer: snd_SetSoundParams reaches a STREAM handle -- a stream started at vol 0 becomes audible when the game raises it", [](TestCase &t)
+        {
+            const std::string clip = "socom2_audio_volpan_stream.vpk";
+            t.IsTrue(writeVpk(clip, 4, 2), "a loud four-chunk-pair VPK");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000041u;
+            t.IsTrue(mixer.playStream(h, clip, 0u, 0, -1, 2u), "the stream plays, at vol 0 as the game asks");
+            mixer.pumpStreams();
+            std::vector<int16_t> buf(2 * 1200);
+            auto peak = [&buf]() {
+                int32_t p = 0;
+                for (int16_t v : buf) p = std::max(p, std::abs(static_cast<int32_t>(v)));
+                return p;
+            };
+            mixer.render(buf.data(), 1200);
+            t.IsTrue(peak() < 8, "silent at vol 0 (peak " + std::to_string(peak()) + ")");
+
+            mixer.setVolPan(h, 0x400, snd989::kPanDontChange);   // the game's snd_SetSoundParams, mask bit0
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 1200);
+            const int32_t raised = peak();
+            t.IsTrue(raised > 200, "audible once the game raises it (peak " + std::to_string(raised) + ")");
+
+            mixer.setVolPan(h, snd989::kVolDontChange, 90);   // pan-only: hard right, the volume left alone
+            mixer.pumpStreams();
+            mixer.render(buf.data(), 1200);
+            int32_t l = 0, r = 0;
+            for (size_t i = 0; i < 1200; ++i) { l = std::max(l, std::abs(static_cast<int32_t>(buf[i * 2]))); r = std::max(r, std::abs(static_cast<int32_t>(buf[i * 2 + 1]))); }
+            t.IsTrue(r > l * 2, "and a pan moves it (L " + std::to_string(l) + ", R " + std::to_string(r) + ")");
+        });
+        // Sprint 9 Q0 (2026-09-20): the device buffer. The traced mission run put 41 sub-second dropouts a minute at the
+        // owner's speaker that the pre-device dump did not have -- the device thread missing a 10 ms deadline under
+        // gameplay load (raylib's miniaudio defaults: 10 ms x 3). PCSX2 on the same endpoint, 20 ms with stretch: none.
+        // The spec is pinned here so the number cannot drift back without this test noticing.
+        tc.Run("the mix device's buffer is at least 60 ms in periods of at least 20 ms, at the mixer's own rate and width", [](TestCase &t)
+        {
+            const ps2x::MixDeviceSpec d = ps2x::mixDeviceSpec();
+            t.Equals(d.sampleRate, static_cast<uint32_t>(snd989::kSampleRate), "the device runs at the mixer's rate: no resampling between them");
+            t.Equals(d.channels, 2u, "stereo");
+            t.IsTrue(d.periodMs >= 20u, "a period of at least 20 ms (raylib's 10 ms missed ~40 times a minute under load; got " + std::to_string(d.periodMs) + ")");
+            t.IsTrue(d.bufferMs() >= 60u, "at least 60 ms of buffer in flight (got " + std::to_string(d.bufferMs()) + " ms)");
+            t.IsTrue(d.bufferMs() <= 200u, "and not so much that the game's own timing drifts audibly (got " + std::to_string(d.bufferMs()) + " ms)");
+        });
         // Sprint 9 Goal 10 (R170): the other half of the owner's sentence -- "getting louder and quieter". A
         // fade belongs to the cue it was asked for, not to the handle for ever. stop() and setVolPan() already
         // drop a handle's ramp; playStream did not, and dropDeadRamps keeps a ramp alive while ANY stream
@@ -1684,6 +1848,41 @@ void register_socom2_audio_tests()
             t.IsTrue(behind != nullptr, "the host was told about the queued one too");
             if (behind != nullptr && behind->args.size() >= 10u)
                 t.Equals(behind->args[9], 1, "and it is marked a queue, so the host does not replace what is playing");
+        });
+
+        // Sprint 9 Q0 (2026-09-20). Every music cue in the driven mission arrives as snd_PlayVAGStreamByLoc
+        // [.., vol|off1 = 0x04000000, pan|off2 = 0xffff0000, ..]: the upper halves are the 16-bit vol and pan,
+        // and 0xffff is -1 -- "the default pan", exactly as the mixer's kPanReset means it. The module split
+        // the word with `>> 16` and no sign, so the host was handed 65535, which the pan table wraps to 15
+        // degrees and then to 105: every music cue in the game played ~2.3 dB to the right, and no
+        // measurement could see it because every one of them drove the mixer directly with a pan it chose.
+        tc.Run("989snd: a stream play's 16-bit vol and pan halves are SIGNED on the wire -- 0xffff is -1, the default, not 65535", [](TestCase &t)
+        {
+            Snd989HarnessT<Snd989NotifyRecorderHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+
+            // The mission's music play, byte for byte: vol 0x400 over offset 0, pan -1 over offset 0, group 1.
+            t.IsTrue(h.call(kPlayVagStreamByLoc, {0x11e17du, 0u, 0x04000000u, 0xffff0000u, 1u, 0u, 0u, 0u}) != 0u, "the cue plays");
+            const Snd989NotifyRecorderHost::Notify *n = h.host.last(kPlayVagStreamByLoc);
+            t.IsTrue(n != nullptr && n->args.size() >= 10u, "the host was told, in the ten-word form");
+            if (n != nullptr && n->args.size() >= 10u)
+            {
+                t.Equals(n->args[4], 0x400, "vol: the upper half of the third word");
+                t.Equals(n->args[6], -1, "pan: 0xffff is MINUS ONE -- the default pan, not 65535 (the wire says " +
+                                             std::to_string(n->args[6]) + ")");
+            }
+
+            // A pan the game does set, and a negative vol, both survive the split with their sign.
+            t.IsTrue(h.call(kPlayVagStreamByLoc, {0x11e17du, 0u, 0xfffe0000u, 0x00b40000u, 2u, 0u, 0u, 0u}) != 0u, "another cue");
+            n = h.host.last(kPlayVagStreamByLoc);
+            if (n != nullptr && n->args.size() >= 10u)
+            {
+                t.Equals(n->args[4], -2, "vol 0xfffe is -2 (kVolDontChange's shape), not 65534");
+                t.Equals(n->args[6], 180, "pan 0x00b4 is 180 degrees either way");
+            }
         });
 
         // The same thing end to end: the module, the backend and the mixer. Queued, the two segments play one

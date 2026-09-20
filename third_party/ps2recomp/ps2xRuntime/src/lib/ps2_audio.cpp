@@ -5,6 +5,9 @@
 #include <cstdlib>
 #include "runtime/ps2_audio.h"
 #include "runtime/audio_volume.h"
+#include "runtime/mix_device.h"
+// miniaudio.h WITHOUT MINIAUDIO_IMPLEMENTATION, as host_mic.cpp: the implementation is raylib's raudio.c
+#include "external/miniaudio.h"
 #include "ps2_runtime.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_host_backend.h"
@@ -81,7 +84,9 @@ namespace ps2_vag
 struct PS2AudioBackend::Impl
 {
     // The 989snd mix: one 48 kHz stereo stream fed from the audio thread (research/32 section 4).
-    AudioStream mixStream{};
+    ma_context mixCtx{};        // Sprint 9 Q0: the runtime's own playback device, on ps2x::mixDeviceSpec()
+    ma_device mixDevice{};
+    bool mixCtxOk = false;
     bool mixStreamOpen = false;
     FILE *dumpFile = nullptr;           // PS2X_AUDIO_DUMP=<wav>: the mix, written as it is rendered (the harness kills the process)
     size_t dumpFrames = 0;
@@ -348,13 +353,15 @@ void PS2AudioBackend::stopAll()
 
 namespace
 {
-    PS2AudioBackend *g_mixStreamOwner = nullptr;
     constexpr size_t kDumpMaxFrames = 48000u * 600u;   // ten minutes
 
-    void mixStreamCallback(void *bufferData, unsigned int frames)
+    void mixDeviceCallback(ma_device *device, void *output, const void *, ma_uint32 frames)
     {
-        if (g_mixStreamOwner)
-            g_mixStreamOwner->mixerRender(static_cast<int16_t *>(bufferData), frames);
+        auto *owner = static_cast<PS2AudioBackend *>(device->pUserData);
+        if (owner)
+            owner->mixerRender(static_cast<int16_t *>(output), frames);
+        else
+            std::memset(output, 0, static_cast<size_t>(frames) * 4u);
     }
 
     std::vector<uint8_t> buildStereoWav(const int16_t *pcm, size_t frames, uint32_t sampleRate)
@@ -404,15 +411,41 @@ void PS2AudioBackend::openMixerStream()
             std::fwrite(header.data(), 1, 44, m_impl->dumpFile);
         }
     }
-    SetAudioStreamBufferSizeDefault(1024);
-    m_impl->mixStream = LoadAudioStream(snd989::kSampleRate, 16, 2);
-    if (!IsAudioStreamValid(m_impl->mixStream))
+    // Sprint 9 Q0: our own device, not raylib's AudioStream -- raylib opens miniaudio at 10 ms x 3 and offers no way
+    // to change it, and that 30 ms buffer dropped out ~40 times a minute at the owner's speaker under gameplay
+    // load (mix_device.h has the measurement). The mixer renders straight into the device's own buffer.
+    const ps2x::MixDeviceSpec spec = ps2x::mixDeviceSpec();
+    if (!m_impl->mixCtxOk)
+    {
+        if (ma_context_init(nullptr, 0, nullptr, &m_impl->mixCtx) != MA_SUCCESS)
+        {
+            std::cout << "[audio] 989snd mix device: no audio context" << std::endl;
+            return;
+        }
+        m_impl->mixCtxOk = true;
+    }
+    ma_device_config cfg = ma_device_config_init(ma_device_type_playback);
+    cfg.playback.format = ma_format_s16;
+    cfg.playback.channels = spec.channels;
+    cfg.sampleRate = spec.sampleRate;
+    cfg.periodSizeInMilliseconds = spec.periodMs;
+    cfg.periods = spec.periods;
+    cfg.dataCallback = mixDeviceCallback;
+    cfg.pUserData = this;
+    if (ma_device_init(&m_impl->mixCtx, &cfg, &m_impl->mixDevice) != MA_SUCCESS)
+    {
+        std::cout << "[audio] 989snd mix device: could not open the playback device" << std::endl;
         return;
-    g_mixStreamOwner = this;
-    SetAudioStreamCallback(m_impl->mixStream, mixStreamCallback);
-    PlayAudioStream(m_impl->mixStream);
+    }
+    if (ma_device_start(&m_impl->mixDevice) != MA_SUCCESS)
+    {
+        ma_device_uninit(&m_impl->mixDevice);
+        std::cout << "[audio] 989snd mix device: could not start the playback device" << std::endl;
+        return;
+    }
     m_impl->mixStreamOpen = true;
-    std::cout << "[audio] 989snd mix stream open (" << snd989::kSampleRate << " Hz stereo"
+    std::cout << "[audio] 989snd mix stream open (" << spec.sampleRate << " Hz stereo, device " << m_impl->mixDevice.playback.name
+              << ", period " << spec.periodMs << " ms x " << spec.periods << ", engine " << m_impl->mixDevice.sampleRate << " Hz"
               << (m_impl->dumpPath.empty() ? "" : ", dump " + m_impl->dumpPath) << ")" << std::endl;
 }
 
@@ -420,9 +453,13 @@ void PS2AudioBackend::closeMixerStream()
 {
     if (!m_impl || !m_impl->mixStreamOpen)
         return;
-    StopAudioStream(m_impl->mixStream);
-    g_mixStreamOwner = nullptr;
-    UnloadAudioStream(m_impl->mixStream);
+    ma_device_stop(&m_impl->mixDevice);
+    ma_device_uninit(&m_impl->mixDevice);
+    if (m_impl->mixCtxOk)
+    {
+        ma_context_uninit(&m_impl->mixCtx);
+        m_impl->mixCtxOk = false;
+    }
     m_impl->mixStreamOpen = false;
     std::lock_guard<std::mutex> lock(m_impl->dumpMutex);
     if (m_impl->dumpFile)

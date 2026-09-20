@@ -383,8 +383,12 @@ namespace snd989
             // then takes over on the very next output frame. A chain, so a score may queue several deep.
             std::shared_ptr<Stream> next;
             bool paused = false;
+            bool underrunThisCall = false;           // Sprint 9 Q0: one Underrun event per render call
+            uint64_t underrunFrames = 0;             // frames this stream has spent starved, in total
             uint8_t group = 0;
             VolPair base{};
+            int32_t playVol = 127;   // Sprint 9 Q0: the 0..127 volume and the pan in force, so snd_SetSoundParams
+            int32_t playPan = 0;     // can change one and keep the other, as it does for bank sounds
             ChunkPair pcm;                           // per channel: the chunk pair being played
             double pos = 0.0;                        // sample position inside the current chunk
             double step = 1.0;                       // file rate / output rate
@@ -638,6 +642,20 @@ namespace snd989
             bool stopAtEnd = false;                   // the target -4: fade out, then stop
         };
         std::vector<VolRamp> volRamps;
+        // Sprint 9 Q0: the output-frame clock and the event sink (see StreamEvent in the header).
+        uint64_t renderedFrames = 0;
+        std::function<void(const StreamEvent &)> eventSink;
+        void emit(StreamEvent::Kind kind, uint32_t handle, uint64_t detail = 0)
+        {
+            StreamEvent e;
+            e.kind = kind; e.handle = handle; e.frame = renderedFrames; e.detail = detail;
+            static const char *const names[] = {"start", "done", "UNDERRUN"};
+            std::fprintf(stderr, "[audio] 989snd stream %08x %s frame=%llu %s=%llu\n", handle, names[kind],
+                         static_cast<unsigned long long>(e.frame), kind == StreamEvent::Underrun ? "silent" : "detail",
+                         static_cast<unsigned long long>(detail));
+            if (eventSink)
+                eventSink(e);
+        }
 
         // 0..0x400; a handle with no ramp is at full scale, which multiplies out to exactly the old gain.
         int32_t volScale(uint32_t handle) const
@@ -912,6 +930,10 @@ namespace snd989
             for (std::shared_ptr<Stream> q = st.next; q; q = q->next)
                 q->done.store(true, std::memory_order_relaxed);
             st.next.reset();
+            // Sprint 9 Q0: a stream the GAME ended (stop, stop-all, a replace) reports Done too, marked so the
+            // trace can tell it from one that ran out of data: detail 0xFFFFFFFF, not a silent-frame count.
+            if (!st.done.load(std::memory_order_relaxed))
+                emit(StreamEvent::Done, st.handle, 0xFFFFFFFFull);
             st.done.store(true, std::memory_order_relaxed);
         }
 
@@ -1116,6 +1138,20 @@ namespace snd989
         // game's own "set the volume" call means anything while a fade runs.
         if (vol != kVolDontChange)
             m_impl->clearRamp(handle);
+        // Sprint 9 Q0: a STREAM handle. The game starts its positioned voice streams at vol 0 and raises them with
+        // snd_SetSoundParams; this function found only bank handlers, so every such line stayed silent on ours
+        // while the PCSX2 reference had voices. Same arithmetic as playStream, one value at a time.
+        if (Stream *st = m_impl->findStream(handle))
+        {
+            if (vol != kVolDontChange)
+                st->playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
+            if (pan == kPanReset)
+                st->playPan = 0;
+            else if (pan != kPanDontChange)
+                st->playPan = pan;
+            st->base = makeVolume(127, 0, st->playVol, st->playPan, 127, 0);
+            return;
+        }
         Handler *h = m_impl->find(handle);
         if (!h)
             return;
@@ -1192,6 +1228,18 @@ namespace snd989
             v.env.keyOff();
     }
 
+    uint64_t Mixer::renderedFrames() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->renderedFrames;
+    }
+
+    void Mixer::setStreamEventSink(std::function<void(const StreamEvent &)> sink)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        m_impl->eventSink = std::move(sink);
+    }
+
     void Mixer::render(int16_t *interleaved, size_t frames)
     {
         std::lock_guard<std::mutex> lock(m_impl->mutex);
@@ -1244,6 +1292,7 @@ namespace snd989
                 Stream *cur = m_impl->streams[si].get();
                 if (cur->paused || cur->done.load(std::memory_order_relaxed))
                     continue;
+                cur->underrunThisCall = false;
                 int32_t left = 0, right = 0;
                 auto takeGains = [&]() {
                     const int32_t modifier = m_impl->groupModifier(cur->group) * m_impl->volScale(cur->handle) / 0x400;
@@ -1267,10 +1316,20 @@ namespace snd989
                         }
                         if (!cur->ended.load(std::memory_order_acquire))
                         {
+                            // Sprint 9 Q0: a starved stream said nothing before this. The frames left in this
+                            // chunk play as silence; report them, once per render call per stream.
+                            if (!cur->underrunThisCall)
+                            {
+                                cur->underrunThisCall = true;
+                                const uint64_t silent = static_cast<uint64_t>(chunk - i);
+                                cur->underrunFrames += silent;
+                                m_impl->emit(StreamEvent::Underrun, cur->handle, silent);
+                            }
                             haveSamples = false;
                             break;
                         }
                         cur->done.store(true, std::memory_order_relaxed);
+                        m_impl->emit(StreamEvent::Done, cur->handle, cur->underrunFrames);
                         if (!cur->next)
                         {
                             haveSamples = false;
@@ -1287,6 +1346,7 @@ namespace snd989
                         nxt->pcm[0].clear();
                         nxt->pcm[1].clear();
                         m_impl->streams[si] = nxt;
+                        m_impl->emit(StreamEvent::Start, nxt->handle);
                         cur = nxt.get();
                         takeGains();
                     }
@@ -1349,6 +1409,7 @@ namespace snd989
             interleaved[i] = static_cast<int16_t>(std::clamp<int32_t>(mix[i], -32768, 32767));
         m_impl->updatePcmPosition();
         m_impl->pcmUnderrunCount.store(m_impl->pcm.underruns, std::memory_order_relaxed);
+        m_impl->renderedFrames += frames;   // Sprint 9 Q0: the output-frame clock the dump is written on
         m_impl->reap();
     }
 
@@ -1432,6 +1493,8 @@ namespace snd989
         const int32_t playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
         const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
         st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
+        st.playVol = playVol;
+        st.playPan = playPan;
         {
             std::lock_guard<std::mutex> lock(m_impl->mutex);
             Stream *old = m_impl->findStream(handle);
@@ -1471,6 +1534,7 @@ namespace snd989
             // the fade, so that one is cleared at the seam instead (render()).
             m_impl->clearRamp(handle);
             m_impl->streams.push_back(std::move(sp));
+            m_impl->emit(StreamEvent::Start, handle);   // Sprint 9 Q0: stamped with the frames rendered so far
         }
         startStreamWorker();
         return true;
