@@ -369,6 +369,13 @@ radio (R139) and the live pad render, and nothing binds a button. The pad-to-PS2
 `{GAMEPAD_BUTTON_*, kPad*}` array (`socom2_host_input.cpp:~316`) and the keyboard table is `kSocom2Keys`
 (`socom2_host_input.h:50`); both are compile-time.
 
+**Scheduled as two halves, R174** (the owner delegated the timing: "overseer agent can decide which sprint it goes
+in"). The data path is Sprint 9 Q3b, riding Q3's rewrite of these same files and Q1b's pinning mechanism; the UI is
+Sprint 10 item 8. The runtime half is inert by construction -- the defaults are today's tables -- which is what makes
+it safe in a release sprint, and it means these files are rewritten once and the gate-plus-control-round bar is paid
+once. The owner waits longer for the part he can see; `v0.9.0` is not held behind a UI that needs his eye. He can
+overturn it.
+
 **The shape of the work is a data path before it is a UI.** Those two tables become a mapping loaded from
 configuration, with today's values as the defaults, so the runtime reads bindings as data rather than being rebuilt.
 That is also what makes it testable without a window: a pure `mapping.h/.cpp` under `ps2xTest`, the way
