@@ -22,6 +22,7 @@
 #include "socom2_libnetb.h"
 #include "socom2_crypto.h"
 #include "Kernel/HleStats.h"
+#include "Kernel/SchedTrace.h"
 #include <cstring>
 #include <cmath>
 #include <fstream>
@@ -1969,6 +1970,8 @@ namespace
         // PS2X_HLE_STATS=1 wraps the bound stubs' table entries: last, so it wraps whatever
         // handler each address finally carries (Kernel/HleStats.h).
         ps2_hle_stats::installFromEnvironment(runtime);
+        // PS2X_SCHED_TRACE=1 (research/36 item 16) times the same stubs; after the stats so it wraps them too.
+        ps2_sched_trace::installFromEnvironment(runtime);
     }
 }
 

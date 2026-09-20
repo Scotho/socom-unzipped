@@ -3,12 +3,15 @@
 #include <string>
 #include "runtime/ee_scheduler.h"
 #include "runtime/ps2_guest_clock.h"
+#include "runtime/ps2_audio.h"
+#include "SchedTrace.h"
 
 #include "ps2_log.h"
 #include "ps2_runtime_macros.h"
 
 #include <algorithm>
 #include <cassert>
+#include <cstdarg>
 #include <cstring>
 #include <limits>
 #include <stdexcept>
@@ -140,6 +143,12 @@ void EeScheduler::reset(uint8_t *rdram, const R5900Context &mainContext)
     m_gsVSyncCallbackSp = 0;
     m_runtime.memory().gs().vsyncTick.store(0u, std::memory_order_release);
     m_runtime.memory().resetEeTimers();
+    m_traceOn = ps2_sched_trace::enabled();
+    m_traceLastThread = 0;
+    m_traceRunStart = std::chrono::steady_clock::now();
+    m_traceLastSample = m_traceRunStart;
+    m_traceWaitedMs = 0.0;
+    m_traceLeaveWhy[0] = '\0';
 
     GuestThread main{};
     main.id = kMainThreadId;
@@ -180,12 +189,24 @@ void EeScheduler::run()
             if (!next && m_pendingInvocations.empty())
             {
                 publishSnapshot();
+                if (m_traceOn)
+                {
+                    const auto idleStart = std::chrono::steady_clock::now();
+                    waitForEvent();
+                    const double waited = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - idleStart).count();
+                    m_traceWaitedMs += waited;
+                    if (waited >= 1.0)
+                        traceLine("idle ready=0 waited_ms=%.1f", waited);
+                    continue;
+                }
                 waitForEvent();
                 continue;
             }
             if (next)
             {
                 makeRunning(*next);
+                if (m_traceOn)
+                    traceSwitchIn(*next);
             }
             else
             {
@@ -198,6 +219,11 @@ void EeScheduler::run()
                 if (getRegU32(&invocation.context, 29) == 0u)
                 {
                     SET_GPR_U32(&invocation.context, 29, invocationStackTop());
+                }
+                if (m_traceOn)
+                {
+                    traceSwitchIn(*owner);
+                    traceInvoke(invocation, owner->id);
                 }
                 owner->invocations.push_back(std::move(invocation));
             }
@@ -245,6 +271,8 @@ void EeScheduler::run()
             {
                 GuestInvocation completed = std::move(running->invocations.back());
                 running->invocations.pop_back();
+                if (m_traceOn)
+                    traceLine("invoke-done kind=%d on=%d depth=%zu", static_cast<int>(completed.kind), running->id, running->invocations.size());
                 if (completed.onComplete)
                 {
                     try
@@ -257,6 +285,8 @@ void EeScheduler::run()
                 }
                 continue;
             }
+            if (m_traceOn)
+                traceLeave("dormant");
             makeDormant(*running);
             m_currentThreadId = 0;
             continue;
@@ -270,6 +300,8 @@ void EeScheduler::run()
             {
                 SET_GPR_U32(&invocation.context, 29, invocationStackTop());
             }
+            if (m_traceOn)
+                traceInvoke(invocation, running->id);
             running->invocations.push_back(std::move(invocation));
             continue;
         }
@@ -299,6 +331,8 @@ void EeScheduler::run()
         {
             continue;
         }
+        if (m_traceOn)
+            traceSample(*running, context);
 
         try
         {
@@ -331,6 +365,8 @@ void EeScheduler::run()
         {
             GuestThread *preempted = currentThread();
             assert(preempted != nullptr);
+            if (m_traceOn)
+                traceLeave(m_timeSliceExpired ? "slice" : "preempt");
             enqueueReady(*preempted, !m_timeSliceExpired);
             m_currentThreadId = 0;
             m_rescheduleRequested = false;
@@ -629,6 +665,8 @@ int EeScheduler::startThread(int id, uint32_t arg, const R5900Context &caller, b
     assert(exiting != nullptr);
     const int id = exiting->id;
     const uint32_t ownedStack = deleteThreadRecord && exiting->ownsStack ? exiting->stack : 0u;
+    if (m_traceOn)
+        traceLeave("exit");
     makeDormant(*exiting);
     m_currentThreadId = 0;
     if (deleteThreadRecord && id != kMainThreadId)
@@ -692,6 +730,8 @@ int EeScheduler::suspendThread(int id, bool interruptSafe)
     switch (target->status)
     {
     case EeThreadStatus::Running:
+        if (m_traceOn)
+            traceLeave("suspend");
         target->status = EeThreadStatus::Suspended;
         m_currentThreadId = 0;
         m_rescheduleRequested = true;
@@ -871,6 +911,8 @@ int EeScheduler::rotateReadyQueue(int priority, bool interruptSafe)
     GuestThread *self = currentThread();
     if (self && self->currentPriority == priority)
     {
+        if (m_traceOn)
+            traceLeave("rotate", priority);
         enqueueReady(*self);
         m_currentThreadId = 0;
         m_rescheduleRequested = true;
@@ -923,6 +965,8 @@ void EeScheduler::transferIfRequested(bool interruptSafe)
     {
         GuestThread *self = currentThread();
         assert(self != nullptr);
+        if (m_traceOn)
+            traceLeave("preempt");
         enqueueReady(*self, true);
         m_currentThreadId = 0;
     }
@@ -942,6 +986,8 @@ void EeScheduler::yieldToAnyReady()
     GuestThread *self = currentThread();
     assert(self != nullptr);
     const int saved = self->currentPriority;
+    if (m_traceOn)
+        traceLeave("yield");
     self->currentPriority = kPriorityCount - 1;   // behind every ready thread for one selection
     self->resumeCompletion = [this, saved](R5900Context &)
     {
@@ -1874,6 +1920,19 @@ void EeScheduler::blockCurrent(EeWaitState wait)
 {
     GuestThread *self = currentThread();
     assert(self != nullptr);
+    if (m_traceOn)
+    {
+        switch (wait.reason)
+        {
+        case EeWaitReason::Sleep: traceLeave("sleep"); break;
+        case EeWaitReason::Semaphore: traceLeave("sema", std::get<EeSemaphoreWait>(wait.payload).id); break;
+        case EeWaitReason::EventFlag: traceLeave("evf", std::get<EeEventFlagWait>(wait.payload).id); break;
+        case EeWaitReason::VSync: traceLeave("vsync", -1, std::get<EeVSyncWait>(wait.payload).afterTick + 1u); break;
+        case EeWaitReason::External: traceLeave("external", static_cast<int>(std::get<EeExternalWait>(wait.payload).type)); break;
+        case EeWaitReason::Mpeg: traceLeave("mpeg"); break;
+        case EeWaitReason::None: traceLeave("block"); break;
+        }
+    }
     self->wait = std::move(wait);
     self->status = self->suspendCount == 0 ? EeThreadStatus::Waiting : EeThreadStatus::WaitingSuspended;
     m_currentThreadId = 0;
@@ -1883,6 +1942,8 @@ void EeScheduler::blockCurrent(EeWaitState wait)
 
 void EeScheduler::makeReady(GuestThread &item, int result, bool interruptSafe)
 {
+    if (m_traceOn)
+        traceReady(item, item.wait.reason, result);
     auto completion = std::move(item.wait.completion);
     item.wait = {};
     setReturnS32(&item.activeContext(), result);
@@ -1924,6 +1985,8 @@ void EeScheduler::applyPendingPreemption()
     }
     GuestThread *self = currentThread();
     assert(self != nullptr);
+    if (m_traceOn)
+        traceLeave(m_timeSliceExpired ? "slice" : "preempt");
     enqueueReady(*self, !m_timeSliceExpired);
     m_currentThreadId = 0;
     m_rescheduleRequested = false;
@@ -2017,6 +2080,13 @@ void EeScheduler::processDueDeadlines()
                 m_eventCv.wait_until(lock, pacingDeadline, [this]()
                                      { return !m_events.empty() ||
                                               m_stopRequested.load(std::memory_order_acquire); });
+                if (m_traceOn)
+                {
+                    const double waited = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - now).count();
+                    m_traceWaitedMs += waited;
+                    if (waited >= 1.0)
+                        traceLine("pace waited_ms=%.1f running=%d", waited, m_currentThreadId);
+                }
                 if (!m_events.empty() || m_stopRequested.load(std::memory_order_acquire))
                 {
                     updateNextDeadline();
@@ -2380,4 +2450,133 @@ void EeScheduler::copyMainContextToRuntime()
     {
         m_runtime.m_cpuContext = main->context;
     }
+}
+
+// ---- PS2X_SCHED_TRACE (research/36 item 16) ------------------------------------------------------------------
+
+namespace
+{
+    const char *waitReasonName(EeWaitReason reason)
+    {
+        switch (reason)
+        {
+        case EeWaitReason::None: return "none";
+        case EeWaitReason::Sleep: return "sleep";
+        case EeWaitReason::Semaphore: return "sema";
+        case EeWaitReason::EventFlag: return "evf";
+        case EeWaitReason::VSync: return "vsync";
+        case EeWaitReason::External: return "external";
+        case EeWaitReason::Mpeg: return "mpeg";
+        }
+        return "?";
+    }
+
+    const char *invocationKindName(GuestInvocationKind kind)
+    {
+        switch (kind)
+        {
+        case GuestInvocationKind::Interrupt: return "irq";
+        case GuestInvocationKind::Alarm: return "alarm";
+        case GuestInvocationKind::GsCallback: return "gs-cb";
+        case GuestInvocationKind::RpcCallback: return "rpc-cb";
+        case GuestInvocationKind::SyscallOverride: return "syscall";
+        case GuestInvocationKind::ExitHandler: return "exit-handler";
+        case GuestInvocationKind::HleCall: return "hle";
+        }
+        return "?";
+    }
+}
+
+void EeScheduler::traceLine(const char *fmt, ...)
+{
+    // Capped at PS2X_SCHED_TRACE_MAX_LINES_PER_S (default 4000) lines a host second: a guest poll loop that
+    // switches threads a hundred thousand times a second would otherwise make the trace the stall.
+    static const uint32_t s_cap = [] {
+        const char *e = std::getenv("PS2X_SCHED_TRACE_MAX_LINES_PER_S");
+        const long v = e ? std::atol(e) : 4000L;
+        return v > 0 ? static_cast<uint32_t>(v) : 4000u;
+    }();
+    static auto s_secondStart = std::chrono::steady_clock::now();
+    static uint32_t s_linesThisSecond = 0u;
+    static uint64_t s_suppressed = 0u;
+    const auto now = std::chrono::steady_clock::now();
+    if (now - s_secondStart >= std::chrono::seconds(1))
+    {
+        if (s_suppressed != 0u)
+        {
+            std::fprintf(stderr, "[sched] host=%.1f suppressed=%llu lines (cap %u/s)\n", ps2_sched_trace::hostMs(),
+                         static_cast<unsigned long long>(s_suppressed), s_cap);
+            s_suppressed = 0u;
+        }
+        s_secondStart = now;
+        s_linesThisSecond = 0u;
+    }
+    if (++s_linesThisSecond > s_cap)
+    {
+        ++s_suppressed;
+        return;
+    }
+    ps2_sched_trace::Stamp stamp{};
+    stamp.frame = m_runtime.audioBackend().mixerRenderedFrames();
+    stamp.tick = m_vsyncTick;
+    stamp.hostMs = ps2_sched_trace::hostMs();
+    char body[256];
+    va_list args;
+    va_start(args, fmt);
+    std::vsnprintf(body, sizeof(body), fmt, args);
+    va_end(args);
+    const std::string head = ps2_sched_trace::prefix(stamp);
+    std::fprintf(stderr, "%s%s\n", head.c_str(), body);
+}
+
+void EeScheduler::traceLeave(const char *why, int objectId, uint64_t value)
+{
+    if (objectId >= 0)
+        std::snprintf(m_traceLeaveWhy, sizeof(m_traceLeaveWhy), "%s:%d", why, objectId);
+    else if (value != 0u)
+        std::snprintf(m_traceLeaveWhy, sizeof(m_traceLeaveWhy), "%s:%llu", why, static_cast<unsigned long long>(value));
+    else
+        std::snprintf(m_traceLeaveWhy, sizeof(m_traceLeaveWhy), "%s", why);
+}
+
+void EeScheduler::traceSwitchIn(const GuestThread &in)
+{
+    const auto now = std::chrono::steady_clock::now();
+    // ran_ms = host time the outgoing thread held the EE; the idle and pacing waits between its leaving and this
+    // switch-in are reported apart (waited_ms), so a thread that blocks every frame does not read as running.
+    const double wall = std::chrono::duration<double, std::milli>(now - m_traceRunStart).count();
+    const double ran = wall > m_traceWaitedMs ? wall - m_traceWaitedMs : 0.0;
+    const R5900Context &context = in.activeContext();
+    traceLine("switch out=%d ran_ms=%.2f waited_ms=%.1f left=%s in=%d prio=%d pc=0x%08x ra=0x%08x ready=%u",
+              m_traceLastThread, ran, m_traceWaitedMs, m_traceLeaveWhy[0] ? m_traceLeaveWhy : "-", in.id, in.currentPriority,
+              context.pc, getRegU32(&context, 31), m_readyTotal);
+    m_traceLastThread = in.id;
+    m_traceRunStart = now;
+    m_traceLastSample = now;
+    m_traceWaitedMs = 0.0;
+    m_traceLeaveWhy[0] = '\0';
+}
+
+void EeScheduler::traceReady(const GuestThread &item, EeWaitReason from, int result)
+{
+    traceLine("ready tid=%d prio=%d from=%s result=%d by=%d", item.id, item.currentPriority, waitReasonName(from), result,
+              m_currentThreadId);
+}
+
+void EeScheduler::traceInvoke(const GuestInvocation &invocation, int ownerId)
+{
+    traceLine("invoke kind=%s on=%d pc=0x%08x a0=0x%x", invocationKindName(invocation.kind), ownerId, invocation.context.pc,
+              getRegU32(&invocation.context, 4));
+}
+
+void EeScheduler::traceSample(const GuestThread &running, const R5900Context &context)
+{
+    static const int64_t s_interval = ps2_sched_trace::sampleIntervalNs();
+    const auto now = std::chrono::steady_clock::now();
+    if (std::chrono::duration_cast<std::chrono::nanoseconds>(now - m_traceLastSample).count() < s_interval)
+        return;
+    m_traceLastSample = now;
+    const double forMs = std::chrono::duration<double, std::milli>(now - m_traceRunStart).count();
+    traceLine("run tid=%d prio=%d pc=0x%08x ra=0x%08x for_ms=%.1f depth=%zu ready=%u", running.id, running.currentPriority,
+              context.pc, getRegU32(&context, 31), forMs, running.invocations.size(), m_readyTotal);
 }

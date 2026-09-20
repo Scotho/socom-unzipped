@@ -56,11 +56,11 @@ namespace ps2_stubs
         {
             if (!cdStreamTraceOn() || runtime == nullptr)
                 return;
-            std::fprintf(stderr, "[cd-stream] frame=%llu tick=%llu %s %llu %llu %llu lbn=0x%x\n",
+            std::fprintf(stderr, "[cd-stream] frame=%llu tick=%llu %s %llu %llu %llu lbn=0x%x tid=%d\n",
                          static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()),
                          static_cast<unsigned long long>(runtime->eeScheduler().currentVSyncTick()), what,
                          static_cast<unsigned long long>(a), static_cast<unsigned long long>(b), static_cast<unsigned long long>(c),
-                         g_cdStreamingLbn);
+                         g_cdStreamingLbn, runtime->eeScheduler().currentThreadId());   // item 16: the calling guest thread
         }
 
         // The plain-read cursor.  `g_cdStreamingLbn` (Support.h) is the *stream*

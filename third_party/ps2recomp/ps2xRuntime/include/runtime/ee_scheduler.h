@@ -455,6 +455,15 @@ private:
     void renewTimeSlice();
     void copyMainContextToRuntime();
 
+    // research/36 item 16: PS2X_SCHED_TRACE=1 (Kernel/SchedTrace.h). Every site is one `if (m_traceOn)` on a bool
+    // read once at reset(); with the knob off the dispatcher pays nothing.
+    void traceLeave(const char *why, int objectId = -1, uint64_t value = 0u);   // how the running thread left the EE
+    void traceSwitchIn(const GuestThread &in);                                   // the dispatcher chose `in`
+    void traceReady(const GuestThread &item, EeWaitReason from, int result);
+    void traceInvoke(const GuestInvocation &invocation, int ownerId);
+    void traceSample(const GuestThread &running, const R5900Context &context);
+    void traceLine(const char *fmt, ...);
+
     PS2Runtime &m_runtime;
     uint8_t *m_rdram = nullptr;
     std::array<std::deque<int>, kPriorityCount> m_readyQueues{};
@@ -524,4 +533,12 @@ private:
     std::atomic<uint32_t> m_eventCount{0};     // size of m_events (posters increment under m_eventMutex)
     uint32_t m_readyTotal = 0;                 // threads in m_readyQueues (selectReady skips the scan when 0)
     bool m_accountForceClock = false;          // accountCycles: convert on this call regardless of the batch
+
+    // PS2X_SCHED_TRACE state (item 16)
+    bool m_traceOn = false;
+    int m_traceLastThread = 0;                                  // the thread the dispatcher last ran
+    std::chrono::steady_clock::time_point m_traceRunStart{};    // when it was switched in
+    std::chrono::steady_clock::time_point m_traceLastSample{};  // the last "run" sample
+    double m_traceWaitedMs = 0.0;                               // idle + pacing waits since that switch-in
+    char m_traceLeaveWhy[48]{};                                 // how it left (blank = still running / never left)
 };

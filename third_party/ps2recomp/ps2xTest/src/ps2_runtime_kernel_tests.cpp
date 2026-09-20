@@ -5,6 +5,7 @@
 #include "ps2_stubs.h"
 #include "Kernel/Stubs/LibC.h"
 #include "Kernel/HleStats.h"
+#include "Kernel/SchedTrace.h"
 #include "runtime/ee_scheduler.h"
 
 #include <array>
@@ -1036,6 +1037,75 @@ void register_ps2_runtime_kernel_tests()
             runtime.registerFunction(kCalled, nullptr);
             runtime.registerFunction(kIdle, nullptr);
             runtime.registerFunction(kFloat, nullptr);
+        });
+
+        tc.Run("PS2X_SCHED_TRACE: the stub line, its threshold and the timing wrapper (research/36 item 16)", [](TestCase &t)
+        {
+            // The threshold rule: at or above prints, below does not, 0 prints everything, negative never.
+            t.IsTrue(ps2_sched_trace::stubReportable(1000000, 1000000), "exactly the threshold is reported");
+            t.IsTrue(!ps2_sched_trace::stubReportable(999999, 1000000), "under the threshold is not");
+            t.IsTrue(ps2_sched_trace::stubReportable(0, 0), "a zero threshold reports every call");
+            t.IsTrue(!ps2_sched_trace::stubReportable(5000000000LL, -1), "a negative threshold reports nothing");
+
+            // The stamp is the [audio] / [cd-stream] one: the mixer frame clock and the VSync tick, plus host ms.
+            ps2_sched_trace::Stamp stamp{};
+            stamp.frame = 10391040u;
+            stamp.tick = 12980u;
+            stamp.hostMs = 216432.25;
+            t.Equals(ps2_sched_trace::prefix(stamp), std::string("[sched] frame=10391040 tick=12980 host=216432.2 "), "prefix");
+            t.Equals(ps2_sched_trace::formatStub(stamp, "sceCdStRead", 5, 2500000, false),
+                     std::string("[sched] frame=10391040 tick=12980 host=216432.2 stub sceCdStRead tid=5 ms=2.50"), "a returned stub");
+            t.Equals(ps2_sched_trace::formatStub(stamp, "sceMpegGetPicture", 5, 12345678, true),
+                     std::string("[sched] frame=10391040 tick=12980 host=216432.2 stub sceMpegGetPicture tid=5 ms=12.35 transfer"),
+                     "a stub that left through a thread switch is marked");
+            t.Equals(ps2_sched_trace::formatStubCall(stamp, "sceMpegDemuxPssRing", 1, 250000, 0x451cc0u, 0x451e00u, 0x4000u, false, 0x4000u),
+                     std::string("[sched] frame=10391040 tick=12980 host=216432.2 stub sceMpegDemuxPssRing tid=1 ms=0.25 a0=0x451cc0 a1=0x451e00 a2=0x4000 ret=0x4000"),
+                     "a listed stub prints its arguments and return");
+            t.Equals(ps2_sched_trace::formatStubCall(stamp, "sceCdStRead", 1, 250000, 8u, 0x451e00u, 1u, true, 0u),
+                     std::string("[sched] frame=10391040 tick=12980 host=216432.2 stub sceCdStRead tid=1 ms=0.25 a0=0x8 a1=0x451e00 a2=0x1 transfer"),
+                     "a listed stub that transferred has no return");
+            const auto names = ps2_sched_trace::parseStubNames(" sceMpegGetPicture, sceCdStRead ,,sceMpegDemuxPssRing");
+            t.Equals(static_cast<int>(names.size()), 3, "three names, blanks dropped");
+            t.Equals(names[1], std::string("sceCdStRead"), "names are trimmed");
+            t.IsTrue(ps2_sched_trace::parseStubNames(nullptr).empty(), "no list is no names");
+
+            // The wrapper: a wrapped stub still runs the original, a throwing one (EeDispatcherTransfer, the way a
+            // blocking stub leaves) rethrows, and uninstall restores the table.
+            constexpr uint32_t kPlain = 0x00310000u;
+            constexpr uint32_t kThrows = 0x00310010u;
+            constexpr uint32_t kMissing = 0x00310020u;
+            PS2Runtime runtime;
+            const PS2Runtime::RecompiledFunction retA0 = [](uint8_t *, R5900Context *ctx, PS2Runtime *)
+            { ::setReturnU32(ctx, ::getRegU32(ctx, 4) + 1u); };
+            const PS2Runtime::RecompiledFunction transfers = [](uint8_t *, R5900Context *, PS2Runtime *)
+            { throw EeDispatcherTransfer{}; };
+            runtime.registerFunction(kPlain, retA0);
+            runtime.registerFunction(kThrows, transfers);
+            std::vector<ps2_hle_stats::StubSpec> stubs{{"plain", kPlain}, {"blocks", kThrows}, {"missing", kMissing}};
+            t.Equals(ps2_sched_trace::installStubTiming(runtime, stubs), static_cast<size_t>(2), "two stubs have a function");
+            t.IsTrue(runtime.lookupFunction(kPlain) != retA0, "the plain stub's entry is wrapped");
+
+            std::vector<uint8_t> rdram(64, 0);
+            R5900Context ctx{};
+            setRegU32(ctx, 4, 41u);
+            runtime.lookupFunction(kPlain)(rdram.data(), &ctx, &runtime);
+            t.Equals(::getRegU32(&ctx, 2), 42u, "the wrapped stub ran the original");
+            bool rethrown = false;
+            try
+            {
+                runtime.lookupFunction(kThrows)(rdram.data(), &ctx, &runtime);
+            }
+            catch (const EeDispatcherTransfer &)
+            {
+                rethrown = true;
+            }
+            t.IsTrue(rethrown, "a stub that transfers still transfers through the wrapper");
+
+            ps2_sched_trace::uninstallStubTiming(runtime);
+            t.IsTrue(runtime.lookupFunction(kPlain) == retA0, "uninstall restores the original entry");
+            t.IsTrue(runtime.lookupFunction(kThrows) == transfers, "uninstall restores the throwing entry too");
+            runtime.registerFunction(kPlain, nullptr);
+            runtime.registerFunction(kThrows, nullptr);
         });
 
         tc.Run("memalign stubs allocate aligned guest memory", [](TestCase &t)
