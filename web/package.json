@@ -8,7 +8,7 @@
   ],
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc -b packages/archive packages/gs",
+    "typecheck": "tsc -b packages/archive packages/gs packages/mesh",
     "extract-maps": "tsx tools/extract-maps.ts",
     "dump-textures": "tsx tools/dump-textures.ts",
     "export-gltf": "tsx tools/export-gltf.ts",
