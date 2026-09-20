@@ -6,9 +6,8 @@ technical bit of each entry is one line and skippable; the rest is what happened
 **What this is.** SOCOM II is a PlayStation 2 game from 2003. This project turns the game's own code into a Windows and
 Linux program: it runs from your own disc (the North American r0001 pressing; a later pressing is refused with a
 message rather than half-working), draws on your graphics card, plays through your speakers, reads your controller, and
-plays online against a server the project hosts. Nothing from the game ships with it. Most of the code was written by AI
-agents in a loop the owner runs, which is why so much happened in nineteen days and why the record argues with itself
-so often.
+plays online against a server the project hosts. Nothing from the game ships with it. Nineteen days of work so far, and
+the record argues with itself often; that's on purpose.
 
 **How to read an entry.** A date, a title, one bold line on why it mattered, a few sentences on what happened, then
 three small things. *How:* is the technical sentence. *But:* is the honest edge of the claim — what's still unproven,
@@ -21,6 +20,18 @@ any citation stops pointing at something real.
 work here tends to get written up after midnight.
 
 **Where it disagrees with `docs/KNOWN.md`,** KNOWN is right and this document gets fixed.
+
+## From the creator
+
+This is an automation-first, agentically engineered passion project. It started as curiosity — I wanted to see where
+PS2 static recompilation actually stood — and it grew legs when it produced results, so I kept building on them.
+The recompiler is a fork of PS2Recomp, extended for this one game. A good portion of the work went into a parallel
+validator: the retail disc running in PCSX2 as a golden reference, driven by the same scripts as our build, with
+debugging tools on both sides, so the agents could check themselves against the real thing on demand and adjust. Most
+of the code was written by AI agents in a loop I run; my part was mostly playing it, noticing what was off, and deciding
+what mattered next. What follows is the record of that, with the receipts attached.
+
+— Craig
 
 ---
 
@@ -614,7 +625,7 @@ The console side is the reference emulator running the retail disc, driven by th
 *Not an entry, no `Cited:` line: the view from the end of the record on the night it ends. It gets replaced by real
 entries as things land.*
 
-The tree is at `78a170d`, 785 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
+The tree is at `d8e10ef`, 788 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
 is open and already has its headline — a console client and our program in one match, both ways round, on the hosted
 server. The scheduled ladder has one clean run of the seven it needs.
 

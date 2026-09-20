@@ -74,6 +74,10 @@ def parse_document(markdown):
                 section, entry = "era", None
                 era = {"start": m.group(1), "end": m.group(2), "title": m.group(3), "standing": "", "entries": []}
                 doc["eras"].append(era)
+            elif not doc["eras"]:
+                section, entry = "closing", None
+                doc.setdefault("foreword", {"title": head, "blocks": []})
+                doc["closing"].append(doc["foreword"])
             else:
                 section, entry = "closing", None
                 doc["closing"].append({"title": head, "blocks": []})
@@ -177,7 +181,15 @@ code{font:.86em var(--mono);color:var(--glow)}
 #progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:10;background:rgba(0,0,0,.4);padding-top:env(safe-area-inset-top,0px)}
 #progress i{display:block;height:3px;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 8px rgba(217,178,58,.6);transition:width .1s linear}
 /* header */
-.top{padding-top:12px}
+.top{padding-top:12px;position:relative}
+.top .logo{display:block;width:min(420px,78vw);height:auto;margin:0 0 6px -10px;filter:saturate(.92) brightness(.96) drop-shadow(0 0 22px rgba(127,217,230,.28))}
+.wrap::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.45) 100%)}
+/* the creator's foreword */
+.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
+.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
+.foreword .brief-sub{margin-bottom:8px}
+.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
+.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
 .brief-sub{font:600 12px/1.4 var(--head);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
 .brief-title{font:800 clamp(34px,7vw,64px)/.98 var(--disp);font-style:italic;letter-spacing:.5px;color:var(--lit);margin:0;
 text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wrap:balance}
@@ -216,7 +228,9 @@ border:2px solid var(--teal);box-shadow:0 0 0 5px var(--bg);transition:border-co
 .node:target .dot,.node.in .dot{border-color:var(--glow);box-shadow:0 0 0 5px var(--bg),0 0 14px rgba(127,217,230,.55)}
 .node.pic .dot{border-color:var(--gold)}
 .card{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
-transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),opacity .5s}
+transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
+.card:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.node.pic .card::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
 .card::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
 .node:target .card{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
 .card header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
@@ -282,7 +296,7 @@ JS = r"""
 """
 
 
-def render(doc, timeline, repo, img_base):
+def render(doc, timeline, repo, img_base, logo):
     head_sha = timeline.get("head", "")
     entries = [e for era in doc["eras"] for e in era["entries"]]
     n_commits = sum(1 for e in timeline.get("entries", []) for c in e.get("citations", []) if c.get("kind") == "commit")
@@ -290,6 +304,8 @@ def render(doc, timeline, repo, img_base):
     first, last = entries[0]["date"], entries[-1]["date"]
     days = (int(last[8:]) - int(first[8:])) + 1 if first[:7] == last[:7] else "18"
     title = doc["title"].replace("SOCOM Unzipped — ", "")
+    fore = doc.get("foreword")
+    closing = [c for c in doc["closing"] if c is not fore]
     out = ["<title>SOCOM Unzipped Story</title>",
            '<meta name="description" content="How SOCOM II became a PC game: the timeline, every claim cited.">',
            '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
@@ -297,7 +313,9 @@ def render(doc, timeline, repo, img_base):
            "<style>%s</style>" % CSS,
            '<div id="progress" aria-hidden="true"><i></i></div>',
            '<div class="wrap">',
-           '<header class="top"><p class="brief-sub">Mission briefing &middot; operation unzipped</p>',
+           '<header class="top">',
+           '<img class="logo" src="%s" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">' % logo,
+           '<p class="brief-sub">Mission briefing &middot; operation unzipped</p>',
            '<h1 class="brief-title">%s<small>How a PlayStation 2 game became a PC game, in %s days</small></h1>'
            % (inline(title), days)]
     if doc["preface"]:
@@ -310,6 +328,14 @@ def render(doc, timeline, repo, img_base):
     for p in doc["preface"][1:]:
         out.append("<p>%s</p>" % inline(p))
     out.append("</section>")
+    if fore:
+        out.append('<section class="foreword" id="from-the-creator"><p class="brief-sub">%s</p>' % inline(fore["title"]))
+        for b in fore["blocks"]:
+            if b.startswith("—") or b.startswith("--"):
+                out.append('<p class="sig">%s</p>' % inline(b))
+            else:
+                out.append("<p>%s</p>" % inline(b))
+        out.append("</section>")
     out.append('<nav class="eras" aria-label="Eras">')
     for era in doc["eras"]:
         out.append('<a href="#era-%s">%s<small>%s &ndash; %s &middot; %d</small></a>'
@@ -331,7 +357,7 @@ def render(doc, timeline, repo, img_base):
             out.append(html_e)
             idx += 1
     out.append("</ol>")
-    for c in doc["closing"]:
+    for c in closing:
         out.append('<section class="closing" id="%s"><h2>%s</h2>' % (slug(c["title"]), inline(c["title"])))
         for b in c["blocks"]:
             if b.startswith("python -m"):
@@ -353,6 +379,7 @@ def main(argv=None):
     ap.add_argument("--timeline", default=os.path.join(ROOT, "docs", "story", "timeline.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "docs", "story", "index.html"))
     ap.add_argument("--img", default="img", help="the pictures' path relative to the page")
+    ap.add_argument("--logo", default="img/logo.webp", help="the site's logo, as the page will reference it")
     ap.add_argument("--repo", default="https://github.com/Scotho/socom-unzipped")
     ap.add_argument("--full-document", action="store_true",
                     help="wrap in <!doctype html><html><head>...; the default emits a fragment the Artifact tool wraps itself")
@@ -361,7 +388,7 @@ def main(argv=None):
         doc = parse_document(f.read())
     with open(args.timeline, encoding="utf-8") as f:
         timeline = json.load(f)
-    page = render(doc, timeline, args.repo, args.img.rstrip("/"))
+    page = render(doc, timeline, args.repo, args.img.rstrip("/"), args.logo)
     if args.full_document:
         head_end = page.index("<div id=\"progress\"")
         page = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'

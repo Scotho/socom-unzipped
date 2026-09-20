@@ -24,7 +24,15 @@ code{font:.86em var(--mono);color:var(--glow)}
 #progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:10;background:rgba(0,0,0,.4);padding-top:env(safe-area-inset-top,0px)}
 #progress i{display:block;height:3px;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 8px rgba(217,178,58,.6);transition:width .1s linear}
 /* header */
-.top{padding-top:12px}
+.top{padding-top:12px;position:relative}
+.top .logo{display:block;width:min(420px,78vw);height:auto;margin:0 0 6px -10px;filter:saturate(.92) brightness(.96) drop-shadow(0 0 22px rgba(127,217,230,.28))}
+.wrap::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.45) 100%)}
+/* the creator's foreword */
+.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
+.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
+.foreword .brief-sub{margin-bottom:8px}
+.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
+.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
 .brief-sub{font:600 12px/1.4 var(--head);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
 .brief-title{font:800 clamp(34px,7vw,64px)/.98 var(--disp);font-style:italic;letter-spacing:.5px;color:var(--lit);margin:0;
 text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wrap:balance}
@@ -63,7 +71,9 @@ border:2px solid var(--teal);box-shadow:0 0 0 5px var(--bg);transition:border-co
 .node:target .dot,.node.in .dot{border-color:var(--glow);box-shadow:0 0 0 5px var(--bg),0 0 14px rgba(127,217,230,.55)}
 .node.pic .dot{border-color:var(--gold)}
 .card{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
-transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),opacity .5s}
+transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
+.card:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.node.pic .card::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
 .card::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
 .node:target .card{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
 .card header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
@@ -111,16 +121,22 @@ footer.foot a{color:var(--teal)}
 </style>
 <div id="progress" aria-hidden="true"><i></i></div>
 <div class="wrap">
-<header class="top"><p class="brief-sub">Mission briefing &middot; operation unzipped</p>
+<header class="top">
+<img class="logo" src="img/logo.webp" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">
+<p class="brief-sub">Mission briefing &middot; operation unzipped</p>
 <h1 class="brief-title">the story so far<small>How a PlayStation 2 game became a PC game, in 19 days</small></h1>
 <p class="lede">The project's timeline, first commit to today. Written for people who want to play the game, not build it. The technical bit of each entry is one line and skippable; the rest is what happened.</p>
 </header>
 <ul class="strip"><li><b>45</b><span>entries</span></li><li><b>212</b><span>commits cited</span></li><li><b>5</b><span>eras</span></li><li><b>11</b><span>pictures</span></li><li><b>Sep 2</b><span>first commit</span></li><li><b>Sep 20</b><span>latest</span></li></ul>
 <section class="preface">
-<p><strong>What this is.</strong> SOCOM II is a PlayStation 2 game from 2003. This project turns the game's own code into a Windows and Linux program: it runs from your own disc (the North American r0001 pressing; a later pressing is refused with a message rather than half-working), draws on your graphics card, plays through your speakers, reads your controller, and plays online against a server the project hosts. Nothing from the game ships with it. Most of the code was written by AI agents in a loop the owner runs, which is why so much happened in nineteen days and why the record argues with itself so often.</p>
+<p><strong>What this is.</strong> SOCOM II is a PlayStation 2 game from 2003. This project turns the game's own code into a Windows and Linux program: it runs from your own disc (the North American r0001 pressing; a later pressing is refused with a message rather than half-working), draws on your graphics card, plays through your speakers, reads your controller, and plays online against a server the project hosts. Nothing from the game ships with it. Nineteen days of work so far, and the record argues with itself often; that's on purpose.</p>
 <p><strong>How to read an entry.</strong> A date, a title, one bold line on why it mattered, a few sentences on what happened, then three small things. <em>How:</em> is the technical sentence. <em>But:</em> is the honest edge of the claim — what's still unproven, what was retracted, what a number doesn't mean. <code>Cited:</code> is the evidence: commit hashes you can open in the repository, and run records. The run records live in a <code>logs/</code> folder on the project's own machine, not in the repository, so each one cited here is backed by a frozen witness (first lines, size, hash) in <code>docs/story/witnesses.json</code>. A test fails if any citation stops pointing at something real.</p>
 <p><strong>Dates</strong> are the commits'. A few documents in the repo are stamped a day later than the commit they describe, because work here tends to get written up after midnight.</p>
 <p><strong>Where it disagrees with <code>docs/KNOWN.md</code>,</strong> KNOWN is right and this document gets fixed.</p>
+</section>
+<section class="foreword" id="from-the-creator"><p class="brief-sub">From the creator</p>
+<p>This is an automation-first, agentically engineered passion project. It started as curiosity — I wanted to see where PS2 static recompilation actually stood — and it grew legs when it produced results, so I kept building on them. The recompiler is a fork of PS2Recomp, extended for this one game. A good portion of the work went into a parallel validator: the retail disc running in PCSX2 as a golden reference, driven by the same scripts as our build, with debugging tools on both sides, so the agents could check themselves against the real thing on demand and adjust. Most of the code was written by AI agents in a loop I run; my part was mostly playing it, noticing what was off, and deciding what mattered next. What follows is the record of that, with the receipts attached.</p>
+<p class="sig">— Craig</p>
 </section>
 <nav class="eras" aria-label="Eras">
 <a href="#era-2026-09-02">From the disc to the screen<small>Sep 2 &ndash; Sep 7 &middot; 8</small></a>
@@ -609,7 +625,7 @@ footer.foot a{color:var(--teal)}
 </ol>
 <section class="closing" id="where-it-stands-tonight-2026-09-20"><h2>Where it stands tonight — 2026-09-20</h2>
 <p><em>Not an entry, no <code>Cited:</code> line: the view from the end of the record on the night it ends. It gets replaced by real entries as things land.</em></p>
-<p>The tree is at <code>78a170d</code>, 785 commits, on <code>sprint-10</code>, with two tags: <code>playtest-1</code> and <code>v0.9.0</code>. Sprint 9 is merged. Sprint 10 is open and already has its headline — a console client and our program in one match, both ways round, on the hosted server. The scheduled ladder has one clean run of the seven it needs.</p>
+<p>The tree is at <code>d8e10ef</code>, 788 commits, on <code>sprint-10</code>, with two tags: <code>playtest-1</code> and <code>v0.9.0</code>. Sprint 9 is merged. Sprint 10 is open and already has its headline — a console client and our program in one match, both ways round, on the hosted server. The scheduled ladder has one clean run of the seven it needs.</p>
 <p>The open question is still the one the owner found on the first evening: the music. The device buffer, the pan, the silent voice lines and the missing ambience bed are all fixed and measured; the still-playing answer that let stems chain on the console is fixed and being verified; the bed is still 7-12 dB quieter than the console's and the logo movies are quiet at the source. The owner's ear decides when it's done, and the last verdict was "better, not done".</p>
 <p>No stranger has played yet. No two humans have played each other. Those are the two sentences this page most wants to lose.</p>
 </section>
@@ -618,7 +634,7 @@ footer.foot a{color:var(--teal)}
 <p><code>python -m tools_py.story.cite</code></p>
 <p>A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come from the commit's real subject. A run or gate id must have a frozen witness in <code>docs/story/witnesses.json</code>, re-proved against the file on the machine that has the logs. A tracked path must be tracked. <code>docs/story/timeline.json</code> is the machine-readable form, and the test fails if it and this document disagree in either direction. The design is <code>docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md</code>.</p>
 </section>
-<footer class="foot">45 entries &middot; 212 commit citations &middot; built from <code>docs/STORY.md</code> at <code>78a170d</code> &middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>
+<footer class="foot">45 entries &middot; 212 commit citations &middot; built from <code>docs/STORY.md</code> at <code>d8e10ef</code> &middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>
 </div>
 <script>
 (function(){
