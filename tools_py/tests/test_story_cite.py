@@ -349,6 +349,41 @@ class TestAgainstRealGit(unittest.TestCase):
         self.assertFalse(self.resolver.tracked("logs/parity/nothing_here.txt"))
 
 
+class TestLogsPresentMeansTheArchive(unittest.TestCase):
+    """A logs/ directory exists on every machine that has run the suite; only the owner's holds the runs the
+    witnesses were frozen from. Level 2/3 must not fire on a bare directory (CI run 35495411398 did)."""
+
+    def setUp(self):
+        import tempfile
+        self.tmp = tempfile.mkdtemp()
+        os.makedirs(os.path.join(self.tmp, "logs", "parity", "gate"))
+        self.saved = os.environ.pop("STORY_VERIFY_LOGS", None)
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        if self.saved is not None:
+            os.environ["STORY_VERIFY_LOGS"] = self.saved
+        else:
+            os.environ.pop("STORY_VERIFY_LOGS", None)
+
+    def test_a_bare_logs_directory_is_not_the_archive(self):
+        self.assertFalse(cite.GitResolver(root=self.tmp).logs_present())
+
+    def test_the_archive_marker_is(self):
+        with open(os.path.join(self.tmp, "logs", "ARCHIVED_TO_D.txt"), "w") as f:
+            f.write("marker")
+        self.assertTrue(cite.GitResolver(root=self.tmp).logs_present())
+
+    def test_the_environment_forces_it_either_way(self):
+        os.environ["STORY_VERIFY_LOGS"] = "1"
+        self.assertTrue(cite.GitResolver(root=self.tmp).logs_present())
+        os.environ["STORY_VERIFY_LOGS"] = "0"
+        with open(os.path.join(self.tmp, "logs", "ARCHIVED_TO_D.txt"), "w") as f:
+            f.write("marker")
+        self.assertFalse(cite.GitResolver(root=self.tmp).logs_present())
+
+
 class TestTheRealStoryIfItExists(unittest.TestCase):
     """Once docs/STORY.md exists, the suite checks the real document on every run."""
 
