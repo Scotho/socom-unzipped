@@ -17,7 +17,7 @@ export function parseZdb(bytes: Uint8Array): ZdbEntry[] {
     if (r.u32(o) !== ENTRY_SIZE) throw new Error(`ZDB entry ${i} size field ${r.u32(o)}`);
     const name = r.cstr(o + 4, 64);            // char name[64], garbage after the NUL
     const offset = r.u32(o + 68);              // absolute, 2048-aligned
-    const size = r.u32(o + 72);
+    const size = r.u32(o + 72);                // 36 §1: the member's length in bytes
     if (offset + size > bytes.byteLength) throw new Error(`ZDB entry ${name} runs past the file`);
     out.push({ name, offset, size });
   }
