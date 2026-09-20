@@ -20,11 +20,22 @@ namespace launcher
     // The servers a player can pick. Ours is hosted (AWS Lightsail, us-east-2, a static address; Sprint 8 Goal 12). The
     // community server is PSRewired (67.222.156.250), which runs SOCOM II r0004 -- a different code package from the r0001
     // this client is built from -- so its preset keeps a placeholder until an r0004 build exists (a wishlist item).
+    //
+    // Sprint 9 P6 (R175): the project's server is reached BY NAME. Switching this string cannot orphan a
+    // persona, because it never reaches the game -- loadHosts() resolves it to a uint32 and maps the seven
+    // retail Sony hostnames to that (ps2xRuntime/src/lib/socom2_hostnet.cpp:303-316). What it does
+    // introduce is a name that might not resolve, and parseServerAddress answering 0 leaves the runtime
+    // pointing at 127.0.0.1 with nothing on screen to say so -- which is why the raw address stays on
+    // offer as its own preset rather than being deleted. The ids are the stable thing: an old config
+    // naming "unzipped" keeps working and simply starts reaching the box by name.
     constexpr ServerPreset kServerPresets[] = {
-        {"community", "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
-        {"unzipped",  "SOCOM Unzipped (project server)",  "3.143.65.100",                 "the project's hosted server (US East)"},
-        {"custom",    "Custom",                            "",                             "any address or hostname"},
+        {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
+        {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)"},
+        {"unzipped-ip", "SOCOM Unzipped (by address)",      "3.143.65.100",                 "the same server, if the name will not resolve"},
+        {"custom",      "Custom",                            "",                             "any address or hostname"},
     };
+    // Nothing may count these in a literal: P6 made them four, and two loops and one y-offset said three.
+    constexpr size_t kServerPresetCount = sizeof(kServerPresets) / sizeof(kServerPresets[0]);
 
     struct Config
     {

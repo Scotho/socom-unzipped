@@ -166,10 +166,12 @@ namespace ui
         }
         case Page::Online:
         {
-            for (int i = 0; i < 3; ++i)
+            for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
                 if (launcher::presetAvailable(launcher::kServerPresets[i]))
-                    add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, i));
-            const float y = b.y + 26.0f + 3.0f * 38.0f + 22.0f;
+                    add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, static_cast<int>(i)));
+            // Below the LAST row, whatever the count is -- the literal 3 here is what a fourth preset
+            // would have been drawn on top of (Sprint 9 P6).
+            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 28.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
             add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});

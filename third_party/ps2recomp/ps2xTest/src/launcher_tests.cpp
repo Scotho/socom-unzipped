@@ -287,7 +287,8 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_GS_SCALE=1"), "native scale");
             t.IsTrue(has("PS2X_PRESENT_FILTER=linear"), "the filter");
             t.IsTrue(has("PS2X_WINDOW_SIZE=1280x896"), "the window size: the launcher's 2x default (the gate sets none and stays 640x448)");
-            t.IsTrue(has("PS2X_SOCOM2_SERVER=3.143.65.100"), "the server: a fresh config plays on the project's hosted server (Sprint 8 Goal 12)");
+            t.IsTrue(has("PS2X_SOCOM2_SERVER=socom.scotho.com"),
+                     "the server: a fresh config plays on the project's hosted server, reached by name (Sprint 9 P6, R175)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
             t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");
             t.IsTrue(!hasKey("PS2X_SOCOM2_UDP_SHIFT") && !hasKey("PS2X_SOCOM2_RSA_KEY"), "first instance: no shift, no second key");
@@ -359,10 +360,13 @@ void register_launcher_tests()
             c.server = "10.0.0.5";
             // Fourth pass: a preset still carrying a placeholder is not playable, so it does not win the
             // field -- it resolves to the project's own server rather than sending the game a placeholder.
-            t.Equals(serverOf(c), std::string("3.143.65.100"), "an unavailable preset resolves to the one that exists");
+            t.Equals(serverOf(c), std::string("socom.scotho.com"), "an unavailable preset resolves to the one that exists");
             c.serverPreset = "unzipped";
-            t.Equals(serverOf(c), std::string("3.143.65.100"), "our own hosted server (Lightsail, US East)");
-            t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("3.143.65.100"), "a fresh config resolves to it");
+            t.Equals(serverOf(c), std::string("socom.scotho.com"), "our own hosted server, by name (Lightsail, US East)");
+            t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("socom.scotho.com"), "a fresh config resolves to it");
+            // Sprint 9 P6: the same box by its raw address, for the day the name will not resolve.
+            c.serverPreset = "unzipped-ip";
+            t.Equals(serverOf(c), std::string("3.143.65.100"), "and the fallback preset still reaches it by address");
             c.serverPreset = "custom";
             t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
             c.server.clear();
@@ -1232,6 +1236,66 @@ void register_launcher_tests()
             }
         });
 
+        // Sprint 9 P6 / Goal 7 (R175): the project's server is reached BY NAME. The switch is safe because
+        // the preset string never reaches the game -- `loadHosts()` resolves it to a uint32 and maps the
+        // seven retail hostnames to that (socom2_hostnet.cpp:303-316) -- so no persona can be orphaned.
+        // What the switch DOES introduce is a name that might not resolve, and `parseServerAddress`
+        // answering 0 leaves the runtime pointing at 127.0.0.1 with only a stderr line. Hence a second
+        // preset carrying the raw address, on offer, for exactly that case.
+        tc.Run("the project's server is reached by name, with its raw address kept as a preset that still works", [](TestCase &t)
+        {
+            const launcher::ServerPreset *byName = launcher::findServerPreset("unzipped");
+            t.IsTrue(byName != nullptr, "the default preset is still called 'unzipped' -- an old config must keep working");
+            t.IsTrue(std::string(byName->address) == "socom.scotho.com", "and it now names the server instead of numbering it");
+            t.IsTrue(launcher::presetAvailable(*byName), "it is playable");
+
+            const launcher::ServerPreset *byAddress = launcher::findServerPreset("unzipped-ip");
+            t.IsTrue(byAddress != nullptr, "the raw address is still on offer, as its own preset");
+            t.IsTrue(std::string(byAddress->address) == "3.143.65.100", "pointing at the same box");
+            t.IsTrue(launcher::presetAvailable(*byAddress), "and playable, because a name that will not resolve is the whole reason it exists");
+
+            // A config written before the switch names "unzipped" and must come back playing by name --
+            // the id is the stable thing, not the address.
+            launcher::Config old;
+            launcher::fromJson("{\"serverPreset\": \"unzipped\", \"server\": \"3.143.65.100\"}", old);
+            t.IsTrue(old.serverPreset == "unzipped", "an old config still selects it");
+            t.IsTrue(launcher::effectiveServer(old) == "socom.scotho.com",
+                     "and what reaches the game is the name, without the player touching anything");
+
+            // A fresh install plays on the hosted server by name.
+            launcher::Config fresh;
+            t.IsTrue(fresh.serverPreset == "unzipped", "a fresh config picks the project's server");
+            t.IsTrue(launcher::effectiveServer(fresh) == "socom.scotho.com", "by name");
+        });
+
+        // Nothing may assume how many presets there are: P6 added a fourth, and the page and its layout
+        // both used to count to three in a literal.
+        tc.Run("the ONLINE page lays out a row for every preset there is, not for three", [](TestCase &t)
+        {
+            const size_t n = launcher::kServerPresetCount;
+            t.IsTrue(n >= 4u, "there are at least four presets now");
+
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            size_t rows = 0;
+            for (size_t i = 0; i < n; ++i)
+                if (ui::hasNode(nodes, "online.preset." + std::to_string(i)))
+                    ++rows;
+            size_t playable = 0;
+            for (size_t i = 0; i < n; ++i)
+                if (launcher::presetAvailable(launcher::kServerPresets[i]))
+                    ++playable;
+            t.IsTrue(rows == playable, "every playable preset has a focusable row, and the unplayable one has none");
+
+            // The rows must not collide with the fields under them: the last row ends above the address.
+            const ui::Rect last = ui::onlinePresetRow(window, static_cast<int>(n) - 1);
+            const ui::Rect address = ui::rectOf(nodes, "online.server");
+            t.IsTrue(ui::drawable(address), "the address field is there");
+            t.IsTrue(last.bottom() <= address.y,
+                     "the last preset row ends above the address field -- a fourth preset must not sit on top of it");
+        });
+
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
         // game. The community server runs r0004, which this client cannot play yet.
         tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)
@@ -1247,7 +1311,7 @@ void register_launcher_tests()
             launcher::Config c;
             c.serverPreset = "community";
             c.server = "192.168.2.10";
-            t.Equals(launcher::effectiveServer(c), std::string("3.143.65.100"),
+            t.Equals(launcher::effectiveServer(c), std::string("socom.scotho.com"),
                      "a config still naming community plays on the project's server, not on a placeholder");
             const std::vector<std::string> env = launcher::environmentFor(c);
             for (const std::string &kv : env)
