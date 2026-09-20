@@ -13,7 +13,11 @@ extern std::atomic<uint64_t> g_vuProgramsKickBit;
 
 #include <algorithm>
 #include <cfenv>
+#if defined(USE_SSE2NEON)
+#include "sse2neon.h"
+#else
 #include <xmmintrin.h>
+#endif
 #include <cmath>
 #include <cstdio>
 #include <chrono>
@@ -2047,15 +2051,21 @@ namespace
         uint32_t mxcsr = 0;
         VuRoundingScope()
         {
+#if defined(__i386__) || defined(__x86_64__)
             __asm__ __volatile__("fnstcw %0" : "=m"(x87));
-            mxcsr = _mm_getcsr();
             const uint16_t x87Tz = static_cast<uint16_t>(x87 | 0x0C00u);
             __asm__ __volatile__("fldcw %0" : : "m"(x87Tz));
+#endif
+            // On aarch64 there is no x87: _mm_setcsr maps to FPCR, whose RMode bits
+            // govern both the SIMD and the scalar/long-double paths at once.
+            mxcsr = _mm_getcsr();
             _mm_setcsr(mxcsr | 0x6000u);
         }
         void restore() const
         {
+#if defined(__i386__) || defined(__x86_64__)
             __asm__ __volatile__("fldcw %0" : : "m"(x87));
+#endif
             _mm_setcsr(mxcsr);
         }
     };
