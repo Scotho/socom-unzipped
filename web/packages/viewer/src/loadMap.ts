@@ -164,15 +164,16 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   const textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean }> = {};
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
-    const { txr, palettes, keys } = texlib;
+    const { palettes, keys, libs } = texlib;
     for (const mesh of [...world, ...props.flatMap((p) => p.parts)]) {
       const name = mesh.textureName;
       if (name === null || name in textures) continue;
-      const key = keys.get(name);
-      if (!key) {
-        notes.add(`texture ${name}: not in ${stem}_TXR.ZED`);
+      const hit = keys.get(name);
+      if (!hit) {
+        notes.add(`texture ${name}: in none of the map's ${libs} asset libs`);
         continue;
       }
+      const { zar: txr, key } = hit;
       const texdat = txr.child(key, 'texdat');
       if (!texdat) {
         notes.add(`texture ${name}: no texdat key`);
@@ -226,21 +227,75 @@ export function transferables(map: LoadedMap): Transferable[] {
 }
 
 /**
- * The map's texture archive and its palettes, keyed lower-case the way the meshes name them, or null and
- * one diagnostic if either member is unreadable.
+ * The asset libraries a map loads, in the order it loads them, as ZDB member stems.
+ *
+ * A map does not keep its textures in one archive. The world root's `assetlibs` key lists library
+ * paths, and `CSaveLoad::LoadAssetLib_PS2` (`zNode/node_saveload.cpp:91-114`) turns each into a member
+ * name by taking the **first four characters of the last path element**: `//common/assetlib/weapons`
+ * becomes `WEAP`, `//mp/mp61/junkyard` becomes `JUNK`, `//mp/mp73/c73` becomes `C73`. The map's own
+ * library is last in that list, which matters -- see `textureLibrary`.
+ *
+ * Falls back to the map's own stem so a root that will not parse still draws the map the way it did.
+ */
+function assetLibStems(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): string[] {
+  try {
+    const root = Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`));
+    const libs = root.find('assetlibs')?.children ?? [];
+    const stems: string[] = [];
+    for (const lib of libs) {
+      const last = lib.name.split('/').filter(Boolean).pop() ?? '';
+      const member = last.slice(0, 4).toUpperCase();
+      if (member && !stems.includes(member)) stems.push(member);
+    }
+    if (stems.length) return stems;
+    notes.add(`${stem}.ZED: no assetlibs key, so only ${stem}_TXR.ZED is read`);
+  } catch (e) {
+    notes.add(`assetlibs: ${say(e)} -- only ${stem}_TXR.ZED is read`);
+  }
+  return [stem];
+}
+
+/**
+ * Every texture the map can name, across all of its asset libraries, and every palette beside them.
+ *
+ * The viewer used to read `MP<N>_TXR.ZED` alone, which is why twelve maps reported missing skies,
+ * weapons and vehicles: those live in the shared libraries the world root lists, and they are already
+ * inside the same `MP<N>.ZDB` the viewer downloads. Reading the chain costs no new bytes.
+ *
+ * **First wins.** `LoadTextures_PS2` (`zNode/node_saveload.cpp:172-193`) skips a name an
+ * already-loaded library owns, and the map's own library is last in `assetlibs`, so a map-local name
+ * never overrides a shared one. `PaletteTable.fromZars` already resolves its ids the same way, so the
+ * palettes go in the same order.
+ *
+ * A library missing its `_TXR` or `_PAL` member is normal -- `JUNK_PAL.ZED` does not exist on most
+ * maps, because `null_xmas.bmp` is direct 16bpp and needs no palette -- so a missing member of one
+ * library is a skip. Only a total failure costs the diagnostic and the textures.
  */
 function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes):
-{ txr: Zar; palettes: PaletteTable; keys: Map<string, ZarKey> } | null {
-  try {
-    const txr = Zar.parse(zdbMember(bytes, toc, `${stem}_TXR.ZED`));
-    const palettes = PaletteTable.fromZars([Zar.parse(zdbMember(bytes, toc, `${stem}_PAL.ZED`))]);
-    const keys = new Map<string, ZarKey>();
-    for (const key of txr.find('textures')?.children ?? []) keys.set(textureKey(key.name), key);
-    return { txr, palettes, keys };
-  } catch (e) {
-    notes.add(`textures: ${say(e)} -- the map draws in vertex colour alone`);
+{ palettes: PaletteTable; keys: Map<string, { zar: Zar; key: ZarKey }>; libs: number } | null {
+  const stems = assetLibStems(bytes, toc, stem, notes);
+  const keys = new Map<string, { zar: Zar; key: ZarKey }>();
+  const pals: Zar[] = [];
+  let found = 0;
+  for (const lib of stems) {
+    try {
+      const txr = Zar.parse(zdbMember(bytes, toc, `${lib}_TXR.ZED`));
+      found++;
+      for (const key of txr.find('textures')?.children ?? []) {
+        const name = textureKey(key.name);
+        if (!keys.has(name)) keys.set(name, { zar: txr, key });   // first library wins
+      }
+    } catch { /* a library with no textures of its own is ordinary */ }
+    try {
+      pals.push(Zar.parse(zdbMember(bytes, toc, `${lib}_PAL.ZED`)));
+    } catch { /* and one with no palettes likewise */ }
+  }
+  if (found === 0) {
+    notes.add(`textures: no readable _TXR.ZED among ${stems.length} asset libs -- `
+      + 'the map draws in vertex colour alone');
     return null;
   }
+  return { palettes: PaletteTable.fromZars(pals), keys, libs: stems.length };
 }
 
 /** 36 section 6: the shown name is `READERM.ZAR/mission.rdr`'s `description`, as `listMaps` reads it. */
@@ -314,14 +369,30 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: 
  * `CLIB_MDL.ZED` is deliberately absent, its models being the `MESH_` form the scene graph never names.
  */
 function mdlArchives(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Zar[] {
+  // The same asset-library chain the textures come from: 15 of the 22 maps name prop models that live
+  // in libraries the viewer used to leave shut -- `TURR_MDL` (turrets) on eight of them, `PAVE_MDL`
+  // (the Pave Hawk) on five, and so on. `WORL_MDL` is the world itself and is not an asset library, so
+  // it leads; the chain follows in its own order, which puts the map's own library last, as the engine
+  // does.
+  //
+  // `CLIB_MDL` is excluded on purpose. Character models are a different chain form -- `CMesh` /
+  // `CSubMesh`, `vis_main.cpp:246-265` -- that this walker produces garbage on (36 section 3).
+  const members = ['WORL_MDL.ZED', ...assetLibStems(bytes, toc, stem, notes)
+    .filter((lib) => lib !== 'CLIB')
+    .map((lib) => `${lib}_MDL.ZED`)];
   const out: Zar[] = [];
-  for (const member of ['WORL_MDL.ZED', `${stem}_MDL.ZED`, 'FLIB_MDL.ZED']) {
+  const seen = new Set<string>();
+  for (const member of members) {
+    if (seen.has(member)) continue;
+    seen.add(member);
     try {
       out.push(Zar.parse(zdbMember(bytes, toc, member)));
-    } catch (e) {
-      notes.add(`${member}: ${say(e)}`);
+    } catch {
+      // A library with no models of its own is ordinary -- MP53 has no `MP53_MDL.ZED` at all and is
+      // right not to, drawing its three props out of shared libraries instead.
     }
   }
+  if (out.length === 0) notes.add(`no model archive of ${members.length} could be read`);
   return out;
 }
 

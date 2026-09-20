@@ -83,9 +83,7 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
   needs — the normal/light matrix and the colour block — are uploaded by the EE at VU1 entry 0 and are not
   on the disc. The matrix is taken as identity and the four colours are sliders. Extracting the EE's own
   would finish it.
-- **Five textures are missing from two archives.** `null_xmas.bmp` (MP6) and `afghan2r_rug1/2/3.tif`,
-  `afghan2r_rug_trim.tif` (MP72) are cited by chunks but absent from the `_TXR.ZED` they name; those draws
-  go untextured. All that is left of Desert Glory's and Crossroads' diagnostics.
+
 - **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
   dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out
   rather than guessed.
