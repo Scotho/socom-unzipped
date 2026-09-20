@@ -1,3 +1,4 @@
+/// <reference types="vite/client" />
 import { Clock, Scene } from 'three';
 import type { MapInfo } from '@s2u/archive';
 import { sortByPopularity } from './mapOrder';
@@ -14,7 +15,8 @@ import { buildWorld, centre, type WorldView } from './world';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
-const MAPS = '/maps';
+// The maps directory sits beside the page: `/maps` in dev, `/map-viewer/maps` when served under a prefix.
+const MAPS = `${import.meta.env.BASE_URL}maps`;
 /** The map the viewer opens on, and the one the screenshot test asks for by name. */
 const DEFAULT_ARCHIVE = 'MP2';
 /** Eye height above a spawn's feet: a standing player, not a floating one. */
@@ -107,9 +109,6 @@ ui.applySliders(applySlider);
 /** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
 function applySlider(name: SliderName, value: number): void {
   if (name === 'ambient') lighting.ambient = value;
-  else if (name === 'lightx') lighting.x = value;
-  else if (name === 'lighty') lighting.y = value;
-  else if (name === 'lightz') lighting.z = value;
   else if (name === 'lightgain') lighting.gain = value;
   // A slider only owns the fog once the player has moved it: `applySliders` is also called on every
   // map load, and the range input has snapped the decoded value to its step by then.
@@ -211,6 +210,9 @@ function show(map: LoadedMap): void {
     view.dispose();
   }
   loaded = map;
+  // The lighting is the map's own, read from its `GlobalLighting` record: three directional lights and
+  // an ambient. The two sliders are trims on top of it and stay where the panel has them.
+  lighting.rig = map.lightRig;
   // The map's own fog, before the world is built: `cameras/camera` in its `MP*.ZED` carries the
   // colour, the range and the enable bit the level was authored with. Two of the twenty-two ship
   // with it off, so the bit is honoured rather than the range being used as a proxy for it.
