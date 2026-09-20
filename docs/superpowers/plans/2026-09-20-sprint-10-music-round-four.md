@@ -59,9 +59,13 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
 
 - [x] 1. AUDIO OPTIONS mapped (`logs/parity/s10_audio_options`): MUSIC / SOUND / DIALOG / HEADSET VOLUME sliders of
       ~13 notches, one per LEFT; SOUND stereo/mono; DEFAULT SETTINGS; RETURN.
-- [x] 2. `scripts/parity/music_only_mission.txt` (both targets: PCSX2's keys map takes ours' stick names); the
-      captures are the chain `logs/s10_music_round4_chain.sh` (running: the traced mission, the PCSX2 reference pinned as
-      `refs/audio_music_only_mission.pcsx2.json`, ours compared).
+- [x] 2. `scripts/parity/music_only_mission.txt` (both targets: PCSX2's keys map takes ours' stick names). Run 1
+      (`logs/parity/s10_r4_music_*`, 2026-09-20 ~22:10 UTC) was INVALID: the boot's counted CROSS presses overshot
+      the main menu on both targets (ours ended at MISSION BRIEFING, PCSX2 at MAPS/INTEL when the "sliders as set"
+      frame was taken), so no slider was moved and ours' -99.7 dB windows were a muted game, not a verdict. Fixed
+      (`d8e10ef`): the main menu is reached by `untilref` on the logo band (proven in `options_explore.txt`), the
+      SOUND and DIALOG rows by `until(box)` on their teal highlight. Run 2 = `logs/s10_music_round4_captures.sh
+      s10_r4b` (the PCSX2 reference re-pinned over the invalid one, ours compared).
 - [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
 
