@@ -226,3 +226,29 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   with no TEX0 in its bind packet, or a CBP no loaded palette answers, still decodes -- by `m_texelBitSize`
   and by the first palette -- and says so in a string, so the viewer reports a bad texture instead of the
   decoder throwing mid-map.
+- 2026-09-20, M3 viewer: Frostfire renders in the browser from the served archive alone, and the two
+  screenshots say it is the right map. `frostfire-spawnA.png` (camera at spawn A raised 20 units, looking
+  at spawn B) is the industrial compound: corrugated warehouse walls with their ribs vertical, yellow
+  handrails on the walkway, rusted elbow pipes, a wet concrete yard, an overcast sky. `frostfire-top.png`
+  (straight down from y = 1400 over the spawn midpoint) is a level-shaped footprint -- roofs, two round
+  tanks, a container yard, a stair tower -- inside the dark disc of the sky chunk's underside, with the
+  distant skirt beyond it. 8,764 triangles in 37 draws (one per cited texture), 53-64 ms to decode the
+  8 MB archive, zero diagnostics, zero console errors.
+  - **Texture orientation, settled by looking:** the decoder's bottom-up rows are exactly GL's V = 0, so
+    the viewer uses `DataTexture` with `flipY = false` and the UVs `interpret.ts` produces, unflipped.
+    Nothing is mirrored or rotated in either screenshot -- signage, ribbing and railings all read the
+    right way up on the first try, so neither the V flip nor a UV-axis fix was needed.
+  - **Vertex colour:** the PS2 writes 128 as full brightness, which a normalised three.js byte attribute
+    reads as 0.5; the viewer doubles the three colour bytes (clamped) when it builds the attribute, and
+    the map is lit as the reference is rather than at half light. `mesh` had already rescaled alpha.
+  - **Placement:** the whole world takes the modal `nparams` translation, read from
+    `MP*_GEO.ZED/models/worldmodel/children` at load time rather than typed in -- (960, 0, 800) on
+    Frostfire (section 8 of `mesh/SEMANTICS.md`). Standing at spawn A the camera is on the floor, not in
+    it, which is the same check the mesh tests make, now made by eye.
+  - **Backend:** the renderer is three's `WebGPURenderer` from `three/webgpu`, which bundles under Vite
+    without special handling; headless chromium has no adapter, so both screenshots were drawn by its
+    **WebGL2 fallback** over ANGLE/SwiftShader (`--enable-unsafe-swiftshader`). The status line reports
+    whichever backend `renderer.backend.isWebGPUBackend` names, so a desktop browser saying `webgpu` is
+    the same build.
+  - **Decode thread:** the archive read, VIF walk and texture decode run in a module Web Worker and come
+    back in the transfer list, so nothing is copied and the frame loop never stalls.

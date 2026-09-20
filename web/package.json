@@ -13,7 +13,8 @@
     "dump-textures": "tsx tools/dump-textures.ts",
     "export-gltf": "tsx tools/export-gltf.ts",
     "dev": "vite --config packages/viewer/vite.config.ts",
-    "build": "vite build --config packages/viewer/vite.config.ts"
+    "build": "vite build --config packages/viewer/vite.config.ts",
+    "e2e": "playwright test"
   },
   "devDependencies": {
     "@playwright/test": "^1.55.0",

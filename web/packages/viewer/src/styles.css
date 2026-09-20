@@ -1,0 +1,19 @@
+:root { color-scheme: dark; font-family: ui-monospace, "Cascadia Mono", Menlo, monospace; }
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overflow: hidden; }
+#view { display: block; width: 100vw; height: 100vh; touch-action: none; cursor: grab; }
+#view:active { cursor: grabbing; }
+
+#panel {
+  position: fixed; top: 12px; left: 12px; width: min(420px, calc(100vw - 24px));
+  padding: 10px 12px; border: 1px solid #333a44; border-radius: 8px;
+  background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
+}
+#panel .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+#panel select, #panel button { font: inherit; padding: 3px 6px; background: #1d2027; color: inherit; border: 1px solid #39414d; border-radius: 4px; }
+#panel button[disabled] { opacity: 0.55; cursor: not-allowed; }
+#status { margin: 4px 0; color: #9fe6b0; white-space: pre-wrap; }
+#status.error { color: #ff8a80; }
+.hint { margin: 6px 0 0; color: #79828f; }
+#diagnostics { margin: 4px 0 0; padding-left: 18px; max-height: 30vh; overflow: auto; color: #ffca8a; }
+#diagnostics li { margin-bottom: 2px; word-break: break-word; }

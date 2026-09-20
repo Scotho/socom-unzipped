@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SOCOM Unzipped map viewer</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="panel">
+      <div class="row">
+        <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
+        <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
+          ISO source: milestone M5
+        </button>
+      </div>
+      <p id="status">booting</p>
+      <div class="row">
+        <label><input type="checkbox" id="grid" /> grid at y=100</label>
+        <label><input type="checkbox" id="axes" checked /> axes</label>
+      </div>
+      <details id="diagnostics-box">
+        <summary><span id="diagnostics-count">0</span> diagnostics</summary>
+        <ul id="diagnostics"></ul>
+      </details>
+      <p class="hint">WASD to fly, Q/E down/up, shift for speed, drag to look</p>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
