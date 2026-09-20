@@ -178,6 +178,22 @@ namespace snd989
             return out;
         }
 
+        // A VAG stream's MAIN voice volumes (research/36 item 7, 2026-09-20). On the IRX a two-channel VPK is not one
+        // centre-panned stereo pair: the play worker (FUN_0000f7e0, 9912-9923) allocates a DOUBLING voice for the
+        // handler unless flags bit 0x20 is set, the stream start (FUN_000152fc, 12743-12775) forces the first
+        // stream's pan to 0x10e (270) when that voice exists, points the doubling voice at the second buffer (the
+        // right channel), and gives it the main voice's volumes SWAPPED (VOLL <- VOLR, VOLR <- VOLL); every later
+        // vol/pan update (FUN_00016898) repeats the swap. So with the game's pan -1 (= 0) the left channel's voice
+        // sits at pan 270 -- the pan table's (0x3fff, 0), full on its side -- and the right channel at the mirror,
+        // where ours put both at the centre entry (0.707, 0.707). Under the square law of the group stage that is
+        // exactly 2x in amplitude: the -5.9 dB median of the music-only capture (run 9b) against PCSX2. The pair
+        // rotates with the handler pan (270 + p for the left data, its mirror for the right). A mono stream keeps
+        // the centre pair; what the IRX's doubling voice plays for a mono file is not established.
+        VolPair streamBase(uint32_t channels, int32_t playVol, int32_t playPan)
+        {
+            return makeVolume(127, 0, playVol, channels > 1 ? playPan + 270 : playPan, 127, 0);
+        }
+
         // ---- the SPU ADSR envelope (psx-spx) ---------------------------------------------------------------
 
         struct Envelope
@@ -1588,7 +1604,7 @@ namespace snd989
                 st->playPan = 0;
             else if (pan != kPanDontChange)
                 st->playPan = pan;
-            st->base = makeVolume(127, 0, st->playVol, st->playPan, 127, 0);
+            st->base = streamBase(st->channels, st->playVol, st->playPan);
             return;
         }
         Handler *h = m_impl->find(handle);
@@ -1820,8 +1836,18 @@ namespace snd989
                     const double frac = cur->pos - static_cast<double>(i0);
                     const double sl = l[i0] * (1.0 - frac) + l[i1] * frac;
                     const double sr = (i0 < r.size() ? r[i0] : 0) * (1.0 - frac) + (i1 < r.size() ? r[i1] : 0) * frac;
-                    mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
-                    mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                    if (cur->channels > 1)
+                    {
+                        // The IRX's voice pair (streamBase): the main voice plays the left data at (left, right), the
+                        // doubling voice the right data at the SAME volumes swapped (FUN_000152fc, FUN_00016898).
+                        mix[(frame + i) * 2] += static_cast<int32_t>((sl * left + sr * right) / 0x7FFE);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>((sl * right + sr * left) / 0x7FFE);
+                    }
+                    else
+                    {
+                        mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                    }
                     cur->pos += cur->step;
                 }
             }
@@ -1953,7 +1979,7 @@ namespace snd989
         st.s2.assign(st.channels, 0);
         const int32_t playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
         const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
-        st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
+        st.base = streamBase(st.channels, playVol, playPan);
         st.playVol = playVol;
         st.playPan = playPan;
         // Sprint 9 Q0 (the owner's second listen): the worker fills the ring on its own 10 ms cadence, so the

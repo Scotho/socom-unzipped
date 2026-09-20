@@ -1133,12 +1133,22 @@ void register_socom2_audio_tests()
             const int32_t raised = peak();
             t.IsTrue(raised > 200, "audible once the game raises it (peak " + std::to_string(raised) + ")");
 
-            mixer.setVolPan(h, snd989::kVolDontChange, 90);   // pan-only: hard right, the volume left alone
+            // The clip is two-channel: its left channel is a rising ramp, its right the same ramp negated, so at
+            // the default pan (the IRX's voice pair at 270 / its mirror) the two outputs differ.
+            int32_t differ = 0;
+            for (size_t i = 0; i < 1200; ++i)
+                differ = std::max(differ, std::abs(static_cast<int32_t>(buf[i * 2]) - static_cast<int32_t>(buf[i * 2 + 1])));
+            t.IsTrue(differ > 100, "at the default pan the two channels come out on their own sides (max |L-R| " + std::to_string(differ) + ")");
+            // research/36 item 7: a pan-only call on a two-channel stream ROTATES the IRX's voice pair (left data at
+            // 270 + p, right data mirrored): at p = 90 both voices land on the pan table's centre entry, so the
+            // two outputs become the same mix -- not "hard right", which a stereo pair cannot be.
+            mixer.setVolPan(h, snd989::kVolDontChange, 90);   // pan-only: the volume left alone
             mixer.pumpStreams();
             mixer.render(buf.data(), 1200);
-            int32_t l = 0, r = 0;
-            for (size_t i = 0; i < 1200; ++i) { l = std::max(l, std::abs(static_cast<int32_t>(buf[i * 2]))); r = std::max(r, std::abs(static_cast<int32_t>(buf[i * 2 + 1]))); }
-            t.IsTrue(r > l * 2, "and a pan moves it (L " + std::to_string(l) + ", R " + std::to_string(r) + ")");
+            int32_t same = 0;
+            for (size_t i = 0; i < 1200; ++i)
+                same = std::max(same, std::abs(static_cast<int32_t>(buf[i * 2]) - static_cast<int32_t>(buf[i * 2 + 1])));
+            t.IsTrue(same <= 2, "and a pan of 90 collapses the pair to the centre: identical outputs (max |L-R| " + std::to_string(same) + ")");
         });
         // Sprint 9 Q0 (2026-09-20): the device buffer. The traced mission run put 41 sub-second dropouts a minute at the
         // owner's speaker that the pre-device dump did not have -- the device thread missing a 10 ms deadline under
@@ -1410,7 +1420,12 @@ void register_socom2_audio_tests()
                 left += std::fabs(static_cast<double>(buf[2 * i]));
                 right += std::fabs(static_cast<double>(buf[2 * i + 1]));
             }
-            t.IsTrue(right > 4.0 * left, "pan 90: hard right");
+            // research/36 item 7: a two-channel stream is the IRX's voice pair (left data at 270 + p, right data
+            // mirrored), so a pan of 90 puts both voices on the centre entry and the two outputs become the same
+            // mix -- for this clip's mirrored ramps, near silence on both sides. Not "hard right": a stereo pair
+            // cannot be panned to one side by the handler pan on the IRX.
+            t.IsTrue(std::fabs(left - right) <= 0.05 * (left + right) + 1.0,
+                     "pan 90: the pair collapses to the centre, equal outputs (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
             mixer.stop(0x04000002u);
             t.IsTrue(!mixer.isPlaying(0x04000002u), "stop ends a stream at once");
             t.IsTrue(mixer.playStream(0x04000003u, path, 0u, 0x400, -1, 1u), "a third");
@@ -1767,6 +1782,77 @@ void register_socom2_audio_tests()
                 for (int16_t v : buf)
                     peak = std::max<int32_t>(peak, v < 0 ? -v : v);
                 t.IsTrue(peak >= 6400 && peak <= 8000, "peak " + std::to_string(peak) + " (about 7168: 28672 x 0.707^2 x 1/2, the square law)");
+                mixer.stopAll();
+            }
+            std::remove(path.c_str());
+        });
+
+        // research/36 item 7 (2026-09-20): the music-only capture (run 9b) had every VAG stem 5.9 dB (median) under
+        // PCSX2 with the square law in. On the IRX a two-channel VPK plays on a PAIR of voices: the play worker
+        // allocates a doubling voice (FUN_0000f7e0, 9912-9923: unless flags bit 0x20), the stream start forces the
+        // first stream's pan to 270 when it exists (FUN_000152fc, 12755) and hands the doubling voice the second
+        // buffer with the main voice's volumes swapped (12759-12775; FUN_00016898 on every update). So each channel
+        // sits at the pan table's FULL entry on its own side, where ours put both at the centre entry (0.707) --
+        // squared, exactly half the amplitude.
+        tc.Run("Mixer: a two-channel stream is the IRX's voice pair -- each channel at the pan table's full value on its side, twice the centre-panned level", [](TestCase &t)
+        {
+            // shift 0: a nibble of 7 decodes to 28672. Left channel sevens, right channel silence.
+            int8_t sevens[28], zeros[28];
+            for (int i = 0; i < 28; ++i)
+            {
+                sevens[i] = 7;
+                zeros[i] = 0;
+            }
+            std::vector<uint8_t> file(0xB0, 0u);
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);
+            const int chunkPairs = 4;
+            put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+            put32(8, 0x800);
+            put32(12, 0xB0);
+            put32(16, 48000);
+            put32(20, 2);
+            for (int c = 0; c < chunkPairs; ++c)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int b = 0; b < 0x800 / 16; ++b)
+                    {
+                        const bool last = c == chunkPairs - 1 && b == 0x800 / 16 - 1;
+                        const std::vector<uint8_t> blk = block(0, 0, last ? 0x01 : 0x00, ch == 0 ? sevens : zeros);
+                        file.insert(file.end(), blk.begin(), blk.end());
+                    }
+            const std::string path = "socom2_audio_test_pair.vpk";
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            {
+                snd989::Mixer mixer;
+                std::vector<int16_t> buf(2 * 512);
+                auto peaks = [&](int32_t &l, int32_t &r) {
+                    l = r = 0;
+                    for (size_t i = 0; i < 512; ++i)
+                    {
+                        l = std::max(l, std::abs(static_cast<int32_t>(buf[i * 2])));
+                        r = std::max(r, std::abs(static_cast<int32_t>(buf[i * 2 + 1])));
+                    }
+                };
+                t.IsTrue(mixer.playStream(0x0400000Bu, path, 0u, 0x400, -1, 1u), "starts at vol 0x400, pan -1 (the game's music cue)");
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 512);
+                int32_t l = 0, r = 0;
+                peaks(l, r);
+                // Main voice at pan 270: table (0x3fff, 0) -> 32766, the square law's identity, >> 1: 28672 / 2 = 14336.
+                t.IsTrue(l >= 12900 && l <= 15800, "left data on the left at the table's full entry (peak " + std::to_string(l) + ", about 14336 = 28672 x 1 x 1/2)");
+                t.IsTrue(r <= 8, "nothing of it on the right (peak " + std::to_string(r) + ")");
+
+                // The pair rotates with the handler pan: at 90 both voices sit on the centre entry, 0.707 squared = half.
+                mixer.setVolPan(0x0400000Bu, snd989::kVolDontChange, 90);
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 512);
+                peaks(l, r);
+                t.IsTrue(l >= 6400 && l <= 8000 && r >= 6400 && r <= 8000,
+                         "pan 90: the left data on both sides at the centre entry squared (L " + std::to_string(l) + ", R " + std::to_string(r) + ", about 7168)");
                 mixer.stopAll();
             }
             std::remove(path.c_str());
