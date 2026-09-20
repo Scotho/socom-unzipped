@@ -210,3 +210,19 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
 - 2026-09-20, route: viewer-first tonight; full-game route pending the code-diet spike (interim: the
   program-counter-store diet shrank native objects 1.4 percent, so the size lever is elsewhere; wasm-to-native
   ratio and full compile pending).
+- 2026-09-20, M2 texture bytes: Frostfire's pixels are **raster**, and its 8-bit palettes **are** in the GS
+  `csm1` CLUT order. Evidence: `tools/dump-textures.ts` decoded all 65 MP2 textures four ways into
+  `web/test-fixtures/textures/MP2/` and I looked at the contact sheets. `sheet-raster.png` is diamond plate,
+  concrete, shipping containers and readable signage; `sheet-swizzled.png` is the same bytes as 16x16 block
+  hash. The decisive texture is `sign04.tif`: raster it reads "DANGER / FLAMMABLE LIQUID", swizzled it is
+  red-and-white noise. For the CLUT, `sheet-raster.png` against `sheet-raster-linear-clut.png`:
+  `cuba1a_sky01.tif` is a smooth cloud sky with the 32-entry swap undone and a hard-banded contour map
+  without it. `decodeTexture` defaults to `'raster'` and `'csm1'`, keeps both other readings reachable as
+  arguments, and its 65 decodes are frozen as sha256-16 goldens in
+  `packages/gs/test/goldens/frostfire-textures.json`. Two asides the dump settled for free: all 65 records
+  carry a usable TEX0 and every CBP names a loaded palette (no diagnostic fired on Frostfire), and the rows
+  are stored bottom-up, so the viewer flips V rather than the decoder flipping rows.
+- 2026-09-20, M2 shape: `decodeTexture` returns `{ rgba, diagnostics: string[] }`, not a bare `Rgba`. A record
+  with no TEX0 in its bind packet, or a CBP no loaded palette answers, still decodes -- by `m_texelBitSize`
+  and by the first palette -- and says so in a string, so the viewer reports a bad texture instead of the
+  decoder throwing mid-map.

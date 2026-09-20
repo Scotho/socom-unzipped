@@ -251,8 +251,15 @@ u32 { m_texelBitSize:8, m_selectQwc:8, m_pal_offset:8,
   value: `a_floor.tif` gives `0x201026E599304001` = `TBP0=1`, `PSM=0x13` (PSMT8), `TW=6`, `TH=6`, `TBW=1`,
   `CBP=311`, `CPSM=2` (PSMCT16). `flooroil_detail.tif` gives `PSM=0` (PSMCT32), `CBP=0`. The rest are VU1
   parameter words of the same shape the geometry packets unpack before `MSCAL 0`.
-- **Open question:** whether the pixel bytes are raster order or pre-swizzled for a PSMCT32 upload trick. Settle
-  it by decoding one PSMT8 texture both ways and looking. Every other field is certain.
+- **Settled 2026-09-20 (M2):** the pixel bytes are **plain raster rows**, not pre-swizzled. All 65 Frostfire
+  textures were decoded both ways and looked at: raster gives materials you can name -- `sign04.tif` reads
+  "DANGER / FLAMMABLE LIQUID" -- while reading the same bytes as the GS PSMT8 page layout (16x16 blocks inside
+  128x64 pages) shuffles every 8-bit texture into block hash. The rows are stored **bottom-up**: `sign04.tif`
+  decodes upside down, so a viewer flips V.
+- **The 8-bit palettes do carry the GS `csm1` CLUT layout** (settled the same way): entries sit in blocks of 32
+  whose two middle 8-entry groups are swapped, undone by `(i & ~0x18) | ((i & 0x08) << 1) | ((i & 0x10) >> 1)`.
+  `cuba1a_sky01.tif` is the witness -- a smooth cloud sky with the swap undone, a hard-banded contour map
+  without it. Every other field is certain.
 
 ### Palette record (`MP2_PAL.ZED -> palettes -> texpal_<id> -> {par, buf}`)
 `par` is the 8-byte `PALETTE_PARAMS` of `ztex.h:39-47` (`ztex_palette.cpp:27-30`):
