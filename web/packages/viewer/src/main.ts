@@ -223,6 +223,9 @@ function show(map: LoadedMap): void {
   }
   view = buildWorld(map);
   scene.add(view.group);
+  // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
+  // covers the map's diagonal rather than the 40,000 the camera used to open with.
+  fly.setClipPlanes(map.camera?.nearPlane ?? 4, Math.max(2000, view.box.min.distanceTo(view.box.max) * 1.6));
   // A map with no `cameras/camera` key takes a range off its own size rather than the last map's.
   if (!map.camera) {
     Object.assign(fog, fogForExtent(view.box.min.distanceTo(view.box.max)));
@@ -283,5 +286,6 @@ window.__viewer = {
   }),
   toggles: () => ui.toggles(),
   chromeHidden: () => ui.chromeHidden(),
+  flares: () => view?.flarePositions() ?? [],
   sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;

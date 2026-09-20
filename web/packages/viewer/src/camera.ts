@@ -23,6 +23,12 @@ const BRAKE = 8;
 
 /** The field of view at rest, and how far Ctrl widens it. The kick is what sells the speed. */
 const FOV = 65;
+/**
+ * The clip planes a map is opened with, before its own are known. 4 is the game's own near plane; the
+ * far is a whole large map and then some, and `setClipPlanes` narrows it once the map's extent is read.
+ */
+const DEFAULT_NEAR = 4;
+const DEFAULT_FAR = 12000;
 const SPRINT_FOV = 1.14;
 /** Exponential approach rate for the FOV kick, per second. */
 const FOV_RATE = 9;
@@ -109,7 +115,7 @@ export class FlyCamera {
     private readonly canvas: HTMLCanvasElement,
     private readonly options: FlyCameraOptions = {},
   ) {
-    this.camera = new PerspectiveCamera(FOV, 1, 1, 40000);
+    this.camera = new PerspectiveCamera(FOV, 1, DEFAULT_NEAR, DEFAULT_FAR);
     this.camera.rotation.order = 'YXZ';       // yaw about y, then pitch about the new x
     canvas.addEventListener('pointerdown', this.onPointerDown);
     canvas.addEventListener('pointermove', this.onPointerMove);
@@ -127,6 +133,22 @@ export class FlyCamera {
   /** `MetersPerUnit` from the map: the fly speed is a cruise in metres, whatever the unit is. */
   setScale(metersPerUnit: number): void {
     this.speed = METRES_PER_SECOND / (metersPerUnit > 0 ? metersPerUnit : 0.1);
+  }
+
+  /**
+   * The near and far clip planes. Depth precision is spent in proportion to `far / near`, and a
+   * perspective depth buffer puts most of its resolution just past the near plane: at the 1 / 40000 the
+   * camera used to open with, two coplanar surfaces a few units apart land on the same depth value and
+   * flicker against each other as the camera moves. The game's own near plane is 4 (`m_near_plane` in
+   * `cameras/camera`, 4.0 on all 22 maps) and its far is a few hundred; the viewer keeps the near and
+   * takes a far from the map's extent, which is generous enough to fly around in and still ~26x the
+   * precision.
+   */
+  setClipPlanes(near: number, far: number): void {
+    if (!(far > near) || near <= 0) return;
+    this.camera.near = near;
+    this.camera.far = far;
+    this.camera.updateProjectionMatrix();
   }
 
   setAspect(aspect: number): void {

@@ -1,5 +1,6 @@
 import {
-  Box3, BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Group, InstancedMesh, LinearFilter,
+  Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, Group,
+  InstancedMesh, LinearFilter,
   LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace,
   RGBAFormat, RepeatWrapping,
   SRGBColorSpace, Texture,
@@ -86,6 +87,8 @@ export interface WorldView {
   faceCamera(camera: Camera): void;
   /** Whether the flares are turned at all, for seeing the pose the disc actually holds. */
   setBillboards(on: boolean): void;
+  /** Where the flares are, in world space -- for aiming a camera at one. */
+  flarePositions(): [number, number, number][];
   /**
    * Re-runs the VU's lighting over every vertex: `record2 * lit`, the material colour on disc times a
    * `lit` built from the vertex normal and four colours (see `./lighting`). Cheap enough to call from a
@@ -129,7 +132,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     const rgba = name === null ? undefined : map.textures[name];
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
-      texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true, linearLight);
+      texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true, linearLight,
+        map.textureFlags[name]?.graded ?? false);
       textures.set(name, texture);
     }
     const flags = name === null ? undefined : map.textureFlags[name];
@@ -256,6 +260,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (!billboardsOn) return;
       for (const mesh of billboards) mesh.quaternion.copy(camera.quaternion);
     },
+    flarePositions: () => billboards.map((m) => [m.position.x, m.position.y, m.position.z]),
     setBillboards: (on) => {
       billboardsOn = on;
       if (!on) for (const mesh of billboards) mesh.quaternion.identity();   // back to the pose on disc
@@ -398,15 +403,19 @@ function geometryOf(
   return geometry;
 }
 
-function makeTexture(rgba: Rgba, bilinear: boolean, linearLight: boolean): DataTexture {
+function makeTexture(rgba: Rgba, bilinear: boolean, linearLight: boolean, graded: boolean): DataTexture {
   const texture = new DataTexture(new Uint8Array(rgba.data.buffer, rgba.data.byteOffset, rgba.data.length), rgba.width, rgba.height, RGBAFormat);
   texture.flipY = FLIP_Y;
   // NoColorSpace is the GS's own reading: the stored byte *is* the value, and the modulate happens on it.
   texture.colorSpace = linearLight ? SRGBColorSpace : NoColorSpace;
   texture.magFilter = bilinear ? LinearFilter : NearestFilter;
   texture.minFilter = bilinear ? LinearFilter : NearestFilter;   // no mipmaps tonight: nothing generates them
-  texture.wrapS = RepeatWrapping;
-  texture.wrapT = RepeatWrapping;
+  // A graded texture is a decal on one quad -- a flare, a glow -- and its UVs stay inside 0..1, so it
+  // clamps. Repeating it makes the bilinear tap at u = 1 fetch u = 0, and a ray that runs to the edge
+  // of `lightrays.tif` (border alpha max 255, mean 9) then bleeds round and draws the quad's outline as
+  // a visible square. A tiling wall keeps the repeat it needs.
+  texture.wrapS = graded ? ClampToEdgeWrapping : RepeatWrapping;
+  texture.wrapT = graded ? ClampToEdgeWrapping : RepeatWrapping;
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
   return texture;
