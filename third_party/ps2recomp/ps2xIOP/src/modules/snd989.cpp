@@ -810,10 +810,11 @@ namespace ps2x::iop::detail
 
                 case kSetSoundParams:
                 {
-                    SoundSlot *slot = findSound(args.u32(0));
+                    const uint32_t handle = args.u32(0);
+                    const uint32_t mask = args.u32(1);
+                    SoundSlot *slot = findSound(handle);
                     if (slot != nullptr)
                     {
-                        const uint32_t mask = args.u32(1);
                         if ((mask & 1u) != 0u)
                         {
                             slot->volume = args.s32(2);
@@ -831,6 +832,32 @@ namespace ps2x::iop::detail
                             slot->pitchBend = args.s16(5);
                         }
                         value = slot->handle;
+                    }
+                    else if (StreamSlot *stream = findStream(handle); stream != nullptr)
+                    {
+                        // research/36 Q6 item 4: the IRX's snd_SetSoundParams (FUN_0000bcbc; playsnd.c:304-306, 340)
+                        // answers the handle for ANY live handler -- a VAG stream too -- or 0. The EE polls its
+                        // POSITIONED entries with 0x21 instead of 0x19 (FUN_00346ea0: flag bit 0 -> SetSoundParams
+                        // with the same completion callback), so a stream that answered 0 here read as dead on its
+                        // first poll. Gated on the host exactly as 0x19 is: a stream the mixer has finished is the
+                        // IRX's deactivated handler, and answers 0 (its slot freed).
+                        bool playing = false;
+                        if (m_host.audioIsPlaying(handle, playing) && !playing)
+                        {
+                            stream->active = false;
+                        }
+                        else
+                        {
+                            if ((mask & 1u) != 0u)
+                            {
+                                stream->volume = args.s32(2);
+                            }
+                            if ((mask & 6u) != 0u)
+                            {
+                                stream->pan = args.s32(3);
+                            }
+                            value = stream->handle;
+                        }
                     }
                     forwardAudio(fno, args);
                     hasResult = true;

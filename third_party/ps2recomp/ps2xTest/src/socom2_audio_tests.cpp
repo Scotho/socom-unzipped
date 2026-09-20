@@ -2066,6 +2066,58 @@ void register_socom2_audio_tests()
                      "and so does the next one: snd_StopSound freed the stopped stream's slot");
         });
 
+        // research/36 Q6 item 4 (2026-09-20): the IRX's snd_SetSoundParams (FUN_0000bcbc; playsnd.c:304-306, 340)
+        // answers the handle for ANY live handler, or 0. The EE polls its POSITIONED entries with 0x21 instead of
+        // 0x19 (FUN_00346ea0, flag bit 0: SetSoundParams with the same completion callback), and the module answered
+        // 0 for every stream handle -- so every positioned stream (the Sprint 9 Q0 voice lines, a positioned music
+        // cue) read as dead on its first poll. Same class of bug as Q1, in the other direction.
+        tc.Run("989snd: snd_SetSoundParams answers the handle for a live VAG STREAM too, and 0 once it has played out (the IRX's FUN_0000bcbc)", [](TestCase &t)
+        {
+            class AnsweringHost final : public Snd989TestHost
+            {
+            public:
+                std::vector<uint32_t> known;
+                std::vector<uint32_t> ended;
+                void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+                {
+                    if (function == 0x2Cu && count >= 1)
+                        known.push_back(static_cast<uint32_t>(args[0]));
+                }
+                bool audioIsPlaying(uint32_t handle, bool &playing) const override
+                {
+                    if (std::find(known.begin(), known.end(), handle) == known.end())
+                        return false;
+                    playing = std::find(ended.begin(), ended.end(), handle) == ended.end();
+                    return true;
+                }
+            };
+            Snd989HarnessT<AnsweringHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kSetSoundParams = 0x21u;
+            constexpr uint32_t kIsStillPlaying = 0x19u;
+            // A positioned voice line: vol 0, flags 2, then raised with SetSoundParams (Sprint 9 Q0).
+            const std::vector<uint32_t> play = {2000u, 0u, 0u, 0u, 1u, 0u, 0u, 2u};
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+
+            const uint32_t s = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(s != 0u && ((s >> 24) & 0x1Fu) == 4u, "the stream gets a type-4 handle");
+            t.Equals(h.call(kSetSoundParams, {s, 1u, 0x400u, 0u}), s, "SetSoundParams(mask bit0, vol) on the live stream answers the HANDLE");
+            t.Equals(h.call(kSetSoundParams, {s, 6u, 0u, 90u}), s, "and so does a pan-only call");
+            t.IsTrue(!h.host.audioCommands.empty() && h.host.audioCommands.back() == kSetSoundParams,
+                     "the call still reaches the host (the mixer's setVolPan)");
+            t.Equals(h.call(kSetSoundParams, {s ^ 0x1u, 1u, 0x400u, 0u}), 0u, "a stream handle nothing owns answers 0");
+
+            h.host.ended.push_back(s);
+            t.Equals(h.call(kSetSoundParams, {s, 1u, 0x400u, 0u}), 0u,
+                     "once the mixer has finished it the answer is 0: the IRX's deactivated handler (sndhand.c:237)");
+            t.Equals(h.call(kIsStillPlaying, {s}), 0u, "and 0x19 agrees");
+            const uint32_t next = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(next != 0u && next != s, "the next play gets a fresh handle");
+            t.Equals((next >> 16) & 0xFFu, (s >> 16) & 0xFFu, "in the slot the 0x21 poll freed");
+        });
+
         // Task 12c: 971 "play request for unknown bank" lines for banks that were loaded and never unloaded. The
         // reject path itself has to stay harmless (return 0, play nothing) while a loaded bank still plays.
         tc.Run("989snd: a play on an unknown bank handle is rejected without disturbing a loaded bank", [](TestCase &t)
