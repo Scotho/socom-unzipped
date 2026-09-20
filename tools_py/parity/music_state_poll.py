@@ -1,11 +1,18 @@
 #!/usr/bin/env python
-"""Poll the game's EE-side CUE MANAGER (the mission's voice/music cue sequencer, FUN_0034afd0) on either
-machine and log every change of what it DECIDED -- state transitions, cue-queue entries, the handle
-words -- with the sound ENTRY and the sound DEF behind the playing cue decoded (name, disc sector,
-group, flags, the IOP handle), so two driven runs compare by decisions and not only by sound
-(sprint-10 music round four, validation item 3).
+"""Poll the game's EE-side sound DECISION machines on either machine and log every change of what they
+decided, with the sound entry / def behind each decision decoded (name, disc sector, group, flags, the
+IOP handle), so two driven runs compare by decisions and not only by sound (sprint-10 music round four,
+validation item 3). Two machines, chosen by `--what`:
 
-The manager (research/36 "The music manager"; decomp `game/analysis/socom2_game.elf.decomp.c`):
+  --what cue    (default) the CUE SEQUENCER of FUN_0034afd0: the mission's voice/one-shot cue queue
+                (research/36 "The music manager"; the layout below).
+  --what music  the MISSION MUSIC machine of FUN_003492b0 (decomp :245200-246180): the level, the
+                alert, the single playing stem or the PLAYLIST with its cursor and its entries -- and
+                each entry's PAUSETIME, because an entry with no SNDNAME is a REST (FUN_00349b90).
+
+Decomp = `game/analysis/socom2_game.elf.decomp.c`.
+
+== The cue sequencer (--what cue) ==
 
   DAT_0049e150  byte   the ROUTE: 0 = not initialised (FUN_0034b8c0 :246983), 1 = the 989DSTRM headset
                        extension (FUN_0034bb80 :247109), 2 = the plain 0x2c speaker path (:247104;
@@ -34,6 +41,43 @@ The manager (research/36 "The music manager"; decomp `game/analysis/socom2_game.
   manager +0x38 word   [word 0xe] the resumable cue's def pointer (:246769-246771, cleared by FUN_0034b890 :246956).
   manager +0x3c word   [word 0xf] that cue's id (:246772 = +0xc); 0xffffffff = none (:246704, :246766).
 
+== The mission music machine (--what music) ==
+
+  DAT_0048e090  byte   the LEVEL (signed): -1 idle; 0 = a STEALTH_MUSIC playlist; 1 = a single def asked
+                       by script; 2 = a fight playlist picked by the alert level; 3 = a single def forced
+                       (FUN_00348dc0 :245378-245445; FUN_00348b20 :245296-245344 sets 0 / 2 with the playlist).
+  DAT_0048e0a0  byte   the ALERT level, 0-3, from the AI threat float (FUN_00348ce0 :245349-245374: <1 -> 0,
+                       1..3 -> 1 only from 0, 3..5 -> 2, >=5 -> 3; called from FUN_002a4920 :147892-147916).
+  DAT_0048e0a8  byte   "alert changed" (:245372), consumed by the tick (:245570-245573).
+  DAT_0048e080  word   the single playing stem's sound ENTRY (levels 1 / 3; :245398, :245407; freed :245552).
+  DAT_0048e088  word   the PLAYLIST pointer (:245330-245339); 0 = none.
+  DAT_0048e0b0/0b4     a pending request: def pointer + level (0xff = none; :245422-245424, :245431-245433).
+  DAT_0048e098  byte   tables loaded (FUN_00349670 :245663-245692 frees first when 1).
+  DAT_003e0080  byte   music OFF (FUN_00348860 :245313 sets 1 and stops; FUN_003488e0 :245329 clears; the tick
+                       does nothing while set, :245547).
+  DAT_0048e010 + level*0xc   per level (0 STEALTH, 1 FIGHT, 2 MED_FIGHT, 3 HEAVY_FIGHT, FUN_00349670): a
+                       vector<playlist*> {capacity, COUNT (+4 = DAT_0048e014), DATA (+8 = DAT_0048e018)}.
+  DAT_0048e050 + level*0xc   the matching WEIGHT vector<float> {capacity, count (DAT_0048e054), data
+                       (DAT_0048e058)}; 1/n each at load (:245649-245656); the roll (FUN_00348b20) picks the
+                       playlist whose cumulative weight crosses rand, multiplies its weight by 0.1 and
+                       renormalises (FUN_00348900 :245338-245385), resets it (FUN_00349d90) and installs it.
+  PLAYLIST (0x18 bytes, FUN_0034a0a0 :246167-246178): +0 capacity, +4 COUNT, +8 DATA (entries of 0x10),
+                       +0xc CURSOR (-1 = not started), +0x10 the SEQ_NAME resource handle, +0x14 DONE byte,
+                       +0x15 STOP-AFTER-CURRENT byte (FUN_00349c70 :245974-245990, the fade-out on alert 0).
+  ENTRY (0x10, FUN_00349c50 :245959-245969, filled by FUN_00349e90 :246077-246135 from the .rdr node's
+                       SNDNAME and PAUSETIME): [0] DEF pointer (0 = no sound: a REST), [1] the sound entry
+                       while playing (FUN_00349b40 :245905-245916 plays via def vtable +0x1c), [2] PAUSETIME
+                       float seconds, [3] ELAPSED float. FUN_00349b90 (:245922-245955): a REST is done when
+                       elapsed + dt > PAUSETIME (elapsed reset to 0); a sound entry is done when its entry is
+                       0 or FUN_00346d70 says the handle is dead (then freed). PAUSETIME is NOT consulted for
+                       an entry with a def. FUN_00349db0 (:246036-246073) advances: cursor -1 -> 0 at once,
+                       else on done cursor++ and play the next; past the end or on the stop flag -> DONE.
+  The tick FUN_003492b0(dt) (:245541-245595; called from the sound frame update :241568 right after the
+                       entries' poll FUN_00347120): playlist done -> DAT_0048e088 = 0, level -1, re-evaluate
+                       (FUN_00349100 :245484-245537 -> FUN_00348dc0 -> FUN_00348b20 rolls the next playlist
+                       the SAME tick). So between playlists there is no timer; inside a playlist the rests are
+                       the entries with no SNDNAME -- what this mode prints per entry.
+
 The sound ENTRY (0x28 bytes, FUN_00347960 :244640-244656 allocates, FUN_00347690 initialises):
   +0x00  the IOP handle word: -1 = pending (FUN_00347960(-1, def)), then the 0x19 / 0x21 answer stored
          by the callback 0x346300 (research/36: handle or 0); 0 = dead (FUN_00346d70 :244263-244272).
@@ -48,7 +92,7 @@ The sound ENTRY (0x28 bytes, FUN_00347960 :244640-244656 allocates, FUN_00347690
 The sound DEF (the fields the play path reads, FUN_00342240 :241795-241900 and FUN_00343140):
   +0x04 float volume scale; +0x0c / +0x0e u16 near / far distance; +0x10 byte bank index (into the
   table at DAT_0048dbf0, 0x18 bytes each); +0x12 u16 sound id in the bank; +0x1c flags A: bit 0 =
-  streamed from a store file (:242118), bit 3 = routed through this cue manager (:242112 `<< 0x3c`),
+  streamed from a store file (:242118), bit 3 = routed through the cue sequencer (:242112 `<< 0x3c`),
   bit 4 = resumable, group 6 (:241880); +0x1d flags B: bits 5-7 = the cue TYPE (2 / 3 interrupt,
   :246933-246938), (B & 0x1f) >> 2 = the FORMAT selector (2 = "%s.VPK", else "%s.VAG"; 3 = gated,
   :241817-241833); +0x20 the name string pointer (FUN_001988d0(buf, "%s.VAG", name) :241829-241833),
@@ -64,26 +108,25 @@ The sound DEF (the fields the play path reads, FUN_00342240 :241795-241900 and F
 
 Two targets, one log format:
 
-  --target pcsx2   reads the words over PINE (cam_poll's pointer-chain resolver); the entry every
-                   sample while one is set, the def + name once per new def, the queue slots on a
-                   non-empty queue. --hz 5 has run a full mission; 20 Hz coincided with a PCSX2 exit
-                   once (cause unproven).
-  --target ours    reads the exe's own `[pc-sampler]` + `[peek]` rows (PS2X_PC_SAMPLER=0.05 and the
-                   PS2X_PEEK spec the tool prints, exported before the capture; drive.py passes the
-                   environment through) from a run log, live (--follow) or after the fact. Every block
-                   is found by ADDRESS (the pointer word peeked beside it), never by item index.
+  --target pcsx2   reads the words over PINE (cam_poll's pointer-chain resolver); defs and names once
+                   per pointer. --hz 5 has run a full mission; 20 Hz coincided with a PCSX2 exit once.
+  --target ours    reads the exe's own `[pc-sampler]` + `[peek]` rows (PS2X_PC_SAMPLER and the
+                   PS2X_PEEK spec the tool prints for the mode -- `--spec` prints it -- exported before
+                   the capture; drive.py passes the environment through) from a run log, live
+                   (--follow) or after the fact. Every block is found by ADDRESS (the pointer word
+                   peeked beside it), never by item index.
 
 One line per CHANGE: `wall=<epoch s> t=<s of the poll's own clock> [vsync=<ours' frame counter>]
-[clock=MM:SS] <all fields> | <what changed> [|| the def decoded]`.
+[clock=MM:SS] <all fields> | <what changed> [|| the decoded def / playlist]`.
 
 `compare` takes two such logs and each run's HUD anchor (a run directory: the drive.stdout's
 `untilref(...ref_hud...)` match, timed by the next step's PNG; `t:<s>` in that log's own t= clock,
 e.g. drive.stdout's step time for ours; or an epoch) and prints the two timelines side by side.
 
 Usage:
-  python -m tools_py.parity.music_state_poll --target pcsx2 --port 28011 --hz 5 --seconds 600 --out logs/parity/X/music_state.txt
-  python -m tools_py.parity.music_state_poll --target ours --log logs/parity/X/game.log --out logs/parity/X/music_state.txt
-  python -m tools_py.parity.music_state_poll --target ours --log latest --follow --seconds 600 --out ...
+  python -m tools_py.parity.music_state_poll --what music --spec            # the PS2X_PEEK spec for ours
+  python -m tools_py.parity.music_state_poll --what music --target pcsx2 --port 28011 --hz 5 --seconds 600 --out logs/parity/X/music_state.txt
+  python -m tools_py.parity.music_state_poll --what music --target ours --log logs/parity/X/game.log --out logs/parity/X/music_state.txt
   python -m tools_py.parity.music_state_poll compare A/music_state.txt B/music_state.txt --hud-a t:310.7 --hud-b B --window=-20:200
 """
 import argparse
@@ -97,22 +140,41 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 from tools_py.parity.cam_poll import pine_port, resolve  # noqa: E402
 
+# -- the cue sequencer
 ROUTE_ADDR = 0x49e150            # DAT_0049e150, byte 0 of the word
 MGR_PTR_ADDR = 0x49e158          # DAT_0049e158 -> the manager
 MGR_WORDS = 16                   # 0x40 bytes
+QUEUE_SLOTS = 20                 # the constructor's 0x14 free slots
+SLOT_WORDS = 3
+# -- the music machine
+MUSIC_ADDR = 0x48e080            # DAT_0048e080.. as one 14-word block (see MUSIC_W_*)
+MUSIC_WORDS = 14
+MUSIC_W_ENTRY, MUSIC_W_PLAYLIST, MUSIC_W_LEVEL, MUSIC_W_LOADED = 0, 2, 4, 6      # 0x48e080/88/90/98
+MUSIC_W_ALERT, MUSIC_W_CHANGED, MUSIC_W_REQDEF, MUSIC_W_REQLVL = 8, 10, 12, 13   # 0x48e0a0/a8/b0/b4
+MUSIC_OFF_ADDR = 0x3e0080        # DAT_003e0080
+TABLES_ADDR = 0x48e010           # DAT_0048e010: 4 x {cap, count, data} playlists, then at +0x40 4 x weights
+TABLES_WORDS = 28
+LEVEL_NAMES = ("STEALTH", "FIGHT", "MED_FIGHT", "HEAVY_FIGHT")
+PLAYLIST_WORDS = 6               # 0x18 bytes
+PL_ENTRY_WORDS = 4               # 0x10 bytes
+PL_MAX_ENTRIES = 16              # 64 words: PS2X_PEEK's cap
+PL_PEEK_ENTRIES = 6              # entries whose def / name / sound entry ours peeks by chain
+TABLE_MAX = 8                    # playlists per level peeked
+# -- shared
 ENTRY_WORDS = 10                 # 0x28 bytes
 DEF_WORDS = 16                   # the def's first 0x40 bytes (name pointers at +0x20 / +0x24)
 NAME_WORDS = 8                   # 32 bytes of the name string
 STORE_BASE_ADDR = 0x48dc48       # the VAGSTORE object 0x48dc30 + 0x18 (second store) and + 0x1c (FUN_0034d470)
 CLOCK_ADDR = 0x408f10            # the HUD timer string "MM:SS" (research/19 :217)
 GUEST_CLOCK_ADDR = 0x4365c0      # the guest clock, float seconds (KNOWN.md, freeze detection)
-QUEUE_SLOTS = 20                 # the constructor's 0x14 free slots
-SLOT_WORDS = 3
+RAM_LO, RAM_HI = 0x100000, 0x2000000
 
 VAGSTORE_ZAR = os.path.join("game", "disc", "RUN", "SOUNDS", "VAGSTORE.ZAR")
 VAGSTORE_DATA_LBN = 0xee89a      # this disc: file LBN 0xee801 + 0x99 sectors of TOC (iso_lbn + the ZAR header)
 
-# What ours must be launched with: every block the PINE poll reads, chained from the manager pointer.
+COMMON_PEEK = [f"{STORE_BASE_ADDR:#x}:2", f"{CLOCK_ADDR:#x}:2", f"{GUEST_CLOCK_ADDR:#x}:1"]
+
+# What ours must be launched with, per mode: every block the PINE poll reads, chained from the pointers.
 OURS_PEEK_SPEC = ",".join([
     f"{ROUTE_ADDR:#x}:1", f"{MGR_PTR_ADDR:#x}:1", f"*{MGR_PTR_ADDR:#x}:{MGR_WORDS}",
     f"*{MGR_PTR_ADDR:#x}+0x34*:{ENTRY_WORDS}",                 # the entry
@@ -120,12 +182,34 @@ OURS_PEEK_SPEC = ",".join([
     f"*{MGR_PTR_ADDR:#x}+0x34*+0x4*+0x20*:{NAME_WORDS}",       # the def's name string
     f"*{MGR_PTR_ADDR:#x}+0x20*:{QUEUE_SLOTS}",                 # the cue queue's index data
     f"*{MGR_PTR_ADDR:#x}+0x30*:{QUEUE_SLOTS * SLOT_WORDS}",    # the slot array (60 words, under the 64 cap)
-    f"{STORE_BASE_ADDR:#x}:2", f"{CLOCK_ADDR:#x}:2", f"{GUEST_CLOCK_ADDR:#x}:1"])
+] + COMMON_PEEK)
 OURS_SAMPLER_S = "0.05"
+
+MUSIC_PEEK_SPEC = ",".join(
+    [f"{MUSIC_ADDR:#x}:{MUSIC_WORDS}", f"{MUSIC_OFF_ADDR:#x}:1", f"{TABLES_ADDR:#x}:{TABLES_WORDS}"]
+    + [f"*{TABLES_ADDR + 0x40 + 8 + lvl * 0xc:#x}:{TABLE_MAX}" for lvl in range(4)]     # the weights per level
+    + [f"*{TABLES_ADDR + 8 + lvl * 0xc:#x}:{TABLE_MAX}" for lvl in range(4)]            # the playlist pointers per level
+    + [f"*{MUSIC_ADDR:#x}:{ENTRY_WORDS}", f"*{MUSIC_ADDR:#x}+0x4*:{DEF_WORDS}",          # the single stem's entry, def, name
+       f"*{MUSIC_ADDR:#x}+0x4*+0x20*:{NAME_WORDS}",
+       f"*{MUSIC_ADDR + 8:#x}:{PLAYLIST_WORDS}", f"*{MUSIC_ADDR + 8:#x}+0x8*:{PL_MAX_ENTRIES * PL_ENTRY_WORDS}"]
+    + [s for i in range(PL_PEEK_ENTRIES) for s in (
+        f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10:#x}*:9",                                   # entry i's def (to +0x20)
+        f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10:#x}*+0x20*:{NAME_WORDS}",                  # its name
+        f"*{MUSIC_ADDR + 8:#x}+0x8*+{i * 0x10 + 4:#x}*:2")]                              # its sound entry (handle, def)
+    + COMMON_PEEK)
+MUSIC_SAMPLER_S = "0.1"
 
 FIELDS = ("mode", "state", "irq", "en", "cue", "def", "vol", "q", "free", "h34", "h38", "h3c", "ih", "ef")
 HEX_FIELDS = ("cue", "def", "vol", "h34", "h38", "h3c", "ih", "ef")
 STATE_NAMES = {4: "reset", 3: "idle", 1: "playing", 0: "ext-started", 2: "ext-pending"}
+
+MUSIC_FIELDS = ("off", "lvl", "alert", "chg", "req", "reqdef", "ent", "eh", "pl", "pli", "n", "cur", "done", "stop", "ceh")
+MUSIC_HEX_FIELDS = ("reqdef", "ent", "eh", "pl", "ceh")
+MUSIC_LEVEL_NAMES = {-1: "idle", 0: "stealth-list", 1: "single", 2: "fight-list", 3: "single-forced"}
+
+
+def signed8(v):
+    return v - 256 if v >= 128 else v
 
 
 class Sample:
@@ -137,9 +221,27 @@ class Sample:
         self.qidx, self.slots, self.store, self.clk, self.gclk = qidx, slots, store, clk, gclk
 
 
+class MusicSample:
+    """--what music: the globals block, the OFF byte, the tables, the single stem's entry / def / name, the
+    playlist header and entries, per entry (def words, name words, sound-entry words), the weights and
+    playlist pointers per level."""
+
+    def __init__(self):
+        self.globals = None
+        self.off = None
+        self.tables = None
+        self.entry = self.sdef = self.name = None
+        self.pl = None                  # the playlist header words
+        self.entries = None             # the entries' words, flat
+        self.entry_info = {}            # index -> (def words or None, name words or None, sound entry words or None)
+        self.weights = {}               # level -> [floats]
+        self.lists = {}                 # level -> [playlist pointers]
+        self.store = self.clk = self.gclk = None
+
+
 def decode(route_word, mgr_words, entry_words=None):
-    """The manager's fields out of the DAT_0049e150 word, the 16 manager words (None = no manager) and the
-    entry's words (None = no entry: ih/ef read '-')."""
+    """The cue sequencer's fields out of the DAT_0049e150 word, the 16 manager words (None = no manager)
+    and the entry's words (None = no entry: ih/ef read '-')."""
     f = {"mode": route_word & 0xff}
     if mgr_words is None:
         for k in FIELDS[1:]:
@@ -165,18 +267,74 @@ def decode(route_word, mgr_words, entry_words=None):
     return f
 
 
+def decode_playlist(pl_words, entries_words=None):
+    """The playlist header -> dict(cap, n, data, cur, done, stop) and its entries -> [dict(def, sentry,
+    pause, elapsed)] (n entries, as far as the words go)."""
+    if pl_words is None or len(pl_words) < PLAYLIST_WORDS:
+        return None, []
+    h = {"cap": pl_words[0], "n": pl_words[1], "data": pl_words[2], "cur": signed32(pl_words[3]),
+         "done": pl_words[5] & 0xff, "stop": (pl_words[5] >> 8) & 0xff}
+    ents = []
+    if entries_words:
+        for i in range(min(h["n"], len(entries_words) // PL_ENTRY_WORDS)):
+            w = entries_words[i * PL_ENTRY_WORDS:(i + 1) * PL_ENTRY_WORDS]
+            ents.append({"def": w[0], "sentry": w[1], "pause": as_float(w[2]), "elapsed": as_float(w[3])})
+    return h, ents
+
+
+def signed32(v):
+    return v - (1 << 32) if v >= (1 << 31) else v
+
+
+def as_float(w):
+    return struct.unpack("<f", struct.pack("<I", w & 0xffffffff))[0]
+
+
+def decode_music(s):
+    """The music machine's fields out of a MusicSample (None = the block was not there)."""
+    f = {k: None for k in MUSIC_FIELDS}
+    f["off"] = s.off & 0xff if s.off is not None else None
+    g = s.globals
+    if g is None or len(g) < MUSIC_WORDS:
+        return f
+    f["lvl"] = signed8(g[MUSIC_W_LEVEL] & 0xff)
+    f["alert"] = g[MUSIC_W_ALERT] & 0xff
+    f["chg"] = g[MUSIC_W_CHANGED] & 0xff
+    f["req"] = signed8(g[MUSIC_W_REQLVL] & 0xff)
+    f["reqdef"] = g[MUSIC_W_REQDEF]
+    f["ent"] = g[MUSIC_W_ENTRY]
+    f["eh"] = s.entry[0] if s.entry else None
+    f["pl"] = g[MUSIC_W_PLAYLIST]
+    h, ents = decode_playlist(s.pl, s.entries)
+    if h:
+        f["n"], f["cur"], f["done"], f["stop"] = h["n"], h["cur"], h["done"], h["stop"]
+        if 0 <= h["cur"] < len(ents):
+            se = s.entry_info.get(h["cur"], (None, None, None))[2]
+            f["ceh"] = se[0] if se else (0 if ents[h["cur"]]["sentry"] == 0 else None)
+    if f["pl"] and s.lists:
+        for lvl, ptrs in s.lists.items():
+            if f["pl"] in ptrs:
+                f["pli"] = lvl * 16 + ptrs.index(f["pl"])     # level in the high nibble, index in the low
+    return f
+
+
+def playlist_index(pli):
+    return None if pli is None else (pli >> 4, pli & 0xf)
+
+
 def decode_def(def_words, name_words=None):
     """The def's play-path fields: name, format, type, flags, group, bank/id, the name key for the store."""
-    if def_words is None or len(def_words) < DEF_WORDS:
+    if def_words is None or len(def_words) < 9:
         return None
-    raw = b"".join(w.to_bytes(4, "little") for w in def_words)
+    raw = b"".join(w.to_bytes(4, "little") for w in def_words[:9])
     flags_a, flags_b = raw[0x1c], raw[0x1d]
     fmt = (flags_b & 0x1f) >> 2
     d = {"vol_scale": struct.unpack_from("<f", raw, 4)[0],
          "near": struct.unpack_from("<H", raw, 0xc)[0], "far": struct.unpack_from("<H", raw, 0xe)[0],
          "bank": raw[0x10], "id": struct.unpack_from("<H", raw, 0x12)[0],
          "flags_a": flags_a, "flags_b": flags_b, "type": flags_b >> 5, "fmt": fmt,
-         "stream": flags_a & 1, "name_ptr": def_words[8], "name2_ptr": def_words[9],
+         "stream": flags_a & 1, "name_ptr": def_words[8],
+         "name2_ptr": def_words[9] if len(def_words) > 9 else 0,
          "name": cstring(name_words)}
     d["group"] = 1 if fmt == 2 else 6 if flags_a & 0x10 else 2 if fmt == 3 else 0
     d["ext"] = "VPK" if fmt == 2 else "VAG"
@@ -201,7 +359,7 @@ def clock_string(words):
 def guest_clock(word):
     if word is None:
         return None
-    v = struct.unpack("<f", struct.pack("<I", word))[0]
+    v = as_float(word)
     return v if v == v and abs(v) < 1e7 else None
 
 
@@ -282,28 +440,71 @@ def describe_def(d, ih=None, store_words=None, toc=None):
     return " ".join(parts)
 
 
+def describe_playlist(h, ents, entry_info, store_words=None, toc=None, names=None):
+    """`playlist n=5 cur=2 done=0 stop=0 [M51_M01 | rest 12.0s | >M51_M02 ...] cur M51_M02 sector ... handle ...`
+    (`>` marks the cursor; a REST entry shows its PAUSETIME and, at the cursor, its elapsed seconds).
+    `names` = {def ptr: name} for entries whose def block was not read this sample."""
+    if h is None:
+        return None
+    cells = []
+    for i, e in enumerate(ents):
+        mark = ">" if i == h["cur"] else ""
+        if e["def"] == 0:
+            cell = f"rest {e['pause']:.1f}s"
+            if i == h["cur"]:
+                cell += f" at {e['elapsed']:.1f}"
+        else:
+            dw, nw, _se = entry_info.get(i, (None, None, None))
+            d = decode_def(dw, nw)
+            nm = (d["name"] if d and d["name"] else None) or (names or {}).get(e["def"]) or f"def@{e['def']:#x}"
+            cell = nm
+        cells.append(mark + cell)
+    if h["n"] > len(ents):
+        cells.append(f"+{h['n'] - len(ents)} more")
+    s = f"playlist n={h['n']} cur={h['cur']} done={h['done']} stop={h['stop']} [" + " | ".join(cells) + "]"
+    if 0 <= h["cur"] < len(ents) and ents[h["cur"]]["def"]:
+        dw, nw, se = entry_info.get(h["cur"], (None, None, None))
+        d = describe_def(decode_def(dw, nw), se[0] if se else None, store_words, toc)
+        if d:
+            s += " cur " + d
+    return s
+
+
+def describe_weights(weights, lists):
+    """`weights STEALTH[0.50,0.50] FIGHT[1.00] ...` (the roll's decision table)."""
+    parts = []
+    for lvl in range(4):
+        w = weights.get(lvl)
+        if w:
+            parts.append(f"{LEVEL_NAMES[lvl]}[" + ",".join(f"{x:.2f}" for x in w) + "]")
+    return "weights " + " ".join(parts) if parts else None
+
+
 # ---- change lines ----------------------------------------------------------------------------------
 
-def fmt_field(k, v):
+def fmt_field(k, v, hexf=None):
+    hexf = HEX_FIELDS + MUSIC_HEX_FIELDS if hexf is None else hexf
     if v is None:
         return "-"
-    if k in HEX_FIELDS:
-        return f"{v:#x}" if v != 0xffffffff else "-1"
+    if k in hexf:
+        return f"{v:#x}"
     return str(v)
 
 
-def format_fields(f):
-    return " ".join(f"{k}={fmt_field(k, f.get(k))}" for k in FIELDS)
+def format_fields(f, fields=None):
+    fields = FIELDS if fields is None else fields
+    return " ".join(f"{k}={fmt_field(k, f.get(k))}" for k in fields)
 
 
-def diff_fields(prev, cur):
+def diff_fields(prev, cur, fields=None):
     """[(field, old, new)] for the fields that differ (prev None = everything is new)."""
+    fields = FIELDS if fields is None else fields
     if prev is None:
-        return [(k, None, cur.get(k)) for k in FIELDS]
-    return [(k, prev.get(k), cur.get(k)) for k in FIELDS if prev.get(k) != cur.get(k)]
+        return [(k, None, cur.get(k)) for k in fields]
+    return [(k, prev.get(k), cur.get(k)) for k in fields if prev.get(k) != cur.get(k)]
 
 
-def format_change_line(wall, t, f, changes, vsync=None, clock=None, gclock=None, note=None):
+def format_change_line(wall, t, f, changes, vsync=None, clock=None, gclock=None, note=None, fields=None):
     head = f"wall={wall:.3f} t={t:.3f}"
     if vsync is not None:
         head += f" vsync={vsync}"
@@ -312,7 +513,7 @@ def format_change_line(wall, t, f, changes, vsync=None, clock=None, gclock=None,
     if gclock is not None:
         head += f" gclock={gclock:.2f}"
     what = " ".join(f"{k} {fmt_field(k, o)}->{fmt_field(k, n)}" for k, o, n in changes)
-    line = f"{head} {format_fields(f)} | {what}"
+    line = f"{head} {format_fields(f, fields)} | {what}"
     if note:
         line += f" || {note}"
     return line
@@ -330,50 +531,100 @@ def parse_change_line(line):
     fields = {}
     for tok in m.group("fields").split():
         k, v = tok.split("=", 1)
-        fields[k] = None if v == "-" else 0xffffffff if v == "-1" else int(v, 0)
+        fields[k] = None if v == "-" else int(v, 0)
     return {"wall": float(m.group("wall")), "t": float(m.group("t")),
             "vsync": int(m.group("vsync")) if m.group("vsync") else None,
             "clock": m.group("clock"), "gclock": float(m.group("gclock")) if m.group("gclock") else None,
             "fields": fields, "what": m.group("what"), "note": m.group("note")}
 
 
-NOTE_ON = ("state", "h34", "ih", "q")     # the changes that earn the decoded def / queue on the line
+NOTE_ON = ("state", "h34", "ih", "q")     # cue: the changes that earn the decoded def / queue on the line
+MUSIC_NOTE_ON = ("lvl", "ent", "eh", "pl", "cur", "done", "stop", "ceh", "n")
 
 
 class Tracker:
-    """Feeds samples in, writes the change lines out (the first sample is a change of everything)."""
+    """Feeds samples in, writes the change lines out (the first sample is a change of everything).
+    `what` = "cue" (Sample) or "music" (MusicSample)."""
 
-    def __init__(self, out, t0=None, toc=None):
+    def __init__(self, out, t0=None, toc=None, what="cue"):
         self.out = out
         self.t0 = t0
         self.prev = None
         self.changes = 0
         self.samples = 0
         self.toc = toc
+        self.what = what
+        self.fields = MUSIC_FIELDS if what == "music" else FIELDS
+        self.names = {}                 # music: def ptr -> name, learnt from any sample that carried the def
+        self.last_weights = None
 
     def feed(self, wall, fields, vsync=None, clock=None, gclock=None, t=None, sample=None):
         if self.t0 is None:
             self.t0 = wall
         self.samples += 1
-        changes = diff_fields(self.prev, fields)
+        if self.what == "music" and sample is not None:
+            self._learn(sample)
+            self._weights_line(wall, t, sample)
+        changes = diff_fields(self.prev, fields, self.fields)
         if not changes:
             return None
         self.prev = dict(fields)
         self.changes += 1
         note = None
-        if sample is not None and any(k in NOTE_ON for k, _o, _n in changes):
-            bits = []
-            d = describe_def(decode_def(sample.sdef, sample.name), fields.get("ih"), sample.store, self.toc)
-            if d:
-                bits.append(d)
-            ids = queued_ids(sample.qidx, sample.slots, fields.get("q"))
-            if ids:
-                bits.append("queued " + ",".join(f"{i:#x}" for i in ids))
-            note = "; ".join(bits) or None
-        line = format_change_line(wall, wall - self.t0 if t is None else t, fields, changes, vsync, clock, gclock, note)
+        if sample is not None:
+            note = self._music_note(fields, sample, changes) if self.what == "music" else self._cue_note(fields, sample, changes)
+        line = format_change_line(wall, wall - self.t0 if t is None else t, fields, changes, vsync, clock, gclock, note,
+                                  self.fields)
         self.out.write(line + "\n")
         self.out.flush()
         return line
+
+    def _cue_note(self, fields, sample, changes):
+        if not any(k in NOTE_ON for k, _o, _n in changes):
+            return None
+        bits = []
+        d = describe_def(decode_def(sample.sdef, sample.name), fields.get("ih"), sample.store, self.toc)
+        if d:
+            bits.append(d)
+        ids = queued_ids(sample.qidx, sample.slots, fields.get("q"))
+        if ids:
+            bits.append("queued " + ",".join(f"{i:#x}" for i in ids))
+        return "; ".join(bits) or None
+
+    def _learn(self, s):
+        """Remember def ptr -> name for the playlist entries whose def block this sample carried, so a later
+        sample that lost the chain (ours peeks 6 entries by chain; the rest only by pointer) still names them."""
+        if not s.entries:
+            return
+        for i, (dw, nw, _se) in s.entry_info.items():
+            d = decode_def(dw, nw)
+            if d and d["name"] and len(s.entries) > i * PL_ENTRY_WORDS:
+                self.names[s.entries[i * PL_ENTRY_WORDS]] = d["name"]
+
+    def _weights_line(self, wall, t, s):
+        w = describe_weights(s.weights, s.lists)
+        if w and w != self.last_weights:
+            self.last_weights = w
+            self.out.write(f"# t={(wall - self.t0) if t is None else t:.3f} {w}\n")
+
+    def _music_note(self, fields, s, changes):
+        if not any(k in MUSIC_NOTE_ON for k, _o, _n in changes):
+            return None
+        bits = []
+        if fields.get("lvl") is not None:
+            bits.append(f"level {MUSIC_LEVEL_NAMES.get(fields['lvl'], fields['lvl'])}")
+        pli = playlist_index(fields.get("pli"))
+        if pli:
+            bits.append(f"list {LEVEL_NAMES[pli[0]]}#{pli[1]}")
+        if fields.get("ent"):
+            d = describe_def(decode_def(s.sdef, s.name), fields.get("eh"), s.store, self.toc)
+            bits.append("single " + d if d else f"single entry {fields['ent']:#x}")
+        if fields.get("pl"):
+            h, ents = decode_playlist(s.pl, s.entries)
+            p = describe_playlist(h, ents, s.entry_info, s.store, self.toc, self.names)
+            if p:
+                bits.append(p)
+        return "; ".join(bits) or None
 
 
 # ---- ours: the exe's [pc-sampler] + [peek] rows -------------------------------------------------
@@ -397,7 +648,7 @@ def _block(items, addr, words):
 
 
 def sample_from_peek(items):
-    """A Sample out of a peek row's items. Every block is the item at the address the pointer beside
+    """A cue Sample out of a peek row's items. Every block is the item at the address the pointer beside
     it holds (the manager at *0x49e158, the entry at manager+0x34, the def at entry+4, the name at
     def+0x20, the queue data / slots at manager+0x20 / +0x30) -- never an index."""
     s = Sample(route=items.get(ROUTE_ADDR, [0])[0])
@@ -416,6 +667,45 @@ def sample_from_peek(items):
     return s
 
 
+def music_sample_from_peek(items):
+    """A MusicSample out of a peek row's items, every block by the pointer beside it."""
+    s = MusicSample()
+    s.globals = _block(items, MUSIC_ADDR, MUSIC_WORDS)
+    s.off = items.get(MUSIC_OFF_ADDR, [None])[0]
+    s.tables = _block(items, TABLES_ADDR, TABLES_WORDS)
+    if s.tables:
+        for lvl in range(4):
+            n, data = s.tables[lvl * 3 + 1], s.tables[lvl * 3 + 2]
+            ptrs = _block(items, data, 1)
+            if ptrs is not None and n:
+                s.lists[lvl] = ptrs[:n]
+            wn, wdata = s.tables[16 + lvl * 3 + 1], s.tables[16 + lvl * 3 + 2]
+            ws = _block(items, wdata, 1)
+            if ws is not None and wn:
+                s.weights[lvl] = [as_float(w) for w in ws[:wn]]
+    if s.globals:
+        s.entry = _block(items, s.globals[MUSIC_W_ENTRY], 2)
+        if s.entry:
+            s.sdef = _block(items, s.entry[1], 9)
+            if s.sdef:
+                s.name = _block(items, s.sdef[8], 1)
+        s.pl = _block(items, s.globals[MUSIC_W_PLAYLIST], PLAYLIST_WORDS)
+        if s.pl:
+            s.entries = _block(items, s.pl[2], 1)
+            if s.entries:
+                for i in range(min(s.pl[1], len(s.entries) // PL_ENTRY_WORDS)):
+                    dp, sp = s.entries[i * PL_ENTRY_WORDS], s.entries[i * PL_ENTRY_WORDS + 1]
+                    dw = _block(items, dp, 9)
+                    nw = _block(items, dw[8], 1) if dw else None
+                    se = _block(items, sp, 2)
+                    if dw or se:
+                        s.entry_info[i] = (dw, nw, se)
+    s.store = items.get(STORE_BASE_ADDR)
+    s.clk = items.get(CLOCK_ADDR)
+    s.gclk = items.get(GUEST_CLOCK_ADDR, [None])[0]
+    return s
+
+
 def log_start_epoch(path):
     """The launch second out of `run_[A_|B_]YYYYmmdd_HHMMSS.log` (local time), else the file's mtime."""
     m = re.search(r"(\d{8})_(\d{6})", os.path.basename(path))
@@ -428,6 +718,7 @@ def feed_ours_lines(lines, tracker, base_epoch=None, now=None):
     """Feed a run log's lines: each `[peek]` row is stamped with the preceding `[pc-sampler]`'s t= and
     vsync=; wall = now() when following live, else base_epoch + t."""
     t = vsync = None
+    music = tracker.what == "music"
     for line in lines:
         if line.startswith("[pc-sampler]"):
             m = _SAMPLER_RE.search(line)
@@ -437,12 +728,19 @@ def feed_ours_lines(lines, tracker, base_epoch=None, now=None):
         if not line.startswith("[peek]"):
             continue
         items = parse_peek_row(line)
-        if ROUTE_ADDR not in items and MGR_PTR_ADDR not in items:
-            continue
-        s = sample_from_peek(items)
         wall = now() if now else (base_epoch or 0.0) + (t or 0.0)
-        tracker.feed(wall, decode(s.route, s.mgr, s.entry), vsync=vsync, clock=clock_string(s.clk),
-                     gclock=guest_clock(s.gclk), t=t, sample=s)
+        if music:
+            if MUSIC_ADDR not in items:
+                continue
+            s = music_sample_from_peek(items)
+            tracker.feed(wall, decode_music(s), vsync=vsync, clock=clock_string(s.clk), gclock=guest_clock(s.gclk),
+                         t=t, sample=s)
+        else:
+            if ROUTE_ADDR not in items and MGR_PTR_ADDR not in items:
+                continue
+            s = sample_from_peek(items)
+            tracker.feed(wall, decode(s.route, s.mgr, s.entry), vsync=vsync, clock=clock_string(s.clk),
+                         gclock=guest_clock(s.gclk), t=t, sample=s)
 
 
 def follow(path, seconds, poll_s=0.05):
@@ -473,9 +771,13 @@ def newest_run_log():
 
 # ---- pcsx2: PINE -----------------------------------------------------------------------------------
 
+def _ptr(v):
+    return RAM_LO <= v < RAM_HI
+
+
 class PineSampler:
-    """Reads the blocks through `read32`, the cheap ones every sample and the def / name / store once per
-    new pointer (a cache keyed by address), the queue data and slots only while the queue is non-empty."""
+    """--what cue: reads the blocks through `read32`, the cheap ones every sample and the def / name / store
+    once per new pointer (a cache keyed by address), the queue data and slots only while the queue is non-empty."""
 
     def __init__(self, read32):
         self.read32 = read32
@@ -485,30 +787,73 @@ class PineSampler:
     def words(self, addr, n):
         return [self.read32(addr + 4 * i) for i in range(n)]
 
-    def sample(self):
-        s = Sample(route=self.read32(ROUTE_ADDR))
-        ptr = self.read32(MGR_PTR_ADDR)
-        if 0x100000 <= ptr < 0x2000000:
-            s.mgr = self.words(ptr, MGR_WORDS)
-            ent = s.mgr[13]
-            if 0x100000 <= ent < 0x2000000:
-                s.entry = self.words(ent, ENTRY_WORDS)
-                dp = s.entry[1]
-                if 0x100000 <= dp < 0x2000000:
-                    if dp not in self.defs:
-                        dw = self.words(dp, DEF_WORDS)
-                        np_ = dw[8]
-                        nw = self.words(np_, NAME_WORDS) if 0x100000 <= np_ < 0x2000000 else None
-                        self.defs[dp] = (dw, nw)
-                    s.sdef, s.name = self.defs[dp]
-            if s.mgr[7] and 0x100000 <= s.mgr[8] < 0x2000000 and 0x100000 <= s.mgr[12] < 0x2000000:
-                s.qidx = self.words(s.mgr[8], min(s.mgr[7], QUEUE_SLOTS))
-                s.slots = self.words(s.mgr[12], QUEUE_SLOTS * SLOT_WORDS)
+    def def_and_name(self, dp, words=DEF_WORDS):
+        if dp not in self.defs:
+            dw = self.words(dp, words)
+            np_ = dw[8]
+            nw = self.words(np_, NAME_WORDS) if _ptr(np_) else None
+            self.defs[dp] = (dw, nw)
+        return self.defs[dp]
+
+    def common(self, s):
         if self.store is None or not self.store[1]:
             self.store = self.words(STORE_BASE_ADDR, 2)
         s.store = self.store
         s.clk = self.words(CLOCK_ADDR, 2)
         s.gclk = self.read32(GUEST_CLOCK_ADDR)
+
+    def sample(self):
+        s = Sample(route=self.read32(ROUTE_ADDR))
+        ptr = self.read32(MGR_PTR_ADDR)
+        if _ptr(ptr):
+            s.mgr = self.words(ptr, MGR_WORDS)
+            ent = s.mgr[13]
+            if _ptr(ent):
+                s.entry = self.words(ent, ENTRY_WORDS)
+                if _ptr(s.entry[1]):
+                    s.sdef, s.name = self.def_and_name(s.entry[1])
+            if s.mgr[7] and _ptr(s.mgr[8]) and _ptr(s.mgr[12]):
+                s.qidx = self.words(s.mgr[8], min(s.mgr[7], QUEUE_SLOTS))
+                s.slots = self.words(s.mgr[12], QUEUE_SLOTS * SLOT_WORDS)
+        self.common(s)
+        return s
+
+
+class MusicPineSampler(PineSampler):
+    """--what music: the globals every sample; the tables' counts and weights every sample (a few words);
+    the playlist header + entries while one is installed; each entry's def / name once per pointer; the
+    current entry's sound entry (2 words)."""
+
+    def sample(self):
+        s = MusicSample()
+        s.globals = self.words(MUSIC_ADDR, MUSIC_WORDS)
+        s.off = self.read32(MUSIC_OFF_ADDR)
+        s.tables = self.words(TABLES_ADDR, TABLES_WORDS)
+        for lvl in range(4):
+            n, data = s.tables[lvl * 3 + 1], s.tables[lvl * 3 + 2]
+            if n and _ptr(data):
+                s.lists[lvl] = self.words(data, min(n, TABLE_MAX))
+            wn, wdata = s.tables[16 + lvl * 3 + 1], s.tables[16 + lvl * 3 + 2]
+            if wn and _ptr(wdata):
+                s.weights[lvl] = [as_float(w) for w in self.words(wdata, min(wn, TABLE_MAX))]
+        ent = s.globals[MUSIC_W_ENTRY]
+        if _ptr(ent):
+            s.entry = self.words(ent, 2)
+            if _ptr(s.entry[1]):
+                s.sdef, s.name = self.def_and_name(s.entry[1])
+        pl = s.globals[MUSIC_W_PLAYLIST]
+        if _ptr(pl):
+            s.pl = self.words(pl, PLAYLIST_WORDS)
+            n, data, cur = min(s.pl[1], PL_MAX_ENTRIES), s.pl[2], signed32(s.pl[3])
+            if n and _ptr(data):
+                s.entries = self.words(data, n * PL_ENTRY_WORDS)
+                for i in range(n):
+                    dp, sp = s.entries[i * PL_ENTRY_WORDS], s.entries[i * PL_ENTRY_WORDS + 1]
+                    dw, nw = self.def_and_name(dp, 9) if _ptr(dp) else (None, None)
+                    se = self.words(sp, 2) if i == cur and _ptr(sp) else None
+                    if dw or se:
+                        s.entry_info[i] = (dw, nw, se)
+        self.common(s)
         return s
 
 
@@ -518,7 +863,7 @@ def sample_from_pine(read32):
     return s.route, s.mgr, s.clk, s.gclk
 
 
-def poll_pcsx2(port, out, seconds, hz):
+def poll_pcsx2(port, out, seconds, hz, what="cue", toc=None):
     from tools_py.parity.pine import Pine
     t0 = time.time()
     p = None
@@ -529,14 +874,16 @@ def poll_pcsx2(port, out, seconds, hz):
             time.sleep(1.0)
     if p is None:
         raise SystemExit(f"no PINE on port {port}")
-    tr = Tracker(out, t0=time.time())
-    sampler = PineSampler(p.read32)
+    tr = Tracker(out, t0=time.time(), toc=toc, what=what)
+    cls = MusicPineSampler if what == "music" else PineSampler
+    sampler = cls(p.read32)
     period = 1.0 / hz
     while time.time() - t0 < seconds:
         tick = time.time()
         try:
             s = sampler.sample()
-            tr.feed(tick, decode(s.route, s.mgr, s.entry), clock=clock_string(s.clk), gclock=guest_clock(s.gclk), sample=s)
+            f = decode_music(s) if what == "music" else decode(s.route, s.mgr, s.entry)
+            tr.feed(tick, f, clock=clock_string(s.clk), gclock=guest_clock(s.gclk), sample=s)
         except Exception as e:  # noqa: BLE001 - PCSX2 may be between states
             out.write(f"# t={tick - t0:.3f} error {e}\n")
             out.flush()
@@ -552,7 +899,7 @@ def poll_pcsx2(port, out, seconds, hz):
                     time.sleep(1.0)
             if p is None:
                 break
-            sampler = PineSampler(p.read32)
+            sampler = cls(p.read32)
         rest = period - (time.time() - tick)
         if rest > 0:
             time.sleep(rest)
@@ -562,21 +909,25 @@ def poll_pcsx2(port, out, seconds, hz):
 # ---- compare ---------------------------------------------------------------------------------------
 
 def read_log(path):
-    """([change dicts], t0) of a poll log: t0 = the epoch of the log's own t=0 (wall - t of the first
-    event, so `t:<s>` anchors land in the same clock the events carry), else the header's started=."""
-    events, started = [], None
+    """([change dicts], t0, what) of a poll log: t0 = the epoch of the log's own t=0 (wall - t of the
+    first event, so `t:<s>` anchors land in the same clock the events carry), else the header's started=;
+    what = the mode from the header ("cue" when absent)."""
+    events, started, what = [], None, "cue"
     with open(path, "r", errors="replace") as f:
         for line in f:
             if line.startswith("#"):
                 m = re.search(r"started=([\d.]+)", line)
                 if m:
                     started = float(m.group(1))
+                m = re.search(r"\bwhat=(\w+)", line)
+                if m:
+                    what = m.group(1)
                 continue
             ev = parse_change_line(line)
             if ev:
                 events.append(ev)
     t0 = events[0]["wall"] - events[0]["t"] if events else started
-    return events, t0
+    return events, t0, what
 
 
 _STEP_RE = re.compile(r"^(s\d+_\S+)\s+t=\s*([\d.]+)s")
@@ -615,56 +966,108 @@ def hud_anchor(spec, log_t0):
     return float(spec), "epoch given"
 
 
-def state_name(v):
-    """4 -> 'reset' etc.; accepts the change line's text form ('3', '-')."""
+def state_name(v, what="cue"):
+    """4 -> 'reset' etc. (cue) / -1 -> 'idle', 2 -> 'fight-list' (music); accepts the text form ('3', '-')."""
     if v is None or v == "-":
         return "-"
     try:
-        return STATE_NAMES.get(int(str(v), 0), str(v))
+        n = int(str(v), 0)
     except ValueError:
         return str(v)
+    return (MUSIC_LEVEL_NAMES if what == "music" else STATE_NAMES).get(n, str(v))
 
 
 def _parse_what(what):
     return re.findall(r"(\w+) (\S+)->(\S+)", what)
 
 
-def event_summary(ev):
+# per mode: the state field, and whether a transition starts a play
+MODE_STATE_KEY = {"cue": "state", "music": "lvl"}
+
+
+def is_play_start(what, old, new):
+    if what == "music":
+        return old != "-" and int(old) == -1 and int(new) != -1
+    return new == "1"
+
+
+def event_summary(ev, what="cue"):
     """The short form of an event for the side-by-side listing."""
     parts = []
+    key = MODE_STATE_KEY[what]
     for k, o, n in _parse_what(ev["what"]):
-        parts.append(f"state {state_name(o)}->{state_name(n)}" if k == "state" else f"{k} {o}->{n}")
+        parts.append(f"{k} {state_name(o, what)}->{state_name(n, what)}" if k == key else f"{k} {o}->{n}")
     if ev.get("note"):
-        # the decoded def right after the first change, ahead of the raw diffs the column may cut off
-        m = re.search(r"def (\S+)(?:.*?(sector \S+))?", ev["note"])
-        if m and parts:
-            parts[0] += f" ({m.group(1)}{' ' + m.group(2) if m.group(2) else ''})"
+        # the decoded def / playlist cursor right after the first change, ahead of the raw diffs the column may cut off
+        if what == "music":
+            m = re.search(r"playlist n=(\d+) cur=(-?\d+)[^\[]*\[([^\]]*)\]", ev["note"])
+            tag = None
+            if m:
+                cells = [c.strip() for c in m.group(3).split("|")]
+                at = [c[1:] for c in cells if c.startswith(">")]
+                tag = f"{m.group(2)}/{m.group(1)} {at[0]}" if at else f"{m.group(2)}/{m.group(1)}"
+            else:
+                m = re.search(r"single def (\S+)", ev["note"])
+                tag = f"single {m.group(1)}" if m else None
+            if tag and parts:
+                parts[0] += f" ({tag})"
+        else:
+            m = re.search(r"def (\S+)(?:.*?(sector \S+))?", ev["note"])
+            if m and parts:
+                parts[0] += f" ({m.group(1)}{' ' + m.group(2) if m.group(2) else ''})"
     extra = f" [{ev['clock']}]" if ev["clock"] else ""
     if ev["vsync"] is not None:
         extra += f" [f{ev['vsync']}]"
     return ", ".join(parts) + extra
 
 
-def transitions(events):
-    """[(hud_rel, old, new)] of the state field."""
+def transitions(events, what="cue"):
+    """[(hud_rel, old, new)] of the mode's state field."""
+    key = MODE_STATE_KEY[what]
     out = []
     for ev in events:
         for k, o, n in _parse_what(ev["what"]):
-            if k == "state" and o != "-":
+            if k == key and o != "-":
                 out.append((ev["rel"], o, n))
     return out
 
 
+def stem_starts(events, what):
+    """[(hud_rel, name)] of every stem start: cue mode = state ->1 with a def; music mode = the playlist
+    cursor landing on a sound entry, or a single stem starting."""
+    out = []
+    for ev in events:
+        if ev["rel"] < 0 or not ev.get("note"):
+            continue
+        ws = _parse_what(ev["what"])
+        if what == "music":
+            if any(k == "cur" for k, _o, _n in ws) or any(k == "ent" and n != "0x0" for k, _o, n in ws):
+                m = re.search(r" cur def (\S+)", ev["note"]) or re.search(r"single def (\S+)", ev["note"])
+                if m:
+                    out.append((ev["rel"], m.group(1)))
+                else:
+                    m = re.search(r">rest ([\d.]+)s", ev["note"])
+                    if m:
+                        out.append((ev["rel"], f"rest {m.group(1)}s"))
+        elif any(k == "state" and n == "1" for k, _o, n in ws):
+            m = re.search(r"def (\S+)", ev["note"])
+            out.append((ev["rel"], m.group(1) if m else "?"))
+    return out
+
+
 def compare(log_a, log_b, hud_a, hud_b, out=sys.stdout, width=58, window=None):
-    ev_a, t0_a = read_log(log_a)
-    ev_b, t0_b = read_log(log_b)
+    ev_a, t0_a, what_a = read_log(log_a)
+    ev_b, t0_b, what_b = read_log(log_b)
+    what = what_a if what_a == what_b else "cue"
     ep_a, note_a = hud_anchor(hud_a, t0_a)
     ep_b, note_b = hud_anchor(hud_b, t0_b)
     for evs, ep in ((ev_a, ep_a), (ev_b, ep_b)):
         for ev in evs:
             ev["rel"] = ev["wall"] - ep
-    out.write(f"A: {log_a} ({len(ev_a)} changes) HUD anchor {note_a}\n")
-    out.write(f"B: {log_b} ({len(ev_b)} changes) HUD anchor {note_b}\n")
+    out.write(f"A: {log_a} ({len(ev_a)} changes, {what_a}) HUD anchor {note_a}\n")
+    out.write(f"B: {log_b} ({len(ev_b)} changes, {what_b}) HUD anchor {note_b}\n")
+    if what_a != what_b:
+        out.write("WARNING: the two logs are of different machines (--what); the summaries below use the cue rules\n")
     out.write(f"{'A (s from HUD)':<{width}} | B (s from HUD)\n")
     out.write("-" * (2 * width + 3) + "\n")
     merged = [(ev["rel"], 0, ev) for ev in ev_a] + [(ev["rel"], 1, ev) for ev in ev_b]
@@ -672,39 +1075,38 @@ def compare(log_a, log_b, hud_a, hud_b, out=sys.stdout, width=58, window=None):
     for rel, side, ev in merged:
         if window is not None and not (window[0] <= rel <= window[1]):
             continue
-        cell = f"{rel:+8.2f} {event_summary(ev)}"
+        cell = f"{rel:+8.2f} {event_summary(ev, what)}"
         if len(cell) > width:
             cell = cell[:width - 1] + "~"
         out.write(f"{cell:<{width}} |\n" if side == 0 else f"{'':<{width}} | {cell}\n")
-    ta, tb = transitions(ev_a), transitions(ev_b)
-    out.write("\nstate transitions after the HUD (s from HUD):\n")
+    ta, tb = transitions(ev_a, what), transitions(ev_b, what)
+    key = MODE_STATE_KEY[what]
+    out.write(f"\n{key} transitions after the HUD (s from HUD):\n")
     for name, tr in (("A", ta), ("B", tb)):
         post = [x for x in tr if x[0] >= 0]
         out.write(f"  {name}: {len(post)} -- " + ", ".join(f"{o}->{n}@{r:+.1f}" for r, o, n in post[:40])
                   + (" ..." if len(post) > 40 else "") + "\n")
-    pa = [x for x in ta if x[0] >= 0 and x[2] == "1"]
-    pb = [x for x in tb if x[0] >= 0 and x[2] == "1"]
-    out.write(f"  plays (->1) after the HUD: A {len(pa)}, B {len(pb)}; first at A {pa[0][0]:+.1f}s B {pb[0][0]:+.1f}s\n"
-              if pa and pb else f"  plays (->1) after the HUD: A {len(pa)}, B {len(pb)}\n")
+    pa = [x for x in ta if x[0] >= 0 and is_play_start(what, x[1], x[2])]
+    pb = [x for x in tb if x[0] >= 0 and is_play_start(what, x[1], x[2])]
+    label = "plays (->1)" if what == "cue" else "starts (idle->)"
+    out.write(f"  {label} after the HUD: A {len(pa)}, B {len(pb)}; first at A {pa[0][0]:+.1f}s B {pb[0][0]:+.1f}s\n"
+              if pa and pb else f"  {label} after the HUD: A {len(pa)}, B {len(pb)}\n")
     for k, (x, y) in enumerate(zip(pa, pb)):
         if k >= 20:
             break
-        out.write(f"    play {k + 1}: A {x[0]:+7.1f}  B {y[0]:+7.1f}  d={y[0] - x[0]:+.1f}s\n")
-
-    def pushes(evs):
-        return sum(1 for ev in evs if ev["rel"] >= 0 and
-                   any(k == "q" and o != "-" and int(n) > int(o) for k, o, n in _parse_what(ev["what"])))
-    out.write(f"  cue-queue pushes seen after the HUD: A {pushes(ev_a)}, B {pushes(ev_b)} "
-              "(a push and its pop inside one sample period are invisible)\n")
-    # the cues each side played, by def name, in order: the decision list the two runs are compared on
+        out.write(f"    {label.split()[0][:-1] if what == 'cue' else 'start'} {k + 1}: A {x[0]:+7.1f}  B {y[0]:+7.1f}  d={y[0] - x[0]:+.1f}s\n")
+    if what == "cue":
+        def pushes(evs):
+            return sum(1 for ev in evs if ev["rel"] >= 0 and
+                       any(k == "q" and o != "-" and int(n) > int(o) for k, o, n in _parse_what(ev["what"])))
+        out.write(f"  cue-queue pushes seen after the HUD: A {pushes(ev_a)}, B {pushes(ev_b)} "
+                  "(a push and its pop inside one sample period are invisible)\n")
+    # the stems each side played, by def name, in order: the decision list the two runs are compared on
     for name, evs in (("A", ev_a), ("B", ev_b)):
-        played = []
-        for ev in evs:
-            if ev["rel"] >= 0 and ev.get("note") and any(k == "state" and n == "1" for k, _o, n in _parse_what(ev["what"])):
-                m = re.search(r"def (\S+)", ev["note"])
-                played.append(f"{m.group(1) if m else '?'}@{ev['rel']:+.1f}")
+        played = stem_starts(evs, what)
         if played:
-            out.write(f"  {name} played: " + ", ".join(played[:40]) + (" ..." if len(played) > 40 else "") + "\n")
+            out.write(f"  {name} played: " + ", ".join(f"{n}@{r:+.1f}" for r, n in played[:40])
+                      + (" ..." if len(played) > 40 else "") + "\n")
 
 
 # ---- main ------------------------------------------------------------------------------------------
@@ -722,6 +1124,14 @@ def join_negative_window(argv):
     return out
 
 
+def peek_spec(what):
+    return MUSIC_PEEK_SPEC if what == "music" else OURS_PEEK_SPEC
+
+
+def sampler_period(what):
+    return MUSIC_SAMPLER_S if what == "music" else OURS_SAMPLER_S
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] == "compare":
@@ -736,8 +1146,10 @@ def main(argv=None):
         compare(a.log_a, a.log_b, a.hud_a, a.hud_b, window=win)
         return 0
     ap = argparse.ArgumentParser()
-    ap.add_argument("--target", choices=("pcsx2", "ours"), required=True)
-    ap.add_argument("--out", required=True)
+    ap.add_argument("--what", choices=("cue", "music"), default="cue", help="the cue sequencer (default) or the mission music machine")
+    ap.add_argument("--spec", action="store_true", help="print the PS2X_PEEK spec ours needs for --what and exit")
+    ap.add_argument("--target", choices=("pcsx2", "ours"))
+    ap.add_argument("--out")
     ap.add_argument("--seconds", type=float, default=600.0)
     ap.add_argument("--hz", type=float, default=10.0, help="pcsx2 sample rate (5 has run a whole mission)")
     ap.add_argument("--port", type=int, default=0, help="PINE port (default: PINESlot from PCSX2.ini)")
@@ -745,15 +1157,20 @@ def main(argv=None):
     ap.add_argument("--follow", action="store_true", help="ours: tail the log live (wall = now)")
     ap.add_argument("--log-start", type=float, default=None, help="ours, offline: the log's launch epoch")
     a = ap.parse_args(argv)
+    if a.spec:
+        print(f"PS2X_PC_SAMPLER={sampler_period(a.what)} PS2X_PEEK=\"{peek_spec(a.what)}\"")
+        return 0
+    if not a.target or not a.out:
+        ap.error("--target and --out are required (or --spec)")
     os.makedirs(os.path.dirname(os.path.abspath(a.out)), exist_ok=True)
     toc = vagstore_toc()
     with open(a.out, "w") as out:
         started = time.time()
         if a.target == "pcsx2":
             port = a.port or pine_port()
-            out.write(f"# music_state_poll target=pcsx2 port={port} hz={a.hz} started={started:.3f} "
+            out.write(f"# music_state_poll what={a.what} target=pcsx2 port={port} hz={a.hz} started={started:.3f} "
                       f"{time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(started))} toc={'yes' if toc else 'no'}\n")
-            tr = poll_pcsx2(port, out, a.seconds, a.hz)
+            tr = poll_pcsx2(port, out, a.seconds, a.hz, a.what, toc)
         else:
             path = a.log
             if path == "latest":
@@ -765,9 +1182,9 @@ def main(argv=None):
                 if path is None:
                     raise SystemExit("no logs/run_*.log")
             base = a.log_start if a.log_start is not None else log_start_epoch(path)
-            out.write(f"# music_state_poll target=ours log={path} follow={a.follow} started={started:.3f} "
-                      f"log_start={base:.3f} toc={'yes' if toc else 'no'} peek={OURS_PEEK_SPEC}\n")
-            tr = Tracker(out, t0=started if a.follow else base, toc=toc)
+            out.write(f"# music_state_poll what={a.what} target=ours log={path} follow={a.follow} started={started:.3f} "
+                      f"log_start={base:.3f} toc={'yes' if toc else 'no'} peek={peek_spec(a.what)}\n")
+            tr = Tracker(out, t0=started if a.follow else base, toc=toc, what=a.what)
             if a.follow:
                 feed_ours_lines(follow(path, a.seconds), tr, now=time.time)
             else:
@@ -776,7 +1193,7 @@ def main(argv=None):
         out.write(f"# done samples={tr.samples} changes={tr.changes}\n")
     print(f"{tr.samples} samples, {tr.changes} changes -> {a.out}")
     if a.target == "ours" and tr.samples == 0:
-        print(f"no manager rows: launch ours with PS2X_PC_SAMPLER={OURS_SAMPLER_S} PS2X_PEEK=\"{OURS_PEEK_SPEC}\"")
+        print(f"no rows for --what {a.what}: launch ours with PS2X_PC_SAMPLER={sampler_period(a.what)} PS2X_PEEK=\"{peek_spec(a.what)}\"")
         return 2
     return 0
 

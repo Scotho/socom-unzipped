@@ -111,9 +111,9 @@ class TestDecode(unittest.TestCase):
         self.assertIsNone(f["ih"])
         self.assertIn("ih=- ef=-", msp.format_fields(f))
 
-    def test_pending_handle_prints_as_minus_one(self):
+    def test_pending_handle_prints_in_full_hex(self):
         f = msp.decode(2, mgr_words(state=1, h34=ENTRY), entry_words(ih=-1))
-        self.assertIn("ih=-1", msp.format_fields(f))
+        self.assertIn("ih=0xffffffff", msp.format_fields(f))    # -1 is reserved for the SIGNED music level
         self.assertEqual(msp.parse_change_line(msp.format_change_line(1.0, 0.0, f, [("ih", None, f["ih"])]))["fields"]["ih"], 0xffffffff)
 
     def test_clock_string(self):
@@ -411,7 +411,8 @@ class TestCompare(unittest.TestCase):
             f.write("# music_state_poll target=ours started=1789936289.156 log_start=1789935858.779\n")
             f.write(f"wall=1789935858.829 t=0.050 {msp.format_fields(idle)} | mode -->2\n")
             f.write(f"wall=1789936169.500 t=310.721 {msp.format_fields(dict(idle, q=1))} | q 0->1\n")
-        evs, t0 = msp.read_log(log)
+        evs, t0, what = msp.read_log(log)
+        self.assertEqual(what, "cue")
         self.assertAlmostEqual(t0, 1789935858.779, places=3)
         epoch, _ = msp.hud_anchor("t:310.7", t0)
         self.assertAlmostEqual(evs[1]["wall"] - epoch, 0.021, places=3)
@@ -469,6 +470,233 @@ class TestCompare(unittest.TestCase):
                          ["a", "b", "--window=-20:200", "--hud-a", "t:1"])
         self.assertEqual(msp.join_negative_window(["--window", "0:10"]), ["--window", "0:10"])
         self.assertEqual(msp.join_negative_window(["--window=-5:5"]), ["--window=-5:5"])
+
+
+# ---- --what music --------------------------------------------------------------------------------------
+
+PL = 0x00e2a100                                   # a playlist object
+PL_DATA = 0x00e2a200                              # its entries
+DEF_A, DEF_B, NAME_A, NAME_B = 0x00df0100, 0x00df0200, 0x00df0300, 0x00df0400
+SENT = 0x0084e000                                 # the current entry's sound entry
+LIST0, LIST1, W0, W1 = 0x00e30000, 0x00e30100, 0x00e30200, 0x00e30300
+
+
+def f32(x):
+    return struct.unpack("<I", struct.pack("<f", x))[0]
+
+
+def music_globals(ent=0, pl=0, lvl=-1, loaded=1, alert=0, chg=0, reqdef=0, reqlvl=-1):
+    w = [0] * 14
+    w[0], w[2], w[4], w[6] = ent, pl, lvl & 0xff, loaded
+    w[8], w[10], w[12], w[13] = alert, chg, reqdef, reqlvl & 0xff
+    return w
+
+
+def playlist(n=3, cur=-1, done=0, stop=0, data=PL_DATA):
+    return [8, n, data, cur & 0xffffffff, 0x1234, done | (stop << 8)]
+
+
+def pl_entries(cur_sentry=0):
+    """M51_M01 | rest 12.0 s | M51_M02"""
+    return [DEF_A, 0, f32(0.0), f32(0.0),
+            0, 0, f32(12.0), f32(3.25),
+            DEF_B, cur_sentry, f32(0.0), f32(0.0)]
+
+
+def tables():
+    t = [0] * 28
+    t[0:3] = [4, 2, LIST0]                          # STEALTH: 2 playlists
+    t[3:6] = [4, 1, LIST1]                          # FIGHT: 1
+    t[16:19] = [4, 2, W0]
+    t[19:22] = [4, 1, W1]
+    return t
+
+
+def music_memory(g=None, pl=None, ents=None, cur_sentry_words=None, off=0):
+    m = {}
+    for base, words in ((msp.MUSIC_ADDR, g or music_globals()), (msp.TABLES_ADDR, tables()),
+                        (LIST0, [PL, 0xe2a900]), (LIST1, [0xe2aa00]),
+                        (W0, [f32(0.5), f32(0.5)]), (W1, [f32(1.0)]),
+                        (PL, pl), (PL_DATA, ents),
+                        (DEF_A, def_words(flags_a=0x01, flags_b=0x08, name_ptr=NAME_A)),
+                        (DEF_B, def_words(flags_a=0x01, flags_b=0x08, name_ptr=NAME_B)),
+                        (NAME_A, name_words("M51_M01")), (NAME_B, name_words("M51_M02")),
+                        (SENT, cur_sentry_words), (ENTRY, entry_words(d=DEF, ih=0x04000077)),
+                        (DEF, def_words(flags_a=0x01, flags_b=0x08)), (NAME, name_words("M51_048"))):
+        for i, w in enumerate(words or []):
+            m[base + 4 * i] = w
+    m[msp.MUSIC_OFF_ADDR] = off
+    m[msp.STORE_BASE_ADDR], m[msp.STORE_BASE_ADDR + 4] = 0, 0xee89a
+    raw = b"05:59\0\0\0"
+    m[msp.CLOCK_ADDR], m[msp.CLOCK_ADDR + 4] = struct.unpack("<II", raw)
+    m[msp.GUEST_CLOCK_ADDR] = f32(12.5)
+    return m
+
+
+MUSIC_TOC = {"M51_M01.VPK": (0x1000, 0x800), "M51_M02.VPK": (0x2000, 0x800), "M51_048.VPK": (0xa387580, 0x1c280),
+             "__data__": (0x4c800, 0)}
+
+
+class TestMusicDecode(unittest.TestCase):
+    def test_globals_signed_bytes(self):
+        s = msp.MusicSample()
+        s.globals = music_globals(lvl=-1, alert=2, chg=1, reqlvl=-1)
+        s.off = 1
+        f = msp.decode_music(s)
+        self.assertEqual((f["off"], f["lvl"], f["alert"], f["chg"], f["req"]), (1, -1, 2, 1, -1))
+        self.assertEqual((f["ent"], f["pl"], f["n"], f["cur"], f["ceh"]), (0, 0, None, None, None))
+        self.assertIn("lvl=-1", msp.format_fields(f, msp.MUSIC_FIELDS))
+        f2 = msp.decode_music(msp.MusicSample())
+        self.assertTrue(all(f2[k] is None for k in msp.MUSIC_FIELDS))
+
+    def test_playlist_and_entries(self):
+        h, ents = msp.decode_playlist(playlist(n=3, cur=1, stop=1), pl_entries())
+        self.assertEqual((h["n"], h["cur"], h["done"], h["stop"]), (3, 1, 0, 1))
+        self.assertEqual(len(ents), 3)
+        self.assertEqual(ents[1]["def"], 0)                         # the REST
+        self.assertAlmostEqual(ents[1]["pause"], 12.0)
+        self.assertAlmostEqual(ents[1]["elapsed"], 3.25)
+        self.assertEqual(ents[2]["def"], DEF_B)
+        h, ents = msp.decode_playlist(playlist(cur=-1), None)
+        self.assertEqual((h["cur"], ents), (-1, []))
+        self.assertEqual(msp.decode_playlist(None), (None, []))
+
+    def test_describe_playlist_marks_the_cursor_and_the_rest(self):
+        h, ents = msp.decode_playlist(playlist(n=3, cur=1), pl_entries())
+        info = {0: (def_words(name_ptr=NAME_A, flags_a=1, flags_b=8), name_words("M51_M01"), None)}
+        s = msp.describe_playlist(h, ents, info, [0, 0xee89a], MUSIC_TOC, names={DEF_B: "M51_M02"})
+        self.assertEqual(s, "playlist n=3 cur=1 done=0 stop=0 [M51_M01 | >rest 12.0s at 3.2 | M51_M02]")
+        h, ents = msp.decode_playlist(playlist(n=3, cur=2), pl_entries(cur_sentry=SENT))
+        info[2] = (def_words(name_ptr=NAME_B, flags_a=1, flags_b=8), name_words("M51_M02"), [0x04000099, DEF_B])
+        s = msp.describe_playlist(h, ents, info, [0, 0xee89a], MUSIC_TOC)
+        self.assertTrue(s.startswith("playlist n=3 cur=2 done=0 stop=0 [M51_M01 | rest 12.0s | >M51_M02] cur def M51_M02 "), s)
+        self.assertIn("group 1", s)
+        self.assertIn("sector 0xee89e+0x0 size 0x800 handle 0x4000099", s)
+        # an entry with neither its def block nor a learnt name is printed by pointer; more entries than read are counted
+        h, ents = msp.decode_playlist(playlist(n=5, cur=0), pl_entries())
+        s = msp.describe_playlist(h, ents, {}, None, MUSIC_TOC)
+        self.assertIn(f">def@{DEF_A:#x} | rest 12.0s | def@{DEF_B:#x} | +2 more]", s)
+
+    def test_weights_line(self):
+        self.assertEqual(msp.describe_weights({0: [0.5, 0.5], 1: [1.0]}, {}), "weights STEALTH[0.50,0.50] FIGHT[1.00]")
+        self.assertIsNone(msp.describe_weights({}, {}))
+
+
+class TestMusicPeek(unittest.TestCase):
+    def items_for(self, mem):
+        got = {}
+        read = lambda a: mem.get(a, 0)  # noqa: E731
+        for item in msp.MUSIC_PEEK_SPEC.split(","):
+            addr, words = resolve(read, item)
+            if addr is not None:
+                got[addr] = [mem.get(addr + 4 * i, 0) for i in range(words)]
+        return got
+
+    def test_spec_resolves_every_block_and_stays_under_the_cap(self):
+        g = music_globals(pl=PL, lvl=0)
+        mem = music_memory(g, playlist(n=3, cur=2), pl_entries(cur_sentry=SENT), [0x04000099, DEF_B])
+        items = self.items_for(mem)
+        for addr in (msp.MUSIC_ADDR, msp.TABLES_ADDR, LIST0, LIST1, W0, W1, PL, PL_DATA, DEF_A, DEF_B, NAME_A, NAME_B, SENT):
+            self.assertIn(addr, items, hex(addr))
+        self.assertTrue(all(len(v) <= 64 for v in items.values()))
+        s = msp.music_sample_from_peek(items)
+        f = msp.decode_music(s)
+        self.assertEqual((f["lvl"], f["pl"], f["n"], f["cur"], f["ceh"], f["pli"]), (0, PL, 3, 2, 0x04000099, 0))
+        self.assertEqual(msp.playlist_index(f["pli"]), (0, 0))
+        self.assertEqual(s.weights[0], [0.5, 0.5])
+        self.assertEqual(s.lists[1], [0xe2aa00])
+        self.assertEqual(msp.cstring(s.entry_info[2][1]), "M51_M02")
+        self.assertEqual(s.entry_info[2][2], [0x04000099, DEF_B])
+        self.assertNotIn(1, s.entry_info)                            # the rest has no def and no sound entry
+
+    def test_single_stem_by_chain(self):
+        mem = music_memory(music_globals(ent=ENTRY, lvl=1))
+        s = msp.music_sample_from_peek(self.items_for(mem))
+        f = msp.decode_music(s)
+        self.assertEqual((f["lvl"], f["ent"], f["eh"], f["pl"], f["pli"]), (1, ENTRY, 0x04000077, 0, None))
+        self.assertEqual(msp.cstring(s.name), "M51_048")
+
+    def test_rows_without_the_block_are_skipped_and_tracked_rows_carry_the_playlist(self):
+        out = io.StringIO()
+        tr = msp.Tracker(out, t0=0.0, toc=MUSIC_TOC, what="music")
+        idle = music_memory(music_globals())
+        lines = [sampler(1.0, 60), "[peek] @416054: 00000000(0)", sampler(1.1, 66),
+                 peek_row(idle, [(a, len(w)) for a, w in self.items_for(idle).items()])]
+        playing = music_memory(music_globals(pl=PL, lvl=0), playlist(n=3, cur=0), pl_entries(), None)
+        lines += [sampler(1.2, 72), peek_row(playing, [(a, len(w)) for a, w in self.items_for(playing).items()])]
+        resting = music_memory(music_globals(pl=PL, lvl=0), playlist(n=3, cur=1), pl_entries(), None)
+        lines += [sampler(20.0, 1200), peek_row(resting, [(a, len(w)) for a, w in self.items_for(resting).items()])]
+        msp.feed_ours_lines(lines, tr, base_epoch=0.0)
+        text = out.getvalue()
+        self.assertIn("# t=1.100 weights STEALTH[0.50,0.50] FIGHT[1.00]", text)
+        evs = [msp.parse_change_line(ln) for ln in text.splitlines() if not ln.startswith("#")]
+        self.assertEqual(len(evs), 3)
+        self.assertEqual((evs[0]["vsync"], evs[0]["fields"]["lvl"], evs[0]["fields"]["off"]), (66, -1, 0))
+        self.assertIn("lvl -1->0", evs[1]["what"])
+        self.assertIn("pl 0x0->0xe2a100", evs[1]["what"])
+        self.assertTrue(evs[1]["note"].startswith("level stealth-list; list STEALTH#0; playlist n=3 cur=0 done=0 stop=0 [>M51_M01 | rest 12.0s | M51_M02]"), evs[1]["note"])
+        self.assertEqual(evs[2]["what"], "cur 0->1")                  # a REST holds no sound entry: ceh stays 0
+        self.assertIn("[M51_M01 | >rest 12.0s at 3.2 | M51_M02]", evs[2]["note"])
+        self.assertEqual(tr.samples, 3)
+
+
+class TestMusicPine(unittest.TestCase):
+    def test_sampler_reads_the_playlist_and_caches_the_defs(self):
+        mem = music_memory(music_globals(pl=PL, lvl=2, alert=2), playlist(n=3, cur=2), pl_entries(cur_sentry=SENT), [0x04000099, DEF_B])
+        reads = []
+
+        def read32(a):
+            reads.append(a)
+            return mem.get(a, 0)
+        ps = msp.MusicPineSampler(read32)
+        s = ps.sample()
+        f = msp.decode_music(s)
+        self.assertEqual((f["lvl"], f["alert"], f["n"], f["cur"], f["ceh"]), (2, 2, 3, 2, 0x04000099))
+        self.assertEqual(sorted(s.entry_info), [0, 2])
+        self.assertEqual(msp.cstring(s.entry_info[0][1]), "M51_M01")
+        self.assertIsNone(s.entry_info[0][2])                        # only the cursor's sound entry is read
+        n1 = len(reads)
+        ps.sample()
+        self.assertEqual(len(reads) - n1, n1 - 2 * (9 + 8) - 2)      # the two defs + names and the store, once
+
+    def test_nothing_installed(self):
+        mem = music_memory(music_globals())
+        s = msp.MusicPineSampler(lambda a: mem.get(a, 0)).sample()
+        self.assertIsNone(s.pl)
+        self.assertIsNone(s.entry)
+        self.assertEqual(s.weights[1], [1.0])
+
+
+class TestMusicCompare(unittest.TestCase):
+    def test_music_logs_compare_on_the_level_and_list_the_stems(self):
+        with tempfile.TemporaryDirectory() as d:
+            idle = {k: None for k in msp.MUSIC_FIELDS}
+            idle.update(off=0, lvl=-1, alert=0, chg=0, req=-1, reqdef=0, ent=0, pl=0)
+            play = dict(idle, lvl=0, pl=PL, pli=0, n=3, cur=0, done=0, stop=0, ceh=0x4000099)
+            rest = dict(play, cur=1, ceh=None)
+            nxt = dict(play, cur=2)
+            pl_note = "level stealth-list; list STEALTH#0; playlist n=3 cur=0 done=0 stop=0 [>M51_M01 | rest 12.0s | M51_M02] cur def M51_M01 fmt VPK type 0 flags 0x01/0x08 group 1 bank 3 id 0x12 sector 0xee89e+0x0 size 0x800 handle 0x4000099"
+            rows = [(0.0, idle, " ".join(f"{k} -->{msp.fmt_field(k, idle[k])}" for k in msp.MUSIC_FIELDS)),
+                    (100.0, play, "lvl -1->0 pl 0x0->0xe2a100 pli -->0 n -->3 cur -->0 done -->0 stop -->0 ceh -->0x4000099", pl_note),
+                    (130.0, rest, "cur 0->1 ceh 0x4000099->-", pl_note.replace("cur=0", "cur=1").replace("[>M51_M01 | rest 12.0s | M51_M02]", "[M51_M01 | >rest 12.0s at 0.1 | M51_M02]").split(" cur def")[0]),
+                    (142.0, nxt, "cur 1->2 ceh -->0x40000aa", pl_note.replace("cur=0", "cur=2").replace("[>M51_M01 | rest 12.0s | M51_M02]", "[M51_M01 | rest 12.0s | >M51_M02]").replace("cur def M51_M01", "cur def M51_M02"))]
+            log = os.path.join(d, "m.txt")
+            with open(log, "w") as f:
+                f.write("# music_state_poll what=music target=test started=1000.000\n")
+                for ev in rows:
+                    t, fields, what = ev[:3]
+                    note = f" || {ev[3]}" if len(ev) > 3 else ""
+                    f.write(f"wall={1000 + t:.3f} t={t:.3f} {msp.format_fields(fields, msp.MUSIC_FIELDS)} | {what}{note}\n")
+            evs, t0, what = msp.read_log(log)
+            self.assertEqual((what, t0), ("music", 1000.0))
+            out = io.StringIO()
+            msp.compare(log, log, "t:90", "t:90", out=out, width=70)
+            text = out.getvalue()
+            self.assertIn("+10.00 lvl idle->stealth-list (0/3 M51_M01)", text)
+            self.assertIn("+40.00 cur 0->1 (1/3 rest 12.0s at 0.1)", text)
+            self.assertIn("lvl transitions after the HUD", text)
+            self.assertIn("starts (idle->) after the HUD: A 1, B 1; first at A +10.0s B +10.0s", text)
+            self.assertIn("A played: M51_M01@+10.0, rest 12.0s@+40.0, M51_M02@+52.0", text)
 
 
 if __name__ == "__main__":
