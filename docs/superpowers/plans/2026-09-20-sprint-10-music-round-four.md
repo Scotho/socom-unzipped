@@ -194,6 +194,14 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       decode burst under load starves the 128 ms ring. Item 14: a decode-ahead worker filling `decodedFrames` so
       `sceMpegGetPicture` only pops (the delay line as fallback). Item 15: `PS2X_CALL_TRACE` on the play-sound API's
       callers to attribute every group-1 stem play and read the condition that fires the next one.
+      **The console's cue 4 riddle, answered by the extended poll (`0ffbf27`; run `s10_r4q`, 132/177 for ours run
+      13 against its re-pin):** the console plays the same file, `M51_048` (9.15 s, group 2). Its sound ENTRY's
+      handle word alternates -1 (a 0x19 poll in flight) and 0x84000006 (the IOP's answer: type 4, bit 31 set) from
+      351.5 s to 367.0 s, then reads -1 for the rest of the run (to 470 s) with no further change: the console's
+      poll callback never came back, so its sequencer sits in state 1 on cue 4 believing the line still plays, and
+      fires no voice cue after that. A lost RPC completion on the console's side -- its own behaviour, not a model
+      difference; item 1's model (a played-out stream answers 0) stands, and ours' sequencer, which does get its
+      answers, simply moves on. The mission MUSIC is not this sequencer's (item 15 is where the pauses live).
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
