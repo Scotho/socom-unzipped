@@ -361,6 +361,52 @@ The listens, the pad pick, the mic meter, the launcher verdict, the Linux tarbal
 two-machine match, the domain and AWS credit decisions (`docs/HUMAN_TASKS.md`). r0004 and the community server
 stay on the wishlist until the owner brings the package and PSRewired's answer.
 
+### Goal 12 — the controller mapping UI (owner 2026-09-20, relayed by the hosted-server session)
+The owner asked for **a fully polished and tested controller remapping UI in the launcher, following modern usability
+conventions**, after that session probed the tree and reported that no remapping exists anywhere. It does not: the
+CONTROLLER page (`ui/page_controller.cpp`) offers pad selection, a dead zone, mouse sensitivity, the crouch-shortcut
+radio (R139) and the live pad render, and nothing binds a button. The pad-to-PS2 table is a hard-coded
+`{GAMEPAD_BUTTON_*, kPad*}` array (`socom2_host_input.cpp:~316`) and the keyboard table is `kSocom2Keys`
+(`socom2_host_input.h:50`); both are compile-time.
+
+**The shape of the work is a data path before it is a UI.** Those two tables become a mapping loaded from
+configuration, with today's values as the defaults, so the runtime reads bindings as data rather than being rebuilt.
+That is also what makes it testable without a window: a pure `mapping.h/.cpp` under `ps2xTest`, the way
+`launcher_config` is tested now and the way `ui/pad_input.h` (P3) already is. Build the table and its round-trip first,
+under tests; the UI is the second half and cannot be trusted before the first exists.
+
+**The usability checklist the owner's request implies** (the relaying session's starting list, extended; each item is
+the pass's judgment, not yet a promise): press-the-button-to-bind rather than a dropdown of button names, with a live
+countdown and Escape or B to cancel; the new binding shown on the pad render that is already drawn, so the player sees
+where it landed; labels that follow the connected pad's own glyphs (the `ui/glyphs.h` family already chooses Cross and
+Circle against A and B); conflict detection that says what a button is already bound to and offers swap, replace or
+cancel; per-profile presets and a "restore defaults" that cannot be hit by accident; and **the whole page operable with
+the pad alone**, because a player configuring a pad may have nothing else plugged in.
+
+**Three constraints the probe could not see, and the first of them is the reason this is not a small job:**
+
+1. **Trap 1 — the harness plays the game with the keyboard's gameplay mapping.** Every gate, ladder and control-round
+   result this project has was produced by posting `kSocom2Keys` into the game window (`socom2_host_input.cpp:304-414`,
+   `tools_py/parity/keys.py`, every `scripts/parity/*.txt`). The moment that table is player-editable data, the
+   project's only regression instrument depends on whatever the player last saved. **The mapping the harness posts must
+   be pinned, explicitly and separately from the player's** — a fixed defaults table the harness selects, or a
+   developer-mode override, decided as a ruling and never by accident. Get this wrong and every later "gate 3/3" is a
+   lie about a build nobody can reproduce.
+2. **R139 and the mapping must agree rather than fight.** SOCOM II reads how HARD Triangle is pressed (light crouches,
+   firm goes prone), which is why the crouch shortcut exists at all. A rebinding UI that presents Triangle as an
+   ordinary button is telling the player something false. The page has to express that some of the game's semantics are
+   analogue and cannot be rebound away, and the crouch-shortcut radio has to read as part of the same page rather than
+   a leftover beside it.
+3. **It follows Goal 3 (Q2), not just Q3.** Knob retirement is the pass that decides how configuration is named,
+   validated and constrained; adding a whole new configuration surface before that discipline exists means writing it
+   twice. An old `config.json` with no mapping block must still load, as an old config with the mouse keys still does.
+
+**Bar:** the mapping round-trips through `config.json` and an absent or malformed block falls back to today's defaults,
+under tests; a rebind, a conflict and a restore-defaults are each asserted without a window; the page is reachable and
+completable with the pad alone; **a full gate AND an online control round pass afterwards** (the same bar as Q3, for
+the same reason — these are the files the instrument runs through); and the owner rebinds one button on a real pad and
+plays with it. If remapping ships, the site's setup guide says so (the hosted-server session owns that wording).
+
 ## 4. Budget and stop rules
 Launches: one gate per runtime commit; Goal 2 two extra; Goal 4 at most two; Goal 5 only in away windows.
 Every moved default or skipped measurement gets a numbered ruling (next: R126). At most two C++-building agents.
