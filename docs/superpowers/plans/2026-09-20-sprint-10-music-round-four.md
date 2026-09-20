@@ -127,6 +127,20 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       >= 68 s). Ours' are shorter and more frequent (3.2, 1.6, 3.1, 10.7, 1.8, 10.9, 12.6, 17.9, 9.7, 16.2, 2.0, 33.6 s
       over the same span). Whether a given stop is the game's decision or ours' is what the state poll answers.
       The recorder's 480 s cap (fixed to 620, `5daf39b`) made run 8's late reference windows silent; re-pin = `s10_r4l`.
+      **THE LEAD (2026-09-20 ~23:55 UTC, after the owner's "it doesn't even sound like music"): ours plays the two
+      channels of every stereo VAG music stream OUT OF SYNC.** Content analysis of the loopback captures (L against R,
+      decimated to 4 kHz, lag search +/-2 s, 25-30 s windows): the console's mission music correlates at lag 0
+      (+0.26, +0.27, +0.59; the briefing +0.47); ours reads +0.05 / -0.06 at lag 0 with the best match at an OFFSET --
+      +61 ms on the first mission stem in all three of today's builds (run 8 before any fix, 9b, 10), -561 ms on the
+      briefing music and on later mission stems, +136 / +674 / +109 ms on others; side/mid energy ~0 dB vs the
+      console's -2 dB. Per-file, deterministic first offsets (one interleave block?) that then drift: the two channel
+      cursors start apart and do not advance together. The title loop (the PCM ring) is aligned on both (+0.37 vs
+      +0.42). Before `8a43b09` the desynced pair was centre-mixed -- the phasey "choppy, jumping" smear of the earlier
+      listens; after it, hard-panned and still desynced. Level, modulation (3-5 Hz music rhythm on both), spectral
+      flatness (tonal on both), clicks (none) and spectral peaks (coincident) all read the same on both machines --
+      which is why every level instrument passed it. Handed to the fix agent as item 10 (test first: a two-channel
+      VPK with identical L/R renders sample-aligned across chunks, the pre-fill and an underrun); a third agent adds
+      `lr_corr0 / lr_lag_ms / lr_best / side_mid_db` per window to the parity scorer with a stereo-desync compare rule.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
