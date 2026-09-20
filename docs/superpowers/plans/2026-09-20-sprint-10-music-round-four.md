@@ -225,6 +225,14 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       gaps on ours are not yet explained by the logic as read; candidates: a rest field in the playlist entries,
       the idle test on the entry's handle word (item 1's answer), the dispatch failing on ours. The state poll gets
       a `--what music` mode for both machines to compare level / stem / playlist cursor / alert on the same walk.
+      **The playlist entries DO carry a rest (`1e310d6`, ~06:20 UTC):** each 0x10-byte entry is {def (0 = REST),
+      sound entry, PAUSETIME s, elapsed s}, filled from the mission's `.rdr` node's SNDNAME/PAUSETIME
+      (FUN_00349e90 :246077); FUN_00349b90 (:245922) counts a rest entry done when elapsed > PAUSETIME, a stem
+      entry done when its handle is dead; FUN_00349db0 plays the next at once; a finished list re-rolls the same
+      tick. Four lists per mission (STEALTH, FIGHT, MED_FIGHT, HEAVY_FIGHT) with weights. So a 10-27 s gap on
+      ours may be the mission's own `rest N s` entry -- the console's capture had silences of the same order --
+      or a dispatch/idle-test difference; the music-state rows (every entry, the rest's elapsed, the cursor)
+      separate the two. Runs `s10_r4s` (ours) and `s10_r4t` (console) carry the music-state poll.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
