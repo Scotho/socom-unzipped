@@ -319,7 +319,8 @@ class PersonaPresses(unittest.TestCase):
         self.assertEqual(sh.presses, [KEY_CROSS] + [PAD_CROSS] * L.LOBBY_RESEND_MAX)
         self.assertEqual(cm.exception.detail, "a changed screen never showed after CROSS and 3 re-sends -- see the capture")
         self.assertIn("LOBBY class=login:persona:list", sh.logs)
-        self.assertEqual(sh.shots, ["lobby_fail_login_persona_list"])
+        # Sprint 10 Goal 3: every refused check keeps its frame (miss_<step>_<attempt>), then the failure capture.
+        self.assertEqual(sh.shots, [f"miss_login_persona_list_{n}" for n in range(1, L.LOBBY_RESEND_MAX + 2)] + ["lobby_fail_login_persona_list"])
 
     def test_c_dropped_keyboard_press_is_re_sent_once(self):
         # the first CROSS changed the screen without a keyboard; the second was dropped, its re-send opened one
