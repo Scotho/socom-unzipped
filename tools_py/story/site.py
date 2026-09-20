@@ -15,7 +15,8 @@ Usage:
                                   [--out docs/story/index.html] [--img img] [--logo img/logo.webp]
                                   [--repo https://github.com/Scotho/socom-unzipped] [--full-document]
     For the site copy, under Git Bash:
-        MSYS_NO_PATHCONV=1 python -m tools_py.story.site --full-document             --out C:/projects/scotho/sites/s2u/story.html --img /story/img --logo /img/logo.webp
+        MSYS_NO_PATHCONV=1 python -m tools_py.story.site --full-document
+            --out C:/projects/scotho/sites/s2u/story.html --img /story/img --logo /img/logo.webp
     Without MSYS_NO_PATHCONV=1, "/story/img" arrives as "C:/Program Files/Git/story/img" (it did, once, and the live
     page lost every picture); with it, --out must be a Windows path, since "/c/..." is not translated either.
 """
