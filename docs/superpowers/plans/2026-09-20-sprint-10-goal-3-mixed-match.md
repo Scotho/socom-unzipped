@@ -34,10 +34,13 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
 ## Tasks
 
 - [x] 1. `Shell.target` / `press_hold_s`; `Pcsx2Shell`; the `login|host|join|ready` driver; four tests (`f07bc76`).
-- [ ] 2. **The first verified PCSX2 login** (lock-bound, one instance + the DNS stub + the hosted server):
-      `pcsx2_ctl launch B` then `pcsx2_shell login B --name socomq --out logs/parity/s10_pcsx2_login1`. Pass: the
-      briefing room reached with every step `verified=True`. A detector that misses the console's text gets its own
-      reference cut from the console frame beside ours', keyed by target, never a loosened threshold.
+- [x] 2. **The first verified PCSX2 login -- PASSED 2026-09-20 ~14:40 UTC** (`logs/parity/s10_pcsx2_login1`, the
+      hosted server through the DNS stub, `logs/s10_pcsx2_login1.sh`): boot read to the main menu after 3 presses
+      (the blind recipe pressed 4), ONLINE lit and read, the login screen, a persona created on the card through the
+      verified on-screen keyboard (6 glyphs read back), CONNECT focus read, the EULA, the lobby, the briefing room --
+      `LOBBY class=ok`, exit 0, 264 s, every step `verified=True attempt=1`. So the detectors cut from our renderer
+      read the console's text at the 640x448 client without a single new reference. `socomq` now exists on B's card
+      (`--existing` from here).
 - [ ] 3. **Leg 1, verified:** `scripts/parity/mixed_match.sh` rewritten on the shell -- ours hosts (`online_login_ours
       --host`), PCSX2 joins (`pcsx2_shell join B`), both READY, the round runs; ours walks, PCSX2's captures show our
       player moving (`motion_diff`), and ours' position peek shows PCSX2's. Bar: twice in a row.

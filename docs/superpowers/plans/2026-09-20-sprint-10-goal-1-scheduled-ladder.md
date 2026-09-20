@@ -34,8 +34,12 @@ silent red. **Stop rule:** a run that lags the owner while they are at the machi
       `logs/parity/drive_<stamp>.txt` (the row said UNKNOWN 0/0; re-ledgered as what it was). The double FROSTFIRE in
       the play list is the map-CROSS check's first read (0.70 < 1.0) re-sending a press that had landed -- the same on
       `s8_hosted_kill`, harmless, noted.
-- [ ] The second run, through `scripts/ladder_job.sh 4` exactly as the scheduler would (it refuses unless the machine
-      is quiet), on the fixed verifier: the first row that can count toward the bar.
+- [x] The second run, through `scripts/ladder_job.sh 4` exactly as the scheduler would, 10:07 local
+      (`ladder_20260920_100713`): **LOBBY-FAIL create-game:create again, as expected** -- the job pins the harness at
+      launch and it launched on `9596f51`, before the matcher fix (`8a1c7de`); the row IS right this time (the job
+      waited on the right marker, the ledger read the right files). The pinned copy in the run dir has no
+      `LOBBY_TITLE_COLS`: the proof that the fix was not in the run, not that it failed.
+- [ ] The third run, on the fixed harness: the first row that can count toward the bar.
 
 ## What is left
 
