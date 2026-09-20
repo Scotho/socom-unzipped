@@ -61,7 +61,14 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         bar 55; the console's READY is 65-66, NOT READY 87), so it never readied and the round never started; its
         walk failed on "W" (PCSX2's stick is LUP/LDOWN/LLEFT/LRIGHT). All three fixed (`READY_EDGE_DROPPED_MAX_BY_TARGET`,
         the 35 s wait, LUP), with fixtures.
-      - (d): running as this is written -- the first run in which every part is in place.
+      - (d) `mixed2_ours_hosts_d`, ~16:10 UTC: **the round ran with both players in it and both moving.** The console
+        joined (join:list on the 4th press, join:enter on the 2nd, continue at once, `LOBBY class=ok`), readied after
+        the 30 s notice; ours' READY check saw the lobby leave under it ("game lobby gone during READY check") --
+        the match launched. Positions: the console's camera position over PINE, 100 in-game rows, 17 distinct,
+        x 509 -> 564 across its four LUP holds; ours' own peek, 140 in-game rows, 39 distinct positions across its
+        four W bursts. Leg 1 reached once; the bar wants twice (run e, queued behind leg 2).
+        "Seen by the other" is still measured only by each side's own position; the old screen-motion score
+        (`console-sees-ours-moving`) stays "no" because the spawns do not face each other -- it is not the bar.
       The movement half of the bar: ours' walk is read from its own peek (`0x416054:3`); the console's from PINE
       (`cam_poll --port 28012`); "seen by the other" needs the peer entity's position in each guest -- the next
       reading (research/18 section 3.5 has the local half).
