@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -27,11 +28,32 @@ namespace snd989
     // `note`/`fine` against a tone's center note; a non-negative center note is a PS1 (44.1 kHz) sample.
     uint16_t note2Pitch(int8_t centerNote, int8_t centerFine, int note, int fine);
 
+    // Sprint 9 Q0 (2026-09-20): a stream's life on the mixer's OUTPUT-FRAME clock -- the clock PS2X_AUDIO_DUMP's
+    // WAV is written on, so `frame` is a WAV offset. The mission's music is ~4 s stems the game chains by polling
+    // snd_SoundIsStillPlaying, and nothing had ever stamped where one ended and the next began, nor counted a
+    // stream that starved (an empty ring played silence and said nothing). Start: the frames rendered before the
+    // stream was pushed. Done: the render call in which its data ran out. Underrun: a render call that found the
+    // ring empty with data still to come; `detail` is the frames of silence that call produced for the stream.
+    struct StreamEvent
+    {
+        enum Kind { Start, Done, Underrun };
+        Kind kind = Start;
+        uint32_t handle = 0;
+        uint64_t frame = 0;
+        uint64_t detail = 0;
+    };
+
     class Mixer
     {
     public:
         Mixer();
         ~Mixer();
+
+        // The output-frame clock: the sum of every `frames` render() has been asked for.
+        uint64_t renderedFrames() const;
+        // Where StreamEvents go (in addition to the [audio] stderr line each one prints). Called from inside
+        // render() and playStream(), under the mixer's lock: keep the sink cheap and never call the mixer from it.
+        void setStreamEventSink(std::function<void(const StreamEvent &)> sink);
 
         // The bank's block chunk and VAG chunk, as read from the disc. Replaces an earlier bank with the handle.
         bool loadBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes);

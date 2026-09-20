@@ -1,0 +1,11 @@
+gametitle=SOCOM II - U.S. Navy SEALs (USA) SCUS-97275 r0001
+author=controller (Sprint 9 Q0, 2026-09-20)
+comment=DNAS bypass r0001 (jr ra / nop at 0x2cc670 in FTSCore), unconditional -- as the standard pnach
+patch=1,EE,202CC670,extended,03E00008
+patch=1,EE,202CC674,extended,00000000
+comment=REVERB OFF for the A/B: snd_SetReverbType (EE stub FUN_0033f2a0) and snd_AutoReverb (FUN_0033f220) return at once,
+comment=so the IRX never gets a reverb type or depth. research/06 rows 0x0E and 0x10.
+patch=1,EE,2033F2A0,extended,03E00008
+patch=1,EE,2033F2A4,extended,00000000
+patch=1,EE,2033F220,extended,03E00008
+patch=1,EE,2033F224,extended,00000000
