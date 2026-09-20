@@ -77,6 +77,34 @@ strictly by date with no "and finally" framing anywhere but the last entry.
 
 ---
 
+## Status, 2026-09-20 (second pass, same night)
+
+The four things §1 said the later pass must add were taken as far as the record allows the same night, on the
+owner's instruction, without publishing anything:
+
+- **Pictures — done, ten of them**, all frames the project's own program produced, none over 1 MB, 2.27 MB in total,
+  copied to `docs/story/img/` and inventoried one row each in `docs/story/PICTURES.md` (the disc-derived table's
+  input). Four were already tracked under `docs/research/assets/`. `cite.py` now fails on a picture that is uncaptioned,
+  untracked, missing, over budget, outside `docs/story/img/`, un-inventoried, or a second one in the same entry. The
+  line stays the owner's (§9 Q1); what was picked is a conservative reading of §5.3 — no contact sheet, no frame
+  from a run whose directory holds `server-side.log` without inspecting it, no asset lifted from the disc.
+- **The site page — built locally, not deployed.** `tools_py/story/site.py` renders `docs/STORY.md` +
+  `docs/story/timeline.json` into `docs/story/index.html`: one self-contained page in the landing site's own palette and
+  type, pictures from `img/`, per-entry anchors `#<date>-<slug>` (the URL shape §6.2 asks the site for), each commit
+  citation a link to the repository's commit page. It is the reference rendering the hosted-server session takes a copy
+  of; nothing was pushed to `../scotho` or to any live host. `timeline.json` rows now carry `id` and `picture` for it.
+- **D1 reconciliation — the mechanism, not the decision.** `tools_py/story/remap.py` does §4.4's three paths (a
+  mapped rewrite, an unmapped rewrite with unique subjects, an unmapped rewrite with a duplicate that is reported and
+  never guessed), tested against a fake history. D1 itself is still the owner's, and until it is answered the citation
+  format stays as it is.
+- **The release entry — a template, because there is no release.** `docs/story/release-entry.template.md` names
+  every field the release run stamps and where each comes from; `cite.py` fails the suite on a `{{`/`}}` placeholder
+  left in `STORY.md`, so a pasted-but-unfilled template cannot ship. The uncited "Where it stands tonight" section is
+  what it replaces.
+
+Still open after this pass, and Sprint 11's: the editorial cut to 45 entries or fewer (§2.4's note), the owner's four
+questions in §9, and the release itself.
+
 ## 2. Scope and shape
 
 ### 2.1 What the story is

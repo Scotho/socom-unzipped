@@ -158,6 +158,8 @@ The Horizon server that had been sitting on the same PC since 2026-09-04 finally
 
 The day before, the only thing that had reached a SOCOM II lobby was the retail disc running under an emulator. On this day the project's own executable did it. A stuck clock register was advanced so the program got as far as SELECT UNIVERSE; then a driver walked it through login, the on-screen keyboard, the licence agreement, the lobby and the briefing rooms, and it created a game called "test" on Medley. By the end of the night two instances were in the same match — one hosting as socomc, one joining as socome, both pressing READY, both loaded into VIGILANCE. The lobby, room and game-lobby screens scored 98.6 to 99.4 against the reference screens captured from the console emulator.
 
+![The project's own executable in the SOCOM II ONLINE lobby, on the server running on the same PC. The persona is the driver's test name; the panel in the corner is the runtime's own debugger, open by default in this era.](docs/story/img/2026-09-08-online-lobby.png)
+
 *How:* a second instance is just environment — its own window tag, its own memory-card folder, and a shift applied to the game's fixed network ports at bind time.
 
 *But:* both players were scripts, both ran on one PC, and the server was on that same PC. No two people, and no two machines, have played each other.
@@ -374,6 +376,8 @@ In single-player gameplay the game thread recorded drawing commands faster than 
 
 Two copies of the recompiled game logged in to the project's own server, met on Frostfire along a route picked by arithmetic rather than by eye, and one shot the other. Round 1's kill landed 99 seconds in: the victim's health went 1.0 to 0.298 to 0.0, the killer's single burst had landed 0.59 seconds earlier from 27.9 to 29.2 units away with no height difference between them, and both screens carried the killfeed line within a third of a second. Rounds 2 and 3 of the same session killed as well. Reaching the map at all supplied the second Frostfire sample the morning's ground fix had been owed. Every bar for what counts as a kill had been written down and committed before any of these matches were scored.
 
+![Both screens of ladder launch 2, round 1, a third of a second apart: the killer's on the left, the victim's on the right, the same killfeed line on each.](docs/story/img/2026-09-13-first-kill.png)
+
 *How:* two independent readers — one watching the actor's health field, the other replaying the round's own state values — had to agree before a round counted as a kill.
 
 *But:* this is one launch, on one map, between two scripted copies of the program on one PC, against a server on that same PC; no second machine and no human on either end. The kill count stepped on the killer's instance only — what moved on both was the victim team's alive count, 0.02 seconds after the death on one side and 0.25 on the other. Round 4 of the same session fired 111 bursts at an aim error of 4.1 degrees that never corrected, and killed nobody. The test that pins this result as a fixture was written the following day.
@@ -385,6 +389,8 @@ Two copies of the recompiled game logged in to the project's own server, met on 
 **The owner looked at the test frames and saw two things nobody had been looking for.**
 
 Work stopped on the sprint plan to chase what a person noticed in the gameplay screenshots: grey shards where Seeding Chaos should have water, and a single-player teleport whenever the player turned. The teleport got a confirmed cause. A graphics stub multiplied an address that was already a block number by eight, so seven separate parking slots in video memory collapsed onto two, and the game's animation clips were overwritten with the wrong chunks while the mission loaded. The water got a cause too, published at 13:39 and refuted by its own author at 13:46, when the shards turned up identical with the depth test switched off entirely.
+
+![The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read.](docs/story/img/2026-09-14-grey-hill-before.png)
 
 *How:* the libgraph `vram_addr` is already a 256-byte block number; the extra multiply by eight overflowed the 14-bit destination field, and a leftover packet recorded `DBP=0x2000` where `0x3C00` was required.
 
@@ -450,6 +456,8 @@ This is the first time a person sat down and played the PC build instead of driv
 
 SOCOM II finishes a frame by drawing it back over itself to brighten it. The project's renderer mapped that step to "do nothing" and threw the brightening away, so every gameplay frame came out 1.73 times too dark, and the water's dark bed pass — the thing that brightening exists to lift — stayed a set of flat grey slabs. Underneath it, the part of the game that measures how bright the scene is was being handed a constant mid-grey pixel instead of real ones, so it asked for no brightening at all. The holes in the ground were a third thing, and the afternoon's answer for them — that the missing terrain never reached the drawing hardware at all — did not survive the evening. What actually happened is that a drawing program needing more cycles than its budget allowed was left half-finished and the next chunk in the queue resumed it from the wrong place, so a patch of terrain drew two polygons instead of twenty-eight, and which patch got cut depended on how busy the machine was, which is why the hole wandered.
 
+![The same recorded frame after the brighten pass was restored. Same scene, same camera; the difference is the whole of the defect.](docs/story/img/2026-09-16-brighten-fixed.png)
+
 *How:* the backend had mapped the game's brighten-by-redrawing pass to nothing; the terrain cut came from a drawing program left half-finished when the next one started, where real hardware waits for it to end.
 
 *But:* this is the third explanation for those grey shards. The first blamed the renderer's depth precision, and one run killed it the same hour: with the depth test switched off entirely the shards came back identical, and a disabled depth test cannot cause a depth-test artefact. The theory that replaced it is superseded here too, and research note 26 still carries that dead replacement as its live candidate; one piece also stays open, a flag-timing difference in the recompiler that decides which objects take the clipped drawing path.
@@ -474,6 +482,8 @@ The brightening fix carried a cost nobody saw for a day: it minted a fresh id fo
 
 A queue ran one round on each of the twenty maps that had never been driven online: two copies of the game log in, one hosts, the map is chosen by name, both sides walk their route, nobody shoots, and the round runs to its clock. Seventeen played on the first pass and The Mixer on the retry — eighteen of twenty. Two did not: Foxhunt, whose round ran to its clock but whose walking player stepped off a 110-unit drop and took fall damage, failing the harness's own no-damage check, and Requiem, where the joining side's movement holds came out under the bar on both passes. Requiem fell out first, on the morning's wall-time clock fix from the entry above, which turned the joiner's 13-unit hold into 128 — it had never been a Requiem problem. Foxhunt needed the afternoon: the driver was taught that a sudden height drop is a fall and not damage, and only then did all twenty play.
 
+![How a map is chosen without counting presses: the driver matches the highlighted row against a reference and only then confirms. This is Foxhunt, the map that needed the fall guard.](docs/story/img/2026-09-17-foxhunt-map-select.png)
+
 *How:* the map is confirmed by matching the highlighted row against a reference image, rather than counting presses down a scrolling list.
 
 *But:* a control round is a scripted, no-kill walk between two copies of the game on one PC against a server on the same machine. The research note's own headline is still "18 of 20", and no map other than Frostfire has a route that ends in a kill.
@@ -497,6 +507,8 @@ Four steps, in order. First a host mixer that runs the game's little sound scrip
 **The project got a front door: a window that checks your disc, sets the picture, shows your controller moving, and starts the game.**
 
 The launcher is a small window that sits beside the game and owns its settings file. It reads the disc image you point it at, looks inside for the game's own executable, hashes that file against the digest of the r0001 disc this recompilation was made from, and keeps the Launch button off until it matches. It sets the picture size and sharpness, shows the pad live with the same readings the game's input poll will make, picks a profile and a server, and copies the last log and the settings into a diagnostics folder when something goes wrong. A script turns a finished build into a 285 MB folder and a 63 MB zip, with a README and the licences.
+
+![The launcher's first cut: a disc path, three picture settings, a drawn pad, a server and a profile, and a Launch button that stays off until the disc matches.](docs/story/img/2026-09-17-launcher-first-cut.png)
 
 *How:* the disc check walks the ISO 9660 root directory for `SCUS_972.75`; `--selftest` prints the verified disc and the environment without starting the game.
 
@@ -550,6 +562,8 @@ Three complaints from one evening of play turned out to be three different fault
 
 An Ubuntu 24.04 machine, a build job on GitHub's Linux runners and the port itself all landed the same day, under one rule: the Windows build stays byte-for-byte the same. The boot frame captured in the virtual machine differs from the Windows frame by 0.008 grey levels against a bar of 3, and the driven title check passes there at Windows' own 19 of 23. The launcher, unpacked from the Linux tarball, started the game with a log whose first lines match a Windows run's. The first time the C++ test suite ever ran on Linux it paid for itself: the system allocator aborted on a double free in the audio mixer that Windows had been quietly tolerating for the life of the project.
 
+![The first thing the game says on Ubuntu, inside the virtual machine: the same controller prompt Windows shows at boot, drawn by the software renderer.](docs/story/img/2026-09-18-linux-boot-dialog.png)
+
 *How:* a refused stream header closed its file twice — two owners, one handle — fixed under a test that fails on Windows too.
 
 *But:* every Linux number was read inside a virtual machine on a software renderer running at 0.8 to 2.9 frames a second. No real Linux machine or graphics card has ever run it, and the recompile step and the Windows-only scripts stay behind. The sync that carries the tree into the machine was also handing over the host's timestamps, so the guest could link an object it had already replaced — found only when a build failed on a function that was sitting right there in the source.
@@ -586,6 +600,8 @@ The owner tried to save and was told no memory card was inserted. The card stub 
 
 The owner asked for a proper launcher and got one: a rail that started at eight pages — PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, ABOUT — and gained a ninth the same day, one focus model that behaves identically for mouse, keyboard and pad, open-licence type embedded in the executable so the portable folder stays self-contained, and a controller drawn from scratch whose buttons and sticks light up as you press them. A screenshot mode renders every page from a fixed fake state, so the work can be looked at without launching anything. A second pass answered the owner's notes: legible type at every size, a frameless window with its own top bar, one authored controller outline, a palette sampled from the SOCOM II logo. A later pass killed the flash in the top-left corner on every page change.
 
+![The redesigned launcher's CONTROLLER page, rendered by its own screenshot mode from a fixed fake state: the rail, the drawn pad, and what each button will mean to the game.](docs/story/img/2026-09-19-launcher-controller-page.png)
+
 *How:* the frame was being drawn from the old page's node list, so for one frame every label landed at the origin; the list is rebuilt after the page changes now.
 
 *But:* no human has judged it. It is proven by tests and by screenshots the loop reviewed itself; several owner checks on the look and the pad feel are still open, and the mouse support it currently advertises is scheduled to be deleted.
@@ -597,6 +613,8 @@ The owner asked for a proper launcher and got one: a rail that started at eight 
 **Every online round the project had ever played was against a server sitting on the same desk.**
 
 On the owner's word a small rented machine went up in Ohio with a static address, start-up units, an installer and a control script that rewrites the advertised address everywhere it appears. The launcher's SOCOM Unzipped entry stopped being a placeholder and became the default. A control round then ran to its clock over the internet, both round clocks in step to the second, and a ladder took two kills in four rounds on a single lobby session. The server also learned to introduce itself — a message of the day, a channel name and a location that are settings rather than constants, with live statistics served for the project's site.
+
+![Round 1 of the hosted ladder, from the host's side, moments after the kill: the first round ever played against a server that was not on the same desk.](docs/story/img/2026-09-19-hosted-kill-round-1.png)
 
 *How:* an unattended upgrade restarted the stack mid-round, so the box is now told never to restart those units.
 
@@ -668,6 +686,8 @@ The launcher now points at socom.scotho.com by default, with the plain address k
 
 The candidate was packaged from the release build, checked by the three-stage run on the exact executable inside the archive, and tagged `playtest-1`: a 55.8 MB zip with its own checksum file. Getting there took longer than the hour it was given. The archive would not build at all, because a bug-report feature added earlier in the week had given the launcher a new dependency on a Windows system library, and the list that decides which libraries a portable folder must carry and which it must never carry did not know that library's name — and the check that would have said so only runs when a release is packaged, so it had sat unnoticed since the feature landed. Then the archive came out 7 MB heavier than the one the sprint had measured, and the reason was that a decision made six days earlier — build at the lower optimisation level, because the higher one made a *larger* download — had been recorded in three documents and applied in none; the build script's default had never been changed. Both were fixed under tests watched failing first, and the second of them is now a test that reads the build script and asserts the ruled value, because a ruling written in prose cannot fail. Then the owner sat down with the archive and the fourteen-step script written for the evening, and stopped at step six: the mission music. The same symptoms as before — louder and quieter, jumping between tracks, splices — with all three of the week's music fixes in the build.
 
+![The playtest candidate in the first mission, at the end of the gate's scripted walk, with the game's own stance tutorial up. This is the build the owner played that evening.](docs/story/img/2026-09-20-playtest-mission.png)
+
 *How:* the trace the fixes were built on showed the mission never queues a stream at all — 55 requests, none queued, none replaced — so the fixes were protocol-correct and inert, and the fault was never reproduced by any instrument before it was declared fixed.
 
 *But:* the packaging failure had a shape worth remembering: the audit stopped correctly, but the build script had already emptied the folder it was about to refill, the packaging step then refused, and the previous archive — twelve hours old and plausible in every way — stayed exactly where it was. A tag placed on that folder rather than on the run that filled it would have handed the owner a build with none of the week's fixes in it and no symptom. The person driving the build also masked the failure for several minutes by piping its output through a command that always succeeds. And the honest answer to the owner's question — how do we know the music is playing accurately at all — is that today the project cannot: every audio measurement it has ever made compared its own output to its own output. That investigation now leads the second half of the sprint, ahead of everything.
@@ -682,7 +702,7 @@ The candidate was packaged from the release build, checked by the three-stage ru
 *This section is not an entry and carries no `Cited:` line: it is the view from the end of the record, written the
 night the record ends. When there is a release to describe, it is replaced by entries with citations like every other.*
 
-The tree stands at `cc2dcfd`, 744 commits, on the branch `sprint-9`, with one tag, `playtest-1`, on the last of them. Sprint
+The tree stands at `d105d32`, 745 commits, on the branch `sprint-9`, with one tag, `playtest-1`, on the last of them. Sprint
 9 — "a stranger's first run" — has finished its first half, whose purpose was to make one evening of play worth the
 owner's time. The owner gave it the evening and stopped at the sixth step: the mission music, which three fixes this
 week were supposed to have settled, sounds the way it did before any of them. The second half of the sprint therefore

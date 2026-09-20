@@ -1,10 +1,11 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "cc2dcfd",
+ "head": "d105d32",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
+   "id": "2026-09-02-the-game-is-not-in-the-file-you-would-expect",
    "date": "2026-09-02",
    "title": "The game is not in the file you would expect",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -35,6 +36,7 @@
    ]
   },
   {
+   "id": "2026-09-04-a-playstation-2-game-becomes-a-windows-program",
    "date": "2026-09-04",
    "title": "A PlayStation 2 game becomes a Windows program",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -93,6 +95,7 @@
    ]
   },
   {
+   "id": "2026-09-05-it-plays-its-intro",
    "date": "2026-09-05",
    "title": "It plays its intro",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -123,6 +126,7 @@
    ]
   },
   {
+   "id": "2026-09-05-the-main-menu-at-full-speed",
    "date": "2026-09-05",
    "title": "The main menu, at full speed",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -172,6 +176,7 @@
    ]
   },
   {
+   "id": "2026-09-06-a-mission-loads",
    "date": "2026-09-06",
    "title": "A mission loads",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -219,6 +224,7 @@
    ]
   },
   {
+   "id": "2026-09-07-the-first-frames-of-a-mission",
    "date": "2026-09-07",
    "title": "The first frames of a mission",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -254,6 +260,7 @@
    ]
   },
   {
+   "id": "2026-09-07-the-console-becomes-the-marking-scheme",
    "date": "2026-09-07",
    "title": "The console becomes the marking scheme",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -324,6 +331,7 @@
    ]
   },
   {
+   "id": "2026-09-07-the-movies-play",
    "date": "2026-09-07",
    "title": "The movies play",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -354,6 +362,7 @@
    ]
   },
   {
+   "id": "2026-09-07-two-clients-one-server-one-match",
    "date": "2026-09-07",
    "title": "Two clients, one server, one match",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
@@ -408,6 +417,7 @@
    ]
   },
   {
+   "id": "2026-09-08-the-project-s-own-program-gets-online",
    "date": "2026-09-08",
    "title": "The project's own program gets online",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -456,9 +466,14 @@
      "ref": "logs/parity/ours_match/A_hold05.png",
      "path": "logs/parity/ours_match/A_hold05.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-08-online-lobby.png",
+    "caption": "The project's own executable in the SOCOM II ONLINE lobby, on the server running on the same PC. The persona is the driver's test name; the panel in the corner is the runtime's own debugger, open by default in this era."
+   }
   },
   {
+   "id": "2026-09-08-the-world-stops-coming-apart",
    "date": "2026-09-08",
    "title": "The world stops coming apart",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -499,6 +514,7 @@
    ]
   },
   {
+   "id": "2026-09-09-from-three-frames-a-second-to-thirty",
    "date": "2026-09-09",
    "title": "From three frames a second to thirty",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -561,6 +577,7 @@
    ]
   },
   {
+   "id": "2026-09-09-the-words-on-the-title-screen-come-back",
    "date": "2026-09-09",
    "title": "The words on the title screen come back",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -609,6 +626,7 @@
    ]
   },
   {
+   "id": "2026-09-09-a-mission-you-can-walk-through",
    "date": "2026-09-09",
    "title": "A mission you can walk through",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -647,6 +665,7 @@
    ]
   },
   {
+   "id": "2026-09-10-two-copies-at-speed-and-a-player-who-cannot-move",
    "date": "2026-09-10",
    "title": "Two copies at speed, and a player who cannot move",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -693,6 +712,7 @@
    ]
   },
   {
+   "id": "2026-09-10-the-project-gets-a-name-and-starts-checking-itself",
    "date": "2026-09-10",
    "title": "The project gets a name, and starts checking itself",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -741,6 +761,7 @@
    ]
   },
   {
+   "id": "2026-09-11-the-project-s-own-code-draws-the-game",
    "date": "2026-09-11",
    "title": "The project's own code draws the game",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -805,6 +826,7 @@
    ]
   },
   {
+   "id": "2026-09-11-the-check-that-had-been-passing-for-free",
    "date": "2026-09-11",
    "title": "The check that had been passing for free",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
@@ -841,6 +863,7 @@
    ]
   },
   {
+   "id": "2026-09-12-four-times-the-pixels-and-no-sharper-hud",
    "date": "2026-09-12",
    "title": "Four times the pixels, and no sharper HUD",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -879,6 +902,7 @@
    ]
   },
   {
+   "id": "2026-09-12-the-black-squares-leave-the-intro-movie",
    "date": "2026-09-12",
    "title": "The black squares leave the intro movie",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -916,6 +940,7 @@
    ]
   },
   {
+   "id": "2026-09-12-every-dice-roll-came-up-nearly-zero",
    "date": "2026-09-12",
    "title": "Every dice roll came up nearly zero",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -954,6 +979,7 @@
    ]
   },
   {
+   "id": "2026-09-12-online-players-can-move-again",
    "date": "2026-09-12",
    "title": "Online players can move again",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -992,6 +1018,7 @@
    ]
   },
   {
+   "id": "2026-09-12-a-written-list-of-what-the-project-got-wrong",
    "date": "2026-09-12",
    "title": "A written list of what the project got wrong",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1018,6 +1045,7 @@
    ]
   },
   {
+   "id": "2026-09-13-the-retractions-go-where-they-were-read",
    "date": "2026-09-13",
    "title": "The retractions go where they were read",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1072,6 +1100,7 @@
    ]
   },
   {
+   "id": "2026-09-13-frostfire-gets-its-ground-back",
    "date": "2026-09-13",
    "title": "Frostfire gets its ground back",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1110,6 +1139,7 @@
    ]
   },
   {
+   "id": "2026-09-13-the-test-stops-grading-the-wrong-screen",
    "date": "2026-09-13",
    "title": "The test stops grading the wrong screen",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1136,6 +1166,7 @@
    ]
   },
   {
+   "id": "2026-09-13-the-single-player-mission-stops-freezing",
    "date": "2026-09-13",
    "title": "The single-player mission stops freezing",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1170,6 +1201,7 @@
    ]
   },
   {
+   "id": "2026-09-13-the-first-kill",
    "date": "2026-09-13",
    "title": "The first kill",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1220,9 +1252,14 @@
      "kind": "path",
      "ref": "docs/research/assets/22-first-kill.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-13-first-kill.png",
+    "caption": "Both screens of ladder launch 2, round 1, a third of a second apart: the killer's on the left, the victim's on the right, the same killfeed line on each."
+   }
   },
   {
+   "id": "2026-09-14-two-defects-the-owner-spotted",
    "date": "2026-09-14",
    "title": "Two defects the owner spotted",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
@@ -1264,9 +1301,14 @@
      "kind": "path",
      "ref": "docs/research/26-water-polygons.md"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-14-grey-hill-before.png",
+    "caption": "The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read."
+   }
   },
   {
+   "id": "2026-09-15-turning-around-no-longer-ends-the-mission",
    "date": "2026-09-15",
    "title": "Turning around no longer ends the mission",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1295,6 +1337,7 @@
    ]
   },
   {
+   "id": "2026-09-15-the-check-learns-what-failure-looks-like",
    "date": "2026-09-15",
    "title": "The check learns what failure looks like",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1357,6 +1400,7 @@
    ]
   },
   {
+   "id": "2026-09-15-the-lobby-stops-dropping-button-presses",
    "date": "2026-09-15",
    "title": "The lobby stops dropping button presses",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1420,6 +1464,7 @@
    ]
   },
   {
+   "id": "2026-09-16-the-owner-plays-it-and-asks-about-his-controller",
    "date": "2026-09-16",
    "title": "The owner plays it, and asks about his controller",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1464,6 +1509,7 @@
    ]
   },
   {
+   "id": "2026-09-16-every-frame-was-1-73-times-too-dark",
    "date": "2026-09-16",
    "title": "Every frame was 1.73 times too dark",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1516,9 +1562,14 @@
      "kind": "path",
      "ref": "docs/research/assets/31-console-dump-gl-replay-fixed.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-16-brighten-fixed.png",
+    "caption": "The same recorded frame after the brighten pass was restored. Same scene, same camera; the difference is the whole of the defect."
+   }
   },
   {
+   "id": "2026-09-17-the-game-stops-running-in-slow-motion",
    "date": "2026-09-17",
    "title": "The game stops running in slow motion",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1560,6 +1611,7 @@
    ]
   },
   {
+   "id": "2026-09-17-twenty-maps-in-one-night",
    "date": "2026-09-17",
    "title": "Twenty maps in one night",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1619,9 +1671,14 @@
      "ref": "logs/parity/ours_control_requiem_clock",
      "path": "logs/parity/ours_control_requiem_clock"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-17-foxhunt-map-select.png",
+    "caption": "How a map is chosen without counting presses: the driver matches the highlighted row against a reference and only then confirms. This is Foxhunt, the map that needed the fall guard."
+   }
   },
   {
+   "id": "2026-09-17-the-game-has-sound",
    "date": "2026-09-17",
    "title": "The game has sound",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1695,6 +1752,7 @@
    ]
   },
   {
+   "id": "2026-09-17-a-launcher-and-a-folder-you-can-copy",
    "date": "2026-09-17",
    "title": "A launcher, and a folder you can copy",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1732,9 +1790,14 @@
      "kind": "path",
      "ref": "docs/research/assets/launcher-first-cut.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-17-launcher-first-cut.png",
+    "caption": "The launcher's first cut: a disc path, three picture settings, a drawn pad, a server and a profile, and a Launch button that stays off until the disc matches."
+   }
   },
   {
+   "id": "2026-09-17-the-audit-that-said-a-stranger-still-could-not-play",
    "date": "2026-09-17",
    "title": "The audit that said a stranger still could not play",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
@@ -1797,6 +1860,7 @@
    ]
   },
   {
+   "id": "2026-09-18-the-launcher-learns-your-pad",
    "date": "2026-09-18",
    "title": "The launcher learns your pad",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -1831,6 +1895,7 @@
    ]
   },
   {
+   "id": "2026-09-18-the-sound-reports-run-to-ground",
    "date": "2026-09-18",
    "title": "The sound reports run to ground",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -1860,6 +1925,7 @@
    ]
   },
   {
+   "id": "2026-09-18-the-game-runs-on-linux",
    "date": "2026-09-18",
    "title": "The game runs on Linux",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -1898,9 +1964,14 @@
      "ref": "logs/parity/vm/s8_vm_title5_summary.txt",
      "path": "logs/parity/vm/s8_vm_title5_summary.txt"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-18-linux-boot-dialog.png",
+    "caption": "The first thing the game says on Ubuntu, inside the virtual machine: the same controller prompt Windows shows at boot, drawn by the software renderer."
+   }
   },
   {
+   "id": "2026-09-19-the-menus-stop-dropping-frames",
    "date": "2026-09-19",
    "title": "The menus stop dropping frames",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -1941,6 +2012,7 @@
    ]
   },
   {
+   "id": "2026-09-19-it-can-save-and-it-can-hear-you",
    "date": "2026-09-19",
    "title": "It can save, and it can hear you",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -1996,6 +2068,7 @@
    ]
   },
   {
+   "id": "2026-09-19-the-launcher-gets-a-face",
    "date": "2026-09-19",
    "title": "The launcher gets a face",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2041,9 +2114,14 @@
      "ref": "launcher_ui",
      "path": "logs/parity/launcher_ui"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-19-launcher-controller-page.png",
+    "caption": "The redesigned launcher's CONTROLLER page, rendered by its own screenshot mode from a fixed fake state: the rail, the drawn pad, and what each button will mean to the game."
+   }
   },
   {
+   "id": "2026-09-19-a-server-of-its-own-on-the-internet",
    "date": "2026-09-19",
    "title": "A server of its own, on the internet",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2101,9 +2179,14 @@
      "ref": "s8_hosted_kill",
      "path": "logs/parity/s8_hosted_kill"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-19-hosted-kill-round-1.png",
+    "caption": "Round 1 of the hosted ladder, from the host's side, moments after the kill: the first round ever played against a server that was not on the same desk."
+   }
   },
   {
+   "id": "2026-09-19-it-says-why-it-will-not-start-and-it-weighs-less",
    "date": "2026-09-19",
    "title": "It says why it will not start, and it weighs less",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2159,6 +2242,7 @@
    ]
   },
   {
+   "id": "2026-09-19-a-way-to-report-what-went-wrong",
    "date": "2026-09-19",
    "title": "A way to report what went wrong",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2206,6 +2290,7 @@
    ]
   },
   {
+   "id": "2026-09-19-the-things-the-owner-actually-noticed",
    "date": "2026-09-19",
    "title": "The things the owner actually noticed",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2266,6 +2351,7 @@
    ]
   },
   {
+   "id": "2026-09-19-a-door-left-open-for-two-and-a-half-days",
    "date": "2026-09-19",
    "title": "A door left open for two and a half days",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2320,6 +2406,7 @@
    ]
   },
   {
+   "id": "2026-09-20-the-server-gets-a-name",
    "date": "2026-09-20",
    "title": "The server gets a name",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2357,6 +2444,7 @@
    ]
   },
   {
+   "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
    "date": "2026-09-20",
    "title": "The first build made for a person to play",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
@@ -2393,7 +2481,11 @@
      "kind": "path",
      "ref": "docs/KNOWN.md"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-20-playtest-mission.png",
+    "caption": "The playtest candidate in the first mission, at the end of the gate's scripted walk, with the game's own stance tutorial up. This is the build the owner played that evening."
+   }
   }
  ]
 }
