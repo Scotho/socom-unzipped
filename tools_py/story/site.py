@@ -1,12 +1,14 @@
-"""Render the story as one self-contained page: a vertical timeline in the landing site's own look.
+"""Render the story as one page in the site's own chrome: a vertical timeline under the s2u top bar and footer.
 
 Spec 6.2: the site does not re-derive the timeline. This reads `docs/STORY.md` (already checked by the citation
 test) and `docs/story/timeline.json`, and writes one HTML file with the CSS and the script inline and the pictures
 referenced from `img/`, so the page and its images can be copied anywhere together. It fetches nothing and runs
 no git; it is a build step, not a server.
 
-The look is `../scotho/sites/s2u`'s: its teal, gold and off-white, the briefing-panel typography, its fonts
-(Oswald, Exo 2, Share Tech Mono), scanlines. The timeline is a spine down the page with a node per entry and a
+The shared chrome (tokens, top bar, sections, buttons, footer) is the site's `src/ui.css`, with its markup written
+down in `src/chrome.md` (both in ../scotho/sites/s2u). The site copy links `/src/ui.css` for Vite to bundle; the
+repository's own copy (docs/story/index.html, the artifact preview) inlines it and makes every chrome link absolute
+to https://s2u.scotho.com/. Only the timeline's own styles are inline in both. The timeline is a spine down the page with a node per entry and a
 band per era; entries reveal as they scroll into view (not at all when the viewer prefers reduced motion), and
 each has a stable anchor, `#<date>-<slug>`, which is the per-entry URL shape the spec asks the site for.
 
@@ -165,37 +167,11 @@ def render_entry(e, repo, img_base, index):
 
 
 CSS = r"""
-:root{--bg:#0a1216;--bg2:#06100f;--panel:rgba(10,30,36,.82);--panel2:rgba(10,38,44,.9);--line:rgba(60,120,126,.5);
---line2:rgba(60,120,126,.28);--teal:#4c8688;--teal2:#2f5c60;--glow:#7fd9e6;--lit:#ece7dc;--ink:#e9e4d8;--dim:#9fb4b8;
---dim2:#6f8f94;--gold:#d9b23a;--gold2:#f0cf5c;--mono:'Share Tech Mono','Courier New',monospace;
---head:'Oswald','Arial Narrow',sans-serif;--body:Georgia,'Times New Roman',serif;--disp:'Exo 2',sans-serif;
---spine:2px;--rail:64px;color-scheme:dark}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:72px}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--body);padding-inline:16px;position:relative}
-body::before{content:"";position:fixed;inset:0;z-index:-2;background:
-radial-gradient(ellipse at 85% -10%,rgba(40,90,100,.45),transparent 55%),
-radial-gradient(ellipse at 0% 110%,rgba(30,60,70,.35),transparent 50%),
-linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%)}
-body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.35;
-background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 3px)}
-a{color:var(--glow)}a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-code{font:.86em var(--mono);color:var(--glow)}
-.wrap{max-width:900px;margin:0 auto;padding-block:28px 96px}
-/* progress bar */
-#progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:10;background:rgba(0,0,0,.4);padding-top:env(safe-area-inset-top,0px)}
-#progress i{display:block;height:3px;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 8px rgba(217,178,58,.6);transition:width .1s linear}
-/* header */
-.top{padding-top:12px;position:relative}
-.top .logo{display:block;width:min(420px,78vw);height:auto;margin:0 0 6px -10px;filter:saturate(.92) brightness(.96) drop-shadow(0 0 22px rgba(127,217,230,.28))}
-.wrap::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.45) 100%)}
-/* the creator's foreword */
-.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
-.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
-.foreword .brief-sub{margin-bottom:8px}
-.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
-.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
-.brief-sub{font:600 12px/1.4 var(--head);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
+/* Timeline-only styles. Everything shared with the site (tokens, top bar, sections, cards, buttons, footer) comes
+   from the site's ui.css, linked on the site and inlined in the repository's own copy. */
+html{scroll-padding-top:120px}
+.wrap{max-width:900px;margin:0 auto;padding-block:84px 96px}
+.story-hero{padding-top:8px}
 .brief-title{font:800 clamp(34px,7vw,64px)/.98 var(--disp);font-style:italic;letter-spacing:.5px;color:var(--lit);margin:0;
 text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wrap:balance}
 .brief-title small{display:block;font:700 clamp(15px,2.6vw,22px)/1.2 var(--disp);font-style:italic;color:var(--glow);letter-spacing:1px;margin-top:8px;text-shadow:none}
@@ -203,21 +179,23 @@ text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wra
 .preface{margin-top:22px;display:grid;gap:12px}
 .preface p{margin:0;max-width:70ch}
 .preface strong{color:var(--lit);font-family:var(--head);font-weight:600;letter-spacing:.4px;font-style:normal}
-/* stats strip */
+.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
+.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
+.foreword .brief-sub{margin-bottom:8px}
+.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
+.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
 .strip{display:flex;flex-wrap:wrap;gap:10px;margin:26px 0 0;padding:0;list-style:none}
 .strip li{flex:1 1 130px;padding:10px 12px;background:var(--panel2);border:1px solid var(--line)}
 .strip b{display:block;font:600 24px/1 var(--head);color:var(--gold2);font-variant-numeric:tabular-nums}
 .strip span{font:600 11px/1.3 var(--head);letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
-/* era nav */
-nav.eras{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;margin:26px -16px 0;padding:8px 16px;display:flex;gap:6px;overflow-x:auto;
+nav.eras{position:sticky;top:calc(52px + env(safe-area-inset-top,0px));z-index:5;margin:26px -16px 0;padding:8px 16px;display:flex;gap:6px;overflow-x:auto;
 background:rgba(8,18,22,.88);backdrop-filter:blur(6px);border-bottom:1px solid var(--line2);scrollbar-width:none}
 nav.eras::-webkit-scrollbar{display:none}
 nav.eras a{flex:none;padding:6px 10px;border:1px solid var(--line2);color:var(--dim);text-decoration:none;
 font:600 11px/1.2 var(--head);letter-spacing:1.4px;text-transform:uppercase;transition:color .15s,border-color .15s}
 nav.eras a small{display:block;font:10px/1.2 var(--mono);letter-spacing:.3px;color:var(--dim2);text-transform:none;margin-top:2px}
 nav.eras a:hover,nav.eras a.on{color:var(--lit);border-color:var(--gold)}
-/* the timeline */
-.tl{position:relative;margin:24px 0 0;padding:0;list-style:none}
+.tl{--spine:2px;--rail:64px;position:relative;margin:24px 0 0;padding:0;list-style:none}
 .tl::before{content:"";position:absolute;left:calc(var(--rail)/2 - var(--spine)/2);top:0;bottom:0;width:var(--spine);
 background:linear-gradient(180deg,transparent 0,var(--teal) 40px,var(--teal) calc(100% - 40px),transparent 100%);opacity:.7}
 .era{position:relative;padding:38px 0 6px var(--rail);margin:0}
@@ -232,23 +210,21 @@ background:var(--bg);transform:rotate(45deg);box-shadow:0 0 0 6px var(--bg),0 0 
 border:2px solid var(--teal);box-shadow:0 0 0 5px var(--bg);transition:border-color .3s,box-shadow .3s}
 .node:target .dot,.node.in .dot{border-color:var(--glow);box-shadow:0 0 0 5px var(--bg),0 0 14px rgba(127,217,230,.55)}
 .node.pic .dot{border-color:var(--gold)}
-.card{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
-transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
-.card:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
-.node.pic .card::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
-.card::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
-.node:target .card{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
-.card header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
-.card time{font:12.5px/1.2 var(--mono);letter-spacing:1.2px;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
-.card time .yr{color:var(--dim2)}
-.card h3{font:600 20px/1.2 var(--head);letter-spacing:.4px;margin:0;color:var(--lit)}
-.card h3 a{color:inherit;text-decoration:none}.card h3 a:hover{color:#fff;text-shadow:0 0 6px rgba(127,217,230,.6)}
+.entry{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
+transition:border-color .25s,transform .5s var(--ease),box-shadow .25s}
+.entry:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.entry::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
+.node.pic .entry::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
+.node:target .entry{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
+.entry header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.entry time{font:12.5px/1.2 var(--mono);letter-spacing:1.2px;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
+.entry time .yr{color:var(--dim2)}
+.entry h3{font:600 20px/1.2 var(--head);letter-spacing:.4px;margin:0;color:var(--lit)}
+.entry h3 a{color:inherit;text-decoration:none}.entry h3 a:hover{color:#fff;text-shadow:0 0 6px rgba(127,217,230,.6)}
 .hook{font:700 17px/1.4 var(--disp);font-style:italic;color:#fff;margin:10px 0 8px;text-wrap:pretty}
-.card p{margin:9px 0;max-width:68ch}
-.card code{background:rgba(0,0,0,.35);padding:1px 4px}
-.lbl{display:inline-block;font:600 10px/1 var(--head);letter-spacing:1.6px;text-transform:uppercase;padding:3px 6px;margin:0 8px 0 0;
-vertical-align:2px;border:1px solid var(--line);color:var(--dim)}
-.how{color:var(--dim);font-size:14.5px}.how .lbl{color:var(--teal)}
+.entry p{margin:9px 0;max-width:68ch}
+.entry code{background:rgba(0,0,0,.35);padding:1px 4px}
+.entry .how{font-size:14.5px}
 .but{border-left:2px solid var(--gold);padding-left:12px;font-size:15px}.but .lbl{color:var(--gold);border-color:rgba(217,178,58,.5)}
 details.cited{margin-top:10px;font-size:12.5px;color:var(--dim2)}
 details.cited summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;color:var(--dim)}
@@ -264,29 +240,24 @@ details[open].cited summary::after{content:"\2212"}
 figure{margin:12px 0 4px;border:1px solid var(--line2);background:#000;max-width:640px}
 figure img{display:block;width:100%;height:auto;filter:saturate(.95)}
 figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;color:var(--dim)}
-/* closing */
 .closing{margin-top:48px;padding:18px 20px;background:var(--panel2);border:1px solid var(--line)}
 .closing h2{font:600 22px/1.2 var(--head);letter-spacing:1px;color:var(--gold);margin:0 0 10px}
 .closing p{max-width:70ch}
-footer.foot{margin-top:40px;font:12px/1.7 var(--mono);letter-spacing:.5px;color:var(--dim2)}
-footer.foot a{color:var(--teal)}
-/* reveal */
-/* cards are readable at rest (a thumbnail or a paused reader sees the page whole); the reveal is a small lift and
-   the node lighting up, never an opacity:0 wait on an observer */
+.closing code{font:13px var(--mono);color:var(--glow)}
 @media (prefers-reduced-motion:no-preference){
- .card{transform:translateY(14px)}
- .node.in .card,.node:target .card{transform:none;border-color:var(--line)}
+ .entry{transform:translateY(14px)}
+ .node.in .entry,.node:target .entry{transform:none;border-color:var(--line)}
 }
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.card{transform:none}}
-@media (max-width:560px){:root{--rail:34px}.card{padding:12px 12px 10px}.card header{gap:6px}.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);top:48px}
+@media (prefers-reduced-motion:reduce){.entry{transform:none}}
+@media (max-width:560px){.tl{--rail:34px}.entry{padding:12px 12px 10px}.entry header{gap:6px}.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);top:48px}
 .era .mark::after{inset:5px}.dot{width:12px;height:12px;left:calc(var(--rail)/2 - 6px)}}
 """
 
 JS = r"""
 (function(){
-  var bar=document.querySelector('#progress i');
-  function prog(){var h=document.documentElement,max=h.scrollHeight-h.clientHeight;if(bar)bar.style.width=(max>0?(h.scrollTop/max*100):0)+'%';}
-  addEventListener('scroll',prog,{passive:true});prog();
+  var bar=document.getElementById('bar'),pb=document.querySelector('#progress i');
+  function onScroll(){var h=document.documentElement,max=h.scrollHeight-h.clientHeight;if(pb)pb.style.width=(max>0?(h.scrollTop/max*100):0)+'%';if(bar)bar.classList.toggle('solid',scrollY>40);}
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
   var nodes=[].slice.call(document.querySelectorAll('.node'));
   var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(!reduce&&'IntersectionObserver' in window){
@@ -295,10 +266,46 @@ JS = r"""
     if(location.hash){var t=document.querySelector(location.hash);if(t){t.classList.add('in');}}
   } else { nodes.forEach(function(n){n.classList.add('in');}); }
   var links=[].slice.call(document.querySelectorAll('nav.eras a')),eras=[].slice.call(document.querySelectorAll('.era'));
-  function current(){var y=scrollY+120,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+on);});}
+  function current(){var y=scrollY+140,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+on);});}
   addEventListener('scroll',current,{passive:true});current();
 })();
 """
+
+SITE = "https://s2u.scotho.com"
+FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+         '<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@400;500;600;700'
+         '&family=Share+Tech+Mono&display=swap" rel="stylesheet">')
+
+
+def chrome_header(base):
+    """The site's top bar, from sites/s2u/src/chrome.md, with STORY current. `base` is "" on the site and the
+    absolute site origin in a copy that lives elsewhere."""
+    w = base + "/web.html"
+    return ('<a class="skip" href="#main">Skip to content</a>\n'
+            '<div id="scan" aria-hidden="true"></div>\n'
+            '<div id="progress" aria-hidden="true"><i></i></div>\n'
+            '<header id="bar" class="bar">\n'
+            '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>\n'
+            '  <nav class="nav" aria-label="Sections">\n'
+            '    <a href="%s#what">WHAT</a>\n    <a href="%s#loop">HOW</a>\n'
+            '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>\n'
+            '    <a href="%s#server">SERVER</a>\n    <a href="%s#setup">SETUP</a>\n    <a href="%s#report">REPORT</a>\n'
+            '    <a href="%s#credits">CREDITS</a>\n  </nav>\n'
+            '  <div class="bar-right">\n'
+            '    <a class="ghost" href="%s/" title="The original console-menu version of this site">CLASSIC</a>\n'
+            '  </div>\n</header>\n' % (w, w, w, base, w, w, w, w, base))
+
+
+def chrome_footer(base, fine):
+    w = base + "/web.html"
+    return ('<footer class="foot">\n  <div class="foot-inner">\n    <div>\n'
+            '      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>\n'
+            '      <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. '
+            '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>\n'
+            '    </div>\n    <nav aria-label="Footer">\n'
+            '      <a href="%s/story.html">The story</a>\n      <a href="%s/">Classic menu</a>\n'
+            '      <span class="soon">GitHub (coming soon)</span>\n      <a href="%s#report">Report a bug</a>\n'
+            '    </nav>\n  </div>\n  <div class="foot-fine">%s</div>\n</footer>\n' % (base, base, w, fine))
 
 
 def stamped(logo_url, out_path):
@@ -322,28 +329,35 @@ def stamped(logo_url, out_path):
     return logo_url
 
 
-def render(doc, timeline, repo, img_base, logo):
+def render(doc, timeline, repo, img_base, logo, ui_css_inline=None, base=""):
+    """`ui_css_inline` is the text of the site's ui.css for a copy that cannot link it (then `base` is the site's
+    origin and every chrome link is absolute); on the site itself it is None and the stylesheet is linked."""
     head_sha = timeline.get("head", "")
+    generated = timeline.get("generated", "")
     entries = [e for era in doc["eras"] for e in era["entries"]]
     n_commits = sum(1 for e in timeline.get("entries", []) for c in e.get("citations", []) if c.get("kind") == "commit")
     n_pics = sum(1 for e in timeline.get("entries", []) if e.get("picture"))
     first, last = entries[0]["date"], entries[-1]["date"]
-    days = (int(last[8:]) - int(first[8:])) + 1 if first[:7] == last[:7] else "18"
-    title = doc["title"].replace("SOCOM Unzipped — ", "")
+    days = (int(last[8:]) - int(first[8:])) + 1 if first[:7] == last[:7] else "?"
+    title = doc["title"].replace("SOCOM Unzipped: ", "").replace("SOCOM Unzipped \u2014 ", "")
     fore = doc.get("foreword")
     closing = [c for c in doc["closing"] if c is not fore]
     out = ["<title>SOCOM Unzipped Story</title>",
-           '<meta name="description" content="How SOCOM II became a PC game: the timeline, every claim cited.">',
-           '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>',
-           '<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">',
-           "<style>%s</style>" % CSS,
-           '<div id="progress" aria-hidden="true"><i></i></div>',
-           '<div class="wrap">',
-           '<header class="top">',
-           '<img class="logo" src="%s" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">' % logo,
-           '<p class="brief-sub">Mission briefing &middot; operation unzipped</p>',
-           '<h1 class="brief-title">%s<small>Trying to turn a PlayStation 2 game into a PC game. %s days in.</small></h1>'
-           % (inline(title), days)]
+           '<meta name="description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">',
+           '<meta name="theme-color" content="#08121a">',
+           FONTS]
+    if ui_css_inline is None:
+        out.append('<link rel="stylesheet" href="/src/ui.css">')
+    else:
+        out.append("<style>%s</style>" % ui_css_inline)
+    out.append("<style>%s</style>" % CSS)
+    out.append(chrome_header(base))
+    out.append('<main id="main"><div class="wrap">')
+    out.append('<header class="story-hero">')
+    out.append('<img class="logo" src="%s" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">' % logo)
+    out.append('<p class="brief-sub"><span class="blink"></span>Mission briefing &middot; the story so far</p>')
+    out.append('<h1 class="brief-title">%s<small>Trying to turn a PlayStation 2 game into a PC game. %s days in.</small></h1>'
+               % (inline(title), days))
     if doc["preface"]:
         out.append('<p class="lede">%s</p>' % inline(doc["preface"][0].strip("*")))
     out.append("</header>")
@@ -357,7 +371,7 @@ def render(doc, timeline, repo, img_base, logo):
     if fore:
         out.append('<section class="foreword" id="from-the-creator"><p class="brief-sub">%s</p>' % inline(fore["title"]))
         for b in fore["blocks"]:
-            if b.startswith("—") or b.startswith("--"):
+            if b.strip() in ("Scotho", "Craig") or b.startswith("\u2014") or b.startswith("--"):
                 out.append('<p class="sig">%s</p>' % inline(b))
             else:
                 out.append("<p>%s</p>" % inline(b))
@@ -377,7 +391,7 @@ def render(doc, timeline, repo, img_base, logo):
         out.append("</li>")
         for e in era["entries"]:
             has_pic = any(_IMG_RE.match(b) for b in e["blocks"])
-            html_e = render_entry(e, repo, img_base, idx)
+            html_e = render_entry(e, repo, img_base, idx).replace('<article class="card">', '<article class="entry">', 1)
             if has_pic:
                 html_e = html_e.replace('class="node"', 'class="node pic"', 1)
             out.append(html_e)
@@ -391,16 +405,16 @@ def render(doc, timeline, repo, img_base, logo):
             else:
                 out.append("<p>%s</p>" % inline(b))
         out.append("</section>")
-    out.append('<footer class="foot">%d entries &middot; %d commit citations &middot; built from <code>docs/STORY.md</code> at <code>%s</code> '
-               '&middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>'
-               % (len(entries), n_commits, head_sha))
-    out.append("</div>")
+    out.append("</div></main>")
+    fine = ("generated %s from docs/STORY.md at %s &middot; %d entries, %d commit citations &middot; checked by tools_py/story/cite.py "
+            "&middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;" % (generated, head_sha, len(entries), n_commits))
+    out.append(chrome_footer(base, fine))
     out.append("<script>%s</script>" % JS)
     return "\n".join(out) + "\n"
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Render docs/STORY.md as one page.")
+    ap = argparse.ArgumentParser(description="Render docs/STORY.md as one page in the site's chrome.")
     ap.add_argument("--story", default=os.path.join(ROOT, "docs", "STORY.md"))
     ap.add_argument("--timeline", default=os.path.join(ROOT, "docs", "story", "timeline.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "docs", "story", "index.html"))
@@ -408,14 +422,16 @@ def main(argv=None):
     ap.add_argument("--logo", default="img/logo.webp", help="the site's logo, as the page will reference it")
     ap.add_argument("--repo", default="https://github.com/Scotho/socom-unzipped")
     ap.add_argument("--full-document", action="store_true",
-                    help="wrap in <!doctype html><html><head>...; the default emits a fragment the Artifact tool wraps itself")
+                    help="the site copy: a complete HTML document that links /src/ui.css for Vite to bundle")
+    ap.add_argument("--ui-css", default=os.path.join(os.path.dirname(ROOT), "scotho", "sites", "s2u", "src", "ui.css"),
+                    help="the site's shared stylesheet, inlined into a copy that cannot link it (the default docs copy)")
     args = ap.parse_args(argv)
     # Git Bash rewrites an argument that looks like an absolute POSIX path ("/story/img") into a Windows path
     # ("C:/Program Files/Git/story/img") before Python ever sees it. That shipped once: every picture and the logo
     # on s2u.scotho.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
     # so one that does is refused here rather than rendered.
     for name, value in (("--img", args.img), ("--logo", args.logo)):
-        if ":" in value or value.lower().startswith("c:/") or "Program Files" in value:
+        if ":" in value.split("?")[0] and not value.startswith("https://") or "Program Files" in value:
             sys.stderr.write("%s=%r is a filesystem path, not a URL path. Under Git Bash run with MSYS_NO_PATHCONV=1, "
                              "or write the argument as //story/img.\n" % (name, value))
             return 2
@@ -423,12 +439,33 @@ def main(argv=None):
         doc = parse_document(f.read())
     with open(args.timeline, encoding="utf-8") as f:
         timeline = json.load(f)
-    page = render(doc, timeline, args.repo, args.img.rstrip("/"), stamped(args.logo, args.out))
     if args.full_document:
-        head_end = page.index("<div id=\"progress\"")
+        page = render(doc, timeline, args.repo, args.img.rstrip("/"), stamped(args.logo, args.out))
+        head_end = page.index('<a class="skip"')
         page = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
-                '<meta name="viewport" content="width=device-width, initial-scale=1">\n' + page[:head_end] +
+                '<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">\n' + page[:head_end] +
                 '</head>\n<body>\n' + page[head_end:] + '</body>\n</html>\n')
+    else:
+        # the repository's own copy: the site's stylesheet inlined, the chrome's links absolute, the logo from the site
+        ui_css = ""
+        if os.path.isfile(args.ui_css):
+            with open(args.ui_css, encoding="utf-8") as f:
+                ui_css = f.read()
+        else:
+            sys.stderr.write("warning: %s not found; the copy will carry the timeline styles only\n" % args.ui_css)
+        # the logo: the copy's own file beside the page when there is one (docs/story/img/logo.webp travels with the
+        # repository and the artifact preview), else the site's, absolute
+        logo = args.logo
+        if not logo.startswith("http"):
+            beside = os.path.join(os.path.dirname(os.path.abspath(args.out)), logo.lstrip("/"))
+            if os.path.isfile(beside):
+                logo = stamped(logo, args.out)
+            else:
+                site_logo = os.path.join(os.path.dirname(args.ui_css), "..", "public", "img", "logo.webp")
+                logo = SITE + "/img/logo.webp"
+                if os.path.isfile(site_logo):
+                    logo = SITE + stamped("/img/logo.webp", os.path.join(os.path.dirname(site_logo), "..", "..", "x"))
+        page = render(doc, timeline, args.repo, args.img.rstrip("/"), logo, ui_css_inline=ui_css, base=SITE)
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
         f.write(page)
     print("%s: %d bytes, %d eras, %d entries" % (args.out, len(page.encode("utf-8")), len(doc["eras"]),

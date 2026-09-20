@@ -1,39 +1,165 @@
 <title>SOCOM Unzipped Story</title>
-<meta name="description" content="How SOCOM II became a PC game: the timeline, every claim cited.">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<meta name="description" content="How SOCOM II is becoming a PC game: the timeline, every claim cited.">
+<meta name="theme-color" content="#08121a">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Exo+2:ital,wght@1,700;1,800&family=Oswald:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>/* The shared chrome of the s2u web pages (web.html and the generated story.html): one dark world, on purpose. The
+   game's teal and gold, the briefing panel's type, scanlines over everything. What is here is what every page
+   shares: the tokens, the base, the top bar, the section frame, cards, buttons, the fine print and the footer. A
+   page links this first and keeps what is only its own in its own stylesheet (home.css for web.html). The markup
+   these classes expect is written down in chrome.md beside this file. */
+:root {
+  --bg: #08121a;
+  --bg2: #050d12;
+  --panel: rgba(10, 30, 36, 0.78);
+  --panel2: rgba(10, 38, 44, 0.88);
+  --line: rgba(60, 120, 126, 0.5);
+  --line2: rgba(60, 120, 126, 0.26);
+  --teal: #4c8688;
+  --glow: #7fd9e6;
+  --cyan: #35d6de;
+  --lit: #ece7dc;
+  --ink: #e9e4d8;
+  --dim: #9fb4b8;
+  --dim2: #6f8f94;
+  --gold: #d9b23a;
+  --gold2: #f0cf5c;
+  --up: #6fe08a;
+  --down: #ff6b5e;
+  --head: 'Oswald', 'Arial Narrow', sans-serif;
+  --disp: 'Exo 2', 'Arial Black', sans-serif;
+  --mono: 'Share Tech Mono', 'Courier New', monospace;
+  --body: Georgia, 'Times New Roman', serif;
+  --max: 1080px;
+  --gutter: clamp(16px, 4vw, 40px);
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 64px; overflow-x: clip; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.6 var(--body);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+body::before {
+  content: '';
+  position: fixed; inset: 0; z-index: -1;
+  background:
+    radial-gradient(ellipse at 85% -10%, rgba(40, 90, 100, 0.45), transparent 55%),
+    radial-gradient(ellipse at 0% 110%, rgba(30, 60, 70, 0.35), transparent 50%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg2) 100%);
+}
+#scan {
+  position: fixed; inset: 0; z-index: 40; pointer-events: none; opacity: 0.3;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.28) 2px 3px);
+}
+a { color: var(--glow); }
+a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+code { font: 0.9em var(--mono); color: var(--glow); background: rgba(0, 0, 0, 0.35); padding: 1px 5px; }
+.skip { position: absolute; left: -999px; top: 8px; z-index: 100; padding: 8px 12px; background: var(--gold); color: #000; font: 600 13px var(--head); }
+.skip:focus { left: 8px; }
+
+/* progress */
+#progress { position: fixed; left: 0; top: 0; width: 100%; height: 3px; z-index: 60; padding-top: env(safe-area-inset-top, 0px); }
+#progress i { display: block; height: 3px; width: 0; background: linear-gradient(90deg, var(--teal), var(--gold)); box-shadow: 0 0 8px rgba(217, 178, 58, 0.6); }
+
+/* top bar */
+.bar {
+  position: fixed; left: 0; right: 0; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 18px;
+  padding: calc(10px + env(safe-area-inset-top, 0px)) var(--gutter) 10px;
+  background: linear-gradient(180deg, rgba(5, 13, 18, 0.92), rgba(5, 13, 18, 0.6) 70%, transparent);
+  transition: background 0.3s;
+}
+.bar.solid { background: rgba(5, 13, 18, 0.92); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line2); }
+.brand { display: inline-flex; align-items: baseline; gap: 8px; text-decoration: none; color: var(--lit); }
+.ii { font: 800 18px/1 var(--disp); font-style: italic; color: var(--cyan); text-shadow: 0 0 8px rgba(53, 214, 222, 0.6); }
+.brand .word { font: 600 12px/1 var(--head); letter-spacing: 3px; color: var(--gold); }
+.nav { display: flex; gap: 4px; margin-left: 6px; }
+.nav a {
+  padding: 6px 10px; text-decoration: none; color: var(--dim);
+  font: 600 11.5px/1 var(--head); letter-spacing: 1.8px; border: 1px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+.nav a:hover, .nav a.on { color: var(--lit); border-color: var(--line); }
+.bar-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.ghost { font: 600 11px/1 var(--head); letter-spacing: 1.6px; color: var(--dim2); text-decoration: none; padding: 6px 8px; border: 1px solid var(--line2); }
+.ghost:hover { color: var(--lit); border-color: var(--line); }
+.sound { width: 32px; height: 30px; padding: 0; border: 1px solid var(--line2); background: rgba(0, 0, 0, 0.35); color: var(--teal); cursor: pointer; display: grid; place-items: center; }
+.sound:hover { color: var(--lit); border-color: var(--line); }
+.sound .spk { fill: currentColor; } .sound .wave { stroke: currentColor; } .sound .x { stroke: var(--down); }
+.sound[aria-pressed="true"] .x { display: none; }
+.sound[aria-pressed="false"] .wave { display: none; }
+@media (max-width: 720px) { .nav { display: none; } .bar { gap: 10px; } .brand .word { display: none; } }
+
+/* the logo, the kicker line and its blinking lamp */
+.logo { display: block; width: min(460px, 82vw); height: auto; margin: 0 0 6px -12px; filter: saturate(0.92) brightness(0.98) drop-shadow(0 0 24px rgba(127, 217, 230, 0.3)); }
+.brief-sub { font: 600 12px/1.4 var(--head); letter-spacing: 2.6px; text-transform: uppercase; color: var(--gold); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+.blink { width: 8px; height: 8px; background: var(--gold); box-shadow: 0 0 8px var(--gold); animation: blink 1.4s steps(2) infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+
+/* sections */
+.section { max-width: var(--max); margin: 0 auto; padding: 72px var(--gutter); }
+.section > *, .cards > *, .intel > li, .latest > li { min-width: 0; }
+.sec-head { margin-bottom: 26px; }
+.sec-head h2 { font: 600 clamp(26px, 3.6vw, 36px)/1.1 var(--head); letter-spacing: 0.6px; color: var(--lit); margin: 0; text-wrap: balance; }
+.sec-lede { color: var(--dim); max-width: 66ch; margin: 12px 0 0; }
+.cards { display: grid; gap: 14px; }
+.cards.three { grid-template-columns: repeat(3, 1fr); }
+.cards.two { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 860px) { .cards.three, .cards.two { grid-template-columns: 1fr; } }
+.card { position: relative; padding: 20px 20px 16px; background: var(--panel); border: 1px solid var(--line2); transition: border-color 0.25s, transform 0.5s var(--ease), box-shadow 0.25s; }
+.card:hover { border-color: var(--line); box-shadow: 0 10px 32px rgba(0, 0, 0, 0.35); }
+.card .num { position: absolute; right: 14px; top: 10px; font: 12px var(--mono); letter-spacing: 1px; color: var(--dim2); }
+.card h3 { font: 600 19px/1.2 var(--head); letter-spacing: 0.4px; color: var(--gold2); margin: 0 0 8px; }
+.card p { margin: 8px 0; }
+.lbl { display: inline-block; font: 600 10px/1 var(--head); letter-spacing: 1.6px; text-transform: uppercase; padding: 3px 6px; margin: 0 8px 0 0; vertical-align: 2px; border: 1px solid var(--line); color: var(--teal); }
+.how { color: var(--dim); font-size: 14.5px; }
+.plain, .steps { margin: 0; padding-left: 18px; }
+.plain li, .steps li { margin: 6px 0; }
+.plain b { color: var(--lit); font-weight: 600; font-family: var(--head); letter-spacing: 0.4px; }
+.steps { padding-left: 22px; }
+.steps li::marker { color: var(--gold); font-family: var(--mono); }
+.notice { margin-top: 14px; padding: 14px 18px; border: 1px solid rgba(217, 178, 58, 0.35); background: rgba(217, 178, 58, 0.06); }
+.notice p { margin: 0; } .notice b { color: var(--gold2); font-family: var(--head); font-weight: 600; letter-spacing: 0.3px; }
+.fine { color: var(--dim2); font: 12.5px/1.5 var(--mono); letter-spacing: 0.3px; margin: 14px 0 0; }
+
+/* buttons */
+.cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 18px 0 0; }
+.btn { display: inline-block; padding: 12px 18px; background: var(--panel2); border: 1px solid var(--line); color: var(--lit); text-decoration: none; font: 600 13px/1 var(--head); letter-spacing: 2px; cursor: pointer; transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s; }
+.btn:hover { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(217, 178, 58, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3); transform: translateY(-1px); }
+.btn.ghost { background: transparent; color: var(--dim); }
+.btn[disabled] { opacity: 0.6; cursor: wait; }
+
+/* footer */
+.foot { border-top: 1px solid var(--line2); padding: 36px var(--gutter) 40px; background: rgba(0, 0, 0, 0.25); }
+.foot-inner { max-width: var(--max); margin: 0 auto; display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: start; }
+@media (max-width: 720px) { .foot-inner { grid-template-columns: 1fr; } }
+.foot-brand { font: 600 13px/1 var(--head); letter-spacing: 2.4px; color: var(--gold); margin-bottom: 8px; display: flex; align-items: baseline; gap: 8px; }
+.foot p { margin: 0; max-width: 62ch; color: var(--dim); font-size: 13.5px; }
+.foot nav { display: grid; gap: 6px; }
+.foot nav a { font: 600 12px/1 var(--head); letter-spacing: 1.6px; color: var(--dim); text-decoration: none; }
+.foot nav a:hover { color: var(--lit); }
+.foot-fine { max-width: var(--max); margin: 18px auto 0; font: 11px var(--mono); letter-spacing: 0.6px; color: var(--dim2); }
+
+/* motion */
+.reveal { transform: translateY(16px); transition: transform 0.6s var(--ease), opacity 0.6s; }
+.reveal.in { transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .reveal, .card, .btn { transition: none !important; transform: none !important; }
+  .blink { animation: none !important; }
+}
+</style>
 <style>
-:root{--bg:#0a1216;--bg2:#06100f;--panel:rgba(10,30,36,.82);--panel2:rgba(10,38,44,.9);--line:rgba(60,120,126,.5);
---line2:rgba(60,120,126,.28);--teal:#4c8688;--teal2:#2f5c60;--glow:#7fd9e6;--lit:#ece7dc;--ink:#e9e4d8;--dim:#9fb4b8;
---dim2:#6f8f94;--gold:#d9b23a;--gold2:#f0cf5c;--mono:'Share Tech Mono','Courier New',monospace;
---head:'Oswald','Arial Narrow',sans-serif;--body:Georgia,'Times New Roman',serif;--disp:'Exo 2',sans-serif;
---spine:2px;--rail:64px;color-scheme:dark}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:72px}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--body);padding-inline:16px;position:relative}
-body::before{content:"";position:fixed;inset:0;z-index:-2;background:
-radial-gradient(ellipse at 85% -10%,rgba(40,90,100,.45),transparent 55%),
-radial-gradient(ellipse at 0% 110%,rgba(30,60,70,.35),transparent 50%),
-linear-gradient(180deg,var(--bg) 0%,var(--bg2) 100%)}
-body::after{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.35;
-background:repeating-linear-gradient(to bottom,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.28) 2px 3px)}
-a{color:var(--glow)}a:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
-code{font:.86em var(--mono);color:var(--glow)}
-.wrap{max-width:900px;margin:0 auto;padding-block:28px 96px}
-/* progress bar */
-#progress{position:fixed;left:0;top:0;height:3px;width:100%;z-index:10;background:rgba(0,0,0,.4);padding-top:env(safe-area-inset-top,0px)}
-#progress i{display:block;height:3px;width:0;background:linear-gradient(90deg,var(--teal),var(--gold));box-shadow:0 0 8px rgba(217,178,58,.6);transition:width .1s linear}
-/* header */
-.top{padding-top:12px;position:relative}
-.top .logo{display:block;width:min(420px,78vw);height:auto;margin:0 0 6px -10px;filter:saturate(.92) brightness(.96) drop-shadow(0 0 22px rgba(127,217,230,.28))}
-.wrap::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 50% 40%,transparent 55%,rgba(0,0,0,.45) 100%)}
-/* the creator's foreword */
-.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
-.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
-.foreword .brief-sub{margin-bottom:8px}
-.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
-.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
-.brief-sub{font:600 12px/1.4 var(--head);letter-spacing:2.6px;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
+/* Timeline-only styles. Everything shared with the site (tokens, top bar, sections, cards, buttons, footer) comes
+   from the site's ui.css, linked on the site and inlined in the repository's own copy. */
+html{scroll-padding-top:120px}
+.wrap{max-width:900px;margin:0 auto;padding-block:84px 96px}
+.story-hero{padding-top:8px}
 .brief-title{font:800 clamp(34px,7vw,64px)/.98 var(--disp);font-style:italic;letter-spacing:.5px;color:var(--lit);margin:0;
 text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wrap:balance}
 .brief-title small{display:block;font:700 clamp(15px,2.6vw,22px)/1.2 var(--disp);font-style:italic;color:var(--glow);letter-spacing:1px;margin-top:8px;text-shadow:none}
@@ -41,21 +167,23 @@ text-shadow:0 0 2px rgba(127,217,230,.9),0 0 18px rgba(127,217,230,.35);text-wra
 .preface{margin-top:22px;display:grid;gap:12px}
 .preface p{margin:0;max-width:70ch}
 .preface strong{color:var(--lit);font-family:var(--head);font-weight:600;letter-spacing:.4px;font-style:normal}
-/* stats strip */
+.foreword{margin:26px 0 0;padding:20px 22px 16px;background:linear-gradient(180deg,rgba(10,38,44,.9),rgba(10,30,36,.78));border:1px solid var(--line);position:relative}
+.foreword::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,var(--gold),transparent)}
+.foreword .brief-sub{margin-bottom:8px}
+.foreword p{margin:8px 0;max-width:70ch;font-size:16.5px;line-height:1.6}
+.foreword .sig{font:600 14px/1.2 var(--head);letter-spacing:1.6px;color:var(--gold);margin-top:14px}
 .strip{display:flex;flex-wrap:wrap;gap:10px;margin:26px 0 0;padding:0;list-style:none}
 .strip li{flex:1 1 130px;padding:10px 12px;background:var(--panel2);border:1px solid var(--line)}
 .strip b{display:block;font:600 24px/1 var(--head);color:var(--gold2);font-variant-numeric:tabular-nums}
 .strip span{font:600 11px/1.3 var(--head);letter-spacing:1.6px;text-transform:uppercase;color:var(--dim)}
-/* era nav */
-nav.eras{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;margin:26px -16px 0;padding:8px 16px;display:flex;gap:6px;overflow-x:auto;
+nav.eras{position:sticky;top:calc(52px + env(safe-area-inset-top,0px));z-index:5;margin:26px -16px 0;padding:8px 16px;display:flex;gap:6px;overflow-x:auto;
 background:rgba(8,18,22,.88);backdrop-filter:blur(6px);border-bottom:1px solid var(--line2);scrollbar-width:none}
 nav.eras::-webkit-scrollbar{display:none}
 nav.eras a{flex:none;padding:6px 10px;border:1px solid var(--line2);color:var(--dim);text-decoration:none;
 font:600 11px/1.2 var(--head);letter-spacing:1.4px;text-transform:uppercase;transition:color .15s,border-color .15s}
 nav.eras a small{display:block;font:10px/1.2 var(--mono);letter-spacing:.3px;color:var(--dim2);text-transform:none;margin-top:2px}
 nav.eras a:hover,nav.eras a.on{color:var(--lit);border-color:var(--gold)}
-/* the timeline */
-.tl{position:relative;margin:24px 0 0;padding:0;list-style:none}
+.tl{--spine:2px;--rail:64px;position:relative;margin:24px 0 0;padding:0;list-style:none}
 .tl::before{content:"";position:absolute;left:calc(var(--rail)/2 - var(--spine)/2);top:0;bottom:0;width:var(--spine);
 background:linear-gradient(180deg,transparent 0,var(--teal) 40px,var(--teal) calc(100% - 40px),transparent 100%);opacity:.7}
 .era{position:relative;padding:38px 0 6px var(--rail);margin:0}
@@ -70,23 +198,21 @@ background:var(--bg);transform:rotate(45deg);box-shadow:0 0 0 6px var(--bg),0 0 
 border:2px solid var(--teal);box-shadow:0 0 0 5px var(--bg);transition:border-color .3s,box-shadow .3s}
 .node:target .dot,.node.in .dot{border-color:var(--glow);box-shadow:0 0 0 5px var(--bg),0 0 14px rgba(127,217,230,.55)}
 .node.pic .dot{border-color:var(--gold)}
-.card{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
-transition:border-color .25s,transform .5s cubic-bezier(.2,.7,.2,1),box-shadow .25s}
-.card:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
-.node.pic .card::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
-.card::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
-.node:target .card{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
-.card header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
-.card time{font:12.5px/1.2 var(--mono);letter-spacing:1.2px;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
-.card time .yr{color:var(--dim2)}
-.card h3{font:600 20px/1.2 var(--head);letter-spacing:.4px;margin:0;color:var(--lit)}
-.card h3 a{color:inherit;text-decoration:none}.card h3 a:hover{color:#fff;text-shadow:0 0 6px rgba(127,217,230,.6)}
+.entry{position:relative;padding:16px 18px 14px;background:var(--panel);border:1px solid var(--line2);
+transition:border-color .25s,transform .5s var(--ease),box-shadow .25s}
+.entry:hover{border-color:var(--line);box-shadow:0 8px 30px rgba(0,0,0,.35)}
+.entry::before{content:"";position:absolute;left:-9px;top:14px;border:8px solid transparent;border-right-color:var(--line2);border-left:0}
+.node.pic .entry::after{content:"";position:absolute;right:12px;top:12px;width:8px;height:8px;background:var(--gold);transform:rotate(45deg);opacity:.7}
+.node:target .entry{border-color:var(--gold);box-shadow:0 0 0 1px rgba(217,178,58,.3)}
+.entry header{display:flex;gap:12px;align-items:baseline;flex-wrap:wrap}
+.entry time{font:12.5px/1.2 var(--mono);letter-spacing:1.2px;color:var(--gold);font-variant-numeric:tabular-nums;white-space:nowrap}
+.entry time .yr{color:var(--dim2)}
+.entry h3{font:600 20px/1.2 var(--head);letter-spacing:.4px;margin:0;color:var(--lit)}
+.entry h3 a{color:inherit;text-decoration:none}.entry h3 a:hover{color:#fff;text-shadow:0 0 6px rgba(127,217,230,.6)}
 .hook{font:700 17px/1.4 var(--disp);font-style:italic;color:#fff;margin:10px 0 8px;text-wrap:pretty}
-.card p{margin:9px 0;max-width:68ch}
-.card code{background:rgba(0,0,0,.35);padding:1px 4px}
-.lbl{display:inline-block;font:600 10px/1 var(--head);letter-spacing:1.6px;text-transform:uppercase;padding:3px 6px;margin:0 8px 0 0;
-vertical-align:2px;border:1px solid var(--line);color:var(--dim)}
-.how{color:var(--dim);font-size:14.5px}.how .lbl{color:var(--teal)}
+.entry p{margin:9px 0;max-width:68ch}
+.entry code{background:rgba(0,0,0,.35);padding:1px 4px}
+.entry .how{font-size:14.5px}
 .but{border-left:2px solid var(--gold);padding-left:12px;font-size:15px}.but .lbl{color:var(--gold);border-color:rgba(217,178,58,.5)}
 details.cited{margin-top:10px;font-size:12.5px;color:var(--dim2)}
 details.cited summary{cursor:pointer;list-style:none;display:inline-flex;align-items:center;gap:6px;color:var(--dim)}
@@ -102,29 +228,42 @@ details[open].cited summary::after{content:"\2212"}
 figure{margin:12px 0 4px;border:1px solid var(--line2);background:#000;max-width:640px}
 figure img{display:block;width:100%;height:auto;filter:saturate(.95)}
 figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;color:var(--dim)}
-/* closing */
 .closing{margin-top:48px;padding:18px 20px;background:var(--panel2);border:1px solid var(--line)}
 .closing h2{font:600 22px/1.2 var(--head);letter-spacing:1px;color:var(--gold);margin:0 0 10px}
 .closing p{max-width:70ch}
-footer.foot{margin-top:40px;font:12px/1.7 var(--mono);letter-spacing:.5px;color:var(--dim2)}
-footer.foot a{color:var(--teal)}
-/* reveal */
-/* cards are readable at rest (a thumbnail or a paused reader sees the page whole); the reveal is a small lift and
-   the node lighting up, never an opacity:0 wait on an observer */
+.closing code{font:13px var(--mono);color:var(--glow)}
 @media (prefers-reduced-motion:no-preference){
- .card{transform:translateY(14px)}
- .node.in .card,.node:target .card{transform:none;border-color:var(--line)}
+ .entry{transform:translateY(14px)}
+ .node.in .entry,.node:target .entry{transform:none;border-color:var(--line)}
 }
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}.card{transform:none}}
-@media (max-width:560px){:root{--rail:34px}.card{padding:12px 12px 10px}.card header{gap:6px}.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);top:48px}
+@media (prefers-reduced-motion:reduce){.entry{transform:none}}
+@media (max-width:560px){.tl{--rail:34px}.entry{padding:12px 12px 10px}.entry header{gap:6px}.era .mark{width:22px;height:22px;left:calc(var(--rail)/2 - 11px);top:48px}
 .era .mark::after{inset:5px}.dot{width:12px;height:12px;left:calc(var(--rail)/2 - 6px)}}
 </style>
+<a class="skip" href="#main">Skip to content</a>
+<div id="scan" aria-hidden="true"></div>
 <div id="progress" aria-hidden="true"><i></i></div>
-<div class="wrap">
-<header class="top">
+<header id="bar" class="bar">
+  <a class="brand" href="https://s2u.scotho.com/web.html#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>
+  <nav class="nav" aria-label="Sections">
+    <a href="https://s2u.scotho.com/web.html#what">WHAT</a>
+    <a href="https://s2u.scotho.com/web.html#loop">HOW</a>
+    <a href="https://s2u.scotho.com/story.html" class="on" aria-current="page">STORY</a>
+    <a href="https://s2u.scotho.com/web.html#server">SERVER</a>
+    <a href="https://s2u.scotho.com/web.html#setup">SETUP</a>
+    <a href="https://s2u.scotho.com/web.html#report">REPORT</a>
+    <a href="https://s2u.scotho.com/web.html#credits">CREDITS</a>
+  </nav>
+  <div class="bar-right">
+    <a class="ghost" href="https://s2u.scotho.com/" title="The original console-menu version of this site">CLASSIC</a>
+  </div>
+</header>
+
+<main id="main"><div class="wrap">
+<header class="story-hero">
 <img class="logo" src="img/logo.webp?v=3ba1e71ed5" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">
-<p class="brief-sub">Mission briefing &middot; operation unzipped</p>
-<h1 class="brief-title">SOCOM Unzipped: the story so far<small>Trying to turn a PlayStation 2 game into a PC game. 19 days in.</small></h1>
+<p class="brief-sub"><span class="blink"></span>Mission briefing &middot; the story so far</p>
+<h1 class="brief-title">the story so far<small>Trying to turn a PlayStation 2 game into a PC game. 19 days in.</small></h1>
 <p class="lede">The timeline of this project, first commit to today. Written for people who want to play the game, not build it. Each entry has one technical line you can skip. The rest is what happened.</p>
 </header>
 <ul class="strip"><li><b>45</b><span>entries</span></li><li><b>212</b><span>commits cited</span></li><li><b>5</b><span>eras</span></li><li><b>12</b><span>pictures</span></li><li><b>Sep 2</b><span>first commit</span></li><li><b>Sep 20</b><span>latest</span></li></ul>
@@ -134,7 +273,7 @@ footer.foot a{color:var(--teal)}
 </section>
 <section class="foreword" id="from-the-creator"><p class="brief-sub">From the creator</p>
 <p>This is an automation-first, agentically engineered passion project. It started as curiosity. I wanted to see where PS2 static recompilation actually stood, and it grew legs when it started producing results, so I kept building on them. The recompiler is a fork of PS2Recomp, extended for this one game. A good portion of the work went into a parallel validator: the retail disc running in PCSX2 as a golden reference, driven by the same scripts as our build, with debugging tools on both sides, so the agents could check themselves against the real thing on demand and adjust. Most of the code was written by AI agents in a loop I run. My part was mostly playing it, noticing what was off, and deciding what mattered next. What follows is the record of that, receipts attached.</p>
-<p>Scotho</p>
+<p class="sig">Scotho</p>
 </section>
 <nav class="eras" aria-label="Eras">
 <a href="#era-2026-09-02">From the disc to the screen<small>Sep 2 &ndash; Sep 7 &middot; 8</small></a>
@@ -149,7 +288,7 @@ footer.foot a{color:var(--teal)}
 </li>
 <li class="node" id="2026-09-02-the-game-isn-t-in-the-file-you-d-expect" style="--i:0">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-02">Sep 2<span class="yr"> 2026</span></time><h3><a href="#2026-09-02-the-game-isn-t-in-the-file-you-d-expect">The game isn't in the file you'd expect</a></h3></header>
 <p class="hook">The executable on the SOCOM II disc is 874 KB of loader. The actual game is locked in an encrypted archive next to it.</p>
 <p>Day one, two commits, nothing runs. The first is tools: a harness that steps the PS2's CPU one instruction at a time, scripts to pull a function map out of Ghidra, and a decryptor for the archive. The second is the finding: inside the archive are two code overlays, 2.2 MB and 1.7 MB, stamped "SOCOM 2 r0001 17:22:21 Oct 11 2003". The disc's protection asks the console for its hardware IDs while it decrypts, but those IDs feed a hash nothing ever checks. So the archive isn't tied to one machine.</p>
@@ -159,7 +298,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-04-a-ps2-game-becomes-a-windows-program" style="--i:1">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-04">Sep 4<span class="yr"> 2026</span></time><h3><a href="#2026-09-04-a-ps2-game-becomes-a-windows-program">A PS2 game becomes a Windows program</a></h3></header>
 <p class="hook">Thirty-five commits, and by the end the game's own code is C++ that compiles.</p>
 <p>The protection layer encrypts 131 of its own code blocks; running the cipher offline unwraps them without a console. A fork of PS2Recomp turns the MIPS into C++, and the loader plus both overlays become one program file linked against a runtime. Most of the day went on something duller and more important: Ghidra's function map was wrong in ways that quietly corrupt everything. One 46 KB stretch of unrelated code had been folded into a single function, so calls into it landed in the wrong place and returned garbage. Normalised and re-exported: 13,261 functions. A Horizon server, the community's stand-in for Sony's long-dead online service, went up on the same PC three days before anything could talk to it.</p>
@@ -169,7 +308,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-05-it-plays-its-intro" style="--i:2">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-05">Sep 5<span class="yr"> 2026</span></time><h3><a href="#2026-09-05-it-plays-its-intro">It plays its intro</a></h3></header>
 <p class="hook">A day of black screen, and the graphics weren't the problem.</p>
 <p>A full diagnosis of the render path said every layer below the game was fine. The game just wasn't asking for anything to be drawn, because it was waiting for a controller. Fake one and it wedges somewhere else. The real cause took a hardware watchpoint: the game asks Sony's device-bus manager how many bytes arrived, our stub never answered, and the game read back an uninitialised number and copied that many bytes over its own heap. Five of those calls per boot; the third overran into the texture registry. Answer all five and the intro plays: 2,445 frames, no faults.</p>
@@ -179,7 +318,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-05-the-main-menu-at-full-speed" style="--i:3">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-05">Sep 5<span class="yr"> 2026</span></time><h3><a href="#2026-09-05-the-main-menu-at-full-speed">The main menu, at full speed</a></h3></header>
 <p class="hook">Three bugs on one delivery path stood between the game and its own menus.</p>
 <p>SOCOM II ships its shell's constants through one particular kind of transfer tag, and the chain walker treated that kind differently from every other. The camera's eye vector never arrived, the backface test rejected every menu triangle, nothing was submitted. Fixed, the shell drew at 13 to 17 fps, a software rasterizer doing a swizzled read and a palette lookup for every one of a million textured pixels. An OpenGL 3.3 backend that records draw commands on the game thread and replays them on the graphics thread took the same screen to 55-60. Then the game walked its real first-boot sequence for the first time: memory card prompt, loading warning, "no SOCOM data found", Sony logo, intro, main menu.</p>
@@ -189,7 +328,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-07-the-first-frames-of-a-mission" style="--i:4">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-07">Sep 7<span class="yr"> 2026</span></time><h3><a href="#2026-09-07-the-first-frames-of-a-mission">The first frames of a mission</a></h3></header>
 <p class="hook">The thing starving the renderer was the automatic exposure control.</p>
 <p>First the mission had to load at all: four fixes the day before, all the same kind of bug: the recompiler and the runtime disagreeing with the original code about where a function starts and ends. 136 real functions sat in gaps the map never listed, and calling into one did nothing. With those in, the Albania briefing handed off to a running level that drew nothing. The reason: a background thread wakes every vertical blank and reads about 176 pixels back off the frame buffer to judge scene brightness. That readback path didn't exist, so every read spun to a sixteen-million-iteration timeout, a third of a second each, and starved the game to one tick a minute. Swap the readback for a fixed mid-grey and the mission runs at twenty ticks a second: flat world polygons and a night sky.</p>
@@ -199,7 +338,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-07-the-console-becomes-the-marking-scheme" style="--i:5">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-07">Sep 7<span class="yr"> 2026</span></time><h3><a href="#2026-09-07-the-console-becomes-the-marking-scheme">The console becomes the marking scheme</a></h3></header>
 <p class="hook">Instead of arguing about what looked wrong, the project started scoring itself against screenshots of the real game.</p>
 <p>A harness captures a window without stealing focus, posts the same button presses to an emulator running the retail disc and to our window, walks both through the same script, and scores the pairs. The first report scored 6 of 20 screens (mean 80.6, main menu 63.7) and the other fourteen were never reached. It paid off immediately. Every 2D element was drawing at the top-left corner, because the recompiled code wrote to a vector register that's hardwired to (0,0,0,1) on real hardware. Text was being culled by a face-winding setting raylib leaves on. Four-bit palettes were read in the wrong order, which is why the text was dim. And 29 hand-written substitutes for Sony's vector-maths library were multiplying matrices the wrong way round, so the camera's clip matrix was wrong and every object failed the visibility test. Deleting the substitutes and recompiling Sony's own code brought back the menu's rotating 3D selector and gave the mission textures.</p>
@@ -209,7 +348,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-07-the-movies-play" style="--i:6">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-07">Sep 7<span class="yr"> 2026</span></time><h3><a href="#2026-09-07-the-movies-play">The movies play</a></h3></header>
 <p class="hook">Every movie in the game was dying on its first tick over four stale bytes.</p>
 <p>The stand-in for the PS2's movie library never cleared its work buffer when a player was created. The game read the first word of that buffer to ask whether the movie had finished, found leftover bytes spelling UIMe from an unrelated file, and concluded it had already ended. The real function clears the buffer. With that one line, plus the game's feed callback run on the calling thread instead of parking the only thread that could feed the decoder, the Sony logo, the intro and the looping menu background all play. The main menu's score went from 81.0 to 98.8.</p>
@@ -219,7 +358,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-07-two-clients-one-server-one-match" style="--i:7">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-07">Sep 7<span class="yr"> 2026</span></time><h3><a href="#2026-09-07-two-clients-one-server-one-match">Two clients, one server, one match</a></h3></header>
 <p class="hook">The first SOCOM II match on this project's own server wasn't played by this project.</p>
 <p>The Horizon server that had been sitting on the PC since the 4th finally got a client. A retail disc in the reference emulator went LOGIN, SELECT UNIVERSE, ACCOUNT LOGIN, lobby, after three protocol fixes read straight out of the decompiled client library. A second emulator, with its own memory card and its ports shifted, joined the game the first created; both pressed READY and the match launched: VIGILANCE, round timer running. Our own executable reached the front door the same night: network layer up on host sockets, key exchange and stream cipher running, the server accepting the connection.</p>
@@ -232,7 +371,7 @@ footer.foot a{color:var(--teal)}
 </li>
 <li class="node pic" id="2026-09-08-our-own-program-gets-online" style="--i:8">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-08">Sep 8<span class="yr"> 2026</span></time><h3><a href="#2026-09-08-our-own-program-gets-online">Our own program gets online</a></h3></header>
 <p class="hook">Two copies of the recompiled game log in, host a match, and join it.</p>
 <p>Yesterday the only thing to reach a lobby was the retail disc under an emulator. Today our executable did it. A stuck clock register was advanced so the program got as far as SELECT UNIVERSE, then a driver walked it through login, the on-screen keyboard, the licence agreement, the lobby and the briefing rooms, and it created a game called "test" on Medley. By the end of the night two instances were in the same match: socomc hosting, socome joining, both READY, both loaded into VIGILANCE. The lobby screens scored 98.6 to 99.4 against the console.</p>
@@ -243,7 +382,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-08-the-world-stops-coming-apart" style="--i:9">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-08">Sep 8<span class="yr"> 2026</span></time><h3><a href="#2026-09-08-the-world-stops-coming-apart">The world stops coming apart</a></h3></header>
 <p class="hook">Every square root in the game had been returning zero.</p>
 <p>The recompiler emitted the console's square-root instruction reading the wrong register, so the game always took the square root of register zero. The quaternion builder divided by that, saturated to the largest float there is, and the actors' orientation matrices exploded, which drained the collision pool and dropped the player through the terrain. Two more the same day: object geometry (trees, people, about 1700 triangles a frame) was arriving at the graphics chip as three identical points at the origin, and the camera's frustum test always answered "fully inside" because nothing wrote the flag register it read. That's where the giant sky polygons came from. The next day, the title screen's labels stopped getting wiped by the background movie painting over them a step early.</p>
@@ -253,7 +392,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-09-from-three-frames-a-second-to-thirty" style="--i:10">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-09">Sep 9<span class="yr"> 2026</span></time><h3><a href="#2026-09-09-from-three-frames-a-second-to-thirty">From three frames a second to thirty</a></h3></header>
 <p class="hook">The part of the console that draws SOCOM II's geometry was being simulated one cycle at a time.</p>
 <p>The vector unit that transforms and lights every triangle was emulated at about 100 nanoseconds per cycle, which held the whole game to a few frames a second. A fast path that drops the per-cycle scheduler took that to 18 ns; a translator that turns the game's vector microcode into C++ took it to 10 offline. With the graphics and scheduler work that followed the same day, in-mission speed went 12.7, then 19, then 22-29, then 28.7 fps. Fast enough to play: a script drove the first mission end to end, walking, turning, firing, with the game answering at 36-42 fps. The same day the project wrote down what "playable" would have to mean before anyone could claim it: a match ended by a shot.</p>
@@ -263,7 +402,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-10-the-project-gets-a-name-and-starts-checking-itself" style="--i:11">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-10">Sep 10<span class="yr"> 2026</span></time><h3><a href="#2026-09-10-the-project-gets-a-name-and-starts-checking-itself">The project gets a name, and starts checking itself</a></h3></header>
 <p class="hook">SOCOM Unzipped, a test suite that runs, and one command that says PASS or FAIL.</p>
 <p>The work moved into its own repository under the name SOCOM Unzipped. Until this day the unit tests had never been built with the project's own toolchain; once they were, 425 passed and ./build.sh test exited zero for the first time. A single gate command boots the game three times (title screen, the transition into a mission, the mission itself), scores each, and returns a number. Its first run passed two of three: the mission never reached the HUD.</p>
@@ -273,7 +412,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-11-our-own-code-draws-the-game" style="--i:12">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-11">Sep 11<span class="yr"> 2026</span></time><h3><a href="#2026-09-11-our-own-code-draws-the-game">Our own code draws the game</a></h3></header>
 <p class="hook">The drawing program is no longer emulated microcode. It's C++ someone wrote by hand.</p>
 <p>Reading the game's vector microcode showed one dispatcher at a fixed entry point does all of it, and its commands fall into families: flat interface panels first, then world objects with clipping and multi-pass work. Hand-written replacements were checked command by command against the original, and the dispatcher went on by default after a gate that passed all three stages. By evening the world-object families were native too: 123 of 166 recorded command lists, each matching the emulated version exactly.</p>
@@ -283,7 +422,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-11-the-check-that-had-been-passing-for-free" style="--i:13">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-11">Sep 11<span class="yr"> 2026</span></time><h3><a href="#2026-09-11-the-check-that-had-been-passing-for-free">The check that had been passing for free</a></h3></header>
 <p class="hook">One of the three gate stages had been measuring nothing.</p>
 <p>The middle stage is supposed to watch the screen go black as the game moves into a mission. It counted black frames from anywhere in the run, boot screens included, so it stayed green whether or not the game ever reached the fade. Worse, a save-to-card dialog had started appearing at boot and the probe answered it blindly, so it never got to the briefing. Six earlier runs re-read against the fixed rule had examined zero frames in the window that counts. All six had passed.</p>
@@ -297,7 +436,7 @@ footer.foot a{color:var(--teal)}
 </li>
 <li class="node" id="2026-09-12-four-times-the-pixels-and-no-sharper-hud" style="--i:14">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-12">Sep 12<span class="yr"> 2026</span></time><h3><a href="#2026-09-12-four-times-the-pixels-and-no-sharper-hud">Four times the pixels, and no sharper HUD</a></h3></header>
 <p class="hook">The world can now be drawn at up to four times the console's size. Three quarters of the screen look exactly the same.</p>
 <p>Until now every frame was drawn at 640x448 and stretched. A new setting draws the 3D world at two, three or four times that and hands the game back a console-sized picture, so nothing inside the game notices. At 2x the gate passed and the edges genuinely softened: the fraction of edge pixels that are a smooth blend rather than a hard step went 0.13 to 0.42. The HUD, menus and title screen didn't change at all. They're flat pictures at their original size; extra pixels can't add detail that was never there.</p>
@@ -307,7 +446,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-12-the-black-squares-leave-the-intro-movie" style="--i:15">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-12">Sep 12<span class="yr"> 2026</span></time><h3><a href="#2026-09-12-the-black-squares-leave-the-intro-movie">The black squares leave the intro movie</a></h3></header>
 <p class="hook">Someone reported black tiles flickering over the movies. The tiles were real, and they were never in the movie.</p>
 <p>The decoded movie was perfect. Two threads shared one note of which rectangle of the screen had just changed; the game thread kept overwriting it, so the copy to the graphics card refreshed the wrong patch and left stale black squares on the intro and the title's moving background. Deleting one line fixed it. A checker written before the fix counts blocks that are black on screen but not in the decoded frame: nine before, zero after, and the missed refreshes went from 3,748 to none.</p>
@@ -317,7 +456,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-12-every-dice-roll-came-up-nearly-zero" style="--i:16">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-12">Sep 12<span class="yr"> 2026</span></time><h3><a href="#2026-09-12-every-dice-roll-came-up-nearly-zero">Every dice roll came up nearly zero</a></h3></header>
 <p class="hook">The game rolls dice in 249 places. For the whole life of the project, every roll had come up almost the lowest number it could.</p>
 <p>SOCOM II turns a random draw into a fraction by dividing by two billion. The stand-in for the C library's random function returned fifteen bits where the game expects thirty-one, so every fraction landed in the bottom 1/65536 of its range. Worse, the game seeds itself from its own previous draw, and that seed froze at 41 on the first boot. One measured field that mixes in randomness went from 4.000021 to 5.5314, against 6.3338 on the real console. Same afternoon, same shape: five maths routines wired to the wrong registers, handing back whatever the previous call left behind.</p>
@@ -327,7 +466,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-12-online-players-can-move-again" style="--i:17">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-12">Sep 12<span class="yr"> 2026</span></time><h3><a href="#2026-09-12-online-players-can-move-again">Online players can move again</a></h3></header>
 <p class="hook">For two days the online round had been written up as waiting to start. It wasn't. The round was running and the player was pinned.</p>
 <p>On the 10th, with the fast build in, two instances got all the way into online gameplay, and then nobody moved. A network trace showed the two copies talking at about a packet a second, and the write-up called the match stuck at the round start. Wrong. In a multiplayer match the game scales your movement by how recently the network was active; the stand-in for the PS2's network interface answered "how much traffic have you seen" with a constant, so the game decided the network had been silent since boot and scaled movement to zero on the first frame. Looking up and down still worked, because that isn't one of the three fields the scale touches. The fix returns a real byte count. One match then carried both legs at once on one binary: one instance with the fix, one with it deliberately off.</p>
@@ -337,7 +476,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-12-the-project-starts-writing-down-what-it-got-wrong" style="--i:18">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-12">Sep 12<span class="yr"> 2026</span></time><h3><a href="#2026-09-12-the-project-starts-writing-down-what-it-got-wrong">The project starts writing down what it got wrong</a></h3></header>
 <p class="hook">Five beliefs died by measurement in one day. So they were written down where they'd been read.</p>
 <p>KNOWN.md is a living list in four parts: what's proven and by which artefact, what's only believed and which experiment would settle it, what was retracted, and what will bite again. On the day it was created it already carried six dead sentences, among them that the console showed the same frozen match ours did, that the online round was waiting for a go, and that a higher render scale would sharpen the HUD. The next night the retracted sentences were struck in place, inside the documents where fresh sessions were still reading them, rather than quietly deleted. One follow-up commit is titled "I broke my own rule".</p>
@@ -347,7 +486,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-13-frostfire-gets-its-ground-back" style="--i:19">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-13">Sep 13<span class="yr"> 2026</span></time><h3><a href="#2026-09-13-frostfire-gets-its-ground-back">Frostfire gets its ground back</a></h3></header>
 <p class="hook">On one map both players froze where they spawned. The ground was there. The game couldn't find it.</p>
 <p>The game asks every frame whether there's ground under your feet, and online it stops you moving if the answer is no for 0.6 seconds. On Frostfire the answer was always no. The level's ground pieces had been filed into the lookup grid at the coordinates they hold before being moved into place, so every check searched the wrong squares. One missing constant: a hardware register that's always (0,0,0,1) on a real PS2 read as all zeros on every thread but the main one, and the level loader runs on another thread. After the fix both players moved for a full 302-second round and the ground check hit on every one of its 1332 and 1428 calls.</p>
@@ -357,7 +496,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-13-the-single-player-mission-stops-freezing" style="--i:20">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-13">Sep 13<span class="yr"> 2026</span></time><h3><a href="#2026-09-13-the-single-player-mission-stops-freezing">The single-player mission stops freezing</a></h3></header>
 <p class="hook">A frozen picture with a running clock isn't a hung game. It's a queue.</p>
 <p>In single-player the game thread recorded drawing commands faster than the graphics thread could replay them, and nothing pushed back. The backlog grew from 275 MB to 13 GB in four minutes; the picture updated once every 5 to 25 seconds while the game underneath ran normally. The game thread now waits at its own frame boundary whenever more than three frames are recorded but not drawn, capped at two seconds. A full mission afterwards peaked at 299 MB and never hit the cap.</p>
@@ -367,7 +506,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-13-the-first-kill" style="--i:21">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-13">Sep 13<span class="yr"> 2026</span></time><h3><a href="#2026-09-13-the-first-kill">The first kill</a></h3></header>
 <p class="hook">"socomc fragged socome with M4A1." Then twice more in the same lobby.</p>
 <p>Two copies of the game logged in to the project's own server, met on Frostfire along a route picked by arithmetic rather than by eye, and one shot the other. Round 1's kill landed 99 seconds in: the victim's health went 1.0 to 0.298 to 0.0, the killer's burst had landed 0.59 s earlier from 28 units away, and both screens carried the killfeed line within a third of a second. Rounds 2 and 3 killed too. Every bar for what counts as a kill had been written down and committed before any of these matches were scored.</p>
@@ -378,7 +517,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-14-two-things-the-owner-spotted" style="--i:22">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-14">Sep 14<span class="yr"> 2026</span></time><h3><a href="#2026-09-14-two-things-the-owner-spotted">Two things the owner spotted</a></h3></header>
 <p class="hook">The owner looked at the test frames and saw two things nobody had been looking for.</p>
 <p>Work stopped to chase what a person noticed in the screenshots: grey shards where Seeding Chaos should have water, and a single-player teleport whenever the player turned. The teleport got a confirmed cause. A graphics stub multiplied an address that was already a block number by eight, so seven parking slots in video memory collapsed onto two, and the game's animation clips were overwritten with the wrong chunks while the mission loaded. Fixed the next day: a memory dump 255 seconds into a mission came back with 0 of 8 animation chunks damaged, where every earlier dump had 5 of 8. The water got a cause too, published at 13:39 and refuted by its own author at 13:46, when the shards turned up identical with the depth test switched off entirely.</p>
@@ -392,7 +531,7 @@ footer.foot a{color:var(--teal)}
 </li>
 <li class="node" id="2026-09-15-the-check-learns-what-failure-looks-like" style="--i:23">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-15">Sep 15<span class="yr"> 2026</span></time><h3><a href="#2026-09-15-the-check-learns-what-failure-looks-like">The check learns what failure looks like</a></h3></header>
 <p class="hook">The automatic check that guarded every change could watch the player die and still call the run a pass.</p>
 <p>Two days earlier the mission stage had been caught scoring the opening cinematic instead of gameplay: its crop stripped the letterbox bars, so a letterboxed cutscene matched. Five saved runs were re-scored from pass to fail. Today it got the rest of its eyes. It now fails outright on a MISSION FAILURE screen, dismisses a HELP pop-up or a skippable cinematic before each held frame, scores the spawn view against a real console screenshot, and reads three numbers straight out of the running game: how high the player's root sits, whether movement is scaled to zero, how many times the player teleported.</p>
@@ -402,7 +541,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-16-the-owner-plays-it-and-asks-about-his-controller" style="--i:24">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-16">Sep 16<span class="yr"> 2026</span></time><h3><a href="#2026-09-16-the-owner-plays-it-and-asks-about-his-controller">The owner plays it, and asks about his controller</a></h3></header>
 <p class="hook">"do something fun for me", and a few minutes later, "do you see my controller?"</p>
 <p>First time a person played the PC build instead of a script. He started on the keyboard; the Xbox pad went into the game's input path the same night: sticks, face buttons, shoulders, D-pad, with a fifteen percent dead zone. Two reports set the order of everything after: "I'm getting no sound", and a flat grey patch of hillside that came and went. His priorities, in his order: water and ground, then the untried online maps, then hardening, then audio, then the launcher.</p>
@@ -412,7 +551,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-16-every-frame-was-1-73-times-too-dark" style="--i:25">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-16">Sep 16<span class="yr"> 2026</span></time><h3><a href="#2026-09-16-every-frame-was-1-73-times-too-dark">Every frame was 1.73 times too dark</a></h3></header>
 <p class="hook">The grey hill in the owner's screenshot was three separate bugs, and one of them had been dimming every frame of the game.</p>
 <p>SOCOM II finishes a frame by drawing it back over itself to brighten it. The renderer mapped that step to "do nothing", so every gameplay frame came out 1.73x too dark, and the water's dark bed pass, the thing brightening exists to lift, stayed a set of flat grey slabs. Underneath, the exposure meter was being fed a constant mid-grey instead of real pixels, so it asked for no brightening at all. The holes in the ground were a third thing: a drawing program that needed more cycles than its budget allowed was left half-finished, and the next chunk resumed it from the wrong place, so a patch of terrain drew two polygons instead of twenty-eight. Which patch depended on how busy the machine was. That's why the hole wandered.</p>
@@ -423,7 +562,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-17-the-game-stops-running-in-slow-motion" style="--i:26">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-17">Sep 17<span class="yr"> 2026</span></time><h3><a href="#2026-09-17-the-game-stops-running-in-slow-motion">The game stops running in slow motion</a></h3></header>
 <p class="hook">A round would start, the clock would count down, and nobody could move. The renderer was eating most of every second.</p>
 <p>The brightening fix had a cost nobody saw for a day: it minted a fresh id for every palette the game loaded, and SOCOM II alternates palettes on consecutive draws. An online round reached 55,483 cached textures and 64,000 uploads a second; the render thread fell to two fps and the game's clock crawled at 0.04 seconds per real second. STARTING ROUND sat on screen and never cleared. Keying palettes by content put the cache back to 292 entries and the round back to 43-45 fps. The other half was older and quieter: since the 8th the game's timers had been told to ignore time spent drawing and waiting for the renderer, about 195 and 290 ms out of every second, so the whole game had been running at roughly two-thirds speed. It counts wall time now.</p>
@@ -433,7 +572,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-17-twenty-maps-in-one-night" style="--i:27">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-17">Sep 17<span class="yr"> 2026</span></time><h3><a href="#2026-09-17-twenty-maps-in-one-night">Twenty maps in one night</a></h3></header>
 <p class="hook">Between a quarter past midnight and a quarter to five, every online map nobody had tried got a round of its own.</p>
 <p>A queue ran one round on each of the twenty untried maps: two copies log in, one hosts, the map is picked by name, both walk their route, nobody shoots, the round runs to its clock. Seventeen played first time and The Mixer on a retry. Two didn't: Foxhunt, whose walking player stepped off a 110-unit drop and took fall damage, failing the harness's own no-damage check, and Requiem, where the joiner's movement came out under the bar. Requiem fell out first, on the morning's clock fix: its 13-unit hold became 128. It had never been a Requiem problem. Foxhunt needed the afternoon: the driver learned that a sudden height drop is a fall, not damage. Then all twenty played.</p>
@@ -444,7 +583,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-17-the-game-has-sound" style="--i:28">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-17">Sep 17<span class="yr"> 2026</span></time><h3><a href="#2026-09-17-the-game-has-sound">The game has sound</a></h3></header>
 <p class="hook">It had never made a noise. In one day it got effects, voices, mission music and a title theme.</p>
 <p>Four steps. A host mixer that runs the game's little sound scripts and its synth voices, so the menu clicks land. Then mission voice-overs and music, read straight out of the disc image. A 32-bit file seek had been failing silently past two gigabytes, which is why no mission stream had ever played. Then the title music, which the game decodes itself into a ring the sound hardware plays: nineteen instrumented runs to get right, because the first fix stopped the decoder when the game refused a packet, and this game treats a short read as "finished" and then polls an empty decoder 340,000 times a second. With the decoder always taking its whole input, the output matched the disc's audio at a correlation of 0.99, and a fourth fix took the title loop to 1.000.</p>
@@ -454,7 +593,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-17-a-launcher-and-a-folder-you-can-copy" style="--i:29">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-17">Sep 17<span class="yr"> 2026</span></time><h3><a href="#2026-09-17-a-launcher-and-a-folder-you-can-copy">A launcher, and a folder you can copy</a></h3></header>
 <p class="hook">The project got a front door, and the same day an audit said a stranger still couldn't get through it.</p>
 <p>The launcher is a small window that owns the settings file. It reads the disc image you point it at, hashes the game's executable inside against the r0001 digest this recompilation was made from, and keeps Launch off until it matches. Picture size and sharpness, the pad drawn live, a profile and a server, and a diagnostics folder when something goes wrong. A script turns a build into a 285 MB folder and a 63 MB zip. Then four read-only reviews were run against the project's own goal sentence, and the verdict was blunt: the game plays and nobody else can get to it. The launcher never handed the game the disc it had just verified; a server given by name was silently thrown away; the server advertised the developer's home-network address to anyone who connected. All fixed the same day, and the next sprint opened on the same theme: a PC whose graphics driver can't do what the renderer needs now gets one line naming what's missing and falls back to the CPU renderer instead of a black window.</p>
@@ -468,7 +607,7 @@ footer.foot a{color:var(--teal)}
 </li>
 <li class="node" id="2026-09-18-the-launcher-learns-your-pad" style="--i:30">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-18">Sep 18<span class="yr"> 2026</span></time><h3><a href="#2026-09-18-the-launcher-learns-your-pad">The launcher learns your pad</a></h3></header>
 <p class="hook">The front door stopped assuming everyone owns the same controller.</p>
 <p>A list of the pads that are plugged in, the chosen one drawn live as you move it; a frame-rate line; detail, resolution and volume; a microphone. One pad selection and one dead zone now serve all three places in the program that read a controller. Before this every one of them took the first pad it found. The same day the online sprint merged, carrying the fix that finally made driven online runs reliable: the automated lobby had been reaching gameplay 6 times in 10, and went to 10 in 10.</p>
@@ -478,7 +617,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-18-the-sound-reports-run-to-ground" style="--i:31">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-18">Sep 18<span class="yr"> 2026</span></time><h3><a href="#2026-09-18-the-sound-reports-run-to-ground">The sound reports run to ground</a></h3></header>
 <p class="hook">The owner said the sound stopped halfway through a mission. It had.</p>
 <p>Three complaints from one evening, three faults. Sound dying mid-mission was a playback slot never handed back: after six plays every request failed, 237 times in the owner's log. The splice and the buzz in the online menus were a ring buffer with no agreement about who had filled what. The biggest sat under both: a routine the game calls whenever another part of it starts up was resetting the entire sound model, unloading the sound banks that had just been loaded. 971 rejected plays in one log. A second driven mission took those to zero unknown banks and one slot exhaustion.</p>
@@ -488,7 +627,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-18-the-game-runs-on-linux" style="--i:32">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-18">Sep 18<span class="yr"> 2026</span></time><h3><a href="#2026-09-18-the-game-runs-on-linux">The game runs on Linux</a></h3></header>
 <p class="hook">The owner asked for Linux in the morning, offered a spare VM, and by evening the game was drawing frames on Ubuntu.</p>
 <p>An Ubuntu 24.04 machine, a build job on GitHub's Linux runners and the port itself landed the same day, under one rule: the Windows build stays byte-for-byte the same. The boot frame in the VM differs from Windows by 0.008 grey levels; the title check passes there at Windows' own 19 of 23. The first time the C++ suite ran on Linux it paid for itself: the system allocator aborted on a double free in the audio mixer that Windows had been tolerating for the life of the project.</p>
@@ -499,7 +638,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-19-the-menus-stop-dropping-frames" style="--i:33">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-the-menus-stop-dropping-frames">The menus stop dropping frames</a></h3></header>
 <p class="hook">The planned fix was thrown out by the measurement that was supposed to justify it.</p>
 <p>The login and lobby screens were the expensive part of the program, and the plan was to batch draw calls. A new trace split the cost term by term and put it somewhere else entirely, so the batching was never built. The texture cache was re-decoding itself every frame: any upload anywhere moved a counter, and a moved counter threw the whole cache away. Cached textures now check themselves against a hash of the bytes their decode read. Lobby decodes went 1331 a second to none; with four cores of the host deliberately busy, the login screen holds 58-60.</p>
@@ -509,7 +648,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-19-it-can-save-and-it-can-hear-you" style="--i:34">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-it-can-save-and-it-can-hear-you">It can save, and it can hear you</a></h3></header>
 <p class="hook">Two things every finished game has, and this one didn't.</p>
 <p>The owner tried to save and was told no memory card was inserted. The card stub had never created or even looked at a card folder. Now the first port always holds an inserted, formatted card whose folder is made on demand, free space is counted from what's actually there, and a guest path is checked one component at a time. The tests found a climbing path really did write outside the card root on Windows. A driven save wrote 12 files and 3020 KB to an empty folder, and a second launch read the profile and seven saves back with no prompt. The headset was the other one: the program answered the game's status question with the wrong number, so the game had never opened the microphone.</p>
@@ -519,7 +658,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-19-the-launcher-gets-a-face" style="--i:35">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-the-launcher-gets-a-face">The launcher gets a face</a></h3></header>
 <p class="hook">Until now the front door was a box with some checkboxes in it.</p>
 <p>A rail of pages (PLAY, DISC, VIDEO, AUDIO, CONTROLLER, MICROPHONE, ONLINE, ABOUT, and REPORT A BUG by the end of the day), one focus model that behaves identically for keyboard and pad, open-licence type embedded in the executable so the folder stays self-contained, and a controller drawn from scratch whose buttons light up as you press them. A screenshot mode renders every page from a fixed fake state, so the work can be looked at without launching anything. A second pass answered the owner's notes: legible type at every size, a frameless window with its own top bar, a palette sampled from the SOCOM II logo.</p>
@@ -530,7 +669,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-19-a-server-of-its-own-on-the-internet" style="--i:36">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-a-server-of-its-own-on-the-internet">A server of its own, on the internet</a></h3></header>
 <p class="hook">Every online round the project had ever played was against a server on the same desk.</p>
 <p>A small rented machine went up in Ohio with a static address, start-up units, an installer and a control script that rewrites the advertised address everywhere it appears. The launcher's SOCOM Unzipped entry stopped being a placeholder and became the default. A control round ran to its clock over the internet, both round clocks in step to the second, and a ladder took two kills in four rounds on one lobby session. The server also learned to introduce itself: a message of the day, a channel name and a location that are settings rather than constants, with live statistics served for the project's site.</p>
@@ -541,7 +680,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less" style="--i:37">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less">It says why it won't start, and it weighs less</a></h3></header>
 <p class="hook">A new sprint with one narrow question: what happens to somebody who has never seen this before.</p>
 <p>Every way the program can refuse now has a number and a plain sentence, shared by the runner, the launcher and the test suite. Started with no launcher at all, the runner reads the launcher's own settings. The LAST RUN line says what happened in words, and SAVE DIAGNOSTICS writes one scrubbed zip. Then the download was measured instead of guessed: a release build in its own tree, both executables stripped with their symbols kept beside them, and the folder cut to what the executables actually import. 15 of the 31 shipped Windows libraries were needed by nothing. The zip came down 15 percent to 55.7 MB, and the gate passed 3/3 on that exact stripped executable.</p>
@@ -551,7 +690,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-19-a-way-to-report-what-went-wrong" style="--i:38">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-a-way-to-report-what-went-wrong">A way to report what went wrong</a></h3></header>
 <p class="hook">The only place in the whole program where a player can talk back.</p>
 <p>A REPORT A BUG page joined the rail, mirroring the form on the project's website: a title, what happened, an optional way to reach you, and a preview that says exactly what SEND would send. Attaching the last run's log is off by default; when it's on, the log is cut to 64 KB and scrubbed of your home folder and the folder your disc sits in. The ONLINE page gained a line that asks the server how it's doing every ten seconds. Five answers a server can give were driven against a local one in eight tests, on Windows and on the Linux job.</p>
@@ -561,7 +700,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-19-the-things-the-owner-actually-noticed" style="--i:39">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-19">Sep 19<span class="yr"> 2026</span></time><h3><a href="#2026-09-19-the-things-the-owner-actually-noticed">The things the owner actually noticed</a></h3></header>
 <p class="hook">Not one of these came out of a test. They came out of somebody trying to play.</p>
 <p>Escape closed the game instead of pausing it, because raylib's default exit key had never been turned off; it's Start now. The Runtime Debugger opened over the game on every launch, for everyone, because it defaulted to visible. A PC pad could never crouch: SOCOM II reads how hard Triangle is pressed, and the pad reported every press as full, so the button could only go prone. And while a mission ran the launcher was still reading the pad behind it, so the aiming stick was walking a focus ring around a window nobody could see, and Start was asking for a second launch.</p>
@@ -571,7 +710,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-20-the-first-build-made-for-a-person-to-play" style="--i:40">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-20">Sep 20<span class="yr"> 2026</span></time><h3><a href="#2026-09-20-the-first-build-made-for-a-person-to-play">The first build made for a person to play</a></h3></header>
 <p class="hook">Building it found two bugs that would have shipped. Playing it found the one the whole sprint was for.</p>
 <p>The last code change before the candidate pointed the launcher at socom.scotho.com by default, with the raw address kept as a fallback. Then the candidate was packaged, gated 3/3 on the exact executable inside the archive, and tagged playtest-1: a 55.8 MB zip with its own checksums. It took longer than the hour it was given. The archive wouldn't build, because the bug-report feature had given the launcher a dependency on a Windows system library the packaging allowlist didn't know, and the check only runs when a release is packaged. Then the archive came out 7 MB heavier than the sprint had measured: a decision made six days earlier to build at the lower optimisation level, because the higher one made a larger download, had been written in three documents and applied in none. Both fixed under tests watched failing first. Then the owner sat down with the archive and the fourteen-step script, and stopped at step six. The mission music. Same symptoms as before, with all three of the week's music fixes in the build.</p>
@@ -582,7 +721,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-20-the-music-chased-to-the-speaker" style="--i:41">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-20">Sep 20<span class="yr"> 2026</span></time><h3><a href="#2026-09-20-the-music-chased-to-the-speaker">The music, chased to the speaker</a></h3></header>
 <p class="hook">Every audio measurement the project had ever made ran on a wired endpoint. The owner listens on a Bluetooth speaker.</p>
 <p>Four hours of measuring instead of reading. Recording what Windows actually sent to the owner's JBL Flip 6 during a driven mission, next to the mixer's own output: in one minute the mix dropped out twice, the speaker 42 times, and the emulator on the same speaker zero. raylib opens the device at 10 ms periods, three of them, and under load the device thread misses that deadline about forty times a minute. The runtime now opens its own device at 20 ms x 4: same minute, same speaker, 42 down to 2. The numbers found three more on the way: every music cue was playing 2.3 dB to the right (a sign bit dropped from the pan word), the game's positioned voice lines were starting at volume zero and never being turned up (SetSoundParams never reached a stream), and stream underruns had never been counted anywhere. Ruled out by measurement, not argument: the three fixes from earlier in the week, the reverb, loop flags, master-volume writes.</p>
@@ -592,7 +731,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there" style="--i:42">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-20">Sep 20<span class="yr"> 2026</span></time><h3><a href="#2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there">An audio parity test, and the sound that was never there</a></h3></header>
 <p class="hook">The owner asked for an audio version of the picture test. It found something no ear had named.</p>
 <p>The picture gate compares our frames to the console's. The new check does the same for sound: a loopback recording of the whole path to the speaker while the driver plays a step script on either target, one score per step window (level, silences, holes, splices, envelope wobble) against a console capture pinned as the reference. Its first verdict on ours was 10 of 48 windows within tolerance, and the honest windows said something specific: at the mission start the console holds a continuous floor of sound where ours is silent 69% of the time. That floor isn't a stream. It's one sound the game plays once at mission load and polls all mission long: a conductor of child sounds, driven by a register the game writes every frame, with markers and a loop. Our mixer skipped every grain type it uses. Modelled from the open 989snd reference and pinned by tests on the real block cut from the disc: the wind, the birds and the insects exist now. 10 of 48 became 31 of 48, with no mission window silent. Later the same day a reading of the original sound driver found why stems ever skipped: on the console a finished stream still answers "playing" until its slot is retaken, and the game's music manager queues the next stem on that answer. Ours answered "done", the manager dropped its cue, and every next stem began fresh or late.</p>
@@ -602,7 +741,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node" id="2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night" style="--i:43">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-20">Sep 20<span class="yr"> 2026</span></time><h3><a href="#2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night">Version 0.9.0, and a robot that plays every night</a></h3></header>
 <p class="hook">Sprint 9 merged to main and got a tag. Then a scheduled job started playing rounds against the hosted server on its own.</p>
 <p>The sprint that started as "a stranger's first run" closed with the playtest's verdict still open on the music, and the rest of it done: the release build, failures that explain themselves, the launcher finished, the server by name. Merged to main with a merge commit, tagged v0.9.0. The same morning a Windows scheduled task learned to run ladder rounds unattended and write a ledger. Its first two runs failed to create a game. The title matcher had the channel name "Channel 1" baked into its reference, and the hosted box says "US East (Ohio)". Fixed on the title words, and run three was KILL 4/4.</p>
@@ -612,7 +751,7 @@ footer.foot a{color:var(--teal)}
 </article></li>
 <li class="node pic" id="2026-09-20-a-console-and-a-pc-in-the-same-match" style="--i:44">
 <div class="dot" aria-hidden="true"></div>
-<article class="card">
+<article class="entry">
 <header><time datetime="2026-09-20">Sep 20<span class="yr"> 2026</span></time><h3><a href="#2026-09-20-a-console-and-a-pc-in-the-same-match">A console and a PC in the same match</a></h3></header>
 <p class="hook">A PlayStation 2 client and our program, in one game, on the hosted server, both ways round.</p>
 <p>The console side is the reference emulator running the retail disc, driven by the same screen-verified lobby flow ours uses. It presses on what its screen shows, with references cut from console frames where its 7% narrower screen needs them. Leg one: the console joins a game ours hosts. Leg two: ours joins a game the console hosts. Each reached a running round with both players moving, twice in a row. Eleven runs to get there, each failure one specific thing: the narrower screen, the READY label's edges, a 30-second notice, the shared peer port, a host that pressed READY before the join.</p>
@@ -633,13 +772,28 @@ footer.foot a{color:var(--teal)}
 <p><code>python -m tools_py.story.cite</code></p>
 <p>A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come from the commit's real subject. A run or gate id must have a frozen witness in <code>docs/story/witnesses.json</code>, re-proved against the file on the machine that has the logs. A tracked path must be tracked. <code>docs/story/timeline.json</code> is the machine-readable form, and the test fails if it and this document disagree in either direction. The design is <code>docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md</code>.</p>
 </section>
-<footer class="foot">45 entries &middot; 212 commit citations &middot; built from <code>docs/STORY.md</code> at <code>9044ce5</code> &middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>
-</div>
+</div></main>
+<footer class="foot">
+  <div class="foot-inner">
+    <div>
+      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>
+      <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. &copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>
+    </div>
+    <nav aria-label="Footer">
+      <a href="https://s2u.scotho.com/story.html">The story</a>
+      <a href="https://s2u.scotho.com/">Classic menu</a>
+      <span class="soon">GitHub (coming soon)</span>
+      <a href="https://s2u.scotho.com/web.html#report">Report a bug</a>
+    </nav>
+  </div>
+  <div class="foot-fine">generated 2026-09-20 from docs/STORY.md at 9044ce5 &middot; 45 entries, 212 commit citations &middot; checked by tools_py/story/cite.py &middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;</div>
+</footer>
+
 <script>
 (function(){
-  var bar=document.querySelector('#progress i');
-  function prog(){var h=document.documentElement,max=h.scrollHeight-h.clientHeight;if(bar)bar.style.width=(max>0?(h.scrollTop/max*100):0)+'%';}
-  addEventListener('scroll',prog,{passive:true});prog();
+  var bar=document.getElementById('bar'),pb=document.querySelector('#progress i');
+  function onScroll(){var h=document.documentElement,max=h.scrollHeight-h.clientHeight;if(pb)pb.style.width=(max>0?(h.scrollTop/max*100):0)+'%';if(bar)bar.classList.toggle('solid',scrollY>40);}
+  addEventListener('scroll',onScroll,{passive:true});onScroll();
   var nodes=[].slice.call(document.querySelectorAll('.node'));
   var reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(!reduce&&'IntersectionObserver' in window){
@@ -648,7 +802,7 @@ footer.foot a{color:var(--teal)}
     if(location.hash){var t=document.querySelector(location.hash);if(t){t.classList.add('in');}}
   } else { nodes.forEach(function(n){n.classList.add('in');}); }
   var links=[].slice.call(document.querySelectorAll('nav.eras a')),eras=[].slice.call(document.querySelectorAll('.era'));
-  function current(){var y=scrollY+120,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+on);});}
+  function current(){var y=scrollY+140,on=null;eras.forEach(function(s){if(s.offsetTop<=y)on=s.id;});links.forEach(function(a){a.classList.toggle('on',a.getAttribute('href')==='#'+on);});}
   addEventListener('scroll',current,{passive:true});current();
 })();
 </script>
