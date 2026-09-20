@@ -6,5 +6,8 @@
     "composite": false, "incremental": false, "declaration": false,
     "noEmit": true, "types": ["node"]
   },
-  "include": ["*.ts"]
+  // `zz-*.ts` are throwaway probes: written to answer one question, never committed, and often left
+  // half-typed while the answer is being read off them. They must not be able to redden the gate.
+  "include": ["*.ts"],
+  "exclude": ["zz-*.ts"]
 }

@@ -93,6 +93,13 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
   streaks across the map; `isAffineRowVector` now refuses and counts them, so MP5 renders clean and
   says what it skipped. Six models and 363 instances of bamboo are not placed as a result.
 
+- **Backface culling is inferred from the texture, not read.** The PS2 culls on VU1, and whether a
+  given object is culled is chosen by a command list the EE builds per draw -- it is not on the disc.
+  The viewer culls where the texture is fully solid and keeps both faces where it is not, because a
+  solid two-sided surface is modelled as two coincident sheets (Crossroads' awning) while a cutout
+  sheet is modelled once (a leaf card). It is the right call on every map swept, but it is a rule
+  about textures standing in for a fact about draws.
+
 - **Spawns are not on the disc.** `AIMAPS.MPS` is the file that would hold them and no reader for it exists;
   `scene/spawns.ts` carries the measured table instead, so a map that was never measured opens on its own
   extent rather than at a spawn.

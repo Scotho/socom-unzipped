@@ -260,6 +260,16 @@ for t in 0 .. TOP+2.w - 1:
   and use counter-clockwise = front** (three.js / WebGL default). Equivalently: render
   double-sided and use the stored face normal for shading, which is what the game effectively does
   (the GS has no backface cull; culling happens on VU1 against the eye).
+
+  **2026-09-20, correction to that last sentence.** Double-sided is *not* equivalent, and the
+  parenthesis is why: culling happens, it just happens on VU1. A solid two-sided surface is modelled
+  as two coincident single-sided sheets -- Crossroads' `tent_red` awning draws the same five quads
+  twice, opposite normals, the top baked at mean vertex colour 0.6 and the underside at 0.2 -- and
+  drawing both makes them z-fight into a plaid. Front-face-only is the hardware's behaviour for any
+  object whose command list carries the `0x06` cull; a cutout sheet (a leaf card) is drawn once and
+  needs both faces. Which list a draw gets is not on the disc. See the map viewer's spec,
+  "Crossroads' awning was a plaid".
+
 - **Degenerate triangles exist** (1 in Frostfire) and should be dropped.
 
 ## 7. UV convention

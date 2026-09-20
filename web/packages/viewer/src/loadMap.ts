@@ -34,12 +34,15 @@ export interface LoadedMap {
   props: { modelName: string; parts: MeshData[]; matrices: Float32Array }[];
   textures: Record<string, Rgba>;
   /**
-   * `bilinear` and `transparent` off the texture record, plus `graded`: whether the decoded pixels
-   * actually carry a soft alpha ramp rather than being all-or-nothing. Every texture's own GS bind
+   * `bilinear` and `transparent` off the texture record, plus two facts read off the decoded pixels.
+   *
+   * `graded`: whether the alpha is a soft ramp rather than all-or-nothing. Every texture's own GS bind
    * packet sets `ALPHA_1 = 0x44`, `(Cs - Cd) * As + Cd` -- plain source-alpha blending -- with the
    * alpha *test* disabled in `TEST_1`, so a graded texture is meant to be blended, not punched out.
+   *
+   * `opaque`: no sampled pixel is anything but solid. It decides backface culling -- see `world.ts`.
    */
-  textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean }>;
+  textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean; opaque: boolean }>;
   metersPerUnit: number;
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
@@ -161,7 +164,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
-  const textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean }> = {};
+  const textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean; opaque: boolean }> = {};
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
@@ -186,6 +189,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
         textures[name] = decoded.rgba;
         textureFlags[name] = {
           bilinear: record.bilinear, transparent: record.transparent, graded: isGraded(decoded.rgba),
+          opaque: isOpaque(decoded.rgba),
         };
       } catch (e) {
         notes.add(`texture ${name}: ${say(e)}`);
@@ -318,6 +322,21 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string |
  * record says a texture *has* alpha, not what shape it is, and drawing a ramp with an alpha test is
  * what turns a light into a flat disc on a black square.
  */
+/**
+ * Is every pixel solid? A texture with so much as a punched-out corner is a *sheet* -- a leaf card, a
+ * chain-link panel, a frond -- and the artists drew those as one face meant to be seen from both sides.
+ * An all-solid texture skins a closed thing, and `world.ts` culls its back faces.
+ *
+ * Sampled the same way `isGraded` samples, and by the same 247 threshold, so the two agree about what
+ * counts as solid.
+ */
+export function isOpaque(rgba: Rgba): boolean {
+  const a = rgba.data;
+  const step = Math.max(4, (Math.floor(a.length / 4 / 4096) || 1) * 4);
+  for (let i = 3; i < a.length; i += step) if (a[i]! < 247) return false;
+  return true;
+}
+
 function isGraded(rgba: Rgba): boolean {
   const a = rgba.data;
   let soft = 0;

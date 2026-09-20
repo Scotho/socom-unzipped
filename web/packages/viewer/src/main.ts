@@ -291,4 +291,3 @@ window.__viewer = {
   flares: () => view?.flarePositions() ?? [],
   sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;
-(window as unknown as Record<string, unknown>).__scene = scene;  // AB-PROBE

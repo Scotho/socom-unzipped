@@ -1,5 +1,5 @@
 import {
-  Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, Group,
+  Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, FrontSide, Group,
   InstancedMesh, LinearFilter,
   LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace,
   RGBAFormat, RepeatWrapping,
@@ -130,13 +130,13 @@ export function buildWorld(map: LoadedMap): WorldView {
   let triangles = 0;
   const materialFor = (name: string | null): MeshBasicMaterial => {
     const rgba = name === null ? undefined : map.textures[name];
+    const flags = name === null ? undefined : map.textureFlags[name];
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
       texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true, linearLight,
         map.textureFlags[name]?.graded ?? false);
       textures.set(name, texture);
     }
-    const flags = name === null ? undefined : map.textureFlags[name];
     // Every texture's GS bind packet asks for `ALPHA_1 = 0x44` -- `(Cs - Cd) * As + Cd`, source-alpha
     // blending -- with the alpha test off. A texture whose alpha is a *ramp* (a corona, a glow) has to
     // be blended or it draws as a flat disc on an opaque black square; one whose alpha is a *switch*
@@ -145,7 +145,26 @@ export function buildWorld(map: LoadedMap): WorldView {
     const material = new MeshBasicMaterial({
       map: texture ?? null,
       vertexColors: true,
-      side: DoubleSide,                                   // the map's inward faces are walls too
+      // Backface culling, and why it is not simply on or off.
+      //
+      // SEMANTICS section 6: the right-handed cross product of a triangle's edges in index order *is*
+      // the stored face normal, on all 8,764 non-degenerate Frostfire triangles, and VU1's cull handler
+      // (`0x06`, research/13 section 4.2) keeps a triangle when the eye is on that side. So
+      // counter-clockwise is front, which is three.js's default, and `FrontSide` is what the hardware
+      // does -- for the objects whose command list contains the cull. Which ones those are is not on the
+      // disc: the command list is built by the EE per draw, and a no-cull variant of the world-object
+      // program exists (research/12, program 11).
+      //
+      // The data settles it anyway. Crossroads' awning is *two coincident single-sided sheets* -- the
+      // same five quads twice, opposite normals, the top baked at mean colour 0.6 and the underside at
+      // 0.2 -- which is a thing an artist only draws when the hardware culls. Drawn double-sided the two
+      // sheets z-fight and the canvas comes out as a red-and-green plaid (spec section 9, 2026-09-20).
+      // Cutout sheets are the opposite case: one leaf card, one frond, one chain-link panel, meant to be
+      // seen from behind, and culling those empties the canopies of Bitter Jungle.
+      //
+      // So: cull where the texture is solid, keep both faces where it is not. That is the split the
+      // models themselves draw, and it is the one fact about a draw that is on the disc.
+      side: (flags?.opaque ?? false) ? FrontSide : DoubleSide,
     });
     if (flags?.graded) { graded.push(material); gradedFlags.set(material, flags); }
     applyBlend(material, flags, blendGraded);

@@ -447,3 +447,45 @@ record puts it.
 **The palettes are not affected.** `zTexture/ztex_palette.cpp:29-30` fetches `buf` straight into
 `m_buffer` with no prefix, and the CLUT path is unchanged. The `csm1` swap was checked and ruled
 out as the cause first: the three glow textures are 32bpp direct PSMCT32 with no CLUT at all.
+
+## Crossroads' awning was a plaid, and the reason is that the hardware culls
+
+2026-09-20. The market awning on Crossroads' raised platform drew as a red-and-green plaid with a
+ragged staircase along its lower edge, nothing like the smooth striped canvas of the PS2 capture.
+Two guesses were on the table: coplanar layers resolved by draw order, or minification aliasing.
+Both were tested at one pose (camera `1860,130,1930`, yaw 39, pitch -19, map CROSSROADS).
+
+**It is not aliasing.** `generateMipmaps = true` with `LinearMipmapLinearFilter` visibly cleaned up
+the floor tiles and the rugs at that pose and left the awning's plaid exactly as it was. Mipmaps
+were reverted; they are a separate question.
+
+**It is coincident geometry, and it is in the data.** `tent_red`'s chunk `N000_I000_V00` holds four
+meshes, two of them on `awning_redstripe.tif`: one of 42 triangles and one of 10. Hiding them one
+at a time (`web/tools/zz-isolate.ts` against a temporarily exposed scene) showed the 10-triangle
+mesh drawing a clean bright canvas and the 42-triangle mesh drawing a dark one over the same five
+quads. Dumping the pair confirms it exactly:
+
+- the same five quads, corner for corner (`25.8/38.1/0.8`, `22.8/38.1/-49.2`, ...), triangulated on
+  opposite diagonals -- which is why a triangle-identity test found no duplicates;
+- the same texels: the two UV sets differ by exactly `+2.0` in `u`, and the sampler repeats;
+- **opposite normals**, each mesh consistently wound against its own;
+- and different baked light: mean vertex colour 0.6 on one, 0.2 on the other.
+
+That is a two-sided canvas drawn as two coincident single-sided sheets, a top and an underside,
+which is a thing an artist draws only when the hardware culls back faces. Drawn double-sided, the
+two sheets z-fight and the canvas comes out as a plaid of top and underside.
+
+**The fix.** SEMANTICS section 6 had already established counter-clockwise = front against the
+stored normals, and VU1's cull handler `0x06` (research/13 section 4.2) keeps a triangle when the
+eye is on the normal's side. So `FrontSide` is the hardware's behaviour -- but only for the objects
+whose command list carries the cull, and that list is built by the EE per draw, not stored on the
+disc (a no-cull variant of the world-object program exists: research/12, program 11).
+
+A sweep of all 22 maps from both spawns at four yaws, culled and not (176 pairs), says what a
+blanket cull would cost: Bitter Jungle and Blood Lake lose their canopies and The Mixer loses half
+its grass, because a leaf card is a single sheet meant to be seen from behind. So the viewer culls
+**where the texture is solid** and keeps both faces where it is not (`isOpaque` in `loadMap.ts`,
+pinned by `packages/viewer/test/opaque.test.ts`). With that rule, 155 of the 176 pairs move by less
+than 0.5 percent of pixels; what does move is the awning, Death Trap's and The Ruins' interiors --
+where you could previously see through a wall into a stairwell -- and Sujo's hangar roof, which
+stops hiding its own trusses. No vegetation is lost.
