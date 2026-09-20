@@ -23,3 +23,12 @@ __pycache__/
 /server/config/simulated.db
 imgui.ini
 vm/
+
+# web (browser recreation): dependencies, builds, and game data extracted from the owner's disc
+/web/node_modules/
+/web/**/node_modules/
+/web/**/dist/
+/web/public/maps/
+/web/test-fixtures/
+/web/**/playwright-report/
+/web/**/test-results/
