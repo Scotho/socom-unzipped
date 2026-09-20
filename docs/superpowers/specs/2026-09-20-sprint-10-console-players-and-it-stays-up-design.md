@@ -64,6 +64,21 @@ player on a real PS2 or PCSX2 can sit in the same lobby as a player on this clie
 
 ### Goal 7 — stats and clans across restarts (a real database) [O: wanted?; the server session's work]
 
+### Goal 9 — the ONLINE tab's player name and password reach the game [A; the owner's login is the last check]
+- Added 2026-09-20 on the owner's instruction ("scope out adding online name and password and slot it into an
+  appropriate section of the ongoing sprint"). Investigation: `docs/research/37-launcher-online-credentials.md`.
+  Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md`.
+- Two fields on ONLINE under PROFILE -- PLAYER NAME and a masked PASSWORD -- stored in `config.json` and handed to
+  the game as `PS2X_SOCOM2_LOGIN_NAME` / `_PASS`. In the runtime, an override at the game's on-screen-keyboard
+  open routine fills the keyboard's buffer with the matching string before it draws, so the two keyboards open
+  already typed and the player presses ENTER (R180: prefill, never submit; R179: the password is plain in the
+  player's own file, masked on screen, and blanked out of bug reports and diagnostics zips).
+- Bar: a driven login on ours' exe with the fields set reaches the lobby twice in a row on the hosted server
+  with the harness pressing ENTER instead of typing (`--prefilled`), plus the owner's own login. The harness win
+  is real on its own: the dead-reckoned keyboard typing is the largest lobby-failure class left (research/28 §5).
+- Stop rule: if the keyboard-open function cannot be named with both call sites in a day of Ghidra, fall back to
+  rewriting the login request in the host crypto path (research/37 Route A) and file the notes.
+
 ### Wishlist, unscheduled — the community server [B: the owner's r0004 package AND PSRewired's answer]
 - PSRewired runs SOCOM II r0004, a whole replacement of the game's code; playing there needs a second recompilation
   from a package only the owner's memory card can supply, and permission only PSRewired can give

@@ -21,7 +21,7 @@ sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the
               develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
               no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
-next ruling:  R179 (R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `013f86e`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
+next ruling:  R181 (R179-R180 are Sprint 10 Goal 9's, recorded in its plan: the password plain in config.json, and prefill-never-submit; R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `013f86e`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
 baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `3e93b51`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
 ```
 
@@ -108,7 +108,21 @@ runs in windows the owner is away, and Sprint 9 is already eleven goals. Nothing
    completable **with the pad alone**. Bar: a gate AND an online control round, plus the owner rebinding one button on
    a real pad and playing with it. If it lands, the site's setup guide says so (the hosted-server session's wording).
    [A] except the owner's play
-9. Wishlist, unscheduled, **[B: the owner's r0004 package and PSRewired's answer]**: the community server. Nothing
+9. **The ONLINE tab's player name and password reach the game** (added 2026-09-20 on the owner's "scope out adding
+   online name and password and slot it into an appropriate section of the ongoing sprint"). PLAYER NAME and a
+   masked PASSWORD under PROFILE, stored in `config.json`, handed down as `PS2X_SOCOM2_LOGIN_NAME` / `_PASS`; a
+   runtime override at the game's on-screen-keyboard open routine fills the keyboard's buffer so both keyboards
+   open already typed and the player presses ENTER (R180 prefill-never-submit; R179 the password plain in the
+   player's file, masked on screen, blanked out of reports and zips). Seven tasks, the first a Ghidra pass for the
+   one address the override binds to (the login form's own strings are at `0x00207990` PLAYERPASSWORD,
+   `0x00207b20` PLAYERPERSONALIST, `0x0020ed80` SAVEPASSWORD in `game/overlays/all_strings.txt`). Bar: two driven
+   logins in a row on the hosted server with the harness pressing ENTER instead of typing (`--prefilled`), then the
+   owner's own. Also retires the largest lobby-failure class left (the dead-reckoned OSK typing, research/28 §5).
+   Stop rule: no keyboard-open function in a day -> research/37 Route A (the login request rewritten in the host
+   crypto path). Investigation `docs/research/37-launcher-online-credentials.md`; plan
+   `docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md`. [A] except the owner's login.
+   **Lock-bound** at tasks 2 and 6 (a recompile, a runtime rebuild, two driven logins); tasks 1, 3, 4, 5, 7 are not.
+10. Wishlist, unscheduled, **[B: the owner's r0004 package and PSRewired's answer]**: the community server. Nothing
    connects to a server that is not ours until the owner reports that answer.
 
 ### Sprint 11 -- "Release hardening: a public repository a stranger can trust" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md`)
