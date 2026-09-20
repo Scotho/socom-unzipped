@@ -696,6 +696,11 @@ class Shell:
     stages = ()                  # active lobby stages ((name, deadline), ...), outermost first
     clock = staticmethod(time.time)
     lobby_role = "host"          # "joiner" once join_game ran: names the teams-unbalanced class in ready()
+    # Sprint 10 Goal 3: which window this shell drives -- the keys map (keys.MAPS) and the on-screen keyboard's
+    # pacing come from it. "ours" here; tools_py.parity.pcsx2_shell.Pcsx2Shell says "pcsx2" and inherits every
+    # verified step, so the console side of the mixed match presses on what its screen shows, as ours does.
+    target = T
+    press_hold_s = 0.08          # 5 frames at the shell's 60 fps (below); PCSX2's shell wants 0.15
 
     def check_stage(self):
         # s6_ladder10/11: a resized game window breaks every fixed-box detector; put it back before any press or read.
@@ -741,7 +746,7 @@ class Shell:
         held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the repeat reopened it, eight times
         in a row, 2026-09-09 play4)."""
         self.check_stage()
-        keys.press(self.hwnd, b, T, hold_s=0.08)
+        keys.press(self.hwnd, b, self.target, hold_s=self.press_hold_s)
         self.stage_sleep(wait)
 
     def hold(self, b, seconds, wait=0.3):
@@ -750,7 +755,7 @@ class Shell:
         if self.pad_file:
             self.pad(seconds, [b] if b.upper() in PAD_BUTTON else (), [b] if b.upper() in PAD_AXIS else ())
         else:
-            keys.press(self.hwnd, b, T, hold_s=seconds)
+            keys.press(self.hwnd, b, self.target, hold_s=seconds)
         time.sleep(wait)
 
     def pad_press(self, b, wait=0.35, hold_s=0.09):
@@ -967,7 +972,7 @@ class Shell:
         if self.pad_file:
             self.osk_type_pad_verified(text, shots, tag)     # reads the field and the ENTER back; fails with a class
             return
-        osk_type(self.hwnd, text, shots, tag, target=T)
+        osk_type(self.hwnd, text, shots, tag, target=self.target)
         time.sleep(OSK_ENTER_SETTLE_S)
         if self.osk_open():                                  # the posted-keys path has no cursor to re-walk from
             self.log(f"WARNING: the on-screen keyboard is still up after typing {text!r} through posted keys "
