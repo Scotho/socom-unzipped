@@ -269,7 +269,14 @@ class GitResolver(object):
         return self._witnesses.get(path.replace("\\", "/"))
 
     def logs_present(self):
-        return os.path.isdir(os.path.join(self.root, "logs"))
+        """Whether the RUN ARCHIVE is here -- not merely a logs/ directory, which the test suite itself creates
+        on any machine, CI included (run 35495411398 called 55 witnesses orphaned that way). The archive is
+        recognised by its own marker, logs/ARCHIVED_TO_D.txt, which the owner's machine has carried since
+        2026-09-13; STORY_VERIFY_LOGS=1 / =0 forces the answer either way."""
+        forced = os.environ.get("STORY_VERIFY_LOGS")
+        if forced in ("0", "1"):
+            return forced == "1"
+        return os.path.isfile(os.path.join(self.root, "logs", "ARCHIVED_TO_D.txt"))
 
     def size(self, path):
         full = os.path.join(self.root, path)
