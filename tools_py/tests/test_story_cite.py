@@ -35,8 +35,9 @@ Two copies of the game met on a server and one killed the other. The scorer read
 class FakeResolver(object):
     """Answers exactly what the checker asks, from dicts. No git, no filesystem."""
 
-    def __init__(self, commits=None, tracked=(), unreachable=(), witnesses=None, logs=None):
-        self.commits = commits or {
+    def __init__(self, commits=None, tracked=(), unreachable=(), witnesses=None, logs=None, shallow=False):
+        self._shallow = shallow
+        self.commits = commits if commits is not None else {
             "811b886": ("811b886" + "0" * 33, "2026-09-13", "feat(sprint-5): the ladder's second launch, scored"),
         }
         self._tracked = set(tracked or ["docs/research/22-kill-readout.md"])
@@ -67,6 +68,9 @@ class FakeResolver(object):
 
     def digest(self, path):
         return (self.logs or {}).get(path)
+
+    def shallow(self):
+        return self._shallow
 
     def size(self, path):
         return self.sizes.get(path)
@@ -244,6 +248,32 @@ class TestPictures(unittest.TestCase):
         self.assertIn("placeholder", kinds(cite.check(doc, None, FakeResolver())))
 
 
+class TestShallowClone(unittest.TestCase):
+    """CI checks out depth 1, so git holds almost none of the cited commits. The data file's stored date and
+    subject vouch for them instead (spec 4.4 decision 4); the check neither skips nor calls 208 commits dead."""
+
+    TL = {"schema": 1, "entries": [{"date": "2026-09-13", "title": "The first kill", "citations": [
+        {"kind": "commit", "ref": "811b886", "sha": "811b886" + "0" * 33, "date": "2026-09-13",
+         "subject": "feat(sprint-5): the ladder's second launch, scored"}]}]}
+
+    def test_a_commit_git_cannot_see_is_vouched_for_by_the_data_file(self):
+        r = FakeResolver(commits={}, shallow=True)
+        self.assertEqual(cite.check(GOOD, self.TL, r), [])
+
+    def test_the_fragment_is_still_checked_against_the_stored_subject(self):
+        r = FakeResolver(commits={}, shallow=True)
+        doc = GOOD.replace("`811b886` sprint-5", "`811b886` the first online login")
+        self.assertIn("fragment-mismatch", kinds(cite.check(doc, self.TL, r)))
+
+    def test_a_commit_neither_git_nor_the_data_file_knows_is_dead(self):
+        r = FakeResolver(commits={}, shallow=True)
+        self.assertIn("dead-commit", kinds(cite.check(GOOD, None, r)))
+
+    def test_a_full_clone_does_not_take_the_data_file_s_word_for_it(self):
+        r = FakeResolver(commits={}, shallow=False)
+        self.assertIn("dead-commit", kinds(cite.check(GOOD, self.TL, r)))
+
+
 class TestKnownDead(unittest.TestCase):
     """A dead citation that has been declared with a reason is a record; an undeclared one is a defect."""
 
@@ -310,7 +340,11 @@ class TestAgainstRealGit(unittest.TestCase):
         self.assertIsNone(self.resolver.commit("0123456"))
 
     def test_the_first_commit_is_reachable_and_a_tracked_path_is_tracked(self):
-        self.assertTrue(self.resolver.reachable("55f5170"))
+        if self.resolver.shallow():
+            # a depth-1 checkout cannot hold 2026-09-02; the shallow path is what TestShallowClone proves
+            self.assertIsNone(self.resolver.commit("55f5170"))
+        else:
+            self.assertTrue(self.resolver.reachable("55f5170"))
         self.assertTrue(self.resolver.tracked("docs/KNOWN.md"))
         self.assertFalse(self.resolver.tracked("logs/parity/nothing_here.txt"))
 

@@ -312,6 +312,15 @@ class GitResolver(object):
         rc, _, _ = self._git("merge-base", "--is-ancestor", sha, self.ref)
         return rc == 0
 
+    def shallow(self):
+        """A shallow clone (CI's default checkout is depth 1) holds almost none of the cited commits. The
+        checker then falls back to the data file's stored date and subject -- spec 4.4, decision 4 -- and
+        says so, rather than calling 208 real commits dead or skipping the check."""
+        if not hasattr(self, "_shallow"):
+            rc, out, _ = self._git("rev-parse", "--is-shallow-repository")
+            self._shallow = (rc == 0 and out.strip() == "true")
+        return self._shallow
+
     def tracked(self, path):
         if self._tracked is None:
             rc, out, _ = self._git("ls-files")
@@ -322,25 +331,44 @@ class GitResolver(object):
         return os.path.exists(os.path.join(self.root, path))
 
 
-def check_citation(cit, resolver, where, problems):
+def commit_witnesses(timeline):
+    """What the data file stores beside every commit hash -- the citation of record when git cannot answer."""
+    out = {}
+    for row in (timeline or {}).get("entries", []):
+        for c in row.get("citations", []):
+            if c.get("kind") == "commit" and c.get("date") and c.get("subject"):
+                out[c["ref"]] = (c.get("sha") or c["ref"], c["date"], c["subject"])
+    return out
+
+
+def check_citation(cit, resolver, where, problems, witnesses=None):
     if cit.kind == "commit":
         if cit.ref in KNOWN_DEAD:
             return
         info = resolver.commit(cit.ref)
+        from_git = info is not None
+        if info is None and resolver.shallow():
+            info = (witnesses or {}).get(cit.ref)
         if info is None:
-            problems.append(Problem(where, "dead-commit",
-                                    "%s does not resolve (or is ambiguous). If it is a known casualty of a "
-                                    "history rewrite, declare it in KNOWN_DEAD with a reason." % cit.ref))
+            if resolver.shallow():
+                problems.append(Problem(where, "dead-commit",
+                                        "%s is not in this shallow clone and docs/story/timeline.json stores no "
+                                        "date and subject for it, so nothing can vouch for it" % cit.ref))
+            else:
+                problems.append(Problem(where, "dead-commit",
+                                        "%s does not resolve (or is ambiguous). If it is a known casualty of a "
+                                        "history rewrite, declare it in KNOWN_DEAD with a reason." % cit.ref))
             return
         _, date, subject = info
         marked = getattr(cit, "date", None)
         if marked and marked != date:
             problems.append(Problem(where, "date-mismatch",
-                                    "%s is marked (%s) but git dates it %s" % (cit.ref, marked, date)))
+                                    "%s is marked (%s) but %s dates it %s"
+                                    % (cit.ref, marked, "git" if from_git else "the data file", date)))
         if cit.fragment and not fragment_supports(cit.fragment, subject):
             problems.append(Problem(where, "fragment-mismatch",
                                     "%s is cited as %r but its subject is %r" % (cit.ref, cit.fragment, subject)))
-        if not resolver.reachable(cit.ref):
+        if from_git and not resolver.shallow() and not resolver.reachable(cit.ref):
             problems.append(Problem(where, "unreachable",
                                     "%s exists but is not reachable from the published ref" % cit.ref))
     elif cit.kind in ("run", "gate", "log"):
@@ -453,6 +481,8 @@ def check_timeline(entries, timeline, resolver, problems):
                 continue
             info = resolver.commit(ref)
             if info is None:
+                if resolver.shallow():
+                    continue          # the stored date and subject ARE the witness here; nothing to compare against
                 problems.append(Problem("%s %s" % key, "dead-commit", "%s (in timeline.json) does not resolve" % ref))
                 continue
             _, date, subject = info
@@ -470,6 +500,7 @@ def check(markdown, timeline=None, resolver=None):
     """The whole check. Returns a list of Problem; empty means clean."""
     resolver = resolver or GitResolver()
     problems = []
+    witnesses = commit_witnesses(timeline)
     entries = parse_entries(markdown)
     if not entries:
         problems.append(Problem("(document)", "no-entries", "no `### <date> - <title>` entries found"))
@@ -489,7 +520,7 @@ def check(markdown, timeline=None, resolver=None):
             problems.append(Problem(entry.where, "unparseable", str(e)))
             continue
         for cit in citations:
-            check_citation(cit, resolver, entry.where, problems)
+            check_citation(cit, resolver, entry.where, problems, witnesses)
         check_prose(entry, problems)
     dates = [e.date for e in entries]
     if dates != sorted(dates):
@@ -528,7 +559,12 @@ def main(argv=None):
         print("\n%d problem(s). A citation that cannot be followed is not a citation." % len(problems))
         return 1
     n = len(parse_entries(markdown))
-    print("%d entries, every citation resolves." % n)
+    resolver = GitResolver(root=args.root)
+    if resolver.shallow():
+        print("%d entries, every citation resolves -- in a SHALLOW clone: commits were vouched for by the date and "
+              "subject stored in docs/story/timeline.json, not by git. Run on a full clone to check against git." % n)
+    else:
+        print("%d entries, every citation resolves." % n)
     return 0
 
 
