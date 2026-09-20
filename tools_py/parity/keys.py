@@ -25,7 +25,10 @@ MAPS = {
               # RUp/RDown/RLeft/RRight (T G F H). Needed to drive movement on the reference:
               # docs/research/18-online-round-start.md §1 (the S0 verdict) was measured with these.
               "LUP": 0x57, "LDOWN": 0x53, "LLEFT": 0x41, "LRIGHT": 0x44,
-              "RUP": 0x54, "RDOWN": 0x47, "RLEFT": 0x46, "RRIGHT": 0x48},
+              "RUP": 0x54, "RDOWN": 0x47, "RLEFT": 0x46, "RRIGHT": 0x48,
+              # Sprint 10: the stick names a step script uses for OURS (W/A/S/D left stick, I/J/K/L right stick),
+              # so one script drives both targets -- the same directions, PCSX2's own bindings.
+              "W": 0x57, "S": 0x53, "A": 0x41, "D": 0x44, "I": 0x54, "K": 0x47, "J": 0x46, "L": 0x48},
     "ours": {**_ARROWS, "CROSS": 0x58, "CIRCLE": 0x43, "SQUARE": 0x5A, "TRIANGLE": 0x56,
              "START": 0x0D, "SELECT": 0x08, "L1": 0x51, "R1": 0x45, "L2": 0x31, "R2": 0x33,
              # left stick (W/A/S/D) and right stick (I/J/K/L) in socom2_host_input.cpp keyboard mode

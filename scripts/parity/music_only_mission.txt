@@ -1,0 +1,93 @@
+# Sprint 10, the music round four: the MUSIC track alone through the owner's path. From the main menu, AUDIO OPTIONS:
+# SOUND VOLUME and DIALOG VOLUME to zero (14 LEFTs each; the slider is ~13 notches), back out, then NEW GAME, the
+# first mission, X through the flyover, a walk toward the first enemies with fire on contact -- the transitions the
+# owner triggers ("walked a few meters forward ... music started again when an enemy was engaged"). Both targets.
+next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
+next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
+next+1.0:CROSS      # card notice -> CONTINUE
+next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
+next+1.0:CROSS      # DEVELOPED BY
+next+1.0:CROSS      # intro / warning screen
+next+1.0:CROSS      # intro movie -> skip
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:NONE   # the main menu, NEW GAME lit
+stable+1.5:DOWN     # ONLINE
+stable+1.5:DOWN     # LAN
+stable+1.5:DOWN     # OPTIONS
+stable+2.0:CROSS
+stable+2.0:CROSS    # AUDIO OPTIONS
+stable+1.0:DOWN     # SOUND VOLUME
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+stable+1.0:DOWN     # DIALOG VOLUME
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+stable+1.5:NONE     # the sliders as set (the capture's proof)
+stable+1.5:TRIANGLE # back to OPTIONS
+stable+1.5:TRIANGLE # back to the main menu (OPTIONS lit)
+stable+1.5:UP       # LAN
+stable+1.5:UP       # ONLINE
+stable+1.5:UP       # NEW GAME
+stable+2.0:CROSS    # NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ...
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN       # DEPLOY
+wait+2.0:CROSS      # deploy -> load mission
+next+10.0:NONE      # mission
+untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)+1.0:CROSS   # through the flyover until the HUD shows
+wait+8.0:NONE       # standing still after the flyover (the pop-up may arrive; it is dismissed below)
+ifpopup+1.0:CROSS
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W          # walk forward
+wait+4.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W
+wait+4.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1         # fire: contact
+wait+6.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
