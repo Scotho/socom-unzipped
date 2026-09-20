@@ -194,7 +194,24 @@ their tests, or depend on the monitor's copy and pin it -- the sprint decides wh
    in a log, runs each path, and fails if it survives -- the same negative control that gave the monitor's leak check
    its only real evidence.
 6. **The site and the static monitor**, whose builds already gate themselves, re-run from here so one command covers
-   everything that faces outward.
+   everything that faces outward. Both are written and running; Goal 9 CALLS them rather than reimplementing them:
+   - the site: `cd ../scotho && npm run check:secrets` (or `node scripts/check-secrets.mjs <paths>`), **exit 0 clean,
+     1 findings, 2 the scanner is broken or a target is missing** (`fabe36b` on scotho's develop). It scans what is
+     actually published -- both built sites, the bug inbox that runs on the box, `public/`, both nginx configs -- and
+     it runs `selfTest()` against planted secrets before every scan, exiting 2 if it misses one. Its output is a rule
+     name and a MASKED excerpt, never the secret, because gate output gets pasted into messages; Goal 9's own output
+     follows that rule for the same reason. 295 published files clean at the time of writing, 8 tests on the scanner.
+   - the monitor: `python leakcheck.py out/site` after `build.py` (`../socom_monitor` `920e323`).
+   **Exit 2 must not be read as a pass.** Three states, not two: clean, findings, and the scanner did not run. A
+   release gate that treats "could not scan" as "nothing found" is worse than no gate, because it reports safety it
+   did not measure.
+
+**The report shape** (asked by the site session; specified here so it is not guessed). Goal 9 aggregates several
+checkers, so each one should be able to emit `--json`: a single object `{"tool", "target", "scanned": {"files",
+"bytes"}, "self_test": {"planted", "caught"}, "findings": [{"rule", "file", "line", "excerpt_masked",
+"severity"}], "exit"}`. Two requirements that matter more than the field names: `excerpt_masked` stays masked in
+JSON exactly as it is on the terminal -- a machine-readable report is MORE likely to be pasted, logged or attached,
+not less -- and `self_test` is part of the report, so an aggregator can refuse a result whose control never ran.
 
 **Owner-specific literals** (the street address, an old account name) live in a git-ignored file, as they do for the
 monitor -- committing a secret in order to scrub it defeats the exercise. The seeded file for the monitor already holds
