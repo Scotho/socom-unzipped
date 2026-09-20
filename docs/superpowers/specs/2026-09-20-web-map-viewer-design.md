@@ -339,3 +339,9 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   Glory models are in the scene graph as prototypes that nothing instances from `worldmodel`, so
   `placeInstances` never reaches them; reading the archive adds 110 instances and 1,601 triangles of
   rock and grass that were missing from the ground before.
+
+- 2026-09-21, the code-diet spike's verdict (docs/research/35 §1.7): the whole recompiled game is 180.27 MB of
+  wasm, 13.7 MB brotli on the wire, and Chromium compiles it in 0.2 s lazily; the size gate on the full-game route
+  is open. The viewer route's archive, texture, mesh and scene layers stand as the asset side of that route and of
+  the replay viewer. The next design decision is the runtime port (Emscripten: scheduler, GS, VU1, disc delivery),
+  which is its own spec.

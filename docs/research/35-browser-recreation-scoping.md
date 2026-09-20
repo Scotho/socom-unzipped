@@ -71,12 +71,39 @@ Collision was recovered from RAM, not files: `CCell` grid, `CDIPoly` / `CDIBBox`
 | Measurement | Value | Verdict |
 |---|---|---|
 | Largest recompiled function (`sub_003D57D0`, 0x3d57d0 to 0x408480) | 49,375 MIPS instructions, 15.5 MB of C++ | Under the 7,654,321-byte wasm function-body cap of V8 and SpiderMonkey (estimated 1 to 3 MB of wasm). Only 5 generated files exceed 2 MB. |
-| Native `.text` of `dist-release/socom2.exe` | **190.8 MB** (plus 36 MB data) | Far over V8's roughly 150 MB compiled-code cache; compiled code is 5 to 7 times the .wasm; first load would be tens of seconds and recompiled on every visit. This is the real blocker. |
+| Native `.text` of `dist-release/socom2.exe` | **190.8 MB** (plus 36 MB data) | Far over V8's roughly 150 MB compiled-code cache; compiled code is 5 to 7 times the .wasm; first load would be tens of seconds and recompiled on every visit. This is the real blocker. **Superseded 2026-09-21 by measurement (below): the blocker is not real.** |
 | Guest memory | 32 MB EE RAM, 4 MB GS VRAM, 2 MB IOP | Fits wasm32; memory64 not needed. |
 
 The 190 MB is a property of the emitted C++ (a `ctx->pc = ...` store per instruction, one translation unit per
 function, no dead-function elimination), not of the game. It is a recompiler diet problem and is measurable with
 the recompiler and a compiler alone, before any browser work.
+
+### 1.7 Measured 2026-09-21: the whole recompiled game compiles to wasm and loads in under a second
+The code-diet spike compiled all 14,882 generated units with Emscripten 6.0.9 (`-O2 -msimd128 -msse4.1`; the SSE
+intrinsic headers map onto wasm SIMD unchanged, no header patches) and linked them into one module. Every number
+below is measured, not extrapolated.
+
+| | value |
+|---|---|
+| linked `.wasm` (`emcc -O2`, then `wasm-opt`) | **180.27 MB** (code section 177.2 MB; 17,027 functions) |
+| on the wire | 23.6 MB gzip, **13.7 MB brotli** |
+| largest function body | 753 KB, 9.8 percent of the 7,654,321-byte cap; none over |
+| Chromium compile, cold | **0.2 s** streaming (lazy, the default); 2.3 s eager (all functions, V8) |
+| Chromium compile, warm | the same: the module exceeds the code cache, and it does not matter |
+| `-Os` instead of `-O2` | larger, 199 MB linked |
+| the `elide_pc_stores` diet | 1.6 percent of wasm size (LLVM already removes the same dead stores), but 36 percent less compile time and no more out-of-memory kills on the multi-megabyte units; kept as an opt-in recompiler flag |
+| dead functions | a floor of 0.6 percent with no static references; up to 57 percent unreachable over direct edges only, which vtables and function pointers make optimistic; only a runtime trace settles it |
+
+Object-file sums overstate the linked size by about 17 percent (relocation placeholders), which is why the interim
+216 MB figure was wrong. Like for like on a sample, wasm is 1.29 times the x86-64 size: there is no free win in the
+instruction set, and none is needed. The owner's 30 s first-load budget is not close to threatened.
+
+**What this does and does not settle.** Size and compile time were the gate on the full-game route, and they pass.
+Three things still stand between this and a playable browser build, none measured here: the runtime port to
+Emscripten (the EE scheduler's cooperative switch and the `switch (ctx->pc)` resume mechanism against the browser's
+event loop, the GS, VU1, DMAC and IOP services), memory (180 MB of wasm plus its machine code plus 32 MB of guest
+RAM in one renderer), and getting the player's disc image to the page. The web map viewer's archive and asset
+layers (`web/`) are the start of the third.
 
 ## 2. GPU-in-the-browser options (as of 2026-09-20)
 
@@ -154,8 +181,8 @@ emulation maps GLSL ES 300 onto it; there is no GLES 3.1 (compute) path.
 |---|---|---|---|
 | A. Map and replay viewer in three.js or Babylon (WebGPU with WebGL2 fallback), geometry decoded from the ZDBs by new code | Yes, all browsers | Same | Getting the mesh decode right without the game's own code |
 | B. Map decoder as a C++ library reusing the runtime's VIF1, VU1 and GS code, compiled to wasm, rendered by A | Yes on all browsers (the decoder is CPU-side wasm) | Same | Emscripten build of a slice of the runtime; SSE shim |
-| C. Whole recomp in the browser, existing GL 3.3 GS via Emscripten GL emulation (WebGL2), or the software GS with the GPU as a blitter | Blocked by 190 MB code size; the GL path loses clip-control and any barrier-class feature; the software path's speed is unmeasured | WebGL2 gains nothing | Compile time, code cache, throughput |
-| D. Whole recomp in the browser, GS rewritten as WebGPU compute (parallel-gs design) | Blocked by code size; otherwise Chrome, Edge, Safari and Firefox Windows/Mac; needs COOP/COEP, worker rendering, JSPI or Asyncify | Bindless behind flags; Safari JSPI plausible; Firefox Linux and Android | Largest item on the list; no precedent |
+| C. Whole recomp in the browser, existing GL 3.3 GS via Emscripten GL emulation (WebGL2), or the software GS with the GPU as a blitter | Code size measured fine (1.7); the GL path loses clip-control and any barrier-class feature; the software path's speed is unmeasured | WebGL2 gains nothing | Runtime port, throughput |
+| D. Whole recomp in the browser, GS rewritten as WebGPU compute (parallel-gs design) | Code size measured fine (1.7); Chrome, Edge, Safari and Firefox Windows/Mac; needs COOP/COEP, worker rendering, JSPI or Asyncify | Bindless behind flags; Safari JSPI plausible; Firefox Linux and Android | Largest item on the list; no precedent |
 | E. Pixel-stream the desktop build | Yes; latency and $400 to $600 a month per box | Better transports | Not a way to play; recurring cost |
 | F. Server renders replays to video | Yes | Same | Not interactive |
 
