@@ -48,9 +48,11 @@ gate:     ________ (3/3 on this exact exe)
 10. **Free play, five minutes** *(listen in free play; re-listen after the sound fixes)*. Gunfire, voice-overs, music.
     Does mission sound last the whole five minutes?
 11. **Online, on the project server** *(play a match on the hosted server; the online-menu sound)*. ONLINE page: the
-    status line should say the server is up and how many are on. Launch, go online. (An earlier draft warned here that
-    reaching the server by name might cost you your persona; it will not -- the name is resolved before the game
-    ever sees it, R175.) Listen on
+    status line should say the server is up and how many are on. Launch, go online. The preset now reaches the server by NAME. (An earlier draft warned that this
+    might cost you your persona; it will not -- the name is resolved before the game ever sees it, R175.) **If
+    the game cannot connect at all, pick "SOCOM Unzipped (by address)" and try again** -- that is the same
+    box by its raw address, and it is there for exactly the case where your network cannot resolve the name.
+    Tell me if you had to, because nothing on screen says that is what went wrong. Listen on
     the screen just after signing in, in CREATE GAME and in the lobby: that is where the splice and the buzz were.
     Host a game, start the round, walk around. Lag? (The box is in Ohio.)
 12. **If a friend on another network is around** *(the first two-machine match -- carried since Sprint 7)*. They unzip

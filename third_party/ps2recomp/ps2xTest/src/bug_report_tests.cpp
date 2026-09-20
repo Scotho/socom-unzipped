@@ -153,7 +153,8 @@ void register_bug_report_tests()
                 return "<absent>";
             };
             t.Equals(value("serverPreset"), std::string("unzipped"), "the preset");
-            t.Equals(value("server"), std::string("3.143.65.100"), "the address the game is pointed at");
+            t.Equals(value("server"), std::string("socom.scotho.com"),
+                     "the server the game is pointed at -- by name since Sprint 9 P6, and still reported verbatim");
             t.Equals(value("gsScale"), std::string("2"), "the detail level");
             t.Equals(value("windowSize"), std::string("1280x896"), "the window");
             t.Equals(value("profile"), std::string("viper"), "the profile");

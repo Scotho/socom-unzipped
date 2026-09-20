@@ -23,11 +23,12 @@ namespace ui
             text(ctx, app.serverStatus.c_str(), Vec2{right - w, preset0.y - 26.0f}, size, up ? theme::text : theme::caption);
         }
 
-        int presetSel = 2;   // "Custom" unless one of the ids matches
-        for (int i = 0; i < 3; ++i)
+        // "Custom" -- the one with no address -- unless one of the ids matches.
+        int presetSel = static_cast<int>(launcher::kServerPresetCount) - 1;
+        for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
             if (c.serverPreset == launcher::kServerPresets[i].id && launcher::presetAvailable(launcher::kServerPresets[i]))
-                presetSel = i;
-        for (int i = 0; i < 3; ++i)
+                presetSel = static_cast<int>(i);
+        for (int i = 0; i < static_cast<int>(launcher::kServerPresetCount); ++i)
         {
             const std::string id = "online.preset." + std::to_string(i);
             const bool available = launcher::presetAvailable(launcher::kServerPresets[i]);
