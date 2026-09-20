@@ -301,6 +301,27 @@ JS = r"""
 """
 
 
+def stamped(logo_url, out_path):
+    """The logo URL with ?v=<sha256 prefix> of the file it names, when that file can be found beside the page.
+
+    Cloudflare served a week-old /img/logo.webp to the live story page once, so the site busts its own assets with
+    a version query; the story page does the same from the file's hash, not a date. The file is looked for as the
+    page would resolve it (`<out dir>/<url>`) and, for the Vite site, under `<out dir>/public/<url>`; when neither
+    exists the URL is left alone."""
+    if "?" in logo_url:
+        return logo_url
+    rel = logo_url.lstrip("/")
+    out_dir = os.path.dirname(os.path.abspath(out_path)) if out_path and out_path != os.devnull else ""
+    for candidate in ([os.path.join(out_dir, rel), os.path.join(out_dir, "public", rel)] if out_dir else []):
+        if os.path.isfile(candidate):
+            import hashlib
+            h = hashlib.sha256()
+            with open(candidate, "rb") as f:
+                h.update(f.read())
+            return "%s?v=%s" % (logo_url, h.hexdigest()[:10])
+    return logo_url
+
+
 def render(doc, timeline, repo, img_base, logo):
     head_sha = timeline.get("head", "")
     entries = [e for era in doc["eras"] for e in era["entries"]]
@@ -402,7 +423,7 @@ def main(argv=None):
         doc = parse_document(f.read())
     with open(args.timeline, encoding="utf-8") as f:
         timeline = json.load(f)
-    page = render(doc, timeline, args.repo, args.img.rstrip("/"), args.logo)
+    page = render(doc, timeline, args.repo, args.img.rstrip("/"), stamped(args.logo, args.out))
     if args.full_document:
         head_end = page.index("<div id=\"progress\"")
         page = ('<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n'
