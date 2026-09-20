@@ -1,21 +1,16 @@
-# Sprint 10, the music round four: the MUSIC track alone through the owner's path. From the main menu, AUDIO OPTIONS:
-# SOUND VOLUME and DIALOG VOLUME to zero (14 LEFTs each; the slider is ~13 notches), back out, then NEW GAME, the
-# first mission, X through the flyover, a walk toward the first enemies with fire on contact -- the transitions the
-# owner triggers ("walked a few meters forward ... music started again when an enemy was engaged"). Both targets.
-next+1.0:CROSS      # loading logo (press has no effect; establishes the first screen)
-next+1.0:CROSS      # Select MEMORY CARD slot -> slot 1
-next+1.0:CROSS      # card notice -> CONTINUE
-next+1.0:CROSS      # SONY COMPUTER ENTERTAINMENT AMERICA
-next+1.0:CROSS      # DEVELOPED BY
-next+1.0:CROSS      # intro / warning screen
-next+1.0:CROSS      # intro movie -> skip
-untilref(scripts/parity/ref_main_menu_ours.png)+1.0:NONE   # the main menu, NEW GAME lit
+# Sprint 10, the music round four: the MUSIC track alone through the owner's path. From the main menu (reached by
+# pressing CROSS until the logo band matches -- counted presses overshot into NEW GAME on both targets, run 1),
+# AUDIO OPTIONS: the SOUND VOLUME and DIALOG VOLUME rows reached by DOWN until each row's teal highlight shows
+# (until(x0,y0,x1,y1)), 16 LEFTs each (the slider is ~13 notches; extra presses past zero do nothing), back out,
+# UP to NEW GAME, the first mission, X through the flyover, a walk toward the first enemies with fire on contact --
+# the transitions the owner triggers. Both targets (PCSX2's keys map takes ours' stick names).
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS   # through the boot screens until the main menu logo
 stable+1.5:DOWN     # ONLINE
 stable+1.5:DOWN     # LAN
 stable+1.5:DOWN     # OPTIONS
 stable+2.0:CROSS
-stable+2.0:CROSS    # AUDIO OPTIONS
-stable+1.0:DOWN     # SOUND VOLUME
+stable+2.0:CROSS    # AUDIO OPTIONS (the first row)
+until(16,124,175,145)+1.0:DOWN   # SOUND VOLUME lit
 wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
@@ -30,7 +25,11 @@ wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
-stable+1.0:DOWN     # DIALOG VOLUME
+wait+0.4:LEFT
+wait+0.4:LEFT
+until(16,146,175,167)+1.0:DOWN   # DIALOG VOLUME lit
+wait+0.4:LEFT
+wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
