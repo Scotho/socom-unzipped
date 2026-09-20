@@ -389,9 +389,16 @@ the pad alone**, because a player configuring a pad may have nothing else plugge
    result this project has was produced by posting `kSocom2Keys` into the game window (`socom2_host_input.cpp:304-414`,
    `tools_py/parity/keys.py`, every `scripts/parity/*.txt`). The moment that table is player-editable data, the
    project's only regression instrument depends on whatever the player last saved. **The mapping the harness posts must
-   be pinned, explicitly and separately from the player's** — a fixed defaults table the harness selects, or a
-   developer-mode override, decided as a ruling and never by accident. Get this wrong and every later "gate 3/3" is a
-   lie about a build nobody can reproduce.
+   be pinned, explicitly and separately from the player's.** The site session's objection to the weaker form is right
+   and is adopted: a *selection* ("the harness uses the defaults, because no mapping block is saved") can be undone
+   silently by an ordinary config edit, while a developer-mode *override* has to be set deliberately. But an override
+   still fails the day someone forgets it, so the design does not stop there: **the harness must not depend on the
+   absence of something — it must record and verify.** Three parts, one ruling: the override sets the mapping; the run
+   records the active mapping's identity (a hash of the resolved table) on its stats line, the way the gate already
+   records `EXE <path> sha256=`; and **the gate refuses to score a run whose mapping hash is not the pinned default.**
+   Then a forgotten override is a loud refusal instead of a quiet re-measurement, which is the whole difference
+   between an instrument and a number. Get this wrong and every later "gate 3/3" is a lie about a build nobody can
+   reproduce.
 2. **R139 and the mapping must agree rather than fight.** SOCOM II reads how HARD Triangle is pressed (light crouches,
    firm goes prone), which is why the crouch shortcut exists at all. A rebinding UI that presents Triangle as an
    ordinary button is telling the player something false. The page has to express that some of the game's semantics are
