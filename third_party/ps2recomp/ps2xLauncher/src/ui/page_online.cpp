@@ -78,11 +78,23 @@ namespace ui
         textField(ctx, profile, c.profile, "online.profile", changed);
         caption(ctx, Vec2{profile.right() + 18.0f, profile.y + 12.0f}, "picks cards/<profile> for the memory card");
 
-        const Rect second = rectOf(nodes, "online.second");
-        if (toggle(ctx, second, "Second instance on this machine (for testing)", "online.second", c.secondInstance))
-            changed = true;
-        caption(ctx, Vec2{second.x, second.bottom() + 10.0f},
-                "A second instance shifts its UDP ports and uses its own card directory, so two copies can play here.");
+        // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The
+        // second instance is a testing tool -- it starts a whole second copy of the game -- so it lives
+        // behind the disclosure rather than under the profile field a new player has just filled in.
+        const bool forced = advancedForced(c);
+        if (advancedHeader(ctx, rectOf(nodes, "online.advanced"), "online.advanced", app.advancedOpen || forced, forced))
+            app.advancedOpen = !app.advancedOpen;
+
+        // Shut, the toggle is not in the node list at all, so there is nothing to look up and nothing to
+        // draw -- `hasNode` rather than a rect test, because absence is the point.
+        if (hasNode(nodes, "online.second"))
+        {
+            const Rect second = rectOf(nodes, "online.second");
+            if (toggle(ctx, second, "Second instance on this machine (for testing)", "online.second", c.secondInstance))
+                changed = true;
+            caption(ctx, Vec2{second.x, second.bottom() + 10.0f},
+                    "A second instance shifts its UDP ports and uses its own card directory, so two copies can play here.");
+        }
 
         if (changed)
             app.dirty = true;

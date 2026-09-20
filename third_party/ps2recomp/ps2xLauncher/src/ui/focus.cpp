@@ -173,7 +173,11 @@ namespace ui
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
             add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});
-            add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 112.0f, 460.0f, 34.0f});
+            // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
+            // reveals are below it, last in reading order and last in the focus order.
+            add(out, page, "online.advanced", Rect{b.x, y + 124.0f, b.w, 28.0f});
+            if (in.advancedOpen)
+                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 166.0f, 460.0f, 34.0f});
             break;
         }
         case Page::Report:
@@ -200,6 +204,13 @@ namespace ui
         if (page != Page::Play)
             add(out, page, barLaunchId(page), Rect{f.bar.right() - metrics::margin - 220.0f, f.bar.y + 10.0f, 220.0f, 36.0f});
         return out;
+    }
+
+    bool advancedForced(const launcher::Config &c)
+    {
+        // One line today. Every setting that moves into an ADVANCED section joins this disjunction, and the
+        // test that pins the rule joins it with them.
+        return c.secondInstance;
     }
 
     std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in)

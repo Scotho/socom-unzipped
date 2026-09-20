@@ -4,6 +4,7 @@
 // PURE ON PURPOSE: no raylib in this header or in focus.cpp. The rects here are the rects the pages draw --
 // page_*.cpp looks its controls up by id rather than computing them again -- so a test that asserts where a
 // direction lands is asserting about the layout the player sees.
+#include "launcher/launcher_config.h"   // Sprint 9 P4: what forces an ADVANCED section open
 #include "theme.h"
 
 #include <string>
@@ -63,7 +64,16 @@ namespace ui
         int padChoices = 1;
         int micChoices = 1;
         bool customServer = true;
+        // Sprint 9 P4: a page's ADVANCED section is shut by default, and its controls are then not on the
+        // page at all -- not merely undrawn, so nothing can focus or activate what a player cannot see.
+        bool advancedOpen = false;
     };
+
+    // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
+    // is not at its default. A disclosure that can hide a setting which is doing something is a trap: it is
+    // how a player switches a second instance on, collapses the section, and then cannot find why two games
+    // start. The rule is cheap to state and cheap to keep, so it is a function and not a comment.
+    bool advancedForced(const launcher::Config &c);
 
     // Every focusable control on `page`, in reading order, plus the bottom bar's LAUNCH (id "bar.launch").
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in);
