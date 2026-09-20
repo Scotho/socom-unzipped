@@ -39,7 +39,10 @@ silent red. **Stop rule:** a run that lags the owner while they are at the machi
       launch and it launched on `9596f51`, before the matcher fix (`8a1c7de`); the row IS right this time (the job
       waited on the right marker, the ledger read the right files). The pinned copy in the run dir has no
       `LOBBY_TITLE_COLS`: the proof that the fix was not in the run, not that it failed.
-- [ ] The third run, on the fixed harness: the first row that can count toward the bar.
+- [x] The third run, on the fixed harness, 10:17 local (`ladder_20260920_101741`, harness `32ba0d12`, exe `b3abebd5`):
+      **KILL, 4/4 usable, 1 kill, best rung 3** -- the first row that counts. Streak 1 of 7. Rounds 3 and 4 were
+      NO-KILL "aim-exhausted" and round 1's RUNG0 back-pressure wait read 119 >= 100 -- the ladder's own residuals,
+      not lobby or crash classes, so the row is clean by the bar's definition.
 
 ## What is left
 
