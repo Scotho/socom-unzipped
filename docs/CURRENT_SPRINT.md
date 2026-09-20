@@ -9,7 +9,7 @@ launcher at their own r0001 ISO and playing a round against another stranger on 
 repository another person can fork, build and contribute to.
 
 ```
-branch:       sprint-9 (off develop/main at 871f9f8; main == develop == 871f9f8)
+branch:       sprint-10 (off main at cc9d7ff = the Sprint 9 merge, tagged v0.9.0, 2026-09-20; develop is deleted)
 spec:         docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md
 plans:        docs/superpowers/plans/2026-09-19-sprint-9-goal-1-*.md (done), 2026-09-20-sprint-9-goal-2-*.md (done),
               2026-09-20-sprint-9-goal-3-knob-retirement.md (written, NOT started; see Q2 before touching it)
@@ -17,8 +17,9 @@ human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
 sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the next sprint") while Sprint 9's
               milestone Q is CARRIED -- spec docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md,
               plan docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md (Goal 1 built, first run tonight).
-              Sprint 9's Q8 (merge to main, v0.9.0) runs tonight after the ladder; Q1b-Q7 carry into Sprint 10 as filler
-              unless the owner reorders.
+              Sprint 9's Q8 is DONE 2026-09-20 13:55: PR #1 merged to main with a merge commit (cc9d7ff), v0.9.0 tagged on it,
+              develop deleted, this branch opened. Q0b, Q1b-Q7 carry into Sprint 10 as filler unless the owner reorders;
+              no GitHub release (Sprint 11 / D2, owner-only).
 git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
 next ruling:  R179 (R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `013f86e`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
 baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `3e93b51`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)

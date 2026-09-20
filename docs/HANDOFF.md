@@ -25,7 +25,8 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control
   round. Saves persist on simulated memory cards. 58-60 fps on the menus under load. Linux client builds and boots.
-- **Sprint 9, "A stranger's first run", is open on branch `sprint-9`.** Done: Goal 1 (failures explain themselves),
+- **Sprint 9, "A stranger's first run", is MERGED to `main` (`cc9d7ff`, `v0.9.0`, 2026-09-20); Sprint 10 is open on
+  branch `sprint-10` (`docs/CURRENT_SPRINT.md` has its header and the carried Q items).** Sprint 9 done: Goal 1 (failures explain themselves),
   Goal 2 (release build, import-closure archives, `SHA256SUMS`; Windows zip 55.7 MB), **P1 and P2** (Goal 10's music:
   the queue, the ramp ownership and the stream loop flags, R169-R171, `013f86e`), **P3** (Goal 9's pad gate, R173,
   `02cd9ae`), and **the first half of P4** (`ca7dd5a`: the page-change flash and the top bar's two alignments).

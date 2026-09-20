@@ -9,10 +9,10 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 - `github.com/Scotho/socom-unzipped`, **private**, no licence file at the root, no tags, no releases, no branch
   protection, one CI workflow (`.github/workflows/linux.yml`: ubuntu-24.04, the library + tests + launcher with no
   generated code, about an hour; `docs/**` changes do not trigger it).
-- `main` and `develop` have pointed at the same commit after every sprint merge since Sprint 5 (`871f9f8` today).
-  `develop` has never held anything `main` did not.
-- Fifteen branches on the remote: `main`, `develop`, `sprint-1`..`sprint-9`, `fix/gl-depth-precision`,
-  `fix/gs-block-pointer`. All but `sprint-9` are fully merged.
+- `develop` is gone (2026-09-20): it had pointed at the same commit as `main` after every sprint merge since Sprint 5
+  and never held anything `main` did not.
+- Fifteen branches on the remote: `main`, `sprint-1`..`sprint-10`, `fix/gl-depth-precision`, `fix/gs-block-pointer`.
+  All but `sprint-10` are fully merged (`sprint-9` at `cc9d7ff`, tagged `v0.9.0`).
 - Several agent sessions share ONE working tree. That is why every commit uses an explicit pathspec.
 
 ## 2. Branches
@@ -23,9 +23,9 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 | `sprint-N` | The agent loop's integration branch for one sprint. Small commits, each green. Docs and code together. | The controller and the sessions it coordinates. | Opens off `main` when the sprint opens; merged by PR at close-out; deleted from the remote one sprint later (the merge commit and the tag keep the history). |
 | `fix/<slug>`, `feat/<slug>`, `docs/<slug>` | One topic. The shape an outside contributor uses, and the shape the loop uses for a risky change it wants to be able to abandon. | Anyone, from a fork or the repo. | Until the PR merges or closes. |
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
-| `develop` | **Retired at the Sprint 9 merge (AT S9 CLOSE).** It duplicates `main`, and a public contributor who sees both has to ask which one to target. Until then it keeps being fast-forwarded with `main` so nothing that reads it breaks. | -- | Deleted after `v0.9.0` is tagged, once nothing (scripts, docs, CI) names it: `git grep -n "develop"` first. |
+| `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`cc9d7ff`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
 
-**NOW:** work goes to `sprint-9`; push `origin sprint-9`; check CI (`gh run list --branch sprint-9 --limit 1`).
+**NOW:** work goes to `sprint-10` (off `main` at `cc9d7ff`); push `origin sprint-10`; check CI (`gh run list --branch sprint-10 --limit 1`).
 Never force-push a shared branch. Never rewrite `main`.
 
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the
