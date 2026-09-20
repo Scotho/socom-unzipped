@@ -121,6 +121,23 @@ rather than rewritten, so nothing verified was lost; the four new entries cite h
 night. (4) The site page rebuilt as a vertical timeline in the landing site's own tree, `../scotho/sites/s2u/story.html`,
 built locally and not deployed.
 
+## Status, 2026-09-20 (fourth pass): the D: archive reviewed
+
+The owner asked whether `D:\socom_archive` had been used. It had not, beyond the spec naming it. Reviewed: 2.4 GB,
+13,378 PNGs. It holds the twelve gate stamps archived on 2026-09-13 (`gate/first`, `native_default`, `famc`,
+`mission2`/`3`, the `hostdraw_*`, `pf2_*` and `native_on_*` A/B sets), the pre-Sprint-4 run logs
+(`logs/run_20260906_000315` to `run_20260909_144538`, gzipped), the first kill's acceptance bundle
+(`acceptance/s5_ladder2`, with its own SHA256SUMS), and the Sprint 5 SDD reports. What the story took from it: one
+picture, the last frame of the very first gate run, which is the save-to-card dialog the probe answered blindly (the
+2026-09-11 entry), inventoried with the archive as its provenance. What it did not take: any contact sheet, and any
+run whose readout also survives under `logs/`, which the witnesses already pin. The archive is not a citation target:
+citations stay on paths a clone can reason about, and the archive's readouts are pinned through their surviving
+`logs/parity/gate_<name>.out` files where one exists (spec 4.3, level 3).
+
+The same pass, on the owner's instruction: every em dash in the prose replaced (commas, colons, full stops,
+parentheses), the entry and era headings switched to a plain hyphen, the preface and closing rewritten in the author's
+voice, and the foreword signed Scotho. Subject fragments on `Cited:` lines quote commits and keep their dashes.
+
 ## 2. Scope and shape
 
 ### 2.1 What the story is

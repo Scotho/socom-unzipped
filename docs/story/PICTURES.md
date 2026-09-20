@@ -19,5 +19,6 @@ the owner's** (spec §9 Q1); `tools_py/story/cite.py` only keeps this list and t
 | `2026-09-19-hosted-kill-round-1.png` | 2026-09-19 — A server of its own, on the internet | 307,490 | `logs/parity/s8_hosted_kill/A_kill_r1.png` | our program's window, run s8_hosted_kill; frame inspected, carries the test persona only |
 | `2026-09-20-playtest-mission.png` | 2026-09-20 — The first build made for a person to play | 274,392 | `logs/parity/gate/s9_p7_playtest_gate/mission/final.png` | our program's window, gate s9_p7_playtest_gate |
 | `2026-09-20-mixed-match.png` | A console and a PC in the same match | 220,003 | `logs/parity/mixed2_pcsx2_hosts_g/play02.png` | our program's window, run mixed2_pcsx2_hosts_g |
+| `2026-09-11-the-dialog-the-gate-answered-blindly.png` | The check that had been passing for free | 128,879 | `D:/socom_archive/gate/first/mission/final.png` | our program's window, the first gate run (archived to D:\\socom_archive\\gate\\first on 2026-09-13; logs/parity/gate_first.out is its surviving readout) |
 
 Total: 10 pictures, 2,273,151 bytes.

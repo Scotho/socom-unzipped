@@ -1,14 +1,14 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "d8e10ef",
+ "head": "7d5dc86",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
    "id": "2026-09-02-the-game-isn-t-in-the-file-you-d-expect",
    "date": "2026-09-02",
    "title": "The game isn't in the file you'd expect",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "The executable on the SOCOM II disc is 874 KB of loader. The actual game is locked in an encrypted archive next to it.",
    "citations": [
     {
@@ -39,7 +39,7 @@
    "id": "2026-09-04-a-ps2-game-becomes-a-windows-program",
    "date": "2026-09-04",
    "title": "A PS2 game becomes a Windows program",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "Thirty-five commits, and by the end the game's own code is C++ that compiles.",
    "citations": [
     {
@@ -98,7 +98,7 @@
    "id": "2026-09-05-it-plays-its-intro",
    "date": "2026-09-05",
    "title": "It plays its intro",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "A day of black screen, and the graphics weren't the problem.",
    "citations": [
     {
@@ -129,7 +129,7 @@
    "id": "2026-09-05-the-main-menu-at-full-speed",
    "date": "2026-09-05",
    "title": "The main menu, at full speed",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "Three bugs on one delivery path stood between the game and its own menus.",
    "citations": [
     {
@@ -179,7 +179,7 @@
    "id": "2026-09-07-the-first-frames-of-a-mission",
    "date": "2026-09-07",
    "title": "The first frames of a mission",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "The thing starving the renderer was the automatic exposure control.",
    "citations": [
     {
@@ -250,7 +250,7 @@
    "id": "2026-09-07-the-console-becomes-the-marking-scheme",
    "date": "2026-09-07",
    "title": "The console becomes the marking scheme",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "Instead of arguing about what looked wrong, the project started scoring itself against screenshots of the real game.",
    "citations": [
     {
@@ -321,7 +321,7 @@
    "id": "2026-09-07-the-movies-play",
    "date": "2026-09-07",
    "title": "The movies play",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "Every movie in the game was dying on its first tick over four stale bytes.",
    "citations": [
     {
@@ -352,7 +352,7 @@
    "id": "2026-09-07-two-clients-one-server-one-match",
    "date": "2026-09-07",
    "title": "Two clients, one server, one match",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "era": "2026-09-02 .. 2026-09-07 - From the disc to the screen",
    "hook": "The first SOCOM II match on this project's own server wasn't played by this project.",
    "citations": [
     {
@@ -407,7 +407,7 @@
    "id": "2026-09-08-our-own-program-gets-online",
    "date": "2026-09-08",
    "title": "Our own program gets online",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "Two copies of the recompiled game log in, host a match, and join it.",
    "citations": [
     {
@@ -463,7 +463,7 @@
    "id": "2026-09-08-the-world-stops-coming-apart",
    "date": "2026-09-08",
    "title": "The world stops coming apart",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "Every square root in the game had been returning zero.",
    "citations": [
     {
@@ -540,7 +540,7 @@
    "id": "2026-09-09-from-three-frames-a-second-to-thirty",
    "date": "2026-09-09",
    "title": "From three frames a second to thirty",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "The part of the console that draws SOCOM II's geometry was being simulated one cycle at a time.",
    "citations": [
     {
@@ -633,7 +633,7 @@
    "id": "2026-09-10-the-project-gets-a-name-and-starts-checking-itself",
    "date": "2026-09-10",
    "title": "The project gets a name, and starts checking itself",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "SOCOM Unzipped, a test suite that runs, and one command that says PASS or FAIL.",
    "citations": [
     {
@@ -682,7 +682,7 @@
    "id": "2026-09-11-our-own-code-draws-the-game",
    "date": "2026-09-11",
    "title": "Our own code draws the game",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "The drawing program is no longer emulated microcode. It's C++ someone wrote by hand.",
    "citations": [
     {
@@ -747,7 +747,7 @@
    "id": "2026-09-11-the-check-that-had-been-passing-for-free",
    "date": "2026-09-11",
    "title": "The check that had been passing for free",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "era": "2026-09-08 .. 2026-09-11 - A picture, then a gate",
    "hook": "One of the three gate stages had been measuring nothing.",
    "citations": [
     {
@@ -778,13 +778,17 @@
      "kind": "path",
      "ref": "docs/STATUS.md"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-11-the-dialog-the-gate-answered-blindly.png",
+    "caption": "The last frame of the very first gate run, 2026-09-10: the save-to-card dialog the probe answered blindly, so it never reached the briefing. This frame sat in the archive on D: until the story went looking for it."
+   }
   },
   {
    "id": "2026-09-12-four-times-the-pixels-and-no-sharper-hud",
    "date": "2026-09-12",
    "title": "Four times the pixels, and no sharper HUD",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "The world can now be drawn at up to four times the console's size. Three quarters of the screen look exactly the same.",
    "citations": [
     {
@@ -823,7 +827,7 @@
    "id": "2026-09-12-the-black-squares-leave-the-intro-movie",
    "date": "2026-09-12",
    "title": "The black squares leave the intro movie",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "Someone reported black tiles flickering over the movies. The tiles were real, and they were never in the movie.",
    "citations": [
     {
@@ -861,7 +865,7 @@
    "id": "2026-09-12-every-dice-roll-came-up-nearly-zero",
    "date": "2026-09-12",
    "title": "Every dice roll came up nearly zero",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "The game rolls dice in 249 places. For the whole life of the project, every roll had come up almost the lowest number it could.",
    "citations": [
     {
@@ -900,7 +904,7 @@
    "id": "2026-09-12-online-players-can-move-again",
    "date": "2026-09-12",
    "title": "Online players can move again",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "For two days the online round had been written up as waiting to start. It wasn't. The round was running and the player was pinned.",
    "citations": [
     {
@@ -977,7 +981,7 @@
    "id": "2026-09-12-the-project-starts-writing-down-what-it-got-wrong",
    "date": "2026-09-12",
    "title": "The project starts writing down what it got wrong",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "Five beliefs died by measurement in one day. So they were written down where they'd been read.",
    "citations": [
     {
@@ -1046,7 +1050,7 @@
    "id": "2026-09-13-frostfire-gets-its-ground-back",
    "date": "2026-09-13",
    "title": "Frostfire gets its ground back",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "On one map both players froze where they spawned. The ground was there. The game couldn't find it.",
    "citations": [
     {
@@ -1085,7 +1089,7 @@
    "id": "2026-09-13-the-single-player-mission-stops-freezing",
    "date": "2026-09-13",
    "title": "The single-player mission stops freezing",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "A frozen picture with a running clock isn't a hung game. It's a queue.",
    "citations": [
     {
@@ -1120,7 +1124,7 @@
    "id": "2026-09-13-the-first-kill",
    "date": "2026-09-13",
    "title": "The first kill",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "\"socomc fragged socome with M4A1.\" Then twice more in the same lobby.",
    "citations": [
     {
@@ -1178,7 +1182,7 @@
    "id": "2026-09-14-two-things-the-owner-spotted",
    "date": "2026-09-14",
    "title": "Two things the owner spotted",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "era": "2026-09-12 .. 2026-09-14 - From picture to game",
    "hook": "The owner looked at the test frames and saw two things nobody had been looking for.",
    "citations": [
     {
@@ -1243,7 +1247,7 @@
    "id": "2026-09-15-the-check-learns-what-failure-looks-like",
    "date": "2026-09-15",
    "title": "The check learns what failure looks like",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "The automatic check that guarded every change could watch the player die and still call the run a pass.",
    "citations": [
     {
@@ -1317,7 +1321,7 @@
    "id": "2026-09-16-the-owner-plays-it-and-asks-about-his-controller",
    "date": "2026-09-16",
    "title": "The owner plays it, and asks about his controller",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "\"do something fun for me\", and a few minutes later, \"do you see my controller?\"",
    "citations": [
     {
@@ -1362,7 +1366,7 @@
    "id": "2026-09-16-every-frame-was-1-73-times-too-dark",
    "date": "2026-09-16",
    "title": "Every frame was 1.73 times too dark",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "The grey hill in the owner's screenshot was three separate bugs, and one of them had been dimming every frame of the game.",
    "citations": [
     {
@@ -1415,15 +1419,15 @@
    ],
    "picture": {
     "path": "docs/story/img/2026-09-16-brighten-fixed.png",
-    "caption": "The same recorded frame after the brighten pass was restored. Same scene, same camera; the difference is the whole of the defect."
+    "caption": "The same recorded frame after the brighten pass was restored. Same scene, same camera. The difference is the whole bug."
    }
   },
   {
    "id": "2026-09-17-the-game-stops-running-in-slow-motion",
    "date": "2026-09-17",
    "title": "The game stops running in slow motion",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "A round would start, the clock would count down, and nobody could move. The renderer was quietly eating most of every second.",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
+   "hook": "A round would start, the clock would count down, and nobody could move. The renderer was eating most of every second.",
    "citations": [
     {
      "kind": "commit",
@@ -1464,7 +1468,7 @@
    "id": "2026-09-17-twenty-maps-in-one-night",
    "date": "2026-09-17",
    "title": "Twenty maps in one night",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "Between a quarter past midnight and a quarter to five, every online map nobody had tried got a round of its own.",
    "citations": [
     {
@@ -1531,7 +1535,7 @@
    "id": "2026-09-17-the-game-has-sound",
    "date": "2026-09-17",
    "title": "The game has sound",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "It had never made a noise. In one day it got effects, voices, mission music and a title theme.",
    "citations": [
     {
@@ -1605,7 +1609,7 @@
    "id": "2026-09-17-a-launcher-and-a-folder-you-can-copy",
    "date": "2026-09-17",
    "title": "A launcher, and a folder you can copy",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
    "hook": "The project got a front door, and the same day an audit said a stranger still couldn't get through it.",
    "citations": [
     {
@@ -1704,7 +1708,7 @@
    "id": "2026-09-18-the-launcher-learns-your-pad",
    "date": "2026-09-18",
    "title": "The launcher learns your pad",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The front door stopped assuming everyone owns the same controller.",
    "citations": [
     {
@@ -1794,7 +1798,7 @@
    "id": "2026-09-18-the-sound-reports-run-to-ground",
    "date": "2026-09-18",
    "title": "The sound reports run to ground",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner said the sound stopped halfway through a mission. It had.",
    "citations": [
     {
@@ -1824,7 +1828,7 @@
    "id": "2026-09-18-the-game-runs-on-linux",
    "date": "2026-09-18",
    "title": "The game runs on Linux",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner asked for Linux in the morning, offered a spare VM, and by evening the game was drawing frames on Ubuntu.",
    "citations": [
     {
@@ -1870,7 +1874,7 @@
    "id": "2026-09-19-the-menus-stop-dropping-frames",
    "date": "2026-09-19",
    "title": "The menus stop dropping frames",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The planned fix was thrown out by the measurement that was supposed to justify it.",
    "citations": [
     {
@@ -1911,7 +1915,7 @@
    "id": "2026-09-19-it-can-save-and-it-can-hear-you",
    "date": "2026-09-19",
    "title": "It can save, and it can hear you",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Two things every finished game has, and this one didn't.",
    "citations": [
     {
@@ -1967,7 +1971,7 @@
    "id": "2026-09-19-the-launcher-gets-a-face",
    "date": "2026-09-19",
    "title": "The launcher gets a face",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Until now the front door was a box with some checkboxes in it.",
    "citations": [
     {
@@ -2020,7 +2024,7 @@
    "id": "2026-09-19-a-server-of-its-own-on-the-internet",
    "date": "2026-09-19",
    "title": "A server of its own, on the internet",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Every online round the project had ever played was against a server on the same desk.",
    "citations": [
     {
@@ -2085,7 +2089,7 @@
    "id": "2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less",
    "date": "2026-09-19",
    "title": "It says why it won't start, and it weighs less",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "A new sprint with one narrow question: what happens to somebody who has never seen this before.",
    "citations": [
     {
@@ -2141,7 +2145,7 @@
    "id": "2026-09-19-a-way-to-report-what-went-wrong",
    "date": "2026-09-19",
    "title": "A way to report what went wrong",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The only place in the whole program where a player can talk back.",
    "citations": [
     {
@@ -2189,7 +2193,7 @@
    "id": "2026-09-19-the-things-the-owner-actually-noticed",
    "date": "2026-09-19",
    "title": "The things the owner actually noticed",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Not one of these came out of a test. They came out of somebody trying to play.",
    "citations": [
     {
@@ -2250,7 +2254,7 @@
    "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
    "date": "2026-09-20",
    "title": "The first build made for a person to play",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Building it found two bugs that would have shipped. Playing it found the one the whole sprint was for.",
    "citations": [
     {
@@ -2308,7 +2312,7 @@
    "id": "2026-09-20-the-music-chased-to-the-speaker",
    "date": "2026-09-20",
    "title": "The music, chased to the speaker",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Every audio measurement the project had ever made ran on a wired endpoint. The owner listens on a Bluetooth speaker.",
    "citations": [
     {
@@ -2345,7 +2349,7 @@
    "id": "2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there",
    "date": "2026-09-20",
    "title": "An audio parity test, and the sound that was never there",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "The owner asked for an audio version of the picture test. It found something no ear had named.",
    "citations": [
     {
@@ -2388,7 +2392,7 @@
    "id": "2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night",
    "date": "2026-09-20",
    "title": "Version 0.9.0, and a robot that plays every night",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "Sprint 9 merged to main and got a tag. Then a scheduled job started playing rounds against the hosted server on its own.",
    "citations": [
     {
@@ -2427,7 +2431,7 @@
    "id": "2026-09-20-a-console-and-a-pc-in-the-same-match",
    "date": "2026-09-20",
    "title": "A console and a PC in the same match",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
    "hook": "A PlayStation 2 client and our program, in one game, on the hosted server, both ways round.",
    "citations": [
     {
