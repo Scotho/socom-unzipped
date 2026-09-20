@@ -67,7 +67,7 @@ scripts/vm_sync.sh tree && scripts/vm_sync.sh ssh 'cd ~/socom_pc && bash scripts
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 python -m tools_py.parity.gate --stamp s9_g1_gate --owner gate
 rc=$?

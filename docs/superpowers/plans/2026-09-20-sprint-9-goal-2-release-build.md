@@ -75,7 +75,7 @@ scripts/vm_sync.sh tree && scripts/vm_sync.sh ssh 'cd ~/socom_pc && bash scripts
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 export SOCOM_EXE=/c/projects/socom_pc/dist-release/socom2.exe
 python -m tools_py.parity.gate --stamp s9_g2_release_gate --owner gate
@@ -1536,7 +1536,7 @@ if __name__ == "__main__":
 # usage: s9_g2_build_release.sh <label> <genopt> <lto ON|OFF> <scope all|runtime> <icf -|safe|all> <cap seconds, 0 = none>
 # One release candidate: builds it, packages it, and writes logs/s9_g2_measure_<label>.txt. The work stays in
 # this script's foreground (it waits on the build), as run_detached.sh requires.
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 9
 label="$1"; export REL_GENOPT="$2" REL_LTO="$3" REL_LTO_SCOPE="$4"; icf="$5"; cap="${6:-0}"
 [ "$icf" = "-" ] && icf=""

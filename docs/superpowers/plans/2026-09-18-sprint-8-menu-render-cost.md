@@ -54,7 +54,7 @@ A host launch script is a file under `logs/`, in the shape of `logs/s7_audio_onl
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 <the exports this run needs>
@@ -380,7 +380,7 @@ git push
 # Sprint 8 Goal 2 Task 1 Step 6: the login screen's upload cost, per call. Instance A logs in and holds
 # for 60 s with PS2X_GS_STATS (the upload=<ms>/<count> column, for the cross-check) and the new
 # PS2X_GS_UPLOAD_TRACE (the breakdown). --only A is the login-only path: no B, no lobby, no match.
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 export PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1
@@ -801,7 +801,7 @@ git push
 # drafted `1..4 | % { Start-Job { while($true){} } }`: Start-Job's children belong to the powershell that
 # -c exits out of immediately, and a second powershell has its own empty job table, so Remove-Job would
 # find nothing to stop (logs/s7_freeze_loaded.sh, same reasoning, same fix).
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 export PS2X_GS_STATS=1 PS2X_GS_UPLOAD_TRACE=1 PS2X_AUDIO_TRACE=1

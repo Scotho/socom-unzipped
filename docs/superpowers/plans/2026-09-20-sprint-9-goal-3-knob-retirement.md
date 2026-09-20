@@ -89,7 +89,7 @@ exit $rc
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 for v in $(compgen -e | grep -E '^PS2X_'); do unset "$v"; done
 python -m tools_py.parity.gate --stamp s9_g3_batches_gate --owner gate
@@ -1972,7 +1972,7 @@ if __name__ == "__main__":
 #!/usr/bin/env bash
 # Sprint 9 Goal 3: a stranger's run with six forgotten probes in the environment. No run.sh (it would set
 # PS2X_DEV), no harness: the runner, the disc and the card folder the launcher would have sent, and the poison.
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 for v in $(compgen -e | grep -E '^(PS2X|SOCOM)_'); do unset "$v"; done
 ISO="$(python -c 'from tools_py.parity import hostplatform; print(hostplatform.iso_path())')"
