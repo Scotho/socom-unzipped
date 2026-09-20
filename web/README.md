@@ -89,6 +89,12 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
 - **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
   dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out
   rather than guessed.
+- **Abandoned's clutter is a record shape we cannot read.** MP5's `CLUTTER.ZAR` instances are not the
+  affine matrix the format describes -- row 0 is a unit quaternion and row 2 a position -- under the
+  same key names and sizes as Desert Glory's, which are matrices. Composing one as a matrix drew
+  streaks across the map; `isAffineRowVector` now refuses and counts them, so MP5 renders clean and
+  says what it skipped. Six models and 363 instances of bamboo are not placed as a result.
+
 - **Spawns are not on the disc.** `AIMAPS.MPS` is the file that would hold them and no reader for it exists;
   `scene/spawns.ts` carries the measured table instead, so a map that was never measured opens on its own
   extent rather than at a spawn.
