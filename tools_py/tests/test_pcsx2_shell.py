@@ -22,6 +22,16 @@ class Pcsx2ShellTest(unittest.TestCase):
             sh.press("cross", 0.0)
         press.assert_called_once_with(0, "cross", "pcsx2", hold_s=0.15)
 
+    def test_a_pad_press_without_a_pad_file_is_a_posted_key(self):
+        # choose_map walks the map list through pad_press; the console shell has no injected pad (leg 2c crashed
+        # on `None + ".tmp"`), so the press is posted like every other press of that shell.
+        sh = pcsx2_shell.Pcsx2Shell.__new__(pcsx2_shell.Pcsx2Shell)
+        sh.hwnd, sh.out, sh.t0, sh.tag, sh.pad_file, sh.stages = 0, tempfile.gettempdir(), 0.0, "A_", None, ()
+        sh.stage_sleep = lambda seconds: None
+        with mock.patch.object(L.keys, "press") as press, mock.patch.object(L.winshot, "ensure_client_size", return_value=False):
+            sh.pad_press("DOWN", wait=0.0)
+        press.assert_called_once_with(0, "DOWN", "pcsx2", hold_s=0.15)
+
     def test_run_attaches_to_the_launched_instance_and_plays_the_staged_steps(self):
         calls = []
         with mock.patch.object(pcsx2_shell.pcsx2_ctl, "_hwnd", return_value=7), \

@@ -798,6 +798,13 @@ class Shell:
         enough to stay under the keyboard's auto-repeat (0.15 s / 9 frames overshoots the cursor).
         """
         self.check_stage()
+        if not self.pad_file:
+            # Sprint 10 Goal 3: a shell with no injected pad (the console's) presses the same button as a posted
+            # key at the press hold its target wants -- choose_map's walk crashed the console host on the pad
+            # file's None path (leg 2c) after every earlier step had gone through press().
+            keys.press(self.hwnd, b, self.target, hold_s=self.press_hold_s)
+            self.stage_sleep(wait)
+            return
         write_pad_file(self.pad_file, [b])
         try:
             self.stage_sleep(hold_s)
