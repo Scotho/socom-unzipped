@@ -44,9 +44,15 @@ if [ "$HOST_RC" -ne 0 ]; then
 fi
 python -m tools_py.parity.online_login_ours --existing --name socomc --join --hold 30 --play 4 --out "$OUT" --seconds 600 >> "logs/parity/drive_${NAME}.txt" 2>&1 &
 OURS_PID=$!
-# The host readies once the joiner is in (the ready stage reads both team columns), then walks while its position
-# is polled over PINE (instance A, 28011; the camera position 0x416054 and the camera block).
-sleep 150
+# The host readies only once ours has joined and dismissed the notice (leg 2e: a host already READY launched the
+# match the moment ours joined, and ours' harness, still verifying the lobby, read the map briefing instead).
+# Ours readies 35 s after its join; the console a few seconds after ours' notice is gone; the launch follows both.
+for i in $(seq 1 80); do
+  grep -a -q "join:continue press=cross verified=True" "logs/parity/drive_${NAME}.txt" 2>/dev/null && break
+  if ! kill -0 $OURS_PID 2>/dev/null; then break; fi
+  sleep 5
+done
+sleep 8
 PYTHONPATH="$ROOT" python -m tools_py.parity.pcsx2_shell ready "$TAG" --out "$PCSX2_OUT" > "$OUT/pcsx2_ready.txt" 2>&1
 echo "pcsx2 ready rc=$?" >> "logs/parity/drive_${NAME}.txt"
 sleep 40

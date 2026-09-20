@@ -90,6 +90,12 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         "Disconnected from Game" (`miss_join_enter_2.png`; the runtime then LoadExecs `dlgAfterErrorReboot`).
         Reading: instance A's peer UDP port is the default 3658, which ours also binds on the same host; B's pnach
         shifts it to 3660, and leg 1 (ours on 3658 hosting, B on 3660 joining) ran. Leg 2 hosts from B next.
+      - (e), ~18:20 UTC, hosting from B: **ours joined the console's game** -- join:list, join:enter (the GAME LOBBY,
+        verified on the first press), join:continue -- and the match launched at once: the console host had been
+        READY since before the join (the script readied it on a timer), so ours' lobby re-check read the map briefing
+        ("FROSTFIRE / SUPPRESSION / TO RETURN TO THE LOBBY") and called it join-not-reached; the console then played
+        the round alone (20 distinct positions over its walk). The peer ports were the disconnect: B's 3660 joins.
+        The script now readies the console only after ours' notice is dismissed.
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
 - [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
