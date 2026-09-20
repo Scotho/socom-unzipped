@@ -273,6 +273,11 @@ namespace launcher
                     {
                         // An unknown id means an older or hand-edited file: keep the typed address. A KNOWN
                         // but unplayable one heals to the server that exists, so the picker opens on it.
+                        // A retired id (a preset a shipped build wrote and this one no longer offers) is
+                        // read as the preset it meant, so a player keeps their server across the change.
+                        for (const RetiredPreset &r : kRetiredPresets)
+                            if (v == r.id)
+                                v = r.now;
                         const ServerPreset *saved = findServerPreset(v);
                         c.serverPreset = saved == nullptr ? std::string("custom")
                                                           : (presetAvailable(*saved) ? v : std::string(playableFallback().id));

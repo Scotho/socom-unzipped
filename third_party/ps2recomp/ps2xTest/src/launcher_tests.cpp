@@ -364,9 +364,13 @@ void register_launcher_tests()
             c.serverPreset = "unzipped";
             t.Equals(serverOf(c), std::string("socom.scotho.com"), "our own hosted server, by name (Lightsail, US East)");
             t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("socom.scotho.com"), "a fresh config resolves to it");
-            // Sprint 9 P6: the same box by its raw address, for the day the name will not resolve.
-            c.serverPreset = "unzipped-ip";
-            t.Equals(serverOf(c), std::string("3.143.65.100"), "and the fallback preset still reaches it by address");
+            // Sprint 10 (owner, 2026-09-20): the by-address preset is gone; its id is retired, not unknown,
+            // so a config that names it still plays on the same server (by name) rather than falling to Custom.
+            t.IsTrue(launcher::findServerPreset("unzipped-ip") == nullptr, "the by-address preset is no longer offered");
+            launcher::Config retired;
+            launcher::fromJson("{\"serverPreset\": \"unzipped-ip\", \"server\": \"3.143.65.100\"}", retired);
+            t.Equals(retired.serverPreset, std::string("unzipped"), "a config naming the retired id heals to the project server");
+            t.Equals(serverOf(retired), std::string("socom.scotho.com"), "and reaches it by name");
             c.serverPreset = "custom";
             t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
             c.server.clear();
@@ -1315,17 +1319,20 @@ void register_launcher_tests()
         // What the switch DOES introduce is a name that might not resolve, and `parseServerAddress`
         // answering 0 leaves the runtime pointing at 127.0.0.1 with only a stderr line. Hence a second
         // preset carrying the raw address, on offer, for exactly that case.
-        tc.Run("the project's server is reached by name, with its raw address kept as a preset that still works", [](TestCase &t)
+        tc.Run("the project's server is reached by name; the by-address preset is retired, and a config naming it heals", [](TestCase &t)
         {
             const launcher::ServerPreset *byName = launcher::findServerPreset("unzipped");
             t.IsTrue(byName != nullptr, "the default preset is still called 'unzipped' -- an old config must keep working");
             t.IsTrue(std::string(byName->address) == "socom.scotho.com", "and it now names the server instead of numbering it");
             t.IsTrue(launcher::presetAvailable(*byName), "it is playable");
 
-            const launcher::ServerPreset *byAddress = launcher::findServerPreset("unzipped-ip");
-            t.IsTrue(byAddress != nullptr, "the raw address is still on offer, as its own preset");
-            t.IsTrue(std::string(byAddress->address) == "3.143.65.100", "pointing at the same box");
-            t.IsTrue(launcher::presetAvailable(*byAddress), "and playable, because a name that will not resolve is the whole reason it exists");
+            // Sprint 10 (owner, 2026-09-20): "just remove the by address line for now in online". Three presets,
+            // and the fourth's id is on the retired list rather than simply unknown.
+            t.IsTrue(launcher::kServerPresetCount == 3u, "three presets are offered");
+            t.IsTrue(launcher::findServerPreset("unzipped-ip") == nullptr, "the by-address one is not among them");
+            t.IsTrue(launcher::kRetiredPresetCount >= 1u && std::string(launcher::kRetiredPresets[0].id) == "unzipped-ip" &&
+                         std::string(launcher::kRetiredPresets[0].now) == "unzipped",
+                     "and it is retired to the project server, not dropped");
 
             // A config written before the switch names "unzipped" and must come back playing by name --
             // the id is the stable thing, not the address.
@@ -1341,12 +1348,13 @@ void register_launcher_tests()
             t.IsTrue(launcher::effectiveServer(fresh) == "socom.scotho.com", "by name");
         });
 
-        // Nothing may assume how many presets there are: P6 added a fourth, and the page and its layout
-        // both used to count to three in a literal.
-        tc.Run("the ONLINE page lays out a row for every preset there is, not for three", [](TestCase &t)
+        // Nothing may assume how many presets there are: P6 added a fourth, the page and its layout both
+        // used to count to three in a literal, and Sprint 10 took the fourth away again. The count is the
+        // table's, whatever it is; this test only asks that the rows follow it.
+        tc.Run("the ONLINE page lays out a row for every preset there is, not for a literal count", [](TestCase &t)
         {
             const size_t n = launcher::kServerPresetCount;
-            t.IsTrue(n >= 4u, "there are at least four presets now");
+            t.IsTrue(n >= 2u, "there is more than one preset to lay out");
 
             const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
             ui::LayoutInputs in;

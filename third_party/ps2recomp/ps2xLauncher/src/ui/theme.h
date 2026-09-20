@@ -122,6 +122,7 @@ namespace ui
         // The content panel's title strip. Two lines of caption-size help must fit in it beside the page's
         // name (Sprint 10: the help lives here, never over the page), under the 54 the body starts at.
         constexpr float bandH = 48.0f;
+        constexpr float bodyTop = 66.0f;     // where a page's body starts under the panel's top: bandH + the rule + 16
         constexpr float bottomH = 56.0f;
         constexpr float railW = 220.0f;
         constexpr float railTop = 124.0f;    // the logo's block at the top of the rail (204 x 108 inside it)
