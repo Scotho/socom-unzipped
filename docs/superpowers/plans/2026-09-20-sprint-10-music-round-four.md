@@ -32,10 +32,16 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
 - **`snd_SoundIsStillPlaying` (`FUN_0000bb04`):** alive iff the handle still resolves to its slot (`FUN_0000d6b4`:
   type 4 = a stream slot of 0x50 bytes at `DAT_0001ccdc`, the slot's first word equal to the handle). When the IRX
   clears a stream slot -- at the last block read, at the SPU voice's end, or later -- is the streamer thread's business
-  and is NOT yet read. Ours answers "done" when the last decoded sample leaves render(). If the IRX answers "done"
-  earlier (at the last DISC read, while the SPU still holds ~100 ms+ of chunks), the game on the console starts the
-  next stem BEFORE the current one ends -- overlapped, seamless -- and on ours only after a gap. **This is the next
-  reading, and it fits "skipping".**
+  -- READ, ~20:40 UTC: the streamer frees a played-out stream's slot (`FUN_0001107c` -> `FUN_0000d4a4`: slot+4 =
+  0) and LEAVES THE HANDLE WORD in it; the lookup never checks slot+4; and `FUN_000163f4` allocates the first slot
+  with slot+4 == 0. **So on the console a stem that has played out still answers "playing" until another stream
+  takes its slot.** The EE's music manager (`FUN_0034afd0`, entries polled by `FUN_00346ea0`) keeps its cue entry
+  on that answer, schedules the next stem on its own clock and passes the live handle as parentHandle -- the IRX
+  queues it, gapless. Ours answered 0 at the last rendered sample: the manager read the cue as dead, dropped the
+  entry, and every next stem began fresh (parentHandle 0 on all 55 plays of `s9_p1_m51_audio2`), late, or not
+  until the next intensity event -- the owner's skips, stops and "restarts when an enemy is engaged". **Fixed in
+  the IOP model** (`StreamSlot::ended`, `e39a8dc`): a played-out slot is allocatable and still answers its handle;
+  a fresh play retakes it and only that turns the old answer to 0. Not yet measured on the track.
 
 ## The validation that replaces the old one
 
@@ -51,9 +57,12 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
 
 ## Tasks
 
-- [ ] 1. Map AUDIO OPTIONS (rows, slider step) -- running.
-- [ ] 2. `music_only` step prefix for both targets; the moving capture script; the PCSX2 reference; ours' capture.
-- [ ] 3. Read the IRX streamer: when a stream slot is freed (the "done" moment) -- `DAT_0001ccdc` slot writers.
+- [x] 1. AUDIO OPTIONS mapped (`logs/parity/s10_audio_options`): MUSIC / SOUND / DIALOG / HEADSET VOLUME sliders of
+      ~13 notches, one per LEFT; SOUND stereo/mono; DEFAULT SETTINGS; RETURN.
+- [x] 2. `scripts/parity/music_only_mission.txt` (both targets: PCSX2's keys map takes ours' stick names); the
+      captures are the chain `logs/s10_music_round4_chain.sh` (running: the traced mission, the PCSX2 reference pinned as
+      `refs/audio_music_only_mission.pcsx2.json`, ours compared).
+- [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
 
 ## The owner's part
