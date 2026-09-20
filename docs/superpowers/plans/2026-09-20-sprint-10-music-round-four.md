@@ -87,8 +87,18 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       (b) **the stems stop:** 53 streams, 7 group-1 stems, gaps of 70.5 s, 74.9 s, 59.0 s and 24.2 s between
       consecutive stems on ours; ours' windows s128-s176 carry 4-21 s of silence each where the console has none
       (the e39a8dc still-playing answer kept the EE's manager waiting -- item 1, `a0e0d0b`, is the fix to measure).
-      Next: `logs/s10_music_round4_ours_only.sh <stamp>` after the agent's commits (runtime rebuilt, ours captured,
-      compared against the same pinned reference).
+      **Run 9b (`s10_r4j`, ~22:50 UTC; ours rebuilt at 15:44 local from `25a8cd5` = the three model commits; the game's
+      per-app session held at 1.0):** 77/177 within tolerance. (a) was Windows: `socom2.exe session first seen: vol 0.03`
+      on the endpoint -- the capture now holds it (`app_volume`), and the residual is ~6 dB on both routes (title ring
+      -3.9 dB median, options page -6.5, mission stems -5.9). (b) the stems now chain: 11 group-1 stems, 8 of 11
+      boundaries within 2.3 s (0, 0, 0.2, 0.8 s ...); three gaps of 11.1, 9.6 and 22.1 s remain (ours at -99.7 dB for
+      ~35 s over s129-s132 while the console plays through). The console's own silences (s134-s138, s148-s149,
+      s164-s176, 182 s in the late mission vs ours' 90 s) are its score's decisions after a different walk -- the runs
+      are not synchronised, so the trace, not the window alignment, judges ours. Handed to the fix agent as items 6
+      (the gaps: what the EE did between a stem's end and the next 0x2c) and 7 (the 6 dB: the `>> 1`, the pan table at
+      pan -1, the PCM ring's chain). Run 9's PCSX2 re-pin was abandoned (the emulator's window went empty at the
+      mission load -- a black screen with the loading bar, then nothing); the run 8 reference stands.
+      The owner's fourth listen is in HUMAN_TASKS.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 

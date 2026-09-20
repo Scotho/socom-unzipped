@@ -51,6 +51,19 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 ## Open
 
+- [ ] **Listen to the mission music, fourth round (2026-09-20 evening) -- the build at `dist/socom2.exe` (15:44, tree
+  `25a8cd5` or later).** What changed since your third listen, all from the real IRX decompilation that reached us today:
+  a played-out stem now answers "ended" at once, so the game starts the next stem itself the way the console does (the
+  night's model had inverted this and would have left the music waiting for a cue -- your "starts again when an enemy is
+  engaged"); the game's volume/pan updates now reach a running stem; and quiet music and fades follow the console's
+  square-law curve. Measured against the console with everything but music muted: 6 of 177 windows within tolerance
+  before, 77 after; stems now follow each other in under 2.3 s at 8 of 11 boundaries. Still open and being worked: three
+  mid-mission gaps of 10-22 s, and the music sitting ~6 dB quieter than the console. What to report: the briefing
+  screen and the first minutes of the mission with a walk and a contact -- does the music still stop dead, jump in
+  level, or overlap itself; and roughly how long the pauses are when it stops. One thing to check on your own PC first:
+  Windows' volume mixer for `socom2.exe` on your speaker (right-click the speaker icon, Open volume mixer) -- on the
+  capture endpoint it had been left at 3 percent, which would make everything, not only the music, near silent.
+
 - [ ] **Listen to the title screen and the intro** (Task 6c Step 4; research/32 §7.1). Launch `dist/socom2.exe`
   (or the launcher), sit through the logos, the intro movie and the title loop. What to listen for: the music
   should be continuous and clean; a short blip right as the intro movie starts and again as the title loop begins
