@@ -250,7 +250,12 @@ def read_events(text: str) -> Events:
             continue
         m = _RE_CMD.search(line)
         if m:
-            args = [int(a.strip(), 16) for a in m.group(3).split(",") if a.strip()]
+            args = []
+            for a in m.group(3).split(","):
+                try:
+                    args.append(int(a.strip(), 16))
+                except ValueError:
+                    break   # two threads' stderr interleaved on this line: keep what parsed
             ev.commands.append((int(m.group(1), 16), int(m.group(2)), args))
             continue
         m = _RE_CD_PARK.search(line)
