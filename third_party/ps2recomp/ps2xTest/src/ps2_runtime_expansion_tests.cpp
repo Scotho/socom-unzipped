@@ -16,6 +16,11 @@
 #include "Stubs/Audio.h"
 #include "Stubs/GS.h"
 #include "Stubs/VU.h"
+#include "runtime/mpeg_decode_ahead.h"
+
+#include <chrono>
+#include <deque>
+#include <thread>
 
 #include <atomic>
 #include <cstdint>
@@ -1888,6 +1893,80 @@ void register_ps2_runtime_expansion_tests()
             uint32_t directCmd = 0u;
             std::memcpy(&directCmd, rdram.data() + kBaseAddr + 12u, sizeof(directCmd));
             t.Equals(directCmd, 0x50000001u, "sceVif1PkCloseDirectCode should store a 1-QW DIRECT length");
+        });
+
+        // research/36 item 14 (2026-09-20): the MPEG decode used to run on the guest thread that also feeds the
+        // movie's audio ring; a 300 ms decode burst was a 300 ms hole in the audio. The decode-ahead worker
+        // takes the packet and returns; frames come out later, in order; flush and shutdown are clean.
+        tc.Run("MPEG decode-ahead: the feeder returns at once while a decode takes 300 ms; frames come out in order; a failure surfaces on the next feed; shutdown joins", [](TestCase &t)
+        {
+            struct SlowFakeDecoder
+            {
+                int delayMs = 300;
+                bool failNext = false;
+                bool feed(const uint8_t *data, size_t size, std::deque<int64_t> &out, int64_t pts90k, int64_t)
+                {
+                    (void)data;
+                    (void)size;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+                    out.push_back(pts90k);
+                    return !failNext;
+                }
+                bool flush(std::deque<int64_t> &out)
+                {
+                    out.push_back(-2);
+                    return true;
+                }
+            };
+            using Ahead = ps2x::DecodeAhead<int64_t, SlowFakeDecoder>;
+            const uint8_t bytes[4] = {0, 0, 1, 0xB3};
+            std::deque<int64_t> got;
+            {
+                Ahead ahead;
+                const auto t0 = std::chrono::steady_clock::now();
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 1), "packet 1 is taken");
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 2), "packet 2 is taken");
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 3), "packet 3 is taken");
+                const double feedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                t.IsTrue(feedMs < 5.0, "three feeds return in under 5 ms while each decode takes 300 ms (" + std::to_string(feedMs) + " ms)");
+                t.IsTrue(ahead.pending() >= 2u, "the undecoded packets count as pending (" + std::to_string(ahead.pending()) + ")");
+                ahead.drain(got);
+                t.IsTrue(got.empty(), "nothing is ready yet");
+                std::this_thread::sleep_for(std::chrono::milliseconds(450));
+                ahead.drain(got);
+                t.IsTrue(got.size() >= 1u && got.front() == 1, "the first frame is out after its decode, first");
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                t.IsTrue(ahead.idle(), "the worker goes idle once the queue is decoded");
+                ahead.drain(got);
+                t.IsTrue(got.size() == 3u && got[0] == 1 && got[1] == 2 && got[2] == 3, "all three frames, in arrival order");
+                ahead.flush();
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                ahead.drain(got);
+                t.IsTrue(!got.empty() && got.back() == -2, "a flush runs after the packets before it and its frames drain");
+                ahead.decoder().delayMs = 10;
+                ahead.decoder().failNext = true;
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 4), "the packet that will fail is still taken");
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                t.IsTrue(ahead.failed(), "the failure is recorded");
+                t.IsTrue(!ahead.feed(bytes, sizeof(bytes), 5), "and the next feed reports it, as the synchronous decoder did");
+            }
+            {
+                // Shutdown with a decode in flight: the destructor waits for the packet in hand, then joins.
+                Ahead ahead;
+                ahead.decoder().delayMs = 200;
+                (void)ahead.feed(bytes, sizeof(bytes), 9);
+                const auto t0 = std::chrono::steady_clock::now();
+                {
+                    Ahead moved;   // a second instance, destroyed idle: joins at once
+                    (void)moved;
+                }
+                const double idleMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                t.IsTrue(idleMs < 100.0, "an idle worker is joined at once (" + std::to_string(idleMs) + " ms)");
+            }
+            t.IsTrue(true, "a worker with a packet in hand was joined after it (no hang)");
         });
     });
 }

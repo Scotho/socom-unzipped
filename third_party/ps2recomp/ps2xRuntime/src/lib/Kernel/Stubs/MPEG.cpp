@@ -2,6 +2,7 @@
 #include "MPEG.h"
 #include "runtime/ee_scheduler.h"
 #include "runtime/ps2_audio.h"
+#include "runtime/mpeg_decode_ahead.h"
 
 #if !defined(PS2X_HAS_FFMPEG)
 #define PS2X_HAS_FFMPEG 1
@@ -512,6 +513,9 @@ namespace ps2_stubs
             int64_t dts90k = -1;
         };
 
+        // The ffmpeg decoder (or its no-ffmpeg stand-in) behind the decode-ahead worker (research/36 item 14).
+        using MpegDecoder = ps2x::DecodeAhead<MpegDecodedFrame, MpegFfmpegDecoder>;
+
         struct MpegPlaybackState
         {
             uint32_t picturesServed = 0u;
@@ -545,7 +549,9 @@ namespace ps2_stubs
             std::vector<uint8_t> pssBuffer;
             std::vector<uint32_t> pssGuestAddrs;
             std::deque<MpegDecodedFrame> decodedFrames;
-            std::unique_ptr<MpegFfmpegDecoder> decoder;
+            // research/36 item 14: the decoder runs on its own worker (runtime/mpeg_decode_ahead.h); the guest
+            // thread only feeds it and drains what is ready (getPlaybackState drains on every entry).
+            std::unique_ptr<MpegDecoder> decoder;
             uint8_t frameRateCode = 0u;
             uint8_t frameRateExtensionN = 0u;
             uint8_t frameRateExtensionD = 0u;
@@ -847,7 +853,12 @@ namespace ps2_stubs
 
         MpegPlaybackState &getPlaybackState(uint32_t mpegAddr)
         {
-            return g_mpeg_stub_state.playbackByMpeg[mpegAddr];
+            MpegPlaybackState &playback = g_mpeg_stub_state.playbackByMpeg[mpegAddr];
+            // research/36 item 14: every stub reaches its state here, under the stub mutex, so this is where the
+            // worker's decoded pictures join `decodedFrames` -- in decode order, before any reader looks.
+            if (playback.decoder)
+                playback.decoder->drain(playback.decodedFrames);
+            return playback;
         }
 
         MpegPlaybackState makeFreshPlaybackState()
@@ -1057,7 +1068,8 @@ namespace ps2_stubs
         {
             if (playback.streamEnded && playback.decoder)
             {
-                playback.decoder->flush(playback.decodedFrames);
+                playback.decoder->flush();
+                playback.decoder->drain(playback.decodedFrames);
             }
         }
 
@@ -1143,10 +1155,12 @@ namespace ps2_stubs
 
             if (!playback.decoder)
             {
-                playback.decoder = std::make_unique<MpegFfmpegDecoder>();
+                playback.decoder = std::make_unique<MpegDecoder>();
             }
 
-            if (!playback.decoder->feed(data, size, playback.decodedFrames, pts90k, dts90k))
+            // The worker takes the packet and this thread returns: the decode no longer holds the guest thread that
+            // also feeds the movie's audio (research/36 item 14). A failure surfaces one packet late, same handling.
+            if (!playback.decoder->feed(data, size, pts90k, dts90k))
             {
                 playback.decoder.reset();
                 playback.waitingForVideoSequenceHeader = true;
@@ -1496,8 +1510,10 @@ namespace ps2_stubs
             // lets the game's producer loop wake the consumer again. Backpressure
             // still propagates naturally to sceCdStRead because the ring does not
             // advance while this is true.
+            // research/36 item 14: packets the worker has not decoded yet are pictures ahead too, or the demux
+            // would run kMaxDecodedPicturesAhead past the presenter while the decoder catches up.
             return !g_mpeg_stub_state.currentCdStreamEofSeen &&
-                   playback.decodedFrames.size() >= kMaxDecodedPicturesAhead;
+                   playback.decodedFrames.size() + (playback.decoder ? playback.decoder->pending() : 0u) >= kMaxDecodedPicturesAhead;
         }
 
         void recordCdStreamBytesDemuxedUnlocked(
@@ -2448,7 +2464,8 @@ namespace ps2_stubs
             const size_t framesBefore = playback.decodedFrames.size();
             if (playback.decoder)
             {
-                playback.decoder->flush(playback.decodedFrames);
+                playback.decoder->flush();
+                playback.decoder->drain(playback.decodedFrames);
             }
             wakePictureWaiter = playback.decodedFrames.size() != framesBefore ||
                                 playback.streamEnded ||
@@ -2978,12 +2995,19 @@ namespace ps2_stubs
                             });
                     }
 
-                    std::cerr << "[MPEG:GetPicture] no picture after " << playback.starveInvocations
-                              << " STOPDMA rounds, ending mp=0x" << std::hex << mpegAddr << std::dec << std::endl;
-                    playback.streamEnded = true;
-                    if (playback.decoder)
+                    // research/36 item 14: with the decoder on its worker, "no picture after N rounds" can mean the
+                    // pictures are still being decoded, not that the stream is dry. End only once the worker is
+                    // idle; otherwise answer "no picture" and let the game's next call find the frames.
+                    if (!playback.decoder || playback.decoder->idle())
                     {
-                        playback.decoder->flush(playback.decodedFrames);
+                        std::cerr << "[MPEG:GetPicture] no picture after " << playback.starveInvocations
+                                  << " STOPDMA rounds, ending mp=0x" << std::hex << mpegAddr << std::dec << std::endl;
+                        playback.streamEnded = true;
+                        if (playback.decoder)
+                        {
+                            playback.decoder->flush();
+                            playback.decoder->drain(playback.decodedFrames);
+                        }
                     }
                 }
             }
@@ -3111,6 +3135,7 @@ namespace ps2_stubs
             }
 
             guestEnded = playback.decodedFrames.empty() &&
+                         (!playback.decoder || playback.decoder->idle()) &&   // research/36 item 14: not while the worker still holds pictures
                          (playback.streamEnded ||
                           playback.decoderFailed ||
                           g_mpeg_stub_state.currentCdStreamEofSeen);
@@ -3221,7 +3246,9 @@ namespace ps2_stubs
             ++g_mpeg_stub_state.isEndTraceCount;
         }
 
-        setReturnS32(ctx, (ended && playback.decodedFrames.empty() && presentationComplete) ? 1 : 0);
+        // research/36 item 14: a flush's tail pictures may still be in the worker's hands -- not the end yet.
+        const bool decoderIdle = !playback.decoder || playback.decoder->idle();
+        setReturnS32(ctx, (ended && playback.decodedFrames.empty() && decoderIdle && presentationComplete) ? 1 : 0);
     }
 
     void sceMpegIsRefBuffEmpty(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
