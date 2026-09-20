@@ -65,7 +65,10 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
 - [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
 
-## The owner's part
+## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
-On PCSX2: the mission, walk a few meters, engage the first enemy -- does the console's music ever stop or jump? Every
-plan above assumes it is continuous, and nobody has listened to it.
+"psx2 sounds expected, so validating against it is ideal once we establish trust in those tests." And ours, by ear,
+in the mission and on the briefing screen: "plays for a while incorrectly and then abruptly stops each time it kicks
+in ... choppy in a way that could be volume changes, segments interrupting each other, or abrupt pauses and starts."
+So the reference stands, the music-only capture is the test to trust, and its three measures (level trace, splices,
+silences) are what separate the owner's three candidates.
