@@ -29,19 +29,24 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
   from the current volume unless `how == 3` (then re-timed from the existing ramp's target). The game always passes
   2. Our `Mixer::autoVol` matches this shape (a new ramp replaces the running one from where it is; -4 stops at the
   end) -- **AutoVol is not the "stops, then restarts" mechanism** by reading. Struck as a suspect.
-- **`snd_SoundIsStillPlaying` (`FUN_0000bb04`):** alive iff the handle still resolves to its slot (`FUN_0000d6b4`:
-  type 4 = a stream slot of 0x50 bytes at `DAT_0001ccdc`, the slot's first word equal to the handle). When the IRX
-  clears a stream slot -- at the last block read, at the SPU voice's end, or later -- is the streamer thread's business
-  -- READ, ~20:40 UTC: the streamer frees a played-out stream's slot (`FUN_0001107c` -> `FUN_0000d4a4`: slot+4 =
-  0) and LEAVES THE HANDLE WORD in it; the lookup never checks slot+4; and `FUN_000163f4` allocates the first slot
-  with slot+4 == 0. **So on the console a stem that has played out still answers "playing" until another stream
-  takes its slot.** The EE's music manager (`FUN_0034afd0`, entries polled by `FUN_00346ea0`) keeps its cue entry
-  on that answer, schedules the next stem on its own clock and passes the live handle as parentHandle -- the IRX
-  queues it, gapless. Ours answered 0 at the last rendered sample: the manager read the cue as dead, dropped the
-  entry, and every next stem began fresh (parentHandle 0 on all 55 plays of `s9_p1_m51_audio2`), late, or not
-  until the next intensity event -- the owner's skips, stops and "restarts when an enemy is engaged". **Fixed in
-  the IOP model** (`StreamSlot::ended`, `e39a8dc`): a played-out slot is allocatable and still answers its handle;
-  a fresh play retakes it and only that turns the old answer to 0. Not yet measured on the track.
+- **`snd_SoundIsStillPlaying` (`FUN_0000bb04`) -- CORRECTED 2026-09-20 ~19:30 UTC by the real decompilation
+  (`research/989snd-ziemas/`, git-ignored; audit in `docs/research/36-989snd-decomp-audit.md`):** the lookup
+  (`FUN_0000d6b4` = `snd_CheckHandlerStillActive`, sndhand.c:270) compares the slot's WHOLE handle word, and the
+  handle the EE holds carries bit 31 (set by activation, sndhand.c:148). The streamer's free path
+  (`FUN_0000d4a4` = `snd_DeactivateHandler`, sndhand.c:237) leaves the word but CLEARS bit 31 -- the reading of
+  ~20:40 UTC missed the `& 0x7fffffff`. So a played-out stream answers 0 on the first tick after its last buffer's
+  voice ends (`FUN_0001107c`, the tick, deactivates when nothing is queued at handler+0x44). The EE's music manager
+  (`FUN_0034afd0`) polls 0x19 every frame and starts the next stem FRESH through 0x2c with queue = 0 (its only
+  0x2c caller, `FUN_00342240`, never passes a parent) -- so "parentHandle 0 on all 55 plays" was the console's
+  own behaviour, not a symptom. `e39a8dc` (StreamSlot::ended answering the handle) is WRONG and inverted the
+  symptom: the manager never sees 0, stays in "playing" after one stem, and only an enemy-contact cue restarts
+  the music -- the owner's third listen exactly. Reverted by the fix agent (see the audit's diff list: the
+  0x21 SetSoundParams answer for live streams, the squared volume curve of vol.c:434, the AutoVol step schedule).
+- **What the decompilation is:** Ziemas' function-by-function C of 989snd.irx v3.01 (the OpenGOAL author's).
+  sndhand.c, playsnd.c, blocksnd.c, autovol.c, vol.c, loader.c and the RPC dispatcher are real code;
+  stream.c (71 of 77 functions) and moviesnd.c are signatures only, so the streamer is still read from our own
+  IRX's disassembly. The 0x12c4e67a extension (`FUN_0033f090`) is 989DSTRM's Logitech-headset music route;
+  without a headset both PCSX2 and ours take the plain 0x2c path.
 
 ## The validation that replaces the old one
 
@@ -64,8 +69,13 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       the main menu on both targets (ours ended at MISSION BRIEFING, PCSX2 at MAPS/INTEL when the "sliders as set"
       frame was taken), so no slider was moved and ours' -99.7 dB windows were a muted game, not a verdict. Fixed
       (`d8e10ef`): the main menu is reached by `untilref` on the logo band (proven in `options_explore.txt`), the
-      SOUND and DIALOG rows by `until(box)` on their teal highlight. Run 2 = `logs/s10_music_round4_captures.sh
-      s10_r4b` (the PCSX2 reference re-pinned over the invalid one, ours compared).
+      SOUND and DIALOG rows by `until(box)` on their teal highlight. Runs 2-6 (`s10_r4b`..`s10_r4f`, all on
+      PCSX2, each killed at its first invalid frame) taught the page one fact each: the rows sit 44 px apart
+      (the first boxes straddled a gap); a slow PCSX2 boot outruns untilref's count of 12 (the chain now sets
+      `SOCOM_DRIVE_SLOW_HOST=1`, the paced budget); the sliders are FINE, ~5 px of 290 per press, so 60 LEFTs
+      not 16; TRIANGLE off the AUDIO page asks to CLEAR the changes, so the exit is each page's RETURN row;
+      RETURN off OPTIONS asks to save to the memory card (answered NO, so the zeroed sliders never persist on
+      the card). Run 7 = `s10_r4g`: the reference re-pinned, ours compared. Chain: `logs/s10_music_round4_captures.sh`.
 - [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
 
