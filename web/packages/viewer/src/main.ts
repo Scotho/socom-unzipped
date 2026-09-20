@@ -1,10 +1,11 @@
 import { Clock, Scene } from 'three';
 import type { MapInfo } from '@s2u/archive';
+import { spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { LoadedMap } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, type Backend } from './renderer';
-import { Ui } from './ui';
+import { Ui, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
@@ -12,10 +13,6 @@ import type { ViewerRequest, ViewerResponse } from './worker';
 const MAPS = '/maps';
 /** The map the viewer opens on, and the one the screenshot test asks for by name. */
 const DEFAULT_ARCHIVE = 'MP2';
-/** Where a map's two spawns are, in game units, from the measured table in `docs/research/36`. */
-const SPAWNS: Record<string, { a: [number, number, number]; b: [number, number, number] }> = {
-  MP2: { a: [796, 100, 614], b: [536, 143, 1254] },
-};
 /** Eye height above a spawn's feet: a standing player, not a floating one. */
 const EYE = 20;
 
@@ -67,8 +64,18 @@ ui.onMapChange((path) => {
   ui.setStatus(`loading ${path} ...`);
   load(path);
 });
-ui.onGrid((on) => overlays.setGrid(on));
-ui.onAxes((on) => overlays.setAxes(on));
+ui.onToggle(applyToggle);
+ui.apply(applyToggle);
+
+/** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
+function applyToggle(name: ToggleName, on: boolean): void {
+  if (name === 'grid') overlays.setGrid(on);
+  else if (name === 'axes') overlays.setAxes(on);
+  else if (name === 'collision') overlays.setCollision(on);
+  else if (name === 'spawns') overlays.setSpawns(on);
+  else if (name === 'wireframe') view?.setWireframe(on);
+  else view?.setUntexturedHighlight(on);
+}
 
 void boot();
 
@@ -132,9 +139,15 @@ function show(map: LoadedMap): void {
   view = buildWorld(map);
   scene.add(view.group);
   overlays.place(view.box);
+  overlays.placeCollision(map.collision);
+  // 36 section 6: spawns are not on the disc. `@s2u/scene` holds the measured table, keyed by the name
+  // `mission.rdr` shows, which is the name this map was just loaded under.
+  const spawn: Spawns | undefined = spawnsFor(map.name);
+  overlays.placeSpawns(spawn ?? null);
+  // A new world starts in whatever state the panel is showing, not in the state it was built in.
+  ui.apply(applyToggle);
   fly.setScale(map.metersPerUnit);
 
-  const spawn = SPAWNS[map.archive];
   if (spawn) {
     fly.lookFrom([spawn.a[0], spawn.a[1] + EYE, spawn.a[2]], spawn.b);
   } else {
@@ -153,6 +166,7 @@ function show(map: LoadedMap): void {
     // Every child of the group is one draw: a world mesh per texture, and an `InstancedMesh` (or a plain
     // one, for a prop placed once) per prop model-node. `map.world.length` counted only the world's.
     `${view.group.children.length} draws`,
+    `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
     `${map.loadMs} ms load`,
   ].join('  |  '));
 }
@@ -165,7 +179,11 @@ function show(map: LoadedMap): void {
 interface ViewerHook {
   setCamera(pose: Partial<Pose>): void;
   pose(): Pose;
-  stats(): { triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null };
+  stats(): {
+    triangles: number; backend: Backend; diagnostics: string[]; loadMs: number; map: string | null;
+    collisionPolys: number; untexturedDraws: number; spawns: Spawns | null;
+  };
+  toggles(): Record<ToggleName, boolean>;
 }
 // The one `any` in the viewer: casting the global object is the only way to hang a property on it.
 (globalThis as any).__viewer = {
@@ -177,5 +195,9 @@ interface ViewerHook {
     diagnostics: loaded?.diagnostics ?? [],
     loadMs: loaded?.loadMs ?? 0,
     map: loaded?.name ?? null,
+    collisionPolys: loaded?.collision.polygons ?? 0,
+    untexturedDraws: view?.untextured ?? 0,
+    spawns: (loaded && spawnsFor(loaded.name)) ?? null,
   }),
+  toggles: () => ui.toggles(),
 } satisfies ViewerHook;

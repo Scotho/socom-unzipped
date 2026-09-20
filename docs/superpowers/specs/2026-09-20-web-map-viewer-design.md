@@ -262,3 +262,69 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   config is `noEmit` and `tsc -b` will not take it. And every worker request now carries a monotonic id
   its answer repeats, so the boot auto-load and the map the player picks a moment later cannot land out
   of order -- the page drops any answer that is not the one it is still waiting for.
+- 2026-09-20, M4 close: **all three extracted maps render**, with the collision hull, the measured
+  spawns and a diagnostics panel over them. Playwright drove one pass over the three, selecting each by
+  the name `mission.rdr` shows, and photographed each from its own spawn A and from 800 units above the
+  midpoint of its two spawns:
+
+  | map | triangles | draws | collision polys | diagnostics | load |
+  |---|---|---|---|---|---|
+  | FROSTFIRE (MP2) | 16,931 | 152 | 3,338 | **0** | 59-78 ms |
+  | DESERT GLORY (MP6) | 27,311 | 439 | 5,951 | 6 | 88-113 ms |
+  | CROSSROADS (MP72) | 44,279 | 392 | 9,820 | 11 | 104-136 ms |
+
+  What the pictures show. `desert-glory-spawnA.png`: a rock-walled wadi in low sun, the eroded rock
+  faces textured and lit, a walled compound and a telegraph pole in the middle distance, an overcast
+  sky dome over it. `desert-glory-top.png`: hillside terrain with flat-roofed buildings, a wooden
+  walkway, a parked truck and stair flights standing on the ground, not floating over it.
+  `crossroads-spawnA.png`: spawn A is **indoors** -- a dark plastered room with a doorway on the right
+  opening onto a cobbled street, which is a dull picture but the correct position. `crossroads-top.png`
+  is the map that picture belongs to: a north-African town of red-tiled roofs around a square with a
+  red-tiled rotunda at its centre, market stalls under awnings, and palms, all placed. `frostfire-overlays.png` is the same
+  camera as `frostfire-top.png` with collision and spawns switched on: the hull traces every deck,
+  crate, tank and railing of the rig in green (`ditype` 2) and pink (`ditype` 3), and the two spawns
+  stand where the sweep measured them: A's blue sphere among the shipping containers under its letter,
+  and B's letter over the enclosed deck at the far end, its sphere hidden by the roof above it -- the
+  markers are depth-tested, so they sit in the world rather than floating over it, while the letters are
+  not, so a spawn is never lost. Nothing is at the origin and nothing floats.
+
+  **The MP6/MP72 chain gap (M6's first work item).** Every diagnostic on the two new maps is one of two
+  causes. Five prop chains on Desert Glory and six on Crossroads fail in the `mesh` packet decoder --
+  the counted totals are 15 and 29 chains, which the viewer collapses to one line per model-node
+  because it decodes a prop group's geometry once. The messages, verbatim:
+
+  ```
+  chunk mp6_pole_lines/N000_I000_V00: chunk N000_I000_V00 packet 1: the header claims 2760716326
+    triangles from TOP+0 reaching TOP+5521432652, past the 1024 quadwords of VU data memory
+  chunk mp6_light_hangout/N000_I000_V00: chunk N000_I000_V00 packet 1: the header claims 1085931520
+    vertices reaching TOP+3257794564, past the 1024 quadwords of VU data memory
+  chunk tent_beige/N000_I000_V01: chunk N000_I000_V01 packet 2: the header claims 3210739712
+    vertices reaching TOP+9632219140, past the 1024 quadwords of VU data memory
+  chunk light_bright/N000_I000_V03: chunk N000_I000_V03 packet 1: the header claims 3222274048
+    vertices reaching TOP+9666822148, past the 1024 quadwords of VU data memory
+  ```
+
+  The counts are the tell: 1040187392 is `0x3E000000`, 3212836864 is `0xBF800000`, 3222274048 is
+  `0xC0080000` -- IEEE floats 0.125, -1.0 and -2.125. The decoder is reading vertex floats where it
+  expects a packet header, so it entered the packet at the wrong offset rather than misreading a
+  header: the chain walk is landing in the middle of the data, which is what 36 section 3's
+  relocation-type-1 tags on these two maps predict. The scene package's naming test already rules out
+  a placement cause -- every one of the 203 models of the three maps has exactly the key set the N-I-V
+  rule predicts. It is a `mesh` gap, and it is not touched here.
+
+  The second cause is textures a map's own `TXR` does not hold: `null_xmas.bmp` on both maps, and
+  `afghan2r_rug1..3.tif` and `afghan2r_rug_trim.tif` on Crossroads. The `afghan2r_` prefix is Desert
+  Glory's texture family, so these are `FLIB_MDL.ZED` models carrying another mission's texture names;
+  where those pixels live is the other M6 question. Those meshes draw in vertex colour, and the
+  **highlight untextured** toggle paints them magenta so they can be found: 0 such draws on Frostfire,
+  2 on Desert Glory, 6 on Crossroads.
+
+  Three decisions worth keeping. **Spawns are code, not archive** -- `@s2u/scene`'s `spawns.ts` holds
+  all 22 maps' measured A/B positions keyed by shown name, with a header saying they are actor readings
+  pending `AIMAPS.MPS`; the viewer looks a map up by `mission.rdr`'s name, so the camera stands at spawn
+  A on every map, not just Frostfire. **Collision is realised, not stored** -- Frostfire's 2,756 stored
+  polygons become 3,338 world-space ones, because an instanced prototype's hull is realised once per
+  context, exactly as its chunks are. **`CLUTTER.ZAR` is a second placement root** -- its six Desert
+  Glory models are in the scene graph as prototypes that nothing instances from `worldmodel`, so
+  `placeInstances` never reaches them; reading the archive adds 110 instances and 1,601 triangles of
+  rock and grass that were missing from the ground before.

@@ -14,11 +14,24 @@ import type { LoadedMap } from './loadMap';
  */
 const FLIP_Y = false;
 
+/** The colour an untextured mesh takes when the highlight is on: nothing in the game is this. */
+const UNTEXTURED = 0xff00ff;
+
 /** A drawn map: the placed group, what it cost, and the extent the camera can frame. */
 export interface WorldView {
   group: Group;
   triangles: number;
   box: Box3;
+  /** How many of the group's draws are drawing without a texture: the highlight's subject, counted. */
+  untextured: number;
+  /** Every material at once, for seeing the topology through the skin. */
+  setWireframe(on: boolean): void;
+  /**
+   * Paints the meshes that are drawing without a texture magenta -- the ones whose name was not in the
+   * map's `TXR` archive, and the ones whose packets cited no name at all. Both are invisible faults
+   * otherwise: an untextured mesh in vertex colour alone looks like dim geometry, not like a diagnostic.
+   */
+  setUntexturedHighlight(on: boolean): void;
   dispose(): void;
 }
 
@@ -36,6 +49,8 @@ export function buildWorld(map: LoadedMap): WorldView {
   group.position.set(map.origin[0], map.origin[1], map.origin[2]);
 
   const textures = new Map<string, Texture>();
+  const materials: MeshBasicMaterial[] = [];
+  const untextured: MeshBasicMaterial[] = [];
   let triangles = 0;
   const materialFor = (name: string | null): MeshBasicMaterial => {
     const rgba = name === null ? undefined : map.textures[name];
@@ -44,7 +59,7 @@ export function buildWorld(map: LoadedMap): WorldView {
       texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true);
       textures.set(name, texture);
     }
-    return new MeshBasicMaterial({
+    const material = new MeshBasicMaterial({
       map: texture ?? null,
       vertexColors: true,
       side: DoubleSide,                                   // the map's inward faces are walls too
@@ -52,6 +67,9 @@ export function buildWorld(map: LoadedMap): WorldView {
       // problem M3 does not need, and the PS2 alpha test is what the game itself used.
       alphaTest: name !== null && (map.textureFlags[name]?.transparent ?? false) ? 0.5 : 0,
     });
+    materials.push(material);
+    if (!texture) untextured.push(material);
+    return material;
   };
 
   for (const part of map.world) {
@@ -88,6 +106,18 @@ export function buildWorld(map: LoadedMap): WorldView {
     group,
     triangles,
     box,
+    untextured: untextured.length,
+    setWireframe: (on) => {
+      for (const material of materials) material.wireframe = on;
+    },
+    setUntexturedHighlight: (on) => {
+      for (const material of untextured) {
+        material.color.setHex(on ? UNTEXTURED : 0xffffff);
+        // Flat magenta, not magenta times the baked lighting: the point is to be unmistakable.
+        material.vertexColors = !on;
+        material.needsUpdate = true;
+      }
+    },
     dispose: () => {
       for (const child of group.children) {
         if (!(child instanceof Mesh)) continue;               // an InstancedMesh is one too

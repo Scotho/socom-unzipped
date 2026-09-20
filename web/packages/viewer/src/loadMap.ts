@@ -5,8 +5,9 @@ import {
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
 import { interpretChain, mergeMeshes, walkChain, type MeshData } from '@s2u/mesh';
 import {
-  IDENTITY, loadModelLibrary, parseSceneGraph, placeInstances, transformPoint,
-  type ModelLibrary, type PlacedModel,
+  collisionLines, IDENTITY, loadModelLibrary, parseClutter, parseSceneGraph, placeClutter,
+  placeInstances, transformPoint, worldCollision,
+  type CollisionLines, type ModelLibrary, type PlacedModel, type SceneNode,
 } from '@s2u/scene';
 
 /**
@@ -31,8 +32,29 @@ export interface LoadedMap {
   textureFlags: Record<string, { bilinear: boolean; transparent: boolean }>;
   metersPerUnit: number;
   origin: [number, number, number];
+  /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
+  collision: CollisionLines;
   diagnostics: string[];
   loadMs: number;
+}
+
+/**
+ * The diagnostic sink: every distinct line once.
+ *
+ * One cause usually fires more than once -- the same missing texture is cited by twenty chunks, and the
+ * same model is asked for at every placement -- and twenty identical lines say no more than one does
+ * while burying the rest. Each line already names its cause *and* its subject, so the line itself is the
+ * identity, and a repeat is dropped. Order is first-seen, which is decode order.
+ */
+class Notes {
+  private readonly seen = new Set<string>();
+  readonly lines: string[] = [];
+
+  add(line: string): void {
+    if (this.seen.has(line)) return;
+    this.seen.add(line);
+    this.lines.push(line);
+  }
 }
 
 /**
@@ -67,16 +89,16 @@ const say = (e: unknown): string => (e instanceof Error ? e.message : String(e))
  */
 export async function loadMap(source: AssetSource, path: string): Promise<LoadedMap> {
   const started = Date.now();
-  const diagnostics: string[] = [];
+  const notes = new Notes();
   const bytes = await source.read(path);
   const toc = parseZdb(bytes);
   const stem = stemOf(path);
 
   // The geometry. `scene` reads MP*_GEO.ZED's node tree and says which chain of which model buffer each
   // node draws and where; everything below is decoding what it points at.
-  const library = loadModelLibrary(mdlArchives(bytes, toc, stem, diagnostics));
-  const chunksOf = decoder(library, diagnostics);
-  const placement = place(library, bytes, toc, stem, diagnostics);
+  const library = loadModelLibrary(mdlArchives(bytes, toc, stem, notes));
+  const chunksOf = decoder(library, notes);
+  const placement = place(library, bytes, toc, stem, notes);
   const parts: MeshData[] = [];
   for (const p of placement.world) {
     for (const mesh of chunksOf(p)) parts.push(placeMesh(mesh, p.rowMajor));
@@ -118,7 +140,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
   const textureFlags: Record<string, { bilinear: boolean; transparent: boolean }> = {};
-  const texlib = textureLibrary(bytes, toc, stem, diagnostics);
+  const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { txr, palettes, keys } = texlib;
     for (const mesh of [...world, ...props.flatMap((p) => p.parts)]) {
@@ -126,22 +148,22 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
       if (name === null || name in textures) continue;
       const key = keys.get(name);
       if (!key) {
-        diagnostics.push(`texture ${name}: not in ${stem}_TXR.ZED`);
+        notes.add(`texture ${name}: not in ${stem}_TXR.ZED`);
         continue;
       }
       const texdat = txr.child(key, 'texdat');
       if (!texdat) {
-        diagnostics.push(`texture ${name}: no texdat key`);
+        notes.add(`texture ${name}: no texdat key`);
         continue;
       }
       try {
         const record = parseTextureRecord(key.name, txr.data(texdat));
         const decoded = decodeTexture(record, palettes);
-        for (const d of decoded.diagnostics) diagnostics.push(`texture ${name}: ${d}`);
+        for (const d of decoded.diagnostics) notes.add(`texture ${name}: ${d}`);
         textures[name] = decoded.rgba;
         textureFlags[name] = { bilinear: record.bilinear, transparent: record.transparent };
       } catch (e) {
-        diagnostics.push(`texture ${name}: ${say(e)}`);
+        notes.add(`texture ${name}: ${say(e)}`);
       }
     }
   }
@@ -149,14 +171,15 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   return {
     archive: stem,
     path,
-    name: missionName(bytes, toc, diagnostics) ?? stem,
+    name: missionName(bytes, toc, notes) ?? stem,
     world,
     props,
     textures,
     textureFlags,
-    metersPerUnit: metersPerUnit(bytes, toc, stem, diagnostics),
+    metersPerUnit: metersPerUnit(bytes, toc, stem, notes),
     origin: placement.origin,
-    diagnostics,
+    collision: placement.collision,
+    diagnostics: notes.lines,
     loadMs: Date.now() - started,
   };
 }
@@ -170,6 +193,7 @@ export function transferables(map: LoadedMap): Transferable[] {
     if (mesh.faceNormals) out.push(mesh.faceNormals.buffer);
   }
   for (const prop of map.props) out.push(prop.matrices.buffer);
+  out.push(map.collision.positions.buffer, map.collision.colors.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   return out;
 }
@@ -178,7 +202,7 @@ export function transferables(map: LoadedMap): Transferable[] {
  * The map's texture archive and its palettes, keyed lower-case the way the meshes name them, or null and
  * one diagnostic if either member is unreadable.
  */
-function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]):
+function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes):
 { txr: Zar; palettes: PaletteTable; keys: Map<string, ZarKey> } | null {
   try {
     const txr = Zar.parse(zdbMember(bytes, toc, `${stem}_TXR.ZED`));
@@ -187,13 +211,13 @@ function textureLibrary(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagno
     for (const key of txr.find('textures')?.children ?? []) keys.set(textureKey(key.name), key);
     return { txr, palettes, keys };
   } catch (e) {
-    diagnostics.push(`textures: ${say(e)} -- the map draws in vertex colour alone`);
+    notes.add(`textures: ${say(e)} -- the map draws in vertex colour alone`);
     return null;
   }
 }
 
 /** 36 section 6: the shown name is `READERM.ZAR/mission.rdr`'s `description`, as `listMaps` reads it. */
-function missionName(bytes: Uint8Array, toc: ZdbEntry[], diagnostics: string[]): string | null {
+function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string | null {
   try {
     const readerm = Zar.parse(zdbMember(bytes, toc, 'READERM.ZAR'));
     const mission = readerm.root.children.find((k) => k.name.toLowerCase() === 'mission.rdr');
@@ -201,20 +225,20 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], diagnostics: string[]):
     const name = rdrGet(parseRdr(readerm.data(mission)), 'description');
     return typeof name === 'string' ? name : null;
   } catch (e) {
-    diagnostics.push(`mission name: ${say(e)}`);
+    notes.add(`mission name: ${say(e)}`);
     return null;
   }
 }
 
 /** `MP*.ZED/MetersPerUnit`, the scale the research tables quote positions in. */
-function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]): number {
+function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): number {
   try {
     const zed = Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`));
     const key = zed.find('MetersPerUnit');
     if (key && key.size === 4) return new Reader(zed.data(key)).f32(0);
-    diagnostics.push(`${stem}.ZED: no MetersPerUnit key, assuming ${DEFAULT_METERS_PER_UNIT}`);
+    notes.add(`${stem}.ZED: no MetersPerUnit key, assuming ${DEFAULT_METERS_PER_UNIT}`);
   } catch (e) {
-    diagnostics.push(`MetersPerUnit: ${say(e)}`);
+    notes.add(`MetersPerUnit: ${say(e)}`);
   }
   return DEFAULT_METERS_PER_UNIT;
 }
@@ -226,13 +250,13 @@ function metersPerUnit(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnos
  *
  * `CLIB_MDL.ZED` is deliberately absent, its models being the `MESH_` form the scene graph never names.
  */
-function mdlArchives(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]): Zar[] {
+function mdlArchives(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Zar[] {
   const out: Zar[] = [];
   for (const member of ['WORL_MDL.ZED', `${stem}_MDL.ZED`, 'FLIB_MDL.ZED']) {
     try {
       out.push(Zar.parse(zdbMember(bytes, toc, member)));
     } catch (e) {
-      diagnostics.push(`${member}: ${say(e)}`);
+      notes.add(`${member}: ${say(e)}`);
     }
   }
   return out;
@@ -245,32 +269,73 @@ interface Placement {
   props: PlacedModel[][];
   /** Zero once the graph has been read: the matrices are already in the positions. */
   origin: [number, number, number];
+  /** The collision hull, already in world space and already cut into segments (36 section 6). */
+  collision: CollisionLines;
 }
 
-function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]): Placement {
+/**
+ * An empty hull: what a map whose graph would not parse has to offer the overlay. A function, not a
+ * shared constant, because `transferables` hands these buffers to the page -- a constant's arrays would
+ * be detached by the first load that used them and unusable by the second.
+ */
+const noCollision = (): CollisionLines => ({ positions: new Float32Array(0), colors: new Uint8Array(0), polygons: 0 });
+
+function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): Placement {
   try {
     const geo = Zar.parse(zdbMember(bytes, toc, `${stem}_GEO.ZED`));
-    const placed = placeInstances(parseSceneGraph(geo), WORLD_MODEL);
+    const models = parseSceneGraph(geo);
+    const placed = placeInstances(models, WORLD_MODEL);
     const world = placed.filter((p) => p.modelName === WORLD_MODEL);
     if (world.length === 0) throw new Error(`no ${WORLD_MODEL} node carries visuals`);
     const groups = new Map<string, PlacedModel[]>();
-    for (const p of placed) {
+    // The clutter joins the props: `CLUTTER.ZAR` places models the graph holds as prototypes but never
+    // instances from the root, so without this pass Desert Glory's ground is bare (36 section 2).
+    for (const p of [...placed, ...clutter(models, bytes, toc, notes)]) {
       if (p.modelName === WORLD_MODEL) continue;
       const key = `${p.modelName}#${p.nodeIndex}`;
       const group = groups.get(key);
       if (group) group.push(p);
       else groups.set(key, [p]);
     }
-    return { world, props: [...groups.values()], origin: [0, 0, 0] };
+    return { world, props: [...groups.values()], origin: [0, 0, 0], collision: hull(models, notes) };
   } catch (e) {
-    diagnostics.push(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
+    notes.add(`scene graph: ${say(e)} -- falling back to the modal node translation, props omitted`);
     const entry = library.get(WORLD_MODEL);
     const every: PlacedModel = {
       modelName: WORLD_MODEL, path: WORLD_MODEL, nodeIndex: -1, instanceIndex: null,
       chunks: entry ? entry.nodes.map((n) => n.name) : [],
       world: Float32Array.from(IDENTITY), rowMajor: Float32Array.from(IDENTITY),
     };
-    return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, diagnostics) };
+    return { world: [every], props: [], origin: worldOrigin(bytes, toc, stem, notes), collision: noCollision() };
+  }
+}
+
+/**
+ * The map's collision hull as line segments. It is drawn from the same graph and the same matrices as
+ * the chunks, so a hull that does not sit on the floor is a placement bug, not a collision one -- which
+ * is most of why the overlay is worth having.
+ */
+function hull(models: SceneNode[], notes: Notes): CollisionLines {
+  try {
+    return collisionLines(worldCollision(models, WORLD_MODEL));
+  } catch (e) {
+    notes.add(`collision: ${say(e)}`);
+    return noCollision();
+  }
+}
+
+/**
+ * `CLUTTER.ZAR`'s instances, placed. A model it names that the graph does not hold costs one diagnostic
+ * for the model, not one per instance -- 36 of the same rock would otherwise say the same thing 36 times.
+ */
+function clutter(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): PlacedModel[] {
+  try {
+    const { placed, missing } = placeClutter(models, parseClutter(Zar.parse(zdbMember(bytes, toc, 'CLUTTER.ZAR'))));
+    for (const name of missing) notes.add(`clutter ${name}: named by CLUTTER.ZAR but not in the scene graph`);
+    return placed;
+  } catch (e) {
+    notes.add(`clutter: ${say(e)}`);
+    return [];
   }
 }
 
@@ -278,12 +343,12 @@ function place(library: ModelLibrary, bytes: Uint8Array, toc: ZdbEntry[], stem: 
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
-function decoder(library: ModelLibrary, diagnostics: string[]): (p: PlacedModel) => MeshData[] {
+function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => MeshData[] {
   const offsets = new Map<string, Map<string, number>>();
   return (p) => {
     const entry = library.get(p.modelName);
     if (!entry) {
-      diagnostics.push(`model ${p.modelName}: in the scene graph but not in any MDL archive`);
+      notes.add(`model ${p.modelName}: in the scene graph but not in any MDL archive`);
       return [];
     }
     let where = offsets.get(p.modelName);
@@ -292,13 +357,13 @@ function decoder(library: ModelLibrary, diagnostics: string[]): (p: PlacedModel)
     for (const chunk of p.chunks) {
       const at = where.get(chunk);
       if (at === undefined) {
-        diagnostics.push(`chunk ${p.modelName}/${chunk}: no such chain in the model buffer`);
+        notes.add(`chunk ${p.modelName}/${chunk}: no such chain in the model buffer`);
         continue;
       }
       try {
         out.push(...interpretChain(walkChain(entry.buffer, at, chunk)));
       } catch (e) {
-        diagnostics.push(`chunk ${p.modelName}/${chunk}: ${say(e)}`);
+        notes.add(`chunk ${p.modelName}/${chunk}: ${say(e)}`);
       }
     }
     return out;
@@ -337,7 +402,7 @@ function placeMesh(mesh: MeshData, m: Float32Array): MeshData {
  * misplaces the chunks whose node carries a different matrix, which is why it is no longer the first
  * choice; `place` only reaches for it when `MP*_GEO.ZED` cannot be parsed at all.
  */
-function worldOrigin(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnostics: string[]): [number, number, number] {
+function worldOrigin(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): [number, number, number] {
   try {
     const geo = Zar.parse(zdbMember(bytes, toc, `${stem}_GEO.ZED`));
     const children = geo.find('models/worldmodel/children');
@@ -357,11 +422,11 @@ function worldOrigin(bytes: Uint8Array, toc: ZdbEntry[], stem: string, diagnosti
     if (!modal) throw new Error(`${stem}_GEO.ZED: no worldmodel child carries a 96-byte nparams`);
     const total = [...counts.values()].reduce((n, c) => n + c.nodes, 0);
     if (modal.nodes * 2 <= total) {
-      diagnostics.push(`world placement: the modal node translation covers only ${modal.nodes} of ${total} chunks; chunk-exact placement is a later task`);
+      notes.add(`world placement: the modal node translation covers only ${modal.nodes} of ${total} chunks; chunk-exact placement is a later task`);
     }
     return modal.translation;
   } catch (e) {
-    diagnostics.push(`world placement: ${say(e)}`);
+    notes.add(`world placement: ${say(e)}`);
     return [0, 0, 0];
   }
 }
