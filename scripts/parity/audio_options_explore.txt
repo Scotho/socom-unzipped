@@ -1,0 +1,25 @@
+# Sprint 10 (the music, round three): the AUDIO OPTIONS page -- its rows and how a slider moves -- so a capture can
+# zero SFX and voice and score the MUSIC track alone on both targets. Main menu: NEW GAME, ONLINE, LAN, OPTIONS.
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+1.5:DOWN
+stable+2.0:CROSS      # OPTIONS
+stable+2.0:CROSS      # AUDIO OPTIONS (the first row)
+stable+1.5:NONE
+stable+1.5:LEFT       # the first slider, one notch
+stable+1.5:LEFT
+stable+1.5:DOWN
+stable+1.5:LEFT       # the second row
+stable+1.5:LEFT
+stable+1.5:DOWN
+stable+1.5:LEFT       # the third row
+stable+1.5:LEFT
+stable+1.5:DOWN
+stable+1.5:NONE
+stable+1.5:DOWN
+stable+1.5:NONE
+stable+1.5:DOWN
+stable+1.5:NONE
+stable+1.5:TRIANGLE   # back
+stable+1.5:NONE
