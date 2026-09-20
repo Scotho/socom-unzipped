@@ -202,6 +202,14 @@ their tests, or depend on the monitor's copy and pin it -- the sprint decides wh
      name and a MASKED excerpt, never the secret, because gate output gets pasted into messages; Goal 9's own output
      follows that rule for the same reason. 295 published files clean at the time of writing, 8 tests on the scanner.
    - the monitor: `python leakcheck.py out/site` after `build.py` (`../socom_monitor` `920e323`).
+   **A named gap in the monitor's copy, found 2026-09-19 by the site session and not yet closed:** neither scrubber
+   nor leak check recognises a **Cloudflare Access service token**. It would have missed the one this project now
+   holds. The site's scanner has the rules (`f9ea240`): the client id is a 32-hex name carrying `.access`, and the
+   secret is a finding only beside its own `CF-Access-Client-Secret` header -- a bare 64-hex run stays clean on
+   purpose, because that is usually a sha256 and flagging those would make the gate useless. Port both into
+   `leakcheck.py`, with the client id in the planted control so the rule proves itself on every run. This matters
+   beyond tidiness: `deploy/.secrets/` is git-ignored today, and the day any build copies from a directory above it,
+   that rule is the one that catches it.
    **Exit 2 must not be read as a pass.** Three states, not two: clean, findings, and the scanner did not run. A
    release gate that treats "could not scan" as "nothing found" is worse than no gate, because it reports safety it
    did not measure.
