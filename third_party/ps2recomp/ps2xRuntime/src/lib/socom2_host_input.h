@@ -31,6 +31,9 @@ namespace ps2_stubs
     {
         uint8_t axis[4] = {0x80u, 0x80u, 0x80u, 0x80u}; // ids 0x10-0x13: RX, RY, LX, LY
         uint8_t button[16] = {0};                        // ids 0x00-0x0F, 1 = pressed
+        // R139: the pressure reported for TRIANGLE while it is down. 0xFF always, except when only the crouch
+        // shortcut holds it (runtime/host_crouch_shortcut.h) -- SOCOM II's stance reads this pressure.
+        uint8_t trianglePressure = 0xFFu;
     };
 
     enum Socom2PadButton : uint8_t
@@ -41,10 +44,29 @@ namespace ps2_stubs
         kPadTriangle = 12, kPadCircle = 13, kPadCross = 14, kPadSquare = 15,
     };
 
+    // The keyboard map, as data so a test can read it. Key codes are raylib's (== GLFW's), written as numbers so this
+    // header stays free of raylib; socom2_host_input.cpp static_asserts them against raylib's enum.
+    struct Socom2KeyBinding { int key; uint8_t button; };
+    inline constexpr Socom2KeyBinding kSocom2Keys[] = {
+        {257, kPadStart}, {256, kPadStart}, {259, kPadSelect},                      // Enter, Escape (owner 2026-09-20: the pause a PC player expects), Backspace
+        {265, kPadUp}, {262, kPadRight}, {264, kPadDown}, {263, kPadLeft},            // arrows
+        {'Z', kPadSquare}, {'X', kPadCross}, {32, kPadCross}, {'C', kPadCircle}, {'V', kPadTriangle},
+        {'Q', kPadL1}, {'E', kPadR1}, {'1', kPadL2}, {'3', kPadR2}, {'2', kPadL3}, {'4', kPadR3},
+    };
+
     // Pressure field order (ids 0x14..0x1f) -> digital button id.
     inline constexpr uint8_t kSocom2PressureButton[12] = {
         kPadRight, kPadLeft, kPadUp, kPadDown, kPadTriangle, kPadCircle,
         kPadCross, kPadSquare, kPadL1, kPadR1, kPadL2, kPadR2};
+
+    // What the game reads for pressure field `field` (id 0x14 + field): 0 when the button is up, else 0xFF --
+    // or, for TRIANGLE, the state's own trianglePressure (R139). Both HLE read paths go through here.
+    inline uint8_t socom2PressureOf(const Socom2PadState &pad, int field)
+    {
+        if (field < 0 || field >= 12 || !pad.button[kSocom2PressureButton[field]])
+            return 0u;
+        return kSocom2PressureButton[field] == kPadTriangle ? pad.trianglePressure : static_cast<uint8_t>(0xFFu);
+    }
 
     // Refresh `pad` from the host. Safe to call before the window exists (does nothing then).
     void socom2HostInputPoll(Socom2PadState &pad);

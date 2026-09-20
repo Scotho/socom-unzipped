@@ -38,10 +38,21 @@ namespace ui
         }
     }
 
-    void fillRect(const Ctx &ctx, Rect r, Rgba color) { DrawRectangleRec(px(ctx, r), rl(color)); }
+    // Sprint 9 P4: a rect that is not drawable places no ink. rectOf() answers Rect{} -- the window's
+    // origin, zero by zero -- for an id the node list does not hold, and a label centred in one of those
+    // is the flash the owner saw at the top left on every page change. The discipline is here, at the
+    // root, rather than at each of the fifty call sites that look a control up by id.
+    void fillRect(const Ctx &ctx, Rect r, Rgba color)
+    {
+        if (!drawable(r))
+            return;
+        DrawRectangleRec(px(ctx, r), rl(color));
+    }
 
     void fillRectGradient(const Ctx &ctx, Rect r, Rgba top, Rgba bottom)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         DrawRectangleGradientV(static_cast<int>(p.x), static_cast<int>(p.y), static_cast<int>(p.width),
                                static_cast<int>(p.height), rl(top), rl(bottom));
@@ -49,6 +60,8 @@ namespace ui
 
     void strokeRect(const Ctx &ctx, Rect r, Rgba color, float thick)
     {
+        if (!drawable(r))
+            return;
         DrawRectangleLinesEx(px(ctx, r), std::max(1.0f, thick * ctx.scale), rl(color));
     }
 
@@ -66,6 +79,8 @@ namespace ui
 
     void fillRound(const Ctx &ctx, Rect r, float radius, Rgba color)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
@@ -74,6 +89,8 @@ namespace ui
 
     void strokeRound(const Ctx &ctx, Rect r, float radius, Rgba color, float thick)
     {
+        if (!drawable(r))
+            return;
         const Rectangle p = px(ctx, r);
         const float shortest = std::min(p.width, p.height);
         const float roundness = shortest <= 0.0f ? 0.0f : std::min(1.0f, (radius * ctx.scale * 2.0f) / shortest);
@@ -141,13 +158,37 @@ namespace ui
 
     void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face, float tracking)
     {
+        if (!drawable(r))
+            return;
         const float w = textWidth(ctx, s, size, face, tracking);
         const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);   // design units
         text(ctx, s, Vec2{r.x + (r.w - w) * 0.5f, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face, tracking);
     }
 
+    InkBox capInk(const Ctx &ctx, float size, Face face)
+    {
+        const int pixels = pixelSize(ctx, size);
+        const float screenSize = static_cast<float>(pixels) / ctx.dpi;
+        const Font &font = ctx.fonts->at(face, pixels);
+        InkBox o;
+        const int i = GetGlyphIndex(font, 'H');   // a capital with no overshoot: the cap height itself
+        if (i < 0 || font.glyphs == nullptr || font.recs == nullptr || font.baseSize <= 0)
+        {
+            // raylib's default face, or a face that would not load (the spec's stop rule): the line box is
+            // all there is to go on, which is exactly what the launcher used before this existed.
+            o.height = screenSize / ctx.scale;
+            return o;
+        }
+        const float f = screenSize / static_cast<float>(font.baseSize);
+        o.top = static_cast<float>(font.glyphs[i].offsetY) * f / ctx.scale;
+        o.height = font.recs[i].height * f / ctx.scale;
+        return o;
+    }
+
     void textRightIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face)
     {
+        if (!drawable(r))
+            return;
         const float w = textWidth(ctx, s, size, face);
         const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
         text(ctx, s, Vec2{r.right() - w, r.y + (r.h - drawn * 1.12f) * 0.5f}, size, color, face);
@@ -173,6 +214,8 @@ namespace ui
 
     void panel(const Ctx &ctx, Rect r, bool raised)
     {
+        if (!drawable(r))
+            return;
         fillRect(ctx, r, raised ? theme::panelHi : theme::panel);
         strokeRect(ctx, r, theme::line, 2.0f);
     }
@@ -212,12 +255,16 @@ namespace ui
 
     void focusRing(const Ctx &ctx, Rect r)
     {
+        if (!drawable(r))
+            return;
         strokeRect(ctx, Rect{r.x - 3.0f, r.y - 3.0f, r.w + 6.0f, r.h + 6.0f}, theme::gold, 2.0f);
         strokeRect(ctx, Rect{r.x - 1.0f, r.y - 1.0f, r.w + 2.0f, r.h + 2.0f}, theme::alpha(theme::goldHi, 90), 1.0f);
     }
 
     bool hovered(const Ctx &ctx, Rect r)
     {
+        if (!drawable(r))
+            return false;
         return !ctx.fake && ctx.mouseMoved && r.contains(ctx.mouse);
     }
 
@@ -225,6 +272,8 @@ namespace ui
 
     bool hit(const Ctx &ctx, Rect r, const std::string &id, bool enabled)
     {
+        if (!drawable(r))
+            return false;
         if (!enabled)
             return false;
         const bool byMouse = !ctx.fake && ctx.click && r.contains(ctx.mouse);
@@ -236,6 +285,8 @@ namespace ui
 
     bool button(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool enabled, bool primary)
     {
+        if (!drawable(r))
+            return false;
         const bool isFocused = focused(ctx, id);
         const bool isHover = enabled && hovered(ctx, r);
         const bool live = isHover || isFocused;
@@ -278,6 +329,8 @@ namespace ui
 
     bool toggle(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool &value)
     {
+        if (!drawable(r))
+            return false;
         const float boxSide = std::min(24.0f, r.h - 6.0f);
         const Rect box{r.x, r.y + (r.h - boxSide) * 0.5f, boxSide, boxSide};
         const bool live = hovered(ctx, r) || focused(ctx, id);
@@ -299,6 +352,8 @@ namespace ui
 
     bool radioCell(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool selected)
     {
+        if (!drawable(r))
+            return false;
         const bool live = hovered(ctx, r) || focused(ctx, id);
         if (selected)
             fillRectGradient(ctx, r, theme::blueFill, theme::blueDeep);
@@ -314,6 +369,8 @@ namespace ui
 
     bool listRow(const Ctx &ctx, Rect r, const std::string &label, const std::string &id, bool selected)
     {
+        if (!drawable(r))
+            return false;
         const bool live = hovered(ctx, r) || focused(ctx, id);
         if (selected)
             fillRect(ctx, r, theme::mix(theme::panelHi, theme::blue, 0.30f));
@@ -333,6 +390,8 @@ namespace ui
 
     bool slider(const Ctx &ctx, Rect r, const std::string &id, double &value, double lo, double hi, double step)
     {
+        if (!drawable(r))
+            return false;
         const bool isFocused = focused(ctx, id);
         const bool live = isFocused || hovered(ctx, r);
         const double before = value;
@@ -364,8 +423,134 @@ namespace ui
         return value != before;
     }
 
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable)
+    namespace
     {
+        // What a focused field takes from the keyboard this frame: typed characters, Ctrl+V, backspace.
+        // Printable ASCII only, as the launcher's fonts are; a pasted line break becomes a space.
+        bool typeInto(std::string &value, size_t maxLen, bool paste)
+        {
+            bool changed = false;
+            auto room = [&]() { return maxLen == 0 || value.size() < maxLen; };
+            for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
+                if (c >= 32 && c < 127 && room())
+                {
+                    value.push_back(static_cast<char>(c));
+                    changed = true;
+                }
+            if (paste && (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) && IsKeyPressed(KEY_V))
+            {
+                const char *clip = GetClipboardText();
+                for (const char *p = clip; p != nullptr && *p != '\0' && room(); ++p)
+                {
+                    unsigned char c = static_cast<unsigned char>(*p);
+                    if (c == '\n' || c == '\t')
+                        c = ' ';
+                    if (c >= 32 && c < 127)
+                    {
+                        value.push_back(static_cast<char>(c));
+                        changed = true;
+                    }
+                }
+            }
+            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !value.empty())
+            {
+                value.pop_back();
+                changed = true;
+            }
+            return changed;
+        }
+    }
+
+    std::vector<std::string> wrapText(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face)
+    {
+        std::vector<std::string> lines;
+        std::string line;
+        size_t at = 0;
+        while (at < s.size())
+        {
+            if (s[at] == '\n')
+            {
+                lines.push_back(line);
+                line.clear();
+                ++at;
+                continue;
+            }
+            size_t end = at;
+            while (end < s.size() && s[end] != ' ' && s[end] != '\n')
+                ++end;
+            while (end < s.size() && s[end] == ' ')
+                ++end;   // a word carries its trailing spaces, so the caret sits where the next letter goes
+            std::string word = s.substr(at, end - at);
+            at = end;
+            if (!line.empty() && textWidth(ctx, (line + word).c_str(), size, face) > maxWidth)
+            {
+                lines.push_back(line);
+                line.clear();
+            }
+            // A word wider than the field is broken where it stops fitting.
+            while (word.size() > 1 && textWidth(ctx, word.c_str(), size, face) > maxWidth)
+            {
+                size_t fit = word.size() - 1;
+                while (fit > 1 && textWidth(ctx, word.substr(0, fit).c_str(), size, face) > maxWidth)
+                    --fit;
+                lines.push_back(word.substr(0, fit));
+                word.erase(0, fit);
+            }
+            line += word;
+        }
+        lines.push_back(line);
+        return lines;
+    }
+
+    void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen)
+    {
+        if (!drawable(r))
+            return;
+        const bool isFocused = focused(ctx, id);
+        const bool isActive = ctx.activeField != nullptr && *ctx.activeField == id;
+        fillRect(ctx, r, theme::ground);
+        strokeRect(ctx, r, isActive ? theme::goldHi : (isFocused ? theme::gold : theme::line), 2.0f);
+
+        if (!ctx.fake && ctx.click && r.contains(ctx.mouse))
+        {
+            if (ctx.focusOut != nullptr)
+                *ctx.focusOut = id;
+            if (ctx.activeField != nullptr)
+                *ctx.activeField = id;
+        }
+        if (isFocused && ctx.activate && ctx.activeField != nullptr)
+            *ctx.activeField = id;
+        if (isActive && typeInto(value, maxLen, true))
+            changed = true;
+
+        const float inset = 10.0f;
+        const float size = metrics::bodySize - 2.0f;
+        const float lineH = size * 1.22f;
+        const int room = static_cast<int>((r.h - inset * 2.0f + 2.0f) / lineH);
+        const std::vector<std::string> lines = wrapText(ctx, value, r.w - inset * 2.0f - 4.0f, size, Face::Body);
+        const int total = static_cast<int>(lines.size());
+        // While typing, the END is what matters (there is no caret to move); at rest, the beginning.
+        const int first = (isActive && total > room) ? total - room : 0;
+        for (int i = 0; i < room && first + i < total; ++i)
+        {
+            std::string shown = lines[static_cast<size_t>(first + i)];
+            if (!isActive && i == room - 1 && first + i + 1 < total)
+                shown = ellipsizeEnd(ctx, shown, r.w - inset * 2.0f - 60.0f, size) + " ...";
+            text(ctx, shown.c_str(), Vec2{r.x + inset, r.y + inset + lineH * static_cast<float>(i)}, size, theme::text);
+        }
+        if (isActive && (ctx.fake || (static_cast<int>(ctx.time * 2.0) & 1)))
+        {
+            const int row = total - 1 - first;
+            const float w = textWidth(ctx, lines.back().c_str(), size);
+            fillRect(ctx, Rect{r.x + inset + w + 2.0f, r.y + inset + lineH * static_cast<float>(row < 0 ? 0 : row), 2.0f, lineH - 2.0f},
+                     theme::goldHi);
+        }
+    }
+
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen)
+    {
+        if (!drawable(r))
+            return;
         const bool isFocused = focused(ctx, id);
         const bool isActive = editable && ctx.activeField != nullptr && *ctx.activeField == id;
         fillRect(ctx, r, theme::ground);
@@ -381,20 +566,9 @@ namespace ui
         if (editable && isFocused && ctx.activate && ctx.activeField != nullptr)
             *ctx.activeField = id;
 
-        if (isActive)
-        {
-            for (int c = GetCharPressed(); c > 0; c = GetCharPressed())
-                if (c >= 32 && c < 127)
-                {
-                    value.push_back(static_cast<char>(c));
-                    changed = true;
-                }
-            if ((IsKeyPressed(KEY_BACKSPACE) || IsKeyPressedRepeat(KEY_BACKSPACE)) && !value.empty())
-            {
-                value.pop_back();
-                changed = true;
-            }
-        }
+        // maxLen > 0 marks the REPORT A BUG fields: capped at the contract's length, and they take Ctrl+V.
+        if (isActive && typeInto(value, maxLen, maxLen > 0))
+            changed = true;
 
         const float inset = 10.0f;
         const float size = metrics::bodySize;
@@ -412,6 +586,8 @@ namespace ui
 
     void meterBar(const Ctx &ctx, Rect r, float fraction, Rgba fill)
     {
+        if (!drawable(r))
+            return;
         fraction = fraction < 0.0f ? 0.0f : (fraction > 1.0f ? 1.0f : fraction);
         fillRect(ctx, r, theme::ground);
         fillRect(ctx, Rect{r.x + 2.0f, r.y + 2.0f, (r.w - 4.0f) * fraction, r.h - 4.0f}, fill);

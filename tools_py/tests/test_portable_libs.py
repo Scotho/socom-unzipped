@@ -7,7 +7,10 @@ import importlib.util
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
+
+from tools_py.tests.binfmt_fixtures import tiny_elf
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 MODULE = os.path.join(ROOT, "scripts", "portable_libs.py")
@@ -99,6 +102,62 @@ class MainTest(unittest.TestCase):
     def test_missing_flag_exits_0_when_nothing_is_missing(self):
         r = self._run(["--missing"], LDD.replace("\tlibvpx.so.9 => not found\n", ""))
         self.assertEqual(r.returncode, 0, r.stderr)
+
+
+class ReachableTest(unittest.TestCase):
+    """Sprint 9 Goal 2 (R151 follow-up): lib/ carries a library only when the shipped executables reach it
+    through a chain of libraries we carry ourselves. ldd's list is flat, so it also names what only a HOST
+    library needs -- libXau, reached through libxcb, which we never carry: the audit rightly called it an
+    orphan. The walk stops at a host-prefix library, because whatever lies behind it is the host's too."""
+
+    def setUp(self):
+        self.m = _load()
+        self._tmp = tempfile.TemporaryDirectory()
+        self.dir = self._tmp.name
+        # exe -> libX11 (host) -> libleaf ; exe -> libavcodec (carried) -> libleaf2
+        self.files = {
+            "socom2": ["libX11.so.6", "libavcodec.so.60", "libc.so.6"],
+            "libX11.so.6": ["libleaf.so.1"],
+            "libavcodec.so.60": ["libleaf2.so.2"],
+            "libleaf.so.1": [],
+            "libleaf2.so.2": [],
+            "libc.so.6": [],
+        }
+        for name, needed in self.files.items():
+            with open(os.path.join(self.dir, name), "wb") as fh:
+                fh.write(tiny_elf(needed))
+        self.exe = os.path.join(self.dir, "socom2")
+        self.ldd = "".join("\t%s => %s (0x00007f00)\n" % (n, os.path.join(self.dir, n))
+                           for n in self.files if n != "socom2")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def path(self, name):
+        return os.path.join(self.dir, name)
+
+    def test_a_leaf_reached_only_through_a_host_library_is_not_carried(self):
+        picked = self.m.reachable(self.ldd, [self.exe])
+        self.assertNotIn(self.path("libleaf.so.1"), picked)
+        self.assertNotIn(self.path("libX11.so.6"), picked)
+
+    def test_a_leaf_reached_through_a_carried_library_is_carried(self):
+        picked = self.m.reachable(self.ldd, [self.exe])
+        self.assertEqual(sorted(picked), sorted([self.path("libavcodec.so.60"), self.path("libleaf2.so.2")]))
+
+    def test_the_flat_ldd_list_is_what_used_to_carry_the_orphan(self):
+        self.assertIn(self.path("libleaf.so.1"), self.m.select(self.ldd))
+
+    def test_a_library_ldd_did_not_resolve_is_skipped_not_fatal(self):
+        ldd = "".join(line if "libleaf2" not in line else "\tlibleaf2.so.2 => not found\n"
+                      for line in self.ldd.splitlines(keepends=True))
+        self.assertEqual(self.m.reachable(ldd, [self.exe]), [self.path("libavcodec.so.60")])
+
+    def test_main_takes_the_executables_and_walks_them(self):
+        r = subprocess.run([sys.executable, MODULE, self.exe], input=self.ldd, capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(sorted(r.stdout.split()),
+                         sorted([self.path("libavcodec.so.60"), self.path("libleaf2.so.2")]))
 
 
 if __name__ == "__main__":

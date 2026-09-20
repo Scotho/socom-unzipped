@@ -1,12 +1,169 @@
 # Current sprint
 
-The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own;
-the controller updates it when a sprint opens or closes.
+The loop's aim. `docs/LOOP_PROMPT.md` reads this file instead of carrying a sprint pointer of its own; the controller
+updates it when a sprint opens or closes, and whenever the order changes. **If you are a new controller, read
+`docs/HANDOFF.md` first** -- it says where the project is and what the traps are; this file says what to do next.
 
 **The goal every sprint serves:** SOCOM II running natively on PC with online play, that a stranger runs by pointing the
-launcher at their own r0001 ISO and playing a round against another stranger on a hosted Horizon server. The audit of
-2026-09-17 (`docs/AUDIT-2026-09-17.md`) measured the tree against that sentence; its §1 table is the gap in dependency
-order, and this file's order follows it.
+launcher at their own r0001 ISO and playing a round against another stranger on a hosted Horizon server -- from a public
+repository another person can fork, build and contribute to.
+
+```
+branch:       sprint-9 (off develop/main at 871f9f8; main == develop == 871f9f8)
+spec:         docs/superpowers/specs/2026-09-19-sprint-9-a-strangers-first-run-design.md
+plans:        docs/superpowers/plans/2026-09-19-sprint-9-goal-1-*.md (done), 2026-09-20-sprint-9-goal-2-*.md (done),
+              2026-09-20-sprint-9-goal-3-knob-retirement.md (written, NOT started; see Q2 before touching it)
+human tasks:  docs/HUMAN_TASKS.md      playtest script: docs/PLAYTEST.md
+sprint 10:    OPENED 2026-09-20 on the owner's instruction ("proceed on with the next sprint") while Sprint 9's
+              milestone Q is CARRIED -- spec docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md,
+              plan docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md (Goal 1 built, first run tonight).
+              Sprint 9's Q8 (merge to main, v0.9.0) runs tonight after the ladder; Q1b-Q7 carry into Sprint 10 as filler
+              unless the owner reorders.
+git strategy: docs/GIT_STRATEGY.md     contributing: CONTRIBUTING.md
+next ruling:  R179 (R178 is Q0's conductor grains -- child sounds, registers, markers, from the open reference -- below; R177 is Q0's mix device buffer, 20 ms x 4, measured -- below; R176 is P4's ADVANCED section -- what went in it and what did not; R175 is P6's: the preset switch needs no launch and the server keeps advertising its IP -- below. R174 is Goal 12's split -- the mapping data path lands in Sprint 9 Q3, the UI is Sprint 10; R152-R168 are reserved by the Goal 3 plan; R169-R171 are Goal 10's music fixes, COMMITTED in `013f86e`; R172 is Goal 10's declined proposal -- the concurrency cap, not taken, waiting on Q1's instrument; R173 is P3's, the pad display staying live while the game runs)
+baselines:    C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0, CI green at `3e93b51`; last gates: `s9_q0_children_gate` (3/3 on the runtime as merged, exe sha256 b3abebd5...), `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`; audio parity `s9_q1_parity_ours2` 31/48 (the check's first PASS is Sprint 10's to earn)
+```
+
+Markers used below: **[A]** autonomous; **[O]** the owner's hands, ears, money or decision; **[B: x]** blocked on x.
+"Lock-bound" means it needs a build or a launch (the loop lock, `scripts/check_quiet_gate.sh` first -- the owner feels
+long builds); "lock-free" can run at any time.
+
+---
+
+## The order, reworked 2026-09-20 (controller handoff)
+
+**Why it was reworked.** Sprint 9 had grown to ten goals in the order they were thought of, and the two things the owner
+meets in every session -- the music and the pad driving two windows -- sat at Goals 10 and 9, behind a nine-task refactor
+of every `getenv` in the runtime (Goal 3) that no player can see. A playtest by the owner is planned. So Sprint 9 is cut
+at a milestone: **everything the owner will hear, see or trip on comes first, a playtest candidate is built and tagged,
+the owner plays, and the heavy invisible work starts only after that** -- when its gates no longer stand between the
+owner and a build worth playing. Nothing was dropped; one goal moved sprints (Goal 5, below) and one was added (Goal 11).
+Goal numbers are kept as they are in the spec, the commits and the plans; the P/Q labels are the order.
+
+### Sprint 9, milestone P -- "worth the owner's evening" (ends in the tag `playtest-1`)
+
+| # | What | Marker | Notes |
+|---|---|---|---|
+| **P1** | **Goal 10, part 1 -- the music's two bugs.** The confirming trace first (`playVagStream`: parent, reused, handle, sector; `Mixer::playStream`: the ramp scale in force when it replaces a live stream), then the two ~10-line fixes under RED tests: honour `parentHandle` as a QUEUE instead of replacing the live stream (`snd989.cpp:1555-1587`, `snd989_mixer.cpp:1378-1386`), and clear the handle's AutoVol ramp in `playStream` as `stop` (`:1045`) and `setVolPan` (`:1090-1091`) already do. | **DONE 2026-09-19, `013f86e`** (this row said "uncommitted, for the controller's review" until the new controller checked the log). Gate 3/3 `s9_p1_gate`, audio suite 48/48, suite 667/0. **Read the commit's honest-scope paragraph before believing the music is fixed:** on the current build a driven mission NEVER queues -- `s9_p1_m51_audio2` counted 55 stream requests, 55 played, 0 refused, 0 queued, 0 replaced, no sector repeated, 2 clipped samples in 559 s. So R169/R170 are protocol-correct and INERT in that mission, and what the owner heard is not explained by this measurement. The mix is kept as `mission_audio_playable.wav` for their ear (HUMAN_TASKS). | The owner hears this every session. Root cause FOUND and both fixes WRITTEN, each RED watched failing as an assertion first -- the queue's was *"queueing does not cut the parent dead (peak 2 against 2413)"*, the ramp's *"peak 1206 against 2413"* and *"peak 0 against 2413"*. `./build.sh test` exit 0, C++ 666/666, Python 1368 OK. **Not yet proven by ear:** the proof is the M51 run -- grep its log for `[audio] 989snd stream <h> ... queued playing` (the queue path live) and for `REPLACED a live stream (not queued)`, which must not appear during mission music. |
+| **P2** | **Goal 10, part 2 -- the universal half.** **The looping half is DONE (R171), in the same uncommitted diff as P1:** the stream decoder reads bit 2 (loop start), bit 0 (end) and bit 1 (repeats) as the bank decoder always has, so a repeating run returns to the mark instead of ending -- that is the menu and lobby music. The play call's `flags` word is still dropped at `ps2_audio.cpp:481` and is still worth a look. **What is left is a DECISION, not code: R172**, the concurrency cap and the clip -- honour `snd_SetGroupVoiceRange` with an eviction policy we would have to invent, change headroom the SPU also lacks, or cap streams at the six slots the game itself asks for (`snd_InitVAGStreamingEx(6, ...)`). The spec recommends the six slots now and the rest behind a measurement. | **Looping DONE (R171) in `013f86e`. R172 DECLINED, not deferred silently:** the concurrency cap was not taken because nothing measured asks for it -- the mission that would need it clipped 2 samples in 559 s and never ran more than one stream. It waits on Q1's instrument, which is what would show a real need. The owner can overturn. | Two captures: a menu-to-menu sweep and a lobby entry. `KNOWN.md:110(e)` (`pcmStreamStart` after Stop-without-Open replays old blocks) is checked in the same trace and fixed if it fires. |
+| **P3** | **Goal 9, part 1 -- the pad drives both windows.** While `App::running` the launcher takes no pad input and does not take the foreground. The guide-button toggle is NOT in this item (Q4: it needs a per-platform measurement first). | **DONE 2026-09-19, `02cd9ae`.** One gate, `ui::padIntent` (`ui/pad_input.h/.cpp`, pure): the pad is read once into a `PadFrame` and main.cpp consumes intent, so no caller can reach a button directly. Two tests watched failing first -- a press does nothing while the game runs, and a stick held for fifty frames banks no repeat to spend the frame the game exits. **The foreground half needed no code:** nothing in the launcher calls `SetForegroundWindow`, `SetWindowFocus` or sets topmost on either platform. **R173:** the CONTROLLER page's live pad DISPLAY stays alive while the game runs -- it moves no focus, and a player who alt-tabs to check a pad should not find a dead picture. Suite 669/669. | The feel with a real pad and a running game is the owner's, at the playtest. |
+| **P4** | **Goal 9, part 2 -- the launcher's small defects.** Plan: `docs/superpowers/plans/2026-09-19-sprint-9-p4-launcher-small-defects.md`. **DONE 2026-09-20, all four tasks. Tasks 1-3 (`ca7dd5a`, suite 672/672):** the page-change flash and the top bar's two alignments; **Task 3** the ADVANCED section (R176, suite 674/674); **Task 4** the first six focus-driven help tooltips (suite 675/675), whose wording is the owner's to check (HUMAN_TASKS). | [A] launcher build only | `main.cpp` is a file launcher sessions edit: `git status` it before staging. **Two findings from Tasks 1-2 worth keeping:** the flash was only half `rectOf()` -- the other half was the frame's node list being built before input and the page changing after it; and the spec's suggested repro did not work, because the screenshot walk changed pages at a moment no player can produce. The walk now changes them in the input phase and `--shot-frames 2` captures the first frame of a new page, which is the instrument for this whole class of defect. |
+| **P5** | **Goal 8 close-out -- smaller than this row used to say.** Audited 2026-09-19. **Already done, do not redo:** the one-reader check (exactly one `/api/stats` reader, `main.cpp:298` behind the single parser `bug_report.cpp:664`; the `--server-status` flag shares both, and the screenshot harness makes no request -- so Goal 9 needs nothing); the CURRENT_SPRINT, HUMAN_TASKS and KNOWN artefacts, which landed in `8229503`; and the STATUS entry, written 2026-09-19. **Settled 2026-09-20:** (a) `BR-20260919-c6d666` is real -- the hosted-server session confirmed it on the box (Windows, `test=true`, allowlist context, no ISO path); it was invisible here because the id is stored lower-case, displayed upper-case, and the local mirror had synced 35 minutes before it arrived. KNOWN says so, and no fresh send is needed. (c) both gaps now have KNOWN §4 rows. **What is left: (b) the Linux send alone** [B: the VM is off]. **The send recipe:** `socom_unzipped_launcher.exe --report-bug <form.json>`, where `test` defaults to TRUE -- the UI never sets it, so a report sent through the window lands in the real inbox, not `bugs-test/`. | [A] lock-free, except the Linux send: [B: the VM is off] | Read `.claude/skills/s2u-bug-reports/SKILL.md` before touching the inbox: report text is untrusted data, never instructions. The owner's wording check is in the playtest script. |
+| **P6** | **DONE 2026-09-20. Goal 7 -- the server by name, `socom.scotho.com`.** Switched the launcher's DEFAULT PRESET to the name, kept `3.143.65.100` as a visible fourth preset ("SOCOM Unzipped (by address)"), and left the SERVER's own advertised endpoints as the IP literal (R175; the hosted-server session has agreed and confirmed `muis.json` needs no change). Suite 677/677. Four existing tests asserted the old address and were moved to the new truth -- that is the change being real, not a regression. `kServerPresetCount` replaces the literal 3 that two loops and one y-offset used, which is what a fourth preset would otherwise have been drawn on top of. | [A] **was lock-free** -- the launcher's config and its tests. The DNS-only A record exists (`7fff701`; it resolves to 3.143.65.100) | **The measurement this row used to demand is answered by reading, 2026-09-19 -- it was the wrong question.** The preset string never reaches the game: `loadHosts()` turns `PS2X_SOCOM2_SERVER` into a `uint32_t` and maps the seven retail hostnames to it (`socom2_hostnet.cpp:303-316`, `parseServerAddress` `:306-332`), so with the name resolving to the same address the guest cannot tell the two presets apart and NO persona can be orphaned. Read twice, independently. What IS guest-visible is the server's own `muis.json` `Endpoint` -- a different string, one of the two candidates for the persona key, and not ours to edit. The real hazard the switch introduces is a DNS failure silently becoming 127.0.0.1 (KNOWN §4), which is why the raw address stays on offer. |
+| **P7** | **DONE 2026-09-20 -- tag `playtest-1`.** Archive `socom2-portable.zip` 55,829,577 bytes, sha256 `f8f8149c...`; gate `s9_p7_playtest_gate` 3/3 on the exe INSIDE it (sha256 `a43bf45c...`); `docs/PLAYTEST.md` stamped from the run, not the directory. **Building it found two defects that would have shipped,** both fixed test-first before the tag: (1) `WINHTTP.dll` (Goal 8's transport) was not in `portable_audit`'s Windows-system allowlist, the closure failed, `build.sh release` had already emptied `dist-release/` of DLLs, and the 12-hour-old archive stayed in place looking current -- KNOWN §4; (2) R151 chose `-O1` and three documents said so, but `build.sh`'s release default had been `-O2` since `443238e` -- the candidate came out 62.8 MB, and rebuilt at `-O1` it is 55.8 MB, independently reproducing R151's measurement. A test now pins the script to the ruling. | [A] done | The owner plays the ARCHIVE, not `dist/`. |
+| **P8** | **PLAYED 2026-09-20 and FAILED EARLY at step 6, the mission music** (owner: "the music cues still failing awfully during the first mission. All the same issues mentioned earlier which should have been resolved on this sprint"). Steps 7-14 not reached. | [O] done | The failure is Q0 and it now leads everything. |
+
+Lock-free filler while P's builds and launches run: Q1's two scorers and their tests (pure Python), the Sprint 11 items
+marked "early" below, KNOWN/STATUS hygiene.
+
+### Sprint 9, milestone Q -- after the playtest (ends in the merge and the tag `v0.9.0`)
+
+| # | What | Marker | Notes |
+|---|---|---|---|
+| **Q0** | **INVESTIGATED AND FOUR THINGS FIXED, 2026-09-20 03:00-07:00; the owner's ear judges the rest.** The record is `docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md`. Established by measurement, not reading: (1) **the device path** -- what Windows sent to the owner's JBL Flip 6 dropped out 42 times in one mission minute while the mixer's own output dropped 2, and PCSX2 on the same speaker dropped 0; raylib's fixed 10 ms x 3 device under gameplay load. **Fixed:** the runtime opens its own miniaudio device at 20 ms x 4 (`runtime/mix_device.h`, pinned by test): 42 -> 2. (2) the pan sign: every music cue ~2.3 dB right -- fixed. (3) `snd_SetSoundParams` never reached a stream, so the game's positioned voice lines raised from vol 0 stayed silent -- fixed. (4) VAG stream underruns were counted nowhere -- the instrument now stamps every stream's start/end/underrun on the WAV clock, and a stream-event reader and an envelope/splice/silence scorer exist. Ruled out by measurement: R169-R171's mechanisms (never fire in the mission), the reverb (a PCSX2 A/B with it patched out is identical), loop flags (none on disc), the master-volume writes, an early-done report, an EE stall (HELP pop-ups). **Then the fifth, the one that was the bed:** the audio parity check (Q1) measured a continuous floor on the console that ours never had while every requested stream played its full length at the right level; the disc says the mission ambience is a CONDUCTOR sound (M51_AM 0x31: child sounds, a register test on global 2, markers, a loop) and our grain interpreter skipped every one of those grain types -- modelled from the open 989snd reference with three tests (plan 6f, R178). Pre-fill at play done too. **Verdicts:** gate `s9_q0_children_gate` 3/3, audio parity 10/48 -> 31/48 with no mission window silent any more; the bed plays 7-12 dB under the console's (the child volume chain -- next reading, the IRX). **Still open:** that level; the movie audio ~18 dB low at the source (the PCM dump says the ring is full and the samples are quiet); the owner's ear -- HUMAN_TASKS. | [A] done; [O] the ear | Gates `s9_q0_trace_gate`, `s9_q0_device_gate` 3/3; suite 682/682. Two things only a person watching the real game found tonight (the blue arrow, Q0b) and only a reference recording could settle -- the first PCSX2 audio this project has taken. |
+| **Q0b** | **The first mission's blue enemy-marker arrow is missing on ours** (owner, 2026-09-20, watching the PCSX2 reference run). KNOWN §2 has the row and the experiment: the PCSX2 frame with the arrow against ours at the same script step, then HUD sprite (a dropped GS draw) versus scripted event (an EE-side divergence). Found by a person watching the real game beside ours -- the one comparison the parity pipeline cannot make. | [A] lock-free to locate in the frames already captured; the fix is whichever half it lands in | Outranks Q1-Q7; sits behind Q0 only because the owner ranked the music first. |
+| **Q1** | **DONE 2026-09-20 (as the audio parity check, the owner's ask: "an audio parity test with PCSX2 like our visual parity test").** `scripts/parity/audio_parity.sh capture <pcsx2|ours> <stamp> [script]` drives the shared step script on a target with a WASAPI loopback of the default endpoint running; `audio_parity.py score` cuts the capture into per-step windows by the drive's step times and scores each (rms, silences, sub-second holes, splices, envelope oscillation -- `audio_envelope.py`); `compare` fails any window where ours exceeds the console's pinned scores by more than a tolerance. The first reference is pinned: `scripts/parity/refs/audio_launch_to_mission_xl.pcsx2.json`, 48 windows from `pcsx2_mission_audio_ref` (in-mission: 0 silences, 0 splices, osc 0.3-0.5). The spec's other halves -- the mixer event trace on one clock and per-stem starvation -- are `snd989::StreamEvent` and `stream_events.py`. **Not yet:** a stage inside `gate.py` (Q1b's refuse-to-score is where it belongs); the first `compare` on ours runs tonight. | [A] done; gate integration to Q1b | 7 tests (`test_audio_parity.py`), 12 (`test_audio_envelope.py`), 5 (`test_stream_events.py`). PCSX2 A's per-app routing override silences it at every endpoint, so the capture script removes it for the run and restores it (KNOWN section 4). |
+| **Q1b** | **The gate states what it measured.** Verified 2026-09-19: `summary.txt` pins one thing, `EXE <path> bytes= sha256=`, and nothing else -- not the reference images the score is computed against (`scripts/parity/refs/*.png`), not the memory card it boots from, not the drive scripts, not the harness revision, not the `PS2X_*` environment. Record each on the summary as the EXE line already is, and **refuse to score when a pinned input does not match**, which is the same ruling Q3b needs for the keyboard mapping -- build it once, here, and let Q3b use it. | [A] lock-free to write; one gate to prove | Raised by the hosted-server session from Q3b's mapping-hash design: "worth stealing into the gate's other pinned inputs if any of them can currently drift unannounced". They can. Sibling of trap 4 -- the pipeline cannot see a defect present in every run, and it cannot see a change in its own standard either. A silently-changed reference image would move every score with no record that anything moved. |
+| **Q2** | **Goal 3 -- knob retirement** (the written plan, 9 tasks, R152-R168), plus what the exposure discussion added: every knob that names a path constrained to the portable folder or refused; the in-game format's `remove_all` on the card root and `PS2X_MC_DIR_SLOT1` taking any directory (`KNOWN.md:110(c)`; the profile half was fixed in `c81b17a`); and **the size measurement** -- what compiling out the dump/trace families (29 knobs) and the imgui debug panel (`PS2X_ENABLE_DEBUG_UI`) saves in the 55.7 MB download, decided on the number as R151 was. | [A] lock-bound and expensive: a full generated rebuild, three gates, one online control round | **Check first whether another session has started it** (`git log`, `git status`, the plan's checkboxes): a second session was holding this plan on 2026-09-20. The plan's Task 9 Step 2 edits the diagnostics section of the old handoff, which now lives at `docs/archive/HANDOFF-reference-to-2026-09-13.md` -- put that paragraph in `docs/HANDOFF.md` §7 instead. The owner asked for a private git-ignored dev build; the recorded answer is no (spec Goal 3, "the exposure question"): an env var is not a privilege boundary, hiding is obscurity, a build configuration is never git-ignored (R140's precedent), the shipped build stays diagnosable. The owner invited the disagreement and can still overrule it -- as a committed option with a default. |
+| **Q3** | **Goal 9, part 3 -- the mouse leaves; the keyboard stays, narrowed.** Every mouse option out of the launcher (the file list is in the spec: `ui/page_controller.cpp:15,72-78`, `ui/focus.cpp:151`, `launcher_config.h:39-40`, `launcher_config.cpp:202-205,284-291,439-445`, the tests at `launcher_tests.cpp:229,238,264,567-569`; an old config with the keys still loads). The keyboard is permanent for menu navigation and typing only. **Proposed ruling (number it when it is recorded; the owner can overturn it): the keyboard's gameplay mapping (`socom2_host_input.cpp:304-414`) survives as the harness's scripted path, active only in developer mode** -- which is exactly the switch Q2 builds, and why this item follows Q2. | [A] lock-bound: a gate AND an online control round must pass after it | **TRAP.** Every gate, ladder and control-round result this project has was produced by posting that mapping's keystrokes into the window. Removing it for everyone removes the instrument. Option (b) -- move the harness to the pad path first -- is a sprint of its own and is not scheduled. |
+| **Q3b** | **Goal 12, part 1 -- the mapping DATA PATH only (R174).** The two compile-time tables (`socom2_host_input.cpp:~316`, `socom2_host_input.h:50`) become one table resolved from configuration with today's values as the defaults, in a pure `mapping.h/.cpp` tested without a window; an absent or malformed block falls back to the defaults; an old `config.json` still loads. **No UI in Sprint 9.** Rides Q3, which already rewrites these files, and uses Q1b's pinning rather than inventing a second mechanism: the override sets the harness's mapping, the run records the resolved table's hash, the gate refuses to score a run whose hash is not the pinned default. | [A] rides Q3's gate and online control round -- no second launch bill | **This half is inert by construction:** the defaults ARE today's tables, so nothing a player can see changes, which is what makes it safe to land in a release sprint. It exists now rather than later because the alternative is rewriting these files twice and paying Q3's gate-plus-control-round bar twice. |
+| **Q4** | **Goal 9, part 4 -- the rest of the launcher.** The guide-button toggle (a measurement per platform first: XInput does not expose the guide bit; raylib's mapping, SDL's `GAMEPAD_BUTTON_GUIDE`, raw HID; Linux `BTN_MODE` -- where it cannot be read, say so and give the toggle a second binding); the game window styled like the launcher and a header button that focuses options (bounded by how much of the window the runtime owns versus raylib); launcher menu sounds from the game's HUDUI bank, **decoded from the player's own ISO at first run and cached, silent with no ISO, never baked into the download** (the project ships no game assets); a profile viewer **[O: wanted at all?]**. | [A] except the viewer question | |
+| **Q5** | **Goal 4 -- voice: the headset's own button.** Unchanged from the spec, including its stop rule (two listing passes and two launches without the talk flag moving: file and stop). | [A] up to the two-machine "can you hear me" [O] | |
+| **Q6** | **Goal 11 (new) -- a latched stall must not eat the machine.** `GsPendingCap::admit` keeps every state-carrying command unbounded once the replay latches stalled (`gs_gl_backend.cpp:771,789`; the 8 GB VM died with `std::bad_alloc`, `s8_vm_title_audio3`). Cap the state-carrying bytes too, or stop admitting and re-anchor, under a test that drives a stall with a bounded working set. | [A] lock-bound | Promoted from a KNOWN §2 row that named "Sprint 8 Goal 5" as its home and was never scheduled. It is a crash on exactly the small machine a stranger owns. |
+| **Q7** | **Goal 6 -- residuals, as filler.** Audio: the stream-start underfill, the aside-cap parity fix, the scratch leak. Window policy: fullscreen at desktop resolution scored by the gate. The VU0 macro-mode flag latency; the readback PBO ring; the invocation stack pool; the stub-state header into a `.cpp`. The pixel-identity console-replay test that has never run: regenerate its dump or delete the test. The Linux packaging branch's `version.txt` test. Sprint 8's branch-review leftovers (`KNOWN.md:110` a, b, d). | [A] | Filler means: taken when the lock is busy or a launch is running, never ahead of a numbered item. |
+| **Q8** | **Close-out.** KNOWN audit, STATUS current-state rewritten, rulings reconciled, `PS2X_TEST_REPEAT=3 ./build.sh test`, a full gate, the PR `sprint-9 -> main` (see `docs/GIT_STRATEGY.md`: `develop` is retired at this merge), the tag `v0.9.0`. | [A] | |
+
+**Moved out of Sprint 9: Goal 5 ("it stays up": the scheduled ladder job and per-map kill routes) goes back to
+Sprint 10, where it was drafted and whose title it is.** Reason: it serves no part of a stranger's first run, it only
+runs in windows the owner is away, and Sprint 9 is already eleven goals. Nothing of it had started.
+
+### Sprint 10 -- "Console players in the same lobby, and it stays up" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-10-console-players-and-it-stays-up-design.md`)
+
+1. **It stays up** (was Sprint 9 Goal 5): a scheduled job running N ladder rounds against the hosted server, the lobby
+   rate and kill rate tracked and published. [A] in away windows, under the lock, never against a server that is not
+   ours; [O] names the machine and the windows. **BUILT 2026-09-20:** `scripts/ladder_job.sh`, `tools_py/parity/ladder_ledger.py`
+   (5 tests), `docs/LADDER.md`, the Task Scheduler entry `SOCOM Unzipped ladder` (DISABLED until the owner names the
+   window -- HUMAN_TASKS). First run by hand tonight. Left: six more clean runs for the bar, the site row (hosted-server
+   session), the server's build id per record. Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md`.
+2. **The hosted box as a service:** backups of the account database, a restart/update procedure that does not orphan
+   personas, disk and credit watch (the free-plan credit expires 2027-03-05), a health line the site can show.
+   [A] **through the hosted-server session, which owns `server/` and the box** -- coordinate, do not edit its files.
+3. **The mixed match, both directions,** with screen-verified PCSX2 steps (the first leg lost its place at boot:
+   KNOWN §2). [A]
+4. **Per-map kill routes** for the sweep maps; the two-instance speed freeze lifted. [A]
+5. **The first two-machine match over the internet** (carried since Sprint 7). [O: a second machine or a friend];
+   the scripts and `two_machine_readout.sh` are ready.
+6. Math oracles and HLE leg 3, as filler. [A]
+7. Stats and clans across restarts (a real DB), if wanted. [O] decision; the server session's work.
+8. **Goal 12, part 2 -- the controller mapping UI (R174).** The polished page on top of the data path Sprint 9 landed:
+   press-the-button-to-bind with a countdown and cancel, the binding drawn on the pad render, the connected pad's own
+   glyphs, conflict detection offering swap or replace, per-profile presets, a restore-defaults that cannot be hit by
+   accident, the analogue truth about Triangle (R139) inside the same page rather than beside it, and the whole thing
+   completable **with the pad alone**. Bar: a gate AND an online control round, plus the owner rebinding one button on
+   a real pad and playing with it. If it lands, the site's setup guide says so (the hosted-server session's wording).
+   [A] except the owner's play
+9. Wishlist, unscheduled, **[B: the owner's r0004 package and PSRewired's answer]**: the community server. Nothing
+   connects to a server that is not ours until the owner reports that answer.
+
+### Sprint 11 -- "Release hardening: a public repository a stranger can trust" (drafted; spec `docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md`)
+
+Goal 0 the git and release strategy made real (branch protection, tags, the release workflow, permissions); Goal 1 the
+repository cleaned and its history audited (the disc-derived-bytes question is the big one -- **[O] decision D1 in the
+spec**); Goal 2 the project and the loop explained; Goal 3 the landing page and a build from a fresh install; Goal 4
+install instructions and FAQs; Goal 5 licences and accreditations; Goal 6 the progress story; Goal 7 the bug pipeline
+from the launcher's `BR-` ids to public GitHub issues; Goal 8 an installer, if wanted [O]; **Goal 9 (owner, 2026-09-19) the
+PII and credential sweep as a gate that can fail** -- one command over the tree, the full history, commit metadata, the
+release artefacts and the launcher's own scrubbers, exiting non-zero on any hit, with a negative control in CI that plants
+a secret of each class (a gate that has never failed is not known to work). It reuses the monitor's already-run rules
+(`../socom_monitor` `920e323`: 22 planted-secret cases, two real-data false positives burned in) rather than inventing a
+third set, and it does NOT replace D1 -- a clean history says no secret is in it, not that the owner wants it public. **Early items, already
+landed on `sprint-9` because they cost nothing and shape every commit after them:** `docs/GIT_STRATEGY.md`,
+`CONTRIBUTING.md`, `SECURITY.md`, `.github/` issue and PR templates, `CODEOWNERS`.
+
+**Goal 6 built early, 2026-09-20, by session socom-pc-10, out of band and lock-free:** the design `docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md`, the first draft of `docs/STORY.md` (52 entries, 2026-09-02 to `playtest-1`, every one cited), `docs/story/timeline.json` and `docs/story/witnesses.json`, and the citation test `tools_py/story/cite.py` (34 tests, in the suite) that fails on a dead hash, a fragment that does not match its commit's subject, an unwitnessed run, or a retracted phrase stated as current. Not done: the release entry, the pictures, the site page, and the D1 citation reconciliation -- all four are §1 of the spec and stay Sprint 11's.
+
+---
+
+## Rulings made on the owner's behalf (no plan of their own)
+
+**R178 -- the mixer runs the conductor grains: child sounds, registers, markers, cycles, as the open 989snd reimplementation runs them.** *Decided 2026-09-20 by the controller, on a measurement and a reading.* **What was measured:** the audio parity check (Q1) against the PCSX2 reference -- at the mission start the console holds a continuous floor (s24 0% silent, -22 dB) and ours is silent 69% of the window at -34 dB, while every stream the game requested plays its full on-disc length at the calibrated level; the console's extra content is not a stream. **What was read:** bank M51_AM sound 0x31, the handle the game polls all mission long: 33 grains of START/STOP_CHILD_SOUND, TEST_REGISTER (global 2, written by the game every frame), GOTO_MARKER, LOOP -- and our interpreter's `default: break` on all of them. **The ruling:** the reference semantics, verbatim where the data exercises them (child volume = spec vol x parent app / 127; a child keeps its parent alive; register -N is global N-1, which the IRX's `snd_SetGlobalReg` store confirms; LOOP_END lands on LOOP_START so its delay paces the loop; RAND_DELAY = arg + 1; tone Vol/Pan -1..-4 registers, -5 random, -6.. globals). LFO, XREF and plugin grains stay unmodelled (nothing in the M51 bank's ambience needs them; LFO appears in three children and is noted). **Pinned by:** the hand-built conductor test, the M51_AM fixture test, the backend route test; the gate and the parity re-run named in the plan's 6f.
+
+**R177 -- the mix is rendered into a device the runtime opens itself, at 20 ms periods x 4 (80 ms in flight), not raylib's 10 ms x 3.** *Decided 2026-09-20 by the controller, on a measurement.* **What was measured:** what Windows sent to the owner's speaker (a WASAPI loopback of the JBL Flip 6) during one driven mission minute held 42 sub-second dropouts; the mixer's own output in the same minute held 2; PCSX2 on the same speaker held 0 in three minutes. The device thread was missing raylib's 10 ms deadline under gameplay load. **What was decided:** `ps2x::mixDeviceSpec()` (`runtime/mix_device.h`) = 48 kHz, stereo, 20 ms x 4, pinned by a test; `ps2_audio.cpp` opens a miniaudio device on it directly, as `host_mic.cpp` already did for capture, and prints the device, the period and the engine rate at open. **Result:** the same driven minute at the same speaker, 42 -> 2 -- the endpoint now mirrors the mix. **What it costs:** ~50 ms more output latency than before (80 ms in flight against 30). Nothing in the game is timed to the audio output -- the 989snd model schedules on its own 240 Hz tick and the mixer is pulled, not pushed -- and the console's own path is not shorter than this. **Why 20 x 4 and not another pair:** 20 ms is PCSX2's figure and twice the period that failed; four periods let the device thread be late by three whole periods before a glitch, which is the margin a 2x window on a real GPU wants; the test bounds it at 60-200 ms so it cannot drift either way unnoticed. **The owner can overturn it** -- the numbers are in one header, and the run that measures any change is `logs/s9_q0_m51_trace2.sh` with the loopback beside the dump.
+
+**R176 -- ADVANCED is a per-page section, it holds one thing today, and it cannot hide a setting that is doing something.** *Decided 2026-09-19 by the controller; the spec asked for exactly this ruling ("what else belongs there ... is the pass's judgment, recorded as a ruling").* **What was built:** a shared header -- caret, the word, a rule to the edge of the body (`ui::advancedHeader`, `ui/pages.h`) -- and, on ONLINE, a section below the profile field holding "Second instance on this machine (for testing)". Shut, its contents are **not in the node list at all**, so nothing can focus or activate what a player cannot see; it is last in the page's focus order. **The rule that makes a disclosure safe:** `ui::advancedForced(config)` -- a section whose contents are not at their defaults is drawn open, marked "in use", and refuses to close. Without it a player switches a second instance on, collapses the section, and then cannot find why two games start. One line today (`c.secondInstance`); every setting that moves in joins it, and the test with them. **What did NOT go in, and why:** `fpsOverlay` and `gsScale`'s experimental 3 both live on VIDEO, not ONLINE, and the section is per-page -- giving VIDEO one for two settings the owner has not complained about is scope this item did not ask for, and the header is shared precisely so VIDEO can grow one the day someone wants it. The debugger switch is not a launcher control at all: `PS2X_ENABLE_DEBUG_UI` is a build option, and whether the release carries imgui is Q2's size measurement, not a checkbox. **A section per page rather than a tenth rail entry:** an ADVANCED page would collect settings away from the pages that own them, and the rail is already nine deep. **The owner can overturn any of it** -- it is a UI judgment, and nothing outside the launcher depends on it.
+
+**R175 -- P6's persona measurement is not run, the launcher's default preset moves to `socom.scotho.com`, and the hosted server goes on advertising its IP literal.** *Decided 2026-09-19 by the controller.* **What the question was:** HANDOFF §10 item 3 and this file's old P6 row both asked the owner to approve spending a driven login to find out whether personas are keyed on the server's name or its address, because switching "may orphan every saved persona". **What was found instead:** the question does not apply to the launcher's preset, because the preset string is never given to the game. `loadHosts()` converts `PS2X_SOCOM2_SERVER` to a host-order `uint32_t` and maps the seven retail Sony hostnames to that integer (`ps2xRuntime/src/lib/socom2_hostnet.cpp:303-316`); `parseServerAddress` (`:306-332`) returns an integer and keeps the string only for an error message. While `socom.scotho.com` resolves to 3.143.65.100, the guest sees byte-identical inputs before and after the switch, so whatever the persona is keyed on, that input does not move. Established by reading the source, and re-derived independently before these documents were changed. **What was decided:** (1) no lock-bound measurement -- it would be observing a tautology, and a launch costs the owner's quiet; (2) the default preset becomes the name; (3) `3.143.65.100` stays as a visible fallback preset, for the DNS-failure hazard rather than for personas; (4) the server's `muis.json` `Endpoint` and the medius/dme overrides KEEP the IP literal. **Why (4):** that string IS guest-visible (`MUIS.cs:316` -> `sceInetName2Address`), it is one of the two candidates for the persona key, and a name would strand any client without host DNS -- a real PS2 among them. It also belongs to the hosted-server session, not this one. **What it costs:** if the owner wants the server to advertise its name too, that is a separate change and it IS worth a measurement first -- a different experiment from the one P6 described. **The owner can overturn all of it.** The experiment, if ever wanted, is one instance and about four minutes: `SOCOM_SERVER_IP=socom.scotho.com bash logs/s8_hosted_login.sh A s9_name_login`, and the discriminator is the `persona:` line in `logs/parity/drive_s9_name_login.txt` -- but it must not be let run to the save prompt, which rewrites the control card.
+
+**R174 -- Goal 12 is split: the data path is Sprint 9, the UI is Sprint 10.** *Decided 2026-09-19 by the controller
+under an explicit delegation from the owner* ("overseer agent can decide which sprint it goes in", relayed by the
+hosted-server session), after the controller had put the question to them. The choice offered was binary -- keep it in
+milestone Q or move it whole to Sprint 10 -- and neither was taken, because the goal is two things with different
+costs. **What was decided:** the runtime half (compile-time tables become one config-resolved table with today's values
+as defaults, pure and tested, plus the harness pinning) lands in Sprint 9 as Q3b, riding Q3's rewrite of those same
+files; the UI half moves to Sprint 10 item 8. **What it costs:** Sprint 10 carries a feature the owner asked for on
+2026-09-20, so he waits longer for the thing he can actually see. **What it buys:** `v0.9.0` is not held behind a
+polished UI that needs iteration and his eye; the files are rewritten once, not twice; Q3's gate-plus-online-control-
+round bar is paid once, not twice; and the half that ships in the release sprint is inert by construction, because the
+defaults are today's tables and nothing a player can see changes. **Why not keep it whole in Q:** milestone Q already
+carries Q2 (a full generated rebuild, three gates, an online round -- the most expensive item in the sprint), and a
+polished remapping UI is a sprint's work beside it. Holding the merge and the tag behind it would make `v0.9.0` mean
+less, and the branch lives longer in a working tree several sessions share. **The owner can overturn this** -- it is a
+scheduling call, not a technical one, and reversing it costs nothing that has not already been written.
+
+## Standing rules (the full list with reasons is `docs/HANDOFF.md` §5)
+
+Commit with explicit pathspecs (`git commit -m "..." -- <paths>`), never `git add -A`; never commit
+`server/config/simulated.db`, `ONBOARDING.md`, root `*.bin`/`*.wav`, `dist*/`, `build*/`; never stage a file another
+session is editing (`server/` and `../scotho` belong to the hosted-server session). A failing test first for every
+runtime change; `./build.sh test` and the three-stage gate before a commit that touches the runtime, the recomp, the
+parity tools or `build.sh`. One launch at a time, through `scripts/run_detached.sh` under the loop lock,
+`scripts/check_quiet_gate.sh` first. Push to `origin sprint-9` and check CI. Every moved default or skipped measurement
+gets a numbered ruling. What only the owner can verify goes to `docs/HUMAN_TASKS.md` and the loop moves on. Never touch
+the owner's VM named "Work"; `socom-linux` is powered off -- ask before starting it.
+
+---
+
+## The Sprint 9 record (dated blocks, newest first; the order above supersedes any "next" in them)
 
 ## 2026-09-19 (midday) — Sprint 8 CLOSED; Sprint 9 OPEN: "A stranger's first run"
 
@@ -20,248 +177,20 @@ next ruling: R126
 
 **Not started in Sprint 8 and now Sprint 9's:** the exit-code taxonomy, the bare run, the diagnostics zip, the release build and SHA256SUMS, knob retirement (190 names), the audio and window residuals.
 
-## 2026-09-18 (midday) — Sprint 8 (closed 2026-09-19; record) OPEN: "Linux, then it looks and sounds finished"
+**Goal 8 DONE, 2026-09-20** (`6eaa60c`..`1efc37a`): REPORT A BUG and the ONLINE status line over the site's endpoints; CI green; one live test report `BR-20260919-c6d666` (Windows; confirmed on the box 2026-09-20 -- the id is stored lower-case and displayed upper-case, which is why grepping for the upper-case form here finds nothing). **Goal 7 half done:** `socom.scotho.com` exists (DNS only, created by the controller at the owner's instruction); the persona test and the launcher's default follow. **In flight:** Goal 10 (the music: queued segments cut the playing one, new cues inherit dead fades -- fixes under test, the controller gates and runs the driven mission). **Queued:** Goal 9 (pad focus first), Goal 3 (knob retirement, plan committed `20479a9`).
 
-branch: sprint-8 (off develop at `b65fe46`)
-spec: docs/superpowers/specs/2026-09-18-sprint-8-linux-and-finish-design.md
-plan: docs/superpowers/plans/2026-09-18-sprint-8-linux-client.md (Goal 1; the other goals' plans follow when Goal 1 lands)
-human tasks: docs/HUMAN_TASKS.md (seven open; the newest asks for WSL2 or a real Linux box -- superseded in part by the VM below)
+**Goal 2 DONE, 2026-09-20** (`5b31ca1`..`6fe42d3`, R140-R151): the download is 15% smaller on Windows (55.7 MB) and 13% on Linux (99.4 MB), each archive carries exactly its import closure and a `SHA256SUMS`, the release executable is stripped with its symbols kept, and the gate is 3/3 on that exact file (`s9_g2_release_gate`). `-O2` lost on compressed size and was not shipped (R151 -- the ruling was recorded but not wired: `build.sh`'s release default stayed `-O2` until Sprint 9 P7, 2026-09-20). Owner items filed. next ruling: R152. Next: Goal 8 (the bug report section) when its endpoint is live, Goal 3 (knob retirement) meanwhile.
 
-**2026-09-19 additions (owner):** *Goal 11*, simulated memory cards that persist (the owner's save prompt said no card was inserted: an empty card folder was never exercised) -- an Opus agent on the diagnosis and fix. *The music fade*: snd_AutoVol applied its target instantly instead of ramping, cutting cues dead -- being fixed with the menu stream's discarded first fill. *Goal 9*, the launcher redesigned (a SOCOM-inspired theme, a rail-and-page layout, one focus model for mouse, keyboard and pad, embedded OFL type, a procedurally drawn live controller, a `--screenshot` mode as the proof) -- in the spec, an Opus agent implementing. *Goal 10 -- WISHLIST, deferred by the owner the same day* ("we will work to get the memory card package and tackle that a later day"): playing on the community server (PSRewired, https://psrewired.com/servers/10472, address 67.222.156.250), which runs SOCOM II patch r0004 while our recompilation is the r0001 disc executable -- an agent is establishing what r0004 is, whether the server requires it and what a static recompilation can do about it; the tasks are written from its findings. *The owner's mission music report*: the play-session review established that missions DO have music (210 stereo 32 kHz one-shot cues in VAGSTORE.ZAR, adaptive) and that no fixed defect recurred, so the fidelity is being measured from the existing mission dump against the cues decoded from the disc; separately, the menu stream's start discards the game's first fill (the known blip) and is being fixed under a test. Goal 2 stopped by its own measurement (R108): the menus' cost is the shadow swizzle and executeTransfer, not per-call overhead.
+**Goal 1 DONE, 2026-09-20** (`405b03e`..`11077e1`, R126-R138): the taxonomy, the preflight, the bare run, the LAST RUN sentence, the diagnostics zip; gate 3/3 `s9_g1_gate`; Linux proven in the VM (the 8 exit-code cases, the zip with no display, a bare run). Three owner checks filed. next ruling: R140 (R139 is the crouch shortcut's). Next: Goal 2, the release build.
 
-**2026-09-19 (evening) addition (owner) — Goal 12, the hosted server, on a machine that exists.** "Lightsail 2GB. Setup a sprint to create the machine and bring the server online, making the required linux changes." Sprint 7's Goals 4-5, carried twice for want of a machine: one AWS Lightsail box (Ubuntu 24.04, 2 GB, us-east-2, a static IP; ~$12/month out of the owner's $78.46 free-plan credit, expiry 2027-03-05), `server/linux/` (systemd units, `horizon-ctl.sh` with the six-field advertised-address rewrite, `install.sh`), the launcher's *SOCOM Unzipped* preset real and the default, and a driven match against it (bar: the round starts; hope: a kill). Spec: Goal 12 in the Sprint 8 design. Plan: `docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md`. Run by session socom-pc-88 beside this one: it owns `server/`, the plan and the box; the preset's one line and the two online rounds go through this session (its launcher files, its lock and held builders). The box's door is git-ignored under `vm/lightsail/` (README there; memory note `lightsail-socom-unzipped-server`).
+**2026-09-20 addition (owner, relayed by the hosted-server session socom-pc-88): Sprint 9 Goal 8** -- a bug report section in the launcher that uses the site's own endpoints (`s2u.scotho.com/api/bugs`, `/api/stats`) and reports the same way, plus the server's status on the ONLINE page. Nothing is sent until SEND; the log attachment is off by default and goes through Goal 1's scrub. Spec section added; built after Goal 2 closes and once the POST endpoint is reported live.
 
-**Goal 12 DONE, 2026-09-19 (night).** The hosted server is up at 3.143.65.100 and was played on: the launcher lists it as the default preset (`aa2b7f4`, `logs/parity/launcher_ui/online_1100x700.png`), a control round ran to its clock (`s8_hosted_control2`) and the ladder took two kills in four rounds (`s8_hosted_kill`), two instances behind one NAT, harness `829e65b` with the first-time-login path the hosted server made necessary (personas are saved per server address). `server/linux/` is the Linux glue (`9bf44a9`, `f77a63f`: needrestart must not restart the units). Results and rulings R109-R111 in the plan. The owner's: their own match from the launcher, the domain-name decision, the credit re-read.
+**2026-09-20 addition (owner) — Sprint 9 Goal 10: the music, fixed where it breaks for everyone.** A play session on the first mission: "the music sounded like it was getting louder and quieter and jumping between different tracks... glitched between different samples", also between menus and once on first entering an online lobby; voice and effects fine. The owner asked for research before a patch, and for a fix that holds universally rather than per segment. Researched: everything already fixed is listed in the spec (the title path's three sceMpeg faults, R97's ring interlock, the two slot leaks and the `sceSifInitRpc` reset, and `54d77a2`'s AutoVol ramp and first-fill) and **no audio file has changed since**. What none of it explains: every measurement this project has made is the fidelity of ONE cue in isolation or ONE stream against a reference -- **nothing has ever compared what the game asked for with what was mixed**, and the four candidates all live in that blind spot: two live cues summing through an unclamped master group 16, `pcmStreamStart` after Stop-without-Open replaying old blocks (`KNOWN.md:110(e)`, filed as a consequence of the last fix), the AutoVol ramp's shape (linear, its fourth argument recorded unverified), and cue selection itself. **Then the code sweep found it, and it is two bugs that explain both halves of the sentence together.** (1) `parentHandle` means QUEUE (`research/06-989snd-rpc.md:142`); `playVagStream` reuses the parent's slot and keeps its handle (`snd989.cpp:1555-1587`), and the mixer treats a play on a live handle as a replacement (`snd989_mixer.cpp:1378-1386`) -- so the moment the adaptive score queues the next segment, the playing one is cut dead mid-sample. (2) `Mixer::stop` and `setVolPan` clear a handle's AutoVol ramp; **`playStream` does not** (`:1378-1386` against `:1045`, `:1090-1091`), so the next cue arrives on the same handle and inherits a ramp already part-way to zero -- it starts quiet and keeps fading, with no single cue misbehaving, which is why the per-cue fidelity measurement passed. Two more, which is what makes the fix universal: the stream decoder cannot loop (ends on any bit-0 flag, `:447-451`, while the bank decoder gets it right, `ps2_audio_vag.cpp:166-169`) -- that is the menu and lobby half; and nothing caps concurrency while the sum hard-clips (`snd_SetGroupVoiceRange` recorded and dropped, `snd989.cpp:1003-1013`). Method: one discriminating trace first (`parent`, `reused`, and the ramp in force when a live stream is replaced), then the two ~10-line fixes, then the instrument -- an envelope score and a splice detector in `audio_corr` plus the mixer event trace -- so this cannot return unseen. Bar includes the per-stage sound regression fixture the audio residuals have wanted since Sprint 8. Spec: Goal 10. This also answers the open HUMAN_TASKS item "Mission music after the fade fix" -- negatively.
 
-**Goal 2b DONE, 2026-09-19 (`9626327`, R117-R125).** The menus' cost at its root: consumer-side texture revalidation by content hash. Login `transfer=` 121.9 -> 46.1 ms/s, lobby 410.8 -> 91.9 ms/s and decodes to zero, lobby fps +4.8; under a four-core load the login screen holds 58-60 fps, `bp_pending` <= 2, no waiter, no underrun (`s8_menu_bar2`). The 60 ms/s proxy is let go by R125. Gate 3/3 `s8_texreval_gate`.
+**2026-09-20 addition (owner) — Sprint 9 Goal 9: the launcher finished, and the game window that follows it.** From living with the redesign, with a screenshot. Leading it is a defect, not a want: **while the game runs, the pad drives both windows** -- the launcher must take no pad input (and no focus) while `App::running`, and the XBOX/PLAYSTATION guide button should toggle between the two (a measurement per platform before it is a promise). Then: live server stats on the ONLINE page (Goal 8's `/api/stats` line, pointed at the site session's SERVER STATS work in `../scotho` -- one reader, not two); a switch for the debugger (today compile-time, `PS2X_ENABLE_DEBUG_UI`, so it needs a decision before a checkbox); the game client's window styled like the launcher, with a header button that focuses options; two alignment defects from the screenshot (UNZIPPED sits lower than SOCOM II -- baselines, `main.cpp:443-446`; "RUNNING" sits higher than its yellow lamp, `main.cpp:463-467`), both to be asserted in the top-bar tests rather than eyeballed; tooltips where the launcher is unclear ("what is a profile?") and the open question of a profile viewer; and "Second instance" moved into an ADVANCED section, which does not exist yet and so gets created. Two more the same day: a one-frame graphical flash near the top left when the page changes (suspect: `rectOf()` returns the origin for an id the new page does not have, `ui/focus.cpp:211-217`), and sound effects for focus movement and selection taken from the game's own HUDUI bank -- decoded from the player's own ISO on first run and cached, never baked into the download, because the project ships no game assets. The debugger question is answered and done: it was not a missing checkbox but `m_visible = true`, so the Runtime Debugger opened over the game on every launch (`d9ff7cc`); what is left is whether the release build should carry imgui at all. **Also 2026-09-20: the mouse goes, the keyboard stays.** Every mouse option leaves the launcher (the CONTROLLER page's two widgets, their focus nodes, the two config fields, their JSON, and `PS2X_SOCOM2_MOUSE`/`_SENS`); the keyboard is permanent but for menu navigation and typing only -- **with one thing the owner should know before it is coded: the driven runs that produce every gate, ladder and control-round result play the game by posting the keyboard's gameplay mapping** (`socom2_host_input.cpp:304-414`), so the narrowing keeps that mapping as the harness's scripted path (a ruling) rather than removing the instrument the project measures itself with. Relayed onward, not ours: the site session (`../scotho`, `sites/s2u`) is to drop the keyboard/mouse support claim from s2u.scotho.com. Spec: Goal 9 in the Sprint 9 design.
 
-**Goal 3 (voice) as far as it goes this sprint:** the microphone reaches the game's headset module, the game opens it in a match, the format is honoured (`01b7033`, `cc79c68`). Talk is not a pad button: four peek rounds, both talk routes, all sixteen bits (`s8_voice_round4`). The headset's own button report is carried to Sprint 9; the two-machine "can you hear me" stays the owner's.
-
-**Goal 1 DONE, 2026-09-19** (the autonomous half; the owner's real-GPU run is the rest): CI green end to end on ubuntu-24.04 (compile, Python 1201, C++ 558 in the VM / 554+ on the runner); the VM builds the 224 MB runner, boots the disc under X on Mesa GL 4.1 with the same frame as Windows (0.008, bar 3), passes the gate's driven title stage at Windows' 19/23 (3 of 4 runs; marginal at llvmpipe's 1.6 fps), and the launcher starts the game from the unpacked 109 MB tarball with Windows' first log lines; AddressSanitizer clean at 554 after the mixer's double free it exposed was fixed on both platforms; a whole-branch review's eleven findings fixed under tests (the lock-free crash table, EINTR-restarting waits, a transitive RPATH, driver libraries left to the host, the launcher reaping a live child), Windows gate 3/3 `s8_review_gate`, commit b025c48. Not measurable in the VM and moved to the owner's run by R107: the audio correlation and any frame-rate bar. Rulings R99-R107. Earlier status, 2026-09-18 15:20: the Linux CI job is green end to end (35352725720: the whole tree compiles on
-ubuntu-24.04, Python 1205 OK, C++ 554/554). In the VM: the runner built (224 MB), the game boots under X on Mesa GL 4.1
-with the probe passing, its exported boot frame matches the Windows export at 0.008 (bar 3), the C++ suite runs to its
-end under AddressSanitizer at 554/554 after the double free it caught was fixed (a real bug on Windows too), the
-tarball unpacks and self-tests from a fresh directory with every library resolved from its own lib/. Left: the gate's
-title stage inside the VM (Task 10, the audio bar with it by R106), the launcher's real run from the tarball with Launch
-pressed (Task 11), the close-out (Task 12). The owner's real-Linux or Steam Deck run is the one hands-on item.
-
-**Goal 1, the client on Linux** (owner 2026-09-18: "add linux support to the installer/launcher"; "feel free to add a
-linux machine" to VirtualBox). Read as the whole client -- launcher and runtime -- as a portable tarball, since there is
-no installer on Windows yet either. Verification in three rings: GitHub Actions on ubuntu-24.04 for the library, tests
-and launcher (no generated code there); the VirtualBox VM `socom-linux` (Ubuntu 24.04.5 server, 8 cores, 8 GB, SSH on
-the host's 2222, created and installed unattended 2026-09-18 11:30-12:00) for the full build and the game under X; the
-owner's Linux PC or Steam Deck for the tarball. Goals 2-8 as drafted below, after Goal 1.
-
-## 2026-09-18 (morning) — Sprint 7 CLOSED and merged (`d270022` on develop and main); Sprint 8 next
-
-branch: sprint-7, 32 commits on develop at `8f57cbd`, merged `d270022` after the review fixes (41467b7: suite 549, gate 3/3 `s7_final_gate`)
-spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (Goal 8 added 2026-09-18)
-plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md (134+ boxes ticked; the open ones carry a reason or a STOP)
-human tasks: docs/HUMAN_TASKS.md -- six open: the title/intro listen, free play, the launcher with the pad and its pick,
-the microphone meter, the sound re-listen, the two server addresses; plus the second machine for Goal 5
-
-**What landed (all under RED tests; suite 540 x3, Python 1172, vu1_replay PASS, gate 3/3 `s7_closeout_gate`):**
-Goal 1, the stranger's machine: the GL probe with the CPU fallback and exit 65; the native-VU1 warning; the bounded command
-queue on a latched stall (drag +38 MB, cap never engaged); DPI and the 2x launcher default (2x = 1x scaled, 0.83); audio
-I/O off the callback (title loop 1.000). Goal 2: the strict time slice (13 driven control rounds clean); the same-key round
-plays; the CD cursor fix; the lobby rate 6/10 -> 10/10 once the injected press was latched (the misses were the login
-screen at 12-30 fps under GL back-pressure, KNOWN §2); no 3-17 s freeze quiet or loaded, with research/29's fields on the
-sampler line. Goal 3 stopped by its own trace (R96): the page-marking hypothesis is refuted, gameplay uploads ~10k/s, the
-menus 80-133 ms/s -- Sprint 8's first item. Goals 4 and 5, the autonomous halves (the server zip, the two-machine readout).
-Goal 8 (owner, 2026-09-18): controller and microphone selection, the FPS overlay, 4x / Match display / volume. Task 12
-(owner's sound reports): VAG slots freed on stop and on a stream's own end, the PCM ring's once-per-fill policy (R97),
-sceSifInitRpc no longer wiping the IOP model, the CD read-position rule; mission log 0 unknown-bank rejects (was 971) and
-1 slot exhaustion (was 237). The whole-branch review's five must-fix findings (the IOP reset moved to the reboot stubs,
-the stream reaper's parent and unknown-handle cases, Match display 0x0, the launcher taller than a laptop screen) are the
-last commits before the merge.
-
-**Not done, by design or by the owner's gate:** the ladder on the strict-slice exe (Sprint 9's ground); the same-key
-harness helper (a logs/ script did it); the hosted server and its addresses, the second machine, the six hands-on checks.
-
-## 2026-09-17 (late) — Sprint 6 CLOSED and merged (`8f57cbd` on develop and main); Sprint 7 OPEN
-
-branch: sprint-7 (off develop at `8f57cbd`)
-spec: docs/superpowers/specs/2026-09-17-sprint-7-two-strangers-two-machines-design.md (owner review pending; Goal N = Task N)
-plan: docs/superpowers/plans/2026-09-17-sprint-7-two-strangers-two-machines.md
-audit: docs/AUDIT-2026-09-17.md
-human tasks: docs/HUMAN_TASKS.md (four open: the title/intro listen, free play, the launcher with the pad, the two
-server addresses; plus a second machine for Goal 5)
-
-**Sprint 6's close-out is done**: the plan reconciled with the audit's ledger (43 of 55 boxes ticked; the 12 open are
-carried by Sprint 7 or Sprint 8), rulings R81–R90, the KNOWN audit, STATUS's current state, ROADMAP §6 marked,
-`PS2X_TEST_REPEAT=3 ./build.sh test` 503/503 three times, gate 3/3 (`s6_fixwave_gate`), merged and pushed.
-
-**2026-09-18 additions (owner):** Goal 8 (plan Tasks 8-11: controller and microphone selection, FPS overlay, detail/resolution) and Task 12 (the owner's three sound reports: online-menu splice and buzz, the mission going silent). Order from here: the Goal 8 commits (the overlay's title launch is their gate), the ten-round lobby re-run on the latched press (Task 2f), then Task 12, then close-out. Task 3 stopped by its own trace (R96); the menus' upload cost goes to Sprint 8.
-
-**Sprint 7's order (the spec's Goals 1–7):** (1) the stranger's machine, defensively — GL probe and CPU fallback,
-the bounded command queue, the DPI flag and 2x default, the native-VU1 warning, audio I/O off the callback; (2) online
-correctness before scale — the equal-priority time slice removed, a same-key control round, the CD stream cursor, the
-ten-launch lobby rate, freeze shape 2; (3) the 21k decodes settled and fixed; (4) the hosted server (**owner**: the
-machine and the two addresses); (5) the first two-machine match (**owner**: a second machine); (6) the owner's checks;
-(7) close-out. The loop does not wait on (4)–(6): it works (1)–(3) and files what it cannot verify in HUMAN_TASKS.
-
-## 2026-09-17 (audit) — Sprint 6 closing: the order for the rest of it, and Sprints 7–9 drafted (superseded above; kept for the record)
-
-branch: sprint-6
-spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md
-plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md (its checkboxes are being
-reconciled with the audit's §3 ledger in the close-out; until then §3 is the truth)
-audit: docs/AUDIT-2026-09-17.md
-human tasks: docs/HUMAN_TASKS.md (the owner's hands-on checks and the two facts only the owner has: the community
-server's address and ours)
-
-**Where Sprint 6 stands (audit §3).** Done: Tasks 0, 1, 5a/5b, 6b, 6c (bar the listen), 8, 8b (bar the pad test), and
-the audit's fix wave (the ISO handoff, hostname resolution, the server's `-PublicIp`, the harness `env.sh`, the launcher's
-server picker). Partial: Task 2 (the ten-launch lobby rate never measured), Task 3 (freeze shape 2 unrooted), Task 4
-(met in practice, the strict two-scorer bar unrecorded), Task 7 (tooling in, leg 1 had no joiner). Not started: Task 6,
-Task 9. ROADMAP §6's items 10–12 were never carried into the plan and stay dropped.
-
-**Standing rules (superseding the older blocks below where they differ).** The owner's "proceed autonomously" (2026-09-17)
-replaces the host-window rule: builds, gates and launches run whenever the host is free, one launch at a time, through
-`scripts/run_detached.sh` under the loop lock, with `build.sh test` and suites held while a launch runs. Commits with
-explicit pathspecs, never `git add -A`; `server/config/simulated.db` never staged; `ONBOARDING.md` untracked; the
-Co-Authored-By trailer; a failing test first for every runtime change; `build.sh test` and the 3-stage gate before a
-commit that touches the runtime, the recomp or the parity tools. Bounded mechanical work goes to Opus subagents with an
-exact brief and a verification command; judgment stays here (owner, 2026-09-17). What only the owner can verify goes to
-`docs/HUMAN_TASKS.md` and the loop moves on. Every moved default and every skipped measurement gets a numbered ruling
-(R81 onward) in the plan's "Rulings made on the owner's behalf".
-
-**Next, in order (the rest of Sprint 6 = its close-out, then Sprint 7 opens):**
-1. Commit the fix wave (all suites green over the merged tree; gate on the rebuilt exe first, since the runtime changed).
-2. Close Sprint 6 honestly (Task 9): reconcile the plan's checkboxes with audit §3; the KNOWN audit (audit §4: the `0x34`
-   row, the frozen-exe row, the excluded-waits row, the repeatability row, the lobby rows, the motion-pack row, the
-   header line); rulings R81+ for the unrecorded decisions (audit §4's list); STATUS's current-state block rewritten;
-   ROADMAP §6 marked; `PS2X_TEST_REPEAT=3 ./build.sh test` and a full gate; merge `sprint-6` into `develop` and `main`;
-   the ledger archived.
-3. Open Sprint 7 (below): its spec and plan drafted from the audit, the plan's first tasks being the stranger's-machine
-   defences and the online-correctness items that need no owner.
-
-## Sprint 7 — "Two strangers, two machines, one hosted server" (drafted 2026-09-17, audit §6)
-
-A friend on another PC joins a round on a Horizon instance the project hosts, both from the portable zip. Ends in
-something a stranger notices: they got into a lobby from the zip, against a server with a name.
-
-1. **The stranger's machine, defensively** (autonomous): the GL capability probe with a CPU-backend fallback and a visible
-   error (audit §2.2 F2); a bound on the pending command queue when the back-pressure latch trips (F3); the HIGHDPI flag
-   and a launcher default of 2x (F8); the native-VU1 mismatch warning (F7); the ISO handoff already in.
-2. **Online correctness before scale** (autonomous): the equal-priority time slice removed under a test (audit §2.3, the
-   scheduler finding: settle it before shipping online); a same-RSA-key control round or a per-profile key; the CD stream
-   cursor fix; Task 2 Step 4's ten-launch lobby rate; Task 3's shape-2 freeze A/B.
-3. **The 21k decodes** (autonomous): settle the page-marking hypothesis with `PS2X_GS_TRACE_PAGES`, fix the marking
-   granularity, add the decodes-per-present budget to the console-replay GL test; then the ladder's RUNG0 bar passes.
-4. **The hosted server** (**owner** for the machine and the two addresses; autonomous for the rest): a machine, a public
-   address or name, the router's forwards per `server/README.md`, `start-servers.ps1 -PublicIp`, the picker's two
-   placeholders replaced, the launcher default switched to SOCOM Unzipped, `server/` packaged as a zip.
-5. **The first two-machine match** (**owner** hands-on with a second machine; scripts and readout autonomous): both
-   directions of hosting, from the portable zip, over the internet; NAT and clock-skew findings to KNOWN §1 or §2.
-6. **The HUMAN_TASKS items reported** (**owner**).
-
-## Sprint 8 — "It looks and sounds finished, and it does not scare the machine" (drafted 2026-09-17; revised 2026-09-18 after Sprint 7)
-
-What Sprint 7 handed over, in the order the goal sentence wants it:
-
-1. **The menus' render cost, at the root.** The login and lobby screens upload 7-11k 1 KB tiles a second at 80-133 ms/s of
-   render time (four to six times gameplay's 20-28 ms/s), which is what drops the login screen to 12-30 fps under GL
-   back-pressure on this machine (KNOWN §2), what put the menu music's fill late (the buzz the owner heard; the ring now
-   silences instead of looping, R97), and what made the driven presses miss (latched, 6b7a2b3). Trace the login screen's own
-   pages, break the upload cost down per call, batch the tiles. Bar: the login screen at 60 fps with a spinning four-core
-   load AND `bp_pending` under 2; `pcm_underruns` stays 0. Autonomous.
-2. **Voice: serve the headset.** Task 9c's spike (KNOWN §2): the game binds 'BLIP', calls lgAudInit, then polls Enumerate and
-   EnumHint against our "no device" answer and nothing else. Answer Enumerate with one device when `PS2X_MIC_DEVICE` is set,
-   let Open succeed, serve GetAvailableRecordingBytes/Read from HostMic's ring; a WAV of what the game read as the proof;
-   then the owner's two-machine "can you hear me". Autonomous up to the two-machine check.
-3. **Audio residuals.** The one remaining slot exhaustion when six long-lived streams overlap (are two of them meant to end?
-   the mixer said they were playing for a whole mission); the stream-start underfill; the aside-cap parity fix and the
-   scratch leak; a per-stage sound regression fixture (the repeat detector and the correlation, on every gate dump).
-   Autonomous; owner listen.
-4. **Window policy** beyond Sprint 7's selectors: fullscreen at desktop resolution scored by the gate; render targets sized
-   from use are in (Task 1c). Autonomous; **owner** picks the default.
-5. **Bare-run robustness:** `socom2.exe` with no argument reads `config.json`; an exit-code taxonomy the launcher shows (65
-   is the first); the diagnostics zip; `SHA256SUMS`; a release build (`-Os`/LTO, stripped, harness DLLs dropped, under 100
-   MB). Autonomous; signing is **owner** money and identity.
-6. **Knob retirement pass 2** (about 90 `PS2X_*` now) into a config file plus `--dev`; the stub-state header into a `.cpp`;
-   the invocation stack pool. Autonomous.
-7. Task 5c verified against the loading screen; the VU0 flag latency; the readback PBO ring. Autonomous.
-8. An installer (Inno, outline §6) if wanted. **Owner** decision.
-
-Carried from Sprint 7 unchanged because they are the owner's: the hosted server and its two addresses (Task 4), the first
-two-machine match (Task 5), the hands-on checks in `docs/HUMAN_TASKS.md` (now six: the title/intro listen, free play, the
-launcher with the pad and its pick, the microphone meter, the sound re-listen, the two addresses).
-
-## Sprint 9 — "Console players in the same lobby, and it stays up" (drafted 2026-09-17)
-
-1. Task 7 both directions with screen-verified PCSX2 steps. Autonomous.
-2. A nightly job: N consecutive ladder passes and the lobby rate tracked and published. Autonomous; **owner** names the machine.
-3. Per-map kill routes for the sweep maps; the two-instance speed freeze lifted. Autonomous.
-4. Task 6's math oracles and HLE leg 3 as filler. Autonomous.
-5. Stats and clans across restarts (a real DB) if wanted; the public README and the legal-position text. **Owner** decisions.
+**2026-09-20 additions (owner).** (1) *The server's name is `socom.scotho.com`* -- Sprint 9 Goal 7: the owner creates the A record (HUMAN_TASKS; **corrected 2026-09-20: the zone is on Cloudflare, not Namecheap, and the record must be DNS-only**); then measure whether the game keys saved personas on the name or on the resolved address (one driven login by name against a card that holds a by-address persona), switch the launcher's preset and the server's DNS answers to the name, and keep the raw address as a fallback preset entry only if the measurement says personas survive. (2) *The sprint stack:* Sprint 9 (this), Sprint 10 "Console players in the same lobby, and it stays up" (the 2026-09-17 draft below, less what Sprint 9 Goal 5 takes), and last **Sprint 11 "Release hardening"** -- the repository cleaned for a public release, the project and the agentic loop explained, the s2u.scotho.com landing page revised and a full build tested from a fresh install, foolproof install instructions and FAQs, every licence and accreditation in git. Spec (drafted, not opened): docs/superpowers/specs/2026-09-20-sprint-11-release-hardening-design.md.
 
 ---
 
-*The dated blocks below are the record of how Sprint 6 was opened and run; where they state rules or "next" lists, the
-block above supersedes them.*
-
-## 2026-09-15 (evening) — Sprint 6 Task 0 done, Task 1 wired, Tasks 2–3 advanced lock-free
-
-Everything Task 0 owed is on `develop` (`a81eb74` the block-pointer fix; `f6a4434` the depth fix; `326c9c9` the ifpopup
-step; `34ed2ac` the gate wiring; `78a81d1` lobby verify-then-act; research/28 and /29). The gate PASSed 3/3 on the
-block-pointer exe (`s6_blockptr`, sha `1cfef9af028a90fc…`) **with the mission-failure detector active** — the turn
-teleport no longer ends the mission. The runtime freeze at `92d30f0` is over: **the ladder exe is now `a81eb74`'s**, and
-the first online result on it must be recorded against that sha.
-
-branch: sprint-6 (created 2026-09-15 evening off develop at `20db94b`; Task 0 and the lock-free Task 1-4 work went to develop first)
-spec: docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md (owner review pending)
-plan: docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md
-ledger: .superpowers/sdd/2026-09-15-sprint-6-correctness-gate-and-online-reliability/progress.md (create on first dispatch)
-
-**Owner's order, 2026-09-16 (after playing the build with a controller):** (1) the water shards and the occasional
-flat-grey hill patch in Seeding Chaos (believed the same defect: geometry drawn untextured) — Task 5a; (2) the untested
-online maps, control rounds without a kill requirement — Task 6b; (3) misc hardening; (4) audio — Task 6c (nothing
-SOCOM plays reaches the host backend); (5) the launcher: an r0001 ISO pointer, a pre-launch detail-quality choice, a
-visible controller test area, other easy settings (packaging outline §3); (6) the rest of the sprint work in the
-controller's order. Gamepad support landed in the SOCOM input path the same day (uncommitted until its gate).
-
-**Next, in order (2026-09-17 afternoon):** the owner's order is done through item 5 — Task 5a water/terrain (research/31), Task 6b the twenty-map sweep (research/33, 19 of 20 play), the guest clock fix and the audio path (research/32: bank sounds, streams, the PCM title music), the launcher first cut (Task 8b, `770d5fb`). The title music is clean (research/32 §7.1, evening: three sceMpeg HLE faults fixed under tests). Now: (1) a ladder launch on the current exe for the 2-of-2 online kill bar (`s6_ladder12`, done: 3 kills in 4 rounds); (2) the owner's hands-on tests — in `docs/HUMAN_TASKS.md` (the title/intro listen, free play, the launcher with the Xbox pad; Task 6c Step 4, Task 8b Step 4), done in parallel; (3) Task 8 harness items -- done; Foxhunt and the PCM ring settled; (3b) Task 8b Step 5 done (`scripts/make_portable.sh`); (4) Task 7 mixed match; (5) the portable folder (Task 8b Step 5).
-
-## 2026-09-15 — Sprint 6 drafted; lock-bound work queued for an owner window (superseded above; kept for the record)
-
-**Sprint 6 is drafted, not opened**: spec `docs/superpowers/specs/2026-09-15-sprint-6-correctness-gate-and-online-reliability-design.md`
-and plan `docs/superpowers/plans/2026-09-15-sprint-6-correctness-gate-and-online-reliability.md` (owner review pending;
-Tasks 0–1 are owner-agreed items). Branch `sprint-6` is created only after Task 0's two fix branches merge.
-A packaging/launcher/installer outline is at `docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md`.
-
-**Rule since 2026-09-15: builds, gates and launches only in a host window the owner names** (they lag the owner's
-machine; a contended mission gate's frame file went stale 176 s). Lock-free work continues in between.
-
-State of the working tree on `fix/gl-depth-precision` (nothing committed):
-- Depth fix: `./build.sh test` green (Python 845 OK, ps2x_tests 454/454, vram-diff 15/15); title PASS `s6_depth`,
-  transition PASS `s6_depth_r2`; mission FAIL `s6_depth_m2` on the HELP pop-up class only (6/6 gameplay-band holds,
-  diffs 0.00–0.05, `s30_holdW.png` shows "PRESS X TO CONTINUE").
-- `ifpopup` gate step: `tools_py/parity/drive.py` `popup_present()` + `ifpopup+<delay>:BTN` (test-first,
-  `tools_py/tests/test_drive_popup.py` 5/5), one before each of the six holds in `scripts/parity/gameplay_probe.txt`.
-  Mission rerun `s6_depth_m3` was killed at the owner's request (host contention) — **one mission gate is owed**.
-- README carries the `PS2X_GS_DEPTH_LEGACY` entry (commits with the depth fix).
-
-**Queued for the next window, in order** (plan Task 0; each command is in the plan):
-1. `gate --only mission --stamp s6_depth_m4` on the current exe → commit the depth fix and the ifpopup step, push, ff-merge to develop.
-2. Branch `fix/gs-block-pointer`; paste the seven-region test (plan Task 0b Step 2); build `ps2x_tests` → RED; the
-   two-line fix in `GS.cpp`; `./build.sh runtime && ./build.sh test && gate --stamp s6_blockptr`; motion_pack_check 48 → 0.
-3. Open `sprint-6` and start Task 1 (lock-free scorers first).
-
-## Paused 2026-09-14 (owner) — open threads after Sprint 5 merged (superseded above; kept for the record)
-
-Sprint 5 is merged (develop = main = 2ae4d79). Work paused mid-investigation of two Seeding Chaos defects the owner
-spotted in gate frames. Both are written up and both have a named cause; neither fix has landed.
-
-- **Branch `fix/gl-depth-precision`** (not merged): the GL depth-precision fix for the grey water shards, plus the
-  docs commits made while it was checked out (`6e41064` pipeline blind spot + ROADMAP §6 additions, `b09227f` and this
-  KNOWN entry, research/25 and /26). Its build/test/gate run was in flight at the pause — check
-  `logs/parity/gate/s6_depth*` and the branch's last commit before trusting anything.
-- **Not started: the GS block-pointer fix** (research/25 §9) — the ×8 in `sceGsExecLoadImage`/`StoreImage`, which
-  corrupts 48 animation clips and causes the single-player turn teleport. Its independent verification was in flight.
-  It needs its own branch off develop, a seven-region round-trip test, and a full gate for blast radius.
-- **ROADMAP §6 item 5** gained two owner-agreed additions: a console-vs-ours gameplay image comparison, and a
-  mission-failure screen failing the gate's mission stage.
-
-To resume: read `docs/KNOWN.md` §2's two new rows and research/25 §7–§9 and /26, then finish the verification and the
-two fixes in that order.
+*Sprint 8 and earlier: `docs/archive/CURRENT_SPRINT-to-sprint-8.md` (the record, unedited; nothing in it is an instruction).*

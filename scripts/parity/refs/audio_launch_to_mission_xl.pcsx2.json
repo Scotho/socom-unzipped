@@ -1,0 +1,395 @@
+{
+ "meta": {
+  "rate": 44100,
+  "script": "launch_to_mission_xl.txt",
+  "target": "pcsx2",
+  "wav": "logs/parity/pcsx2_mission_audio_ref/pcsx2_mission_loopback.wav",
+  "windows": 48
+ },
+ "scores": {
+  "s00": {
+   "holes": 0,
+   "osc": 1.17,
+   "rms_db": -57.22,
+   "silence_s": 29.91,
+   "silences": 4,
+   "splices": 2
+  },
+  "s01": {
+   "holes": 1,
+   "osc": 23.11,
+   "rms_db": -43.32,
+   "silence_s": 2.38,
+   "silences": 2,
+   "splices": 12
+  },
+  "s02": {
+   "holes": 3,
+   "osc": 3.02,
+   "rms_db": -28.35,
+   "silence_s": 8.31,
+   "silences": 5,
+   "splices": 28
+  },
+  "s03": {
+   "holes": 1,
+   "osc": 21.06,
+   "rms_db": -45.51,
+   "silence_s": 1.79,
+   "silences": 2,
+   "splices": 11
+  },
+  "s04": {
+   "holes": 1,
+   "osc": 2.39,
+   "rms_db": -50.81,
+   "silence_s": 5.68,
+   "silences": 3,
+   "splices": 1
+  },
+  "s05": {
+   "holes": 1,
+   "osc": 14.68,
+   "rms_db": -52.47,
+   "silence_s": 2.59,
+   "silences": 3,
+   "splices": 1
+  },
+  "s06": {
+   "holes": 0,
+   "osc": 29.37,
+   "rms_db": -25.78,
+   "silence_s": 2.06,
+   "silences": 1,
+   "splices": 0
+  },
+  "s07": {
+   "holes": 0,
+   "osc": 3.88,
+   "rms_db": -21.79,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s08": {
+   "holes": 0,
+   "osc": 5.6,
+   "rms_db": -23.97,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 4
+  },
+  "s09": {
+   "holes": 0,
+   "osc": 3.56,
+   "rms_db": -22.42,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 5
+  },
+  "s10": {
+   "holes": 0,
+   "osc": 4.0,
+   "rms_db": -22.85,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 6
+  },
+  "s11": {
+   "holes": 0,
+   "osc": 5.71,
+   "rms_db": -22.65,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s12": {
+   "holes": 0,
+   "osc": 2.27,
+   "rms_db": -21.61,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s13": {
+   "holes": 0,
+   "osc": 1.72,
+   "rms_db": -20.63,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s14": {
+   "holes": 0,
+   "osc": 1.9,
+   "rms_db": -24.67,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s15": {
+   "holes": 0,
+   "osc": 0.88,
+   "rms_db": -26.18,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s16": {
+   "holes": 0,
+   "osc": 0.25,
+   "rms_db": -25.45,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s17": {
+   "holes": 0,
+   "osc": 22.14,
+   "rms_db": -27.73,
+   "silence_s": 0.74,
+   "silences": 1,
+   "splices": 1
+  },
+  "s18": {
+   "holes": 0,
+   "osc": 5.12,
+   "rms_db": -23.9,
+   "silence_s": 20.94,
+   "silences": 1,
+   "splices": 7
+  },
+  "s19": {
+   "holes": 0,
+   "osc": 1.78,
+   "rms_db": -26.49,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 4
+  },
+  "s20": {
+   "holes": 0,
+   "osc": 2.65,
+   "rms_db": -34.42,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s21": {
+   "holes": 0,
+   "osc": 1.88,
+   "rms_db": -24.32,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s22": {
+   "holes": 0,
+   "osc": 19.35,
+   "rms_db": -24.05,
+   "silence_s": 1.18,
+   "silences": 1,
+   "splices": 11
+  },
+  "s23": {
+   "holes": 0,
+   "osc": 8.18,
+   "rms_db": -20.74,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 3
+  },
+  "s24": {
+   "holes": 0,
+   "osc": 4.47,
+   "rms_db": -22.11,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 3
+  },
+  "s25": {
+   "holes": 0,
+   "osc": 4.22,
+   "rms_db": -25.8,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 4
+  },
+  "s26": {
+   "holes": 0,
+   "osc": 5.65,
+   "rms_db": -23.05,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 5
+  },
+  "s27": {
+   "holes": 0,
+   "osc": 1.42,
+   "rms_db": -28.55,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s28": {
+   "holes": 0,
+   "osc": 1.37,
+   "rms_db": -27.37,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s29": {
+   "holes": 0,
+   "osc": 3.25,
+   "rms_db": -23.19,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s30": {
+   "holes": 0,
+   "osc": 3.92,
+   "rms_db": -21.64,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s31": {
+   "holes": 0,
+   "osc": 4.63,
+   "rms_db": -23.69,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 3
+  },
+  "s32": {
+   "holes": 0,
+   "osc": 0.98,
+   "rms_db": -35.33,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s33": {
+   "holes": 0,
+   "osc": 0.38,
+   "rms_db": -38.63,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s34": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -40.38,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s35": {
+   "holes": 0,
+   "osc": 0.35,
+   "rms_db": -38.49,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s36": {
+   "holes": 0,
+   "osc": 0.29,
+   "rms_db": -38.74,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s37": {
+   "holes": 0,
+   "osc": 0.46,
+   "rms_db": -41.15,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s38": {
+   "holes": 0,
+   "osc": 0.41,
+   "rms_db": -38.8,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s39": {
+   "holes": 0,
+   "osc": 0.38,
+   "rms_db": -38.11,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s40": {
+   "holes": 0,
+   "osc": 0.34,
+   "rms_db": -40.26,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s41": {
+   "holes": 0,
+   "osc": 0.37,
+   "rms_db": -38.95,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s42": {
+   "holes": 0,
+   "osc": 0.4,
+   "rms_db": -38.28,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s43": {
+   "holes": 0,
+   "osc": 0.48,
+   "rms_db": -41.01,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s44": {
+   "holes": 0,
+   "osc": 0.29,
+   "rms_db": -39.51,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s45": {
+   "holes": 0,
+   "osc": 0.35,
+   "rms_db": -37.91,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s46": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -39.91,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s47": {
+   "holes": 0,
+   "osc": 0.32,
+   "rms_db": -40.48,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  }
+ }
+}

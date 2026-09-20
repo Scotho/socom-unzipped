@@ -13,6 +13,9 @@ __pycache__/
 /third_party/ps2recomp/build*/
 *.log
 /dist/
+/dist-release/
+/dist-linux/
+/dist-linux-release/
 /logs/
 /server/horizon-server-database-middleware/
 /server/horizon-docker/
@@ -23,3 +26,25 @@ __pycache__/
 /server/config/simulated.db
 imgui.ini
 vm/
+# a local Claude skill that names a host and an SSH key (owner 2026-09-19)
+/.claude/skills/s2u-bug-reports/
+# 2026-09-20 (controller handoff): what showed as untracked on every `git status` and must never be committed.
+# ps2x_tests writes these into whatever directory it is run from (Sprint 11 Goal 0 moves them to a temp dir).
+/ps2x_test_stream_queue.bin
+/socom2_audio_stream_end_image.bin
+/socom2_mic_*.wav
+/third_party/ps2recomp/ps2x_test_stream_queue.bin
+/third_party/ps2recomp/socom2_audio_stream_end_image.bin
+/third_party/ps2recomp/socom2_mic_*.wav
+# stray card folders a run from the repo root leaves behind; the live cards are under game/disc/ and cards/
+/mc0/
+/mc1/
+/third_party/ps2recomp/mc0/
+/third_party/ps2recomp/mc1/
+# pytest is not used here (tools_py/tests/test_test_hygiene.py); its cache is debris
+.pytest_cache/
+# a generic onboarding template, the owner's, never the project's
+/ONBOARDING.md
+
+# Sprint 9 Q0: the audio tests write their VPK fixtures to the working directory
+/socom2_audio_*.vpk

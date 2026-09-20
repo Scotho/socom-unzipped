@@ -1,0 +1,6 @@
+# Every change is reviewed by the owner. Agent sessions commit under the owner's account and are not code owners.
+*           @Scotho
+
+# The hosted server and its Linux glue are run by a separate session; changes there need the owner either way.
+/server/    @Scotho
+/.github/   @Scotho

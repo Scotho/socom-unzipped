@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -27,11 +28,32 @@ namespace snd989
     // `note`/`fine` against a tone's center note; a non-negative center note is a PS1 (44.1 kHz) sample.
     uint16_t note2Pitch(int8_t centerNote, int8_t centerFine, int note, int fine);
 
+    // Sprint 9 Q0 (2026-09-20): a stream's life on the mixer's OUTPUT-FRAME clock -- the clock PS2X_AUDIO_DUMP's
+    // WAV is written on, so `frame` is a WAV offset. The mission's music is ~4 s stems the game chains by polling
+    // snd_SoundIsStillPlaying, and nothing had ever stamped where one ended and the next began, nor counted a
+    // stream that starved (an empty ring played silence and said nothing). Start: the frames rendered before the
+    // stream was pushed. Done: the render call in which its data ran out. Underrun: a render call that found the
+    // ring empty with data still to come; `detail` is the frames of silence that call produced for the stream.
+    struct StreamEvent
+    {
+        enum Kind { Start, Done, Underrun };
+        Kind kind = Start;
+        uint32_t handle = 0;
+        uint64_t frame = 0;
+        uint64_t detail = 0;
+    };
+
     class Mixer
     {
     public:
         Mixer();
         ~Mixer();
+
+        // The output-frame clock: the sum of every `frames` render() has been asked for.
+        uint64_t renderedFrames() const;
+        // Where StreamEvents go (in addition to the [audio] stderr line each one prints). Called from inside
+        // render() and playStream(), under the mixer's lock: keep the sink cheap and never call the mixer from it.
+        void setStreamEventSink(std::function<void(const StreamEvent &)> sink);
 
         // The bank's block chunk and VAG chunk, as read from the disc. Replaces an earlier bank with the handle.
         bool loadBank(uint32_t handle, const uint8_t *block, size_t blockBytes, const uint8_t *vag, size_t vagBytes);
@@ -61,10 +83,23 @@ namespace snd989
         void autoVol(uint32_t handle, int32_t vol, int32_t ticks, int32_t how);
         void setMasterVolume(uint32_t group, int32_t vol);           // 0..0x400; group 16 = every group
         void stopAll();
+        // Sprint 9 Q0: snd_SetGlobalReg(index 1..32, value) -- the byte a grain reads as register -index (the M51
+        // ambience conductor's TEST_REGISTER -2 reads what the game sets with index 2 every frame).
+        void setGlobalReg(uint32_t index, int32_t value);
+        int32_t globalReg(uint32_t index) const;
+        // The child sounds a conductor's START_CHILD_SOUND grains have running under `handle`, and the sound index
+        // of the `index`-th of them (0xFFFFFFFF past the end) -- for the tests; a child has no handle of the game's.
+        size_t activeChildren(uint32_t handle) const;
+        uint32_t childSound(uint32_t handle, size_t index) const;
 
         // snd_PlayVAGStreamByLoc: a VPK file in the disc image ("VPK " header: data size, 0x800-byte interleave, header size,
         // sample rate, channels; research/32 section 5) at `byteOffset` of `path`, read as it plays. vol 0..0x400, pan as play().
-        bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group);
+        // Sprint 9 Goal 10 (R169): `queueBehind` is snd_PlayVAGStreamByLoc's parentHandle, as the protocol means it
+        // (research/06 section 142: "if parentHandle != 0 the stream is QUEUED after that stream instead"). A queued
+        // segment waits behind whatever the handle is playing and starts on the very next output frame after it ends;
+        // without it, a play on a live handle replaces what is there, which is what cut every mission cue dead.
+        bool playStream(uint32_t handle, const std::string &path, uint64_t byteOffset, int32_t vol, int32_t pan, uint8_t group,
+                        bool queueBehind = false);
         void stopAllStreams();
 
         // The decode-ahead half of the streams (audit 2026-09-17 section 2.3): reads and decodes the next chunk

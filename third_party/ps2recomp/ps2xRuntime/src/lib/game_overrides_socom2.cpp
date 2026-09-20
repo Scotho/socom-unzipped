@@ -342,7 +342,7 @@ namespace ps2_stubs
         report[7] = g_socom2Pad.axis[2];    // LX
         report[8] = g_socom2Pad.axis[3];    // LY
         for (int field = 0; field < 12; ++field)
-            report[9 + field] = g_socom2Pad.button[kSocom2PressureButton[field]] ? 0xFFu : 0x00u;
+            report[9 + field] = socom2PressureOf(g_socom2Pad, field);   // R139: Triangle's may be light
         std::memcpy(rdram + buf, report, sizeof(report));
         // PS2X_SOCOM2_PAD_TRACE=1: log the first non-neutral reports the game reads.
         static const bool s_padTrace = std::getenv("PS2X_SOCOM2_PAD_TRACE") != nullptr;
@@ -368,7 +368,7 @@ namespace ps2_stubs
         else if (id < 0x10u)
             value = g_socom2Pad.button[id];
         else if (id >= 0x14u && id <= 0x1fu)
-            value = g_socom2Pad.button[kSocom2PressureButton[id - 0x14u]] ? 0xFFu : 0u;
+            value = socom2PressureOf(g_socom2Pad, static_cast<int>(id - 0x14u));   // R139: Triangle's may be light
         else
             value = 0u;
         // PS2X_SOCOM2_PAD_TRACE=1: which ids does the game poll, and what did it get for pressed ones?

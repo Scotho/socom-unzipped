@@ -12,6 +12,7 @@
 #include "raylib.h"
 
 #include <string>
+#include <vector>
 
 namespace ui
 {
@@ -60,6 +61,17 @@ namespace ui
     void text(const Ctx &ctx, const char *s, Vec2 at, float size, Rgba color, Face face = Face::Body, float tracking = 0.0f);
     void textCenteredIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face = Face::Body, float tracking = 0.0f);
     void textRightIn(const Ctx &ctx, const char *s, Rect r, float size, Rgba color, Face face = Face::Body);
+
+    // Where a capital's ink actually lies, in design units, relative to the y `text()` is handed. DrawTextEx
+    // places the LINE box at that y; the capitals begin `top` below it and stand `height` tall. Aligning two
+    // words by their tops or centring one in a box is aligning line boxes, which is not what a reader sees
+    // (Sprint 9 P4). `top + height` is the baseline. Falls back to the line box when the face has no metrics.
+    struct InkBox
+    {
+        float top = 0.0f;
+        float height = 0.0f;
+    };
+    InkBox capInk(const Ctx &ctx, float size, Face face);
     // The head that fits, with "..." (a path's tail) or the tail that fits (a field being typed in).
     std::string ellipsizeEnd(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);
     std::string ellipsizeStart(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);
@@ -84,6 +96,13 @@ namespace ui
     bool radioCell(const Ctx &ctx, Rect r, const char *label, const std::string &id, bool selected);
     bool listRow(const Ctx &ctx, Rect r, const std::string &label, const std::string &id, bool selected);
     bool slider(const Ctx &ctx, Rect r, const std::string &id, double &value, double lo, double hi, double step);
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true);
+    // maxLen 0 = no cap and no paste: the ONLINE page's fields, as they were. Above 0 the field stops there
+    // and takes Ctrl+V -- the REPORT A BUG fields, capped at the contract's lengths.
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable = true,
+                   size_t maxLen = 0);
+    // Sprint 9 Goal 8: a long text shown wrapped over several lines -- not an editor: typing appends, backspace
+    // removes, Ctrl+V pastes (line breaks become spaces), and while it is typed in, the END is what is shown.
+    void textArea(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, size_t maxLen);
+    std::vector<std::string> wrapText(const Ctx &ctx, const std::string &s, float maxWidth, float size, Face face = Face::Body);
     void meterBar(const Ctx &ctx, Rect r, float fraction, Rgba fill);
 }

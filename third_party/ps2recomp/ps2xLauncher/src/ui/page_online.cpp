@@ -7,14 +7,28 @@ namespace ui
     {
         launcher::Config &c = app.config;
 
-        const Rect preset0 = rectOf(nodes, "online.preset.0");
+        // The first ROW, not the first node: a preset that cannot be played has a row but no node, and the
+        // community one is first -- rectOf() answered an empty rect and this heading was drawn off the window.
+        const Rect preset0 = onlinePresetRow(app.frame.window, 0);
         text(ctx, "SERVER", Vec2{preset0.x, preset0.y - 26.0f}, metrics::labelSize, theme::dim, Face::Bold, 0.06f);
+        // Sprint 9 Goal 8: the hosted server's own word on itself (GET /api/stats, fetched off this thread).
+        // Blank when the site cannot be reached: a player who is offline is not told anything is wrong.
+        if (!app.serverStatus.empty())
+        {
+            const bool up = app.serverStatus.find(": online") != std::string::npos;
+            const float size = metrics::captionSize;
+            const float w = textWidth(ctx, app.serverStatus.c_str(), size);
+            const float right = app.frame.body.right();
+            fillCircle(ctx, Vec2{right - w - 12.0f, preset0.y - 17.0f}, 4.0f, up ? theme::lampGreen : theme::warn);
+            text(ctx, app.serverStatus.c_str(), Vec2{right - w, preset0.y - 26.0f}, size, up ? theme::text : theme::caption);
+        }
 
-        int presetSel = 2;   // "Custom" unless one of the ids matches
-        for (int i = 0; i < 3; ++i)
+        // "Custom" -- the one with no address -- unless one of the ids matches.
+        int presetSel = static_cast<int>(launcher::kServerPresetCount) - 1;
+        for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
             if (c.serverPreset == launcher::kServerPresets[i].id && launcher::presetAvailable(launcher::kServerPresets[i]))
-                presetSel = i;
-        for (int i = 0; i < 3; ++i)
+                presetSel = static_cast<int>(i);
+        for (int i = 0; i < static_cast<int>(launcher::kServerPresetCount); ++i)
         {
             const std::string id = "online.preset." + std::to_string(i);
             const bool available = launcher::presetAvailable(launcher::kServerPresets[i]);
@@ -65,11 +79,23 @@ namespace ui
         textField(ctx, profile, c.profile, "online.profile", changed);
         caption(ctx, Vec2{profile.right() + 18.0f, profile.y + 12.0f}, "picks cards/<profile> for the memory card");
 
-        const Rect second = rectOf(nodes, "online.second");
-        if (toggle(ctx, second, "Second instance on this machine (for testing)", "online.second", c.secondInstance))
-            changed = true;
-        caption(ctx, Vec2{second.x, second.bottom() + 10.0f},
-                "A second instance shifts its UDP ports and uses its own card directory, so two copies can play here.");
+        // Sprint 9 P4: everything above is a stranger's first run; everything below the rule is not. The
+        // second instance is a testing tool -- it starts a whole second copy of the game -- so it lives
+        // behind the disclosure rather than under the profile field a new player has just filled in.
+        const bool forced = advancedForced(c);
+        if (advancedHeader(ctx, rectOf(nodes, "online.advanced"), "online.advanced", app.advancedOpen || forced, forced))
+            app.advancedOpen = !app.advancedOpen;
+
+        // Shut, the toggle is not in the node list at all, so there is nothing to look up and nothing to
+        // draw -- `hasNode` rather than a rect test, because absence is the point.
+        if (hasNode(nodes, "online.second"))
+        {
+            const Rect second = rectOf(nodes, "online.second");
+            if (toggle(ctx, second, "Second instance on this machine (for testing)", "online.second", c.secondInstance))
+                changed = true;
+            caption(ctx, Vec2{second.x, second.bottom() + 10.0f},
+                    "A second instance shifts its UDP ports and uses its own card directory, so two copies can play here.");
+        }
 
         if (changed)
             app.dirty = true;

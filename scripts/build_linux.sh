@@ -2,9 +2,10 @@
 # Linux build (Sprint 8 Goal 1, design item 1): the same CMake tree as build.sh, with the system
 # toolchain instead of tools/llvm-mingw.
 #
-# Usage: scripts/build_linux.sh [tools|runtime|test|all] [--no-runner]
+# Usage: scripts/build_linux.sh [tools|runtime|release|test|all] [--no-runner]
 #   tools     configure + build ps2_recomp / ps2_analyzer in build-linux-tools
 #   runtime   configure + build the runner (when there is generated code) and the launcher in build-linux
+#   release   the release configuration (Sprint 9 Goal 2) in build-linux-release -> dist-linux-release, stripped, symbols kept
 #   test      the Python suite, then ps2x_tests
 #   all       tools + runtime (the default)
 #   --no-runner   build with no generated code at all: PS2X_RUNNER_GENERATED_DIR="", which skips the
@@ -32,12 +33,14 @@ TOOLBUILD="$PS2R/build-linux-tools"    # ps2_recomp / ps2_analyzer
 RTBUILD="$PS2R/build-linux"            # runtime + tests + launcher (+ runner when there is generated code)
 GEN="${PS2X_RUNNER_GENERATED_DIR:-$ROOT/recomp/output}"
 DIST="$ROOT/dist-linux"
+RELBUILD="$PS2R/build-linux-release"    # Sprint 9 Goal 2: the release configuration, its own tree ...
+RELDIST="$ROOT/dist-linux-release"      # ... and its own folder
 
 STEP=""
 for arg in "$@"; do
   case "$arg" in
     --no-runner) GEN="" ;;
-    tools|runtime|test|all) STEP="$arg" ;;
+    tools|runtime|release|test|all) STEP="$arg" ;;
     *) echo "unknown argument $arg" >&2; exit 2 ;;
   esac
 done
@@ -83,6 +86,44 @@ runtime() {
   echo "built $DIST: $(ls "$DIST" | tr '\n' ' ')"
 }
 
+release() {   # Sprint 9 Goal 2: see build.sh release(); same switches, the system toolchain, ELF strip
+  local genopt="${REL_GENOPT:--O2}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
+  local fc=() src name objcopy tag
+  for src in "$RTBUILD"/_deps/*-src; do
+    [ -d "$src" ] || continue
+    name="$(basename "$src")"; name="${name%-src}"
+    fc+=("-DFETCHCONTENT_SOURCE_DIR_$(printf '%s' "$name" | tr 'a-z' 'A-Z')=$src")
+  done
+  cmake_configure "$RELBUILD" -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_GENERATED_OPT="$genopt" \
+        -DPS2X_ENABLE_LTO="$lto" -DPS2X_LTO_SCOPE="$scope" \
+        -DPS2X_RELEASE_LINK=ON -DPS2X_LINK_ICF="$icf" ${fc[@]+"${fc[@]}"} >/dev/null
+  objcopy="${OBJCOPY:-$(command -v llvm-objcopy || command -v objcopy)}"
+  tag="$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)"
+  mkdir -p "$RELDIST/symbols"
+  local built=()
+  if [ -n "$GEN" ] && compgen -G "$GEN/*.cpp" >/dev/null; then
+    cmake --build "$RELBUILD" --target ps2EntryRunner -j "${REL_JOBS:-$JOBS}"
+    cp "$RELBUILD/ps2xRuntime/ps2EntryRunner" "$RELDIST/socom2.new"; built+=(socom2)
+  fi
+  cmake --build "$RELBUILD" --target socom_unzipped_launcher -j "${REL_JOBS:-$JOBS}"
+  cp "$RELBUILD/ps2xLauncher/socom_unzipped_launcher" "$RELDIST/socom_unzipped_launcher.new"; built+=(socom_unzipped_launcher)
+  for exe in "${built[@]}"; do
+    "$objcopy" --only-keep-debug "$RELDIST/$exe.new" "$RELDIST/symbols/$exe.debug"
+    "$objcopy" --strip-all "$RELDIST/$exe.new"
+    ( cd "$RELDIST/symbols" && "$objcopy" --add-gnu-debuglink="$exe.debug" "$RELDIST/$exe.new" )
+    mv -f "$RELDIST/$exe.new" "$RELDIST/$exe"
+    printf '%s %s %s\n' "$tag" "$(sha256sum "$RELDIST/$exe" | cut -d' ' -f1)" "$exe" >> "$RELDIST/symbols/INDEX.txt"
+  done
+  # The game ELF comes from the recomp step on the owner's machine. In the VM there is no dist/ (the
+  # tree sync leaves it on the host), so fall back to the developer Linux folder's copy -- it is the same
+  # platform-neutral file, and without it scripts/make_portable.sh --release has nothing to package.
+  for elf in "$ROOT/dist/socom2_game.elf" "$DIST/socom2_game.elf"; do
+    [ -f "$elf" ] || continue
+    cp "$elf" "$RELDIST/"; break
+  done
+  echo "built $RELDIST: $(ls "$RELDIST" | tr '\n' ' ') (genopt=$genopt lto=$lto/$scope icf=${icf:-off})"
+}
+
 test_step() {
   # Python tests first, exactly as build.sh runs them: one runner, unittest (no pytest), discovered
   # from tools_py/tests with the repo root as the top-level directory.
@@ -104,6 +145,7 @@ test_step() {
 case "$STEP" in
   tools)   build_tools ;;
   runtime) runtime ;;
+  release) release ;;
   test)    test_step ;;
   all)     build_tools; runtime ;;
   *) echo "unknown step $STEP"; exit 2 ;;

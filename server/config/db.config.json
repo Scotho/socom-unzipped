@@ -3,5 +3,7 @@
   "SimulatedEncryptionKey": "socom2-local-dev-key",
   "DatabaseUrl": "http://localhost:5000",
   "DatabaseUsername": "horizon",
-  "DatabasePassword": "horizon"
+  "DatabasePassword": "horizon",
+  "SimulatedAnnouncementTitle": "Welcome to the SOCOM Unzipped Project",
+  "SimulatedAnnouncementBody": "Horizon Medius Server\nSource available on GitHub"
 }

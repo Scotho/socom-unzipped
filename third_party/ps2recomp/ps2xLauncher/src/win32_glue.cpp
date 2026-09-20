@@ -5,7 +5,9 @@
 #include "win32_glue.h"
 
 #include <ctime>
+#include <cwchar>
 #include <filesystem>
+#include <string>
 #include <vector>
 
 #ifdef _WIN32
@@ -13,6 +15,7 @@
 #include <windows.h>
 #include <commdlg.h>
 #include <shellapi.h>
+#include <winhttp.h>
 #endif
 
 namespace fs = std::filesystem;
@@ -347,6 +350,139 @@ namespace win32glue
 #else
         (void)game;
 #endif
+    }
+
+    // ---- Sprint 9 Goal 8: one HTTPS request (the bug report, the server's status line) ---------------------
+    // WinHTTP, which ships with Windows: no vendored TLS. Certificate validation is WinHTTP's default and is
+    // left alone -- nothing here sets WINHTTP_OPTION_SECURITY_FLAGS, so an expired, self-signed or
+    // wrong-host certificate fails the request (ERROR_WINHTTP_SECURE_FAILURE) and the report is saved to disk.
+    namespace
+    {
+        std::wstring widen(const std::string &s)
+        {
+            if (s.empty())
+                return {};
+            const int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
+            std::wstring out(static_cast<size_t>(n > 0 ? n : 0), L'\0');
+            if (n > 0)
+                MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), out.data(), n);
+            return out;
+        }
+
+        struct InternetHandle
+        {
+            HINTERNET h = nullptr;
+            ~InternetHandle()
+            {
+                if (h != nullptr)
+                    WinHttpCloseHandle(h);
+            }
+        };
+
+// The system's proxy settings where WinHTTP can read them itself (Windows 8.1 and later).
+#ifdef WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY
+        constexpr DWORD kProxyAccess = WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY;
+#else
+        constexpr DWORD kProxyAccess = WINHTTP_ACCESS_TYPE_DEFAULT_PROXY;
+#endif
+
+        std::string winHttpError(const char *what)
+        {
+            return std::string(what) + " failed (WinHTTP error " + std::to_string(GetLastError()) + ")";
+        }
+    }
+
+    HttpResult httpRequest(const std::string &method, const std::string &url, const std::string &body, int timeoutMs)
+    {
+        HttpResult out;
+        const std::wstring wideUrl = widen(url);
+        wchar_t host[256] = {};
+        wchar_t path[2048] = {};
+        URL_COMPONENTS parts{};
+        parts.dwStructSize = sizeof(parts);
+        parts.lpszHostName = host;
+        parts.dwHostNameLength = static_cast<DWORD>(sizeof(host) / sizeof(host[0]));
+        parts.lpszUrlPath = path;
+        parts.dwUrlPathLength = static_cast<DWORD>(sizeof(path) / sizeof(path[0]));
+        if (!WinHttpCrackUrl(wideUrl.c_str(), static_cast<DWORD>(wideUrl.size()), 0, &parts))
+        {
+            out.error = "not a URL: " + url;
+            return out;
+        }
+        const bool secure = parts.nScheme == INTERNET_SCHEME_HTTPS;
+        const std::wstring hostName = host;
+        if (!secure && hostName != L"127.0.0.1" && hostName != L"localhost")
+        {
+            out.error = "plain http is refused for anything but a loopback test server";
+            return out;
+        }
+
+        InternetHandle session, connection, request;
+        session.h = WinHttpOpen(L"SOCOM-Unzipped-Launcher/1.0", kProxyAccess, WINHTTP_NO_PROXY_NAME,
+                                WINHTTP_NO_PROXY_BYPASS, 0);
+        if (session.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpOpen");
+            return out;
+        }
+        const int each = timeoutMs > 0 ? timeoutMs : 15000;
+        WinHttpSetTimeouts(session.h, each, each, each, each);
+        connection.h = WinHttpConnect(session.h, host, parts.nPort, 0);
+        if (connection.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpConnect");
+            return out;
+        }
+        request.h = WinHttpOpenRequest(connection.h, widen(method).c_str(), path[0] != L'\0' ? path : L"/", nullptr,
+                                       WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, secure ? WINHTTP_FLAG_SECURE : 0);
+        if (request.h == nullptr)
+        {
+            out.error = winHttpError("WinHttpOpenRequest");
+            return out;
+        }
+        const wchar_t *headers = body.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : L"Content-Type: application/json\r\n";
+        const DWORD headersLength = body.empty() ? 0 : static_cast<DWORD>(-1L);
+        if (!WinHttpSendRequest(request.h, headers, headersLength,
+                                body.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char *>(body.data()),
+                                static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0) ||
+            !WinHttpReceiveResponse(request.h, nullptr))
+        {
+            out.error = winHttpError("the request");
+            return out;
+        }
+
+        DWORD status = 0, size = sizeof(status);
+        if (!WinHttpQueryHeaders(request.h, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                                 &status, &size, WINHTTP_NO_HEADER_INDEX))
+        {
+            out.error = winHttpError("reading the status");
+            return out;
+        }
+        wchar_t retry[32] = {};
+        DWORD retrySize = sizeof(retry) - sizeof(wchar_t);
+        if (WinHttpQueryHeaders(request.h, WINHTTP_QUERY_CUSTOM, L"Retry-After", retry, &retrySize, WINHTTP_NO_HEADER_INDEX))
+        {
+            const long seconds = std::wcstol(retry, nullptr, 10);
+            out.retryAfter = seconds > 0 && seconds < 7 * 24 * 3600 ? static_cast<int>(seconds) : 0;
+        }
+
+        constexpr size_t kMaxBody = 1024u * 1024u;
+        const ULONGLONG deadline = GetTickCount64() + static_cast<ULONGLONG>(each);
+        for (;;)
+        {
+            DWORD available = 0;
+            if (!WinHttpQueryDataAvailable(request.h, &available) || available == 0)
+                break;
+            std::string chunk(available, '\0');
+            DWORD got = 0;
+            if (!WinHttpReadData(request.h, chunk.data(), available, &got) || got == 0)
+                break;
+            out.body.append(chunk.data(), got);
+            if (out.body.size() > kMaxBody || GetTickCount64() > deadline)
+                break;
+        }
+        out.status = static_cast<int>(status);
+        return out;
     }
 }
 #endif // _WIN32

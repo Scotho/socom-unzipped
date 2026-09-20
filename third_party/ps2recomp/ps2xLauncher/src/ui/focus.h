@@ -4,6 +4,7 @@
 // PURE ON PURPOSE: no raylib in this header or in focus.cpp. The rects here are the rects the pages draw --
 // page_*.cpp looks its controls up by id rather than computing them again -- so a test that asserts where a
 // direction lands is asserting about the layout the player sees.
+#include "launcher/launcher_config.h"   // Sprint 9 P4: what forces an ADVANCED section open
 #include "theme.h"
 
 #include <string>
@@ -20,15 +21,17 @@ namespace ui
         Controller,
         Microphone,
         Online,
+        Report,   // Sprint 9 Goal 8: REPORT A BUG
         About
     };
-    constexpr int kPageCount = 8;
+    constexpr int kPageCount = 9;
 
     Page pageAt(int index);
     int pageIndex(Page page);
     const char *pageName(Page page);    // the rail's label: "PLAY"
     const char *pageTitle(Page page);   // the content band's line: "PLAY -- everything at a glance"
     std::string railId(Page page);        // "rail.play"
+    std::string pageSlug(Page page);      // "play", "report": the rail id without "rail." -- ids and screenshot names
     std::string barLaunchId(Page page);   // "bar.launch.play" -- the bar is on every page, its node is per page
 
     enum class Dir
@@ -61,21 +64,46 @@ namespace ui
         int padChoices = 1;
         int micChoices = 1;
         bool customServer = true;
+        // Sprint 9 P4: a page's ADVANCED section is shut by default, and its controls are then not on the
+        // page at all -- not merely undrawn, so nothing can focus or activate what a player cannot see.
+        bool advancedOpen = false;
     };
+
+    // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it
+    // is not at its default. A disclosure that can hide a setting which is doing something is a trap: it is
+    // how a player switches a second instance on, collapses the section, and then cannot find why two games
+    // start. The rule is cheap to state and cheap to keep, so it is a function and not a comment.
+    bool advancedForced(const launcher::Config &c);
 
     // Every focusable control on `page`, in reading order, plus the bottom bar's LAUNCH (id "bar.launch").
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in);
-    // The rail's eight entries.
+
+    // The node list THIS FRAME must draw from. `computed` is the list built at the top of the frame, from
+    // the page that was current then; `page` is where the frame's input left the player. The two differ on
+    // exactly the frames a page change lands on -- the pad's shoulder tabs, Escape, a rail entry clicked in
+    // the middle of the draw -- and drawing the new page out of the old page's list is what put a label at
+    // the window's origin for one frame (Sprint 9 P4, the owner's "weird graphical bug ... around the top
+    // left"). Unchanged page: the list it was handed, so the rebuild costs a page change, not every frame.
+    std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in);
+    // The rail's entries, one per page.
     std::vector<Node> railLayout(Rect window);
 
     // The ONLINE page's preset rows, by index: a row exists for every preset, but only the ones that can
     // actually be played get a focusable node (see launcher::presetAvailable).
     Rect onlinePresetRow(Rect window, int index);
 
+    // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
+    // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --
+    // which is most of them. It is shown where the FOCUS is, not where a mouse is: the launcher is driven
+    // by a pad, and the mouse is leaving entirely in Q3, so hover would be help most players never see.
+    std::string helpFor(const std::string &id);
+    // Every id the set answers for, so a test can hold the set to the controls that actually exist.
+    std::vector<std::string> helpedIds();
+
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id);
     bool hasNode(const std::vector<Node> &nodes, const std::string &id);
 
-    // The rail and all eight pages at once: the whole navigable surface of the launcher.
+    // The rail and every page at once: the whole navigable surface of the launcher.
     class FocusGraph
     {
     public:

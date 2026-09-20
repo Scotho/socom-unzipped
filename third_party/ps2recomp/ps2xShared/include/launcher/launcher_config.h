@@ -20,11 +20,22 @@ namespace launcher
     // The servers a player can pick. Ours is hosted (AWS Lightsail, us-east-2, a static address; Sprint 8 Goal 12). The
     // community server is PSRewired (67.222.156.250), which runs SOCOM II r0004 -- a different code package from the r0001
     // this client is built from -- so its preset keeps a placeholder until an r0004 build exists (a wishlist item).
+    //
+    // Sprint 9 P6 (R175): the project's server is reached BY NAME. Switching this string cannot orphan a
+    // persona, because it never reaches the game -- loadHosts() resolves it to a uint32 and maps the seven
+    // retail Sony hostnames to that (ps2xRuntime/src/lib/socom2_hostnet.cpp:303-316). What it does
+    // introduce is a name that might not resolve, and parseServerAddress answering 0 leaves the runtime
+    // pointing at 127.0.0.1 with nothing on screen to say so -- which is why the raw address stays on
+    // offer as its own preset rather than being deleted. The ids are the stable thing: an old config
+    // naming "unzipped" keeps working and simply starts reaching the box by name.
     constexpr ServerPreset kServerPresets[] = {
-        {"community", "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
-        {"unzipped",  "SOCOM Unzipped (project server)",  "3.143.65.100",                 "the project's hosted server (US East)"},
-        {"custom",    "Custom",                            "",                             "any address or hostname"},
+        {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
+        {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)"},
+        {"unzipped-ip", "SOCOM Unzipped (by address)",      "3.143.65.100",                 "the same server, if the name will not resolve"},
+        {"custom",      "Custom",                            "",                             "any address or hostname"},
     };
+    // Nothing may count these in a literal: P6 made them four, and two loops and one y-offset said three.
+    constexpr size_t kServerPresetCount = sizeof(kServerPresets) / sizeof(kServerPresets[0]);
 
     struct Config
     {
@@ -42,6 +53,9 @@ namespace launcher
         // and the stick dead zone the three pad paths apply.
         int gamepadIndex = -1;
         double padDeadZone = 0.15;
+        // Owner request 2026-09-19, R139: the host control that crouches -- "off" | "l3" | "touchpad" | "l2".
+        // The default is "l3" (owner 2026-09-20: with no shortcut a pad cannot crouch at all). "off" sends no variable and is the runtime exactly as it was before the option.
+        std::string crouchShortcut = "l3";   // owner 2026-09-20: without a shortcut a pad cannot crouch at all
         // Sprint 7 Task 9: the capture device by name; "" = none (no PS2X_MIC_DEVICE, no device opened).
         std::string micDevice;
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
@@ -49,6 +63,31 @@ namespace launcher
         std::string profile = "player";
         bool secondInstance = false;
     };
+
+    // R139, the crouch shortcut (owner request 2026-09-19; runtime/host_crouch_shortcut.h has the mechanism).
+    // SOCOM II's stance is TRIANGLE's pressure: a light press crouches, a firm one goes prone, and a PC pad's
+    // digital Y / Triangle is always firm -- so on a PC pad crouch is unreachable, which is why the community binds
+    // "Triangle, lightly" to a spare control. The ruling: the chosen host control sends that light Triangle INSTEAD
+    // of its own PS2 button, never as well as it. "l3" therefore trades away fire mode on the pad and "l2" the
+    // second weapon swap; both remain on the keyboard (2 and 1), which the runtime always reads, and the launcher
+    // says so under the option. "touchpad" trades nothing: that control is unmapped today. The player's own
+    // Triangle stays a firm press, so prone is always reachable. -- why: a plain rebind is what the convention is
+    // on PCSX2, and one control doing two things at once is the surprise to avoid. -- cost if wrong: a player who
+    // wanted fire mode moved somewhere else on the pad; the mapping is one table in host_crouch_shortcut.h.
+    constexpr const char *kCrouchShortcuts[] = {"off", "l3", "touchpad", "l2"};
+    constexpr int kCrouchShortcutCount = 4;
+    // One of kCrouchShortcuts; anything else (a typo, a value from a newer build) is "off".
+    std::string normalizeCrouchShortcut(const std::string &value);
+
+    // The profile names a directory -- PS2X_MC_DIR is "cards/" + profile, and the runner resolves a relative
+    // value under its own home -- so it must stay a NAME. Letters, digits, space, '_', '-' and '.' are kept and
+    // the result is cut to 64; anything else (a separator, a drive letter, "." or ".." alone, empty) is refused
+    // whole and becomes "player". Refused whole, not patched up: a config.json can be handed to a player by
+    // someone else, and half-cleaning a path is how a cleaner gets walked around.
+    std::string normalizeProfile(const std::string &value);
+    // The cell's label and the one line under the row that states the trade. Never empty.
+    const char *crouchShortcutLabel(const std::string &value);
+    const char *crouchShortcutHint(const std::string &value);
 
     // Sprint 7 review finding F5: "Match display" resolved to TextFormat("%dx%d", GetMonitorWidth(...),
     // GetMonitorHeight(...)) in main.cpp, and raylib answers 0 for both before a monitor is known -- so a click
@@ -73,10 +112,18 @@ namespace launcher
     std::string toJson(const Config &config);
     bool fromJson(const std::string &json, Config &out);
 
-    // Sprint 7 Task 1a: what the game's exit code means, in a sentence for the player. Empty when the code
-    // carries no message of its own (0, or a crash the log already explains).
-    //   65 -- GsGlCaps::kExitCode: the GL probe failed and the run fell back to the CPU rasterizer.
+    // What the game's exit status means, in a sentence for the player: ExitCodes::describe (ps2x/exit_codes.h). Never empty.
     std::string exitMessage(int exitCode);
+
+    // Sprint 9 Goal 1: the PLAY page's LAST RUN line. `rawExitStatus` is GameProcess::exitCode() as the
+    // glue reports it (an NT status on Windows, 128 + signal on POSIX, else the runner's own code);
+    // `logText` is the head of that run's log, read for "[notice] " lines (no audio device), whose
+    // sentences follow the exit's own.
+    std::string lastRunLine(long long rawExitStatus, const std::string &logText);
+
+    // What --selftest prints: "exit <code> <slug>: <sentence>" for every row of ExitCodes::kTable.
+    std::vector<std::string> selftestExitLines();
+
 
     // The environment socom2.exe is started with, as KEY=VALUE strings (PS2X_SOCOM2_PAD=1 always; MOUSE only when on;
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).

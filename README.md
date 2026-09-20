@@ -4,15 +4,11 @@ Goal: a `socom2.exe` that runs the US retail game (SCUS_972.75, r0001) natively 
 Windows without a PS2 emulator, with controller support and online play against a server we
 host, structured so it can be extended later. The user supplies their own disc image.
 
-**Start here if you are a new agent:** read the "Current state" section at the top of
-`docs/STATUS.md` (what works, what is next, how to resume), then the design and the task list:
-`docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md` +
-`docs/superpowers/plans/2026-09-04-implementation-plan.md` for the project as a whole, and
-`docs/superpowers/specs/2026-09-11-sprint-3-render-scale-and-fourth-family-design.md` +
-`docs/superpowers/plans/2026-09-11-sprint-3-render-scale-and-fourth-family.md` for the most
-recent sprint (previous: the `2026-09-11-sprint-2-host-render-and-family-b` and
-`2026-09-10-sprint-1-hygiene-and-native-render` spec/plan pairs in the same two directories).
-`docs/research/` holds the reverse-engineering and research write-ups.
+**Start here if you are a new agent:** `docs/HANDOFF.md`, then `docs/CURRENT_SPRINT.md` (the ordered work) and
+`docs/KNOWN.md` (what is proven, believed and retracted). **If you want to contribute:** `CONTRIBUTING.md` and
+`docs/GIT_STRATEGY.md`. The project-wide design is
+`docs/superpowers/specs/2026-09-04-socom2-pc-recompilation-design.md`; each sprint's spec and plan sit beside it in
+`docs/superpowers/`; `docs/research/` holds the reverse-engineering write-ups.
 
 ## How it works (one paragraph)
 The retail ELF is only a loader; the game is two Metrowerks overlays that the loader decrypts

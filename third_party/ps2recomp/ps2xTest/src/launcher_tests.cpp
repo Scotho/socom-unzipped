@@ -10,6 +10,7 @@
 #include "ui/chrome.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
+#include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/theme.h"
 #ifndef _WIN32
@@ -127,6 +128,90 @@ void register_launcher_tests()
             t.Equals(partial.gamepadIndex, -1, "a config written before this task keeps the old behaviour");
         });
 
+        // Owner request 2026-09-19, R139: the crouch shortcut.
+        tc.Run("the crouch shortcut: the stick click by default (owner 2026-09-20), off is silent, tolerant of junk, round-trips, reaches the environment", [](TestCase &t)
+        {
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+
+            launcher::Config c;
+            t.Equals(c.crouchShortcut, std::string("l3"), "the left stick click by default: without it a pad cannot crouch at all (owner 2026-09-20)");
+            t.IsTrue(has(launcher::environmentFor(c), "PS2X_PAD_CROUCH_SHORTCUT=l3"), "and the default reaches the game");
+            launcher::Config offConfig;
+            offConfig.crouchShortcut = "off";
+            const std::vector<std::string> before = launcher::environmentFor(offConfig);
+            t.IsTrue(!hasKey(before, "PS2X_PAD_CROUCH_SHORTCUT"), "off sends nothing: the game's environment is what it was before the option");
+
+            const char *values[3] = {"l3", "touchpad", "l2"};
+            for (const char *v : values)
+            {
+                c.crouchShortcut = v;
+                const std::vector<std::string> env = launcher::environmentFor(c);
+                t.IsTrue(has(env, std::string("PS2X_PAD_CROUCH_SHORTCUT=") + v), std::string("reaches the environment: ") + v);
+                t.Equals(env.size(), before.size() + 1, "and is the only thing it adds");
+                launcher::Config back;
+                t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+                t.Equals(back.crouchShortcut, std::string(v), std::string("survives the round trip: ") + v);
+            }
+
+            t.Equals(launcher::normalizeCrouchShortcut("l3"), std::string("l3"), "a known value is itself");
+            t.Equals(launcher::normalizeCrouchShortcut("R3"), std::string("off"), "an unknown value is off");
+            t.Equals(launcher::normalizeCrouchShortcut(""), std::string("off"), "and so is an empty one");
+            launcher::Config junk;
+            junk.crouchShortcut = "l3";
+            t.IsTrue(launcher::fromJson("{\"crouchShortcut\": \"banana\"}", junk), "a config with a value from nowhere still parses");
+            t.Equals(junk.crouchShortcut, std::string("off"), "and the value is off, not kept and not guessed");
+            junk.crouchShortcut = "banana";   // set in memory by a bug, not by the file
+            t.IsTrue(!hasKey(launcher::environmentFor(junk), "PS2X_PAD_CROUCH_SHORTCUT"), "junk never reaches the game either");
+            launcher::Config partial;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", partial), "an older config.json parses");
+            t.Equals(partial.crouchShortcut, std::string("l3"), "a config written before the option gets the default, like a new one");
+
+            // The words on the page: a label per cell, and the one line that states the trade (R139).
+            for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+            {
+                t.IsTrue(std::strlen(launcher::crouchShortcutLabel(launcher::kCrouchShortcuts[i])) > 0, "every value has a label");
+                t.IsTrue(std::strlen(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])) > 0, "and a hint");
+                t.IsTrue(std::strlen(launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i])) <= 104, "that fits one caption line");
+            }
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l3")).find("fire mode") != std::string::npos ||
+                         std::string(launcher::crouchShortcutHint("l3")).find("Fire mode") != std::string::npos,
+                     "l3 says what it costs: fire mode leaves the pad");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l3")).find("2") != std::string::npos, "and where it went: the keyboard's 2");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("l2")).find("weapon") != std::string::npos, "l2 says what it costs: the second weapon swap");
+            t.IsTrue(std::string(launcher::crouchShortcutHint("touchpad")).find("othing") != std::string::npos, "touchpad says it costs nothing");
+        });
+
+        tc.Run("the profile names a directory, so it cannot leave cards/: separators, dots and junk are refused", [](TestCase &t)
+        {
+            // PS2X_MC_DIR is built as "cards/" + profile (launcher_config.cpp) and the runner resolves a relative
+            // value under its own home (bare_run.cpp). The profile is free text in a config.json a player may well
+            // have been sent by someone else, so "../.." there would put the game's memory-card writes anywhere the
+            // player can write. It is a name, not a path: it stays one.
+            t.Equals(launcher::normalizeProfile("craig"), std::string("craig"), "an ordinary name is itself");
+            t.Equals(launcher::normalizeProfile("Craig 2_b-a.1"), std::string("Craig 2_b-a.1"), "letters, digits, space, _ - . are kept");
+            t.Equals(launcher::normalizeProfile(""), std::string("player"), "an empty profile is the default");
+            t.Equals(launcher::normalizeProfile(".."), std::string("player"), "so is the parent directory");
+            t.Equals(launcher::normalizeProfile("."), std::string("player"), "and the current one");
+            t.Equals(launcher::normalizeProfile("../../Windows"), std::string("player"), "a climb out is refused whole, not patched up");
+            t.Equals(launcher::normalizeProfile("a/b"), std::string("player"), "a separator is refused");
+            t.Equals(launcher::normalizeProfile("a\\b"), std::string("player"), "the other separator too");
+            t.Equals(launcher::normalizeProfile("C:evil"), std::string("player"), "and a drive letter");
+            t.Equals(launcher::normalizeProfile(std::string(300, 'x')).size(), static_cast<size_t>(64), "a very long name is cut to 64");
+
+            launcher::Config c;
+            c.profile = "../../../Users/Public";
+            const std::vector<std::string> env = launcher::environmentFor(c);
+            auto has = [&env](const std::string &kv) {
+                return std::find(env.begin(), env.end(), kv) != env.end();
+            };
+            t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the environment carries the safe name, never the climb");
+
+            launcher::Config loaded;
+            t.IsTrue(launcher::fromJson("{\"profile\": \"../../../etc\"}", loaded), "such a config still parses");
+            t.Equals(loaded.profile, std::string("player"), "and what it loaded is already safe");
+        });
+
         tc.Run("iso9660: the root directory lookup finds SCUS_972.75 (with its ;1), rejects the rest", [](TestCase &t)
         {
             const std::vector<uint8_t> img = syntheticImage();
@@ -202,7 +287,8 @@ void register_launcher_tests()
             t.IsTrue(has("PS2X_GS_SCALE=1"), "native scale");
             t.IsTrue(has("PS2X_PRESENT_FILTER=linear"), "the filter");
             t.IsTrue(has("PS2X_WINDOW_SIZE=1280x896"), "the window size: the launcher's 2x default (the gate sets none and stays 640x448)");
-            t.IsTrue(has("PS2X_SOCOM2_SERVER=3.143.65.100"), "the server: a fresh config plays on the project's hosted server (Sprint 8 Goal 12)");
+            t.IsTrue(has("PS2X_SOCOM2_SERVER=socom.scotho.com"),
+                     "the server: a fresh config plays on the project's hosted server, reached by name (Sprint 9 P6, R175)");
             t.IsTrue(has("PS2X_MC_DIR=cards/player"), "the profile's card directory");
             t.IsTrue(!hasKey("PS2X_SOCOM2_MOUSE") && !hasKey("PS2X_SOCOM2_MOUSE_SENS"), "mouse look off: no mouse knobs");
             t.IsTrue(!hasKey("PS2X_SOCOM2_UDP_SHIFT") && !hasKey("PS2X_SOCOM2_RSA_KEY"), "first instance: no shift, no second key");
@@ -274,10 +360,13 @@ void register_launcher_tests()
             c.server = "10.0.0.5";
             // Fourth pass: a preset still carrying a placeholder is not playable, so it does not win the
             // field -- it resolves to the project's own server rather than sending the game a placeholder.
-            t.Equals(serverOf(c), std::string("3.143.65.100"), "an unavailable preset resolves to the one that exists");
+            t.Equals(serverOf(c), std::string("socom.scotho.com"), "an unavailable preset resolves to the one that exists");
             c.serverPreset = "unzipped";
-            t.Equals(serverOf(c), std::string("3.143.65.100"), "our own hosted server (Lightsail, US East)");
-            t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("3.143.65.100"), "a fresh config resolves to it");
+            t.Equals(serverOf(c), std::string("socom.scotho.com"), "our own hosted server, by name (Lightsail, US East)");
+            t.Equals(launcher::effectiveServer(launcher::Config{}), std::string("socom.scotho.com"), "a fresh config resolves to it");
+            // Sprint 9 P6: the same box by its raw address, for the day the name will not resolve.
+            c.serverPreset = "unzipped-ip";
+            t.Equals(serverOf(c), std::string("3.143.65.100"), "and the fallback preset still reaches it by address");
             c.serverPreset = "custom";
             t.Equals(serverOf(c), std::string("10.0.0.5"), "custom uses the typed address");
             c.server.clear();
@@ -290,8 +379,33 @@ void register_launcher_tests()
             t.Equals(launcher::exitMessage(65),
                      std::string("Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."),
                      "65 (GsGlCaps::kExitCode) names the missing capability and what happened");
-            t.IsTrue(launcher::exitMessage(0).empty(), "a clean exit says nothing");
-            t.IsTrue(launcher::exitMessage(1).empty(), "a crash is the log's business, not this sentence");
+            t.Equals(launcher::exitMessage(0), std::string("The last run exited normally."), "a clean exit says so");
+            t.IsTrue(launcher::exitMessage(1).find("SAVE DIAGNOSTICS") != std::string::npos, "an unnamed failure points at the diagnostics (Sprint 9 Goal 1: no ending is silent)");
+        });
+
+        tc.Run("LAST RUN: the code's sentence, a crash by its native status, a stranger by number, a notice appended", [](TestCase &t)
+        {
+            t.Equals(launcher::lastRunLine(0, ""), std::string("The last run exited normally."), "a clean run");
+            t.Equals(launcher::lastRunLine(67, ""),
+                     std::string("That disc image is not SOCOM II NTSC r0001 (SCUS-97275). This build plays only that disc."), "67");
+            t.Equals(launcher::lastRunLine(static_cast<int>(0xC0000005u), ""),
+                     std::string("The game crashed. Press SAVE DIAGNOSTICS and send the zip; it holds the crash record."), "Windows' access violation");
+            t.Equals(launcher::lastRunLine(139, ""), launcher::lastRunLine(static_cast<int>(0xC0000005u), ""), "and Linux's SIGSEGV read the same");
+            t.Equals(launcher::lastRunLine(42, ""), std::string("The game closed with code 42. Press SAVE DIAGNOSTICS to collect the log."), "never 'the game exited'");
+            const std::string log = "INFO: AUDIO: Failed to initialize playback device\n[notice] no-audio-device: No audio device was found; the game ran without sound.\n";
+            t.Equals(launcher::lastRunLine(0, log),
+                     std::string("The last run exited normally. No audio device was found; the game ran without sound."),
+                     "audio absent is not an exit: it rides on whatever the exit was");
+        });
+
+        tc.Run("the selftest lists every exit code with its sentence", [](TestCase &t)
+        {
+            const std::vector<std::string> lines = launcher::selftestExitLines();
+            t.Equals(static_cast<int>(lines.size()), 11, "one line per code in the table");
+            auto has = [&](const std::string &l) { return std::find(lines.begin(), lines.end(), l) != lines.end(); };
+            t.IsTrue(has("exit   0 ok: The last run exited normally."), "0");
+            t.IsTrue(has("exit  65 no-usable-gl: Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer."), "65");
+            t.IsTrue(has("exit  72 card-dir-unwritable: The memory-card folder cannot be written. Move the game out of a protected folder and try again."), "72");
         });
 
         tc.Run("the environment: the verified ISO reaches the runtime as PS2X_CD_IMAGE", [](TestCase &t)
@@ -488,6 +602,23 @@ void register_launcher_tests()
             t.Equals(g.move("pad.deadzone", ui::Dir::Down), std::string("pad.mouselook"), "the knobs run down the right column");
             t.Equals(g.move("pad.mouselook", ui::Dir::Down), std::string("pad.sensitivity"), "dead zone, mouse look, sensitivity");
             t.Equals(g.move("pad.sensitivity", ui::Dir::Up), std::string("pad.mouselook"), "and up retraces them");
+            // R139: the crouch shortcut is a row of four cells under both columns, the last thing on the page.
+            t.Equals(g.move("pad.pick.1", ui::Dir::Down), std::string("pad.crouch.0"), "below the pad list is the crouch row's first cell");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Right), std::string("pad.crouch.1"), "right walks the row");
+            t.Equals(g.move("pad.crouch.1", ui::Dir::Right), std::string("pad.crouch.2"), "off, stick click, touchpad");
+            t.Equals(g.move("pad.crouch.2", ui::Dir::Right), std::string("pad.crouch.3"), "and L2");
+            t.Equals(g.move("pad.crouch.3", ui::Dir::Left), std::string("pad.crouch.2"), "left walks back");
+            t.Equals(g.move("pad.sensitivity", ui::Dir::Down).rfind("pad.crouch.", 0), static_cast<size_t>(0), "below the knobs is the crouch row too");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Up).rfind("pad.pick.", 0), static_cast<size_t>(0), "up from its left end is the pad list");
+            t.Equals(g.move("pad.crouch.3", ui::Dir::Up), std::string("pad.sensitivity"), "up from its right end is the last knob");
+            t.Equals(g.move("pad.crouch.0", ui::Dir::Down), std::string("bar.launch.controller"), "and below it is the bar's LAUNCH");
+            t.IsTrue(!ui::adjustsHorizontally("pad.crouch.0"), "cells navigate; they are not a slider");
+            {
+                const ui::Node *sens = g.find("pad.sensitivity");
+                const ui::Node *crouch = g.find("pad.crouch.0");
+                t.IsTrue(sens != nullptr && crouch != nullptr && crouch->r.y >= sens->r.bottom() + 8.0f,
+                         "the row clears the knobs above it");
+            }
             t.IsTrue(ui::adjustsHorizontally("pad.deadzone") && ui::adjustsHorizontally("pad.sensitivity") &&
                          ui::adjustsHorizontally("audio.volume") && !ui::adjustsHorizontally("pad.mouselook"),
                      "left/right ADJUSTS the three sliders rather than navigating away from them");
@@ -497,6 +628,30 @@ void register_launcher_tests()
             t.Equals(g.move("rail.disc", ui::Dir::Up), std::string("rail.play"), "and up");
             t.Equals(g.move("rail.play", ui::Dir::Up), std::string("rail.play"), "the top of the rail stays put");
             t.Equals(g.move("rail.about", ui::Dir::Down), std::string("rail.about"), "and so does the bottom");
+
+            // Sprint 9 Goal 8: REPORT A BUG sits after ONLINE and before ABOUT, and is a column of the site's
+            // own fields -- TITLE, WHAT HAPPENED, CONTACT (OPTIONAL), the log checkbox, SEND REPORT.
+            t.Equals(ui::kPageCount, 9, "nine pages");
+            t.Equals(std::string(ui::pageName(ui::Page::Report)), std::string("REPORT A BUG"), "the rail's label");
+            t.Equals(ui::pageSlug(ui::Page::Report), std::string("report"), "the page's short name: screenshots and ids");
+            t.Equals(ui::pageSlug(ui::Page::Play), std::string("play"), "as every other page's already was");
+            t.Equals(g.move("rail.online", ui::Dir::Down), std::string("rail.report"), "below ONLINE");
+            t.Equals(g.move("rail.report", ui::Dir::Down), std::string("rail.about"), "above ABOUT");
+            t.Equals(g.move("rail.report", ui::Dir::Right), std::string("report.title"), "the rail opens onto TITLE");
+            t.Equals(g.move("report.title", ui::Dir::Down), std::string("report.description"), "then WHAT HAPPENED");
+            t.Equals(g.move("report.description", ui::Dir::Down), std::string("report.contact"), "then CONTACT");
+            t.Equals(g.move("report.contact", ui::Dir::Down), std::string("report.attach"), "then the log checkbox");
+            t.Equals(g.move("report.attach", ui::Dir::Down), std::string("report.send"), "then SEND REPORT");
+            t.Equals(g.move("report.send", ui::Dir::Up), std::string("report.attach"), "and back up");
+            t.Equals(g.move("report.send", ui::Dir::Down), std::string("bar.launch.report"), "the bar's LAUNCH is under it");
+            t.Equals(g.move("report.title", ui::Dir::Left), std::string("rail.report"), "left goes back to the rail");
+            t.IsTrue(!ui::adjustsHorizontally("report.description"), "a text field is not a slider");
+            {
+                const ui::Node *what = g.find("report.description");
+                const ui::Node *title = g.find("report.title");
+                t.IsTrue(what != nullptr && title != nullptr && what->r.h >= title->r.h * 2.5f,
+                         "WHAT HAPPENED has room for several lines");
+            }
 
             // Nothing is stranded: from its rail entry, every control on every page is reachable by moving.
             for (int i = 0; i < ui::kPageCount; ++i)
@@ -892,6 +1047,255 @@ void register_launcher_tests()
             }
         });
 
+        // Sprint 9 P4 (owner, 2026-09-20): "changing between menus causes a weird graphical bug that's
+        // visible for a moment somewhere around the top left of the page." The frame's node list is built
+        // from the page that was current at the top of the frame (main.cpp:1010), and the page changes
+        // AFTER that -- during input (main.cpp:1149-1173) or inside the draw itself, when a rail entry is
+        // clicked (main.cpp:517). On that one frame the NEW page's controls are looked up in the OLD page's
+        // list; rectOf answers Rect{}, the origin with no size; and textCenteredIn duly puts a label at
+        // (0,0), which is the top left of the window, for exactly one frame. Two defences, both pure: the
+        // frame draws from the page's own list, and a rect that is not drawable places no ink anywhere.
+        tc.Run("a page change does not leave the frame drawing from the previous page's node list", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> onPlay = ui::layoutFor(ui::Page::Play, window, in);
+
+            // What the defect did: the bar asks for the NEW page's LAUNCH in the OLD page's list.
+            t.IsFalse(ui::hasNode(onPlay, ui::barLaunchId(ui::Page::Online)),
+                      "the PLAY page's list does not hold the ONLINE page's bar LAUNCH -- this is the lookup that failed");
+            t.IsFalse(ui::drawable(ui::rectOf(onPlay, ui::barLaunchId(ui::Page::Online))),
+                      "and what it answers is not a rect anything may draw from");
+
+            // The fix: the frame's list is the list of the page the input left behind.
+            const std::vector<ui::Node> forFrame = ui::nodesForFrame(onPlay, ui::Page::Online, window, in);
+            t.IsTrue(!forFrame.empty(), "the frame has a list to draw from");
+            bool allOnline = true;
+            for (const ui::Node &n : forFrame)
+                allOnline = allOnline && n.page == ui::Page::Online;
+            t.IsTrue(allOnline, "every node in it belongs to the page being drawn");
+            const ui::Rect launch = ui::rectOf(forFrame, ui::barLaunchId(ui::Page::Online));
+            t.IsTrue(ui::drawable(launch), "the bar's LAUNCH is found, with a rect of its own");
+            t.IsTrue(launch.x > 0.0f && launch.y > 0.0f, "and it is on the bar, not at the window's origin");
+
+            // A frame whose page did not change gets the list it already had, unchanged: the rebuild costs
+            // a page change, not every frame.
+            const std::vector<ui::Node> same = ui::nodesForFrame(onPlay, ui::Page::Play, window, in);
+            t.IsTrue(same.size() == onPlay.size() && !same.empty() && same.front().id == onPlay.front().id,
+                     "a frame whose page did not change draws from the same list");
+        });
+
+        tc.Run("an unknown id answers a rect nothing may draw from, and the origin is not a rect", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+
+            t.IsFalse(ui::drawable(ui::Rect{}), "a default Rect -- the origin, zero by zero -- is not drawable");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, 0.0f, 40.0f}), "nor is one with no width");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, 40.0f, 0.0f}), "nor one with no height");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, -40.0f, 40.0f}), "nor one turned inside out");
+            t.IsTrue(ui::drawable(ui::Rect{10.0f, 10.0f, 40.0f, 40.0f}), "a real rect is");
+
+            t.IsFalse(ui::drawable(ui::rectOf(nodes, "online.no.such.control")),
+                      "an id the list does not hold answers a rect nothing may draw from");
+            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.profile")), "an id it does hold answers a real one");
+        });
+
+        // Sprint 9 P4, from the owner's screenshot: "the UNZIPPED part after SOCOM II is lower than the
+        // SOCOM II text", and "the running text is not aligned with the yellow circle, it appears higher".
+        // Both are the same mistake -- a word placed by its LINE BOX rather than by the ink a reader sees.
+        // text()'s y is the top of the line box, so two different sizes drawn at the same y do NOT share a
+        // baseline; and an all-caps word centred in a bar-height box sits high of centre, because the
+        // font's ascent above the capitals and its descender space below it are not equal. The arithmetic
+        // therefore lives with the bar's other measured placements, and this test asserts the very numbers
+        // the bar draws, which is the spec's bar for this item ("asserted in the top-bar tests, not eyeballed").
+        tc.Run("the top bar: UNZIPPED shares SOCOM II's baseline, and the state word's ink is centred on its lamp", [](TestCase &t)
+        {
+            auto close = [](float a, float b, float tol) { return std::fabs(a - b) <= tol; };
+            const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+            ui::TopBarText m;
+            m.markRight = 16.0f + 86.0f + 10.0f + 74.0f;
+            m.statusW = 46.0f;
+            m.tabW.push_back(34.0f);
+            // Deliberately asymmetric ink, and nothing here is zero or equal: a face whose capitals begin
+            // 3.1 units below the line box's top and stand 10.4 tall at size 15, 2.7/9.0 at 13, 2.9/9.7 at
+            // 14. An implementation that ignores the measurements cannot pass this by accident.
+            m.markY = 10.0f;
+            m.markCapTop = 3.1f;
+            m.markCapH = 10.4f;
+            m.markSubCapTop = 2.7f;
+            m.markSubCapH = 9.0f;
+            m.statusCapTop = 2.9f;
+            m.statusCapH = 9.7f;
+            const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+
+            const float markBaseline = m.markY + m.markCapTop + m.markCapH;
+            t.IsTrue(close(p.markSubY + m.markSubCapTop + m.markSubCapH, markBaseline, 0.001f),
+                     "UNZIPPED is drawn at the y that puts its baseline on SOCOM II's");
+            t.IsFalse(close(p.markSubY, m.markY, 0.001f),
+                      "which is not the same y as SOCOM II's -- equal tops at two sizes is the defect the owner saw");
+
+            t.IsTrue(close(p.statusY + m.statusCapTop + m.statusCapH * 0.5f, p.lamp.y, 0.001f),
+                     "the state word's capitals are centred on the lamp's centre, not its line box on the bar's");
+            t.IsTrue(p.statusY > 0.0f && p.statusY + m.statusCapTop + m.statusCapH < l.bar.h,
+                     "and the word's ink is still inside the bar");
+        });
+
+        // Sprint 9 P4 (owner, 2026-09-20): "move 'Second instance on this machine (for testing)' into an
+        // advanced section". There was no advanced anything in the launcher, so this makes one: a labelled
+        // disclosure at the foot of a page, shut by default, holding the settings a stranger should not
+        // meet on their first run. The rule that keeps a disclosure honest is that it never hides a setting
+        // that is DOING something -- a section holding a non-default value opens itself and cannot be shut,
+        // so nobody turns on a second instance, collapses the section and then wonders why two games start.
+        tc.Run("ONLINE's ADVANCED section is shut by default, and the second instance lives inside it", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = false;
+
+            const std::vector<ui::Node> shut = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(shut, "online.advanced"), "the disclosure itself is always there to be focused");
+            t.IsFalse(ui::hasNode(shut, "online.second"),
+                      "and while it is shut the second-instance toggle is not a control on the page at all");
+
+            in.advancedOpen = true;
+            const std::vector<ui::Node> open = ui::layoutFor(ui::Page::Online, window, in);
+            t.IsTrue(ui::hasNode(open, "online.second"), "opened, the toggle is back");
+            const ui::Rect disclosure = ui::rectOf(open, "online.advanced");
+            const ui::Rect second = ui::rectOf(open, "online.second");
+            t.IsTrue(ui::drawable(disclosure) && ui::drawable(second), "both are real rects");
+            t.IsTrue(second.y > disclosure.y, "the toggle sits below the disclosure that reveals it");
+            t.IsTrue(second.y > ui::rectOf(open, "online.profile").y,
+                     "and the whole section is below the settings a stranger does need");
+
+            // The focus order: ADVANCED is the last thing on the page before the bottom bar's LAUNCH, so
+            // walking down the page never lands in it on the way to something ordinary.
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            const std::vector<std::string> ids = g.idsOn(ui::Page::Online);
+            t.IsTrue(!ids.empty(), "the page has controls");
+            size_t advancedAt = ids.size(), profileAt = ids.size();
+            for (size_t i = 0; i < ids.size(); ++i)
+            {
+                if (ids[i] == "online.advanced") advancedAt = i;
+                if (ids[i] == "online.profile") profileAt = i;
+            }
+            t.IsTrue(advancedAt < ids.size() && profileAt < ids.size(), "both are in the graph");
+            t.IsTrue(advancedAt > profileAt, "ADVANCED comes after the ordinary settings, not before them");
+        });
+
+        tc.Run("an ADVANCED section holding a non-default setting opens itself and cannot be shut", [](TestCase &t)
+        {
+            launcher::Config c;
+            t.IsFalse(c.secondInstance, "a fresh config does not run a second instance");
+            t.IsFalse(ui::advancedForced(c), "so nothing forces the section open");
+
+            c.secondInstance = true;
+            t.IsTrue(ui::advancedForced(c),
+                     "a second instance switched on forces it open -- a disclosure must never hide a setting that is doing something");
+
+            // And the layout agrees: forced open, the toggle is present whatever the player last chose.
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = ui::advancedForced(c);   // the player's collapse does not get a vote here
+            t.IsTrue(ui::hasNode(ui::layoutFor(ui::Page::Online, window, in), "online.second"),
+                     "the toggle a player switched on is always on the page they switched it on");
+        });
+
+        // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'
+        // first". The help is DATA, keyed by the control's own id, so the test can hold it to two rules a
+        // tooltip set always breaks eventually: help that explains nothing, and help attached to a control
+        // that no longer exists.
+        tc.Run("the launcher's help is keyed by control id, and every id it answers for is a real control", [](TestCase &t)
+        {
+            t.IsTrue(ui::helpFor("no.such.control").empty(), "an id with no help answers nothing, not a placeholder");
+            t.IsTrue(ui::helpFor("").empty(), "and neither does an empty id");
+
+            // The owner's first ask, by name: a profile is the card directory AND the persona.
+            const std::string profile = ui::helpFor("online.profile");
+            t.IsFalse(profile.empty(), "'what is a profile?' is answered");
+            t.IsTrue(profile.find("cards/") != std::string::npos, "it says where the profile puts the memory card");
+            t.IsTrue(profile.find("persona") != std::string::npos, "and that it is the name the server sees");
+
+            // Nothing drifts: every id with help is a control the focus graph actually holds. A renamed or
+            // deleted control would otherwise leave help that can never be shown, and nobody would notice.
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = true;   // the ADVANCED sections' controls count too
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            const std::vector<std::string> helped = ui::helpedIds();
+            t.IsTrue(helped.size() >= 3u, "there is a help set to check");
+            for (const std::string &id : helped)
+            {
+                const bool real = g.find(id) != nullptr;
+                t.IsTrue(real, ("help is attached to a control that exists: " + id).c_str());
+                t.IsFalse(ui::helpFor(id).empty(), ("and it is not empty: " + id).c_str());
+                // A sentence, not a restatement of the label: short help that just repeats the control is
+                // noise, and this is the cheapest bar that catches it.
+                t.IsTrue(ui::helpFor(id).size() >= 25u, ("help says something: " + id).c_str());
+            }
+        });
+
+        // Sprint 9 P6 / Goal 7 (R175): the project's server is reached BY NAME. The switch is safe because
+        // the preset string never reaches the game -- `loadHosts()` resolves it to a uint32 and maps the
+        // seven retail hostnames to that (socom2_hostnet.cpp:303-316) -- so no persona can be orphaned.
+        // What the switch DOES introduce is a name that might not resolve, and `parseServerAddress`
+        // answering 0 leaves the runtime pointing at 127.0.0.1 with only a stderr line. Hence a second
+        // preset carrying the raw address, on offer, for exactly that case.
+        tc.Run("the project's server is reached by name, with its raw address kept as a preset that still works", [](TestCase &t)
+        {
+            const launcher::ServerPreset *byName = launcher::findServerPreset("unzipped");
+            t.IsTrue(byName != nullptr, "the default preset is still called 'unzipped' -- an old config must keep working");
+            t.IsTrue(std::string(byName->address) == "socom.scotho.com", "and it now names the server instead of numbering it");
+            t.IsTrue(launcher::presetAvailable(*byName), "it is playable");
+
+            const launcher::ServerPreset *byAddress = launcher::findServerPreset("unzipped-ip");
+            t.IsTrue(byAddress != nullptr, "the raw address is still on offer, as its own preset");
+            t.IsTrue(std::string(byAddress->address) == "3.143.65.100", "pointing at the same box");
+            t.IsTrue(launcher::presetAvailable(*byAddress), "and playable, because a name that will not resolve is the whole reason it exists");
+
+            // A config written before the switch names "unzipped" and must come back playing by name --
+            // the id is the stable thing, not the address.
+            launcher::Config old;
+            launcher::fromJson("{\"serverPreset\": \"unzipped\", \"server\": \"3.143.65.100\"}", old);
+            t.IsTrue(old.serverPreset == "unzipped", "an old config still selects it");
+            t.IsTrue(launcher::effectiveServer(old) == "socom.scotho.com",
+                     "and what reaches the game is the name, without the player touching anything");
+
+            // A fresh install plays on the hosted server by name.
+            launcher::Config fresh;
+            t.IsTrue(fresh.serverPreset == "unzipped", "a fresh config picks the project's server");
+            t.IsTrue(launcher::effectiveServer(fresh) == "socom.scotho.com", "by name");
+        });
+
+        // Nothing may assume how many presets there are: P6 added a fourth, and the page and its layout
+        // both used to count to three in a literal.
+        tc.Run("the ONLINE page lays out a row for every preset there is, not for three", [](TestCase &t)
+        {
+            const size_t n = launcher::kServerPresetCount;
+            t.IsTrue(n >= 4u, "there are at least four presets now");
+
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+            size_t rows = 0;
+            for (size_t i = 0; i < n; ++i)
+                if (ui::hasNode(nodes, "online.preset." + std::to_string(i)))
+                    ++rows;
+            size_t playable = 0;
+            for (size_t i = 0; i < n; ++i)
+                if (launcher::presetAvailable(launcher::kServerPresets[i]))
+                    ++playable;
+            t.IsTrue(rows == playable, "every playable preset has a focusable row, and the unplayable one has none");
+
+            // The rows must not collide with the fields under them: the last row ends above the address.
+            const ui::Rect last = ui::onlinePresetRow(window, static_cast<int>(n) - 1);
+            const ui::Rect address = ui::rectOf(nodes, "online.server");
+            t.IsTrue(ui::drawable(address), "the address field is there");
+            t.IsTrue(last.bottom() <= address.y,
+                     "the last preset row ends above the address field -- a fourth preset must not sit on top of it");
+        });
+
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
         // game. The community server runs r0004, which this client cannot play yet.
         tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)
@@ -907,7 +1311,7 @@ void register_launcher_tests()
             launcher::Config c;
             c.serverPreset = "community";
             c.server = "192.168.2.10";
-            t.Equals(launcher::effectiveServer(c), std::string("3.143.65.100"),
+            t.Equals(launcher::effectiveServer(c), std::string("socom.scotho.com"),
                      "a config still naming community plays on the project's server, not on a placeholder");
             const std::vector<std::string> env = launcher::environmentFor(c);
             for (const std::string &kv : env)
@@ -993,6 +1397,52 @@ void register_launcher_tests()
             t.Equals(ui::launchBlockedReason(true, false, false), std::string(), "verified and idle: nothing in the way");
         });
 
+
+        // Sprint 9 Goal 9 (P3), the owner's defect, 2026-09-20: "When the game is active, both the game
+        // and the launcher receive input commands from the controller." The launcher reads the pad through
+        // raylib/GLFW, which reads it whether or not the window has focus -- so a stick push walked the
+        // launcher's focus ring while the player was aiming with it. The gate is `ui::padIntent`: every pad
+        // reading in the frame loop goes through it, and while the game runs it answers with nothing.
+        tc.Run("the pad drives the launcher only while no game is running", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Right)] = true;
+
+            double repeatAt = 0.0;
+            const ui::PadIntent idle = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/1.0, repeatAt);
+            t.Equals(idle.dx, 1, "with no game running, a d-pad right is one step right");
+            t.IsTrue(idle.prompts, "and a pad that moved the focus asks for the pad's prompts");
+
+            double repeatAtRunning = 0.0;
+            const ui::PadIntent running = ui::padIntent(pad, /*gameRunning=*/true, /*now=*/1.0, repeatAtRunning);
+            t.Equals(running.dx, 0, "while the game runs the same press moves nothing");
+            t.Equals(running.dy, 0, "and nothing vertically either");
+            t.IsFalse(running.activate, "it does not activate");
+            t.IsFalse(running.back, "it does not go back");
+            t.IsFalse(running.launch, "and Start does not ask for a second launch");
+            t.IsFalse(running.prompts, "a pad the launcher did not read cannot change the prompts");
+        });
+
+        // The same gate, for the half that is easy to get wrong: a HELD stick. The repeat clock must not
+        // run while the game has the pad, or the frame the game exits would deliver the burst it banked.
+        tc.Run("a stick held through a whole game session delivers nothing, and no burst when it ends", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.leftX = -1.0f;   // hard left, well past the 0.55 threshold
+
+            double repeatAt = 0.0;
+            for (double now = 0.0; now < 5.0; now += 0.1)
+            {
+                const ui::PadIntent held = ui::padIntent(pad, /*gameRunning=*/true, now, repeatAt);
+                t.Equals(held.dx, 0, "a stick held while the game runs never steps the launcher's focus");
+            }
+            t.Equals(repeatAt, 0.0, "and the repeat clock never started, so nothing is owed");
+
+            const ui::PadIntent after = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/5.0, repeatAt);
+            t.Equals(after.dx, -1, "the frame the game ends, the still-held stick is one step, not a burst");
+        });
 
 #ifndef _WIN32
         // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in

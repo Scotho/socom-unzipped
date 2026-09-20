@@ -128,6 +128,23 @@ orphans them), hosted and joined on Frostfire, played a full five-minute control
 four-round ladder with two kills (`s8_hosted_kill`); two 50000+ sockets bound per round, 537 MB resident after it.
 Ubuntu's `needrestart` restarted the units during an unattended upgrade once; `install.sh` now excludes them.
 
+### Message of the day, channel name, live stats (Sprint 8 Goal 13, 2026-09-19)
+
+`config/db.config.json` carries what simulated mode tells the game: `SimulatedAnnouncementTitle` and
+`SimulatedAnnouncementBody` (the game asks for it with `MediusGetAnnouncements` at login; title and body are sent
+as `title\nbody\n`), `SimulatedChannelName` (the lobby channel the game lists; upstream's is "Channel 1") and
+`SimulatedLocationName`. The tracked config sets the announcement ("Welcome to the SOCOM Unzipped Project", then
+upstream's own two lines kept as the credit); the channel and location are the box's own
+("US East (Ohio)", "AWS us-east-2 (Ohio)") and live only in the hosted box's config.
+
+`config/medius.json` on the hosted box adds `"StatsPrefix": "http://+:10080/"`, `StatsServerName` and
+`StatsLocation`: Medius then answers `GET /stats` with one JSON snapshot (status, server, location, uptime, players
+online / in game / in lobby with names, open games with name, host, slots, level, status and roster, lobby channels,
+and since-start counters: games created, distinct players, peak players). The provider's firewall opens 10080 to the
+website's box only; s2u.scotho.com's nginx proxies and micro-caches it as `/api/stats` (`../scotho/sites/s2u`). On
+Windows use `"http://127.0.0.1:10080/"` (a `+` prefix needs a URL ACL there). Empty or absent = off, which is the
+tracked config.
+
 Packaging this folder for the hosting machine: `bash scripts/make_server_zip.sh [out dir]` (default `dist/server`)
 writes `socom-unzipped-server/` and `socom-unzipped-server.zip` -- `horizon-server/` with its Release binaries (no
 `obj/`, no `bin/Debug/`), the empty `dme-plugins/`, `medius-plugins/`, `files/`, `logs/`, `config/` **without
@@ -213,6 +230,8 @@ No build fixes were needed. Runtime/harness fixes:
 | `Server.Test/Program.cs` | Set `ScertClientAttribute.DefaultRsaAuthKey` from `config.json` key | Test harness NRE'd in `ScertClientAttribute` ctor before sending anything. |
 | `Server.Test/Test/ClientLoginLogout.cs` | `ApplicationId` from `config.json` (was hard-coded 11184) | Test with 10472. |
 | `Server.Test/Medius/BaseClientConnect.cs` | Hello version 110 -> 108 | 110 makes the server answer `CONNECT_REQUIRE`, which the harness never handled; 108 is the PS2-era path. |
+| `Server.Database/Config/DbSettings.cs`, `Server.Database/DbController.cs` | `SimulatedAnnouncementTitle`/`Body`, `SimulatedChannelName`, `SimulatedLocationName` in `db.config.json`; null keeps upstream's canned value | Simulated mode hard-coded the message of the day ("Horizon Medius Server / Source available on GitHub"), the lobby channel ("Channel 1") and the location (Sprint 8 Goal 13). |
+| `Server.Medius/StatsServer.cs` (new), `Program.cs`, `Medius/MediusManager.cs`, `Config/ServerSettings.cs` | `GET /stats` JSON on `medius.json: StatsPrefix` (empty = off), snapshot built on the tick thread every 2 s | Live server stats for s2u.scotho.com: players, games, channels, uptime, since-start counters; names and counts only, never an address or a key. |
 
 Known upstream issues found (not fixed, worked around by the script):
 * **Unified launcher race**: `LogSettings.Singleton` is one static shared by all four components in the process and

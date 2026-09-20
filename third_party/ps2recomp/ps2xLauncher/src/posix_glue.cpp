@@ -14,6 +14,7 @@
 
 #include "win32_glue.h"
 
+#include <cctype>
 #include <cerrno>
 #include <cstdint>
 #include <cstdio>
@@ -312,6 +313,167 @@ namespace win32glue
         if (::waitpid(static_cast<pid_t>(game.pid), &raw, 0) > 0)
             game.status = raw;
         game.exited = true;
+    }
+
+    // ---- Sprint 9 Goal 8: one HTTPS request (the bug report, the server's status line) ---------------------
+    // No TLS library is vendored: the request is `curl`, started with an argv (posix_spawnp -- no shell, so
+    // nothing the player typed is ever interpreted), the body on its stdin, certificate checks at curl's
+    // default (ON: there is no -k here). stdout carries the response headers, the body, and a last line
+    // from -w with the status. A machine without curl gets `error` and the report is saved to disk instead.
+    HttpResult httpRequest(const std::string &method, const std::string &url, const std::string &body, int timeoutMs)
+    {
+        HttpResult out;
+        const bool secure = url.rfind("https://", 0) == 0;
+        const bool loopback = url.rfind("http://127.0.0.1:", 0) == 0 || url.rfind("http://localhost:", 0) == 0;
+        if (!secure && !loopback)
+        {
+            out.error = "plain http is refused for anything but a loopback test server";
+            return out;
+        }
+        if (!onPath("curl"))
+        {
+            out.error = "curl is not installed, so nothing can be sent from here";
+            return out;
+        }
+
+        int toChild[2] = {-1, -1}, fromChild[2] = {-1, -1};
+        if (::pipe2(toChild, O_CLOEXEC) != 0)
+        {
+            out.error = "pipe failed";
+            return out;
+        }
+        if (::pipe2(fromChild, O_CLOEXEC) != 0)
+        {
+            ::close(toChild[0]);
+            ::close(toChild[1]);
+            out.error = "pipe failed";
+            return out;
+        }
+
+        const int seconds = timeoutMs > 0 ? (timeoutMs + 999) / 1000 : 15;
+        const std::string maxTime = std::to_string(seconds);
+        std::vector<std::string> args = {"curl", "--silent", "--show-error", "--fail-with-body", "--max-time", maxTime,
+                                         "--proto", "=http,https", "--max-filesize", "1048576",
+                                         "--request", method, "--dump-header", "-", "--write-out", "\n%{http_code}"};
+        if (!body.empty())
+        {
+            args.insert(args.end(), {"--header", "Content-Type: application/json", "--header", "Expect:", "--data-binary", "@-"});
+        }
+        args.push_back("--");
+        args.push_back(url);
+        std::vector<char *> argv;
+        for (std::string &a : args)
+            argv.push_back(a.data());
+        argv.push_back(nullptr);
+
+        posix_spawn_file_actions_t actions;
+        ::posix_spawn_file_actions_init(&actions);
+        ::posix_spawn_file_actions_adddup2(&actions, toChild[0], STDIN_FILENO);
+        ::posix_spawn_file_actions_adddup2(&actions, fromChild[1], STDOUT_FILENO);
+        ::posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
+        pid_t child = 0;
+        const int rc = ::posix_spawnp(&child, "curl", &actions, nullptr, argv.data(), environ);
+        ::posix_spawn_file_actions_destroy(&actions);
+        ::close(toChild[0]);
+        ::close(fromChild[1]);
+        if (rc != 0)
+        {
+            ::close(toChild[1]);
+            ::close(fromChild[0]);
+            out.error = "curl could not be started (" + std::string(std::strerror(rc)) + ")";
+            return out;
+        }
+
+        // The body goes in whole before anything is read back: curl reads all of stdin before it answers.
+        // A curl that died early closes the pipe; MSG_NOSIGNAL has no equivalent for pipes, so SIGPIPE is
+        // blocked on this thread for the duration of the write and any pending one is consumed.
+        sigset_t pipeSet, oldSet;
+        sigemptyset(&pipeSet);
+        sigaddset(&pipeSet, SIGPIPE);
+        ::pthread_sigmask(SIG_BLOCK, &pipeSet, &oldSet);
+        size_t sent = 0;
+        while (sent < body.size())
+        {
+            const ssize_t n = ::write(toChild[1], body.data() + sent, body.size() - sent);
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            sent += static_cast<size_t>(n);
+        }
+        ::close(toChild[1]);
+        {
+            const struct timespec none = {0, 0};
+            while (::sigtimedwait(&pipeSet, nullptr, &none) > 0)
+            {
+            }
+        }
+        ::pthread_sigmask(SIG_SETMASK, &oldSet, nullptr);
+
+        std::string raw;
+        char buf[4096];
+        for (;;)
+        {
+            const ssize_t n = ::read(fromChild[0], buf, sizeof(buf));
+            if (n < 0 && errno == EINTR)
+                continue;
+            if (n <= 0)
+                break;
+            raw.append(buf, static_cast<size_t>(n));
+            if (raw.size() > 2u * 1024u * 1024u)
+                break;
+        }
+        ::close(fromChild[0]);
+        int status = 0;
+        while (::waitpid(child, &status, 0) < 0 && errno == EINTR)
+        {
+        }
+
+        // The last line is -w's status; before it, one header block per response (a proxy's "200 Connection
+        // established" comes first), then the body.
+        const size_t lastLine = raw.rfind('\n');
+        const int code = lastLine == std::string::npos ? 0 : std::atoi(raw.c_str() + lastLine + 1);
+        std::string rest = lastLine == std::string::npos ? std::string() : raw.substr(0, lastLine);
+        std::string headers;
+        while (rest.rfind("HTTP/", 0) == 0)
+        {
+            size_t end = rest.find("\r\n\r\n");
+            size_t skip = 4;
+            if (end == std::string::npos)
+            {
+                end = rest.find("\n\n");
+                skip = 2;
+            }
+            if (end == std::string::npos)
+                break;
+            headers = rest.substr(0, end + skip);
+            rest.erase(0, end + skip);
+        }
+        if (code <= 0)
+        {
+            const int exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            out.error = "curl exited with " + std::to_string(exitCode) + " and no answer (6 = no such host, 7 = refused, "
+                        "28 = timed out, 60 = the certificate was not trusted)";
+            return out;
+        }
+        out.status = code;
+        out.body = rest;
+        for (size_t at = 0; at < headers.size();)
+        {
+            size_t end = headers.find('\n', at);
+            if (end == std::string::npos)
+                end = headers.size();
+            std::string line = headers.substr(at, end - at);
+            at = end + 1;
+            for (char &c : line)
+                c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            if (line.rfind("retry-after:", 0) == 0)
+            {
+                const long secondsToWait = std::atol(line.c_str() + 12);
+                out.retryAfter = secondsToWait > 0 && secondsToWait < 7 * 24 * 3600 ? static_cast<int>(secondsToWait) : 0;
+            }
+        }
+        return out;
     }
 }
 

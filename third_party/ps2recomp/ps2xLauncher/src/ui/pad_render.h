@@ -110,6 +110,16 @@ namespace ui
         Vec2 leftStick, rightStick;          // the raw axes, before the dead zone
     };
 
+    // R139: the control the crouch shortcut sits on, ringed and tagged CROUCH on the drawing whether or not it is
+    // held. The DualShock 2 drawn here has no touchpad; the centre plate is where a DualShock 4's is.
+    enum class PadMark
+    {
+        None = 0,
+        LeftStick,
+        Plate,
+        L2,
+    };
+
     struct Ctx;   // widgets.h -- the drawing half only
-    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone);
+    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, PadMark mark = PadMark::None);
 }

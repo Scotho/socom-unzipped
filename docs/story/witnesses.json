@@ -1,0 +1,492 @@
+{
+ "schema": 1,
+ "about": "Frozen witnesses for docs/STORY.md's run, gate and log citations. Written by tools_py/story/witness.py, never by hand. logs/ is git-ignored; this is the checkable part.",
+ "witnesses": {
+  "logs/audio_title19.wav": {
+   "source": "logs/audio_title19.wav",
+   "text": "<binary .wav, 31340456 bytes>",
+   "bytes": 31340456,
+   "sha256": "75fe0be2c2dc118e1cd757cce7f58a78efff76d393bc1fb5c63b99f7c5006b66",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/host/host_000_1s.png": {
+   "source": "logs/host/host_000_1s.png",
+   "text": "<binary .png, 11864 bytes>",
+   "bytes": 11864,
+   "sha256": "6dd49ec50fc857b7fb508661ad2ad3813d78b5d7268b566610b3e43f4e9f7765",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/launcher_server_picker.png": {
+   "source": "logs/launcher_server_picker.png",
+   "text": "<binary .png, 31938 bytes>",
+   "bytes": 31938,
+   "sha256": "8f0e411929b9299e2c36079d046769133f1f42719e3a2086a50b5c577a545c4d",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gameplay_probe5_sheet.png": {
+   "source": "logs/parity/gameplay_probe5_sheet.png",
+   "text": "<binary .png, 1964409 bytes>",
+   "bytes": 1964409,
+   "sha256": "7bd340787353739463e88abc9858b674e8728e7a57964a8a1fe7fa0eda6191b6",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/famb/summary.txt": {
+   "source": "logs/parity/gate/famb/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.3 s01=99.2 s02=98.5 s03=98.9 s04=97.9 s05=95.3 s06=96.8 s07=96.2 s08=94.9 s09=97.6 s10=98.2 s11=98.0 s12=96.5 s13=95.8 s14=96.1 s15=98.4 s16=93.4 s17=95.0 s18=98.2 s19=84.1 s20=60.4 s21=59.6 s22=59.6)\nPASS transition (11 black-screen frames examined, rows 396-447 peak 0)\nPASS mission (HUD reached; 6 hold steps captured (need 3))",
+   "bytes": 390,
+   "sha256": "b9fda90462f554b6a80c93a92b84be558b0ff90d375c9c44fb524dc20eb0009f",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s3d_2x_host": {
+   "source": "logs/parity/gate/s3d_2x_host",
+   "text": "mission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\ntransition.game.log\n... (13 entries)",
+   "bytes": 13,
+   "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s4_rand": {
+   "source": "logs/parity/gate/s4_rand",
+   "text": "mission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\ntransition.game.log\n... (13 entries)",
+   "bytes": 13,
+   "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s5_gsbp": {
+   "source": "logs/parity/gate/s5_gsbp",
+   "text": "mission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\ntransition.game.log\n... (13 entries)",
+   "bytes": 13,
+   "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s6_audio_title19/summary.txt": {
+   "source": "logs/parity/gate/s6_audio_title19/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.0 s01=99.2 s02=98.5 s03=98.9 s04=98.9 s05=95.9 s06=96.4 s07=96.2 s08=96.9 s09=96.1 s10=98.4 s11=98.2 s12=97.5 s13=94.8 s14=96.4 s15=98.0 s16=95.9 s17=93.0 s18=96.9 s19=87.9 s20=60.2 s21=67.9 s22=61.3)",
+   "bytes": 258,
+   "sha256": "6afa00151ab3bc65a878cc7058394fb99800b99b792ba2769cff7019f231d3d4",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_blockptr/summary.txt": {
+   "source": "logs/parity/gate/s6_blockptr/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.3 s01=99.2 s02=98.5 s03=98.9 s04=97.7 s05=95.3 s06=96.8 s07=96.2 s08=94.5 s09=97.6 s10=98.2 s11=98.0 s12=96.5 s13=95.9 s14=95.9 s15=98.4 s16=93.2 s17=95.0 s18=98.0 s19=83.9 s20=60.6 s21=51.3 s22=68.0)\nPASS transition (19 black-screen frames examined at/after the burst step (s11, fired), rows 396-447 peak 7)\nPASS mission (HUD reached; 6 hold steps; 5/6 hold captures are gameplay (need 3; bands s31=0.97 s34=0.97 s37=0.97 s",
+   "bytes": 862,
+   "sha256": "04705a9aed9214d205fc1e0804d586d1485fe14e7ce5c3520f29f703b202a91c",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_clock_gate/summary.txt": {
+   "source": "logs/parity/gate/s6_clock_gate/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.0 s01=99.2 s02=98.5 s03=98.9 s04=98.9 s05=96.1 s06=96.9 s07=96.4 s08=96.7 s09=96.3 s10=98.4 s11=98.2 s12=97.5 s13=94.6 s14=96.4 s15=98.0 s16=95.2 s17=93.2 s18=96.9 s19=88.4 s20=60.2 s21=64.1 s22=62.2)\nFAIL transition (transition not captured (4 black-screen frames examined before the first briefing frame (w06_009.png), need 5) in logs/parity/gate/s6_clock_gate/transition)\nPASS mission (HUD reached; 7 hold steps; 7/7 hold",
+   "bytes": 1012,
+   "sha256": "091d561101129ffdc1c416ac24c1fc91a4462523e152fcb57d5d56661f738eae",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_clutfix_gate/summary.txt": {
+   "source": "logs/parity/gate/s6_clutfix_gate/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.3 s01=99.2 s02=98.5 s03=98.9 s04=97.5 s05=95.3 s06=96.8 s07=96.2 s08=94.1 s09=97.6 s10=98.2 s11=98.0 s12=96.5 s13=96.1 s14=95.9 s15=98.4 s16=93.2 s17=95.0 s18=98.4 s19=83.7 s20=59.7 s21=56.7 s22=64.8)\nPASS transition (14 black-screen frames examined before the first briefing frame (w06_009.png), rows 396-447 peak 0)\nPASS mission (HUD reached; 7 hold steps; 7/7 hold captures are gameplay (need 3; bands s31=1.00 s32=1.00 s",
+   "bytes": 954,
+   "sha256": "1ea6409f720b8d0e1fca1e74f62b322efb71872179889f84e0938688f1120f47",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_fixwave_gate/summary.txt": {
+   "source": "logs/parity/gate/s6_fixwave_gate/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=98.9 s01=99.2 s02=98.5 s03=98.9 s04=98.9 s05=96.0 s06=96.7 s07=96.4 s08=96.5 s09=96.5 s10=98.6 s11=98.1 s12=97.6 s13=94.6 s14=96.9 s15=98.0 s16=95.1 s17=93.2 s18=97.4 s19=87.8 s20=60.2 s21=62.7 s22=61.9)\nPASS transition (5 black-screen frames examined before the first briefing frame (w05_009.png), rows 396-447 peak 0)\nPASS mission (HUD reached; 7 hold steps; 7/7 hold captures are gameplay (need 3; bands s31=1.00 s32=1.00 s3",
+   "bytes": 954,
+   "sha256": "35e347610439b461c4b795d085bb3129987a380435f3d7c9f238805d695ebc3d",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_launcher_gate/summary.txt": {
+   "source": "logs/parity/gate/s6_launcher_gate/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.0 s01=99.2 s02=98.5 s03=98.9 s04=98.9 s05=95.9 s06=96.3 s07=96.6 s08=96.7 s09=96.3 s10=98.4 s11=98.2 s12=97.6 s13=94.6 s14=96.4 s15=98.0 s16=96.0 s17=93.0 s18=96.7 s19=89.1 s20=60.2 s21=63.0 s22=62.4)\nPASS transition (13 black-screen frames examined before the first briefing frame (w06_009.png), rows 396-447 peak 0)\nPASS mission (HUD reached; 7 hold steps; 7/7 hold captures are gameplay (need 3; bands s31=1.00 s32=0.93 s",
+   "bytes": 955,
+   "sha256": "759fcfe46eb68918a57fc2678433338b2c15abccb13ee158fbf0a9ebd0ba5861",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s6_probe/summary.txt": {
+   "source": "logs/parity/gate/s6_probe/summary.txt",
+   "text": "PASS mission (HUD reached; 6 hold steps; 5/6 hold captures are gameplay (need 3; bands s31=0.97 s34=0.97 s37=0.97 s40=0.34 s43=0.98 s46=0.97); 3 live hold pairs (need 2; diff >= 3.0: 9.20 3.59 19.82 21.85 8.46); CONSOLE spawn score=44.4 water flat=0.509 dark=0.293 -> FAIL (s28_none.png vs scripts/parity/refs/console_spawn_slot8.png); PROBE root_node_y PASS ours=5.5039 console=5.5039 tol=0.1 reads=309 of 478 rows; PROBE move_scale PASS ours=1 console=1 tol=0.001 reads=309 of 4",
+   "bytes": 562,
+   "sha256": "b3527da7523deb026509822cc5b658b3a8e4f75a8b341497b96ab85a252534e2",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s7_audio_title": {
+   "source": "logs/parity/gate/s7_audio_title",
+   "text": "mc0\nmc1\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png",
+   "bytes": 7,
+   "sha256": "b813ae768a202d533309fd2f5b9e2076f2fc2efb943b28a80e0050aa1872fe62",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s7_gl_gate/summary.txt": {
+   "source": "logs/parity/gate/s7_gl_gate/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.0 s01=99.2 s02=98.5 s03=98.9 s04=98.9 s05=96.0 s06=96.7 s07=96.4 s08=96.5 s09=96.5 s10=98.4 s11=98.1 s12=97.6 s13=94.4 s14=97.1 s15=98.2 s16=94.9 s17=93.2 s18=97.4 s19=88.5 s20=60.2 s21=63.5 s22=62.8)\nPASS transition (14 black-screen frames examined before the first briefing frame (w05_009.png), rows 396-447 peak 0)\nPASS mission (HUD reached; 7 hold steps; 6/7 hold captures are gameplay (need 3; bands s31=1.00 s32=1.00 s",
+   "bytes": 955,
+   "sha256": "f23bcb3b7f5b43142233563848c11a913ceddd4496d81e836781e994a543824b",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s7_gl_gate2/summary.txt": {
+   "source": "logs/parity/gate/s7_gl_gate2/summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.3 s01=99.2 s02=98.5 s03=98.9 s04=97.5 s05=95.5 s06=96.8 s07=96.2 s08=93.4 s09=97.6 s10=98.3 s11=98.0 s12=96.3 s13=96.2 s14=96.3 s15=98.4 s16=93.5 s17=95.0 s18=98.7 s19=83.5 s20=57.3 s21=62.8 s22=64.2)\nPASS transition (14 black-screen frames examined before the first briefing frame (w05_009.png), rows 396-447 peak 0)\nPASS mission (HUD reached; 7 hold steps; 7/7 hold captures are gameplay (need 3; bands s31=1.00 s32=1.00 s",
+   "bytes": 956,
+   "sha256": "54f453d89b65536c843ef93d4e2d1d61c259cd4ba15b43fbddf50fdad88ab6a0",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate/s8_audio_mc_gate2": {
+   "source": "logs/parity/gate/s8_audio_mc_gate2",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s9_g2_release_gate": {
+   "source": "logs/parity/gate/s9_g2_release_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s9_p1_gate": {
+   "source": "logs/parity/gate/s9_p1_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s9_p7_playtest_gate": {
+   "source": "logs/parity/gate/s9_p7_playtest_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate_first.out": {
+   "source": "logs/parity/gate_first.out",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.4 s01=99.2 s02=98.5 s03=98.9 s04=97.5 s05=95.5 s06=96.9 s07=96.0 s08=93.8 s09=97.1 s10=98.6 s11=98.2 s12=97.8 s13=95.7 s14=96.3 s15=98.4 s16=93.2 s17=95.0 s18=98.4 s19=84.1 s20=60.4 s21=49.9 s22=68.1)\nPASS transition (rows 396-447 black on every black-screen frame)\nFAIL mission (HUD never matched (mission not reached))\nGATE FAIL (2/3) -> logs/parity/gate/first",
+   "bytes": 423,
+   "sha256": "3cbf127cb03ccee79bad948bf351f08010f3b941d23904d8027e1d948a0992e5",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate_native_default.out": {
+   "source": "logs/parity/gate_native_default.out",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.3 s01=99.2 s02=98.5 s03=98.9 s04=97.9 s05=95.3 s06=96.8 s07=96.2 s08=94.7 s09=97.6 s10=98.2 s11=98.0 s12=96.5 s13=95.9 s14=96.1 s15=98.4 s16=93.2 s17=95.0 s18=98.2 s19=83.9 s20=60.7 s21=51.3 s22=68.1)\nPASS transition (1 black-screen frames examined, rows 396-447 peak 0)\nPASS mission (HUD reached; 6 hold steps captured (need 3))\nGATE PASS (3/3) -> logs/parity/gate/native_default\nexit=0",
+   "bytes": 448,
+   "sha256": "ba4df66c3a58eae3d63157841953b8266ac24ce43fe07ad90f0d355e8e37a7fc",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate_tfix4.out": {
+   "source": "logs/parity/gate_tfix4.out",
+   "text": "PASS transition (17 black-screen frames examined at/after the burst step (s11), rows 396-447 peak 0)\nGATE PASS (1/1) -> logs/parity/gate/tfix4",
+   "bytes": 145,
+   "sha256": "ba17687e57d84c31d742fa852358cad5595de293160c10a87e5ec75070fd5779",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/gate_wcap1.out": {
+   "source": "logs/parity/gate_wcap1.out",
+   "text": "PASS transition (10 black-screen frames examined, rows 396-447 peak 0)\nGATE PASS (1/1) -> logs/parity/gate/wcap1",
+   "bytes": 115,
+   "sha256": "589e289f833e57050958872b421c93322fa0dd87fde06e519f03c147c5a0a9b7",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/launcher_ui": {
+   "source": "logs/parity/launcher_ui",
+   "text": "about_1100x700.png\nabout_800x520.png\naudio_1100x700.png\naudio_800x520.png\ncontroller_1100x700.png\ncontroller_800x520.png\ncontroller_playstation_1100x700.png\ndisc_1100x700.png\ndisc_800x520.png\nmicrophone_1100x700.png\nmicrophone_800x520.png\nonline_1100x700.png\n... (20 entries)",
+   "bytes": 20,
+   "sha256": "b7d234a95f3a47e1c98188c8d0b20f079cadee671e43197e59c269f22ded814d",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/lobby_rate_summary.txt": {
+   "source": "logs/parity/lobby_rate_summary.txt",
+   "text": "# lobby rate queue 2026-09-17T22:28:55 map=frostfire count=10 harness=f57a424 exe=85c361193ec1cce2\n01 rc=0 754s RESULT CONTROL-ROUND\n02 rc=0 823s RESULT CONTROL-ROUND\n03 rc=4 323s RESULT LOBBY-FAIL login:keyboa\n04 rc=4 166s RESULT LOBBY-FAIL login:keyboa\n05 rc=4 371s RESULT LOBBY-FAIL p",
+   "bytes": 923,
+   "sha256": "21d936d359847f3ff216535bd7f38ce7eaf5d1dc5530e1827c3a2130a562d402",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/match_play5_sheet.png": {
+   "source": "logs/parity/match_play5_sheet.png",
+   "text": "<binary .png, 5838073 bytes>",
+   "bytes": 5838073,
+   "sha256": "1c81242cf6e26be6519e8ea8ac329699451afbfc013dca07e20796f530421a83",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/mission_merge/host_000_1s.png": {
+   "source": "logs/parity/mission_merge/host_000_1s.png",
+   "text": "<binary .png, 12132 bytes>",
+   "bytes": 12132,
+   "sha256": "ed427a6bf518003eac9d80879d80af56e7bc6daf8122e2c4d50f1a5b9ef84bf7",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/online/login/09_lobby.png": {
+   "source": "logs/parity/online/login/09_lobby.png",
+   "text": "<binary .png, 67412 bytes>",
+   "bytes": 67412,
+   "sha256": "ea0c75ecf35c11c0e24c22dbfa0a6c471fbda3bd34d4763e16c5989903a70826",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/online/match/montageAB2.png": {
+   "source": "logs/parity/online/match/montageAB2.png",
+   "text": "<binary .png, 1541434 bytes>",
+   "bytes": 1541434,
+   "sha256": "42fd61b4b664c358da88e05eacb628fc449cbf892c0e44e9d9ee0ed23df483ee",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/online_control_summary.txt": {
+   "source": "logs/parity/online_control_summary.txt",
+   "text": "the_mixer pass=1 rc=4 201s RESULT LOBBY-FAIL p\nfoxhunt pass=1 rc=4 214s RESULT LOBBY-FAIL login:keyboa\nsujo pass=1 rc=0 778s RESULT CONTROL-ROUND\nenowapi pass=1 rc=0 773s RESULT CONTROL-ROUND\nshadow_falls pass=1 rc=0 748s RESULT CONTROL-ROUND\nfish_hook pass=1 rc=0 749s RESULT CONTROL-ROUND",
+   "bytes": 1151,
+   "sha256": "5916c87a980ee5b3fa3d1480378bf6582d29844681270620fbaf8843238b8cea",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/ours_control_foxhunt_guard": {
+   "source": "logs/parity/ours_control_foxhunt_guard",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (50 entries)",
+   "bytes": 50,
+   "sha256": "fe8e1bff5e0ebd57e05747fe543cf5f3dfcb15a8217e150bb37a4b298a4cc47f",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/ours_control_frostfire_clockoff": {
+   "source": "logs/parity/ours_control_frostfire_clockoff",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (49 entries)",
+   "bytes": 49,
+   "sha256": "65e3e6a61b5b96657a7b08a50c9f08b17a9d076b599d717e7908dcf45159bcaf",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/ours_control_requiem_clock": {
+   "source": "logs/parity/ours_control_requiem_clock",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (50 entries)",
+   "bytes": 50,
+   "sha256": "924404f1349e0300103a5567d25ee1ae3d8d2f2d664361de3f419d2540871777",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/ours_e_sheet.png": {
+   "source": "logs/parity/ours_e_sheet.png",
+   "text": "<binary .png, 931663 bytes>",
+   "bytes": 931663,
+   "sha256": "aa3c57b0fe6ea54d1c12ac5804963893a95e788100fe38e69fb6168875c35cd9",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/ours_host/16_game_lobby.png": {
+   "source": "logs/parity/ours_host/16_game_lobby.png",
+   "text": "<binary .png, 114054 bytes>",
+   "bytes": 114054,
+   "sha256": "ab31d739006fb94cb6251b668005133d5e88721edf7eba8de11a958a445fc78c",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/ours_login/09_lobby.png": {
+   "source": "logs/parity/ours_login/09_lobby.png",
+   "text": "<binary .png, 70290 bytes>",
+   "bytes": 70290,
+   "sha256": "09c7ea57acf5c5a9ecafccc727743954190779b6a776d4f9cc51227fef813824",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/ours_match/A_hold05.png": {
+   "source": "logs/parity/ours_match/A_hold05.png",
+   "text": "<binary .png, 135627 bytes>",
+   "bytes": 135627,
+   "sha256": "989107fb436d93ff43ab206af8afe1991f704367fbfb9c03c1436e5ee7e6c765",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/ours_match_play5": {
+   "source": "logs/parity/ours_match_play5",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (81 entries)",
+   "bytes": 81,
+   "sha256": "74ad7cef39814f353ee8f0b6331a546e8137a0c6191ea9f1647663235f262c4d",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/ours_task6_fix2": {
+   "source": "logs/parity/ours_task6_fix2",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (85 entries)",
+   "bytes": 85,
+   "sha256": "4887e5f64b85b0ae6ed580eeecd676b8a664065be3ec91425b1837328230390f",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s5_t5_ladder2": {
+   "source": "logs/parity/s5_t5_ladder2",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (65 entries)",
+   "bytes": 65,
+   "sha256": "4b86f3d65c0d9791387e7525f57c41a64e7ab49b65620e65764cbdea860db39f",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s8_hosted_control2": {
+   "source": "logs/parity/s8_hosted_control2",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (50 entries)",
+   "bytes": 50,
+   "sha256": "5a7f285c3960695bb4553ec2940c1782b1db16552a35f9615035ce361939b645",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s8_hosted_kill": {
+   "source": "logs/parity/s8_hosted_kill",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (67 entries)",
+   "bytes": 67,
+   "sha256": "0fdce47f0caec7a26d8564314f16773cf848589e8e2e22bdaba1cba6bad9a37c",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s8_save_second": {
+   "source": "logs/parity/s8_save_second",
+   "text": "final.png\nmanifest.json\ns00_none.png\ns01_CROSS.png\ns02_none.png\ns03_none.png\ns04_none.png\ns05_burst_000.png\ns05_burst_001.png\ns05_burst_002.png\ns05_burst_003.png\ns05_burst_004.png\n... (158 entries)",
+   "bytes": 158,
+   "sha256": "eb1bd769e80198a2daafe47e4ebd33f37d13c8dc2dba329a26dc8db0c1c5ab30",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s8_save_yes": {
+   "source": "logs/parity/s8_save_yes",
+   "text": "final.png\nmanifest.json\ns00_none.png\ns01_CROSS.png\ns02_CROSS.png\ns03_none.png\ns04_none.png\ns05_burst_000.png\ns05_burst_001.png\ns05_burst_002.png\ns05_burst_003.png\ns05_burst_004.png\n... (482 entries)",
+   "bytes": 482,
+   "sha256": "94520807cff7ce32cc7a070cb55ffa5569b96c2c47c01b4a2d80ef167b918457",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s8_voice_round4": {
+   "source": "logs/parity/s8_voice_round4",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (49 entries)",
+   "bytes": 49,
+   "sha256": "65e3e6a61b5b96657a7b08a50c9f08b17a9d076b599d717e7908dcf45159bcaf",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/s9_p1_m51_audio2": {
+   "source": "logs/parity/s9_p1_m51_audio2",
+   "text": "drive.log\nfinal.png\nmanifest.json\nmission.game.log\nmission_audio.wav\nmission_audio_playable.wav\ns00_CROSS.png\ns01_CROSS.png\ns02_CROSS.png\ns03_CROSS.png\ns04_CROSS.png\ns05_CROSS.png\n... (328 entries)",
+   "bytes": 328,
+   "sha256": "86ccc3436cf28f35a8c82fc59827e26c34d63dd74fd577b452416fff563e4194",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/title_stall5_sheet.png": {
+   "source": "logs/parity/title_stall5_sheet.png",
+   "text": "<binary .png, 1728266 bytes>",
+   "bytes": 1728266,
+   "sha256": "3aa2f47349fed219f110451feeab3dbe6f31879a09dcabd121ae8d0117a7f8f0",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/vm/s8_vm_title5_summary.txt": {
+   "source": "logs/parity/vm/s8_vm_title5_summary.txt",
+   "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=97.3 s01=99.0 s02=99.3 s03=99.3 s04=99.3 s05=99.3 s06=83.5 s07=99.2 s08=99.2 s09=99.2 s10=99.2 s11=99.2 s12=99.2 s13=99.2 s14=99.4 s15=99.4 s16=83.5 s17=98.9 s18=83.5 s19=98.5 s20=98.5 s21=83.5 s22=98.5)",
+   "bytes": 257,
+   "sha256": "c779b96c3005fedf32786703702dfcfc42f1f2e5a8ccc249b91dcb59a509f0c3",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/parity/vu1fast_1_sheet.png": {
+   "source": "logs/parity/vu1fast_1_sheet.png",
+   "text": "<binary .png, 2002169 bytes>",
+   "bytes": 2002169,
+   "sha256": "3ce4a7d58e3f6ec74b7b6fa792fa15cad15006d652c474883fca089e928c7402",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/run_A_20260913_115809.log": {
+   "source": "logs/run_A_20260913_115809.log",
+   "text": "Using argv boot path\n[gs-gl] OpenGL backend active (PS2X_GS_BACKEND=cpu for the rasterizer)\n[gs-gl] PS2X_GS_SCALE=1 (render targets 1x native, resolve filter point)\n[ps2xIOP] [MCSERV] op=0 args=0,0,0,0,0 -> 0\nINFO: Initializing raylib 5.5\nINFO: Platform backend: DESKTOP (GLFW)",
+   "bytes": 20874198,
+   "sha256": "3737e0ad64b61095b33d3efaeaf8da3988239d610793507df73323a693e0dc2b",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  },
+  "logs/s6_ladder8.done": {
+   "source": "logs/s6_ladder8.done",
+   "text": "done 0 mpexit=0 KILL harness=d6e417fe626d102c4ab24e89f431dda97d97db22 path=/c/projects/socom_pc/dist/socom2.exe mtime=2026-09-15T22:28:24Z sha256=1cfef9af028a90fc7259aee9397f9e5c766ead9bc989caba82ea1392f6ccc2a9",
+   "bytes": 211,
+   "sha256": "22e46f22e2044bb62be78c5427337ac7495f1e2c45c8dd5724818582cf3b7e30",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "file"
+  }
+ }
+}

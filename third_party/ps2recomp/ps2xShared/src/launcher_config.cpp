@@ -1,4 +1,5 @@
 #include "launcher/launcher_config.h"
+#include "ps2x/exit_codes.h"
 
 #include <cctype>
 #include <cstdio>
@@ -206,6 +207,7 @@ namespace launcher
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone);
         out += std::string("  \"padDeadZone\": ") + dz + ",\n";
+        out += "  \"crouchShortcut\": " + quote(normalizeCrouchShortcut(c.crouchShortcut)) + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
@@ -255,13 +257,14 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut")
                 {
                     std::string v;
                     if (!p.string(v))
                         return false;
                     if (key == "isoPath") c.isoPath = v;
                     else if (key == "presentFilter") c.presentFilter = v;
+                    else if (key == "crouchShortcut") c.crouchShortcut = normalizeCrouchShortcut(v);
                     // Review finding F5: a stored 0x0 (or any zero dimension) keeps the default instead.
                     else if (key == "windowSize") { if (isUsableWindowSize(v)) c.windowSize = v; }
                     else if (key == "server") { c.server = v; sawServer = true; }
@@ -276,7 +279,7 @@ namespace launcher
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;
-                    else c.profile = v;
+                    else c.profile = normalizeProfile(v);
                 }
                 else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
                 {
@@ -311,12 +314,30 @@ namespace launcher
 
     std::string exitMessage(int exitCode)
     {
-        // Kept in step with GsGlCaps::kExitCode (ps2xRuntime/include/runtime/gs/gs_gl_caps.h); the
-        // launcher does not include the runtime's headers.
-        if (exitCode == 65)
-            return "Your GPU or driver is missing OpenGL 3.3 with dual-source blending; the game ran on the slow CPU renderer.";
-        return std::string();
+        // Sprint 9 Goal 1: the sentence lives in the one table the runner also reads (ps2x/exit_codes.h).
+        return ExitCodes::describe(exitCode);
     }
+
+    std::string lastRunLine(long long rawExitStatus, const std::string &logText)
+    {
+        std::string line = ExitCodes::describe(rawExitStatus);
+        for (const std::string &notice : ExitCodes::noticesIn(logText))
+            line += " " + notice;
+        return line;
+    }
+
+    std::vector<std::string> selftestExitLines()
+    {
+        std::vector<std::string> lines;
+        for (const ExitCodes::Entry &e : ExitCodes::kTable)
+        {
+            char head[64];
+            std::snprintf(head, sizeof(head), "exit %3d %s: ", e.code, e.slug);
+            lines.push_back(std::string(head) + e.sentence);
+        }
+        return lines;
+    }
+
 
     std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
     {
@@ -349,6 +370,56 @@ namespace launcher
         return merged;
     }
 
+    std::string normalizeCrouchShortcut(const std::string &value)
+    {
+        for (const char *known : kCrouchShortcuts)
+            if (value == known)
+                return known;
+        return "off";
+    }
+
+    std::string normalizeProfile(const std::string &value)
+    {
+        // A name, not a path. Anything with a separator, a colon, a control character or any other punctuation
+        // is refused WHOLE -- no stripping, no collapsing -- because a half-cleaned path is the one that gets
+        // walked around. "." and ".." are refused for the same reason even though their characters are allowed.
+        if (value.empty() || value == "." || value == "..")
+            return "player";
+        for (const char c : value)
+        {
+            const unsigned char u = static_cast<unsigned char>(c);
+            const bool ok = (u >= 'a' && u <= 'z') || (u >= 'A' && u <= 'Z') || (u >= '0' && u <= '9') ||
+                            c == ' ' || c == '_' || c == '-' || c == '.';
+            if (!ok)
+                return "player";
+        }
+        return value.size() > 64 ? value.substr(0, 64) : value;
+    }
+
+    const char *crouchShortcutLabel(const std::string &value)
+    {
+        const std::string v = normalizeCrouchShortcut(value);
+        if (v == "l3")
+            return "L-STICK CLICK";
+        if (v == "touchpad")
+            return "TOUCHPAD";
+        if (v == "l2")
+            return "L2";
+        return "OFF";
+    }
+
+    const char *crouchShortcutHint(const std::string &value)
+    {
+        const std::string v = normalizeCrouchShortcut(value);
+        if (v == "l3")
+            return "Left stick click crouches (the community's Xbox layout). Fire mode moves to the keyboard's 2 key.";
+        if (v == "touchpad")
+            return "Touchpad click crouches (DualShock 4 / DualSense, Windows). Nothing else changes.";
+        if (v == "l2")
+            return "L2 crouches. The second weapon swap moves to the keyboard's 1 key.";
+        return "Crouch is a LIGHT press of Triangle, which a PC pad cannot make: Y only goes prone. Pick a control.";
+    }
+
     std::vector<std::string> environmentFor(const Config &c)
     {
         std::vector<std::string> env;
@@ -367,7 +438,7 @@ namespace launcher
         if (c.fpsOverlay)
             env.push_back("PS2X_FPS_OVERLAY=1");
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
-        const std::string profile = c.profile.empty() ? std::string("player") : c.profile;
+        const std::string profile = normalizeProfile(c.profile);
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
         // Sprint 7 Task 8: the pad the player picked (only when they picked one -- unset means the runtime's
         // own "first available" rule), and the dead zone, always, so what they tuned is what the game gets.
@@ -376,6 +447,10 @@ namespace launcher
         char dz[32];
         std::snprintf(dz, sizeof(dz), "%g", c.padDeadZone < 0.0 ? 0.0 : (c.padDeadZone > 0.5 ? 0.5 : c.padDeadZone));
         env.push_back(std::string("PS2X_PAD_DEADZONE=") + dz);
+        // R139: only when a shortcut is on -- "off" sends nothing, so the default environment is what it was.
+        const std::string crouch = normalizeCrouchShortcut(c.crouchShortcut);
+        if (crouch != "off")
+            env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + crouch);
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);

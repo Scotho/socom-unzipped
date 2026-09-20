@@ -6,19 +6,31 @@
 //   socom_unzipped_launcher.exe              the window
 //   socom_unzipped_launcher.exe --selftest   load config.json, verify the ISO if one is set, print the environment, exit
 //   socom_unzipped_launcher.exe --screenshot <dir>   every page at both sizes, on a fixed fake state, as PNGs
+//   socom_unzipped_launcher.exe --screenshot <dir> --shot-frames 2   capture the FIRST frame drawn after each
+//                                                   page change rather than the settled one (Sprint 9 P4:
+//                                                   the default is why a one-frame defect never showed up)
+//   socom_unzipped_launcher.exe --diagnostics <out.zip> [dir]   write the diagnostics zip for <dir> (default: this folder), no window
+//   socom_unzipped_launcher.exe --report-bug <form.json> [dir]   send one bug report for <dir>, print the reply, no window
+//                                                                (a PROOF unless the form says "test": false)
+//   socom_unzipped_launcher.exe --server-status                  print the hosted server's status line, no window
 //
 // This file is setup, the loop and the page dispatch. Everything drawn lives in src/ui/.
+#include "launcher/bug_report.h"
+#include "launcher/diagnostics.h"
 #include "launcher/iso9660.h"
 #include "launcher/launcher_config.h"
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+#include "ps2x/exe_dir.h"
+#include "ps2x/zip_store.h"
 #include "win32_glue.h"
 
 #include "ui/chrome.h"
 #include "ui/fonts.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
+#include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/pages.h"
 #include "ui/theme.h"
@@ -29,13 +41,16 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -65,6 +80,18 @@ namespace
         std::stringstream ss;
         ss << in.rdbuf();
         return ss.str();
+    }
+
+    // The first `maxBytes` of a file: the run log's head, where the boot lines (GL, audio, notices) are.
+    std::string readHead(const fs::path &p, size_t maxBytes)
+    {
+        std::ifstream in(p, std::ios::binary);
+        if (!in)
+            return {};
+        std::string out(maxBytes, '\0');
+        in.read(out.data(), static_cast<std::streamsize>(maxBytes));
+        out.resize(static_cast<size_t>(in.gcount()));
+        return out;
     }
 
     bool writeText(const fs::path &p, const std::string &text)
@@ -122,19 +149,255 @@ namespace
         return st;
     }
 
-    // "Copy diagnostics": the last run log and config.json into diagnostics/<stamp>/ (no archiver dependency).
-    std::string copyDiagnostics(const fs::path &dir, const std::string &lastLog)
+    // The newest logs/run_<stamp>.log by name (the stamp sorts), for a launcher that has not started a
+    // game this session -- or a game that was double-clicked (the bare run writes the same names).
+    std::string newestRunLog(const fs::path &logs)
     {
-        const fs::path out = dir / "diagnostics" / win32glue::stamp();
+        std::string best;
         std::error_code ec;
-        fs::create_directories(out, ec);
+        for (fs::directory_iterator it(logs, ec), end; !ec && it != end; it.increment(ec))
+        {
+            const std::string name = it->path().filename().string();
+            if (name.rfind("run_", 0) == 0 && it->path().extension() == ".log" && name > best)
+                best = name;
+        }
+        return best.empty() ? std::string() : (logs / best).string();
+    }
+
+    std::string homeDirectory();   // USERPROFILE, else HOME (defined with the bug report's helpers below)
+
+    // "Save diagnostics": one zip -- the last log, config.json through the allowlist, the GL lines, the
+    // crash record if any, versions (launcher/diagnostics.h). `outZip` empty = diagnostics/ under `home`.
+    // The log goes in whole: diagnostics::entries() is what clips it to its head and tail and scrubs the
+    // home directory out of every entry, and it must see the real byte count to say how much it dropped.
+    bool saveDiagnostics(const fs::path &home, const fs::path &outZip, const std::string &lastLog,
+                         bool haveLastExit, long long lastExit, std::string &message)
+    {
+        namespace diag = launcher::diagnostics;
+        const std::string stamp = win32glue::stamp();
+        const fs::path out = outZip.empty() ? home / "diagnostics" / ("socom_unzipped_" + stamp + ".zip") : outZip;
+        std::error_code ec;
+        if (out.has_parent_path())
+            fs::create_directories(out.parent_path(), ec);
+
+        diag::Inputs in;
+        const std::string log = (!lastLog.empty() && fs::exists(lastLog)) ? lastLog : newestRunLog(home / "logs");
+        if (!log.empty())
+        {
+            in.logName = fs::path(log).filename().string();
+            in.logText = readText(log);
+        }
+        in.configText = readText(home / "config.json");
+        in.version = readText(home / "version.txt");
+        while (!in.version.empty() && (in.version.back() == '\n' || in.version.back() == '\r'))
+            in.version.pop_back();
+        in.platform = ExeDir::platformName();
+        in.homeDir = homeDirectory();
+        in.haveLastExit = haveLastExit;
+        in.lastExit = lastExit;
+
+        uint16_t date = 0x0021, time = 0;
+        ZipStore::dosDateTime(stamp, date, time);
+        const std::string bytes = ZipStore::build(diag::entries(in), date, time);
+        std::ofstream file(out, std::ios::binary | std::ios::trunc);
+        if (bytes.empty() || !file)
+        {
+            message = "cannot write " + out.string();
+            return false;
+        }
+        file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+        file.flush();
+        if (!file)
+        {
+            message = "cannot write " + out.string();
+            return false;
+        }
+        message = "saved " + out.string();
+        return true;
+    }
+
+    // ---- Sprint 9 Goal 8: the bug report and the server's status line ----------------------------------------
+    namespace br = launcher::bugreport;
+
+    std::string homeDirectory()
+    {
+        const char *homeDir = std::getenv("USERPROFILE");
+        if (homeDir == nullptr || *homeDir == '\0')
+            homeDir = std::getenv("HOME");
+        return homeDir ? homeDir : "";
+    }
+
+    // The log as the report needs it: the head (where the GL lines are) and the tail (what went wrong, and
+    // what is attached), without reading a gigabyte to get them.
+    std::string readLogForReport(const fs::path &p)
+    {
+        constexpr size_t kHead = 256u * 1024u, kTail = 256u * 1024u;
+        std::error_code ec;
+        const uintmax_t size = fs::file_size(p, ec);
         if (ec)
-            return "cannot create " + out.string();
-        if (!lastLog.empty() && fs::exists(lastLog))
-            fs::copy_file(lastLog, out / fs::path(lastLog).filename(), fs::copy_options::overwrite_existing, ec);
-        if (fs::exists(dir / "config.json"))
-            fs::copy_file(dir / "config.json", out / "config.json", fs::copy_options::overwrite_existing, ec);
-        return "copied to " + out.string();
+            return {};
+        if (size <= kHead + kTail)
+            return readText(p);
+        std::ifstream in(p, std::ios::binary);
+        if (!in)
+            return {};
+        std::string tail(kTail, '\0');
+        in.seekg(static_cast<std::streamoff>(size - kTail));
+        in.read(tail.data(), static_cast<std::streamsize>(kTail));
+        tail.resize(static_cast<size_t>(in.gcount()));
+        return launcher::diagnostics::joinClipped(readHead(p, kHead), tail, size - kHead - kTail);
+    }
+
+    br::Inputs reportInputs(const fs::path &home, const std::string &lastLog, bool haveLastExit, long long lastExit)
+    {
+        br::Inputs in;
+        in.version = readText(home / "version.txt");
+        while (!in.version.empty() && (in.version.back() == '\n' || in.version.back() == '\r'))
+            in.version.pop_back();
+        in.platform = ExeDir::platformName();
+        in.homeDir = homeDirectory();
+        const std::string log = (!lastLog.empty() && fs::exists(lastLog)) ? lastLog : newestRunLog(home / "logs");
+        if (!log.empty())
+            in.logText = readLogForReport(log);
+        in.haveLastExit = haveLastExit;
+        in.lastExit = lastExit;
+        return in;
+    }
+
+    std::string apiUrl(const char *path)
+    {
+        return br::apiBase(std::getenv(br::kApiBaseEnv)) + path;
+    }
+
+    struct ReportOutcome
+    {
+        br::Reply reply;
+        std::string savedPath;        // set when the report was written to logs/ instead
+        std::string transportError;   // for stderr; never shown as the reason on the page
+    };
+
+    // Blocking: the POST, and on anything but a receipt or a field to fix, the file. Runs on the worker
+    // thread (the page) or on the main one (--report-bug).
+    ReportOutcome sendReport(const fs::path &home, const std::string &json)
+    {
+        ReportOutcome out;
+        const win32glue::HttpResult http = win32glue::httpRequest("POST", apiUrl(br::kBugsPath), json, 15000);
+        out.transportError = http.error;
+        out.reply = br::parseReply(http.status, http.body, http.retryAfter);
+        if (out.reply.kind == br::Reply::Kind::Failed || out.reply.kind == br::Reply::Kind::RateLimited)
+        {
+            std::error_code ec;
+            fs::create_directories(home / "logs", ec);
+            const fs::path file = home / "logs" / br::savedFileName(win32glue::stamp());
+            if (writeText(file, json))
+                out.savedPath = file.string();
+        }
+        return out;
+    }
+
+    // GET /api/stats -> the body, or "" when there was no 200. Blocking; the page runs it on a worker.
+    std::string fetchStats()
+    {
+        const win32glue::HttpResult http = win32glue::httpRequest("GET", apiUrl(br::kStatsPath), std::string(), 4000);
+        return http.status == 200 ? http.body : std::string();
+    }
+
+    // One request at a time, off the UI thread. The UI thread starts it and polls the slot; nothing else is
+    // shared. join() waits for the request's own timeout at most, so closing the launcher mid-send neither
+    // crashes (the thread never outlives what it writes to) nor hangs for longer than that.
+    template <typename T>
+    class Worker
+    {
+    public:
+        ~Worker() { join(); }
+        bool busy() const { return m_busy; }
+        void start(std::function<T()> fn)
+        {
+            join();
+            m_busy = true;
+            m_done = false;
+            m_thread = std::thread([this, fn]()
+            {
+                T result{};
+                try
+                {
+                    result = fn();
+                }
+                catch (...)
+                {
+                }
+                std::lock_guard<std::mutex> lock(m_mutex);
+                m_result = std::move(result);
+                m_done = true;
+            });
+        }
+        bool poll(T &out)
+        {
+            if (!m_busy)
+                return false;
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (!m_done)
+                    return false;
+            }
+            m_thread.join();
+            m_busy = false;
+            out = std::move(m_result);
+            return true;
+        }
+        void join()
+        {
+            if (m_thread.joinable())
+                m_thread.join();
+            m_busy = false;
+        }
+
+    private:
+        std::thread m_thread;
+        std::mutex m_mutex;
+        bool m_done = false;
+        bool m_busy = false;
+        T m_result{};
+    };
+
+    int exitCodeFor(const br::Reply &reply)
+    {
+        switch (reply.kind)
+        {
+        case br::Reply::Kind::Sent: return 0;
+        case br::Reply::Kind::FieldError: return 2;
+        case br::Reply::Kind::RateLimited: return 3;
+        case br::Reply::Kind::Failed: return 4;
+        }
+        return 4;
+    }
+
+    // --report-bug <form.json> [dir]: one report, built exactly as the page builds it, and the reply's line.
+    int reportBugHeadless(const fs::path &formFile, const fs::path &home)
+    {
+        br::Form form;
+        if (!br::formFromJson(readText(formFile), form))
+        {
+            std::printf("cannot read the form file %s\n", formFile.string().c_str());
+            return 5;
+        }
+        const std::string problem = br::checkForm(form);
+        if (!problem.empty())
+        {
+            std::printf("NOT SENT. %s\n", problem.c_str());
+            return 2;
+        }
+        launcher::Config config;
+        launcher::fromJson(readText(home / "config.json"), config);
+        const br::Payload payload = br::build(config, form, reportInputs(home, std::string(), false, 0));
+        std::printf("%s\n", br::previewLine(payload, form).c_str());
+        const ReportOutcome outcome = sendReport(home, payload.json);
+        if (!outcome.transportError.empty())
+            std::fprintf(stderr, "[report] %s\n", outcome.transportError.c_str());
+        std::printf("%s\n", outcome.reply.text.c_str());
+        if (!outcome.savedPath.empty())
+            std::printf("%s\n", br::savedLocallyLine(outcome.savedPath).c_str());
+        return exitCodeFor(outcome.reply);
     }
 
     // ---- the chrome around the pages ----------------------------------------------------------------------
@@ -180,22 +443,41 @@ namespace
         fillRect(ctx, l.bar, theme::mix(theme::panel, theme::ground, 0.5f));
         fillRect(ctx, Rect{0.0f, l.bar.bottom() - 1.0f, l.bar.w, 1.0f}, theme::line);
 
-        // The mark, small: the big wordmark lives at the head of the rail.
+        // The mark, small: the big wordmark lives at the head of the rail. Neither word is drawn yet --
+        // where the second one goes depends on where the first one's BASELINE falls, and that is
+        // arithmetic ui::topBarPlaces does and the top-bar test asserts (Sprint 9 P4, from the owner's
+        // screenshot: "the UNZIPPED part after SOCOM II is lower than the SOCOM II text").
         const float markX = 16.0f;
-        text(ctx, "SOCOM II", Vec2{markX, 10.0f}, 15.0f, theme::gold, Face::Bold, 0.08f);
+        const float markY = 10.0f;
         const float markW = textWidth(ctx, "SOCOM II", 15.0f, Face::Bold, 0.08f);
-        text(ctx, "UNZIPPED", Vec2{markX + markW + 10.0f, 12.0f}, 13.0f, theme::dim, Face::Bold, 0.10f);
+        const float subX = markX + markW + 10.0f;
 
         // Where the measured halves of the bar go: the tab group and the state cluster, from the widths this
         // font actually draws (ui::topBarPlaces does the arithmetic, and the tests assert on it).
         const char *state = app.running ? "RUNNING" : (app.discOk ? "READY" : "NOT READY");
         const char *name = pageName(app.nav.page);
         TopBarText measured;
-        measured.markRight = markX + markW + 10.0f + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
+        measured.markRight = subX + textWidth(ctx, "UNZIPPED", 13.0f, Face::Bold, 0.10f);
         measured.statusW = textWidth(ctx, state, 14.0f, Face::Bold, 0.06f);
         measured.showPill = app.dirty;
         measured.tabW.push_back(textWidth(ctx, name, 13.0f, Face::Bold, 0.12f));
+        // The ink, not the line box: what a reader lines up is the capitals, and the face's ascent above
+        // them is not its descender space below (Sprint 9 P4). The bar hands the measurements over exactly
+        // as it already hands over the widths, and the arithmetic stays where the test can reach it.
+        const InkBox markInk = capInk(ctx, 15.0f, Face::Bold);
+        const InkBox subInk = capInk(ctx, 13.0f, Face::Bold);
+        const InkBox stateInk = capInk(ctx, 14.0f, Face::Bold);
+        measured.markY = markY;
+        measured.markCapTop = markInk.top;
+        measured.markCapH = markInk.height;
+        measured.markSubCapTop = subInk.top;
+        measured.markSubCapH = subInk.height;
+        measured.statusCapTop = stateInk.top;
+        measured.statusCapH = stateInk.height;
         const TopBarPlaces places = topBarPlaces(l, measured);
+
+        text(ctx, "SOCOM II", Vec2{markX, markY}, 15.0f, theme::gold, Face::Bold, 0.08f);
+        text(ctx, "UNZIPPED", Vec2{subX, places.markSubY}, 13.0f, theme::dim, Face::Bold, 0.10f);
 
         // The page tab: where you are, without taking a click.
         if (!places.tab.empty())
@@ -205,7 +487,11 @@ namespace
         const Rgba lamp = app.running ? theme::goldHi : (app.discOk ? theme::lampGreen : theme::warn);
         fillCircle(ctx, places.lamp, 5.0f, lamp);
         strokeCircle(ctx, places.lamp, chrome::lampR, theme::alpha(lamp, 110), 1.5f);
-        textCenteredIn(ctx, state, places.status, 14.0f, theme::text, Face::Bold, 0.06f);
+        // Not textCenteredIn: that centres the LINE box in the bar, and an all-caps word's line box carries
+        // empty descender space that pushes its letters above the lamp they sit beside (owner, 2026-09-20:
+        // "the running text is not aligned with the yellow circle, it appears higher"). places.status is
+        // exactly the measured width, so its left edge IS the centred position.
+        text(ctx, state, Vec2{places.status.x, places.statusY}, 14.0f, theme::text, Face::Bold, 0.06f);
 
         // UNSAVED: only when there is something to save, and clicking it saves.
         if (app.dirty)
@@ -362,6 +648,45 @@ namespace
              Vec2{band.x + 30.0f + nameW, band.y + 13.0f}, metrics::captionSize, theme::caption);
     }
 
+    // Sprint 9 P4 (owner: "tooltips where the launcher is unclear"). The help for wherever the FOCUS is,
+    // in a small panel anchored under the control -- below it, or above when there is no room below, and
+    // never outside the content panel. Focus rather than hover, because the launcher is driven by a pad
+    // and the mouse leaves entirely in Q3: help tied to a pointer is help most players would never see.
+    // Drawn last, over the page, which is what a tooltip is for.
+    void drawHelp(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
+    {
+        using namespace ui;
+        const std::string help = helpFor(app.nav.focus);
+        if (help.empty())
+            return;
+        const Rect anchor = rectOf(nodes, app.nav.focus);
+        if (!drawable(anchor))
+            return;   // the focus is on the rail, or on a control this page does not hold
+
+        const Rect c = app.frame.content;
+        const float w = std::min(430.0f, c.w - 40.0f);
+        const std::vector<std::string> lines = wrapText(ctx, help, w - 52.0f, metrics::captionSize);
+        const float lineH = metrics::captionSize * 1.32f;
+        const float h = 20.0f + lineH * static_cast<float>(lines.size());
+        float x = std::min(std::max(anchor.x, c.x + 12.0f), std::max(c.x + 12.0f, c.right() - 12.0f - w));
+        float y = anchor.bottom() + 8.0f;
+        if (y + h > c.bottom() - 8.0f)
+            y = std::max(c.y + 8.0f, anchor.y - 8.0f - h);
+        const Rect box{x, y, w, h};
+
+        fillRound(ctx, box, 6.0f, theme::mix(theme::panelHi, theme::ground, 0.10f));
+        strokeRound(ctx, box, 6.0f, theme::alpha(theme::gold, 160), 1.5f);
+        const Vec2 badge{box.x + 21.0f, box.y + h * 0.5f};
+        fillCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 45));
+        strokeCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 200), 1.5f);
+        const InkBox q = capInk(ctx, 14.0f, Face::Bold);
+        const float qW = textWidth(ctx, "?", 14.0f, Face::Bold);
+        text(ctx, "?", Vec2{badge.x - qW * 0.5f, badge.y - q.height * 0.5f - q.top}, 14.0f, theme::goldHi, Face::Bold);
+        for (size_t i = 0; i < lines.size(); ++i)
+            text(ctx, lines[i].c_str(), Vec2{box.x + 40.0f, box.y + 10.0f + lineH * static_cast<float>(i)},
+                 metrics::captionSize, theme::text);
+    }
+
     void drawPage(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
     {
         switch (app.nav.page)
@@ -373,6 +698,7 @@ namespace
         case ui::Page::Controller: ui::drawControllerPage(ctx, app, nodes); break;
         case ui::Page::Microphone: ui::drawMicrophonePage(ctx, app, nodes); break;
         case ui::Page::Online: ui::drawOnlinePage(ctx, app, nodes); break;
+        case ui::Page::Report: ui::drawReportPage(ctx, app, nodes); break;
         case ui::Page::About: ui::drawAboutPage(ctx, app, nodes); break;
         }
     }
@@ -464,7 +790,7 @@ namespace
         app.discOk = true;
         app.discMessage = "SOCOM II U.S. Navy SEALs NTSC r0001";
         app.status = "ready";
-        app.exitLine = "the last run exited normally";
+        app.exitLine = launcher::exitMessage(0);
         app.padLabels = {"first available", "[0] Xbox Wireless Controller"};
         app.padSlots = {-1, 0};
         app.pad = fakeXboxPad();
@@ -487,6 +813,27 @@ int main(int argc, char **argv)
 {
     const fs::path dir = win32glue::exeDirectory();
     const fs::path configPath = dir / "config.json";
+    if (argc > 2 && std::strcmp(argv[1], "--diagnostics") == 0)
+    {
+        // Sprint 9 Goal 1: the zip without the window -- for a report from a machine where the launcher
+        // itself will not open, and for tools_py/tests/test_diagnostics_zip.py. Answered before this
+        // launcher's own config.json is read, so <dir> is the only folder it looks at.
+        std::string message;
+        const bool ok = saveDiagnostics(argc > 3 ? fs::path(argv[3]) : dir, fs::path(argv[2]), std::string(), false, 0, message);
+        std::printf("%s\n", message.c_str());
+        return ok ? 0 : 1;
+    }
+
+    if (argc > 2 && std::strcmp(argv[1], "--report-bug") == 0)
+        return reportBugHeadless(fs::path(argv[2]), argc > 3 ? fs::path(argv[3]) : dir);
+    if (argc > 1 && std::strcmp(argv[1], "--server-status") == 0)
+    {
+        const std::string line = br::statusLine(fetchStats());
+        if (!line.empty())
+            std::printf("%s\n", line.c_str());
+        return line.empty() ? 1 : 0;   // silent when unreachable, as the ONLINE page is
+    }
+
     launcher::Config config;
     {
         const std::string text = readText(configPath);
@@ -501,6 +848,8 @@ int main(int argc, char **argv)
         std::printf("disc: %s -> %s\n", config.isoPath.c_str(), st.message.c_str());
         for (const std::string &kv : launcher::environmentFor(config))
             std::printf("env: %s\n", kv.c_str());
+        for (const std::string &line : launcher::selftestExitLines())
+            std::printf("%s\n", line.c_str());
         return writeText(configPath, launcher::toJson(config)) ? 0 : 1;
     }
 
@@ -527,6 +876,14 @@ int main(int argc, char **argv)
     }
 
     const char *screenshotDir = (argc > 2 && std::strcmp(argv[1], "--screenshot") == 0) ? argv[2] : nullptr;
+    // How many frames the walk settles before it captures. Three by default, as it always was -- and that
+    // default is exactly why a one-frame defect never appeared in a screenshot. The page is set AFTER the
+    // frame at count 0 is drawn, so count 1 is the last frame of the OLD page and count 2 is the FIRST
+    // frame of the new one: --shot-frames 2 is the repro for the top-left flash, and the proof it is gone.
+    int shotFrames = 3;
+    for (int i = 1; i + 1 < argc; ++i)
+        if (std::strcmp(argv[i], "--shot-frames") == 0)
+            shotFrames = std::max(1, std::atoi(argv[i + 1]));
 
     // HIGHDPI is what a player wants and what a screenshot must not have: the PNGs are asked for at exact
     // pixel sizes.
@@ -585,6 +942,8 @@ int main(int argc, char **argv)
 
     win32glue::GameProcess game;
     std::string lastLog;
+    long long lastExitRaw = 0;
+    bool haveLastExit = false;
     std::unique_ptr<launcher::MicDevices> mic;
     bool meterOn = false;
 
@@ -604,6 +963,13 @@ int main(int argc, char **argv)
         meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
         app.meterOn = meterOn;
     }
+
+    // Sprint 9 Goal 8: the two requests this window ever makes, each on its own worker.
+    Worker<ReportOutcome> reportJob;
+    Worker<std::string> statsJob;
+    br::Inputs reportIn;
+    double statsAskedAt = -1000.0;
+    ui::Page previousPage = ui::Page::Play;
 
     ui::Nav &nav = app.nav;
     nav.page = ui::Page::Play;
@@ -634,14 +1000,42 @@ int main(int argc, char **argv)
             for (int i = 0; i < ui::kPageCount; ++i)
                 shots.push_back(Shot{ui::pageAt(i), size[0], size[1], ""});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_playstation"});
+        // R139: the crouch shortcut on each control -- the row, the trade's line, and the mark on the drawing.
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l3"});
+        shots.push_back(Shot{ui::Page::Controller, 800, 520, "_crouch_l3"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_touchpad"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l2"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
+        // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
+        // capture above; this one has the second instance switched ON, which forces the section open
+        // and marks it "in use" -- the state a disclosure must never be able to hide.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_advanced"});
+        // Sprint 9 P4: the focus on the profile field, which is the one the owner asked for by name
+        // ("what is a profile?"). The help is shown where the FOCUS is, so a capture of it needs one.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_help"});
+        // Sprint 9 Goal 8: the hosted server's status line, and the REPORT A BUG page in each of its states
+        // (the plain report_<size>.png above is the empty form).
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_status"});
+        shots.push_back(Shot{ui::Page::Online, 800, 520, "_status"});
+        for (const char *state : {"_filled", "_sent", "_saved", "_fielderror", "_ratelimited", "_sending"})
+        {
+            shots.push_back(Shot{ui::Page::Report, 1100, 700, state});
+            shots.push_back(Shot{ui::Page::Report, 800, 520, state});
+        }
     }
     const char *selfShot = std::getenv("PS2X_LAUNCHER_SHOT");
     unsigned selfShotFrames = 0;
     size_t shotIndex = 0;
     int shotFrame = 0;
     int resizeWaits = 0;
+    // Sprint 9 P4: the walk used to change the page straight after a frame was drawn, which is a
+    // moment no player can produce -- the next frame then built its node list from the new page and
+    // everything lined up. Real input changes the page in the MIDDLE of a frame, after that list is
+    // built, and that is the frame the owner's top-left flash lives on. The walk now asks for the
+    // page the same way, so a PNG can see what a player sees.
+    int shotPendingPage = -1;
+    std::string shotPendingFocus;
 
     while (!WindowShouldClose() && !quitRequested)
     {
@@ -675,11 +1069,12 @@ int main(int argc, char **argv)
             app.running = game.running();
             if (!app.running && game.process)
             {
-                // Task 1a: 65 means the run happened but on the CPU rasterizer -- say so rather than
-                // leaving the player with a slideshow and no reason.
-                const std::string why = launcher::exitMessage(game.exitCode());
+                // Sprint 9 Goal 1: every ending has a sentence (ps2x/exit_codes.h), and a non-fatal notice
+                // in the log -- no audio device -- rides along with it.
+                lastExitRaw = game.exitCode();
+                haveLastExit = true;
                 game.close();
-                app.exitLine = why.empty() ? "the game exited" : why;
+                app.exitLine = launcher::lastRunLine(lastExitRaw, readHead(lastLog, 256u * 1024u));
                 app.status = app.exitLine;
                 // Review F8: the meter gives the capture device back to the game while it runs; take it now.
                 meterOn = !app.config.micDevice.empty() && mic->startMeter(app.config.micDevice);
@@ -696,10 +1091,16 @@ int main(int argc, char **argv)
             app.layout.customServer = preset == nullptr || preset->address[0] == '\0';
         }
 
+        // Sprint 9 P4: the player's drawer, unless something inside it is doing something. This is
+        // derived from state the launcher already holds, not polled from the world, so it belongs
+        // OUT here -- inside the block above it would be skipped under --screenshot, and the
+        // ADVANCED capture would show a section that says "in use" over nothing at all.
+        app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
+
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         app.graph = &graph;
         const std::vector<ui::Node> rail = ui::railLayout(window);
-        const std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
+        std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
         if (graph.find(nav.focus) == nullptr)
             nav.focus = ui::railId(nav.page);   // the list under the focus changed (a pad was unplugged)
 
@@ -788,7 +1189,29 @@ int main(int argc, char **argv)
             const bool typing = !app.activeField.empty();
             const int padSlot = shownSlot(app.config);
             const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
-            auto padPressed = [&](int button) { return padPresent && IsGamepadButtonPressed(padSlot, button); };
+
+            // Sprint 9 Goal 9 (P3): every pad reading goes through ONE gate, which knows the game may own
+            // the pad. raylib reads the pad whether or not this window has focus, so before this the
+            // player's stick walked the launcher's focus ring while they were aiming with it.
+            ui::PadFrame padFrame;
+            padFrame.present = padPresent;
+            if (padPresent)
+            {
+                auto edge = [&](ui::PadNav nav_, int button)
+                { padFrame.pressed[static_cast<int>(nav_)] = IsGamepadButtonPressed(padSlot, button); };
+                edge(ui::PadNav::Left, GAMEPAD_BUTTON_LEFT_FACE_LEFT);
+                edge(ui::PadNav::Right, GAMEPAD_BUTTON_LEFT_FACE_RIGHT);
+                edge(ui::PadNav::Up, GAMEPAD_BUTTON_LEFT_FACE_UP);
+                edge(ui::PadNav::Down, GAMEPAD_BUTTON_LEFT_FACE_DOWN);
+                edge(ui::PadNav::Activate, GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
+                edge(ui::PadNav::Back, GAMEPAD_BUTTON_RIGHT_FACE_RIGHT);
+                edge(ui::PadNav::PagePrev, GAMEPAD_BUTTON_LEFT_TRIGGER_1);
+                edge(ui::PadNav::PageNext, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
+                edge(ui::PadNav::Launch, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+                padFrame.leftX = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
+                padFrame.leftY = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
+            }
+            const ui::PadIntent padWants = ui::padIntent(padFrame, app.running, ctx.time, padRepeatAt);
 
             if (typing)
             {
@@ -807,33 +1230,11 @@ int main(int argc, char **argv)
                     dy -= 1;
                 if (IsKeyPressed(KEY_DOWN) || IsKeyPressedRepeat(KEY_DOWN))
                     dy += 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_LEFT))
-                    dx -= 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_RIGHT))
-                    dx += 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_UP))
-                    dy -= 1;
-                if (padPressed(GAMEPAD_BUTTON_LEFT_FACE_DOWN))
-                    dy += 1;
-                // The left stick, with a repeat so a held stick walks rather than sprints.
-                if (padPresent)
-                {
-                    const float ax = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
-                    const float ay = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
-                    const bool pushed = std::fabs(ax) > 0.55f || std::fabs(ay) > 0.55f;
-                    if (!pushed)
-                        padRepeatAt = 0.0;
-                    else if (ctx.time >= padRepeatAt)
-                    {
-                        padRepeatAt = ctx.time + (padRepeatAt == 0.0 ? 0.32 : 0.13);
-                        if (std::fabs(ax) > std::fabs(ay))
-                            dx += ax < 0.0f ? -1 : 1;
-                        else
-                            dy += ay < 0.0f ? -1 : 1;
-                    }
-                }
+                // The d-pad and the left stick (with its repeat) arrive already gated.
+                dx += padWants.dx;
+                dy += padWants.dy;
                 if (dx != 0 || dy != 0)
-                    app.padPrompts = padPresent && !(IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN));
+                    app.padPrompts = padWants.prompts && !(IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN));
 
                 if (adjusts && dx != 0)
                     ctx.adjust = dx;
@@ -856,26 +1257,42 @@ int main(int argc, char **argv)
                     if (!ids.empty())
                         nav.focus = ids[at % ids.size()];
                 }
-                ctx.activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) ||
-                               padPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN);
-                if (IsKeyPressed(KEY_ESCAPE) || padPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+                ctx.activate = IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE) || padWants.activate;
+                if (IsKeyPressed(KEY_ESCAPE) || padWants.back)
                     nav.back(graph);
-                if (padPressed(GAMEPAD_BUTTON_LEFT_TRIGGER_1))
+                if (padWants.pagePrev)
                     nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) - 1));
-                if (padPressed(GAMEPAD_BUTTON_RIGHT_TRIGGER_1))
+                if (padWants.pageNext)
                     nav.goTo(graph, ui::pageAt(ui::pageIndex(nav.page) + 1));
-                if (padPressed(GAMEPAD_BUTTON_MIDDLE_RIGHT))
+                if (padWants.launch)
                     app.requestLaunch = true;
                 if (IsKeyPressed(KEY_F5))
                     app.requestVerify = true;
-                if (padPressed(GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || padPressed(GAMEPAD_BUTTON_RIGHT_FACE_RIGHT))
+                if (padWants.activate || padWants.back)
                     app.padPrompts = true;
             }
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_TAB) ||
                 IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_DOWN))
                 app.padPrompts = false;
         }
+        // --screenshot's page change, applied exactly where the pad's and the keyboard's is.
+        if (shotPendingPage >= 0)
+        {
+            nav.goTo(graph, ui::pageAt(shotPendingPage));
+            if (!shotPendingFocus.empty())
+                nav.focus = shotPendingFocus;
+            shotPendingPage = -1;
+            shotPendingFocus.clear();
+        }
         ctx.focus = nav.focus;
+
+        // The input above can have changed the page (the pad's shoulder tabs, Escape, a rail entry). The
+        // list built at the top of this frame is then the PREVIOUS page's, and drawing the new page out of
+        // it makes every lookup miss: rectOf answers the origin, and a label centred there is the one-frame
+        // flash at the top left the owner reported (Sprint 9 P4). The list the frame draws from is the
+        // page's own; widgets.cpp's drawable() guard covers what this cannot -- the rail click at
+        // drawRail(), which changes the page in the middle of the draw itself.
+        nodes = ui::nodesForFrame(std::move(nodes), nav.page, window, app.layout);
 
         // ---- draw -----------------------------------------------------------------------------------------
         BeginDrawing();
@@ -905,6 +1322,7 @@ int main(int argc, char **argv)
 
         // The focus ring: on the focused control's rect, this frame, whole -- and drawn last, after the
         // pane's wipe, so nothing fades it in on the frame it lands (Sprint 8 owner feedback).
+        drawHelp(ctx, app, nodes);
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
@@ -949,9 +1367,101 @@ int main(int argc, char **argv)
                 app.status = "settings saved";
             }
             if (app.requestDiagnostics)
-                app.status = copyDiagnostics(dir, lastLog);
+            {
+                std::string message;
+                if (saveDiagnostics(dir, fs::path(), lastLog, haveLastExit, lastExitRaw, message))
+                    win32glue::openFolder((dir / "diagnostics").string());
+                app.status = message;
+            }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
+
+            // ---- Sprint 9 Goal 8: the status line. Asked for when ONLINE opens (never within 5 s of the
+            // last ask) and every 10 s while it stays open; the answer lands in a slot this thread polls.
+            const bool pageEntered = nav.page != previousPage;
+            previousPage = nav.page;
+            if (nav.page == ui::Page::Online && !statsJob.busy() &&
+                ctx.time - statsAskedAt >= (pageEntered ? 5.0 : static_cast<double>(br::kStatsPollSeconds)))
+            {
+                statsAskedAt = ctx.time;
+                statsJob.start(fetchStats);
+            }
+            std::string statsBody;
+            if (statsJob.poll(statsBody))
+                app.serverStatus = br::statusLine(statsBody);   // "" when unreachable: the line is not drawn
+
+            // ---- the report: what would be sent, the send, the reply ------------------------------------
+            ui::ReportUi &report = app.report;
+            if (nav.page == ui::Page::Report && pageEntered)
+            {
+                reportIn = reportInputs(dir, lastLog, haveLastExit, lastExitRaw);
+                report.changed = true;
+            }
+            if (nav.page == ui::Page::Report && report.changed)
+            {
+                report.preview = br::previewLine(br::build(app.config, report.form, reportIn), report.form);
+                report.changed = false;
+            }
+            if (report.requestSend && report.state != ui::ReportUi::State::Sending)
+            {
+                const std::string problem = br::checkForm(report.form);
+                if (!problem.empty())
+                {
+                    report.state = ui::ReportUi::State::FieldError;
+                    report.message = problem;
+                    const std::string field = br::fieldOf(problem);
+                    if (field == "title" || field == "description" || field == "contact")
+                        nav.focus = app.activeField = "report." + field;
+                }
+                else
+                {
+                    reportIn = reportInputs(dir, lastLog, haveLastExit, lastExitRaw);
+                    const std::string json = br::buildPayload(app.config, report.form, reportIn);
+                    report.state = ui::ReportUi::State::Sending;
+                    report.message.clear();
+                    report.savedPath.clear();
+                    app.activeField.clear();
+                    reportJob.start([dir, json]() { return sendReport(dir, json); });
+                }
+            }
+            report.requestSend = false;
+            ReportOutcome outcome;
+            if (reportJob.poll(outcome))
+            {
+                if (!outcome.transportError.empty())
+                    std::fprintf(stderr, "[report] %s\n", outcome.transportError.c_str());
+                report.message = outcome.reply.text;
+                report.savedPath = outcome.savedPath;
+                switch (outcome.reply.kind)
+                {
+                case br::Reply::Kind::Sent:
+                    report.state = ui::ReportUi::State::Sent;
+                    report.id = outcome.reply.id;
+                    report.copied = !report.id.empty();
+                    if (report.copied)
+                        SetClipboardText(report.id.c_str());
+                    // The report is in: the form empties so a second press cannot send it twice.
+                    report.form.title.clear();
+                    report.form.description.clear();
+                    report.changed = true;
+                    app.status = outcome.reply.text;
+                    break;
+                case br::Reply::Kind::FieldError:
+                {
+                    report.state = ui::ReportUi::State::FieldError;
+                    const std::string field = outcome.reply.field;
+                    if (nav.page == ui::Page::Report && (field == "title" || field == "description" || field == "contact"))
+                        nav.focus = app.activeField = "report." + field;
+                    break;
+                }
+                case br::Reply::Kind::RateLimited:
+                    report.state = ui::ReportUi::State::RateLimited;
+                    break;
+                case br::Reply::Kind::Failed:
+                    report.state = ui::ReportUi::State::SavedLocally;
+                    break;
+                }
+            }
             if (app.requestLaunch && !app.running && app.discOk)
             {
                 writeText(configPath, launcher::toJson(app.config));
@@ -998,8 +1508,72 @@ int main(int argc, char **argv)
                     continue;   // let the resize land before the state is set
                 }
                 resizeWaits = 0;
-                app.nav.goTo(graph, shot.page);
-                app.pad = std::strcmp(shot.suffix, "_playstation") == 0 ? fakePlayStationPad() : fakeXboxPad();
+                shotPendingPage = ui::pageIndex(shot.page);
+                shotPendingFocus.clear();
+                {
+                    // Sprint 9 Goal 8: canned states, no request made.
+                    const std::string suffix = shot.suffix;
+                    app.activeField.clear();
+                    app.serverStatus = suffix == "_status" ? "SOCOM Unzipped: online, 3 players, 1 game" : "";
+                    ui::ReportUi &report = app.report;
+                    report = ui::ReportUi{};
+                    br::Inputs fakeIn;
+                    fakeIn.version = app.version;
+                    fakeIn.platform = "windows";
+                    fakeIn.logText = "INFO:     > Renderer: NVIDIA GeForce RTX 4070 SUPER/PCIe/SSE2\nthe last run\n";
+                    fakeIn.haveLastExit = true;
+                    if (shot.page == ui::Page::Report && !suffix.empty())
+                    {
+                        report.form.title = "The game closes when I join a second round";
+                        report.form.description =
+                            "I hosted a Suppression room on Frostfire, played one round to the end, and when the second round "
+                            "started loading the game window closed without a message. It happened twice in a row. The first "
+                            "round was fine both times and voice chat worked.";
+                        report.form.contact = "viper#1234 on Discord";
+                        report.form.attachLog = true;
+                    }
+                    if (suffix == "_filled")
+                        shotPendingFocus = app.activeField = "report.description";
+                    else if (shot.page == ui::Page::Report)
+                        shotPendingFocus = "report.send";
+                    if (suffix == "_sending")
+                        report.state = ui::ReportUi::State::Sending;
+                    if (suffix == "_sent")
+                    {
+                        report.state = ui::ReportUi::State::Sent;
+                        report.id = "BR-20260919-A1B2C3";
+                        report.copied = true;
+                        report.form.title.clear();
+                        report.form.description.clear();
+                    }
+                    if (suffix == "_saved")
+                    {
+                        report.state = ui::ReportUi::State::SavedLocally;
+                        report.message = br::parseReply(0, "").text;
+                        report.savedPath = "C:\\games\\socom2\\logs\\bugreport_20260919_101500.json";
+                    }
+                    if (suffix == "_fielderror")
+                    {
+                        report.form.title = "abc";
+                        report.state = ui::ReportUi::State::FieldError;
+                        report.message = br::checkForm(report.form);
+                        shotPendingFocus = app.activeField = "report.title";
+                    }
+                    if (suffix == "_ratelimited")
+                    {
+                        report.state = ui::ReportUi::State::RateLimited;
+                        report.message = br::parseReply(429, "", 1500).text;
+                        report.savedPath = "C:\\games\\socom2\\logs\\bugreport_20260919_101500.json";
+                    }
+                    report.preview = br::previewLine(br::build(app.config, report.form, fakeIn), report.form);
+                    report.changed = false;
+                }
+                const bool touchpadShot = std::strcmp(shot.suffix, "_crouch_touchpad") == 0;
+                app.pad = (std::strcmp(shot.suffix, "_playstation") == 0 || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
+                app.config.crouchShortcut = std::strncmp(shot.suffix, "_crouch_", 8) == 0 ? shot.suffix + 8 : "off";
+                app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
+                if (std::strcmp(shot.suffix, "_help") == 0)
+                    shotPendingFocus = "online.profile";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
@@ -1009,10 +1583,11 @@ int main(int argc, char **argv)
                     app.config.server = saved.server;
                 }
             }
-            if (++shotFrame >= 3)
+            if (++shotFrame >= shotFrames)
             {
                 char path[512];
-                std::snprintf(path, sizeof(path), "%s/%s%s_%dx%d.png", screenshotDir, ui::pageName(shot.page),
+                // The page's slug ("play", "report"): every page's name but REPORT A BUG's was already that.
+                std::snprintf(path, sizeof(path), "%s/%s%s_%dx%d.png", screenshotDir, ui::pageSlug(shot.page).c_str(),
                               shot.suffix, shot.w, shot.h);
                 for (char *p = path; *p != '\0'; ++p)
                     *p = static_cast<char>(*p >= 'A' && *p <= 'Z' ? *p + 32 : *p);
@@ -1033,5 +1608,8 @@ int main(int argc, char **argv)
     game.close();
     fonts.clear();
     CloseWindow();
+    // A request still in flight: the window is gone already, and each join is bounded by its request's timeout.
+    reportJob.join();
+    statsJob.join();
     return 0;
 }

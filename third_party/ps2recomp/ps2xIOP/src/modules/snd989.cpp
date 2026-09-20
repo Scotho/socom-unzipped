@@ -1023,6 +1023,9 @@ namespace ps2x::iop::detail
                     {
                         m_model.globalRegs[index] = static_cast<int8_t>(args.u32(1) & 0xFFu);
                     }
+                    // Sprint 9 Q0: the host mixer's grains read it too (the mission ambience conductor branches on
+                    // global 2, which the game writes every frame).
+                    forwardAudio(fno, args);
                     break;
                 }
 
@@ -1590,19 +1593,27 @@ namespace ps2x::iop::detail
                 target->sector1 = args.u32(0);
                 target->sector2 = args.u32(1);
                 target->offset1 = args.u32(2) & 0xFFFFu;
-                target->volume = static_cast<int32_t>(args.u32(2) >> 16);
+                // Sprint 9 Q0: the upper halves are SIGNED 16-bit words. The game passes pan 0xffff (-1, the
+                // default) on every music cue; split without a sign it reached the host as 65535, which the
+                // pan table wrapped to 105 degrees -- every music cue ~2.3 dB to the right, for three sprints.
+                target->volume = static_cast<int32_t>(static_cast<int16_t>(args.u32(2) >> 16));
                 target->offset2 = args.u32(3) & 0xFFFFu;
-                target->pan = static_cast<int32_t>(args.u32(3) >> 16);
+                target->pan = static_cast<int32_t>(static_cast<int16_t>(args.u32(3) >> 16));
                 target->group = args.u32(4);
                 target->parent = parent;
                 target->flags = args.u32(7);
                 ++m_metrics.streamsPlayed;
                 forwardAudio(kPlayVagStreamByLoc, args);
-                const int32_t words[9] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(target->sector1),
-                                          static_cast<int32_t>(target->sector2), static_cast<int32_t>(target->offset1), target->volume,
-                                          static_cast<int32_t>(target->offset2), target->pan, static_cast<int32_t>(target->group),
-                                          static_cast<int32_t>(target->flags)};
-                m_host.audioNotify(kPlayVagStreamByLoc, words, 9u);
+                // Sprint 9 Goal 10 (R169): the tenth word says whether this play is a QUEUE. `reused` is exactly
+                // that -- the slot was found through the parentHandle and is still playing (findStream only
+                // answers for an active slot), so the segment chains onto what is in the air instead of
+                // replacing it. Without this word the host saw a second play on a live handle and cut the cue
+                // dead mid-sample, which is the music the owner reported on 2026-09-19.
+                const int32_t words[10] = {static_cast<int32_t>(target->handle), static_cast<int32_t>(target->sector1),
+                                           static_cast<int32_t>(target->sector2), static_cast<int32_t>(target->offset1), target->volume,
+                                           static_cast<int32_t>(target->offset2), target->pan, static_cast<int32_t>(target->group),
+                                           static_cast<int32_t>(target->flags), reused ? 1 : 0};
+                m_host.audioNotify(kPlayVagStreamByLoc, words, 10u);
                 return target->handle;
             }
 

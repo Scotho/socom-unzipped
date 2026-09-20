@@ -21,6 +21,7 @@
 #include "rlgl.h"
 #include "ps2_iop_host.h"
 #include "ps2x/iop/iop_subsystem.h"
+#include "ps2x/exit_codes.h"
 
 #include <iostream>
 #include <fstream>
@@ -764,12 +765,21 @@ bool PS2Runtime::initialize(const char *title)
         // the parity gate depends on.
         const ps2_window::Size windowSize = ps2_window::parseWindowSize(std::getenv("PS2X_WINDOW_SIZE"), HOST_WINDOW_WIDTH, HOST_WINDOW_HEIGHT);
         InitWindow(windowSize.width, windowSize.height, title);
+        // Owner 2026-09-20: Escape must not close the game. raylib's default exit key is KEY_ESCAPE, which made
+        // WindowShouldClose() true on a key a PC player presses by reflex; the window's own close button and
+        // Alt+F4 still end the run (the launcher already does the same, ps2xLauncher/src/main.cpp).
+        SetExitKey(KEY_NULL);
         if (windowSize.borderless)
             SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
         if (windowSize.set)
             std::cout << "[window] PS2X_WINDOW_SIZE: " << (windowSize.borderless ? "borderless fullscreen" : std::to_string(windowSize.width) + "x" + std::to_string(windowSize.height)) << std::endl;
         InitAudioDevice();
-        m_audioBackend.setAudioReady(IsAudioDeviceReady());
+        const bool audioReady = IsAudioDeviceReady();
+        m_audioBackend.setAudioReady(audioReady);
+        // Sprint 9 Goal 1: no audio device is not a reason to stop (spec: "non-fatal, reported"). The
+        // launcher reads this line back out of the log and appends its sentence to LAST RUN (R129).
+        if (!audioReady)
+            std::cout << ExitCodes::noticeLine(ExitCodes::kNoAudioDevice) << std::endl;
         // Task 9b: PS2X_MIC_DEVICE=<name> opens the player's microphone. Unset -- the default, and what the
         // gate runs with -- opens nothing at all. Nothing consumes the ring yet: lgaud.cpp still answers "no
         // headset" to every RPC but its version query (Task 9c's spike scopes the consumer), so this is

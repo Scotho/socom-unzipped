@@ -16,7 +16,10 @@ public:
 
 private:
     bool m_initialized = false;
-    bool m_visible = true;
+    // Owner 2026-09-20: the debug build is welcome to exist, but a player must not find the Runtime
+    // Debugger sitting open over their game. It starts closed; F1 opens it (ps2_debug_panel.cpp, the
+    // IsKeyPressed(KEY_F1) toggle), which is how anyone who wants it has always reached it.
+    bool m_visible = false;
     bool m_showRegisters = true;
     unsigned int m_memoryAddress = 0x00100000u;
     unsigned int m_memoryBytes = 0x100u;

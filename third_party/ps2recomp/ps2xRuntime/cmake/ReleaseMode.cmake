@@ -3,6 +3,7 @@ include(CheckIPOSupported)
 check_ipo_supported(RESULT IPO_SUPPORTED OUTPUT IPO_ERROR)
 
 option(PS2X_ENABLE_LTO "Enable link-time optimization for release builds" ON)
+set(PS2X_LTO_SCOPE "all" CACHE STRING "all: LTO every target EnableFastReleaseMode names; runtime: leave ps2EntryRunner (the generated code) out")
 
 function(EnableFastReleaseMode TargetName)
     message("> Enabling optimization for: ${TargetName}")
@@ -36,7 +37,9 @@ function(EnableFastReleaseMode TargetName)
         endif()
     endif()
 
-    if(IPO_SUPPORTED AND PS2X_ENABLE_LTO)
+    if(PS2X_ENABLE_LTO AND PS2X_LTO_SCOPE STREQUAL "runtime" AND TargetName STREQUAL "ps2EntryRunner")
+        message("> LTO skipped for ${TargetName} (PS2X_LTO_SCOPE=runtime: the generated code stays native objects)")
+    elseif(IPO_SUPPORTED AND PS2X_ENABLE_LTO)
         set_property(TARGET ${TargetName} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
     elseif(NOT PS2X_ENABLE_LTO)
         message("> LTO disabled for ${TargetName} (PS2X_ENABLE_LTO=OFF)")

@@ -25,6 +25,7 @@ namespace ui
             {"CONTROLLER", "CONTROLLER -- what the game will read from your pad", "rail.controller"},
             {"MICROPHONE", "MICROPHONE -- the capture device, and proof it hears you", "rail.microphone"},
             {"ONLINE", "ONLINE -- the server, your profile, a second instance", "rail.online"},
+            {"REPORT A BUG", "REPORT A BUG -- tell us what went wrong; nothing is sent until you press SEND", "rail.report"},
             {"ABOUT", "ABOUT -- what this is, where it keeps things", "rail.about"},
         };
 
@@ -55,13 +56,9 @@ namespace ui
     const char *pageTitle(Page page) { return kPages[pageIndex(page)].title; }
     std::string railId(Page page) { return kPages[pageIndex(page)].id; }
 
-    std::string barLaunchId(Page page)
-    {
-        std::string name = pageName(page);
-        for (char &c : name)
-            c = static_cast<char>(c >= 'A' && c <= 'Z' ? c + 32 : c);
-        return "bar.launch." + name;
-    }
+    std::string pageSlug(Page page) { return railId(page).substr(5); }
+
+    std::string barLaunchId(Page page) { return "bar.launch." + pageSlug(page); }
 
     Frame frameFor(Rect window)
     {
@@ -153,6 +150,10 @@ namespace ui
             add(out, page, "pad.deadzone", Rect{rx, below, rw, 28.0f});
             add(out, page, "pad.mouselook", Rect{rx, below + 44.0f, rw, 28.0f});
             add(out, page, "pad.sensitivity", Rect{rx, below + 92.0f, rw, 28.0f});
+            // R139: the crouch shortcut, four cells across both columns, under the page's one line of help.
+            const Rect crouch{b.x + metrics::labelW, below + 144.0f, b.w - metrics::labelW, 28.0f};
+            for (int i = 0; i < 4; ++i)
+                add(out, page, "pad.crouch." + std::to_string(i), cell(crouch, i, 4));
             break;
         }
         case Page::Microphone:
@@ -165,14 +166,32 @@ namespace ui
         }
         case Page::Online:
         {
-            for (int i = 0; i < 3; ++i)
+            for (size_t i = 0; i < launcher::kServerPresetCount; ++i)
                 if (launcher::presetAvailable(launcher::kServerPresets[i]))
-                    add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, i));
-            const float y = b.y + 26.0f + 3.0f * 38.0f + 22.0f;
+                    add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, static_cast<int>(i)));
+            // Below the LAST row, whatever the count is -- the literal 3 here is what a fourth preset
+            // would have been drawn on top of (Sprint 9 P6).
+            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 28.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
             add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});
-            add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 112.0f, 460.0f, 34.0f});
+            // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
+            // reveals are below it, last in reading order and last in the focus order.
+            add(out, page, "online.advanced", Rect{b.x, y + 124.0f, b.w, 28.0f});
+            if (in.advancedOpen)
+                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 166.0f, 460.0f, 34.0f});
+            break;
+        }
+        case Page::Report:
+        {
+            // The site's own form, top to bottom (sites/s2u/src/report.ts FIELDS), plus the log checkbox.
+            const float x = b.x + metrics::labelW;
+            const float w = b.w - metrics::labelW;
+            add(out, page, "report.title", Rect{x, b.y + 4.0f, w, 40.0f});
+            add(out, page, "report.description", Rect{x, b.y + 56.0f, w, 148.0f});
+            add(out, page, "report.contact", Rect{x, b.y + 216.0f, 420.0f, 40.0f});
+            add(out, page, "report.attach", Rect{x, b.y + 268.0f, 420.0f, 34.0f});
+            add(out, page, "report.send", Rect{x, b.y + 384.0f, 240.0f, 44.0f});
             break;
         }
         case Page::About:
@@ -187,6 +206,70 @@ namespace ui
         if (page != Page::Play)
             add(out, page, barLaunchId(page), Rect{f.bar.right() - metrics::margin - 220.0f, f.bar.y + 10.0f, 220.0f, 36.0f});
         return out;
+    }
+
+    namespace
+    {
+        struct Help
+        {
+            const char *id;
+            const char *text;
+        };
+
+        // Kept short enough to read in one glance under the page. Each one answers a question a stranger
+        // actually has on their first run -- not a restatement of the label above it.
+        const Help kHelp[] = {
+            {"online.profile",
+             "A profile is one save: it picks the memory card kept in cards/<profile>, and it is the persona "
+             "other players see online. Change it and you start again on a fresh card."},
+            {"online.server",
+             "Which Horizon server the game logs in to. The project hosts one; a different address is for a "
+             "server you run yourself."},
+            {"online.second",
+             "Starts a second copy of the game on this machine, on its own ports and its own memory card, so "
+             "two players here can meet in the same match. For testing."},
+            {"disc.path",
+             "Your own SOCOM II disc image. Nothing from the game is shipped with this program, so it reads "
+             "the movies, sounds and levels out of the file you point it at."},
+            {"pad.deadzone",
+             "How far a stick must move before the game sees it at all. Raise it if your aim drifts while you "
+             "are not touching the stick."},
+            {"report.attach",
+             "Sends the last run's log with your report. It is cut to the last 64 KB and your home folder's "
+             "name is taken out of it; the line above says exactly how much will go."},
+        };
+    }
+
+    std::string helpFor(const std::string &id)
+    {
+        for (const Help &h : kHelp)
+            if (id == h.id)
+                return h.text;
+        return std::string();
+    }
+
+    std::vector<std::string> helpedIds()
+    {
+        std::vector<std::string> out;
+        out.reserve(sizeof(kHelp) / sizeof(kHelp[0]));
+        for (const Help &h : kHelp)
+            out.push_back(h.id);
+        return out;
+    }
+
+    bool advancedForced(const launcher::Config &c)
+    {
+        // One line today. Every setting that moves into an ADVANCED section joins this disjunction, and the
+        // test that pins the rule joins it with them.
+        return c.secondInstance;
+    }
+
+    std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in)
+    {
+        // Every node a page's layout emits carries that page, so the front one answers whose list this is.
+        if (!computed.empty() && computed.front().page == page)
+            return computed;
+        return layoutFor(page, window, in);
     }
 
     Rect onlinePresetRow(Rect window, int index)
@@ -308,6 +391,11 @@ namespace ui
                 if (primary <= 1.0f)
                     continue;
                 if (requireOverlap && !overlap)
+                    continue;
+                // Sprint 9 Goal 8: a control stacked above or below this one (their spans overlap across the
+                // move) is not "to the left" of it merely because it is narrower -- REPORT A BUG is a column
+                // of fields of different widths, and left off any of them is the rail.
+                if (!overlap && (dir == Dir::Left || dir == Dir::Right) && n.r.right() > f->r.x && n.r.x < f->r.right())
                     continue;
                 // Distance in the direction moved dominates: the row under this control wins even when a
                 // row further down happens to line up with it exactly (the VIDEO page's cells do).

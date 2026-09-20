@@ -43,6 +43,12 @@ namespace ui
         }
     };
 
+    // A rect anything may place ink in. `rectOf` answers a default Rect -- the origin, zero by zero -- for an
+    // id the node list does not hold, and a label centred in exactly that is the one-frame flash at the top
+    // left the owner reported on 2026-09-20 (Sprint 9 P4). Every primitive and control in widgets.cpp refuses
+    // a rect this returns false for, so an unknown id cannot mark the window whatever the caller does.
+    inline bool drawable(Rect r) { return r.w > 0.0f && r.h > 0.0f; }
+
     // The design's palette (Goal 9, third pass: "a slightly bolder theme, from the logo's own colours").
     namespace theme
     {

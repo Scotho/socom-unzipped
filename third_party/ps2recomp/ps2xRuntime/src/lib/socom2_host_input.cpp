@@ -1,6 +1,7 @@
 #include "socom2_host_input.h"
 
 #include "raylib.h"
+#include "runtime/host_crouch_shortcut.h"
 #include "runtime/host_gamepad.h"
 #include "runtime/host_gamepad_select.h"
 #include "runtime/injected_pad_latch.h"
@@ -16,6 +17,14 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+// R139, "touchpad": raylib 5.5 reads pads through GLFW's gamepad mapping, which has no touchpad, so the click is
+// read from GLFW's raw joystick buttons (raylib links GLFW on desktop and its joystick ids are raylib's pad slots).
+#if !defined(PLATFORM_VITA) && !defined(PLATFORM_ANDROID) && !defined(__ANDROID__)
+#define PS2X_HOST_INPUT_HAVE_GLFW_JOYSTICK 1
+extern "C" const unsigned char *glfwGetJoystickButtons(int jid, int *count);
+extern "C" const char *glfwGetJoystickGUID(int jid);
+#endif
 
 namespace ps2_stubs
 {
@@ -42,6 +51,25 @@ namespace ps2_stubs
         };
 
         HostInputConfig g_config;
+
+        // R139, "touchpad". Only a Sony pad, told by the vendor id in GLFW's SDL-style GUID (bytes 4-5, little
+        // endian: 054c -> "4c05" at characters 8-11), and only raw button 13 -- the touchpad click of a DualShock 4
+        // and of a DualSense through Windows' HID joystick driver. Anything else (another vendor's button 13, a
+        // Linux driver that puts the touchpad on its own device and reports 13 buttons) reads as "not pressed".
+        bool hostTouchpadDown(int padSlot)
+        {
+#if defined(PS2X_HOST_INPUT_HAVE_GLFW_JOYSTICK)
+            const char *const guid = glfwGetJoystickGUID(padSlot);
+            if (guid == nullptr || std::strlen(guid) < 12 || std::strncmp(guid + 8, "4c05", 4) != 0)
+                return false;
+            int count = 0;
+            const unsigned char *const buttons = glfwGetJoystickButtons(padSlot, &count);
+            return buttons != nullptr && count > 13 && buttons[13] != 0;
+#else
+            (void)padSlot;
+            return false;
+#endif
+        }
 
         // PS2X_SOCOM2_INPUT_FILE sampler. The harness holds a press for ~0.09 s of wall clock, but
         // the poll below runs once per rendered frame, so under ~11 fps a whole press fell between
@@ -254,17 +282,17 @@ namespace ps2_stubs
         Socom2PadState next;
 
         // Keyboard.
-        static const struct { int key; uint8_t button; } kKeys[] = {
-            {KEY_ENTER, kPadStart}, {KEY_BACKSPACE, kPadSelect},
-            {KEY_UP, kPadUp}, {KEY_RIGHT, kPadRight}, {KEY_DOWN, kPadDown}, {KEY_LEFT, kPadLeft},
-            {KEY_Z, kPadSquare}, {KEY_X, kPadCross}, {KEY_SPACE, kPadCross}, {KEY_C, kPadCircle}, {KEY_V, kPadTriangle},
-            {KEY_Q, kPadL1}, {KEY_E, kPadR1}, {KEY_ONE, kPadL2}, {KEY_THREE, kPadR2}, {KEY_TWO, kPadL3}, {KEY_FOUR, kPadR3},
-        };
-        for (const auto &entry : kKeys)
+        static_assert(KEY_ENTER == 257 && KEY_ESCAPE == 256 && KEY_BACKSPACE == 259 && KEY_UP == 265 && KEY_RIGHT == 262 &&
+                      KEY_DOWN == 264 && KEY_LEFT == 263 && KEY_SPACE == 32 && KEY_Z == 'Z' && KEY_ONE == '1',
+                      "kSocom2Keys (socom2_host_input.h) is written in raylib's key codes");
+        for (const auto &entry : kSocom2Keys)
         {
             if (IsKeyDown(entry.key))
                 next.button[entry.button] = 1u;
         }
+        // R139: a full Triangle from any source outranks the crouch shortcut's light one (tracked stage by stage).
+        bool fullTriangle = next.button[kPadTriangle] != 0;
+        bool lightTriangle = false;
         next.axis[2] = axisFromKeys(KEY_A, KEY_D);   // LX
         next.axis[3] = axisFromKeys(KEY_W, KEY_S);   // LY (up = 0)
         next.axis[0] = axisFromKeys(KEY_J, KEY_L);   // RX
@@ -294,10 +322,29 @@ namespace ps2_stubs
                 {GAMEPAD_BUTTON_MIDDLE_LEFT, kPadSelect}, {GAMEPAD_BUTTON_MIDDLE_RIGHT, kPadStart},
                 {GAMEPAD_BUTTON_LEFT_THUMB, kPadL3}, {GAMEPAD_BUTTON_RIGHT_THUMB, kPadR3},
             };
+            // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
+            // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the mouse, the script
+            // and the harness's injected file never go through it.
+            static const CrouchShortcut s_crouch = crouchShortcutFromEnv(std::getenv("PS2X_PAD_CROUCH_SHORTCUT"));
+            uint16_t hostMask = 0;
             for (const auto &entry : kPadButtons)
             {
                 if (IsGamepadButtonDown(padSlot, entry.button))
-                    next.button[entry.pad] = 1u;
+                    hostMask = static_cast<uint16_t>(hostMask | (1u << entry.pad));
+            }
+            const bool touchpad = s_crouch == CrouchShortcut::Touchpad && hostTouchpadDown(padSlot);
+            const HostPadButtons fromPad = applyCrouchShortcut(hostMask, touchpad, s_crouch);
+            for (int id = 0; id < 16; ++id)
+            {
+                if (fromPad.mask & (1u << id))
+                    next.button[id] = 1u;
+            }
+            if (fromPad.mask & kCrouchBitTriangle)
+            {
+                if (fromPad.trianglePressure == kFullButtonPressure)
+                    fullTriangle = true;
+                else
+                    lightTriangle = true;
             }
             // Triggers: raylib maps the trigger axes (rest -1.0) past 0.1 to GAMEPAD_BUTTON_*_TRIGGER_2 itself
             // (rcore_desktop_glfw.c), so the button table above covers L2/R2; no axis read here.
@@ -347,6 +394,8 @@ namespace ps2_stubs
                     if (event.buttons & (1u << id))
                         next.button[id] = 1u;
                 }
+                if (event.buttons & kCrouchBitTriangle)
+                    fullTriangle = true;
                 for (int axis = 0; axis < 4; ++axis)
                 {
                     if (event.axisSet[axis])
@@ -373,12 +422,16 @@ namespace ps2_stubs
                 for (int id = 0; id < 16; ++id)
                     if (sample.buttons & (1u << id))
                         next.button[id] = 1u;
+                if (sample.buttons & kCrouchBitTriangle)
+                    fullTriangle = true;
                 const unsigned values[4] = {sample.rx, sample.ry, sample.lx, sample.ly};
                 for (int axis = 0; axis < 4; ++axis)
                     if (values[axis] != 0x80u)
                         next.axis[axis] = static_cast<uint8_t>(std::min(values[axis], 255u));
             }
         }
+
+        next.trianglePressure = trianglePressureFor(fullTriangle, lightTriangle);
 
         // PS2X_SOCOM2_INPUT_TRACE=1: log every change of the pad state the game will read
         // (buttons as a 16-bit mask, the four axes), so a scripted probe's presses are provable.

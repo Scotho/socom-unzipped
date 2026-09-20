@@ -4,6 +4,7 @@
 // A page never touches the process glue, the microphone or the disc: it reads App and raises a request flag,
 // and main.cpp's loop is the only thing that acts on the world.
 #include "focus.h"
+#include "launcher/bug_report.h"
 #include "launcher/launcher_config.h"
 #include "pad_render.h"
 #include "widgets.h"
@@ -13,6 +14,30 @@
 
 namespace ui
 {
+    // Sprint 9 Goal 8: the REPORT A BUG page's state. The page edits `form` and raises `requestSend`; the loop
+    // owns everything else (the check, the payload, the worker thread, the reply).
+    struct ReportUi
+    {
+        launcher::bugreport::Form form;   // attachLog is OFF by default
+        enum class State
+        {
+            Idle,
+            Sending,        // the request is on its worker thread; SEND is disabled
+            Sent,           // `id` is the reference
+            FieldError,     // `message` says what to fix; the focus went to the field
+            RateLimited,    // `message` says when to retry
+            SavedLocally    // could not send: `savedPath` is where the report was written
+        };
+        State state = State::Idle;
+        std::string message;
+        std::string id;
+        std::string savedPath;
+        bool copied = false;      // the reference is on the clipboard
+        std::string preview;      // what SEND would send, rebuilt by the loop when `changed`
+        bool changed = true;
+        bool requestSend = false;
+    };
+
     struct App
     {
         launcher::Config config;
@@ -40,6 +65,11 @@ namespace ui
         bool micDbValid = false;
         std::string micStatus;
 
+        // Sprint 9 Goal 8: the hosted server's status line on ONLINE ("" = unreachable: nothing is drawn),
+        // and the REPORT A BUG page
+        std::string serverStatus;
+        ReportUi report;
+
         // what ABOUT shows
         std::string configPath, logsPath, version, monitorSize;
 
@@ -60,6 +90,10 @@ namespace ui
         LayoutInputs layout;
         bool padPrompts = false;   // the last input came from a pad: the bar shows its glyphs
         bool fake = false;         // --screenshot: fixed state, no config written, no devices touched
+        // Sprint 9 P4: whether the player has opened a page's ADVANCED section this session. Deliberately
+        // NOT in Config: which drawers you left open is not a setting, and a launcher that reopens them for
+        // a stranger would defeat the point. `advancedForced` can override it -- see focus.h.
+        bool advancedOpen = false;
     };
 
     // ---- the shared furniture of a settings page ----------------------------------------------------------
@@ -76,6 +110,44 @@ namespace ui
         text(ctx, s, at, metrics::captionSize, theme::caption);
     }
 
+    // Sprint 9 P4 (owner: "move 'Second instance on this machine (for testing)' into an advanced section").
+    // The head of one: a caret, the word, and a rule to the edge of the body. Returns true on the frame it
+    // was acted on. `forced` means something inside is not at its default -- it is then drawn open, marked
+    // "in use", and refuses to close, because a disclosure that can hide a live setting is a trap.
+    inline bool advancedHeader(const Ctx &ctx, Rect r, const std::string &id, bool open, bool forced)
+    {
+        if (!drawable(r))
+            return false;
+        const bool live = hovered(ctx, r) || focused(ctx, id);
+        const Rgba ink = forced ? theme::gold : (live ? theme::text : theme::dim);
+        const float cx = r.x + 7.0f;
+        const float cy = r.cy();
+        // Wound the way fillQuad documents for this backend -- top-left, then the lower point, then the
+        // top-right. The other order draws nothing at all: the first pass of this caret was invisible.
+        if (open)   // pointing down: the section below is showing
+            fillTriangle(ctx, Vec2{cx - 5.0f, cy - 2.5f}, Vec2{cx, cy + 3.5f}, Vec2{cx + 5.0f, cy - 2.5f}, ink);
+        else        // pointing right: there is more this way
+            fillTriangle(ctx, Vec2{cx - 2.5f, cy - 5.0f}, Vec2{cx - 2.5f, cy + 5.0f}, Vec2{cx + 3.5f, cy}, ink);
+
+        const float wordX = r.x + 20.0f;
+        text(ctx, "ADVANCED", Vec2{wordX, r.y + (r.h - metrics::labelSize * 1.12f) * 0.5f}, metrics::labelSize, ink,
+             Face::Bold, 0.12f);
+        float ruleRight = r.right();
+        if (forced)
+        {
+            const char *note = "in use";
+            const float noteW = textWidth(ctx, note, metrics::captionSize - 1.0f);
+            textRightIn(ctx, note, r, metrics::captionSize - 1.0f, theme::gold);
+            ruleRight -= noteW + 14.0f;
+        }
+        const float ruleX = wordX + textWidth(ctx, "ADVANCED", metrics::labelSize, Face::Bold, 0.12f) + 14.0f;
+        if (ruleRight > ruleX)
+            fillRect(ctx, Rect{ruleX, cy, ruleRight - ruleX, 1.0f}, theme::alpha(theme::line, live ? 220 : 130));
+
+        // A forced-open section still takes the focus (it is a landmark on the page); it just will not shut.
+        return hit(ctx, r, id) && !forced;
+    }
+
     // ---- one per page -------------------------------------------------------------------------------------
     void drawPlayPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawDiscPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
@@ -84,5 +156,6 @@ namespace ui
     void drawControllerPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawMicrophonePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawOnlinePage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
+    void drawReportPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
     void drawAboutPage(const Ctx &ctx, App &app, const std::vector<Node> &nodes);
 }

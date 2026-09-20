@@ -1,0 +1,2491 @@
+{
+ "schema": 1,
+ "generated": "2026-09-20",
+ "head": "d105d32",
+ "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
+ "entries": [
+  {
+   "id": "2026-09-02-the-game-is-not-in-the-file-you-would-expect",
+   "date": "2026-09-02",
+   "title": "The game is not in the file you would expect",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "The program on the SOCOM II disc is 874 KB of loader. The game itself is locked in an encrypted archive beside it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "55f5170",
+     "sha": "55f5170f533d3a0cb663a39c2bed21739d50f2cd",
+     "date": "2026-09-02",
+     "subject": "tooling: Unicorn EE harness, Ghidra export scripts, APACHE00.ZDB decryptor"
+    },
+    {
+     "kind": "commit",
+     "ref": "eee6634",
+     "sha": "eee663474b201f063b0a81c4e81c96643ce121b0",
+     "date": "2026-09-02",
+     "subject": "socom: research reports, synthetic overlay ELF builder"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/05-code-package-and-harness.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/01-ps2-static-recompilation.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-04-a-playstation-2-game-becomes-a-windows-program",
+   "date": "2026-09-04",
+   "title": "A PlayStation 2 game becomes a Windows program",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "Thirty-five commits in one day, and at the end of them the game's own code is C++ that compiles.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "37b2922",
+     "sha": "37b292275a38ede9cd67174686163246bd84c472",
+     "date": "2026-09-04",
+     "subject": "socom: static DNAS self-decryptor, SIF RPC HLE, harness fixes"
+    },
+    {
+     "kind": "commit",
+     "ref": "329bbda",
+     "sha": "329bbdac024c452e27a5ef185ad36f1458000b65",
+     "date": "2026-09-04",
+     "subject": "socom: APACHE00.ZDB decryption works end-to-end (kernel/SIF/cdvd HLE)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8736759",
+     "sha": "87367599ebf6c7ec7bfb47d2d4c1fc4adaace31a",
+     "date": "2026-09-04",
+     "subject": "third_party: vendor PS2Recomp (GPL-3.0, upstream 14b1e5c) for the SOCOM II fork"
+    },
+    {
+     "kind": "commit",
+     "ref": "1a9ae52",
+     "sha": "1a9ae525641e5f239d7d4573254f355ef5216302",
+     "date": "2026-09-04",
+     "subject": "recomp: segmented synthetic ELF, external generated-code dir, mingw link fix"
+    },
+    {
+     "kind": "commit",
+     "ref": "ac7de47",
+     "sha": "ac7de47d61373d450dcf1a19704b35e56b29f6f8",
+     "date": "2026-09-04",
+     "subject": "recomp: re-exported Ghidra map (13261 fns) with refined normalization"
+    },
+    {
+     "kind": "commit",
+     "ref": "a3cef6c",
+     "sha": "a3cef6cecd05e406ac697c0b1d65556252b95668",
+     "date": "2026-09-04",
+     "subject": "server: Horizon Private Server local setup (app id 10472), launch/seed scripts, README"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/05-code-package-and-harness.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-05-it-plays-its-intro",
+   "date": "2026-09-05",
+   "title": "It plays its intro",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "The game had been sitting on a black screen for a day, and the graphics were not the reason.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "594b887",
+     "sha": "594b887b328e70ff487c13ff6d777236ce25cbfc",
+     "date": "2026-09-05",
+     "subject": "feat: libpad2 (scePad2) HLE — report one connected DualShock2, neutral input; bypasses IOP SIO2MAN/DS2U"
+    },
+    {
+     "kind": "commit",
+     "ref": "cc27753",
+     "sha": "cc27753f7dbcd09c4a4cef24f026d8ad72ed4044",
+     "date": "2026-09-05",
+     "subject": "fix(dbcman): answer every libdbc RPC — unanswered ReceiveData smashed the heap; game now plays the intro"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/07-render-pipeline-diagnosis.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/08-controller-and-dbcman.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-05-the-main-menu-at-full-speed",
+   "date": "2026-09-05",
+   "title": "The main menu, at full speed",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "Three bugs on one delivery path stood between the game and its own interface.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "5152946",
+     "sha": "5152946280afa8259044269ab1dc056a310d4f2c",
+     "date": "2026-09-05",
+     "subject": "fix(dma/vif): TTE-gated DMAtag upper-half transfer for all tag ids, SPR flag in tag ADDR, libdma HLE sends chains with TTE — shell UI renders"
+    },
+    {
+     "kind": "commit",
+     "ref": "409d0c3",
+     "sha": "409d0c3fa0167d67a203a67059c12446d8fabd7b",
+     "date": "2026-09-05",
+     "subject": "gs: OpenGL 3.3 GPU backend (GSGlBackend) — command-stream replay on the GL thread, RT cache, texture cache; menu renders at full speed"
+    },
+    {
+     "kind": "commit",
+     "ref": "31b559e",
+     "sha": "31b559e206d551bcf84a26cbe64fa6bd3de9adb0",
+     "date": "2026-09-05",
+     "subject": "input: host keyboard/mouse/scripted DualShock2 for the pad HLE; main menu reached (intro skipped with START)"
+    },
+    {
+     "kind": "commit",
+     "ref": "73c9a49",
+     "sha": "73c9a49cba8ec7554d20f803680d114a7cfd5376",
+     "date": "2026-09-05",
+     "subject": "fix: recompile the two uncovered trampolines (VALVE exec 0x353d00, event callback 0x2a98a0) — the shell's first-boot flow and \"new game\" now run; present the GS frame opaque"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-05-gpu-gs-backend.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/host/host_000_1s.png",
+     "path": "logs/host/host_000_1s.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-06-a-mission-loads",
+   "date": "2026-09-06",
+   "title": "A mission loads",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "Seven commits, four fixes, and the Albania briefing hands off to a running level.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ec4b9fb",
+     "sha": "ec4b9fbc365e7df32bc3e72108bf3a63e1568c5a",
+     "date": "2026-09-06",
+     "subject": "fix(dispatch): do not mistake a scheduler unwind for a return when the callee unwinds at its own entry pc"
+    },
+    {
+     "kind": "commit",
+     "ref": "feb92ab",
+     "sha": "feb92ab9d6cb198f3a9b811c9026f4e2be650797",
+     "date": "2026-09-06",
+     "subject": "fix(ee): run INTC/DMAC handlers, alarms and the GS vsync callback on a dedicated invocation stack"
+    },
+    {
+     "kind": "commit",
+     "ref": "2b06f50",
+     "sha": "2b06f50d5a5b1094ac088657284c48d5bf958151",
+     "date": "2026-09-06",
+     "subject": "fix(recomp): recompile the 136 function bodies Ghidra left in gaps; emit JAL to an internal target as a call"
+    },
+    {
+     "kind": "commit",
+     "ref": "eebd64a",
+     "sha": "eebd64abf5e24ea64dd2d22b3b2ce78a28f2fd9b",
+     "date": "2026-09-06",
+     "subject": "fix(recomp): split the six merged Ghidra ranges whose second function is called by pointer"
+    },
+    {
+     "kind": "commit",
+     "ref": "7bb89d4",
+     "sha": "7bb89d44b590651bf8e9c44ed5dbccf744b5c193",
+     "date": "2026-09-06",
+     "subject": "docs: STATUS/HANDOFF — the Albania mission loads and runs; next blocker is the in-mission renderer"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-07-the-first-frames-of-a-mission",
+   "date": "2026-09-07",
+   "title": "The first frames of a mission",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "The thing starving the renderer was the automatic exposure control.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "d3cea62",
+     "sha": "d3cea623c1ff0a5ff6b0d32a5326ec04a82e361e",
+     "date": "2026-09-07",
+     "subject": "fix(mission): stub the auto-exposure thread's GS readback (FUN_003b24c0) — the mission now ticks every frame and draws"
+    },
+    {
+     "kind": "commit",
+     "ref": "545b85a",
+     "sha": "545b85a1d3af7ea233abe53a42dc897e42fc1af0",
+     "date": "2026-09-16",
+     "subject": "fix(kernel): libgraph's load/store-image packet layouts, and the auto-exposure readback answered from GS memory instead of a grey pixel"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/31-flat-grey-geometry.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/mission_merge/host_000_1s.png",
+     "path": "logs/parity/mission_merge/host_000_1s.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-07-the-console-becomes-the-marking-scheme",
+   "date": "2026-09-07",
+   "title": "The console becomes the marking scheme",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "Instead of arguing about what looked wrong, the project started scoring itself against screenshots of the real game.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "2aa2572",
+     "sha": "2aa257247f8b876052ab332de5ebdee7165fdd48",
+     "date": "2026-09-07",
+     "subject": "docs: parity harness design spec (PCSX2 golden screens as the loop's grader); tools: find_escaping_branches.py"
+    },
+    {
+     "kind": "commit",
+     "ref": "069aa7a",
+     "sha": "069aa7ac26a72c1ab7e7c695912ce1594923d7fb",
+     "date": "2026-09-07",
+     "subject": "parity: one driver for both sides (posted keys, next-screen stepping), comparer + first REPORT.md (golden from PCSX2, 6 screens scored)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ea026de",
+     "sha": "ea026de889fe7ddb1b05f4d8b040975104cd8b5c",
+     "date": "2026-09-07",
+     "subject": "fix(recomp): never write vf00 — the game's qmtc2.i/vaddx/lqc2 idioms on $vf0 clobbered the (0,0,0,1) constant and every vmaddw vf0w translation term; all 2D UI elements were drawn at the origin. fix(gs-cpu): sprites swap texcoords with corners (text was flipped). docs: STATUS, HANDOFF grade, parity REPORT ours_b"
+    },
+    {
+     "kind": "commit",
+     "ref": "8653933",
+     "sha": "8653933948aa4bd74c1b889385d8e5f3d7eed27a",
+     "date": "2026-09-07",
+     "subject": "fix(gs-gl): text draws — disable raylib's GL_CULL_FACE for GS draws (reversed-winding glyph sprites were culled), CSM1 CLUT index swizzle for 4-bit palettes (text was dim), q=0 treated as 1 for STQ sprites; PS2X_GS_GL_DEBUG_PSM batch/readback diagnostics recomp: merge_ranges.txt support in fix_ghidra_csv.py (fold Ghidra rows a loop body was split across); 0x510970-0x5109a8 merged for the mission-thread halt"
+    },
+    {
+     "kind": "commit",
+     "ref": "daa1eda",
+     "sha": "daa1edaeeb2f689e2929693152fbe6544cf42560",
+     "date": "2026-09-07",
+     "subject": "fix(recomp): drop the 29 libvu0 sceVu0* HLE stubs and recompile Sony's code — the HLE MulMatrix multiplied in the wrong order, the camera clip matrix had rows 2-3 wrong and every scene node failed the frustum test (main-menu roller never drawn). Forced entries for the 17 libvu0 starts the CSV lacked. Roller + captions now render."
+    },
+    {
+     "kind": "commit",
+     "ref": "c2489bd",
+     "sha": "c2489bd0874bb456058bb39a593a861dd9279008",
+     "date": "2026-09-07",
+     "subject": "docs: STATUS/HANDOFF/REPORT — shell parity after the four fixes (popup 99.6, rank 99.2, briefing 96.2, menu 79.1); next: menu art + roller, controller screens, mission thread merge"
+    },
+    {
+     "kind": "commit",
+     "ref": "4af3f00",
+     "sha": "4af3f008e19f1cd620d1396bdbf0f3da1b081489",
+     "date": "2026-09-07",
+     "subject": "docs: report ours_e after libvu0 fix (menu 81 with roller, rank 99.0, briefing 96.4); mission renders textured; align shifted one step; next items"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/parity/REPORT.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/specs/2026-09-07-parity-harness-design.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_e_sheet.png",
+     "path": "logs/parity/ours_e_sheet.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-07-the-movies-play",
+   "date": "2026-09-07",
+   "title": "The movies play",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "Every movie in the game was dying on its first tick over four stale bytes.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ad503c8",
+     "sha": "ad503c8bfb22b1739c742fa4f7d4a9915b520e71",
+     "date": "2026-09-07",
+     "subject": "feat(mpeg): play SOCOM II movies through the sceMpeg HLE (menu background, intros)"
+    },
+    {
+     "kind": "commit",
+     "ref": "9305c72",
+     "sha": "9305c72c699772bef78ad1b872a13a9c1a0c7644",
+     "date": "2026-09-07",
+     "subject": "Merge feat/menu-movie: SOCOM II movies through the sceMpeg HLE (menu background, intros)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/09-menu-movie-ipu.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-07-two-clients-one-server-one-match",
+   "date": "2026-09-07",
+   "title": "Two clients, one server, one match",
+   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
+   "hook": "The first SOCOM II match played on this project's own server was not played by this project.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "5fcb9dc",
+     "sha": "5fcb9dc424ff8d2efca115f480d0ff88d2a4b4e8",
+     "date": "2026-09-07",
+     "subject": "feat(online): PCSX2 client reaches the SOCOM II ONLINE lobby on the local Horizon stack"
+    },
+    {
+     "kind": "commit",
+     "ref": "f4ab598",
+     "sha": "f4ab598fe8be3a323edcf7687288006e5ee4f417",
+     "date": "2026-09-07",
+     "subject": "feat(online): two PCSX2 clients play a match on the local Horizon stack"
+    },
+    {
+     "kind": "commit",
+     "ref": "d738b29",
+     "sha": "d738b299de4f082c4afcca913adcb99814aadaa4",
+     "date": "2026-09-07",
+     "subject": "feat(exe/online): SIF sreg handshake, msifrpc HLE, eznetcnf/eznetctl service, DNAS bypass"
+    },
+    {
+     "kind": "commit",
+     "ref": "9db2fbd",
+     "sha": "9db2fbdfe46ee5d37526d1d16f605785d00fdae3",
+     "date": "2026-09-07",
+     "subject": "feat(exe/online): SCERT handshake with Horizon over a host Winsock netstack"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/10-libnetb-rpc.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/online/login/09_lobby.png",
+     "path": "logs/parity/online/login/09_lobby.png"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/online/match/montageAB2.png",
+     "path": "logs/parity/online/match/montageAB2.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-08-the-project-s-own-program-gets-online",
+   "date": "2026-09-08",
+   "title": "The project's own program gets online",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "Two copies of the recompiled game log in, host a match, and join it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "a1bafbf",
+     "sha": "a1bafbf818af1992ca2f4f39b0fb464c1e7889ca",
+     "date": "2026-09-08",
+     "subject": "fix(ee/online): advance COP0 Count — the exe now reaches SELECT UNIVERSE on Horizon"
+    },
+    {
+     "kind": "commit",
+     "ref": "090401a",
+     "sha": "090401aeca2cd26e8aaca4036d4534d4c46fd3f9",
+     "date": "2026-09-08",
+     "subject": "feat(exe/online): login driver for our exe — MAS login, persona on the OSK, EULA, lobby reached"
+    },
+    {
+     "kind": "commit",
+     "ref": "d0caab9",
+     "sha": "d0caab98ed5b8b3759d29e0eb1f9c836c93a30dc",
+     "date": "2026-09-08",
+     "subject": "feat(exe/online): the exe hosts a game on Horizon — login, lobby, briefing room, GAME LOBBY with a live DME world"
+    },
+    {
+     "kind": "commit",
+     "ref": "2adb58b",
+     "sha": "2adb58b768a2c1936c13780a303528250b69a7e9",
+     "date": "2026-09-08",
+     "subject": "feat(exe/online): two instances of our exe play an online match on our Horizon server (M5)"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_login/09_lobby.png",
+     "path": "logs/parity/ours_login/09_lobby.png"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_host/16_game_lobby.png",
+     "path": "logs/parity/ours_host/16_game_lobby.png"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_match/A_hold05.png",
+     "path": "logs/parity/ours_match/A_hold05.png"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-08-online-lobby.png",
+    "caption": "The project's own executable in the SOCOM II ONLINE lobby, on the server running on the same PC. The persona is the driver's test name; the panel in the corner is the runtime's own debugger, open by default in this era."
+   }
+  },
+  {
+   "id": "2026-09-08-the-world-stops-coming-apart",
+   "date": "2026-09-08",
+   "title": "The world stops coming apart",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "Every square root in the game had been returning zero.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4d2c706",
+     "sha": "4d2c70644d56594bc23f2e1a83f2d5e030c759fe",
+     "date": "2026-09-08",
+     "subject": "fix(recomp): SQRT.S reads ft, RSQRT.S = fs/sqrt(ft)"
+    },
+    {
+     "kind": "commit",
+     "ref": "fa53d3f",
+     "sha": "fa53d3ff6f12d8445acee9c6e146ea76616d57ce",
+     "date": "2026-09-08",
+     "subject": "fix(vu1): copy XGKICK packets at kick time — SOCOM II's object geometry appears"
+    },
+    {
+     "kind": "commit",
+     "ref": "193ef1e",
+     "sha": "193ef1eb1ed59ba38d1be507ef2f4236b0280248",
+     "date": "2026-09-08",
+     "subject": "fix(vu0): macro-mode FMAC ops set the MAC/STATUS flags; VCLIP bit order and |w| — the EE's frustum test now routes near objects through the clipping VU1 path"
+    },
+    {
+     "kind": "commit",
+     "ref": "2d23351",
+     "sha": "2d23351a2f9f3c5f56113e23c1774811aac4b36f",
+     "date": "2026-09-08",
+     "subject": "fix(gs/mpeg): the mission intro movie plays — FBO binding leak in the texture path, PMODE merge, shadow download vs uploads"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-09-from-three-frames-a-second-to-thirty",
+   "date": "2026-09-09",
+   "title": "From three frames a second to thirty",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "The part of the console that draws SOCOM II's geometry was being simulated one cycle at a time.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "51b7ba4",
+     "sha": "51b7ba45d65d3a8d537c0b41d297cb48f17b6328",
+     "date": "2026-09-09",
+     "subject": "perf(vu1): non-cycle-exact fast path (PS2X_VU1_FAST=1) and SIMD FMAC, bit-identical to the exact interpreter"
+    },
+    {
+     "kind": "commit",
+     "ref": "f9f44ff",
+     "sha": "f9f44ff04d08cfc7e7c5fd1ebf6b00742451bca6",
+     "date": "2026-09-09",
+     "subject": "perf(vu1): VU1 microcode-to-C++ recompiler (\"known programs\"): mission image at 10 ns/cycle offline, bit-identical"
+    },
+    {
+     "kind": "commit",
+     "ref": "f5d079e",
+     "sha": "f5d079e5507a73001ac9629fa76ec8da4be179ad",
+     "date": "2026-09-09",
+     "subject": "perf(vu1): fast path on by default; STATUS/HANDOFF: 100 -> 18 ns/cycle in the mission, run reaches gameplay"
+    },
+    {
+     "kind": "commit",
+     "ref": "950fbd2",
+     "sha": "950fbd2752376112a38a610ce867e3f827df2950",
+     "date": "2026-09-09",
+     "subject": "perf(gs): row-span host-to-local uploads, pooled GIF arbiter packets; in-game VU1 hand-back histogram — mission gameplay 12.7 -> 19 frames/s"
+    },
+    {
+     "kind": "commit",
+     "ref": "cf58986",
+     "sha": "cf58986bb146cdbcad4ea34d8238976aee85b2c2",
+     "date": "2026-09-09",
+     "subject": "perf(vu1): mission program regenerated from 900 dumps (300 gameplay) + in-game bail pcs: hand-backs 850 -> 32/s, gameplay 22-29 frames/s"
+    },
+    {
+     "kind": "commit",
+     "ref": "96c84c6",
+     "sha": "96c84c6b5b1e9833d221235bb31958e8d9fbf8ec",
+     "date": "2026-09-09",
+     "subject": "perf: scheduler fast paths (lock-free idle checkpoint, ready count), XGKICK submitted straight from VU memory, VU0 micro on the fast path — mission gameplay 28.7 frames/s"
+    },
+    {
+     "kind": "commit",
+     "ref": "1c301b9",
+     "sha": "1c301b9bb174255366ec7ebed0dc37bddeb291de",
+     "date": "2026-09-09",
+     "subject": "perf(gs-gl): sample a render target's own colour texture instead of reading it back and decoding it (PS2X_GS_RT_TEXTURE=0 restores the readback)"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/vu1fast_1_sheet.png",
+     "path": "logs/parity/vu1fast_1_sheet.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-09-the-words-on-the-title-screen-come-back",
+   "date": "2026-09-09",
+   "title": "The words on the title screen come back",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "The menu's own background movie was painting over its labels.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "3c20dc8",
+     "sha": "3c20dc8f791f9db3921a4aa10d72804294b0c194",
+     "date": "2026-09-09",
+     "subject": "fix(vif1): stall on i-bit VIFcodes until FBRST.STC and drain pending IRQs after every MMIO store width — title labels clean (texture-set marker protocol in sync with the console)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7730052",
+     "sha": "773005238cd78a3c7bf73d933ed4998ffdb12c66",
+     "date": "2026-09-09",
+     "subject": "fix(gs-gl): re-read only the exact uploaded rectangle from the shadow VRAM (dirty rects + 32-row band mask); no more menu-video strip on the black screen before the briefing"
+    },
+    {
+     "kind": "commit",
+     "ref": "77a41ff",
+     "sha": "77a41ffd113a0f30f72d4f10df14393811d82841",
+     "date": "2026-09-08",
+     "subject": "fix(ee): run the game thread with host rounding toward zero (the EE FPU chops)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s8_audio_mc_gate2",
+     "path": "logs/parity/gate/s8_audio_mc_gate2"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_p7_playtest_gate",
+     "path": "logs/parity/gate/s9_p7_playtest_gate"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/title_stall5_sheet.png",
+     "path": "logs/parity/title_stall5_sheet.png"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-09-a-mission-you-can-walk-through",
+   "date": "2026-09-09",
+   "title": "A mission you can walk through",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "The first mission is played: walk, turn, fire, and the game answers.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "94421fb",
+     "sha": "94421fb4be08023bacf2df74b4225b1413888bbe",
+     "date": "2026-09-09",
+     "subject": "gameplay: first mission playable by script (walk/fire/turn, game reacts) at 36-42 fps; PS2X_SOCOM2_INPUT_TRACE logs pad-state changes; probe script fixed (R1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c2f85f0",
+     "sha": "c2f85f05147cda90faae63ee54700befe2b98c3b",
+     "date": "2026-09-09",
+     "subject": "docs(loop): define the playable acceptance test (match ended by a shot or grenade)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7448cbf",
+     "sha": "7448cbf963c39d83450f48405c391490f62762c2",
+     "date": "2026-09-09",
+     "subject": "tools: loop lock script serializing builds and game runs between agents"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gameplay_probe5_sheet.png",
+     "path": "logs/parity/gameplay_probe5_sheet.png"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LOOP_PROMPT.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-10-two-copies-at-speed-and-a-player-who-cannot-move",
+   "date": "2026-09-10",
+   "title": "Two copies at speed, and a player who cannot move",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "The online match now runs on the fast build — and then nobody moves.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "334c990",
+     "sha": "334c990610a487f1fae3bf74ea8bd7f019db595c",
+     "date": "2026-09-10",
+     "subject": "docs+tools(online): STATUS/HANDOFF for the VU1 build gates and the first two-instance gameplay on it; online_match_ours --same-team (B stays on SEALs) and --sweep N (A turns in place firing a burst per step) for the first-kill probe"
+    },
+    {
+     "kind": "commit",
+     "ref": "89d7032",
+     "sha": "89d70324e3665a19b89a368b072c95e4ee0c415c",
+     "date": "2026-09-10",
+     "subject": "input(socom2): PS2X_SOCOM2_INPUT_FILE pad-state injection (read on every pad poll; exact holds, never dropped); online drivers write it per instance (logs/pad_A.txt / pad_B.txt) for gameplay holds"
+    },
+    {
+     "kind": "commit",
+     "ref": "0421048",
+     "sha": "0421048fc6536a08383a0bf0a92f3a61f4a7e3ee",
+     "date": "2026-09-10",
+     "subject": "net(socom2): PS2X_SOCOM2_NET_TRACE counts UDP sends/receives per endpoint and hex-dumps the first 16 peer packets; STATUS/HANDOFF: the online match is frozen at round start (peer UDP handshake never completes, ~1 packet/s), local-IP fix via PS2X_SOCOM2_SERVER=192.168.2.10, hypotheses ordered"
+    },
+    {
+     "kind": "commit",
+     "ref": "79c0e91",
+     "sha": "79c0e913ae75f79d1c3e300a23f8e41511bbc7db",
+     "date": "2026-09-10",
+     "subject": "docs: peer packets decoded (game-level 22-byte reliable channel, acked at 1/s, no SCERT/crypto) — the online freeze is game logic above the transport; next steps and the run recipe"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_match_play5",
+     "path": "logs/parity/ours_match_play5"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/match_play5_sheet.png",
+     "path": "logs/parity/match_play5_sheet.png"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-10-the-project-gets-a-name-and-starts-checking-itself",
+   "date": "2026-09-10",
+   "title": "The project gets a name, and starts checking itself",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "SOCOM Unzipped, a test suite that runs, and one command that says PASS or FAIL.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4b0bbf9",
+     "sha": "4b0bbf93c2b1a248590cf53e255c22790b19d140",
+     "date": "2026-09-10",
+     "subject": "docs: project is SOCOM Unzipped in its own repo (github.com/Scotho/socom-unzipped); commit/push instructions updated"
+    },
+    {
+     "kind": "commit",
+     "ref": "98245ad",
+     "sha": "98245adc345f0df0be7da083dbf02808cdc865c5",
+     "date": "2026-09-10",
+     "subject": "test: ps2x_tests links and runs under llvm-mingw (-Wl,--stack; SOCOM runner link stubs); ./build.sh test"
+    },
+    {
+     "kind": "commit",
+     "ref": "2fca2b8",
+     "sha": "2fca2b80095ca5fa2434b43339ededd08b5231a8",
+     "date": "2026-09-10",
+     "subject": "test(vu1): vu1_replay --verify against a golden state file; 12 title-screen dumps + exact-interpreter golden committed as fixtures; run by ./build.sh test"
+    },
+    {
+     "kind": "commit",
+     "ref": "3bc03ba",
+     "sha": "3bc03bad9594f8233a45ef1156a3285b425771ca",
+     "date": "2026-09-10",
+     "subject": "parity: gate command (title/transition/mission) with numeric PASS/FAIL and exit code; unit-tested scorers on stored runs"
+    },
+    {
+     "kind": "commit",
+     "ref": "e70af9a",
+     "sha": "e70af9a2219061948b5cab3798397ada40e99ce3",
+     "date": "2026-09-10",
+     "subject": "parity(gate): transition gate no longer passes vacuously (frame-count floor), mission probe answers NO to the save prompt wherever it lands"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate_first.out",
+     "path": "logs/parity/gate_first.out"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-11-the-project-s-own-code-draws-the-game",
+   "date": "2026-09-11",
+   "title": "The project's own code draws the game",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "The drawing program is no longer emulated microcode. It is C++ someone wrote by hand.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "15efcd7",
+     "sha": "15efcd71ac75cd54c1cb4b86648f0cd5dae65a8a",
+     "date": "2026-09-10",
+     "subject": "vu1: native-program registry keyed by (image hash, entry pc) ahead of the generated-code dispatch; PS2X_VU1_NATIVE knob (default off); unit tests for run/hand-back/entry filtering"
+    },
+    {
+     "kind": "commit",
+     "ref": "73974cd",
+     "sha": "73974cd31da4c323de7055882c8b8c8f07c0c023",
+     "date": "2026-09-11",
+     "subject": "vu1(native): 0x1b50 dispatcher program on by default after a green gate (title/transition/mission); PS2X_VU1_NATIVE=0 reverts"
+    },
+    {
+     "kind": "commit",
+     "ref": "d912cc1",
+     "sha": "d912cc1299c85115f2e7ef99526f61b897dff7a4",
+     "date": "2026-09-11",
+     "subject": "vu1(native): command 0x4c, and family-B lists run natively"
+    },
+    {
+     "kind": "commit",
+     "ref": "f28fdc7",
+     "sha": "f28fdc74fe2759f9651eda757cfeb3b01c0505db",
+     "date": "2026-09-11",
+     "subject": "vu1(native): the pre-scan walks the vi14 rewrites, and family-C lists run natively"
+    },
+    {
+     "kind": "commit",
+     "ref": "ef80286",
+     "sha": "ef80286f43990a305b1e9d3e4d1f9d2f62f16851",
+     "date": "2026-09-11",
+     "subject": "docs(STATUS): native VU1 dispatcher runs family C as well (123/166), with the residual named"
+    },
+    {
+     "kind": "commit",
+     "ref": "dd5fca8",
+     "sha": "dd5fca89c4b5f75810c722690630507bbfe3c075",
+     "date": "2026-09-11",
+     "subject": "research: GL backend render-target scale spike — NO-GO for Sprint 2 (15 touch points, both readbacks need content-altering downsample incl. the title-label page path); Sprint 3 outline (RenderTarget size refactor first, presentation-upscale filter as the cheap win)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/13-vu1-family-b-world-objects.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate_native_default.out",
+     "path": "logs/parity/gate_native_default.out"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/famb/summary.txt",
+     "path": "logs/parity/gate/famb/summary.txt"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-11-the-check-that-had-been-passing-for-free",
+   "date": "2026-09-11",
+   "title": "The check that had been passing for free",
+   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
+   "hook": "One of the three gate stages had been measuring nothing at all.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "148dffa",
+     "sha": "148dffaadd99b93bcc79aa32a723ff0ab88b9829",
+     "date": "2026-09-11",
+     "subject": "fix(gate): the transition gate measures the transition -- probe answers the save dialog, scorer counts only frames at/after the burst step"
+    },
+    {
+     "kind": "commit",
+     "ref": "9848a6c",
+     "sha": "9848a6c584c6a2bd0bf15d1c76c78b7fadddee85",
+     "date": "2026-09-11",
+     "subject": "docs: Sprint 2 landed -- STATUS/README/LOOP_PROMPT/plan reflect host-draw hook, family B/C native, gate hardening"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate_wcap1.out",
+     "path": "logs/parity/gate_wcap1.out"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate_tfix4.out",
+     "path": "logs/parity/gate_tfix4.out"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-12-four-times-the-pixels-and-no-sharper-hud",
+   "date": "2026-09-12",
+   "title": "Four times the pixels, and no sharper HUD",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "The world could suddenly be drawn at up to four times the console's size. Three quarters of the screen looked exactly the same.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "219ab9c",
+     "sha": "219ab9ccd85ffff211cb77163c272a3e24371c16",
+     "date": "2026-09-12",
+     "subject": "gs-gl: PS2X_GS_SCALE integer render-target scale (default 1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "66e8a07",
+     "sha": "66e8a077b7aa524a37dc9b90981370df129857a2",
+     "date": "2026-09-12",
+     "subject": "docs: PS2X_GS_SCALE=2 verified (sheets); default stays 1"
+    },
+    {
+     "kind": "commit",
+     "ref": "b353c93",
+     "sha": "b353c93ede66fb1c64ee73fcc1374dfce2d62d6d",
+     "date": "2026-09-12",
+     "subject": "docs: Sprint 3 close-out -- PS2X_GS_SCALE (default 1), 162/166 native VU1, vram-diff 14/14, macroblocks localised"
+    },
+    {
+     "kind": "gate",
+     "ref": "s3d_2x_host",
+     "path": "logs/parity/gate/s3d_2x_host"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/14-gs-render-target-scale-spike.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-12-the-black-squares-leave-the-intro-movie",
+   "date": "2026-09-12",
+   "title": "The black squares leave the intro movie",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "A player had reported black tiles flickering over the movies. The tiles were real, and they were never in the movie.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4a701f1",
+     "sha": "4a701f1080f5e3d3970793d6fbf7d4de829810ce",
+     "date": "2026-09-12",
+     "subject": "gs-gl: stop the game thread clobbering m_currentTransfer -- the movie block was in shadow VRAM, the GL mirror marked someone else's rectangle"
+    },
+    {
+     "kind": "commit",
+     "ref": "b91df1b",
+     "sha": "b91df1bf1d0e46945e6082f62bed77466432b041",
+     "date": "2026-09-12",
+     "subject": "movie_blocks(review 4): the furniture map is per screen, and the bar it absorbs at is the one the docs now state"
+    },
+    {
+     "kind": "commit",
+     "ref": "bd27443",
+     "sha": "bd27443e7a1ad7c996b6311670ffef22fbefcaff",
+     "date": "2026-09-17",
+     "subject": "harness: movie_blocks runs in build.sh test against a saved fixture (Sprint 6 Task 8 complete)"
+    },
+    {
+     "kind": "path",
+     "ref": "tools_py/parity/movie_blocks.py"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/16-intro-movie-macroblocks.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-12-every-dice-roll-came-up-nearly-zero",
+   "date": "2026-09-12",
+   "title": "Every dice roll came up nearly zero",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "The game rolls dice in 249 places. For the whole life of the project, every roll had come up almost the lowest number it could.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "ede2096",
+     "sha": "ede2096a36e7da87e369fa59682f7f611f07da59",
+     "date": "2026-09-12",
+     "subject": "fix(libc): rand() returns newlib's 31 bits over the guest's own _rand_next"
+    },
+    {
+     "kind": "commit",
+     "ref": "60a19f2",
+     "sha": "60a19f23abf94a6851362fc1a0c45da34d7f374a",
+     "date": "2026-09-12",
+     "subject": "fix(libc rand): bounds-check the guest _rand_next slot; note the unlocked guest writer"
+    },
+    {
+     "kind": "commit",
+     "ref": "db7a992",
+     "sha": "db7a992e62f85f3e63001693e0c4ef98948303c2",
+     "date": "2026-09-12",
+     "subject": "fix(libc): the soft-double sin/cos/tan/fabs/floor stubs take $a0 and return $v0"
+    },
+    {
+     "kind": "gate",
+     "ref": "s4_rand",
+     "path": "logs/parity/gate/s4_rand"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/17-ground-height.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-12-online-players-can-move-again",
+   "date": "2026-09-12",
+   "title": "Online players can move again",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "For two days the online round had been written up as waiting to start. It was not waiting. The round was running and the player was pinned.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4114ad4",
+     "sha": "4114ad4c90d37c3fe442a187cfaff33be02e852c",
+     "date": "2026-09-12",
+     "subject": "s1(online): the gate is named -- multiplayer zeroes the local player's three movement axes every frame, and RY survives because it is the fourth"
+    },
+    {
+     "kind": "commit",
+     "ref": "abf35bb",
+     "sha": "abf35bb6ff431758eb31786076bf056f83f8a77e",
+     "date": "2026-09-12",
+     "subject": "fix(libnetb): sceInetInterfaceControl code 0x200 returns a real RX byte count -- the online player can move again"
+    },
+    {
+     "kind": "commit",
+     "ref": "5ed29ca",
+     "sha": "5ed29caf479c5fdaad208c1442708ad48f3761fa",
+     "date": "2026-09-12",
+     "subject": "s1(online): same-binary A/B proves the fix both ways, and the idle-ms instrument that measured nothing is retargeted"
+    },
+    {
+     "kind": "run",
+     "ref": "ours_task6_fix2",
+     "path": "logs/parity/ours_task6_fix2"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/18-online-round-start.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-12-a-written-list-of-what-the-project-got-wrong",
+   "date": "2026-09-12",
+   "title": "A written list of what the project got wrong",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "Five beliefs died by measurement in one day. Somebody decided to write them down where they had been read.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "2d9f73a",
+     "sha": "2d9f73a173581ed360f8f4be4c0ec55085f0a59c",
+     "date": "2026-09-12",
+     "subject": "docs: KNOWN.md -- what is proven, what is believed, what was retracted, and what will bite again"
+    },
+    {
+     "kind": "commit",
+     "ref": "bacfbb8",
+     "sha": "bacfbb84deed0351ac9f90aedb8f60ea76b29b75",
+     "date": "2026-09-12",
+     "subject": "docs(research/18): S0 -- PCSX2 does NOT reproduce the round-start freeze, so the runtime is implicated and the server is excluded"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-13-the-retractions-go-where-they-were-read",
+   "date": "2026-09-13",
+   "title": "The retractions go where they were read",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "Striking a claim's headline is the easy half. The sentences that rested on it are the dangerous half.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "0129bb9",
+     "sha": "0129bb9d838f921ce855f147d542180f74845832",
+     "date": "2026-09-13",
+     "subject": "docs(retractions): four sentences this sprint disproved, corrected in place where they were read"
+    },
+    {
+     "kind": "commit",
+     "ref": "95ecb21",
+     "sha": "95ecb21f702a85516c4860146373bee8849e1e0a",
+     "date": "2026-09-13",
+     "subject": "docs(retractions, review round 1): the consequences of a retracted claim, not just its headline"
+    },
+    {
+     "kind": "commit",
+     "ref": "a1e168b",
+     "sha": "a1e168b4a527014b3337a97004b8ee79d6b20665",
+     "date": "2026-09-13",
+     "subject": "docs(known): I broke my own rule -- two superseded generations were silently replaced, and the citations rot"
+    },
+    {
+     "kind": "commit",
+     "ref": "b2a74dd",
+     "sha": "b2a74dd64d68476b5ec0a0241c7407627563b015",
+     "date": "2026-09-13",
+     "subject": "docs(known): changing the health default did not fix the false PASS -- my entry said it did"
+    },
+    {
+     "kind": "commit",
+     "ref": "85aa476",
+     "sha": "85aa4768a646372d6e7ea79eca2af23e2fd10945",
+     "date": "2026-09-13",
+     "subject": "docs: retract \"kill3 lost its second mover\" -- the 0.00 units was the camera record freezing while B's actor walked 65 units"
+    },
+    {
+     "kind": "commit",
+     "ref": "07ffc0a",
+     "sha": "07ffc0a4b17829fbb01aa4695aa3dc231e549bd5",
+     "date": "2026-09-13",
+     "subject": "fix(gs): sceGsSetDefDBuff reads ztest/zpsm/clear from $t0-$t2 and seeds both clear packets in context 1"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-13-frostfire-gets-its-ground-back",
+   "date": "2026-09-13",
+   "title": "Frostfire gets its ground back",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "On one map both players froze where they spawned. The ground was there. The game could not find it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "b625291",
+     "sha": "b625291075ffce25677f3ef07b5f1d40912497c6",
+     "date": "2026-09-13",
+     "subject": "fix(vu0): vf0 is the hardware constant (0,0,0,1) on every guest context, not only the main thread's"
+    },
+    {
+     "kind": "commit",
+     "ref": "aa91a53",
+     "sha": "aa91a5321f31395e1f8d87377b602912fdf280b9",
+     "date": "2026-09-13",
+     "subject": "docs(research/21): launch 2 -- the grid is healthy; the ground models were gridded without their translation on a StartThread loader thread whose VU0 vf0.w is 0"
+    },
+    {
+     "kind": "commit",
+     "ref": "3f9a100",
+     "sha": "3f9a10052c95b2499f69f6034226103684123b8c",
+     "date": "2026-09-13",
+     "subject": "docs(known): launch 3 -- the vf0 fix restores Frostfire online control; two floors, a harness closest_3d bug and walking-heading error recorded"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/run_A_20260913_115809.log",
+     "path": "logs/run_A_20260913_115809.log"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/21-frostfire-control-handover.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-13-the-test-stops-grading-the-wrong-screen",
+   "date": "2026-09-13",
+   "title": "The test stops grading the wrong screen",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "For a day the project's own grader had been scoring the opening cinematic and calling it gameplay.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "69e2a9d",
+     "sha": "69e2a9d83fa79ffadda051854ba4dd1f85724f60",
+     "date": "2026-09-13",
+     "subject": "fix(gate R30): HUD reached means gameplay -- untilref(...,lit) needs lit letterbox bands on the uncropped frame, and the mission scorer checks the hold captures"
+    },
+    {
+     "kind": "commit",
+     "ref": "d2eb932",
+     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
+     "date": "2026-09-13",
+     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-13-the-single-player-mission-stops-freezing",
+   "date": "2026-09-13",
+   "title": "The single-player mission stops freezing",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "A frozen picture with a running clock is not a hung game. It is a queue.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "aedd9ff",
+     "sha": "aedd9ffcf1b8d092624aeabb87dc0e057878a46d",
+     "date": "2026-09-13",
+     "subject": "docs(known): the single-player gameplay stall is an unbounded GS command backlog, not presses or paging"
+    },
+    {
+     "kind": "commit",
+     "ref": "8281254",
+     "sha": "828125458021e8739e28210a6750ff409d8425b0",
+     "date": "2026-09-13",
+     "subject": "fix(gs-gl): bound the GS command backlog -- the EE waits at VBlankStart while > N frames are unreplayed (R35)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7448601",
+     "sha": "74486011774892f34b63cae64cf0553960eba2f1",
+     "date": "2026-09-13",
+     "subject": "fix(gs-gl review 1): back-pressure caps consumer silence, not replay time (R40); a wait drops VBlank debt on both clocks (R41)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s5_gsbp",
+     "path": "logs/parity/gate/s5_gsbp"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-13-the-first-kill",
+   "date": "2026-09-13",
+   "title": "The first kill",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "\"socomc fragged socome with M4A1.\" Then it happened twice more in the same lobby.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "811b886",
+     "sha": "811b8866fb68ff6a0d40ee1e2914b2f07f91c019",
+     "date": "2026-09-13",
+     "subject": "docs: THE ACCEPTANCE TEST PASSED -- Sprint 5 ladder launch 2 killed on rounds 1-3 on Frostfire, both scorers agreeing, independently verified"
+    },
+    {
+     "kind": "commit",
+     "ref": "5f1de26",
+     "sha": "5f1de26885df3dfb3d7ec615d980a05aeeff3f16",
+     "date": "2026-09-13",
+     "subject": "docs(research/22): first online kill -- ladder launch 2 round 1, both screens tiled"
+    },
+    {
+     "kind": "commit",
+     "ref": "171290b",
+     "sha": "171290b5524e4949753ccda0d813754fd6e397c8",
+     "date": "2026-09-13",
+     "subject": "fix(sprint-5 R70 fix round 1): match the exact route-no-time tag, cap the budget when the clock can't be read at all"
+    },
+    {
+     "kind": "commit",
+     "ref": "d9b5f33",
+     "sha": "d9b5f335b059171674fb6f1daf34939640930966",
+     "date": "2026-09-14",
+     "subject": "test(sprint-5 final review I1): pin the acceptance PASS -- ladder launch 2 round 1 fixture, KILL test, parser parity, archived evidence manifest"
+    },
+    {
+     "kind": "run",
+     "ref": "s5_t5_ladder2",
+     "path": "logs/parity/s5_t5_ladder2"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-13-sprint-5-control-readout-and-first-kill.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/22-kill-readout.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/assets/22-first-kill.png"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-13-first-kill.png",
+    "caption": "Both screens of ladder launch 2, round 1, a third of a second apart: the killer's on the left, the victim's on the right, the same killfeed line on each."
+   }
+  },
+  {
+   "id": "2026-09-14-two-defects-the-owner-spotted",
+   "date": "2026-09-14",
+   "title": "Two defects the owner spotted",
+   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
+   "hook": "The owner looked at the test frames and saw two things nobody had been looking for.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "b09227f",
+     "sha": "b09227ff8493fbdf67ef2ebc6ebcd00d1aebb2e3",
+     "date": "2026-09-14",
+     "subject": "docs(known): the single-player turn teleport is corrupt animation clip descriptors -- the motion pack is overwritten during the SP mission load"
+    },
+    {
+     "kind": "commit",
+     "ref": "3220e68",
+     "sha": "3220e6843cab8592cd3ee22f1976fc47c6a64c73",
+     "date": "2026-09-14",
+     "subject": "docs: record the paused investigations -- the single-player turn teleport (corrupt animation clips from an x8 GS block pointer) and the grey water (GL depth precision)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3028bf8",
+     "sha": "3028bf85c8e706009b3b11ed49881b564668a412",
+     "date": "2026-09-14",
+     "subject": "docs: the x8 GS block-pointer cause is independently confirmed, with a leftover packet recording DBP=0x2000 where 0x3C00 was required"
+    },
+    {
+     "kind": "commit",
+     "ref": "5655f5c",
+     "sha": "5655f5c7d89d621e774d852765829e5561a54c48",
+     "date": "2026-09-14",
+     "subject": "docs: the depth-quantisation theory for the grey water is refuted -- the shards survive with the depth test switched off"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/25-sp-teleport.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/26-water-polygons.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-14-grey-hill-before.png",
+    "caption": "The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read."
+   }
+  },
+  {
+   "id": "2026-09-15-turning-around-no-longer-ends-the-mission",
+   "date": "2026-09-15",
+   "title": "Turning around no longer ends the mission",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "A flick of the right stick could throw the player across the map and end the run, and the cause was one number multiplied by eight when it should have been left alone.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "a81eb74",
+     "sha": "a81eb747d1c7da76995632daf2a399c15cd14381",
+     "date": "2026-09-15",
+     "subject": "fix(gs): the libgraph vram_addr is the BITBLTBUF block field -- drop the x8 in sceGsExecLoadImage/StoreImage (the single-player turn teleport)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/25-sp-teleport.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_blockptr/summary.txt",
+     "path": "logs/parity/gate/s6_blockptr/summary.txt"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-15-the-check-learns-what-failure-looks-like",
+   "date": "2026-09-15",
+   "title": "The check learns what failure looks like",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "The automatic check that guarded every change could watch the player die and still call the run a pass.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "6880ee9",
+     "sha": "6880ee99eef0bb323297d7cfb7d92af2d6555484",
+     "date": "2026-09-15",
+     "subject": "feat(parity): two lock-free scorers for Sprint 6 -- mission_fail.detect (the MISSION FAILURE screen) and motion_pack_check (the motion-pack smear from an RDRAM image), plus the slot-8 console spawn reference"
+    },
+    {
+     "kind": "commit",
+     "ref": "326c9c9",
+     "sha": "326c9c962689ffcd381e5c36b7951965a432c22d",
+     "date": "2026-09-15",
+     "subject": "fix(gate): dismiss a HELP pop-up or the X-TO-ABORT cinematic before every mission hold (ifpopup step)"
+    },
+    {
+     "kind": "commit",
+     "ref": "34ed2ac",
+     "sha": "34ed2ac0f4b4ae090cf8ef2b0dbbcfb109d3dcd3",
+     "date": "2026-09-15",
+     "subject": "feat(gate): the mission stage fails on a MISSION FAILURE screen and prints the console spawn score and the guest-value probe (Sprint 6 Task 1 wiring)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4c1b294",
+     "sha": "4c1b294ae3eab61c011dd5c2806c8b6c9a5e9c2e",
+     "date": "2026-09-15",
+     "subject": "feat(gate): the mission stage samples the guest (PS2X_PC_SAMPLER=1) and scores the guest-value probe; teleports counted by speed (R80)"
+    },
+    {
+     "kind": "commit",
+     "ref": "797f65f",
+     "sha": "797f65f7393cc0d19fc6d299b16dc5e481109bab",
+     "date": "2026-09-15",
+     "subject": "feat(parity): guest_probe -- the gate's guest-value leg (root node Y, MoveScale, teleport count) against console numbers on disk"
+    },
+    {
+     "kind": "commit",
+     "ref": "20db94b",
+     "sha": "20db94b783ef26dc69e385ecfc3beeb25b440307",
+     "date": "2026-09-15",
+     "subject": "docs: R80 (probe scored; root decay settled by the probe on s6_probe), KNOWN row settled"
+    },
+    {
+     "kind": "commit",
+     "ref": "d2eb932",
+     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
+     "date": "2026-09-13",
+     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_probe/summary.txt",
+     "path": "logs/parity/gate/s6_probe/summary.txt"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-15-the-lobby-stops-dropping-button-presses",
+   "date": "2026-09-15",
+   "title": "The lobby stops dropping button presses",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "Seven launches in one evening, and every one of them lost a button press on the way to the online lobby.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "78a81d1",
+     "sha": "78a81d1d22e7bc548e055305a12421ec5a3c1a01",
+     "date": "2026-09-15",
+     "subject": "feat(lobby): verify-then-act on every fixed press with a failure class per stage (Sprint 6 Task 2 Steps 2-3)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d6e417f",
+     "sha": "d6e417fe626d102c4ab24e89f431dda97d97db22",
+     "date": "2026-09-15",
+     "subject": "fix(lobby): every press on the boot-to-lobby path is verified and goes through the pad file -- ONLINE lit before its CROSS, the login screen after it, the persona presses by their effect (classes login:persona:*)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ebf13be",
+     "sha": "ebf13be3244021062a29f412742204ee055e5a68",
+     "date": "2026-09-15",
+     "subject": "feat(harness): burst-to-burst aim correction in the route endgame -- a miss inside tolerance steps a lead, and an unreachable bias ends as NO-KILL aim-exhausted (Sprint 6 Task 4 Steps 1-2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "431499b",
+     "sha": "431499b997985eef9a3404c135a139d40a0e370f",
+     "date": "2026-09-15",
+     "subject": "docs(known, research/28): the kill repeats on the block-pointer exe -- s6_ladder8 4 of 4 rounds on KillWatch, the lead correction used in round 2, the valve scorer's rounds 1-2 KILL, round 3 beyond the 60-unit bar, round 4 without post-window rows"
+    },
+    {
+     "kind": "commit",
+     "ref": "4a9179f",
+     "sha": "4a9179f24d7b0f37613317edadc88cb325c61fd6",
+     "date": "2026-09-15",
+     "subject": "docs(known): every blind press in the online harness now costs a launch -- the evening's seven launches, one dropped press each"
+    },
+    {
+     "kind": "commit",
+     "ref": "d05db14",
+     "sha": "d05db14420ec722b88c6e3fba51b6c92b355b9ab",
+     "date": "2026-09-15",
+     "subject": "docs(status): the night's online launches -- the kill repeats 4 of 4 on the block-pointer exe, the aim correction fires live, and every blind press in the lobby now verifies itself"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/s6_ladder8.done",
+     "path": "logs/s6_ladder8.done"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/28-lobby-taxonomy.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-16-the-owner-plays-it-and-asks-about-his-controller",
+   "date": "2026-09-16",
+   "title": "The owner plays it, and asks about his controller",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "\"do something fun for me\", and a few minutes later, \"do you see my controller?\"",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "7eed518",
+     "sha": "7eed518c0af49486ce55233f13b806c00706f124",
+     "date": "2026-09-16",
+     "subject": "docs: 2026-09-16 -- the owner plays (gamepad, no sound, grey hill), three gates lost to a saved controller configuration, the content-scored transition, the CPU-VRAM twin retired (research/31 section 7)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6d05b18",
+     "sha": "6d05b18ff6ff32d18d1937fa8024f1beca52d35f",
+     "date": "2026-09-16",
+     "subject": "feat(input): host gamepad in the SOCOM input path, and PS2X_HOST_GAMEPAD=0 to pin every harness run to the keyboard"
+    },
+    {
+     "kind": "commit",
+     "ref": "8f3f3be",
+     "sha": "8f3f3be1d32073d281039660d11b9649a5e69779",
+     "date": "2026-09-16",
+     "subject": "fix(gate): score the transition by content, boot from a pristine memory card, capture waits at 5 fps; muzzle-up hold, probe rest window, HUD-frame guard on the console line"
+    },
+    {
+     "kind": "commit",
+     "ref": "93e3639",
+     "sha": "93e363963f75bb2d05c630c48f866e40704f30ce",
+     "date": "2026-09-16",
+     "subject": "docs(current-sprint): the owner's order of 2026-09-16 -- water/ground first, then untested online maps, hardening, audio, the launcher"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/31-flat-grey-geometry.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-16-every-frame-was-1-73-times-too-dark",
+   "date": "2026-09-16",
+   "title": "Every frame was 1.73 times too dark",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "The grey hill in the owner's screenshot turned out to be three separate bugs, and one of them had been dimming every frame of the game.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "3d37abc",
+     "sha": "3d37abcc85431115eee0cbe9c1279a309d7dc894",
+     "date": "2026-09-16",
+     "subject": "fix(gs): the GL backend dropped the game's full-frame brighten (Cd*C + Cd); model the on-chip CLUT; async VRAM peek; a console-dump replay oracle and trace filters"
+    },
+    {
+     "kind": "commit",
+     "ref": "545b85a",
+     "sha": "545b85a1d3af7ea233abe53a42dc897e42fc1af0",
+     "date": "2026-09-16",
+     "subject": "fix(kernel): libgraph's load/store-image packet layouts, and the auto-exposure readback answered from GS memory instead of a grey pixel"
+    },
+    {
+     "kind": "commit",
+     "ref": "c63729d",
+     "sha": "c63729d1d97db6473f1e1dc5cc3aa4a1f542d84d",
+     "date": "2026-09-16",
+     "subject": "fix(vu1): the VIF's MSCAL/MSCNT finish a pending VU1 program before the next one -- the terrain holes (research/31 §17)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c539603",
+     "sha": "c5396038670aaceaf9a6af1bf072e726f3d4b19f",
+     "date": "2026-09-16",
+     "subject": "docs(research/31 §16, KNOWN, STATUS): the terrain holes are EE draw-list omissions -- 18 of the console's 82 fans never reach VU1; the clipper, cull and rasterisers are cleared; terrain research tools kept under tools_py/research/terrain"
+    },
+    {
+     "kind": "commit",
+     "ref": "c7eb121",
+     "sha": "c7eb12180ed3b3364854e7e8db3bba0d05140332",
+     "date": "2026-09-16",
+     "subject": "docs(research/31, STATUS, KNOWN): the water shards run to ground -- the console dump as oracle, the dropped Cd*(1+C) blend, the stubbed exposure readback; what remains (the bed pass's vertex alpha)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/31-flat-grey-geometry.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/26-water-polygons.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/assets/31-console-dump-gl-replay-fixed.png"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-16-brighten-fixed.png",
+    "caption": "The same recorded frame after the brighten pass was restored. Same scene, same camera; the difference is the whole of the defect."
+   }
+  },
+  {
+   "id": "2026-09-17-the-game-stops-running-in-slow-motion",
+   "date": "2026-09-17",
+   "title": "The game stops running in slow motion",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "A round would start, the clock would count down, and nobody could move — the renderer was quietly eating most of every second.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "42b2b50",
+     "sha": "42b2b50e8aa064d085d6c04eb12bca1b856492f4",
+     "date": "2026-09-17",
+     "subject": "fix(gs): CLUT snapshot ids keyed by palette content -- the online round frozen at STARTING ROUND was the texture cache exploding on per-load serials (research/34)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8238ee1",
+     "sha": "8238ee14933706a81696eb31799b42b12f9853c2",
+     "date": "2026-09-17",
+     "subject": "fix(scheduler): the guest clock follows wall time -- the game ran at two thirds speed with VU1 and the render wait excluded (research/34 section 6)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/34-online-round-freeze-clut-serials.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_clutfix_gate/summary.txt",
+     "path": "logs/parity/gate/s6_clutfix_gate/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_clock_gate/summary.txt",
+     "path": "logs/parity/gate/s6_clock_gate/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_control_frostfire_clockoff",
+     "path": "logs/parity/ours_control_frostfire_clockoff"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-17-twenty-maps-in-one-night",
+   "date": "2026-09-17",
+   "title": "Twenty maps in one night",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "Between a quarter past midnight and a quarter to five, every online map nobody had ever tried got a round of its own.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "d2a9a55",
+     "sha": "d2a9a55f837387f82fc179d9a9718dbbb1093263",
+     "date": "2026-09-17",
+     "subject": "feat(harness): Task 6b control rounds on every untested online map -- verified map choice by slug reference, sticky list walk, per-map launch and the twenty-map queue (research/33)"
+    },
+    {
+     "kind": "commit",
+     "ref": "99eb304",
+     "sha": "99eb304c68f5444d8b6df4a1b21b3c8ef8165cad",
+     "date": "2026-09-17",
+     "subject": "docs(research/33, KNOWN, STATUS): Task 6b sweep -- control rounds on all twenty untested online maps, 18 of 20 play"
+    },
+    {
+     "kind": "commit",
+     "ref": "aba04e2",
+     "sha": "aba04e2be7aeb5f50bf298d5669aab422fe43e58",
+     "date": "2026-09-17",
+     "subject": "harness(control-round): a height drop is a fall -- pad neutral, legs turn back, the damage scored apart from the negative control (KNOWN section 2, Foxhunt)"
+    },
+    {
+     "kind": "commit",
+     "ref": "632d2c2",
+     "sha": "632d2c2b1c9f91245acf95c763123630b6e8204a",
+     "date": "2026-09-17",
+     "subject": "harness: Sprint 6 Task 8 -- client-rect assertion at capture, archive_logs.ps1, the README contributor section; Foxhunt's control round settled"
+    },
+    {
+     "kind": "commit",
+     "ref": "8238ee1",
+     "sha": "8238ee14933706a81696eb31799b42b12f9853c2",
+     "date": "2026-09-17",
+     "subject": "fix(scheduler): the guest clock follows wall time -- the game ran at two thirds speed with VU1 and the render wait excluded (research/34 section 6)"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/online_control_summary.txt",
+     "path": "logs/parity/online_control_summary.txt"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/33-online-map-coverage.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_control_foxhunt_guard",
+     "path": "logs/parity/ours_control_foxhunt_guard"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_control_requiem_clock",
+     "path": "logs/parity/ours_control_requiem_clock"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-17-foxhunt-map-select.png",
+    "caption": "How a map is chosen without counting presses: the driver matches the highlighted row against a reference and only then confirms. This is Foxhunt, the map that needed the fall guard."
+   }
+  },
+  {
+   "id": "2026-09-17-the-game-has-sound",
+   "date": "2026-09-17",
+   "title": "The game has sound",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "It had never made a noise; in one day it got effects, voices, mission music and a title theme.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "92ac6a0",
+     "sha": "92ac6a09b19fa4e8f75a33d7e785e68af2d14a75",
+     "date": "2026-09-17",
+     "subject": "feat(audio): first sound -- 989snd bank sounds play through a host mixer (Task 6c Step 3, research/32 section 5)"
+    },
+    {
+     "kind": "commit",
+     "ref": "cb0f455",
+     "sha": "cb0f455f1bbb7c71cefec0945ff6602325395cc3",
+     "date": "2026-09-17",
+     "subject": "feat(audio): the mission's voice-overs and music play -- VPK and VAGp streams read from the disc image through the mixer (research/32 section 6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "52125e6",
+     "sha": "52125e64a011cb071257dd55079149d6f7eade6e",
+     "date": "2026-09-17",
+     "subject": "feat(audio): the title music plays -- the 989snd PCM stream ring the EE fills, forwarded to the mixer with the position the IRX reports (research/32 section 7)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4478bff",
+     "sha": "4478bfffa596bac3b0826a280d7cb8436e79ae24",
+     "date": "2026-09-17",
+     "subject": "fix(audio): the title music is clean -- the sceMpeg HLE fed the game's audio callback wrong, three ways (research/32 section 7.1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "75fe03d",
+     "sha": "75fe03dd4894223afe5ed9e99741e834a29605a2",
+     "date": "2026-09-17",
+     "subject": "fix(audio): the title screen plays the disc's PCM sample for sample -- the demux always consumes its input, refused audio is set aside (research/32 section 7.1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "5a1b6a8",
+     "sha": "5a1b6a86aa98b94002dbdb6299792979f9db6372",
+     "date": "2026-09-17",
+     "subject": "fix(cd): a plain sceCdRead no longer moves the CD stream cursor (Sprint 7 Task 2c)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/32-audio-path.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_audio_title19/summary.txt",
+     "path": "logs/parity/gate/s6_audio_title19/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/audio_title19.wav",
+     "path": "logs/audio_title19.wav"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s7_audio_title",
+     "path": "logs/parity/gate/s7_audio_title"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-17-a-launcher-and-a-folder-you-can-copy",
+   "date": "2026-09-17",
+   "title": "A launcher, and a folder you can copy",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "The project got a front door: a window that checks your disc, sets the picture, shows your controller moving, and starts the game.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "770d5fb",
+     "sha": "770d5fb43897e022cbd6ec63fe1772c8fa285d47",
+     "date": "2026-09-17",
+     "subject": "feat(launcher): SOCOM Unzipped launcher, first cut -- disc check, video, controller, online, Launch; PS2X_WINDOW_SIZE in the runtime (Task 8b)"
+    },
+    {
+     "kind": "commit",
+     "ref": "2a8f8e4",
+     "sha": "2a8f8e49d34b211ae7d3c6f035f87a5d3b8ffe24",
+     "date": "2026-09-17",
+     "subject": "packaging: scripts/make_portable.sh -- the portable folder (Task 8b Step 5, outline section 2 A)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_launcher_gate/summary.txt",
+     "path": "logs/parity/gate/s6_launcher_gate/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/launcher_server_picker.png",
+     "path": "logs/launcher_server_picker.png"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/assets/launcher-first-cut.png"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-17-launcher-first-cut.png",
+    "caption": "The launcher's first cut: a disc path, three picture settings, a drawn pad, a server and a profile, and a Launch button that stays off until the disc matches."
+   }
+  },
+  {
+   "id": "2026-09-17-the-audit-that-said-a-stranger-still-could-not-play",
+   "date": "2026-09-17",
+   "title": "The audit that said a stranger still could not play",
+   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
+   "hook": "Four read-only reviews were run against the project's own goal sentence on the same day the launcher shipped, and the answer was that the game plays and nobody else can get to it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "09b793a",
+     "sha": "09b793a78960e7b21850599bf0a6bd245f6c9cf7",
+     "date": "2026-09-17",
+     "subject": "docs: the 2026-09-17 audit and code review; the sprint file rewritten around it; Sprints 7-9 drafted"
+    },
+    {
+     "kind": "commit",
+     "ref": "fae7d0e",
+     "sha": "fae7d0e1c624a1b1057cc6e9c8aa8a844c662fdd",
+     "date": "2026-09-17",
+     "subject": "fix(online): the audit's fix wave -- the launcher hands the ISO to the game, hostnames resolve, the server's advertised address is a parameter, the harness has one server knob, the launcher picks a server"
+    },
+    {
+     "kind": "commit",
+     "ref": "32aec0b",
+     "sha": "32aec0b1abd8f003ae4e9921fdee2f805d4cd823",
+     "date": "2026-09-17",
+     "subject": "docs: Sprint 7 opened -- 'two strangers, two machines, one hosted server': the design spec and the plan (15 tasks, 114 steps), the sprint file's header"
+    },
+    {
+     "kind": "commit",
+     "ref": "a843385",
+     "sha": "a843385f01c52f14f3a51ddb0cb89984258cfe18",
+     "date": "2026-09-17",
+     "subject": "feat(runtime): the stranger's machine, defensively -- a GL capability probe with a CPU fallback and exit code 65, and a native-VU1 mismatch warning (Sprint 7 Tasks 1a, 1d)"
+    },
+    {
+     "kind": "commit",
+     "ref": "39cd17f",
+     "sha": "39cd17f4077ce4d250e5b593c196bf51c171fa8b",
+     "date": "2026-09-17",
+     "subject": "fix(scheduler): equal-priority guest threads are never time-sliced -- the slice expires only for a strictly higher-priority ready thread (Sprint 7 Task 2a)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/AUDIT-2026-09-17.md"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s6_fixwave_gate/summary.txt",
+     "path": "logs/parity/gate/s6_fixwave_gate/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s7_gl_gate/summary.txt",
+     "path": "logs/parity/gate/s7_gl_gate/summary.txt"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/gate/s7_gl_gate2/summary.txt",
+     "path": "logs/parity/gate/s7_gl_gate2/summary.txt"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-18-the-launcher-learns-your-pad",
+   "date": "2026-09-18",
+   "title": "The launcher learns your pad",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The front door stopped assuming everyone owns the same controller.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "206de19",
+     "sha": "206de1915df48b49fcf21df220163c02b6260b5b",
+     "date": "2026-09-18",
+     "subject": "feat(launcher,runtime): Goal 8, the launcher a player expects -- controller selection, an FPS overlay, detail/resolution and volume, microphone selection (Sprint 7 Tasks 8-11; owner request 2026-09-18)"
+    },
+    {
+     "kind": "commit",
+     "ref": "6b7a2b3",
+     "sha": "6b7a2b3dc50ef5e817fa0a0401fd8a173e1be818",
+     "date": "2026-09-18",
+     "subject": "fix(input): injected pad presses are latched, never dropped -- a 2 ms sampler and a per-poll OR of everything seen (Sprint 7 Task 2f)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d270022",
+     "sha": "d2700227bfa1f3cbc98e867d09cc830b702113da",
+     "date": "2026-09-18",
+     "subject": "Merge sprint-7: two strangers, two machines, one hosted server -- the stranger's machine defended, the console's scheduler semantics, the lobby rate 10/10, the launcher's selectors, the owner's sound reports fixed at the IOP model (rulings R91-R98)"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/lobby_rate_summary.txt",
+     "path": "logs/parity/lobby_rate_summary.txt"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-18-the-sound-reports-run-to-ground",
+   "date": "2026-09-18",
+   "title": "The sound reports run to ground",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The owner said the sound stopped working halfway through a mission, and it had.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "b3e3797",
+     "sha": "b3e3797761f5d6521935d51d0fcefa2bc30636a3",
+     "date": "2026-09-18",
+     "subject": "fix(audio,cd): the owner's sound reports -- VAG stream slots are freed on snd_StopSound, the PCM ring plays a block only once per fill (R97), sceCdGetReadPos follows the cursor last moved, the unknown-bank reject is diagnosed (Sprint 7 Task 12 Steps 3-4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "23a860d",
+     "sha": "23a860d3881abeeda85bedb88972f31967983fe6",
+     "date": "2026-09-18",
+     "subject": "fix(iop,audio): sceSifInitRpc no longer wipes the IOP model on every call; a VAG stream that ends by itself frees its slot (Sprint 7 Task 12, second pass)"
+    },
+    {
+     "kind": "commit",
+     "ref": "acc3310",
+     "sha": "acc331092c65e43cb6210dd5502b36bd4af55bf0",
+     "date": "2026-09-18",
+     "subject": "harness: audio_corr --repeat -- the autocorrelation peak per window at lags 256..4096, so a looping block or chunk (the owner's 'persistent buzz') reads as a number (Sprint 7 Task 12 Step 2)"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-18-the-game-runs-on-linux",
+   "date": "2026-09-18",
+   "title": "The game runs on Linux",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The owner asked for Linux in the morning, offered a spare virtual machine, and by that evening the game was drawing frames on Ubuntu.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "2aa02c3",
+     "sha": "2aa02c38393c2a13e6304cef8fda76a7916b3fde",
+     "date": "2026-09-18",
+     "subject": "build,harness: the Linux client, part one -- CMake's UNIX branches and a runner that is skipped without generated code, scripts/build_linux.sh, a GitHub Actions job on ubuntu-24.04, the portable tarball, the harness's X11 capture and key halves, the VM sync script (Sprint 8 Goal 1 Tasks 1, 2, 7, 9)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8f8981c",
+     "sha": "8f8981cc3eef82be45a19c9c3d61039b4491a6da",
+     "date": "2026-09-18",
+     "subject": "fix(audio): a refused stream header closed its file twice -- the double free glibc caught on the first Linux run of the suite; the VBlank re-anchor tests pay for host lateness (Sprint 8 Goal 1 Task 8)"
+    },
+    {
+     "kind": "commit",
+     "ref": "955c010",
+     "sha": "955c0105b58a6d5236170fb51617291a03d261ef",
+     "date": "2026-09-18",
+     "subject": "harness: the gate's title stage runs on Linux -- the runtime exe and free-space path by platform, X11 window lookup without PCRE syntax, exact process names, key injection through the latched pad file, a slow-host time factor, the press budget paced by the reference (Sprint 8 Goal 1 Tasks 10, 11)"
+    },
+    {
+     "kind": "commit",
+     "ref": "f8e1bec",
+     "sha": "f8e1bec934e67fbbb1db9d4da6896df858176279",
+     "date": "2026-09-19",
+     "subject": "fix(vm): the tree sync re-stamps what it changed, so ninja in the guest cannot miss it (Sprint 9 Goal 2 Task 6)"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/vm/s8_vm_title5_summary.txt",
+     "path": "logs/parity/vm/s8_vm_title5_summary.txt"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-18-linux-boot-dialog.png",
+    "caption": "The first thing the game says on Ubuntu, inside the virtual machine: the same controller prompt Windows shows at boot, drawn by the software renderer."
+   }
+  },
+  {
+   "id": "2026-09-19-the-menus-stop-dropping-frames",
+   "date": "2026-09-19",
+   "title": "The menus stop dropping frames",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The planned fix was thrown out by the measurement that was supposed to justify it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "d238135",
+     "sha": "d238135ce743f86ce83a49c928ce1c290e6839b1",
+     "date": "2026-09-19",
+     "subject": "feat(gs): PS2X_GS_UPLOAD_TRACE -- the upload path's cost split per term; the measurement that stopped Goal 2's batching (Sprint 8 Goal 2 Task 1, R108)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4cd42b4",
+     "sha": "4cd42b4b62815d3856847e97daa856bc7071dd24",
+     "date": "2026-09-19",
+     "subject": "docs: Goal 2 stopped by its own measurement (R108) -- the menus' cost is the shadow swizzle (42 of 59 ms/s) and executeTransfer (157-203 ms/s), not per-call overhead: the GL side already uploads 31 whole bands a second"
+    },
+    {
+     "kind": "commit",
+     "ref": "9626327",
+     "sha": "962632722594845b3100a10b08cbc1ae006c75e7",
+     "date": "2026-09-19",
+     "subject": "perf(gs): cached textures revalidate by a hash of the bytes their decode read -- the menus stop re-decoding the whole cache every frame (Sprint 8 Goal 2b, R123)"
+    },
+    {
+     "kind": "commit",
+     "ref": "a2d12af",
+     "sha": "a2d12af98042eb9b5f55bd78fea16fc995a1bde7",
+     "date": "2026-09-19",
+     "subject": "docs: Goal 2b closed on the symptom (R125) -- the login screen holds 58-60 fps under a four-core load with no back-pressure waiter; voice as far as it goes this sprint"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-19-it-can-save-and-it-can-hear-you",
+   "date": "2026-09-19",
+   "title": "It can save, and it can hear you",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Two things every finished game has, and this one did not.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "cef8d83",
+     "sha": "cef8d83bd732e07d63bb14ccdd72d572565a8182",
+     "date": "2026-09-19",
+     "subject": "fix(memcard): an empty or missing card folder is an inserted, formatted card; free space is real; guest paths cannot leave the card; the second port is empty unless asked (Sprint 8 Goal 11)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c753808",
+     "sha": "c7538083f7366803090a1079851f78fe710db5f5",
+     "date": "2026-09-19",
+     "subject": "harness: a driven save on an empty memory card, and a card-trace reader (Sprint 8 Goal 11's launch bar)"
+    },
+    {
+     "kind": "commit",
+     "ref": "01b7033",
+     "sha": "01b70333e4f3bc6d481bef582645cbb9e04633eb",
+     "date": "2026-09-19",
+     "subject": "feat(voice): the host microphone reaches the game's headset module -- a mic seam with a fake source, and lgaud's state machine against the recovered shared block (Sprint 8 Goal 3 Tasks 1-2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "cc79c68",
+     "sha": "cc79c68162037bba5fa171e80f32671e79d5612c",
+     "date": "2026-09-19",
+     "subject": "fix(voice): the headset's status word -- the game opens it when a session starts; the voice format honoured; a pad-overlay probe and a WAV reference for the harness (Sprint 8 Goal 3 Task 3)"
+    },
+    {
+     "kind": "run",
+     "ref": "s8_save_yes",
+     "path": "logs/parity/s8_save_yes"
+    },
+    {
+     "kind": "run",
+     "ref": "s8_save_second",
+     "path": "logs/parity/s8_save_second"
+    },
+    {
+     "kind": "run",
+     "ref": "s8_voice_round4",
+     "path": "logs/parity/s8_voice_round4"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-19-the-launcher-gets-a-face",
+   "date": "2026-09-19",
+   "title": "The launcher gets a face",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Up to now the front door was a box with some checkboxes in it.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "a8350cd",
+     "sha": "a8350cd533585fdfa750c720706c7c4eb093021f",
+     "date": "2026-09-19",
+     "subject": "docs: Sprint 8 spec, Goal 9 -- the launcher redesigned: a SOCOM-inspired theme, a rail-and-page layout with one focus model for mouse, keyboard and pad, embedded OFL type, a procedurally drawn live controller, a screenshot mode as the proof (owner request 2026-09-19)"
+    },
+    {
+     "kind": "commit",
+     "ref": "4c7a190",
+     "sha": "4c7a190ee2509991961a0730b9e5869545ae4578",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): the launcher redesigned -- a SOCOM-inspired theme, a rail and pages, one focus model for mouse, keyboard and pad, embedded OFL type, a procedurally drawn live controller, a screenshot mode (Sprint 8 Goal 9, owner request 2026-09-19)"
+    },
+    {
+     "kind": "commit",
+     "ref": "23a5cf7",
+     "sha": "23a5cf7a3ad70bcebc200ce049b1829406c8ba58",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): the owner's feedback pass -- crisp type, a custom top bar on a frameless window, one authored controller outline, antialiased curves, a bolder palette sampled from the SOCOM II logo (Sprint 8 Goal 9)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d2d9e87",
+     "sha": "d2d9e871831beab7c074fe400733bdd3a4719549",
+     "date": "2026-09-19",
+     "subject": "fix(launcher): a preset whose address is still a placeholder is unavailable, never exported (Sprint 8 Goal 9/12)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ca7dd5a",
+     "sha": "ca7dd5acabd606195c989a72333bd65d4f9cbfc2",
+     "date": "2026-09-19",
+     "subject": "fix(launcher): the page-change flash is a stale node list, not just rectOf's empty rect -- and the top bar aligns line boxes where a reader sees ink (Sprint 9 P4)"
+    },
+    {
+     "kind": "run",
+     "ref": "launcher_ui",
+     "path": "logs/parity/launcher_ui"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-19-launcher-controller-page.png",
+    "caption": "The redesigned launcher's CONTROLLER page, rendered by its own screenshot mode from a fixed fake state: the rail, the drawn pad, and what each button will mean to the game."
+   }
+  },
+  {
+   "id": "2026-09-19-a-server-of-its-own-on-the-internet",
+   "date": "2026-09-19",
+   "title": "A server of its own, on the internet",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Every online round the project had ever played was against a server sitting on the same desk.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "9bf44a9",
+     "sha": "9bf44a9cfc0a0720554b715d2b9e09a9b90efe3e",
+     "date": "2026-09-19",
+     "subject": "feat(server): the hosted Horizon server on Linux -- systemd units, horizon-ctl.sh with the six-field advertised-address rewrite, install.sh; the box is up at 3.143.65.100 (Sprint 8 Goal 12, Tasks 1-4)"
+    },
+    {
+     "kind": "commit",
+     "ref": "aa2b7f4",
+     "sha": "aa2b7f461ef1e0d1b3e8a4ddcc8a8b57ea1711f4",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): the SOCOM Unzipped preset is real -- 3.143.65.100, the project's hosted Horizon server, and a fresh config plays there (Sprint 8 Goal 12; ruling R109 in the hosted-server plan)"
+    },
+    {
+     "kind": "commit",
+     "ref": "f77a63f",
+     "sha": "f77a63f8ff9257f3a6132bdeca355cae7d3e5d7a",
+     "date": "2026-09-19",
+     "subject": "fix(server): needrestart never restarts the Horizon units -- an unattended upgrade took the stack down mid-round on the hosted box (Sprint 8 Goal 12)"
+    },
+    {
+     "kind": "commit",
+     "ref": "829e65b",
+     "sha": "829e65bead626ee2c432633209f61668dda5491b",
+     "date": "2026-09-19",
+     "subject": "harness: a first-time login -- the form's state is read from pixels and a fresh server gets a created persona (Sprint 8 Goal 12)"
+    },
+    {
+     "kind": "commit",
+     "ref": "42ca327",
+     "sha": "42ca327ee0b9159cf020c2b42cffda94179a30f8",
+     "date": "2026-09-19",
+     "subject": "docs: Sprint 8 Goal 12 met -- the hosted server is listed by the launcher and was played on: a control round and two kills in four rounds against 3.143.65.100"
+    },
+    {
+     "kind": "commit",
+     "ref": "f24cd1b",
+     "sha": "f24cd1bdc43c383773072a71eac9dc3cd626eefc",
+     "date": "2026-09-19",
+     "subject": "feat(server): the message of the day, the channel and the location are configuration; Medius serves live stats as JSON (Sprint 8 Goal 13)"
+    },
+    {
+     "kind": "run",
+     "ref": "s8_hosted_control2",
+     "path": "logs/parity/s8_hosted_control2"
+    },
+    {
+     "kind": "run",
+     "ref": "s8_hosted_kill",
+     "path": "logs/parity/s8_hosted_kill"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-19-hosted-kill-round-1.png",
+    "caption": "Round 1 of the hosted ladder, from the host's side, moments after the kill: the first round ever played against a server that was not on the same desk."
+   }
+  },
+  {
+   "id": "2026-09-19-it-says-why-it-will-not-start-and-it-weighs-less",
+   "date": "2026-09-19",
+   "title": "It says why it will not start, and it weighs less",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "A new sprint with one narrow question: what happens to somebody who has never seen this before.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "8a05a7a",
+     "sha": "8a05a7a2660ef27458be1c1282dc9d693aa68280",
+     "date": "2026-09-19",
+     "subject": "feat: the exit-code taxonomy in one header -- 65 kept, 66-72 added, 1 and 3 named, native crash statuses classified as 70 (R127, R128); the launcher's sentence is a lookup and Python reads the same table"
+    },
+    {
+     "kind": "commit",
+     "ref": "0d93fb6",
+     "sha": "0d93fb63e8aad9ef19f2b89cdfcbe33c3e9faa0f",
+     "date": "2026-09-19",
+     "subject": "feat(runner): a failure explains itself -- a preflight before the window opens (66/67/68/72), the bare run from config.json (69), out of memory as 71, the audio notice (Sprint 9 Goal 1 Task 6)"
+    },
+    {
+     "kind": "commit",
+     "ref": "11077e1",
+     "sha": "11077e1a2a71dcefa9c481a993a664037bb1f88b",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): SAVE DIAGNOSTICS writes one zip (log, config through the allowlist, GL lines, crash record, versions) instead of copying a folder; --diagnostics writes it with no window; make_portable writes version.txt (Sprint 9 Goal 1 Task 9, R137, R138)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8220078",
+     "sha": "82200780246e0134ee483545569070ebfbf1ce84",
+     "date": "2026-09-19",
+     "subject": "feat(packaging): portable_audit -- PE and ELF import readers, the import closure, the folder audit (missing / orphans) and SHA256SUMS, in pure Python (Sprint 9 Goal 2 Task 2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "210000f",
+     "sha": "210000fdba7ea188024b9016f3feed29ca947479",
+     "date": "2026-09-19",
+     "subject": "feat(packaging): the portable folder carries the import closure and nothing else (15 DLLs stay behind), is audited as assembled, and gets SHA256SUMS beside the archive -- both branches; --release; a Linux packaging test that runs in CI (Sprint 9 Goal 2 Task 3, R145, R147, R150)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7bdad9f",
+     "sha": "7bdad9fea5f139a373467c46c5673d4b2e09db16",
+     "date": "2026-09-19",
+     "subject": "docs: R151 -- the release executable keeps -O1: -O2 compressed 4.6 MB worse, ICF bought 0.2 MB; the candidate's zip is 55.7 MB (-15%) and its gate is 3/3 on that exact file"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_g2_release_gate",
+     "path": "logs/parity/gate/s9_g2_release_gate"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-19-a-way-to-report-what-went-wrong",
+   "date": "2026-09-19",
+   "title": "A way to report what went wrong",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "This is the only place in the whole program where a player can talk back.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "6eaa60c",
+     "sha": "6eaa60ce8d1174f81e357c8213d0c8df0a289e0b",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): the bug report's pure half -- the site's limits and words, the allowlisted context, the scrubbed log tail, the 96 KB guard, reply and stats parsing (Sprint 9 Goal 8)"
+    },
+    {
+     "kind": "commit",
+     "ref": "3d7fc6e",
+     "sha": "3d7fc6ef7f47b38486fd45978be5a137b38605f4",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): REPORT A BUG on the rail, after ONLINE and before ABOUT -- the site's fields as a column in the focus model (Sprint 9 Goal 8)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7be30bc",
+     "sha": "7be30bcf6f0044257874509000a4a009f2137356",
+     "date": "2026-09-19",
+     "subject": "feat(launcher): the REPORT A BUG page, the ONLINE status line, and the transport under them (Sprint 9 Goal 8)"
+    },
+    {
+     "kind": "commit",
+     "ref": "1efc37a",
+     "sha": "1efc37a2058771bfc4cb4c5ff93cf88bba45b12d",
+     "date": "2026-09-19",
+     "subject": "fix(launcher): the bug report's JSON reader builds under libstdc++ -- an object's members are two parallel vectors, not a vector of pair<string, Value> (Sprint 9 Goal 8)"
+    },
+    {
+     "kind": "commit",
+     "ref": "340d22b",
+     "sha": "340d22b4b5beefaff3f181f7db344dafa933a3a4",
+     "date": "2026-09-20",
+     "subject": "docs: Goal 8's live proof exists after all -- it was stored lower-case and the mirror predated it; P5 is down to the Linux send"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-19-the-things-the-owner-actually-noticed",
+   "date": "2026-09-19",
+   "title": "The things the owner actually noticed",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Not one of these came out of a test; they came out of somebody trying to play.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "1f82d88",
+     "sha": "1f82d8820518710cb655c7dab403edcda28314ac",
+     "date": "2026-09-19",
+     "subject": "fix(input): Escape no longer closes the game; it is Start, the pause a PC player expects (owner 2026-09-20)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d9ff7cc",
+     "sha": "d9ff7cc473d6d2b110cb3c1bd5582763d310e2ff",
+     "date": "2026-09-19",
+     "subject": "fix(runtime): the Runtime Debugger starts closed -- a player must not find it open over their game (owner 2026-09-20)"
+    },
+    {
+     "kind": "commit",
+     "ref": "c40a318",
+     "sha": "c40a318a10c95e27d711fea09931b367af033abb",
+     "date": "2026-09-19",
+     "subject": "feat(input): a crouch shortcut -- the game reads Triangle's pressure and a PC pad could never crouch; the launcher's option sends a light Triangle from the left stick click (default), the touchpad or L2 (R139, owner request)"
+    },
+    {
+     "kind": "commit",
+     "ref": "02cd9ae",
+     "sha": "02cd9ae6c22ec49ff968a4bc29f050ab31f9624d",
+     "date": "2026-09-19",
+     "subject": "fix(launcher): while the game runs the pad belongs to the game -- every pad reading goes through one gate (Sprint 9 Goal 9 P3, R173)"
+    },
+    {
+     "kind": "commit",
+     "ref": "54d77a2",
+     "sha": "54d77a2f907150b3f730e0c5424d41f331396158",
+     "date": "2026-09-19",
+     "subject": "fix(audio): snd_AutoVol is a timed ramp and reaches streams; a menu stream's first fill plays (the owner's mission-music report, 2026-09-19)"
+    },
+    {
+     "kind": "commit",
+     "ref": "013f86e",
+     "sha": "013f86ecd1b8c1bec6f726be428e14fd44efcf72",
+     "date": "2026-09-19",
+     "subject": "fix(audio): a stream played with a parentHandle queues behind the playing one, a new cue never inherits a dead cue's fade, and a looping stream loops (Sprint 9 Goal 10, R169-R171)"
+    },
+    {
+     "kind": "run",
+     "ref": "s9_p1_m51_audio2",
+     "path": "logs/parity/s9_p1_m51_audio2"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_p1_gate",
+     "path": "logs/parity/gate/s9_p1_gate"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-19-a-door-left-open-for-two-and-a-half-days",
+   "date": "2026-09-19",
+   "title": "A door left open for two and a half days",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The worst thing in this era is not a bug in the game.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "26c8e37",
+     "sha": "26c8e3795b9054a8029bc3c022df2fe339a05c98",
+     "date": "2026-09-19",
+     "subject": "docs: KNOWN -- the security incident: a login-free monitor and two forgotten provisioning servers left the working tree readable for 2.5 days; what was rotated, what was closed, what is not done"
+    },
+    {
+     "kind": "commit",
+     "ref": "d23c990",
+     "sha": "d23c9906596bb6720ddce171f76e22a1d1690b8b",
+     "date": "2026-09-19",
+     "subject": "docs: KNOWN -- the owner answered the incident's open question: the monitor's public hostname is gated behind a Cloudflare Access login"
+    },
+    {
+     "kind": "commit",
+     "ref": "c5abaa9",
+     "sha": "c5abaa9556a29245b6686bdb498464a0b1814be3",
+     "date": "2026-09-19",
+     "subject": "docs: KNOWN -- the Access gate is applied and proven end to end, and two things that made it look broken when it was not"
+    },
+    {
+     "kind": "commit",
+     "ref": "3a80828",
+     "sha": "3a8082868bbe2d26074d861867ecbd20eb4a6069",
+     "date": "2026-09-19",
+     "subject": "docs: KNOWN -- unattended probes are granted, and the credential note that called a live secret dead was wrong"
+    },
+    {
+     "kind": "commit",
+     "ref": "db603f5",
+     "sha": "db603f5cd060386b533e727ea79585bdff21b6c8",
+     "date": "2026-09-19",
+     "subject": "docs: the hosted-server plan no longer names the owner's home address"
+    },
+    {
+     "kind": "commit",
+     "ref": "c81b17a",
+     "sha": "c81b17a6089fd7dfa1503686a43a8601d7d1d015",
+     "date": "2026-09-19",
+     "subject": "fix(config): the profile is a name, not a path -- a shared config.json could put the game's card writes anywhere (owner's exposure question, 2026-09-20)"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-20-the-server-gets-a-name",
+   "date": "2026-09-20",
+   "title": "The server gets a name",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The last commit in this history swaps a number for a name.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "8c3693c",
+     "sha": "8c3693cd65979e8c3dfe3a62a131698b26ee1de6",
+     "date": "2026-09-20",
+     "subject": "feat(launcher): the project's server is reached by name, with its raw address kept as the preset for when a name will not resolve (Sprint 9 P6, Goal 7, R175)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7fff701",
+     "sha": "7fff7014b0cbf0eca6f49d6669fff5ef7043bfae",
+     "date": "2026-09-19",
+     "subject": "docs: socom.scotho.com exists -- a DNS-only A record to the hosted server, created at the owner's instruction"
+    },
+    {
+     "kind": "commit",
+     "ref": "667106b",
+     "sha": "667106bc394d197df631ba8fe080c3fd6180462a",
+     "date": "2026-09-19",
+     "subject": "docs: P6's persona measurement was the wrong question -- the launcher's preset string never reaches the game (R175), and three other committed sentences corrected where they were written"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/PLAYTEST.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/CURRENT_SPRINT.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
+   "date": "2026-09-20",
+   "title": "The first build made for a person to play",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Building it found two defects that would have shipped. Playing it found the one this whole sprint was for.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "8429717",
+     "sha": "84297178560613bb442dd1030cfad57b0ddbb038",
+     "date": "2026-09-20",
+     "subject": "fix(release): the playtest candidate could not be packaged and was built at the optimisation R151 rejected -- both found by building it (Sprint 9 P7, playtest-1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "8c3693c",
+     "sha": "8c3693cd65979e8c3dfe3a62a131698b26ee1de6",
+     "date": "2026-09-20",
+     "subject": "feat(launcher): the project's server is reached by name, with its raw address kept as the preset for when a name will not resolve (Sprint 9 P6, Goal 7, R175)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_p7_playtest_gate",
+     "path": "logs/parity/gate/s9_p7_playtest_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/PLAYTEST.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/CURRENT_SPRINT.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-20-playtest-mission.png",
+    "caption": "The playtest candidate in the first mission, at the end of the gate's scripted walk, with the game's own stance tutorial up. This is the build the owner played that evening."
+   }
+  }
+ ]
+}

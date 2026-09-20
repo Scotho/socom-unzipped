@@ -62,6 +62,18 @@ namespace Server.Medius.Config
         public int NATPort { get; set; } = 10070;
 
         /// <summary>
+        /// LOCAL FIX (socom_pc): HttpListener prefix the live stats JSON is served on (GET /stats), e.g.
+        /// "http://+:10080/". Empty = off.
+        /// </summary>
+        public string StatsPrefix { get; set; } = string.Empty;
+
+        /// <summary>
+        /// LOCAL FIX (socom_pc): the server's name and where it runs, as reported by the stats JSON.
+        /// </summary>
+        public string StatsServerName { get; set; } = "SOCOM Unzipped";
+        public string StatsLocation { get; set; } = string.Empty;
+
+        /// <summary>
         /// Root path of the medius file service directory.
         /// </summary>
         public string MediusFileServerRootPath { get; set; } = "files";
