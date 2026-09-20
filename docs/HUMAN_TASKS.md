@@ -51,16 +51,17 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 ## Open
 
-- [ ] **Listen to the mission music, FIFTH round (2026-09-21 ~01:10 UTC) -- the build at `dist/socom2.exe` (16:58 local,
-  tree `c181984` or later).** Your "it doesn't even sound like music" found it: every stereo music stem on ours was
+- [ ] **Listen to the music, FIFTH round (2026-09-21 ~10:00 UTC) -- the build at `dist/socom2.exe` (20:13 local on 2026-09-20,
+  tree `9e66a3a` or later; it also carries the intro/briefing fix: the movie decoder's gate no longer starves the music).** Your "it doesn't even sound like music" found it: every stereo music stem on ours was
   playing its two channels from DIFFERENT places in the song (a two-channel VPK is interleaved per 0xb000 streaming
   buffer, 0x5800 bytes of left then 0x5800 of right; ours split it per 0x800 chunk), so every listen since the first
   mission was two copies of the score out of step -- and every level instrument passed it. Fixed (`ce6ed95`), measured:
   the two channels now line up within 3 ms on a stem decoded from the disc, and against the console's music-only
   capture 123 of 177 windows are within tolerance (6 this morning). Also in this build: the played-out-stem answer
   the console gives, volume updates reaching running stems, the square-law volume curve, the hard-panned voice pair.
-  Still open, being worked: the title/options and briefing music (the PCM ring) stalls for 300-700 ms a few times a
-  minute (the movie's demux thread goes absent; a scheduler trace is on it). **The mission's pauses are the game's
+  The title/options and briefing music's 300-700 ms stalls are fixed too (the movie decoder refused whole reads once
+  eight pictures were queued, and no audio flowed while it did; the briefing's low-bitrate video kept it shut for up
+  to 13 frames). **The mission's pauses are the game's
   design, proven on both machines:** at stealth level the mission's own playlist is a 3 s stinger, ~10 s of rest,
   a stinger (`rest 9.0 s | MGEN0014 | rest 8.5 s | ...`), and only a fight (the AI's alert) plays a continuous
   stem -- the console does exactly the same on the same walk. So expect silence between stingers while sneaking;
