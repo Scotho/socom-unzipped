@@ -1,0 +1,73 @@
+/**
+ * The triangles one drawn VU1 packet becomes, in the layout a browser renderer wants: parallel per-vertex
+ * arrays plus an index list. `SEMANTICS.md` is the authority for what every lane means; this file only says
+ * how the decoded values are laid out and combined.
+ *
+ * Positions are **model space** — `int16/16 + header[3].xyz`, SEMANTICS §4 — not world space. The object's
+ * placement lives in `MP*_GEO.ZED`'s `nparams` (SEMANTICS §8), which this package deliberately does not read.
+ */
+export interface MeshData {
+  /** xyz per vertex, model space. */
+  positions: Float32Array;
+  /** uv per vertex, normalised (SEMANTICS §7), unflipped. */
+  uvs: Float32Array;
+  /** rgba per vertex, 0..255 with 255 opaque: the PS2's `128 = opaque` alpha already rescaled (§4). */
+  colors: Uint8Array;
+  /** xyz per vertex, unit length or exactly zero (§4); null when a merge lost them. */
+  normals: Float32Array | null;
+  /** xyz per triangle, the stored face normal (§5 entry [1]); null when a merge lost them. */
+  faceNormals: Float32Array | null;
+  /** Three vertex indices per triangle, in the order SEMANTICS §6 calls front-facing: CCW, right-handed. */
+  indices: Uint32Array;
+  /** The texture in force for the packet, as the chain's reloc-6 citation named it. */
+  textureName: string | null;
+}
+
+/** The axis-aligned extent of a mesh's positions. An empty mesh has the empty extent, min > max. */
+export function bounds(m: MeshData): { min: [number, number, number]; max: [number, number, number] } {
+  const min: [number, number, number] = [Infinity, Infinity, Infinity];
+  const max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+  for (let i = 0; i < m.positions.length; i += 3) {
+    for (let axis = 0; axis < 3; axis++) {
+      const v = m.positions[i + axis]!;
+      if (v < min[axis]!) min[axis] = v;
+      if (v > max[axis]!) max[axis] = v;
+    }
+  }
+  return { min, max };
+}
+
+/**
+ * Concatenates meshes into one, re-basing each part's indices onto the vertices it contributed. An optional
+ * array survives only when every part has it, and the texture name only when every part names the same one —
+ * a merged mesh that spans two textures can no longer say which is its.
+ */
+export function mergeMeshes(parts: MeshData[]): MeshData {
+  const vertexCount = parts.reduce((n, p) => n + p.positions.length / 3, 0);
+  const triangleCount = parts.reduce((n, p) => n + p.indices.length / 3, 0);
+  const keepNormals = parts.every((p) => p.normals !== null);
+  const keepFaceNormals = parts.every((p) => p.faceNormals !== null);
+
+  const positions = new Float32Array(vertexCount * 3);
+  const uvs = new Float32Array(vertexCount * 2);
+  const colors = new Uint8Array(vertexCount * 4);
+  const normals = keepNormals ? new Float32Array(vertexCount * 3) : null;
+  const faceNormals = keepFaceNormals ? new Float32Array(triangleCount * 3) : null;
+  const indices = new Uint32Array(triangleCount * 3);
+
+  let vertex = 0, triangle = 0;
+  for (const p of parts) {
+    positions.set(p.positions, vertex * 3);
+    uvs.set(p.uvs, vertex * 2);
+    colors.set(p.colors, vertex * 4);
+    normals?.set(p.normals!, vertex * 3);
+    faceNormals?.set(p.faceNormals!, triangle * 3);
+    for (let i = 0; i < p.indices.length; i++) indices[triangle * 3 + i] = p.indices[i]! + vertex;
+    vertex += p.positions.length / 3;
+    triangle += p.indices.length / 3;
+  }
+
+  const first = parts[0]?.textureName ?? null;
+  const textureName = parts.length > 0 && parts.every((p) => p.textureName === first) ? first : null;
+  return { positions, uvs, colors, normals, faceNormals, indices, textureName };
+}
