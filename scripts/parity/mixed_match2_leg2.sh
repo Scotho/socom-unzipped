@@ -51,7 +51,7 @@ python -m tools_py.parity.pcsx2_ctl watch A play 60 1.0 --out "$PCSX2_OUT" > "$O
 WATCH=$!
 sleep 15
 for i in 1 2 3 4; do
-  python -m tools_py.parity.pcsx2_ctl hold A W 3.0 >> "$OUT/pcsx2_walk.txt" 2>&1
+  python -m tools_py.parity.pcsx2_ctl hold A LUP 3.0 >> "$OUT/pcsx2_walk.txt" 2>&1
   sleep 12
 done
 wait $WATCH

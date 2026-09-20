@@ -61,6 +61,20 @@ class TitleWordsTest(unittest.TestCase):
         finally:
             L._current_target = "ours"
 
+    def test_the_console_ready_row_reads_by_its_own_edges(self):
+        # Console frames (leg 1b/1c): READY's right edge 65, NOT READY's 87; ours' bar of 55 read both as taken.
+        unpressed = frame(("title_pcsx2_game_lobby.png", TITLE), ("ready_pcsx2_leg1c_unpressed.png", READY_BOX))
+        not_ready = frame(("title_pcsx2_game_lobby.png", TITLE), ("ready_pcsx2_leg1b_not_ready.png", READY_BOX))
+        self.assertEqual(L.ready_label_edge(gray(unpressed)), 65)
+        self.assertEqual(L.ready_label_edge(gray(not_ready)), 87)
+        L._current_target = "pcsx2"
+        try:
+            self.assertTrue(L.ready_dropped(gray(unpressed)), "the console's READY still showing: the press was dropped")
+            self.assertFalse(L.ready_dropped(gray(not_ready)), "NOT READY on the console: the press was taken")
+        finally:
+            L._current_target = "ours"
+        self.assertFalse(L.ready_dropped(gray(unpressed)), "read as ours, 65 is past the bar -- the mis-read leg 1c made")
+
     def test_create_game_and_its_play_list_still_read_the_whole_band(self):
         self.assertIsNone(L.LOBBY_TITLE_COLS.get("create_game"))
         self.assertIsNone(L.LOBBY_TITLE_COLS.get("play_list"))

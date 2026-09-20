@@ -417,6 +417,15 @@ READY_LABEL_DIM_LUMA = 75
 READY_COUNT_COL = 90            # label columns at or beyond this are the count suffix, not the label (an
                                 # in-game frame, 8c, lights cols 98-102 and 127-140 at this luma)
 READY_EDGE_DROPPED_MAX = 55
+# Sprint 10 Goal 3: the console draws the row ~7% narrower and offset (KNOWN section 2): its READY label's right
+# edge reads 65-66 and NOT READY 87 (leg 1b/1c frames) against ours' 48 / 82, so ours' 55 read the console's
+# unpressed READY as taken (leg 1c: the console never readied and the round never started). The bar sits between
+# the two labels of each target.
+READY_EDGE_DROPPED_MAX_BY_TARGET = {"ours": READY_EDGE_DROPPED_MAX, "pcsx2": 76}
+
+
+def ready_edge_dropped_max(target=None):
+    return READY_EDGE_DROPPED_MAX_BY_TARGET.get(target or _current_target, READY_EDGE_DROPPED_MAX)
 READY_CONFIRM_GAP_S = 1.0       # R69: the two frames a READY re-send needs are this far apart
 READY_REREAD_MAX = 4            # a label-less frame with GAME LOBBY still up is re-read this often ...
 READY_REREAD_GAP_S = 0.5        # ... this far apart, before the check gives up (ready:label-unread)
@@ -527,7 +536,7 @@ def ready_label_edge(gray):
 
 def ready_dropped(gray):
     edge = ready_label_edge(gray)
-    return edge is not None and edge <= READY_EDGE_DROPPED_MAX
+    return edge is not None and edge <= ready_edge_dropped_max()
 
 
 def lobby_resend(sh, btn, wait):
@@ -1957,7 +1966,7 @@ def ready(sh):
         sh.log(f"READY check: row-2 label right edges {edges} (READY ~48, NOT READY ~82)")
         if edges == [None, None]:
             return "gone" if gone else "unread"
-        flags = [e is not None and e <= READY_EDGE_DROPPED_MAX for e in edges]
+        flags = [e is not None and e <= ready_edge_dropped_max() for e in edges]
         return "dropped" if all(flags) else "taken" if not any(flags) else "unsure"
 
     def dropped():
