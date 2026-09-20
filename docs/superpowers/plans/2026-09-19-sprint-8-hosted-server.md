@@ -66,7 +66,15 @@
 - [x] Commit (pathspecs): `server/linux/**`, `server/README.md`, `scripts/make_server_zip.sh`, `tools_py/tests/test_horizon_ctl.py`, the spec, this plan. Python suite green first (`python -m unittest` for the new test file alone is lock-free; the full suite waits for a quiet host).
 - [x] `docs/CURRENT_SPRINT.md`: the Goal 12 block's result line. `docs/HUMAN_TASKS.md`: the owner's own match from the launcher against *SOCOM Unzipped*, from a second network if one is to hand.
 - [x] Memory notes updated: `packaging-decisions` (the host is no longer TBD), `lightsail-socom-unzipped-server`.
-- [ ] The credit re-read (`aws freetier get-account-plan-state`) a day later against the $12/month estimate.
+- [x] The credit re-read (`aws freetier get-account-plan-state`) a day later against the $12/month estimate.
+  **$76.81 on 2026-09-20 02:30Z**, from $78.46 before this instance existed: $1.65 in about 24 hours. The estimate
+  was right per instance and wrong about the account — it carries **two** Lightsail boxes, both `small_3_0` at
+  $12/month: `socom-unzipped-server` (us-east-2, this goal's) and `claudescape` (ca-central-1, older, and now
+  serving scotho.com, s2u and the monitor as well). At $24/month the credit lasts about 97 days, to the end of
+  December 2026 — **not** to the plan's expiry of 2027-03-05; at the observed $1.65/day it would be about six
+  weeks. One day is one data point and Cost Explorer still reports zeroes for both (Lightsail accrues there
+  late), so re-read the rate before acting on it. This goal's stop rule (over $15/month) is not tripped by this
+  goal's box, which is $12.
 
 ## Rulings made on the owner's behalf
 
