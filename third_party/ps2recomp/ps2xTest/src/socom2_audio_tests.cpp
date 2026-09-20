@@ -1963,11 +1963,17 @@ void register_socom2_audio_tests()
         // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
         // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
         // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
-        // The music, round four (2026-09-20): the IRX frees a played-out stream's slot but leaves its handle word
-        // there, and snd_SoundIsStillPlaying answers by handle lookup alone -- a finished stem still reads "playing"
-        // until another stream takes the slot. The EE's music manager keeps its cue entry on that answer and queues
-        // the next stem behind the live handle; ours said 0 at the last sample and the manager dropped the cue.
-        tc.Run("989snd: a VAG stream that played out still answers snd_SoundIsStillPlaying until its slot is retaken (the IRX's answer)", [](TestCase &t)
+        // The music, round four, second reading (research/36 Q1, 2026-09-20). Commit e39a8dc had a played-out stream
+        // keep answering its handle until its slot was retaken; that was a misreading of the IRX. What the IRX does:
+        // the streamer's per-tick update (FUN_0001107c) deactivates the handler of a stream whose final buffer has
+        // played and whose voice envelope has reached zero, and snd_DeactivateHandler CLEARS BIT 31 of the handle
+        // word it leaves in the slot (research/989snd-ziemas/iop/sndhand.c:237 `snd->OwnerID &= ~0x80000000`; IRX
+        // FUN_0000d4a4 `*param_1 = *param_1 & 0x7fffffff`). Every handle the EE holds has bit 31 SET (activation,
+        // sndhand.c:148), and snd_CheckHandlerStillActive compares the WHOLE word (sndhand.c:270-310; IRX
+        // FUN_0000d6b4 `if (*puVar1 == param_1) return puVar1; return 0`) -- so from the next tick the poll answers
+        // 0, and the slot (Sound == NULL) is the first one snd_FindFreeHandler will hand out. The EE's music manager
+        // relies on that 0 to leave its "playing" state and start the next stem fresh; with e39a8dc it never did.
+        tc.Run("989snd: a VAG stream that played out answers 0 to snd_SoundIsStillPlaying on the next poll and its slot is free (the IRX's deactivated handler)", [](TestCase &t)
         {
             // A host that answers for the handles it was told to play: playing until the test says the audio ended.
             class AnsweringHost final : public Snd989TestHost
@@ -1999,26 +2005,36 @@ void register_socom2_audio_tests()
             const uint32_t a = h.call(kPlayVagStreamByLoc, play);
             t.IsTrue(a != 0u && ((a >> 24) & 0x1Fu) == 4u, "stem A gets a stream handle");
             t.Equals(h.call(kIsStillPlaying, {a}), a, "playing while the mixer says so");
-            h.host.ended.push_back(a);
-            t.Equals(h.call(kIsStillPlaying, {a}), a, "the audio ended: the answer is STILL the handle (the IRX's lookup)");
-            t.Equals(h.call(kIsStillPlaying, {a}), a, "and stays so on the next poll");
 
-            // The manager schedules the next stem behind the live handle: a queued play is accepted.
+            // A live parent still chains (R169): the queued segment rides A's slot and handle.
             std::vector<uint32_t> queued = play;
             queued[5] = a;
             const uint32_t q = h.call(kPlayVagStreamByLoc, queued);
-            t.IsTrue(q != 0u, "a stem queued behind A is accepted");
+            t.Equals(q, a, "a stem queued behind the LIVE A chains onto A's handle, as before");
 
-            // A fresh play (no parent) takes the first free-or-ended slot -- A's -- and only then does A read 0.
             AnsweringHost &host = h.host;
-            host.ended.push_back(q);
+            host.ended.push_back(a);
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u,
+                     "the audio ended: the next poll answers 0 (sndhand.c:237 cleared bit 31; FUN_0000d6b4's whole-word compare fails)");
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "and stays 0 on the poll after that");
+
+            // A queue behind the dead handle cannot resolve its parent (FUN_0000d6b4 returns 0): the IRX's
+            // FUN_0000f7e0 falls through to a FRESH play (param_8 = 0), never a chain onto the freed slot.
+            const uint32_t behindDead = h.call(kPlayVagStreamByLoc, queued);
+            t.IsTrue(behindDead != 0u && behindDead != a, "a play queued behind the dead A starts fresh under a new handle");
+            host.ended.push_back(behindDead);
+
+            // A fresh play (no parent) takes the first free slot -- A's, freed by the poll -- under a NEW handle
+            // (snd_FindFreeHandler bumps the low 16 bits, sndhand.c:55-56; IRX FUN_000163f4).
             const uint32_t b = h.call(kPlayVagStreamByLoc, play);
             t.IsTrue(b != 0u && b != a, "stem B gets a handle of its own");
-            t.Equals((b >> 16) & 0xFFu, (a >> 16) & 0xFFu, "in A's slot: the first free-or-ended one");
-            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "A now answers 0: its slot was retaken");
+            t.Equals((b >> 16) & 0xFFu, (a >> 16) & 0xFFu, "in A's slot: the first free one");
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "A still answers 0");
             t.Equals(h.call(kIsStillPlaying, {b}), b, "B answers itself");
 
-            // Ended slots never leak: four more plays after their audio ended all get slots.
+            // Played-out slots never leak (the 107 x "no free VAG stream slot" of 2026-09-18): with both slots'
+            // audio ended and no poll in between, four more plays all get slots -- the reap on play frees them.
+            host.ended.push_back(b);
             for (int i = 0; i < 4; ++i)
             {
                 const uint32_t n = h.call(kPlayVagStreamByLoc, play);
@@ -2106,14 +2122,18 @@ void register_socom2_audio_tests()
             bool playing = true;
             t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the stream");
 
-            // The music, round four: the IRX keeps answering the handle for a played-out stream until its slot is
-            // retaken (the EE's music manager queues the next stem behind that live answer); the slot itself is free.
-            t.Equals(h.call(kSoundIsStillPlaying, {first}), first, "the game's poll still says the handle, as the IRX does");
+            // The music, round four, second reading (research/36 Q1): the IRX deactivates the handler on the tick the
+            // voice's envelope reaches zero on the final buffer (FUN_0001107c -> FUN_0000d4a4), clearing bit 31 of
+            // the handle word (sndhand.c:237); the EE's handle keeps bit 31, so the whole-word compare of
+            // snd_CheckHandlerStillActive (sndhand.c:270-310, FUN_0000d6b4) fails -- the poll answers 0 at once, and
+            // that 0 is what lets the EE's music manager free its cue entry and start the next stem.
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "the game's poll says done, as the IRX does (bit 31 cleared)");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "and keeps saying so");
             const uint32_t second = h.call(kPlayVagStreamByLoc, play);
-            t.IsTrue(second != 0u && second != first, "a stream plays into the ended slot under a new handle");
-            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "and only now does the ended stream read done");
-            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
-                     "and the next one takes the other slot: the ended stream's slot was reused, not leaked");
+            t.IsTrue(second != 0u && second != first, "a stream plays into the freed slot under a new handle");
+            t.Equals((second >> 16) & 0xFFu, (first >> 16) & 0xFFu, "the first slot: the played-out one was freed, not leaked");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "the old handle still reads done");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "and the next one takes the other slot");
 
             std::remove(path.c_str());
         });
