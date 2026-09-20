@@ -1993,6 +1993,11 @@ def main():
     ap.add_argument("--hold", type=int, default=30)
     ap.add_argument("--existing", action="store_true", help="the persona is already on the memory card")
     ap.add_argument("--host", action="store_true", help="after the briefing room: CREATE GAME (Frostfire, verified)")
+    # Sprint 10 Goal 3 leg 2: ours as the JOINER of a game a console client hosts -- the briefing room, JOIN GAME
+    # (verified), READY once the notice allows it, then the hold and the walk bursts (--hold / --play), as the
+    # foreign-joiner host does in online_match_ours.
+    ap.add_argument("--join", action="store_true", help="after the briefing room: JOIN GAME (verified), READY, hold, walk")
+    ap.add_argument("--play", type=int, default=4, help="with --join: 3 s W bursts after the hold")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     a = ap.parse_args()
@@ -2008,6 +2013,18 @@ def main():
         if a.host:
             to_briefing_room(sh)
             host_game(sh)
+        elif a.join:
+            to_briefing_room(sh)
+            join_game(sh)
+            time.sleep(35)                                   # READY becomes available
+            ready(sh)
+            for i in range(a.hold // 10):
+                time.sleep(10)
+                sh.shot(f"hold{i:02d}")
+            for i in range(a.play):
+                sh.hold("W", 3.0)
+                sh.shot(f"play{i:02d}")
+            sh.log("RESULT MIXED-MATCH host=foreign joiner=ours lobby=ok")
         sh.log(f"LOBBY class={CLASS_OK}")
         for n, step in enumerate(a.then.split(",") if a.then else []):
             b, w = (step.split(":") + ["2"])[:2]

@@ -41,9 +41,24 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
       `LOBBY class=ok`, exit 0, 264 s, every step `verified=True attempt=1`. So the detectors cut from our renderer
       read the console's text at the 640x448 client without a single new reference. `socomq` now exists on B's card
       (`--existing` from here).
-- [ ] 3. **Leg 1, verified:** `scripts/parity/mixed_match.sh` rewritten on the shell -- ours hosts (`online_login_ours
-      --host`), PCSX2 joins (`pcsx2_shell join B`), both READY, the round runs; ours walks, PCSX2's captures show our
-      player moving (`motion_diff`), and ours' position peek shows PCSX2's. Bar: twice in a row.
+- [ ] 3. **Leg 1, verified** (`scripts/parity/mixed_match2.sh`: ours hosts through `online_match_ours --foreign-b`,
+      PCSX2 joins through `pcsx2_shell join B`, then `ready B`; the console's position polled over PINE while it walks
+      four bursts; ours walks its own). Runs so far, 2026-09-20:
+      - `mixed2_ours_hosts` (a): **the console client joined ours' hosted game 10 s after the lobby opened and the round
+        ran with both in it** (ours: "joiner in after 10s", READY, walked; the console's final frame is in-round on
+        Frostfire with `socomq` on the HUD). The console's own harness called it LOBBY-FAIL join:enter: its GAME
+        LOBBY frame did not read as one (four misses) and the re-sent CROSSes pressed on into the lobby. No frame was
+        kept -> every refused check now saves `miss_<step>_<n>.png`.
+      - (b): the miss frames show the GAME LOBBY with both players listed. Its title scores 0.54 against ours'
+        reference: the console draws the screen ~7% narrower (glyphs x 51..576 vs 31..595; KNOWN section 2). Per-target
+        references now (`title_game_lobby.pcsx2.png`, `title_briefing_room.pcsx2.png`; console frames 0.0 / >= 0.565).
+        Ours' host in (b) never started ("socom2.exe is already running": (a)'s host outlived its wrapper and its game
+        was still up on the server -- the console joined THAT); the foreign-joiner mode now kills the game process and
+        the script kills stale ones first.
+      - (c): running as this is written -- the first run in which every part is in place.
+      The movement half of the bar: ours' walk is read from its own peek (`0x416054:3`); the console's from PINE
+      (`cam_poll --port 28012`); "seen by the other" needs the peer entity's position in each guest -- the next
+      reading (research/18 section 3.5 has the local half).
 - [ ] 4. **Leg 2, reversed:** PCSX2 hosts (`pcsx2_shell host A`), ours joins (`online_login_ours` with join). Same bar.
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
