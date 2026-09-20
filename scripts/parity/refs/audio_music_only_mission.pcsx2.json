@@ -1,0 +1,1427 @@
+{
+ "meta": {
+  "rate": 44100,
+  "script": "music_only_mission.txt",
+  "target": "pcsx2",
+  "wav": "logs/parity/s10_r4h_music_pcsx2/endpoint.wav",
+  "windows": 177
+ },
+ "scores": {
+  "s00": {
+   "holes": 0,
+   "osc": 5.38,
+   "rms_db": -38.94,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 4
+  },
+  "s01": {
+   "holes": 0,
+   "osc": 2.93,
+   "rms_db": -33.54,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s02": {
+   "holes": 0,
+   "osc": 1.04,
+   "rms_db": -33.25,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s03": {
+   "holes": 0,
+   "osc": 1.21,
+   "rms_db": -26.84,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s04": {
+   "holes": 0,
+   "osc": 20.72,
+   "rms_db": -29.97,
+   "silence_s": 1.58,
+   "silences": 1,
+   "splices": 0
+  },
+  "s05": {
+   "holes": 0,
+   "osc": 2.25,
+   "rms_db": -28.28,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 7
+  },
+  "s06": {
+   "holes": 0,
+   "osc": 8.39,
+   "rms_db": -20.36,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 4
+  },
+  "s07": {
+   "holes": 0,
+   "osc": 0.43,
+   "rms_db": -40.25,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s08": {
+   "holes": 0,
+   "osc": 5.12,
+   "rms_db": -20.31,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 6
+  },
+  "s09": {
+   "holes": 0,
+   "osc": 1.13,
+   "rms_db": -26.58,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s10": {
+   "holes": 0,
+   "osc": 2.94,
+   "rms_db": -22.06,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s100": {
+   "holes": 0,
+   "osc": 1.06,
+   "rms_db": -31.37,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s101": {
+   "holes": 0,
+   "osc": 0.62,
+   "rms_db": -33.17,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s102": {
+   "holes": 0,
+   "osc": 0.63,
+   "rms_db": -33.3,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s103": {
+   "holes": 0,
+   "osc": 1.83,
+   "rms_db": -32.82,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s104": {
+   "holes": 0,
+   "osc": 0.4,
+   "rms_db": -33.45,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s105": {
+   "holes": 0,
+   "osc": 1.14,
+   "rms_db": -31.62,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s106": {
+   "holes": 0,
+   "osc": 0.62,
+   "rms_db": -32.1,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s107": {
+   "holes": 0,
+   "osc": 0.74,
+   "rms_db": -32.69,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s108": {
+   "holes": 0,
+   "osc": 1.1,
+   "rms_db": -30.49,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s109": {
+   "holes": 0,
+   "osc": 0.78,
+   "rms_db": -30.23,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s11": {
+   "holes": 0,
+   "osc": 8.04,
+   "rms_db": -21.9,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 3
+  },
+  "s110": {
+   "holes": 0,
+   "osc": 0.37,
+   "rms_db": -30.71,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s111": {
+   "holes": 0,
+   "osc": 0.5,
+   "rms_db": -28.52,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s112": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -27.09,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s113": {
+   "holes": 0,
+   "osc": 0.61,
+   "rms_db": -29.89,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s114": {
+   "holes": 0,
+   "osc": 0.88,
+   "rms_db": -29.44,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s115": {
+   "holes": 0,
+   "osc": 0.77,
+   "rms_db": -29.06,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s116": {
+   "holes": 0,
+   "osc": 0.66,
+   "rms_db": -28.74,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s117": {
+   "holes": 0,
+   "osc": 0.23,
+   "rms_db": -31.83,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s118": {
+   "holes": 0,
+   "osc": 1.02,
+   "rms_db": -32.94,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s119": {
+   "holes": 0,
+   "osc": 0.46,
+   "rms_db": -32.15,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s12": {
+   "holes": 0,
+   "osc": 0.25,
+   "rms_db": -39.93,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s120": {
+   "holes": 0,
+   "osc": 1.3,
+   "rms_db": -31.06,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s121": {
+   "holes": 0,
+   "osc": 0.93,
+   "rms_db": -32.97,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s122": {
+   "holes": 0,
+   "osc": 0.65,
+   "rms_db": -30.68,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s123": {
+   "holes": 0,
+   "osc": 0.73,
+   "rms_db": -32.65,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s124": {
+   "holes": 0,
+   "osc": 0.71,
+   "rms_db": -30.43,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s125": {
+   "holes": 0,
+   "osc": 1.25,
+   "rms_db": -34.13,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s126": {
+   "holes": 0,
+   "osc": 1.07,
+   "rms_db": -32.65,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s127": {
+   "holes": 0,
+   "osc": 1.8,
+   "rms_db": -29.47,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s128": {
+   "holes": 3,
+   "osc": 3.55,
+   "rms_db": -30.92,
+   "silence_s": 0.36,
+   "silences": 3,
+   "splices": 0
+  },
+  "s129": {
+   "holes": 0,
+   "osc": 2.0,
+   "rms_db": -25.29,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s13": {
+   "holes": 0,
+   "osc": 6.68,
+   "rms_db": -22.22,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 5
+  },
+  "s130": {
+   "holes": 0,
+   "osc": 1.82,
+   "rms_db": -26.97,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s131": {
+   "holes": 0,
+   "osc": 4.37,
+   "rms_db": -41.76,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s132": {
+   "holes": 0,
+   "osc": 4.8,
+   "rms_db": -58.36,
+   "silence_s": 4.95,
+   "silences": 1,
+   "splices": 0
+  },
+  "s133": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 4.1,
+   "silences": 1,
+   "splices": 0
+  },
+  "s134": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 5.2,
+   "silences": 1,
+   "splices": 0
+  },
+  "s135": {
+   "holes": 1,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 0.6,
+   "silences": 1,
+   "splices": 0
+  },
+  "s136": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 4.0,
+   "silences": 1,
+   "splices": 0
+  },
+  "s137": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 6.8,
+   "silences": 1,
+   "splices": 0
+  },
+  "s138": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 5.1,
+   "silences": 1,
+   "splices": 0
+  },
+  "s139": {
+   "holes": 0,
+   "osc": 8.9,
+   "rms_db": -47.2,
+   "silence_s": 3.68,
+   "silences": 1,
+   "splices": 1
+  },
+  "s14": {
+   "holes": 0,
+   "osc": 0.98,
+   "rms_db": -35.84,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s140": {
+   "holes": 0,
+   "osc": 4.49,
+   "rms_db": -38.87,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s141": {
+   "holes": 0,
+   "osc": 2.65,
+   "rms_db": -35.69,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s142": {
+   "holes": 0,
+   "osc": 4.24,
+   "rms_db": -34.16,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s143": {
+   "holes": 0,
+   "osc": 1.72,
+   "rms_db": -35.66,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s144": {
+   "holes": 0,
+   "osc": 1.23,
+   "rms_db": -32.18,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s145": {
+   "holes": 0,
+   "osc": 1.45,
+   "rms_db": -33.38,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s146": {
+   "holes": 0,
+   "osc": 1.09,
+   "rms_db": -32.71,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s147": {
+   "holes": 0,
+   "osc": 2.65,
+   "rms_db": -33.09,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s148": {
+   "holes": 0,
+   "osc": 0.01,
+   "rms_db": -51.7,
+   "silence_s": 49.24,
+   "silences": 1,
+   "splices": 0
+  },
+  "s149": {
+   "holes": 0,
+   "osc": 0.22,
+   "rms_db": -60.62,
+   "silence_s": 24.6,
+   "silences": 1,
+   "splices": 1
+  },
+  "s15": {
+   "holes": 0,
+   "osc": 4.71,
+   "rms_db": -22.84,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s150": {
+   "holes": 1,
+   "osc": 7.7,
+   "rms_db": -52.43,
+   "silence_s": 4.19,
+   "silences": 2,
+   "splices": 0
+  },
+  "s151": {
+   "holes": 0,
+   "osc": 2.21,
+   "rms_db": -40.14,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s152": {
+   "holes": 0,
+   "osc": 1.9,
+   "rms_db": -27.94,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s153": {
+   "holes": 0,
+   "osc": 2.05,
+   "rms_db": -29.58,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s154": {
+   "holes": 0,
+   "osc": 1.53,
+   "rms_db": -31.72,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s155": {
+   "holes": 0,
+   "osc": 2.21,
+   "rms_db": -40.5,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s156": {
+   "holes": 0,
+   "osc": 2.66,
+   "rms_db": -34.07,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s157": {
+   "holes": 0,
+   "osc": 1.45,
+   "rms_db": -28.21,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s158": {
+   "holes": 0,
+   "osc": 1.69,
+   "rms_db": -25.99,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s159": {
+   "holes": 0,
+   "osc": 1.55,
+   "rms_db": -26.54,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s16": {
+   "holes": 0,
+   "osc": 5.23,
+   "rms_db": -23.81,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s160": {
+   "holes": 0,
+   "osc": 1.81,
+   "rms_db": -26.75,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s161": {
+   "holes": 0,
+   "osc": 2.78,
+   "rms_db": -27.28,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s162": {
+   "holes": 0,
+   "osc": 1.69,
+   "rms_db": -34.79,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s163": {
+   "holes": 0,
+   "osc": 1.08,
+   "rms_db": -40.96,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s164": {
+   "holes": 1,
+   "osc": 1.96,
+   "rms_db": -54.68,
+   "silence_s": 7.12,
+   "silences": 2,
+   "splices": 0
+  },
+  "s165": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.67,
+   "silence_s": 1.4,
+   "silences": 1,
+   "splices": 0
+  },
+  "s166": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 6.6,
+   "silences": 1,
+   "splices": 0
+  },
+  "s167": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.0,
+   "silences": 1,
+   "splices": 0
+  },
+  "s168": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.69,
+   "silence_s": 1.4,
+   "silences": 1,
+   "splices": 0
+  },
+  "s169": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 0.8,
+   "silences": 1,
+   "splices": 0
+  },
+  "s17": {
+   "holes": 0,
+   "osc": 0.19,
+   "rms_db": -33.27,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s170": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.1,
+   "silences": 1,
+   "splices": 0
+  },
+  "s171": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 1.3,
+   "silences": 1,
+   "splices": 0
+  },
+  "s172": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.1,
+   "silences": 1,
+   "splices": 0
+  },
+  "s173": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.0,
+   "silences": 1,
+   "splices": 0
+  },
+  "s174": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.1,
+   "silences": 1,
+   "splices": 0
+  },
+  "s175": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 8.0,
+   "silences": 1,
+   "splices": 0
+  },
+  "s176": {
+   "holes": 0,
+   "osc": 0.0,
+   "rms_db": -99.68,
+   "silence_s": 1.83,
+   "silences": 1,
+   "splices": 0
+  },
+  "s18": {
+   "holes": 0,
+   "osc": 4.94,
+   "rms_db": -23.97,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 3
+  },
+  "s19": {
+   "holes": 0,
+   "osc": 0.83,
+   "rms_db": -32.13,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s20": {
+   "holes": 0,
+   "osc": 3.89,
+   "rms_db": -24.76,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 5
+  },
+  "s21": {
+   "holes": 0,
+   "osc": 2.56,
+   "rms_db": -26.9,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s22": {
+   "holes": 0,
+   "osc": 2.3,
+   "rms_db": -28.95,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s23": {
+   "holes": 0,
+   "osc": 5.19,
+   "rms_db": -26.41,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s24": {
+   "holes": 0,
+   "osc": 0.93,
+   "rms_db": -31.18,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s25": {
+   "holes": 0,
+   "osc": 2.78,
+   "rms_db": -25.92,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s26": {
+   "holes": 0,
+   "osc": 0.88,
+   "rms_db": -32.29,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s27": {
+   "holes": 0,
+   "osc": 0.99,
+   "rms_db": -26.57,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s28": {
+   "holes": 0,
+   "osc": 1.85,
+   "rms_db": -26.25,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s29": {
+   "holes": 0,
+   "osc": 1.41,
+   "rms_db": -27.93,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s30": {
+   "holes": 0,
+   "osc": 2.11,
+   "rms_db": -26.83,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s31": {
+   "holes": 0,
+   "osc": 0.82,
+   "rms_db": -32.4,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s32": {
+   "holes": 0,
+   "osc": 1.55,
+   "rms_db": -28.39,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 2
+  },
+  "s33": {
+   "holes": 0,
+   "osc": 0.97,
+   "rms_db": -30.26,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s34": {
+   "holes": 0,
+   "osc": 0.64,
+   "rms_db": -30.79,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s35": {
+   "holes": 0,
+   "osc": 1.38,
+   "rms_db": -28.06,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s36": {
+   "holes": 0,
+   "osc": 0.72,
+   "rms_db": -29.19,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s37": {
+   "holes": 0,
+   "osc": 1.5,
+   "rms_db": -27.94,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s38": {
+   "holes": 0,
+   "osc": 0.84,
+   "rms_db": -28.42,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s39": {
+   "holes": 0,
+   "osc": 1.59,
+   "rms_db": -30.08,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s40": {
+   "holes": 0,
+   "osc": 0.83,
+   "rms_db": -30.46,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s41": {
+   "holes": 0,
+   "osc": 1.4,
+   "rms_db": -31.46,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s42": {
+   "holes": 0,
+   "osc": 0.39,
+   "rms_db": -28.11,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s43": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -25.48,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s44": {
+   "holes": 0,
+   "osc": 1.56,
+   "rms_db": -27.75,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s45": {
+   "holes": 0,
+   "osc": 0.45,
+   "rms_db": -27.59,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s46": {
+   "holes": 0,
+   "osc": 0.85,
+   "rms_db": -32.6,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s47": {
+   "holes": 0,
+   "osc": 0.84,
+   "rms_db": -29.36,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s48": {
+   "holes": 0,
+   "osc": 0.57,
+   "rms_db": -29.01,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s49": {
+   "holes": 0,
+   "osc": 1.75,
+   "rms_db": -27.93,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s50": {
+   "holes": 0,
+   "osc": 0.68,
+   "rms_db": -26.63,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s51": {
+   "holes": 0,
+   "osc": 0.51,
+   "rms_db": -27.63,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s52": {
+   "holes": 0,
+   "osc": 0.2,
+   "rms_db": -30.14,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s53": {
+   "holes": 0,
+   "osc": 1.08,
+   "rms_db": -27.47,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s54": {
+   "holes": 0,
+   "osc": 1.34,
+   "rms_db": -28.51,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s55": {
+   "holes": 0,
+   "osc": 0.33,
+   "rms_db": -29.9,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s56": {
+   "holes": 0,
+   "osc": 0.39,
+   "rms_db": -28.33,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s57": {
+   "holes": 0,
+   "osc": 0.39,
+   "rms_db": -27.19,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s58": {
+   "holes": 0,
+   "osc": 0.39,
+   "rms_db": -27.12,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s59": {
+   "holes": 0,
+   "osc": 0.7,
+   "rms_db": -27.03,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s60": {
+   "holes": 0,
+   "osc": 0.33,
+   "rms_db": -28.55,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s61": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -29.84,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s62": {
+   "holes": 0,
+   "osc": 1.39,
+   "rms_db": -28.55,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s63": {
+   "holes": 0,
+   "osc": 0.68,
+   "rms_db": -30.09,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s64": {
+   "holes": 0,
+   "osc": 0.22,
+   "rms_db": -27.27,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s65": {
+   "holes": 0,
+   "osc": 0.18,
+   "rms_db": -28.56,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s66": {
+   "holes": 0,
+   "osc": 2.22,
+   "rms_db": -26.5,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s67": {
+   "holes": 0,
+   "osc": 1.25,
+   "rms_db": -20.08,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s68": {
+   "holes": 0,
+   "osc": 2.61,
+   "rms_db": -28.1,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s69": {
+   "holes": 0,
+   "osc": 1.08,
+   "rms_db": -25.53,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s70": {
+   "holes": 0,
+   "osc": 0.16,
+   "rms_db": -20.62,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s71": {
+   "holes": 0,
+   "osc": 1.66,
+   "rms_db": -26.46,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s72": {
+   "holes": 0,
+   "osc": 0.65,
+   "rms_db": -35.41,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s73": {
+   "holes": 0,
+   "osc": 3.58,
+   "rms_db": -35.82,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s74": {
+   "holes": 0,
+   "osc": 0.66,
+   "rms_db": -31.82,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s75": {
+   "holes": 0,
+   "osc": 1.41,
+   "rms_db": -33.54,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 1
+  },
+  "s76": {
+   "holes": 0,
+   "osc": 1.38,
+   "rms_db": -24.72,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s77": {
+   "holes": 0,
+   "osc": 0.22,
+   "rms_db": -21.87,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s78": {
+   "holes": 0,
+   "osc": 1.68,
+   "rms_db": -26.11,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s79": {
+   "holes": 0,
+   "osc": 0.83,
+   "rms_db": -28.91,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s80": {
+   "holes": 0,
+   "osc": 0.37,
+   "rms_db": -24.53,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s81": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -28.4,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s82": {
+   "holes": 0,
+   "osc": 0.72,
+   "rms_db": -29.22,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s83": {
+   "holes": 0,
+   "osc": 0.24,
+   "rms_db": -28.37,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s84": {
+   "holes": 0,
+   "osc": 0.6,
+   "rms_db": -26.88,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s85": {
+   "holes": 0,
+   "osc": 0.17,
+   "rms_db": -31.6,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s86": {
+   "holes": 0,
+   "osc": 1.64,
+   "rms_db": -30.74,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s87": {
+   "holes": 0,
+   "osc": 0.06,
+   "rms_db": -25.36,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s88": {
+   "holes": 0,
+   "osc": 2.47,
+   "rms_db": -28.98,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s89": {
+   "holes": 0,
+   "osc": 1.42,
+   "rms_db": -33.6,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s90": {
+   "holes": 0,
+   "osc": 1.3,
+   "rms_db": -29.24,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s91": {
+   "holes": 0,
+   "osc": 0.18,
+   "rms_db": -28.72,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s92": {
+   "holes": 0,
+   "osc": 1.44,
+   "rms_db": -34.76,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s93": {
+   "holes": 0,
+   "osc": 0.31,
+   "rms_db": -33.71,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s94": {
+   "holes": 0,
+   "osc": 0.8,
+   "rms_db": -29.95,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s95": {
+   "holes": 0,
+   "osc": 1.62,
+   "rms_db": -29.89,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s96": {
+   "holes": 0,
+   "osc": 0.81,
+   "rms_db": -32.17,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s97": {
+   "holes": 0,
+   "osc": 0.51,
+   "rms_db": -31.09,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s98": {
+   "holes": 0,
+   "osc": 0.51,
+   "rms_db": -33.06,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  },
+  "s99": {
+   "holes": 0,
+   "osc": 0.59,
+   "rms_db": -33.8,
+   "silence_s": 0.0,
+   "silences": 0,
+   "splices": 0
+  }
+ }
+}

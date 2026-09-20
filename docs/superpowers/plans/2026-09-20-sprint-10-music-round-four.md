@@ -78,6 +78,17 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       the card). Run 7 = `s10_r4g`: the reference re-pinned, ours compared. Chain: `logs/s10_music_round4_captures.sh`.
 - [x] 3. The IRX streamer read (above): the slot is freed at the voices' end, the handle word stays, the lookup answers it.
 - [ ] 4. Compare the stem timelines; fix what differs; re-capture; the owner listens.
+      **First valid reading, run 8 (`s10_r4h`, 2026-09-20 ~20:50 UTC; ours on the 13:40 exe = the e39a8dc model,
+      before the fix agent's commits):** 6/177 windows within tolerance. Two facts, both new:
+      (a) **ours' music track is ~31 dB low everywhere** -- median ours-minus-PCSX2 rms: title/menu (the PCM
+      ring) -31.1 dB, AUDIO OPTIONS -31.2, briefing -24.4, mission (VAG stems) -30.1 -- while SFX/dialog matched
+      within 6 dB in the whole-mix captures on the same loopback path. A factor of ~32 on the music path alone
+      (handed to the fix agent as item 5; the group-1 master is 0x2f5 in the trace, the plays carry vol 0x400).
+      (b) **the stems stop:** 53 streams, 7 group-1 stems, gaps of 70.5 s, 74.9 s, 59.0 s and 24.2 s between
+      consecutive stems on ours; ours' windows s128-s176 carry 4-21 s of silence each where the console has none
+      (the e39a8dc still-playing answer kept the EE's manager waiting -- item 1, `a0e0d0b`, is the fix to measure).
+      Next: `logs/s10_music_round4_ours_only.sh <stamp>` after the agent's commits (runtime rebuilt, ours captured,
+      compared against the same pinned reference).
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
