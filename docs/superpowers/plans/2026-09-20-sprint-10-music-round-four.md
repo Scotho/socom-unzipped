@@ -141,6 +141,16 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       which is why every level instrument passed it. Handed to the fix agent as item 10 (test first: a two-channel
       VPK with identical L/R renders sample-aligned across chunks, the pre-fill and an underrun); a third agent adds
       `lr_corr0 / lr_lag_ms / lr_best / side_mid_db` per window to the parity scorer with a stereo-desync compare rule.
+      **THE CAUSE (`ce6ed95`, 2026-09-21 ~00:40 UTC):** a two-channel VPK is interleaved per STREAMING BUFFER, not per
+      0x800 chunk. Every SOCOM stem has header word 2 = 0x800, word 3 = 0xb000, 2 channels; the IRX's stream open
+      (`FUN_00013334`) requires word 3 to equal the streaming buffer the game passed to InitVAGStreamingEx (0xb000)
+      and splits each buffer per channel (`>> 1`): 0x5800 bytes of LEFT then 0x5800 of RIGHT per 0xb000 of file, the
+      last partial buffer split in halves. Ours read alternate 0x800 chunks as L/R -- so the right channel played a
+      different part of the song, an offset that depends on the position in the buffer (the +561 / +61 / +674 ms
+      lags), and every listen since the mission music first played was two copies of the score out of step. The
+      scorer now flags it (`005b454`; run 10 against the 620 s reference: 118/177 with six stereo-desync windows:
+      s127/s139/s140 at +560 ms, s141 -21, s147 -90, s158 -102 ms). The fix agent's instrumented run on the fixed exe
+      (buffer occupancy + starvation events `a486c6d`, the dip classifier `tools_py/parity/audio_dips.py`) is next.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
