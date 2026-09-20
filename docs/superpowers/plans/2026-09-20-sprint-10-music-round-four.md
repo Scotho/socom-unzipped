@@ -151,6 +151,19 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       scorer now flags it (`005b454`; run 10 against the 620 s reference: 118/177 with six stereo-desync windows:
       s127/s139/s140 at +560 ms, s141 -21, s147 -90, s158 -102 ms). The fix agent's instrumented run on the fixed exe
       (buffer occupancy + starvation events `a486c6d`, the dip classifier `tools_py/parity/audio_dips.py`) is next.
+      **The instrumented run (`s10_r4l_music_ours`, exe 16:58 = `ce6ed95`+`a486c6d`, ~01:00 UTC 2026-09-21):**
+      123/177 against the 620 s reference; the stereo rule now trips on ONE window (s156: +610 ms during a 5.8 s
+      silence -- a stem boundary; item 12) instead of six. Item 8 answered: all 11 cue pushes were QUEUED (free 20,
+      enable 1, none refused); every push comes from the play-sound API caller `ra 0x3432d8` (FUN_00343140); the
+      gaps are stretches with NO push (a stem done at frame 17156160, the next push 47 s later) -- the game's own
+      logic, next probe `PS2X_CALL_TRACE=0x343140` for its callers, and the console's manager polled over PINE for
+      the same walk (music_state_poll, wired into the re-pin chain). Item 9's table (endpoint = dump + 3.9 s, corr
+      0.95): COMMAND 24 (stem ends, StopSound, AutoVol, the script's own slider moves), STARVATION 5 -- ALL on the
+      PCM ring (29.8, 33.4, 56.5, 209.8, 220.8 s): the EE's feed is a steady 19456 B / 100 ms then `written=0` for
+      300-400 ms and a 24576 burst against a 128 ms ring, with the EE clock normal -- a feed STALL, not drift (item
+      11: instrument the cdvd read behind the feeder); DEVICE 2; UNEXPLAINED 3 (22 dB dips of 1.5-3.3 s on the PCM
+      route, probably the material). ZERO VAG stream underruns in the whole run. Route note: the title/options
+      music is the VAG loop 0x1303f8; the PCM ring carries the intro and the briefing.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 

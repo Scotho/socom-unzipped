@@ -51,18 +51,20 @@ workflows, and the visibility flip itself. Publishing any Release is always your
 
 ## Open
 
-- [ ] **Listen to the mission music, fourth round (2026-09-20 evening) -- the build at `dist/socom2.exe` (15:44, tree
-  `25a8cd5` or later).** What changed since your third listen, all from the real IRX decompilation that reached us today:
-  a played-out stem now answers "ended" at once, so the game starts the next stem itself the way the console does (the
-  night's model had inverted this and would have left the music waiting for a cue -- your "starts again when an enemy is
-  engaged"); the game's volume/pan updates now reach a running stem; and quiet music and fades follow the console's
-  square-law curve. Measured against the console with everything but music muted: 6 of 177 windows within tolerance
-  before, 77 after; stems now follow each other in under 2.3 s at 8 of 11 boundaries. Still open and being worked: three
-  mid-mission gaps of 10-22 s, and the music sitting ~6 dB quieter than the console. What to report: the briefing
-  screen and the first minutes of the mission with a walk and a contact -- does the music still stop dead, jump in
-  level, or overlap itself; and roughly how long the pauses are when it stops. One thing to check on your own PC first:
-  Windows' volume mixer for `socom2.exe` on your speaker (right-click the speaker icon, Open volume mixer) -- on the
-  capture endpoint it had been left at 3 percent, which would make everything, not only the music, near silent.
+- [ ] **Listen to the mission music, FIFTH round (2026-09-21 ~01:10 UTC) -- the build at `dist/socom2.exe` (16:58 local,
+  tree `c181984` or later).** Your "it doesn't even sound like music" found it: every stereo music stem on ours was
+  playing its two channels from DIFFERENT places in the song (a two-channel VPK is interleaved per 0xb000 streaming
+  buffer, 0x5800 bytes of left then 0x5800 of right; ours split it per 0x800 chunk), so every listen since the first
+  mission was two copies of the score out of step -- and every level instrument passed it. Fixed (`ce6ed95`), measured:
+  the two channels now line up within 3 ms on a stem decoded from the disc, and against the console's music-only
+  capture 123 of 177 windows are within tolerance (6 this morning). Also in this build: the played-out-stem answer
+  the console gives, volume updates reaching running stems, the square-law volume curve, the hard-panned voice pair.
+  Still open, being worked: the title/options and briefing music (the PCM ring) stalls for 300-400 ms a few times a
+  minute (a bursty feed, 5 starvations in a run); and the mission's 10-47 s pauses, which the trace shows are the
+  game's own logic not asking for a cue -- the console's decisions are being polled next to compare. What to report:
+  does the mission music now sound like music (one score, in time with itself); the briefing and options music;
+  and whether the pauses you hear are longer or more frequent than on the console.
+
 
 - [ ] **Listen to the title screen and the intro** (Task 6c Step 4; research/32 §7.1). Launch `dist/socom2.exe`
   (or the launcher), sit through the logos, the intro movie and the title loop. What to listen for: the music
