@@ -172,8 +172,21 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       on OURS cue 4's stem ENDS after 9.3 s (played out, `done detail=0`; the manager idles; 14 plays of 0.05-12 s with
       idle gaps over the next 100 s, several stopped by the game 50-80 ms after their start), on the CONSOLE cue 4
       stays in state 1 on the same handle for the rest of the poll, >= 120 s. **The stem loops on the console and
-      plays out once on ours** -- the mechanism behind "the music stops after a while": item 13 (the VAG loop flags /
-      the IRX's loop-the-file 0x400 / RestartInterleavedStream) with the fix agent.
+      plays out once on ours** -- item 13 with the fix agent. **Its answer (~02:50 UTC):** wrong on three counts.
+      `+1408` is a byte offset, not a length; cue 4 on ours is `M51_048`, a 9.15 s MONO voice line (group 2, routed
+      through this sequencer by its def's music bit) and ours played all 9.14 s of it; no VPK stem carries a loop
+      flag and the stems longer than a buffer play their full length (the 28.96 s stem: 28.9 s). **The polled
+      manager is the mission's VOICE cue sequencer, not the music scheduler:** none of run 13's group-1 stem plays
+      coincides with its transitions; the music stems reach 0x2c through FUN_00342240's two other callers
+      (:242150, :242232 in the generic play-sound API FUN_00342aa0 / FUN_00343140) -- next probe `PS2X_CALL_TRACE`
+      on those. Still unexplained: the console holding cue 4 in state 1 for >= 120 s with its audio silent from
+      ~70 s after the HUD (a different file for that name, or a played-out handle still answered -- item 1's model
+      again); the state poll is being extended to dump the sound entry and def (name, sector, handle) on every
+      change to settle it. Item 12: NOT a desync -- s156 holds a wide-by-nature stem (its own channels 0.08 at lag 0
+      from the disc). Item 11 so far: the PCM ring's feeder in the intro/briefing is the game's PSS demux thread,
+      which the runtime parks in `sceMpegGetPicture` until a picture's presentation tick -- the one place a 300-400
+      ms hole can come from with the EE clock normal (`4e446cc` traces the parks; the correlation run is in flight);
+      the console's ring is the same 0x6000 bytes, so a ~400 ms delay line on the PCM route is the fallback.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
