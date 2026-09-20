@@ -17,6 +17,7 @@ export class Zar {
     const dataSize = r.u32(84), version = r.u32(96);
     if (version !== V2) throw new Error(`ZAR version 0x${version.toString(16)}, only 0x20002 supported`);
     if (flags !== 0) throw new Error(`ZAR flags ${flags}: securified archives are not supported`);
+    if (padding <= 0) throw new Error(`ZAR padding ${padding}: the data blob's alignment must be positive`);
     const stableAt = HEAD, keysAt = stableAt + stableSize;
     const dataAt = Math.ceil((keysAt + 16 * keyCount) / padding) * padding;
     const blob = r.slice(dataAt, Math.min(dataSize, bytes.byteLength - dataAt));
