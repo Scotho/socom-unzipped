@@ -2,6 +2,7 @@
 #include "CD.h"
 #include "MPEG.h"
 #include "runtime/ee_scheduler.h"
+#include "runtime/ps2_audio.h"
 
 
 namespace
@@ -40,6 +41,27 @@ namespace ps2_stubs
 
         uint32_t g_cdStReadTraceCount = 0u;
         CdStreamTimingState g_cdStreamTiming;
+
+        // research/36 item 11 (2026-09-20): PS2X_CD_STREAM_TRACE=1 stamps every CD stream read -- the request,
+        // a park on the modelled drive and its resume -- with the mixer's output-frame clock (the one the
+        // [audio] events and the PS2X_AUDIO_DUMP wav carry) and the VSync tick, so a PCM ring that ran dry can be
+        // read against what its feeder waited on.
+        bool cdStreamTraceOn()
+        {
+            static const bool on = std::getenv("PS2X_CD_STREAM_TRACE") != nullptr;
+            return on;
+        }
+
+        void cdStreamTrace(PS2Runtime *runtime, const char *what, uint64_t a = 0u, uint64_t b = 0u, uint64_t c = 0u)
+        {
+            if (!cdStreamTraceOn() || runtime == nullptr)
+                return;
+            std::fprintf(stderr, "[cd-stream] frame=%llu tick=%llu %s %llu %llu %llu lbn=0x%x\n",
+                         static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()),
+                         static_cast<unsigned long long>(runtime->eeScheduler().currentVSyncTick()), what,
+                         static_cast<unsigned long long>(a), static_cast<unsigned long long>(b), static_cast<unsigned long long>(c),
+                         g_cdStreamingLbn);
+        }
 
         // The plain-read cursor.  `g_cdStreamingLbn` (Support.h) is the *stream*
         // cursor and is moved only by the stream entry points; a plain read must
@@ -820,6 +842,7 @@ namespace ps2_stubs
                     const uint32_t buffered = bufferedCdStreamSectors(runtime);
                     const uint32_t needed = wakeSectors > buffered ? wakeSectors - buffered : 1u;
                     const uint64_t wakeTick = cdStreamWakeTickForSectors(runtime, needed);
+                    cdStreamTrace(runtime, "park need/buffered/wake", needed, buffered, wakeTick);
                     runtime->eeScheduler().waitVSync(
                         wakeTick - 1u,
                         -1,
@@ -829,6 +852,7 @@ namespace ps2_stubs
                             {
                                 return;
                             }
+                            cdStreamTrace(runtime, "resume read/requested", state.sectorsRead, state.requestedSectors);
                             continueCdStRead(rdram, &resumeContext, runtime, state);
                         });
                 }
@@ -914,6 +938,7 @@ namespace ps2_stubs
             setReturnS32(ctx, 0);
             return;
         }
+        cdStreamTrace(runtime, "read requested/mode/readable", requestedSectors, mode, readableCdStreamSectors(runtime));
 
         if (mode == kCdStreamBlocking)
         {

@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "MPEG.h"
 #include "runtime/ee_scheduler.h"
+#include "runtime/ps2_audio.h"
 
 #if !defined(PS2X_HAS_FFMPEG)
 #define PS2X_HAS_FFMPEG 1
@@ -3041,6 +3042,16 @@ namespace ps2_stubs
                 {
                     const uint64_t eligibleTick = (presentationTargetQ32 + kPictureClockOne - 1u) >> 32u;
                     lock.unlock();
+                    // research/36 item 11 (2026-09-20): PS2X_CD_STREAM_TRACE=1 stamps this park -- the movie's demux
+                    // thread waiting for a picture's presentation tick -- with the mixer's output-frame clock, so a
+                    // PCM ring that ran dry (the movie's audio is fed by the same thread) can be read against it.
+                    static const bool s_trace = std::getenv("PS2X_CD_STREAM_TRACE") != nullptr;
+                    if (s_trace)
+                        std::fprintf(stderr, "[mpeg] frame=%llu tick=%llu park until=%llu (+%llu ticks) decoded=%zu\n",
+                                     static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()),
+                                     static_cast<unsigned long long>(currentTick), static_cast<unsigned long long>(eligibleTick),
+                                     static_cast<unsigned long long>(eligibleTick > currentTick ? eligibleTick - currentTick : 0u),
+                                     playback.decodedFrames.size());
                     runtime->eeScheduler().waitVSync(
                         eligibleTick - 1u,
                         -1,
@@ -3050,6 +3061,11 @@ namespace ps2_stubs
                             {
                                 return;
                             }
+                            static const bool s_traceResume = std::getenv("PS2X_CD_STREAM_TRACE") != nullptr;
+                            if (s_traceResume)
+                                std::fprintf(stderr, "[mpeg] frame=%llu tick=%llu resume\n",
+                                             static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()),
+                                             static_cast<unsigned long long>(runtime->eeScheduler().currentVSyncTick()));
                             sceMpegGetPicture(rdram, &resumeContext, runtime);
                         });
                 }

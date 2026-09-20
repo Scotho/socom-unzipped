@@ -205,6 +205,7 @@ class Events:
     pcm_underrun: List[Tuple[int, int]] = field(default_factory=list)          # (start frame, silent frames)
     pcm_occupancy: List[Tuple[int, int, int]] = field(default_factory=list)    # (frame, blocks ahead, written)
     commands: List[Tuple[int, int, List[int]]] = field(default_factory=list)   # (fno, frame, args)
+    feeder_parks: List[Tuple[str, int, int]] = field(default_factory=list)     # (who, frame, ticks) -- the movie/stream feeder parked
 
 
 _RE_PLAY = re.compile(r"fno 0x0000002c\) \[0x([0-9a-f]+), 0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+, 0x([0-9a-f]+), [^\]]*\] -> 0x([0-9a-f]+)")
@@ -213,6 +214,10 @@ _RE_OCC = re.compile(r"\[audio\] 989snd stream ([0-9a-f]+) occupancy frame=(\d+)
 _RE_PCM_UNDER = re.compile(r"\[audio\] 989snd pcm UNDERRUN frame=(\d+) silent=(\d+)")
 _RE_PCM_OCC = re.compile(r"\[audio\] 989snd pcm occupancy frame=(\d+) ahead=(\d+) blocks=\d+ pos=\d+ written=(\d+)")
 _RE_CMD = re.compile(r"\[audio\] 989snd cmd 0x([0-9a-f]+) frame=(\d+) \[([^\]]*)\]")
+# research/36 item 11: the movie/stream feeder parking -- "[cd-stream] frame=F tick=T park need/buffered/wake N B W"
+# (the wake tick W against the park tick T) and "[mpeg] frame=F tick=T park until=U (+N ticks)".
+_RE_CD_PARK = re.compile(r"\[cd-stream\] frame=(\d+) tick=(\d+) park \S+ (\d+) (\d+) (\d+)")
+_RE_MPEG_PARK = re.compile(r"\[mpeg\] frame=(\d+) tick=(\d+) park until=(\d+) \(\+(\d+) ticks\)")
 
 
 def read_events(text: str) -> Events:
@@ -248,6 +253,14 @@ def read_events(text: str) -> Events:
             args = [int(a.strip(), 16) for a in m.group(3).split(",") if a.strip()]
             ev.commands.append((int(m.group(1), 16), int(m.group(2)), args))
             continue
+        m = _RE_CD_PARK.search(line)
+        if m:
+            ev.feeder_parks.append(("cd-stream", int(m.group(1)), max(0, int(m.group(5)) - int(m.group(2)))))
+            continue
+        m = _RE_MPEG_PARK.search(line)
+        if m:
+            ev.feeder_parks.append(("mpeg", int(m.group(1)), int(m.group(4))))
+            continue
         m = _RE_PLAY.search(line)
         if m:
             ev.stream_group[m.group(3).lower().zfill(8)] = int(m.group(2), 16)
@@ -278,10 +291,19 @@ def _routes_live(ev: Events, frame: int, slack: int) -> List[str]:
     return sorted(set(routes))
 
 
+def _feeder_park_before(ev: Events, frame: int, lookback: int = MIXER_RATE) -> str:
+    """The movie/stream feeder park nearest before `frame` within `lookback` frames, as a suffix for a reason."""
+    best = None
+    for who, f, ticks in ev.feeder_parks:
+        if frame - lookback <= f <= frame and (best is None or f > best[1]):
+            best = (who, f, ticks)
+    return "; the feeder parked on %s at frame %d for %d ticks" % best if best else ""
+
+
 def _starvation(ev: Events, f0: int, f1: int, slack: int) -> Optional[str]:
     for s, n in ev.pcm_underrun:
         if s - slack <= f1 and s + n + slack >= f0:
-            return "pcm ring stale run at frame %d (%d frames silent)" % (s, n)
+            return "pcm ring stale run at frame %d (%d frames silent)%s" % (s, n, _feeder_park_before(ev, s))
     for handle, f, silent in ev.stream_underrun:
         if f0 - slack <= f <= f1 + slack:
             return "stream %s UNDERRUN at frame %d (%d silent)" % (handle, f, silent)
@@ -290,7 +312,7 @@ def _starvation(ev: Events, f0: int, f1: int, slack: int) -> Optional[str]:
             return "stream %s had %d frames ahead at frame %d" % (handle, ahead, f)
     for f, blocks, _ in ev.pcm_occupancy:
         if f0 - slack <= f <= f1 + slack and blocks == 0:
-            return "pcm ring had no fresh block ahead at frame %d" % f
+            return "pcm ring had no fresh block ahead at frame %d%s" % (f, _feeder_park_before(ev, f))
     return None
 
 

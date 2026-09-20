@@ -126,6 +126,8 @@ LOG = """\
 [audio] 989snd stream 040002a0 occupancy frame=1195200 ahead=600 chunks=0 ended
 [audio] 989snd stream 040002a0 UNDERRUN frame=240000 silent=2400
 [audio] 989snd pcm occupancy frame=480000 ahead=12 blocks=24 pos=0 written=24576 underruns=0
+[mpeg] frame=470000 tick=5870 park until=5890 (+20 ticks) decoded=2
+[cd-stream] frame=440000 tick=5500 park need/buffered/wake 16 3 5503 lbn=0xcdade
 [audio] 989snd pcm UNDERRUN frame=485000 silent=7200
 [audio] 989snd cmd 0x22 frame=720000 [0x040002a0, 0x0, 0x1e0, 0x2]
 [audio] 989snd cmd 0x9 frame=960000 [0x1, 0x2f5]
@@ -156,6 +158,13 @@ class Classification(unittest.TestCase):
         self.assertEqual(ev.pcm_underrun, [(485000, 7200)])
         self.assertEqual(ev.pcm_occupancy, [(480000, 12, 24576)])
         self.assertEqual([(f, fr) for f, fr, _ in ev.commands], [(0x22, 720000), (0x9, 960000)])
+        self.assertEqual(ev.feeder_parks, [("mpeg", 470000, 20), ("cd-stream", 440000, 3)])
+
+    def test_a_pcm_starvation_names_the_feeder_park_before_it(self):
+        # The stale run at frame 485000: the mpeg park at 470000 (0.3 s earlier) is the nearest feeder park before it.
+        rows = ad.classify([ad.Dip(10.1, 0.15, -20.0, -40.0)], None, 0.0, self.ev)
+        self.assertEqual(rows[0].label, "STARVATION")
+        self.assertIn("the feeder parked on mpeg at frame 470000 for 20 ticks", rows[0].reason)
 
     def test_labels(self):
         dip = lambda t, dur=0.1: ad.Dip(t, dur, -20.0, -40.0)
