@@ -3,9 +3,14 @@ import { Reader, type Zar, type ZarKey } from '@s2u/archive';
 /**
  * One 16-byte DMA source tag of a model chunk's chain, as `CVisual::SetBuffer` reads it (36 §3).
  * `id` is the DMAC tag id: 0 refe, 1 cnt, 2 next, 3 ref, 4 refs, 5 call, 6 ret, 7 end.
+ *
+ * `vifOffset` is where this tag's contribution starts in the chain's assembled `vif` stream. A texture
+ * citation contributes nothing, so its `vifOffset` is where the *next* tag's bytes land: the packet it
+ * names is the one that begins there.
  */
 export interface DmaTag {
-  qwc: number; reloc: number; id: number; addr: number; vif0: number; vif1: number; tagOffset: number;
+  qwc: number; reloc: number; id: number; addr: number; vif0: number; vif1: number;
+  tagOffset: number; vifOffset: number;
 }
 
 /** One chunk of a model: its chain of DMA tags, the textures it cites, and the VIF1 stream they transfer. */
@@ -57,6 +62,7 @@ export function walkChain(buffer: Uint8Array, headerOffset: number, nodeName: st
   const tags: DmaTag[] = [];
   const textureNames: string[] = [];
   const parts: Uint8Array[] = [];
+  let vifLength = 0;                                       // how much of the VIF stream the tags so far built
   let cursor = headerOffset + TAG_SIZE;                    // 36 §3: m_dmaChain = &tag[1]
   for (let i = 0; i < count; i++) {
     const o = cursor;
@@ -64,7 +70,7 @@ export function walkChain(buffer: Uint8Array, headerOffset: number, nodeName: st
     const w0 = r.u32(o);                                   // 36 §3: QWC | reloc | id
     const tag: DmaTag = {
       qwc: w0 & 0xffff, reloc: (w0 >>> 16) & 0xff, id: (w0 >>> 28) & 7,
-      addr: r.u32(o + 4), vif0: r.u32(o + 8), vif1: r.u32(o + 12), tagOffset: o,
+      addr: r.u32(o + 4), vif0: r.u32(o + 8), vif1: r.u32(o + 12), tagOffset: o, vifOffset: vifLength,
     };
     tags.push(tag);
     cursor = o + TAG_SIZE;
@@ -72,6 +78,9 @@ export function walkChain(buffer: Uint8Array, headerOffset: number, nodeName: st
     // A texture citation, not a transfer: retail writes these as `cnt` tags with QWC=0, so the relocation
     // type decides before the DMA id does (36 §3).
     if (tag.reloc === TEXTURE_RELOC) {
+      // Retail never pairs a citation with a transfer. If one did, returning here would leave the cursor
+      // inside its payload and every later tag in the chain would be read out of rubbish, so it throws.
+      if (tag.qwc !== 0) throw new Error(`${where(o)}: texture citation with QWC ${tag.qwc}, expected 0`);
       if (tag.addr >= buffer.byteLength) throw new RangeError(`${where(o)}: texture name at 0x${tag.addr.toString(16)} outside the ${buffer.byteLength}-byte model buffer`);
       textureNames.push(r.cstr(tag.addr, Math.min(MAX_TEXTURE_NAME, buffer.byteLength - tag.addr)));
       continue;
@@ -79,6 +88,7 @@ export function walkChain(buffer: Uint8Array, headerOffset: number, nodeName: st
 
     parts.push(r.slice(o + 8, 8));                         // 36 §3: words 2-3, the tag-transfer VIF1 codes
     const bytes = tag.qwc * QUADWORD;
+    vifLength += 8 + bytes;
     if (tag.id === ID_REF || tag.id === ID_REFE) {
       if (tag.addr + bytes > buffer.byteLength) throw new RangeError(`${where(o)}: ${bytes} bytes at 0x${tag.addr.toString(16)} outside the ${buffer.byteLength}-byte model buffer`);
       parts.push(r.slice(tag.addr, bytes));
@@ -91,9 +101,7 @@ export function walkChain(buffer: Uint8Array, headerOffset: number, nodeName: st
     }
   }
 
-  let n = 0;
-  for (const p of parts) n += p.byteLength;
-  const vif = new Uint8Array(n);
+  const vif = new Uint8Array(vifLength);
   let at = 0;
   for (const p of parts) { vif.set(p, at); at += p.byteLength; }
   return { nodeName, headerOffset, tags, textureName: textureNames[0] ?? null, textureNames, vif };
