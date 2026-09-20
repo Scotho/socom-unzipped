@@ -74,6 +74,8 @@ A full diagnosis of the render path said every layer below the game was fine. Th
 
 SOCOM II ships its shell's constants through one particular kind of transfer tag, and the chain walker treated that kind differently from every other. The camera's eye vector never arrived, the backface test rejected every menu triangle, nothing was submitted. Fixed, the shell drew at 13 to 17 fps, a software rasterizer doing a swizzled read and a palette lookup for every one of a million textured pixels. An OpenGL 3.3 backend that records draw commands on the game thread and replays them on the graphics thread took the same screen to 55-60. Then the game walked its real first-boot sequence for the first time: memory card prompt, loading warning, "no SOCOM data found", Sony logo, intro, main menu.
 
+![The title screen as the first parity run captured it two days later: the logo, and a menu with no captions, no roller and no movie behind it. Every menu screen looked like this until the 7th.](docs/story/img/2026-09-05-menu-with-no-captions.png)
+
 *How:* the last black screen of the day wasn't a rendering bug at all. The menu frame's alpha is zero and the present was blending the finished picture to black.
 
 *But:* no button captions, no 3D roller, a black rectangle where the background movie belongs. The 60 is the menu's number; there was no mission to measure yet.
@@ -97,6 +99,8 @@ First the mission had to load at all: four fixes the day before, all the same ki
 **Instead of arguing about what looked wrong, the project started scoring itself against screenshots of the real game.**
 
 A harness captures a window without stealing focus, posts the same button presses to an emulator running the retail disc and to our window, walks both through the same script, and scores the pairs. The first report scored 6 of 20 screens (mean 80.6, main menu 63.7) and the other fourteen were never reached. It paid off immediately. Every 2D element was drawing at the top-left corner, because the recompiled code wrote to a vector register that's hardwired to (0,0,0,1) on real hardware. Text was being culled by a face-winding setting raylib leaves on. Four-bit palettes were read in the wrong order, which is why the text was dim. And 29 hand-written substitutes for Sony's vector-maths library were multiplying matrices the wrong way round, so the camera's clip matrix was wrong and every object failed the visibility test. Deleting the substitutes and recompiling Sony's own code brought back the menu's rotating 3D selector and gave the mission textures.
+
+![The first parity run's briefing screen: every 2D element drawn at the top-left corner, because the recompiled code was writing a register the hardware keeps constant. The report scored this 63.7 and the fixes followed the same day.](docs/story/img/2026-09-07-briefing-drawn-at-the-origin.png)
 
 *How:* the score is a per-screen picture comparison at 320x224, one number from 0 to 100.
 
@@ -218,6 +222,8 @@ The middle stage is supposed to watch the screen go black as the game moves into
 
 Until now every frame was drawn at 640x448 and stretched. A new setting draws the 3D world at two, three or four times that and hands the game back a console-sized picture, so nothing inside the game notices. At 2x the gate passed and the edges genuinely softened: the fraction of edge pixels that are a smooth blend rather than a hard step went 0.13 to 0.42. The HUD, menus and title screen didn't change at all. They're flat pictures at their original size; extra pixels can't add detail that was never there.
 
+![One of the pixel-filter gates the render-scale work needed, stuck: every title capture scored 66.4 because the game was sitting on the memory-card slot prompt the whole time. 0 of 23, and a lesson about what a flat score means.](docs/story/img/2026-09-12-the-gate-stuck-on-a-card-prompt.png)
+
 *How:* render targets carry a native size and a host size; vertices are scaled after the offset subtraction, and anything the game reads back resolves through a native-sized mirror.
 
 *But:* the sprint's own design doc had promised a sharper HUD. Measured, withdrawn. Default stays at 1x.
@@ -333,6 +339,8 @@ Work stopped to chase what a person noticed in the screenshots: grey shards wher
 **The automatic check that guarded every change could watch the player die and still call the run a pass.**
 
 Two days earlier the mission stage had been caught scoring the opening cinematic instead of gameplay: its crop stripped the letterbox bars, so a letterboxed cutscene matched. Five saved runs were re-scored from pass to fail. Today it got the rest of its eyes. It now fails outright on a MISSION FAILURE screen, dismisses a HELP pop-up or a skippable cinematic before each held frame, scores the spawn view against a real console screenshot, and reads three numbers straight out of the running game: how high the player's root sits, whether movement is scaled to zero, how many times the player teleported.
+
+![What the mission stage was grading as gameplay on the 12th: the game's first HELP pop-up, sitting over the spawn. The stage now dismisses these before every held frame.](docs/story/img/2026-09-15-the-help-popup-the-gate-called-gameplay.png)
 
 *How:* a written ruling promoted the in-game probe from a printed line to a scored one, once the probe's own defects were fixed.
 
@@ -620,7 +628,7 @@ The console side is the reference emulator running the retail disc, driven by th
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
 replaced by real entries as things land.*
 
-The tree is at `9044ce5`, 804 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
+The tree is at `541d6d1`, 836 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted
 server. The scheduled ladder has one clean run of the seven it needs.
 

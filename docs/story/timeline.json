@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "9044ce5",
+ "head": "541d6d1",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -173,7 +173,11 @@
      "ref": "logs/host/host_000_1s.png",
      "path": "logs/host/host_000_1s.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-05-menu-with-no-captions.png",
+    "caption": "The title screen as the first parity run captured it two days later: the logo, and a menu with no captions, no roller and no movie behind it. Every menu screen looked like this until the 7th."
+   }
   },
   {
    "id": "2026-09-07-the-first-frames-of-a-mission",
@@ -315,7 +319,11 @@
      "ref": "logs/parity/ours_e_sheet.png",
      "path": "logs/parity/ours_e_sheet.png"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-07-briefing-drawn-at-the-origin.png",
+    "caption": "The first parity run's briefing screen: every 2D element drawn at the top-left corner, because the recompiled code was writing a register the hardware keeps constant. The report scored this 63.7 and the fixes followed the same day."
+   }
   },
   {
    "id": "2026-09-07-the-movies-play",
@@ -821,7 +829,11 @@
      "kind": "path",
      "ref": "docs/research/14-gs-render-target-scale-spike.md"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-12-the-gate-stuck-on-a-card-prompt.png",
+    "caption": "One of the pixel-filter gates the render-scale work needed, stuck: every title capture scored 66.4 because the game was sitting on the memory-card slot prompt the whole time. 0 of 23, and a lesson about what a flat score means."
+   }
   },
   {
    "id": "2026-09-12-the-black-squares-leave-the-intro-movie",
@@ -1315,7 +1327,11 @@
      "ref": "logs/parity/gate/s6_probe/summary.txt",
      "path": "logs/parity/gate/s6_probe/summary.txt"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-15-the-help-popup-the-gate-called-gameplay.png",
+    "caption": "What the mission stage was grading as gameplay on the 12th: the game's first HELP pop-up, sitting over the spawn. The stage now dismisses these before every held frame."
+   }
   },
   {
    "id": "2026-09-16-the-owner-plays-it-and-asks-about-his-controller",
