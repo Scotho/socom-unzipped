@@ -57,9 +57,14 @@ class TitleWordsTest(unittest.TestCase):
         L._current_target = "pcsx2"
         try:
             self.assertTrue(L.lobby_title_is(g, "game_lobby"))
-            self.assertTrue(L.lobby_title_is(gray(T.CREATE_GAME), "create_game"), "no console CREATE GAME reference yet: ours' serves")
         finally:
             L._current_target = "ours"
+        # A title with no console reference falls back to ours' (the console references are cut one screen at a
+        # time, from the miss frames each leg keeps).
+        import os
+        without = [n for n in L.LOBBY_TITLES if not os.path.exists(os.path.join(L.LOBBY_REF_DIR, f"title_{n}.pcsx2.png"))]
+        for n in without:
+            self.assertTrue((L.lobby_title_ref(n, "pcsx2") == L.lobby_title_ref(n, "ours")).all(), n)
 
     def test_the_console_ready_row_reads_by_its_own_edges(self):
         # Console frames (leg 1b/1c): READY's right edge 65, NOT READY's 87; ours' bar of 55 read both as taken.

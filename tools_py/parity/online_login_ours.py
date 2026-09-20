@@ -1647,7 +1647,14 @@ def map_slug(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower().replace("'", "")).strip("_")
 
 
-def map_ref_path(name):
+def map_ref_path(name, target=None):
+    # Sprint 10 Goal 3: a console frame's map rows sit narrower and offset (KNOWN section 2), so a console shell
+    # reads `map_<slug>.pcsx2.png` when one has been cut, ours' reference otherwise -- as the lobby titles do.
+    target = target or _current_target
+    if target != "ours":
+        console = os.path.join(MAP_REF_DIR, f"map_{map_slug(name)}.{target}.png")
+        if os.path.exists(console):
+            return console
     return os.path.join(MAP_REF_DIR, f"map_{map_slug(name)}.png")
 
 
