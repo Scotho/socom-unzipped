@@ -12,8 +12,12 @@ each has a stable anchor, `#<date>-<slug>`, which is the per-entry URL shape the
 
 Usage:
     python -m tools_py.story.site [--story docs/STORY.md] [--timeline docs/story/timeline.json]
-                                  [--out docs/story/index.html] [--img img]
-                                  [--repo https://github.com/Scotho/socom-unzipped]
+                                  [--out docs/story/index.html] [--img img] [--logo img/logo.webp]
+                                  [--repo https://github.com/Scotho/socom-unzipped] [--full-document]
+    For the site copy, under Git Bash:
+        MSYS_NO_PATHCONV=1 python -m tools_py.story.site --full-document             --out C:/projects/scotho/sites/s2u/story.html --img /story/img --logo /img/logo.webp
+    Without MSYS_NO_PATHCONV=1, "/story/img" arrives as "C:/Program Files/Git/story/img" (it did, once, and the live
+    page lost every picture); with it, --out must be a Windows path, since "/c/..." is not translated either.
 """
 import argparse
 import html
@@ -384,6 +388,15 @@ def main(argv=None):
     ap.add_argument("--full-document", action="store_true",
                     help="wrap in <!doctype html><html><head>...; the default emits a fragment the Artifact tool wraps itself")
     args = ap.parse_args(argv)
+    # Git Bash rewrites an argument that looks like an absolute POSIX path ("/story/img") into a Windows path
+    # ("C:/Program Files/Git/story/img") before Python ever sees it. That shipped once: every picture and the logo
+    # on s2u.scotho.com/story.html pointed at a path on the build machine. A URL path never carries a drive letter,
+    # so one that does is refused here rather than rendered.
+    for name, value in (("--img", args.img), ("--logo", args.logo)):
+        if ":" in value or value.lower().startswith("c:/") or "Program Files" in value:
+            sys.stderr.write("%s=%r is a filesystem path, not a URL path. Under Git Bash run with MSYS_NO_PATHCONV=1, "
+                             "or write the argument as //story/img.\n" % (name, value))
+            return 2
     with open(args.story, encoding="utf-8") as f:
         doc = parse_document(f.read())
     with open(args.timeline, encoding="utf-8") as f:

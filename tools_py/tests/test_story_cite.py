@@ -384,6 +384,28 @@ class TestLogsPresentMeansTheArchive(unittest.TestCase):
         self.assertFalse(cite.GitResolver(root=self.tmp).logs_present())
 
 
+class TestSiteRefusesAFilesystemPathAsAUrl(unittest.TestCase):
+    """Git Bash turned --img /story/img into C:/Program Files/Git/story/img once and the live page lost its pictures."""
+
+    def test_a_drive_letter_or_program_files_is_refused(self):
+        from tools_py.story import site
+        import io as _io, contextlib
+        for bad in ("C:/Program Files/Git/story/img", "c:/x", "D:\story"):
+            err = _io.StringIO()
+            with contextlib.redirect_stderr(err):
+                rc = site.main(["--img", bad, "--out", os.devnull])
+            self.assertEqual(rc, 2, bad)
+            self.assertIn("MSYS_NO_PATHCONV", err.getvalue())
+
+    def test_a_url_path_is_accepted(self):
+        from tools_py.story import site
+        story = os.path.join(ROOT, "docs", "STORY.md")
+        if not os.path.exists(story):
+            self.skipTest("docs/STORY.md not written yet")
+        rc = site.main(["--img", "/story/img", "--logo", "/img/logo.webp", "--out", os.devnull])
+        self.assertEqual(rc, 0)
+
+
 class TestTheRealStoryIfItExists(unittest.TestCase):
     """Once docs/STORY.md exists, the suite checks the real document on every run."""
 
