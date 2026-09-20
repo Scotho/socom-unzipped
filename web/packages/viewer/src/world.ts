@@ -66,6 +66,16 @@ export interface WorldView {
    */
   setBlendGraded(on: boolean): void;
   /**
+   * Whether the GS `LINE_STRIP` geometry is drawn (SEMANTICS section 12).
+   *
+   * Off by default. The decode is well evidenced and the segments land where the chunks say, but a
+   * strip carries a texture and UVs that run well outside 0..1 -- the texture repeats along it -- and
+   * three's `LineBasicMaterial` cannot sample a texture at all. Drawn in vertex colour alone a rope
+   * comes out as a bright white line, which reads as an artifact rather than as a rope. Texturing them
+   * needs a shader of their own, or expanding each segment into a camera-facing ribbon.
+   */
+  setLineStrips(on: boolean): void;
+  /**
    * Re-runs the VU's lighting over every vertex: `record2 * lit`, the material colour on disc times a
    * `lit` built from the vertex normal and four colours (see `./lighting`). Cheap enough to call from a
    * slider -- it is one pass over the vertex arrays, about a millisecond on the largest map.
@@ -91,6 +101,7 @@ export function buildWorld(map: LoadedMap): WorldView {
   let linearLight = false;
   let lighting = DEFAULT_LIGHTING;
   let lineMaterial: LineBasicMaterial | null = null;
+  let lineSegments: LineSegments | null = null;
   let blendGraded = false;
   /** The materials whose texture alpha is a ramp: the only ones the switch moves. */
   const graded: MeshBasicMaterial[] = [];
@@ -178,6 +189,8 @@ export function buildWorld(map: LoadedMap): WorldView {
     const segments = new LineSegments(geometry, material);
     segments.name = 'line strips';
     segments.frustumCulled = false;
+    segments.visible = false;                           // see `setLineStrips`
+    lineSegments = segments;
     group.add(segments);
   }
 
@@ -206,6 +219,9 @@ export function buildWorld(map: LoadedMap): WorldView {
         applyLighting(part, lighting, attribute.array as Float32Array);
         attribute.needsUpdate = true;
       }
+    },
+    setLineStrips: (on) => {
+      if (lineSegments) lineSegments.visible = on;
     },
     setBlendGraded: (on) => {
       blendGraded = on;

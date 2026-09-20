@@ -2,7 +2,7 @@ import type { MapInfo } from '@s2u/archive';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
 export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
-  'linearlight', 'fog', 'blendgraded'] as const;
+  'linearlight', 'fog', 'blendgraded', 'linestrips'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -44,6 +44,7 @@ export class Ui {
     linearlight: find('linearlight'),
     fog: find('fog'),
     blendgraded: find('blendgraded'),
+    linestrips: find('linestrips'),
   };
 
   /** The map list, named from each archive's own `mission.rdr`. The value is the archive-relative path. */

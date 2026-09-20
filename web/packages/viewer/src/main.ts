@@ -124,6 +124,7 @@ function applyToggle(name: ToggleName, on: boolean): void {
   else if (name === 'wireframe') view?.setWireframe(on);
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
   else if (name === 'blendgraded') view?.setBlendGraded(on);
+  else if (name === 'linestrips') view?.setLineStrips(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else { view?.setLinearLight(on); setLinearLight?.(on); }
 }

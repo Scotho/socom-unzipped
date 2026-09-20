@@ -31,6 +31,9 @@
           <label><input type="checkbox" id="untextured" /> highlight untextured</label>
         </div>
         <div class="row">
+          <label title="The GS LINE_STRIP geometry -- guy ropes, power lines, lamp brackets, light filaments. Decoded from the disc, but drawn flat white because a line carries a texture the viewer does not apply, so they read as artifacts. Off until they are textured."><input type="checkbox" id="linestrips" /> line strips (untextured)</label>
+        </div>
+        <div class="row">
           <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> blend graded alpha</label>
         </div>
         <div class="row">
