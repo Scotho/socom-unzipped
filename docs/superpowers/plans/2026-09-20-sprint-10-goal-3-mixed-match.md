@@ -55,7 +55,13 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         Ours' host in (b) never started ("socom2.exe is already running": (a)'s host outlived its wrapper and its game
         was still up on the server -- the console joined THAT); the foreign-joiner mode now kills the game process and
         the script kills stale ones first.
-      - (c): running as this is written -- the first run in which every part is in place.
+      - (c): the console joined (join:list verified on the 4th press -- ours' game was not listed yet; join:enter on
+        the 2nd through the console reference; join:continue at once), ours saw it ("joiner in after 20s") and
+        readied; the console pressed READY inside the 30 s notice and read its own label edge 65 as "taken" (ours'
+        bar 55; the console's READY is 65-66, NOT READY 87), so it never readied and the round never started; its
+        walk failed on "W" (PCSX2's stick is LUP/LDOWN/LLEFT/LRIGHT). All three fixed (`READY_EDGE_DROPPED_MAX_BY_TARGET`,
+        the 35 s wait, LUP), with fixtures.
+      - (d): running as this is written -- the first run in which every part is in place.
       The movement half of the bar: ours' walk is read from its own peek (`0x416054:3`); the console's from PINE
       (`cam_poll --port 28012`); "seen by the other" needs the peer entity's position in each guest -- the next
       reading (research/18 section 3.5 has the local half).
