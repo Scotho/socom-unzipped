@@ -1102,6 +1102,79 @@ void register_launcher_tests()
             t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.profile")), "an id it does hold answers a real one");
         });
 
+        // Sprint 10 (owner, 2026-09-20): "text from a selected tab displays inline around the top left before
+        // snapping to the right location. switching tabs is jarring visually." The same flash as P4's, from
+        // the one path P4's two defences did not close: a page change INSIDE the draw. drawRail() and the
+        // PLAY page's CHANGE rows called Nav::goTo when they were clicked, part-way through drawing a frame
+        // whose node list was the old page's; nodesForFrame had already run, and text() takes a point, not
+        // a rect, so a caption placed from an empty rect went to the origin with nothing to refuse it. The
+        // fix is that a draw cannot change the page at all: it asks (Nav::request), and the next frame's
+        // input phase applies the ask before the frame's list is built (Nav::applyRequest, main.cpp).
+        tc.Run("a page change asked for during a draw lands in the next input phase, never in the draw", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            ui::Nav nav;
+            nav.goTo(g, ui::Page::Play);
+            const std::string focusBefore = nav.focus;
+
+            nav.request(ui::Page::Disc);   // what a rail click does now
+            t.IsTrue(nav.page == ui::Page::Play, "the request changes nothing the draw can see: the page is still PLAY");
+            t.IsTrue(nav.focus == focusBefore, "and the focus has not moved");
+            t.IsTrue(nav.requested == ui::pageIndex(ui::Page::Disc), "it is recorded, for the input phase");
+
+            t.IsTrue(nav.applyRequest(g), "the input phase finds a request and applies it");
+            t.IsTrue(nav.page == ui::Page::Disc, "the page is DISC");
+            t.IsTrue(nav.focus == "disc.path", "focused on its first control, as goTo would have");
+            t.IsTrue(nav.requested < 0, "and the request is spent");
+            t.IsFalse(nav.applyRequest(g), "a frame with no request applies nothing");
+            t.IsTrue(nav.page == ui::Page::Disc && nav.focus == "disc.path", "and changes nothing");
+
+            // The last request wins when two land in one draw (a click and a CHANGE row cannot both be hit
+            // in one frame, but the rule should still be one and simple).
+            nav.request(ui::Page::Online);
+            nav.request(ui::Page::About);
+            nav.applyRequest(g);
+            t.IsTrue(nav.page == ui::Page::About, "two requests in one draw: the later one is the one applied");
+        });
+
+        // Sprint 10 (owner, 2026-09-20): "see how the alert overlays the disc area in disc section." P4's
+        // help was a floating box under the focused control, and under DISC IMAGE is the verdict panel; four
+        // of the six helps covered something. The help now lives in the content panel's title strip
+        // (Frame::band, next to the page's name), which is the one place nothing a page lays out may enter.
+        // This holds every page's layout out of the strip at both window sizes, so the help can never sit on
+        // a control again, whatever page adds what row later.
+        tc.Run("the title strip is clear of every control on every page, so the help there covers nothing", [](TestCase &t)
+        {
+            const float sizes[2][2] = {{1100.0f, 700.0f}, {800.0f / (800.0f / 1100.0f), 520.0f / (800.0f / 1100.0f)}};
+            for (const auto &size : sizes)
+            {
+                const ui::Rect window{0.0f, 0.0f, size[0], size[1]};
+                const ui::Frame f = ui::frameFor(window);
+                t.IsTrue(ui::drawable(f.band), "the strip is a real rect");
+                t.IsTrue(f.band.inside(f.content), "inside the content panel");
+                t.IsTrue(f.body.y >= f.band.bottom() + 2.0f, "and the body starts below it, past the rule under it");
+                t.IsTrue(std::fabs(f.band.h - ui::metrics::bandH) < 0.001f, "it is metrics::bandH tall");
+
+                ui::LayoutInputs in;
+                in.padChoices = 3;
+                in.micChoices = 3;
+                in.customServer = true;
+                in.advancedOpen = true;
+                for (int i = 0; i < ui::kPageCount; ++i)
+                {
+                    const ui::Page page = ui::pageAt(i);
+                    for (const ui::Node &n : ui::layoutFor(page, window, in))
+                    {
+                        const bool clear = n.r.y >= f.band.bottom() || n.r.bottom() <= f.band.y ||
+                                           n.r.x >= f.band.right() || n.r.right() <= f.band.x;
+                        t.IsTrue(clear, ("no control enters the title strip: " + n.id).c_str());
+                    }
+                }
+            }
+        });
+
         // Sprint 9 P4, from the owner's screenshot: "the UNZIPPED part after SOCOM II is lower than the
         // SOCOM II text", and "the running text is not aligned with the yellow circle, it appears higher".
         // Both are the same mistake -- a word placed by its LINE BOX rather than by the ink a reader sees.

@@ -70,6 +70,7 @@ namespace ui
         f.rail = Rect{0.0f, barH, railW, window.h - barH - bottomH};
         f.content = Rect{railW + margin, barH + 20.0f, window.w - railW - margin - margin,
                          (window.h - bottomH - 16.0f) - (barH + 20.0f)};
+        f.band = Rect{f.content.x + 2.0f, f.content.y + 2.0f, f.content.w - 4.0f, bandH};
         f.body = Rect{f.content.x + 20.0f, f.content.y + 54.0f, f.content.w - 40.0f, f.content.h - 54.0f - 20.0f};
         return f;
     }
@@ -423,6 +424,18 @@ namespace ui
     {
         page = p;
         focus = g.firstOn(p);
+    }
+
+    void Nav::request(Page p) { requested = pageIndex(p); }
+
+    bool Nav::applyRequest(const FocusGraph &g)
+    {
+        if (requested < 0)
+            return false;
+        const Page p = pageAt(requested);
+        requested = -1;
+        goTo(g, p);
+        return true;
     }
 
     void Nav::move(const FocusGraph &g, Dir d)

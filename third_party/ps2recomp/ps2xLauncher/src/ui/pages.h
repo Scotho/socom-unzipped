@@ -85,8 +85,7 @@ namespace ui
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;
-        Frame frame;   // the four bands of this frame's window, in design units
-        const FocusGraph *graph = nullptr;   // so a row can jump to the page that owns its setting
+        Frame frame;   // the bands of this frame's window, in design units
         LayoutInputs layout;
         bool padPrompts = false;   // the last input came from a pad: the bar shows its glyphs
         bool fake = false;         // --screenshot: fixed state, no config written, no devices touched

@@ -50,10 +50,12 @@ namespace ui
         bool rail = false;
     };
 
-    // The four bands every page is drawn into, in design units.
+    // The bands every page is drawn into, in design units. `band` is the content panel's title strip -- the
+    // page's name, and (Sprint 10) the help for whatever holds the focus; nothing a page lays out may
+    // enter it, which the tests hold every page to.
     struct Frame
     {
-        Rect window, header, rail, content, body, bar;
+        Rect window, header, rail, content, band, body, bar;
     };
     Frame frameFor(Rect window);
 
@@ -124,15 +126,30 @@ namespace ui
     };
 
     // Where the player is. The rail highlight is `page`, so a move onto a rail entry changes the page with it.
+    //
+    // Sprint 10 (owner, 2026-09-20: "text from a selected tab displays inline around the top left before
+    // snapping to the right location"). A page may only change in the frame's INPUT phase -- never inside
+    // the draw. The frame's node list is built for the page the input phase left behind, and a draw that
+    // switched the page part-way through (a rail click in drawRail, a PLAY row's CHANGE) then drew the new
+    // page from the old page's list: every rectOf missed, every caption placed from a missed rect landed at
+    // the origin, and the owner saw the new page's words at the top left for one frame. P4's nodesForFrame
+    // covered the input phase and widgets.cpp's drawable() guard covered the Rect primitives, but plain
+    // text() takes a point, and a point computed from an empty rect is a point. So the draw does not change
+    // the page at all: it asks, with `request`, and the next frame's input phase applies the ask with
+    // `applyRequest` before anything is laid out. One frame later than before, which is under 17 ms.
     struct Nav
     {
         Page page = Page::Play;
         std::string focus;
+        int requested = -1;   // a page index, or -1: the page a draw asked for, applied next input phase
 
-        void goTo(const FocusGraph &g, Page p);   // the page, focused on its first control
+        void goTo(const FocusGraph &g, Page p);   // the page, focused on its first control (input phase only)
         void move(const FocusGraph &g, Dir d);
         void back(const FocusGraph &g);           // out to this page's rail entry
         bool onRail() const;
+
+        void request(Page p);                     // from inside a draw: the page, next frame
+        bool applyRequest(const FocusGraph &g);   // the input phase: goTo the request, if there is one
     };
 
     // Where the gold focus ring is drawn, frame by frame. Pure, so a test asserts on the very rect the
