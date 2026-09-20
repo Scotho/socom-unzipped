@@ -14,7 +14,7 @@ build and test everything else, which is where most contributions land:
 |---|---|---|
 | A clone, Linux (Ubuntu 24.04 is what CI uses) | the runtime library, the C++ suite, the launcher, the tools; the Python suite | `bash scripts/build_linux.sh --no-runner`, then `bash scripts/build_linux.sh test --no-runner`. The package list is in `.github/workflows/linux.yml`. |
 | A clone, Windows | the Python suite: `python -m unittest discover -s tools_py/tests -t .` | A disc-less C++ build on Windows is a tracked gap (Sprint 11 Goal 0): `build.sh` assumes a portable toolchain under `tools/` that is not in the repository. |
-| Your own r0001 disc as well | the game | `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; see the README's "Build and run". |
+| Your own r0001 disc as well | the game | `./build.sh recomp`, `./build.sh runtime`, `./build.sh test` (Windows, Git Bash) or `scripts/build_linux.sh`; see the README's "For developers" and `docs/DEVELOPING.md`. |
 
 Not sure your disc is r0001? The launcher checks it and says so (exit code 67 is "not r0001").
 
