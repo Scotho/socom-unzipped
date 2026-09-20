@@ -489,3 +489,45 @@ pinned by `packages/viewer/test/opaque.test.ts`). With that rule, 155 of the 176
 than 0.5 percent of pixels; what does move is the awning, Death Trap's and The Ruins' interiors --
 where you could previously see through a wall into a stairwell -- and Sujo's hangar roof, which
 stops hiding its own trusses. No vegetation is lost.
+
+## The clutter records that were not matrices are quaternions, and the engine says which is which
+
+2026-09-20. `CLUTTER.ZAR`'s 96-byte `params` comes in two forms under the same key names and the
+same size, which is why Abandoned's instances drew streaks when composed as matrices and were then
+refused by `isAffineRowVector`. Both forms are now read. 5,957 instances across the 22 maps, 1,198
+matrices and 4,759 of the other form; nothing is refused any more.
+
+**The selector is the engine's own.** `FUN_002d9490` (`recomp/output/FUN_002d9490_0x2d9490.cpp`),
+the first call of the per-record clutter reader `sub_002D55C0`, does `lbu $v0, 0x4C($a0)` -- byte
++76 -- isolates bit 1, and returns `record + 0x30` when it is clear or `record + 0x20` when it is
+set. That is the position, read either from a matrix's translation row at +48 or from the second
+form's own position at +32. The caller takes `.x`/`.z` off the returned pointer for its grid lookup.
+
+**The second form** is a decomposed transform: a `CQuat` rotation at +0 (`x, y, z, w`, not
+normalised -- `|q|` runs 0.92 to 1.41), an always-identity second quaternion at +16 (the live bend
+slot, written empty at export), the world position at +32, the uniform scale at +44 (equal to
+`1 / scale_inverse` to 6e-8 on every record) and the model's `repel max_angle` in radians at +48.
+Composed as the transpose of the textbook column-vector quaternion matrix -- everything here
+multiplies row vectors on the left -- the basis rows come out orthonormal to 6e-8 and the
+determinant is the cube of the scale to 1.4e-7, on all 4,759.
+
+**Why there are two.** The decomposed form is used for exactly the models given
+`repel (max_angle ...)` in the map's `clutter.rdr`, 114 of 114: foliage that bends when a player
+walks through it, and therefore has to keep its rotation apart from its bend. Sandstorm proves the
+rule rather than breaking it -- its `grass_thin`/`grass_thick` appear in two templates, one with
+`repel` and one without, and the records split along exactly that line.
+
+**Not settled:** whether the stored quaternion is the rotation or its conjugate. Every template's
+`rotation_range` is symmetric and half the records are a pure yaw, so the sense is invisible in the
+data; if tilted foliage ever leans the wrong way, negate x/y/z.
+
+**Also: `params` is not a `tag_NODE_PARAMS`,** despite the matching 96 bytes. A real `nparams` has a
+coherent bbox at +64 and its flags at +92; the clutter record has its flags at +76 and scratch in
+the bbox slot -- 508 records carry ASCII text from an `.rdr` there. The `-1.7014e+38` the old
+comment called a sentinel is scratch too.
+
+Per map, by the flag: MP62 Enowapi 1,128 (all decomposed), MP73 Sandstorm 1,142 (759), MP12 The
+Ruins 471 (347), MP64 Shadow Falls 482 (473), MP82 Guidance 482 (283), MP10 Blood Lake 439 (424),
+MP11 Death Trap 397 (392), MP5 Abandoned 363 (324), MP52 The Mixer 344 (all), MP1 Blizzard 211
+(none), MP7 193 (all), MP61 Sujo 103 (none), MP6 Desert Glory 110 (none), MP9 92 (all). The other
+eight maps carry no clutter.

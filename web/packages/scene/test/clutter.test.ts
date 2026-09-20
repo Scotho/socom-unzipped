@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAffineRowVector } from '../src/clutter';
+import { clutterMatrix, isAffineRowVector } from '../src/clutter';
 
 /**
  * The guard that decides whether a clutter record's 96 bytes are the affine matrix the format
@@ -88,5 +88,66 @@ describe('isAffineRowVector', () => {
     // ... but not the thousands the malformed records compose into.
     const absurd = m(51, 0, 0, 0, 0, 51, 0, 0, 0, 0, 51, 0, 0, 0, 0, 1);
     expect(isAffineRowVector(absurd)).toBe(false);
+  });
+});
+
+/**
+ * The two record forms, composed. The bytes are built here rather than read off a disc because the two
+ * maps that would prove it, Abandoned and Enowapi, are not among the three archives the fixtures carry;
+ * the field offsets and the flag bit come from the engine's own selector, `FUN_002d9490`, which reads
+ * byte +76, tests bit 1, and returns the position at +48 or at +32 accordingly.
+ */
+function record(fill: (view: DataView) => void): Uint8Array {
+  const bytes = new Uint8Array(96);
+  fill(new DataView(bytes.buffer));
+  return bytes;
+}
+
+describe('clutterMatrix', () => {
+  it('takes the matrix form as it stands, all 16 floats, when bit 1 is clear', () => {
+    const bytes = record((v) => {
+      DESERT_GLORY_ROCK.forEach((f, i) => v.setFloat32(i * 4, f, true));
+      v.setUint32(76, 0x8001, true);                          // the real flag word of a matrix record
+    });
+    expect([...clutterMatrix(bytes)].map((f) => Number(f.toFixed(3))))
+      .toEqual([...DESERT_GLORY_ROCK].map((f) => Number(f.toFixed(3))));
+  });
+
+  it('composes the decomposed form: a quarter turn about y, scaled, at its own position', () => {
+    const h = Math.SQRT1_2;                                   // sin/cos of 45 degrees: a 90 degree yaw
+    const bytes = record((v) => {
+      v.setFloat32(0, 0, true); v.setFloat32(4, h, true); v.setFloat32(8, 0, true); v.setFloat32(12, h, true);
+      v.setFloat32(32, 1072, true); v.setFloat32(36, 56.339, true); v.setFloat32(40, 2205.6, true);
+      v.setFloat32(44, 2, true);                              // uniform scale
+      v.setUint32(76, 0x8003, true);                          // the real flag word of a dynamic record
+    });
+    const m = [...clutterMatrix(bytes)].map((f) => Number(f.toFixed(4)));
+    // Row-vector convention: the rows are the rotated basis, so x maps to -z and z maps to +x.
+    expect(m.slice(0, 4)).toEqual([0, 0, -2, 0]);
+    expect(m.slice(4, 8)).toEqual([0, 2, 0, 0]);
+    expect(m.slice(8, 12)).toEqual([2, 0, 0, 0]);
+    expect(m.slice(12, 16)).toEqual([1072, 56.339, 2205.6001, 1]);   // the f32 round trip of 2205.6
+    expect(isAffineRowVector(clutterMatrix(bytes))).toBe(true);
+  });
+
+  it('normalises the stored quaternion, which is not a unit one: |q| runs 0.92 to 1.41', () => {
+    const bytes = record((v) => {
+      v.setFloat32(0, 0, true); v.setFloat32(4, 0, true); v.setFloat32(8, 0, true); v.setFloat32(12, 1.41, true);
+      v.setFloat32(44, 1, true);
+      v.setUint32(76, 0x2, true);
+    });
+    const m = clutterMatrix(bytes);
+    // Unnormalised, w = 1.41 would scale the basis by about two. Normalised it is the identity.
+    for (let r = 0; r < 3; r++) expect(Math.hypot(m[r * 4]!, m[r * 4 + 1]!, m[r * 4 + 2]!)).toBeCloseTo(1, 5);
+  });
+
+  it('reads the dynamic position from +32, not from the matrix translation row at +48', () => {
+    const bytes = record((v) => {
+      v.setFloat32(12, 1, true); v.setFloat32(44, 1, true);
+      v.setFloat32(32, 10, true); v.setFloat32(36, 20, true); v.setFloat32(40, 30, true);
+      v.setFloat32(48, 0.35, true);                           // the repel angle lives where +48 would
+      v.setUint32(76, 0x2, true);
+    });
+    expect([...clutterMatrix(bytes).slice(12, 15)]).toEqual([10, 20, 30]);
   });
 });

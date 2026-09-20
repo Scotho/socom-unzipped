@@ -12,8 +12,10 @@ import type { SceneNode } from './sceneGraph';
  * by lookup. Frostfire and Crossroads have none (a 192-byte stub with an empty `Clutter` key); Desert
  * Glory has 6 models and 110 instances.
  *
- * `params` is the same 96-byte `tag_NODE_PARAMS` a graph node carries (`zNode/znode.h:73-105`): a
- * row-major 4x4 first, and only that is used here -- the tail is a bbox the placement does not need.
+ * `params` is 96 bytes but it is **not** a `tag_NODE_PARAMS`, despite the matching size: a real
+ * `nparams` carries a coherent bbox at +64 and its flags at +92, while a clutter record has its flag
+ * word at +76 and scratch in the bbox slot. It comes in two forms, and the flag word's bit 1 says
+ * which -- see `clutterMatrix`.
  *
  * The models are ordinary ones: they live in the map's own `MDL` archive and are named by the scene
  * graph as prototypes, but *nothing instances them from the root*, so `placeInstances` never reaches
@@ -21,9 +23,28 @@ import type { SceneNode } from './sceneGraph';
  * Glory with bare ground.
  */
 
-/** 36 section 2: `params` is a 96-byte `tag_NODE_PARAMS`, whose first 64 bytes are the matrix. */
 const PARAMS_SIZE = 96;
 const MATRIX_FLOATS = 16;
+
+/**
+ * The flag word, and the bit the engine itself branches on.
+ *
+ * `FUN_002d9490` (`recomp/output/FUN_002d9490_0x2d9490.cpp`) is the clutter reader's first call: it
+ * does `lbu $v0, 0x4C($a0)` -- byte +76 -- isolates bit 1, and returns `record + 0x30` when it is
+ * clear or `record + 0x20` when it is set. That is the position, read from the matrix's translation
+ * row at +48 or from the decomposed form's own position at +32. Its caller `sub_002D55C0` takes
+ * `.x`/`.z` off the returned pointer for the grid-cell lookup.
+ *
+ * Under reCOM's `tag_NODE_PARAMS` bit order bit 1 is `m_dynamic_motion`, and the authoring data
+ * agrees: the decomposed form is used for exactly the models given `repel (max_angle ...)` in the
+ * map's `clutter.rdr` (114 of 114 models), i.e. the foliage that bends when a player walks through
+ * it and therefore needs its transform kept apart from its bend.
+ */
+const FLAGS_AT = 76;
+const DYNAMIC = 0x2;
+
+/** The decomposed form's fields. `+16` is a second, always-identity quaternion: the live bend slot. */
+const QUAT_AT = 0, POSITION_AT = 32, SCALE_AT = 44, REPEL_AT = 48;
 
 /** One scattered instance: which model, where, and the reciprocal of the scale baked into the matrix. */
 export interface ClutterInstance {
@@ -36,6 +57,14 @@ export interface ClutterInstance {
    * disagree, which on Desert Glory they never do.
    */
   scaleInverse: number;
+  /** True when the record was the decomposed quaternion form rather than a stored matrix. */
+  dynamic: boolean;
+  /**
+   * The `repel max_angle` of the model, in radians, on a dynamic record: how far this instance may be
+   * bent aside when something walks through it. Nothing is animated here; it is carried because it is
+   * what identifies the form, and a future bend has to read it from somewhere.
+   */
+  repelMaxAngle: number | null;
 }
 
 /** Every clutter instance of one map, in archive order (model by model). */
@@ -58,10 +87,62 @@ function readInstance(zar: Zar, modelName: string, key: ZarKey, index: number): 
   if (!scale || scale.size !== 4) {
     throw new Error(`clutter ${modelName}[${index}]: scale_inverse is ${scale ? `${scale.size} bytes` : 'absent'}, expected 4`);
   }
-  const r = new Reader(zar.data(params));
-  const matrix = new Float32Array(MATRIX_FLOATS);
-  for (let i = 0; i < MATRIX_FLOATS; i++) matrix[i] = r.f32(i * 4);
-  return { modelName, matrix, scaleInverse: new Reader(zar.data(scale)).f32(0) };
+  const bytes = zar.data(params);
+  const r = new Reader(bytes);
+  const dynamic = (r.u32(FLAGS_AT) & DYNAMIC) !== 0;
+  return {
+    modelName,
+    matrix: clutterMatrix(bytes),
+    scaleInverse: new Reader(zar.data(scale)).f32(0),
+    dynamic,
+    repelMaxAngle: dynamic ? r.f32(REPEL_AT) : null,
+  };
+}
+
+/**
+ * The 16 floats of a clutter record's transform, from whichever of the two forms it is stored in.
+ *
+ * **The matrix form** (bit 1 clear) is the first 64 bytes as they stand: row-major, row-vector, the
+ * same convention a scene node's matrix uses.
+ *
+ * **The decomposed form** (bit 1 set) stores a rotation, a position and a scale instead, because the
+ * engine has to re-compose it every frame with the instance's current bend:
+ *
+ * ```
+ *  +0  CQuat   rotation (x, y, z, w) -- `{CPnt3D vec; f32 w}`, zmath.h:211-226. Not normalised:
+ *              |q| runs 0.92..1.41 across the maps, so it is normalised here.
+ * +16  CQuat   (0, 0, 0, 1) on all 4,759 records: the live bend, written empty at export.
+ * +32  CPnt3D  world position
+ * +44  f32     uniform scale, equal to 1 / `scale_inverse` to 6e-8 on every record
+ * +48  f32     `repel max_angle` in radians
+ * ```
+ *
+ * The composition is the transpose of the textbook column-vector quaternion matrix, because
+ * everything here multiplies row vectors on the left. Checked over all 4,759 decomposed records on
+ * the 14 maps that carry them: the basis rows come out orthonormal to 6e-8, the determinant is the
+ * cube of the scale to 1.4e-7, and none is mirrored.
+ *
+ * What is *not* settled is whether the stored quaternion is the rotation or its conjugate: every
+ * generated template in `clutter.rdr` has a symmetric `rotation_range`, and half the records are a
+ * pure yaw, where the sense cannot be seen. If tilted foliage ever leans the wrong way, negate x/y/z.
+ */
+export function clutterMatrix(params: Uint8Array): Float32Array {
+  const r = new Reader(params);
+  const m = new Float32Array(MATRIX_FLOATS);
+  if ((r.u32(FLAGS_AT) & DYNAMIC) === 0) {
+    for (let i = 0; i < MATRIX_FLOATS; i++) m[i] = r.f32(i * 4);
+    return m;
+  }
+  let x = r.f32(QUAT_AT), y = r.f32(QUAT_AT + 4), z = r.f32(QUAT_AT + 8), w = r.f32(QUAT_AT + 12);
+  const n = Math.hypot(x, y, z, w) || 1;
+  x /= n; y /= n; z /= n; w /= n;
+  const s = r.f32(SCALE_AT);
+  m[0] = s * (1 - 2 * (y * y + z * z)); m[1] = s * 2 * (x * y + w * z);       m[2] = s * 2 * (x * z - w * y);
+  m[4] = s * 2 * (x * y - w * z);       m[5] = s * (1 - 2 * (x * x + z * z)); m[6] = s * 2 * (y * z + w * x);
+  m[8] = s * 2 * (x * z + w * y);       m[9] = s * 2 * (y * z - w * x);       m[10] = s * (1 - 2 * (x * x + y * y));
+  m[12] = r.f32(POSITION_AT); m[13] = r.f32(POSITION_AT + 4); m[14] = r.f32(POSITION_AT + 8);
+  m[15] = 1;
+  return m;
 }
 
 /**
@@ -78,14 +159,15 @@ function readInstance(zar: Zar, modelName: string, key: ZarKey, index: number): 
  *    0.251   0.000   0.000   1.000
  * ```
  *
- * which is a different record shape in the same 96 bytes under the same key names (`params` 96 +
- * `scale_inverse` 4 on both maps). What it is has not been established; the tail of those records
- * carries `-1.7014118346046923e+38`, which is the shape of a sentinel rather than of data.
+ * Composing one of those as if it were a matrix is what drew Abandoned's streaks: basis rows thousands
+ * of units long, radiating from the origin.
  *
- * Composing one of these as if it were a matrix is what drew Abandoned's streaks: basis rows thousands
- * of units long, radiating from the origin. Since the meaning is not known, such an instance is
- * refused and counted rather than drawn -- and counted is the point, because the old behaviour drew
- * nonsense while reporting zero diagnostics.
+ * **2026-09-20: that shape is now read rather than refused.** It is the decomposed form -- quaternion,
+ * position, scale -- and `clutterMatrix` composes it; all 5,957 records on the 22 maps now pass this
+ * guard. What is left for the guard to catch is a record that is neither: a corrupt read, a format
+ * that turns out to have a third form, a future change to `clutterMatrix` that gets the algebra wrong.
+ * It stays because a silent stream of streaks across a map is the failure it was written for, and
+ * refusing loudly is still better than that.
  */
 export function isAffineRowVector(m: Float32Array): boolean {
   const zeroish = (v: number): boolean => Math.abs(v) < 1e-4;
