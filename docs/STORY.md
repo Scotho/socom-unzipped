@@ -322,7 +322,7 @@ Two copies of the game logged in to the project's own server, met on Frostfire a
 
 Work stopped to chase what a person noticed in the screenshots: grey shards where Seeding Chaos should have water, and a single-player teleport whenever the player turned. The teleport got a confirmed cause. A graphics stub multiplied an address that was already a block number by eight, so seven parking slots in video memory collapsed onto two, and the game's animation clips were overwritten with the wrong chunks while the mission loaded. Fixed the next day: a memory dump 255 seconds into a mission came back with 0 of 8 animation chunks damaged, where every earlier dump had 5 of 8. The water got a cause too, published at 13:39 and refuted by its own author at 13:46, when the shards turned up identical with the depth test switched off entirely.
 
-![The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read.](docs/story/img/2026-09-14-grey-hill-before.png)
+![A gate frame from the 12th, two days before anyone looked: the first mission's spawn with the HELP pop-up up, and at the bottom left the clipped terrain, a black wedge where the ground should be. The owner spotted it in frames like this one.](docs/story/img/2026-09-14-the-clipped-terrain-the-owner-spotted.png)
 
 *How:* libgraph's vram_addr is already the BITBLTBUF block field, so sceGsExecLoadImage and StoreImage must not scale it.
 
@@ -334,25 +334,11 @@ Work stopped to chase what a person noticed in the screenshots: grey shards wher
 
 *By the 17th, on the owner's PC, the game starts from a launcher, runs the first mission with an Xbox pad, draws at the brightness a console draws, and makes sound. "Online" still means two scripted copies on one PC.*
 
-### 2026-09-15 - The check learns what failure looks like
+### 2026-09-16 - First hands-on session, and the controller work begins
 
-**The automatic check that guarded every change could watch the player die and still call the run a pass.**
+**The first time a person played the PC build instead of a script, and the first evening's notes set the order of everything after.**
 
-Two days earlier the mission stage had been caught scoring the opening cinematic instead of gameplay: its crop stripped the letterbox bars, so a letterboxed cutscene matched. Five saved runs were re-scored from pass to fail. Today it got the rest of its eyes. It now fails outright on a MISSION FAILURE screen, dismisses a HELP pop-up or a skippable cinematic before each held frame, scores the spawn view against a real console screenshot, and reads three numbers straight out of the running game: how high the player's root sits, whether movement is scaled to zero, how many times the player teleported.
-
-![What the mission stage was grading as gameplay on the 12th: the game's first HELP pop-up, sitting over the spawn. The stage now dismisses these before every held frame.](docs/story/img/2026-09-15-the-help-popup-the-gate-called-gameplay.png)
-
-*How:* a written ruling promoted the in-game probe from a printed line to a scored one, once the probe's own defects were fixed.
-
-*But:* on the very run that proved the teleport fix, all three new numbers came back NO-DATA: the readout printed before it was taken. And it still proves regression only.
-
-`Cited:` `69e2a9d` HUD reached means gameplay -- untilref(...,lit) needs lit letterbox bands · `d2eb932` the mission stage needs a live game -- two moving gameplay hold pairs · docs/KNOWN.md · `6880ee9` two lock-free scorers for Sprint 6 · `326c9c9` dismiss a HELP pop-up or the X-TO-ABORT cinematic · `34ed2ac` the mission stage fails on a MISSION FAILURE screen · `4c1b294` the mission stage samples the guest · `797f65f` guest_probe -- the gate's guest-value leg · `20db94b` R80, KNOWN row settled · `logs/parity/gate/s6_probe/summary.txt`
-
-### 2026-09-16 - The owner plays it, and asks about his controller
-
-**"do something fun for me", and a few minutes later, "do you see my controller?"**
-
-First time a person played the PC build instead of a script. He started on the keyboard; the Xbox pad went into the game's input path the same night: sticks, face buttons, shoulders, D-pad, with a fifteen percent dead zone. Two reports set the order of everything after: "I'm getting no sound", and a flat grey patch of hillside that came and went. His priorities, in his order: water and ground, then the untried online maps, then hardening, then audio, then the launcher.
+Until now every run of the game had been driven by a harness. This evening someone sat down and played it, keyboard first, and the Xbox pad went into the game's input path the same night: sticks, face buttons, shoulders, D-pad, with a fifteen percent dead zone. Two things came out of that session and set the priorities for the week: there was no sound at all, and a flat grey patch of hillside came and went in the first mission. The order after that: water and ground, then the untried online maps, then hardening, then audio, then the launcher.
 
 *How:* every automated run sets PS2X_HOST_GAMEPAD=0, because a configured pad makes the game skip the configuration screens the check keys on at boot.
 
@@ -628,7 +614,7 @@ The console side is the reference emulator running the retail disc, driven by th
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
 replaced by real entries as things land.*
 
-The tree is at `541d6d1`, 836 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
+The tree is at `0ffbf27`, 840 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted
 server. The scheduled ladder has one clean run of the seven it needs.
 

@@ -1,7 +1,7 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "541d6d1",
+ "head": "0ffbf27",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -1251,94 +1251,16 @@
     }
    ],
    "picture": {
-    "path": "docs/story/img/2026-09-14-grey-hill-before.png",
-    "caption": "The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read."
+    "path": "docs/story/img/2026-09-14-the-clipped-terrain-the-owner-spotted.png",
+    "caption": "A gate frame from the 12th, two days before anyone looked: the first mission's spawn with the HELP pop-up up, and at the bottom left the clipped terrain, a black wedge where the ground should be. The owner spotted it in frames like this one."
    }
   },
   {
-   "id": "2026-09-15-the-check-learns-what-failure-looks-like",
-   "date": "2026-09-15",
-   "title": "The check learns what failure looks like",
-   "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
-   "hook": "The automatic check that guarded every change could watch the player die and still call the run a pass.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "69e2a9d",
-     "sha": "69e2a9d83fa79ffadda051854ba4dd1f85724f60",
-     "date": "2026-09-13",
-     "subject": "fix(gate R30): HUD reached means gameplay -- untilref(...,lit) needs lit letterbox bands on the uncropped frame, and the mission scorer checks the hold captures"
-    },
-    {
-     "kind": "commit",
-     "ref": "d2eb932",
-     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
-     "date": "2026-09-13",
-     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/KNOWN.md"
-    },
-    {
-     "kind": "commit",
-     "ref": "6880ee9",
-     "sha": "6880ee99eef0bb323297d7cfb7d92af2d6555484",
-     "date": "2026-09-15",
-     "subject": "feat(parity): two lock-free scorers for Sprint 6 -- mission_fail.detect (the MISSION FAILURE screen) and motion_pack_check (the motion-pack smear from an RDRAM image), plus the slot-8 console spawn reference"
-    },
-    {
-     "kind": "commit",
-     "ref": "326c9c9",
-     "sha": "326c9c962689ffcd381e5c36b7951965a432c22d",
-     "date": "2026-09-15",
-     "subject": "fix(gate): dismiss a HELP pop-up or the X-TO-ABORT cinematic before every mission hold (ifpopup step)"
-    },
-    {
-     "kind": "commit",
-     "ref": "34ed2ac",
-     "sha": "34ed2ac0f4b4ae090cf8ef2b0dbbcfb109d3dcd3",
-     "date": "2026-09-15",
-     "subject": "feat(gate): the mission stage fails on a MISSION FAILURE screen and prints the console spawn score and the guest-value probe (Sprint 6 Task 1 wiring)"
-    },
-    {
-     "kind": "commit",
-     "ref": "4c1b294",
-     "sha": "4c1b294ae3eab61c011dd5c2806c8b6c9a5e9c2e",
-     "date": "2026-09-15",
-     "subject": "feat(gate): the mission stage samples the guest (PS2X_PC_SAMPLER=1) and scores the guest-value probe; teleports counted by speed (R80)"
-    },
-    {
-     "kind": "commit",
-     "ref": "797f65f",
-     "sha": "797f65f7393cc0d19fc6d299b16dc5e481109bab",
-     "date": "2026-09-15",
-     "subject": "feat(parity): guest_probe -- the gate's guest-value leg (root node Y, MoveScale, teleport count) against console numbers on disk"
-    },
-    {
-     "kind": "commit",
-     "ref": "20db94b",
-     "sha": "20db94b783ef26dc69e385ecfc3beeb25b440307",
-     "date": "2026-09-15",
-     "subject": "docs: R80 (probe scored; root decay settled by the probe on s6_probe), KNOWN row settled"
-    },
-    {
-     "kind": "log",
-     "ref": "logs/parity/gate/s6_probe/summary.txt",
-     "path": "logs/parity/gate/s6_probe/summary.txt"
-    }
-   ],
-   "picture": {
-    "path": "docs/story/img/2026-09-15-the-help-popup-the-gate-called-gameplay.png",
-    "caption": "What the mission stage was grading as gameplay on the 12th: the game's first HELP pop-up, sitting over the spawn. The stage now dismisses these before every held frame."
-   }
-  },
-  {
-   "id": "2026-09-16-the-owner-plays-it-and-asks-about-his-controller",
+   "id": "2026-09-16-first-hands-on-session-and-the-controller-work-begins",
    "date": "2026-09-16",
-   "title": "The owner plays it, and asks about his controller",
+   "title": "First hands-on session, and the controller work begins",
    "era": "2026-09-15 .. 2026-09-17 - Light, sound and a launcher",
-   "hook": "\"do something fun for me\", and a few minutes later, \"do you see my controller?\"",
+   "hook": "The first time a person played the PC build instead of a script, and the first evening's notes set the order of everything after.",
    "citations": [
     {
      "kind": "commit",
