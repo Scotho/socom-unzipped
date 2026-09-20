@@ -32,6 +32,12 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WINDOWS_SYSTEM = frozenset((
     "kernel32.dll", "user32.dll", "gdi32.dll", "shell32.dll", "winmm.dll", "ws2_32.dll", "comdlg32.dll",
     "ole32.dll", "bcrypt.dll", "advapi32.dll", "secur32.dll", "oleaut32.dll",
+    # Sprint 9 P7: Goal 8's bug report and status line talk HTTPS through WinHTTP
+    # (ps2xLauncher/src/win32_glue.cpp). It ships with Windows -- C:/Windows/System32/winhttp.dll,
+    # present since Vista -- so it is imported, never carried. Its absence here was not caught until
+    # the first release packaging AFTER Goal 8 landed, which is the run that builds the playtest
+    # candidate: the closure called it missing, and build.sh had already emptied dist-release of DLLs.
+    "winhttp.dll",
 ))
 WINDOWS_SYSTEM_PREFIXES = ("api-ms-win-",)
 SHIPPED = {"Windows": ("socom2.exe", "socom_unzipped_launcher.exe"), "Linux": ("socom2", "socom_unzipped_launcher")}

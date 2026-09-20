@@ -104,3 +104,23 @@ class MakePortableTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ReleaseConfigurationTest(unittest.TestCase):
+    """Sprint 9 P7. R151 was decided on a measurement -- `-O2` made the generated code's exe 9.9% smaller
+    and the ZIP 4.6 MB LARGER, so the release keeps `-O1` -- and `docs/KNOWN.md` records it as settled.
+    The ruling was never applied to the script: `build.sh`'s release default was introduced as `-O2` in
+    443238e and never changed, so every `./build.sh release` since has built the configuration R151
+    rejected. Found when the playtest candidate came out 62.8 MB against Goal 2's recorded 55.7 MB.
+    A ruling that is written down but not wired to anything is not a decision, it is a note."""
+
+    def setUp(self):
+        with open(os.path.join(ROOT, "build.sh"), encoding="utf-8") as fh:
+            self.text = fh.read()
+
+    def test_the_release_default_is_the_optimisation_r151_chose(self):
+        line = [ln for ln in self.text.splitlines() if "REL_GENOPT" in ln]
+        self.assertEqual(len(line), 1, "one place sets the release's generated-code optimisation")
+        self.assertIn("${REL_GENOPT:--O1}", line[0],
+                      "R151 measured -O2 as a LARGER download and chose -O1; the default must be what was chosen")
+        self.assertNotIn(":--O2", line[0], "the rejected value is not the default")
