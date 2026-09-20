@@ -46,11 +46,19 @@ COMMAND_NAMES = {0x09: "SetMasterVolume", 0x13: "PauseSound", 0x14: "ContinueSou
 # ---- wavs ------------------------------------------------------------------------------------------------
 
 def read_mono(path: str) -> Tuple[np.ndarray, int]:
-    """A 16-bit PCM wav as a mono float array in -1..1 and its rate (channels averaged)."""
+    """A 16-bit PCM wav as a mono float array in -1..1 and its rate (channels averaged). A wav whose header says
+    zero frames -- the mixer's PS2X_AUDIO_DUMP patches its sizes only on close, and the harness kills the game --
+    is read by its file length: 44 header bytes, then the samples."""
     with wave.open(path, "rb") as w:
         rate = w.getframerate()
         ch = w.getnchannels()
-        raw = w.readframes(w.getnframes())
+        nframes = w.getnframes()
+        raw = w.readframes(nframes) if nframes > 0 else b""
+    if nframes == 0:
+        with open(path, "rb") as f:
+            f.seek(44)
+            raw = f.read()
+        raw = raw[: (len(raw) // (2 * ch)) * (2 * ch)]
     x = np.frombuffer(raw, dtype=np.int16).astype(np.float64) / 32768.0
     if ch > 1:
         x = x[: (len(x) // ch) * ch].reshape(-1, ch).mean(axis=1)
@@ -152,6 +160,39 @@ def align(endpoint: np.ndarray, endpoint_rate: int, dump: np.ndarray, dump_rate:
     return best_lag * hop_s, best
 
 
+def local_offsets(endpoint: np.ndarray, endpoint_rate: int, dump: np.ndarray, dump_rate: int, dips: List["Dip"],
+                  global_offset_s: float, span_s: float = 15.0, search_s: float = 3.0, hop_s: float = 0.01) -> List[float]:
+    """One offset per endpoint dip: the global offset refined by a cross-correlation of the two envelopes over
+    `span_s` either side of the dip, searching `search_s` either way. The loopback recorder loses time whenever
+    the device starves (it delivers packets only while the endpoint renders), so the endpoint's clock drifts
+    against the dump's by the sum of the drop-outs before each dip; a single global offset then misplaces the
+    later dips by seconds. A window without enough level variation keeps the global offset."""
+    out = []
+    a_full = envelope(endpoint, endpoint_rate, hop_s)
+    b_full = envelope(dump, dump_rate, hop_s)
+    span = int(span_s / hop_s)
+    search = int(search_s / hop_s)
+    for d in dips:
+        centre = int(d.start_s / hop_s)
+        lo, hi = max(0, centre - span), min(len(a_full), centre + span)
+        a = a_full[lo:hi]
+        best_lag, best = None, -2.0
+        base = int(round(global_offset_s / hop_s))
+        for lag in range(base - search, base + search + 1):
+            j0, j1 = lo - lag, hi - lag          # dump index = endpoint index - lag
+            if j0 < 0 or j1 > len(b_full):
+                continue
+            b = b_full[j0:j1]
+            sa, sb = a.std(), b.std()
+            if sa < 1e-9 or sb < 1e-9:
+                continue
+            c = float(np.mean((a - a.mean()) * (b - b.mean())) / (sa * sb))
+            if c > best:
+                best, best_lag = c, lag
+        out.append(best_lag * hop_s if best_lag is not None and best > 0.3 else global_offset_s)
+    return out
+
+
 # ---- the log ---------------------------------------------------------------------------------------------
 
 @dataclass
@@ -160,7 +201,7 @@ class Events:
     stream_done: Dict[str, int] = field(default_factory=dict)        # handle -> frame
     stream_group: Dict[str, int] = field(default_factory=dict)       # handle -> group (from the IOP's 0x2c line)
     stream_underrun: List[Tuple[str, int, int]] = field(default_factory=list)   # (handle, frame, silent)
-    stream_occupancy: List[Tuple[str, int, int]] = field(default_factory=list)  # (handle, frame, ahead)
+    stream_occupancy: List[Tuple[str, int, int, bool]] = field(default_factory=list)  # (handle, frame, ahead, ended)
     pcm_underrun: List[Tuple[int, int]] = field(default_factory=list)          # (start frame, silent frames)
     pcm_occupancy: List[Tuple[int, int, int]] = field(default_factory=list)    # (frame, blocks ahead, written)
     commands: List[Tuple[int, int, List[int]]] = field(default_factory=list)   # (fno, frame, args)
@@ -168,7 +209,7 @@ class Events:
 
 _RE_PLAY = re.compile(r"fno 0x0000002c\) \[0x([0-9a-f]+), 0x[0-9a-f]+, 0x[0-9a-f]+, 0x[0-9a-f]+, 0x([0-9a-f]+), [^\]]*\] -> 0x([0-9a-f]+)")
 _RE_STREAM = re.compile(r"\[audio\] 989snd stream ([0-9a-f]+) (start|done|UNDERRUN) frame=(\d+) (?:detail|silent)=(\d+)")
-_RE_OCC = re.compile(r"\[audio\] 989snd stream ([0-9a-f]+) occupancy frame=(\d+) ahead=(\d+)")
+_RE_OCC = re.compile(r"\[audio\] 989snd stream ([0-9a-f]+) occupancy frame=(\d+) ahead=(\d+) chunks=\d+(?P<flags>.*)$")
 _RE_PCM_UNDER = re.compile(r"\[audio\] 989snd pcm UNDERRUN frame=(\d+) silent=(\d+)")
 _RE_PCM_OCC = re.compile(r"\[audio\] 989snd pcm occupancy frame=(\d+) ahead=(\d+) blocks=\d+ pos=\d+ written=(\d+)")
 _RE_CMD = re.compile(r"\[audio\] 989snd cmd 0x([0-9a-f]+) frame=(\d+) \[([^\]]*)\]")
@@ -190,7 +231,9 @@ def read_events(text: str) -> Events:
             continue
         m = _RE_OCC.search(line)
         if m:
-            ev.stream_occupancy.append((m.group(1).lower().zfill(8), int(m.group(2)), int(m.group(3))))
+            # (handle, frame, frames ahead, ended): a stream whose producer has read its last chunk runs its
+            # buffer down to nothing on purpose -- that is the end of the file, not starvation.
+            ev.stream_occupancy.append((m.group(1).lower().zfill(8), int(m.group(2)), int(m.group(3)), "ended" in m.group("flags")))
             continue
         m = _RE_PCM_UNDER.search(line)
         if m:
@@ -242,8 +285,8 @@ def _starvation(ev: Events, f0: int, f1: int, slack: int) -> Optional[str]:
     for handle, f, silent in ev.stream_underrun:
         if f0 - slack <= f <= f1 + slack:
             return "stream %s UNDERRUN at frame %d (%d silent)" % (handle, f, silent)
-    for handle, f, ahead in ev.stream_occupancy:
-        if f0 - slack <= f <= f1 + slack and ahead < MIXER_RATE // 20:
+    for handle, f, ahead, ended in ev.stream_occupancy:
+        if not ended and f0 - slack <= f <= f1 + slack and ahead < MIXER_RATE // 20:
             return "stream %s had %d frames ahead at frame %d" % (handle, ahead, f)
     for f, blocks, _ in ev.pcm_occupancy:
         if f0 - slack <= f <= f1 + slack and blocks == 0:
@@ -266,35 +309,37 @@ def _command(ev: Events, f0: int, f1: int, slack: int, live_handles: List[str]) 
 
 
 def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s: float, ev: Events,
-             window_s: float = DEFAULT_WINDOW_S, match_s: float = 0.25) -> List[Row]:
+             window_s: float = DEFAULT_WINDOW_S, match_s: float = 0.25, offsets: Optional[List[float]] = None) -> List[Row]:
     """One row per dip. An endpoint dip with no dump dip within `match_s` at the aligned time is DEVICE; a dip in
     the dump is STARVATION, COMMAND or UNEXPLAINED by the log within `window_s`. Dump dips with no endpoint
-    counterpart are listed too (label suffixed "(dump only)")."""
+    counterpart are listed too (label suffixed "(dump only)"). `offsets`, one per endpoint dip (local_offsets),
+    replaces the single `offset_s` for that dip's mapping."""
     slack = int(window_s * MIXER_RATE)
     rows: List[Row] = []
     used = set()
+    per_dip = offsets if offsets is not None and len(offsets) == len(endpoint_dips) else [offset_s] * len(endpoint_dips)
 
-    def explain(d: Dip, t_dump: float, suffix: str = "") -> Row:
+    def explain(d: Dip, t_dump: float, off: float, suffix: str = "") -> Row:
         f0 = int(t_dump * MIXER_RATE)
         f1 = int((t_dump + d.dur_s) * MIXER_RATE)
         routes = _routes_live(ev, f0, slack)
         live = [h for h, s in ev.stream_start.items() if s - slack <= f0 <= ev.stream_done.get(h, 1 << 62) + slack]
         why = _starvation(ev, f0, f1, slack)
         if why:
-            return Row(t_dump + offset_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "STARVATION" + suffix, why)
+            return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "STARVATION" + suffix, why)
         why = _command(ev, f0, f1, slack, live)
         if why:
-            return Row(t_dump + offset_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "COMMAND" + suffix, why)
-        return Row(t_dump + offset_s, d.dur_s, d.depth_db, "+".join(routes) or "none", "UNEXPLAINED" + suffix, "nothing in the log within %.0f ms" % (window_s * 1000))
+            return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "COMMAND" + suffix, why)
+        return Row(t_dump + off, d.dur_s, d.depth_db, "+".join(routes) or "none", "UNEXPLAINED" + suffix, "nothing in the log within %.0f ms" % (window_s * 1000))
 
     if dump_dips is None:
         # No dump: every dip is read against the log at its aligned time (no DEVICE verdict is possible).
-        for d in endpoint_dips:
-            rows.append(explain(d, d.start_s - offset_s))
+        for d, off in zip(endpoint_dips, per_dip):
+            rows.append(explain(d, d.start_s - off, off))
         rows.sort(key=lambda r: r.start_s)
         return rows
-    for d in endpoint_dips:
-        t_dump = d.start_s - offset_s
+    for d, off in zip(endpoint_dips, per_dip):
+        t_dump = d.start_s - off
         match = None
         for k, dd in enumerate(dump_dips):
             if k not in used and abs(dd.start_s - t_dump) <= match_s:
@@ -303,13 +348,13 @@ def classify(endpoint_dips: List[Dip], dump_dips: Optional[List[Dip]], offset_s:
         if match is None:
             f0 = int(t_dump * MIXER_RATE)
             rows.append(Row(d.start_s, d.dur_s, d.depth_db, "+".join(_routes_live(ev, f0, slack)) or "none", "DEVICE",
-                            "in the endpoint, not in the dump at %.2f s" % t_dump))
+                            "in the endpoint, not in the dump at %.2f s (offset %.2f s)" % (t_dump, off)))
         else:
             used.add(match[0])
-            rows.append(explain(match[1], match[1].start_s))
+            rows.append(explain(match[1], match[1].start_s, off))
     for k, dd in enumerate(dump_dips):
         if k not in used:
-            rows.append(explain(dd, dd.start_s, " (dump only)"))
+            rows.append(explain(dd, dd.start_s, offset_s, " (dump only)"))
     rows.sort(key=lambda r: r.start_s)
     return rows
 
@@ -360,7 +405,8 @@ def main(argv=None) -> int:
     e1 = args.end if args.end else len(ep) / ep_rate
     seg = ep[int(e0 * ep_rate): int(e1 * ep_rate)]
     ep_dips = find_dips(seg, ep_rate, hop_s=args.hop, drop_db=args.drop_db, t0_s=e0)
-    rows = classify(ep_dips, dump_dips, offset, ev)
+    offsets = local_offsets(ep, ep_rate, dump, dump_rate, ep_dips, offset) if args.dump else None
+    rows = classify(ep_dips, dump_dips, offset, ev, offsets=offsets)
     print(report(rows, offset if args.dump else None, corr))
     return 0
 

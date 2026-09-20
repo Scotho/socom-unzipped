@@ -71,6 +71,24 @@ class DipDetector(unittest.TestCase):
         self.assertAlmostEqual(dips[0].start_s, 103.0, delta=0.06)
 
 
+class DumpReading(unittest.TestCase):
+    def test_a_dump_killed_before_its_header_was_patched_is_read_by_length(self):
+        rate = 48000
+        x = tone(2.0, rate)
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "mix_dump.wav")
+            write_wav(path, x, rate)
+            with open(path, "r+b") as f:        # the mixer's unpatched header: RIFF size 36, data size 0
+                f.seek(4)
+                f.write(struct.pack("<I", 36))
+                f.seek(40)
+                f.write(struct.pack("<I", 0))
+            mono, r = ad.read_mono(path)
+        self.assertEqual(r, rate)
+        self.assertEqual(len(mono), len(x))
+        self.assertGreater(float(np.max(np.abs(mono))), 0.09)
+
+
 class Alignment(unittest.TestCase):
     def test_the_offset_between_the_endpoint_and_the_dump_is_recovered(self):
         rate_dump, rate_ep = 48000, 44100
@@ -84,11 +102,28 @@ class Alignment(unittest.TestCase):
         self.assertAlmostEqual(offset, 1.23, delta=0.02)
         self.assertGreater(corr, 0.8)
 
+    def test_local_offsets_follow_a_recorder_that_lost_time(self):
+        # The dump: 40 s with a hole every 4 s. The endpoint: the same, 1.0 s late, but between 18 and 19 s of dump
+        # time the recorder captured nothing (a starved device delivers no packets), so every later event lands a
+        # second earlier: the offset is 1.0 s before the loss and 0.0 s after it.
+        rate = 48000
+        dump = tone(40.0, rate)
+        for k in range(1, 10):
+            cut(dump, rate, 4.0 * k, 0.2, 0.0)
+        ep = np.concatenate([np.zeros(int(1.0 * rate)), dump[: int(18.0 * rate)], dump[int(19.0 * rate):]])
+        dips = [ad.Dip(4.0 * k + (1.0 if k < 5 else 0.0), 0.2, -20.0, -60.0) for k in (2, 3, 6, 8)]
+        offs = ad.local_offsets(ep, rate, dump, rate, dips, 1.0, span_s=6.0, search_s=2.0)
+        self.assertAlmostEqual(offs[0], 1.0, delta=0.03)
+        self.assertAlmostEqual(offs[1], 1.0, delta=0.03)
+        self.assertAlmostEqual(offs[2], 0.0, delta=0.03)
+        self.assertAlmostEqual(offs[3], 0.0, delta=0.03)
+
 
 LOG = """\
 [ps2xIOP] 989snd: snd_PlayVAGStreamByLoc (fno 0x0000002c) [0x001159a2, 0x00000000, 0x04000000, 0xffff0000, 0x00000001, 0x00000000, 0x00000000, 0x00000000] -> 0x040002a0
 [audio] 989snd stream 040002a0 start frame=96000 detail=0
 [audio] 989snd stream 040002a0 occupancy frame=100800 ahead=21000 chunks=3
+[audio] 989snd stream 040002a0 occupancy frame=1195200 ahead=600 chunks=0 ended
 [audio] 989snd stream 040002a0 UNDERRUN frame=240000 silent=2400
 [audio] 989snd pcm occupancy frame=480000 ahead=12 blocks=24 pos=0 written=24576 underruns=0
 [audio] 989snd pcm UNDERRUN frame=485000 silent=7200
@@ -108,7 +143,16 @@ class Classification(unittest.TestCase):
         self.assertEqual(ev.stream_done["040002a0"], 1200000)
         self.assertEqual(ev.stream_group["040002a0"], 1)
         self.assertEqual(ev.stream_underrun, [("040002a0", 240000, 2400)])
-        self.assertEqual(ev.stream_occupancy, [("040002a0", 100800, 21000)])
+        self.assertEqual(ev.stream_occupancy, [("040002a0", 100800, 21000, False), ("040002a0", 1195200, 600, True)])
+
+    def test_a_stream_running_out_at_its_end_is_not_starvation(self):
+        # 24.9 s = frame 1195200: the producer has read the last chunk ("ended"), 600 frames left, then done at 25 s.
+        rows = ad.classify([ad.Dip(24.9, 0.2, -20.0, -40.0)], None, 0.0, self.ev)
+        self.assertEqual(rows[0].label, "COMMAND")
+        self.assertIn("done", rows[0].reason)
+
+    def test_the_pcm_and_command_lines_are_read(self):
+        ev = self.ev
         self.assertEqual(ev.pcm_underrun, [(485000, 7200)])
         self.assertEqual(ev.pcm_occupancy, [(480000, 12, 24576)])
         self.assertEqual([(f, fr) for f, fr, _ in ev.commands], [(0x22, 720000), (0x9, 960000)])
