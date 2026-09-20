@@ -59,6 +59,16 @@ glb.useExtension('KHR_materials_unlit');                    // the map's colour 
 const diagnostics: string[] = [];
 
 /** One accessor over its own tightly packed buffer view. */
+/**
+ * `MeshData.colors` on glTF's terms: 1.0 -> 255, and everything the PS2 wrote above full flattened to
+ * white. COLOR_0 is a 0..1 multiplier with no room above it, so the overbright cannot travel.
+ */
+function clampColors(colors: Float32Array): Uint8Array {
+  const out = new Uint8Array(colors.length);
+  for (let i = 0; i < colors.length; i++) out[i] = Math.round(Math.min(Math.max(colors[i]!, 0), 1) * 255);
+  return out;
+}
+
 function accessor(data: ArrayBufferView, componentType: number, type: AccessorType, count: number,
                   opts: { normalized?: boolean; min?: number[]; max?: number[]; target?: number } = {}): number {
   const bytes = new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
@@ -129,10 +139,11 @@ for (const [textureName, group] of [...groups].sort((a, b) => String(a[0]).local
   const attributes: Json = {
     POSITION: accessor(mesh.positions, FLOAT, 'VEC3', count, { target: ARRAY_BUFFER, min: [...box.min], max: [...box.max] }),
     TEXCOORD_0: accessor(mesh.uvs, FLOAT, 'VEC2', count, { target: ARRAY_BUFFER }),
-    // `MeshData.colors` is plain 0..255 RGBA -- `mesh` has already undone the PS2's 128-is-full on every
-    // lane (SEMANTICS §4) -- so a normalised UNSIGNED_BYTE accessor is the whole of COLOR_0, and the glb
-    // is lit exactly as the viewer is.
-    COLOR_0: accessor(mesh.colors, UNSIGNED_BYTE, 'VEC4', count, { target: ARRAY_BUFFER, normalized: true }),
+    // `MeshData.colors` is float RGBA with 1.0 as the PS2's full, and RGB runs past 1 where the artists
+    // wrote overbright (SEMANTICS §4). glTF's COLOR_0 has no overbright -- it is a plain multiplier -- so
+    // the lane is clamped here, on the way out, and a .glb is that much flatter than the viewer in the
+    // bright spots. It is the format's limit, not a decode loss.
+    COLOR_0: accessor(clampColors(mesh.colors), UNSIGNED_BYTE, 'VEC4', count, { target: ARRAY_BUFFER, normalized: true }),
   };
   // SEMANTICS §11.5: 16 of Frostfire's vertex normals are exactly zero, which glTF forbids
   // (ACCESSOR_VECTOR3_NON_UNIT). Rather than invent a direction, the primitive that holds one ships without

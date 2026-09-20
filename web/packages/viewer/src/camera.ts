@@ -27,6 +27,14 @@ const SPRINT_FOV = 1.14;
 /** Exponential approach rate for the FOV kick, per second. */
 const FOV_RATE = 9;
 
+/**
+ * Sprint is a double-tap of forward, held -- Minecraft's own gesture, and the only safe one in a browser.
+ * Ctrl cannot be used: Ctrl+W closes the tab and Chrome does not let a page prevent it, so binding a boost
+ * to Ctrl next to a W that means "forward" hands the player a loaded gun. Ctrl+D and Ctrl+A are preventable
+ * and are prevented below, but Ctrl+W is not, so nothing is bound to Ctrl at all.
+ */
+const DOUBLE_TAP_MS = 300;
+
 /** Wheel speed control: one notch is this factor, clamped to these bounds. */
 const WHEEL_STEP = 1.15;
 const SPEED_MIN = 0.1;
@@ -35,6 +43,15 @@ const SPEED_MAX = 16;
 /** Frame-rate independent exponential approach: the value `a` moves toward `b` at rate `k` per second. */
 const approach = (a: number, b: number, k: number, dt: number): number =>
   b + (a - b) * Math.exp(-k * dt);
+
+/**
+ * Every code the camera consumes. A keydown on one of these is prevented, so the browser chords that
+ * share them -- Ctrl+D bookmark, Ctrl+A select-all, Ctrl+S save, Space page-scroll -- never fire while
+ * the viewer has the keyboard.
+ */
+const OWNED = new Set([
+  'keyw', 'keya', 'keys', 'keyd', 'keyq', 'keye', 'space', 'shiftleft', 'shiftright',
+]);
 
 export interface FlyCameraOptions {
   /** Called when the wheel changes the speed multiplier, so the page can show it. */
@@ -53,7 +70,9 @@ export interface FlyCameraOptions {
  * - **W/S** fly along the look direction, pitch included, so looking down and holding W descends.
  *   **A/D** strafe level with the horizon whatever the pitch: a strafe that dipped with the nose makes
  *   it impossible to sidle along a wall while looking at it.
- * - **Space** up, **Shift** down, both in world space. **Ctrl** boosts and widens the view.
+ * - **Space** up, **Shift** down, both in world space. **Double-tap W and hold** to boost, which widens
+ *   the view to match -- Minecraft's own sprint gesture, and the only one that is safe here: Ctrl+W
+ *   closes the tab and no page can prevent it, so nothing is bound to Ctrl.
  *   **Q/E** stay bound to down/up as they were, for anyone with the old keys in their fingers.
  * - **Wheel** trims the speed between a tenth and sixteen times, because a map is 100 m across but a
  *   prop is 30 cm.
@@ -82,6 +101,9 @@ export class FlyCamera {
   /** The FOV actually applied, eased toward its target so the sprint kick is not a step. */
   private fov = FOV;
   private locked = false;
+  /** When forward was last tapped, and whether the tap that is still held was the second one. */
+  private lastForwardTap = 0;
+  private sprinting_ = false;
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -94,6 +116,8 @@ export class FlyCamera {
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onPointerUp);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    // A right-click is a look-around on a fly camera, not a request for the browser's menu.
+    canvas.addEventListener('contextmenu', this.onContextMenu);
     globalThis.addEventListener('keydown', this.onKeyDown);
     globalThis.addEventListener('keyup', this.onKeyUp);
     globalThis.addEventListener('blur', this.onBlur);
@@ -211,9 +235,9 @@ export class FlyCamera {
     }
   }
 
-  /** Ctrl boosts. Shift is taken: in a build camera it goes down. */
+  /** Double-tapped forward, still held. Released, the sprint ends. */
   private sprinting(): boolean {
-    return this.keys.has('controlleft') || this.keys.has('controlright');
+    return this.sprinting_ && this.keys.has('keyw');
   }
 
   private down(): boolean {
@@ -236,6 +260,13 @@ export class FlyCamera {
    * the drag path rather than breaking the viewer.
    */
   private readonly onPointerDown = (e: PointerEvent): void => {
+    // Without this a drag across the canvas selects the panel's text and the page flashes blue.
+    e.preventDefault();
+    // A click on a checkbox leaves it focused, and `onKeyDown` ignores anything aimed at an input --
+    // so without this, touching any panel control killed WASD until the page was reloaded. The canvas
+    // has no tabindex and never takes focus by itself, so the focus is dropped by hand.
+    const focused = globalThis.document?.activeElement;
+    if (focused instanceof HTMLElement && focused !== this.canvas) focused.blur();
     if (this.locked) return;
     if (e.pointerType === 'mouse' && typeof this.canvas.requestPointerLock === 'function') {
       try {
@@ -279,6 +310,10 @@ export class FlyCamera {
     this.options.onLockChange?.(this.locked);
   };
 
+  private readonly onContextMenu = (e: Event): void => {
+    e.preventDefault();
+  };
+
   /** The wheel trims the fly speed, the way every build camera does. */
   private readonly onWheel = (e: WheelEvent): void => {
     e.preventDefault();
@@ -291,14 +326,20 @@ export class FlyCamera {
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.target instanceof HTMLElement && (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT')) return;
     const code = e.code.toLowerCase();
-    // Space would scroll the page and Ctrl-W-ish chords would reach the browser; while the viewer has
-    // the keyboard the movement keys are ours.
-    if (code === 'space') e.preventDefault();
+    if (OWNED.has(code)) e.preventDefault();
+
+    if (code === 'keyw' && !this.keys.has('keyw')) {          // the press, not the auto-repeat
+      const now = performance.now();
+      this.sprinting_ = now - this.lastForwardTap < DOUBLE_TAP_MS;
+      this.lastForwardTap = now;
+    }
     this.keys.add(code);
   };
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
-    this.keys.delete(e.code.toLowerCase());
+    const code = e.code.toLowerCase();
+    if (code === 'keyw') this.sprinting_ = false;
+    this.keys.delete(code);
   };
 
   /**
@@ -308,5 +349,6 @@ export class FlyCamera {
   private readonly onBlur = (): void => {
     this.keys.clear();
     this.velocity.set(0, 0, 0);
+    this.sprinting_ = false;
   };
 }

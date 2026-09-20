@@ -519,10 +519,11 @@ Everything above is Task 11's research document, copied verbatim. This section r
 - **One `MeshData` per `MSCNT` packet** (ruling (b)), carrying `VuPacket.textureName`. The `MSCAL 0` packets
   (§9) hold no geometry and produce nothing. `mergeMeshes` keeps a texture name only when every part names
   the same one, and `bounds` of an empty mesh is the empty extent, `min = +Infinity`, `max = -Infinity`.
-- **`TOP+0`, `TOP+1` and `TOP+2.y` are not read.** The two GIFtag templates only tell a VU1 which family is
-  drawing (§3, §9) and `TOP+2.y` is read by no handler (§11.7). The decoder still requires all four header
-  quadwords to have been unpacked, because a packet missing them is not map geometry and should say so
-  rather than decode to nonsense.
+- **`TOP+1` and `TOP+2.y` are not read, and `TOP+0` only for its `PRIM`.** The two GIFtag templates only
+  tell a VU1 which family is drawing (§3, §9) and `TOP+2.y` is read by no handler (§11.7). The decoder
+  still requires all four header quadwords to have been unpacked, because a packet missing them is not map
+  geometry and should say so rather than decode to nonsense. `TOP+0.PRIM`'s primitive type *is* read, and
+  only to tell a mesh packet from the line packet of §12.
 
 ### Where the data disagreed with the document
 
@@ -539,3 +540,61 @@ Both are counting slips in the `[data]` lines, not decode errors. The rules them
   is still open (§11.2), a viewer that places every chunk with the modal translation will misplace at most
   those few chunks. Both spawn probes are unaffected, and the numbers §8 and §10 quote still reproduce
   exactly.
+
+
+---
+
+## 12. The `LINE_STRIP` packet (chain relocation type 1)
+
+Added 2026-09-20 (M6). Everything above describes the **mesh** packet, the one a chain tag of relocation
+type 2 carries (36 §3). Desert Glory and Crossroads also carry a second packet shape, on tags of
+relocation type **1** — 31 tags in `MP6_MDL.ZED`, 163 in `MP72_MDL.ZED`, none anywhere in Frostfire,
+none in any `worldmodel`. It is a GS line strip, not a mesh, and the mesh decoder read its point 0 as a
+counts quadword and reported billions of vertices.
+
+**Relocation type 1 is not a different DMA layout.** `CVisual::SetBuffer` (`vis_main.cpp:325-370`) patches
+types 1, 2, 4 and 7 identically — `chainPkt.u32[1] = buffer + pktOffset` — and a type-1 tag is written
+exactly like a type-2 one: `id = ref`, tag words 2-3 `NOP NOP`, and a payload that is a complete VIF1
+sub-packet ending in `MSCNT`. The DMA walk needs no special case; what differs is only what the packet
+that arrives means. The relocation byte is the exporter's label for that, and the packet says the same
+thing itself, in its GIFtag.
+
+**How to tell them apart.** `TOP+0.PRIM`'s primitive type. **[data]** across all three shipped maps: every
+one of the 194 packets a type-1 tag carries has `PRIM = 122` in *both* templates — prim type **2**
+(`LINE_STRIP`), `IIP|TME|FGE|ABE`, `FST = 0`, `NREG = 3`, `REGS = 0x412` — and no packet outside those 194
+has prim type 2. Mesh packets keep §3's `TRIANGLE_FAN`/`TRIANGLE` pair.
+
+**The layout.**
+
+| quadword | lanes | **[data]**, 194 packets / 1,071 points |
+|---|---|---|
+| `TOP+0` | GIFtag template, the per-primitive one | `NLOOP = 0` in all 194 |
+| `TOP+1` | GIFtag template, the whole-object one | `NLOOP` = the point count in all 194; `EOP = 1` on both |
+| `TOP+2+3k` | `V4-32` float `(x, y, z, normal.x)` | positions are final, no `ITOF`, no bias |
+| `TOP+3+3k` | `V4-32` float `(u, v, normal.y, normal.z)` | `u` −1.8…12.4, `v` −4.5…4.3: the texture repeats along the strip |
+| `TOP+4+3k` | `V4-8 USN` `(r, g, b, a)` | the same two scales §4 gives a mesh vertex |
+
+Unpacked by three codes, `STCYCL 3,1; UNPACK V4-8 USN num=P addr=4` (from the type-4 tag before it),
+then inside the type-1 payload `STCYCL 1,1; UNPACK V4-32 num=2 addr=0` and
+`STCYCL 3,2; UNPACK V4-32 num=2P addr=2`.
+
+So it is §4's vertex triple lane for lane — position, UV, the split `(a.w, b.z, b.w)` normal, RGBA — with
+three differences: the numbers arrive as 32-bit floats, so none of `ITOF4`, `ITOF12` or `ITOF15` applies
+and nothing is divided; there is no `TOP+3` bias to add, there being no `TOP+3`; and there is **no index
+list and no face normal**, the points being drawn in stored order, segment `k` from point `k` to `k+1`.
+The §4 normal invariant survives: over all 1,071 points the normal is unit length (within 1.4e-8) or
+exactly zero.
+
+Point counts run 2…9. What they draw: Desert Glory's power lines (`mp6_pole_lines`,
+`mp6_pole_line2garage`, `mp6_pole_line2building`), lamp brackets (`mp6_light_neck`, `mp6_light_hangout`)
+and the `cuffs_left`/`cuffs_right` chains; Crossroads' tent guy ropes (`tent_beige`, `tent_gray`) and
+light filaments (`light_bright`, `light_off`, `light_dim`). Every chunk that failed before this section
+was written holds **only** line strips — not one triangle is recovered by reading them, and not one was
+ever lost.
+
+**What the decoder does with them.** `interpretLinePacket` returns a `LineStrip`, not a `MeshData`:
+positions, UVs, colours, normals and the texture, with the topology left implicit in the point order.
+It is deliberately not widened into geometry here. The GS draws these one pixel wide however far away
+they are, so turning a strip into triangles means choosing a width and a facing — a renderer's decision,
+made with a camera in hand, not a decode. `interpretChain` therefore returns no mesh for a line packet;
+`interpretChainLines` and `interpretChainParts` are how a consumer asks for them.

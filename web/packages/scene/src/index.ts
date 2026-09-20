@@ -1,5 +1,6 @@
 export * from './sceneGraph';
 export * from './worldRoot';
+export * from './cameraParams';
 export * from './modelLibrary';
 export * from './buildScene';
 export * from './collision';

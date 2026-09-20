@@ -77,10 +77,17 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
 
 ## Known gaps
 
-- **MP6 and MP72 prop chains.** Eleven model-nodes across Desert Glory and Crossroads fail in the `mesh`
-  packet decoder: their chains carry relocation-type-1 tags (36 §3) the walker enters at the wrong offset,
-  so the header it then reads is nonsense. The maps draw without those props and say so in the diagnostics
-  panel. First work item of M6.
+- **Lighting is not the game's lighting.** The VU's model is emulated (`viewer/src/lighting.ts`:
+  `lit = light[0]*n.x + light[1]*n.y + light[2]*n.z + light[3]`, then `material * lit`), but the values it
+  needs — the normal/light matrix and the colour block — are uploaded by the EE at VU1 entry 0 and are not
+  on the disc. The matrix is taken as identity and the four colours are sliders. Extracting the EE's own
+  would finish it.
+- **Five textures are missing from two archives.** `null_xmas.bmp` (MP6) and `afghan2r_rug1/2/3.tif`,
+  `afghan2r_rug_trim.tif` (MP72) are cited by chunks but absent from the `_TXR.ZED` they name; those draws
+  go untextured. All that is left of Desert Glory's and Crossroads' diagnostics.
+- **Altitude fog is not applied.** Six of the 22 maps enable it (`cameras/camera` flags bit 31). No VU1
+  dump exists from one, so the band's encoding is the only inferred part of the fog model and is left out
+  rather than guessed.
 - **Spawns are not on the disc.** `AIMAPS.MPS` is the file that would hold them and no reader for it exists;
   `scene/spawns.ts` carries the measured table instead, so a map that was never measured opens on its own
   extent rather than at a spawn.

@@ -1,7 +1,7 @@
 import type { Spawns } from '@s2u/scene';
 import type { Pose } from './camera';
 import type { Backend } from './renderer';
-import type { ToggleName } from './ui';
+import type { SliderName, ToggleName } from './ui';
 
 /**
  * The debug hook `main.ts` hangs on `window` and Playwright drives: an exact camera pose, the numbers the
@@ -19,6 +19,8 @@ export interface ViewerHook {
     collisionPolys: number; untexturedDraws: number; spawns: Spawns | null;
   };
   toggles(): Record<ToggleName, boolean>;
+  chromeHidden(): boolean;
+  sliders(): Record<SliderName, number>;
 }
 
 declare global {

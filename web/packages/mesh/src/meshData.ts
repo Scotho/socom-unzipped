@@ -12,12 +12,17 @@ export interface MeshData {
   /** uv per vertex, normalised (SEMANTICS §7), unflipped. */
   uvs: Float32Array;
   /**
-   * rgba per vertex, 0..255 on every lane. The PS2 writes colour with 128, not 255, as full (SEMANTICS §4):
-   * alpha 128 is opaque and rgb 128 is full brightness, so `interpret.ts` rescales alpha and doubles the
-   * three colour bytes (clamped — a few are written brighter than full) once, here, rather than in each
-   * consumer. A renderer uploads these straight as a normalised byte attribute.
+   * rgba per vertex as floats: **RGB on a full of 255, alpha on a full of 128** (SEMANTICS §4 — the GS
+   * reads `RGBAQ` with the two lanes on different scales). RGB is not clamped, because the GS clamps the
+   * *product* of texel and vertex rather than the vertex, so a colour above full would overbrighten.
+   *
+   * **This is a material colour, not a lit one.** The draw path multiplies it by a computed light colour
+   * on the VU before the GS sees it (`staging+1 = record2 * lit`, NAT:1615). Measured across Frostfire,
+   * Desert Glory and Crossroads the stored byte averages 37 of 255 (0.15 of full) and never exceeds
+   * 128 (0.50), so a consumer that renders this as if it were final light gets a world a sixth as
+   * bright as it should be. Emulating `lit` is the fix; the viewer does, in `viewer/src/lighting.ts`.
    */
-  colors: Uint8Array;
+  colors: Float32Array;
   /** xyz per vertex, unit length or exactly zero (§4); null when a merge lost them. */
   normals: Float32Array | null;
   /** xyz per triangle, the stored face normal (§5 entry [1]); null when a merge lost them. */
@@ -55,7 +60,7 @@ export function mergeMeshes(parts: MeshData[]): MeshData {
 
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
-  const colors = new Uint8Array(vertexCount * 4);
+  const colors = new Float32Array(vertexCount * 4);
   const normals = keepNormals ? new Float32Array(vertexCount * 3) : null;
   const faceNormals = keepFaceNormals ? new Float32Array(triangleCount * 3) : null;
   const indices = new Uint32Array(triangleCount * 3);

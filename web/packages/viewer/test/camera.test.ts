@@ -127,22 +127,67 @@ describe('FlyCamera', () => {
     expect(fly.pose().y).toBeLessThan(0);
   });
 
-  it('ctrl boosts, and boosting alone does not move the camera', () => {
+  it('a double-tapped W boosts, and a single held W does not', () => {
     press('KeyW');
     run(fly, 2, 120);
     const plain = -fly.pose().z;
+    release('KeyW');
 
+    // Tap, release, tap again inside the window and hold: Minecraft's sprint gesture.
     fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
-    press('ControlLeft');
+    press('KeyW');
+    release('KeyW');
+    press('KeyW');
     run(fly, 2, 120);
     const boosted = -fly.pose().z;
     release('KeyW');
     expect(boosted).toBeGreaterThan(plain * 2);
+  });
 
-    fly.setPose({ x: 0, y: 0, z: 0 });
-    run(fly, 1, 60);                                   // ctrl still held, nothing else
+  it('releasing forward ends the sprint: the next single press is not still boosting', () => {
+    press('KeyW');
+    release('KeyW');
+    press('KeyW');
+    run(fly, 1, 60);
+    release('KeyW');
+
+    // Long enough after that the next press cannot count as the second tap.
+    fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+    const gap = performance.now() + 400;
+    while (performance.now() < gap) { /* let the double-tap window lapse */ }
+    press('KeyW');
+    run(fly, 2, 120);
+    const plain = -fly.pose().z;
+    release('KeyW');
+
+    fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
+    press('KeyW');
+    release('KeyW');
+    press('KeyW');
+    run(fly, 2, 120);
+    release('KeyW');
+    expect(-fly.pose().z).toBeGreaterThan(plain * 2);
+  });
+
+  it('nothing is bound to ctrl: Ctrl+W would close the tab and no page can stop it', () => {
+    press('ControlLeft');
+    run(fly, 1, 60);
     release('ControlLeft');
     expect(fly.pose()).toMatchObject({ x: 0, y: 0, z: 0 });
+  });
+
+  it('prevents the browser chord on every key it consumes', () => {
+    for (const code of ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'Space', 'ShiftLeft']) {
+      const e = new KeyboardEvent('keydown', { code, cancelable: true });
+      globalThis.dispatchEvent(e);
+      expect(e.defaultPrevented, `${code} must not reach the browser`).toBe(true);
+      release(code);
+    }
+    // A key it does not consume is left alone.
+    const other = new KeyboardEvent('keydown', { code: 'KeyP', cancelable: true });
+    globalThis.dispatchEvent(other);
+    expect(other.defaultPrevented).toBe(false);
+    release('KeyP');
   });
 
   it('a diagonal is no faster than a straight line', () => {
@@ -216,6 +261,26 @@ describe('FlyCamera', () => {
     run(fly, 2, 120);
     release('KeyW');
     expect(-fly.pose().z).toBeGreaterThan(normal);
+  });
+
+  it('a click on the canvas takes focus back off a panel control', () => {
+    // The regression: click a checkbox, and every later keydown is aimed at the checkbox, which
+    // `onKeyDown` ignores -- so the camera went dead until the page was reloaded.
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    document.body.append(box);
+    box.focus();
+    expect(document.activeElement).toBe(box);
+
+    const c = fly as unknown as { canvas: HTMLCanvasElement };
+    c.canvas.dispatchEvent(new PointerEvent('pointerdown', { pointerId: 1, pointerType: 'mouse', bubbles: true }));
+    expect(document.activeElement).not.toBe(box);
+
+    press('KeyW');
+    run(fly, 1, 60);
+    release('KeyW');
+    expect(-fly.pose().z).toBeGreaterThan(0);
+    box.remove();
   });
 
   it('lookFrom faces the target', () => {

@@ -13,6 +13,11 @@ import type { MeshData } from './meshData';
  * - the primitive is an **indexed triangle list**, three byte offsets per tail entry, `index = byte / 3`;
  * - UV = `int16 / 4096`, normalised;
  * - the per-vertex normal is `(a.w, b.z, b.w) / 32768`, the per-face normal the tail's `V3-16` quadword.
+ *
+ * That is the **triangle** packet, the one a relocation-type 2 chain tag carries (36 §3). A chain tag of
+ * relocation type **1** carries a second, much smaller packet shape — a GS `LINE_STRIP` — which is not a
+ * mesh at all and which `interpretLinePacket` below decodes instead. See `lineStripOf` for the layout and
+ * the measurement behind it.
  */
 
 /** VU data memory is 1024 quadwords of four lanes; `VuPacket.mem` is that memory flattened. */
@@ -41,12 +46,14 @@ const NORMAL_SCALE = 32768;
 /** SEMANTICS §5 entry [0]: a vertex is named by its quadword offset from `TOP+4`, stride 3. */
 const INDEX_STRIDE = 3;
 /**
- * SEMANTICS §4 quadword c: the PS2 writes vertex colour with 128, not 255, as full — alpha 128 is opaque and
- * rgb 128 is full brightness. A browser reads 255, so both are rescaled here, once, and `MeshData.colors` is
- * plain 0..255 RGBA for every consumer (the viewer's attribute, the glTF exporter's `COLOR_0`).
+ * SEMANTICS §4 quadword c and the note under it: the GS reads `RGBAQ` with **255 as full on RGB** and
+ * **128 as opaque on alpha** — the two lanes do not share a scale. So RGB is c/255 and alpha is
+ * min(c/128, 1), done here once rather than in each consumer. RGB is not clamped: the GS clamps the
+ * *product* of texel and vertex, so a colour above full would legitimately overbrighten (none of the
+ * three shipped maps contains one — measured max is exactly 128/255 — but the decode does not assume it).
  */
-const PS2_FULL = 128;
-const BYTE_MAX = 255;
+const RGB_FULL = 255;
+const ALPHA_OPAQUE = 128;
 
 /** A packet whose lanes do not hold what SEMANTICS says a map geometry packet holds. */
 export class MeshError extends Error {
@@ -54,6 +61,124 @@ export class MeshError extends Error {
     super(message);
     this.name = 'MeshError';
   }
+}
+
+/**
+ * The GS `PRIM` field of a GIFtag template quadword: bits 47-57 of the tag, i.e. bits 15-25 of lane `y`
+ * (SEMANTICS §2 `TOP+0`). Its low three bits are the primitive type.
+ */
+const PRIM_SHIFT = 15, PRIM_MASK = 0x7ff, PRIM_TYPE_MASK = 7;
+/**
+ * The GS primitive types map geometry names: prim type 5 `TRIANGLE_FAN` and 3 `TRIANGLE` in a mesh
+ * packet's two templates (SEMANTICS §2), and 2 `LINE_STRIP` in both of a line packet's.
+ */
+const PRIM_LINE_STRIP = 2;
+/** The GIFtag low word: `NLOOP` is bits 0-14 (SEMANTICS §2 `TOP+0.x`). */
+const NLOOP_MASK = 0x7fff;
+
+/**
+ * A `LINE_STRIP` packet's two header quadwords: the per-primitive template, then the whole-object one
+ * whose `NLOOP` states the point count. There is no counts quadword and no position bias.
+ */
+const LINE_HEADER_QUADWORDS = 2;
+/** A `LINE_STRIP` packet's points start at `TOP+2`, three quadwords a point, same stride as a vertex. */
+const LINE_VERTEX_BASE = 2;
+/** A strip of one point draws nothing; the shortest one on disc is two points, one segment. */
+const MIN_STRIP_POINTS = 2;
+
+/**
+ * One `LINE_STRIP` a chain draws: a polyline of `positions.length / 3` points, segment `k` running from
+ * point `k` to point `k + 1`. This is **not** a `MeshData`: the GS draws it as one-pixel-wide lines, and
+ * widening it into geometry is a renderer's choice (a width and a facing), not a decode.
+ *
+ * Lanes carry exactly what SEMANTICS §4 names for a triangle vertex, only already in floats rather than
+ * fixed point, and with no position bias to add — see `lineStripOf`.
+ */
+export interface LineStrip {
+  /** xyz per point, model space, in strip order. */
+  positions: Float32Array;
+  /** uv per point; unlike a mesh's these run well outside 0..1, so the texture repeats along the strip. */
+  uvs: Float32Array;
+  /** rgba per point, on the same two scales `MeshData.colors` uses: RGB of 255, alpha of 128. */
+  colors: Float32Array;
+  /** xyz per point, unit length or exactly zero, as for a mesh vertex. */
+  normals: Float32Array;
+  /** The texture in force for the packet, as the chain's reloc-6 citation named it. */
+  textureName: string | null;
+}
+
+/** The primitive type of a packet's `TOP+0` GIFtag template, or null when it unpacked no template. */
+export function packetPrimitive(packet: VuPacket): number | null {
+  if (packet.written[0] !== 1) return null;
+  return ((packet.mem[0 * LANES + Y]! >>> PRIM_SHIFT) & PRIM_MASK) & PRIM_TYPE_MASK;
+}
+
+/**
+ * Whether this packet is a `LINE_STRIP` rather than a mesh. **[data]** over the three shipped maps: every
+ * one of the 194 packets a relocation-type-1 tag carries has `PRIM = 122` in *both* templates — prim type
+ * 2, `IIP|TME|FGE|ABE`, `NREG = 3`, `REGS = 0x412` — and no other packet in any map has prim type 2. The
+ * mesh packets keep the `TRIANGLE_FAN`/`TRIANGLE` pair SEMANTICS §2 records.
+ */
+export function isLineStripPacket(packet: VuPacket): boolean {
+  return packetPrimitive(packet) === PRIM_LINE_STRIP;
+}
+
+/**
+ * Turns one drawn `LINE_STRIP` packet into its polyline.
+ *
+ * **The layout**, measured over all 194 of them in Desert Glory and Crossroads (`TOP+n` are quadwords of
+ * the packet's VU memory, `k` the point index):
+ *
+ * | quadword | lanes |
+ * |---|---|
+ * | `TOP+0` | GIFtag template, `PRIM` prim-type 2, `NLOOP = 0` in all 194 |
+ * | `TOP+1` | GIFtag template, same `PRIM`, `NLOOP` = the point count in all 194, `EOP = 1` |
+ * | `TOP+2 + 3k` | `V4-32` float `(x, y, z, normal.x)` |
+ * | `TOP+3 + 3k` | `V4-32` float `(u, v, normal.y, normal.z)` |
+ * | `TOP+4 + 3k` | `V4-8 USN` `(r, g, b, a)` |
+ *
+ * So it is the triangle vertex of SEMANTICS §4 lane for lane — position, UV, the split `(a.w, b.z, b.w)`
+ * normal, RGBA — with three differences: the numbers arrive as 32-bit floats, so none of `ITOF4`,
+ * `ITOF12` or `ITOF15` applies and nothing is divided; there is no `TOP+3` position bias to add, the
+ * float position being final; and there is no index list, the points being drawn in the order stored.
+ * The normal reads unit length or exactly zero over all 1,071 points, the same invariant §4 states.
+ */
+export function interpretLinePacket(packet: VuPacket): LineStrip {
+  const { mem, f32, written } = packet;
+  const lanesOf = (qw: number, what: string): number => {
+    if (written[qw] !== 1) throw new MeshError(`${what} at TOP+${qw} was never unpacked, so this is not a drawn line packet`);
+    return qw * LANES;
+  };
+  for (let q = 0; q < LINE_HEADER_QUADWORDS; q++) lanesOf(q, 'the GIFtag template');
+  // The whole-object template's NLOOP is the point count; there is no counts quadword to read it from.
+  const count = mem[1 * LANES + X]! & NLOOP_MASK;
+  if (count < MIN_STRIP_POINTS) throw new MeshError(`the GIFtag claims ${count} points, too few to draw a line strip`);
+  const last = LINE_VERTEX_BASE + VERTEX_QUADWORDS * count;
+  if (last > VU_QUADWORDS) throw new MeshError(`the GIFtag claims ${count} points reaching TOP+${last}, past the ${VU_QUADWORDS} quadwords of VU data memory`);
+
+  const positions = new Float32Array(count * 3);
+  const uvs = new Float32Array(count * 2);
+  const colors = new Float32Array(count * 4);
+  const normals = new Float32Array(count * 3);
+  for (let k = 0; k < count; k++) {
+    const base = LINE_VERTEX_BASE + VERTEX_QUADWORDS * k;
+    const a = lanesOf(base, `point ${k}'s position quadword`);           // V4-32 float
+    const b = lanesOf(base + 1, `point ${k}'s UV quadword`);             // V4-32 float
+    const c = lanesOf(base + 2, `point ${k}'s colour quadword`);         // V4-8 USN, unsigned bytes
+    positions[k * 3 + X] = f32[a + X]!;
+    positions[k * 3 + Y] = f32[a + Y]!;
+    positions[k * 3 + Z] = f32[a + Z]!;
+    normals[k * 3 + X] = f32[a + W]!;
+    normals[k * 3 + Y] = f32[b + Z]!;
+    normals[k * 3 + Z] = f32[b + W]!;
+    uvs[k * 2 + X] = f32[b + X]!;
+    uvs[k * 2 + Y] = f32[b + Y]!;
+    colors[k * 4 + X] = mem[c + X]! / RGB_FULL;
+    colors[k * 4 + Y] = mem[c + Y]! / RGB_FULL;
+    colors[k * 4 + Z] = mem[c + Z]! / RGB_FULL;
+    colors[k * 4 + W] = Math.min(mem[c + W]! / ALPHA_OPAQUE, 1);
+  }
+  return { positions, uvs, colors, normals, textureName: packet.textureName };
 }
 
 /**
@@ -91,7 +216,7 @@ export function interpretPacket(packet: VuPacket): MeshData {
 
   const positions = new Float32Array(vertexCount * 3);
   const uvs = new Float32Array(vertexCount * 2);
-  const colors = new Uint8Array(vertexCount * 4);
+  const colors = new Float32Array(vertexCount * 4);
   const normals = new Float32Array(vertexCount * 3);
   for (let k = 0; k < vertexCount; k++) {
     const base = VERTEX_BASE + VERTEX_QUADWORDS * k;
@@ -106,11 +231,10 @@ export function interpretPacket(packet: VuPacket): MeshData {
     normals[k * 3 + Z] = mem[b + W]! / NORMAL_SCALE;
     uvs[k * 2 + X] = mem[b + X]! / UV_SCALE;
     uvs[k * 2 + Y] = mem[b + Y]! / UV_SCALE;
-    // Doubled and clamped: a few vertices are written brighter than full on purpose, and they stay at white.
-    colors[k * 4 + X] = Math.min(mem[c + X]! * 2, BYTE_MAX);
-    colors[k * 4 + Y] = Math.min(mem[c + Y]! * 2, BYTE_MAX);
-    colors[k * 4 + Z] = Math.min(mem[c + Z]! * 2, BYTE_MAX);
-    colors[k * 4 + W] = Math.round(Math.min(mem[c + W]! / PS2_FULL, 1) * BYTE_MAX);
+    colors[k * 4 + X] = mem[c + X]! / RGB_FULL;
+    colors[k * 4 + Y] = mem[c + Y]! / RGB_FULL;
+    colors[k * 4 + Z] = mem[c + Z]! / RGB_FULL;
+    colors[k * 4 + W] = Math.min(mem[c + W]! / ALPHA_OPAQUE, 1);
   }
 
   // SEMANTICS §6: one triangle per tail pair, in index order, CCW front-facing. Entry [0].w is the runtime
@@ -153,22 +277,41 @@ function isDegenerate(positions: Float32Array, i0: number, i1: number, i2: numbe
 }
 
 /**
- * Every mesh one chunk draws: one per `MSCNT` packet, each with the texture the chain cited for it. The
- * `MSCAL 0` packets carry the two parameter quadwords VU1 entry 0 reads (SEMANTICS §9) and no geometry, so
- * they contribute nothing.
+ * Everything one chunk draws, split by primitive: one entry per `MSCNT` packet, each with the texture the
+ * chain cited for it. The `MSCAL 0` packets carry the two parameter quadwords VU1 entry 0 reads
+ * (SEMANTICS §9) and no geometry, so they contribute nothing.
+ *
+ * A chunk may hold both kinds — Crossroads' `tent_beige` draws its canvas as meshes and its guy ropes as
+ * line strips — so which decode a packet gets is decided per packet, by the `PRIM` its own GIFtag
+ * template states, not by anything the chunk or the chain says.
  */
-export function interpretChain(chain: Chain): MeshData[] {
+export function interpretChainParts(chain: Chain): { meshes: MeshData[]; lines: LineStrip[] } {
   const meshes: MeshData[] = [];
+  const lines: LineStrip[] = [];
   const packets = unpackVif(chain);
   for (let i = 0; i < packets.length; i++) {
     const packet = packets[i]!;
     if (packet.kind !== 'mscnt') continue;
     try {
-      meshes.push(interpretPacket(packet));
+      if (isLineStripPacket(packet)) lines.push(interpretLinePacket(packet));
+      else meshes.push(interpretPacket(packet));
     } catch (e) {
       if (!(e instanceof MeshError)) throw e;
       throw new MeshError(`chunk ${chain.nodeName} packet ${i}: ${e.message}`);
     }
   }
-  return meshes;
+  return { meshes, lines };
+}
+
+/**
+ * Every mesh one chunk draws. A chunk's line strips are not meshes and are not returned here; ask
+ * `interpretChainLines` or `interpretChainParts` for those.
+ */
+export function interpretChain(chain: Chain): MeshData[] {
+  return interpretChainParts(chain).meshes;
+}
+
+/** Every line strip one chunk draws, in packet order. */
+export function interpretChainLines(chain: Chain): LineStrip[] {
+  return interpretChainParts(chain).lines;
 }

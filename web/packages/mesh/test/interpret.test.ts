@@ -1,8 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { interpretPacket, interpretChain, mergeMeshes, bounds, MeshError, type MeshData } from '../src';
-import { walkModel, modelNodes, type Chain } from '../src/dma';
+import {
+  interpretPacket, interpretChain, interpretChainLines, interpretChainParts, interpretLinePacket,
+  isLineStripPacket, mergeMeshes, bounds, MeshError, type MeshData,
+} from '../src';
+import { walkChain, walkModel, modelNodes, type Chain } from '../src/dma';
 import { unpackVif, unpackVifStream } from '../src/vif';
-import { parseZdb, zdbMember, Zar, Reader } from '@s2u/archive';
+import { parseZdb, zdbMember, Zar, Reader, type ZarKey } from '@s2u/archive';
 import { fixture } from '../../archive/test/fixtures';
 
 /** A VIF stream from literal 32-bit code words, little-endian as the DMAC delivers them. */
@@ -96,9 +99,15 @@ describe('interpretPacket', () => {
     // §4 normal = (a.w, b.z, b.w)/32768
     expect(Array.from(m.normals!).map((v) => +v.toFixed(5)))
       .toEqual([0, 0, 0.99997, 0, 0, 0.99997, 0, 0, 0.99997, 0.5, -0.5, 0]);
-    // §4 quadword c: 128 is full on every lane, so RGB is min(2c, 255) and alpha min(a/128,1)*255 --
-    // the 0..255 scale the browser reads, rescaled here rather than in each consumer.
-    expect(Array.from(m.colors)).toEqual([255, 255, 0, 255, 20, 40, 60, 128, 2, 4, 6, 255, 8, 10, 12, 0]);
+    // §4 quadword c: the two lanes are on different scales -- RGB full is 255, alpha opaque is 128.
+    // RGB is left unclamped (the GS clamps the product, not the vertex); alpha clamps, so the third
+    // vertex's raw 255 is still just opaque.
+    expect(Array.from(m.colors).map((v) => +v.toFixed(6))).toEqual([
+      1, 0.501961, 0, 1,
+      0.039216, 0.078431, 0.117647, 0.5,
+      0.003922, 0.007843, 0.011765, 1,
+      0.015686, 0.019608, 0.023529, 0,
+    ]);
     // §5/§6: one triangle per tail pair, index = byte/3, emitted in stored order
     expect(Array.from(m.indices)).toEqual([0, 2, 1, 1, 2, 3]);
     expect(Array.from(m.faceNormals!).map((v) => +v.toFixed(5))).toEqual([0, 0.99997, 0, 0, -0.99997, 0]);
@@ -142,6 +151,215 @@ describe('interpretChain', () => {
   it('names the chunk and packet when a packet does not decode', () => {
     const vif = bytes(words(stcycl(1, 1), unpack(3, 1, 2, 4)), new Int16Array(8), words(MSCNT));
     expect(() => interpretChain(chainOf(vif, null))).toThrow(/chunk N000_000 packet 0/);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------
+// Relocation type 1: the LINE_STRIP packet (36 §3; the layout table on `interpretLinePacket`).
+// ---------------------------------------------------------------------------------------------------
+
+const MSCAL0 = 0x14000000;
+/** GS primitive types, as the low three bits of a GIFtag template's `PRIM`. */
+const PRIM_LINE_STRIP = 2;
+/**
+ * A GIFtag template quadword as the disc holds it: `NLOOP` and `EOP` in lane x, then `PRE`, `PRIM` and
+ * `NREG` packed into lane y, and `REGS = 0x412` (ST, RGBAQ, XYZF2) in lane z. Desert Glory's real
+ * templates read back as exactly `[0x8000 | nloop, 0x303d4000, 0x412, 0]` with `PRIM = 122`.
+ */
+const giftag = (nloop: number, primType: number): number[] => {
+  const prim = (primType & 7) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6);     // IIP|TME|FGE|ABE
+  return [0x8000 | nloop, (1 << 14) | (prim << 15) | (3 << 28), 0x412, 0];
+};
+
+interface StripPoint {
+  p: [number, number, number]; n: [number, number, number]; uv: [number, number];
+  c: [number, number, number, number];
+}
+
+/**
+ * The two payloads a line-strip sub-packet is split across on disc: the colours a relocation-type-4 tag
+ * transfers under its own tag-transfer codes, then the self-contained stream a relocation-type-1 tag
+ * transfers under `NOP NOP` — two GIFtag templates at TOP+0, the float point pairs at TOP+2 CL=3 WL=2,
+ * and the `MSCNT` that runs them.
+ */
+function lineStripPayloads(points: StripPoint[], statedCount = points.length, primType = PRIM_LINE_STRIP) {
+  const P = points.length;
+  const head = new ArrayBuffer(32);
+  new Int32Array(head).set([...giftag(0, primType), ...giftag(statedCount, primType)]);
+  const ab = new Float32Array(points.flatMap((v) => [...v.p, v.n[0], ...v.uv, v.n[1], v.n[2]]));
+  return {
+    colours: bytes(new Uint8Array(points.flatMap((v) => v.c))),
+    colourCodes: [stcycl(3, 1), unpack(3, 2, P, 4, true)] as [number, number],
+    strip: bytes(
+      words(stcycl(1, 1), unpack(3, 0, 2, 0)), new Uint8Array(head),
+      words(stcycl(3, 2), unpack(3, 0, 2 * P, 2)), ab,
+      words(MSCNT, 0, 0, 0),
+    ),
+  };
+}
+
+/**
+ * A model buffer holding one chain, laid out the way an `MP*_MDL.ZED` model is: every tag's payload (or
+ * texture name) first, quadword-aligned, then the count quadword and the 16-byte tags (36 §3). `walkChain`
+ * is what reads it back, so the chain under test really goes through the relocation-type-1 tag path.
+ */
+function modelBuffer(tags: { id: number; reloc: number; codes?: [number, number]; payload?: Uint8Array; text?: string }[]) {
+  const encoder = new TextEncoder();
+  const blobs = tags.map((t) => (t.text !== undefined ? encoder.encode(`${t.text}\0`) : t.payload ?? new Uint8Array(0)));
+  const addr: number[] = [];
+  let at = 0;
+  for (const b of blobs) { addr.push(at); at = (at + b.byteLength + 15) & ~15; }
+  const headerOffset = at;
+  const buffer = new Uint8Array(headerOffset + 16 * (tags.length + 1));
+  blobs.forEach((b, i) => buffer.set(b, addr[i]!));
+  const dv = new DataView(buffer.buffer);
+  dv.setUint32(headerOffset, tags.length, true);                      // 36 §3: m_dmaQwc = *tag[0].u8
+  tags.forEach((t, i) => {
+    const o = headerOffset + 16 * (i + 1);
+    const qwc = t.text !== undefined ? 0 : Math.ceil(blobs[i]!.byteLength / 16);
+    dv.setUint32(o, ((t.id << 28) | (t.reloc << 16) | qwc) >>> 0, true);
+    dv.setUint32(o + 4, addr[i]!, true);
+    dv.setUint32(o + 8, t.codes?.[0] ?? 0, true);
+    dv.setUint32(o + 12, t.codes?.[1] ?? 0, true);
+  });
+  return { buffer, headerOffset };
+}
+
+/** The three-tag preamble every real chain of these opens with, then the colour/strip pair. */
+function lineChain(points: StripPoint[], statedCount?: number, primType?: number): Chain {
+  const { colours, colourCodes, strip } = lineStripPayloads(points, statedCount, primType);
+  const mscal = bytes(new Float32Array(8), words(MSCAL0, 0, 0, 0));   // the reloc-3 parameter packet
+  const { buffer, headerOffset } = modelBuffer([
+    { id: 1, reloc: 6, text: 'tent_top.tif' },                        // 36 §3: the texture citation
+    { id: 3, reloc: 3, codes: [stcycl(1, 1), unpack(3, 0, 2, 2)], payload: mscal },
+    { id: 3, reloc: 4, codes: colourCodes, payload: colours },
+    { id: 3, reloc: 1, payload: strip },                              // NOP NOP; the stream is the payload
+  ]);
+  return walkChain(buffer, headerOffset, 'N000_I000_V01');
+}
+
+const STRIP: StripPoint[] = [
+  { p: [1, 2, 3], n: [0, 0, -1], uv: [0, 0], c: [255, 128, 0, 128] },
+  { p: [4, 5, 6], n: [0, 1, 0], uv: [3.5, -1.25], c: [10, 20, 30, 64] },
+  { p: [7, 8, 9], n: [0.6, 0.8, 0], uv: [12.375, 4.25], c: [1, 2, 3, 255] },
+];
+
+describe('relocation type 1: the LINE_STRIP packet', () => {
+  it('walks the type-1 tag and finds a LINE_STRIP where a mesh packet would have a counts quadword', () => {
+    const chain = lineChain(STRIP);
+    expect(chain.tags.map((t) => t.reloc)).toEqual([6, 3, 4, 1]);
+    const drawn = unpackVif(chain).filter((p) => p.kind === 'mscnt');
+    expect(drawn.length).toBe(1);
+    expect(isLineStripPacket(drawn[0]!)).toBe(true);
+    // The lanes a mesh decode would read as "the counts" are point 0's float position: that is exactly
+    // how this used to come out as a header claiming billions of vertices.
+    expect(drawn[0]!.f32[2 * 4]).toBe(1);
+  });
+
+  it('decodes the points lane for lane: float position, float UV, the split normal, the two colour scales', () => {
+    const [strip, ...rest] = interpretChainLines(lineChain(STRIP));
+    expect(rest).toEqual([]);
+    // Positions are the stored floats: no /16 and no TOP+3 bias, there being no TOP+3.
+    expect(Array.from(strip!.positions)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    // UV is the stored float, unnormalised on purpose -- the texture repeats along the strip.
+    expect(Array.from(strip!.uvs)).toEqual([0, 0, 3.5, -1.25, 12.375, 4.25]);
+    // The normal is (a.w, b.z, b.w) as in §4, but already float, so nothing is divided by 32768.
+    expect(Array.from(strip!.normals).map((v) => +v.toFixed(5))).toEqual([0, 0, -1, 0, 1, 0, 0.6, 0.8, 0]);
+    // Colours keep the mesh contract: RGB on a full of 255, alpha on 128, alpha clamped.
+    expect(Array.from(strip!.colors).map((v) => +v.toFixed(6))).toEqual([
+      1, 0.501961, 0, 1,
+      0.039216, 0.078431, 0.117647, 0.5,
+      0.003922, 0.007843, 0.011765, 1,
+    ]);
+    expect(strip!.textureName).toBe('tent_top.tif');
+  });
+
+  it('is not a mesh: interpretChain returns no triangles for it and no longer throws', () => {
+    const chain = lineChain(STRIP);
+    expect(interpretChain(chain)).toEqual([]);
+    expect(interpretChainParts(chain).lines.length).toBe(1);
+  });
+
+  it('decodes a chunk that mixes both primitives, each packet by its own GIFtag', () => {
+    const { colours, colourCodes, strip } = lineStripPayloads(STRIP);
+    const mesh = packet(QUAD);
+    const { buffer, headerOffset } = modelBuffer([
+      { id: 1, reloc: 6, text: 'tent_top.tif' },
+      { id: 3, reloc: 4, codes: colourCodes, payload: colours },
+      { id: 3, reloc: 1, payload: strip },
+      { id: 3, reloc: 2, payload: bytes(mesh, new Uint8Array((16 - (mesh.byteLength % 16)) % 16)) },
+    ]);
+    const parts = interpretChainParts(walkChain(buffer, headerOffset, 'N000_I000_V01'));
+    expect(parts.lines.length).toBe(1);
+    expect(parts.meshes.length).toBe(1);
+    expect(parts.meshes[0]!.indices.length / 3).toBe(2);
+  });
+
+  it('rejects a GIFtag claiming more points than the packet unpacked, naming the point', () => {
+    const bad = () => interpretChainLines(lineChain(STRIP, 5));
+    expect(bad).toThrow(MeshError);
+    expect(bad).toThrow(/point 3's position quadword at TOP\+11 was never unpacked/);
+    expect(bad).toThrow(/chunk N000_I000_V01 packet 1/);
+  });
+
+  it('rejects a strip too short to draw a segment', () => {
+    expect(() => interpretLinePacket(unpackVifStream(lineStripPayloads([STRIP[0]!]).strip)[0]!))
+      .toThrow(/claims 1 points, too few/);
+  });
+
+  const mdl = (zdb: Uint8Array, member: string) => {
+    const zar = Zar.parse(zdbMember(zdb, parseZdb(zdb), member));
+    const models: ZarKey[] = [];
+    zar.walk((k) => { if (k.children.length && k.size > 64) models.push(k); });
+    return models.flatMap((m) => walkModel(zar.data(m), modelNodes(zar, m)));
+  };
+  const relocTags = (chains: Chain[], reloc: number) => chains.reduce((n, c) => n + c.tags.filter((t) => t.reloc === reloc).length, 0);
+  /** The whole archive decoded: every chunk, both primitives, nothing thrown. */
+  const decodeAll = (chains: Chain[]) => chains.map(interpretChainParts);
+
+  const [mp2, mp6, mp72] = ['MP2', 'MP6', 'MP72'].map((m) => fixture(`RUN/${m}.ZDB`));
+
+  it.skipIf(!mp6)('Desert Glory: 31 type-1 tags, 31 strips, 221 points, no chunk left undecoded (36 §3)', () => {
+    const chains = mdl(mp6!, 'MP6_MDL.ZED');
+    expect(relocTags(chains, 1)).toBe(31);
+    const strips = decodeAll(chains).flatMap((p) => p.lines);
+    expect(strips.length).toBe(31);                                   // one strip per type-1 tag, exactly
+    expect(strips.reduce((n, s) => n + s.positions.length / 3, 0)).toBe(221);
+    for (const s of strips) {
+      expect(s.positions.length / 3).toBeGreaterThanOrEqual(2);
+      for (const v of s.positions) expect(Number.isFinite(v)).toBe(true);
+      // §4's invariant holds on a strip point too: the normal is unit length or exactly zero.
+      for (let i = 0; i < s.normals.length; i += 3) {
+        const len = Math.hypot(s.normals[i]!, s.normals[i + 1]!, s.normals[i + 2]!);
+        if (len !== 0) expect(len).toBeCloseTo(1, 4);
+      }
+    }
+  });
+
+  it.skipIf(!mp72)('Crossroads: 163 type-1 tags, 163 strips, 850 points, and the tents keep their canvas', () => {
+    const chains = mdl(mp72!, 'MP72_MDL.ZED');
+    expect(relocTags(chains, 1)).toBe(163);
+    const parts = decodeAll(chains);
+    expect(parts.flatMap((p) => p.lines).length).toBe(163);
+    expect(parts.flatMap((p) => p.lines).reduce((n, s) => n + s.positions.length / 3, 0)).toBe(850);
+    // tent_beige/N000_I000_V01 is the chunk the diagnostics panel used to name: nine guy ropes, no mesh.
+    const tent = chains.find((c) => c.nodeName === 'N000_I000_V01' && c.tags.some((t) => t.reloc === 1))!;
+    const tentParts = interpretChainParts(tent);
+    expect(tentParts.meshes).toEqual([]);
+    expect(tentParts.lines.map((s) => s.positions.length / 3)).toEqual([4, 2, 2, 2, 2, 2, 2, 2, 2]);
+    expect(tentParts.lines[0]!.textureName).toBe('tent_top.tif');
+  });
+
+  it.skipIf(!mp2)('Frostfire has no type-1 tag and no strip: the line primitive is a Desert Glory / Crossroads thing', () => {
+    const chains = [...mdl(mp2!, 'MP2_MDL.ZED'), ...mdl(mp2!, 'WORL_MDL.ZED')];
+    expect(relocTags(chains, 1)).toBe(0);
+    expect(decodeAll(chains).flatMap((p) => p.lines)).toEqual([]);
+  });
+
+  it('a prim type that is not LINE_STRIP still takes the mesh decode', () => {
+    // prim type 3 = TRIANGLE: the packet is not a strip, so it goes to interpretPacket and fails there
+    // the way any malformed mesh packet does.
+    expect(() => interpretChain(lineChain(STRIP, STRIP.length, 3))).toThrow(/the header claims/);
   });
 });
 

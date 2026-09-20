@@ -12,8 +12,34 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
 #panel .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
 #panel select, #panel button { font: inherit; padding: 3px 6px; background: #1d2027; color: inherit; border: 1px solid #39414d; border-radius: 4px; }
 #panel button[disabled] { opacity: 0.55; cursor: not-allowed; }
+#warning {
+  margin: 0 0 8px; padding: 4px 7px; border: 1px solid #6b4a1e; border-radius: 4px;
+  background: rgba(120, 78, 22, 0.22); color: #ffca8a; font-size: 11px; line-height: 1.45;
+}
+#warning strong { color: #ffb04d; letter-spacing: 0.06em; }
+.rights { margin: 8px 0 0; color: #6d757f; font-size: 10px; line-height: 1.45; }
+.rights strong { color: #838c97; font-weight: normal; }
+/* The backtick hides the chrome for a clean look at the map. */
+body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
+
 #status { margin: 4px 0; color: #9fe6b0; white-space: pre-wrap; }
 #status.error { color: #ff8a80; }
 .hint { margin: 6px 0 0; color: #79828f; }
+
+/* Top right, out of the panel's way, and never a pointer target: a click here is a click on the world. */
+#fps {
+  position: fixed; top: 12px; right: 12px; padding: 4px 8px; pointer-events: none;
+  border: 1px solid #333a44; border-radius: 6px; background: rgba(20, 22, 26, 0.86);
+  font-size: 12px; line-height: 1.4; color: #9fe6b0; font-variant-numeric: tabular-nums;
+}
+#sliders-box, #fog-box { margin: 4px 0; }
+#fog-box summary { cursor: pointer; color: #9aa4b1; }
+label.colour { display: inline-flex; align-items: center; gap: 6px; color: #b9c1cb; }
+label.colour input[type="color"] { width: 34px; height: 20px; padding: 0; border: 1px solid #39414d; border-radius: 4px; background: none; }
+#sliders-box summary { cursor: pointer; color: #9aa4b1; }
+label.slider { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; color: #b9c1cb; }
+label.slider input[type="range"] { flex: 1; min-width: 90px; accent-color: #9fe6b0; }
+label.slider output { min-width: 56px; text-align: right; color: #9fe6b0; font-variant-numeric: tabular-nums; }
+
 #diagnostics { margin: 4px 0 0; padding-left: 18px; max-height: 30vh; overflow: auto; color: #ffca8a; }
 #diagnostics li { margin-bottom: 2px; word-break: break-word; }

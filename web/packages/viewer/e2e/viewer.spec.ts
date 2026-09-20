@@ -14,9 +14,9 @@ const SCREENS = fileURLToPath(new URL('../../../test-fixtures/screens', import.m
  * The three extracted fixtures, by the name `mission.rdr` shows (36 section 0). Frostfire is the map the
  * viewer opens on; the other two are picked from the list the way a player picks them.
  *
- * Desert Glory and Crossroads have prop chains the `mesh` decoder cannot read (36 section 3's
- * relocation-type-1 tags, M6's first work item), so their diagnostics are *recorded* rather than
- * asserted to be empty. Frostfire's must stay empty: it is the map every earlier task was built on.
+ * Desert Glory and Crossroads each cite a few textures their own `_TXR.ZED` does not contain, so their
+ * diagnostics are *recorded* rather than asserted to be empty. Frostfire's must stay empty: it is the map
+ * every earlier task was built on.
  */
 const MAPS = [
   { name: 'FROSTFIRE', archive: 'MP2', screenshot: 'frostfire-spawnA.png', top: 'frostfire-top.png', clean: true },

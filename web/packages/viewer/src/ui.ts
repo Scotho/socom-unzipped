@@ -1,8 +1,14 @@
 import type { MapInfo } from '@s2u/archive';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
-export const TOGGLES = ['grid', 'axes', 'collision', 'spawns', 'wireframe', 'untextured'] as const;
+export const TOGGLES = ['grid', 'axes', 'collision', 'spawns', 'wireframe', 'untextured',
+  'linearlight', 'fog'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
+
+/** The continuous controls, in the order the panel lists them. */
+export const SLIDERS = ['ambient', 'lightx', 'lighty', 'lightz', 'lightgain',
+  'fognear', 'fogfar'] as const;
+export type SliderName = (typeof SLIDERS)[number];
 
 /** The page's controls, found once and typed, so the rest of the viewer never touches `getElementById`. */
 export class Ui {
@@ -11,6 +17,20 @@ export class Ui {
   private readonly diagnostics = find<HTMLUListElement>('diagnostics');
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
   private readonly hint = find<HTMLParagraphElement>('hint');
+  private readonly fps = find<HTMLElement>('fps');
+  /**
+   * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
+   * reason the checkboxes are: so the wiring cannot drift from what the page shows.
+   */
+  private readonly sliders: Record<SliderName, { input: HTMLInputElement; out: HTMLOutputElement; fmt: (v: number) => string }> = {
+    ambient: { input: find('ambient'), out: find('ambient-out'), fmt: (v) => v.toFixed(2) },
+    lightx: { input: find('lightx'), out: find('lightx-out'), fmt: (v) => v.toFixed(2) },
+    lighty: { input: find('lighty'), out: find('lighty-out'), fmt: (v) => v.toFixed(2) },
+    lightz: { input: find('lightz'), out: find('lightz-out'), fmt: (v) => v.toFixed(2) },
+    lightgain: { input: find('lightgain'), out: find('lightgain-out'), fmt: (v) => `${v.toFixed(2)}×` },
+    fognear: { input: find('fognear'), out: find('fognear-out'), fmt: (v) => String(Math.round(v)) },
+    fogfar: { input: find('fogfar'), out: find('fogfar-out'), fmt: (v) => String(Math.round(v)) },
+  };
   /**
    * The overlay checkboxes, by the name the debug hook reports them under. Held as one record rather
    * than six fields so `toggles()` cannot drift out of step with what the page actually shows.
@@ -22,6 +42,8 @@ export class Ui {
     spawns: find('spawns'),
     wireframe: find('wireframe'),
     untextured: find('untextured'),
+    linearlight: find('linearlight'),
+    fog: find('fog'),
   };
 
   /** The map list, named from each archive's own `mission.rdr`. The value is the archive-relative path. */
@@ -41,6 +63,78 @@ export class Ui {
 
   onMapChange(handler: (path: string) => void): void {
     this.maps.addEventListener('change', () => handler(this.maps.value));
+  }
+
+  /** The fog colour picker. `FOGCOL` is a register value, so it is handed over as 0..255 per channel. */
+  onFogColour(handler: (rgb: [number, number, number]) => void): void {
+    const input = find<HTMLInputElement>('fogcolour');
+    const fire = (): void => {
+      const hex = parseInt(input.value.slice(1), 16);
+      handler([(hex >> 16) & 0xff, (hex >> 8) & 0xff, hex & 0xff]);
+    };
+    input.addEventListener('input', fire);
+    fire();
+  }
+
+  /**
+   * Backtick hides the panel and the counter, for a clean look at the map. Bound on the window rather
+   * than the canvas so it works whether or not the mouse is captured, and ignored while a control has
+   * the keyboard so it cannot fire from inside a text field.
+   */
+  onChromeToggle(): void {
+    globalThis.addEventListener('keydown', (e) => {
+      if (e.code !== 'Backquote' || e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target;
+      if (target instanceof HTMLElement && (target.tagName === 'INPUT' || target.tagName === 'SELECT')) return;
+      e.preventDefault();
+      document.body.classList.toggle('chrome-hidden');
+    });
+  }
+
+  /** Whether the chrome is hidden, for the debug hook. */
+  chromeHidden(): boolean {
+    return document.body.classList.contains('chrome-hidden');
+  }
+
+  /** The fog checkbox follows the map's own enable bit. */
+  setFogEnabled(on: boolean): void {
+    this.checks.fog.checked = on;
+  }
+
+  /** Puts a map's own fog on the panel, when the disc has been read for it. */
+  setFog(near: number, far: number, rgb: [number, number, number]): void {
+    this.sliders.fognear.input.value = String(near);
+    this.sliders.fogfar.input.value = String(far);
+    find<HTMLInputElement>('fogcolour').value =
+      `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
+    for (const name of ['fognear', 'fogfar'] as const) {
+      const { input, out, fmt } = this.sliders[name];
+      out.textContent = fmt(Number(input.value));
+    }
+  }
+
+  /** Calls `handler` with the slider that moved, and keeps its readout in step. */
+  onSlider(handler: (name: SliderName, value: number) => void): void {
+    for (const name of SLIDERS) {
+      const { input, out, fmt } = this.sliders[name];
+      const fire = (): void => {
+        const value = Number(input.value);
+        out.textContent = fmt(value);
+        handler(name, value);
+      };
+      input.addEventListener('input', fire);
+      out.textContent = fmt(Number(input.value));
+    }
+  }
+
+  /** Announces every slider at once, the way `apply` does for the toggles. */
+  applySliders(handler: (name: SliderName, value: number) => void): void {
+    for (const name of SLIDERS) handler(name, Number(this.sliders[name].input.value));
+  }
+
+  /** What the sliders are set to, for the debug hook. */
+  sliderValues(): Record<SliderName, number> {
+    return Object.fromEntries(SLIDERS.map((n) => [n, Number(this.sliders[n].input.value)])) as Record<SliderName, number>;
   }
 
   /** Calls `handler` with the toggle that changed, whichever of the six it was. */
@@ -70,9 +164,16 @@ export class Ui {
    */
   setCameraHint(multiplier: number, locked: boolean): void {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
-    this.hint.textContent = locked
-      ? `esc to release · WASD fly · space/shift up/down · ctrl boost · ${speed}`
-      : `click to look · WASD fly · space/shift up/down · ctrl boost · ${speed}`;
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · ${speed}`;
+    this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
+  }
+
+  /**
+   * The frame rate, top right. Shown as a whole number plus the frame time, because 60 and 59 look the
+   * same in a counter but 16.7 ms and 34 ms do not.
+   */
+  setFps(fps: number, frameMs: number): void {
+    this.fps.textContent = `${Math.round(fps)} fps · ${frameMs.toFixed(1)} ms`;
   }
 
   setStatus(text: string, kind: 'ok' | 'error' = 'ok'): void {

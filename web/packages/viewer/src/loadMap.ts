@@ -3,11 +3,11 @@ import {
   type AssetSource, type ZarKey, type ZdbEntry,
 } from '@s2u/archive';
 import { decodeTexture, parseTextureRecord, PaletteTable, type Rgba } from '@s2u/gs';
-import { interpretChain, mergeMeshes, walkChain, type MeshData } from '@s2u/mesh';
+import { interpretChainParts, mergeMeshes, walkChain, type LineStrip, type MeshData } from '@s2u/mesh';
 import {
-  collisionLines, IDENTITY, loadModelLibrary, parseClutter, parseSceneGraph, placeClutter,
+  collisionLines, IDENTITY, loadModelLibrary, parseCameraParams, parseClutter, parseSceneGraph, placeClutter,
   placeInstances, transformPoint, worldCollision,
-  type CollisionLines, type ModelLibrary, type PlacedModel, type SceneNode,
+  type CameraParams, type CollisionLines, type ModelLibrary, type PlacedModel, type SceneNode,
 } from '@s2u/scene';
 
 /**
@@ -23,13 +23,23 @@ import {
  */
 export interface LoadedMap {
   archive: string;
+  /** `cameras/camera` out of `MP*.ZED`: the map's own fog, or null when the key is missing. */
+  camera: CameraParams | null;
   path: string;
   name: string;
   world: MeshData[];
+  /** GS LINE_STRIP geometry in world space (SEMANTICS section 12), or null when the map drew none. */
+  lines: LoadedLines | null;
   /** One entry per prop model-node: its geometry once, and a column-major 4x4 per placement. */
   props: { modelName: string; parts: MeshData[]; matrices: Float32Array }[];
   textures: Record<string, Rgba>;
-  textureFlags: Record<string, { bilinear: boolean; transparent: boolean }>;
+  /**
+   * `bilinear` and `transparent` off the texture record, plus `graded`: whether the decoded pixels
+   * actually carry a soft alpha ramp rather than being all-or-nothing. Every texture's own GS bind
+   * packet sets `ALPHA_1 = 0x44`, `(Cs - Cd) * As + Cd` -- plain source-alpha blending -- with the
+   * alpha *test* disabled in `TEST_1`, so a graded texture is meant to be blended, not punched out.
+   */
+  textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean }>;
   metersPerUnit: number;
   origin: [number, number, number];
   /** The collision hull as line segments in world space, ready for a `LineSegments` overlay. */
@@ -100,8 +110,14 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   const chunksOf = decoder(library, notes);
   const placement = place(library, bytes, toc, stem, notes);
   const parts: MeshData[] = [];
+  // Relocation-type-1 packets are GS LINE_STRIPs, not meshes (SEMANTICS section 12): Desert Glory's
+  // power lines and lamp brackets, Crossroads' guy ropes and light filaments. They carry no index list,
+  // so a strip of n points is n-1 segments, flattened here into one world-space segment list.
+  const segments = new Segments();
   for (const p of placement.world) {
-    for (const mesh of chunksOf(p)) parts.push(placeMesh(mesh, p.rowMajor));
+    const { meshes, lines } = chunksOf(p);
+    for (const mesh of meshes) parts.push(placeMesh(mesh, p.rowMajor));
+    for (const strip of lines) segments.add(strip, p.rowMajor);
   }
 
   // The props: one entry per model-node, its geometry decoded once and a matrix per placement.
@@ -110,7 +126,13 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
     const first = group[0]!;
     // Lower-cased here for the same reason the world's names are: `map.textures` is keyed that way, and
     // one Frostfire prop cites `lightDark.tif` with a capital in it.
-    const geometry = chunksOf(first).map((mesh) => ({
+    const decoded = chunksOf(first);
+    // A prop is drawn in up to 26 places; its strips are placed once per placement, which is cheap --
+    // 877 segments across the three maps in total.
+    for (const placementOf of group) {
+      for (const strip of decoded.lines) segments.add(strip, placementOf.rowMajor);
+    }
+    const geometry = decoded.meshes.map((mesh) => ({
       ...mesh, textureName: mesh.textureName === null ? null : textureKey(mesh.textureName),
     }));
     if (geometry.length === 0) continue;
@@ -139,7 +161,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   // A TXR or PAL member that will not parse at all costs one diagnostic and the untextured map, not the
   // load: vertex colours alone still show the geometry, which is what a diagnosing eye is here for.
   const textures: Record<string, Rgba> = {};
-  const textureFlags: Record<string, { bilinear: boolean; transparent: boolean }> = {};
+  const textureFlags: Record<string, { bilinear: boolean; transparent: boolean; graded: boolean }> = {};
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { txr, palettes, keys } = texlib;
@@ -161,7 +183,9 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
         const decoded = decodeTexture(record, palettes);
         for (const d of decoded.diagnostics) notes.add(`texture ${name}: ${d}`);
         textures[name] = decoded.rgba;
-        textureFlags[name] = { bilinear: record.bilinear, transparent: record.transparent };
+        textureFlags[name] = {
+          bilinear: record.bilinear, transparent: record.transparent, graded: isGraded(decoded.rgba),
+        };
       } catch (e) {
         notes.add(`texture ${name}: ${say(e)}`);
       }
@@ -170,6 +194,8 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
 
   return {
     archive: stem,
+    lines: segments.result(),
+    camera: cameraParams(bytes, toc, stem, notes),
     path,
     name: missionName(bytes, toc, notes) ?? stem,
     world,
@@ -194,6 +220,7 @@ export function transferables(map: LoadedMap): Transferable[] {
   }
   for (const prop of map.props) out.push(prop.matrices.buffer);
   out.push(map.collision.positions.buffer, map.collision.colors.buffer);
+  if (map.lines) out.push(map.lines.positions.buffer, map.lines.colors.buffer, map.lines.normals.buffer);
   for (const rgba of Object.values(map.textures)) out.push(rgba.data.buffer);
   return out;
 }
@@ -226,6 +253,37 @@ function missionName(bytes: Uint8Array, toc: ZdbEntry[], notes: Notes): string |
     return typeof name === 'string' ? name : null;
   } catch (e) {
     notes.add(`mission name: ${say(e)}`);
+    return null;
+  }
+}
+
+/**
+ * Whether a decoded texture's alpha is a ramp rather than a switch. A corona, a glow or a soft-edged
+ * decal has alpha between 0 and full; a cutout leaf or a wall has only the two ends. The flag on the
+ * record says a texture *has* alpha, not what shape it is, and drawing a ramp with an alpha test is
+ * what turns a light into a flat disc on a black square.
+ */
+function isGraded(rgba: Rgba): boolean {
+  const a = rgba.data;
+  let soft = 0;
+  // Every fourth byte, and only a sample of them: a 256x256 texture is 65,536 pixels and the answer
+  // does not need all of them.
+  const step = Math.max(4, (Math.floor(a.length / 4 / 4096) || 1) * 4);
+  for (let i = 3; i < a.length; i += step) {
+    const v = a[i]!;
+    if (v > 8 && v < 247 && ++soft > 16) return true;
+  }
+  return false;
+}
+
+/** `MP*.ZED/cameras/camera`: fog colour, range and flags, the way the level authored them. */
+function cameraParams(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: Notes): CameraParams | null {
+  try {
+    const params = parseCameraParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
+    if (!params) notes.add(`${stem}.ZED: no cameras/camera key, so no fog`);
+    return params;
+  } catch (e) {
+    notes.add(`cameras/camera: ${say(e)}`);
     return null;
   }
 }
@@ -340,20 +398,79 @@ function clutter(models: SceneNode[], bytes: Uint8Array, toc: ZdbEntry[], notes:
 }
 
 /**
+ * World-space line segments, accumulated across every placement that draws a strip.
+ *
+ * A `LineStrip` is points in draw order with no index list, so strip point `k` joins point `k+1` and a
+ * strip of n points is n-1 segments. They are flattened into one pair list here rather than kept as
+ * strips, because one `LineSegments` draw is cheaper than a few hundred `Line` objects and the whole
+ * map's worth is under a thousand segments.
+ */
+class Segments {
+  private readonly positions: number[] = [];
+  private readonly colors: number[] = [];
+  private readonly normals: number[] = [];
+
+  add(strip: LineStrip, rowMajor: Float32Array): void {
+    const n = strip.positions.length / 3;
+    if (n < 2) return;                                   // a single point draws nothing
+    const m = rowMajor;
+    const at = (k: number): [number, number, number] =>
+      transformPoint(m, strip.positions[k * 3]!, strip.positions[k * 3 + 1]!, strip.positions[k * 3 + 2]!);
+    // The 3x3 alone, as `placeMesh` rotates a mesh's normals: a direction has no translation.
+    const rot = (k: number): [number, number, number] => {
+      const [x, y, z] = [strip.normals[k * 3]!, strip.normals[k * 3 + 1]!, strip.normals[k * 3 + 2]!];
+      return [
+        x * m[0]! + y * m[4]! + z * m[8]!,
+        x * m[1]! + y * m[5]! + z * m[9]!,
+        x * m[2]! + y * m[6]! + z * m[10]!,
+      ];
+    };
+    for (let k = 0; k + 1 < n; k++) {
+      for (const end of [k, k + 1]) {
+        this.positions.push(...at(end));
+        this.normals.push(...rot(end));
+        this.colors.push(
+          strip.colors[end * 4]!, strip.colors[end * 4 + 1]!,
+          strip.colors[end * 4 + 2]!, strip.colors[end * 4 + 3]!,
+        );
+      }
+    }
+  }
+
+  /** Null when the map drew no strips, so the viewer can skip the object entirely. */
+  result(): LoadedLines | null {
+    if (this.positions.length === 0) return null;
+    return {
+      positions: Float32Array.from(this.positions),
+      colors: Float32Array.from(this.colors),
+      normals: Float32Array.from(this.normals),
+    };
+  }
+}
+
+/** Line segments in world space: two points a segment, rgba and a normal per point. */
+export interface LoadedLines {
+  positions: Float32Array;
+  colors: Float32Array;
+  normals: Float32Array;
+}
+
+/**
  * Decodes the chains one placement draws. A chunk that will not interpret becomes a diagnostic and the
  * rest of the map still draws, as it did before the scene graph existed.
  */
-function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => MeshData[] {
+function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => { meshes: MeshData[]; lines: LineStrip[] } {
   const offsets = new Map<string, Map<string, number>>();
   return (p) => {
     const entry = library.get(p.modelName);
     if (!entry) {
       notes.add(`model ${p.modelName}: in the scene graph but not in any MDL archive`);
-      return [];
+      return { meshes: [], lines: [] };
     }
     let where = offsets.get(p.modelName);
     if (!where) offsets.set(p.modelName, where = new Map(entry.nodes.map((n) => [n.name, n.offset])));
-    const out: MeshData[] = [];
+    const meshes: MeshData[] = [];
+    const lines: LineStrip[] = [];
     for (const chunk of p.chunks) {
       const at = where.get(chunk);
       if (at === undefined) {
@@ -361,12 +478,14 @@ function decoder(library: ModelLibrary, notes: Notes): (p: PlacedModel) => MeshD
         continue;
       }
       try {
-        out.push(...interpretChain(walkChain(entry.buffer, at, chunk)));
+        const parts = interpretChainParts(walkChain(entry.buffer, at, chunk));
+        meshes.push(...parts.meshes);
+        lines.push(...parts.lines);
       } catch (e) {
         notes.add(`chunk ${p.modelName}/${chunk}: ${say(e)}`);
       }
     }
-    return out;
+    return { meshes, lines };
   };
 }
 

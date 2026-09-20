@@ -6,7 +6,9 @@ import type { ViewerHook } from './hook';
 import type { LoadedMap } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, type Backend } from './renderer';
-import { Ui, type ToggleName } from './ui';
+import { applyFog, ELF_DEFAULT_FOGCOL, type FogSettings } from './fog';
+import { DEFAULT_LIGHTING, type Lighting } from './lighting';
+import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
@@ -32,6 +34,22 @@ const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'modu
 let view: WorldView | null = null;
 let loaded: LoadedMap | null = null;
 let backend: Backend = 'webgl2';
+/** The renderer's half of the colour-space switch, once `boot` has one. */
+let setLinearLight: ((on: boolean) => void) | null = null;
+
+/** The panel's lighting, accumulated as the sliders move and handed to the world as one set. */
+const lighting: Lighting = { ...DEFAULT_LIGHTING };
+
+/** The panel's fog. Replaced wholesale when a map states its own, then nudged by the sliders. */
+const fog: FogSettings = { enabled: true, near: 200, far: 640, color: [...ELF_DEFAULT_FOGCOL] };
+/** The renderer's clear colour, once `boot` has one: the background follows the fog. */
+let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
+
+/** Puts the current fog on the scene and behind it. */
+function refreshFog(): void {
+  applyFog(scene, fog);
+  setClearColor?.(fog.enabled ? fog.color : ELF_DEFAULT_FOGCOL);
+}
 
 /**
  * Which request the page is still waiting for, one per kind. Loads overlap -- the boot auto-load is
@@ -70,22 +88,43 @@ ui.onMapChange((path) => {
 });
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
+ui.onChromeToggle();
+ui.onSlider(applySlider);
+ui.applySliders(applySlider);
 
 /** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
+function applySlider(name: SliderName, value: number): void {
+  if (name === 'ambient') lighting.ambient = value;
+  else if (name === 'lightx') lighting.x = value;
+  else if (name === 'lighty') lighting.y = value;
+  else if (name === 'lightz') lighting.z = value;
+  else if (name === 'lightgain') lighting.gain = value;
+  else if (name === 'fognear') { fog.near = value; refreshFog(); return; }
+  else if (name === 'fogfar') { fog.far = value; refreshFog(); return; }
+  view?.setLighting(lighting);
+}
+
 function applyToggle(name: ToggleName, on: boolean): void {
   if (name === 'grid') overlays.setGrid(on);
   else if (name === 'axes') overlays.setAxes(on);
   else if (name === 'collision') overlays.setCollision(on);
   else if (name === 'spawns') overlays.setSpawns(on);
   else if (name === 'wireframe') view?.setWireframe(on);
-  else view?.setUntexturedHighlight(on);
+  else if (name === 'fog') { fog.enabled = on; refreshFog(); }
+  else if (name === 'untextured') view?.setUntexturedHighlight(on);
+  else { view?.setLinearLight(on); setLinearLight?.(on); }
 }
 
 void boot();
 
 /** Brings the renderer up, starts the frame loop, then asks the worker for the map list. */
 async function boot(): Promise<void> {
-  const { render, resize, backend: chosen } = await createRenderer(canvas!);
+  const created = await createRenderer(canvas!);
+  const { render, resize, backend: chosen } = created;
+  setLinearLight = created.setLinearLight;
+  setClearColor = created.setClearColor;
+  ui.onFogColour((rgb) => { fog.color = rgb; refreshFog(); });
+  refreshFog();
   backend = chosen;
 
   const fit = (): void => {
@@ -98,9 +137,23 @@ async function boot(): Promise<void> {
   globalThis.addEventListener('resize', fit);
 
   const clock = new Clock();
+  // A frame time smoothed over about half a second: the raw number flickers too much to read, and the
+  // point of the counter is to notice a map that costs 30 ms, not to watch it jitter.
+  let smoothedMs = 16.7;
+  let lastShown = 0;
   const frame = (): void => {
-    fly.update(Math.min(clock.getDelta(), 0.1));    // a backgrounded tab must not teleport the camera
+    const dt = Math.min(clock.getDelta(), 0.1);     // a backgrounded tab must not teleport the camera
+    fly.update(dt);
     render(scene, fly.camera);
+
+    if (dt > 0) {
+      smoothedMs += (dt * 1000 - smoothedMs) * 0.08;
+      const now = performance.now();
+      if (now - lastShown > 200) {                  // redrawing text every frame is itself a cost
+        lastShown = now;
+        ui.setFps(1000 / smoothedMs, smoothedMs);
+      }
+    }
     requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
@@ -140,6 +193,17 @@ function show(map: LoadedMap): void {
     view.dispose();
   }
   loaded = map;
+  // The map's own fog, before the world is built: `cameras/camera` in its `MP*.ZED` carries the
+  // colour, the range and the enable bit the level was authored with. Two of the twenty-two ship
+  // with it off, so the bit is honoured rather than the range being used as a proxy for it.
+  if (map.camera) {
+    fog.enabled = map.camera.fogEnabled;
+    fog.near = map.camera.fogNear;
+    fog.far = map.camera.fogFar;
+    fog.color = [...map.camera.fogColor];
+    ui.setFog(fog.near, fog.far, fog.color);
+    ui.setFogEnabled(fog.enabled);
+  }
   view = buildWorld(map);
   scene.add(view.group);
   overlays.place(view.box);
@@ -150,6 +214,8 @@ function show(map: LoadedMap): void {
   overlays.placeSpawns(spawn ?? null);
   // A new world starts in whatever state the panel is showing, not in the state it was built in.
   ui.apply(applyToggle);
+  ui.applySliders(applySlider);   // a freshly built world starts at the panel's settings, not the defaults
+  refreshFog();
   fly.setScale(map.metersPerUnit);
 
   if (spawn) {
@@ -193,4 +259,6 @@ window.__viewer = {
     spawns: (loaded && spawnsFor(loaded.name)) ?? null,
   }),
   toggles: () => ui.toggles(),
+  chromeHidden: () => ui.chromeHidden(),
+  sliders: () => ui.sliderValues(),
 } satisfies ViewerHook;
