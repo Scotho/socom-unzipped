@@ -96,6 +96,11 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         ("FROSTFIRE / SUPPRESSION / TO RETURN TO THE LOBBY") and called it join-not-reached; the console then played
         the round alone (20 distinct positions over its walk). The peer ports were the disconnect: B's 3660 joins.
         The script now readies the console only after ours' notice is dismissed.
+      - (f), ~18:45 UTC: **the round ran with both in it and both moving -- ours in a game the console hosts.** Ours:
+        join:list, join:enter, join:continue verified on the first press each; "game lobby gone during READY search"
+        (the launch); 341 in-game peek rows, 27 distinct positions over its walk. The console: readied after ours'
+        notice, the lobby left under its READY check (the launch), 100 in-game rows, 24 distinct positions over its
+        four stick holds. Leg 2 reached once; run g queued for the bar, then leg 1's second.
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
 - [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
