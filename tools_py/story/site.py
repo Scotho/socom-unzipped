@@ -286,65 +286,51 @@ def chrome_header(base):
     absolute site origin in a copy that lives elsewhere. Since 2026-09-20 (evening) the web page is the site's
     default view, so the section links are /#..., and the console menu is /classic.html."""
     w = base + "/"
-    return ('<a class="skip" href="#main">Skip to content</a>
-'
-            '<div id="scan" aria-hidden="true"></div>
-'
-            '<div id="progress" aria-hidden="true"><i></i></div>
-'
-            '<header id="bar" class="bar">
-'
-            '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>
-'
-            '  <nav class="nav" aria-label="Sections">
-'
-            '    <a href="%s#what">WHAT</a>
-    <a href="%s#loop">HOW</a>
-    <a href="%s#state">STATE</a>
-'
-            '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>
-'
-            '    <a href="%s#server">SERVER</a>
-    <a href="%s#setup">SETUP</a>
-    <a href="%s#report">REPORT</a>
-'
-            '    <a href="%s#credits">CREDITS</a>
-  </nav>
-'
-            '  <div class="bar-right">
-'
-            '    <a class="ghost" href="%s/classic.html" title="The original console-menu version of this site">CLASSIC</a>
-'
-            '  </div>
-</header>
-' % (w, w, w, w, base, w, w, w, w, base))
+    lines = [
+        '<a class="skip" href="#main">Skip to content</a>',
+        '<div id="scan" aria-hidden="true"></div>',
+        '<div id="progress" aria-hidden="true"><i></i></div>',
+        '<header id="bar" class="bar">',
+        '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>' % w,
+        '  <nav class="nav" aria-label="Sections">',
+        '    <a href="%s#what">WHAT</a>' % w,
+        '    <a href="%s#loop">HOW</a>' % w,
+        '    <a href="%s#state">STATE</a>' % w,
+        '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>' % base,
+        '    <a href="%s#server">SERVER</a>' % w,
+        '    <a href="%s#setup">SETUP</a>' % w,
+        '    <a href="%s#report">REPORT</a>' % w,
+        '    <a href="%s#credits">CREDITS</a>' % w,
+        '  </nav>',
+        '  <div class="bar-right">',
+        '    <a class="ghost" href="%s/classic.html" title="The original console-menu version of this site">CLASSIC</a>' % base,
+        '  </div>',
+        '</header>',
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def chrome_footer(base, fine):
     w = base + "/"
-    return ('<footer class="foot">
-  <div class="foot-inner">
-    <div>
-'
-            '      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>
-'
-            '      <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. '
-            '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>
-'
-            '    </div>
-    <nav aria-label="Footer">
-'
-            '      <a href="%s/story.html">The story</a>
-      <a href="%s/classic.html">Classic menu</a>
-'
-            '      <span class="soon">GitHub (soon)</span>
-      <a href="%s#report">Report a bug</a>
-'
-            '    </nav>
-  </div>
-  <div class="foot-fine">%s</div>
-</footer>
-' % (base, base, w, fine))
+    lines = [
+        '<footer class="foot">',
+        '  <div class="foot-inner">',
+        '    <div>',
+        '      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>',
+        '      <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. '
+        '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>',
+        '    </div>',
+        '    <nav aria-label="Footer">',
+        '      <a href="%s/story.html">The story</a>' % base,
+        '      <a href="%s/classic.html">Classic menu</a>' % base,
+        '      <span class="soon">GitHub (soon)</span>',
+        '      <a href="%s#report">Report a bug</a>' % w,
+        '    </nav>',
+        '  </div>',
+        '  <div class="foot-fine">%s</div>' % fine,
+        '</footer>',
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def stamped(logo_url, out_path):
