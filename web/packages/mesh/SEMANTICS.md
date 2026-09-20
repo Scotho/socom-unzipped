@@ -424,6 +424,36 @@ chunks. Other maps may not be uniform. **Test:** for each map, group the `worldm
 reconstructed from `hookupVisuals`' naming order (`vis_main.cpp:88-105`) before positions are
 placed.
 
+**Resolved, 2026-09-20 (Task 15).** The mapping is `hookupVisuals`
+(`research/recom/src/gamez/zVisual/vis_main.cpp:58-175`), and the archive agrees to the key:
+
+- `N%03d_%03d` is (node, visual). `node_index` counts the model's **visual-bearing nodes**, depth first,
+  the model itself first, and **never descending through an instance node** (`m_type == 2`); the second
+  field is the visual's index within that node. Frostfire's `worldmodel` subtree has **101** such nodes
+  carrying **123** visuals, and `WORL_MDL.ZED` holds exactly `N000_000 … N100_000` with `_001`/`_002`
+  appearing precisely where a node has more than one visual. So §8's "one translation serves all 123
+  chunks" was right only by luck of arithmetic: the chunks belong to 101 nodes carrying **6** distinct
+  matrices, not one.
+- `N%03d_I%03d_V%02d` is the same with an instance index between. A model's `I` count is **not** its
+  count of instance nodes: a prototype's subtree is realised once for itself and once more for every
+  context its container is realised in, so `contexts(C) = Σ over containers M of (1 + contexts(M)) × times`.
+  That recursion reproduces all 46 of Frostfire's key sets exactly — including `tankrailsupport`, which
+  has 4 instance nodes in the graph and 28 `I` keys in the buffer, and `railstraithi1`, 1 and 15.
+- A model whose chunks are all `_I000_` down to `_I(n-1)_` differ **only in baked vertex lighting**: the
+  positions of every `I` of a model are identical, so a viewer may decode one and instance the rest.
+
+Two corrections to this document's neighbours fell out of the same work. `nparams`' 96 bytes are a
+64-byte matrix, a **24**-byte bbox (`CBBox` is two `CPnt3D`, `zMath/zmath.h:253-258`) and then the u32
+`m_type` and the u32 flag word (`zNode/znode.h:73-105`) — §8 and 36 §2 call the tail "a 32-byte bbox",
+which is why nothing had noticed that `m_type == 2` is what marks an instance node. And 36 §6's
+`m_refcount` "0x2d in every sample read" does not hold over all 2,756: the sample was narrow.
+
+Evidence the placement is right rather than merely different: the `di` collision polygons carried through
+the same matrices put a surface **directly under spawn A at y = 100.00** and **under spawn B at
+y = 142.00** (feet 100 and 143), and the render geometry still has `floor_oilgrime.tif` under A in chunk
+`N013_000` at y = 100 and under B in `N038_000` at y = 142 — the same two chunks and heights §8 reached
+with the modal translation. See `web/packages/scene/`.
+
 ### 11.3 Handedness against the console image
 The frame is self-consistent (§6, §8) and matches the collision geometry and both spawn points, but
 nothing here compares a rendered frame against a console screenshot, so a global mirror that

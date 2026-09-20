@@ -1,6 +1,7 @@
 import {
-  Box3, BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Group, LinearFilter, Mesh,
-  MeshBasicMaterial, NearestFilter, RGBAFormat, RepeatWrapping, SRGBColorSpace, Texture, Vector3,
+  Box3, BufferAttribute, BufferGeometry, DataTexture, DoubleSide, Group, InstancedMesh, LinearFilter,
+  Matrix4, Mesh, MeshBasicMaterial, NearestFilter, RGBAFormat, RepeatWrapping, SRGBColorSpace, Texture,
+  Vector3,
 } from 'three';
 import type { Rgba } from '@s2u/gs';
 import type { MeshData } from '@s2u/mesh';
@@ -22,8 +23,12 @@ export interface WorldView {
 }
 
 /**
- * Builds the scene objects for one decoded map. One `Mesh` per texture, placed as a whole by the map's
- * world origin -- geometry stays in model space, as `mesh` hands it over.
+ * Builds the scene objects for one decoded map: one `Mesh` per texture for the world, whose vertices
+ * `loadMap` has already placed, and one `InstancedMesh` per prop model-node -- a prop model is drawn in
+ * up to 26 places, so it is uploaded once and instanced by the matrices `scene` produced.
+ *
+ * `map.origin` is zero whenever the scene graph could be read; it is only non-zero for the fallback,
+ * where the whole group still shifts together the way it did before per-node placement.
  */
 export function buildWorld(map: LoadedMap): WorldView {
   const group = new Group();
@@ -32,15 +37,14 @@ export function buildWorld(map: LoadedMap): WorldView {
 
   const textures = new Map<string, Texture>();
   let triangles = 0;
-  for (const part of map.world) {
-    const name = part.textureName;
+  const materialFor = (name: string | null): MeshBasicMaterial => {
     const rgba = name === null ? undefined : map.textures[name];
     let texture = name === null ? undefined : textures.get(name);
     if (!texture && name !== null && rgba) {
       texture = makeTexture(rgba, map.textureFlags[name]?.bilinear ?? true);
       textures.set(name, texture);
     }
-    const material = new MeshBasicMaterial({
+    return new MeshBasicMaterial({
       map: texture ?? null,
       vertexColors: true,
       side: DoubleSide,                                   // the map's inward faces are walls too
@@ -48,11 +52,35 @@ export function buildWorld(map: LoadedMap): WorldView {
       // problem M3 does not need, and the PS2 alpha test is what the game itself used.
       alphaTest: name !== null && (map.textureFlags[name]?.transparent ?? false) ? 0.5 : 0,
     });
-    const mesh = new Mesh(geometryOf(part), material);
-    mesh.name = name ?? 'untextured';
+  };
+
+  for (const part of map.world) {
+    const mesh = new Mesh(geometryOf(part), materialFor(part.textureName));
+    mesh.name = part.textureName ?? 'untextured';
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
     group.add(mesh);
     triangles += part.indices.length / 3;
+  }
+
+  for (const prop of map.props) {
+    const count = prop.matrices.length / 16;
+    for (const part of prop.parts) {
+      const geometry = geometryOf(part);
+      const material = materialFor(part.textureName);
+      if (count === 1) {
+        const mesh = new Mesh(geometry, material);
+        mesh.name = prop.modelName;
+        mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
+        group.add(mesh);
+      } else {
+        const mesh = new InstancedMesh(geometry, material, count);
+        mesh.name = prop.modelName;
+        for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
+        mesh.instanceMatrix.needsUpdate = true;
+        group.add(mesh);
+      }
+      triangles += (part.indices.length / 3) * count;
+    }
   }
 
   const box = new Box3().setFromObject(group);
@@ -62,10 +90,11 @@ export function buildWorld(map: LoadedMap): WorldView {
     box,
     dispose: () => {
       for (const child of group.children) {
-        if (!(child instanceof Mesh)) continue;
+        if (!(child instanceof Mesh)) continue;               // an InstancedMesh is one too
         child.geometry.dispose();
         const material = child.material;
         if (!Array.isArray(material)) material.dispose();
+        if (child instanceof InstancedMesh) child.dispose();
       }
       for (const texture of textures.values()) texture.dispose();
     },
