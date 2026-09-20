@@ -140,6 +140,12 @@ Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
 - Delivered as a page on the landing site (Goal 3) and a `docs/STORY.md` linked from the README (Goal 2).
 - Bar: the owner reads it start to finish and it is fun; a stranger can tell what happened and in what order
   without knowing what a GS or an IOP is.
+- **Design: `docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md`** (written 2026-09-20 by
+  session socom-pc-10, out of band and ahead of this sprint, because the goal is documentation only -- it needs no
+  build, no launch and no gate, so it never contends for the loop lock Sprint 9 is using). That file settles the
+  entry format, the collector script, the citation test (including the fact that `/logs/` is git-ignored, so a run
+  citation carries a frozen witness in the tree), the picture policy, the do-not-say table, and what the later pass
+  must still close at the release. A first draft of `docs/STORY.md` runs to the present moment; the ending is open.
 
 ### Goal 7 — the bug pipeline: from a `BR-` id to a public issue (added 2026-09-20)
 Sprint 9 Goal 8 built the launcher's REPORT A BUG page over the site's private inbox
