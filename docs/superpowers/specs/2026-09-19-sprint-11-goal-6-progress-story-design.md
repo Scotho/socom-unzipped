@@ -105,6 +105,22 @@ owner's instruction, without publishing anything:
 Still open after this pass, and Sprint 11's: the editorial cut to 45 entries or fewer (§2.4's note), the owner's four
 questions in §9, and the release itself.
 
+## Status, 2026-09-20 (third pass: the owner's rewrite)
+
+On the owner's instruction, the same day: (1) the security-incident entry removed entirely (the do-not-say row that
+demanded it is struck above, with the ruling); (2) every entry rewritten shorter and plainer — casual, to the point,
+the technical detail kept in the `How:` line and the interesting numbers kept in the body, the hedging cut; (3) the
+pruning audit done: 52 entries became 44 by merging ten pairs that told one story (a mission loads / its first frames;
+the title labels / the world stops coming apart; the speed-up / the first scripted walk; the round that "would not
+start" / online players can move again; the KNOWN file / the retractions; the mission stage grading the cinematic /
+the check learns what failure looks like; the teleport found / the teleport fixed; the launcher / the audit of the
+same day; the lobby presses / the launcher learns your pad; the server's name / the playtest build) and adding four
+for what landed on 2026-09-20 (the music chased to the speaker; the audio parity test and the conductor sound;
+v0.9.0 and the scheduled ladder; a console and a PC in one match). Citations were inherited from the merged entries
+rather than rewritten, so nothing verified was lost; the four new entries cite hashes and runs checked the same
+night. (4) The site page rebuilt as a vertical timeline in the landing site's own tree, `../scotho/sites/s2u/story.html`,
+built locally and not deployed.
+
 ## 2. Scope and shape
 
 ### 2.1 What the story is
@@ -683,7 +699,7 @@ this table disagree, KNOWN wins and this table is what gets fixed.
 | "the kill1 / kill2 / kill3 runs" | `ours_task8_kill1/2/3` contain **no kills** — the bursts hit nothing because the players were never within range in three dimensions. The first kill is `s5_t5_ladder2`. |
 | "the Horizon server" as SOCOM's original service | It is a community server emulator this project self-hosts. **Nothing has ever connected to PSRewired**, and nothing will until the owner reports their answer. |
 | Any celebration of the honesty culture that omits its own failures | The project's rule is *retract on discovery*; the first three retractions happened at close-out anyway, about a day late, and the freeze description stayed false for roughly two weeks. The 2026-09-20 audit's verdict: *"What is weak is that every guard is a sentence."* |
-| Any account of the development that omits the 2.5-day leak | KNOWN §2: the working tree — including an SSH private key, `.git` objects, server configs, a Horizon token and the owner's home address — was served with no login from 2026-09-16T22:03Z to 2026-09-19T03:36Z, and whether anything was fetched **cannot be shown**. If the story tells the honesty story at all, it tells this one too. |
+| ~~Any account of the development that omits the 2.5-day leak~~ | **Overruled by the owner, 2026-09-20: the security incident is not part of the public story.** The entry that told it was removed from `docs/STORY.md` in the second rewrite. The incident itself stays where it belongs, in `docs/KNOWN.md` §2 and the audit; the story does not mention it and does not allude to it. |
 
 ### 7.3 The one mechanical guard that is possible
 

@@ -1,15 +1,15 @@
 {
  "schema": 1,
  "generated": "2026-09-20",
- "head": "d105d32",
+ "head": "78a170d",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
-   "id": "2026-09-02-the-game-is-not-in-the-file-you-would-expect",
+   "id": "2026-09-02-the-game-isn-t-in-the-file-you-d-expect",
    "date": "2026-09-02",
-   "title": "The game is not in the file you would expect",
+   "title": "The game isn't in the file you'd expect",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "The program on the SOCOM II disc is 874 KB of loader. The game itself is locked in an encrypted archive beside it.",
+   "hook": "The executable on the SOCOM II disc is 874 KB of loader. The actual game is locked in an encrypted archive next to it.",
    "citations": [
     {
      "kind": "commit",
@@ -36,11 +36,11 @@
    ]
   },
   {
-   "id": "2026-09-04-a-playstation-2-game-becomes-a-windows-program",
+   "id": "2026-09-04-a-ps2-game-becomes-a-windows-program",
    "date": "2026-09-04",
-   "title": "A PlayStation 2 game becomes a Windows program",
+   "title": "A PS2 game becomes a Windows program",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "Thirty-five commits in one day, and at the end of them the game's own code is C++ that compiles.",
+   "hook": "Thirty-five commits, and by the end the game's own code is C++ that compiles.",
    "citations": [
     {
      "kind": "commit",
@@ -99,7 +99,7 @@
    "date": "2026-09-05",
    "title": "It plays its intro",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "The game had been sitting on a black screen for a day, and the graphics were not the reason.",
+   "hook": "A day of black screen, and the graphics weren't the problem.",
    "citations": [
     {
      "kind": "commit",
@@ -130,7 +130,7 @@
    "date": "2026-09-05",
    "title": "The main menu, at full speed",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "Three bugs on one delivery path stood between the game and its own interface.",
+   "hook": "Three bugs on one delivery path stood between the game and its own menus.",
    "citations": [
     {
      "kind": "commit",
@@ -176,11 +176,11 @@
    ]
   },
   {
-   "id": "2026-09-06-a-mission-loads",
-   "date": "2026-09-06",
-   "title": "A mission loads",
+   "id": "2026-09-07-the-first-frames-of-a-mission",
+   "date": "2026-09-07",
+   "title": "The first frames of a mission",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "Seven commits, four fixes, and the Albania briefing hands off to a running level.",
+   "hook": "The thing starving the renderer was the automatic exposure control.",
    "citations": [
     {
      "kind": "commit",
@@ -220,16 +220,7 @@
     {
      "kind": "path",
      "ref": "docs/STATUS.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-07-the-first-frames-of-a-mission",
-   "date": "2026-09-07",
-   "title": "The first frames of a mission",
-   "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "The thing starving the renderer was the automatic exposure control.",
-   "citations": [
+    },
     {
      "kind": "commit",
      "ref": "d3cea62",
@@ -243,10 +234,6 @@
      "sha": "545b85a1d3af7ea233abe53a42dc897e42fc1af0",
      "date": "2026-09-16",
      "subject": "fix(kernel): libgraph's load/store-image packet layouts, and the auto-exposure readback answered from GS memory instead of a grey pixel"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/STATUS.md"
     },
     {
      "kind": "path",
@@ -366,7 +353,7 @@
    "date": "2026-09-07",
    "title": "Two clients, one server, one match",
    "era": "2026-09-02 .. 2026-09-07 — From the disc to the screen",
-   "hook": "The first SOCOM II match played on this project's own server was not played by this project.",
+   "hook": "The first SOCOM II match on this project's own server wasn't played by this project.",
    "citations": [
     {
      "kind": "commit",
@@ -417,9 +404,9 @@
    ]
   },
   {
-   "id": "2026-09-08-the-project-s-own-program-gets-online",
+   "id": "2026-09-08-our-own-program-gets-online",
    "date": "2026-09-08",
-   "title": "The project's own program gets online",
+   "title": "Our own program gets online",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
    "hook": "Two copies of the recompiled game log in, host a match, and join it.",
    "citations": [
@@ -510,6 +497,42 @@
     {
      "kind": "path",
      "ref": "docs/STATUS.md"
+    },
+    {
+     "kind": "commit",
+     "ref": "3c20dc8",
+     "sha": "3c20dc8f791f9db3921a4aa10d72804294b0c194",
+     "date": "2026-09-09",
+     "subject": "fix(vif1): stall on i-bit VIFcodes until FBRST.STC and drain pending IRQs after every MMIO store width — title labels clean (texture-set marker protocol in sync with the console)"
+    },
+    {
+     "kind": "commit",
+     "ref": "7730052",
+     "sha": "773005238cd78a3c7bf73d933ed4998ffdb12c66",
+     "date": "2026-09-09",
+     "subject": "fix(gs-gl): re-read only the exact uploaded rectangle from the shadow VRAM (dirty rects + 32-row band mask); no more menu-video strip on the black screen before the briefing"
+    },
+    {
+     "kind": "commit",
+     "ref": "77a41ff",
+     "sha": "77a41ffd113a0f30f72d4f10df14393811d82841",
+     "date": "2026-09-08",
+     "subject": "fix(ee): run the game thread with host rounding toward zero (the EE FPU chops)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s8_audio_mc_gate2",
+     "path": "logs/parity/gate/s8_audio_mc_gate2"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_p7_playtest_gate",
+     "path": "logs/parity/gate/s9_p7_playtest_gate"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/title_stall5_sheet.png",
+     "path": "logs/parity/title_stall5_sheet.png"
     }
    ]
   },
@@ -573,65 +596,7 @@
      "kind": "log",
      "ref": "logs/parity/vu1fast_1_sheet.png",
      "path": "logs/parity/vu1fast_1_sheet.png"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-09-the-words-on-the-title-screen-come-back",
-   "date": "2026-09-09",
-   "title": "The words on the title screen come back",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
-   "hook": "The menu's own background movie was painting over its labels.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "3c20dc8",
-     "sha": "3c20dc8f791f9db3921a4aa10d72804294b0c194",
-     "date": "2026-09-09",
-     "subject": "fix(vif1): stall on i-bit VIFcodes until FBRST.STC and drain pending IRQs after every MMIO store width — title labels clean (texture-set marker protocol in sync with the console)"
     },
-    {
-     "kind": "commit",
-     "ref": "7730052",
-     "sha": "773005238cd78a3c7bf73d933ed4998ffdb12c66",
-     "date": "2026-09-09",
-     "subject": "fix(gs-gl): re-read only the exact uploaded rectangle from the shadow VRAM (dirty rects + 32-row band mask); no more menu-video strip on the black screen before the briefing"
-    },
-    {
-     "kind": "commit",
-     "ref": "77a41ff",
-     "sha": "77a41ffd113a0f30f72d4f10df14393811d82841",
-     "date": "2026-09-08",
-     "subject": "fix(ee): run the game thread with host rounding toward zero (the EE FPU chops)"
-    },
-    {
-     "kind": "gate",
-     "ref": "s8_audio_mc_gate2",
-     "path": "logs/parity/gate/s8_audio_mc_gate2"
-    },
-    {
-     "kind": "gate",
-     "ref": "s9_p7_playtest_gate",
-     "path": "logs/parity/gate/s9_p7_playtest_gate"
-    },
-    {
-     "kind": "log",
-     "ref": "logs/parity/title_stall5_sheet.png",
-     "path": "logs/parity/title_stall5_sheet.png"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/STATUS.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-09-a-mission-you-can-walk-through",
-   "date": "2026-09-09",
-   "title": "A mission you can walk through",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
-   "hook": "The first mission is played: walk, turn, fire, and the game answers.",
-   "citations": [
     {
      "kind": "commit",
      "ref": "94421fb",
@@ -661,53 +626,6 @@
     {
      "kind": "path",
      "ref": "docs/LOOP_PROMPT.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-10-two-copies-at-speed-and-a-player-who-cannot-move",
-   "date": "2026-09-10",
-   "title": "Two copies at speed, and a player who cannot move",
-   "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
-   "hook": "The online match now runs on the fast build — and then nobody moves.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "334c990",
-     "sha": "334c990610a487f1fae3bf74ea8bd7f019db595c",
-     "date": "2026-09-10",
-     "subject": "docs+tools(online): STATUS/HANDOFF for the VU1 build gates and the first two-instance gameplay on it; online_match_ours --same-team (B stays on SEALs) and --sweep N (A turns in place firing a burst per step) for the first-kill probe"
-    },
-    {
-     "kind": "commit",
-     "ref": "89d7032",
-     "sha": "89d70324e3665a19b89a368b072c95e4ee0c415c",
-     "date": "2026-09-10",
-     "subject": "input(socom2): PS2X_SOCOM2_INPUT_FILE pad-state injection (read on every pad poll; exact holds, never dropped); online drivers write it per instance (logs/pad_A.txt / pad_B.txt) for gameplay holds"
-    },
-    {
-     "kind": "commit",
-     "ref": "0421048",
-     "sha": "0421048fc6536a08383a0bf0a92f3a61f4a7e3ee",
-     "date": "2026-09-10",
-     "subject": "net(socom2): PS2X_SOCOM2_NET_TRACE counts UDP sends/receives per endpoint and hex-dumps the first 16 peer packets; STATUS/HANDOFF: the online match is frozen at round start (peer UDP handshake never completes, ~1 packet/s), local-IP fix via PS2X_SOCOM2_SERVER=192.168.2.10, hypotheses ordered"
-    },
-    {
-     "kind": "commit",
-     "ref": "79c0e91",
-     "sha": "79c0e913ae75f79d1c3e300a23f8e41511bbc7db",
-     "date": "2026-09-10",
-     "subject": "docs: peer packets decoded (game-level 22-byte reliable channel, acked at 1/s, no SCERT/crypto) — the online freeze is game logic above the transport; next steps and the run recipe"
-    },
-    {
-     "kind": "log",
-     "ref": "logs/parity/ours_match_play5",
-     "path": "logs/parity/ours_match_play5"
-    },
-    {
-     "kind": "log",
-     "ref": "logs/parity/match_play5_sheet.png",
-     "path": "logs/parity/match_play5_sheet.png"
     }
    ]
   },
@@ -761,11 +679,11 @@
    ]
   },
   {
-   "id": "2026-09-11-the-project-s-own-code-draws-the-game",
+   "id": "2026-09-11-our-own-code-draws-the-game",
    "date": "2026-09-11",
-   "title": "The project's own code draws the game",
+   "title": "Our own code draws the game",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
-   "hook": "The drawing program is no longer emulated microcode. It is C++ someone wrote by hand.",
+   "hook": "The drawing program is no longer emulated microcode. It's C++ someone wrote by hand.",
    "citations": [
     {
      "kind": "commit",
@@ -830,7 +748,7 @@
    "date": "2026-09-11",
    "title": "The check that had been passing for free",
    "era": "2026-09-08 .. 2026-09-11 — A picture, then a gate",
-   "hook": "One of the three gate stages had been measuring nothing at all.",
+   "hook": "One of the three gate stages had been measuring nothing.",
    "citations": [
     {
      "kind": "commit",
@@ -867,7 +785,7 @@
    "date": "2026-09-12",
    "title": "Four times the pixels, and no sharper HUD",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "The world could suddenly be drawn at up to four times the console's size. Three quarters of the screen looked exactly the same.",
+   "hook": "The world can now be drawn at up to four times the console's size. Three quarters of the screen look exactly the same.",
    "citations": [
     {
      "kind": "commit",
@@ -906,7 +824,7 @@
    "date": "2026-09-12",
    "title": "The black squares leave the intro movie",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "A player had reported black tiles flickering over the movies. The tiles were real, and they were never in the movie.",
+   "hook": "Someone reported black tiles flickering over the movies. The tiles were real, and they were never in the movie.",
    "citations": [
     {
      "kind": "commit",
@@ -983,8 +901,46 @@
    "date": "2026-09-12",
    "title": "Online players can move again",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "For two days the online round had been written up as waiting to start. It was not waiting. The round was running and the player was pinned.",
+   "hook": "For two days the online round had been written up as waiting to start. It wasn't. The round was running and the player was pinned.",
    "citations": [
+    {
+     "kind": "commit",
+     "ref": "334c990",
+     "sha": "334c990610a487f1fae3bf74ea8bd7f019db595c",
+     "date": "2026-09-10",
+     "subject": "docs+tools(online): STATUS/HANDOFF for the VU1 build gates and the first two-instance gameplay on it; online_match_ours --same-team (B stays on SEALs) and --sweep N (A turns in place firing a burst per step) for the first-kill probe"
+    },
+    {
+     "kind": "commit",
+     "ref": "89d7032",
+     "sha": "89d70324e3665a19b89a368b072c95e4ee0c415c",
+     "date": "2026-09-10",
+     "subject": "input(socom2): PS2X_SOCOM2_INPUT_FILE pad-state injection (read on every pad poll; exact holds, never dropped); online drivers write it per instance (logs/pad_A.txt / pad_B.txt) for gameplay holds"
+    },
+    {
+     "kind": "commit",
+     "ref": "0421048",
+     "sha": "0421048fc6536a08383a0bf0a92f3a61f4a7e3ee",
+     "date": "2026-09-10",
+     "subject": "net(socom2): PS2X_SOCOM2_NET_TRACE counts UDP sends/receives per endpoint and hex-dumps the first 16 peer packets; STATUS/HANDOFF: the online match is frozen at round start (peer UDP handshake never completes, ~1 packet/s), local-IP fix via PS2X_SOCOM2_SERVER=192.168.2.10, hypotheses ordered"
+    },
+    {
+     "kind": "commit",
+     "ref": "79c0e91",
+     "sha": "79c0e913ae75f79d1c3e300a23f8e41511bbc7db",
+     "date": "2026-09-10",
+     "subject": "docs: peer packets decoded (game-level 22-byte reliable channel, acked at 1/s, no SCERT/crypto) — the online freeze is game logic above the transport; next steps and the run recipe"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/ours_match_play5",
+     "path": "logs/parity/ours_match_play5"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/parity/match_play5_sheet.png",
+     "path": "logs/parity/match_play5_sheet.png"
+    },
     {
      "kind": "commit",
      "ref": "4114ad4",
@@ -1018,11 +974,11 @@
    ]
   },
   {
-   "id": "2026-09-12-a-written-list-of-what-the-project-got-wrong",
+   "id": "2026-09-12-the-project-starts-writing-down-what-it-got-wrong",
    "date": "2026-09-12",
-   "title": "A written list of what the project got wrong",
+   "title": "The project starts writing down what it got wrong",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "Five beliefs died by measurement in one day. Somebody decided to write them down where they had been read.",
+   "hook": "Five beliefs died by measurement in one day. So they were written down where they'd been read.",
    "citations": [
     {
      "kind": "commit",
@@ -1041,16 +997,7 @@
     {
      "kind": "path",
      "ref": "docs/KNOWN.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-13-the-retractions-go-where-they-were-read",
-   "date": "2026-09-13",
-   "title": "The retractions go where they were read",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "Striking a claim's headline is the easy half. The sentences that rested on it are the dangerous half.",
-   "citations": [
+    },
     {
      "kind": "commit",
      "ref": "0129bb9",
@@ -1092,10 +1039,6 @@
      "sha": "07ffc0a4b17829fbb01aa4695aa3dc231e549bd5",
      "date": "2026-09-13",
      "subject": "fix(gs): sceGsSetDefDBuff reads ztest/zpsm/clear from $t0-$t2 and seeds both clear packets in context 1"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/KNOWN.md"
     }
    ]
   },
@@ -1104,7 +1047,7 @@
    "date": "2026-09-13",
    "title": "Frostfire gets its ground back",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "On one map both players froze where they spawned. The ground was there. The game could not find it.",
+   "hook": "On one map both players froze where they spawned. The ground was there. The game couldn't find it.",
    "citations": [
     {
      "kind": "commit",
@@ -1139,38 +1082,11 @@
    ]
   },
   {
-   "id": "2026-09-13-the-test-stops-grading-the-wrong-screen",
-   "date": "2026-09-13",
-   "title": "The test stops grading the wrong screen",
-   "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "For a day the project's own grader had been scoring the opening cinematic and calling it gameplay.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "69e2a9d",
-     "sha": "69e2a9d83fa79ffadda051854ba4dd1f85724f60",
-     "date": "2026-09-13",
-     "subject": "fix(gate R30): HUD reached means gameplay -- untilref(...,lit) needs lit letterbox bands on the uncropped frame, and the mission scorer checks the hold captures"
-    },
-    {
-     "kind": "commit",
-     "ref": "d2eb932",
-     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
-     "date": "2026-09-13",
-     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/KNOWN.md"
-    }
-   ]
-  },
-  {
    "id": "2026-09-13-the-single-player-mission-stops-freezing",
    "date": "2026-09-13",
    "title": "The single-player mission stops freezing",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "A frozen picture with a running clock is not a hung game. It is a queue.",
+   "hook": "A frozen picture with a running clock isn't a hung game. It's a queue.",
    "citations": [
     {
      "kind": "commit",
@@ -1205,7 +1121,7 @@
    "date": "2026-09-13",
    "title": "The first kill",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
-   "hook": "\"socomc fragged socome with M4A1.\" Then it happened twice more in the same lobby.",
+   "hook": "\"socomc fragged socome with M4A1.\" Then twice more in the same lobby.",
    "citations": [
     {
      "kind": "commit",
@@ -1259,9 +1175,9 @@
    }
   },
   {
-   "id": "2026-09-14-two-defects-the-owner-spotted",
+   "id": "2026-09-14-two-things-the-owner-spotted",
    "date": "2026-09-14",
-   "title": "Two defects the owner spotted",
+   "title": "Two things the owner spotted",
    "era": "2026-09-12 .. 2026-09-14 — From picture to game",
    "hook": "The owner looked at the test frames and saw two things nobody had been looking for.",
    "citations": [
@@ -1300,30 +1216,13 @@
     {
      "kind": "path",
      "ref": "docs/research/26-water-polygons.md"
-    }
-   ],
-   "picture": {
-    "path": "docs/story/img/2026-09-14-grey-hill-before.png",
-    "caption": "The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read."
-   }
-  },
-  {
-   "id": "2026-09-15-turning-around-no-longer-ends-the-mission",
-   "date": "2026-09-15",
-   "title": "Turning around no longer ends the mission",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "A flick of the right stick could throw the player across the map and end the run, and the cause was one number multiplied by eight when it should have been left alone.",
-   "citations": [
+    },
     {
      "kind": "commit",
      "ref": "a81eb74",
      "sha": "a81eb747d1c7da76995632daf2a399c15cd14381",
      "date": "2026-09-15",
      "subject": "fix(gs): the libgraph vram_addr is the BITBLTBUF block field -- drop the x8 in sceGsExecLoadImage/StoreImage (the single-player turn teleport)"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/research/25-sp-teleport.md"
     },
     {
      "kind": "path",
@@ -1334,7 +1233,11 @@
      "ref": "logs/parity/gate/s6_blockptr/summary.txt",
      "path": "logs/parity/gate/s6_blockptr/summary.txt"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-14-grey-hill-before.png",
+    "caption": "The grey hill: the project's renderer replaying a frame recorded from the console, before the fix. No HUD, no brightening, and a slab where the ground should read."
+   }
   },
   {
    "id": "2026-09-15-the-check-learns-what-failure-looks-like",
@@ -1343,6 +1246,24 @@
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
    "hook": "The automatic check that guarded every change could watch the player die and still call the run a pass.",
    "citations": [
+    {
+     "kind": "commit",
+     "ref": "69e2a9d",
+     "sha": "69e2a9d83fa79ffadda051854ba4dd1f85724f60",
+     "date": "2026-09-13",
+     "subject": "fix(gate R30): HUD reached means gameplay -- untilref(...,lit) needs lit letterbox bands on the uncropped frame, and the mission scorer checks the hold captures"
+    },
+    {
+     "kind": "commit",
+     "ref": "d2eb932",
+     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
+     "date": "2026-09-13",
+     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
+    },
     {
      "kind": "commit",
      "ref": "6880ee9",
@@ -1386,80 +1307,9 @@
      "subject": "docs: R80 (probe scored; root decay settled by the probe on s6_probe), KNOWN row settled"
     },
     {
-     "kind": "commit",
-     "ref": "d2eb932",
-     "sha": "d2eb93253b35087326566e346fcc59b9c0853043",
-     "date": "2026-09-13",
-     "subject": "fix(gate R34): the mission stage needs a live game -- two moving gameplay hold pairs, one capture per logged hold, STALE FRAME on hold captures"
-    },
-    {
      "kind": "log",
      "ref": "logs/parity/gate/s6_probe/summary.txt",
      "path": "logs/parity/gate/s6_probe/summary.txt"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-15-the-lobby-stops-dropping-button-presses",
-   "date": "2026-09-15",
-   "title": "The lobby stops dropping button presses",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "Seven launches in one evening, and every one of them lost a button press on the way to the online lobby.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "78a81d1",
-     "sha": "78a81d1d22e7bc548e055305a12421ec5a3c1a01",
-     "date": "2026-09-15",
-     "subject": "feat(lobby): verify-then-act on every fixed press with a failure class per stage (Sprint 6 Task 2 Steps 2-3)"
-    },
-    {
-     "kind": "commit",
-     "ref": "d6e417f",
-     "sha": "d6e417fe626d102c4ab24e89f431dda97d97db22",
-     "date": "2026-09-15",
-     "subject": "fix(lobby): every press on the boot-to-lobby path is verified and goes through the pad file -- ONLINE lit before its CROSS, the login screen after it, the persona presses by their effect (classes login:persona:*)"
-    },
-    {
-     "kind": "commit",
-     "ref": "ebf13be",
-     "sha": "ebf13be3244021062a29f412742204ee055e5a68",
-     "date": "2026-09-15",
-     "subject": "feat(harness): burst-to-burst aim correction in the route endgame -- a miss inside tolerance steps a lead, and an unreachable bias ends as NO-KILL aim-exhausted (Sprint 6 Task 4 Steps 1-2)"
-    },
-    {
-     "kind": "commit",
-     "ref": "431499b",
-     "sha": "431499b997985eef9a3404c135a139d40a0e370f",
-     "date": "2026-09-15",
-     "subject": "docs(known, research/28): the kill repeats on the block-pointer exe -- s6_ladder8 4 of 4 rounds on KillWatch, the lead correction used in round 2, the valve scorer's rounds 1-2 KILL, round 3 beyond the 60-unit bar, round 4 without post-window rows"
-    },
-    {
-     "kind": "commit",
-     "ref": "4a9179f",
-     "sha": "4a9179f24d7b0f37613317edadc88cb325c61fd6",
-     "date": "2026-09-15",
-     "subject": "docs(known): every blind press in the online harness now costs a launch -- the evening's seven launches, one dropped press each"
-    },
-    {
-     "kind": "commit",
-     "ref": "d05db14",
-     "sha": "d05db14420ec722b88c6e3fba51b6c92b355b9ab",
-     "date": "2026-09-15",
-     "subject": "docs(status): the night's online launches -- the kill repeats 4 of 4 on the block-pointer exe, the aim correction fires live, and every blind press in the lobby now verifies itself"
-    },
-    {
-     "kind": "log",
-     "ref": "logs/s6_ladder8.done",
-     "path": "logs/s6_ladder8.done"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/research/28-lobby-taxonomy.md"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/KNOWN.md"
     }
    ]
   },
@@ -1513,7 +1363,7 @@
    "date": "2026-09-16",
    "title": "Every frame was 1.73 times too dark",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "The grey hill in the owner's screenshot turned out to be three separate bugs, and one of them had been dimming every frame of the game.",
+   "hook": "The grey hill in the owner's screenshot was three separate bugs, and one of them had been dimming every frame of the game.",
    "citations": [
     {
      "kind": "commit",
@@ -1573,7 +1423,7 @@
    "date": "2026-09-17",
    "title": "The game stops running in slow motion",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "A round would start, the clock would count down, and nobody could move — the renderer was quietly eating most of every second.",
+   "hook": "A round would start, the clock would count down, and nobody could move. The renderer was quietly eating most of every second.",
    "citations": [
     {
      "kind": "commit",
@@ -1615,7 +1465,7 @@
    "date": "2026-09-17",
    "title": "Twenty maps in one night",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "Between a quarter past midnight and a quarter to five, every online map nobody had ever tried got a round of its own.",
+   "hook": "Between a quarter past midnight and a quarter to five, every online map nobody had tried got a round of its own.",
    "citations": [
     {
      "kind": "commit",
@@ -1682,7 +1532,7 @@
    "date": "2026-09-17",
    "title": "The game has sound",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "It had never made a noise; in one day it got effects, voices, mission music and a title theme.",
+   "hook": "It had never made a noise. In one day it got effects, voices, mission music and a title theme.",
    "citations": [
     {
      "kind": "commit",
@@ -1756,7 +1606,7 @@
    "date": "2026-09-17",
    "title": "A launcher, and a folder you can copy",
    "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "The project got a front door: a window that checks your disc, sets the picture, shows your controller moving, and starts the game.",
+   "hook": "The project got a front door, and the same day an audit said a stranger still couldn't get through it.",
    "citations": [
     {
      "kind": "commit",
@@ -1789,20 +1639,7 @@
     {
      "kind": "path",
      "ref": "docs/research/assets/launcher-first-cut.png"
-    }
-   ],
-   "picture": {
-    "path": "docs/story/img/2026-09-17-launcher-first-cut.png",
-    "caption": "The launcher's first cut: a disc path, three picture settings, a drawn pad, a server and a profile, and a Launch button that stays off until the disc matches."
-   }
-  },
-  {
-   "id": "2026-09-17-the-audit-that-said-a-stranger-still-could-not-play",
-   "date": "2026-09-17",
-   "title": "The audit that said a stranger still could not play",
-   "era": "2026-09-15 .. 2026-09-17 — Light, sound and a launcher",
-   "hook": "Four read-only reviews were run against the project's own goal sentence on the same day the launcher shipped, and the answer was that the game plays and nobody else can get to it.",
-   "citations": [
+    },
     {
      "kind": "commit",
      "ref": "09b793a",
@@ -1857,7 +1694,11 @@
      "ref": "logs/parity/gate/s7_gl_gate2/summary.txt",
      "path": "logs/parity/gate/s7_gl_gate2/summary.txt"
     }
-   ]
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-17-launcher-first-cut.png",
+    "caption": "The launcher's first cut: a disc path, three picture settings, a drawn pad, a server and a profile, and a Launch button that stays off until the disc matches."
+   }
   },
   {
    "id": "2026-09-18-the-launcher-learns-your-pad",
@@ -1891,6 +1732,61 @@
      "kind": "log",
      "ref": "logs/parity/lobby_rate_summary.txt",
      "path": "logs/parity/lobby_rate_summary.txt"
+    },
+    {
+     "kind": "commit",
+     "ref": "78a81d1",
+     "sha": "78a81d1d22e7bc548e055305a12421ec5a3c1a01",
+     "date": "2026-09-15",
+     "subject": "feat(lobby): verify-then-act on every fixed press with a failure class per stage (Sprint 6 Task 2 Steps 2-3)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d6e417f",
+     "sha": "d6e417fe626d102c4ab24e89f431dda97d97db22",
+     "date": "2026-09-15",
+     "subject": "fix(lobby): every press on the boot-to-lobby path is verified and goes through the pad file -- ONLINE lit before its CROSS, the login screen after it, the persona presses by their effect (classes login:persona:*)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ebf13be",
+     "sha": "ebf13be3244021062a29f412742204ee055e5a68",
+     "date": "2026-09-15",
+     "subject": "feat(harness): burst-to-burst aim correction in the route endgame -- a miss inside tolerance steps a lead, and an unreachable bias ends as NO-KILL aim-exhausted (Sprint 6 Task 4 Steps 1-2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "431499b",
+     "sha": "431499b997985eef9a3404c135a139d40a0e370f",
+     "date": "2026-09-15",
+     "subject": "docs(known, research/28): the kill repeats on the block-pointer exe -- s6_ladder8 4 of 4 rounds on KillWatch, the lead correction used in round 2, the valve scorer's rounds 1-2 KILL, round 3 beyond the 60-unit bar, round 4 without post-window rows"
+    },
+    {
+     "kind": "commit",
+     "ref": "4a9179f",
+     "sha": "4a9179f24d7b0f37613317edadc88cb325c61fd6",
+     "date": "2026-09-15",
+     "subject": "docs(known): every blind press in the online harness now costs a launch -- the evening's seven launches, one dropped press each"
+    },
+    {
+     "kind": "commit",
+     "ref": "d05db14",
+     "sha": "d05db14420ec722b88c6e3fba51b6c92b355b9ab",
+     "date": "2026-09-15",
+     "subject": "docs(status): the night's online launches -- the kill repeats 4 of 4 on the block-pointer exe, the aim correction fires live, and every blind press in the lobby now verifies itself"
+    },
+    {
+     "kind": "log",
+     "ref": "logs/s6_ladder8.done",
+     "path": "logs/s6_ladder8.done"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/research/28-lobby-taxonomy.md"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/KNOWN.md"
     }
    ]
   },
@@ -1899,7 +1795,7 @@
    "date": "2026-09-18",
    "title": "The sound reports run to ground",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "The owner said the sound stopped working halfway through a mission, and it had.",
+   "hook": "The owner said the sound stopped halfway through a mission. It had.",
    "citations": [
     {
      "kind": "commit",
@@ -1929,7 +1825,7 @@
    "date": "2026-09-18",
    "title": "The game runs on Linux",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "The owner asked for Linux in the morning, offered a spare virtual machine, and by that evening the game was drawing frames on Ubuntu.",
+   "hook": "The owner asked for Linux in the morning, offered a spare VM, and by evening the game was drawing frames on Ubuntu.",
    "citations": [
     {
      "kind": "commit",
@@ -2016,7 +1912,7 @@
    "date": "2026-09-19",
    "title": "It can save, and it can hear you",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "Two things every finished game has, and this one did not.",
+   "hook": "Two things every finished game has, and this one didn't.",
    "citations": [
     {
      "kind": "commit",
@@ -2072,7 +1968,7 @@
    "date": "2026-09-19",
    "title": "The launcher gets a face",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "Up to now the front door was a box with some checkboxes in it.",
+   "hook": "Until now the front door was a box with some checkboxes in it.",
    "citations": [
     {
      "kind": "commit",
@@ -2125,7 +2021,7 @@
    "date": "2026-09-19",
    "title": "A server of its own, on the internet",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "Every online round the project had ever played was against a server sitting on the same desk.",
+   "hook": "Every online round the project had ever played was against a server on the same desk.",
    "citations": [
     {
      "kind": "commit",
@@ -2186,9 +2082,9 @@
    }
   },
   {
-   "id": "2026-09-19-it-says-why-it-will-not-start-and-it-weighs-less",
+   "id": "2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less",
    "date": "2026-09-19",
-   "title": "It says why it will not start, and it weighs less",
+   "title": "It says why it won't start, and it weighs less",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
    "hook": "A new sprint with one narrow question: what happens to somebody who has never seen this before.",
    "citations": [
@@ -2246,7 +2142,7 @@
    "date": "2026-09-19",
    "title": "A way to report what went wrong",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "This is the only place in the whole program where a player can talk back.",
+   "hook": "The only place in the whole program where a player can talk back.",
    "citations": [
     {
      "kind": "commit",
@@ -2294,7 +2190,7 @@
    "date": "2026-09-19",
    "title": "The things the owner actually noticed",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "Not one of these came out of a test; they came out of somebody trying to play.",
+   "hook": "Not one of these came out of a test. They came out of somebody trying to play.",
    "citations": [
     {
      "kind": "commit",
@@ -2351,66 +2247,11 @@
    ]
   },
   {
-   "id": "2026-09-19-a-door-left-open-for-two-and-a-half-days",
-   "date": "2026-09-19",
-   "title": "A door left open for two and a half days",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "The worst thing in this era is not a bug in the game.",
-   "citations": [
-    {
-     "kind": "commit",
-     "ref": "26c8e37",
-     "sha": "26c8e3795b9054a8029bc3c022df2fe339a05c98",
-     "date": "2026-09-19",
-     "subject": "docs: KNOWN -- the security incident: a login-free monitor and two forgotten provisioning servers left the working tree readable for 2.5 days; what was rotated, what was closed, what is not done"
-    },
-    {
-     "kind": "commit",
-     "ref": "d23c990",
-     "sha": "d23c9906596bb6720ddce171f76e22a1d1690b8b",
-     "date": "2026-09-19",
-     "subject": "docs: KNOWN -- the owner answered the incident's open question: the monitor's public hostname is gated behind a Cloudflare Access login"
-    },
-    {
-     "kind": "commit",
-     "ref": "c5abaa9",
-     "sha": "c5abaa9556a29245b6686bdb498464a0b1814be3",
-     "date": "2026-09-19",
-     "subject": "docs: KNOWN -- the Access gate is applied and proven end to end, and two things that made it look broken when it was not"
-    },
-    {
-     "kind": "commit",
-     "ref": "3a80828",
-     "sha": "3a8082868bbe2d26074d861867ecbd20eb4a6069",
-     "date": "2026-09-19",
-     "subject": "docs: KNOWN -- unattended probes are granted, and the credential note that called a live secret dead was wrong"
-    },
-    {
-     "kind": "commit",
-     "ref": "db603f5",
-     "sha": "db603f5cd060386b533e727ea79585bdff21b6c8",
-     "date": "2026-09-19",
-     "subject": "docs: the hosted-server plan no longer names the owner's home address"
-    },
-    {
-     "kind": "commit",
-     "ref": "c81b17a",
-     "sha": "c81b17a6089fd7dfa1503686a43a8601d7d1d015",
-     "date": "2026-09-19",
-     "subject": "fix(config): the profile is a name, not a path -- a shared config.json could put the game's card writes anywhere (owner's exposure question, 2026-09-20)"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/KNOWN.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-20-the-server-gets-a-name",
+   "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
    "date": "2026-09-20",
-   "title": "The server gets a name",
+   "title": "The first build made for a person to play",
    "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "The last commit in this history swaps a number for a name.",
+   "hook": "Building it found two bugs that would have shipped. Playing it found the one the whole sprint was for.",
    "citations": [
     {
      "kind": "commit",
@@ -2440,16 +2281,7 @@
     {
      "kind": "path",
      "ref": "docs/CURRENT_SPRINT.md"
-    }
-   ]
-  },
-  {
-   "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
-   "date": "2026-09-20",
-   "title": "The first build made for a person to play",
-   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
-   "hook": "Building it found two defects that would have shipped. Playing it found the one this whole sprint was for.",
-   "citations": [
+    },
     {
      "kind": "commit",
      "ref": "8429717",
@@ -2458,24 +2290,9 @@
      "subject": "fix(release): the playtest candidate could not be packaged and was built at the optimisation R151 rejected -- both found by building it (Sprint 9 P7, playtest-1)"
     },
     {
-     "kind": "commit",
-     "ref": "8c3693c",
-     "sha": "8c3693cd65979e8c3dfe3a62a131698b26ee1de6",
-     "date": "2026-09-20",
-     "subject": "feat(launcher): the project's server is reached by name, with its raw address kept as the preset for when a name will not resolve (Sprint 9 P6, Goal 7, R175)"
-    },
-    {
      "kind": "gate",
      "ref": "s9_p7_playtest_gate",
      "path": "logs/parity/gate/s9_p7_playtest_gate"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/PLAYTEST.md"
-    },
-    {
-     "kind": "path",
-     "ref": "docs/CURRENT_SPRINT.md"
     },
     {
      "kind": "path",
@@ -2485,6 +2302,184 @@
    "picture": {
     "path": "docs/story/img/2026-09-20-playtest-mission.png",
     "caption": "The playtest candidate in the first mission, at the end of the gate's scripted walk, with the game's own stance tutorial up. This is the build the owner played that evening."
+   }
+  },
+  {
+   "id": "2026-09-20-the-music-chased-to-the-speaker",
+   "date": "2026-09-20",
+   "title": "The music, chased to the speaker",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Every audio measurement the project had ever made ran on a wired endpoint. The owner listens on a Bluetooth speaker.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "4da1bff",
+     "sha": "4da1bffed5e09b22c9d48b3038578a68cd432771",
+     "date": "2026-09-20",
+     "subject": "fix(audio): the mission music, investigated to the speaker -- the owner's skips were the device buffer, and three more things the numbers found (Sprint 9 Q0)"
+    },
+    {
+     "kind": "commit",
+     "ref": "d811660",
+     "sha": "d811660c5abe7413d24297da8c562df6208a8f58",
+     "date": "2026-09-20",
+     "subject": "docs: R177 -- the mix device buffer is a moved default and gets its ruling: 20 ms x 4, measured 42 -> 2 dropouts a minute at the owner's speaker"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_q0_device_gate",
+     "path": "logs/parity/gate/s9_q0_device_gate"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_q0_trace_gate",
+     "path": "logs/parity/gate/s9_q0_trace_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there",
+   "date": "2026-09-20",
+   "title": "An audio parity test, and the sound that was never there",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "The owner asked for an audio version of the picture test. It found something no ear had named.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "c328828",
+     "sha": "c328828ded1c0cabaa27f3118a342d638bb6c917",
+     "date": "2026-09-20",
+     "subject": "feat(parity): an audio parity check against the console, and the scheduled ladder's job (Sprint 9 Q1, Sprint 10 Goal 1)"
+    },
+    {
+     "kind": "commit",
+     "ref": "a352b4d",
+     "sha": "a352b4d60d2b32cf7d159af411b528977f88b5b2",
+     "date": "2026-09-20",
+     "subject": "fix(audio): the mission ambience is a CONDUCTOR sound and the mixer ran none of its grains -- child sounds, registers, markers modelled from the open reference (Sprint 9 Q0, R178)"
+    },
+    {
+     "kind": "commit",
+     "ref": "e39a8dc",
+     "sha": "e39a8dcd6366a7493d32f4802ff617cc439378be",
+     "date": "2026-09-20",
+     "subject": "fix(audio): a VAG stream that played out still answers snd_SoundIsStillPlaying until its slot is retaken -- the IRX's answer, which the EE's music manager relies on to queue the next stem (the music, round four)"
+    },
+    {
+     "kind": "gate",
+     "ref": "s9_q0_children_gate",
+     "path": "logs/parity/gate/s9_q0_children_gate"
+    },
+    {
+     "kind": "path",
+     "ref": "scripts/parity/audio_parity.sh"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-20-sprint-9-q0-mission-music-investigation.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night",
+   "date": "2026-09-20",
+   "title": "Version 0.9.0, and a robot that plays every night",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "Sprint 9 merged to main and got a tag. Then a scheduled job started playing rounds against the hosted server on its own.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "cc9d7ff",
+     "sha": "cc9d7ffdbcacefb9e2638e4a138686743f715210",
+     "date": "2026-09-20",
+     "subject": "Merge sprint-9: A stranger's first run (v0.9.0)"
+    },
+    {
+     "kind": "commit",
+     "ref": "9596f51",
+     "sha": "9596f51ea9dcda52e382c8470a38e8560e84f52c",
+     "date": "2026-09-20",
+     "subject": "docs: Sprint 9 closed -- merged to main at cc9d7ff with a merge commit, v0.9.0 tagged on it, develop deleted, sprint-10 open"
+    },
+    {
+     "kind": "commit",
+     "ref": "91307c0",
+     "sha": "91307c03f862ff06a3042c34c885a20d5f774097",
+     "date": "2026-09-20",
+     "subject": "docs: the first clean ladder row (run 3, KILL 4/4), the Goal 1 plan's three runs, the Sprint 10 status entry"
+    },
+    {
+     "kind": "run",
+     "ref": "ladder_20260920_101741",
+     "path": "logs/parity/ladder_20260920_101741"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LADDER.md"
+    }
+   ]
+  },
+  {
+   "id": "2026-09-20-a-console-and-a-pc-in-the-same-match",
+   "date": "2026-09-20",
+   "title": "A console and a PC in the same match",
+   "era": "2026-09-18 .. 2026-09-20 — Linux, a server, a stranger",
+   "hook": "A PlayStation 2 client and our program, in one game, on the hosted server, both ways round.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "fdadb13",
+     "sha": "fdadb13ba23e987e6e1b81d1e6272067c07736af",
+     "date": "2026-09-20",
+     "subject": "feat(harness): the mixed match's leg 1 on the verified flow (mixed_match2.sh); the first screen-verified PCSX2 login reached the hosted server's briefing room (Sprint 10 Goal 3 task 2)"
+    },
+    {
+     "kind": "commit",
+     "ref": "ffd1b90",
+     "sha": "ffd1b9021fea120a58985e1bb6710bc45613a454",
+     "date": "2026-09-20",
+     "subject": "docs: leg 1 reached -- a console client in ours' hosted game, the round running with both moving (Sprint 10 Goal 3 run d)"
+    },
+    {
+     "kind": "commit",
+     "ref": "52ef84f",
+     "sha": "52ef84fe9f8472029fb72d80d016489e0b24e204",
+     "date": "2026-09-20",
+     "subject": "docs: leg 2 reached -- ours in a console-hosted game on the hosted server, the round running with both moving (Sprint 10 Goal 3 run f)"
+    },
+    {
+     "kind": "commit",
+     "ref": "b7e4d3e",
+     "sha": "b7e4d3e9b87beb2019fb37105123a30d544ab736",
+     "date": "2026-09-20",
+     "subject": "docs: Sprint 10 Goal 3's bar met -- both legs of the mixed match twice in a row on the hosted server; the sprint file, status and handoff say where Sprint 10 stands"
+    },
+    {
+     "kind": "run",
+     "ref": "mixed2_ours_hosts_g",
+     "path": "logs/parity/mixed2_ours_hosts_g"
+    },
+    {
+     "kind": "run",
+     "ref": "mixed2_pcsx2_hosts_g",
+     "path": "logs/parity/mixed2_pcsx2_hosts_g"
+    },
+    {
+     "kind": "path",
+     "ref": "tools_py/parity/pcsx2_shell.py"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-20-mixed-match.png",
+    "caption": "Our program, in a round hosted by the console client on the hosted server: the first time the two have shared a match."
    }
   }
  ]

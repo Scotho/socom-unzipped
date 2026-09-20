@@ -200,6 +200,33 @@
    "archived": false,
    "kind": "directory"
   },
+  "logs/parity/gate/s9_q0_children_gate": {
+   "source": "logs/parity/gate/s9_q0_children_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s9_q0_device_gate": {
+   "source": "logs/parity/gate/s9_q0_device_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/gate/s9_q0_trace_gate": {
+   "source": "logs/parity/gate/s9_q0_trace_gate",
+   "text": "mc0\nmission\nmission.drive.log\nmission.game.log\nmission_sheet.png\nsummary.txt\ntitle\ntitle.drive.log\ntitle.game.log\ntitle_sheet.png\ntransition\ntransition.drive.log\n... (14 entries)",
+   "bytes": 14,
+   "sha256": "b118075f435dec44e6765fe80ab9796c1cdc0b623a90b16ed0335a8cd8dc3251",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/gate_first.out": {
    "source": "logs/parity/gate_first.out",
    "text": "PASS title (19/23 menu captures >= 90.0; scores: s00=99.4 s01=99.2 s02=98.5 s03=98.9 s04=97.5 s05=95.5 s06=96.9 s07=96.0 s08=93.8 s09=97.1 s10=98.6 s11=98.2 s12=97.8 s13=95.7 s14=96.3 s15=98.4 s16=93.2 s17=95.0 s18=98.4 s19=84.1 s20=60.4 s21=49.9 s22=68.1)\nPASS transition (rows 396-447 black on every black-screen frame)\nFAIL mission (HUD never matched (mission not reached))\nGATE FAIL (2/3) -> logs/parity/gate/first",
@@ -236,6 +263,15 @@
    "archived": false,
    "kind": "file"
   },
+  "logs/parity/ladder_20260920_101741": {
+   "source": "logs/parity/ladder_20260920_101741",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (64 entries)",
+   "bytes": 64,
+   "sha256": "35defd504ff776e8a6202eb2fc3214dcd908968ea2f0a3e5f497cd9b1c475927",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
   "logs/parity/launcher_ui": {
    "source": "logs/parity/launcher_ui",
    "text": "about_1100x700.png\nabout_800x520.png\naudio_1100x700.png\naudio_800x520.png\ncontroller_1100x700.png\ncontroller_800x520.png\ncontroller_playstation_1100x700.png\ndisc_1100x700.png\ndisc_800x520.png\nmicrophone_1100x700.png\nmicrophone_800x520.png\nonline_1100x700.png\n... (20 entries)",
@@ -271,6 +307,24 @@
    "captured": "2026-09-20",
    "archived": false,
    "kind": "file"
+  },
+  "logs/parity/mixed2_ours_hosts_g": {
+   "source": "logs/parity/mixed2_ours_hosts_g",
+   "text": "A_00_login.png\nA_01_universe.png\nA_02_persona.png\nA_03_name.png\nA_04_pw_kbd.png\nA_05_password.png\nA_06_connect_focus.png\nA_07_after_connect.png\nA_07_write_down.png\nA_08_eula.png\nA_09_lobby.png\nA_09_lobby_no_news.png\n... (37 entries)",
+   "bytes": 37,
+   "sha256": "fbe9b2a7eeccb9af67ebb206a2e3c38f15387ac83b994332c5ed5d9a66ac764d",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
+  },
+  "logs/parity/mixed2_pcsx2_hosts_g": {
+   "source": "logs/parity/mixed2_pcsx2_hosts_g",
+   "text": "00_login.png\n01_universe.png\n02_persona.png\n03_name.png\n04_pw_kbd.png\n05_password.png\n06_connect_focus.png\n07_after_connect.png\n07_write_down.png\n08_eula.png\n09_lobby.png\n09_lobby_no_news.png\n... (40 entries)",
+   "bytes": 40,
+   "sha256": "0a4b9fb78238f3623ca04b5dce5dab55c58ee9bed24fae50b90b1551ded6a2bd",
+   "captured": "2026-09-20",
+   "archived": false,
+   "kind": "directory"
   },
   "logs/parity/online/login/09_lobby.png": {
    "source": "logs/parity/online/login/09_lobby.png",
