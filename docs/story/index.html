@@ -131,8 +131,6 @@ footer.foot a{color:var(--teal)}
 <section class="preface">
 <p><strong>What this is.</strong> SOCOM II is a PlayStation 2 game from 2003. This project turns the game's own code into a Windows and Linux program. It runs from your own disc (the North American r0001 pressing; anything else gets refused with a message instead of half-working), draws on your GPU, plays through your speakers, reads your controller, and plays online against a server we host. Nothing from the game ships with it.</p>
 <p><strong>How to read an entry.</strong> Date, title, one bold line on why it mattered, a few sentences on what happened, then three small things. <em>How:</em> is the technical sentence. <em>But:</em> is the catch: what's still unproven, what got retracted, what a number doesn't mean. <code>Cited:</code> is the evidence, commit hashes you can open in the repo plus run records. The run records live in a <code>logs/</code> folder on the project machine, not in the repo, so each one cited here has a frozen witness (first lines, size, hash) in <code>docs/story/witnesses.json</code>. A test fails if any citation stops pointing at something real.</p>
-<p><strong>Dates</strong> are the commits'. A few docs in the repo are stamped a day later than the commit they describe. Work here tends to get written up after midnight.</p>
-<p><strong>Where it disagrees with <code>docs/KNOWN.md</code>,</strong> KNOWN is right and this document gets fixed.</p>
 </section>
 <section class="foreword" id="from-the-creator"><p class="brief-sub">From the creator</p>
 <p>This is an automation-first, agentically engineered passion project. It started as curiosity. I wanted to see where PS2 static recompilation actually stood, and it grew legs when it started producing results, so I kept building on them. The recompiler is a fork of PS2Recomp, extended for this one game. A good portion of the work went into a parallel validator: the retail disc running in PCSX2 as a golden reference, driven by the same scripts as our build, with debugging tools on both sides, so the agents could check themselves against the real thing on demand and adjust. Most of the code was written by AI agents in a loop I run. My part was mostly playing it, noticing what was off, and deciding what mattered next. What follows is the record of that, receipts attached.</p>
@@ -626,7 +624,7 @@ footer.foot a{color:var(--teal)}
 </ol>
 <section class="closing" id="where-it-stands-tonight-2026-09-20"><h2>Where it stands tonight, 2026-09-20</h2>
 <p><em>Not an entry and no <code>Cited:</code> line. This is the view from the end of the record on the night it ends, and it gets replaced by real entries as things land.</em></p>
-<p>The tree is at <code>7d5dc86</code>, 799 commits, on <code>sprint-10</code>, with two tags: <code>playtest-1</code> and <code>v0.9.0</code>. Sprint 9 is merged. Sprint 10 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted server. The scheduled ladder has one clean run of the seven it needs.</p>
+<p>The tree is at <code>9044ce5</code>, 804 commits, on <code>sprint-10</code>, with two tags: <code>playtest-1</code> and <code>v0.9.0</code>. Sprint 9 is merged. Sprint 10 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted server. The scheduled ladder has one clean run of the seven it needs.</p>
 <p>The open question is still the one I found on the first evening: the music. The device buffer, the pan, the silent voice lines and the missing ambience bed are fixed and measured. The still-playing answer that lets stems chain on the console is fixed and being verified. The bed is still 7-12 dB quieter than the console's and the logo movies are quiet at the source. My ear decides when it's done, and the last verdict was "better, not done".</p>
 <p>No stranger has played yet. No two humans have played each other. Those are the two sentences this page most wants to lose.</p>
 </section>
@@ -635,7 +633,7 @@ footer.foot a{color:var(--teal)}
 <p><code>python -m tools_py.story.cite</code></p>
 <p>A commit hash must resolve, be unambiguous, be reachable from the published branch, and the words beside it must come from the commit's real subject. A run or gate id must have a frozen witness in <code>docs/story/witnesses.json</code>, re-proved against the file on the machine that has the logs. A tracked path must be tracked. <code>docs/story/timeline.json</code> is the machine-readable form, and the test fails if it and this document disagree in either direction. The design is <code>docs/superpowers/specs/2026-09-19-sprint-11-goal-6-progress-story-design.md</code>.</p>
 </section>
-<footer class="foot">45 entries &middot; 212 commit citations &middot; built from <code>docs/STORY.md</code> at <code>7d5dc86</code> &middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>
+<footer class="foot">45 entries &middot; 212 commit citations &middot; built from <code>docs/STORY.md</code> at <code>9044ce5</code> &middot; checked by <code>tools_py/story/cite.py</code> &middot; link to a moment: <code>#&lt;date&gt;-&lt;slug&gt;</code></footer>
 </div>
 <script>
 (function(){

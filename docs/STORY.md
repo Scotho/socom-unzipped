@@ -14,11 +14,6 @@ number doesn't mean. `Cited:` is the evidence, commit hashes you can open in the
 live in a `logs/` folder on the project machine, not in the repo, so each one cited here has a frozen witness (first
 lines, size, hash) in `docs/story/witnesses.json`. A test fails if any citation stops pointing at something real.
 
-**Dates** are the commits'. A few docs in the repo are stamped a day later than the commit they describe. Work here
-tends to get written up after midnight.
-
-**Where it disagrees with `docs/KNOWN.md`,** KNOWN is right and this document gets fixed.
-
 ## From the creator
 
 This is an automation-first, agentically engineered passion project. It started as curiosity. I wanted to see where
@@ -625,7 +620,7 @@ The console side is the reference emulator running the retail disc, driven by th
 *Not an entry and no `Cited:` line. This is the view from the end of the record on the night it ends, and it gets
 replaced by real entries as things land.*
 
-The tree is at `7d5dc86`, 799 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
+The tree is at `9044ce5`, 804 commits, on `sprint-10`, with two tags: `playtest-1` and `v0.9.0`. Sprint 9 is merged. Sprint 10
 is open and already has its headline: a console client and our program in one match, both ways round, on the hosted
 server. The scheduled ladder has one clean run of the seven it needs.
 
