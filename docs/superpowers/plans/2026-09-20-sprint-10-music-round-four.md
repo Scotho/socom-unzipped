@@ -164,6 +164,16 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       11: instrument the cdvd read behind the feeder); DEVICE 2; UNEXPLAINED 3 (22 dB dips of 1.5-3.3 s on the PCM
       route, probably the material). ZERO VAG stream underruns in the whole run. Route note: the title/options
       music is the VAG loop 0x1303f8; the PCM ring carries the intro and the briefing.
+      **Run 13 (`s10_r4n`, ours, exe 17:21, the manager peeked at 20 Hz) and the console run `s10_r4o` (the manager
+      polled over PINE at 5 Hz; its first run at 20 Hz took PCSX2 down at 119 s -- cause unproven):** ours 136/177
+      against the run 11 reference, NO stereo-desync window. **The decision-level comparison, aligned on the HUD:**
+      the first three cues line up almost to the second on both machines -- cue 0xff at HUD-12.6 s (ours 12.2 s
+      long, console 11.2), cue 0xff again at +1.9 / +0.6 (7.8 / 8.2 s), cue 4 at +19.8 / +18.6 -- then they diverge:
+      on OURS cue 4's stem ENDS after 9.3 s (played out, `done detail=0`; the manager idles; 14 plays of 0.05-12 s with
+      idle gaps over the next 100 s, several stopped by the game 50-80 ms after their start), on the CONSOLE cue 4
+      stays in state 1 on the same handle for the rest of the poll, >= 120 s. **The stem loops on the console and
+      plays out once on ours** -- the mechanism behind "the music stops after a while": item 13 (the VAG loop flags /
+      the IRX's loop-the-file 0x400 / RestartInterleavedStream) with the fix agent.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
