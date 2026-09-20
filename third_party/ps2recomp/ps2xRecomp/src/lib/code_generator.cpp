@@ -151,6 +151,11 @@ namespace ps2recomp
         }
     }
 
+    void CodeGenerator::setElidePcStores(bool elidePcStores)
+    {
+        m_elidePcStores = elidePcStores;
+    }
+
     void CodeGenerator::setEmitInstructionComments(bool emitInstructionComments)
     {
         m_emitInstructionComments = emitInstructionComments;

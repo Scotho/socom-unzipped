@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <sstream>
+#include <string>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -15,6 +16,43 @@ namespace ps2recomp
 {
     namespace
     {
+        // Sprint-9 browser spike (`elide_pc_stores`). ctx->pc is observable only where control can
+        // leave this host frame: a runtime call reads it (handleSyscall, the memory Load/Store
+        // path, dispatchGuestBranch, the checkpoint), or the cooperative scheduler resumes the
+        // thread through this function's `switch (ctx->pc)` prologue. Everywhere else it is dead --
+        // the next store overwrites it before anything can observe it. A statement that mentions
+        // none of these markers expands to pure register/ALU work on R5900Context and cannot reach
+        // the runtime, so the ctx->pc store in front of it is dead and may be dropped.
+        bool statementCanReachRuntime(const std::string &statement)
+        {
+            static const char *const kMarkers[] = {
+                "runtime->",      // Load*/Store*, dispatchGuestBranch, handleSyscall, checkpoints
+                "ps2_syscalls::", // direct syscall handler call
+                "ps2_stubs::",    // direct stub / HLE call
+                "ctx->pc",        // the statement publishes or reads the PC itself
+                "READ",           // READ8/16/32/64/128 -> runtime->Load* on a special address
+                "WRITE",          // WRITE8/16/32/64/128 -> runtime->Store* on a special address
+                "Load",
+                "Store",
+                "SPR",            // scratchpad fast path: still a guest memory access
+                "rdram",          // any direct guest-memory touch
+                "throw",          // the unhandled-instruction path reports the address
+                "FPU_",           // FPU_DIV_S/SQRT_S/RSQRT_S -> ps2_fpu_*_traced(..., ctx) reads ctx->pc
+                "PS2_V",          // PS2_VADD/VSUB/VMUL/VDIV/VDIVQ/... -> ps2_vu_sat_traced(..., ctx)
+                "_traced",        // any other traced helper that takes the context
+            };
+
+            for (const char *marker : kMarkers)
+            {
+                if (statement.find(marker) != std::string::npos)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         Instruction makeSyntheticDelaySlot(uint32_t address)
         {
             Instruction inst{};
@@ -200,10 +238,17 @@ namespace ps2recomp
                         continue;
                     }
 
-                    ss << "    ctx->pc = 0x" << std::hex << inst.address << "u;\n"
-                       << std::dec;
                     const MemoryAccessHint memoryHint = resolveMemoryAccessHint(inst, constantRegisters);
-                    ss << "    " << cg.translateInstruction(inst, memoryHint);
+                    const std::string translated = cg.translateInstruction(inst, memoryHint);
+                    const bool needsPcStore =
+                        !cg.m_elidePcStores || inst.isMmio || statementCanReachRuntime(translated);
+
+                    if (needsPcStore)
+                    {
+                        ss << "    ctx->pc = 0x" << std::hex << inst.address << "u;\n"
+                           << std::dec;
+                    }
+                    ss << "    " << translated;
                     if (inst.isMmio)
                     {
                         ss << " // MMIO: 0x" << std::hex << inst.mmioAddress << std::dec;

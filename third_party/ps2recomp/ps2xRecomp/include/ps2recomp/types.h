@@ -184,6 +184,10 @@ namespace ps2recomp
         bool patchSyscalls = false;
         bool patchCop0 = true;
         bool patchCache = true;
+        // Sprint-9 browser spike: drop the per-instruction `ctx->pc = 0x...;` store in front of
+        // statements that cannot reach the runtime. Off by default -- on, the generated C++ is
+        // ~11% smaller and the PC a host crash reports is the last runtime-visible one.
+        bool elidePcStores = false;
         std::vector<std::string> skipFunctions;
         std::unordered_map<uint32_t, std::string> patches;
         std::vector<std::string> stubImplementations;
