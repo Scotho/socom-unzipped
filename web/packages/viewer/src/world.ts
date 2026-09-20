@@ -55,10 +55,14 @@ export interface WorldView {
    * Whether a texture whose alpha is a *ramp* is blended rather than punched out at a threshold.
    *
    * Every texture's own GS bind packet sets `ALPHA_1 = 0x44` -- `(Cs - Cd) * As + Cd`, source-alpha
-   * blending -- with the alpha test off in `TEST_1`, which says the game blended them. What is *not*
-   * known is the draw order the game relied on to make that correct, and a browser has to sort for
-   * itself: turning it on makes a light read as a glow instead of a flat disc on an opaque square, and
-   * can make a blended surface disappear behind one drawn before it. Off until the order is understood.
+   * blending -- with the alpha test off in `TEST_1`, and a PS2 capture of Frostfire shows the lamp
+   * flares as soft radial blooms with streaks, which an alpha test cannot draw at any threshold. That
+   * is why it is **on** by default.
+   *
+   * What is still not known is the draw order the hardware relied on, which a browser has to work out
+   * for itself: three sorts blended draws back to front by object centre, and a blended surface can
+   * therefore disappear behind one drawn before it. Turning this off restores the cutout, which sorts
+   * correctly and looks wrong.
    */
   setBlendGraded(on: boolean): void;
   /**

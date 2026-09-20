@@ -31,7 +31,7 @@
           <label><input type="checkbox" id="untextured" /> highlight untextured</label>
         </div>
         <div class="row">
-          <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, but which draws the game sorted is not known, so this is off until it is."><input type="checkbox" id="blendgraded" /> blend graded alpha (experimental)</label>
+          <label title="Blends textures whose alpha is a ramp instead of punching them out at a threshold. Every texture's bind packet asks for source-alpha blending with the alpha test off, and a PS2 capture shows the lamp flares as soft radial blooms, which an alpha test cannot draw. Turn it off to see the cutout the viewer used to draw."><input type="checkbox" id="blendgraded" checked /> blend graded alpha</label>
         </div>
         <div class="row">
           <label title="off: the GS's own arithmetic, texel times vertex colour in 8-bit space. on: decode the texture to linear first, which brightens every shaded surface."><input type="checkbox" id="linearlight" /> linear light (off = the GS's own arithmetic)</label>
@@ -39,15 +39,15 @@
       <details id="sliders-box">
         <summary>lighting (VU1 command 0x18: material &times; lit)</summary>
         <label class="slider" title="light[3]: reaches every surface whichever way it faces."><span>ambient</span>
-          <input type="range" id="ambient" min="0" max="2" step="0.01" value="0.35" /><output id="ambient-out"></output></label>
+          <input type="range" id="ambient" min="0" max="2" step="0.01" value="0.5" /><output id="ambient-out"></output></label>
         <label class="slider" title="light[0]: the +x axis light. A face pointing -x takes nothing from it."><span>light +x</span>
-          <input type="range" id="lightx" min="0" max="2" step="0.01" value="0.4" /><output id="lightx-out"></output></label>
+          <input type="range" id="lightx" min="0" max="2" step="0.01" value="0.75" /><output id="lightx-out"></output></label>
         <label class="slider" title="light[1]: the +y axis light, the one that reads as the sky."><span>light +y</span>
-          <input type="range" id="lighty" min="0" max="2" step="0.01" value="1.2" /><output id="lighty-out"></output></label>
+          <input type="range" id="lighty" min="0" max="2" step="0.01" value="1.15" /><output id="lighty-out"></output></label>
         <label class="slider" title="light[2]: the +z axis light."><span>light +z</span>
-          <input type="range" id="lightz" min="0" max="2" step="0.01" value="0.4" /><output id="lightz-out"></output></label>
+          <input type="range" id="lightz" min="0" max="2" step="0.01" value="0.75" /><output id="lightz-out"></output></label>
         <label class="slider" title="An exposure on the whole result: the EE's params.y/params.z scales are not on the disc either."><span>gain</span>
-          <input type="range" id="lightgain" min="0.25" max="4" step="0.05" value="1" /><output id="lightgain-out"></output></label>
+          <input type="range" id="lightgain" min="0.25" max="4" step="0.05" value="1.35" /><output id="lightgain-out"></output></label>
       </details>
       <details id="fog-box">
         <summary>fog (GS FOGCOL + VU1 qwords 28/29)</summary>

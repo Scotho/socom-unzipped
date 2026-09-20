@@ -42,12 +42,27 @@ export interface Lighting {
 }
 
 /**
- * Chosen by eye against Frostfire, a night map. The material averages 0.29 of unity, so an up-facing
- * surface lands near 0.45 of full, a wall near 0.22 and an underside near 0.10 — a night range with
- * enough spread to read as lit rather than flat. `gain` is 1 because the unity point is already right;
- * it is an exposure for dialling, not a correction for a scale error.
+ * Fitted against a PS2 capture of Frostfire rather than chosen by eye, with
+ * `tools/compare-to-ref.ts` sampling the same surfaces in both:
+ *
+ * ```
+ *                        ps2     ours (before)
+ *   ground (up)          67.8    47.5
+ *   silo body (vertical) 107.6   46.3
+ *   sky                   8.9     7.4
+ * ```
+ *
+ * The sky already matched — `FOGCOL` is (7, 7, 12) and ours read (7, 7, 12) — which is what says the
+ * two captures share a gamma and the comparison is fair. What was wrong was the *shape*: a wall came
+ * out as dark as the ground where the hardware draws it brighter, because the +y light carried too
+ * much of the total and the axis lights too little. Raising the ambient and the x/z terms and lifting
+ * the exposure brings the up-facing surface to about 1.44x and the vertical one to about 2.25x, which
+ * is what the two columns ask for.
+ *
+ * Still a fit to one frame of one night map, not a calibration. `lit`'s real inputs are uploaded by the
+ * EE and are not on the disc, so these are the stand-in — hence the sliders.
  */
-export const DEFAULT_LIGHTING: Lighting = { ambient: 0.35, x: 0.4, y: 1.2, z: 0.4, gain: 1 };
+export const DEFAULT_LIGHTING: Lighting = { ambient: 0.5, x: 0.75, y: 1.15, z: 0.75, gain: 1.35 };
 
 /**
  * `record2 * lit` for one part, into `out` (rgba, 4 floats a vertex).
