@@ -1458,7 +1458,9 @@ void register_socom2_audio_tests()
             const double justAfter = renderLevel(1);          // ticks 0..12 of 240
             t.IsTrue(justAfter > 0.8 * full, "the call itself does not cut the cue (" + std::to_string(justAfter) + " of " + std::to_string(full) + ")");
             const double half = renderLevel(9);               // through tick 120: the middle of the ramp
-            t.IsTrue(half > 0.35 * full && half < 0.65 * full, "half way through it is about half as loud (" + std::to_string(half) + " of " + std::to_string(full) + ")");
+            // The ramp's scale is 0.5 here, and the group stage SQUARES it (vol.c:434-455, research/36 Q6 item 1):
+            // a linear fade is a quadratic loudness curve on the console -- a quarter of the amplitude, not half.
+            t.IsTrue(half > 0.15 * full && half < 0.35 * full, "half way through it is a QUARTER as loud, the square law (" + std::to_string(half) + " of " + std::to_string(full) + ")");
             const double landed = renderLevel(11);            // past tick 240
             t.IsTrue(landed < 1e-9, "the fade lands on silence (" + std::to_string(landed) + ")");
             t.IsTrue(mixer.isPlaying(0x04000019u), "a fade to 0 does not end the cue -- only the -4 target does");
@@ -1513,6 +1515,74 @@ void register_socom2_audio_tests()
             mixer.pumpStreams();
             mixer.autoVol(0x0401005Du, -4, 0, 2);
             t.IsTrue(!mixer.isPlaying(0x0401005Du), "a zero-tick -4 stops at once");
+            std::remove(path.c_str());
+        });
+
+        // research/36 Q6 item 1 (2026-09-20): the group stage is a SQUARE law. snd_AdjustVolToGroup
+        // (research/989snd-ziemas/iop/vol.c:434-455; IRX FUN_00019b7c): m = MasterVol[g] * Duck[g] / 0x10000;
+        // v = vol14 * m / 0x400; return v * v / 0x7ffe. The identity at full scale (0x7ffe), a QUARTER at half
+        // amplitude: the MUSIC/SOUND sliders at 50 % are -12 dB on the console, and so is a stem played at vol 0x200.
+        // Ours was linear (-6 dB) -- 2x too loud in amplitude at every level below full, and every fade the wrong
+        // shape -- the likeliest reason for the music-only parity windows' level mismatch once Q1 was out of the way.
+        tc.Run("Mixer: the group stage is a square law -- half volume is -12 dB (a quarter of the amplitude), full volume is unity", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_square_law.vpk";
+            t.IsTrue(writeVpk(path, 8, 2), "a loud stereo VPK");
+            // The mean absolute level of the second 2400-frame slice of a fresh mixer playing `path` at `vol`
+            // (group 1) under master `master`: one mixer per measurement, so nothing carries over.
+            auto streamLevel = [&](int32_t vol, int32_t master) {
+                snd989::Mixer mixer;
+                mixer.setMasterVolume(16u, master);
+                std::vector<int16_t> buf(2 * 2400);
+                t.IsTrue(mixer.playStream(0x04000071u, path, 0u, vol, -1, 1u), "the stream plays");
+                for (int i = 0; i < 2; ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                }
+                double sum = 0.0;
+                for (int16_t s : buf)
+                    sum += std::fabs(static_cast<double>(s));
+                return sum / static_cast<double>(buf.size());
+            };
+            const double full = streamLevel(0x400, 0x400);
+            t.IsTrue(full > 100.0, "loud at full (" + std::to_string(full) + ")");
+            const double again = streamLevel(0x400, 0x400);
+            t.IsTrue(std::fabs(again - full) <= 0.01 * full, "unity at full: v * v / 0x7ffe is the identity at 0x7ffe (" +
+                                                                 std::to_string(again) + " of " + std::to_string(full) + ")");
+
+            // A stem played at vol 0x200: playVol 63 of 127 (0.496 of full amplitude), squared -> 0.246. -12 dB.
+            const double halfVol = streamLevel(0x200, 0x400);
+            t.IsTrue(halfVol > 0.20 * full && halfVol < 0.30 * full, "vol 0x200 is a quarter as loud, -12 dB (" +
+                                                                       std::to_string(halfVol) + " of " + std::to_string(full) + ")");
+            t.IsTrue(halfVol < 0.40 * full, "and not the linear -6 dB of before");
+
+            // The game's MUSIC slider at 50 % = master 0x200 on the group: the same quarter.
+            const double halfMaster = streamLevel(0x400, 0x200);
+            t.IsTrue(halfMaster > 0.20 * full && halfMaster < 0.30 * full, "master 0x200 is a quarter as loud, -12 dB (" +
+                                                                             std::to_string(halfMaster) + " of " + std::to_string(full) + ")");
+
+            // A bank voice goes through the same stage (blocksnd.c:1267-1268): HUDUI sound 8 under master 0x200 is a
+            // quarter as loud as under 0x400, envelope for envelope (the same render length on a fresh mixer each).
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            auto voiceLevel = [&](int32_t master) {
+                snd989::Mixer mixer;
+                t.IsTrue(mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size()), "HUDUI loads");
+                mixer.setMasterVolume(16u, master);
+                std::vector<int16_t> buf(2 * 4096);
+                t.IsTrue(mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0) != 0u, "sound 8 plays");
+                mixer.render(buf.data(), 4096);
+                double sum = 0.0;
+                for (int16_t s : buf)
+                    sum += std::fabs(static_cast<double>(s));
+                return sum / static_cast<double>(buf.size());
+            };
+            const double voiceFull = voiceLevel(0x400);
+            t.IsTrue(voiceFull > 20.0, "the voice is audible at full (" + std::to_string(voiceFull) + ")");
+            const double voiceHalf = voiceLevel(0x200);
+            t.IsTrue(voiceHalf > 0.20 * voiceFull && voiceHalf < 0.30 * voiceFull, "a bank voice under master 0x200 is a quarter as loud too (" +
+                                                                                     std::to_string(voiceHalf) + " of " + std::to_string(voiceFull) + ")");
             std::remove(path.c_str());
         });
 
@@ -1664,8 +1734,10 @@ void register_socom2_audio_tests()
 
         tc.Run("Mixer: a full-scale stream at full volume sits at the SPU's half scale (voice volume >> 1), not at clipping", [](TestCase &t)
         {
-            // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the SPU voice volume is
-            // 0x3fff * cos(45 deg) >> 1 of full scale: about 28672 * 0.707 * 0.5 = 10135 per channel.
+            // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the 14-bit voice volume
+            // is 0x7ffe * cos(45 deg); the group stage then SQUARES it (vol.c:434-455, research/36 Q6 item 1: the IRX
+            // applies the pan table BEFORE FUN_00019b7c, so the pan's 0.707 is squared to 0.5), then the SPU's >> 1:
+            // about 28672 * 0.5 * 0.5 = 7168 per channel.
             int8_t sevens[28];
             for (int i = 0; i < 28; ++i)
                 sevens[i] = 7;
@@ -1694,7 +1766,7 @@ void register_socom2_audio_tests()
                 int32_t peak = 0;
                 for (int16_t v : buf)
                     peak = std::max<int32_t>(peak, v < 0 ? -v : v);
-                t.IsTrue(peak >= 9000 && peak <= 11500, "peak " + std::to_string(peak) + " (about 10135: 28672 x 0.707 x 1/2)");
+                t.IsTrue(peak >= 6400 && peak <= 8000, "peak " + std::to_string(peak) + " (about 7168: 28672 x 0.707^2 x 1/2, the square law)");
                 mixer.stopAll();
             }
             std::remove(path.c_str());

@@ -773,13 +773,26 @@ namespace snd989
             return masterVol[g] * masterVol[16] / 0x400;   // both 0..0x400
         }
 
+        // The group stage is a SQUARE law (research/36 Q6 item 1): snd_AdjustVolToGroup
+        // (research/989snd-ziemas/iop/vol.c:434-455; IRX FUN_00019b7c) takes the 14-bit voice volume, multiplies
+        // it by the group's master (x duck) / 0x400, and returns `v * v / 0x7ffe` -- the identity at full scale
+        // (0x7ffe), a QUARTER at half amplitude. It sits under every voice (blocksnd.c:1267-1268) and every stream
+        // (IRX FUN_00016898), so the MUSIC/SOUND sliders at 50 % are -12 dB on the console, a stem played at vol
+        // 0x200 likewise, and a linear 7-bit fade is a quadratic loudness curve. `vol14` is 0..0x7ffe (makeVolume),
+        // `modifier` 0..0x400 (group x master x ramp); the product's square fits an int32 (0x7ffe^2 < 2^30).
+        static int32_t adjustVolToGroup(int32_t vol14, int32_t modifier)
+        {
+            const int32_t v = (std::min(vol14, 0x7ffe) * modifier) / 0x400;
+            return (v * v) / 0x7ffe;
+        }
+
         void applyVoiceVolume(Voice &v, int32_t &left, int32_t &right) const
         {
             // The AutoVol ramp rides on top of the group modifier: no ramp is 0x400, i.e. the gain unchanged.
             const int32_t modifier = groupModifier(v.group) * volScale(v.handler) / 0x400;
             // The SPU voice takes (left >> 1, right >> 1): full volume is half of full scale (StartTone, research/32 section 3).
-            left = ((v.base.left * modifier) / 0x400) >> 1;
-            right = ((v.base.right * modifier) / 0x400) >> 1;
+            left = adjustVolToGroup(v.base.left, modifier) >> 1;
+            right = adjustVolToGroup(v.base.right, modifier) >> 1;
         }
 
         // A negative tone or child-spec volume / pan is a sentinel: -1..-4 a handler register, -5 random, -6.. a
@@ -1743,8 +1756,9 @@ namespace snd989
                 int32_t left = 0, right = 0;
                 auto takeGains = [&]() {
                     const int32_t modifier = m_impl->groupModifier(cur->group) * m_impl->volScale(cur->handle) / 0x400;
-                    left = ((cur->base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
-                    right = ((cur->base.right * modifier) / 0x400) >> 1;
+                    // The square law of the group stage (adjustVolToGroup), then the SPU's half scale, as for the voices.
+                    left = Impl::adjustVolToGroup(cur->base.left, modifier) >> 1;
+                    right = Impl::adjustVolToGroup(cur->base.right, modifier) >> 1;
                 };
                 takeGains();
                 for (size_t i = 0; i < chunk; ++i)
