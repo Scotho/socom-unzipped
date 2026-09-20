@@ -20,14 +20,13 @@ through the contact on https://s2u.scotho.com. Expect an acknowledgement within 
 The multiplayer code is SOCOM II's, recompiled as-is, and it has known vulnerabilities that the community console
 servers patched years ago and this project has not (reported to the project by a community moderator, 2026-09-20):
 
-- **Chat packet overflow -> arbitrary code execution on every client in the room.** The game reserves 32 bytes for a
-  chat message; the chat packet carries 64. A crafted message from any peer overflows a buffer on the other clients.
-  Here that buffer lives in a native process on the player's PC.
+- A hostile peer in the same room can reach code execution on the other clients in it. Here that means a native
+  process on the player's PC. Details are deliberately not written up in this repository.
 - Others are believed to exist; nothing in the recompiled network path has been audited for them.
 
-Until fixed, the README tells players to play online only with people and servers they trust. A report that
-identifies another such path, or the game-side fix the community applied, is exactly what the Reporting section
-above is for.
+Until fixed, the README tells players to play online only with people and servers they trust. The specifics of the
+known issue, another such path, or the game-side fix the community applied belong in a private report through the
+Reporting section above -- not in an issue, a PR, or a document here.
 
 ## What is not a vulnerability here
 
