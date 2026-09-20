@@ -67,6 +67,14 @@ namespace ui
 
     // Every focusable control on `page`, in reading order, plus the bottom bar's LAUNCH (id "bar.launch").
     std::vector<Node> layoutFor(Page page, Rect window, const LayoutInputs &in);
+
+    // The node list THIS FRAME must draw from. `computed` is the list built at the top of the frame, from
+    // the page that was current then; `page` is where the frame's input left the player. The two differ on
+    // exactly the frames a page change lands on -- the pad's shoulder tabs, Escape, a rail entry clicked in
+    // the middle of the draw -- and drawing the new page out of the old page's list is what put a label at
+    // the window's origin for one frame (Sprint 9 P4, the owner's "weird graphical bug ... around the top
+    // left"). Unchanged page: the list it was handed, so the rebuild costs a page change, not every frame.
+    std::vector<Node> nodesForFrame(std::vector<Node> computed, Page page, Rect window, const LayoutInputs &in);
     // The rail's entries, one per page.
     std::vector<Node> railLayout(Rect window);
 

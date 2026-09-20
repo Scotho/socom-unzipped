@@ -1043,6 +1043,101 @@ void register_launcher_tests()
             }
         });
 
+        // Sprint 9 P4 (owner, 2026-09-20): "changing between menus causes a weird graphical bug that's
+        // visible for a moment somewhere around the top left of the page." The frame's node list is built
+        // from the page that was current at the top of the frame (main.cpp:1010), and the page changes
+        // AFTER that -- during input (main.cpp:1149-1173) or inside the draw itself, when a rail entry is
+        // clicked (main.cpp:517). On that one frame the NEW page's controls are looked up in the OLD page's
+        // list; rectOf answers Rect{}, the origin with no size; and textCenteredIn duly puts a label at
+        // (0,0), which is the top left of the window, for exactly one frame. Two defences, both pure: the
+        // frame draws from the page's own list, and a rect that is not drawable places no ink anywhere.
+        tc.Run("a page change does not leave the frame drawing from the previous page's node list", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> onPlay = ui::layoutFor(ui::Page::Play, window, in);
+
+            // What the defect did: the bar asks for the NEW page's LAUNCH in the OLD page's list.
+            t.IsFalse(ui::hasNode(onPlay, ui::barLaunchId(ui::Page::Online)),
+                      "the PLAY page's list does not hold the ONLINE page's bar LAUNCH -- this is the lookup that failed");
+            t.IsFalse(ui::drawable(ui::rectOf(onPlay, ui::barLaunchId(ui::Page::Online))),
+                      "and what it answers is not a rect anything may draw from");
+
+            // The fix: the frame's list is the list of the page the input left behind.
+            const std::vector<ui::Node> forFrame = ui::nodesForFrame(onPlay, ui::Page::Online, window, in);
+            t.IsTrue(!forFrame.empty(), "the frame has a list to draw from");
+            bool allOnline = true;
+            for (const ui::Node &n : forFrame)
+                allOnline = allOnline && n.page == ui::Page::Online;
+            t.IsTrue(allOnline, "every node in it belongs to the page being drawn");
+            const ui::Rect launch = ui::rectOf(forFrame, ui::barLaunchId(ui::Page::Online));
+            t.IsTrue(ui::drawable(launch), "the bar's LAUNCH is found, with a rect of its own");
+            t.IsTrue(launch.x > 0.0f && launch.y > 0.0f, "and it is on the bar, not at the window's origin");
+
+            // A frame whose page did not change gets the list it already had, unchanged: the rebuild costs
+            // a page change, not every frame.
+            const std::vector<ui::Node> same = ui::nodesForFrame(onPlay, ui::Page::Play, window, in);
+            t.IsTrue(same.size() == onPlay.size() && !same.empty() && same.front().id == onPlay.front().id,
+                     "a frame whose page did not change draws from the same list");
+        });
+
+        tc.Run("an unknown id answers a rect nothing may draw from, and the origin is not a rect", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+
+            t.IsFalse(ui::drawable(ui::Rect{}), "a default Rect -- the origin, zero by zero -- is not drawable");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, 0.0f, 40.0f}), "nor is one with no width");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, 40.0f, 0.0f}), "nor one with no height");
+            t.IsFalse(ui::drawable(ui::Rect{10.0f, 10.0f, -40.0f, 40.0f}), "nor one turned inside out");
+            t.IsTrue(ui::drawable(ui::Rect{10.0f, 10.0f, 40.0f, 40.0f}), "a real rect is");
+
+            t.IsFalse(ui::drawable(ui::rectOf(nodes, "online.no.such.control")),
+                      "an id the list does not hold answers a rect nothing may draw from");
+            t.IsTrue(ui::drawable(ui::rectOf(nodes, "online.profile")), "an id it does hold answers a real one");
+        });
+
+        // Sprint 9 P4, from the owner's screenshot: "the UNZIPPED part after SOCOM II is lower than the
+        // SOCOM II text", and "the running text is not aligned with the yellow circle, it appears higher".
+        // Both are the same mistake -- a word placed by its LINE BOX rather than by the ink a reader sees.
+        // text()'s y is the top of the line box, so two different sizes drawn at the same y do NOT share a
+        // baseline; and an all-caps word centred in a bar-height box sits high of centre, because the
+        // font's ascent above the capitals and its descender space below it are not equal. The arithmetic
+        // therefore lives with the bar's other measured placements, and this test asserts the very numbers
+        // the bar draws, which is the spec's bar for this item ("asserted in the top-bar tests, not eyeballed").
+        tc.Run("the top bar: UNZIPPED shares SOCOM II's baseline, and the state word's ink is centred on its lamp", [](TestCase &t)
+        {
+            auto close = [](float a, float b, float tol) { return std::fabs(a - b) <= tol; };
+            const ui::ChromeLayout l = ui::chromeLayout(1100.0f);
+            ui::TopBarText m;
+            m.markRight = 16.0f + 86.0f + 10.0f + 74.0f;
+            m.statusW = 46.0f;
+            m.tabW.push_back(34.0f);
+            // Deliberately asymmetric ink, and nothing here is zero or equal: a face whose capitals begin
+            // 3.1 units below the line box's top and stand 10.4 tall at size 15, 2.7/9.0 at 13, 2.9/9.7 at
+            // 14. An implementation that ignores the measurements cannot pass this by accident.
+            m.markY = 10.0f;
+            m.markCapTop = 3.1f;
+            m.markCapH = 10.4f;
+            m.markSubCapTop = 2.7f;
+            m.markSubCapH = 9.0f;
+            m.statusCapTop = 2.9f;
+            m.statusCapH = 9.7f;
+            const ui::TopBarPlaces p = ui::topBarPlaces(l, m);
+
+            const float markBaseline = m.markY + m.markCapTop + m.markCapH;
+            t.IsTrue(close(p.markSubY + m.markSubCapTop + m.markSubCapH, markBaseline, 0.001f),
+                     "UNZIPPED is drawn at the y that puts its baseline on SOCOM II's");
+            t.IsFalse(close(p.markSubY, m.markY, 0.001f),
+                      "which is not the same y as SOCOM II's -- equal tops at two sizes is the defect the owner saw");
+
+            t.IsTrue(close(p.statusY + m.statusCapTop + m.statusCapH * 0.5f, p.lamp.y, 0.001f),
+                     "the state word's capitals are centred on the lamp's centre, not its line box on the bar's");
+            t.IsTrue(p.statusY > 0.0f && p.statusY + m.statusCapTop + m.statusCapH < l.bar.h,
+                     "and the word's ink is still inside the bar");
+        });
+
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
         // game. The community server runs r0004, which this client cannot play yet.
         tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)
