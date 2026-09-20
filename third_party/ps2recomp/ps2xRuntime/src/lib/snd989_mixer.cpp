@@ -441,28 +441,33 @@ namespace snd989
             {
                 if (ended.load(std::memory_order_relaxed) || !file)
                     return false;
+                const uint32_t chunkPairStart = consumed;
+                const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
+                // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
+                // channels, half a streaming buffer -- see playStream). One buffer holds that many bytes of the left
+                // channel and then of the right; the last, partial buffer is split in equal halves (block-aligned).
                 const size_t chunkBytes = static_cast<size_t>(interleave);
-                std::vector<uint8_t> raw(chunkBytes);
+                const size_t perChannel = channels > 1
+                                              ? std::min<size_t>(chunkBytes, (static_cast<size_t>(remaining) / channels) & ~static_cast<size_t>(15))
+                                              : std::min<size_t>(chunkBytes, remaining);
+                std::vector<uint8_t> raw(std::max<size_t>(perChannel, 16u));
                 bool any = false;
                 bool repeat = false;              // R171: this chunk pair ended a run that says it repeats
-                const uint32_t chunkPairStart = consumed;
                 for (uint32_t ch = 0; ch < channels; ++ch)
                 {
                     std::vector<int16_t> &pcmCh = out[ch];
                     pcmCh.clear();
-                    if (consumed >= dataSize)
+                    if (perChannel < 16)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    const size_t want = std::min(chunkBytes, static_cast<size_t>(dataSize - consumed));
-                    if (seek64(file, dataStart + consumed) != 0)
+                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * perChannel) != 0)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    const size_t got = std::fread(raw.data(), 1, want, file);
-                    consumed += static_cast<uint32_t>(want);
+                    const size_t got = std::fread(raw.data(), 1, perChannel, file);
                     if (got < 16)
                     {
                         ended.store(true, std::memory_order_release);
@@ -516,6 +521,7 @@ namespace snd989
                     s1[ch] = h1;
                     s2[ch] = h2;
                 }
+                consumed = chunkPairStart + static_cast<uint32_t>(static_cast<size_t>(channels) * perChannel);
                 if (repeat && !ended.load(std::memory_order_relaxed))
                     consumed = loopStart;   // R171: back to the mark (0 = the top of the data) and keep playing
                 return any;
@@ -1951,9 +1957,17 @@ namespace snd989
         if (std::memcmp(header, " KPV", 4) == 0)
         {
             st.dataSize = u32(4);
-            st.interleave = std::max<uint32_t>(16u, u32(8));
             st.rate = u32(16) ? u32(16) : 32000u;
             st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            // research/36 item 10 (2026-09-20): header word 3 is the streaming BUFFER the file was authored for
+            // (0xb000 on every SOCOM stem; the IRX's FUN_00013334 refuses a file whose word 3 differs from its
+            // stream buffer) and the data starts there. A two-channel file is interleaved per buffer -- half of
+            // each buffer is the left channel, then half the right (the IRX's per-channel stride is
+            // `puVar12[3] >> 1`) -- so the per-channel stride is word 3 / channels, NOT word 2 (0x800, the
+            // streamer's refill grain). Reading 0x800 chunks as alternating channels put different music in the
+            // two channels: run 10's L/R correlation of 0.05 at lag 0 against the console's 0.3-0.6.
+            st.interleave = st.channels > 1 ? std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u)
+                                            : std::max<uint32_t>(16u, u32(8));
             st.dataStart = byteOffset + u32(12);
         }
         else if (std::memcmp(header, "VAGp", 4) == 0)

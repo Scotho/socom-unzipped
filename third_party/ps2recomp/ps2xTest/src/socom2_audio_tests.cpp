@@ -159,12 +159,14 @@ namespace
             up[i] = static_cast<int8_t>(i % 8);
             down[i] = static_cast<int8_t>(-(i % 8));
         }
-        std::vector<uint8_t> file(0xB0, 0u);
+        // research/36 item 10: a two-channel VPK's per-channel stride is header word 3 / 2 (the streaming buffer's
+        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000 (data at 0x1000).
+        std::vector<uint8_t> file(0x1000, 0u);
         auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(file.data(), " KPV", 4);
         put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
         put32(8, 0x800);
-        put32(12, 0xB0);
+        put32(12, 0x1000);
         put32(16, 32000);
         put32(20, 2);
         for (int c = 0; c < chunkPairs; ++c)
@@ -1352,12 +1354,12 @@ void register_socom2_audio_tests()
                 down[i] = static_cast<int8_t>(-(i % 8));   // 0..-7
             }
             const int chunksPerChannel = 3;
-            std::vector<uint8_t> file(0xB0, 0u);
+            std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
             put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
             put32(8, 0x800);
-            put32(12, 0xB0);
+            put32(12, 0x1000);
             put32(16, 32000);
             put32(20, 2);
             for (int c = 0; c < chunksPerChannel; ++c)
@@ -1803,13 +1805,13 @@ void register_socom2_audio_tests()
                 sevens[i] = 7;
                 zeros[i] = 0;
             }
-            std::vector<uint8_t> file(0xB0, 0u);
+            std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);
             const int chunkPairs = 4;
             put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
             put32(8, 0x800);
-            put32(12, 0xB0);
+            put32(12, 0x1000);
             put32(16, 48000);
             put32(20, 2);
             for (int c = 0; c < chunkPairs; ++c)
@@ -1856,6 +1858,202 @@ void register_socom2_audio_tests()
                 mixer.stopAll();
             }
             std::remove(path.c_str());
+        });
+
+        // research/36 item 10 (2026-09-20): the owner's "doesn't even sound like music". Every SOCOM stem is a VPK
+        // with word 2 = 0x800, word 3 = 0xb000, channels 2 -- and the two channels are interleaved per streaming
+        // BUFFER (word 3: the IRX's FUN_00013334 requires it to equal its stream buffer, and its per-channel stride
+        // is `puVar12[3] >> 1`): each 0xb000-byte buffer holds 0x5800 bytes of L then 0x5800 of R, the last, partial
+        // buffer split in halves; 0x800 is only the streamer's refill grain. Ours read alternating 0x800 chunks as
+        // L, R, L, R -- different music in the two channels (run 10: L/R correlation 0.05 at lag 0 against the
+        // console's 0.3-0.6, "best" lags scattered at 61/136/674 ms). This file is authored in the real layout with
+        // IDENTICAL data in both halves, so a correct decode renders L == R for every frame.
+        tc.Run("Mixer: a two-channel VPK is interleaved per streaming buffer (word 3 / 2): L and R stay sample-aligned through the pre-fill, every buffer boundary, the partial tail and a forced underrun", [](TestCase &t)
+        {
+            constexpr uint32_t kBuffer = 0xb000u, kHalf = kBuffer / 2u;
+            const int fullBuffers = 6;                 // 7 chunk pairs with the tail: more than the ring's 4, so an underrun can be forced
+            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer, split in halves
+            std::vector<uint8_t> file(kBuffer, 0u);    // the header block: 24 bytes of header, zero to word 3
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);
+            put32(4, static_cast<uint32_t>(fullBuffers) * kBuffer + 2u * tailPerChannel);
+            put32(8, 0x800);
+            put32(12, kBuffer);
+            put32(16, 32000);
+            put32(20, 2);
+            // A block pattern that changes from block to block, so a channel reading the wrong bytes cannot match.
+            auto pattern = [](uint32_t idx, int8_t (&n)[28]) {
+                for (int i = 0; i < 28; ++i)
+                    n[i] = static_cast<int8_t>(static_cast<int>((idx * 5u + static_cast<uint32_t>(i)) % 15u) - 7);
+            };
+            int8_t nib[28];
+            for (int b = 0; b < fullBuffers; ++b)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (uint32_t k = 0; k < kHalf / 16u; ++k)
+                    {
+                        pattern(static_cast<uint32_t>(b) * (kHalf / 16u) + k, nib);
+                        const std::vector<uint8_t> blk = block(4, 0, 0x00, nib);   // shift 4: samples of +-1792
+                        file.insert(file.end(), blk.begin(), blk.end());
+                    }
+            for (int ch = 0; ch < 2; ++ch)
+                for (uint32_t k = 0; k < tailPerChannel / 16u; ++k)
+                {
+                    pattern(static_cast<uint32_t>(fullBuffers) * (kHalf / 16u) + k, nib);
+                    const std::vector<uint8_t> blk = block(4, 0, k == tailPerChannel / 16u - 1u ? 0x01 : 0x00, nib);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+            const std::string path = "socom2_audio_test_buffer_layout.vpk";
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            const uint64_t samplesPerChannel = (2ull * fullBuffers * kHalf + 2ull * tailPerChannel) / 2ull / 16ull * 28ull;
+            const uint64_t expectFrames = samplesPerChannel * 48000ull / 32000ull;
+            {
+                snd989::Mixer mixer;
+                const uint32_t h = 0x0400000Cu;
+                t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "the buffer-layout VPK plays (pan -1: L data left, R data right)");
+                std::vector<int16_t> buf(2 * 2400);
+                std::vector<int16_t> out;
+                for (int i = 0; i < 400 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                    out.insert(out.end(), buf.begin(), buf.end());
+                }
+                t.IsTrue(!mixer.isPlaying(h), "it plays to its end");
+                // Its length is every half of every buffer, tail included: the decoder read the halves, not 0x800 chunks.
+                size_t lastLoud = 0;
+                int32_t peak = 0;
+                for (size_t f = 0; f < out.size() / 2; ++f)
+                {
+                    const int32_t a = std::abs(static_cast<int32_t>(out[f * 2])), b = std::abs(static_cast<int32_t>(out[f * 2 + 1]));
+                    if (a > 200 || b > 200)
+                        lastLoud = f;
+                    peak = std::max(peak, std::max(a, b));
+                }
+                t.IsTrue(peak > 500, "audible (peak " + std::to_string(peak) + ", +-1792 blocks at the SPU half scale)");
+                t.IsTrue(lastLoud + 1 >= expectFrames - 4800 && lastLoud + 1 <= expectFrames + 4800,
+                         "the whole file plays: " + std::to_string(lastLoud + 1) + " frames of sound against " + std::to_string(expectFrames) + " expected");
+                size_t mismatches = 0, first = 0;
+                for (size_t f = 0; f < out.size() / 2; ++f)
+                    if (std::abs(static_cast<int32_t>(out[f * 2]) - static_cast<int32_t>(out[f * 2 + 1])) > 1)
+                    {
+                        if (mismatches++ == 0)
+                            first = f;
+                    }
+                t.Equals(mismatches, static_cast<size_t>(0u), "L and R are sample-aligned for the whole stream (first mismatch at frame " + std::to_string(first) + ")");
+            }
+            {
+                // A forced underrun: the worker is off in the tests, so after the pre-fill and one pump the ring holds
+                // at most 1 + 3 chunk pairs; render past them without pumping (silence), then pump again.
+                snd989::Mixer mixer;
+                const uint32_t h = 0x0400000Du;
+                t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "plays again");
+                mixer.pumpStreams();
+                std::vector<int16_t> buf(2 * 4800);
+                size_t mismatches = 0;
+                bool starved = false;
+                for (int i = 0; i < 60 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.render(buf.data(), 4800);   // 100 ms a call, no pump: the ring drains within its ~5 s
+                    int32_t peak = 0;
+                    for (size_t f = 0; f < 4800; ++f)
+                    {
+                        peak = std::max(peak, std::abs(static_cast<int32_t>(buf[f * 2])));
+                        if (std::abs(static_cast<int32_t>(buf[f * 2]) - static_cast<int32_t>(buf[f * 2 + 1])) > 1)
+                            ++mismatches;
+                    }
+                    if (peak < 8)
+                        starved = true;
+                }
+                t.IsTrue(starved, "the ring ran dry without the pump: silence");
+                mixer.pumpStreams();
+                int32_t resumed = 0;
+                for (int i = 0; i < 20 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 4800);
+                    for (size_t f = 0; f < 4800; ++f)
+                    {
+                        resumed = std::max(resumed, std::abs(static_cast<int32_t>(buf[f * 2])));
+                        if (std::abs(static_cast<int32_t>(buf[f * 2]) - static_cast<int32_t>(buf[f * 2 + 1])) > 1)
+                            ++mismatches;
+                    }
+                }
+                t.IsTrue(resumed > 500, "and plays on once pumped (peak " + std::to_string(resumed) + ")");
+                t.Equals(mismatches, static_cast<size_t>(0u), "L and R stay aligned through the underrun and the resume");
+            }
+            std::remove(path.c_str());
+        });
+
+        // The same through the real thing: a mission stem straight from the disc image (skipped when no image is at
+        // hand). Decoded through the fixed path, its channels correlate at lag 0 as they do on the console.
+        tc.Run("Mixer: a real stem from the disc decodes with its two channels time-aligned (skipped without the disc image)", [](TestCase &t)
+        {
+            std::vector<std::string> candidates;
+            if (const char *env = std::getenv("PS2X_CD_IMAGE"); env && *env)
+                candidates.emplace_back(env);
+            candidates.emplace_back("../../../../game/SOCOM II - U.S. Navy SEALs (USA).iso");
+            candidates.emplace_back("C:/projects/socom_pc/game/SOCOM II - U.S. Navy SEALs (USA).iso");
+            std::string iso;
+            for (const std::string &c : candidates)
+                if (FILE *fp = std::fopen(c.c_str(), "rb"))
+                {
+                    std::fclose(fp);
+                    iso = c;
+                    break;
+                }
+            if (iso.empty())
+            {
+                t.IsTrue(true, "no disc image: skipped");
+                return;
+            }
+            snd989::Mixer mixer;
+            const uint32_t h = 0x0400000Eu;
+            // Sector 0x11ec92: a 3.9 s stereo stem (VPK size 0x22c60, word 3 0xb000) the driven mission plays twice.
+            t.IsTrue(mixer.playStream(h, iso, 0x11ec92ull * 2048ull, 0x400, -1, 1u), "the stem opens from the disc image");
+            std::vector<int16_t> buf(2 * 2400);
+            std::vector<double> L, R;
+            for (int i = 0; i < 200 && mixer.isPlaying(h); ++i)
+            {
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 2400);
+                for (size_t f = 0; f < 2400; f += 8)   // decimated by 8: 6 kHz, enough for a lag search of +-80 ms
+                {
+                    L.push_back(buf[f * 2]);
+                    R.push_back(buf[f * 2 + 1]);
+                }
+            }
+            t.IsTrue(!mixer.isPlaying(h), "it plays to its end (" + std::to_string(L.size() * 8) + " frames)");
+            const size_t n = L.size();
+            double ml = 0.0, mr = 0.0;
+            for (size_t i = 0; i < n; ++i) { ml += L[i]; mr += R[i]; }
+            ml /= static_cast<double>(n); mr /= static_cast<double>(n);
+            double nl = 0.0, nr = 0.0;
+            for (size_t i = 0; i < n; ++i) { L[i] -= ml; R[i] -= mr; nl += L[i] * L[i]; nr += R[i] * R[i]; }
+            const double norm = std::sqrt(nl * nr) + 1e-9;
+            auto corrAt = [&](int lag) {
+                double s = 0.0;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    const long j = static_cast<long>(i) + lag;
+                    if (j >= 0 && static_cast<size_t>(j) < n)
+                        s += L[i] * R[static_cast<size_t>(j)];
+                }
+                return s / norm;
+            };
+            const double c0 = corrAt(0);
+            int bestLag = 0;
+            double best = -2.0;
+            for (int lag = -480; lag <= 480; ++lag)   // +-80 ms at 6 kHz
+            {
+                const double c = corrAt(lag);
+                if (c > best) { best = c; bestLag = lag; }
+            }
+            t.IsTrue(c0 > 0.35, "L and R correlate at lag 0 like the console's (corr " + std::to_string(c0) + ")");
+            t.IsTrue(std::abs(bestLag) * 8 <= 144, "and the best lag is within 3 ms of zero (" + std::to_string(bestLag * 8) + " frames, corr " + std::to_string(best) + ")");
         });
 
         // Sprint 7 Task 12 Step 4 (ruling R97): the owner's "persistent buzz" on the online menus was a 512-byte block
