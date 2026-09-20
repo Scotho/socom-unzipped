@@ -83,6 +83,14 @@ namespace snd989
         void autoVol(uint32_t handle, int32_t vol, int32_t ticks, int32_t how);
         void setMasterVolume(uint32_t group, int32_t vol);           // 0..0x400; group 16 = every group
         void stopAll();
+        // Sprint 9 Q0: snd_SetGlobalReg(index 1..32, value) -- the byte a grain reads as register -index (the M51
+        // ambience conductor's TEST_REGISTER -2 reads what the game sets with index 2 every frame).
+        void setGlobalReg(uint32_t index, int32_t value);
+        int32_t globalReg(uint32_t index) const;
+        // The child sounds a conductor's START_CHILD_SOUND grains have running under `handle`, and the sound index
+        // of the `index`-th of them (0xFFFFFFFF past the end) -- for the tests; a child has no handle of the game's.
+        size_t activeChildren(uint32_t handle) const;
+        uint32_t childSound(uint32_t handle, size_t index) const;
 
         // snd_PlayVAGStreamByLoc: a VPK file in the disc image ("VPK " header: data size, 0x800-byte interleave, header size,
         // sample rate, channels; research/32 section 5) at `byteOffset` of `path`, read as it plays. vol 0..0x400, pan as play().

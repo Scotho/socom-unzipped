@@ -40,6 +40,7 @@ public:
     size_t mixerActiveStreams() const { return m_mixer.activeStreams(); }
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
     bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
+    int32_t mixerGlobalReg(uint32_t index) const { return m_mixer.globalReg(index); }
     void mixerRender(int16_t *interleaved, size_t frames);
     void mixerPumpStreams() { m_mixer.pumpStreams(); }   // the decode-ahead pump, for callers that drive it themselves
 

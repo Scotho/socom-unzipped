@@ -509,6 +509,7 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
         m_mixer.autoVol(static_cast<uint32_t>(arg(0)), arg(1), count >= 3 ? arg(2) : 0, count >= 4 ? arg(3) : 0);
         break;
     case 0x09u: m_mixer.setMasterVolume(static_cast<uint32_t>(arg(0)), arg(1)); break;
+    case 0x67u: m_mixer.setGlobalReg(static_cast<uint32_t>(arg(0)), arg(1)); break;   // snd_SetGlobalReg {index, value}
     case 0x2Cu:   // snd_PlayVAGStreamByLoc {handle, sector1, sector2, off1, vol, off2, pan, group, flags, queued}
         if (count >= 9)
         {

@@ -3,6 +3,7 @@
 #include "runtime/ps2_vag.h"
 
 #include <algorithm>
+#include <unordered_map>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -322,27 +323,49 @@ namespace snd989
             double step = 1.0;
             socom2_bank::Tone tone;
             uint8_t group = 0;
+            // The tone's volume and pan once the sentinels resolved: a negative Tone.Vol / Tone.Pan names a handler
+            // register (-1..-4), a random value (-5) or a global register (-6..), the reference's TONE grain.
+            int32_t gVol = 0;
+            int32_t gPan = 0;
             VolPair base{};   // MakeVolume result before the group modifier
             Envelope env;
             bool paused = false;
         };
 
+        // One playing sound: the grain sequencer the reference (open-goal/jak-project, game/sound/989snd) calls a
+        // BlockSoundHandler. Sprint 9 Q0: a sound may be a CONDUCTOR whose grains start and stop CHILD sounds --
+        // the mission ambience is one (bank M51_AM sound 0x31: START_CHILD_SOUND x9, STOP_CHILD_SOUND x9,
+        // TEST_REGISTER on a global the game sets every frame, GOTO_MARKER, LOOP) and the audio parity check
+        // measured its absence: a continuous bed on the console, silence on ours (2026-09-20). A child is a
+        // Handler of its own with `parent` set; it plays on its own and keeps the parent alive (the reference's
+        // Tick: a handler is done only when its grains, its voices AND its children are).
         struct Handler
         {
             uint32_t handle = 0;
             uint32_t bank = 0;
             uint32_t sound = 0;
-            int32_t curVolume = 0;   // 0..127
+            uint32_t parent = 0;         // the conductor's handle for a child sound; 0 for one the game played
+            int32_t curVolume = 0;       // 0..127
             int32_t curPan = 0;
             int32_t curPb = 0;
             int32_t curPm = 0;
+            int32_t appVolume = 0x400;   // the play call's vol (0..0x400), or a child's share of its parent's
+            int32_t appPan = kPanReset;  // the play call's pan
+            int32_t origVolume = 0;      // the sound's own Vol, or the child spec's vol
             uint8_t group = 0;
             int32_t countdown = 0;
-            size_t nextGrain = 0;
+            // Signed: a marker or loop jump lands one BEFORE its target and the ++ after the grain steps onto it.
+            int32_t nextGrain = 0;
             bool done = false;
             bool paused = false;
             uint8_t note = 60, fine = 0;
+            std::array<int8_t, 4> regs{};   // the handler's registers: SET/INC/DEC/ADD/COPY/TEST_REGISTER, sentinels -1..-4
+            // RAND_PLAY / PLAY_CYCLE: play the next `grainsToPlay` grains, then skip `grainsToSkip`.
+            bool skipGrains = false;
+            int32_t grainsToPlay = 0;
+            int32_t grainsToSkip = 0;
         };
+
 
         // One decoded chunk pair: the samples of channel 0 and, for a stereo stream, of channel 1.
         using ChunkPair = std::array<std::vector<int16_t>, 2>;
@@ -512,6 +535,17 @@ namespace snd989
         std::unordered_map<uint32_t, BankData> banks;
         std::vector<Voice> voices;
         std::vector<Handler> handlers;
+        // Sprint 9 Q0: the 32 global registers snd_SetGlobalReg(index 1..32, value) writes (the IRX keeps a byte
+        // table; index 1 is its first entry). A grain names global N as register -N: TEST_REGISTER reg -2 reads
+        // what the game set with index 2 -- the value the M51 ambience conductor branches on.
+        std::array<int8_t, 32> globalRegs{};
+        // Children a grain started while the handler list was being walked: appended after the walk (a push_back
+        // under the range-for would move every Handler out from under its reference).
+        std::vector<Handler> spawned;
+        uint32_t nextChildUid = 1;
+        // RAND_PLAY's "previous pick" and PLAY_CYCLE's index live in the grain itself in the reference, shared by
+        // every handler of the sound; keyed by bank, sound and grain here.
+        std::unordered_map<uint64_t, int16_t> grainState;
         // shared_ptr: pumpStreams() holds a reference to each stream while it reads, so reap() erasing one on the
         // render thread never closes a FILE * out from under a read in flight.
         std::vector<std::shared_ptr<Stream>> streams;
@@ -748,6 +782,68 @@ namespace snd989
             right = ((v.base.right * modifier) / 0x400) >> 1;
         }
 
+        // A negative tone or child-spec volume / pan is a sentinel: -1..-4 a handler register, -5 random, -6.. a
+        // global register (the reference's TONE and STARTCHILDSOUND grains; the child variant takes the magnitude).
+        int32_t resolveVol(const Handler &h, int32_t vol, bool child) const
+        {
+            if (vol < 0)
+            {
+                if (vol >= -4)
+                    vol = h.regs[static_cast<size_t>(-vol - 1)];
+                else if (vol == -5)
+                    vol = std::rand() % 0x7f;
+                else
+                    vol = globalReg(-vol - 6);
+            }
+            return child ? std::clamp(std::abs(vol), 0, 127) : std::max(vol, 0);
+        }
+
+        int32_t resolvePan(const Handler &h, int32_t pan, bool child) const
+        {
+            if (pan < 0)
+            {
+                int32_t reg = 0;
+                if (pan >= -4)
+                    reg = h.regs[static_cast<size_t>(-pan - 1)];
+                else if (pan == -5)
+                    return std::rand() % 360;
+                else
+                    reg = globalReg(-pan - 6);
+                pan = 360 * (child ? std::min(std::abs(reg), 127) : reg) / 127;
+            }
+            while (pan >= 360)
+                pan -= 360;
+            while (pan < 0)
+                pan += 360;
+            return pan;
+        }
+
+        int32_t globalReg(int32_t index) const   // 0-based
+        {
+            return (index >= 0 && index < static_cast<int32_t>(globalRegs.size())) ? globalRegs[static_cast<size_t>(index)] : 0;
+        }
+
+        // A register by the grains' numbering: 0..3 the handler's, -1.. the globals (-N is global N-1).
+        int32_t readReg(const Handler &h, int32_t reg) const
+        {
+            if (reg < 0)
+                return globalReg(-reg - 1);
+            return reg < 4 ? h.regs[static_cast<size_t>(reg)] : 0;
+        }
+
+        void writeReg(Handler &h, int32_t reg, int32_t value)
+        {
+            const int8_t v = static_cast<int8_t>(std::clamp(value, -128, 127));
+            if (reg < 0)
+            {
+                const int32_t g = -reg - 1;
+                if (g < static_cast<int32_t>(globalRegs.size()))
+                    globalRegs[static_cast<size_t>(g)] = v;
+            }
+            else if (reg < 4)
+                h.regs[static_cast<size_t>(reg)] = v;
+        }
+
         void startTone(Handler &h, BankData &bd, const socom2_bank::Tone &tone)
         {
             const DecodedSample *sample = bd.sample(tone.sampleOffset);
@@ -770,7 +866,9 @@ namespace snd989
             const int fine = v7 % 128;
             const uint16_t pitch = note2Pitch(tone.centerNote, tone.centerFine, note, fine);
             v.step = pitch / 4096.0;
-            v.base = makeVolume(127, 0, h.curVolume, h.curPan, tone.vol, tone.pan);
+            v.gVol = resolveVol(h, tone.vol, false);
+            v.gPan = resolvePan(h, tone.pan, false);
+            v.base = makeVolume(127, 0, h.curVolume, h.curPan, v.gVol, v.gPan);
             v.env.keyOn(tone.adsr1, tone.adsr2);
             voices.push_back(v);
         }
@@ -786,27 +884,167 @@ namespace snd989
         {
             for (Voice &v : voices)
                 if (v.handler == h.handle)
-                    v.base = makeVolume(127, 0, h.curVolume, h.curPan, v.tone.vol, v.tone.pan);
+                    v.base = makeVolume(127, 0, h.curVolume, h.curPan, v.gVol, v.gPan);
         }
 
-        // One grain; returns the delay to add to the next grain's countdown.
-        int32_t doGrain(Handler &h)
+        // The 32-byte PlaySoundParams a START_CHILD_SOUND / STOP_CHILD_SOUND / BRANCH grain indexes in the
+        // parameter pool: {s32 vol, s32 pan, s8 regSettings[4], s32 soundId, char name[16]} (reference sfxgrain.h).
+        struct ChildSpec
         {
-            auto bit = banks.find(h.bank);
-            if (bit == banks.end())
+            int32_t vol = 0, pan = 0, soundId = -1;
+        };
+
+        static bool childSpec(const BankData &bd, const socom2_bank::Grain &g, ChildSpec &out)
+        {
+            const std::vector<uint8_t> &pool = bd.bank.grainData;
+            if (static_cast<size_t>(g.arg) + 16 > pool.size())
+                return false;
+            const uint8_t *p = pool.data() + g.arg;
+            auto s32At = [p](size_t o) {
+                return static_cast<int32_t>(static_cast<uint32_t>(p[o]) | (static_cast<uint32_t>(p[o + 1]) << 8) |
+                                            (static_cast<uint32_t>(p[o + 2]) << 16) | (static_cast<uint32_t>(p[o + 3]) << 24));
+            };
+            out.vol = s32At(0);
+            out.pan = s32At(4);
+            out.soundId = s32At(12);
+            return true;
+        }
+
+        // A control grain's operand: the three signed bytes of the 24-bit argument (the reference's ControlParams).
+        static int32_t param8(const socom2_bank::Grain &g, int index)
+        {
+            return static_cast<int8_t>((g.arg >> (8 * index)) & 0xFFu);
+        }
+
+        int16_t &grainSlot(const Handler &h, int32_t grainIndex, int16_t initial)
+        {
+            const uint64_t key = (static_cast<uint64_t>(h.bank) << 32) | (static_cast<uint64_t>(h.sound & 0xFFFFu) << 16) |
+                                 static_cast<uint64_t>(static_cast<uint32_t>(grainIndex) & 0xFFFFu);
+            auto it = grainState.find(key);
+            if (it == grainState.end())
+                it = grainState.emplace(key, initial).first;
+            return it->second;
+        }
+
+        // START_CHILD_SOUND: a handler of its own under a handle the IOP never issues (type 0xF), its volume the
+        // spec's (not the child sound's own) scaled by the parent's app volume, as the reference's MakeHandler ->
+        // BlockSoundHandler(sfx_vol = spec vol, params.vol = app * orig / 127) computes it.
+        void startChild(Handler &h, BankData &bd, const ChildSpec &spec)
+        {
+            if (spec.soundId < 0 || static_cast<size_t>(spec.soundId) >= bd.bank.sounds.size())
+                return;
+            const socom2_bank::Sound &snd = bd.bank.sounds[static_cast<size_t>(spec.soundId)];
+            if (snd.grains.empty())
+                return;
+            Handler c;
+            c.handle = (0x0Fu << 24) | (nextChildUid++ & 0xFFFFFFu);
+            c.bank = h.bank;
+            c.sound = static_cast<uint32_t>(spec.soundId);
+            c.parent = h.handle;
+            c.group = static_cast<uint8_t>(snd.volGroup);
+            c.origVolume = resolveVol(h, spec.vol, true);
+            c.appVolume = h.appVolume * h.origVolume / 127;
+            c.curVolume = std::clamp((c.origVolume * c.appVolume) >> 10, 0, 127);
+            const int32_t pan = resolvePan(h, spec.pan, true);
+            c.appPan = (h.appPan == kPanReset || h.appPan == kPanDontChange) ? pan : h.appPan;
+            c.curPan = c.appPan;
+            c.curPm = h.curPm;
+            c.curPb = h.curPb;
+            c.regs = h.regs;
+            c.note = h.note;
+            c.fine = h.fine;
+            c.countdown = snd.grains[0].delay;
+            spawned.push_back(c);
+        }
+
+        // The reference erases a stopped child: its destructor stops the voices dead (no release).
+        void killHandler(Handler &c)
+        {
+            c.done = true;
+            for (Voice &v : voices)
+                if (v.handler == c.handle)
+                    v.env.phase = Envelope::Off;
+            stopChildren(c.handle, -1);
+        }
+
+        void stopChildren(uint32_t parentHandle, int32_t soundId)   // soundId -1: every child
+        {
+            for (Handler &c : handlers)
+                if (c.parent == parentHandle && (soundId < 0 || c.sound == static_cast<uint32_t>(soundId)))
+                    killHandler(c);
+            for (Handler &c : spawned)
+                if (c.parent == parentHandle && (soundId < 0 || c.sound == static_cast<uint32_t>(soundId)))
+                    c.done = true;
+        }
+
+        // The game's stop (the reference's Stop): the handler is done, its children stop the same way, its voices release.
+        void stopHandlerTree(uint32_t handle)
+        {
+            for (size_t i = 0; i < handlers.size(); ++i)
+                if (handlers[i].parent == handle)
+                    stopHandlerTree(handlers[i].handle);
+            if (Handler *h = find(handle))
+                h->done = true;
+            keyOffHandler(handle);
+        }
+
+        void setHandlerPaused(uint32_t handle, bool paused)
+        {
+            for (Handler &c : handlers)
+                if (c.parent == handle)
+                    setHandlerPaused(c.handle, paused);
+            if (Handler *h = find(handle))
+                h->paused = paused;
+            for (Voice &v : voices)
+                if (v.handler == handle)
+                    v.paused = paused;
+        }
+
+        // The reference's SetVolPan: the app volume (0..0x400, or a negative 0..127 scaled up) and pan land on
+        // the handler, its voices re-derive theirs, and each child gets app * orig / 127 with the same pan.
+        void setHandlerVolPan(Handler &h, int32_t vol, int32_t pan)
+        {
+            if (vol != kVolDontChange)
+                h.appVolume = vol >= 0 ? vol : -1024 * vol / 127;
+            if (pan == kPanReset)
             {
-                h.done = true;
-                return 0;
+                auto bit = banks.find(h.bank);
+                h.appPan = (bit != banks.end() && h.sound < bit->second.bank.sounds.size()) ? bit->second.bank.sounds[h.sound].pan : 0;
             }
-            BankData &bd = bit->second;
-            const socom2_bank::Sound &snd = bd.bank.sounds[h.sound];
-            if (h.nextGrain >= snd.grains.size())
-            {
-                h.done = true;
-                return 0;
-            }
-            const socom2_bank::Grain &g = snd.grains[h.nextGrain];
-            int32_t ret = 0;
+            else if (pan != kPanDontChange)
+                h.appPan = pan;
+            const int32_t newVol = std::clamp((h.appVolume * h.origVolume) >> 10, 0, 127);
+            int32_t newPan = h.appPan;
+            while (newPan >= 360)
+                newPan -= 360;
+            while (newPan < 0)
+                newPan += 360;
+            if (newVol == h.curVolume && newPan == h.curPan)
+                return;
+            h.curVolume = newVol;
+            h.curPan = newPan;
+            const uint32_t handle = h.handle;
+            const int32_t childVol = h.appVolume * h.origVolume / 127;
+            for (size_t i = 0; i < handlers.size(); ++i)
+                if (handlers[i].parent == handle)
+                    setHandlerVolPan(handlers[i], childVol, pan);
+            if (Handler *self = find(handle))
+                updateHandlerVoices(*self);
+        }
+
+        void gotoMarker(Handler &h, const socom2_bank::Sound &snd, int32_t target)
+        {
+            for (size_t i = 0; i < snd.grains.size(); ++i)
+                if (snd.grains[i].type == socom2_bank::kMarker && param8(snd.grains[i], 0) == target)
+                {
+                    h.nextGrain = static_cast<int32_t>(i) - 1;
+                    return;
+                }
+        }
+
+        // One grain, the reference's Grain::operator(): returns the ticks to add to the next grain's countdown.
+        int32_t doGrain(Handler &h, BankData &bd, const socom2_bank::Sound &snd, const socom2_bank::Grain &g)
+        {
             switch (g.type)
             {
             case socom2_bank::kTone:
@@ -817,46 +1055,84 @@ namespace snd989
                     startTone(h, bd, tone);
                 break;
             }
-            case socom2_bank::kRandDelay:
+            case socom2_bank::kStartChild:
             {
-                const int32_t amount = static_cast<int32_t>(g.arg);
-                if (amount > 0)
-                    ret = std::rand() % amount;
+                ChildSpec spec;
+                if (childSpec(bd, g, spec))
+                    startChild(h, bd, spec);
                 break;
             }
+            case socom2_bank::kStopChild:
+            {
+                ChildSpec spec;
+                if (childSpec(bd, g, spec) && spec.soundId >= 0)
+                    stopChildren(h.handle, spec.soundId);
+                break;
+            }
+            case socom2_bank::kBranch:
+            {
+                // The handler carries on as another sound of the block: its voices go, the sequencer restarts.
+                ChildSpec spec;
+                if (!childSpec(bd, g, spec) || spec.soundId < 0 || static_cast<size_t>(spec.soundId) >= bd.bank.sounds.size() ||
+                    bd.bank.sounds[static_cast<size_t>(spec.soundId)].grains.empty())
+                    break;
+                for (Voice &v : voices)
+                    if (v.handler == h.handle)
+                    {
+                        v.env.keyOff();
+                        v.base = VolPair{};
+                    }
+                const socom2_bank::Sound &ns = bd.bank.sounds[static_cast<size_t>(spec.soundId)];
+                h.sound = static_cast<uint32_t>(spec.soundId);
+                h.origVolume = ns.vol;
+                h.curVolume = std::clamp((h.appVolume * ns.vol) >> 10, 0, 127);
+                h.group = static_cast<uint8_t>(ns.volGroup);
+                h.countdown = ns.grains[0].delay;
+                h.nextGrain = -1;
+                h.skipGrains = false;
+                h.grainsToPlay = 0;
+                h.grainsToSkip = 0;
+                break;
+            }
+            case socom2_bank::kRandDelay:
+                return std::rand() % (static_cast<int32_t>(g.arg & 0xFFFFFFu) + 1);   // the reference: Amount = arg + 1
             case socom2_bank::kRandPb:
             {
-                const int32_t pb = static_cast<int8_t>(g.arg & 0xFF);
+                const int32_t pb = param8(g, 0);
                 const int32_t rnd = std::rand();
                 h.curPb = pb * ((0xffff * (rnd % 0x7fff)) / 0x7fff - 0x8000) / 100;
                 break;
             }
             case socom2_bank::kPb:
             {
-                const int32_t pb = static_cast<int8_t>(g.arg & 0xFF);
+                const int32_t pb = param8(g, 0);
                 h.curPb = pb >= 0 ? 0x7fff * pb / 127 : -0x8000 * pb / -128;
                 break;
             }
             case socom2_bank::kAddPb:
             {
-                const int32_t pb = static_cast<int8_t>(g.arg & 0xFF);
+                const int32_t pb = param8(g, 0);
                 h.curPb = std::clamp(h.curPb + 0x7fff * pb / 127, -32768, 32767);
                 break;
             }
+            case socom2_bank::kLoopStart:
+                break;
             case socom2_bank::kLoopEnd:
             {
-                for (size_t i = h.nextGrain; i-- > 0;)
-                    if (snd.grains[i].type == socom2_bank::kLoopStart)
+                // Back onto LOOP_START itself (i - 1, then the ++): its delay counts every time round, which is how
+                // the M51 conductor paces its register test (LOOP_START delay 120 = half a second).
+                for (int32_t i = h.nextGrain - 1; i >= 0; --i)
+                    if (snd.grains[static_cast<size_t>(i)].type == socom2_bank::kLoopStart)
                     {
-                        h.nextGrain = i;   // ++ below lands on the grain after LOOP_START
+                        h.nextGrain = i - 1;
                         break;
                     }
                 break;
             }
             case socom2_bank::kLoopContinue:
             {
-                for (size_t i = h.nextGrain + 1; i < snd.grains.size(); ++i)
-                    if (snd.grains[i].type == socom2_bank::kLoopEnd)
+                for (int32_t i = h.nextGrain + 1; i < static_cast<int32_t>(snd.grains.size()); ++i)
+                    if (snd.grains[static_cast<size_t>(i)].type == socom2_bank::kLoopEnd)
                     {
                         h.nextGrain = i;
                         break;
@@ -865,6 +1141,106 @@ namespace snd989
             }
             case socom2_bank::kStop:
                 h.done = true;
+                break;
+            case socom2_bank::kRandPlay:
+            {
+                const int32_t options = param8(g, 0);
+                const int32_t count = param8(g, 1);
+                if (options <= 0)
+                    break;
+                int16_t &previous = grainSlot(h, h.nextGrain, static_cast<int16_t>(param8(g, 2)));
+                int32_t rnd = std::rand() % options;
+                if (rnd == previous && ++rnd >= options)
+                    rnd = 0;
+                previous = static_cast<int16_t>(rnd);
+                h.nextGrain += rnd * count;
+                h.grainsToPlay = count + 1;
+                h.grainsToSkip = (options - 1 - rnd) * count;
+                h.skipGrains = true;
+                break;
+            }
+            case socom2_bank::kPlayCycle:
+            {
+                const int32_t groupSize = param8(g, 0);
+                const int32_t groupCount = param8(g, 1);
+                if (groupSize <= 0)
+                    break;
+                int16_t &index = grainSlot(h, h.nextGrain, static_cast<int16_t>(param8(g, 2)));
+                const int32_t a = index;
+                if (++index >= groupSize)
+                    index = 0;
+                h.nextGrain += groupCount * a;
+                h.grainsToPlay = groupCount + 1;
+                h.grainsToSkip = (groupSize - 1 - a) * groupCount;
+                h.skipGrains = true;
+                break;
+            }
+            case socom2_bank::kSetRegister:
+                writeReg(h, param8(g, 0), param8(g, 1));
+                break;
+            case socom2_bank::kSetRegisterRand:
+            {
+                const int32_t lo = param8(g, 1), hi = param8(g, 2);
+                const int32_t range = hi - lo + 1;
+                if (range > 0)
+                    writeReg(h, param8(g, 0), std::rand() % range + lo);
+                break;
+            }
+            case socom2_bank::kIncRegister:
+                writeReg(h, param8(g, 0), readReg(h, param8(g, 0)) + 1);
+                break;
+            case socom2_bank::kDecRegister:
+                writeReg(h, param8(g, 0), readReg(h, param8(g, 0)) - 1);
+                break;
+            case socom2_bank::kAddRegister:
+                writeReg(h, param8(g, 1), readReg(h, param8(g, 1)) + param8(g, 0));
+                break;
+            case socom2_bank::kCopyRegister:
+                writeReg(h, param8(g, 1), readReg(h, param8(g, 0)));
+                break;
+            case socom2_bank::kTestRegister:
+            {
+                // Skips the grain after it when the test FAILS: action 0 "value < cmp", 1 "value == cmp", 2.. "value > cmp".
+                const int32_t value = readReg(h, param8(g, 0));
+                const int32_t action = param8(g, 1);
+                const int32_t cmp = param8(g, 2);
+                if (action == 0)
+                {
+                    if (value >= cmp)
+                        ++h.nextGrain;
+                }
+                else if (action == 1)
+                {
+                    if (value != cmp)
+                        ++h.nextGrain;
+                }
+                else if (cmp >= value)
+                    ++h.nextGrain;
+                break;
+            }
+            case socom2_bank::kMarker:
+                break;
+            case socom2_bank::kGotoMarker:
+                gotoMarker(h, snd, param8(g, 0));
+                break;
+            case socom2_bank::kGotoRandomMarker:
+            {
+                const int32_t lo = param8(g, 0), hi = param8(g, 1);
+                const int32_t range = hi - lo + 1;
+                if (range > 0)
+                    gotoMarker(h, snd, std::rand() % range + lo);
+                break;
+            }
+            case socom2_bank::kWaitForAllVoices:
+                for (const Voice &v : voices)
+                    if (v.handler == h.handle && v.env.phase != Envelope::Off)
+                    {
+                        --h.nextGrain;   // the same grain again next tick
+                        return 1;
+                    }
+                break;
+            case socom2_bank::kOnStopMarker:
+                h.nextGrain = static_cast<int32_t>(snd.grains.size()) - 1;
                 break;
             case socom2_bank::kKeyOffVoices:
                 keyOffHandler(h.handle);
@@ -875,42 +1251,85 @@ namespace snd989
                         v.env.phase = Envelope::Off;
                 break;
             default:
-                break;   // LFO, registers, markers, children, plugins: not modelled (research/32 section 4)
+                break;   // LFO, XREF, plugins: not modelled (research/32 section 4)
             }
-            ++h.nextGrain;
-            if (h.nextGrain >= snd.grains.size())
-                h.done = true;
-            return ret;
+            return 0;
         }
 
-        void runGrains(Handler &h)
+        // The reference's DoGrain: one grain, the RAND_PLAY / PLAY_CYCLE skip bookkeeping, the step to the next
+        // grain and its delay.
+        void stepGrain(Handler &h)
         {
             auto bit = banks.find(h.bank);
-            if (bit == banks.end())
+            if (bit == banks.end() || h.sound >= bit->second.bank.sounds.size())
             {
                 h.done = true;
                 return;
             }
-            const socom2_bank::Sound &snd = bit->second.bank.sounds[h.sound];
+            BankData &bd = bit->second;
+            const socom2_bank::Sound &snd = bd.bank.sounds[h.sound];
+            if (h.nextGrain < 0 || h.nextGrain >= static_cast<int32_t>(snd.grains.size()))
+            {
+                h.done = true;
+                return;
+            }
+            const socom2_bank::Grain g = snd.grains[static_cast<size_t>(h.nextGrain)];   // a copy: BRANCH re-points the sound
+            const int32_t ret = doGrain(h, bd, snd, g);
+            const socom2_bank::Sound &cur = bd.bank.sounds[h.sound];
+            if (h.skipGrains && --h.grainsToPlay == 0)
+            {
+                h.nextGrain += h.grainsToSkip;
+                h.skipGrains = false;
+            }
+            ++h.nextGrain;
+            if (h.nextGrain >= static_cast<int32_t>(cur.grains.size()))
+            {
+                h.done = true;
+                return;
+            }
+            if (h.nextGrain < 0)
+                h.nextGrain = 0;
+            h.countdown = cur.grains[static_cast<size_t>(h.nextGrain)].delay + ret;
+        }
+
+        void runGrains(Handler &h)
+        {
             int guard = 0;
             while (h.countdown <= 0 && !h.done && guard++ < 256)
+                stepGrain(h);
+        }
+
+        // Children started this pass join the handler list and run their first grains (which may start more).
+        void flushSpawned()
+        {
+            int guard = 0;
+            while (!spawned.empty() && guard++ < 64)
             {
-                const int32_t ret = doGrain(h);
-                if (!h.done && h.nextGrain < snd.grains.size())
-                    h.countdown = snd.grains[h.nextGrain].delay + ret;
+                std::vector<Handler> batch;
+                batch.swap(spawned);
+                for (Handler &c : batch)
+                {
+                    if (c.done)
+                        continue;   // stopped by its parent before it ever joined
+                    handlers.push_back(c);
+                    runGrains(handlers.back());
+                }
             }
+            spawned.clear();
         }
 
         void tick()
         {
             tickVolRamps();
-            for (Handler &h : handlers)
+            for (size_t i = 0; i < handlers.size(); ++i)
             {
+                Handler &h = handlers[i];
                 if (h.done || h.paused)
                     continue;
                 --h.countdown;
                 runGrains(h);
             }
+            flushSpawned();
         }
 
         Stream *findStream(uint32_t handle)
@@ -953,13 +1372,27 @@ namespace snd989
             for (const Voice &v : voices)
                 if (v.handler == h.handle && v.env.phase != Envelope::Off)
                     return true;
+            // A conductor whose grains ran out is alive while a child of it plays (the reference's Tick).
+            for (const Handler &c : handlers)
+                if (c.parent == h.handle && c.handle != h.handle && handlerAlive(c))
+                    return true;
             return false;
         }
 
         void reap()
         {
             voices.erase(std::remove_if(voices.begin(), voices.end(), [](const Voice &v) { return v.env.phase == Envelope::Off; }), voices.end());
-            handlers.erase(std::remove_if(handlers.begin(), handlers.end(), [this](const Handler &h) { return !handlerAlive(h); }), handlers.end());
+            // Aliveness first, then the erase: handlerAlive() reads the children through `handlers`, which a
+            // remove_if is rearranging under it.
+            std::vector<uint8_t> alive(handlers.size(), 0u);
+            for (size_t i = 0; i < handlers.size(); ++i)
+                alive[i] = handlerAlive(handlers[i]) ? 1u : 0u;
+            std::vector<Handler> kept;
+            kept.reserve(handlers.size());
+            for (size_t i = 0; i < handlers.size(); ++i)
+                if (alive[i])
+                    kept.push_back(std::move(handlers[i]));
+            handlers.swap(kept);
             dropDoneStreams();
             dropDeadRamps();
         }
@@ -1064,9 +1497,13 @@ namespace snd989
         h.curPan = (pan == kPanReset || pan == kPanDontChange) ? snd.pan : pan;
         h.curPm = pitchMod;
         h.curPb = pitchBend;
+        h.appVolume = std::clamp(vol, 0, 0x400);
+        h.appPan = pan;
+        h.origVolume = snd.vol;
         h.countdown = snd.grains[0].delay;
         m_impl->handlers.push_back(h);
         m_impl->runGrains(m_impl->handlers.back());
+        m_impl->flushSpawned();
         return true;
     }
 
@@ -1098,11 +1535,8 @@ namespace snd989
             m_impl->dropDoneStreams();
             return;
         }
-        if (Handler *h = m_impl->find(handle))
-        {
-            h->done = true;
-            m_impl->keyOffHandler(handle);
-        }
+        if (m_impl->find(handle))
+            m_impl->stopHandlerTree(handle);
     }
 
     void Mixer::pause(uint32_t handle)
@@ -1110,11 +1544,7 @@ namespace snd989
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         if (Stream *st = m_impl->findStream(handle))
             st->paused = true;
-        if (Handler *h = m_impl->find(handle))
-            h->paused = true;
-        for (Voice &v : m_impl->voices)
-            if (v.handler == handle)
-                v.paused = true;
+        m_impl->setHandlerPaused(handle, true);
     }
 
     void Mixer::resume(uint32_t handle)
@@ -1122,11 +1552,7 @@ namespace snd989
         std::lock_guard<std::mutex> lock(m_impl->mutex);
         if (Stream *st = m_impl->findStream(handle))
             st->paused = false;
-        if (Handler *h = m_impl->find(handle))
-            h->paused = false;
-        for (Voice &v : m_impl->voices)
-            if (v.handler == handle)
-                v.paused = false;
+        m_impl->setHandlerPaused(handle, false);
     }
 
     void Mixer::setVolPan(uint32_t handle, int32_t vol, int32_t pan)
@@ -1155,20 +1581,41 @@ namespace snd989
         Handler *h = m_impl->find(handle);
         if (!h)
             return;
-        auto bit = m_impl->banks.find(h->bank);
-        if (bit == m_impl->banks.end())
-            return;
-        const socom2_bank::Sound &snd = bit->second.bank.sounds[h->sound];
-        if (vol != kVolDontChange)
-        {
-            int32_t playVol = (snd.vol * std::clamp(vol, 0, 0x400)) >> 10;
-            h->curVolume = std::min(127, std::max(0, playVol));
-        }
-        if (pan == kPanReset)
-            h->curPan = snd.pan;
-        else if (pan != kPanDontChange)
-            h->curPan = pan;
-        m_impl->updateHandlerVoices(*h);
+        m_impl->setHandlerVolPan(*h, vol != kVolDontChange ? std::clamp(vol, 0, 0x400) : vol, pan);
+    }
+
+    // snd_SetGlobalReg(index 1..32, value): the byte the grains read as register -index.
+    void Mixer::setGlobalReg(uint32_t index, int32_t value)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (index >= 1u && index <= m_impl->globalRegs.size())
+            m_impl->globalRegs[index - 1u] = static_cast<int8_t>(std::clamp(value, -128, 127));
+    }
+
+    int32_t Mixer::globalReg(uint32_t index) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return (index >= 1u && index <= m_impl->globalRegs.size()) ? m_impl->globalRegs[index - 1u] : 0;
+    }
+
+    size_t Mixer::activeChildren(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        size_t n = 0;
+        for (const Handler &c : m_impl->handlers)
+            if (c.parent == handle && m_impl->handlerAlive(c))
+                ++n;
+        return n;
+    }
+
+    uint32_t Mixer::childSound(uint32_t handle, size_t index) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        size_t n = 0;
+        for (const Handler &c : m_impl->handlers)
+            if (c.parent == handle && m_impl->handlerAlive(c) && n++ == index)
+                return c.sound;
+        return 0xFFFFFFFFu;
     }
 
     // snd_AutoVol(handle, vol, ticks, how), fno 0x22. See the header: a ramp over `ticks` of the 240 Hz mixer
@@ -1495,6 +1942,17 @@ namespace snd989
         st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
         st.playVol = playVol;
         st.playPan = playPan;
+        // Sprint 9 Q0 (the owner's second listen): the worker fills the ring on its own 10 ms cadence, so the
+        // first render after a push found it empty -- one device period of silence at the start of EVERY stream
+        // (21 in the owner's run, 20 ms each). A stem on the heels of another opened with a hole; a voice line
+        // started late. One chunk pair is decoded here, on the caller's thread, before the stream is pushed: the
+        // header was just read from the same file, so this is one more 4 KB read, and the ring then has
+        // ~112 ms in hand before the worker's first pass.
+        {
+            ChunkPair first;
+            if (st.decodeChunkPair(first) && !first[0].empty())
+                st.ready.push_back(std::move(first));
+        }
         {
             std::lock_guard<std::mutex> lock(m_impl->mutex);
             Stream *old = m_impl->findStream(handle);

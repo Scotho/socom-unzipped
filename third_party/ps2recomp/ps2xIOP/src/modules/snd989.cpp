@@ -1023,6 +1023,9 @@ namespace ps2x::iop::detail
                     {
                         m_model.globalRegs[index] = static_cast<int8_t>(args.u32(1) & 0xFFu);
                     }
+                    // Sprint 9 Q0: the host mixer's grains read it too (the mission ambience conductor branches on
+                    // global 2, which the game writes every frame).
+                    forwardAudio(fno, args);
                     break;
                 }
 
