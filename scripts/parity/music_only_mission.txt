@@ -138,7 +138,9 @@ stable+1.5:NONE     # the sliders as set (the capture's proof)
 until(45,379,165,393)+1.0:DOWN   # the AUDIO OPTIONS page's RETURN row lit (TRIANGLE would ask to CLEAR the changes -- run 5)
 stable+2.0:CROSS    # RETURN applies the sliders -> OPTIONS
 until(45,290,165,302)+1.0:DOWN   # the OPTIONS page's RETURN row lit
-stable+2.0:CROSS    # RETURN -> the main menu (OPTIONS lit)
+stable+2.0:CROSS    # RETURN -> "save to the memory card?" (YES lit; run 6)
+until(378,264,422,280)+1.0:RIGHT # NO lit: the zeroed sliders must not persist on the card for other captures
+stable+2.0:CROSS    # NO -> the main menu (OPTIONS lit)
 stable+1.5:UP       # LAN
 stable+1.5:UP       # ONLINE
 stable+1.5:UP       # NEW GAME
