@@ -41,7 +41,7 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
       `LOBBY class=ok`, exit 0, 264 s, every step `verified=True attempt=1`. So the detectors cut from our renderer
       read the console's text at the 640x448 client without a single new reference. `socomq` now exists on B's card
       (`--existing` from here).
-- [ ] 3. **Leg 1, verified** (`scripts/parity/mixed_match2.sh`: ours hosts through `online_match_ours --foreign-b`,
+- [x] 3. **Leg 1, verified -- DONE 2026-09-20 (runs d, f, g; e was a server-side refusal)** (`scripts/parity/mixed_match2.sh`: ours hosts through `online_match_ours --foreign-b`,
       PCSX2 joins through `pcsx2_shell join B`, then `ready B`; the console's position polled over PINE while it walks
       four bursts; ours walks its own). Runs so far, 2026-09-20:
       - `mixed2_ours_hosts` (a): **the console client joined ours' hosted game 10 s after the lobby opened and the round
@@ -78,6 +78,8 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         "in game" on Medius from run (d), whose client was killed mid-round. One of the stop rule's three.
       - (f), ~19:15 UTC: reached again -- joiner in after 10 s, the launch under ours' READY check, ours 140 in-game
         rows / 34 positions, the console 100 / 17. Run g follows it for the consecutive pair.
+      - (g), ~19:30 UTC: reached again -- joiner in after 15 s, the launch, ours 141 in-game rows / 34 positions, the
+        console 100 / 18. **Leg 1's bar met: twice in a row (f, g).**
 - [x] 4. **Leg 2, reversed -- DONE 2026-09-20 (runs f, g):** PCSX2 hosts (`pcsx2_shell host B`), ours joins (`online_login_ours --join`). Same bar.
       - `mixed2_pcsx2_hosts` (a), ~16:35 UTC: the console logged in as `socomp` (persona created) and reached CREATE
         GAME, and its harness could not see it: no console reference for that title (the miss frames show the screen).
@@ -105,9 +107,13 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
         four stick holds. Leg 2 reached once; run g queued for the bar, then leg 1's second.
       - (g), ~19:05 UTC: the same again -- verified join, the launch, ours 339 in-game rows / 28 positions, the console
         100 / 22. **Leg 2's bar met: twice in a row (f, g).**
-- [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
+- [ ] 5. (open; every run so far had both sides walking) **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
-- [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
+- [x] 6. Records: KNOWN section 1 rows for each leg (2026-09-20), the sprint file's item 3, this file's boxes.
+- [ ] 7. **"Seen by the other":** the bar as the spec words it wants each guest's copy of the PEER entity's position
+      (ours' PS2X_PEEK of the peer slot; the same address over PINE on the console) -- today each side's OWN position
+      is what moved. The old screen-motion score (`console-sees-ours-moving`) is not it (the spawns face away). One
+      reading of the peer entity's position field settles it for both; then the parked-opponent row (task 5) is one run.
 
 ## Rulings
 

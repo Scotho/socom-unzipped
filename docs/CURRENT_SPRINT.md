@@ -84,13 +84,18 @@ runs in windows the owner is away, and Sprint 9 is already eleven goals. Nothing
    rate and kill rate tracked and published. [A] in away windows, under the lock, never against a server that is not
    ours; [O] names the machine and the windows. **BUILT 2026-09-20:** `scripts/ladder_job.sh`, `tools_py/parity/ladder_ledger.py`
    (5 tests), `docs/LADDER.md`, the Task Scheduler entry `SOCOM Unzipped ladder` (DISABLED until the owner names the
-   window -- HUMAN_TASKS). First run by hand tonight. Left: six more clean runs for the bar, the site row (hosted-server
-   session), the server's build id per record. Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md`.
+   window -- HUMAN_TASKS). Three runs 2026-09-20: two LOBBY-FAIL create-game:create (a verifier gap -- the channel name
+   in the title band -- fixed, with two job/ledger path bugs), then run 3 KILL 4/4: streak 1 of 7. Left: six more clean
+   runs for the bar, the site row (hosted-server session), the server's build id per record. Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-1-scheduled-ladder.md`.
 2. **The hosted box as a service:** backups of the account database, a restart/update procedure that does not orphan
    personas, disk and credit watch (the free-plan credit expires 2027-03-05), a health line the site can show.
    [A] **through the hosted-server session, which owns `server/` and the box** -- coordinate, do not edit its files.
 3. **The mixed match, both directions,** with screen-verified PCSX2 steps (the first leg lost its place at boot:
-   KNOWN §2). [A]
+   KNOWN §2). [A] **BAR MET 2026-09-20:** the console side runs ours' verified lobby flow (`tools_py.parity.pcsx2_shell`,
+   console references where its ~7% narrower screen needs them); leg 1 (console joins ours' hosted game) and leg 2
+   (ours joins the console's) each reached a running round with both moving twice in a row on the hosted server
+   (`mixed2_ours_hosts_{f,g}`, `mixed2_pcsx2_hosts_{f,g}`). Left: the spec's "seen by the other" read from the peer
+   entity (plan task 7), the parked-opponent row (task 5). Plan: `docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md`.
 4. **Per-map kill routes** for the sweep maps; the two-instance speed freeze lifted. [A]
 5. **The first two-machine match over the internet** (carried since Sprint 7). [O: a second machine or a friend];
    the scripts and `two_machine_readout.sh` are ready.
