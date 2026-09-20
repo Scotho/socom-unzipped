@@ -1963,6 +1963,70 @@ void register_socom2_audio_tests()
         // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
         // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
         // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
+        // The music, round four (2026-09-20): the IRX frees a played-out stream's slot but leaves its handle word
+        // there, and snd_SoundIsStillPlaying answers by handle lookup alone -- a finished stem still reads "playing"
+        // until another stream takes the slot. The EE's music manager keeps its cue entry on that answer and queues
+        // the next stem behind the live handle; ours said 0 at the last sample and the manager dropped the cue.
+        tc.Run("989snd: a VAG stream that played out still answers snd_SoundIsStillPlaying until its slot is retaken (the IRX's answer)", [](TestCase &t)
+        {
+            // A host that answers for the handles it was told to play: playing until the test says the audio ended.
+            class AnsweringHost final : public Snd989TestHost
+            {
+            public:
+                std::vector<uint32_t> known;
+                std::vector<uint32_t> ended;
+                void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+                {
+                    if (function == 0x2Cu && count >= 1)
+                        known.push_back(static_cast<uint32_t>(args[0]));
+                }
+                bool audioIsPlaying(uint32_t handle, bool &playing) const override
+                {
+                    if (std::find(known.begin(), known.end(), handle) == known.end())
+                        return false;
+                    playing = std::find(ended.begin(), ended.end(), handle) == ended.end();
+                    return true;
+                }
+            };
+            Snd989HarnessT<AnsweringHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kIsStillPlaying = 0x19u;
+            const std::vector<uint32_t> play = {2000u, 0u, 0x04000000u, 0u, 1u, 0u, 0u, 0u};   // group 1, parent 0
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+
+            const uint32_t a = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(a != 0u && ((a >> 24) & 0x1Fu) == 4u, "stem A gets a stream handle");
+            t.Equals(h.call(kIsStillPlaying, {a}), a, "playing while the mixer says so");
+            h.host.ended.push_back(a);
+            t.Equals(h.call(kIsStillPlaying, {a}), a, "the audio ended: the answer is STILL the handle (the IRX's lookup)");
+            t.Equals(h.call(kIsStillPlaying, {a}), a, "and stays so on the next poll");
+
+            // The manager schedules the next stem behind the live handle: a queued play is accepted.
+            std::vector<uint32_t> queued = play;
+            queued[5] = a;
+            const uint32_t q = h.call(kPlayVagStreamByLoc, queued);
+            t.IsTrue(q != 0u, "a stem queued behind A is accepted");
+
+            // A fresh play (no parent) takes the first free-or-ended slot -- A's -- and only then does A read 0.
+            AnsweringHost &host = h.host;
+            host.ended.push_back(q);
+            const uint32_t b = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(b != 0u && b != a, "stem B gets a handle of its own");
+            t.Equals((b >> 16) & 0xFFu, (a >> 16) & 0xFFu, "in A's slot: the first free-or-ended one");
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "A now answers 0: its slot was retaken");
+            t.Equals(h.call(kIsStillPlaying, {b}), b, "B answers itself");
+
+            // Ended slots never leak: four more plays after their audio ended all get slots.
+            for (int i = 0; i < 4; ++i)
+            {
+                const uint32_t n = h.call(kPlayVagStreamByLoc, play);
+                t.IsTrue(n != 0u, "play " + std::to_string(i) + " after the ended ones gets a slot");
+                host.ended.push_back(n);
+            }
+        });
+
         tc.Run("989snd: snd_StopSound on a VAG stream handle frees its stream slot", [](TestCase &t)
         {
             Snd989Harness h;
@@ -2042,10 +2106,14 @@ void register_socom2_audio_tests()
             bool playing = true;
             t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the stream");
 
-            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "so the game's poll says done");
-            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays into a free slot");
+            // The music, round four: the IRX keeps answering the handle for a played-out stream until its slot is
+            // retaken (the EE's music manager queues the next stem behind that live answer); the slot itself is free.
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), first, "the game's poll still says the handle, as the IRX does");
+            const uint32_t second = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(second != 0u && second != first, "a stream plays into the ended slot under a new handle");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "and only now does the ended stream read done");
             t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
-                     "and so does the next one: the ended stream's slot was reused, not leaked");
+                     "and the next one takes the other slot: the ended stream's slot was reused, not leaked");
 
             std::remove(path.c_str());
         });

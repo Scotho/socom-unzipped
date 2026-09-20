@@ -266,6 +266,16 @@ namespace ps2x::iop::detail
         {
             uint32_t handle = 0u;
             bool active = false;
+            // The music, round four (2026-09-20): the IRX frees a finished stream's slot (FUN_0001107c -> FUN_0000d4a4:
+            // slot+4 = 0) but leaves the handle word in it, and snd_SoundIsStillPlaying only asks whether the handle
+            // still resolves (FUN_0000bb04 -> FUN_0000d6b4: the slot's word == the handle) -- so on the console a stem
+            // that has played out still answers "playing" until another stream takes its slot. The EE's music
+            // manager relies on exactly that: its cue entry stays alive, it schedules the next stem on its own
+            // clock and passes the live handle as parentHandle (a gapless queue). Ours answered 0 at the last
+            // sample; the manager read that as the cue dying, dropped the entry, and every next stem began
+            // fresh, late, or not at all (the owner's skips, stops, and "restarts on contact"; parentHandle 0 on
+            // all 55 plays of s9_p1_m51_audio2). `ended` is the IRX's freed slot: allocatable, still answering.
+            bool ended = false;
             bool paused = false;
             uint32_t sector1 = 0u;
             uint32_t sector2 = 0u;
@@ -1277,11 +1287,14 @@ namespace ps2x::iop::detail
                         {
                             if (SoundSlot *slot = findSound(handle))
                                 slot->active = false;
-                            // A VAG stream the game let play to its end is never stopped: it polls here and
-                            // reuses the slot once the answer is "done". Free the model's slot with the answer,
-                            // or it leaks for the rest of the run (107 x "no free VAG stream slot", 2026-09-18).
+                            // A VAG stream that played out: its slot is free to take (or the model leaks slots,
+                            // 107 x "no free VAG stream slot", 2026-09-18) -- and the answer stays the HANDLE until
+                            // another stream takes the slot, as the IRX answers (StreamSlot::ended).
                             if (StreamSlot *stream = findStream(handle))
-                                stream->active = false;
+                            {
+                                stream->ended = true;
+                                return handle;
+                            }
                             return 0u;
                         }
                         return handle;
@@ -1540,7 +1553,7 @@ namespace ps2x::iop::detail
                     bool playing = false;
                     if (m_host.audioIsPlaying(slot.handle, playing) && !playing)
                     {
-                        slot.active = false;
+                        slot.ended = true;   // allocatable; the handle still answers until the slot is retaken
                     }
                 }
             }
@@ -1567,9 +1580,11 @@ namespace ps2x::iop::detail
                 reapEndedStreams(target != nullptr ? target->handle : 0u);
                 if (target == nullptr)
                 {
+                    // The first slot that is free or has played out (the IRX's FUN_000163f4: the first with slot+4
+                    // == 0) -- retaking an ended slot is what finally turns its old handle's answer to 0.
                     for (uint32_t i = 0; i < m_model.streamCount; ++i)
                     {
-                        if (!m_model.streams[i].active)
+                        if (!m_model.streams[i].active || m_model.streams[i].ended)
                         {
                             target = &m_model.streams[i];
                             break;
@@ -1582,7 +1597,7 @@ namespace ps2x::iop::detail
                     return 0u;
                 }
                 const uint32_t index = static_cast<uint32_t>(target - m_model.streams.data());
-                const bool reused = target->active;
+                const bool reused = target->active && !target->ended;
                 if (!reused)
                 {
                     *target = {};
