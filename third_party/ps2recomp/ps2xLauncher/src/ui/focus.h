@@ -92,6 +92,14 @@ namespace ui
     // actually be played get a focusable node (see launcher::presetAvailable).
     Rect onlinePresetRow(Rect window, int index);
 
+    // Sprint 9 P4 (owner: "tooltips where the launcher is unclear ... 'what is a profile?' first"). The
+    // help is DATA, keyed by a control's own id, and empty for the controls that explain themselves --
+    // which is most of them. It is shown where the FOCUS is, not where a mouse is: the launcher is driven
+    // by a pad, and the mouse is leaving entirely in Q3, so hover would be help most players never see.
+    std::string helpFor(const std::string &id);
+    // Every id the set answers for, so a test can hold the set to the controls that actually exist.
+    std::vector<std::string> helpedIds();
+
     Rect rectOf(const std::vector<Node> &nodes, const std::string &id);
     bool hasNode(const std::vector<Node> &nodes, const std::string &id);
 

@@ -1198,6 +1198,40 @@ void register_launcher_tests()
                      "the toggle a player switched on is always on the page they switched it on");
         });
 
+        // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'
+        // first". The help is DATA, keyed by the control's own id, so the test can hold it to two rules a
+        // tooltip set always breaks eventually: help that explains nothing, and help attached to a control
+        // that no longer exists.
+        tc.Run("the launcher's help is keyed by control id, and every id it answers for is a real control", [](TestCase &t)
+        {
+            t.IsTrue(ui::helpFor("no.such.control").empty(), "an id with no help answers nothing, not a placeholder");
+            t.IsTrue(ui::helpFor("").empty(), "and neither does an empty id");
+
+            // The owner's first ask, by name: a profile is the card directory AND the persona.
+            const std::string profile = ui::helpFor("online.profile");
+            t.IsFalse(profile.empty(), "'what is a profile?' is answered");
+            t.IsTrue(profile.find("cards/") != std::string::npos, "it says where the profile puts the memory card");
+            t.IsTrue(profile.find("persona") != std::string::npos, "and that it is the name the server sees");
+
+            // Nothing drifts: every id with help is a control the focus graph actually holds. A renamed or
+            // deleted control would otherwise leave help that can never be shown, and nobody would notice.
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.advancedOpen = true;   // the ADVANCED sections' controls count too
+            const ui::FocusGraph g = ui::FocusGraph::build(window, in);
+            const std::vector<std::string> helped = ui::helpedIds();
+            t.IsTrue(helped.size() >= 3u, "there is a help set to check");
+            for (const std::string &id : helped)
+            {
+                const bool real = g.find(id) != nullptr;
+                t.IsTrue(real, ("help is attached to a control that exists: " + id).c_str());
+                t.IsFalse(ui::helpFor(id).empty(), ("and it is not empty: " + id).c_str());
+                // A sentence, not a restatement of the label: short help that just repeats the control is
+                // noise, and this is the cheapest bar that catches it.
+                t.IsTrue(ui::helpFor(id).size() >= 25u, ("help says something: " + id).c_str());
+            }
+        });
+
         // Sprint 8 Goal 9, fourth pass: a preset whose address is still a placeholder must never reach the
         // game. The community server runs r0004, which this client cannot play yet.
         tc.Run("an unavailable server preset cannot be played, and a config that names one heals itself", [](TestCase &t)

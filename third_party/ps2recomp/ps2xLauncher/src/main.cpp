@@ -648,6 +648,45 @@ namespace
              Vec2{band.x + 30.0f + nameW, band.y + 13.0f}, metrics::captionSize, theme::caption);
     }
 
+    // Sprint 9 P4 (owner: "tooltips where the launcher is unclear"). The help for wherever the FOCUS is,
+    // in a small panel anchored under the control -- below it, or above when there is no room below, and
+    // never outside the content panel. Focus rather than hover, because the launcher is driven by a pad
+    // and the mouse leaves entirely in Q3: help tied to a pointer is help most players would never see.
+    // Drawn last, over the page, which is what a tooltip is for.
+    void drawHelp(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
+    {
+        using namespace ui;
+        const std::string help = helpFor(app.nav.focus);
+        if (help.empty())
+            return;
+        const Rect anchor = rectOf(nodes, app.nav.focus);
+        if (!drawable(anchor))
+            return;   // the focus is on the rail, or on a control this page does not hold
+
+        const Rect c = app.frame.content;
+        const float w = std::min(430.0f, c.w - 40.0f);
+        const std::vector<std::string> lines = wrapText(ctx, help, w - 52.0f, metrics::captionSize);
+        const float lineH = metrics::captionSize * 1.32f;
+        const float h = 20.0f + lineH * static_cast<float>(lines.size());
+        float x = std::min(std::max(anchor.x, c.x + 12.0f), std::max(c.x + 12.0f, c.right() - 12.0f - w));
+        float y = anchor.bottom() + 8.0f;
+        if (y + h > c.bottom() - 8.0f)
+            y = std::max(c.y + 8.0f, anchor.y - 8.0f - h);
+        const Rect box{x, y, w, h};
+
+        fillRound(ctx, box, 6.0f, theme::mix(theme::panelHi, theme::ground, 0.10f));
+        strokeRound(ctx, box, 6.0f, theme::alpha(theme::gold, 160), 1.5f);
+        const Vec2 badge{box.x + 21.0f, box.y + h * 0.5f};
+        fillCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 45));
+        strokeCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 200), 1.5f);
+        const InkBox q = capInk(ctx, 14.0f, Face::Bold);
+        const float qW = textWidth(ctx, "?", 14.0f, Face::Bold);
+        text(ctx, "?", Vec2{badge.x - qW * 0.5f, badge.y - q.height * 0.5f - q.top}, 14.0f, theme::goldHi, Face::Bold);
+        for (size_t i = 0; i < lines.size(); ++i)
+            text(ctx, lines[i].c_str(), Vec2{box.x + 40.0f, box.y + 10.0f + lineH * static_cast<float>(i)},
+                 metrics::captionSize, theme::text);
+    }
+
     void drawPage(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
     {
         switch (app.nav.page)
@@ -972,6 +1011,9 @@ int main(int argc, char **argv)
         // capture above; this one has the second instance switched ON, which forces the section open
         // and marks it "in use" -- the state a disclosure must never be able to hide.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_advanced"});
+        // Sprint 9 P4: the focus on the profile field, which is the one the owner asked for by name
+        // ("what is a profile?"). The help is shown where the FOCUS is, so a capture of it needs one.
+        shots.push_back(Shot{ui::Page::Online, 1100, 700, "_help"});
         // Sprint 9 Goal 8: the hosted server's status line, and the REPORT A BUG page in each of its states
         // (the plain report_<size>.png above is the empty form).
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_status"});
@@ -1280,6 +1322,7 @@ int main(int argc, char **argv)
 
         // The focus ring: on the focused control's rect, this frame, whole -- and drawn last, after the
         // pane's wipe, so nothing fades it in on the frame it lands (Sprint 8 owner feedback).
+        drawHelp(ctx, app, nodes);
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
@@ -1529,6 +1572,8 @@ int main(int argc, char **argv)
                 app.pad = (std::strcmp(shot.suffix, "_playstation") == 0 || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
                 app.config.crouchShortcut = std::strncmp(shot.suffix, "_crouch_", 8) == 0 ? shot.suffix + 8 : "off";
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
+                if (std::strcmp(shot.suffix, "_help") == 0)
+                    shotPendingFocus = "online.profile";
                 if (std::strcmp(shot.suffix, "_community_healed") == 0)
                 {
                     // A saved config naming the unplayable preset: fromJson moves it to the one that exists.
