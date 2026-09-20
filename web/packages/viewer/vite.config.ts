@@ -13,9 +13,17 @@ const here = fileURLToPath(new URL('.', import.meta.url));
  * separate directory mounted beside the site (see sites/s2u in the scotho repository), in dev Vite serves
  * `web/public` itself.
  */
+/** `map-viewer`, `/map-viewer` and `/map-viewer/` all mean `/map-viewer/`; unset means `/`. Only the last path
+ *  segment counts, because on Windows Git Bash rewrites a leading-slash value into `C:/Program Files/Git/...`. */
+function basePath(value: string | undefined): string {
+  const parts = (value ?? '').split(/[\/]+/).filter((p) => p.length > 0);
+  const name = parts[parts.length - 1];
+  return name ? `/${name}/` : '/';
+}
+
 export default defineConfig({
   root: here,
-  base: process.env.VIEWER_BASE ?? '/',
+  base: basePath(process.env.VIEWER_BASE),
   publicDir: fileURLToPath(new URL('../../public', import.meta.url)),
   server: { port: 5173, strictPort: true },
   build: { outDir: fileURLToPath(new URL('../../dist/viewer', import.meta.url)), emptyOutDir: true, copyPublicDir: false },
