@@ -141,9 +141,8 @@ until(45,290,165,302)+1.0:DOWN   # the OPTIONS page's RETURN row lit
 stable+2.0:CROSS    # RETURN -> "save to the memory card?" (YES lit; run 6)
 until(378,264,422,280)+1.0:RIGHT # NO lit: the zeroed sliders must not persist on the card for other captures
 stable+2.0:CROSS    # NO -> the main menu (OPTIONS lit)
-stable+1.5:UP       # LAN
-stable+1.5:UP       # ONLINE
-stable+1.5:UP       # NEW GAME
+stable+3.0:NONE     # the menu settles after the prompt (run 7: three UPs pressed into the fade were lost)
+untilref(scripts/parity/ref_main_menu_ours.png,76,86,55,105,12,10)+1.5:UP   # UP until the mid row reads NEW GAME (per-target ref: .pcsx2.png sibling)
 stable+2.0:CROSS    # NEW GAME
 next+2.0:CROSS      # select rank
 next+2.0:CROSS      # controller presets (1)
