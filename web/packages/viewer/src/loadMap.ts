@@ -281,6 +281,11 @@ function cameraParams(bytes: Uint8Array, toc: ZdbEntry[], stem: string, notes: N
   try {
     const params = parseCameraParams(Zar.parse(zdbMember(bytes, toc, `${stem}.ZED`)));
     if (!params) notes.add(`${stem}.ZED: no cameras/camera key, so no fog`);
+    // Six of the 22 maps set it. The band's encoding is the one inferred part of the fog model -- no
+    // VU1 dump exists from a map that enables it -- so it is parsed, reported, and not applied.
+    else if (params.fogAltitude) {
+      notes.add(`altitude fog is enabled (band ${params.fogTop} to ${params.fogBottom}) and not applied`);
+    }
     return params;
   } catch (e) {
     notes.add(`cameras/camera: ${say(e)}`);

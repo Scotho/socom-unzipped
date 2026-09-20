@@ -187,6 +187,10 @@ NAT:2216, NAT:2233.
 For a viewer that does not emulate lighting, use the raw RGB as a baked vertex colour; the GS reads
 `RGBAQ` as 0..255 with 128 = 1.0 alpha, so `rgb/255` and `a/128` are the browser values.
 
+**[corrected 2026-09-20]** Read that as a statement about *alpha*. 128 is unity on RGB too: every texture
+binds `TEX0.TFX = MODULATE` (241/241, `web/tools/dump-bindpacket.ts`) and MODULATE is `C = (Ct × Cf) >> 7`,
+so `rgb/128` is the browser value and `rgb/255` draws 1.992× dark. See §11's bullet.
+
 **[data]** Alpha is 128 for 14,423 of 15,071 Frostfire vertices; the remainder (20, 0, 35, 30, …)
 are genuinely translucent surfaces.
 
@@ -497,11 +501,19 @@ Everything above is Task 11's research document, copied verbatim. This section r
 
 ### Decisions the document did not make
 
-- **Alpha is rescaled on the way out.** `MeshData.colors` is a `Uint8Array` of RGBA on the browser's 0..255
-  scale, so the PS2's `128 = opaque` (§4, quadword c lane w) becomes `round(min(a / 128, 1) * 255)`: 128 → 255,
-  64 → 128, 255 → 255. RGB is carried through raw. §4's "`rgb/255` and `a/128` are the browser values" is
-  exactly this rule, expressed on the byte scale the array uses. A consumer that wants the raw PS2 byte must
-  read the packet, not the mesh.
+- **128 is unity on every lane, and the array is floats.** *(Corrected 2026-09-20.)* `MeshData.colors` is
+  a `Float32Array` of RGBA where **1.0 is the PS2's unity** — the stored byte over 128, RGB and alpha
+  alike. RGB is **not** clamped, because the GS clamps the product of texel and vertex rather than the
+  vertex; alpha **is**, because nothing is more opaque than opaque.
+
+  **[data]** Every texture in Frostfire, Desert Glory and Crossroads binds `TEX0.TFX = MODULATE` — 241
+  of 241, measured with `web/tools/dump-bindpacket.ts` — and MODULATE is `C = (Ct × Cf) >> 7`, so a lane
+  of 128 leaves the texel unchanged and 255 doubles it. Alpha's "128 is opaque" is that same unity point,
+  not a second convention: the blend equation simply has nowhere to put a value above opaque.
+
+  This corrects an earlier reading of §4's "`rgb/255` and `a/128` are the browser values", which was taken
+  to mean the lanes had different unity points. They do not. A decoder that divides RGB by 255 draws the
+  world 1.992× dark. A consumer that wants the raw PS2 byte must read the packet, not the mesh.
 - **UV is not flipped.** §7 gives no V flip, so `(u, v)` leave the decoder exactly as `int16 / 4096`. A
   renderer whose texture origin is bottom-left (GL's default) has to flip at upload time; nothing here has
   been compared against a console frame, so the flip is the renderer's call and is not baked in. See §11.3.

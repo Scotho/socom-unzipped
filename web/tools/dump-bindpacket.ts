@@ -31,6 +31,11 @@ const alpha = (v: bigint): string => {
   return `(${CH[a]} - ${CH[b]}) * ${CC[c]}${c === 2 ? `[${fix}]` : ''} + ${CH[d]}`;
 };
 
+/** TEX0 bits 35-36: how the texel combines with the vertex colour. MODULATE is `C = (Ct * Cf) >> 7`. */
+const TFX = ['MODULATE', 'DECAL', 'HIGHLIGHT', 'HIGHLIGHT2'];
+const tfxOf = (v: bigint): string => TFX[Number((v >> 35n) & 3n)]!;
+const tfxTally = new Map<string, number>();
+
 const bytes = readFileSync(resolve(web, 'public/maps/RUN', `${archive}.ZDB`));
 const toc = parseZdb(bytes);
 const txr = Zar.parse(zdbMember(bytes, toc, `${archive}_TXR.ZED`));
@@ -55,15 +60,20 @@ for (const key of keys) {
     const id = Number(r.u64(o + 8) & 0xffn);
     const label = REG[id] ?? `0x${id.toString(16)}`;
     regs.push(label);
+    if (id === 0x06 || id === 0x07) tfxTally.set(tfxOf(value), (tfxTally.get(tfxOf(value)) ?? 0) + 1);
     if (want) {
       console.log(`  ${label.padEnd(10)} = 0x${value.toString(16).padStart(16, '0')}`
-        + (id === 0x42 || id === 0x43 ? `   ${alpha(value)}` : ''));
+        + (id === 0x42 || id === 0x43 ? `   ${alpha(value)}` : '')
+        + (id === 0x06 || id === 0x07 ? `   TFX=${tfxOf(value)}` : ''));
     }
   }
   if (want) console.log(`  -- ${key.name}\n`);
   const sig = regs.join(',');
   tally.set(sig, (tally.get(sig) ?? 0) + 1);
 }
+
+console.log('\nTEX0 TFX, by how many textures:');
+for (const [k, n] of [...tfxTally].sort((a, b) => b[1] - a[1])) console.log(`  ${String(n).padStart(4)}  ${k}`);
 
 if (!want) {
   console.log('\nregister sets seen, by how many textures use them:');

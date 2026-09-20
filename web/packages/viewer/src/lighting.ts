@@ -17,7 +17,7 @@ export interface Lightable {
  * ```
  *
  * So the final vertex colour is the **material** colour on disc (`record2`, what `MeshData.colors`
- * carries, averaging 0.15 of full and never above 0.50) multiplied by a `lit` built from three axis
+ * carries, averaging 0.29 of unity and never above it) multiplied by a `lit` built from three axis
  * lights and an ambient, driven by the vertex
  * normal after a 3x3 transform and a componentwise clamp to zero. `record0.w`, `record1.z` and
  * `record1.w` are exactly the three lanes SEMANTICS §4 calls the normal, which `mesh` already decodes
@@ -41,7 +41,13 @@ export interface Lighting {
   gain: number;
 }
 
-export const DEFAULT_LIGHTING: Lighting = { ambient: 0.55, x: 0.35, y: 1, z: 0.35, gain: 2 };
+/**
+ * Chosen by eye against Frostfire, a night map. The material averages 0.29 of unity, so an up-facing
+ * surface lands near 0.45 of full, a wall near 0.22 and an underside near 0.10 — a night range with
+ * enough spread to read as lit rather than flat. `gain` is 1 because the unity point is already right;
+ * it is an exposure for dialling, not a correction for a scale error.
+ */
+export const DEFAULT_LIGHTING: Lighting = { ambient: 0.35, x: 0.4, y: 1.2, z: 0.4, gain: 1 };
 
 /**
  * `record2 * lit` for one part, into `out` (rgba, 4 floats a vertex).

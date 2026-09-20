@@ -32,6 +32,14 @@ const EYE = 20;
  */
 const OVERHEAD = 800;
 
+/**
+ * The panel's controls live in sections that are collapsed by default, and the lighting and fog ones
+ * are nested inside the options section, so every `details` is opened before anything is clicked.
+ */
+const openPanel = (page: Page): Promise<void> => page.evaluate(() => {
+  for (const el of document.querySelectorAll('#panel details')) (el as HTMLDetailsElement).open = true;
+});
+
 /** Two frames with the new world in them before the canvas is worth photographing. */
 const settle = (page: Page): Promise<void> => page.evaluate(
   () => new Promise<void>((done) => requestAnimationFrame(() => requestAnimationFrame(() => done()))),
@@ -89,14 +97,22 @@ test('all three extracted maps render from the served archives', async ({ page }
         z: (spawns.a[2] + spawns.b[2]) / 2, yaw: 0, pitch: -90,
       });
     }, OVERHEAD);
+    // The overhead shot stands further off than any map's fog far plane -- Frostfire's is 640 and
+    // this is 800 up -- so with fog on it photographs the fog colour and nothing else. The point of
+    // the shot is the placement underneath it, so fog comes off for it and goes back on after.
+    const fog = page.locator('#fog');
+    await openPanel(page);
+    await fog.uncheck();
     await settle(page);
     await page.screenshot({ path: join(SCREENS, map.top) });
+    await fog.check();
   }
 
   // Back to Frostfire with the two map-derived overlays on: the collision hull over the deck it guards,
   // and the two spawn markers. The same camera as `frostfire-top.png`, so the pair is a before and after.
   await maps.selectOption({ label: 'FROSTFIRE (MP2)' });
   await expect(status).toContainText('FROSTFIRE (MP2)');
+  await openPanel(page);
   await page.locator('#collision').check();
   await page.locator('#spawns').check();
   expect(await page.evaluate(() => window.__viewer.toggles())).toMatchObject({ collision: true, spawns: true });

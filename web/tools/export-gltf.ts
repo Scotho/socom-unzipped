@@ -60,8 +60,9 @@ const diagnostics: string[] = [];
 
 /** One accessor over its own tightly packed buffer view. */
 /**
- * `MeshData.colors` on glTF's terms: 1.0 -> 255, and everything the PS2 wrote above full flattened to
- * white. COLOR_0 is a 0..1 multiplier with no room above it, so the overbright cannot travel.
+ * `MeshData.colors` on glTF's terms: unity (1.0) -> 255, and anything the PS2 wrote above unity
+ * flattened to white. COLOR_0 is a 0..1 multiplier with no room above it, so an overbright cannot
+ * travel. The three shipped maps contain none, so for them this is lossless.
  */
 function clampColors(colors: Float32Array): Uint8Array {
   const out = new Uint8Array(colors.length);
@@ -139,10 +140,10 @@ for (const [textureName, group] of [...groups].sort((a, b) => String(a[0]).local
   const attributes: Json = {
     POSITION: accessor(mesh.positions, FLOAT, 'VEC3', count, { target: ARRAY_BUFFER, min: [...box.min], max: [...box.max] }),
     TEXCOORD_0: accessor(mesh.uvs, FLOAT, 'VEC2', count, { target: ARRAY_BUFFER }),
-    // `MeshData.colors` is float RGBA with 1.0 as the PS2's full, and RGB runs past 1 where the artists
-    // wrote overbright (SEMANTICS §4). glTF's COLOR_0 has no overbright -- it is a plain multiplier -- so
-    // the lane is clamped here, on the way out, and a .glb is that much flatter than the viewer in the
-    // bright spots. It is the format's limit, not a decode loss.
+    // `MeshData.colors` is float RGBA with 1.0 as the PS2's unity (the stored byte over 128, SEMANTICS
+    // §4). glTF's COLOR_0 is a plain 0..1 multiplier, so the lane is clamped on the way out. Note the
+    // .glb carries the *material* colour: the viewer's `lit` multiply is not applied here, so a .glb is
+    // darker than the viewer and is meant to be, being the geometry rather than a picture of it.
     COLOR_0: accessor(clampColors(mesh.colors), UNSIGNED_BYTE, 'VEC4', count, { target: ARRAY_BUFFER, normalized: true }),
   };
   // SEMANTICS §11.5: 16 of Frostfire's vertex normals are exactly zero, which glTF forbids

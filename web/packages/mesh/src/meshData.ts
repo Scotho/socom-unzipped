@@ -12,14 +12,15 @@ export interface MeshData {
   /** uv per vertex, normalised (SEMANTICS §7), unflipped. */
   uvs: Float32Array;
   /**
-   * rgba per vertex as floats: **RGB on a full of 255, alpha on a full of 128** (SEMANTICS §4 — the GS
-   * reads `RGBAQ` with the two lanes on different scales). RGB is not clamped, because the GS clamps the
-   * *product* of texel and vertex rather than the vertex, so a colour above full would overbrighten.
+   * rgba per vertex as floats, **1.0 being the PS2's unity on every lane** — the stored byte over 128.
+   * Every texture binds `TEX0.TFX = MODULATE`, which is `C = (Ct * Cf) >> 7`, so 128 leaves the texel
+   * alone (SEMANTICS §4). RGB is not clamped, because the GS clamps the *product* rather than the
+   * vertex; alpha is, because nothing is more opaque than opaque.
    *
    * **This is a material colour, not a lit one.** The draw path multiplies it by a computed light colour
    * on the VU before the GS sees it (`staging+1 = record2 * lit`, NAT:1615). Measured across Frostfire,
-   * Desert Glory and Crossroads the stored byte averages 37 of 255 (0.15 of full) and never exceeds
-   * 128 (0.50), so a consumer that renders this as if it were final light gets a world a sixth as
+   * Desert Glory and Crossroads the stored byte averages 37 of 128 (0.29 of unity) and never exceeds
+   * 128, so a consumer that renders it as if it were the final light draws a world roughly a third as
    * bright as it should be. Emulating `lit` is the fix; the viewer does, in `viewer/src/lighting.ts`.
    */
   colors: Float32Array;

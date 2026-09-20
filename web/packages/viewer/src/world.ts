@@ -52,6 +52,16 @@ export interface WorldView {
    */
   setLinearLight(on: boolean): void;
   /**
+   * Whether a texture whose alpha is a *ramp* is blended rather than punched out at a threshold.
+   *
+   * Every texture's own GS bind packet sets `ALPHA_1 = 0x44` -- `(Cs - Cd) * As + Cd`, source-alpha
+   * blending -- with the alpha test off in `TEST_1`, which says the game blended them. What is *not*
+   * known is the draw order the game relied on to make that correct, and a browser has to sort for
+   * itself: turning it on makes a light read as a glow instead of a flat disc on an opaque square, and
+   * can make a blended surface disappear behind one drawn before it. Off until the order is understood.
+   */
+  setBlendGraded(on: boolean): void;
+  /**
    * Re-runs the VU's lighting over every vertex: `record2 * lit`, the material colour on disc times a
    * `lit` built from the vertex normal and four colours (see `./lighting`). Cheap enough to call from a
    * slider -- it is one pass over the vertex arrays, about a millisecond on the largest map.
@@ -76,8 +86,12 @@ export function buildWorld(map: LoadedMap): WorldView {
   const textures = new Map<string, Texture>();
   let linearLight = false;
   let lighting = DEFAULT_LIGHTING;
-  let highlighting = false;
   let lineMaterial: LineBasicMaterial | null = null;
+  let blendGraded = false;
+  /** The materials whose texture alpha is a ramp: the only ones the switch moves. */
+  const graded: MeshBasicMaterial[] = [];
+  /** Their flags, so the switch can put the alpha test back exactly as it was. */
+  const gradedFlags = new Map<MeshBasicMaterial, { transparent: boolean } | undefined>();
   // Every drawn part beside the buffer its lit colours go into, so a slider can rewrite them in place.
   const lit: { part: Lightable; attribute: BufferAttribute }[] = [];
   const materials: MeshBasicMaterial[] = [];
@@ -96,16 +110,13 @@ export function buildWorld(map: LoadedMap): WorldView {
     // be blended or it draws as a flat disc on an opaque black square; one whose alpha is a *switch*
     // (a cutout leaf, a grating) is punched through instead, which needs no depth sorting and is what
     // the game's own draw order relied on.
-    const graded = flags?.graded ?? false;
     const material = new MeshBasicMaterial({
       map: texture ?? null,
       vertexColors: true,
       side: DoubleSide,                                   // the map's inward faces are walls too
-      transparent: graded,
-      // Blended draws do not write depth, or the ones drawn first would cut holes in the ones behind.
-      depthWrite: !graded,
-      alphaTest: graded ? 0.004 : (flags?.transparent ?? false) ? 0.5 : 0,
     });
+    if (flags?.graded) { graded.push(material); gradedFlags.set(material, flags); }
+    applyBlend(material, flags, blendGraded);
     materials.push(material);
     if (!texture) untextured.push(material);
     return material;
@@ -121,8 +132,15 @@ export function buildWorld(map: LoadedMap): WorldView {
 
   for (const prop of map.props) {
     const count = prop.matrices.length / 16;
+    // A world chunk's normals are rotated into world space by `loadMap` before they are lit; a prop's
+    // are not, because the rotation lives in the placement matrix instead. Lighting them unrotated
+    // would light a turned prop as though it faced the way it was modelled, so they are rotated here
+    // by the first placement. A prop drawn in several placements that do not share a rotation is still
+    // lit by the first one's: one `InstancedMesh` has one set of vertex colours, and splitting it into
+    // a mesh per placement would cost 26 draws to fix a shading error of a few degrees.
+    const rotation = new Matrix4().fromArray(prop.matrices, 0);
     for (const part of prop.parts) {
-      const geometry = geometryOf(part, lighting, lit);
+      const geometry = geometryOf(rotateNormals(part, rotation), lighting, lit);
       const material = materialFor(part.textureName);
       if (count === 1) {
         const mesh = new Mesh(geometry, material);
@@ -171,7 +189,6 @@ export function buildWorld(map: LoadedMap): WorldView {
       if (lineMaterial) lineMaterial.visible = !on;
     },
     setUntexturedHighlight: (on) => {
-      highlighting = on;
       for (const material of untextured) {
         material.color.setHex(on ? UNTEXTURED : 0xffffff);
         // Flat magenta, not magenta times the baked lighting: the point is to be unmistakable.
@@ -184,6 +201,13 @@ export function buildWorld(map: LoadedMap): WorldView {
       for (const { part, attribute } of lit) {
         applyLighting(part, lighting, attribute.array as Float32Array);
         attribute.needsUpdate = true;
+      }
+    },
+    setBlendGraded: (on) => {
+      blendGraded = on;
+      for (const material of graded) {
+        applyBlend(material, gradedFlags.get(material), on);
+        material.needsUpdate = true;
       }
     },
     setLinearLight: (on) => {
@@ -207,6 +231,36 @@ export function buildWorld(map: LoadedMap): WorldView {
       lineMaterial?.dispose();
     },
   };
+}
+
+/**
+ * How one material treats its texture's alpha. Blended when the alpha is a ramp and the switch is on;
+ * otherwise punched through at the halfway point when the record calls the texture transparent, which
+ * is what the viewer has always done and needs no sorting.
+ */
+function applyBlend(
+  material: MeshBasicMaterial,
+  flags: { transparent: boolean } | undefined,
+  blendGraded: boolean,
+): void {
+  material.transparent = blendGraded;
+  // A blended draw does not write depth, or the ones drawn first cut holes in the ones behind.
+  material.depthWrite = !blendGraded;
+  material.alphaTest = blendGraded ? 0.004 : (flags?.transparent ?? false) ? 0.5 : 0;
+}
+
+/** The part with its normals turned by a placement's 3x3, so the lighting sees where it really faces. */
+function rotateNormals(part: MeshData, m: Matrix4): MeshData {
+  if (!part.normals) return part;
+  const e = m.elements;                                 // column-major, as three stores it
+  const out = new Float32Array(part.normals.length);
+  for (let i = 0; i < out.length; i += 3) {
+    const [x, y, z] = [part.normals[i]!, part.normals[i + 1]!, part.normals[i + 2]!];
+    out[i] = x * e[0]! + y * e[4]! + z * e[8]!;
+    out[i + 1] = x * e[1]! + y * e[5]! + z * e[9]!;
+    out[i + 2] = x * e[2]! + y * e[6]! + z * e[10]!;
+  }
+  return { ...part, normals: out };
 }
 
 /** The centre of a box, for framing a map whose spawns are not known. */

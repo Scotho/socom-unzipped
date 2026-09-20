@@ -1,4 +1,11 @@
-/** Throwaway: open the viewer and print whatever the page complains about. */
+/**
+ * Opens the viewer and prints whatever the page complains about: uncaught errors, console errors, and
+ * the status line it settles on. The quickest way to tell a blank canvas caused by a module-level throw
+ * from one caused by a decode failure.
+ *
+ *   npx tsx tools/page-errors.ts          # against the dev server
+ *   VIEWER_URL=... npx tsx tools/page-errors.ts
+ */
 import { chromium } from '@playwright/test';
 
 const browser = await chromium.launch();

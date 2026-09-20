@@ -11,10 +11,10 @@ const GRID_Y = 100;
 const GRID_STEP = 100;
 const AXES_LENGTH = 300;
 /** A spawn marker, in game units: 8 is about a player's shoulders at `MetersPerUnit` 0.1. */
-const SPAWN_RADIUS = 8;
+const SPAWN_RADIUS = 4;
 /** The label floats clear of its sphere rather than inside it. */
 const LABEL_ABOVE = 26;
-const LABEL_SIZE = 44;
+const LABEL_SIZE = 22;
 /** A's marker and B's, the two sides of every measured round. */
 const SPAWN_COLOURS = { a: 0x4d9bff, b: 0xff6a3d } as const;
 
@@ -35,7 +35,7 @@ export class Overlays {
   private spawnsOn = false;
 
   constructor(private readonly scene: Scene) {
-    this.axes.visible = true;
+    this.axes.visible = false;   // no control shows it any more; setAxes still turns it on
     scene.add(this.axes);
   }
 

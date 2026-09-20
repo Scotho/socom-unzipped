@@ -1,8 +1,8 @@
 import type { MapInfo } from '@s2u/archive';
 
 /** The overlays a viewer can switch on, in the order the panel lists them. */
-export const TOGGLES = ['grid', 'axes', 'collision', 'spawns', 'wireframe', 'untextured',
-  'linearlight', 'fog'] as const;
+export const TOGGLES = ['grid', 'collision', 'spawns', 'wireframe', 'untextured',
+  'linearlight', 'fog', 'blendgraded'] as const;
 export type ToggleName = (typeof TOGGLES)[number];
 
 /** The continuous controls, in the order the panel lists them. */
@@ -37,13 +37,13 @@ export class Ui {
    */
   private readonly checks: Record<ToggleName, HTMLInputElement> = {
     grid: find('grid'),
-    axes: find('axes'),
     collision: find('collision'),
     spawns: find('spawns'),
     wireframe: find('wireframe'),
     untextured: find('untextured'),
     linearlight: find('linearlight'),
     fog: find('fog'),
+    blendgraded: find('blendgraded'),
   };
 
   /** The map list, named from each archive's own `mission.rdr`. The value is the archive-relative path. */
@@ -101,10 +101,20 @@ export class Ui {
     this.checks.fog.checked = on;
   }
 
-  /** Puts a map's own fog on the panel, when the disc has been read for it. */
+  /**
+   * Puts a map's own fog on the panel. The range inputs snap to their `step` and clamp to their bounds,
+   * so the value read back out is not the value written in -- MP51's 600/875 would come back 870/880.
+   * The caller keeps the decoded number; this only moves the control to the nearest place it can sit,
+   * and widens the bounds so a map outside them is not silently clamped.
+   */
   setFog(near: number, far: number, rgb: [number, number, number]): void {
-    this.sliders.fognear.input.value = String(near);
-    this.sliders.fogfar.input.value = String(far);
+    const widen = (input: HTMLInputElement, v: number): void => {
+      if (v < Number(input.min)) input.min = String(Math.floor(v));
+      if (v > Number(input.max)) input.max = String(Math.ceil(v));
+      input.value = String(v);
+    };
+    widen(this.sliders.fognear.input, near);
+    widen(this.sliders.fogfar.input, far);
     find<HTMLInputElement>('fogcolour').value =
       `#${rgb.map((v) => v.toString(16).padStart(2, '0')).join('')}`;
     for (const name of ['fognear', 'fogfar'] as const) {

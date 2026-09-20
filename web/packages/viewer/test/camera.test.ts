@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlyCamera } from '../src/camera';
 
 /**
@@ -151,14 +151,16 @@ describe('FlyCamera', () => {
     run(fly, 1, 60);
     release('KeyW');
 
-    // Long enough after that the next press cannot count as the second tap.
+    // Move the clock past the double-tap window rather than burning 400 ms of wall time in a loop.
     fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
-    const gap = performance.now() + 400;
-    while (performance.now() < gap) { /* let the double-tap window lapse */ }
+    const real = performance.now.bind(performance);
+    const skew = 400;
+    const spy = vi.spyOn(performance, 'now').mockImplementation(() => real() + skew);
     press('KeyW');
     run(fly, 2, 120);
     const plain = -fly.pose().z;
     release('KeyW');
+    spy.mockRestore();
 
     fly.setPose({ x: 0, y: 0, z: 0, yaw: 0, pitch: 0 });
     press('KeyW');

@@ -6,7 +6,7 @@ import type { ViewerHook } from './hook';
 import type { LoadedMap } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, type Backend } from './renderer';
-import { applyFog, ELF_DEFAULT_FOGCOL, type FogSettings } from './fog';
+import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
 import { DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
@@ -41,9 +41,17 @@ let setLinearLight: ((on: boolean) => void) | null = null;
 const lighting: Lighting = { ...DEFAULT_LIGHTING };
 
 /** The panel's fog. Replaced wholesale when a map states its own, then nudged by the sliders. */
-const fog: FogSettings = { enabled: true, near: 200, far: 640, color: [...ELF_DEFAULT_FOGCOL] };
+const fog: FogSettings = {
+  enabled: true, ...fogForExtent(1200), color: [...ELF_DEFAULT_FOGCOL],
+};
 /** The renderer's clear colour, once `boot` has one: the background follows the fog. */
 let setClearColor: ((rgb: [number, number, number]) => void) | null = null;
+
+/**
+ * False while the fog on screen is the map's own, true once a slider has been dragged. It stops the
+ * step-snapped value in the range input from being read back over the decoded one on every map load.
+ */
+let fogIsMine = false;
 
 /** Puts the current fog on the scene and behind it. */
 function refreshFog(): void {
@@ -89,7 +97,10 @@ ui.onMapChange((path) => {
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
-ui.onSlider(applySlider);
+ui.onSlider((name, value) => {
+  if (name === 'fognear' || name === 'fogfar') fogIsMine = true;
+  applySlider(name, value);
+});
 ui.applySliders(applySlider);
 
 /** One switch for all six overlays: the world's materials, and the things drawn beside the world. */
@@ -99,18 +110,20 @@ function applySlider(name: SliderName, value: number): void {
   else if (name === 'lighty') lighting.y = value;
   else if (name === 'lightz') lighting.z = value;
   else if (name === 'lightgain') lighting.gain = value;
-  else if (name === 'fognear') { fog.near = value; refreshFog(); return; }
-  else if (name === 'fogfar') { fog.far = value; refreshFog(); return; }
+  // A slider only owns the fog once the player has moved it: `applySliders` is also called on every
+  // map load, and the range input has snapped the decoded value to its step by then.
+  else if (name === 'fognear') { if (fogIsMine) { fog.near = value; refreshFog(); } return; }
+  else if (name === 'fogfar') { if (fogIsMine) { fog.far = value; refreshFog(); } return; }
   view?.setLighting(lighting);
 }
 
 function applyToggle(name: ToggleName, on: boolean): void {
   if (name === 'grid') overlays.setGrid(on);
-  else if (name === 'axes') overlays.setAxes(on);
   else if (name === 'collision') overlays.setCollision(on);
   else if (name === 'spawns') overlays.setSpawns(on);
   else if (name === 'wireframe') view?.setWireframe(on);
   else if (name === 'fog') { fog.enabled = on; refreshFog(); }
+  else if (name === 'blendgraded') view?.setBlendGraded(on);
   else if (name === 'untextured') view?.setUntexturedHighlight(on);
   else { view?.setLinearLight(on); setLinearLight?.(on); }
 }
@@ -201,11 +214,17 @@ function show(map: LoadedMap): void {
     fog.near = map.camera.fogNear;
     fog.far = map.camera.fogFar;
     fog.color = [...map.camera.fogColor];
+    fogIsMine = false;                          // the new map's own fog, until a slider says otherwise
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
   view = buildWorld(map);
   scene.add(view.group);
+  // A map with no `cameras/camera` key takes a range off its own size rather than the last map's.
+  if (!map.camera) {
+    Object.assign(fog, fogForExtent(view.box.min.distanceTo(view.box.max)));
+    ui.setFog(fog.near, fog.far, fog.color);
+  }
   overlays.place(view.box);
   overlays.placeCollision(map.collision);
   // 36 section 6: spawns are not on the disc. `@s2u/scene` holds the measured table, keyed by the name

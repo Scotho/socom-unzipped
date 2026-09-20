@@ -46,14 +46,18 @@ const NORMAL_SCALE = 32768;
 /** SEMANTICS §5 entry [0]: a vertex is named by its quadword offset from `TOP+4`, stride 3. */
 const INDEX_STRIDE = 3;
 /**
- * SEMANTICS §4 quadword c and the note under it: the GS reads `RGBAQ` with **255 as full on RGB** and
- * **128 as opaque on alpha** — the two lanes do not share a scale. So RGB is c/255 and alpha is
- * min(c/128, 1), done here once rather than in each consumer. RGB is not clamped: the GS clamps the
- * *product* of texel and vertex, so a colour above full would legitimately overbrighten (none of the
- * three shipped maps contains one — measured max is exactly 128/255 — but the decode does not assume it).
+ * SEMANTICS §4 quadword c: **128 is unity on every lane**, RGB included.
+ *
+ * Every texture in the three extracted maps binds `TEX0.TFX = MODULATE` (241 of 241, measured with
+ * `tools/dump-bindpacket.ts`), and MODULATE is `C = (Ct * Cf) >> 7` — so a vertex lane of 128 leaves the
+ * texel unchanged and 255 would double it. Alpha's 128-is-opaque is the same unity point, not a separate
+ * convention; what differs is only that the blend equation has nowhere to put a value above opaque.
+ *
+ * RGB is therefore c/128 and is **not** clamped: the GS clamps the product, so a lane above 128 would
+ * legitimately overbrighten. None of the three maps contains one — the measured maximum is exactly 128 —
+ * but the decode does not assume it. Alpha is clamped, because there is no more opaque than opaque.
  */
-const RGB_FULL = 255;
-const ALPHA_OPAQUE = 128;
+const PS2_UNITY = 128;
 
 /** A packet whose lanes do not hold what SEMANTICS says a map geometry packet holds. */
 export class MeshError extends Error {
@@ -107,10 +111,10 @@ export interface LineStrip {
   textureName: string | null;
 }
 
-/** The primitive type of a packet's `TOP+0` GIFtag template, or null when it unpacked no template. */
-export function packetPrimitive(packet: VuPacket): number | null {
-  if (packet.written[0] !== 1) return null;
-  return ((packet.mem[0 * LANES + Y]! >>> PRIM_SHIFT) & PRIM_MASK) & PRIM_TYPE_MASK;
+/** The primitive type of one of a packet's GIFtag templates, or null when that quadword never unpacked. */
+export function packetPrimitive(packet: VuPacket, quadword = 0): number | null {
+  if (packet.written[quadword] !== 1) return null;
+  return ((packet.mem[quadword * LANES + Y]! >>> PRIM_SHIFT) & PRIM_MASK) & PRIM_TYPE_MASK;
 }
 
 /**
@@ -120,7 +124,11 @@ export function packetPrimitive(packet: VuPacket): number | null {
  * mesh packets keep the `TRIANGLE_FAN`/`TRIANGLE` pair SEMANTICS §2 records.
  */
 export function isLineStripPacket(packet: VuPacket): boolean {
-  return packetPrimitive(packet) === PRIM_LINE_STRIP;
+  // Both templates, not just `TOP+0`: a mesh packet carries a TRIANGLE_FAN there and a TRIANGLE at
+  // `TOP+1`, so requiring the pair to agree means a single mis-decoded quadword cannot send a mesh
+  // down the line path and lose its triangles silently.
+  return packetPrimitive(packet, 0) === PRIM_LINE_STRIP
+    && packetPrimitive(packet, 1) === PRIM_LINE_STRIP;
 }
 
 /**
@@ -173,10 +181,10 @@ export function interpretLinePacket(packet: VuPacket): LineStrip {
     normals[k * 3 + Z] = f32[b + W]!;
     uvs[k * 2 + X] = f32[b + X]!;
     uvs[k * 2 + Y] = f32[b + Y]!;
-    colors[k * 4 + X] = mem[c + X]! / RGB_FULL;
-    colors[k * 4 + Y] = mem[c + Y]! / RGB_FULL;
-    colors[k * 4 + Z] = mem[c + Z]! / RGB_FULL;
-    colors[k * 4 + W] = Math.min(mem[c + W]! / ALPHA_OPAQUE, 1);
+    colors[k * 4 + X] = mem[c + X]! / PS2_UNITY;
+    colors[k * 4 + Y] = mem[c + Y]! / PS2_UNITY;
+    colors[k * 4 + Z] = mem[c + Z]! / PS2_UNITY;
+    colors[k * 4 + W] = Math.min(mem[c + W]! / PS2_UNITY, 1);
   }
   return { positions, uvs, colors, normals, textureName: packet.textureName };
 }
@@ -231,10 +239,10 @@ export function interpretPacket(packet: VuPacket): MeshData {
     normals[k * 3 + Z] = mem[b + W]! / NORMAL_SCALE;
     uvs[k * 2 + X] = mem[b + X]! / UV_SCALE;
     uvs[k * 2 + Y] = mem[b + Y]! / UV_SCALE;
-    colors[k * 4 + X] = mem[c + X]! / RGB_FULL;
-    colors[k * 4 + Y] = mem[c + Y]! / RGB_FULL;
-    colors[k * 4 + Z] = mem[c + Z]! / RGB_FULL;
-    colors[k * 4 + W] = Math.min(mem[c + W]! / ALPHA_OPAQUE, 1);
+    colors[k * 4 + X] = mem[c + X]! / PS2_UNITY;
+    colors[k * 4 + Y] = mem[c + Y]! / PS2_UNITY;
+    colors[k * 4 + Z] = mem[c + Z]! / PS2_UNITY;
+    colors[k * 4 + W] = Math.min(mem[c + W]! / PS2_UNITY, 1);
   }
 
   // SEMANTICS §6: one triangle per tail pair, in index order, CCW front-facing. Entry [0].w is the runtime

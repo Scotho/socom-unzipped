@@ -315,6 +315,9 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
     vertices reaching TOP+9666822148, past the 1024 quadwords of VU data memory
   ```
 
+  **[SUPERSEDED 2026-09-20 -- see "Relocation type 1 is LINE_STRIP" below. The walker was never
+  wrong; these packets are not meshes.]**
+
   The counts are the tell: 1040187392 is `0x3E000000`, 3212836864 is `0xBF800000`, 3222274048 is
   `0xC0080000` -- IEEE floats 0.125, -1.0 and -2.125. The decoder is reading vertex floats where it
   expects a packet header, so it entered the packet at the wrong offset rather than misreading a
@@ -345,3 +348,69 @@ Filled in as milestones close. Each entry: date, what was decided, the evidence.
   is open. The viewer route's archive, texture, mesh and scene layers stand as the asset side of that route and of
   the replay viewer. The next design decision is the runtime port (Emscripten: scheduler, GS, VU1, disc delivery),
   which is its own spec.
+
+### Relocation type 1 is `LINE_STRIP`, not a broken walk (2026-09-20)
+
+**Supersedes** the M4-close finding above, which read the absurd vertex counts as the chain walk
+entering a packet at the wrong offset. It was not. `dma.ts` needed no change and the offsets were
+always right.
+
+A type-1 tag is written byte for byte like a type-2 tag, and `CVisual::SetBuffer`
+(`research/recom/src/gamez/zVisual/vis_main.cpp:320-366`) patches types 1, 2, 4 and 7 through the
+identical arm. What differs is the **packet**: relocation type 1 marks a GS `LINE_STRIP`. All 194 of
+them across the three maps carry `PRIM` type 2 in *both* GIFtag templates (bits 47-57 of the tag), and
+no other packet in any map has prim type 2. Tag counts: 31 in MP6, 163 in MP72, 0 in MP2.
+
+The layout is `SEMANTICS` section 4's vertex triple lane for lane, already in floats, with no index
+list, no face normal and no `TOP+3` bias: `TOP+0`/`TOP+1` are the templates, then per point a
+`V4-32` float `(x, y, z, normal.x)`, a `V4-32` float `(u, v, normal.y, normal.z)` and a `V4-8 USN`
+rgba. Point counts run 2 to 9; segment *k* joins point *k* to *k+1*. The mesh decoder was reading
+point 0's float position as the counts quadword, which is where `1124466688` came from: `0x43070000`,
+the float 135.0.
+
+What they are: Desert Glory's power lines, lamp brackets and handcuff chains; Crossroads' tent guy
+ropes and light filaments. 877 segments over 1,071 points in total. **No triangles were ever lost** --
+the failing chunks hold only strips, which is why fixing this moved no triangle count. They are decoded
+as `LineStrip` and drawn as one `LineSegments` pass; the GS draws them one pixel wide at any distance,
+so no width had to be invented.
+
+Diagnostics after: Frostfire 0, Desert Glory 6 -> 1, Crossroads 11 -> 5. Every remaining one is the
+second cause already recorded above -- five textures a map cites but its own `_TXR.ZED` does not hold:
+`null_xmas.bmp` (MP6) and `afghan2r_rug1..3.tif` plus `afghan2r_rug_trim.tif` (MP72).
+
+### 128 is unity on RGB, not 255 (2026-09-20)
+
+An intermediate change divided RGB by 255 and alpha by 128, on a reading of section 4's "`rgb/255` and
+`a/128` are the browser values". That was wrong and made the pipeline 1.992x dark. Every texture in the
+three maps binds `TEX0.TFX = MODULATE` -- 241 of 241, measured with `web/tools/dump-bindpacket.ts` --
+and MODULATE is `C = (Ct x Cf) >> 7`, so **128 is unity on every lane**. RGB is now `c/128`, unclamped
+(the GS clamps the product, not the vertex); alpha is `min(c/128, 1)`. `SEMANTICS` sections 4 and 11
+carry the correction.
+
+The vertex colour is a **material** colour, not a lit one: the VU multiplies it by a computed light
+before the GS sees it (`staging+1 = record2 * lit`, NAT:1615). Measured over the three maps it averages
+0.29 of unity and never exceeds it. The viewer emulates the VU's own model in
+`viewer/src/lighting.ts` -- `lit = light[0]*n.x + light[1]*n.y + light[2]*n.z + light[3]` with the
+normal clamped componentwise to zero, from dispatcher command `0x18` -> `0x1440` -- using the vertex
+normals, which were decoded and then discarded until now. The *values* it needs (the normal/light
+matrix in vf5-vf7, the colour block in vf9-vf12) are uploaded by the EE at VU1 entry 0 and are not on
+the disc, so the matrix is taken as identity and the four colours are sliders.
+
+### Fog is per map, in `cameras/camera` (2026-09-20)
+
+Not in `mission.rdr`. `MP<N>.ZDB` -> member `MP<N>.ZED` -> ZAR key `cameras/camera`, a 144-byte
+`zdb::tag_CAMERA_PARAMS` (`research/recom/src/gamez/zCamera/zcam.h:67-101`): fog RGBA at `0x10` (floats
+0..1, always exact n/255), `fog_near`/`fog_far` at `0x64`/`0x68`, `fog_top`/`fog_bottom` at
+`0x7C`/`0x80`, flags u32 at `0x8C` with bit 29 fog-enabled, bit 30 directional, bit 31 altitude. The
+authored source is readable beside it as text in `READERM.ZAR -> mp<N>.rdr`.
+
+The coefficient is `F = clamp(w * scale + offset, 0, 255)` with `scale = -255/(far-near)` and
+`offset = 255 - near*scale`, where `w` is **view depth**, not radial distance -- the radial form in
+`sub_002948D0` is the EE's own mirror for CPU-side object fades. The GS blends
+`C = (F*C)>>8 + ((255-F)*FOGCOL)>>8`. The framebuffer clears to the fog colour
+(`reCOM zrndr_pipe.cpp:157`), so the horizon comes free and there is no separate sky colour.
+
+Two of the 22 multiplayer maps ship fog disabled (MP51, MP81) and six enable altitude fog (MP1, MP7,
+MP10, MP62, MP64, MP82). The altitude band is parsed and **not applied** -- no VU1 dump exists from a
+map that enables it, so its encoding is the one inferred part of the model -- and a map that enables it
+says so in the diagnostics panel.

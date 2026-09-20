@@ -99,14 +99,14 @@ describe('interpretPacket', () => {
     // §4 normal = (a.w, b.z, b.w)/32768
     expect(Array.from(m.normals!).map((v) => +v.toFixed(5)))
       .toEqual([0, 0, 0.99997, 0, 0, 0.99997, 0, 0, 0.99997, 0.5, -0.5, 0]);
-    // §4 quadword c: the two lanes are on different scales -- RGB full is 255, alpha opaque is 128.
-    // RGB is left unclamped (the GS clamps the product, not the vertex); alpha clamps, so the third
-    // vertex's raw 255 is still just opaque.
-    expect(Array.from(m.colors).map((v) => +v.toFixed(6))).toEqual([
-      1, 0.501961, 0, 1,
-      0.039216, 0.078431, 0.117647, 0.5,
-      0.003922, 0.007843, 0.011765, 1,
-      0.015686, 0.019608, 0.023529, 0,
+    // §4 quadword c: 128 is unity on every lane (TEX0.TFX is MODULATE everywhere, and MODULATE is
+    // `(Ct * Cf) >> 7`). RGB is left unclamped -- the first vertex's red is raw 255, which doubles
+    // the texel -- while alpha clamps, so the third vertex's raw 255 is still just opaque.
+    expect(Array.from(m.colors)).toEqual([
+      1.9921875, 1, 0, 1,
+      0.078125, 0.15625, 0.234375, 0.5,
+      0.0078125, 0.015625, 0.0234375, 1,
+      0.03125, 0.0390625, 0.046875, 0,
     ]);
     // §5/§6: one triangle per tail pair, index = byte/3, emitted in stored order
     expect(Array.from(m.indices)).toEqual([0, 2, 1, 1, 2, 3]);
@@ -266,10 +266,11 @@ describe('relocation type 1: the LINE_STRIP packet', () => {
     // The normal is (a.w, b.z, b.w) as in §4, but already float, so nothing is divided by 32768.
     expect(Array.from(strip!.normals).map((v) => +v.toFixed(5))).toEqual([0, 0, -1, 0, 1, 0, 0.6, 0.8, 0]);
     // Colours keep the mesh contract: RGB on a full of 255, alpha on 128, alpha clamped.
-    expect(Array.from(strip!.colors).map((v) => +v.toFixed(6))).toEqual([
-      1, 0.501961, 0, 1,
-      0.039216, 0.078431, 0.117647, 0.5,
-      0.003922, 0.007843, 0.011765, 1,
+    // 128 is unity on every lane, RGB included: the first point's red is raw 255, which doubles.
+    expect(Array.from(strip!.colors)).toEqual([
+      1.9921875, 1, 0, 1,
+      0.078125, 0.15625, 0.234375, 0.5,
+      0.0078125, 0.015625, 0.0234375, 1,
     ]);
     expect(strip!.textureName).toBe('tent_top.tif');
   });

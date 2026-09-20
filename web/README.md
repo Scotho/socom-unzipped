@@ -49,9 +49,10 @@ The camera flies like a creative-mode build camera: momentum, not teleporting.
 | `W`/`S` | fly along the look direction — nose down and `W` descends |
 | `A`/`D` | strafe, always level with the horizon whatever the pitch |
 | `Space` / `Shift` | up and down in world space |
-| `Ctrl` | boost, with the field of view widening to match |
+| double-tap `W`, held | boost, with the field of view widening to match. Nothing is bound to `Ctrl`: `Ctrl+W` closes the tab and no page can prevent it |
 | wheel | trims the fly speed between 0.1x and 16x; the panel shows the trim |
 | `Q`/`E` | down and up, kept from the earlier bindings |
+| `` ` `` | hides and shows the panel and the frame counter, for a clean look at the map |
 
 Starts ramp and stops glide rather than snapping. The velocity is integrated in closed form, so the camera
 covers the same ground per second at 30 fps as at 240 — and `setCamera` from the debug hook clears the

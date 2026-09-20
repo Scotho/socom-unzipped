@@ -1,7 +1,7 @@
 /**
  * What brightness did the artists actually write? Dumps the vertex-colour distribution of a map's
- * worldmodel as the disc holds it. RGB's full is 255 (SEMANTICS section 4 -- only *alpha* uses 128),
- * so a raw byte of 128 is a half-brightness material, not a full one.
+ * worldmodel as the disc holds it. 128 is unity on every lane (TEX0.TFX is MODULATE on all 241
+ * textures, and MODULATE is `(Ct * Cf) >> 7`), so a raw byte of 128 leaves the texel unchanged.
  *
  *   npx tsx tools/colour-histogram.ts [MP2 MP6 MP72 ...]
  */
@@ -34,9 +34,9 @@ for (const archive of MAPS) {
     const c = part.colors;
     for (let i = 0; i < c.length; i += 4) {
       for (let k = 0; k < 3; k++) {
-        const raw = c[i + k]! * 255;                       // back to the byte the disc holds (RGB full is 255)
+        const raw = c[i + k]! * 128;                       // back to the byte the disc holds
         n++; sum += raw;
-        if (raw > 255) over++;
+        if (raw > 128) over++;
         if (raw > max) max = raw;
         bins[Math.min(LABELS.length - 1, Math.floor(raw / 32))]! += 1;
       }
@@ -44,8 +44,8 @@ for (const archive of MAPS) {
   }
   if (!n) { console.log(`${archive}: no vertices`); continue; }
   console.log(`\n=== ${archive} === ${n} rgb lanes over ${parts.length} parts`);
-  console.log(`mean ${(sum / n).toFixed(1)}/255 = ${(sum / n / 255).toFixed(3)}x full   `
-    + `max ${max.toFixed(0)} (${(max / 255).toFixed(2)}x)   above full: ${(over / n * 100).toFixed(1)}%`);
+  console.log(`mean ${(sum / n).toFixed(1)}/128 = ${(sum / n / 128).toFixed(2)}x unity   `
+    + `max ${max.toFixed(0)} (${(max / 128).toFixed(2)}x)   above unity: ${(over / n * 100).toFixed(1)}%`);
   for (let b = 0; b < bins.length; b++) {
     const pct = bins[b]! / n * 100;
     if (pct < 0.05) continue;

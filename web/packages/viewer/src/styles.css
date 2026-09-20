@@ -32,7 +32,9 @@ body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
   border: 1px solid #333a44; border-radius: 6px; background: rgba(20, 22, 26, 0.86);
   font-size: 12px; line-height: 1.4; color: #9fe6b0; font-variant-numeric: tabular-nums;
 }
-#sliders-box, #fog-box { margin: 4px 0; }
+#sliders-box, #fog-box, #options { margin: 4px 0; }
+#options summary { cursor: pointer; color: #9aa4b1; }
+#options > details { margin-left: 10px; }
 #fog-box summary { cursor: pointer; color: #9aa4b1; }
 label.colour { display: inline-flex; align-items: center; gap: 6px; color: #b9c1cb; }
 label.colour input[type="color"] { width: 34px; height: 20px; padding: 0; border: 1px solid #39414d; border-radius: 4px; background: none; }
