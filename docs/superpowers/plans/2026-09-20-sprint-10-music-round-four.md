@@ -258,6 +258,23 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       at the mission load, once). Fix in progress: re-offer aside audio every tick while backpressured, and gate
       the demux on stream time (~200 ms of PTS ahead) instead of a picture count; bar = zero PCM starvation on
       the intro and the briefing (`s10_r4v`).
+      **ITEM 16 FIXED (`9e66a3a`, ~09:50 UTC):** the decoder gate is stream time (fed while the pictures ahead of
+      the presenter cover < 12 fields, ~200 ms, cap 32, open at EOF); a refused video packet is HELD in stream
+      order and fed on every demux call and every GetPicture; the game's read is refused only when the held copy
+      is full or the game has refused 32 audio packets, and a refused call still re-offers the aside audio every
+      tick. Two tests (an 8-picture read taken whole and held; audio delivered every tick past held video);
+      700/700. Run `s10_r4v`: the briefing's in-stream PCM holes 10-11 -> 0 (ring ahead 18-19, underruns 0 for the
+      whole play); the five remaining STARVATION labels are stream BOUNDARIES identical before and after (the
+      logo/intro/title switches where the game runs ~600 ms of its own code between PcmStreamStop and the next
+      stream, the 8 s title->briefing transition, the CROSS leaving the briefing). 134/177; the pre-mission FAIL
+      windows are transition-timing mismatches against the console's script timing (ours has the briefing music
+      where the reference is silent), not holes -- the window score has reached what a different walk allows.
+- [x] 4. **DONE as far as the machine can take it (2026-09-21 ~10:00 UTC).** Sixteen items; eight defects fixed
+      with tests (the still-playing answer, SetSoundParams on streams, the square law, the voice pair, the
+      per-buffer stereo interleave, the decode-ahead worker, the demux gate; plus the capture's own per-app
+      session volume), three instruments built (the music-only capture with stereo alignment and the dip
+      classifier, the EE cue/music state poll on both machines, the scheduler trace), and the mission's pauses
+      proven to be the game's own stealth rests on both machines. **The owner's fifth listen decides.**
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
