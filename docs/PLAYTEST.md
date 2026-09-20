@@ -5,12 +5,14 @@ the next and the things you have complained about come while your ears are fresh
 "fine" is an answer. Anything not on this page that annoys you is the most useful note of all.
 
 ```
-build:    (the controller fills this in at Sprint 9 P7)   tag: playtest-1   commit: ________
-archive:  dist-release/portable/socom2-portable.zip       sha256: ________
-gate:     ________ (3/3 on this exact exe)
+build:    2026-09-20, release at -O1 (R151)   tag: playtest-1   commit: the commit this tag sits on (git log -1 playtest-1)
+archive:  dist-release/portable/socom2-portable.zip  55,829,577 bytes
+          sha256: f8f8149cb247f328651a6f5664c5ea889f6588a8de14b91a7135430f0a68a041
+gate:     s9_p7_playtest_gate -- 3/3 (title, transition, mission) on the exe INSIDE that archive:
+          socom2.exe 226,849,280 bytes, sha256 a43bf45c321dbdefbfa91845e87fc80074aace6661a83475189c9470486523c0
 ```
 
-**Not ready until the block above is filled in.** If you want to play before that, play `dist/` and say which commit
+**Ready.** The block above is filled in from the run that built it, not from the directory (KNOWN §4: a failed packaging leaves the previous archive in place). If you want to play before that, play `dist/` and say which commit
 (`git log -1 --oneline`); the notes still count, but step 1 and step 9 only mean something on the archive.
 
 ## Before you start

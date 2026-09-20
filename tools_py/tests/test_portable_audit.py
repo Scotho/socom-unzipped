@@ -69,6 +69,18 @@ class WindowsFolderTest(unittest.TestCase):
         self.assertEqual(result["missing"], {})
         self.assertEqual(result["orphans"], [])
 
+    def test_winhttp_is_windows_and_does_not_have_to_be_shipped(self):
+        """Sprint 9 P7. Goal 8 gave the launcher a WinHTTP transport for the bug report and the status
+        line, and WINHTTP.dll was not in WINDOWS_SYSTEM -- so the first release packaging after Goal 8
+        called it a missing import and refused to build the archive. It is a Windows system library
+        (C:/Windows/System32/winhttp.dll, present since Vista); shipping a copy would be wrong."""
+        put(self.dir, "socom_unzipped_launcher.exe", tiny_pe(["KERNEL32.dll", "WINHTTP.dll"]))
+        result = portable_audit.audit(self.dir, "Windows")
+        self.assertEqual(result["missing"], {},
+                         "a system library the launcher imports is not a missing file")
+        self.assertNotIn("winhttp.dll", [n.lower() for n in result["needed"]],
+                         "and it is not something the portable folder has to carry")
+
     def test_a_dll_nothing_imports_is_an_orphan(self):
         put(self.dir, "OpenEXR-3_3.dll", tiny_pe(["KERNEL32.dll"]))
         put(self.dir, "avformat-61.dll", tiny_pe(["avcodec-61.dll"]))   # imports, but is imported by nothing

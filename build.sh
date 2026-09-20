@@ -55,7 +55,11 @@ runtime() {
 # are stripped with their symbols kept beside them. Every value is an environment variable so the measurement
 # matrix (the Goal 2 plan, Task 5) builds each candidate with this one function.
 release() {
-  local genopt="${REL_GENOPT:--O2}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
+  # R151, measured in Sprint 9 Goal 2: -O2 makes the generated code 9.9% smaller as an exe and the ZIP
+  # 4.6 MB LARGER, and the download is what a stranger pays. The ruling said the release keeps -O1; this
+  # default said -O2 from 443238e until Sprint 9 P7 found it, so every release built by running this
+  # script plainly had shipped the configuration the measurement rejected.
+  local genopt="${REL_GENOPT:--O1}" lto="${REL_LTO:-OFF}" scope="${REL_LTO_SCOPE:-all}" icf="${REL_ICF:-}"
   local fc=() src name
   # Reuse the developer tree's fetched sources read-only (raylib, imgui, ...): a second tree would clone them all again.
   for src in "$RTBUILD"/_deps/*-src; do
