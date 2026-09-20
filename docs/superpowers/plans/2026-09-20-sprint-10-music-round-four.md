@@ -99,6 +99,34 @@ mission briefing screen. Their question: "are we approaching the problem, the fi
       pan -1, the PCM ring's chain). Run 9's PCSX2 re-pin was abandoned (the emulator's window went empty at the
       mission load -- a black screen with the loading bar, then nothing); the run 8 reference stands.
       The owner's fourth listen is in HUMAN_TASKS.
+      **The fix agent's answers (~23:20 UTC):** item 6, the gaps are the GAME's: around each gap the stem played its
+      full VPK length (28.96 / 2.16 / 3.89 / 3.89 s on the disc, ours 29.00 / 2.18 / 3.92 / 3.92), the first 0x19 after
+      the end answered 0, no 0x2c failed, no stop, no -1 left pending; inside the gaps the EE only ducked group 1, wrote
+      the ambience register (2 -> 3|5) and played SFX -- the music manager (`FUN_0034afd0`) sat in state 3 with an empty
+      cue queue, which only mission/AI logic fills (`FUN_0034b6c0` via the generic play-sound API). Not ours to fix; the
+      console does the same on its own walk. Item 7, the 6 dB on the stems: a stereo stream on the console is a VOICE
+      PAIR -- the main voice forced to pan 270 (`FUN_000152fc`) = table[0] = (32766, 0) and the doubling voice on the
+      right -- while ours centre-panned one voice (table[90] = 23167, squared: exactly 0.5). `8a43b09`: a two-channel
+      stream's main voice at pan+270 and the pair mixed L/R. The title ring's -4..-6.5 dB is NOT explained (the agent's
+      arithmetic predicts ours 1.5 dB louder) and stays open. Run 10 = `s10_r4k` (ours only on `8a43b09`):
+      **126/177** (6 -> 77 -> 126 over the day).
+      **The owner's own recordings (2026-09-20 ~23:10-23:30 UTC, five phone clips of run 10 playing on the speakers;
+      envelope cross-correlation places each in the loopback at corr 0.90-1.00):** the dips they hear are in OURS'
+      output -- 173.9 s (150 ms, -14 dB) and 176.0 s on the AUDIO OPTIONS page, 419.7 s (100 ms) and 420.1 s (450 ms,
+      -25 dB) in the contact music -- and the "trailing silence" in three clips was the game going silent: 148.1 s
+      (3.2 s after the sliders), 249.0 s (10.9 s on the briefing), 358.6 s (17.9 s at the mission start). Their
+      question, "do we have an honest lead?": every choppy place is STREAMED audio (the PCM ring, the VAG stems), every
+      clean one is in memory (SFX, the ambience conductor, the cutscene music) -- the unifying hypothesis is stream
+      feed pacing (emulated time) against real-time consumption. The per-window score cannot see a 150 ms dip; the
+      gate is now a combined trace (dump + endpoint + per-stream buffer occupancy + the guest clock) with every dip
+      classified DEVICE / STARVATION / COMMAND / UNEXPLAINED (the fix agent, item 9 widened), and a decision-level
+      poll of the EE music manager's state on both machines (a second agent: PINE on the console, the runtime's peek
+      on ours) for the stops.
+      **The console stops too:** run 8's loopback has digital silences of 33.6 s after the OPTIONS return (219 s),
+      73.5 s over the briefing/loading (275 s) and 68 s from 411 s (60 s after its HUD; cut by the recorder's end, so
+      >= 68 s). Ours' are shorter and more frequent (3.2, 1.6, 3.1, 10.7, 1.8, 10.9, 12.6, 17.9, 9.7, 16.2, 2.0, 33.6 s
+      over the same span). Whether a given stop is the game's decision or ours' is what the state poll answers.
+      The recorder's 480 s cap (fixed to 620, `5daf39b`) made run 8's late reference windows silent; re-pin = `s10_r4l`.
 
 ## The owner's part -- ANSWERED 2026-09-20 ~21:00 UTC
 
