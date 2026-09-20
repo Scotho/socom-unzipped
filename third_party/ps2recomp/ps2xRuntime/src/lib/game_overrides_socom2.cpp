@@ -15,6 +15,8 @@
 #include "runtime/ps2_memory.h"
 #include "runtime/ee_scheduler.h"
 #include "runtime/socom2_freeze_fields.h"
+#include "runtime/socom2_music_trace.h"
+#include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
 #include "socom2_libnetb.h"
@@ -1337,6 +1339,88 @@ namespace
     }
 
     // ------------------------------------------------------------------------------------------
+    // PS2X_SOCOM2_MUSIC_TRACE=1 (research/36 item 8, 2026-09-20): the EE's music manager, traced. The driven
+    // mission plays 10-22 s of digital silence between stems where the console plays on; the IOP-side trace
+    // shows the manager idle with an EMPTY cue queue (no play refused, no handle left pending). This says why:
+    // every state change of FUN_0034afd0 (manager+9: 4 reset, 3 idle, 1 playing, 0/2 extension) with its cue
+    // entry (+0x34), and every FUN_0034b6c0 cue push with its arguments and whether the IRX-side decision
+    // (runtime/socom2_music_trace.h) queued, refused or dropped it. Both run the original afterwards; both are
+    // stamped with the mixer's output-frame clock, the one the [audio] events carry.
+    // ------------------------------------------------------------------------------------------
+    PS2Runtime::RecompiledFunction g_musicMgrOriginal = nullptr;
+    PS2Runtime::RecompiledFunction g_musicPushOriginal = nullptr;
+
+    uint32_t musicRead32(const uint8_t *rdram, uint32_t addr)
+    {
+        uint32_t v = 0u;
+        if (const uint8_t *p = getConstMemPtr(rdram, addr))
+            std::memcpy(&v, p, sizeof(v));
+        return v;
+    }
+
+    uint8_t musicRead8(const uint8_t *rdram, uint32_t addr)
+    {
+        const uint8_t *p = getConstMemPtr(rdram, addr);
+        return p ? *p : 0u;
+    }
+
+    void socom2_MusicManagerTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        static uint32_t s_calls = 0u;
+        const uint32_t mgr = GPR_U32(ctx, 4);
+        const uint8_t stateBefore = musicRead8(rdram, mgr + 9u);
+        const uint32_t entryBefore = musicRead32(rdram, mgr + 0x34u);
+        const uint8_t interrupt = musicRead8(rdram, mgr + 10u);
+        g_musicMgrOriginal(rdram, ctx, runtime);
+        const uint8_t stateAfter = musicRead8(rdram, mgr + 9u);
+        const uint32_t entryAfter = musicRead32(rdram, mgr + 0x34u);
+        const uint32_t n = s_calls++;
+        if (n == 0u || stateBefore != stateAfter || entryBefore != entryAfter)
+        {
+            std::fprintf(stderr, "[music] mgr 0x%08x state %u->%u entry 0x%08x->0x%08x interrupt=%u queue=%u free=%u flagB=%u frame=%llu call#%u\n",
+                         mgr, stateBefore, stateAfter, entryBefore, entryAfter, interrupt, musicRead32(rdram, mgr + 0x1cu),
+                         musicRead32(rdram, mgr + 0x28u), musicRead8(rdram, mgr + 0xbu),
+                         static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()), n);
+        }
+    }
+
+    void socom2_MusicPushTrace(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t mgr = GPR_U32(ctx, 4), name = GPR_U32(ctx, 5), def = GPR_U32(ctx, 6), vol = GPR_U32(ctx, 7);
+        const uint32_t freeBefore = musicRead32(rdram, mgr + 0x28u);
+        const uint32_t queueBefore = musicRead32(rdram, mgr + 0x1cu);
+        const uint8_t flagB = musicRead8(rdram, mgr + 0xbu);
+        const uint8_t f1c = musicRead8(rdram, def + 0x1cu), f1d = musicRead8(rdram, def + 0x1du);
+        g_musicPushOriginal(rdram, ctx, runtime);
+        const uint32_t ret = GPR_U32(ctx, 2);
+        const uint32_t queueAfter = musicRead32(rdram, mgr + 0x1cu);
+        const socom2_music::PushVerdict v = socom2_music::pushVerdict(freeBefore, flagB, f1c, f1d, ret, queueBefore, queueAfter);
+        const std::string text = callTraceGuestString(rdram, name);
+        std::fprintf(stderr, "[music] push name=0x%08x%s%s%s def=0x%08x type=%u flags1c=0x%02x vol=%u -> %s (%s) ret=%u queue %u->%u free %u->%u flagB=%u frame=%llu ra=0x%08x\n",
+                     name, text.empty() ? "" : " \"", text.c_str(), text.empty() ? "" : "\"", def, f1d >> 5, f1c, vol, v.label, v.reason, ret,
+                     queueBefore, queueAfter, freeBefore, musicRead32(rdram, mgr + 0x28u), flagB,
+                     static_cast<unsigned long long>(runtime->audioBackend().mixerRenderedFrames()), GPR_U32(ctx, 31));
+    }
+
+    void installMusicTrace(PS2Runtime &runtime)
+    {
+        if (!std::getenv("PS2X_SOCOM2_MUSIC_TRACE"))
+            return;
+        constexpr uint32_t kManager = 0x0034afd0u;   // FUN_0034afd0: the per-frame music manager
+        constexpr uint32_t kPush = 0x0034b6c0u;      // FUN_0034b6c0: the cue push
+        if (!runtime.hasFunction(kManager) || !runtime.hasFunction(kPush))
+        {
+            std::cout << "[music] trace: FUN_0034afd0 / FUN_0034b6c0 not in the function table" << std::endl;
+            return;
+        }
+        g_musicMgrOriginal = runtime.lookupFunction(kManager);
+        g_musicPushOriginal = runtime.lookupFunction(kPush);
+        runtime.replaceFunction(kManager, socom2_MusicManagerTrace);
+        runtime.replaceFunction(kPush, socom2_MusicPushTrace);
+        std::cout << "[music] tracing FUN_0034afd0 (manager state) and FUN_0034b6c0 (cue push)" << std::endl;
+    }
+
+    // ------------------------------------------------------------------------------------------
     // PS2X_SOCOM2_UDP_SHIFT and the guest's OWN port number.
     //
     // A second instance on the same host cannot bind the game's fixed peer UDP ports (3658/3659),
@@ -1831,6 +1915,7 @@ namespace
         startPcSampler(runtime);
         startRdramDump(runtime);
         installCallTrace(runtime);
+        installMusicTrace(runtime);
         installCullTrace(runtime);
         installPackTrace(runtime);
         {

@@ -603,6 +603,14 @@ namespace snd989
             uint32_t currentBlock = 0xffffffffu;
             bool silentBlock = false;
             uint64_t underruns = 0;
+            // research/36 item 9 (2026-09-20), the instrument: a stale RUN is a stretch of output frames the head
+            // spent in blocks the game had not rewritten (silence). One "[audio] 989snd pcm UNDERRUN" line per run,
+            // stamped with the output frame it began on, printed when it ends (or when the ring stops).
+            bool inStaleRun = false;
+            uint64_t staleRunStart = 0;      // output frame the run began on
+            uint64_t staleRunFrames = 0;     // output frames of silence in the run so far
+            uint64_t starvationRuns = 0;     // runs completed (Mixer::pcmStarvationRuns)
+            uint64_t bytesWritten = 0;       // bytes the game wrote since the last occupancy line
             uint32_t blockBytes() const { return 512u * std::max<uint32_t>(channels, 1u); }
             // (Re)allocate the ring and zero it. `channels` must already be set: it sets the block size.
             void reshape(uint32_t ringBytes)
@@ -618,6 +626,10 @@ namespace snd989
                 currentBlock = 0xffffffffu;
                 silentBlock = false;
                 underruns = 0;
+                inStaleRun = false;
+                staleRunFrames = 0;
+                starvationRuns = 0;
+                bytesWritten = 0;
             }
             uint32_t frames() const { return channels == 0 || bytes.empty() ? 0u : static_cast<uint32_t>(bytes.size() / (2u * channels)); }
             int16_t sample(uint32_t frame, uint32_t channel) const
@@ -711,6 +723,72 @@ namespace snd989
                          static_cast<unsigned long long>(detail));
             if (eventSink)
                 eventSink(e);
+        }
+
+        // ---- the instrument (research/36 item 9) ----------------------------------------------------------
+        void endPcmStaleRun()
+        {
+            if (!pcm.inStaleRun)
+                return;
+            pcm.inStaleRun = false;
+            ++pcm.starvationRuns;
+            std::fprintf(stderr, "[audio] 989snd pcm UNDERRUN frame=%llu silent=%llu\n",
+                         static_cast<unsigned long long>(pcm.staleRunStart), static_cast<unsigned long long>(pcm.staleRunFrames));
+        }
+
+        // Output frames of decoded audio a stream holds ahead of its read head: the current chunk's remainder plus
+        // every chunk pair waiting in its ring, converted from the file's rate.
+        uint64_t streamFramesAhead(const Stream &st) const
+        {
+            double samples = st.pcm[0].empty() ? 0.0 : std::max(0.0, static_cast<double>(st.pcm[0].size()) - st.pos);
+            {
+                std::lock_guard<std::mutex> lock(ringMutex);
+                for (const ChunkPair &c : st.ready)
+                    samples += static_cast<double>(c[0].size());
+            }
+            return static_cast<uint64_t>(st.step > 0.0 ? samples / st.step : samples);
+        }
+
+        // Fresh (written, not yet played) blocks the PCM ring holds ahead of its head, contiguously.
+        uint32_t pcmBlocksAhead() const
+        {
+            if (pcm.fresh.empty())
+                return 0u;
+            const uint32_t n = static_cast<uint32_t>(pcm.fresh.size());
+            uint32_t b = pcm.currentBlock == 0xffffffffu ? 0u : (pcm.currentBlock + 1u) % n;
+            uint32_t count = 0u;
+            while (count < n && pcm.fresh[b] != 0u)
+            {
+                ++count;
+                b = (b + 1u) % n;
+            }
+            return count;
+        }
+
+        void logOccupancy(uint64_t frame)
+        {
+            for (const auto &sp : streams)
+            {
+                const Stream &st = *sp;
+                if (st.done.load(std::memory_order_relaxed))
+                    continue;
+                size_t chunks = 0;
+                {
+                    std::lock_guard<std::mutex> lock(ringMutex);
+                    chunks = st.ready.size();
+                }
+                std::fprintf(stderr, "[audio] 989snd stream %08x occupancy frame=%llu ahead=%llu chunks=%zu%s%s\n", st.handle,
+                             static_cast<unsigned long long>(frame), static_cast<unsigned long long>(streamFramesAhead(st)), chunks,
+                             st.paused ? " paused" : "", st.ended.load(std::memory_order_relaxed) ? " ended" : "");
+            }
+            if (pcm.active && pcm.frames() > 0)
+            {
+                std::fprintf(stderr, "[audio] 989snd pcm occupancy frame=%llu ahead=%u blocks=%zu pos=%u written=%llu underruns=%llu\n",
+                             static_cast<unsigned long long>(frame), pcmBlocksAhead(), pcm.fresh.size(),
+                             static_cast<uint32_t>(pcm.pos) * 2u * pcm.channels, static_cast<unsigned long long>(pcm.bytesWritten),
+                             static_cast<unsigned long long>(pcm.underruns));
+                pcm.bytesWritten = 0;
+            }
         }
 
         // 0..0x400; a handle with no ramp is at full scale, which multiplies out to exactly the old gain.
@@ -1878,6 +1956,22 @@ namespace snd989
                         else
                             ++ring.underruns;
                     }
+                    // The instrument (research/36 item 9): a stale run begins on the first silent frame and ends,
+                    // with one UNDERRUN line, on the first fresh one (or at pcmStreamStop / pcmStreamClose).
+                    if (ring.silentBlock)
+                    {
+                        if (!ring.inStaleRun)
+                        {
+                            ring.inStaleRun = true;
+                            ring.staleRunStart = m_impl->renderedFrames + frame + i;
+                            ring.staleRunFrames = 0;
+                        }
+                        ++ring.staleRunFrames;
+                    }
+                    else if (ring.inStaleRun)
+                    {
+                        m_impl->endPcmStaleRun();
+                    }
                     if (!ring.silentBlock)
                     {
                         const int32_t l = ring.sample(f, 0);
@@ -1902,6 +1996,14 @@ namespace snd989
             interleaved[i] = static_cast<int16_t>(std::clamp<int32_t>(mix[i], -32768, 32767));
         m_impl->updatePcmPosition();
         m_impl->pcmUnderrunCount.store(m_impl->pcm.underruns, std::memory_order_relaxed);
+        // The instrument (research/36 item 9): PS2X_AUDIO_INSTRUMENT=1 prints, every 4800 output frames (100 ms),
+        // what each live stream holds decoded ahead of its read head and how many fresh blocks the PCM ring holds
+        // ahead of its head -- on the same output-frame clock as the start/done/UNDERRUN events, so a dip in the
+        // mix can be read against the buffer that fed it.
+        static const bool s_instrument = std::getenv("PS2X_AUDIO_INSTRUMENT") != nullptr;
+        constexpr uint64_t kOccupancyFrames = 4800u;
+        if (s_instrument && (m_impl->renderedFrames / kOccupancyFrames) != ((m_impl->renderedFrames + frames) / kOccupancyFrames))
+            m_impl->logOccupancy(m_impl->renderedFrames + frames);
         m_impl->renderedFrames += frames;   // Sprint 9 Q0: the output-frame clock the dump is written on
         m_impl->reap();
     }
@@ -2202,6 +2304,7 @@ namespace snd989
             return;
         const size_t n = std::min(bytes, ring.bytes.size() - offset);
         std::memcpy(ring.bytes.data() + offset, data, n);
+        ring.bytesWritten += n;   // the instrument's feed counter (research/36 item 9)
         // Every block the write touches is fresh again (a partial write counts: the game writes whole blocks).
         if (n > 0 && !ring.fresh.empty())
         {
@@ -2215,6 +2318,19 @@ namespace snd989
     uint64_t Mixer::pcmUnderruns() const
     {
         return m_impl->pcmUnderrunCount.load(std::memory_order_relaxed);
+    }
+
+    uint64_t Mixer::pcmStarvationRuns() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->pcm.starvationRuns;
+    }
+
+    uint64_t Mixer::streamFramesAhead(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        const Stream *st = m_impl->findStream(handle);
+        return st ? m_impl->streamFramesAhead(*st) : 0u;
     }
 
     // The game's audio thread polls this 30 times a second through a synchronous RPC (research/32 section 7.1):

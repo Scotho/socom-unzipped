@@ -10,6 +10,7 @@
 #include "runtime/audio_volume.h"
 #include "runtime/host_mic.h"
 #include "runtime/mic_format.h"
+#include "runtime/socom2_music_trace.h"
 #include "ps2x/iop/iop_subsystem.h"
 #include "ps2_runtime.h"
 #include "ps2_iop_transport.h"
@@ -2054,6 +2055,72 @@ void register_socom2_audio_tests()
             }
             t.IsTrue(c0 > 0.35, "L and R correlate at lag 0 like the console's (corr " + std::to_string(c0) + ")");
             t.IsTrue(std::abs(bestLag) * 8 <= 144, "and the best lag is within 3 ms of zero (" + std::to_string(bestLag * 8) + " frames, corr " + std::to_string(best) + ")");
+        });
+
+        // research/36 item 9 (2026-09-20), the instrument: the owner hears 100-450 ms dips on every STREAMED route
+        // (the PCM ring, the VAG stems) and none on sounds held in memory. The mixer now counts the PCM ring's stale
+        // RUNS (a stretch of output the head spent in blocks the game had not rewritten: one "[audio] 989snd pcm
+        // UNDERRUN frame=<start> silent=<n>" line each) and answers how much decoded audio a stream holds ahead of
+        // its read head, so a dip in the mix can be read against the buffer that fed it.
+        tc.Run("Mixer: the PCM ring counts a stale run once, from its first silent frame to the first fresh one", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            mixer.pcmStreamOpen(0x6000u, 2u);                       // 24 blocks of 256 frames (1024 bytes each)
+            std::vector<uint8_t> bytes(0x6000u);
+            for (size_t i = 0; i < bytes.size(); ++i)
+                bytes[i] = static_cast<uint8_t>((i * 7u) & 0x7Fu);
+            mixer.pcmStreamWrite(0u, bytes.data(), bytes.size());   // every block fresh
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            std::vector<int16_t> buf(2 * 6144);
+            mixer.render(buf.data(), 6144);                          // one full pass: all fresh, no run
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(0u), "a ring the game keeps fresh has no stale run");
+            // The game rewrites blocks 1..23 but not block 0: the head's next block is stale, the one after fresh.
+            mixer.pcmStreamWrite(1024u, bytes.data() + 1024u, bytes.size() - 1024u);
+            mixer.render(buf.data(), 512);                           // block 0 (stale: 256 silent frames), block 1 (fresh)
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1u), "one stale block");
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(1u), "one stale RUN, closed by the fresh block that followed");
+            mixer.render(buf.data(), 5632);                          // the rest of the pass: fresh
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(1u), "and no new run while the ring stays fresh");
+            mixer.render(buf.data(), 1024);                          // blocks 0..3 again, none rewritten: one run of 4 blocks so far
+            mixer.pcmStreamWrite(4096u, bytes.data() + 4096u, 1024u);   // block 4 fresh again
+            mixer.render(buf.data(), 512);                           // block 4 (fresh) closes the run
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(2u), "a run of several stale blocks counts once");
+            mixer.pcmStreamStop();
+        });
+
+        tc.Run("Mixer: streamFramesAhead is the decoded audio ahead of a stream's read head -- it grows with the pump and drains with the render", [](TestCase &t)
+        {
+            const std::string path = "socom2_audio_ahead.vpk";
+            t.IsTrue(writeVpk(path, 12, 2), "a 12-chunk-pair VPK (each pair 3584 samples at 32 kHz = 5376 output frames)");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000031u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "plays");
+            const uint64_t afterPush = mixer.streamFramesAhead(h);
+            t.IsTrue(afterPush >= 5000u && afterPush <= 6000u, "the push pre-fills one chunk pair (" + std::to_string(afterPush) + " frames ahead)");
+            mixer.pumpStreams();                                     // the worker is off in the tests: fill to the ring's depth
+            const uint64_t afterPump = mixer.streamFramesAhead(h);
+            t.IsTrue(afterPump >= 4u * 5000u, "the pump fills the ring (" + std::to_string(afterPump) + " frames ahead)");
+            std::vector<int16_t> buf(2 * 2400);
+            mixer.render(buf.data(), 2400);
+            const uint64_t afterRender = mixer.streamFramesAhead(h);
+            t.IsTrue(afterRender + 2400u <= afterPump + 8u && afterRender + 2400u + 8u >= afterPump,
+                     "a render of 2400 frames takes 2400 off it (" + std::to_string(afterPump) + " -> " + std::to_string(afterRender) + ")");
+            t.Equals(mixer.streamFramesAhead(0x04000032u), static_cast<uint64_t>(0u), "an unknown handle has nothing ahead");
+            mixer.stopAllStreams();
+            std::remove(path.c_str());
+        });
+
+        // research/36 item 8: the cue push's decision (FUN_0034b6c0, decomp :246909-246947), as the trace names it.
+        tc.Run("socom2 music trace: the cue push verdict follows FUN_0034b6c0 -- no free entry refuses, an unflagged cue is dropped with a 1, a flagged one queues", [](TestCase &t)
+        {
+            using socom2_music::pushVerdict;
+            t.Equals(std::string(pushVerdict(0u, 0u, 0x08u, 0x40u, 0u, 3u, 3u).label), std::string("refused"), "mgr+0x28 == 0: refused");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x08u, 0x40u, 1u, 3u, 3u).label), std::string("dropped"),
+                     "flagB 0, type 2, +0x1c bit 6 clear: the push returns 1 without queueing");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x48u, 0x40u, 1u, 3u, 4u).label), std::string("queued"), "+0x1c bit 6: queued");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x08u, 0x60u, 1u, 3u, 4u).label), std::string("queued"), "type 3: queued");
+            t.Equals(std::string(pushVerdict(4u, 1u, 0x08u, 0x40u, 1u, 3u, 4u).label), std::string("queued"), "mgr+0xb set: queued");
+            t.Equals(std::string(pushVerdict(4u, 1u, 0x08u, 0x40u, 0u, 3u, 3u).label), std::string("refused"), "flagged but the free list head was -1: refused");
         });
 
         // Sprint 7 Task 12 Step 4 (ruling R97): the owner's "persistent buzz" on the online menus was a 512-byte block
