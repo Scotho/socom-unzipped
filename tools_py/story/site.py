@@ -283,33 +283,68 @@ FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="
 
 def chrome_header(base):
     """The site's top bar, from sites/s2u/src/chrome.md, with STORY current. `base` is "" on the site and the
-    absolute site origin in a copy that lives elsewhere."""
-    w = base + "/web.html"
-    return ('<a class="skip" href="#main">Skip to content</a>\n'
-            '<div id="scan" aria-hidden="true"></div>\n'
-            '<div id="progress" aria-hidden="true"><i></i></div>\n'
-            '<header id="bar" class="bar">\n'
-            '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>\n'
-            '  <nav class="nav" aria-label="Sections">\n'
-            '    <a href="%s#what">WHAT</a>\n    <a href="%s#loop">HOW</a>\n'
-            '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>\n'
-            '    <a href="%s#server">SERVER</a>\n    <a href="%s#setup">SETUP</a>\n    <a href="%s#report">REPORT</a>\n'
-            '    <a href="%s#credits">CREDITS</a>\n  </nav>\n'
-            '  <div class="bar-right">\n'
-            '    <a class="ghost" href="%s/" title="The original console-menu version of this site">CLASSIC</a>\n'
-            '  </div>\n</header>\n' % (w, w, w, base, w, w, w, w, base))
+    absolute site origin in a copy that lives elsewhere. Since 2026-09-20 (evening) the web page is the site's
+    default view, so the section links are /#..., and the console menu is /classic.html."""
+    w = base + "/"
+    return ('<a class="skip" href="#main">Skip to content</a>
+'
+            '<div id="scan" aria-hidden="true"></div>
+'
+            '<div id="progress" aria-hidden="true"><i></i></div>
+'
+            '<header id="bar" class="bar">
+'
+            '  <a class="brand" href="%s#top" aria-label="SOCOM Unzipped, top of page"><span class="ii">II</span><span class="word">UNZIPPED</span></a>
+'
+            '  <nav class="nav" aria-label="Sections">
+'
+            '    <a href="%s#what">WHAT</a>
+    <a href="%s#loop">HOW</a>
+    <a href="%s#state">STATE</a>
+'
+            '    <a href="%s/story.html" class="on" aria-current="page">STORY</a>
+'
+            '    <a href="%s#server">SERVER</a>
+    <a href="%s#setup">SETUP</a>
+    <a href="%s#report">REPORT</a>
+'
+            '    <a href="%s#credits">CREDITS</a>
+  </nav>
+'
+            '  <div class="bar-right">
+'
+            '    <a class="ghost" href="%s/classic.html" title="The original console-menu version of this site">CLASSIC</a>
+'
+            '  </div>
+</header>
+' % (w, w, w, w, base, w, w, w, w, base))
 
 
 def chrome_footer(base, fine):
-    w = base + "/web.html"
-    return ('<footer class="foot">\n  <div class="foot-inner">\n    <div>\n'
-            '      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>\n'
+    w = base + "/"
+    return ('<footer class="foot">
+  <div class="foot-inner">
+    <div>
+'
+            '      <div class="foot-brand"><span class="ii">II</span> SOCOM UNZIPPED</div>
+'
             '      <p>Community PC port, licensed GPL-3.0. SOCOM II: U.S. Navy SEALs was developed by Zipper Interactive, Inc. '
-            '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>\n'
-            '    </div>\n    <nav aria-label="Footer">\n'
-            '      <a href="%s/story.html">The story</a>\n      <a href="%s/">Classic menu</a>\n'
-            '      <span class="soon">GitHub (soon)</span>\n      <a href="%s#report">Report a bug</a>\n'
-            '    </nav>\n  </div>\n  <div class="foot-fine">%s</div>\n</footer>\n' % (base, base, w, fine))
+            '&copy;2003 Sony Computer Entertainment America Inc. This project is not affiliated with or endorsed by Sony or Zipper.</p>
+'
+            '    </div>
+    <nav aria-label="Footer">
+'
+            '      <a href="%s/story.html">The story</a>
+      <a href="%s/classic.html">Classic menu</a>
+'
+            '      <span class="soon">GitHub (soon)</span>
+      <a href="%s#report">Report a bug</a>
+'
+            '    </nav>
+  </div>
+  <div class="foot-fine">%s</div>
+</footer>
+' % (base, base, w, fine))
 
 
 def stamped(logo_url, out_path):
