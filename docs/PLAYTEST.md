@@ -48,8 +48,9 @@ gate:     ________ (3/3 on this exact exe)
 10. **Free play, five minutes** *(listen in free play; re-listen after the sound fixes)*. Gunfire, voice-overs, music.
     Does mission sound last the whole five minutes?
 11. **Online, on the project server** *(play a match on the hosted server; the online-menu sound)*. ONLINE page: the
-    status line should say the server is up and how many are on. Launch, go online. **If the server is now reached by
-    name (`socom.scotho.com`) you may be asked to create your persona once more** -- that is expected, once. Listen on
+    status line should say the server is up and how many are on. Launch, go online. (An earlier draft warned here that
+    reaching the server by name might cost you your persona; it will not -- the name is resolved before the game
+    ever sees it, R175.) Listen on
     the screen just after signing in, in CREATE GAME and in the lobby: that is where the splice and the buzz were.
     Host a game, start the round, walk around. Lag? (The box is in Ohio.)
 12. **If a friend on another network is around** *(the first two-machine match -- carried since Sprint 7)*. They unzip

@@ -25,21 +25,20 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
 - **Plays:** boot, movies, title, menus, single-player missions, online login, lobby, a full round with kills between
   two instances on the hosted server (`s8_hosted_control2`, `s8_hosted_kill`). Twenty of twenty maps play a control
   round. Saves persist on simulated memory cards. 58-60 fps on the menus under load. Linux client builds and boots.
-- **Sprint 9, "A stranger's first run", is open on branch `sprint-9`.** Done: Goal 1 (failures explain themselves:
-  exit codes 65-72, preflight, bare run, diagnostics zip), Goal 2 (release build, import-closure archives,
-  `SHA256SUMS`; Windows zip 55.7 MB). Landed but not closed out: Goal 8 (the launcher's REPORT A BUG page and the
-  ONLINE status line). Goal 10 (the music): root cause found AND three of its four fixes written test-first, uncommitted in the tree for review (R169-R171); the fourth is a proposal (R172). Everything else: not started.
-- **Baselines:** committed, C++ **661/661** and Python **1360 OK**, CI green on `c81b17a`. **With the uncommitted
-  audio work in the tree (below): C++ 666/666, Python 1368 OK, `./build.sh test` exit 0.** Last gates 3/3:
-  `s9_g1_gate`, `s9_g2_release_gate`. Next free ruling number: **R173** (R169-R171 are taken by the music fixes and
-  R172 is an open proposal; this line said R170 for the twenty minutes before those landed).
-- **In flight in someone else's hands (2026-09-20 evening), and further along than the P1/P2 rows say:** the music
-  session has **three of Goal 10's four fixes done, test-first, in the shared working tree and deliberately not
-  committed** -- `snd989.cpp`, `snd989_mixer.h/.cpp`, `ps2_audio.cpp`, `socom2_audio_tests.cpp`. R169 the queue,
-  R170 the ramp ownership, R171 the stream loop flags; the rulings are committed in the Goal 10 spec section
-  (`3d71fa8`) with each RED assertion quoted. **Do not stage or edit those five files.** What is left of Goal 10 is
-  the controller's: read the diff, run the driven M51 capture and the gate, then commit. The fourth fix (the
-  concurrency cap and the hard clip) is **R172, a proposal that needs a decision, not code** -- see the spec.
+- **Sprint 9, "A stranger's first run", is open on branch `sprint-9`.** Done: Goal 1 (failures explain themselves),
+  Goal 2 (release build, import-closure archives, `SHA256SUMS`; Windows zip 55.7 MB), **P1 and P2** (Goal 10's music:
+  the queue, the ramp ownership and the stream loop flags, R169-R171, `013f86e`), **P3** (Goal 9's pad gate, R173,
+  `02cd9ae`), and **the first half of P4** (`ca7dd5a`: the page-change flash and the top bar's two alignments).
+  Landed but not closed out: Goal 8 (REPORT A BUG and the ONLINE status line) -- see P5, and read its row first,
+  because three of its four documentation artefacts turn out to be already written.
+- **Baselines: C++ 672/672, Python 1368 OK, `./build.sh test` exit 0.** Last gates 3/3: `s9_g1_gate`,
+  `s9_g2_release_gate`, `s9_p1_gate`. Next free ruling number: **R176** (R175 is P6's, below).
+- **Where the loop is now:** the rest of P4 -- an ADVANCED section on the ONLINE page with "Second instance" moved
+  into it, and tooltips starting with "what is a profile?". Then P5, then P6, which R175 has turned into a
+  lock-free launcher change rather than the driven measurement it used to be.
+- **Nobody else is known to be in the tree** as of 2026-09-19: `git status` showed only `server/config/simulated.db`,
+  which is always modified and is never committed. The Goal 10 session's work is committed; the Goal 3 plan is
+  committed and not started.
 - **A playtest by the owner is planned.** The order of work exists to make that session worth their time.
 
 ## 3. Your first hour (all of it lock-free; start nothing heavy)
@@ -76,7 +75,7 @@ Dates: the documents and commit subjects are stamped 2026-09-20 for a session th
   the bug pipeline to GitHub issues, an installer if wanted. Six owner decisions (D1-D6) are listed in its spec.
 
 **Why this order:** by what the owner meets first (the music, every session), then by dependency (the keyboard
-narrowing needs Goal 3's developer mode; the name switch needs the persona measurement; a public archive needs the
+narrowing needs Goal 3's developer mode; a public archive needs the
 licence inventory), then by cost (Goal 3 is a full generated rebuild, three gates and an online round -- it must not
 stand between the owner and a playable build). Sprint 9 was ten goals in the order they were thought of; it is now
 eleven in the order they matter. Nothing was dropped.
@@ -145,8 +144,17 @@ rather than rule. At most two C++-building agents at once.
    nothing ever compared what the game asked for with what was mixed.
 5. **The gate's memory card is shared state.** A saved controller configuration changes the boot flow; the gate boots
    from a pristine copy (`game/disc/mc0_parity`); free play uses `mc0_owner`; the ladder keeps `mc0`/`mc0_b`.
-6. **Personas are saved per server address (or name -- unmeasured).** Switching the launcher's preset from the address
-   to `socom.scotho.com` may orphan every saved persona. Measure first (P6), switch before strangers log in.
+6. **Personas are saved per server -- but the launcher's preset is NOT what keys them.**
+   > Superseded 2026-09-19 (R175). This trap used to read: "Personas are saved per server address (or name --
+   > unmeasured). Switching the launcher's preset from the address to `socom.scotho.com` may orphan every saved
+   > persona. Measure first (P6), switch before strangers log in." The premise was wrong: the preset string never
+   > reaches the game. `loadHosts()` turns `PS2X_SOCOM2_SERVER` into a `uint32_t` and maps the seven retail
+   > hostnames to it (`socom2_hostnet.cpp:303-316`), so with the name resolving to the same address the guest
+   > cannot tell the presets apart and no persona moves. No measurement is owed for the preset switch.
+   What IS a trap: the SERVER's own advertised endpoint (`server/config/muis.json`'s `Endpoint`) is a different
+   string and IS guest-visible, so changing THAT is the one that could orphan personas -- and it is the
+   hosted-server session's file, not ours. And a preset name that will not resolve silently becomes 127.0.0.1
+   (KNOWN §4), which is why the raw address stays on offer as a fallback.
 7. **A long-lived `tools_py.parity` helper blocks the lock's reap** (a DNS stub ran for two days). If the lock will not
    reap, look for a stray python on the busy list.
 8. **Never read a ladder CRASH as NO-KILL** (exit 4 = LOBBY-FAIL, 5 = CRASH, 7 = pin failed). Any `loop_lock.sh`
@@ -238,8 +246,11 @@ rather than rule. At most two C++-building agents at once.
    For the owner alone on their own machine it is not a question.
 2. **The keyboard ruling** (trap 1): gameplay keys survive as the harness's path in developer mode, players get menus
    and typing. Overturning it means moving the harness to the pad path first -- a sprint of its own.
-3. **The persona switch** (P6): if personas turn out to be keyed on the server's name, switching the default preset
-   costs every existing persona one re-creation. Cheapest now; say go.
+3. ~~**The persona switch** (P6)~~ -- **withdrawn 2026-09-19, it was not a real decision.** It asked the owner to
+   approve a measurement for a cost that cannot occur: the launcher's preset string never reaches the game
+   (R175, KNOWN §4), so switching the default to `socom.scotho.com` orphans nothing. Nothing is owed here. The
+   related question that IS the owner's, if they ever want it: whether the hosted server should advertise its
+   NAME rather than its IP -- that string is guest-visible, and that one would want measuring first.
 4. **Is a friend on another network available for the playtest?** If so, Sprint 10 Goal 5 (the first two-machine
    match, carried since Sprint 7) is answered in the same evening.
 5. **Whether the release build should drop imgui and the dump/trace families** -- decided on Q2's size number, but the
