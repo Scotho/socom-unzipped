@@ -249,8 +249,48 @@ u32 { m_texelBitSize:8, m_selectQwc:8, m_pal_offset:8,
 `a_floor.tif`: header `00400040 00001000 00000001 12000608` = 64x64, 4,096 pixel bytes, gsaddr 1, 8 bpp,
 `m_selectQwc=6`, palettized, bilinear.
 
-- **Pixel data follows the header immediately** (`ztex_main.cpp:77-79`) and is exactly `w*h*bpp/8` bytes: no mip
-  chain inside the key, no page padding. Mips are separate keys flagged `m_is_mip_child`.
+- ~~**Pixel data follows the header immediately** (`ztex_main.cpp:77-79`)~~ **[SUPERSEDED
+  2026-09-21.]** It does not. **One quadword of the texture's GIF upload packet sits between
+  `TEXTURE_PARAMS` and the texels**, so the pixels begin at **offset 32**, not 16.
+
+  **[data]** Those 16 bytes are byte-identical in every texture of every extracted map:
+
+  ```
+  08 00 00 00  00 00 00 00  AF AF AF AF  AF AF AF AF
+  ```
+
+  Measured with `web/tools/probe-head.ts` over all **83 direct 32bpp textures across the 22 maps**
+  (83 of 83) and all **53 palettised textures in MP2** (53 of 53). Sixteen bytes that do not vary
+  with the map, the size, the format or the content are not image data.
+
+  **The image runs to `HEADER + PREFIX + size`, so `size` counts texels alone.** The bytes
+  immediately past the old slice continue the image rather than starting the bind packet: for
+  `lightrays.tif` (32x32, `size` 4096) the four texels at record offsets 4112-4127 read
+  `199,203,181,0`, the same glow colour and zero alpha as the rest of its last row.
+
+  **What the quadword is.** reCOM names it only by the variable it reads it through:
+  `ztex_main.cpp:76-79` sets `_word128* texGifPtr = &texturePacket;` then
+  `m_buffer = &texGifPtr[1].u32[0]` -- `m_buffer` is `texdat + 16`, i.e. the **GIF packet**, and the
+  texels are one quadword further in. `TEXTURE_PARAMS` is exactly 16 bytes (`ztex.h:20-37`:
+  `u16 + u16 + u32 + u32 + u32`), which is the quadword `&texGifPtr[1]` skips. The original bullet
+  read `m_buffer` as "the pixels"; it is the packet whose first quadword is the tag.
+
+  **reCOM does not define the quadword's fields** -- searched `zTexture/` and found no struct for
+  it, so the reading below is inference, not citation. Read as a GIFtag the low word gives
+  `NLOOP = 8`, `EOP = 0`; the high word, `0xAF` repeated, is not a meaningful `REGS` descriptor (no
+  GS register is 0xA), which fits a tag the exporter leaves as fill for the engine to patch at
+  upload time. `0xAF` is a fill byte, not data.
+
+  Note the palette path has no such prefix: `ztex_palette.cpp:29-30` does
+  `m_buffer = zmalloc(m_size); Fetch("buf", m_buffer, m_size)` straight into the buffer.
+
+  **What it cost.** Reading the prefix as pixels shifted every texture by 16 bytes -- four texels at
+  32bpp, sixteen at 8bpp. That is a fraction of one row, which is why the M2 contact sheets passed;
+  but on a 32x32 lamp flare the four stray texels land on the top edge as two fully opaque dots, and
+  those are what made the glows draw as squares with a bright corner.
+
+  The pixels are otherwise as described: exactly `w*h*bpp/8` bytes, no mip chain inside the key, no
+  page padding. Mips are separate keys flagged `m_is_mip_child`.
 - **After the pixels is a 144-byte (9-quadword) prebuilt bind packet.** One quadword is a GS `TEX0` register
   value: `a_floor.tif` gives `0x201026E599304001` = `TBP0=1`, `PSM=0x13` (PSMT8), `TW=6`, `TH=6`, `TBW=1`,
   `CBP=311`, `CPSM=2` (PSMCT16). `flooroil_detail.tif` gives `PSM=0` (PSMCT32), `CBP=0`. The rest are VU1

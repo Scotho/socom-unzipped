@@ -415,3 +415,35 @@ Two of the 22 multiplayer maps ship fog disabled (MP51, MP81) and six enable alt
 MP10, MP62, MP64, MP82). The altitude band is parsed and **not applied** -- no VU1 dump exists from a
 map that enables it, so its encoding is the one inferred part of the model -- and a map that enables it
 says so in the diagnostics panel.
+
+### The texture pixels start at 32, not 16, and the goldens were regenerated (2026-09-21)
+
+Beside the raster/CLUT decisions above, and not caught by them.
+
+One quadword of the texture's GIF upload packet sits between `TEXTURE_PARAMS` and the texels, so
+`parseTextureRecord` was reading 16 bytes of it as image and every texture in the viewer was
+shifted -- four texels at 32bpp, sixteen at 8bpp. research/36 section 5 carries the measurement and
+the dated retraction of "pixel data follows the header immediately".
+
+The bytes are `08 00 00 00  00 00 00 00  AF AF AF AF  AF AF AF AF`, byte-identical in 83 of 83
+direct 32bpp textures across the 22 maps and 53 of 53 palettised textures in MP2
+(`web/tools/probe-head.ts`). reCOM names the block only through `texGifPtr`
+(`zTexture/ztex_main.cpp:76-79`), whose `m_buffer = &texGifPtr[1]` is `texdat + 16` -- the packet,
+not the pixels. No struct for the quadword exists in `zTexture/`; read as a GIFtag it gives
+`NLOOP = 8` with an `0xAF` fill where `REGS` would be, which fits a tag patched at upload.
+
+**Why this was not caught earlier.** A 16-byte shift is a fraction of one row, so the M2 contact
+sheets -- which settled raster-vs-swizzled and csm1-vs-linear by eye -- looked right either way. It
+only became visible on a 32x32 lamp flare, where the four stray texels land on the top edge as two
+fully opaque dots and drew the glow as a square with a bright corner.
+
+**The goldens were regenerated, deliberately.** `packages/gs/test/goldens/frostfire-textures.json`
+holds sha256 hashes of the decoded RGBA: a regression guard that pinned the old offset rather than
+evidence that it was right. All 65 Frostfire textures still decode with zero diagnostics, and the
+rendered map was checked before the hashes were replaced. The synthetic record in
+`packages/gs/test/records.test.ts` now carries the prefix so its bind packet sits where a real
+record puts it.
+
+**The palettes are not affected.** `zTexture/ztex_palette.cpp:29-30` fetches `buf` straight into
+`m_buffer` with no prefix, and the CLUT path is unchanged. The `csm1` swap was checked and ruled
+out as the cause first: the three glow textures are 32bpp direct PSMCT32 with no CLUT at all.
