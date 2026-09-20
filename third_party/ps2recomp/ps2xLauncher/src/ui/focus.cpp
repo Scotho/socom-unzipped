@@ -206,6 +206,55 @@ namespace ui
         return out;
     }
 
+    namespace
+    {
+        struct Help
+        {
+            const char *id;
+            const char *text;
+        };
+
+        // Kept short enough to read in one glance under the page. Each one answers a question a stranger
+        // actually has on their first run -- not a restatement of the label above it.
+        const Help kHelp[] = {
+            {"online.profile",
+             "A profile is one save: it picks the memory card kept in cards/<profile>, and it is the persona "
+             "other players see online. Change it and you start again on a fresh card."},
+            {"online.server",
+             "Which Horizon server the game logs in to. The project hosts one; a different address is for a "
+             "server you run yourself."},
+            {"online.second",
+             "Starts a second copy of the game on this machine, on its own ports and its own memory card, so "
+             "two players here can meet in the same match. For testing."},
+            {"disc.path",
+             "Your own SOCOM II disc image. Nothing from the game is shipped with this program, so it reads "
+             "the movies, sounds and levels out of the file you point it at."},
+            {"pad.deadzone",
+             "How far a stick must move before the game sees it at all. Raise it if your aim drifts while you "
+             "are not touching the stick."},
+            {"report.attach",
+             "Sends the last run's log with your report. It is cut to the last 64 KB and your home folder's "
+             "name is taken out of it; the line above says exactly how much will go."},
+        };
+    }
+
+    std::string helpFor(const std::string &id)
+    {
+        for (const Help &h : kHelp)
+            if (id == h.id)
+                return h.text;
+        return std::string();
+    }
+
+    std::vector<std::string> helpedIds()
+    {
+        std::vector<std::string> out;
+        out.reserve(sizeof(kHelp) / sizeof(kHelp[0]));
+        for (const Help &h : kHelp)
+            out.push_back(h.id);
+        return out;
+    }
+
     bool advancedForced(const launcher::Config &c)
     {
         // One line today. Every setting that moves into an ADVANCED section joins this disjunction, and the

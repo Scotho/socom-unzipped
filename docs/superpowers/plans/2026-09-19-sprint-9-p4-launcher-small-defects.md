@@ -32,19 +32,19 @@ The suspicion recorded in the spec and the sprint row (`rectOf` returning the or
 the other half is the stale list that makes an unknown id reachable at all. Both are fixed, because the rail-click path
 at `:517` changes the page in the middle of a draw and no ordering fix can reach it.
 
-- [ ] **Step 1 (RED).** In `launcher_tests.cpp`, a case that hands page A's node list and page B to a new pure
+- [x] **Step 1 (RED).** In `launcher_tests.cpp`, a case that hands page A's node list and page B to a new pure
       `ui::nodesForFrame(...)` and asserts every returned node belongs to B and that `rectOf(result, barLaunchId(B))`
       is drawable. Watch it fail to compile/assert before writing the function.
-- [ ] **Step 2 (RED).** A case asserting `ui::drawable(Rect{})` is false, `ui::drawable(rectOf(nodes, "no.such.id"))`
+- [x] **Step 2 (RED).** A case asserting `ui::drawable(Rect{})` is false, `ui::drawable(rectOf(nodes, "no.such.id"))`
       is false, and a real node's rect is drawable. Watch it fail.
-- [ ] **Step 3 (GREEN).** `ui::drawable(Rect)` in `theme.h` (pure); `ui::nodesForFrame` in `focus.h/.cpp` (pure);
+- [x] **Step 3 (GREEN).** `ui::drawable(Rect)` in `theme.h` (pure); `ui::nodesForFrame` in `focus.h/.cpp` (pure);
       `main.cpp` calls `nodesForFrame` after input and before drawing.
-- [ ] **Step 4 (GREEN, defence in depth).** Every primitive and control in `widgets.cpp` that places ink from a rect
+- [x] **Step 4 (GREEN, defence in depth).** Every primitive and control in `widgets.cpp` that places ink from a rect
       returns early when the rect is not drawable. An unknown id then cannot produce a mark anywhere, whatever the
       caller does. This is the "fix the rect discipline at the root" the spec asks for — **not** a cleared frame.
-- [ ] **Step 5 (evidence).** `--shot-frames N` on the screenshot walk (default 3, unchanged). `--shot-frames 1`
-      captures the very frame the page change lands on: the repro before the fix and the proof after it. Recipe goes
-      in the commit message and in `docs/HANDOFF.md` §7.
+- [x] **Step 5 (evidence).** `--shot-frames N` on the screenshot walk (default 3, unchanged). **`--shot-frames 2**,
+      not 1 as this step first said: the page is set after the frame at count 0 is drawn, so 1 is the last frame of
+      the OLD page and 2 is the first of the new one. Recipe in the commit message and in `docs/HANDOFF.md` §7.
 
 ## Task 2 — the two alignment defects (owner's screenshot)
 
@@ -60,12 +60,12 @@ live and where the tests already reach.
    The ink therefore sits high of the geometric centre — which is exactly where the lamp is. Centre the **cap ink** on
    the lamp's centre instead.
 
-- [ ] **Step 1 (RED).** Extend `TopBarText` with the caller's measured cap-ink metrics and `TopBarPlaces` with
+- [x] **Step 1 (RED).** Extend `TopBarText` with the caller's measured cap-ink metrics and `TopBarPlaces` with
       `markSubY` and `statusY`; assert equal baselines and ink centred on `lamp.y`, with metrics that are deliberately
       asymmetric so a "both zero" implementation cannot pass. Watch it fail.
-- [ ] **Step 2 (GREEN).** The arithmetic in `topBarPlaces`; `ui::capInk(ctx, size, face)` in `widgets` to measure a
+- [x] **Step 2 (GREEN).** The arithmetic in `topBarPlaces`; `ui::capInk(ctx, size, face)` in `widgets` to measure a
       capital's ink from the rasterised face; `main.cpp` draws both words at the computed y.
-- [ ] **Step 3.** The rail's big wordmark (`main.cpp:496-497`) is **stacked**, not side by side, with a rule between
+- [x] **Step 3.** The rail's big wordmark (`main.cpp:496-497`) is **stacked**, not side by side, with a rule between
       the two words — there are no shared baselines to be off. Checked, left alone, and said so here so the next reader
       does not re-check it.
 
@@ -74,18 +74,30 @@ live and where the tests already reach.
 `ui/page_online.cpp:82`. There is no advanced section in the launcher today, so this creates one. What else belongs in
 it is "the pass's judgment, recorded as a ruling" (spec).
 
-- [ ] **Step 1 (RED).** A layout test: the advanced section's rows exist, the focus order reaches them last, and
+- [x] **Step 1 (RED).** A layout test: the advanced section's rows exist, the focus order reaches them last, and
       `online.second` is inside it.
-- [ ] **Step 2 (GREEN).** The section in `focus.cpp`'s ONLINE layout and in `page_online.cpp`.
-- [ ] **Step 3.** The ruling, numbered from `docs/CURRENT_SPRINT.md`: what went into ADVANCED and what did not.
+- [x] **Step 2 (GREEN).** The section in `focus.cpp`'s ONLINE layout and in `page_online.cpp`.
+- [x] **Step 3.** The ruling, numbered from `docs/CURRENT_SPRINT.md`: what went into ADVANCED and what did not.
 
 ## Task 4 — tooltips, "what is a profile?" first
 
-- [ ] **Step 1 (RED).** The help text is data, not drawing: a pure `ui::helpFor(id)` with a test that the ids that
+- [x] **Step 1 (RED).** The help text is data, not drawing: a pure `ui::helpFor(id)` with a test that the ids that
       have help have it and that an id without help answers empty.
-- [ ] **Step 2 (GREEN).** The affordance and its drawing, through the existing theme and focus model (spec's bar:
+- [x] **Step 2 (GREEN).** The affordance and its drawing, through the existing theme and focus model (spec's bar:
       "every new string through the same theme and focus model as Sprint 8 Goal 9").
-- [ ] **Step 3.** The wording is the owner's to check — `docs/HUMAN_TASKS.md`, and it is already in the playtest script.
+- [x] **Step 3.** The wording is the owner's to check — `docs/HUMAN_TASKS.md`, and it is already in the playtest script.
+
+## What the plan did not predict (written 2026-09-20, after the fact)
+
+1. **The spec's repro for the flash does not work, and the harness had to change first.** Capturing the first frame
+   after a page change in `--screenshot` shows nothing, because the walk changed pages AFTER a frame was drawn --
+   a moment no player can produce. The walk now changes them in the input phase; `--shot-frames 2` is the repro.
+2. **The caret drew nothing** the first time: this backend culls by winding, and a wrongly-wound triangle emits no
+   pixels and no error. The order `fillQuad` documents is the one to copy.
+3. **`app.layout.advancedOpen` was first set inside the world-poll block**, which `--screenshot` skips entirely, so
+   the ADVANCED capture drew a section marked "in use" over nothing. Derived state does not belong in that block.
+4. **CI went red on a commit that touched no Python** -- a threaded simulation test flaking on the runner. It cost
+   half an hour of suspicion; it is now a KNOWN hazard row so the next person does not pay it again.
 
 ## Close
 
