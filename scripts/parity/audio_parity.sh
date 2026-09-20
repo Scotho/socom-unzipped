@@ -24,7 +24,9 @@ case "$cmd" in
       PYTHONPATH="$ROOT" python logs/pcsx2_resize_loop.py 90 > "$OUT/resize.log" 2>&1 &
     fi
     date +%s.%N > "$OUT/.capture_started"
-    python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" 480 > "$OUT/loopback.log" 2>&1 &
+    # 620 s, not 480: the drive runs 600 s and PCSX2 reaches the mission HUD at ~350 s, so a 480 s recording ended
+    # 130 s into the console's mission and every later reference window scored digital silence (run 8, 2026-09-20).
+    python -m tools_py.parity.loopback_record "$OUT/endpoint.wav" 620 > "$OUT/loopback.log" 2>&1 &
     REC=$!
     sleep 1
     # The per-app session volume Windows remembers for the exe on this endpoint sits BEFORE the loopback tap: hold
