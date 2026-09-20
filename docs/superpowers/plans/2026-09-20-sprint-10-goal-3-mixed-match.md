@@ -80,6 +80,16 @@ mission -- its "B_05_game_lobby.png" is the first mission's HUD. Ours stopped pr
       - `mixed2_pcsx2_hosts` (a), ~16:35 UTC: the console logged in as `socomp` (persona created) and reached CREATE
         GAME, and its harness could not see it: no console reference for that title (the miss frames show the screen).
         `title_create_game.pcsx2.png` cut from them; the PLAY LIST title will need the same on the next run.
+      - (b): CREATE GAME read; CHOOSE GAMES' PLAY LIST screen not (no console reference) -- cut from the kept frame.
+      - (c): the play list read; choose_map's walk crashed on the pad file the console shell does not have
+        (`pad_press` without a pad is a posted key now); a 21-frame console map scan gave `map_frostfire.pcsx2.png`
+        (0.0-0.05 on the FROSTFIRE row wherever it sits, >= 0.5 elsewhere).
+      - (d), ~17:50 UTC: **the console HOSTED a verified game** -- CREATE GAME, the name, CHOOSE GAMES, Frostfire
+        accepted at row 4, ACCEPT, CREATE, the notice, `LOBBY class=ok`, READY read as taken (edges 87) -- and ours'
+        join saw the game listed (`join:list verified=True attempt=1`), pressed it, showed JOINING and then
+        "Disconnected from Game" (`miss_join_enter_2.png`; the runtime then LoadExecs `dlgAfterErrorReboot`).
+        Reading: instance A's peer UDP port is the default 3658, which ours also binds on the same host; B's pnach
+        shifts it to 3660, and leg 1 (ours on 3658 hosting, B on 3660 joining) ran. Leg 2 hosts from B next.
 - [ ] 5. **The parked-opponent row** (KNOWN section 2): with PCSX2 as the parked side, does ours' mover starve? One
       leg-1 round with PCSX2 standing still through ours' walk answers it; the row is settled either way.
 - [ ] 6. Records: KNOWN section 1 rows for what each leg proved, the spec's Goal 3 marked, this file's boxes.
