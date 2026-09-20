@@ -76,6 +76,24 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
   diagnostics panel. `test/camera.test.ts` pins the motion model — ramp, glide, frame-rate independence,
   which axis each key moves along — rather than the tuning constants, which are meant to be tuned.
 
+## Loading a map without freezing the page
+
+Switching maps used to take one 690–1,703 ms frame, and the whole of it was the *first frame that drew
+the new map*: `buildWorld` costs 14–20 ms, and then three uploads every texture and geometry and
+compiles every program at once. So the build still happens in one go and what is spread out is the
+showing — `buildWorld` returns its objects in two queues and `viewer/src/scheduler.ts` hands them to
+the scene a few per frame. The world's own meshes go first and the previous map stays up until they
+start landing; the props follow behind a map that is already drawn and flyable.
+
+The budget that does the work is a **count**, not a clock: adding a mesh to a group costs about a
+hundredth of a millisecond, and the 400 ms is spent in the render that follows, where a time budget
+cannot see it. The collision hull — tens of thousands of segments on the larger maps, and off by
+default — is likewise held as arrays and only made into an object the first time it is switched on.
+
+Meanwhile the overlay says what is happening: bytes fetched (the archive is read a chunk at a time so
+the bar has a real denominator), then the worker's own stages, then the scene build. The map picker is
+the only control taken away while a load runs.
+
 ## Known gaps
 
 - **The lighting is the game's, except for one factor of eight.** The VU's model is emulated

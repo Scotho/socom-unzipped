@@ -9,6 +9,14 @@
   <body>
     <canvas id="view"></canvas>
     <div id="fps" aria-live="off">-- fps</div>
+    <!--
+      The loading overlay. Hidden until a load starts; `aria-live` so a screen reader hears the stage
+      rather than watching a bar it cannot see.
+    -->
+    <div id="loading" hidden aria-live="polite">
+      <p id="loading-what">loading</p>
+      <div id="loading-track"><div id="loading-bar"></div></div>
+    </div>
     <div id="panel">
       <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <div class="row">

@@ -1,4 +1,4 @@
-import type { AssetSource } from './assetSource';
+import type { AssetSource, ReadProgress } from './assetSource';
 import { mapArchiveId, type MapInfo } from './mapIndex';
 
 /**
@@ -31,8 +31,42 @@ export class HttpAssetSource implements AssetSource {
     });
   }
 
-  async read(path: string): Promise<Uint8Array> {
-    return new Uint8Array(await (await this.get(path)).arrayBuffer());
+  /**
+   * With no `onProgress`, one `arrayBuffer()`. With one, the body is read a chunk at a time so the page
+   * can show how far a 13 MB archive has got -- which is the whole of the wait on a cold cache over the
+   * network, and used to look like a frozen page.
+   *
+   * The streaming path still falls back: no `body` (an old browser, a mocked fetch) or no declared
+   * length and it reads the buffer in one go, because a progress bar with no denominator is worth less
+   * than the simpler code path.
+   */
+  async read(path: string, onProgress?: ReadProgress): Promise<Uint8Array> {
+    const response = await this.get(path);
+    const declared = Number(response.headers.get('content-length') ?? 0);
+    if (!onProgress || !response.body || !Number.isFinite(declared) || declared <= 0) {
+      return new Uint8Array(await response.arrayBuffer());
+    }
+    const out = new Uint8Array(declared);
+    const reader = response.body.getReader();
+    let loaded = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      // A server that under-declared its length would overflow the buffer; take what fits and stop
+      // trusting the header rather than throwing on a map that would otherwise have drawn.
+      if (loaded + value.length > out.length) {
+        const all = new Uint8Array(loaded + value.length);
+        all.set(out.subarray(0, loaded));
+        all.set(value, loaded);
+        loaded += value.length;
+        onProgress(loaded, loaded);
+        return all.subarray(0, loaded);
+      }
+      out.set(value, loaded);
+      loaded += value.length;
+      onProgress(loaded, declared);
+    }
+    return loaded === out.length ? out : out.subarray(0, loaded);
   }
 
   private async get(path: string): Promise<Response> {

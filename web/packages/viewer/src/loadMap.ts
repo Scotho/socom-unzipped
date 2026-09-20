@@ -53,6 +53,12 @@ export interface LoadedMap {
   collision: CollisionLines;
   diagnostics: string[];
   loadMs: number;
+  /**
+   * Where the wait went, in milliseconds, for the status line and for measuring a regression: the
+   * fetch, the decode, and the wall-clock moment the worker handed the map over (so the page can see
+   * what the handoff itself cost, which the two clocks' different origins would otherwise hide).
+   */
+  timings: { fetch: number; decode: number; postedAt: number };
 }
 
 /**
@@ -104,10 +110,24 @@ const say = (e: unknown): string => (e instanceof Error ? e.message : String(e))
  * scene graph, the texture archive, a single texture: each failure is a diagnostic string, and whatever
  * else decoded still draws. Only a ZDB whose table of contents will not parse ends the load.
  */
-export async function loadMap(source: AssetSource, path: string): Promise<LoadedMap> {
+/**
+ * The named parts of a load, in the order they happen. The page turns these into a sentence and a bar;
+ * they exist because an 8 to 13 MB archive over a real network is seconds of nothing to look at.
+ */
+export type LoadStage = 'fetching' | 'archive' | 'geometry' | 'textures';
+
+/** `done` of `total`; `total` is 0 when the step has no count to give (the archive parse). */
+export type OnStage = (stage: LoadStage, done: number, total: number) => void;
+
+export async function loadMap(source: AssetSource, path: string, onStage?: OnStage): Promise<LoadedMap> {
   const started = Date.now();
   const notes = new Notes();
-  const bytes = await source.read(path);
+  const step = (stage: LoadStage, done: number, total: number): void => onStage?.(stage, done, total);
+  const T0 = performance.now();
+  step('fetching', 0, 0);
+  const bytes = await source.read(path, (loaded, total) => step('fetching', loaded, total));
+  const T1 = performance.now();
+  step('archive', 0, 0);
   const toc = parseZdb(bytes);
   const stem = stemOf(path);
 
@@ -117,11 +137,13 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   const chunksOf = decoder(library, notes);
   const placement = place(library, bytes, toc, stem, notes);
   const parts: MeshData[] = [];
+  let chunk = 0;
   // Relocation-type-1 packets are GS LINE_STRIPs, not meshes (SEMANTICS section 12): Desert Glory's
   // power lines and lamp brackets, Crossroads' guy ropes and light filaments. They carry no index list,
   // so a strip of n points is n-1 segments, flattened here into one world-space segment list.
   const segments = new Segments();
   for (const p of placement.world) {
+    step('geometry', chunk++, placement.world.length);
     const { meshes, lines } = chunksOf(p);
     for (const mesh of meshes) parts.push(placeMesh(mesh, p.rowMajor));
     for (const strip of lines) segments.add(strip, p.rowMajor);
@@ -172,7 +194,10 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
   const texlib = textureLibrary(bytes, toc, stem, notes);
   if (texlib) {
     const { palettes, keys, libs } = texlib;
-    for (const mesh of [...world, ...props.flatMap((p) => p.parts)]) {
+    const wanted = [...world, ...props.flatMap((p) => p.parts)];
+    let decoded = 0;
+    for (const mesh of wanted) {
+      step('textures', decoded++, wanted.length);
       const name = mesh.textureName;
       if (name === null || name in textures) continue;
       const hit = keys.get(name);
@@ -217,6 +242,7 @@ export async function loadMap(source: AssetSource, path: string): Promise<Loaded
     collision: placement.collision,
     diagnostics: notes.lines,
     loadMs: Date.now() - started,
+    timings: { fetch: T1 - T0, decode: performance.now() - T1, postedAt: Date.now() },
   };
 }
 

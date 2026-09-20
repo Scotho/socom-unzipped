@@ -19,8 +19,24 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
 #warning strong { color: #ffb04d; letter-spacing: 0.06em; }
 .rights { margin: 8px 0 0; color: #6d757f; font-size: 10px; line-height: 1.45; }
 .rights strong { color: #838c97; font-weight: normal; }
-/* The backtick hides the chrome for a clean look at the map. */
+/* The backtick hides the chrome for a clean look at the map. `#loading` is not chrome. */
 body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
+
+/*
+ * The loading overlay: bottom centre, clear of the panel at every width, and never a pointer target --
+ * the camera stays live while a map comes in, so a click through it must reach the world.
+ */
+#loading {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 3;
+  width: min(360px, calc(100vw - 32px)); padding: 8px 12px; pointer-events: none;
+  border: 1px solid #333a44; border-radius: 8px;
+  background: rgba(20, 22, 26, 0.92); backdrop-filter: blur(4px);
+}
+#loading[hidden] { display: none; }
+#loading-what { margin: 0 0 6px; font-size: 12px; line-height: 1.4; color: #9fe6b0; }
+#loading-track { height: 4px; border-radius: 2px; background: #262b33; overflow: hidden; }
+#loading-bar { height: 100%; width: 0; background: #9fe6b0; transition: width 90ms linear; }
+@media (prefers-reduced-motion: reduce) { #loading-bar { transition: none; } }
 
 #status { margin: 4px 0; color: #9fe6b0; white-space: pre-wrap; }
 #status.error { color: #ff8a80; }

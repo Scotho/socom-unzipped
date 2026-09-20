@@ -5,13 +5,14 @@ import { sortByPopularity } from './mapOrder';
 import { spawnsFor, type Spawns } from '@s2u/scene';
 import { FlyCamera, type Pose } from './camera';
 import type { ViewerHook } from './hook';
-import type { LoadedMap } from './loadMap';
+import type { LoadedMap, LoadStage } from './loadMap';
 import { Overlays } from './overlays';
 import { createRenderer, type Backend } from './renderer';
 import { applyFog, ELF_DEFAULT_FOGCOL, fogForExtent, type FogSettings } from './fog';
 import { DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
+import { spreadAcrossFrames, type Spread } from './scheduler';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -71,8 +72,27 @@ let requests = 0;
 let wantedIndex = -1;
 let wantedMap = -1;
 const ask = (request: ViewerRequest): void => worker.postMessage(request);
+/** What the overlay says while each stage of a load runs. */
+const STAGE_WORDS: Record<LoadStage, string> = {
+  fetching: 'fetching the archive',
+  archive: 'reading the archive',
+  geometry: 'decoding the geometry',
+  textures: 'decoding the textures',
+};
+
+/** When the current load was asked for, so the status line can report the whole wait, not a part. */
+let askedAt = 0;
+/** The reveal in progress. A new load cancels it: half a map is not drawn under the next one. */
+let revealing: Spread | null = null;
+
 const load = (path: string): void => {
+  askedAt = performance.now();
   wantedMap = ++requests;
+  revealing?.cancel();
+  revealing = null;
+  // The old map stays on screen and the camera stays live while this runs; what is taken away is the
+  // picker, because a second load started over the first is how two maps end up half drawn together.
+  ui.setLoading(true, 'fetching the archive', 0);
   ask({ kind: 'load', id: wantedMap, baseUrl: MAPS, path });
 };
 
@@ -80,12 +100,18 @@ worker.addEventListener('message', (event: MessageEvent<ViewerResponse>) => {
   const message = event.data;
   if (message.kind === 'error') {
     if (message.id !== wantedIndex && message.id !== wantedMap) return;
+    ui.setLoading(false);
     ui.setStatus(`failed while ${message.doing}: ${message.message}`, 'error');
     return;
   }
   if (message.kind === 'index') {
     if (message.id !== wantedIndex) return;
     showMaps(message.maps);
+    return;
+  }
+  if (message.kind === 'progress') {
+    if (message.id !== wantedMap) return;               // a stage of a load we have moved on from
+    ui.setLoading(true, STAGE_WORDS[message.stage], message.total > 0 ? message.done / message.total : 0);
     return;
   }
   if (message.id !== wantedMap) return;
@@ -204,11 +230,21 @@ function showMaps(maps: MapInfo[]): void {
   load(first.path);
 }
 
+/**
+ * Puts a decoded map on the screen without freezing the page doing it.
+ *
+ * The measured shape of the old stall: the fetch was 31-51 ms warm, the worker's decode 44-94 ms, the
+ * handoff 1-27 ms and `buildWorld` 14-20 ms -- and then **one frame of 690 to 1,703 ms**, because that
+ * frame is where three uploaded every texture and geometry and compiled every program. So the build is
+ * still done here in one go, and what is spread out is the *showing*: `buildWorld` hands back its
+ * objects in two queues (`./world`) and `./scheduler` adds them a budget's worth per frame.
+ *
+ * The old map is taken down when the world's own meshes are in, not before -- so the swap happens
+ * between two drawn maps rather than through a blank one -- and the props stream in behind it.
+ */
 function show(map: LoadedMap): void {
-  if (view) {
-    scene.remove(view.group);
-    view.dispose();
-  }
+  const t0 = performance.now();
+  let previous = view;
   loaded = map;
   // The lighting is the map's own, read from its `GlobalLighting` record: three directional lights and
   // an ambient. The two sliders are trims on top of it and stay where the panel has them.
@@ -225,8 +261,9 @@ function show(map: LoadedMap): void {
     ui.setFog(fog.near, fog.far, fog.color);
     ui.setFogEnabled(fog.enabled);
   }
-  view = buildWorld(map);
-  scene.add(view.group);
+  const built = buildWorld(map);
+  view = built;
+  scene.add(built.group);
   // Spend the depth buffer on this map: the near plane the game itself uses, and a far that just
   // covers the map's diagonal rather than the 40,000 the camera used to open with.
   fly.setClipPlanes(map.camera?.nearPlane ?? 4, Math.max(2000, view.box.min.distanceTo(view.box.max) * 1.6));
@@ -236,7 +273,9 @@ function show(map: LoadedMap): void {
     fogIsMine = false;                          // the fallback is the map's too, until a slider moves
     ui.setFog(fog.near, fog.far, fog.color);
   }
-  overlays.place(view.box);
+  overlays.place(built.box);
+  // Held rather than built: the hull is tens of thousands of segments on the larger maps and the
+  // checkbox is off by default, so `overlays` makes the object the first time it is switched on.
   overlays.placeCollision(map.collision);
   // 36 section 6: spawns are not on the disc. `@s2u/scene` holds the measured table, keyed by the name
   // `mission.rdr` shows, which is the name this map was just loaded under.
@@ -259,16 +298,50 @@ function show(map: LoadedMap): void {
 
   ui.select(map.path);
   ui.setDiagnostics(map.diagnostics);
-  ui.setStatus([
+
+  // The status line is written **when the world is on screen**, not when the map is decoded. Everything
+  // that waits for a map -- the e2e, the screenshot tools -- waits on this line, and a line that
+  // appeared while the scene was still filling in would hand them a half-drawn map to photograph.
+  const draws = built.revealWorld.length + built.revealProps.length;
+  const say = (suffix: string): void => ui.setStatus([
     `${map.name} (${map.archive})`,
     backend,
-    `${view.triangles.toLocaleString('en-GB')} triangles`,
-    // Every child of the group is one draw: a world mesh per texture, and an `InstancedMesh` (or a plain
-    // one, for a prop placed once) per prop model-node. `map.world.length` counted only the world's.
-    `${view.group.children.length} draws`,
+    `${built.triangles.toLocaleString('en-GB')} triangles`,
+    // One draw per queued object: a world mesh per texture, and an `InstancedMesh` (or a plain one, for
+    // a prop placed once) per prop model-node. `map.world.length` counted only the world's.
+    `${draws} draws`,
     `${map.collision.polygons.toLocaleString('en-GB')} collision polys`,
-    `${map.loadMs} ms load`,
+    `${map.loadMs} ms load${suffix}`,
   ].join('  |  '));
+
+  // The world first.
+  //
+  // The previous map stays in the scene until the new one's first meshes land, so the swap happens
+  // between two drawn things rather than through a blank frame -- and no longer than that, because the
+  // two maps share a coordinate range and leaving both up for the whole reveal draws one through the
+  // other. Disposing it only then also means nothing is freed while it is still being drawn.
+  const built0 = built;
+  const retire = (): void => {
+    if (!previous) return;
+    scene.remove(previous.group);
+    previous.dispose();
+    previous = null;
+  };
+  revealing = spreadAcrossFrames(built.revealWorld, {
+    onProgress: (done, total) => {
+      retire();
+      ui.setLoading(true, 'building the scene', total > 0 ? done / total : 1);
+    },
+  });
+  void revealing.done.then(() => {
+    if (view !== built0) return;                  // another map was picked while this one was revealing
+    retire();
+    ui.setLoading(false);
+    say(`  |  ${Math.round(performance.now() - (askedAt || t0))} ms to first paint`);
+    // The props follow, over further frames. The map is already drawn and flyable while they arrive,
+    // and the flares among them are turned by the render loop on the frame after they land.
+    revealing = spreadAcrossFrames(built0.revealProps);
+  });
 }
 
 /**

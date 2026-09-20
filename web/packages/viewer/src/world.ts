@@ -1,5 +1,6 @@
 import {
   Box3, BufferAttribute, BufferGeometry, ClampToEdgeWrapping, DataTexture, DoubleSide, FrontSide, Group,
+  type Object3D,
   InstancedMesh, LinearFilter,
   LineBasicMaterial, LineSegments, Matrix4, Mesh, MeshBasicMaterial, NearestFilter, NoColorSpace,
   RGBAFormat, RepeatWrapping,
@@ -24,8 +25,18 @@ const UNTEXTURED = 0xff00ff;
 
 /** A drawn map: the placed group, what it cost, and the extent the camera can frame. */
 export interface WorldView {
+  /**
+   * The group, **empty** when `buildWorld` returns. Every drawn object is waiting in one of the two
+   * reveal queues below, because the expensive part of showing a map is not building it -- it is the
+   * first frame that draws it, when three uploads each texture and geometry and compiles each program.
+   */
   group: Group;
+  /** The world's own meshes, one task each. What the first paint of a new map waits for. */
+  revealWorld: (() => void)[];
+  /** The props, the flares and the line strips. These arrive behind the world, over further frames. */
+  revealProps: (() => void)[];
   triangles: number;
+  /** The extent of everything queued, accumulated as it was built rather than read off the group. */
   box: Box3;
   /** How many of the group's draws are drawing without a texture: the highlight's subject, counted. */
   untextured: number;
@@ -129,6 +140,22 @@ export function buildWorld(map: LoadedMap): WorldView {
   const materials: MeshBasicMaterial[] = [];
   const untextured: MeshBasicMaterial[] = [];
   let triangles = 0;
+  /**
+   * Building an object is cheap; *drawing it the first time* is not, because that is when three uploads
+   * its texture and geometry and compiles its program. So nothing is added to the group here. Each
+   * object becomes a one-line task, and `main.ts` runs those across frames (`./scheduler`), which turns
+   * one 1,700 ms frame into a few dozen short ones. The world's tasks come first and are what the first
+   * paint waits for; the props follow behind it.
+   */
+  const revealWorld: (() => void)[] = [];
+  const revealProps: (() => void)[] = [];
+  const box = new Box3();
+  /** Queues an object and grows the map's extent by it, which `setFromObject` can no longer do. */
+  const later = (queue: (() => void)[], object: Object3D): void => {
+    object.updateWorldMatrix(false, false);
+    box.expandByObject(object);
+    queue.push(() => group.add(object));
+  };
   const materialFor = (name: string | null): MeshBasicMaterial => {
     const rgba = name === null ? undefined : map.textures[name];
     const flags = name === null ? undefined : map.textureFlags[name];
@@ -178,7 +205,7 @@ export function buildWorld(map: LoadedMap): WorldView {
     const mesh = new Mesh(geometryOf(part, lighting, lit), materialFor(part.textureName));
     mesh.name = part.textureName ?? 'untextured';
     mesh.frustumCulled = false;                           // one mesh spans the whole map; culling it hides it
-    group.add(mesh);
+    later(revealWorld, mesh);
     triangles += part.indices.length / 3;
   }
 
@@ -206,7 +233,7 @@ export function buildWorld(map: LoadedMap): WorldView {
           mesh.name = `${prop.modelName} (flare)`;
           mesh.position.copy(at.applyMatrix4(m));
           billboards.push(mesh);
-          group.add(mesh);
+          later(revealProps, mesh);
         }
         triangles += (part.indices.length / 3) * count;
         continue;
@@ -217,13 +244,13 @@ export function buildWorld(map: LoadedMap): WorldView {
         const mesh = new Mesh(geometry, material);
         mesh.name = prop.modelName;
         mesh.applyMatrix4(new Matrix4().fromArray(prop.matrices, 0));
-        group.add(mesh);
+        later(revealProps, mesh);
       } else {
         const mesh = new InstancedMesh(geometry, material, count);
         mesh.name = prop.modelName;
         for (let i = 0; i < count; i++) mesh.setMatrixAt(i, new Matrix4().fromArray(prop.matrices, i * 16));
         mesh.instanceMatrix.needsUpdate = true;
-        group.add(mesh);
+        later(revealProps, mesh);
       }
       triangles += (part.indices.length / 3) * count;
     }
@@ -247,12 +274,13 @@ export function buildWorld(map: LoadedMap): WorldView {
     segments.frustumCulled = false;
     segments.visible = false;                           // see `setLineStrips`
     lineSegments = segments;
-    group.add(segments);
+    later(revealProps, segments);
   }
 
-  const box = new Box3().setFromObject(group);
   return {
     group,
+    revealWorld,
+    revealProps,
     triangles,
     box,
     untextured: untextured.length,

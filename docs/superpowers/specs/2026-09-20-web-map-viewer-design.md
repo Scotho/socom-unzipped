@@ -579,3 +579,51 @@ Frostfire normals as unit length at `/32768`.
 
 The four sliders are now two trims: an additive ambient, and the exposure. `tools/light-sweep.ts`,
 which existed to fit the four, is deleted.
+
+## The map-switch stall was one frame, and it was the first one that drew the map
+
+2026-09-20. Switching maps froze the page. Instrumenting the whole path — the fetch inside the
+worker, the decode, the handoff across the boundary, `show()` on the main thread, and then the first
+animation frame after it — put the cost somewhere none of the guesses had it:
+
+| | Frostfire | Desert Glory | Crossroads |
+|---|---|---|---|
+| fetch (warm cache, localhost) | 31 ms | 50 ms | 51 ms |
+| worker decode | 44 ms | 80 ms | 94 ms |
+| handoff (transfer, no copy) | 13 ms | 27 ms | 12 ms |
+| `show()` incl. `buildWorld` | 14 ms | 14 ms | 15 ms |
+| **first frame after it** | **633 ms** | **1,581 ms** | **1,703 ms** |
+| asked to painted | 892 ms | 2,129 ms | 2,319 ms |
+
+Everything before the last row is off the main thread or too small to see. The last row is three.js
+uploading every texture and geometry and compiling every program, which it does the first time an
+object is drawn — so adding a whole map's 200-600 draws at once puts all of it in one frame.
+
+**The fix is to hand the objects over a few per frame.** `buildWorld` no longer adds anything to its
+group; it returns two queues, the world's meshes and then the props, and `viewer/src/scheduler.ts`
+adds them across frames. The previous map stays in the scene until the new one's first meshes land,
+so the swap happens between two drawn maps rather than through a blank frame, and it is disposed only
+then. The collision hull is held as arrays and built the first time the checkbox asks for it.
+
+**The budget had to be a count, not a clock, and that is worth recording.** The first attempt paced
+the work with a time budget and changed nothing: `group.add` costs about a hundredth of a millisecond,
+all 37 of Frostfire's world meshes ran in one slice, and the next frame was as long as the frame the
+change was meant to break up. The cost is not *in* the task, it is in the render that follows it.
+Counting objects works because the cost per object is roughly constant.
+
+After, measured the same way, with `long-animation-frame` entries as the stall the player feels:
+
+| | Frostfire | Desert Glory | Crossroads | Blizzard |
+|---|---|---|---|---|
+| longest frame | none over 50 ms | none | none | none |
+| picker to a drawn world | 265 ms | 358 ms | 476 ms | 212 ms |
+
+The page holds 60 fps throughout, including while the archive is being fetched. On a throttled
+connection — which is what the public site actually is — the overlay reads "fetching the archive 6%"
+against a real denominator, because `HttpAssetSource.read` streams the body and counts bytes against
+`Content-Length` when a caller asks for progress.
+
+One knock-on worth knowing: **the status line is now written when the world is on screen**, not when
+the map finishes decoding. Everything that waits for a map — the e2e, `map-health`, the screenshot
+tools — waits on that line, and writing it early would have handed them a half-drawn map to
+photograph.

@@ -30,6 +30,8 @@ export class Overlays {
   private collision: LineSegments | null = null;
   private spawns: Object3D | null = null;
   private collisionOn = false;
+  /** The current map's hull arrays, waiting to be made into an object -- see `placeCollision`. */
+  private pendingCollision: { positions: Float32Array; colors: Uint8Array } | null = null;
   private spawnsOn = false;
 
   constructor(private readonly scene: Scene) {
@@ -59,7 +61,17 @@ export class Overlays {
    */
   placeCollision(lines: { positions: Float32Array; colors: Uint8Array }): void {
     this.dropCollision();
-    if (lines.positions.length === 0) return;
+    // **Held, not built.** Shadow Falls' hull is 13,250 polygons and tens of thousands of segments, and
+    // building it costs that whichever way the checkbox is set. It is off by default and usually stays
+    // off, so the arrays are kept and the object is made the first time it is actually asked for.
+    this.pendingCollision = lines.positions.length === 0 ? null : lines;
+    if (this.collisionOn) this.realiseCollision();
+  }
+
+  /** Builds the held hull, once. Called by the first `setCollision(true)` after a map load. */
+  private realiseCollision(): void {
+    const lines = this.pendingCollision;
+    if (!lines || this.collision) return;
     const geometry = new BufferGeometry();
     geometry.setAttribute('position', new BufferAttribute(lines.positions, 3));
     geometry.setAttribute('color', new BufferAttribute(lines.colors, 3, true));
@@ -101,6 +113,7 @@ export class Overlays {
 
   setCollision(visible: boolean): void {
     this.collisionOn = visible;
+    if (visible) this.realiseCollision();
     if (this.collision) this.collision.visible = visible;
   }
 
@@ -110,6 +123,7 @@ export class Overlays {
   }
 
   private dropCollision(): void {
+    this.pendingCollision = null;
     if (!this.collision) return;
     this.scene.remove(this.collision);
     this.collision.geometry.dispose();

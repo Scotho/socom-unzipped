@@ -18,6 +18,9 @@ export class Ui {
   private readonly diagnosticsCount = find<HTMLElement>('diagnostics-count');
   private readonly hint = find<HTMLParagraphElement>('hint');
   private readonly fps = find<HTMLElement>('fps');
+  private readonly loading = find<HTMLElement>('loading');
+  private readonly loadingWhat = find<HTMLElement>('loading-what');
+  private readonly loadingBar = find<HTMLElement>('loading-bar');
   /**
    * The continuous controls, as [input, readout, how to word the number]. Kept as one table for the same
    * reason the checkboxes are: so the wiring cannot drift from what the page shows.
@@ -120,6 +123,24 @@ export class Ui {
     // value to its step, and it is the decoded number that is being drawn.
     this.sliders.fognear.out.textContent = this.sliders.fognear.fmt(near);
     this.sliders.fogfar.out.textContent = this.sliders.fogfar.fmt(far);
+  }
+
+  /**
+   * The loading overlay, and the one control it takes away while it is up.
+   *
+   * The picker is disabled for the duration because two loads started over each other is how two maps
+   * end up half drawn together; nothing else is touched, so the camera keeps flying over the map that
+   * is still on screen while the next one comes in.
+   *
+   * `fraction` is 0..1, or a negative number for a step with nothing to count -- the bar then sits where
+   * it was rather than snapping back to empty.
+   */
+  setLoading(on: boolean, what = '', fraction = -1): void {
+    this.loading.hidden = !on;
+    this.maps.disabled = on;
+    if (!on) { this.loadingBar.style.width = '0%'; return; }
+    if (what) this.loadingWhat.textContent = fraction >= 0 ? `${what} ${Math.round(fraction * 100)}%` : what;
+    if (fraction >= 0) this.loadingBar.style.width = `${Math.max(0, Math.min(1, fraction)) * 100}%`;
   }
 
   /** Calls `handler` with the slider that moved, and keeps its readout in step. */

@@ -1,5 +1,5 @@
 import { HttpAssetSource, listMaps, type AssetSource, type MapInfo } from '@s2u/archive';
-import { loadMap, transferables, type LoadedMap } from './loadMap';
+import { loadMap, transferables, type LoadedMap, type LoadStage } from './loadMap';
 
 /**
  * The decode thread. A 12 MB archive, 416 VIF packets and 37 palettised textures are a few hundred
@@ -17,10 +17,17 @@ export type ViewerRequest =
   | { kind: 'index'; id: number; baseUrl: string }
   | { kind: 'load'; id: number; baseUrl: string; path: string };
 
-/** What comes back. `error` carries the request that failed so the page can say what it was doing. */
+/**
+ * What comes back. `error` carries the request that failed so the page can say what it was doing, and
+ * `progress` arrives repeatedly during a load so the page can show a bar rather than a frozen picture.
+ *
+ * A progress message is advisory: it carries the same `id`, and the page drops the ones whose id it has
+ * moved on from, exactly as it drops a stale map.
+ */
 export type ViewerResponse =
   | { kind: 'index'; id: number; maps: MapInfo[] }
   | { kind: 'map'; id: number; map: LoadedMap }
+  | { kind: 'progress'; id: number; stage: LoadStage; done: number; total: number }
   | { kind: 'error'; id: number; doing: string; message: string };
 
 /** Worker globals without pulling the WebWorker lib in beside the DOM one (they collide on `self`). */
@@ -50,7 +57,16 @@ ctx.addEventListener('message', (event: MessageEvent<ViewerRequest>) => {
         const maps = source instanceof HttpAssetSource ? await source.maps() : await listMaps(source);
         ctx.postMessage({ kind: 'index', id: request.id, maps });
       } else {
-        const map = await loadMap(sourceFor(request.baseUrl), request.path);
+        // Throttled to one message per stage per 2 percent: a 13 MB archive arrives in hundreds of
+        // chunks, and posting each one costs more than the bar is worth.
+        let last = -1;
+        const map = await loadMap(sourceFor(request.baseUrl), request.path, (stage, done, total) => {
+          const step = total > 0 ? Math.floor((done / total) * 50) : done;
+          const mark = stage.charCodeAt(0) * 1000 + step;
+          if (mark === last) return;
+          last = mark;
+          ctx.postMessage({ kind: 'progress', id: request.id, stage, done, total });
+        });
         ctx.postMessage({ kind: 'map', id: request.id, map }, transferables(map));
       }
     } catch (e) {
