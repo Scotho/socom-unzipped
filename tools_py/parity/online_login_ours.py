@@ -682,6 +682,12 @@ def press_verified(sh, step, btn, wait, check, what):
     def dropped():
         ok = bool(check(lobby_gray(sh)))
         sh.log(f"[lobby] {step} press={btn} verified={ok} attempt={n[0]}")
+        if not ok:
+            # Sprint 10 Goal 3: the frame the check refused, kept -- a verifier that misses a screen it should
+            # know (the console joiner's GAME LOBBY, leg 1, 2026-09-20: four misses, the round then ran) can only
+            # be calibrated from what it saw, and a re-send that lands on a screen the check did not recognise
+            # presses on into it.
+            sh.shot(f"miss_{step.replace(':', '_')}_{n[0]}")
         return not ok
 
     send()

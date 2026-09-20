@@ -172,6 +172,9 @@ class HostGameVerified(unittest.TestCase):
         self.assertEqual(press_lines(sh, "create-game:enter"),
                          ["[lobby] create-game:enter press=cross verified=False attempt=1",
                           "[lobby] create-game:enter press=cross verified=True attempt=2"])
+        # Sprint 10 Goal 3: the frame a check refused is kept, named by the step and the attempt.
+        self.assertIn("miss_create-game_enter_1", sh.shots)
+        self.assertNotIn("miss_create-game_enter_2", sh.shots)
 
     def test_without_a_pad_file_the_resend_is_a_posted_key(self):
         frames = (BRIEFING_JOIN_LIT, BRIEFING_CREATE_LIT) + HOST_HAPPY[1:]

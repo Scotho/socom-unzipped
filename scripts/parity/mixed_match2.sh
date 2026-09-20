@@ -42,7 +42,21 @@ if [ "$JOIN_RC" -eq 0 ]; then
   PYTHONPATH="$ROOT" python -m tools_py.parity.pcsx2_shell ready B --out "$PCSX2_OUT" > "$OUT/pcsx2_ready.txt" 2>&1
   echo "pcsx2 ready rc=$?" >> "logs/parity/drive_${NAME}.txt"
 fi
-python -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1
+# The console side of the movement bar: its own position over PINE (instance B, port 28012; the camera/player
+# block cam_poll reads) once a second through the round, while it walks four 3 s bursts -- ours' peek and walk
+# are the host's side (online_match_ours --play). Both instances then have a position trail through the same round.
+sleep 45                                                  # the host's READY (joiner + 35 s) and the launch countdown
+PYTHONPATH="$ROOT" python -m tools_py.parity.cam_poll --port 28012 --out "$OUT/pcsx2_pos.txt" --seconds 100 --every 1.0 > "$OUT/pcsx2_pos.log" 2>&1 &
+POLL=$!
+python -m tools_py.parity.pcsx2_ctl watch B play 60 1.0 --out "$PCSX2_OUT" > "$OUT/pcsx2_watch.txt" 2>&1 &
+WATCH=$!
+sleep 15
+for i in 1 2 3 4; do
+  python -m tools_py.parity.pcsx2_ctl hold B W 3.0 >> "$OUT/pcsx2_walk.txt" 2>&1
+  sleep 12
+done
+wait $WATCH
+wait $POLL
 wait $OURS_PID
 rc=$?
 python -m tools_py.parity.pcsx2_ctl kill > /dev/null 2>&1
