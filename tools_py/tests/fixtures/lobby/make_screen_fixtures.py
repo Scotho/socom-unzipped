@@ -53,6 +53,8 @@ FIXTURES = {
     "title_wtb3_still_briefing.png": (f"logs/parity/ours_task7_wtb3/A_12_create_game.png", TITLE),   # CREATE GAME CROSS eaten
     "title_kill4_still_play_list.png": (f"logs/parity/ours_task8_kill4/A_15_play_list.png", TITLE),  # ACCEPT SQUARE eaten
     "title_kill4_no_lobby.png": (f"logs/parity/ours_task8_kill4/A_17_game_lobby_FAILED.png", TITLE),  # CREATE never made a lobby
+    # Sprint 10 Goal 1: the GAME LOBBY under the hosted server's channel name "US East (Ohio)" (the first scheduled ladder)
+    "title_ladder1_us_east_game_lobby.png": ("logs/parity/ladder_20260920_043246/A_lobby_fail_create-game_create.png", TITLE),
     "title_launch1_join_no_lobby.png": (f"logs/parity/s5_t1_launch1/B_17_game_lobby_FAILED.png", TITLE),  # JOIN never entered
     # cursor rows: lit (teal fill, median 62-68) vs unlit (<= 34)
     "row_create_game_lit_wtb3.png": (f"logs/parity/ours_task7_wtb3/A_12_create_game.png", ROW_CREATE_GAME),

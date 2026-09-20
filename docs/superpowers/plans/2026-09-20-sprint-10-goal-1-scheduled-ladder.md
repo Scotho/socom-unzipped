@@ -23,7 +23,19 @@ silent red. **Stop rule:** a run that lags the owner while they are at the machi
       appends the ledger and re-renders the table. Its own log: `logs/ladder/job_<ts>.log`.
 - [x] The Task Scheduler entry `SOCOM Unzipped ladder`, created **DISABLED**, 03:30 daily as a placeholder. Enabling it
       and naming the window is the owner's (HUMAN_TASKS).
-- [ ] The first run, by hand, tonight -- queued behind the Q0 gate; its row is the first in `docs/LADDER.md`.
+- [x] The first run, by hand, 2026-09-20 04:32 local (`ladder_20260920_043246`): **LOBBY-FAIL create-game:create** --
+      and its own capture (`A_lobby_fail_create-game_create.png`) shows the GAME LOBBY up behind the 30 s READY notice.
+      The verifier missed it: the title band's reference was cut with the channel name "Channel 1" beside the words,
+      and the hosted box now says "US East (Ohio)" there (distance 0.225 against a 0.15 bar; the words alone 0.011).
+      Fixed the same morning: GAME LOBBY and BRIEFING ROOM compare the title words only (`LOBBY_TITLE_COLS`), calibrated
+      on the 106 s7+/ladder captures (worst true 0.011, nearest wrong 0.573), a fixture cut from the failing frame and
+      two tests. Two more defects the run exposed, both fixed: the job waited on `logs/parity/<stamp>.done` where the
+      ladder writes `logs/<stamp>.done` (it waited its hour), and the ledger read neither that nor
+      `logs/parity/drive_<stamp>.txt` (the row said UNKNOWN 0/0; re-ledgered as what it was). The double FROSTFIRE in
+      the play list is the map-CROSS check's first read (0.70 < 1.0) re-sending a press that had landed -- the same on
+      `s8_hosted_kill`, harmless, noted.
+- [ ] The second run, through `scripts/ladder_job.sh 4` exactly as the scheduler would (it refuses unless the machine
+      is quiet), on the fixed verifier: the first row that can count toward the bar.
 
 ## What is left
 

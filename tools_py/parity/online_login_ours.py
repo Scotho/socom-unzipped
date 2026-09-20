@@ -315,6 +315,14 @@ LOBBY_TITLE = (slice(18, 58), slice(20, 360))
 LOBBY_TITLES = ("briefing_room", "create_game", "play_list", "game_lobby")
 LOBBY_TITLE_MAX_DIST = 0.15     # 14x the worst true match, under half the nearest wrong pair
 LOBBY_REF_DIR = os.path.join(REFS, "lobby")
+# Sprint 10 Goal 1: the GAME LOBBY and BRIEFING ROOM bands carry the server's channel name to the right of the
+# title words (x >= 235; the words end at 203), and that name changed from "Channel 1" to "US East (Ohio)" when the
+# hosted box was named -- the first scheduled ladder read its own GAME LOBBY at distance 0.225 against a reference
+# cut with "Channel 1" in it and failed the run as LOBBY-FAIL create-game:create (ladder_20260920_043246). Those two
+# titles compare the words only (215 of the band's 340 columns): on the 106 s7+/ladder captures the worst true match
+# is 0.011 and the nearest wrong pair 0.573. CREATE GAME and its PLAY LIST screen share their first words and are
+# told apart by the rest of the band, so they keep the full width (0.000 / 0.385).
+LOBBY_TITLE_COLS = {"game_lobby": 215, "briefing_room": 215}
 # Menu rows the fixed UP presses must light before the CROSS that follows (y0, y1, x0, x1). A lit row is
 # a teal fill: its median luminance is 62-68 on every capture, an unlit row's <= 34 (even with the
 # game-name keyboard drawn over the menu, cal1). The games-list row is a fainter fill: 36 when JOIN
@@ -567,8 +575,13 @@ def lobby_title_ref(name):
 
 
 def lobby_title_dist(gray, name):
-    """Text-mask distance of the frame's title band to the `name` reference (0 = the same title)."""
-    return map_mask_distance(gray[LOBBY_TITLE], lobby_title_ref(name))
+    """Text-mask distance of the frame's title band to the `name` reference (0 = the same title); the titles that
+    carry the channel name compare their words only (LOBBY_TITLE_COLS)."""
+    cols = LOBBY_TITLE_COLS.get(name)
+    band, ref = gray[LOBBY_TITLE], lobby_title_ref(name)
+    if cols:
+        band, ref = band[:, :cols], ref[:, :cols]
+    return map_mask_distance(band, ref)
 
 
 def lobby_title_is(gray, name):
