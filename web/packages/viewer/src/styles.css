@@ -32,7 +32,18 @@ body.chrome-hidden #panel, body.chrome-hidden #fps { display: none; }
   border: 1px solid #333a44; border-radius: 6px; background: rgba(20, 22, 26, 0.86);
   font-size: 12px; line-height: 1.4; color: #9fe6b0; font-variant-numeric: tabular-nums;
 }
-#sliders-box, #fog-box, #options { margin: 4px 0; }
+#sliders-box, #fog-box, #options, #about { margin: 4px 0; }
+#about summary { cursor: pointer; color: #9aa4b1; }
+#about .badge {
+  margin-left: 6px; padding: 1px 5px; border-radius: 3px; font-size: 10px;
+  background: rgba(120, 78, 22, 0.35); color: #ffca8a; border: 1px solid #6b4a1e;
+}
+#about p { margin: 6px 0; color: #a8b0bb; font-size: 11px; line-height: 1.5; }
+#about ul { margin: 4px 0 6px; padding-left: 16px; color: #a8b0bb; font-size: 11px; line-height: 1.5; }
+#about li { margin-bottom: 3px; }
+#about b { color: #c7cedb; font-weight: normal; }
+#about a { color: #9fe6b0; }
+#about a:hover { color: #c7f5d2; }
 #options summary { cursor: pointer; color: #9aa4b1; }
 #options > details { margin-left: 10px; }
 #fog-box summary { cursor: pointer; color: #9aa4b1; }

@@ -16,6 +16,24 @@ export interface TextureRecord {
 }
 
 const HEADER = 16;              // 36 §5: TEXTURE_PARAMS is 16 bytes
+/**
+ * Sixteen more bytes between TEXTURE_PARAMS and the pixels, which 36 §5 does not name.
+ *
+ * **[data]** Every texture of every extracted map begins them identically —
+ * `08 00 00 00  00 00 00 00  AF AF AF AF  AF AF AF AF` — measured over all 83 direct 32bpp textures
+ * across the 22 maps (`tools/probe-head.ts`) and all 53 palettised ones in MP2. Sixteen bytes that do
+ * not vary with the map, the size, the format or the content are not image data.
+ *
+ * Read as pixels they shifted every texture by 16 bytes: four texels at 32bpp, sixteen at 8bpp. That
+ * is a fraction of one row, which is why the M2 contact sheets passed — but on a 32x32 flare the four
+ * stray texels land on the top edge as two fully opaque dots, which is what made the lamp glows look
+ * like squares with a bright corner.
+ *
+ * The bytes after `size` settle it: for `lightrays.tif` they continue the image's own colour
+ * (`199,203,181,0`) rather than starting the bind packet, so the image really does run to
+ * `HEADER + PREFIX + size`.
+ */
+const PIXEL_PREFIX = 16;
 const BIND_QWC = 9;             // 36 §5: a 144-byte, 9-quadword prebuilt bind packet follows the pixels
 
 /**
@@ -37,8 +55,8 @@ export function parseTextureRecord(name: string, texdat: Uint8Array): TextureRec
     name, width, height, size, gsaddr, bpp, selectQwc, palOffset,
     transparent: bit(0), palettized: bit(1), isMipChild: bit(2), bumpmap: bit(3),
     bilinear: bit(4), transp1bit: bit(5), dynamic: bit(6), context: bit(7),
-    pixels: r.slice(HEADER, size),                // 36 §5: pixels follow the header immediately
-    tex0: findTex0(r, HEADER + size, gsaddr, width, height),
+    pixels: r.slice(HEADER + PIXEL_PREFIX, size),   // after the header and the 16-byte prefix
+    tex0: findTex0(r, HEADER + PIXEL_PREFIX + size, gsaddr, width, height),
   };
 }
 

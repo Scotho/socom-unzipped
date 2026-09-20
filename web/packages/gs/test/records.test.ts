@@ -82,14 +82,20 @@ describe('records', () => {
 });
 
 describe('the TEX0 word in a bind packet', () => {
-  /** A 4x2 8-bit record: header, 8 pixel bytes, then a 9-quadword packet the caller fills. */
+  /**
+   * A 4x2 8-bit record: header, the 16-byte pixel prefix, 8 pixel bytes, then a 9-quadword packet the
+   * caller fills. The prefix is the block every shipped texture carries between TEXTURE_PARAMS and its
+   * pixels (see `PIXEL_PREFIX` in `texture.ts`); the fixture carries it so the bind packet lands where
+   * a real record puts it.
+   */
+  const PREFIX = 16;
   const record = (gsaddr: number, words: bigint[]): Uint8Array => {
-    const b = new Uint8Array(16 + 8 + 9 * 16);
+    const b = new Uint8Array(16 + PREFIX + 8 + 9 * 16);
     const dv = new DataView(b.buffer);
     dv.setUint16(0, 4, true); dv.setUint16(2, 2, true);
     dv.setUint32(4, 8, true); dv.setUint32(8, gsaddr, true);
     dv.setUint32(12, 8 | (6 << 8) | (1 << 25), true);   // 8 bpp, selectQwc 6, palettized
-    words.forEach((w, i) => dv.setBigUint64(24 + i * 8, w, true));
+    words.forEach((w, i) => dv.setBigUint64(16 + PREFIX + 8 + i * 8, w, true));
     return b;
   };
   const tex0 = 0x201026e599304001n;                     // a_floor.tif: TBP0 1, T8, TW 6, TH 6

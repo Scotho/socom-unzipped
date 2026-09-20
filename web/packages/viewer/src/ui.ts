@@ -176,7 +176,10 @@ export class Ui {
    */
   setCameraHint(multiplier: number, locked: boolean): void {
     const speed = `wheel speed ${multiplier.toFixed(multiplier < 1 ? 2 : 1)}×`;
-    const rest = `WASD fly · space/shift up/down · double-tap W to boost · ${speed}`;
+    // The backtick belongs to every version of this line: it used to be in the page's markup only,
+    // so the first wheel notch or pointer lock rebuilt the hint without it and it vanished.
+    const rest = `WASD fly · space/shift up/down · double-tap W to boost · ${speed}`
+      + ' · ` hides this';
     this.hint.textContent = locked ? `esc to release · ${rest}` : `click to look · ${rest}`;
   }
 

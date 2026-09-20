@@ -37,7 +37,9 @@ const OVERHEAD = 800;
  * are nested inside the options section, so every `details` is opened before anything is clicked.
  */
 const openPanel = (page: Page): Promise<void> => page.evaluate(() => {
-  for (const el of document.querySelectorAll('#panel details')) (el as HTMLDetailsElement).open = true;
+  // Not `#about`: it is prose, and opening it makes the panel taller than the viewport, which puts
+  // the controls underneath out of reach of a click.
+  for (const el of document.querySelectorAll('#panel details:not(#about)')) (el as HTMLDetailsElement).open = true;
 });
 
 /** Two frames with the new world in them before the canvas is worth photographing. */

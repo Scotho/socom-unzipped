@@ -10,8 +10,7 @@
     <canvas id="view"></canvas>
     <div id="fps" aria-live="off">-- fps</div>
     <div id="panel">
-      <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress. Nothing here is
-        finished, and what it draws is not what the game draws.</p>
+      <p id="warning"><strong>EXPERIMENTAL</strong> &mdash; a work in progress.</p>
       <div class="row">
         <select id="maps" aria-label="map"><option value="">loading maps...</option></select>
         <button id="iso" type="button" disabled title="the browser reads your own disc image: milestone M5">
@@ -19,6 +18,16 @@
         </button>
       </div>
       <p id="status">booting</p>
+      <details id="about">
+        <summary>Unzipped Project Map Viewer <span class="badge">dev build</span></summary>
+        <p><b>Not a port and not emulation.</b> No game code runs. The disc's own data &mdash; geometry,
+          textures, scene graph, lighting, fog &mdash; is read and drawn again in TypeScript, so it is a
+          reading of the game and a reading can be wrong.</p>
+        <p><b>Known to differ:</b> lighting and fog are approximations, transparency can sort wrongly,
+          some skies and textures are missing, and there is no game &mdash; just the world.</p>
+        <p>A spin-off of <b>SOCOM Unzipped</b>, the actual port.
+          <a href="https://s2u.scotho.com" target="_blank" rel="noopener noreferrer">s2u.scotho.com &rarr;</a></p>
+      </details>
       <details id="options">
         <summary>options</summary>
         <div class="row">
