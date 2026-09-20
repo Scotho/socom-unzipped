@@ -316,7 +316,7 @@ def render(doc, timeline, repo, img_base, logo):
            '<header class="top">',
            '<img class="logo" src="%s" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">' % logo,
            '<p class="brief-sub">Mission briefing &middot; operation unzipped</p>',
-           '<h1 class="brief-title">%s<small>How a PlayStation 2 game became a PC game, in %s days</small></h1>'
+           '<h1 class="brief-title">%s<small>Trying to turn a PlayStation 2 game into a PC game. %s days in.</small></h1>'
            % (inline(title), days)]
     if doc["preface"]:
         out.append('<p class="lede">%s</p>' % inline(doc["preface"][0].strip("*")))
