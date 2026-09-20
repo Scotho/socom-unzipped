@@ -9,7 +9,7 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
  * chrome the backtick hides: someone looking at a clean picture should still be able to get back.
  */
 #home {
-  position: fixed; top: 12px; left: 12px; z-index: 2;
+  position: fixed; top: 12px; left: 12px; z-index: 5;
   padding: 4px 9px; border: 1px solid #333a44; border-radius: 6px;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px);
   font-size: 12px; line-height: 1.4; color: #9aa4b1; text-decoration: none; white-space: nowrap;
@@ -17,7 +17,9 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
 #home:hover, #home:focus-visible { color: #d8dde4; border-color: #4b5563; }
 
 #panel {
-  position: fixed; top: 48px; left: 12px; width: min(420px, calc(100vw - 24px));
+  /* Above the touch stick's zone: on a phone the open panel and the zone overlap, and a tap on a
+     checkbox must reach the checkbox rather than starting the stick under it. */
+  position: fixed; top: 48px; left: 12px; z-index: 5; width: min(420px, calc(100vw - 24px));
   padding: 10px 12px; border: 1px solid #333a44; border-radius: 8px;
   background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px); font-size: 12px; line-height: 1.5;
 }
@@ -30,6 +32,8 @@ html, body { margin: 0; height: 100%; background: #14161a; color: #d8dde4; overf
   width: 100%; min-height: 44px; margin: -4px 0 6px; padding: 6px 4px;
   background: none; border: none; border-radius: 6px; color: #9aa4b1;
   font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  /* A tap leaves the browser's blue wash across the whole bar, which reads as a selection. */
+  -webkit-tap-highlight-color: transparent;
 }
 #panel-toggle:hover, #panel-toggle:focus-visible { color: #d8dde4; }
 #panel-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -104,3 +108,36 @@ label.slider output { min-width: 56px; text-align: right; color: #9fe6b0; font-v
 
 #diagnostics { margin: 4px 0 0; padding-left: 18px; max-height: 30vh; overflow: auto; color: #ffca8a; }
 #diagnostics li { margin-bottom: 2px; word-break: break-word; }
+
+/*
+ * Touch movement. Nothing here exists until `body.touch` is set: on a mouse these would only be four
+ * things in the way. The stick takes the left half and the bottom two thirds -- the part of a phone a
+ * thumb reaches -- and the right half is left to the look drag.
+ */
+#touch { display: none; }
+body.touch #touch { display: block; }
+#stick-zone {
+  position: fixed; left: 0; bottom: 0; width: 50vw; height: 66vh; z-index: 4;
+  touch-action: none;
+}
+#stick-base {
+  position: fixed; z-index: 4; width: 116px; height: 116px; margin: -58px 0 0 -58px;
+  border: 1px solid rgba(159, 230, 176, 0.45); border-radius: 50%;
+  background: rgba(20, 22, 26, 0.35); pointer-events: none;
+}
+#stick-base[hidden] { display: none; }
+#stick-knob {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px;
+  border: 1px solid rgba(159, 230, 176, 0.7); border-radius: 50%;
+  background: rgba(159, 230, 176, 0.18); transform: translate(-50%, -50%);
+}
+#touch-lift {
+  position: fixed; right: 12px; bottom: 16px; z-index: 4; display: flex; flex-direction: column; gap: 10px;
+}
+#touch-lift button {
+  width: 56px; height: 56px; border-radius: 50%; touch-action: none;
+  border: 1px solid #39414d; background: rgba(20, 22, 26, 0.86); backdrop-filter: blur(4px);
+  color: #9fe6b0; font: inherit; font-size: 16px; line-height: 1; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+#touch-lift button:active { background: rgba(159, 230, 176, 0.18); }

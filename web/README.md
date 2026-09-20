@@ -76,6 +76,22 @@ archives, PNGs, `.glb` files and Playwright screenshots. They are regenerated fr
   diagnostics panel. `test/camera.test.ts` pins the motion model — ramp, glide, frame-rate independence,
   which axis each key moves along — rather than the tuning constants, which are meant to be tuned.
 
+## On a touch screen
+
+A one-finger drag looks around, which the canvas gives for free. Moving is the part a phone had no way
+to do, so the left half of the screen is a virtual stick — a circle that appears wherever the thumb
+lands and follows it — and two buttons in the bottom-right corner do what Q and E do. The right half
+is left alone so looking still works while the stick is held. The stick feeds an axis pair into the
+same velocity model the keys drive, so the ramp, the glide and the frame-rate independence come out of
+that for free; `stickVector` in `viewer/src/touch.ts` is the only arithmetic, and it is unit-tested.
+
+They appear on a coarse pointer, or at the first touch event for a hybrid a media query gets wrong,
+and not at all on a mouse. The whole overlay folds to one bar (the button across its top edge, or the
+backtick), which is what makes the viewer usable on a phone at all — expanded, the panel is most of
+the screen.
+
+Deliberately minimal: no sprint, no gestures, no tuning pass.
+
 ## Loading a map without freezing the page
 
 Switching maps used to take one 690–1,703 ms frame, and the whole of it was the *first frame that drew

@@ -13,6 +13,7 @@ import { DEFAULT_LIGHTING, type Lighting } from './lighting';
 import { Ui, type SliderName, type ToggleName } from './ui';
 import { buildWorld, centre, type WorldView } from './world';
 import { spreadAcrossFrames, type Spread } from './scheduler';
+import { attachTouchControls } from './touch';
 import type { ViewerRequest, ViewerResponse } from './worker';
 
 /** The served disc tree: `web/public/maps/`, with its own `index.json` beside it. */
@@ -126,6 +127,7 @@ ui.onMapChange((path) => {
 ui.onToggle(applyToggle);
 ui.apply(applyToggle);
 ui.onChromeToggle();
+attachTouchControls(fly);
 ui.onPanelToggle();
 ui.onSlider((name, value) => {
   if (name === 'fognear' || name === 'fogfar') fogIsMine = true;

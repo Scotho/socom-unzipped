@@ -94,6 +94,11 @@ export class FlyCamera {
   readonly camera: PerspectiveCamera;
   private yaw = 0;
   private pitch = 0;
+  /** The touch stick's axes, -1..1: x strafes right, y moves along the look direction. */
+  private stickX = 0;
+  private stickY = 0;
+  /** The touch up/down buttons: 1, 0 or -1, the same lane space and shift drive. */
+  private lift = 0;
   private readonly keys = new Set<string>();
   private dragging: number | null = null;
   private lastX = 0;
@@ -212,6 +217,14 @@ export class FlyCamera {
     const right = new Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
 
     const wish = new Vector3();
+    // The touch stick, before the keys: it is an analogue pair on the same two axes, so it adds to the
+    // same wish vector and everything below -- the ramp, the glide, the frame-rate independence -- is
+    // the keys' own model doing the work.
+    if (this.stickX !== 0 || this.stickY !== 0) {
+      wish.addScaledVector(forward, this.stickY);
+      wish.addScaledVector(right, this.stickX);
+    }
+    if (this.lift !== 0) wish.y += this.lift;
     if (this.keys.has('keyw')) wish.add(forward);
     if (this.keys.has('keys')) wish.sub(forward);
     if (this.keys.has('keyd')) wish.add(right);
@@ -222,8 +235,11 @@ export class FlyCamera {
     const moving = wish.lengthSq() > 0;
     const boosting = moving && this.sprinting();
     const cruise = this.speed * this.speedMultiplier * (boosting ? SPRINT : 1);
-    // One key or three, the speed is the same: normalising stops diagonals being 1.7x faster.
-    const target = moving ? wish.normalize().multiplyScalar(cruise) : new Vector3();
+    // One key or three, the speed is the same: clamping stops diagonals being 1.7x faster. It *clamps*
+    // rather than normalises so that a stick pushed half way moves at half speed -- with keys the
+    // vector is always at least unit length, so they are unaffected.
+    if (wish.lengthSq() > 1) wish.normalize();
+    const target = moving ? wish.multiplyScalar(cruise) : new Vector3();
 
     // v(t) = target + (v0 - target)e^(-rate t). Both the new velocity and the distance covered during
     // the frame are taken from that closed form rather than from `v * dt` at one end of it: stepping a
@@ -255,6 +271,20 @@ export class FlyCamera {
       this.camera.fov = this.fov;
       this.camera.updateProjectionMatrix();
     }
+  }
+
+  /**
+   * The touch stick, as an axis pair rather than as keys. Nothing is clamped here -- `./touch` has
+   * already put the vector inside the unit disc, and `update` clamps anyway.
+   */
+  setStick(x: number, y: number): void {
+    this.stickX = x;
+    this.stickY = y;
+  }
+
+  /** The touch up/down buttons: 1 up, -1 down, 0 released. */
+  setLift(v: number): void {
+    this.lift = v;
   }
 
   /** Double-tapped forward, still held. Released, the sprint ends. */

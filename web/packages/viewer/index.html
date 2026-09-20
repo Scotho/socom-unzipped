@@ -105,6 +105,19 @@
       <p class="hint" id="hint">click to look &middot; WASD fly &middot; space/shift up/down &middot; double-tap W to boost &middot; wheel speed 1.0&times; &middot; ` hides this</p>
       </div>
     </div>
+    <!--
+      Touch movement. Hidden until `body.touch` is set, which `./src/touch.ts` does on a coarse pointer
+      or at the first touch event. The stick owns the left half so it never fights the look drag, which
+      keeps the right half.
+    -->
+    <div id="touch">
+      <div id="stick-zone"></div>
+      <div id="stick-base" hidden><div id="stick-knob"></div></div>
+      <div id="touch-lift">
+        <button id="touch-up" type="button" aria-label="up">&#9650;</button>
+        <button id="touch-down" type="button" aria-label="down">&#9660;</button>
+      </div>
+    </div>
     <script type="module" src="./src/main.ts"></script>
   </body>
 </html>
