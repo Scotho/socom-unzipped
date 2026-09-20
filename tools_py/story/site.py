@@ -140,7 +140,7 @@ def render_entry(e, repo, img_base, index):
         elif _IMG_RE.match(b):
             m = _IMG_RE.match(b)
             caption, path = m.group(1), m.group(2)
-            figure = ('<figure><img src="%s/%s" alt="%s" loading="lazy" width="640" height="448">'
+            figure = ('<figure><img src="%s/%s" alt="%s" loading="lazy">'
                       '<figcaption>%s</figcaption></figure>'
                       % (img_base, os.path.basename(path), html.escape(caption, quote=True), inline(caption)))
         else:
@@ -257,7 +257,7 @@ details[open].cited summary::after{content:"\2212"}
 .cite.commit:hover{border-color:var(--glow);color:var(--lit)}
 .cite.run{font-family:var(--mono);font-size:12px;color:var(--teal)}
 figure{margin:12px 0 4px;border:1px solid var(--line2);background:#000;max-width:640px}
-figure img{display:block;width:100%;height:auto;aspect-ratio:640/448;object-fit:cover;filter:saturate(.95)}
+figure img{display:block;width:100%;height:auto;filter:saturate(.95)}
 figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;color:var(--dim)}
 /* closing */
 .closing{margin-top:48px;padding:18px 20px;background:var(--panel2);border:1px solid var(--line)}
