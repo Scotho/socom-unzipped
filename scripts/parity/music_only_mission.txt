@@ -1,7 +1,8 @@
 # Sprint 10, the music round four: the MUSIC track alone through the owner's path. From the main menu (reached by
 # pressing CROSS until the logo band matches -- counted presses overshot into NEW GAME on both targets, run 1),
 # AUDIO OPTIONS: the SOUND VOLUME and DIALOG VOLUME rows reached by DOWN until each row's teal highlight shows
-# (until(x0,y0,x1,y1)), 16 LEFTs each (the slider is ~13 notches; extra presses past zero do nothing), back out,
+# (until(x0,y0,x1,y1)), 60 LEFTs each (the slider is FINE: ~5 px of a 290 px track per press, ~54 presses from full
+# to zero, measured on PCSX2 run 4 -- the 13 tick marks are decoration; extra presses past zero do nothing), back out,
 # UP to NEW GAME, the first mission, X through the flyover, a walk toward the first enemies with fire on contact --
 # the transitions the owner triggers. Both targets (PCSX2's keys map takes ours' stick names).
 untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS   # through the boot screens until the main menu logo
@@ -27,7 +28,95 @@ wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
 until(45,194,165,210)+1.0:DOWN   # DIALOG VOLUME lit
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
 wait+0.4:LEFT
