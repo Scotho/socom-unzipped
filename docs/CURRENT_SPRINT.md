@@ -93,7 +93,12 @@ Goal 0 the git and release strategy made real (branch protection, tags, the rele
 repository cleaned and its history audited (the disc-derived-bytes question is the big one -- **[O] decision D1 in the
 spec**); Goal 2 the project and the loop explained; Goal 3 the landing page and a build from a fresh install; Goal 4
 install instructions and FAQs; Goal 5 licences and accreditations; Goal 6 the progress story; Goal 7 the bug pipeline
-from the launcher's `BR-` ids to public GitHub issues; Goal 8 an installer, if wanted [O]. **Early items, already
+from the launcher's `BR-` ids to public GitHub issues; Goal 8 an installer, if wanted [O]; **Goal 9 (owner, 2026-09-19) the
+PII and credential sweep as a gate that can fail** -- one command over the tree, the full history, commit metadata, the
+release artefacts and the launcher's own scrubbers, exiting non-zero on any hit, with a negative control in CI that plants
+a secret of each class (a gate that has never failed is not known to work). It reuses the monitor's already-run rules
+(`../socom_monitor` `920e323`: 22 planted-secret cases, two real-data false positives burned in) rather than inventing a
+third set, and it does NOT replace D1 -- a clean history says no secret is in it, not that the owner wants it public. **Early items, already
 landed on `sprint-9` because they cost nothing and shape every commit after them:** `docs/GIT_STRATEGY.md`,
 `CONTRIBUTING.md`, `SECURITY.md`, `.github/` issue and PR templates, `CODEOWNERS`.
 

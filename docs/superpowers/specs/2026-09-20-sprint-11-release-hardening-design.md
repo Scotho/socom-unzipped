@@ -161,6 +161,51 @@ GitHub automatically**:
   is no).
 - Bar: one real report walked end to end -- launcher, inbox, reproduction, issue, fixing commit, triage note.
 
+### Goal 9 — the PII and credential sweep, as a gate that can fail (owner, 2026-09-19)
+The owner: *"Include a PII and cred scrub in the git release prep sprint for when we are closer to public to be double
+sure."* This is deliberately NOT part of Goal 1. Goal 1's history audit is an investigation whose output is a
+**decision** (D1: which history goes public); this goal's output is a **command that exits non-zero**, run immediately
+before the visibility flip and before every release after it. An audit is read once by whoever ran it; a gate keeps
+working after everyone has stopped paying attention. The 2026-09-19 incident is the argument: the monitor's file route
+was reviewed by the person who wrote it and still served an SSH private key for 2.5 days.
+
+**Do not invent a third set of rules.** The instrument already exists and has been run against real data:
+`../socom_monitor/scrub.py` and `leakcheck.py` (commit `920e323`) carry one shared set of regexes -- home directories
+in both spellings, drive-absolute paths, every IPv4 but the hosted box's, private ranges, street-address and postcode
+shapes, e-mails, PEM blocks, key file names, vendor-prefixed and JWT and `key=value` and opaque-blob tokens, and
+twelve-digit account ids -- behind 22 planted-secret cases that each assert the rule name and the `file:line`, plus two
+false positives that only a run against the real tree found (`close=None` matching a thoroughfare word under `re.I`;
+a float read as an AWS account id). Vendor those rules into this repository as `tools_py/release/leakcheck.py` with
+their tests, or depend on the monitor's copy and pin it -- the sprint decides which, but the rules are not rewritten.
+
+**What it sweeps, which is more than Goal 1's audit:**
+1. **The working tree at the release commit** -- tracked files only, plus an explicit assertion that the git-ignored
+   paths that hold the real secrets (`vm/keys/`, `vm/lightsail/`, `logs/`, `server/config/*.json`, `cards/`) are still
+   ignored and have never been tracked. "It is git-ignored" is a claim with a shelf life; the gate re-proves it.
+2. **The full history**, every commit and every branch and tag (`gitleaks detect --log-opts=--all`, plus the same
+   regex pass over `git log -p --all`). Goal 1 does this once to decide D1; this does it again at the flip, because
+   commits land between the audit and the flip.
+3. **Commit metadata** -- author and committer names and e-mail addresses across all history, which no content scan
+   sees. A private repository's `user.email` is often a personal one; the public one should be deliberate.
+4. **The release artefacts themselves** -- the portable zip and tarball unpacked, `SHA256SUMS`, and the symbols folder.
+   Nothing that reaches a stranger's disk is exempt because it was built rather than written.
+5. **The launcher's own scrubbers, re-proven, not assumed:** Goal 1's diagnostics zip (`docs/HANDOFF.md` §7) and the bug
+   report's log attachment both claim to remove the home folder and the disc's folder. The gate plants a known string
+   in a log, runs each path, and fails if it survives -- the same negative control that gave the monitor's leak check
+   its only real evidence.
+6. **The site and the static monitor**, whose builds already gate themselves, re-run from here so one command covers
+   everything that faces outward.
+
+**Owner-specific literals** (the street address, an old account name) live in a git-ignored file, as they do for the
+monitor -- committing a secret in order to scrub it defeats the exercise. The seeded file for the monitor already holds
+the home IP recovered from `db603f5`.
+
+**Bar:** one command, documented in `CONTRIBUTING.md` and wired into the release workflow, that sweeps all six and
+exits non-zero on any hit naming `file:line: rule: excerpt`; a negative control in CI that plants a secret of each
+class and asserts the gate catches it (a gate that has never failed is not known to work); and a recorded run, clean,
+on the exact commit that goes public. **It does not replace D1** -- a clean sweep of history says no secret is in it,
+not that the owner wants that history public.
+
 ### Goal 8 — an installer, if wanted [O decision; carried from the Sprint 8 draft]
 The portable archive is the product today and deleting the folder is the uninstall. An Inno Setup installer (outline:
 `docs/superpowers/specs/2026-09-15-game-client-package-and-installer-outline.md` section 6) buys a Start-menu entry and
@@ -190,4 +235,9 @@ costs a second artefact to sign, gate and keep in step. Not built unless the own
 ## Order inside the sprint
 Goal 1's audit first (it decides D1, and D1 decides where everything else is committed) -> Goal 0 -> Goal 5 (licences;
 it blocks any public archive) -> Goal 2 -> Goal 4 -> Goal 3 (the fresh-install run verifies 2 and 4) -> Goal 7 -> Goal 6
-(the story, last, when there is an ending to write) -> the flip and `v1.0.0`, which are the owner's click.
+(the story, last, when there is an ending to write) -> **Goal 9 last of the engineering work, and again on the flip
+commit itself** -- it is the gate, so it runs when there is nothing left to change, and once more on whatever is
+actually published -> the flip and `v1.0.0`, which are the owner's click.
+
+Goal 9's rules can be vendored early and cheaply, before the rest of the sprint, because they are pure Python with
+their own tests and touch nothing. Only the *running* of it is order-dependent.
