@@ -305,7 +305,7 @@ All paths in this table and below that start with `ps2x` are under `third_party/
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `third_party/ps2recomp/ps2xTest/src/knobs_tests.cpp`:
+- [x] **Step 1: RED.** Create `third_party/ps2recomp/ps2xTest/src/knobs_tests.cpp`: *[done 2026-09-21; RED: fatal error: 'ps2x/knobs.h' file not found]*
 
 ```cpp
 // Sprint 9 Goal 3: the knob registry -- one table that is the accessor's lookup, the generated docs/KNOBS.md
@@ -536,7 +536,7 @@ void register_knobs_tests()
 
   Build: `cmake --build third_party/ps2recomp/build-clang --target ps2x_tests`. Expected RED: `fatal error: 'ps2x/knobs.h' file not found`. Paste it into the ledger.
 
-- [ ] **Step 2: GREEN — the header.** Create `third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h`:
+- [x] **Step 2: GREEN — the header.** Create `third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h`: *[done; 154 rows, not 143 -- the eleven new names are in the ledger]*
 
 ```cpp
 #pragma once
@@ -771,7 +771,7 @@ namespace ps2x
 }
 ```
 
-- [ ] **Step 3: GREEN — the implementation.** Create `third_party/ps2recomp/ps2xShared/src/knobs.cpp`:
+- [x] **Step 3: GREEN — the implementation.** Create `third_party/ps2recomp/ps2xShared/src/knobs.cpp`: *[done; R207's pathInsideHome added in its own commit]*
 
 ```cpp
 #include "ps2x/knobs.h"
@@ -958,8 +958,8 @@ namespace ps2x
 
   **The `dev=` label while enforcement is off** reads `dev=1` for everyone, because every knob *is* honoured for everyone until Task 7; that is the truth about the process, and Task 7's poisoned launch is where `dev=0` first appears in a game log.
 
-- [ ] **Step 4: Run.** `cmake --build third_party/ps2recomp/build-clang --target ps2x_tests && (cd third_party/ps2recomp/build-clang/ps2xTest && PS2X_TEST_SUITE=Knobs ./ps2x_tests.exe)`. Expected: the ten `Knobs` cases pass. Then the whole thing: `./build.sh test` exit 0, `Total Tests:` = `B + 10`. The "Shipping class" case passing is the proof of Handoff note 9; if it fails on a name, **stop and tell the controller** — the inventory is wrong, not the test.
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 4: Run.** `cmake --build third_party/ps2recomp/build-clang --target ps2x_tests && (cd third_party/ps2recomp/build-clang/ps2xTest && PS2X_TEST_SUITE=Knobs ./ps2x_tests.exe)`. Expected: the ten `Knobs` cases pass. Then the whole thing: `./build.sh test` exit 0, `Total Tests:` = `B + 10`. The "Shipping class" case passing is the proof of Handoff note 9; if it fails on a name, **stop and tell the controller** — the inventory is wrong, not the test. *[done; the Shipping case asserts 18, PS2X_INPUT_MAPPING being the eighteenth]*
+- [x] **Step 5: Commit and push.** *[committed on agent/knobs; NOT pushed (the controller merges)]*
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/ps2x/knobs.h third_party/ps2recomp/ps2xShared/src/knobs.cpp \
@@ -989,7 +989,7 @@ git push
 
 **Steps:**
 
-- [ ] **Step 1: RED.** Create `tools_py/tests/test_knobs_registry.py`:
+- [x] **Step 1: RED.** Create `tools_py/tests/test_knobs_registry.py`: *[done; RED: ImportError: cannot import name 'knobs']*
 
 ```python
 """Sprint 9 Goal 3: the knob registry (ps2xShared/include/ps2x/knobs.h) against the source.
@@ -1090,7 +1090,7 @@ if __name__ == "__main__":
 
   Run `python -m unittest tools_py.tests.test_knobs_registry -v`. Expected RED: `ImportError: cannot import name 'knobs' from 'tools_py'`.
 
-- [ ] **Step 2: GREEN.** Create `tools_py/knobs.py`:
+- [x] **Step 2: GREEN.** Create `tools_py/knobs.py`: *[done, plus helper_getenv_sites (R206)]*
 
 ```python
 """The PS2X_* knob registry, read out of the C++ header that defines it (Sprint 9 Goal 3).
@@ -1392,8 +1392,8 @@ if __name__ == "__main__":
     sys.exit(main())
 ```
 
-- [ ] **Step 3: Generate and run.** `python -m tools_py.knobs write`, then `python -m unittest tools_py.tests.test_knobs_registry -v` — 10 cases pass — then `python -m tools_py.knobs check` exits 0. **What to do with each kind of failure in `test_no_problem_in_the_tree`:** "has no row" for `PS2X_LAUNCHER_API_BASE` → Handoff note 2; "used by the harness … the runtime does not know it" → read the line: a CMake name in a harness file or a name in prose goes into `NOT_KNOBS` with a comment saying what it is, anything else is a real finding for the controller; "calls getenv" on a file not in `RAW_GETENV_PENDING` → the tree moved since `8e5d778`, add the file and say so in the ledger. `early_reads` finds nothing yet (it looks for `ps2x::knob`, and nothing calls it before Task 4). `P + 10`.
-- [ ] **Step 4: Commit and push.**
+- [x] **Step 3: Generate and run.** `python -m tools_py.knobs write`, then `python -m unittest tools_py.tests.test_knobs_registry -v` — 10 cases pass — then `python -m tools_py.knobs check` exits 0. **What to do with each kind of failure in `test_no_problem_in_the_tree`:** "has no row" for `PS2X_LAUNCHER_API_BASE` → Handoff note 2; "used by the harness … the runtime does not know it" → read the line: a CMake name in a harness file or a name in prose goes into `NOT_KNOBS` with a comment saying what it is, anything else is a real finding for the controller; "calls getenv" on a file not in `RAW_GETENV_PENDING` → the tree moved since `8e5d778`, add the file and say so in the ledger. `early_reads` finds nothing yet (it looks for `ps2x::knob`, and nothing calls it before Task 4). `P + 10`. *[done; 11 cases; the drift handled as this step says (SchedTrace.cpp pending, leakcheck's control string in NOT_KNOBS)]*
+- [x] **Step 4: Commit and push.** *[committed; not pushed]*
 
 ```bash
 git add tools_py/knobs.py tools_py/tests/test_knobs_registry.py docs/KNOBS.md
@@ -1429,7 +1429,7 @@ Done now, while enforcement is off and none of it can break anything, so that Ta
 
 **Steps:**
 
-- [ ] **Step 1: RED (Python).** Append to `tools_py/tests/test_hostplatform.py`, above its `if __name__` block:
+- [x] **Step 1: RED (Python).** Append to `tools_py/tests/test_hostplatform.py`, above its `if __name__` block: *[done; the three RED texts as predicted]*
 
 ```python
 class DevEnvTest(unittest.TestCase):
@@ -1478,7 +1478,7 @@ class DevEnvTest(unittest.TestCase):
 
   Run the three modules. Expected RED: `AttributeError: module 'tools_py.parity.hostplatform' has no attribute 'dev_env'`; `AssertionError: 'dev=1' not found in 'dev=unset\n'`; `KeyError: 'PS2X_DEV'`.
 
-- [ ] **Step 2: GREEN (Python and shell).**
+- [x] **Step 2: GREEN (Python and shell).** *[done]*
   - `tools_py/parity/hostplatform.py`, after `EXE_OVERRIDE_ENV = "SOCOM_EXE"`:
 
 ```python
@@ -1510,7 +1510,7 @@ export PS2X_DEV="${PS2X_DEV:-1}"
 export PS2X_DEV="${PS2X_DEV:-1}"                            # everything below is a Dev knob (docs/KNOBS.md)
 ```
 
-- [ ] **Step 3: The C++ half.** No RED of its own: `consumeDevFlag`, `setDevMode` and `startupLine` are under Task 1's cases; what is added here is three call sites, and Task 5's gate log is where they are seen.
+- [x] **Step 3: The C++ half.** No RED of its own: `consumeDevFlag`, `setDevMode` and `startupLine` are under Task 1's cases; what is added here is three call sites, and Task 5's gate log is where they are seen. *[done]*
   - `ps2xRuntime/src/main.cpp`: add `#include "ps2x/knobs.h"` with the other `ps2x/` includes. In `main`, directly after `ProcessFatal::installOutOfMemoryHandler();`:
 
 ```cpp
@@ -1529,8 +1529,8 @@ export PS2X_DEV="${PS2X_DEV:-1}"                            # everything below i
 
   - `ps2xTest/src/main.cpp`: `#include "ps2x/knobs.h"`; first statement after the `setvbuf` line: `ps2x::knobs::setDevMode(true);   // the suite selects reference paths through Dev knobs (below) and tests set more`.
   - `ps2xRuntime/src/tools/vu1_replay.cpp`: `#include "ps2x/knobs.h"`; first statement of `main`: `ps2x::knobs::setDevMode(true);   // the tool steers the runtime through Dev knobs (replaySetEnv)`.
-- [ ] **Step 4: Run.** The three Python modules pass (`P + 14`); `./build.sh test` exit 0 (`B` unchanged; `vu1_replay`'s nine verify runs are part of it and prove the tool still selects its paths).
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 4: Run.** The three Python modules pass (`P + 14`); `./build.sh test` exit 0 (`B` unchanged; `vu1_replay`'s nine verify runs are part of it and prove the tool still selects its paths). *[done]*
+- [x] **Step 5: Commit and push.** *[committed; not pushed]*
 
 ```bash
 git commit -m "feat(runtime,harness): --dev and the [knobs] start-up line; run.sh, env.sh, drive.py, scale_shot.py, ps2x_tests and vu1_replay are developer-mode launches -- ahead of the enforcement that will need it (Sprint 9 Goal 3 Task 3)
@@ -1701,14 +1701,14 @@ double ps2_fpu_trap_after_seconds()
 
 **Steps (per batch):**
 
-- [ ] **A1** — edit, verify (rule 7), controller commits: `git commit -m "refactor(gs): gs_gl_backend's knob reads through ps2x::knob, first half -- no behaviour change (Sprint 9 Goal 3 Task 4 A1)` + trailer `-- third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`
-- [ ] **A2** — `… -- <gs_gl_backend.cpp> <gs_frontend.cpp> <ps2_gif_arbiter.cpp> <gs_gl_caps.h> tools_py/knobs.py`
-- [ ] **B** — `… -- <the four vu files> tools_py/knobs.py`
-- [ ] **C** — `… -- third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp tools_py/knobs.py`
-- [ ] **D** — `… -- <the nine files> tools_py/knobs.py`
-- [ ] **E** — `… -- <the four sources> third_party/ps2recomp/ps2xIOP/CMakeLists.txt tools_py/knobs.py`
-- [ ] **F** — `… -- <the nine files> tools_py/knobs.py`. `ps2xLauncher/src/main.cpp` is a file the launcher sessions edit: check `git status` for it first (commit-only-idle-files).
-- [ ] **H** — after A1-F are committed. `bash scripts/check_quiet_gate.sh`; when the owner is at the desk, ask for the window. The full rebuild is Task 5 Step 1's build; H is committed before it so one build serves both.
+- [x] **A1** — edit, verify (rule 7), controller commits: `git commit -m "refactor(gs): gs_gl_backend's knob reads through ps2x::knob, first half -- no behaviour change (Sprint 9 Goal 3 Task 4 A1)` + trailer `-- third_party/ps2recomp/ps2xRuntime/src/lib/gs/gs_gl_backend.cpp` *[done]*
+- [x] **A2** — `… -- <gs_gl_backend.cpp> <gs_frontend.cpp> <ps2_gif_arbiter.cpp> <gs_gl_caps.h> tools_py/knobs.py` *[done]*
+- [x] **B** — `… -- <the four vu files> tools_py/knobs.py` *[done]*
+- [x] **C** — `… -- third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp tools_py/knobs.py` *[done]*
+- [x] **D** — `… -- <the nine files> tools_py/knobs.py` *[done, ten files: SchedTrace.cpp joined]*
+- [x] **E** — `… -- <the four sources> third_party/ps2recomp/ps2xIOP/CMakeLists.txt tools_py/knobs.py` *[done]*
+- [x] **F** — `… -- <the nine files> tools_py/knobs.py`. `ps2xLauncher/src/main.cpp` is a file the launcher sessions edit: check `git status` for it first (commit-only-idle-files). *[done; the launcher's constant-named read, and the loopback test's PS2X_DEV=1 (R205)]*
+- [x] **H** — after A1-F are committed. `bash scripts/check_quiet_gate.sh`; when the owner is at the desk, ask for the window. The full rebuild is Task 5 Step 1's build; H is committed before it so one build serves both. *[done in the --no-runner tree, which compiles no generated unit: the controller's full build pays R165]*
 
 Every commit message ends with the trailer. Write each pathspec out in full in the actual command; the angle brackets above are this table's files.
 
@@ -1734,16 +1734,16 @@ Runtime code is deleted here and the commit is **not gated on its own**: every d
 
 **Files:** `ps2xRuntime/src/lib/gs/gs_gl_backend.cpp`, `ps2xRuntime/src/lib/Kernel/Stubs/MPEG.cpp`, `ps2xRuntime/src/lib/ps2_memory.cpp`, `ps2xRuntime/src/lib/vu/ps2_vu1_core.cpp`, `ps2xShared/include/ps2x/knobs.h`, `README.md`, `docs/KNOBS.md`
 
-- [ ] **Step 1: RED.** Delete the five rows from `knobs.h` (`PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_GS_PROBE`, `PS2X_GS_TEX_FROM_CPU`, `PS2X_MPEG_PIC_TRACE`, `PS2X_TIMER_TRACE`). `python -m unittest tools_py.tests.test_knobs_registry` fails with five `… is read at … and has no row in knobs.h` and `docs/KNOBS.md is stale`. That is the RED: the registry now says they are gone and the source disagrees.
-- [ ] **Step 2: GREEN — the deletions**, each found by its text:
+- [x] **Step 1: RED.** Delete the five rows from `knobs.h` (`PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_GS_PROBE`, `PS2X_GS_TEX_FROM_CPU`, `PS2X_MPEG_PIC_TRACE`, `PS2X_TIMER_TRACE`). `python -m unittest tools_py.tests.test_knobs_registry` fails with five `… is read at … and has no row in knobs.h` and `docs/KNOBS.md is stale`. That is the RED: the registry now says they are gone and the source disagrees. *[done]*
+- [x] **Step 2: GREEN — the deletions**, each found by its text: *[done; the second MPEG block was not identical to the first (s_calls, the queue depth) and went too; README had already lost both ghosts]*
   - `gs_gl_backend.cpp`, **`PS2X_GS_TEX_FROM_CPU`**: delete the two comment lines starting `// Experiment: PS2X_GS_TEX_FROM_CPU=1 decodes from` and the four lines `static const bool s_fromCpu = …;`, `static std::vector<uint8_t> s_cpuCopy;`, `if (s_fromCpu)`, `m_cpu->SnapshotVram(s_cpuCopy);`; the next line becomes `uint8_t *vram = m_shadowMemory.data();`. `grep -an "s_fromCpu\|s_cpuCopy"` prints nothing afterwards. `GSCpuBackend::SnapshotVram` stays (the display dump uses it).
   - `gs_gl_backend.cpp`, **`PS2X_GS_PROBE`**: delete the whole brace block that follows `glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(m_vertices.size()));` — from its `{` and the comment `// PS2X_GS_PROBE=<frame>: for 400 frames from there …` through the matching `}` that closes after the `[gs-gl probe]` `fprintf`. The next statement is `if (debugThis && m_vertices.size() >= 6)`.
   - `gs_gl_backend.cpp`, **`PS2X_GS_GL_DEBUG_NODEPTH`**: delete the three lines `static const bool s_noDepth = …;`, `if (s_noDepth)`, `glDisable(GL_DEPTH_TEST);`.
   - `MPEG.cpp`, **`PS2X_MPEG_PIC_TRACE`**: in **both** blocks (they are identical; `grep -an s_picTrace` finds 4 lines) delete the inner brace block `{ static const bool s_picTrace = …; static uint64_t s_frames = 0; ++s_frames; if (s_picTrace && …) std::fprintf(…); }` whole. Check `s_frames` has no other use in either function before deleting it (`grep -an "s_frames"` shows only those blocks).
   - `ps2_memory.cpp`, **`PS2X_TIMER_TRACE`**: under `case kEeTimerCountOffset:` delete the comment `// PS2X_TIMER_TRACE=1: once a second …`, the `static const bool s_trace = …;` line and the whole `if (s_trace && timerIndex == 0u) { … }` block with the statics it declares. The read of the counter that follows is untouched.
   - **The ghosts.** `ps2_vu1_core.cpp`: the comment line `// PS2X_VU1_XGKICK_IMMEDIATE=1: copy the whole packet at kick time (what most emulators do)` names a knob that does not exist; reword it to `// The default: copy the whole packet at kick time (what most emulators do).` `gs_gl_backend.cpp`: in the comment `// Counted with PS2X_GS_COUNT_MB over a title_menu.txt run`, replace `with PS2X_GS_COUNT_MB` by `with a temporary counter`. `README.md:89`: delete `` `PS2X_VU1_XGKICK_IMMEDIATE`, `` and, on the line above, `` , `PS2X_GS_TEX_FROM_CPU` `` (Task 9 replaces the whole paragraph; this keeps the tree true in between).
-- [ ] **Step 3:** `python -m tools_py.knobs write`; `test_knobs_registry` passes; change the `Knobs` suite's `kTableSize >= 130u` comment to say 129 shipped names; `./build.sh test` exit 0.
-- [ ] **Step 4: Commit (local).**
+- [x] **Step 3:** `python -m tools_py.knobs write`; `test_knobs_registry` passes; change the `Knobs` suite's `kTableSize >= 130u` comment to say 129 shipped names; `./build.sh test` exit 0. *[done; 149 rows]*
+- [x] **Step 4: Commit (local).** *[committed on agent/knobs]*
 
 ```bash
 git commit -m "refactor(runtime): five dead knobs deleted with the code they guarded (GS_TEX_FROM_CPU retired in STATUS, GS_PROBE and GS_GL_DEBUG_NODEPTH one-off probes, MPEG_PIC_TRACE and TIMER_TRACE never documented); two names that were only prose removed (Sprint 9 Goal 3 Task 6)
@@ -1766,7 +1766,7 @@ The one task that changes behaviour, and the one that can break the harness. Fiv
 
 **Steps:**
 
-- [ ] **Step 1: RED (C++).** Append four cases. In `knobs_tests.cpp`, inside the `Knobs` case:
+- [x] **Step 1: RED (C++).** *Result (2026-09-21, `agent/flip`): as written. Compile RED (`logs/flip_red1.log`): `launcher_tests.cpp:619: too many arguments to function call, expected 2, have 3`, `:629: no member named 'isKnobKey' in namespace 'launcher'`, `diagnostics_tests.cpp:233: no member named 'knobsLine' in namespace 'launcher::diagnostics'`. With Steps 5-6 in and Steps 3-4 not (`logs/flip_red2.log`): Knobs 11/13 -- `enforcement is on by default` failed on `Sprint 9 Goal 3 Task 7`, the Flag case failed on all eight names and on `the pad is on unless someone turns it off (R160)`; Launcher and Diagnostics green.* Append four cases. In `knobs_tests.cpp`, inside the `Knobs` case:
 
 ```cpp
         tc.Run("enforcement is on by default: a process that says nothing is a stranger's", [](TestCase &t)
@@ -1829,7 +1829,7 @@ The one task that changes behaviour, and the one that can break the harness. Fiv
 
   (`diag` is that file's existing alias for the diagnostics namespace; use whatever name the file already uses.) Expected RED: `no member named 'isKnobKey' in namespace 'launcher'`, `no matching function for call to 'mergeEnvironment'`, `no member named 'knobsLine'`; after those compile, `enforcement is on by default` fails and the eight-Flag case fails on all eight.
 
-- [ ] **Step 2: RED (Python).** Create `tools_py/tests/test_knobs_line.py`:
+- [x] **Step 2: RED (Python).** *Result: the file as written. Its RED could not be watched in the worktree: the four cases are `skipUnless(os.path.isfile(EXE))` and `agent/flip` has no `dist/socom2.exe` (the `--no-runner` tree); they ran as `skipped` in both suite runs. The controller's `./build.sh test` in the main tree after `logs/s9_g3_build.sh` is where they first run for real (Step 7).* Create `tools_py/tests/test_knobs_line.py`:
 
 ```python
 """Sprint 9 Goal 3: what a stranger's environment can do to the runner -- nothing -- and how the log says so.
@@ -1899,8 +1899,8 @@ if __name__ == "__main__":
 
   A bare run with no `config.json` applies `environmentFor(Config{})`, so every line also lists the launcher's own non-default values (`PS2X_WINDOW_SIZE=1280x896`, `PS2X_PAD_CROUCH_SHORTCUT=l3`, `PS2X_MC_DIR=player`, `PS2X_SOCOM2_SERVER=…`) — the assertions above are all `assertIn`/`assertNotIn` for that reason. Expected RED against the Task 5 runner: the first case fails with `'[knobs] dev=1 set: … PS2X_GS_BACKEND=cpu …'` (enforcement is off, everyone is a developer).
 
-- [ ] **Step 3: GREEN — enforcement.** `knobs.cpp`: `std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on` becomes `std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)`. In `knobs.h` the comment above `enforcement()` becomes `// On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.`
-- [ ] **Step 4: GREEN — the eight switches (R160, R161).** In `knobs.h` change `Presence` to `Flag` and the default to `"0"` on seven rows, and `PS2X_SOCOM2_PAD` to `X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.")`. The eight sites:
+- [x] **Step 3: GREEN — enforcement.** *Result: as written; the accessor comment in `knobs.h` reworded to describe on as the state.* `knobs.cpp`: `std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on` becomes `std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)`. In `knobs.h` the comment above `enforcement()` becomes `// On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.`
+- [x] **Step 4: GREEN — the eight switches (R160, R161).** *Result: as written -- the eight rows, the nine sites (`PS2X_VU1_XGKICK_CYCLE_EXACT` has two), the pad's comment, the test binary's comment; `python -m tools_py.knobs check` exit 0 (`accessor_mismatches` empty: every Flag row is read with `knobOn`).* In `knobs.h` change `Presence` to `Flag` and the default to `"0"` on seven rows, and `PS2X_SOCOM2_PAD` to `X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.")`. The eight sites:
 
 | Site (by its text) | Becomes |
 |---|---|
@@ -1915,7 +1915,7 @@ if __name__ == "__main__":
 
   `ps2xTest/src/main.cpp:66-72`'s comment about `PS2X_VU1_XGKICK_CYCLE_EXACT` ("presence-tested … setting it to 0 does NOT turn it back off") is now false: replace those seven lines with `//   PS2X_VU1_XGKICK_CYCLE_EXACT: XGKICK copies the whole packet at kick time by default; the PATH1 test asserts the per-cycle model. A Flag since Sprint 9 Goal 3: 0 in the environment selects the immediate copy for an A/B.` `test_knobs_registry`'s `accessor_mismatches` is what fails if a site and its row disagree.
 
-- [ ] **Step 5: GREEN — the launcher's filter (R156).** `launcher_config.h`, replacing the `mergeEnvironment` declaration:
+- [x] **Step 5: GREEN — the launcher's filter (R156).** *Result: as written in both glues; `posix_glue.cpp` compiles only on Linux and is unproven here (Task 8 Step 1, CI).* `launcher_config.h`, replacing the `mergeEnvironment` declaration:
 
 ```cpp
     // Sprint 9 Goal 3 (R156): is this environment key one of ours? "PS2X_" as a prefix, either case (Windows
@@ -1953,7 +1953,7 @@ if __name__ == "__main__":
 
   give `mergeEnvironment` its third parameter, and change `if (!overridden)` to `if (!overridden && (keepInheritedKnobs || !isKnobKey(key)))`. `posix_glue.cpp:241`: `launcher::mergeEnvironment(environ, launcher::environmentFor(config), ps2x::knobs::devMode())` with `#include "ps2x/knobs.h"`. `win32_glue.cpp`: `#include "ps2x/knobs.h"`; before the `GetEnvironmentStringsW` loop `const bool keepInheritedKnobs = ps2x::knobs::devMode();   // R156`; and `if (!overridden && !key.empty() && key[0] != '=')` becomes `if (!overridden && !key.empty() && key[0] != '=' && (keepInheritedKnobs || !launcher::isKnobKey(key)))`. When the launcher *is* in developer mode `PS2X_DEV=1` is itself inherited, so the game is too.
 
-- [ ] **Step 6: GREEN — the diagnostics line.** `diagnostics.h`, after `crashRecord`: `std::string knobsLine(const std::string &logText);   // the game's [knobs] line(s), or a sentence saying there is none`. `diagnostics.cpp`, after `crashRecord`:
+- [x] **Step 6: GREEN — the diagnostics line.** *Result: as written, plus R208 below: the line the zip now carries printed `PS2X_SOCOM2_LOGIN_PASS=<password>` (Goal 9 landed after this plan), so `describe()` writes that value as `[redacted]` at the source. GREEN (`logs/flip_green3.log`): `./build.sh test --no-runner` Python `Ran 1658 tests ... OK (skipped=100)`, C++ `Total Tests: 747 Passed: 747 Failed: 0`, the nine `vu1_replay` verifies PASS.* `diagnostics.h`, after `crashRecord`: `std::string knobsLine(const std::string &logText);   // the game's [knobs] line(s), or a sentence saying there is none`. `diagnostics.cpp`, after `crashRecord`:
 
 ```cpp
     std::string knobsLine(const std::string &logText)
@@ -2014,12 +2014,12 @@ git push
 
 | Measurement | Value | Artefact |
 |---|---|---|
-| `P` / `B` before Task 1 | | ledger |
-| Names in the registry after Task 1 / after Task 6 | 143 / 138 (17 Shipping, 112 Dev, 8 Test, 1 Switch) | `docs/KNOBS.md` |
+| `P` / `B` before Task 1 | 1622 / 722 in the worktree (1624 / 722 the main tree's last count) | the execution ledger |
+| Names in the registry after Task 1 / after Task 6 | **154 / 149** (18 Shipping, 122 Dev, 8 Test, 1 Switch after Task 6; the plan's 143 / 138 counted 134 shipped names at `8e5d778`, the tree at `a3aa99a` reads 145) | `docs/KNOBS.md` |
 | `s9_g3_batches_gate` | | `logs/parity/gate/s9_g3_batches_gate/summary.txt` |
 | The gate's own knobs, per stage (the `[knobs]` lines) | | ledger |
-| `s9_g3_gating_gate` | | |
-| Poisoned launch: exit / ignored list / GL initialised / sampler rows / crash lines | | `logs/s9_g3_poisoned_env.log` |
+| `s9_g3_gating_gate` | (the controller's; Steps 1-6 landed in `869356e` on `agent/flip`, 1658 / 747 green `--no-runner`) | |
+| Poisoned launch: exit / ignored list / GL initialised / sampler rows / crash lines | (the controller's; the five expected answers are in the Task 7 ledger) | `logs/s9_g3_poisoned_env.log` |
 | `s9_g3_control` | | |
 | Linux: C++ suite, Python suite, `test_knobs_line` on `dist-linux/socom2` | | VM |
 | Bisect gates spent | | |
@@ -2052,6 +2052,186 @@ Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>" -- \
   docs/superpowers/plans/2026-09-20-sprint-9-goal-3-knob-retirement.md
 git push
 ```
+
+---
+
+## Execution ledger (Sprint 10 Q2, the Opus agent on `agent/knobs`, worktree `C:\projects\wt-knobs`, started 2026-09-21)
+
+The plan's Handoff note 1 said the ledger lives at `.superpowers/sdd/...`; nothing there is tracked (HANDOFF trap 11),
+so the ledger is this section. Tasks 1, 2, 3, 4 (A1-H) and 6 are the agent's; Tasks 5, 7, 8, 9 are the controller's
+and are not started here. The controller merges `agent/knobs` into `sprint-10` in the main tree; nothing was pushed.
+
+### The inventory, reconciled to the tree (Task 2 Step 3)
+
+The plan was written against `8e5d778`; the branch point of this work is `a3aa99a` (sprint-10). `grep -rhoaE
+'"PS2X_[A-Z0-9_]+' ps2xRuntime/{src,include} ps2xIOP ps2xShared ps2xLauncher` finds **145** names read by the shipped
+executables, the plan's 134 plus eleven, none removed:
+
+| New name | Read at | Verdict / Kind / Default | Where it came from |
+|---|---|---|---|
+| `PS2X_AUDIO_INSTRUMENT` | `ps2_audio.cpp:492S` `snd989_mixer.cpp:2003S` | DEV, Presence | research/36 item 9 (music round four) |
+| `PS2X_CD_STREAM_TRACE` | `CD.cpp:51S` `MPEG.cpp:3188S` `MPEG.cpp:3204S` | DEV, Presence | the movie feeder / MPEG gate work |
+| `PS2X_INPUT_MAPPING` | `socom2_host_input.cpp:232C` (`resolveMapping`, once) | **SHIPPING**, Spec | Sprint 10 Goal 8 (R174): `environmentFor` sends it when the profile's mapping is not the default. **The Shipping class is 18, not 17**; the "Shipping class is exactly what the launcher can send" case sets a custom mapping so the name is emitted, and asserts 18. |
+| `PS2X_LAUNCHER_API_BASE` | `bug_report.h:32` (the literal), read at `ps2xLauncher/src/main.cpp:275` as `std::getenv(br::kApiBaseEnv)` | DEV, Text, `https://s2u.scotho.com` | Sprint 9 Goal 8, exactly as Handoff note 2 foresaw. Batch F migrates the read; `tools_py/tests/test_launcher_bug_report.py` gets `PS2X_DEV=1` in the launcher's environment in the same commit, because a test seam is a Dev knob and the launcher process reads `PS2X_DEV` (R156) -- harmless before the flip, required after it. |
+| `PS2X_SCHED_TRACE` | `SchedTrace.cpp:122S` (through its own `envOn`) | DEV, Flag, `0` | `a384dfb`, research/36 item 16 |
+| `PS2X_SCHED_TRACE_MAX_LINES_PER_S` | `EeScheduler.cpp:2495S` | DEV, Int, `4000` | same |
+| `PS2X_SCHED_TRACE_SAMPLE_MS` | `SchedTrace.cpp:134S` (`envMsToNs`) | DEV, Float, `20` | same |
+| `PS2X_SCHED_TRACE_STUBS` | `SchedTrace.cpp:207S` `SchedTrace.cpp:282C` | DEV, Spec | same |
+| `PS2X_SCHED_TRACE_STUB_MS` | `SchedTrace.cpp:128S` (`envMsToNs`) | DEV, Float, `1` | same |
+| `PS2X_SCHED_TRACE_TOML` | `SchedTrace.cpp:251C` (once, at install) | DEV, Path, `recomp/socom2.toml` | same |
+| `PS2X_SOCOM2_MUSIC_TRACE` | `game_overrides_socom2.cpp:1408C` (`installMusicTrace`, once) | DEV, Presence | music round four |
+
+Two more helpers that take the name as a parameter, beyond the plan's seven: `SchedTrace.cpp`'s `envOn(name)` and
+`envMsToNs(name, defaultMs)` (batch D, rule 2). `Kernel/SchedTrace.cpp` is a new file with three literal reads and
+joins `RAW_GETENV_PENDING` (batch D). The registry after Task 1 therefore holds **154** rows (18 Shipping, 127 Dev,
+8 Test, 1 Switch), not the plan's 143; after Task 6, 149.
+
+Not in the tree: `PS2X_SOCOM2_LOGIN_NAME` / `PS2X_SOCOM2_LOGIN_PASS` (the brief said they might exist -- the Goal 9
+agent is running beside this one; the only occurrences are a planted control string in `tools_py/release/leakcheck.py:437`
+and a scrub test in `diagnostics_tests.cpp:117`, neither a read). `harness_names` finds the leakcheck string and it is
+in `NOT_KNOBS` with its reason. The Goal 9 merge will add real names; the registry test will fail the day it does, which
+is the test doing its job (the same shape as Handoff note 2).
+
+Per-file raw-`getenv` line counts moved too (`gs_gl_backend.cpp` 46 lines, `game_overrides_socom2.cpp` 36,
+`ps2_vu1_core.cpp` 15, `host_mic.cpp` 4 -- the plan's call counts were per call, not per line, and three files gained or
+lost reads since `8e5d778`); the batches are defined by file, so nothing in the batch table changes except the additions
+named above.
+
+**The gate's env pin (Q1b, after the plan was written).** `pins.env_pin` hashes `gate.launch_env(...)`: `os.environ`
+plus the gate's own three knobs (`PS2X_HOST_GAMEPAD`, `PS2X_PC_SAMPLER`, `PS2X_PEEK`). Task 3 puts `PS2X_DEV` where
+the plan says -- `run.sh`, `drive.py`'s launch (`hostplatform.dev_env`), `scale_shot.child_env`, `env.sh` -- all of
+which sit *below* the pin, beside `PS2X_SOCOM2_PAD=1` and `PS2X_HOST_SCREENSHOT_LATEST`, which the pin does not see
+either. So the pin's three lines are byte-identical after Task 3 and a gate started from a clean shell is not refused;
+`PS2X_DEV=1` appears on the game's own `[knobs]` line (Task 5 Step 4 expects it). Proposed ruling R203 below says so.
+
+### Baselines and counts
+
+| | Python (`Ran N tests`) | C++ (`Total Tests:`) |
+|---|---|---|
+| `P` / `B` before Task 1, in the worktree (the suite at `a3aa99a` with this branch's 15 new Python cases subtracted; the main tree's last count was 1624/722) | 1622 | 722 |
+| Tasks 1-3 (`d76ec8d`, `1f94bae`, `0b20c21`) | 1637 OK | 732/732 (the Knobs suite alone 10/10) |
+| R207 (`d8a80e6`) | 1637 OK | 733/733 |
+| A1 `58d7979`, A2 `b8d90e5`, B `096686f`, C `f6e5f15`, D `a9bd6f7`, E `785ac50`, F `9cf25cc` | 1637 OK each | 733/733 each |
+| H, first try (the plan's placement in `ps2_runtime.cpp`) | 1637 OK | **red**: `vu1_replay` failed to link (`ps2_stubs::socom2HostInputShutdown`, `ps2HostProfStart`, `g_ps2RecompiledFunctionTable`...): the inline `ps2_fpu_trap_enabled()` is reached from the VU code, so its callee's object is pulled into every executable that links `ps2_runtime`, and `ps2_runtime.cpp.obj` drags the whole `PS2Runtime` behind it |
+| H, second try (`4b0d6f2`: the definition in its own unit `src/lib/ps2_fpu_trap.cpp`) | 1637 OK | 733/733 |
+| Task 6 (`a6fdca4`) | 1637 OK | 733/733 |
+
+Every suite above is `./build.sh test --no-runner` (the Python suite, `ps2x_tests`, the nine `vu1_replay` verify runs), run
+under the machine-wide lock by one chain script (`logs/knobs_chain.sh`, `knobs_chain2.sh`, git-ignored) that applied
+each state, ran the suite, and committed only a green state with its explicit pathspec; thirteen suite runs in all,
+one red. The RED of Task 1 was watched by the same chain (the header moved aside: `fatal error: 'ps2x/knobs.h' file
+not found` from `knobs_tests.cpp`, `ps2xTest/src/main.cpp` and `knobs.cpp`), the RED of Task 6 by
+`test_knobs_registry` (five `... has no row in knobs.h` and `docs/KNOBS.md is stale`, `logs/task6_red.txt`). Rule 7's
+`grep -c "Unity/unity_"` is vacuous in the `--no-runner` tree, which has no generated unit at all; the controller's
+full build is where batch H's cost is paid (R165).
+
+Registry counts: 154 rows after Task 1 (18 Shipping, 127 Dev, 8 Test, 1 Switch); **149 after Task 6 (18 Shipping,
+122 Dev, 8 Test, 1 Switch)**. `RAW_GETENV_PENDING` is the empty set; `raw_getenv_sites`, `helper_getenv_sites` and
+`early_reads` all return `[]`; the only `getenv` calls left in the shipped trees are `knobs.cpp` (the accessor and
+`PS2X_DEV`), `bare_run.cpp` (`config.json`'s keys), `USERPROFILE`/`HOME` in the launcher and `PATH` in `posix_glue.cpp`.
+
+**What the controller inherits (Tasks 5, 7, 8, 9 untouched):**
+- `4b0d6f2` changed `ps2_runtime_macros.h`: the next `./build.sh runtime` with generated code recompiles every unity
+  unit (R165). Nothing else in these thirteen commits touches a generated unit's inputs.
+- The gate's env pin needs no `--accept-pins` for these commits (R203): the pinned lines are unchanged; `PS2X_DEV=1`
+  appears on the game's `[knobs]` line, where Task 5 Step 4 expects it.
+- Task 7's poisoned launch script sets `PS2X_MC_DIR` to a folder under the repository root and starts the runner
+  from there, so R207 honours it; a card folder outside the game folder would now read as
+  `| refused, outside the game folder: PS2X_MC_DIR`.
+- `tools_py/tests/test_launcher_bug_report.py` already runs the launcher with `PS2X_DEV=1` (R205), so it stays green
+  after the flip.
+- Batch E made `ps2_iop` link `ps2x_shared`; the Linux build (CI, the VM) has not been run on this branch -- Task 8.
+- Every commit carries the trailer this session was given (`Claude Opus 5 (1M context)`, HANDOFF �5 rule 3), not the
+  `Fable 5.1` one the Global Constraints name; the branch was not pushed (the push rule R157 is the controller's).
+
+### Task 7, Steps 1-6 (the Opus agent on `agent/flip`, worktree `C:\projects\wt-flip`, 2026-09-21)
+
+Branch `agent/flip` off `sprint-10` at `8d6e5c3`; one code commit, `869356e`, with the plan's Step 11 pathspec; this
+plan and `docs/KNOBS.md` the only docs touched; nothing pushed. The worktree was built `--no-runner` from scratch
+(`./build.sh runtime --no-runner`, then `./build.sh test --no-runner`, every build and suite under the machine-wide
+lock as `flip-agent`); it has no `dist/socom2.exe`, so nothing here launched the game and Steps 7-10 are untouched.
+
+| What | Result |
+|---|---|
+| Step 1 RED, compile (`logs/flip_red1.log` in the worktree) | `launcher_tests.cpp:619: too many arguments to function call, expected 2, have 3`; `:629: no member named 'isKnobKey' in namespace 'launcher'`; `diagnostics_tests.cpp:233: no member named 'knobsLine' in namespace 'launcher::diagnostics'` |
+| Step 1 RED, run time (Steps 5-6 in, 3-4 not; `flip_red2.log`) | Knobs 11/13: `enforcement is on by default` failed on `Sprint 9 Goal 3 Task 7`; the Flag case on all eight names and `the pad is on unless someone turns it off (R160)`. Launcher and Diagnostics green, the two new cases among them |
+| Step 2 RED | not watched: `test_knobs_line`'s four cases skip without `dist/socom2.exe`; they first run in the controller's `./build.sh test` (below) |
+| R208 RED (`flip_red3.log`) | the describe case failed on `the password is never written` and `the password redacted for a developer too` |
+| GREEN (`flip_green3.log`) | `./build.sh test --no-runner`: Python `Ran 1658 tests` `OK (skipped=100)`; C++ `Total Tests: 747 Passed: 747 Failed: 0` (743 before Task 7); the nine `vu1_replay` verifies PASS; `python -m tools_py.knobs check` exit 0 |
+
+**The eight switches** (rows to `Flag`, default `0`, sites to `knobOn`): `PS2X_GIF_PRIORITY_SORT`
+(`ps2_gif_arbiter.cpp`), `PS2X_GS_NO_DIRTY_REFRESH`, `PS2X_GS_NO_TEX_REVALIDATE`, `PS2X_GS_NO_ZTEST`
+(`gs_gl_backend.cpp`, three sites), `PS2X_VIF1_NO_IRQ_STALL` (`ps2_vif1_interpreter.cpp`), `PS2X_VU1_FMAC_CHECK`
+(`ps2_vu1_upper.cpp`), `PS2X_VU1_XGKICK_CYCLE_EXACT` (`ps2_vu1_core.cpp` and `socom2_dispatch_0x1b50.cpp`, both
+`!knobOn`); and `PS2X_SOCOM2_PAD` to a Shipping `Flag` with default `1`, read `knobOn("PS2X_SOCOM2_PAD", true)`.
+
+**Tests that codified the old behaviour, rewritten:** none had to be. The Knobs suite's "enforcement off" case
+sets `setEnforcement(false)` itself (it now proves what off meant, as Step 3's comment says); the existing
+`mergeEnvironment` case keeps the two-argument overload; `bare_run_tests`' "the pad, always" still holds
+(`environmentFor` still sends `1`); `ps2xTest/src/main.cpp`'s seven-line comment about the XGKICK presence trap
+was prose, not an assertion, and is replaced as Step 4 says. **Extended:** the Knobs `describe` case gains the
+password pair (R208) and both of its expected lines carry `PS2X_SOCOM2_LOGIN_PASS=[redacted]`. **Added:** the
+four cases of Step 1, the four of Step 2.
+
+**Design fit against what landed after the plan.** Goal 8's `PS2X_INPUT_MAPPING` and Goal 9's two login knobs are
+Shipping and travel in `ours`, which the R156 filter never touches; the login *password* on the `[knobs]` line
+is the one thing that did not fit -- R208 below. Q1b's pins: `env_pin` hashes the operator's environment plus
+the gate's three knobs and `harness_pin` hashes `tools_py/parity` and `scripts/parity`; this commit touches
+neither (`test_knobs_line.py` is under `tools_py/tests/`), so the gating gate needs no `--accept-pins`.
+`knobs.h` reaches no generated unit (`ps2_runtime_macros.h` does not include it), so the controller's runtime
+build is the library and the runner, not R165's rebuild: the unity count below must print 0.
+
+**The controller's launches (Steps 7-10), in the main tree after merging `agent/flip`; each with what it must
+show.**
+
+```bash
+# Step 7 -- the cheap proofs
+python -m tools_py.knobs check                                                   # exit 0, prints nothing
+cmake --build third_party/ps2recomp/build-clang --target ps2EntryRunner -- -n | grep -c "Unity/unity_"   # 0
+scripts/run_detached.sh --owner build --purpose build logs/s9_g3_build.sh logs/s9_g3_build.marker
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "Task 7 suite" -- ./build.sh test
+#   must show: Python OK with tools_py.tests.test_knobs_line's four cases "ok" (not "skipped");
+#   C++ Passed == Total, Failed: 0 (747 in the --no-runner tree; the runner tree's count may differ).
+PS2X_PEEK=0x100:4 ./run.sh 3 >/dev/null; grep -h "^\[knobs\]" logs/latest.log
+#   must show: [knobs] dev=1 set: ... PS2X_DEV=1 ... PS2X_PEEK=0x100:4 ...  -- no "ignored", no "refused"
+
+# Step 8 -- the gate (logs/s9_g3_gating_gate.sh is the command set's gate script with the stamp changed:
+#   unset every PS2X_*, then python -m tools_py.parity.gate --stamp s9_g3_gating_gate --owner gate)
+scripts/run_detached.sh --owner gate --purpose launch logs/s9_g3_gating_gate.sh logs/s9_g3_gating_gate.marker
+cat logs/parity/gate/s9_g3_gating_gate/summary.txt                              # PASS 3/3
+grep -h "^\[knobs\]" logs/parity/gate/s9_g3_gating_gate/*.game.log
+#   must show three lines, each: [knobs] dev=1 set: PS2X_CD_IMAGE="SOCOM II - U.S. Navy SEALs (USA).iso" PS2X_DEV=1
+#   PS2X_HOST_GAMEPAD=0 PS2X_HOST_SCREENSHOT_LATEST=latest_frame.png PS2X_MC_DIR=mc0 [mission only: PS2X_PC_SAMPLER=1
+#   PS2X_PEEK=0x416054:3,...] -- the Task 5 lines minus PS2X_SOCOM2_PAD=1 (now the default, so not news);
+#   no "| ignored without --dev" and no "| refused" anywhere (an "ignored" clause is a harness launch outside
+#   developer mode, the failure this task exists to catch).
+
+# Step 9 -- the poisoned launch (R163 a): logs/s9_g3_poisoned_env.sh exactly as Task 7 Step 9 writes it, with ONE
+#   change: CARD="logs/s9_g3_poisoned_card" (relative). $PWD there is /c/projects/socom_pc, an MSYS path; a
+#   relative card is under the game folder however the shell hands it on, so R207 honours it either way.
+scripts/run_detached.sh --owner gate --purpose launch logs/s9_g3_poisoned_env.sh logs/s9_g3_poisoned_env.marker
+cat logs/s9_g3_poisoned_env.done                                                 # done 124 (alive at the timeout)
+grep -h "^\[knobs\]" logs/s9_g3_poisoned_env.log
+#   must show exactly: [knobs] dev=0 set: PS2X_CD_IMAGE="SOCOM II - U.S. Navy SEALs (USA).iso" PS2X_MC_DIR=s9_g3_poisoned_card
+#   | ignored without --dev: PS2X_EE_ROUND PS2X_GS_BACKEND PS2X_GS_NO_ZTEST PS2X_PC_SAMPLER PS2X_PEEK PS2X_VU1_XGKICK_CYCLE_EXACT
+grep -c "^\[gs-gl\] initialised" logs/s9_g3_poisoned_env.log                     # 1 (GL, not the CPU backend asked for)
+grep -c "^\[pc-sampler\]\|^\[peek\]" logs/s9_g3_poisoned_env.log                 # 0
+grep -c "^\[crash\]\|^\[terminate\]" logs/s9_g3_poisoned_env.log                 # 0
+
+# Step 10 -- the online control round (R166), away window, our server only, under the lock
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "s9_g3_control" -- \
+    bash scripts/parity/online_control_round.sh "foxhunt" logs/parity/s9_g3_control
+#   must show: the round's usual CONTROL-ROUND verdict (done 0 in logs/s9_g3_control.done), and in both
+#   instances' game logs a [knobs] dev=1 line with PS2X_SOCOM2_INPUT_FILE, PS2X_WINDOW_TITLE, PS2X_PEEK and
+#   PS2X_CALL_TRACE under set:, instance B also PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own
+#   PS2X_MC_DIR; no "ignored" clause on either. (PS2X_SOCOM2_RSA_KEY="" on A is key A either way, R162.)
+```
+
+**Unverified, plainly:** `test_knobs_line` against a real runner; `posix_glue.cpp` (Linux only: CI, Task 8);
+every launch above. **One thing for the controller to know:** every game log written between the Goal 9 merge
+and this flip has the player's password in clear on its `[knobs]` line when the ONLINE fields were filled; the
+zip's scrubber redacts it only from six characters up. R208 stops new logs; the old ones under `logs/` are on the
+owner's own machine.
 
 ---
 
@@ -2092,6 +2272,58 @@ R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the
 - **R167** (Task 8): **Linux is proven by CI, the VM's C++ and Python suites and `test_knobs_line` on the Linux runner; the VM's title stage is read for its log, not its score.** R107 and R148 already record that the VM's gate cannot discriminate at 1.6 fps. *Cost if wrong:* a Linux-only break in `drive.py`'s direct launch — which Step 3 exists to catch when the VM is free.
 
 - **R168** (Task 2): **the namespace-scope-read check is a heuristic on this tree's naming (`g_` globals, column-0 `static`), not a parser.** It catches all four reads that exist today and the shapes a fifth would most likely take. *Cost if wrong:* an early read written some other way is honoured under `PS2X_DEV=1` and ignored under `--dev` — a confusing afternoon for a developer, never a stranger's problem.
+
+### Proposed rulings from the Q2 agent (2026-09-21; the controller numbers them -- next free is R203)
+
+- **R203 (Task 3, the env pin).** **`PS2X_DEV` enters the harness below the gate's env pin, and the pin is
+  not widened for it.** Q1b's `pins.env_pin` hashes `gate.launch_env` -- the operator's environment plus the gate's
+  own three knobs -- and never saw `drive.py`'s `PS2X_SOCOM2_PAD=1` or `PS2X_HOST_SCREENSHOT_LATEST` either. Task 3
+  puts `PS2X_DEV=1` beside those (in `run.sh`, `hostplatform.dev_env` in `drive.py`, `scale_shot.child_env`,
+  `env.sh`), so the pinned lines are byte-identical and the controller's Task 5 gate is accepted without
+  `--accept-pins`; the game's `[knobs]` line is where `PS2X_DEV` is read back (Task 5 Step 4). *Why not widen the
+  pin to the launched environment:* the pin's job is to refuse an operator's stray variable, and `drive.py`'s
+  additions are code, not environment -- a change there is a commit the harness pin records. *Cost if wrong:* the
+  pin does not prove the harness's own additions; a later Q1 pass can hash `drive.launch`'s environment instead.
+
+- **R204 (Task 1, the inventory).** **`PS2X_INPUT_MAPPING` is the eighteenth Shipping name.** It is sent by
+  `environmentFor` when the profile's mapping is not the default (R174), so the "Shipping class is exactly what the
+  launcher can send" case sets a custom mapping before comparing. *Cost if wrong:* none -- the test scans, and 18
+  is what the launcher emits.
+
+- **R205 (batch F).** **`PS2X_LAUNCHER_API_BASE` is a Dev knob read through `ps2x::knob` in the launcher,
+  and the launcher's Python test sets `PS2X_DEV=1` on the launcher it starts.** A test seam is a probe: after the
+  flip a stranger's `PS2X_LAUNCHER_API_BASE` is ignored exactly as a runner probe is. The launcher process reads
+  `PS2X_DEV` for R156's filter anyway, so no new switch is added. *Cost if wrong:* a developer running the launcher
+  by hand against a loopback service needs `PS2X_DEV=1` too -- one variable, and the header's comment says so.
+
+- **R206 (Task 4 D).** **The two helpers `SchedTrace.cpp` grew after the plan (`envOn`, `envMsToNs`) are
+  migrated under rule 2 like the plan's seven, and a check that no non-literal `getenv` remains in the shipped trees
+  outside `knobs.cpp` and `bare_run.cpp` joins `test_knobs_registry` when the last helper migrates (batch F).**
+  Without it the pending-list check proves only the literal reads; a helper that took the name as a parameter
+  could keep a raw `getenv` for ever. *Cost if wrong:* a future helper needs an exemption in `tools_py/knobs.py`
+  with its reason, as `bare_run.cpp`'s `applyEnvironment` (which applies `config.json`'s keys, not knobs) has.
+
+- **R207 (path knobs; the sprint file's addition).** **Every Path-kind knob is constrained to the portable
+  folder, or refused -- but not in this pass.** The registry now says which names are paths (Kind `Path`: 24 rows
+  after Task 6, `PS2X_MC_DIR` and `PS2X_MC_DIR_SLOT1` among them) and after the flip every Dev one of them is
+  ignored for a stranger; the two that a stranger can still reach are `PS2X_MC_DIR` (Shipping, already a name not a
+  path through `normalizeProfile`) and, through `config.json`, nothing else. The `remove_all` on the card root
+  (`KNOWN.md` row 110(c)) is a MemoryCard defect and is not made worse or better here. The constraint itself
+  (resolve under the home, refuse outside it) is one function at the accessor's edge and a test per Path row; it is
+  queued as the first item after the flip, because doing it before the flip changes what a launch with today's
+  environment does (a dump path outside the folder that works today would be refused), which Trap 1 forbids.
+  *Cost if wrong:* a stranger with a Dev path knob set gets nothing (the flip); a developer keeps today's behaviour.
+
+- **R208 (Task 7 Step 6; proposed by the `agent/flip` agent, 2026-09-21; Goal 9 landed after the plan).** **The
+  `[knobs]` line never writes a credential's value: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`, in
+  developer mode too.** The line is the first thing in every log; the log travels in the diagnostics zip and the
+  bug report, and Step 6 copies the line into `versions.txt`; the zip's text scrubber (`diagnostics.cpp`, R179's
+  guard) has a six-character floor that a short password passes under -- the owner's own `PS2X_SOCOM2_LOGIN_PASS=socom`
+  would have reached a report in clear. The fix is at the source (`kNeverPrinted` in `knobs.cpp`, one row, applied by
+  `describe()`), so no later reader of a log needs to know the rule, and the name still appears, so "was a password
+  sent" stays answerable. The login *name* stays printed: it is what the player sees on screen, and Goal 9 keeps it
+  in the zip's config copy. *Cost if wrong:* a developer debugging the prefill cannot read the password off the
+  log -- it is in their own `config.json`. The owner can overturn it.
 
 ## Self-review
 

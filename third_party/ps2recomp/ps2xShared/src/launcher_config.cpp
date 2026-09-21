@@ -1,6 +1,8 @@
 #include "launcher/launcher_config.h"
 #include "ps2x/exit_codes.h"
 
+#include "json_reader.h"
+
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -31,124 +33,7 @@ namespace launcher
             return out;
         }
 
-        struct Parser
-        {
-            const std::string &s;
-            size_t i = 0;
-            explicit Parser(const std::string &text) : s(text) {}
-
-            void ws()
-            {
-                while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-                    ++i;
-            }
-            bool take(char c)
-            {
-                ws();
-                if (i < s.size() && s[i] == c)
-                {
-                    ++i;
-                    return true;
-                }
-                return false;
-            }
-            bool string(std::string &out)
-            {
-                ws();
-                if (i >= s.size() || s[i] != '"')
-                    return false;
-                ++i;
-                out.clear();
-                while (i < s.size())
-                {
-                    const char c = s[i++];
-                    if (c == '"')
-                        return true;
-                    if (c == '\\')
-                    {
-                        if (i >= s.size())
-                            return false;
-                        const char e = s[i++];
-                        switch (e)
-                        {
-                        case '"': out.push_back('"'); break;
-                        case '\\': out.push_back('\\'); break;
-                        case '/': out.push_back('/'); break;
-                        case 'n': out.push_back('\n'); break;
-                        case 'r': out.push_back('\r'); break;
-                        case 't': out.push_back('\t'); break;
-                        case 'b': out.push_back('\b'); break;
-                        case 'f': out.push_back('\f'); break;
-                        case 'u':
-                        {
-                            if (i + 4 > s.size())
-                                return false;
-                            const unsigned code = static_cast<unsigned>(std::strtoul(s.substr(i, 4).c_str(), nullptr, 16));
-                            i += 4;
-                            if (code < 0x80)
-                                out.push_back(static_cast<char>(code));
-                            else
-                                out.push_back('?');   // the config never carries these
-                            break;
-                        }
-                        default: return false;
-                        }
-                    }
-                    else
-                        out.push_back(c);
-                }
-                return false;
-            }
-            // Skips any JSON value (used for unknown keys). Returns false on malformed input.
-            bool skipValue()
-            {
-                ws();
-                if (i >= s.size())
-                    return false;
-                const char c = s[i];
-                if (c == '"')
-                {
-                    std::string tmp;
-                    return string(tmp);
-                }
-                if (c == '{' || c == '[')
-                {
-                    const char close = c == '{' ? '}' : ']';
-                    ++i;
-                    ws();
-                    if (take(close))
-                        return true;
-                    for (;;)
-                    {
-                        if (c == '{')
-                        {
-                            std::string key;
-                            if (!string(key) || !take(':'))
-                                return false;
-                        }
-                        if (!skipValue())
-                            return false;
-                        if (take(','))
-                            continue;
-                        return take(close);
-                    }
-                }
-                // number, true, false, null
-                const size_t start = i;
-                while (i < s.size() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.'))
-                    ++i;
-                return i > start;
-            }
-            bool scalar(std::string &raw)
-            {
-                ws();
-                const size_t start = i;
-                while (i < s.size() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.'))
-                    ++i;
-                raw = s.substr(start, i - start);
-                return !raw.empty();
-            }
-        };
+        using Parser = detail::JsonReader;   // Sprint 10 Goal 8: the reader moved to json_reader.h, shared with mapping.cpp
     }
 
     const ServerPreset *findServerPreset(const std::string &id)
@@ -212,7 +97,25 @@ namespace launcher
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
-        out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + "\n";
+        // Sprint 10 Goal 9, R179: the password is written plain -- this is the player's own file; the
+        // diagnostics zip's copy of it blanks the field (diagnostics::sanitizedConfigJson).
+        out += "  \"loginName\": " + quote(c.loginName) + ",\n";
+        out += "  \"loginPassword\": " + quote(c.loginPassword) + ",\n";
+        out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + ",\n";
+        // Sprint 10 Goal 8 (R174): the input mappings, one block per profile that has one -- a stranger can read
+        // what their pad does, and an older build skips the block as an unknown key. A profile at the defaults
+        // is not written: the file says what was changed, not what was not.
+        out += "  \"mappings\": {";
+        bool first = true;
+        for (const ProfileMapping &pm : c.mappings)
+        {
+            if (mapping::isDefault(pm.mapping) || normalizeProfile(pm.profile) != pm.profile)
+                continue;
+            out += first ? "\n" : ",\n";
+            out += "    " + quote(pm.profile) + ": " + mapping::toJson(pm.mapping, "    ");
+            first = false;
+        }
+        out += first ? "}\n" : "\n  }\n";
         out += "}\n";
         return out;
     }
@@ -257,7 +160,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -284,6 +187,8 @@ namespace launcher
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;
+                    else if (key == "loginName") c.loginName = v;
+                    else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
                 else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
@@ -299,6 +204,42 @@ namespace launcher
                     else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
                     else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
                     else c.secondInstance = raw == "true";
+                }
+                else if (key == "mappings")
+                {
+                    // Sprint 10 Goal 8: {"<profile>": {mapping block}, ...}. Each block's own text goes to its own
+                    // reader. A value that is not JSON is a malformed file like any other; one that is JSON but
+                    // not a mapping is that profile at the defaults, and the rest of the file is kept
+                    // (mapping::fromJson leaves its `out` at the defaults on false). A "mappings" that is not an
+                    // object at all is skipped whole: nobody has a mapping, the file is otherwise read.
+                    if (p.peek() != '{')
+                    {
+                        if (!p.skipValue())
+                            return false;
+                    }
+                    else
+                    {
+                        p.take('{');
+                        if (!p.take('}'))
+                        {
+                            for (;;)
+                            {
+                                std::string profile, block;
+                                if (!p.string(profile) || !p.take(':') || !p.rawValue(block))
+                                    return false;
+                                ProfileMapping pm;
+                                pm.profile = normalizeProfile(profile);
+                                mapping::fromJson(block, pm.mapping);
+                                if (pm.profile == profile && !mapping::isDefault(pm.mapping))
+                                    c.mappings.push_back(pm);
+                                if (p.take(','))
+                                    continue;
+                                if (!p.take('}'))
+                                    return false;
+                                break;
+                            }
+                        }
+                    }
                 }
                 else if (!p.skipValue())
                     return false;
@@ -344,7 +285,23 @@ namespace launcher
     }
 
 
-    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
+    bool isKnobKey(const std::string &key)
+    {
+        static const char kPrefix[] = "PS2X_";
+        if (key.size() < sizeof(kPrefix) - 1)
+            return false;
+        for (size_t i = 0; i + 1 < sizeof(kPrefix); ++i)
+        {
+            char c = key[i];
+            if (c >= 'a' && c <= 'z')
+                c = static_cast<char>(c - 'a' + 'A');
+            if (c != kPrefix[i])
+                return false;
+        }
+        return true;
+    }
+
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours, bool keepInheritedKnobs)
     {
         // Ours, minus anything that is not a KEY=VALUE pair: execve would carry a bare "D" into the child's
         // environ, where nothing can read it back.
@@ -367,12 +324,39 @@ namespace launcher
             for (const std::string &o : mine)
                 if (o.rfind(key + "=", 0) == 0)
                     overridden = true;
-            if (!overridden)
+            // R156: an inherited PS2X_* the launcher did not choose stays behind unless this is a developer's launcher.
+            if (!overridden && (keepInheritedKnobs || !isKnobKey(key)))
                 merged.push_back(s);
         }
         for (const std::string &o : mine)
             merged.push_back(o);
         return merged;
+    }
+
+    mapping::Mapping activeMapping(const Config &c)
+    {
+        const std::string profile = normalizeProfile(c.profile);
+        for (const ProfileMapping &pm : c.mappings)
+            if (pm.profile == profile)
+                return pm.mapping;
+        return mapping::defaults();
+    }
+
+    void setActiveMapping(Config &c, const mapping::Mapping &m)
+    {
+        const std::string profile = normalizeProfile(c.profile);
+        for (size_t i = 0; i < c.mappings.size(); ++i)
+        {
+            if (c.mappings[i].profile != profile)
+                continue;
+            if (mapping::isDefault(m))
+                c.mappings.erase(c.mappings.begin() + static_cast<std::ptrdiff_t>(i));
+            else
+                c.mappings[i].mapping = m;
+            return;
+        }
+        if (!mapping::isDefault(m))
+            c.mappings.push_back(ProfileMapping{profile, m});
     }
 
     std::string normalizeCrouchShortcut(const std::string &value)
@@ -399,6 +383,39 @@ namespace launcher
                 return "player";
         }
         return value.size() > 64 ? value.substr(0, 64) : value;
+    }
+
+    namespace
+    {
+        // Sprint 10 Goal 9: what the game's keyboard can type. Printable ASCII, no space; the double quote only
+        // where the keyboard offers it (the name keyboard's NoDQuote flag refuses it, research/38). Anything
+        // else -- a space, an accent, a control character -- is dropped, not refused whole: a name is not a
+        // path, and what the player sees in the field is exactly what the keyboard will hold.
+        std::string keyboardText(const std::string &value, std::size_t cap, bool allowDoubleQuote)
+        {
+            std::string out;
+            for (const char ch : value)
+            {
+                const unsigned char u = static_cast<unsigned char>(ch);
+                const bool ok = u > 0x20 && u < 0x7F && (allowDoubleQuote || ch != '"');
+                if (!ok)
+                    continue;
+                out.push_back(ch);
+                if (out.size() == cap)
+                    break;
+            }
+            return out;
+        }
+    }
+
+    std::string normalizeLoginName(const std::string &value)
+    {
+        return keyboardText(value, kLoginNameCap, false);
+    }
+
+    std::string normalizeLoginPassword(const std::string &value)
+    {
+        return keyboardText(value, kLoginPasswordCap, true);
     }
 
     const char *crouchShortcutLabel(const std::string &value)
@@ -445,6 +462,15 @@ namespace launcher
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
         const std::string profile = normalizeProfile(c.profile);
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
+        // Sprint 10 Goal 9: only when typed -- unset means the keyboards open empty, as before the option -- and
+        // as the keyboard could have typed it (normalizeLogin*), so the game is never handed a string its
+        // buffer cannot hold.
+        const std::string loginName = normalizeLoginName(c.loginName);
+        if (!loginName.empty())
+            env.push_back("PS2X_SOCOM2_LOGIN_NAME=" + loginName);
+        const std::string loginPassword = normalizeLoginPassword(c.loginPassword);
+        if (!loginPassword.empty())
+            env.push_back("PS2X_SOCOM2_LOGIN_PASS=" + loginPassword);
         // Sprint 7 Task 8: the pad the player picked (only when they picked one -- unset means the runtime's
         // own "first available" rule), and the dead zone, always, so what they tuned is what the game gets.
         if (c.gamepadIndex >= 0)
@@ -456,6 +482,11 @@ namespace launcher
         const std::string crouch = normalizeCrouchShortcut(c.crouchShortcut);
         if (crouch != "off")
             env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + crouch);
+        // Sprint 10 Goal 8 (R174): the profile's input mapping, only when it is not the default -- the default
+        // environment is byte for byte what it was, and the runtime's defaults ARE this table (launcher/mapping.h).
+        const mapping::Mapping active = activeMapping(c);
+        if (!mapping::isDefault(active))
+            env.push_back("PS2X_INPUT_MAPPING=" + mapping::toEnv(active));
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);

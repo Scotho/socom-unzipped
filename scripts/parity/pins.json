@@ -1,0 +1,29 @@
+{
+ "_about": "The gate's standard (Sprint 10 Q1b): sha256 of every input a score is computed against. `python -m tools_py.parity.gate --pins` compares the tree to this file without launching; a launch or a --baseline re-score whose pins do not match is REFUSED (exit 7) unless --accept-pins rewrites this file. A directory pins as the sha256 of its sorted manifest (relative path NUL sha256 newline per file); env as the sorted PS2X_* NAME=value lines the mission stage is launched with, minus PS2X_MC_DIR. harness (tools_py/parity + scripts/parity) is recorded on every summary but never compared: this file cannot name the revision of the tree that holds it. mapping joins once the runtime prints its line and a run is accepted.",
+ "accepted": "2026-09-21 03:52 -- gate --accept-pins, stamp s10_g8_gate",
+ "pins": {
+  "scripts/parity/title_menu.txt": "b67768ae3a223e50dbb3399516f2c85b900207d6f384e5084e282ae9138b7b94",
+  "scripts/parity/ref_main_menu_ours.png": "cc36f23fbc5863cf0b608cf2fe268acd8a33fb46dcb53c99f19233caca3d2a7c",
+  "scripts/parity/transition_probe.txt": "e5fb1ee15c808b642c20688613c9eb9913a0d0402d8fb2528ae9f1ae82873993",
+  "scripts/parity/ref_save_prompt_ours.png": "abbd15aa52abbff36d9865d4049aecdb3c26883fec576e62c51d7894d879df63",
+  "scripts/parity/ref_briefing_ours.png": "e84005c3b24570b73ecaf9bbfe0697ef0464deb712c448c86c8cef4f7b437a1e",
+  "scripts/parity/gameplay_probe.txt": "cf68218e3753ca15d9460fa4008d3ae050a2ebb9d0be13fc6ce743f0494dd1b4",
+  "scripts/parity/ref_hud_ours.png": "086f6636e5793850bf66bfcb33cec8ef0d161a750deec17bec157365c9adbb3e",
+  "scripts/parity/ref_popup_prompt_ours.png": "4542ceb2a69b6437f5f0e686730bb3e4eabca4971f58835412ee8fa91239cff6",
+  "scripts/parity/refs/console_spawn_slot8.png": "6971ee3d5009d0f53e64a3afd28e1a69f467db4b39725430d78775b5ce7993e1",
+  "scripts/parity/refs/mission_failure_banner.png": "e0f03049024c66e9056e599170a63086b838c0c413ab522252a07a95945012a8",
+  "scripts/parity/guest_probe_console.json": "912bf9d7c538574cfc345164a51ace194769c8fbbe87b57e609b4b92fd7a4e27",
+  "card": "682ad80be95e9a13158b331848df376c5620eec92df79baea5626793e92e0052",
+  "env": "9c1c96350d9461f9ac325db26243a74af83ab7723d4325c32526c2d4d98d8f54",
+  "mapping": "c393b87b99732a1f"
+ },
+ "detail": {
+  "card": "game/disc/mc0_parity, 12 files",
+  "env": [
+   "PS2X_HOST_GAMEPAD=0",
+   "PS2X_PC_SAMPLER=1",
+   "PS2X_PEEK=0x416054:3,*0x408c58+0x2e8:1,*0x408c58+0x2e8*:2,*0x408c58+0x1368:1,*0x408c58:64,0x4365c0:1"
+  ],
+  "mapping": "from title.game.log"
+ }
+}

@@ -8,6 +8,7 @@
 
 #include "ps2_log.h"
 #include "ps2_runtime_macros.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <cassert>
@@ -451,12 +452,12 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
     // count crawled and the loading movie took 3x longer than on PCSX2. Real hardware timers
     // are wall-clock; the scheduler's vblank deadlines already are. PS2X_CYCLE_CLOCK=guest
     // restores estimate-driven accounting.
-    static const bool s_guestClock = [] { const char *e = std::getenv("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
+    static const bool s_guestClock = [] { const char *e = ps2x::knob("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
     // The guest clock follows wall time (research/34 section 6: excluding VU1 and the render wait ran an online
     // round at two thirds speed; with wall time both sides read 1.00 s/s and the control round played). PS2X_CLOCK_EXCLUDE=1
     // restores the 2026-09-08 exclusion for an A/B; the cap knob below still
     // bounds a single gap. Read once; setExcludeHostTime overrides it (tests).
-    static const bool s_excludeDefault = [] { const char *e = std::getenv("PS2X_CLOCK_EXCLUDE"); return e && std::atoi(e) != 0; }();
+    static const bool s_excludeDefault = [] { const char *e = ps2x::knob("PS2X_CLOCK_EXCLUDE"); return e && std::atoi(e) != 0; }();
     if (!m_excludePolicyRead)
     {
         m_excludePolicyRead = true;
@@ -498,7 +499,7 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
             if (ns < 0)
                 m_clockTraceLostNs += -ns;
             static const int64_t s_capNs = [] {
-                const char *e = std::getenv("PS2X_CLOCK_CAP_MS");
+                const char *e = ps2x::knob("PS2X_CLOCK_CAP_MS");
                 const double ms = e ? std::atof(e) : 100.0;   // default 100 ms: a stall is not a 300 ms dt (the camera spring diverged on one)
                 return ms > 0.0 ? static_cast<int64_t>(ms * 1000000.0) : 0;
             }();
@@ -516,7 +517,7 @@ void EeScheduler::accountCycles(uint32_t cycles) noexcept
         }
         m_lastAccountHost = now;
         // PS2X_CLOCK_TRACE=1: once a second, the cycle clock vs host time, T0, the next deadline.
-        static const bool s_trace = std::getenv("PS2X_CLOCK_TRACE") != nullptr;
+        static const bool s_trace = ps2x::knob("PS2X_CLOCK_TRACE") != nullptr;
         if (s_trace)
         {
             static auto s_epoch = now;
@@ -1441,7 +1442,7 @@ int EeScheduler::setIrqCauseEnabled(bool dmac, uint32_t cause, bool enabled)
 void EeScheduler::dispatchIrq(bool dmac, uint32_t cause)
 {
     assertExecutor();
-    static const bool s_traceFifo = std::getenv("PS2X_TRACE_FIFO") != nullptr;
+    static const bool s_traceFifo = ps2x::knob("PS2X_TRACE_FIFO") != nullptr;
     if (s_traceFifo) std::fprintf(stderr, "[fifo] dispatchIrq dmac=%d cause=%u\n", (int)dmac, cause);
     const uint32_t mask = dmac ? m_enabledDmacMask : m_enabledIntcMask;
     if (cause < 32u && (mask & (1u << cause)) == 0u)
@@ -2362,7 +2363,7 @@ void EeScheduler::waitForEvent()
     // loop on every idle frame. Sleep for the remaining cycle time as well. (With
     // PS2X_CYCLE_CLOCK=guest the idle wait accounts the remaining cycles itself: keep the host
     // deadline.)
-    static const bool s_guestClock = [] { const char *e = std::getenv("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
+    static const bool s_guestClock = [] { const char *e = ps2x::knob("PS2X_CYCLE_CLOCK"); return e && std::string(e) == "guest"; }();
     auto wakeAt = hostDeadline;
     if (!s_guestClock && deadlineCycle > m_eeCycle)
     {
@@ -2492,7 +2493,7 @@ void EeScheduler::traceLine(const char *fmt, ...)
     // Capped at PS2X_SCHED_TRACE_MAX_LINES_PER_S (default 4000) lines a host second: a guest poll loop that
     // switches threads a hundred thousand times a second would otherwise make the trace the stall.
     static const uint32_t s_cap = [] {
-        const char *e = std::getenv("PS2X_SCHED_TRACE_MAX_LINES_PER_S");
+        const char *e = ps2x::knob("PS2X_SCHED_TRACE_MAX_LINES_PER_S");
         const long v = e ? std::atol(e) : 4000L;
         return v > 0 ? static_cast<uint32_t>(v) : 4000u;
     }();

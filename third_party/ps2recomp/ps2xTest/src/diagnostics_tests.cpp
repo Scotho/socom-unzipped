@@ -96,6 +96,34 @@ void register_diagnostics_tests()
             t.IsTrue(bad.find("\"error\"") != std::string::npos, "it is replaced by a note that says so");
         });
 
+        // Sprint 10 Goal 9, R179: the persona password lives in config.json and nowhere else. The zip's config copy
+        // is toJson of the parsed file, so a new field is copied through unless it is blanked here -- and a short
+        // password ("socom") is under the credential scrubber's six-character floor, so only the blank protects it.
+        tc.Run("the diagnostics zip's config copy has the password blanked, the name kept", [](TestCase &t)
+        {
+            launcher::Config c;
+            c.loginName = "socomc";
+            c.loginPassword = "hunter2";
+            const std::string copy = diag::sanitizedConfigJson(launcher::toJson(c));
+            t.IsTrue(copy.find("hunter2") == std::string::npos, "the password is not in the zip's config.json");
+            t.IsTrue(copy.find("\"loginPassword\": \"\"") != std::string::npos, "the key is there, empty, so a reader sees it was blanked");
+            t.IsTrue(copy.find("\"loginName\": \"socomc\"") != std::string::npos, "the name stays: it is what the player sees on screen");
+
+            // The whole bundle, with a short password the scrubber's floor would let through and one it would not.
+            for (const char *planted : {"zq9pw", "hunter2hunter2"})   // one under the scrubber's six-character floor, one over
+            {
+                c.loginPassword = planted;
+                diag::Inputs in = inputs();
+                in.configText = launcher::toJson(c);
+                const std::vector<ZipStore::Entry> entries = diag::entries(in);
+                const std::string zip = ZipStore::build(entries);
+                t.IsTrue(zip.find(planted) == std::string::npos, std::string("the archive's bytes do not contain the planted password ") + planted);
+                for (const ZipStore::Entry &e : entries)
+                    t.IsTrue(e.data.find(planted) == std::string::npos, e.name + " does not contain " + planted);
+                t.IsTrue(zip.find("socomc") != std::string::npos, "while the persona name is in it");
+            }
+        });
+
         tc.Run("scrub: the home directory becomes ~ in either slash style, and a short one is left alone", [](TestCase &t)
         {
             t.Equals(diag::scrub("at C:\\Users\\bob\\x and C:/Users/bob/y", "C:\\Users\\bob"), std::string("at ~\\x and ~/y"), "both styles");
@@ -122,6 +150,12 @@ void register_diagnostics_tests()
                      "a version string, an out-of-range tuple and a number are not addresses");
             t.Equals(diag::scrub("[socom2] 640x448 at 2x, token count 3", home), std::string("[socom2] 640x448 at 2x, token count 3"),
                      "the word token without a value stays");
+            // Q2's flip found the [knobs] line printing the login password in clear; describe() redacts it at the source
+            // now (R208), but a log written before that, or any line that names the variable, must not carry a short
+            // password past the six-character floor the general rule has -- `socom` is five.
+            t.Equals(diag::scrub("[knobs] dev=1 set: PS2X_SOCOM2_LOGIN_NAME=socomc PS2X_SOCOM2_LOGIN_PASS=socom PS2X_PEEK=0x1:4", home),
+                     std::string("[knobs] dev=1 set: PS2X_SOCOM2_LOGIN_NAME=socomc PS2X_SOCOM2_LOGIN_PASS=[redacted] PS2X_PEEK=0x1:4"),
+                     "the login password, however short, never leaves the machine on a knobs line");
         });
 
         tc.Run("gl_caps.txt: raylib's device lines and the backend's own, CRs dropped", [](TestCase &t)
@@ -191,6 +225,18 @@ void register_diagnostics_tests()
             t.IsTrue(clipped.find("[diagnostics] 5000 bytes omitted here") != std::string::npos, "and the gap is named");
             t.IsTrue(std::count(clipped.begin(), clipped.end(), 'm') < 10, "the middle is gone (the only m left is the marker's)");
             t.Equals(diag::clipLog("short", 1000, 2000), std::string("short"), "a log that fits is left alone");
+        });
+
+        // Sprint 9 Goal 3 Task 7: the game's own account of its knobs travels with a report, so "it ignored my
+        // setting" and "a forgotten variable changed the game" are both answered from the zip.
+        tc.Run("versions.txt carries the game's [knobs] line, or says there was none", [](TestCase &t)
+        {
+            diag::Inputs in = inputs();
+            in.logText = std::string(kLog) + "[knobs] dev=0 set: PS2X_GS_SCALE=2 | ignored without --dev: PS2X_GS_BACKEND\r\n";
+            t.IsTrue(diag::versionsText(in).find("knobs: [knobs] dev=0 set: PS2X_GS_SCALE=2 | ignored without --dev: PS2X_GS_BACKEND\n") != std::string::npos,
+                     "the line as the game wrote it, CR dropped");
+            t.IsTrue(diag::versionsText(inputs()).find("knobs: no [knobs] line in this log\n") != std::string::npos, "an older runner, or a run that died first");
+            t.Equals(diag::knobsLine("[audio] only\n"), std::string("no [knobs] line in this log\n"), "the function by itself");
         });
     });
 }

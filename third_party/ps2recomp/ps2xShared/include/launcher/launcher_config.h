@@ -1,5 +1,8 @@
 #pragma once
 // config.json next to the launcher, and the PS2X_* environment it becomes (Task 8b, packaging outline section 3).
+#include "launcher/mapping.h"   // Sprint 10 Goal 8 (R174): the input mapping, a field of Config
+
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -50,6 +53,14 @@ namespace launcher
     // Nothing may count these in a literal: P6 made them four, and two loops and one y-offset said three.
     constexpr size_t kServerPresetCount = sizeof(kServerPresets) / sizeof(kServerPresets[0]);
 
+    // Sprint 10 Goal 8: one profile's saved mapping (config.json's "mappings" block, keyed by profile name).
+    struct ProfileMapping
+    {
+        std::string profile;
+        mapping::Mapping mapping;
+        bool operator==(const ProfileMapping &) const = default;
+    };
+
     struct Config
     {
         std::string isoPath;
@@ -74,8 +85,24 @@ namespace launcher
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
         std::string server = "127.0.0.1";
         std::string profile = "player";
+        // Sprint 10 Goal 9: the persona the game logs in as and its password, typed once here and handed to
+        // the game's keyboards already filled (PS2X_SOCOM2_LOGIN_NAME / _PASS; R179: stored plain in this
+        // file, R180: prefilled, never submitted). Empty = nothing is sent and the keyboards open empty.
+        std::string loginName;
+        std::string loginPassword;
         bool secondInstance = false;
+        // Sprint 10 Goal 8 (R174): what the pad's buttons and the keyboard's keys drive, SAVED PER PROFILE -- a
+        // profile is one player's save and persona, and two people sharing a machine hold their pads
+        // differently. A profile with no entry plays the defaults (the tables the runtime carried at compile
+        // time until 2026-09-21); an old config.json with no block keeps them for everyone; and a default
+        // mapping sends nothing to the game (launcher/mapping.h). activeMapping() reads the current profile's.
+        std::vector<ProfileMapping> mappings;
     };
+
+    // The mapping the current profile plays (the defaults when it has none), and the setter that keeps the
+    // list clean: a profile set back to the defaults loses its entry rather than carrying a copy of them.
+    mapping::Mapping activeMapping(const Config &config);
+    void setActiveMapping(Config &config, const mapping::Mapping &m);
 
     // R139, the crouch shortcut (owner request 2026-09-19; runtime/host_crouch_shortcut.h has the mechanism).
     // SOCOM II's stance is TRIANGLE's pressure: a light press crouches, a firm one goes prone, and a PC pad's
@@ -98,6 +125,16 @@ namespace launcher
     // whole and becomes "player". Refused whole, not patched up: a config.json can be handed to a player by
     // someone else, and half-cleaning a path is how a cleaner gets walked around.
     std::string normalizeProfile(const std::string &value);
+
+    // Sprint 10 Goal 9: the persona name and password as the game's own on-screen keyboard could have typed
+    // them -- every printable ASCII character but the space (the keyboard has none), the double quote refused on
+    // the name keyboard (its NoDQuote flag), and each cut to its keyboard's MaxChars (research/38: 14 and 12,
+    // read off the login screen's two GetTextInput actions on the disc). The runtime re-applies the live cap
+    // when it fills the keyboard, so nothing longer can reach the game's buffer either way. Empty stays empty.
+    constexpr std::size_t kLoginNameCap = 14;
+    constexpr std::size_t kLoginPasswordCap = 12;
+    std::string normalizeLoginName(const std::string &value);
+    std::string normalizeLoginPassword(const std::string &value);
     // The cell's label and the one line under the row that states the trade. Never empty.
     const char *crouchShortcutLabel(const std::string &value);
     const char *crouchShortcutHint(const std::string &value);
@@ -142,10 +179,20 @@ namespace launcher
     // the second instance gets PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own card directory).
     std::vector<std::string> environmentFor(const Config &config);
 
+    // Sprint 9 Goal 3 (R156): is this environment key one of ours? "PS2X_" as a prefix, either case (Windows
+    // variable names are case-insensitive).
+    bool isKnobKey(const std::string &key);
     // Sprint 8 Task 4: the child's environment, as both glues build it. `base` is a NULL-terminated KEY=VALUE
     // array (the Windows block widened, or POSIX `environ`); `ours` is environmentFor()'s knobs. Ours win by
     // key: an overridden base entry is dropped rather than duplicated, the rest of the base keeps its order,
     // and ours follow in theirs. Entries with no '=' are not environment entries and are skipped on both
     // sides (a bare key in `ours`, and Windows' "=C:"-style drive entries in `base`). Pure; both platforms.
-    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours);
+    // With keepInheritedKnobs false an inherited PS2X_* variable the launcher did not itself choose is dropped,
+    // so a stranger's forgotten variable cannot reach the game; the launcher passes true only when it was
+    // itself started in developer mode (Sprint 9 Goal 3 Task 7, R156).
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours, bool keepInheritedKnobs);
+    inline std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
+    {
+        return mergeEnvironment(base, ours, true);   // the pure merge, as the existing cases test it
+    }
 }

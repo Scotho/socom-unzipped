@@ -1,6 +1,7 @@
 #include "runtime/ps2_vu1.h"
 #include "ps2_vu1_detail.h"
 #include "ps2_vu1_ops.h"
+#include "ps2x/knobs.h"
 
 #include <cmath>
 #include <cstdio>
@@ -95,7 +96,7 @@ void VU1Interpreter::execUpper(uint32_t instr)
     const uint8_t op = instr & 0x3F;
 
     // PS2X_VU1_FMAC_CHECK=1: cross-check the SIMD lane classifier against the long double path.
-    static const bool s_check = std::getenv("PS2X_VU1_FMAC_CHECK") != nullptr;
+    static const bool s_check = ps2x::knobOn("PS2X_VU1_FMAC_CHECK");
 
     const __m128 vsRaw = _mm_loadu_ps(m_state.vf[fs]);
     const __m128 vtRaw = _mm_loadu_ps(m_state.vf[ft]);

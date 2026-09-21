@@ -248,6 +248,62 @@ class TestPictures(unittest.TestCase):
         self.assertIn("placeholder", kinds(cite.check(doc, None, FakeResolver())))
 
 
+class TestVideos(unittest.TestCase):
+    """A video takes the entry's one picture slot: same line, .mp4, its own budget, a poster frame beside it."""
+
+    MP4 = "docs/story/img/2026-09-21-online-kill.mp4"
+    VID = "\n![One round, both screens.](" + MP4 + ")\n"
+
+    def resolver(self):
+        r = FakeResolver()
+        r.sizes[self.MP4] = 2_226_711
+        r.sizes[self.MP4[:-4] + ".png"] = 323_661
+        r._tracked.update([self.MP4, self.MP4[:-4] + ".png"])
+        r.inventory.append("2026-09-21-online-kill.mp4")
+        return r
+
+    def with_video(self):
+        return GOOD.replace("*How:*", self.VID + "\n*How:*")
+
+    def test_a_good_video_passes(self):
+        self.assertEqual(cite.check(self.with_video(), None, self.resolver()), [])
+
+    def test_a_video_has_its_own_budget(self):
+        r = self.resolver()
+        r.sizes[self.MP4] = cite.PICTURE_MAX_BYTES + 1
+        self.assertEqual(cite.check(self.with_video(), None, r), [])
+        r.sizes[self.MP4] = cite.VIDEO_MAX_BYTES + 1
+        self.assertIn("picture-too-large", kinds(cite.check(self.with_video(), None, r)))
+
+    def test_a_video_without_a_tracked_poster(self):
+        r = self.resolver()
+        r._tracked.discard(self.MP4[:-4] + ".png")
+        self.assertIn("video-no-poster", kinds(cite.check(self.with_video(), None, r)))
+        r = self.resolver()
+        del r.sizes[self.MP4[:-4] + ".png"]
+        self.assertIn("video-no-poster", kinds(cite.check(self.with_video(), None, r)))
+
+    def test_the_site_renders_a_player_not_an_img(self):
+        from tools_py.story import site
+        doc = site.parse_document(self.with_video())
+        entry = doc["eras"][0]["entries"][0]
+        page = site.render_entry(entry, "https://example.test/r", "/story/img", 1)
+        self.assertRegex(page, r'<video controls preload="metadata" playsinline poster="/story/img/2026-09-21-online-kill\.png(\?v=[0-9a-f]{10})?">')
+        self.assertRegex(page, r'<source src="/story/img/2026-09-21-online-kill\.mp4(\?v=[0-9a-f]{10})?" type="video/mp4">')
+        self.assertIn("<figcaption>One round, both screens.</figcaption>", page)
+        self.assertNotIn("<img", page)
+
+    def test_media_urls_carry_the_files_hash(self):
+        """A re-encoded file under an unchanged URL is what Cloudflare kept serving; the stamp is the file's own."""
+        from tools_py.story import site
+        real = os.path.join(ROOT, cite.PICTURE_DIR, "2026-09-21-online-kill.mp4")
+        if not os.path.isfile(real):
+            self.skipTest("the video is not in this tree")
+        url = site.media_url("/story/img", "2026-09-21-online-kill.mp4")
+        self.assertRegex(url, r"^/story/img/2026-09-21-online-kill\.mp4\?v=[0-9a-f]{10}$")
+        self.assertEqual(site.media_url("/story/img", "no-such-file.png"), "/story/img/no-such-file.png")
+
+
 class TestShallowClone(unittest.TestCase):
     """CI checks out depth 1, so git holds almost none of the cited commits. The data file's stored date and
     subject vouch for them instead (spec 4.4 decision 4); the check neither skips nor calls 208 commits dead."""

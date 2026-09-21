@@ -12,6 +12,7 @@
 #include "ps2_runtime.h"
 #include "runtime/ps2_memory.h"
 #include "ps2_host_backend.h"
+#include "ps2x/knobs.h"
 #include <cmath>
 #include <cstring>
 #include <vector>
@@ -402,7 +403,7 @@ void PS2AudioBackend::openMixerStream()
 {
     if (!m_impl || m_impl->mixStreamOpen)
         return;
-    if (const char *dump = std::getenv("PS2X_AUDIO_DUMP"))
+    if (const char *dump = ps2x::knob("PS2X_AUDIO_DUMP"))
     {
         m_impl->dumpPath = dump;
         m_impl->dumpFile = std::fopen(dump, "wb");
@@ -489,7 +490,7 @@ void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t co
     // a route's level -- master volume, pause/continue/stop, vol/pan, AutoVol, the stream and PCM stops -- with the
     // output-frame clock the [audio] start/done/UNDERRUN events carry, so a dip in the mix can be told from a
     // volume the game asked for (the IOP's own log of the same commands has no clock).
-    static const bool s_instrument = std::getenv("PS2X_AUDIO_INSTRUMENT") != nullptr;
+    static const bool s_instrument = ps2x::knob("PS2X_AUDIO_INSTRUMENT") != nullptr;
     if (s_instrument)
     {
         switch (function)
@@ -580,7 +581,7 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
 {
     // PS2X_AUDIO_TRACE=1: how the host audio callback is serviced -- rendered frames against wall time, calls, the
     // longest render -- every 5 s (research/32 section 7.1: the title music starved when this fell to 80% of real time).
-    static const bool trace = std::getenv("PS2X_AUDIO_TRACE") != nullptr;
+    static const bool trace = ps2x::knob("PS2X_AUDIO_TRACE") != nullptr;
     static const auto t0 = std::chrono::steady_clock::now();
     static uint64_t framesTotal = 0u, calls = 0u;
     static double maxRenderMs = 0.0, nextReportS = 5.0;
@@ -589,7 +590,7 @@ void PS2AudioBackend::mixerRender(int16_t *interleaved, size_t frames)
     // PS2X_AUDIO_VOLUME (read once): unity does nothing at all -- no multiply, no rounding -- so "100" is byte
     // for byte the mix this function produced before the knob existed.
     static const float s_gain = [] {
-        const char *const e = std::getenv("PS2X_AUDIO_VOLUME");
+        const char *const e = ps2x::knob("PS2X_AUDIO_VOLUME");
         return volumeGain((e != nullptr && *e != 0) ? std::atoi(e) : 100);
     }();
     if (s_gain != 1.0f)
@@ -651,7 +652,7 @@ void PS2AudioBackend::onPcmWrite(uint32_t offset, const uint8_t *data, size_t by
     if (!s_tried)
     {
         s_tried = true;
-        if (const char *path = std::getenv("PS2X_AUDIO_PCM_DUMP"))
+        if (const char *path = ps2x::knob("PS2X_AUDIO_PCM_DUMP"))
             s_dump = std::fopen(path, "wb");
     }
     if (s_dump && s_dumped < (16u << 20))

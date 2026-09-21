@@ -2,6 +2,7 @@
 #include "runtime/host_gamepad.h"
 #include "runtime/host_gamepad_select.h"
 #include "ps2_host_backend.h"
+#include "ps2x/knobs.h"
 #include <cstring>
 
 namespace
@@ -42,7 +43,7 @@ bool PSPadBackend::readState(int /*port*/, int /*slot*/, uint8_t *data, size_t s
     uint16_t btns = 0xFFFFu;
     // Task 8: the pad the launcher picked (PS2X_HOST_GAMEPAD_INDEX), or the first available one.
     const int kGamepad = hostGamepadEnabled()
-                             ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
+                             ? hostGamepadSelect(hostGamepadIndexKnob(), kHostGamepadSlots, IsGamepadAvailable)
                              : -1;
     const bool useGamepad = kGamepad >= 0;
     auto clearBit = [&btns](uint16_t mask)

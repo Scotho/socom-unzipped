@@ -20,6 +20,7 @@ SOCOM_SERVER_IP="${SOCOM_SERVER_IP:-192.168.2.10}"
 export SOCOM_SERVER_IP
 export PS2X_SOCOM2_SERVER="${PS2X_SOCOM2_SERVER:-$SOCOM_SERVER_IP}"
 
+export PS2X_DEV="${PS2X_DEV:-1}"                            # everything below is a Dev knob (docs/KNOBS.md)
 export PS2X_HOST_GAMEPAD="${PS2X_HOST_GAMEPAD:-0}"          # a launch boots with no controller (see gate.py)
 export PS2X_SOCOM2_INPUT_TRACE="${PS2X_SOCOM2_INPUT_TRACE:-1}"
 export PS2X_PC_SAMPLER="${PS2X_PC_SAMPLER:-0.25}"

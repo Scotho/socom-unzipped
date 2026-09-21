@@ -8,6 +8,7 @@
 // replacement while streaming is active) are serviced from the CD image.
 
 #include "../module_factories.h"
+#include "ps2x/knobs.h"
 
 #include <algorithm>
 #include <array>
@@ -401,7 +402,7 @@ namespace ps2x::iop::detail
                     return;
                 const uint64_t from = std::max<uint64_t>(dst, base);
                 const uint64_t to = std::min<uint64_t>(dst + transfer.size, base + bytes);
-                static const bool trace = std::getenv("PS2X_MPEG_TRACE") != nullptr;
+                static const bool trace = ps2x::knob("PS2X_MPEG_TRACE") != nullptr;
                 if (trace)
                 {
                     // one line per SIF DMA into the PCM ring: where the EE copied it from (research/32 section 7.1)
@@ -1016,7 +1017,7 @@ namespace ps2x::iop::detail
                     value = m_host.audioPcmPosition(position) ? ((m_model.pcmBuffer + position) & 0xFFFFFFu) : 0u;
                     hasResult = true;
                     {
-                        static const bool trace = std::getenv("PS2X_MPEG_TRACE") != nullptr;
+                        static const bool trace = ps2x::knob("PS2X_MPEG_TRACE") != nullptr;
                         if (trace)
                         {
                             // every poll (research/32 section 7.1: the game fills the ring up to this position each wake)

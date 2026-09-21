@@ -76,8 +76,8 @@ class FakeShell(L.Shell):
     def shot(self, label, max_age=None):
         self.shots.append(label)
 
-    def type(self, text, shots=None, tag=""):
-        self.presses.append(("type", text))
+    def type(self, text, shots=None, tag="", prefilled=False):
+        self.presses.append(("enter" if prefilled else "type", text))   # Sprint 10 Goal 9: --prefilled ENTERs
 
 
 class Grabs:

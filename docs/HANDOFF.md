@@ -208,6 +208,14 @@ rather than rule. At most two C++-building agents at once.
 
 ## 7. Instruments and diagnostics
 
+- **Developer mode (Sprint 10 Q2, 2026-09-21).** Every recipe below that sets a `PS2X_*` probe works through `./run.sh`
+  unchanged (it is a developer-mode launch: `drive.py` adds `PS2X_DEV=1` below the gate's env pin, R203) and needs
+  `--dev` or `PS2X_DEV=1` when the runner is started any other way -- a stranger's environment cannot switch a probe
+  on (proved by `s9_g3_poisoned_env`: six probes set, `[knobs] dev=0 ... ignored without --dev: <the six>`, the game
+  ran 90 s clean). `docs/KNOBS.md` is the list. Five names are gone and will still appear in STATUS's history:
+  `PS2X_GS_TEX_FROM_CPU`, `PS2X_GS_PROBE`, `PS2X_GS_GL_DEBUG_NODEPTH`, `PS2X_MPEG_PIC_TRACE` and `PS2X_TIMER_*` (the plan's Task 6
+  commit names them exactly), plus two ghosts the README had already lost.
+
 - **The leak check** (`python -m tools_py.release.leakcheck <mode>`; modes `tree`, `staged`, `ignored`, `metadata`,
   `history [range]`, `artifact <dir>`, `all`): exit 0 clean, 1 findings, **2 the scanner did not run -- never a
   pass**. Every run starts with a planted control of 28 secret shapes; `--reveal` shows a hit unmasked on the terminal;

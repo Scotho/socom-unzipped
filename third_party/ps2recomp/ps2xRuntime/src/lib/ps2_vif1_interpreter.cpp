@@ -8,6 +8,7 @@ extern std::atomic<uint64_t> g_mscalCount;
 extern std::atomic<uint64_t> g_vuMpgBytes;
 extern std::atomic<uint64_t> g_vif1BytesCount;
 #include "runtime/ps2_memory.h"
+#include "ps2x/knobs.h"
 #include <cstring>
 #include <vector>
 
@@ -21,7 +22,16 @@ extern std::atomic<uint64_t> g_vif1BytesCount;
 static bool g_vif1Stalled = false;
 static bool g_vif1IrqPending = false;
 static std::vector<uint8_t> g_vif1StallBuffer;
-static const bool g_vif1NoIrqStall = std::getenv("PS2X_VIF1_NO_IRQ_STALL") != nullptr;
+static bool vif1NoIrqStall()   // on first use, not before main()
+{
+    static const bool s_on = ps2x::knobOn("PS2X_VIF1_NO_IRQ_STALL");
+    return s_on;
+}
+static bool vif1TraceFifo()    // was a getenv at each of the four stall and resume sites
+{
+    static const bool s_on = ps2x::knob("PS2X_TRACE_FIFO") != nullptr;
+    return s_on;
+}
 
 bool ps2xVif1IsStalled() { return g_vif1Stalled; }
 
@@ -39,7 +49,7 @@ void ps2xVif1StallCancel(PS2Memory &mem)
     g_vif1Stalled = false;
     std::vector<uint8_t> pending;
     pending.swap(g_vif1StallBuffer);
-    if (std::getenv("PS2X_TRACE_FIFO"))
+    if (vif1TraceFifo())
         std::fprintf(stderr, "[fifo] VIF1 STC: resuming %zu stalled bytes\n", pending.size());
     if (!pending.empty())
         mem.processVIF1Data(pending.data(), static_cast<uint32_t>(pending.size()));
@@ -325,7 +335,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
             g_vif1Stalled = true;
             vif1_regs.stat |= (1u << 10); // VIS
             g_vif1StallBuffer.assign(data + pos, data + sizeBytes);
-            if (std::getenv("PS2X_TRACE_FIFO"))
+            if (vif1TraceFifo())
                 std::fprintf(stderr, "[fifo] VIF1 i-bit stall, %u bytes held\n", sizeBytes - pos);
             return;
         }
@@ -377,14 +387,14 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         {
             vif1_regs.stat |= (1u << 11); // INT
             queueIntcCause(5u);           // EE INTC VIF1 -> game's render-thread waker
-            if (!g_vif1NoIrqStall)
+            if (!vif1NoIrqStall())
                 g_vif1IrqPending = true;  // stall after this command completes (hardware behaviour)
-            if (std::getenv("PS2X_TRACE_FIFO")) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode %08x (op %02x) -> INTC5\n", cmd, opcode);
+            if (vif1TraceFifo()) std::fprintf(stderr, "[fifo] VIF1 interrupt VIFcode %08x (op %02x) -> INTC5\n", cmd, opcode);
         }
 
         // PS2X_TRACE_VIF=<skip>: print VIF1 codes (after skipping <skip> of them), 3000 lines max.
         {
-            static const char *s_traceVif = std::getenv("PS2X_TRACE_VIF");
+            static const char *s_traceVif = ps2x::knob("PS2X_TRACE_VIF");
             if (s_traceVif)
             {
                 // "t<seconds>": start after that much host time instead of after <skip> codes.
@@ -868,7 +878,7 @@ void PS2Memory::processVIF1Data(const uint8_t *data, uint32_t sizeBytes)
         g_vif1IrqPending = false;
         g_vif1Stalled = true;
         vif1_regs.stat |= (1u << 10); // VIS
-        if (std::getenv("PS2X_TRACE_FIFO"))
+        if (vif1TraceFifo())
             std::fprintf(stderr, "[fifo] VIF1 i-bit stall at packet end\n");
     }
 }

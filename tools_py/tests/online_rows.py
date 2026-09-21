@@ -3,12 +3,14 @@
 `peek()` writes one `[peek]` line in the exe's format with the items those tests need -- the actor block (vtable,
 x/y/z, optionally the matrix at +0x80..+0xbc), the alive byte, mp_round_count / mp_game_over by name bytes, the
 clock string, the round clock 0x4365c0, the CZNetGame block split as launch 1 peeked it (ng+0xde) -- and `Clock`
-is a simulated clock whose wait() runs hooks on the 0.25 s peek grid.
+is a simulated clock whose wait() runs hooks on the 0.25 s peek grid, in lockstep across the threads that share it.
 """
 import math
 import os
 import struct
 import tempfile
+import threading
+import time
 
 from tools_py.parity import online_match_ours as M
 from tools_py.parity import verdict_core as vc
@@ -72,18 +74,85 @@ def peek(x=100.0, y=50.0, z=200.0, facing=None, alive=1, clock="05:00", round_ti
     return " ".join(parts)
 
 
+class ClockStall(AssertionError):
+    """A thread on the clock stopped taking part without ending: the simulation cannot move (see Clock)."""
+
+
 class Clock:
-    def __init__(self, t=1000.0):
+    """Simulated time. wait() advances to now + seconds, running the hooks at every 0.25 s grid point crossed (a wait
+    shorter than 0.25 s still ticks when it crosses one).
+
+    Threads (Sprint 10, the CI flake KNOWN §4 records): the clock is shared by every thread born after it, plus the
+    one that made it (the endgames start their stander / victim loop as a daemon thread; the shooter runs on the
+    caller's or a second thread). Simulated time cannot be advanced by whichever thread the OS happens to schedule --
+    that let a victim walk 23 legs before the shooter's first loop check on a loaded runner, so the outcome depended
+    on scheduler luck. Instead the clock runs in LOCKSTEP: a wait() blocks until EVERY other thread on the clock is
+    itself in a wait() (or has ended), the earliest deadline advances time (ties in the order the waits were
+    entered), and that sleeper alone runs until it waits again. One thread runs at a time and the OS never chooses
+    who, so the interleaving is a function of the simulated deadlines only. A thread on the clock that blocks
+    somewhere else (a native join, an Event) would freeze the simulation -- every wait is on it -- so a wait that has
+    seen no progress for `stall_s` real seconds raises ClockStall naming the thread that is neither waiting nor
+    ended, rather than hanging the run or passing by luck. The endgames join their side threads through the injected
+    wait (M.join_in) for that reason.
+    """
+
+    STALL_S = 120.0                  # real seconds with a thread neither waiting nor ended: a deadlock, not load
+    POLL_S = 0.005                   # a thread's end is not a clock event: the sleepers look for it this often
+
+    def __init__(self, t=1000.0, stall_s=STALL_S):
         self.t = t
         self.hooks = []
+        self.stall_s = stall_s
+        self.stalled = None          # the first ClockStall's message: every later wait() raises it again
+        self._cv = threading.Condition()
+        self._sleepers = {}          # thread -> (deadline, order entered)
+        self._entered = 0
+        self._progress = 0           # bumped at every change of the sleeper set / time: the stall detector's pulse
+        me = threading.current_thread()
+        self._outside = {th for th in threading.enumerate() if th is not me}  # older than the clock: not on it
 
     def __call__(self):
         return self.t
 
+    def threads(self):
+        """The live threads on the clock: the maker and every thread born after it."""
+        return [th for th in threading.enumerate() if th not in self._outside]
+
     def wait(self, seconds):
-        """Advance to now + seconds, running the hooks at every 0.25 s grid point crossed (a wait shorter than
-        0.25 s still ticks when it crosses one)."""
-        end = self.t + seconds
+        me = threading.current_thread()
+        with self._cv:
+            if self.stalled:
+                raise ClockStall(self.stalled)
+            self._entered += 1
+            self._sleepers[me] = (self.t + seconds, self._entered)
+            self._progress += 1
+            self._cv.notify_all()
+            idle, seen = 0.0, None
+            while True:
+                running = [th for th in self.threads() if th not in self._sleepers]
+                first = min(self._sleepers, key=self._sleepers.get)
+                if not running and first is me:
+                    break
+                if (self._progress, len(running)) != seen:      # a wait entered, time moved or a thread ended
+                    idle, seen = 0.0, (self._progress, len(running))
+                t0 = time.monotonic()
+                self._cv.wait(self.POLL_S)
+                idle += time.monotonic() - t0
+                if idle >= self.stall_s:
+                    self.stalled = (
+                        f"clock stalled {self.stall_s:g}s at t={self.t:.2f}: {', '.join(th.name for th in running)} "
+                        f"neither waiting on the clock nor ended (blocked outside it?) while "
+                        f"{', '.join(th.name for th in self._sleepers)} wait")
+                    del self._sleepers[me]
+                    self._progress += 1
+                    self._cv.notify_all()
+                    raise ClockStall(self.stalled)
+            deadline, _ = self._sleepers.pop(me)
+            self._advance(deadline)
+            self._progress += 1
+            self._cv.notify_all()
+
+    def _advance(self, end):
         nxt = (math.floor(self.t / 0.25 + 1e-9) + 1) * 0.25
         while nxt <= end + 1e-9:
             self.t = round(nxt, 6)

@@ -780,9 +780,10 @@ inline float ps2_fpu_div(float a, float b)
 // not on the console). Cheap when off (one predictable branch on the slow paths only).
 // PS2X_FPU_TRAP=<seconds>: report only after that much host time (the boot and menus have
 // legitimate divisions by zero: fog with far == near, the flip's 1/0). 300 reports per kind.
+double ps2_fpu_trap_after_seconds();      // ps2_fpu_trap.cpp: PS2X_FPU_TRAP through ps2x::knob; -1 when it is off
 inline bool ps2_fpu_trap_enabled()
 {
-    static const double s_after = [] { const char *e = std::getenv("PS2X_FPU_TRAP"); return e ? std::atof(e) : -1.0; }();
+    static const double s_after = ps2_fpu_trap_after_seconds();
     if (s_after < 0.0)
         return false;
     static const auto s_epoch = std::chrono::steady_clock::now();

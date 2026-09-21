@@ -412,7 +412,7 @@ The launcher is a small window that owns the settings file. It reads the disc im
 
 `Cited:` `770d5fb` SOCOM Unzipped launcher, first cut · `2a8f8e4` scripts/make_portable.sh -- the portable folder · `docs/STATUS.md` · `logs/parity/gate/s6_launcher_gate/summary.txt` · `logs/launcher_server_picker.png` · `docs/research/assets/launcher-first-cut.png` · `09b793a` the 2026-09-17 audit and code review · `fae7d0e` the audit's fix wave · `32aec0b` Sprint 7 opened -- two strangers, two machines, one hosted server · `a843385` the stranger's machine, defensively · `39cd17f` equal-priority guest threads are never time-sliced · `docs/AUDIT-2026-09-17.md` · `logs/parity/gate/s6_fixwave_gate/summary.txt` · `logs/parity/gate/s7_gl_gate/summary.txt` · `logs/parity/gate/s7_gl_gate2/summary.txt`
 
-## 2026-09-18 .. 2026-09-20 - Linux, a server, a stranger
+## 2026-09-18 .. 2026-09-21 - Linux, a server, a stranger
 
 *A player with their own disc can unzip a 56 MB download, start the game on Windows or Linux, save to a memory card, report a bug from inside it, and play online against a server the project hosts in Ohio. As of tonight, against a console player in the same lobby too. Only the owner's PC has done any of it.*
 
@@ -606,6 +606,18 @@ The console side is the reference emulator running the retail disc, driven by th
 
 `Cited:` `93677a5` the mixed match's leg 1 on the verified flow · `136c635` leg 1 reached · `25690ad` leg 2 reached · `984a342` Sprint 10 Goal 3's bar met · run mixed2_ours_hosts_g · run mixed2_pcsx2_hosts_g · tools_py/parity/pcsx2_shell.py · docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md
 
+
+### 2026-09-21 - One round, on film
+
+**The first kill was on the 13th and came as two stills. This one you can watch.**
+
+Two of our clients on one desk, both on that night's build, both in the same round on the hosted server, both driven by the agent while the owner watched. The whole round, four minutes and a quarter of it, cropped to the two windows and nothing else: the round card, a long circling of the yard, the shot at 3:41, the killfeed on both screens, the scoreboard, and the next round's opening card.
+
+![Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the whole round; the shot is at 3:41.](docs/story/img/2026-09-21-online-kill.mp4)
+
+*But:* it is not graceful. The camera sways, the aim hunts, and the approach takes most of a four-minute round. It is functional: the round ends by a shot, both screens say so, and the scoreboard counts it.
+
+`Cited:` `0eef452` run 2 by hand -- KILL 4/4 on the hosted server · docs/LADDER.md
 
 ---
 

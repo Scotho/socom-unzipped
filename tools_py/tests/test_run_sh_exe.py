@@ -28,6 +28,26 @@ class RunShExeTest(unittest.TestCase):
                 self.assertIn("fake-runner got ", fh.read())
             self.assertIn("socom2_game.elf", open(log).read())
 
+    def test_run_sh_is_a_developer_mode_launch(self):
+        # Sprint 9 Goal 3: run.sh is the harness's launcher, so the Dev knobs it is used with are honoured.
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = os.path.join(tmp, "socom2")
+            with open(fake, "w", newline="\n") as fh:
+                fh.write("#!/usr/bin/env bash\necho \"dev=${PS2X_DEV:-unset}\"\n")
+            os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
+            log = os.path.join(tmp, "run.log")
+            env = {k: v for k, v in os.environ.items() if k != "PS2X_DEV"}
+            env.update({"SOCOM_EXE": fake.replace("\\", "/"), "PS2X_RUN_LOG": log.replace("\\", "/")})
+            subprocess.run([BASH, os.path.join(ROOT, "run.sh"), "5"], capture_output=True, text=True,
+                           cwd=ROOT, env=env, timeout=60)
+            with open(log) as fh:
+                self.assertIn("dev=1", fh.read())
+            env["PS2X_DEV"] = "0"
+            subprocess.run([BASH, os.path.join(ROOT, "run.sh"), "5"], capture_output=True, text=True,
+                           cwd=ROOT, env=env, timeout=60)
+            with open(log) as fh:
+                self.assertIn("dev=0", fh.read(), "an operator can still ask for a stranger's run")
+
 
 if __name__ == "__main__":
     unittest.main()

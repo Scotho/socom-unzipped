@@ -86,6 +86,17 @@ fastest way to check a scoring change. A gate refuses to start under 4 GB free o
 while another launch holds the loop lock (`scripts/loop_lock.sh status`). Anything else: `docs/STATUS.md` has the
 day-by-day, `docs/KNOWN.md` what is proven and what is believed, `docs/HUMAN_TASKS.md` the checks only a person can do.
 
+**Knobs, since Sprint 10 Q2 (2026-09-21):** `docs/KNOBS.md` is the complete, generated list (151 names; `python -m
+tools_py.knobs write` regenerates it and `test_knobs_registry` fails when the source and the registry disagree in either
+direction). The 20 **Shipping** names are `config.json` settings the launcher sends. Everything else is a **Dev** knob
+and is ignored unless the run is in developer mode -- `--dev` on `socom2`'s command line or `PS2X_DEV=1`; `run.sh`, the
+gate and every script under `scripts/parity/` are developer-mode launches already. The game's first log line, `[knobs]
+dev=<0|1> set: ... | ignored without --dev: ...`, says what was honoured and what was not; the launcher passes the game
+none of its own inherited `PS2X_*` environment unless developer mode is on. Eight switches that used to turn ON when set
+to `0` are flags now (`X=1` on, anything else off); `PS2X_SOCOM2_PAD` is on by default. A Path knob's value must lie
+under the game folder for a stranger (R207). The prose below is what each knob did when it was added, kept as history;
+the registry is the truth.
+
 Knobs (the behaviour-changing ones documented in full below; this is not the complete list --
 other behaviour-changing knobs exist under `getenv("PS2X_` in `third_party/ps2recomp/ps2xRuntime/`
 without a full entry here, grouped roughly by area: GS (`PS2X_GS_NO_ZTEST`,

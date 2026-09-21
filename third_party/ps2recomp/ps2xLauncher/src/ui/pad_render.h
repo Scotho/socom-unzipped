@@ -10,6 +10,7 @@
 
 #include <cmath>
 #include <string>
+#include <vector>
 
 namespace ui
 {
@@ -110,16 +111,33 @@ namespace ui
         Vec2 leftStick, rightStick;          // the raw axes, before the dead zone
     };
 
-    // R139: the control the crouch shortcut sits on, ringed and tagged CROUCH on the drawing whether or not it is
-    // held. The DualShock 2 drawn here has no touchpad; the centre plate is where a DualShock 4's is.
-    enum class PadMark
+    // Sprint 10 Goal 8: where a host button sits on the drawing -- a centre and a radius -- so the callouts (the
+    // game's button drawn on the control that now drives it) and R139's CROUCH mark hang off one table. `host`
+    // is launcher/mapping.h's HostButton (raylib's GamepadButton numbering); kPadAnchorTouchpad is the centre
+    // plate, where a DualShock 4's touchpad is (the DualShock 2 drawn here has none). Pure: pad_geometry.cpp.
+    struct PadAnchor
     {
-        None = 0,
-        LeftStick,
-        Plate,
-        L2,
+        Vec2 c;
+        float r = 0.0f;
+        bool valid = false;
+    };
+    constexpr int kPadAnchorTouchpad = -1;
+    PadAnchor padAnchor(const PadGeometry &g, int host);
+
+    // One callout: the game's button (a shape index as drawShapeGlyph's, or a word) on host button `host`;
+    // `highlight` rings it -- the binding just made.
+    struct PadCallout
+    {
+        int host;
+        int face;
+        const char *text;
+        bool highlight;
     };
 
     struct Ctx;   // widgets.h -- the drawing half only
-    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, PadMark mark = PadMark::None);
+    // `markHost`: R139's crouch shortcut, ringed and tagged CROUCH on its control whether or not it is held (0 for
+    // none; kPadAnchorTouchpad for the plate). `callouts`: the mapping's differences from the default, drawn on
+    // the pad (null or empty for none).
+    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, int markHost = 0,
+                 const std::vector<PadCallout> *callouts = nullptr);
 }

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 namespace ui
 {
@@ -32,6 +33,19 @@ namespace ui
         void add(std::vector<Node> &out, Page page, const std::string &id, Rect r)
         {
             out.push_back(Node{id, r, page, false});
+        }
+
+        // Sprint 10 Goal 8: the BUTTONS grid's order -- bind_flow.cpp's kCells, which the tests hold equal to this.
+        uint8_t bindCellButtonId(int cell)
+        {
+            using namespace launcher::mapping;
+            static const uint8_t order[16] = {
+                kPs2Cross, kPs2Circle, kPs2Square, kPs2Triangle,
+                kPs2L1, kPs2R1, kPs2L2, kPs2R2,
+                kPs2Up, kPs2Down, kPs2Left, kPs2Right,
+                kPs2Select, kPs2Start, kPs2L3, kPs2R3,
+            };
+            return cell >= 0 && cell < 16 ? order[cell] : kPs2Cross;
         }
 
         // A row of `n` equal cells across `r`, with a gap between them: the grid the radio rows sit on.
@@ -146,20 +160,45 @@ namespace ui
         }
         case Page::Controller:
         {
-            // Under the drawn pad, its legend and the section labels. 330, not 342: the body's top moved
-            // 12 units down for every page (metrics::bodyTop) and this page was already at the panel's
-            // bottom edge, so the pad's band gave the 12 back (page_controller.cpp draws it 282 tall).
-            const float below = b.y + 330.0f;
-            const int pads = in.padChoices < 1 ? 1 : in.padChoices;
-            for (int i = 0; i < pads; ++i)
-                add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, below + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
-            const float rx = b.x + 440.0f;
-            const float rw = b.w - 440.0f;
-            add(out, page, "pad.deadzone", Rect{rx, below, rw, 28.0f});
-            add(out, page, "pad.mouselook", Rect{rx, below + 44.0f, rw, 28.0f});
-            add(out, page, "pad.sensitivity", Rect{rx, below + 92.0f, rw, 28.0f});
-            // R139: the crouch shortcut, four cells across both columns, under the page's one line of help.
-            const Rect crouch{b.x + metrics::labelW, below + 144.0f, b.w - metrics::labelW, 28.0f};
+            // Under the drawn pad and its legend: the section switch, then the section. 300, not 330: Sprint 10
+            // Goal 8 took 20 from the pad's band (page_controller.cpp draws it 262 tall) and 10 from the gap for
+            // the section row. The row is at the same place in both sections, so the pad above never moves.
+            const float below = b.y + 300.0f;
+            if (in.padButtons && in.padDialogButtons > 0)
+            {
+                // A dialog: its buttons are the ONLY controls on the page. Nothing behind it can be focused or
+                // activated, and the section switch waits until it is answered.
+                const int n = in.padDialogButtons > 3 ? 3 : in.padDialogButtons;
+                for (int i = 0; i < n; ++i)
+                    add(out, page, "pad.dialog." + std::to_string(i), Rect{b.x + 20.0f + static_cast<float>(i) * 180.0f, below + 110.0f, 160.0f, 36.0f});
+                break;
+            }
+            add(out, page, "pad.section.0", Rect{b.x, below, 150.0f, 28.0f});
+            add(out, page, "pad.section.1", Rect{b.x + 160.0f, below, 150.0f, 28.0f});
+            const float top = below + 40.0f;
+            if (!in.padButtons)
+            {
+                const int pads = in.padChoices < 1 ? 1 : in.padChoices;
+                for (int i = 0; i < pads; ++i)
+                    add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, top + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
+                const float rx = b.x + 440.0f;
+                const float rw = b.w - 440.0f;
+                add(out, page, "pad.deadzone", Rect{rx, top, rw, 28.0f});
+                add(out, page, "pad.mouselook", Rect{rx, top + 44.0f, rw, 28.0f});
+                add(out, page, "pad.sensitivity", Rect{rx, top + 92.0f, rw, 28.0f});
+                break;
+            }
+            // BUTTONS: RESTORE at the switch row's right end; the sixteen cells four across and four down; the
+            // crouch row (R139) last, in the label column's grid like every other row with a label.
+            add(out, page, "pad.restore", Rect{b.right() - 200.0f, below, 200.0f, 28.0f});
+            const Rect grid{b.x, top, b.w, 24.0f};
+            for (int i = 0; i < 16; ++i)
+            {
+                Rect r = cell(grid, i % 4, 4);
+                r.y += static_cast<float>(i / 4) * 28.0f;
+                out.push_back(Node{"pad.bind." + std::string(launcher::mapping::ps2ButtonName(bindCellButtonId(i))), r, page, false});
+            }
+            const Rect crouch{b.x + metrics::labelW, top + 4.0f * 28.0f + 6.0f, b.w - metrics::labelW, 26.0f};
             for (int i = 0; i < 4; ++i)
                 add(out, page, "pad.crouch." + std::to_string(i), cell(crouch, i, 4));
             break;
@@ -179,15 +218,21 @@ namespace ui
                     add(out, page, "online.preset." + std::to_string(i), onlinePresetRow(window, static_cast<int>(i)));
             // Below the LAST row, whatever the count is -- the literal 3 here is what a fourth preset
             // would have been drawn on top of (Sprint 9 P6).
-            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 28.0f;
+            // Sprint 10 Goal 9: five rows under the presets now (address, profile, name, password, ADVANCED),
+            // on the REPORT page's 12-px pitch rather than the old 16, so the open ADVANCED section and its
+            // caption still end inside the body at the design size (the small window scrolls, as before).
+            const float y = onlinePresetRow(window, static_cast<int>(launcher::kServerPresetCount) - 1).bottom() + 20.0f;
             if (in.customServer)
                 add(out, page, "online.server", Rect{b.x + metrics::labelW, y, 420.0f, 40.0f});
-            add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + 56.0f, 300.0f, 40.0f});
+            add(out, page, "online.profile", Rect{b.x + metrics::labelW, y + kOnlineRowPitch, 300.0f, 40.0f});
+            // Sprint 10 Goal 9: the persona and its password, under the profile that keeps the card.
+            add(out, page, "online.name", Rect{b.x + metrics::labelW, y + 2.0f * kOnlineRowPitch, 300.0f, 40.0f});
+            add(out, page, "online.password", Rect{b.x + metrics::labelW, y + 3.0f * kOnlineRowPitch, 300.0f, 40.0f});
             // Sprint 9 P4: everything a stranger needs is above this line; the disclosure and what it
             // reveals are below it, last in reading order and last in the focus order.
-            add(out, page, "online.advanced", Rect{b.x, y + 124.0f, b.w, 28.0f});
+            add(out, page, "online.advanced", Rect{b.x, y + 212.0f, b.w, 28.0f});
             if (in.advancedOpen)
-                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 166.0f, 460.0f, 34.0f});
+                add(out, page, "online.second", Rect{b.x + metrics::labelW, y + 252.0f, 460.0f, 34.0f});
             break;
         }
         case Page::Report:
@@ -236,6 +281,13 @@ namespace ui
             {"online.second",
              "Starts a second copy of the game on this machine, on its own ports and its own memory card, so "
              "two players here can meet in the same match. For testing."},
+            // Sprint 10 Goal 9 (R179, R180): the game's keyboards open already holding these; ENTER is the player's.
+            {"online.name",
+             "The persona other players see, and the name the game logs in with. Leave it empty and the game "
+             "asks on its own keyboard, as it always did. Up to 14 characters, no spaces."},
+            {"online.password",
+             "The persona's password, up to 12 characters. Kept in config.json next to the launcher, in plain "
+             "text, masked here; the game's keyboard opens with it already typed and you press ENTER."},
             {"disc.path",
              "Your own SOCOM II disc image. Nothing from the game is shipped with this program, so it reads "
              "the movies, sounds and levels out of the file you point it at."},
@@ -245,6 +297,14 @@ namespace ui
             {"report.attach",
              "Sends the last run's log with your report. It is cut to the last 64 KB and your home folder's "
              "name is taken out of it; the line above says exactly how much will go."},
+            // Sprint 10 Goal 8, R139: the analogue truth. SOCOM II reads how HARD Triangle is pressed; a pad
+            // button is always a full press, so the cell cannot give a player crouch -- the row under it can.
+            {"pad.bind.triangle",
+             "The game reads how hard Triangle is pressed: a light press crouches, a firm one goes prone. A pad "
+             "button is always firm, so crouch is the CROUCH row below, not this cell."},
+            {"pad.restore",
+             "Puts every button back to the defaults for this profile. It asks first, and the answer it lands on "
+             "is CANCEL."},
         };
     }
 
@@ -253,15 +313,24 @@ namespace ui
         for (const Help &h : kHelp)
             if (id == h.id)
                 return h.text;
+        // The crouch cells: each one's trade, the line the page's caption used to carry (R139).
+        if (id.rfind("pad.crouch.", 0) == 0)
+        {
+            const int i = std::atoi(id.c_str() + 11);
+            if (i >= 0 && i < launcher::kCrouchShortcutCount)
+                return launcher::crouchShortcutHint(launcher::kCrouchShortcuts[i]);
+        }
         return std::string();
     }
 
     std::vector<std::string> helpedIds()
     {
         std::vector<std::string> out;
-        out.reserve(sizeof(kHelp) / sizeof(kHelp[0]));
+        out.reserve(sizeof(kHelp) / sizeof(kHelp[0]) + 4);
         for (const Help &h : kHelp)
             out.push_back(h.id);
+        for (int i = 0; i < launcher::kCrouchShortcutCount; ++i)
+            out.push_back("pad.crouch." + std::to_string(i));
         return out;
     }
 
@@ -279,6 +348,9 @@ namespace ui
             return computed;
         return layoutFor(page, window, in);
     }
+
+    // The ONLINE page's field pitch: a 40-px field and the REPORT page's 12-px gap (Sprint 10 Goal 9).
+    const float kOnlineRowPitch = 52.0f;
 
     Rect onlinePresetRow(Rect window, int index)
     {

@@ -13,6 +13,8 @@ add_library(ps2x_shared STATIC
     src/zip_store.cpp
     src/diagnostics.cpp
     src/bug_report.cpp
+    src/mapping.cpp
+    src/knobs.cpp
 )
 target_include_directories(ps2x_shared PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(ps2x_shared PUBLIC cxx_std_20)

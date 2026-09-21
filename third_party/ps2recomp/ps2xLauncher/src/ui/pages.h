@@ -3,6 +3,7 @@
 //
 // A page never touches the process glue, the microphone or the disc: it reads App and raises a request flag,
 // and main.cpp's loop is the only thing that acts on the world.
+#include "bind_flow.h"
 #include "focus.h"
 #include "launcher/bug_report.h"
 #include "launcher/launcher_config.h"
@@ -93,6 +94,12 @@ namespace ui
         // NOT in Config: which drawers you left open is not a setting, and a launcher that reopens them for
         // a stranger would defeat the point. `advancedForced` can override it -- see focus.h.
         bool advancedOpen = false;
+        // Sprint 10 Goal 8: the CONTROLLER page's section (0 SETUP, 1 BUTTONS -- not a setting either) and the
+        // bind flow. The page asks for a session with `requestBind` (the PS2 button, or -1) and main.cpp starts
+        // it, because only the loop knows which host buttons are down at that moment.
+        int padSection = 0;
+        BindFlow bind;
+        int requestBind = -1;
     };
 
     // ---- the shared furniture of a settings page ----------------------------------------------------------

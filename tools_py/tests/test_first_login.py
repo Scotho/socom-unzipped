@@ -245,7 +245,7 @@ class LoginBranch(unittest.TestCase):
     def run_login(self, form, existing):
         sh, g = T.FakeShell(), Grabs(form)
         stub = mock.patch.multiple(
-            L, create_persona=mock.Mock(side_effect=lambda s, n, li: self.calls.append(("create", n, li))),
+            L, create_persona=mock.Mock(side_effect=lambda s, n, li, pf=False: self.calls.append(("create", n, li, pf))),
             press_persona=mock.Mock(side_effect=lambda s, e, li: self.calls.append(("persona", e, li))),
             press_persona_list=mock.Mock(side_effect=lambda s: s.presses.append(("key", "cross"))),
             press_connect=mock.Mock(side_effect=lambda s: self.calls.append(("connect",))),
@@ -261,7 +261,7 @@ class LoginBranch(unittest.TestCase):
         for existing in (True, False):
             self.calls = []
             sh = self.run_login(FORM_FRESH, existing)
-            self.assertEqual(self.calls[0], ("create", "socomc", False))
+            self.assertEqual(self.calls[0], ("create", "socomc", False, False))   # False: not --prefilled (Goal 9)
             self.assertIn("[login] persona: none saved -> creating socomc", sh.logs)
             self.assertEqual(self.calls[1:], [("connect",), ("prompts",), ("lobby",)])
 

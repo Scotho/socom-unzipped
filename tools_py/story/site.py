@@ -112,6 +112,18 @@ def pretty_date(d):
     return "%s %d" % (MONTHS[int(m)], int(dd))
 
 
+def media_url(img_base, name):
+    """`<img_base>/<name>?v=<sha256 prefix>` of the file under docs/story/img/ -- the same bust the logo gets, because
+    Cloudflare kept serving the first cut of a re-encoded video under its unchanged URL (2026-09-21). A name with
+    no file behind it (the tests' fixtures) is left unstamped."""
+    src = os.path.join(ROOT, cite.PICTURE_DIR, name)
+    if not os.path.isfile(src):
+        return "%s/%s" % (img_base, name)
+    import hashlib
+    with open(src, "rb") as f:
+        return "%s/%s?v=%s" % (img_base, name, hashlib.sha256(f.read()).hexdigest()[:10])
+
+
 def render_entry(e, repo, img_base, index):
     anchor = "%s-%s" % (e["date"], slug(e["title"]))
     parts = ['<li class="node" id="%s" style="--i:%d">' % (anchor, index),
@@ -147,9 +159,19 @@ def render_entry(e, repo, img_base, index):
         elif _IMG_RE.match(b):
             m = _IMG_RE.match(b)
             caption, path = m.group(1), m.group(2)
-            figure = ('<figure><img src="%s/%s" alt="%s" loading="lazy">'
-                      '<figcaption>%s</figcaption></figure>'
-                      % (img_base, os.path.basename(path), html.escape(caption, quote=True), inline(caption)))
+            name = os.path.basename(path)
+            if name.endswith(cite.VIDEO_EXT):
+                # a video in the picture slot: the poster is the frame the checker required beside it, and
+                # nothing plays until the reader asks (no autoplay, sound as recorded)
+                poster = name[:-len(cite.VIDEO_EXT)] + ".png"
+                figure = ('<figure><video controls preload="metadata" playsinline poster="%s">'
+                          '<source src="%s" type="video/mp4">%s</video>'
+                          '<figcaption>%s</figcaption></figure>'
+                          % (media_url(img_base, poster), media_url(img_base, name), html.escape(caption), inline(caption)))
+            else:
+                figure = ('<figure><img src="%s" alt="%s" loading="lazy">'
+                          '<figcaption>%s</figcaption></figure>'
+                          % (media_url(img_base, name), html.escape(caption, quote=True), inline(caption)))
         else:
             body.append("<p>%s</p>" % inline(b))
     parts.extend(body)
@@ -242,7 +264,7 @@ details[open].cited summary::after{content:"\2212"}
 .cite.commit:hover{border-color:var(--glow);color:var(--lit)}
 .cite.run{font-family:var(--mono);font-size:12px;color:var(--teal)}
 figure{margin:12px 0 4px;border:1px solid var(--line2);background:#000;max-width:640px}
-figure img{display:block;width:100%;height:auto;filter:saturate(.95)}
+figure img,figure video{display:block;width:100%;height:auto;filter:saturate(.95)}
 figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;color:var(--dim)}
 .closing{margin-top:48px;padding:18px 20px;background:var(--panel2);border:1px solid var(--line)}
 .closing h2{font:600 22px/1.2 var(--head);letter-spacing:1px;color:var(--gold);margin:0 0 10px}

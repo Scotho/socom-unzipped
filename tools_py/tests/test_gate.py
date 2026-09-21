@@ -991,7 +991,10 @@ class TestGateDiskRefusal(unittest.TestCase):
     def test_proceeds_above_default_threshold(self):
         os.environ.pop("RUN_MIN_FREE_GB", None)
         os.environ.pop("RUN_FREE_GB_CMD", None)
+        # The pins check (Q1b) sits between the disk check and the lock; on a checkout without the
+        # git-ignored pristine card it would refuse (7) first, which is not what this case is about.
         with mock.patch.object(gate, "free_gb", return_value=4.1), \
+             mock.patch.object(gate, "check_pins", return_value=([], {}, False)), \
              mock.patch.object(gate, "_lock", side_effect=self._busy_lock):
             rc = gate.main(["--stamp", "diskrefusal_test"])
         # Got past the disk check into the real-run path, which then found the (mocked) lock busy.

@@ -44,7 +44,7 @@
    "bytes": 390,
    "sha256": "b9fda90462f554b6a80c93a92b84be558b0ff90d375c9c44fb524dc20eb0009f",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s3d_2x_host": {
@@ -53,7 +53,7 @@
    "bytes": 13,
    "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "directory"
   },
   "logs/parity/gate/s4_rand": {
@@ -62,7 +62,7 @@
    "bytes": 13,
    "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "directory"
   },
   "logs/parity/gate/s5_gsbp": {
@@ -71,7 +71,7 @@
    "bytes": 13,
    "sha256": "3f754a26c6b3da82ff29e12f296cda3c9ef9904a2390563c6022fad1f003a217",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "directory"
   },
   "logs/parity/gate/s6_audio_title19/summary.txt": {
@@ -80,7 +80,7 @@
    "bytes": 258,
    "sha256": "6afa00151ab3bc65a878cc7058394fb99800b99b792ba2769cff7019f231d3d4",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_blockptr/summary.txt": {
@@ -89,7 +89,7 @@
    "bytes": 862,
    "sha256": "04705a9aed9214d205fc1e0804d586d1485fe14e7ce5c3520f29f703b202a91c",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_clock_gate/summary.txt": {
@@ -98,7 +98,7 @@
    "bytes": 1012,
    "sha256": "091d561101129ffdc1c416ac24c1fc91a4462523e152fcb57d5d56661f738eae",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_clutfix_gate/summary.txt": {
@@ -107,7 +107,7 @@
    "bytes": 954,
    "sha256": "1ea6409f720b8d0e1fca1e74f62b322efb71872179889f84e0938688f1120f47",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_fixwave_gate/summary.txt": {
@@ -116,7 +116,7 @@
    "bytes": 954,
    "sha256": "35e347610439b461c4b795d085bb3129987a380435f3d7c9f238805d695ebc3d",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_launcher_gate/summary.txt": {
@@ -125,7 +125,7 @@
    "bytes": 955,
    "sha256": "759fcfe46eb68918a57fc2678433338b2c15abccb13ee158fbf0a9ebd0ba5861",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s6_probe/summary.txt": {
@@ -143,7 +143,7 @@
    "bytes": 7,
    "sha256": "b813ae768a202d533309fd2f5b9e2076f2fc2efb943b28a80e0050aa1872fe62",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "directory"
   },
   "logs/parity/gate/s7_gl_gate/summary.txt": {
@@ -152,7 +152,7 @@
    "bytes": 955,
    "sha256": "f23bcb3b7f5b43142233563848c11a913ceddd4496d81e836781e994a543824b",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s7_gl_gate2/summary.txt": {
@@ -161,7 +161,7 @@
    "bytes": 956,
    "sha256": "54f453d89b65536c843ef93d4e2d1d61c259cd4ba15b43fbddf50fdad88ab6a0",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/parity/gate/s8_audio_mc_gate2": {
@@ -530,7 +530,7 @@
    "bytes": 20874198,
    "sha256": "3737e0ad64b61095b33d3efaeaf8da3988239d610793507df73323a693e0dc2b",
    "captured": "2026-09-20",
-   "archived": false,
+   "archived": true,
    "kind": "file"
   },
   "logs/s6_ladder8.done": {

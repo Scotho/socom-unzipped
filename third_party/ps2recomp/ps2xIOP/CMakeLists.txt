@@ -41,6 +41,8 @@ target_compile_definitions(ps2_iop PUBLIC
     PS2X_IOP_ENABLE_PLUGINS=$<BOOL:${PS2X_IOP_ENABLE_PLUGINS}>
 )
 
+target_link_libraries(ps2_iop PRIVATE ps2x_shared)   # Sprint 9 Goal 3: snd989.cpp reads PS2X_MPEG_TRACE through ps2x::knob
+
 if(PS2X_IOP_ENABLE_PLUGINS AND UNIX AND NOT APPLE)
     target_link_libraries(ps2_iop PRIVATE ${CMAKE_DL_LIBS})
 endif()

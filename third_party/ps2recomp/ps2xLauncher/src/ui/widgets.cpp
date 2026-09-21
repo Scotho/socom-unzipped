@@ -560,7 +560,7 @@ namespace ui
         }
     }
 
-    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen)
+    void textField(const Ctx &ctx, Rect r, std::string &value, const std::string &id, bool &changed, bool editable, size_t maxLen, bool masked)
     {
         if (!drawable(r))
             return;
@@ -586,8 +586,11 @@ namespace ui
         const float inset = 10.0f;
         const float size = metrics::bodySize;
         const float drawn = static_cast<float>(pixelSize(ctx, size)) / (ctx.dpi * ctx.scale);
-        const std::string shown = isActive ? ellipsizeStart(ctx, value, r.w - inset * 2.0f, size)
-                                           : ellipsizeEnd(ctx, value, r.w - inset * 2.0f, size);
+        // Masked: the same number of marks as characters, so the player can count what they typed and nothing
+        // on screen (or in a screenshot) says what it was. The caret arithmetic below uses the shown string.
+        const std::string visible = masked ? std::string(value.size(), '*') : value;
+        const std::string shown = isActive ? ellipsizeStart(ctx, visible, r.w - inset * 2.0f, size)
+                                           : ellipsizeEnd(ctx, visible, r.w - inset * 2.0f, size);
         text(ctx, shown.c_str(), Vec2{r.x + inset, r.y + (r.h - drawn * 1.12f) * 0.5f}, size,
              editable ? theme::text : theme::caption);
         if (isActive && (ctx.fake || (static_cast<int>(ctx.time * 2.0) & 1)))

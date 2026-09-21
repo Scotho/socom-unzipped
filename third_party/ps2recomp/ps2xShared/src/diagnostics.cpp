@@ -62,6 +62,10 @@ namespace launcher::diagnostics
         const size_t slash = config.isoPath.find_last_of("/\\");
         if (slash != std::string::npos)
             config.isoPath = config.isoPath.substr(slash + 1);
+        // Sprint 10 Goal 9, R179: the password stays in the player's own file and nowhere else. The key is
+        // written empty, so a reader of the zip sees the field was blanked rather than absent. (The credential
+        // scrubber over the text is no substitute: it has a six-character floor, and "socom" is five.)
+        config.loginPassword.clear();
         return toJson(config);
     }
 
@@ -79,6 +83,8 @@ namespace launcher::diagnostics
         const std::regex kCredential(
             R"((\b[\w-]{0,24}?(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|credential|pass)s?\s*[:=]\s*)["']?([^\s"',;]{6,}))",
             std::regex::icase);
+        // The launcher's own password variable, whatever its length (a five-character password is still one).
+        const std::regex kLoginPass(R"((PS2X_SOCOM2_LOGIN_PASS\s*=\s*)[^\s"',;]+)");
         const std::regex kIpv4(R"((?:^|[^\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.]))");
         const char *const kHostedIp = "3.143.65.100";
 
@@ -110,6 +116,7 @@ namespace launcher::diagnostics
             replaceAll(out, backward, "~");
         }
         out = std::regex_replace(out, kUserDir, "~");
+        out = std::regex_replace(out, kLoginPass, "$1[redacted]");   // any length: the general rule's floor is six
         out = std::regex_replace(out, kCredential, "$1[redacted]");
         // addresses by hand: the hosted box stays, and a match that is not an address (a version) stays too
         std::string masked;
@@ -143,6 +150,15 @@ namespace launcher::diagnostics
         return linesStartingWith(logText, {"[crash]", "[terminate]", "[main] fatal", "[oom]", "[preflight] exit", "[gs-gl] FATAL"});
     }
 
+    // Sprint 9 Goal 3 Task 7: the runner's one [knobs] line -- what was set and honoured, what was ignored without
+    // --dev, what was refused -- so a report answers "it ignored my setting" by itself. The line holds no directory
+    // (describe() cuts a Path to its file name) and versions.txt is scrubbed like every other entry.
+    std::string knobsLine(const std::string &logText)
+    {
+        const std::string lines = linesStartingWith(logText, {"[knobs]"});
+        return lines.empty() ? std::string("no [knobs] line in this log\n") : lines;
+    }
+
     std::string joinClipped(const std::string &head, const std::string &tail, uint64_t omittedBytes)
     {
         return head + "\n[diagnostics] " + std::to_string(omittedBytes) + " bytes omitted here\n" + tail;
@@ -162,6 +178,7 @@ namespace launcher::diagnostics
         out += "launcher: " + (in.version.empty() ? std::string("development build") : in.version) + "\n";
         out += "platform: " + (in.platform.empty() ? std::string("unknown") : in.platform) + "\n";
         out += "exit codes known: " + std::to_string(ExitCodes::kTableSize) + " (ps2x/exit_codes.h)\n";
+        out += "knobs: " + knobsLine(in.logText);
         if (!in.haveLastExit)
         {
             out += "last exit: no run in this launcher session\n";

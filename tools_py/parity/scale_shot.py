@@ -61,6 +61,7 @@ def child_env(size, latest=None, base=None):
     width, height = parse_size(size)
     env = dict(os.environ if base is None else base)
     env["PS2X_WINDOW_SIZE"] = "%dx%d" % (width, height)
+    env.setdefault("PS2X_DEV", "1")   # the exported frame is a Dev knob (Sprint 9 Goal 3)
     if latest:
         env["PS2X_HOST_SCREENSHOT_LATEST"] = os.path.abspath(latest)
     else:

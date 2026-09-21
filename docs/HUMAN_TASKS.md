@@ -37,6 +37,19 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
    fixtures, harness references, research evidence, ~9 MB): all stay as illustration of our own output, the movie
    frames go, or every picture goes. Until you decide, nothing moves.
 
+**Your online name and password now reach the game (Sprint 10 Goal 9, 2026-09-21): type them once in the launcher.**
+ONLINE > PROFILE has PLAYER NAME and a masked PASSWORD; with both set, the game's two keyboards open already filled
+and you press ENTER (the harness did it three times on the hosted server, one with a brand-new persona). The
+password is stored plain in your own `config.json` (R179) and blanked out of every bug report and diagnostics
+zip. Try it once with your real persona; if a keyboard opens empty, say which one.
+
+**The controller remapping UI is built (Sprint 10 Goal 8, 2026-09-21) and needs your hands on a real pad.** The
+CONTROLLER page has a BUTTONS section: focus a row, press the pad button you want there (a countdown runs; hold B or
+press Escape to cancel), conflicts offer SWAP / REPLACE / CANCEL, RESTORE DEFAULTS asks first, and the whole page works
+with the pad alone. Nothing here was tried on a physical pad -- three presses to try first: rebind one face button and
+play a mission with it; bind a button that is already used and take SWAP; RESTORE DEFAULTS and confirm the pad render
+goes back. Say what felt wrong. (The mapping is saved per profile in `config.json`; a default mapping is not written.)
+
 **The hosted box, one line (Sprint 10 Goal 2, 2026-09-21):** it costs **$12/month** on the free-plan credit ($78.46 on
 2026-09-19), so the credit runs out around **March 2027** -- the same month the plan expires (2027-03-05) -- and after
 that the card pays. Backups now run daily on the box and `vm/lightsail/backup_pull.sh` copies one off it (run it

@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include "Common.h"
 #include "MemoryCard.h"
+#include "ps2x/knobs.h"
 
 namespace ps2_stubs
 {
@@ -125,8 +126,14 @@ namespace ps2_stubs
         // never inserted.
         const char *mcSlot1DirOverride()
         {
-            const char *value = std::getenv("PS2X_MC_DIR_SLOT1");
+            const char *value = ps2x::knob("PS2X_MC_DIR_SLOT1");
             return (value && *value) ? value : nullptr;
+        }
+
+        bool mcTraceEnabled()
+        {
+            static const bool s_on = ps2x::knob("PS2X_MC_TRACE") != nullptr;   // was a getenv on every GetInfo and Sync
+            return s_on;
         }
 
         bool isMcCardPresent(int32_t port, int32_t slot)
@@ -1050,7 +1057,7 @@ namespace ps2_stubs
             }
         }
 
-        if (std::getenv("PS2X_MC_TRACE")) std::cout << "[MC] GetInfo port=" << port << " type=" << cardType
+        if (mcTraceEnabled()) std::cout << "[MC] GetInfo port=" << port << " type=" << cardType
                                          << " free=" << freeBlocks << " format=" << format
                                          << " result=" << result << std::endl;
         setReturnS32(ctx, 0);
@@ -1387,7 +1394,7 @@ namespace ps2_stubs
             return;
         }
 
-        if (std::getenv("PS2X_MC_TRACE")) std::cout << "[MC] Sync cmd=" << cmd << " result=" << result << std::endl;
+        if (mcTraceEnabled()) std::cout << "[MC] Sync cmd=" << cmd << " result=" << result << std::endl;
 
         if (cmdPtr != 0u)
         {

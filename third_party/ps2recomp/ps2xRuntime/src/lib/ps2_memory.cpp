@@ -2,6 +2,7 @@
 #include "runtime/ps2_address.h"
 #include "runtime/gs/gs_frontend.h"
 #include "ps2_log.h"
+#include "ps2x/knobs.h"
 #include <atomic>
 #include <cstring>
 extern std::atomic<uint64_t> g_vif1EnqCount;
@@ -9,7 +10,11 @@ extern std::atomic<uint64_t> g_vif1EnqQwc;
 #include <cstdlib>
 #include <cstdio>
 #include <chrono>
-static const bool g_traceFifo = (std::getenv("PS2X_TRACE_FIFO") != nullptr);
+static bool traceFifo()   // on first use: a namespace-scope read ran before main() had seen --dev
+{
+    static const bool s_on = ps2x::knob("PS2X_TRACE_FIFO") != nullptr;
+    return s_on;
+}
 #include <limits>
 #include <stdexcept>
 #include <algorithm>
@@ -1296,7 +1301,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
             const uint32_t madr = m_ioRegisters[channelBase + 0x10];
             const uint32_t qwc = m_ioRegisters[channelBase + 0x20];
             m_dmaStartCount.fetch_add(1, std::memory_order_relaxed);
-            if (g_traceFifo)
+            if (traceFifo())
                 std::fprintf(stderr, "[fifo] CHCR w ch=%08x val=%08x madr=%08x qwc=%08x tadr=%08x mfd=%x rbor=%08x rbsr=%08x d8madr=%08x\n", channelBase, value, madr, qwc, m_ioRegisters[channelBase+0x30], (m_ioRegisters.count(0x1000E000u)?((m_ioRegisters[0x1000E000u]>>2)&3):0), m_ioRegisters[0x1000E040u], m_ioRegisters[0x1000E050u], m_ioRegisters[0x1000D010u]);
 
             if (channelBase == 0x1000D000u || channelBase == 0x1000D400u)
@@ -1477,7 +1482,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                         ++tagsProcessed;
                         {
                             // PS2X_TRACE_VIF: also print the first 400 VIF1 chain tags (id, qwc, addr, upper half).
-                            static const bool s_traceTags = std::getenv("PS2X_TRACE_VIF") != nullptr;
+                            static const bool s_traceTags = ps2x::knob("PS2X_TRACE_VIF") != nullptr;
                             static uint32_t s_tagLines = 0;
                             if (s_traceTags && channelBase == 0x10009000u && s_tagLines < 400u)
                             {
@@ -1575,7 +1580,7 @@ bool PS2Memory::writeIORegister(uint32_t address, uint32_t value)
                     m_ioRegisters[channelBase + 0x50] = asr1;
                     chcr = (chcr & ~(0x3u << 4)) | ((asp & 0x3u) << 4);
                     chcr = (chcr & 0x0000FFFFu) | (lastTagUpper << 16);
-                    if (g_traceFifo && mfifoDrain)
+                    if (traceFifo() && mfifoDrain)
                         std::fprintf(stderr, "[fifo] drain ch=%08x tags=%d stalled=%d chainBytes=%zu newTadr=%08x\n", channelBase, tagsProcessed, (int)mfifoStalledNow, chainBuf.size(), ringWrap(tagAddr));
                     if (mfifoDrain)
                     {
@@ -2016,7 +2021,7 @@ void PS2Memory::submitGifPacket(GifPathId pathId, const uint8_t *data, uint32_t 
     // reach the GS (SOCOM II's title labels are overwritten by the menu background when a
     // PATH2 IMAGE transfer is split around a PATH3 one).
     {
-        static const long s_traceMax = std::getenv("PS2X_GIF_TRACE") ? std::strtol(std::getenv("PS2X_GIF_TRACE"), nullptr, 0) : 0L;
+        static const long s_traceMax = ps2x::knob("PS2X_GIF_TRACE") ? std::strtol(ps2x::knob("PS2X_GIF_TRACE"), nullptr, 0) : 0L;
         static long s_traced = 0;
         if (s_traceMax > 0 && s_traced < s_traceMax)
         {
@@ -2406,28 +2411,6 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
         {
         case kEeTimerCountOffset:
         {
-            // PS2X_TIMER_TRACE=1: once a second, how a guest polls T0 (reads/s, min/max/last).
-            static const bool s_trace = std::getenv("PS2X_TIMER_TRACE") != nullptr;
-            if (s_trace && timerIndex == 0u)
-            {
-                static uint64_t s_reads = 0, s_lastReads = 0;
-                static uint32_t s_min = 0xFFFFu, s_max = 0u;
-                static auto s_last = std::chrono::steady_clock::now();
-                const uint32_t v = timer.count & 0xFFFFu;
-                ++s_reads;
-                s_min = std::min(s_min, v);
-                s_max = std::max(s_max, v);
-                const auto now = std::chrono::steady_clock::now();
-                if (now - s_last >= std::chrono::seconds(1))
-                {
-                    std::fprintf(stderr, "[t0] reads/s=%llu min=%u max=%u last=%u\n",
-                                 (unsigned long long)(s_reads - s_lastReads), s_min, s_max, v);
-                    s_last = now;
-                    s_lastReads = s_reads;
-                    s_min = 0xFFFFu;
-                    s_max = 0u;
-                }
-            }
             return timer.count & 0xFFFFu;
         }
         case kEeTimerModeOffset:

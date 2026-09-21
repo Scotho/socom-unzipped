@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "external/miniaudio.h"
+#include "ps2x/knobs.h"
 
 // raudio.c :167 defines MA_NO_WAV, so miniaudio's encoder is not in the library: the 44-byte header is
 // written by hand, in the shape ps2_audio.cpp :358-379 writes it, with channels = 1, blockAlign = 2 and
@@ -469,7 +470,7 @@ namespace
             if (!checked)
             {
                 checked = true;
-                const char *where = std::getenv(knob);
+                const char *where = ps2x::knob(knob);
                 if (where != nullptr && where[0] != 0)
                 {
                     const std::string resolved = hostMicDumpPath(where);
@@ -545,7 +546,7 @@ std::string hostMicDumpPath(const std::string &pattern)
     const std::string::size_type at = pattern.find(kTitleToken);
     if (at == std::string::npos)
         return pattern;
-    const char *title = std::getenv("PS2X_WINDOW_TITLE");
+    const char *title = ps2x::knob("PS2X_WINDOW_TITLE");
     const std::string tag = (title == nullptr || title[0] == 0) ? std::string("A") : std::string(title);
     std::string out = pattern;
     for (std::string::size_type i = out.find(kTitleToken); i != std::string::npos;
@@ -581,8 +582,8 @@ HostMic *hostMic()
 
 void startHostMicFromEnvironment()
 {
-    const char *fake = std::getenv("PS2X_MIC_FAKE");
-    const char *name = std::getenv("PS2X_MIC_DEVICE");
+    const char *fake = ps2x::knob("PS2X_MIC_FAKE");
+    const char *name = ps2x::knob("PS2X_MIC_DEVICE");
     const bool haveFake = fake != nullptr && fake[0] != 0;
     const bool haveDevice = name != nullptr && name[0] != 0;
     if (!haveFake && !haveDevice)
@@ -605,7 +606,7 @@ void startHostMicFromEnvironment()
     }
     std::cout << "[mic] capturing \"" << (haveFake ? fake : name) << "\" at " << HostMic::kSampleRate
               << " Hz mono" << (haveFake ? " (fake source)" : "") << std::endl;
-    const char *dumpPath = std::getenv("PS2X_MIC_DUMP");
+    const char *dumpPath = ps2x::knob("PS2X_MIC_DUMP");
     if (dumpPath != nullptr && dumpPath[0] != 0)
         g_hostMic->startDumpTee(dumpPath);
 }
