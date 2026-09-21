@@ -1488,10 +1488,14 @@ namespace
     // handler is FUN_0038d770(msg, ctx); the handler passes the keyboard a fixed initial-text buffer at
     // 0x49ec70 that nothing in the game ever writes. This wrapper reads the action's argument block (the
     // Purpose key and the keyboard name say which field it is; MaxChars/MaxBytes say the cap), writes the
-    // matching PS2X_SOCOM2_LOGIN_NAME / _PASS string into that buffer, lets the original open the keyboard
-    // (it lays the text out and puts the cursor after it), then blanks the buffer so the next keyboard -- a
-    // chat line, a game name -- opens empty as before. Nothing is submitted (R180): ENTER applies the text to
-    // the UI variable exactly as typed text would. With neither variable set the wrapper is never installed.
+    // matching PS2X_SOCOM2_LOGIN_NAME / _PASS string into that buffer -- or zeros, so the next keyboard, a chat
+    // line, a game name, opens empty as before -- and lets the original open the keyboard (it lays the text
+    // out and puts the cursor after it). NOTHING RUNS AFTER THE ORIGINAL: a recompiled call can leave through
+    // an EE scheduler checkpoint and resume later (the third driven login, s10_g9_prefill_diag3: `[ret-unwound]
+    // OskActivate pc=0x3766a0`), so code placed after `g_oskOpenOriginal(...)` runs before the game has read the
+    // buffer -- the first version blanked it there and every keyboard opened empty. Nothing is submitted
+    // (R180): ENTER applies the text to the UI variable exactly as typed text would. With neither variable set
+    // the wrapper is never installed.
     // ------------------------------------------------------------------------------------------
     PS2Runtime::RecompiledFunction g_oskOpenOriginal = nullptr;
 
@@ -1501,18 +1505,16 @@ namespace
         const uint32_t bufAddr = socom2_osk::kOskTextBufferAddr & PS2_RAM_MASK;
         socom2_osk::Request req;
         std::string text;
-        if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE && bufAddr + socom2_osk::kOskTextBufferBytes <= PS2_RAM_SIZE)
+        if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE)
         {
             req = socom2_osk::readRequest(rdram + msgAddr);
             text = socom2_osk::prefillFor(req.field, std::getenv("PS2X_SOCOM2_LOGIN_NAME"), std::getenv("PS2X_SOCOM2_LOGIN_PASS"),
                                           socom2_osk::capFor(req.maxChars, req.maxBytes, socom2_osk::kOskTextBufferBytes));
         }
-        char *buf = reinterpret_cast<char *>(rdram + bufAddr);
-        if (!text.empty())
-        {
-            std::memcpy(buf, text.data(), text.size());
-            buf[text.size()] = '\0';
-        }
+        // The buffer's whole image, before the original and never after it (the header comment): the text for
+        // a login field, zeros for any other keyboard, so what the previous open left never shows.
+        if (bufAddr + socom2_osk::kOskTextBufferBytes <= PS2_RAM_SIZE)
+            socom2_osk::writeBuffer(rdram + bufAddr, socom2_osk::kOskTextBufferBytes, text);
         // One line per keyboard, whatever was decided: the first driven login is research/38's dynamic
         // confirmation (the live purpose, keyboard and caps), and never the text itself.
         std::cout << "[socom2] on-screen keyboard open: purpose=\"" << req.purpose << "\" skb=\"" << req.skbName
@@ -1522,8 +1524,8 @@ namespace
                   << std::endl;
         if (g_oskOpenOriginal)
             g_oskOpenOriginal(rdram, ctx, runtime);
-        if (!text.empty())
-            std::memset(buf, 0, text.size() + 1);   // empty again, as the game left it
+        // Nothing here: the original may have unwound through a scheduler checkpoint with the keyboard still
+        // to be laid out, and resumes later without passing through this wrapper again.
     }
 
     void installOskPrefill(PS2Runtime &runtime)

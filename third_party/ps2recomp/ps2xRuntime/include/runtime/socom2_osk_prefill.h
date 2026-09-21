@@ -4,10 +4,15 @@
 // is FUN_0038d770(msg, ctx). `msg` is the action's parsed 0xAC-byte argument block; the handler hands the
 // keyboard a fixed initial-text buffer at 0x49ec70 that nothing in the game ever writes, which is why every
 // keyboard opens empty. The runtime wraps that handler (game_overrides_socom2.cpp, installOskPrefill): it reads
-// the block, decides which field this keyboard edits, writes the launcher's string into the buffer BEFORE the
-// original runs and blanks it again AFTER, so the keyboard opens already typed with the cursor at the end and
-// ENTER applies it exactly as typed text (R180: prefilled, never submitted). Everything decidable on plain
-// values is decided here, so the suite can say what the game will be handed without a launch.
+// the block, decides which field this keyboard edits, and writes the buffer's whole image BEFORE the original
+// runs -- the launcher's string for a login field, zeros for any other keyboard -- so the keyboard opens already
+// typed with the cursor at the end and ENTER applies it exactly as typed text (R180: prefilled, never
+// submitted). Nothing is written after the original: a recompiled guest call can leave through an EE scheduler
+// checkpoint and resume later (the third driven login: `[ret-unwound] OskActivate pc=0x3766a0`), so host code
+// placed after the call runs before the game has finished with the buffer -- the first version blanked it
+// there and every keyboard opened empty. The buffer is read by this handler alone, so what one open leaves is
+// simply overwritten by the next. Everything decidable on plain values is decided here, so the suite can say
+// what the game will be handed without a launch.
 #pragma once
 #include <cstddef>
 #include <cstdint>
@@ -119,5 +124,18 @@ namespace socom2_osk
         if (out.size() > cap)
             out.resize(cap);
         return out;
+    }
+
+    // The buffer's image for this open: the text (cut to what the buffer holds with its terminator) followed
+    // by zeros to the buffer's end, so nothing of the previous open survives; an empty text is all zeros.
+    // Written before the original runs and never touched after it (see the header comment).
+    inline void writeBuffer(uint8_t *buf, std::size_t bufferBytes, const std::string &text)
+    {
+        if (buf == nullptr || bufferBytes == 0)
+            return;
+        const std::size_t n = text.size() < bufferBytes - 1 ? text.size() : bufferBytes - 1;
+        if (n > 0)
+            std::memcpy(buf, text.data(), n);
+        std::memset(buf + n, 0, bufferBytes - n);
     }
 }

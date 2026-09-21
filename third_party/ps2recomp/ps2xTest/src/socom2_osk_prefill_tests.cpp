@@ -65,6 +65,33 @@ void register_socom2_osk_prefill_tests()
             t.Equals(socom2_osk::capFor(-1, 31, 0x48), static_cast<std::size_t>(31), "a negative (garbage) count is ignored");
         });
 
+        // The third driven login (2026-09-21, s10_g9_prefill_diag3): the wrap was entered, wrote "socom", and the
+        // original handler left through an EE scheduler checkpoint inside FUN_0038b440 ([ret-unwound] OskActivate
+        // pc=0x3766a0) -- the guest call chain unwinds and resumes later, so the wrap's "after the original" blank
+        // ran BEFORE the resumed guest laid the text out (OskLayout saw an empty buffer). Nothing may be written
+        // after the original: the buffer's whole image is decided before each open and left as it is.
+        tc.Run("the buffer image is decided before the open: the text and zeros, or all zeros for another keyboard", [](TestCase &t)
+        {
+            uint8_t buf[socom2_osk::kOskTextBufferBytes];
+            std::memset(buf, 'x', sizeof(buf));                          // whatever the last open left there
+            socom2_osk::writeBuffer(buf, sizeof(buf), "socom");
+            t.Equals(std::string(reinterpret_cast<const char *>(buf)), std::string("socom"), "the text, terminated");
+            bool zeroTail = true;
+            for (std::size_t i = 6; i < sizeof(buf); ++i)
+                zeroTail = zeroTail && buf[i] == 0;
+            t.IsTrue(zeroTail, "and nothing of the previous open after it");
+            socom2_osk::writeBuffer(buf, sizeof(buf), "");
+            bool allZero = true;
+            for (std::size_t i = 0; i < sizeof(buf); ++i)
+                allZero = allZero && buf[i] == 0;
+            t.IsTrue(allZero, "an empty text (another keyboard, or no variable) blanks the buffer: it opens empty as the console's does");
+            socom2_osk::writeBuffer(buf, sizeof(buf), std::string(0x100, 'a'));
+            t.Equals(std::strlen(reinterpret_cast<const char *>(buf)), sizeof(buf) - 1, "a text past the buffer is cut, the terminator kept");
+            socom2_osk::writeBuffer(nullptr, sizeof(buf), "socom");      // no buffer: nothing to do, no crash
+            socom2_osk::writeBuffer(buf, 0, "socom");
+            t.Equals(std::strlen(reinterpret_cast<const char *>(buf)), sizeof(buf) - 1, "a zero-byte buffer is left alone");
+        });
+
         // The argument block itself, as FUN_00395f40 lays it out: the override reads these four fields and nothing else.
         tc.Run("the argument block's fields are read at research/38's offsets", [](TestCase &t)
         {
