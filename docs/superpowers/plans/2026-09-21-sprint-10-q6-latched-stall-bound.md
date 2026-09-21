@@ -124,21 +124,21 @@ GREEN: `./build.sh test --no-runner` exit 0 -- Python `Ran 1571 tests ... OK (sk
 - The `[gs-gl stats] backpressure ...` line (`PS2X_GS_STATS=1`, every 60 presents) gains
   `stall_engaged= stall_absorbed_cmds= stall_absorbed_bytes= stall_reanchor_bytes=`.
 
-## 5. Proposed rulings (the controller numbers them)
+## 5. Rulings (numbered by the controller 2026-09-21: R189-R192)
 
-- **R-a -- the state stream is absorbed, not waited on.** Decided 2026-09-21 by the stall agent. A latched stall
+- **R189 -- the state stream is absorbed, not waited on.** Decided 2026-09-21 by the stall agent. A latched stall
   keeps the game running (Sprint 7's intent) and the queue at the cap plus one command, at the cost of a re-anchor
   of at most 4 MB plus 512 + 256 commands when the window comes back, and the inexactness named in section 2's
   last paragraph. R124's ceiling stays as the last line for an unlatched-but-slow replay and for
   `PS2X_GS_PENDING_CAP_MB=0`. Overturnable: `PS2X_GS_PENDING_CAP_MB=0` restores the pre-Q6 path exactly.
-- **R-b -- `Present` is droppable at the cap on a latched stall.** Before Q6 it was "accounted, never dropped".
+- **R190 -- `Present` is droppable at the cap on a latched stall.** Before Q6 it was "accounted, never dropped".
   Its only waiter is the frame dump (2 s timeout, already paid on a stall); the next Present carries the display
   registers again. Cost if wrong: a frame-dump run under a drag misses frames it could not have shown.
-- **R-c -- the bounds: 512 rectangle pieces, 8 per key, 256 palettes, 4 MB.** 256 is the replay's own CLUT
+- **R191 -- the bounds: 512 rectangle pieces, 8 per key, 256 palettes, 4 MB.** 256 is the replay's own CLUT
   eviction window (a re-anchor of more would evict its own first entries); 4 MB is VRAM's size (the page plan can
   never exceed it); 512 and 8 are the point where a rectangle table stops being cheaper than the page mask. None
   was measured against a real stall; the stats line's `stall_reanchor_bytes=` will say what a real one costs.
-- **R-d -- no launch from this branch.** The gate on the rebuilt exe and the stall run are the controller's
+- **R192 -- no launch from this branch.** The gate on the rebuilt exe and the stall run are the controller's
   (section 6); this agent built and ran `./build.sh test --no-runner` only.
 
 ## 6. For the controller
