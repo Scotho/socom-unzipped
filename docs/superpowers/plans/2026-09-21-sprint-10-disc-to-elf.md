@@ -109,7 +109,7 @@ second call decrypts nothing, rebuilds nothing, and still verifies. `--force`, `
 re-extracted by size, and that the shipped expectations file's boot-ELF digest equals the launcher's
 `kSocom2R0001ElfSha256` (a test that fails if the two ever drift) are covered too.
 
-The whole Python suite after the change: `Ran 1712 tests ... OK (skipped=109)` (1669 before, 43 new).
+The whole Python suite after the change: `Ran 1712 tests ... OK` (1669 before, 43 new), twice -- `skipped=109` before the from-nothing run and `skipped=85` after it, because this worktree then had a `game/` and the two dozen cases that need the disc ran too.
 
 ## 4. Rulings made on the owner's behalf
 
