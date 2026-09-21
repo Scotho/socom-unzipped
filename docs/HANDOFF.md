@@ -34,7 +34,19 @@ supplies their own disc. The owner is Craig (GitHub `Scotho`); the repository is
   because three of its four documentation artefacts turn out to be already written.
 - **Baselines: C++ 686/686, Python 1457 OK, `PS2X_TEST_REPEAT=3 ./build.sh test` exit 0.** Last gates 3/3: `s9_q0_children_gate`,
   `s9_q0_prefill_gate`, `s9_q0_device_gate`, `s9_q0_trace_gate`, `s9_p7_playtest_gate`. Next free ruling number: **R179** (R178 is Q0's conductor grains).
-- **Where the loop is now (2026-09-20 evening, LATEST) -- the repository is PUBLIC and Sprint 10 is reorganized around
+- **Where the loop is now (2026-09-21 evening, LATEST) -- Sprint 10's autonomous stack is DONE and on `main` in four
+  slices; `docs/STATUS.md`'s top entry is the list.** Eleven chunks went to Opus agents in their own worktrees and
+  were paid for in this tree, each with its gate: Q1b (the gate pins its inputs), Q6 (the stall bound), the threaded
+  flake, Q3b+Goal 8 (mapping and the remapping UI), Goal 9 (the credentials, end to end), Goal 2 (the box as a
+  service), Q2/Goal 3 (knob retirement and the flip), Q3 (the mouse out, the keyboard narrowed), Q4 (the window
+  switch, the window's chrome, menu sounds), Q5 (closed under its stop rule), Q7 (four residuals). Suite Python 1671
+  OK / ps2x_tests 764/0; ladder streak 4 of 7. **What is left is the owner's hands** (`docs/HUMAN_TASKS.md`: a pad
+  session, the prefilled login, Q4's four tries, the disc-derived-bytes decisions, the ladder window) **or a quiet
+  machine** (Goal 4's kill routes, Goal 3's tasks 5 and 7, ladder 5-7, Q2's VM ring, Q7's gate-scored residuals).
+  **Two traps this day taught, both in KNOWN:** a `replaceFunction` wrap's post-call code runs at the scheduler's
+  unwind, not at the return; and a header defining state in an anonymous namespace gives every translation unit its
+  own copy -- the stub helpers depended on that, the suite could not see it, the gate could.
+- **Where the loop was (2026-09-20 evening) -- the repository is PUBLIC and Sprint 10 is reorganized around
   hardening it.** The owner flipped `github.com/Scotho/socom-unzipped` public after the sweep and the history rewrite,
   bypassed the owner gate on the audio listen, and set the priority: harden the development and build process a
   stranger can now fork; no easy player setup until then; nothing sensitive can ever be published. Read
