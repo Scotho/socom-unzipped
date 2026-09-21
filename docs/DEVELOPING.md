@@ -61,6 +61,26 @@ python -m tools_py.parity.gate   # in-game gate: title / transition / mission, P
                        # `./build.sh test` does NOT rebuild it.
 PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest thread PCs every 5 s
 ```
+### From your own disc to a buildable ELF — **the missing step (2026-09-21)**
+
+`./build.sh recomp` reads `game/disc/SCUS_972.75`, `game/overlays/ftscore.bin`, `game/overlays/zsealetc.bin` and
+writes `game/overlays/socom2_game.elf`. None of those are in the repository (they are the game's own bytes) and
+**there is no documented, runnable path from an ISO to them yet** -- they were produced once, by hand, on the
+maintainer's machine. What exists, in the order it was used:
+
+1. Extract the ISO's filesystem to `game/disc/` (any ISO9660 extractor; `tools_py/iso_lbn.py` maps a file to its LBN
+   when the runtime's CD path needs one).
+2. `tools_py/decrypt_apache.py` runs the retail loader's own decryption code under Unicorn (`tools_py/ee_unicorn.py`,
+   so `pip install unicorn`) over `RUN/RAW/APACHE00.ZDB` and writes the two plaintext overlays; its docstring names
+   the exact loader functions it mirrors. `tools_py/dnas_selfdecrypt.py` is the static DNAS half.
+3. `tools_py/make_overlay_elf.py` merges the loader and the two overlays into one ELF, using
+   `recomp/loader_text_end.txt` and `recomp/merge_ranges.txt` (both tracked). `build.sh recomp` calls this for you.
+
+**Unproven for anyone else:** step 1's exact layout expectations and step 2 on a disc that is not this one. Until a
+contributor or the maintainer turns those three steps into one script with a check at the end, "build the game from
+your own disc" is a claim this repository cannot keep -- which is why `CONTRIBUTING.md` now says so. Everything
+below this line works on a fresh clone with no disc at all.
+
 ### Build, run, verify — a newcomer's first hour
 
 **Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
