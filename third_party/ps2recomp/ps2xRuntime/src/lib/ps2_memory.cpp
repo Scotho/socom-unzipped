@@ -2411,28 +2411,6 @@ uint32_t PS2Memory::readIORegister(uint32_t address)
         {
         case kEeTimerCountOffset:
         {
-            // PS2X_TIMER_TRACE=1: once a second, how a guest polls T0 (reads/s, min/max/last).
-            static const bool s_trace = ps2x::knob("PS2X_TIMER_TRACE") != nullptr;
-            if (s_trace && timerIndex == 0u)
-            {
-                static uint64_t s_reads = 0, s_lastReads = 0;
-                static uint32_t s_min = 0xFFFFu, s_max = 0u;
-                static auto s_last = std::chrono::steady_clock::now();
-                const uint32_t v = timer.count & 0xFFFFu;
-                ++s_reads;
-                s_min = std::min(s_min, v);
-                s_max = std::max(s_max, v);
-                const auto now = std::chrono::steady_clock::now();
-                if (now - s_last >= std::chrono::seconds(1))
-                {
-                    std::fprintf(stderr, "[t0] reads/s=%llu min=%u max=%u last=%u\n",
-                                 (unsigned long long)(s_reads - s_lastReads), s_min, s_max, v);
-                    s_last = now;
-                    s_lastReads = s_reads;
-                    s_min = 0xFFFFu;
-                    s_max = 0u;
-                }
-            }
             return timer.count & 0xFFFFu;
         }
         case kEeTimerModeOffset:

@@ -2373,14 +2373,6 @@ namespace ps2_stubs
             const uint32_t outWidth = align16(width);
             const uint32_t outHeight = align16(height);
             const uint32_t macroblockColumns = outWidth / 16u;
-            {
-                static const bool s_picTrace = ps2x::knob("PS2X_MPEG_PIC_TRACE") != nullptr;
-                static uint64_t s_frames = 0;
-                ++s_frames;
-                if (s_picTrace && (s_frames <= 5u || (s_frames % 300u) == 0u))
-                    std::fprintf(stderr, "[MPEG:frame] #%llu %ux%u -> dest=0x%x\n", (unsigned long long)s_frames, width, height, destAddr);
-            }
-
             for (uint32_t mbx = 0u; mbx < macroblockColumns; ++mbx)
             {
                 const size_t stripOffset =
@@ -3058,16 +3050,6 @@ namespace ps2_stubs
             std::unique_lock<std::mutex> lock(g_mpeg_stub_mutex);
             MpegPlaybackState &playback = getPlaybackState(mpegAddr);
             feedHeldVideo(playback);   // item 16: the last served picture made room for held video
-            {
-                // PS2X_MPEG_PIC_TRACE=1: every 100th GetPicture — decoded queue depth and state.
-                static const bool s_picTrace = ps2x::knob("PS2X_MPEG_PIC_TRACE") != nullptr;
-                static uint64_t s_calls = 0;
-                if (s_picTrace && (++s_calls % 100u) == 1u)
-                    std::fprintf(stderr, "[MPEG:pic] call#%llu mp=0x%x dest=0x%x queued=%zu starve=%u ended=%d failed=%d eof=%d\n",
-                                 (unsigned long long)s_calls, mpegAddr, imageAddr, playback.decodedFrames.size(),
-                                 playback.starveInvocations, playback.streamEnded ? 1 : 0, playback.decoderFailed ? 1 : 0,
-                                 g_mpeg_stub_state.currentCdStreamEofSeen ? 1 : 0);
-            }
             if (playback.decodedFrames.empty() &&
                 !g_mpeg_stub_state.currentCdStreamEofSeen &&
                 !playback.streamEnded &&

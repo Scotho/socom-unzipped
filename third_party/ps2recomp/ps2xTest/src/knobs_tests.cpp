@@ -60,8 +60,8 @@ void register_knobs_tests()
                 t.IsTrue(!meaning.empty() && meaning.size() <= 110, name + ": a meaning of at most 110 characters");
                 t.IsTrue(meaning.find('"') == std::string::npos, name + ": no double quote (tools_py/knobs.py reads the row with a regex)");
             }
-            // 145 shipped names at the tree this landed on (the plan counted 134 at 8e5d778), the test-only ones
-            // and PS2X_DEV; Task 6 takes five away.
+            // 140 shipped names after Task 6 (145 at the tree this landed on, the plan counted 134 at 8e5d778, five
+            // dead ones deleted), the test-only ones and PS2X_DEV.
             t.IsTrue(ps2x::knobs::kTableSize >= 140u, "the shipped names, the test-only ones and PS2X_DEV");
         });
 

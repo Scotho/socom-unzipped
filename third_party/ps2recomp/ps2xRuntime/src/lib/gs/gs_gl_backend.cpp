@@ -1078,7 +1078,7 @@ void GSGlBackend::BeginTransfer(const GSTransferCommand &command)
     // its own mutex), so the block sat in shadow VRAM and never reached the GL texture, which kept
     // whatever it held: the reported flickering black 16x16 rectangles.
     //
-    // Counted with PS2X_GS_COUNT_MB over a title_menu.txt run (research/16 section 9): of
+    // Counted with a temporary counter over a title_menu.txt run (research/16 section 9): of
     // 12 205 741 16x16 transfers, 3 748 never reached refreshRenderTargetsFromShadow, and ZERO of
     // those came from the partial-delivery path the note first suspected. After this change the
     // deficit is 0, and movie_blocks.py over the same capture goes from MISSING blocks=9 to 0.
@@ -3239,13 +3239,7 @@ uint32_t GSGlBackend::decodeTexture(const GSDrawState &state, const TextureKey &
             }
         }
     }
-    // Experiment: PS2X_GS_TEX_FROM_CPU=1 decodes from the authoritative (game-thread) VRAM instead
-    // of the render-thread shadow, to tell shadow staleness from decode bugs.
-    static const bool s_fromCpu = ps2x::knob("PS2X_GS_TEX_FROM_CPU") != nullptr;
-    static std::vector<uint8_t> s_cpuCopy;
-    if (s_fromCpu)
-        m_cpu->SnapshotVram(s_cpuCopy);
-    uint8_t *vram = s_fromCpu && !s_cpuCopy.empty() ? s_cpuCopy.data() : m_shadowMemory.data();
+    uint8_t *vram = m_shadowMemory.data();
     const uint32_t clutWidth = (state.texclut.cbw != 0u) ? static_cast<uint32_t>(state.texclut.cbw) : 1u;
     const bool indexed = tex.psm == GS_PSM_T8 || tex.psm == GS_PSM_T8H || tex.psm == GS_PSM_T4 || tex.psm == GS_PSM_T4HL || tex.psm == GS_PSM_T4HH;
 
@@ -4004,9 +3998,6 @@ void GSGlBackend::flushBatch()
         std::fprintf(stderr, "[gs-gl dbg]   band before: (100,50)=%u,%u,%u,%u (500,50)=%u,%u,%u,%u target fbp=%03x fbo=%u tex tbp0=%05x tbw=%u\n",
                      pa[0], pa[1], pa[2], pa[3], pb[0], pb[1], pb[2], pb[3],
                      m_batchRt ? m_batchRt->fbp : 0u, m_batchRt ? m_batchRt->fbo : 0u, m_batchState.context.tex0.tbp0, m_batchState.context.tex0.tbw);
-        static const bool s_noDepth = ps2x::knob("PS2X_GS_GL_DEBUG_NODEPTH") != nullptr;
-        if (s_noDepth)
-            glDisable(GL_DEPTH_TEST);
         // What does the bound texture hold at the sampled texel?
         GLint tw = 0, th = 0;
         glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &tw);
@@ -4043,26 +4034,6 @@ void GSGlBackend::flushBatch()
     glBindBuffer(GL_ARRAY_BUFFER, m_vbo);
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(m_vertices.size() * sizeof(GlVertex)), m_vertices.data(), GL_STREAM_DRAW);
     glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(m_vertices.size()));
-    {
-        // PS2X_GS_PROBE=<frame>: for 400 frames from there, after every untextured sprite batch
-        // into fbp 0x8c, read back rows 200 and 420 at x=320 (GL RT rows) to see whether the
-        // draw reached the bottom band (the movie strip investigation, 2026-09-09).
-        static const long s_probeFrom = ps2x::knob("PS2X_GS_PROBE") ? std::strtol(ps2x::knob("PS2X_GS_PROBE"), nullptr, 0) : -1L;
-        if (s_probeFrom >= 0 && static_cast<long>(m_frameCounter) >= s_probeFrom && static_cast<long>(m_frameCounter) < s_probeFrom + 400 &&
-            m_batchRt && m_batchRt->fbp == 0x8cu && !m_batchState.prim.tme && m_batchState.prim.type == GS_PRIM_SPRITE && m_vertices.size() >= 6)
-        {
-            uint8_t p200[4] = {0, 0, 0, 0}, p420[4] = {0, 0, 0, 0}, p440[4] = {0, 0, 0, 0};
-            glReadPixels(320, 200, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p200);
-            glReadPixels(320, 420, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p420);
-            glReadPixels(320, 440, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, p440);
-            float ymin = m_vertices[0].y, ymax = m_vertices[0].y;
-            for (const auto &vv : m_vertices) { ymin = std::min(ymin, vv.y); ymax = std::max(ymax, vv.y); }
-            std::fprintf(stderr, "[gs-gl probe] frame=%llu fbp=%03x fbo=%u sprite y=[%.0f..%.0f] rgba=%02x%02x%02x%02x -> row200=%02x%02x%02x row420=%02x%02x%02x row440=%02x%02x%02x glerr=%x\n",
-                         (unsigned long long)m_frameCounter, m_batchRt->fbp, m_batchRt->fbo, ymin, ymax,
-                         m_vertices[0].r, m_vertices[0].g, m_vertices[0].b, m_vertices[0].a,
-                         p200[0], p200[1], p200[2], p420[0], p420[1], p420[2], p440[0], p440[1], p440[2], glGetError());
-        }
-    }
     if (debugThis && m_vertices.size() >= 6)
     {
         // Read back the whole quad region and count pixels the draw changed.

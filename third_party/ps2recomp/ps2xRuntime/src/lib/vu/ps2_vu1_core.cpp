@@ -1069,7 +1069,7 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     m_xgkick.sourceAddress = sourceAddress;
     m_xgkick.cycleCredit = 1u; // XGKICK's issue cycle counts toward PATH1.
     m_xgkick.issueCycle = m_cycle;
-    // PS2X_VU1_XGKICK_IMMEDIATE=1: copy the whole packet at kick time (what most emulators do)
+    // The default: copy the whole packet at kick time (what most emulators do)
     // instead of one qword per two cycles while the program runs on. Experiment for SOCOM II's
     // object geometry, which arrives as 1700 identical degenerate vertices per frame — the
     // signature of a buffer re-templated by the program before the modeled transfer finished.

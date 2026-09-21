@@ -68,7 +68,6 @@
     X("PS2X_GS_DUMP_TEX_MAX", Dev, Int, "6", "With GS_DUMP_TEX: files per texture.") \
     X("PS2X_GS_DUMP_TEX_TBP0", Dev, Spec, "", "With GS_DUMP_TEX: only these texture base blocks.") \
     X("PS2X_GS_GL_DEBUG_AFTER", Dev, Int, "0", "Presents to wait before GS_GL_DEBUG_PSM and GS_DUMP_TEX act.") \
-    X("PS2X_GS_GL_DEBUG_NODEPTH", Dev, Presence, "", "Inside the GS_GL_DEBUG_PSM print: disable the depth test for that draw.") \
     X("PS2X_GS_GL_DEBUG_PSM", Dev, Int, "-1", "Print the first batches drawn with this texture format (native coordinates; wrong above scale 1).") \
     X("PS2X_GS_GL_FORCE_FAIL", Dev, Text, "", "Make the GL capability probe fail (the only way to reach exit 65 on a machine that works).") \
     X("PS2X_GS_MAX_PENDING_FRAMES", Dev, Int, "3", "Back-pressure: presents the render thread may fall behind; 0 = unbounded.") \
@@ -77,14 +76,12 @@
     X("PS2X_GS_NO_ZTEST", Dev, Presence, "", "Every draw passes the depth test (A/B).") \
     X("PS2X_GS_PENDING_CAP_MB", Dev, Int, "64", "Soft ceiling on pending render bytes.") \
     X("PS2X_GS_PENDING_HARD_CAP_MB", Dev, Int, "1024", "Hard ceiling on pending render bytes (R124).") \
-    X("PS2X_GS_PROBE", Dev, Int, "-1", "Frame from which to read back rows 200/420/440 of fbp 0x8c after untextured sprites.") \
     X("PS2X_GS_RT_TEXTURE", Dev, Int, "1", "0 restores the readback + decode for render targets used as textures.") \
     X("PS2X_GS_SCALE", Shipping, Int, "1", "Internal render scale 1-4.") \
     X("PS2X_GS_SCALE_FILTER", Dev, Text, "", "box = box-filter the resolve of a scaled target.") \
     X("PS2X_GS_SCALE_SELFTEST", Dev, Int, "0", "1 checks the native mirror of a scaled target against a fresh resolve each frame.") \
     X("PS2X_GS_SKIP_TBP0", Dev, Spec, "", "Drop every textured draw binding one of these texture blocks (a bisect).") \
     X("PS2X_GS_STATS", Dev, Presence, "", "The [gs-gl stats] line every 60 command buffers.") \
-    X("PS2X_GS_TEX_FROM_CPU", Dev, Presence, "", "Decode textures from the game thread VRAM instead of the shadow.") \
     X("PS2X_GS_TRACE_CMDS", Dev, Int, "", "Presents to skip (or trig), then print the replayed GS commands.") \
     X("PS2X_GS_TRACE_CMDS_BOX", Dev, Spec, "", "With GS_TRACE_CMDS: only draws touching this screen box.") \
     X("PS2X_GS_TRACE_CMDS_FROM", Dev, Int, "-1", "With GS_TRACE_CMDS: start at this frame.") \
@@ -121,7 +118,6 @@
     X("PS2X_MIC_DUMP_PLAYBACK", Dev, Path, "", "WAV of what lgaud 0x09 asked the headset to play ({title} expands to the window tag).") \
     X("PS2X_MIC_FAKE", Dev, Path, "", "Feed this WAV as the microphone; beats MIC_DEVICE (R115).") \
     X("PS2X_MIC_GAMEREAD_DUMP", Dev, Path, "", "WAV of what lgaud 0x08 served the game.") \
-    X("PS2X_MPEG_PIC_TRACE", Dev, Presence, "", "Log the first five decoded MPEG pictures and every 300th.") \
     X("PS2X_MPEG_TRACE", Dev, Presence, "", "Log the sceMpeg HLE lifecycle and the IOP stream opens.") \
     X("PS2X_PACK_TRACE", Dev, Path, "", "Trace the terrain pack function 0x25a5d0 to this file (research/31 s17).") \
     X("PS2X_PAD_CROUCH_SHORTCUT", Shipping, Text, "off", "l3 | touchpad | l2: the host control that sends a light Triangle (R139).") \
@@ -157,7 +153,6 @@
     X("PS2X_SOCOM2_UDP_SHIFT", Shipping, Int, "0", "Shift the fixed UDP ports 3658.. by n (a second instance on one host).") \
     X("PS2X_TEST_SKIP", Test, Text, "", "ps2x_tests: skip tests whose name contains one of these substrings.") \
     X("PS2X_TEST_SUITE", Test, Text, "", "ps2x_tests: run only suites whose name contains this.") \
-    X("PS2X_TIMER_TRACE", Dev, Presence, "", "Once a second: how the guest polls EE timer 0.") \
     X("PS2X_TRACE_FIFO", Dev, Presence, "", "Log VIF1/GIF FIFO stalls, resumes and the IRQ dispatch.") \
     X("PS2X_TRACE_VIF", Dev, Spec, "", "<skip> | t<seconds> | trig: print VIF1 codes and chain tags.") \
     X("PS2X_TRACE_VU", Dev, Int, "", "Skip n VU1 programs then dump the next three; forces the cycle-exact scheduler.") \
