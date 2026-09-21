@@ -17,16 +17,17 @@ that sequence, in four stages, each of which
   * refuses with an exit code out of `ps2x/exit_codes.h` where one fits, and always with a sentence
     you can act on.
 
-The stages, with what they cost on the machine they were measured on (2026-09-21, an ISO on a local
-SSD):
+The stages, with what each cost on the machine they were measured on (2026-09-21, an NVMe SSD;
+483 s all told, of which the third stage is 473):
 
-  1. extract    the ISO9660 filesystem to `<out>/disc/`                4.1 GB, about 2 minutes
-  2. dnas       `OVERLAY/REL/DNAS.BIN` -> `DNAS.dec.bin`               about 1 minute
-                (`dnas_selfdecrypt.py`: the DNAS overlay's ~130 self-encrypting code blocks, run
+  1. extract    the ISO9660 filesystem to `<out>/disc/`                4173 MB, 8 s at 554 MB/s
+                (minutes on a slower disk -- it writes 4.1 GB)
+  2. dnas       `OVERLAY/REL/DNAS.BIN` -> `DNAS.dec.bin`               2 s, 131 code blocks
+                (`dnas_selfdecrypt.py`: the DNAS overlay's self-encrypting code blocks, run
                  through their own cipher under Unicorn)
-  3. overlays   `RUN/RAW/APACHE00.ZDB` -> `<out>/overlays/*.bin`       about 7 minutes
+  3. overlays   `RUN/RAW/APACHE00.ZDB` -> `<out>/overlays/*.bin`       473 s
                 (`decrypt_apache.py`: the retail loader's own decryption code under Unicorn)
-  4. elf        the loader + the two overlays -> `socom2_game.elf`     seconds
+  4. elf        the loader + the two overlays -> `socom2_game.elf`     instant
                 (`make_overlay_elf.py`, exactly as `build.sh recomp` calls it)
 
 Stages 2 and 3 emulate R5900 code, so they need Unicorn (`pip install unicorn`; 2.1.4 is what this
@@ -73,6 +74,12 @@ EXIT_DISC_NOT_R0001 = exit_codes.code("DiscNotR0001")  # 67
 EXIT_ELF_BAD = exit_codes.code("ElfMissing")           # 68
 
 
+def say(line):
+    """print, flushed. These stages take minutes; a stranger who redirects this to a file or a pipe
+    would otherwise see nothing at all until the buffer filled."""
+    print(line, flush=True)
+
+
 class Refusal(Exception):
     """A refusal with an exit code and a sentence a stranger can act on."""
 
@@ -95,7 +102,7 @@ def save_expected(data, path=EXPECTED_PATH):
         fh.write("\n")
 
 
-def check_value(expected, section, key, got, what, code=EXIT_MISMATCH, log=print):
+def check_value(expected, section, key, got, what, code=EXIT_MISMATCH, log=say):
     """Compare one measured value with the recorded one. A value that is not recorded yet (null, or
     a section this file has never seen) is recorded and said so -- which is how the first run on a
     disc nobody has run this on writes the file. A recorded value that disagrees is a refusal: the
@@ -201,7 +208,7 @@ def read_tree(iso_path):
     return files, volume_id, volume_sectors
 
 
-def extract(iso_path, files, dest, log=print, force=False):
+def extract(iso_path, files, dest, log=say, force=False):
     """Write every file in `files` under `dest`. A file already there at exactly the right size is
     left alone, which is what makes a second run cheap: the bytes come from the image by LBN, so
     size is the only thing that can differ short of a damaged filesystem."""
@@ -239,7 +246,7 @@ def extract(iso_path, files, dest, log=print, force=False):
     return written, kept, total
 
 
-def stage_extract(iso_path, disc, expected, log=print, force=False):
+def stage_extract(iso_path, disc, expected, log=say, force=False):
     files, volume_id, volume_sectors = read_tree(iso_path)
     log(f"extract: {os.path.basename(iso_path)}: volume {volume_id!r}, {len(files)} files, "
         f"{sum(s for _, s, _ in files) >> 20} MB")
@@ -302,16 +309,16 @@ def _import_emulator(name):
 
 
 @contextlib.contextmanager
-def _quiet(path, log=print, note=""):
+def _quiet(path, log=say):
     """Both emulation stages print thousands of progress lines. They go to a log beside the output."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    log(f"  {note}(chatter -> {os.path.relpath(path, ROOT) if path.startswith(ROOT) else path})")
+    log(f"  (chatter -> {os.path.relpath(path, ROOT) if path.startswith(ROOT) else path})")
     with open(path, "w", encoding="utf-8", errors="replace") as fh:
         with contextlib.redirect_stdout(fh):
             yield fh
 
 
-def check_input(disc, rel, expected, log=print):
+def check_input(disc, rel, expected, log=say):
     path = os.path.join(disc, rel)
     key = rel.replace(os.sep, "/")
     if not os.path.isfile(path):
@@ -323,7 +330,7 @@ def check_input(disc, rel, expected, log=print):
     return path
 
 
-def stage_dnas(disc, out_dir, expected, log=print, force=False):
+def stage_dnas(disc, out_dir, expected, log=say, force=False):
     """DNAS.BIN -> DNAS.dec.bin: the DNAS overlay's self-encrypting code blocks, statically undone."""
     src = check_input(disc, DNAS_BIN, expected, log=log)
     dest = os.path.join(disc, DNAS_DEC)
@@ -337,7 +344,7 @@ def stage_dnas(disc, out_dir, expected, log=print, force=False):
     with open(src, "rb") as fh:
         data = fh.read()
     started = time.time()
-    log(f"dnas: decrypting the DNAS overlay's code blocks under Unicorn (about a minute)")
+    log("dnas: decrypting the DNAS overlay's code blocks under Unicorn (a few seconds)")
     with _quiet(os.path.join(out_dir, "disc_to_elf-dnas.log"), log=log):
         plain, meta = module.decrypt(data, variants)
     check_value(expected, "dnas", "blocks", len(meta), "the number of encrypted DNAS code blocks", log=log)
@@ -352,7 +359,7 @@ def stage_dnas(disc, out_dir, expected, log=print, force=False):
     return dest
 
 
-def stage_overlays(disc, overlays, expected, log=print, force=False):
+def stage_overlays(disc, overlays, expected, log=say, force=False):
     """APACHE00.ZDB -> ftscore.bin + zsealetc.bin, by running the retail loader's own decryption."""
     check_input(disc, APACHE, expected, log=log)
     names = ("ftscore.bin", "zsealetc.bin")
@@ -368,8 +375,8 @@ def stage_overlays(disc, overlays, expected, log=print, force=False):
                 code=EXIT_DISC_NOT_R0001, log=log)
     os.makedirs(overlays, exist_ok=True)
     started = time.time()
-    log("overlays: running the loader's decryption under Unicorn (about 7 minutes; four emulated "
-        "passes over two blobs)")
+    log("overlays: running the loader's decryption under Unicorn (about eight minutes; four "
+        "emulated passes over two blobs)")
     with _quiet(os.path.join(overlays, "disc_to_elf-overlays.log"), log=log):
         module.main(game=disc, out=overlays)
     for name in names:
@@ -394,7 +401,7 @@ def stage_overlays(disc, overlays, expected, log=print, force=False):
 # ---- stage 4: the merged ELF ------------------------------------------------------------------
 
 def elf_facts(path):
-    """(entry, segment count, build id or None) out of the merged image."""
+    """(entry point, segment count, the whole image) out of the merged ELF."""
     with open(path, "rb") as fh:
         head = fh.read(0x34)
         if head[:4] != b"\x7fELF":
@@ -406,7 +413,7 @@ def elf_facts(path):
     return entry, phnum, body
 
 
-def stage_elf(disc, overlays, expected, log=print, force=False):
+def stage_elf(disc, overlays, expected, log=say, force=False):
     want = expected.get("elf", {})
     dest = os.path.join(overlays, "socom2_game.elf")
     if not force and os.path.isfile(dest) and want.get("sha256") and sha256_file(dest) == want["sha256"]:
@@ -459,7 +466,7 @@ def state(out_dir, expected):
     return rows
 
 
-def run(iso_path, out_dir, expected, log=print, force=False, stages=STAGES, record_path=None):
+def run(iso_path, out_dir, expected, log=say, force=False, stages=STAGES, record_path=None):
     """The four stages in order. Returns the path of the merged ELF."""
     disc = os.path.join(out_dir, "disc")
     overlays = os.path.join(out_dir, "overlays")

@@ -44,13 +44,28 @@
   },
   "dnas": {
     "variants": {
-      "0x4ee9e8": {"keytab": "0x4efac8", "core": "0x4ef348"},
-      "0x52b9d0": {"keytab": "0x52af30", "core": "0x52c330"},
-      "0x53a358": {"keytab": "0x539e78", "core": "0x53acb8"},
-      "0x5412a0": {"keytab": "0x540a10", "core": "0x540938"}
+      "0x4ee9e8": {
+        "keytab": "0x4efac8",
+        "core": "0x4ef348"
+      },
+      "0x52b9d0": {
+        "keytab": "0x52af30",
+        "core": "0x52c330"
+      },
+      "0x53a358": {
+        "keytab": "0x539e78",
+        "core": "0x53acb8"
+      },
+      "0x5412a0": {
+        "keytab": "0x540a10",
+        "core": "0x540938"
+      }
     },
-    "blocks": null,
-    "output": null
+    "blocks": 131,
+    "output": {
+      "size": 667136,
+      "sha256": "b09371639fae6424f065099e70778b37f1c3a7f41bff8f275a4879f1e9ecdfdc"
+    }
   },
   "zdb": {
     "entries": {
@@ -71,7 +86,7 @@
   "elf": {
     "build_id": "SOCOM 2 r0001 17:22:21 Oct 11 2003",
     "entry": "0x180008",
-    "segments": null,
+    "segments": 4,
     "size": 4835072,
     "sha256": "06b83684719a78ad0580f236bd0eddd40453f87d9c30c0d39021331915798872"
   }
