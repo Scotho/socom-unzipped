@@ -1,10 +1,27 @@
 #!/usr/bin/env bash
 # End-to-end build: synthetic ELF -> recompiled C++ -> socom2 runner (clang / llvm-mingw).
-# Usage: ./build.sh [tools|recomp|runtime|release|test|all]   (default all; release is never part of all)
+# Usage: ./build.sh [tools|recomp|runtime|release|test|all] [--no-runner]   (default all; release is never part of all)
+#   --no-runner   build with no generated code at all (PS2X_RUNNER_GENERATED_DIR=""): the runtime library, the
+#                 launcher and the test suite, but not the game. This is what a fresh clone can do on Windows
+#                 (Sprint 10 H3): `bash scripts/bootstrap_windows.sh`, then `./build.sh runtime --no-runner`
+#                 and `./build.sh test --no-runner`. The recompiled game needs your own disc (README).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 export PATH="$ROOT/tools/llvm-mingw/bin:$ROOT/tools/cmake/bin:$ROOT/tools/ninja:$PATH"
-STEP="${1:-all}"
+STEP=""
+NO_RUNNER=0
+for arg in "$@"; do
+  case "$arg" in
+    --no-runner) NO_RUNNER=1 ;;
+    tools|recomp|runtime|release|test|all) STEP="$arg" ;;
+    *) echo "unknown argument $arg" >&2; exit 2 ;;
+  esac
+done
+STEP="${STEP:-all}"
+if ! command -v clang >/dev/null 2>&1 || ! command -v cmake >/dev/null 2>&1 || ! command -v ninja >/dev/null 2>&1; then
+  echo "build.sh: no toolchain under tools/ -- run: bash scripts/bootstrap_windows.sh" >&2
+  exit 2
+fi
 
 PS2R="$ROOT/third_party/ps2recomp"
 TOOLBUILD="$PS2R/build-tools"      # ps2_recomp / ps2_analyzer
@@ -12,6 +29,7 @@ RTBUILD="$PS2R/build-clang"        # runtime + runner with generated code
 RELBUILD="$PS2R/build-release"     # Sprint 9 Goal 2: the release configuration -- its own tree, never the developer's
 RELDIST="$ROOT/dist-release"       # ... and its own folder; dist/socom2.exe stays the gate's and the harness's default
 GEN="$ROOT/recomp/output"
+[ "$NO_RUNNER" = 1 ] && GEN=""
 
 build_tools() {
   cmake -S "$PS2R" -B "$TOOLBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
@@ -38,16 +56,21 @@ runtime() {
   cmake -S "$PS2R" -B "$RTBUILD" -G Ninja -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
         -DPS2X_RUNNER_GENERATED_DIR="$GEN" -DPS2X_ENABLE_LTO="${LTO:-OFF}" -DPS2X_GENERATED_OPT="${GENOPT:--O1}" >/dev/null
-  cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
   mkdir -p "$ROOT/dist"
-  cp "$RTBUILD/ps2xRuntime/ps2EntryRunner.exe" "$ROOT/dist/socom2.exe"
+  if [ -n "$GEN" ]; then
+    cmake --build "$RTBUILD" --target ps2EntryRunner -j "$(nproc)"
+    cp "$RTBUILD/ps2xRuntime/ps2EntryRunner.exe" "$ROOT/dist/socom2.exe"
+  else
+    # no generated code: the library alone (the CMake tree skips ps2EntryRunner and says so)
+    cmake --build "$RTBUILD" --target ps2_runtime -j "$(nproc)"
+  fi
   # Task 8b: the launcher, built next to the game (research/32 has the audio; packaging outline section 3 the launcher)
   cmake --build "$RTBUILD" --target socom_unzipped_launcher -j "$(nproc)" && cp "$RTBUILD/ps2xLauncher/socom_unzipped_launcher.exe" "$ROOT/dist/"
   cp "$RTBUILD/ps2xRuntime/"*.dll "$ROOT/dist/" 2>/dev/null || true
   for d in libc++.dll libunwind.dll libwinpthread-1.dll; do
     [ -f "$ROOT/tools/llvm-mingw/bin/$d" ] && cp "$ROOT/tools/llvm-mingw/bin/$d" "$ROOT/dist/"
   done
-  echo "built dist/socom2.exe"
+  if [ -n "$GEN" ]; then echo "built dist/socom2.exe"; else echo "built the runtime library and dist/socom_unzipped_launcher.exe (no generated code: no game)"; fi
 }
 
 # Sprint 9 Goal 2. The same sources and the same Release build type as runtime(); what differs is the generated

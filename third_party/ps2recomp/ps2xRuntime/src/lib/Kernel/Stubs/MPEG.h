@@ -10,6 +10,11 @@ namespace ps2_stubs
     // not starve its lower-priority threads (research/32 section 7.1).
     void setMpegDemuxIdleYields(bool enabled);
     void enqueueMpegDecodedFrameForTesting(uint32_t mpegAddr);
+    // research/36 item 16: the decode gate's held video, the audio the game refused (set aside), and a way to let the
+    // presenter "serve" pictures without a decoder.
+    size_t mpegHeldVideoPacketsForTesting(uint32_t mpegAddr);
+    size_t mpegAsideAudioPacketsForTesting(uint32_t mpegAddr);
+    void mpegDropDecodedFramesForTesting(uint32_t mpegAddr, size_t count);
     // Drops the decoded pictures that are overdue by a whole interval at `currentTick` (vsync ticks) and returns
     // how many stay queued; the presenter's real-time policy, exposed for the test.
     size_t mpegSkipOverduePicturesForTesting(uint32_t mpegAddr, uint64_t currentTick);

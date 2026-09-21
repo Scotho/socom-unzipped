@@ -286,6 +286,17 @@ def needs_cross(im):
     return False, ("black frame" if float(rgb.mean()) <= 8.0 else f"gameplay (bands {band:.2f})")
 
 
+
+def ref_for_target(ref_path, target):
+    """The reference a step script names, or its per-target sibling `<stem>.<target>.png` when one exists
+    beside it (`ref_main_menu_ours.png` -> `ref_main_menu_ours.pcsx2.png` on the console). One script drives
+    both targets; a band that separates the lit menu row (the mid row, 76..86 x 55..105) sits at ~10 between
+    the two machines' renderings of the same screen and at ~0.5 within one, so the console needs its own frame
+    (music round four, 2026-09-20: the same-row test read 9.9 across and 18.6+ to the next row)."""
+    stem, ext = os.path.splitext(ref_path)
+    sibling = f"{stem}.{target}{ext}"
+    return sibling if target and os.path.exists(sibling) else ref_path
+
 def hud_match(im, ref_thumb, box, thresh, lit):
     """untilref's per-frame test -> (matched, distance, band_fraction or None).
 
@@ -492,7 +503,7 @@ def run_steps(a, steps, proc, hwnd, t0, last, manifest):
             # <loops> is the budget of the FIXED-COUNT pacing only (Windows); off Windows, and with
             # SOCOM_DRIVE_SLOW_HOST=1, the budget is wall-clock instead -- see press_pacing.
             parts = [v.strip() for v in mode[9:-1].split(",")]
-            ref_path = parts[0]
+            ref_path = ref_for_target(parts[0], a.target)
             lit = "lit" in parts[1:]
             nums = [float(v) for v in parts[1:] if v != "lit"]
             r0, r1 = (int(nums[0]), int(nums[1])) if len(nums) >= 2 else (8, 62)

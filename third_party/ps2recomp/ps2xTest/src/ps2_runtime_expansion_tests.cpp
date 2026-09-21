@@ -16,6 +16,11 @@
 #include "Stubs/Audio.h"
 #include "Stubs/GS.h"
 #include "Stubs/VU.h"
+#include "runtime/mpeg_decode_ahead.h"
+
+#include <chrono>
+#include <deque>
+#include <thread>
 
 #include <atomic>
 #include <cstdint>
@@ -483,6 +488,88 @@ namespace
         runtime->requestStop();
     }
 
+    // The decode-gate test (research/36 item 16): a low-bitrate read (8 tiny pictures and 6 audio packets in one
+    // input) offered to a game whose audio callback takes at most two packets per vsync tick, with the presenter
+    // holding eight decoded pictures the whole time. The gate must hold the video and let the audio through: two
+    // packets accepted on every tick until all six are in, in stream order, never a tick skipped.
+    constexpr uint32_t kGateCallerPc = 0x001250C0u;
+    constexpr uint32_t kGateAfterPc = 0x001250D0u;
+    constexpr uint32_t kGateCallbackPc = 0x001250E0u;
+    constexpr uint32_t kGateMpegAddr = 0x00133000u;
+    constexpr uint32_t kGateInputAddr = 0x00134000u;
+    constexpr uint32_t kGateAcceptPerTick = 2u;
+    constexpr int kGateRounds = 4;
+    uint32_t gGateInputBytes = 0u;
+    int gGateRound = 0;
+    std::vector<int32_t> gGateResults;                          // the demux result per round
+    std::vector<std::pair<uint64_t, uint8_t>> gGateAccepted;   // (tick, payload byte 1) per accepted audio packet
+    uint64_t gGateLastTick = ~0ull;
+    uint32_t gGateAcceptedThisTick = 0u;
+
+    void gateCallback(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint64_t tick = runtime->eeScheduler().currentVSyncTick();
+        if (tick != gGateLastTick)
+        {
+            gGateLastTick = tick;
+            gGateAcceptedThisTick = 0u;
+        }
+        const uint32_t cbData = ::getRegU32(ctx, 5);
+        uint32_t dataAddr = 0u;
+        std::memcpy(&dataAddr, rdram + cbData + 0x08u, sizeof(dataAddr));
+        const bool accept = gGateAcceptedThisTick < kGateAcceptPerTick;
+        if (accept)
+        {
+            ++gGateAcceptedThisTick;
+            gGateAccepted.emplace_back(tick, rdram[dataAddr + 1u]);
+        }
+        setRegU32(*ctx, 2, accept ? 1u : 0u);
+        ctx->pc = 0u;
+    }
+
+    void gateDemux(R5900Context *ctx, uint32_t bytes, uint8_t *rdram, PS2Runtime *runtime)
+    {
+        setRegU32(*ctx, 4, kGateMpegAddr);
+        setRegU32(*ctx, 5, kGateInputAddr);
+        setRegU32(*ctx, 6, bytes);
+        setRegU32(*ctx, 7, 0u);
+        setRegU32(*ctx, 8, 0xFFFFFFFFu);
+        setRegU32(*ctx, 31, kGateAfterPc);
+        ctx->pc = kGateAfterPc;
+        ps2_stubs::sceMpegDemuxPssRing(rdram, ctx, runtime);
+    }
+
+    void gateCaller(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gateDemux(ctx, gGateInputBytes, rdram, runtime);
+    }
+
+    void gateAfter(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        gGateResults.push_back(::getRegS32(*ctx, 2));
+        if (++gGateRound >= kGateRounds)
+        {
+            ctx->pc = 0u;
+            runtime->requestStop();
+            return;
+        }
+        // the game's next poll, one vsync later, with nothing new read: what the gate re-offers is what flows
+        EeScheduler &scheduler = runtime->eeScheduler();
+        scheduler.waitVSync(scheduler.currentVSyncTick(), -1, [rdram, runtime](R5900Context &resume)
+        {
+            gateDemux(&resume, 0u, rdram, runtime);
+        });
+    }
+
+    std::vector<uint8_t> makePesPacket(uint8_t streamId, const std::vector<uint8_t> &payload)
+    {
+        const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
+        std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, streamId, static_cast<uint8_t>(packetLen >> 8u),
+                                       static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
+        packet.insert(packet.end(), payload.begin(), payload.end());
+        return packet;
+    }
+
 }
 
 void register_ps2_runtime_expansion_tests()
@@ -848,37 +935,111 @@ void register_ps2_runtime_expansion_tests()
             }
         });
 
-        tc.Run("sceMpegDemuxPssRing holds the demux eight decoded pictures ahead of the presenter", [](TestCase &t)
+        tc.Run("sceMpegDemuxPssRing holds video by stream time (200 ms) and still takes the read (research/36 item 16)", [](TestCase &t)
         {
-            // The hardware IPU pipeline is one or two pictures deep; letting our demux run further ahead outruns the
-            // game's audio staging ring (research/32 section 7.1: SOCOM II's title music starved on the refusals).
+            // A raw count of eight pictures shut the demux for 7-13 frames on the briefing's low-bitrate stream and the
+            // audio behind it starved. The decoder is now fed while its pictures cover less than 200 ms of the stream's
+            // own picture clock (6 at 30 fps); video past that is held in the runtime's copy, the read is still taken.
             PS2Runtime runtime;
             std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
             ps2_stubs::resetMpegStubState();
             constexpr uint32_t kMpeg = 0x0012E000u;
             constexpr uint32_t kPacket = 0x0012F000u;
-            const std::vector<uint8_t> payload = {0x80u, 0x01u, 0x02u, 0x03u};
-            const uint16_t packetLen = static_cast<uint16_t>(payload.size() + 3u);
-            std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, static_cast<uint8_t>(packetLen >> 8u),
-                                           static_cast<uint8_t>(packetLen & 0xFFu), 0x80u, 0x00u, 0x00u};
-            packet.insert(packet.end(), payload.begin(), payload.end());
-            std::memcpy(rdram.data() + kPacket, packet.data(), packet.size());
-            auto demux = [&]()
+            std::vector<uint8_t> input;
+            for (uint8_t i = 0; i < 8u; ++i)
+            {
+                const std::vector<uint8_t> video = makePesPacket(0xE0u, {0x00u, 0x00u, 0x01u, 0x00u, static_cast<uint8_t>(0x10u + i), 0x08u});
+                input.insert(input.end(), video.begin(), video.end());
+            }
+            std::memcpy(rdram.data() + kPacket, input.data(), input.size());
+            auto demux = [&](uint32_t bytes)
             {
                 R5900Context ctx{};
                 setRegU32(ctx, 4, kMpeg);
                 setRegU32(ctx, 5, kPacket);
-                setRegU32(ctx, 6, static_cast<uint32_t>(packet.size()));
+                setRegU32(ctx, 6, bytes);
                 setRegU32(ctx, 7, 0u);
                 setRegU32(ctx, 8, 0xFFFFFFFFu);
                 ps2_stubs::sceMpegDemuxPssRing(rdram.data(), &ctx, &runtime);
                 return getRegS32(ctx, 2);
             };
-            for (int i = 0; i < 7; ++i)
-                ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);
-            t.Equals(demux(), static_cast<int32_t>(packet.size()), "seven pictures ahead: the demux takes input");
-            ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);
-            t.Equals(demux(), 0, "eight pictures ahead: the demux takes nothing until the presenter catches up");
+            for (int i = 0; i < 6; ++i)
+                ps2_stubs::enqueueMpegDecodedFrameForTesting(kMpeg);   // 6 x 2 fields = 200 ms: the decode gate is shut
+            t.Equals(demux(static_cast<uint32_t>(input.size())), static_cast<int32_t>(input.size()),
+                     "six pictures ahead: the read is still taken whole");
+            t.Equals(ps2_stubs::mpegHeldVideoPacketsForTesting(kMpeg), static_cast<size_t>(8u),
+                     "its eight tiny pictures are held, none fed past the gate");
+            t.Equals(demux(0u), 0, "a poll with nothing new consumes nothing");
+            t.Equals(ps2_stubs::mpegHeldVideoPacketsForTesting(kMpeg), static_cast<size_t>(8u), "and feeds nothing while the presenter is ahead");
+            ps2_stubs::mpegDropDecodedFramesForTesting(kMpeg, 3u);   // the presenter served three: 3 x 2 = 6 fields ahead
+            t.Equals(demux(0u), 0, "the next poll");
+            t.Equals(ps2_stubs::mpegHeldVideoPacketsForTesting(kMpeg), static_cast<size_t>(0u),
+                     "feeds the held pictures to the decoder, in order, once there is room (garbage decodes to nothing, so all eight go)");
+        });
+
+        tc.Run("sceMpegDemuxPssRing lets audio flow past held video: two packets per tick, no tick skipped (research/36 item 16)", [](TestCase &t)
+        {
+            PS2Runtime runtime;
+            std::vector<uint8_t> rdram(PS2_RAM_SIZE, 0u);
+            ps2_stubs::resetMpegStubState();
+            runtime.registerFunction(kGateCallerPc, &gateCaller);
+            runtime.registerFunction(kGateAfterPc, &gateAfter);
+            runtime.registerFunction(kGateCallbackPc, &gateCallback);
+
+            R5900Context addCtx{};
+            setRegU32(addCtx, 4, kGateMpegAddr);
+            setRegU32(addCtx, 5, 2u);
+            setRegU32(addCtx, 6, 0u);
+            setRegU32(addCtx, 7, kGateCallbackPc);
+            setRegU32(addCtx, 8, 0u);
+            ps2_stubs::sceMpegAddStrCallback(rdram.data(), &addCtx, &runtime);
+
+            // one "16 KB read" of a low-bitrate stream: 8 tiny pictures with 6 audio packets between them
+            std::vector<uint8_t> input;
+            uint8_t audioIndex = 0u;
+            for (uint8_t i = 0; i < 8u; ++i)
+            {
+                const std::vector<uint8_t> video = makePesPacket(0xE0u, {0x00u, 0x00u, 0x01u, 0x00u, static_cast<uint8_t>(0x10u + i), 0x08u});
+                input.insert(input.end(), video.begin(), video.end());
+                if (i % 4u != 3u && audioIndex < 6u)
+                {
+                    const std::vector<uint8_t> audio = makePesPacket(0xBDu, {0x80u, static_cast<uint8_t>(0xA0u + audioIndex), 0x11u, 0x22u});
+                    input.insert(input.end(), audio.begin(), audio.end());
+                    ++audioIndex;
+                }
+            }
+            std::memcpy(rdram.data() + kGateInputAddr, input.data(), input.size());
+            gGateInputBytes = static_cast<uint32_t>(input.size());
+            for (int i = 0; i < 8; ++i)
+                ps2_stubs::enqueueMpegDecodedFrameForTesting(kGateMpegAddr);   // the presenter holds eight pictures throughout
+
+            gGateRound = 0;
+            gGateResults.clear();
+            gGateAccepted.clear();
+            gGateLastTick = ~0ull;
+            gGateAcceptedThisTick = 0u;
+            R5900Context mainContext{};
+            mainContext.pc = kGateCallerPc;
+            runtime.eeScheduler().reset(rdram.data(), mainContext);
+            runtime.eeScheduler().run();
+
+            t.Equals(gGateResults.size(), static_cast<size_t>(kGateRounds), "four polls ran");
+            if (!gGateResults.empty())
+                t.Equals(gGateResults[0], static_cast<int32_t>(input.size()), "the read is taken whole although eight pictures are queued");
+            t.Equals(gGateAccepted.size(), static_cast<size_t>(6u), "every audio packet reached the game");
+            t.Equals(ps2_stubs::mpegAsideAudioPacketsForTesting(kGateMpegAddr), static_cast<size_t>(0u), "nothing is left aside");
+            t.Equals(ps2_stubs::mpegHeldVideoPacketsForTesting(kGateMpegAddr), static_cast<size_t>(8u), "the video stayed held: the presenter never made room");
+            if (gGateAccepted.size() == 6u)
+            {
+                bool ordered = true;
+                for (size_t i = 0; i < 6u; ++i)
+                    ordered = ordered && gGateAccepted[i].second == static_cast<uint8_t>(0xA0u + i);
+                t.IsTrue(ordered, "in stream order");
+                const uint64_t t0 = gGateAccepted[0].first;
+                t.IsTrue(gGateAccepted[1].first == t0, "two on the first tick");
+                t.IsTrue(gGateAccepted[2].first == t0 + 1u && gGateAccepted[3].first == t0 + 1u, "two on the next tick: the aside re-offer waits for no picture");
+                t.IsTrue(gGateAccepted[4].first == t0 + 2u && gGateAccepted[5].first == t0 + 2u, "and the last two the tick after");
+            }
         });
 
         tc.Run("sceMpegDemuxPssRing that consumes nothing lets a lower-priority ready thread run before returning 0", [](TestCase &t)
@@ -890,12 +1051,11 @@ void register_ps2_runtime_expansion_tests()
             runtime.registerFunction(kIdleCallerPc, &idleCaller);
             runtime.registerFunction(kIdleAfterPc, &idleAfter);
             runtime.registerFunction(kIdleLowPc, &idleLowThread);
-            // eight decoded pictures ahead: the demux is held back and consumes nothing
+            // eight decoded pictures ahead and nothing new read (item 16: a read is taken and its video held, so the
+            // call that consumes nothing is the game's empty re-poll)
             for (int i = 0; i < 8; ++i)
                 ps2_stubs::enqueueMpegDecodedFrameForTesting(kIdleMpegAddr);
-            const std::vector<uint8_t> packet = {0x00u, 0x00u, 0x01u, 0xBDu, 0x00u, 0x07u, 0x80u, 0x00u, 0x00u, 0x80u, 0x01u, 0x02u, 0x03u};
-            std::memcpy(rdram.data() + kIdlePacketAddr, packet.data(), packet.size());
-            gIdlePacketBytes = static_cast<uint32_t>(packet.size());
+            gIdlePacketBytes = 0u;
             gIdleTrace.clear();
             gIdleResult = -1;
             R5900Context mainContext{};
@@ -1888,6 +2048,80 @@ void register_ps2_runtime_expansion_tests()
             uint32_t directCmd = 0u;
             std::memcpy(&directCmd, rdram.data() + kBaseAddr + 12u, sizeof(directCmd));
             t.Equals(directCmd, 0x50000001u, "sceVif1PkCloseDirectCode should store a 1-QW DIRECT length");
+        });
+
+        // research/36 item 14 (2026-09-20): the MPEG decode used to run on the guest thread that also feeds the
+        // movie's audio ring; a 300 ms decode burst was a 300 ms hole in the audio. The decode-ahead worker
+        // takes the packet and returns; frames come out later, in order; flush and shutdown are clean.
+        tc.Run("MPEG decode-ahead: the feeder returns at once while a decode takes 300 ms; frames come out in order; a failure surfaces on the next feed; shutdown joins", [](TestCase &t)
+        {
+            struct SlowFakeDecoder
+            {
+                int delayMs = 300;
+                bool failNext = false;
+                bool feed(const uint8_t *data, size_t size, std::deque<int64_t> &out, int64_t pts90k, int64_t)
+                {
+                    (void)data;
+                    (void)size;
+                    std::this_thread::sleep_for(std::chrono::milliseconds(delayMs));
+                    out.push_back(pts90k);
+                    return !failNext;
+                }
+                bool flush(std::deque<int64_t> &out)
+                {
+                    out.push_back(-2);
+                    return true;
+                }
+            };
+            using Ahead = ps2x::DecodeAhead<int64_t, SlowFakeDecoder>;
+            const uint8_t bytes[4] = {0, 0, 1, 0xB3};
+            std::deque<int64_t> got;
+            {
+                Ahead ahead;
+                const auto t0 = std::chrono::steady_clock::now();
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 1), "packet 1 is taken");
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 2), "packet 2 is taken");
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 3), "packet 3 is taken");
+                const double feedMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                t.IsTrue(feedMs < 5.0, "three feeds return in under 5 ms while each decode takes 300 ms (" + std::to_string(feedMs) + " ms)");
+                t.IsTrue(ahead.pending() >= 2u, "the undecoded packets count as pending (" + std::to_string(ahead.pending()) + ")");
+                ahead.drain(got);
+                t.IsTrue(got.empty(), "nothing is ready yet");
+                std::this_thread::sleep_for(std::chrono::milliseconds(450));
+                ahead.drain(got);
+                t.IsTrue(got.size() >= 1u && got.front() == 1, "the first frame is out after its decode, first");
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+                t.IsTrue(ahead.idle(), "the worker goes idle once the queue is decoded");
+                ahead.drain(got);
+                t.IsTrue(got.size() == 3u && got[0] == 1 && got[1] == 2 && got[2] == 3, "all three frames, in arrival order");
+                ahead.flush();
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                ahead.drain(got);
+                t.IsTrue(!got.empty() && got.back() == -2, "a flush runs after the packets before it and its frames drain");
+                ahead.decoder().delayMs = 10;
+                ahead.decoder().failNext = true;
+                t.IsTrue(ahead.feed(bytes, sizeof(bytes), 4), "the packet that will fail is still taken");
+                for (int i = 0; i < 40 && !ahead.idle(); ++i)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                t.IsTrue(ahead.failed(), "the failure is recorded");
+                t.IsTrue(!ahead.feed(bytes, sizeof(bytes), 5), "and the next feed reports it, as the synchronous decoder did");
+            }
+            {
+                // Shutdown with a decode in flight: the destructor waits for the packet in hand, then joins.
+                Ahead ahead;
+                ahead.decoder().delayMs = 200;
+                (void)ahead.feed(bytes, sizeof(bytes), 9);
+                const auto t0 = std::chrono::steady_clock::now();
+                {
+                    Ahead moved;   // a second instance, destroyed idle: joins at once
+                    (void)moved;
+                }
+                const double idleMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+                t.IsTrue(idleMs < 100.0, "an idle worker is joined at once (" + std::to_string(idleMs) + " ms)");
+            }
+            t.IsTrue(true, "a worker with a packet in hand was joined after it (no hang)");
         });
     });
 }

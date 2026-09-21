@@ -25,8 +25,9 @@ namespace ui
             strokeRect(ctx, change, live ? theme::gold : theme::line, 2.0f);
             textCenteredIn(ctx, "CHANGE", change, 15.0f, live ? theme::goldHi : theme::dim, Face::Bold);
 
-            if (hit(ctx, r, id) && app.graph != nullptr)
-                app.nav.goTo(*app.graph, target);
+            // Asked for, not done: the page changes in the next frame's input phase (focus.h, Nav::request).
+            if (hit(ctx, r, id))
+                app.nav.request(target);
         }
     }
 

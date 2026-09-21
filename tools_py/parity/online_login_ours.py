@@ -315,6 +315,14 @@ LOBBY_TITLE = (slice(18, 58), slice(20, 360))
 LOBBY_TITLES = ("briefing_room", "create_game", "play_list", "game_lobby")
 LOBBY_TITLE_MAX_DIST = 0.15     # 14x the worst true match, under half the nearest wrong pair
 LOBBY_REF_DIR = os.path.join(REFS, "lobby")
+# Sprint 10 Goal 1: the GAME LOBBY and BRIEFING ROOM bands carry the server's channel name to the right of the
+# title words (x >= 235; the words end at 203), and that name changed from "Channel 1" to "US East (Ohio)" when the
+# hosted box was named -- the first scheduled ladder read its own GAME LOBBY at distance 0.225 against a reference
+# cut with "Channel 1" in it and failed the run as LOBBY-FAIL create-game:create (ladder_20260920_043246). Those two
+# titles compare the words only (215 of the band's 340 columns): on the 106 s7+/ladder captures the worst true match
+# is 0.011 and the nearest wrong pair 0.573. CREATE GAME and its PLAY LIST screen share their first words and are
+# told apart by the rest of the band, so they keep the full width (0.000 / 0.385).
+LOBBY_TITLE_COLS = {"game_lobby": 215, "briefing_room": 215}
 # Menu rows the fixed UP presses must light before the CROSS that follows (y0, y1, x0, x1). A lit row is
 # a teal fill: its median luminance is 62-68 on every capture, an unlit row's <= 34 (even with the
 # game-name keyboard drawn over the menu, cal1). The games-list row is a fainter fill: 36 when JOIN
@@ -409,6 +417,15 @@ READY_LABEL_DIM_LUMA = 75
 READY_COUNT_COL = 90            # label columns at or beyond this are the count suffix, not the label (an
                                 # in-game frame, 8c, lights cols 98-102 and 127-140 at this luma)
 READY_EDGE_DROPPED_MAX = 55
+# Sprint 10 Goal 3: the console draws the row ~7% narrower and offset (KNOWN section 2): its READY label's right
+# edge reads 65-66 and NOT READY 87 (leg 1b/1c frames) against ours' 48 / 82, so ours' 55 read the console's
+# unpressed READY as taken (leg 1c: the console never readied and the round never started). The bar sits between
+# the two labels of each target.
+READY_EDGE_DROPPED_MAX_BY_TARGET = {"ours": READY_EDGE_DROPPED_MAX, "pcsx2": 76}
+
+
+def ready_edge_dropped_max(target=None):
+    return READY_EDGE_DROPPED_MAX_BY_TARGET.get(target or _current_target, READY_EDGE_DROPPED_MAX)
 READY_CONFIRM_GAP_S = 1.0       # R69: the two frames a READY re-send needs are this far apart
 READY_REREAD_MAX = 4            # a label-less frame with GAME LOBBY still up is re-read this often ...
 READY_REREAD_GAP_S = 0.5        # ... this far apart, before the check gives up (ready:label-unread)
@@ -487,7 +504,9 @@ def lobby_gray_of(im):
 
 def lobby_gray(sh):
     """A frame rendered after the press. A StaleFrameError (an instance stall) is waited out under the
-    stage deadline, never read as a dropped press."""
+    stage deadline, never read as a dropped press. Records the shell's target for the title matchers."""
+    global _current_target
+    _current_target = getattr(sh, "target", "ours")
     while True:
         try:
             return lobby_gray_of(winshot.grab(sh.hwnd, max_age=LOBBY_FRAME_MAX_AGE_S))
@@ -517,7 +536,7 @@ def ready_label_edge(gray):
 
 def ready_dropped(gray):
     edge = ready_label_edge(gray)
-    return edge is not None and edge <= READY_EDGE_DROPPED_MAX
+    return edge is not None and edge <= ready_edge_dropped_max()
 
 
 def lobby_resend(sh, btn, wait):
@@ -561,18 +580,36 @@ def press_map_cross_verified(sh, wait=4.0):
 # ---------------------------------------------------------------------------
 # Verified fixed presses (Sprint 6 Task 2, research/28 §4 ranks 1-3)
 # ---------------------------------------------------------------------------
+# Sprint 10 Goal 3: the console (PCSX2) draws the online screens ~7% NARROWER than ours and centred -- the GAME
+# LOBBY's title glyphs span x 51..576 on a console frame against 31..595 on ours (PCSX2 honours the CRTC's display
+# window; our presentation draws the framebuffer edge to edge, KNOWN section 2). A text mask cut from our renderer
+# reads the console's title at 0.54 (best over +-24 px; a 1.06x stretch brings it to 0.17), so a title that a
+# console shell must read gets its own reference beside ours', `title_<name>.pcsx2.png`, cut from a console frame
+# at the same band. `lobby_gray(sh)` records which target the frame came from; the matchers pick the reference.
+_current_target = "ours"
+
+
 @functools.lru_cache(maxsize=None)
-def lobby_title_ref(name):
-    return np.asarray(Image.open(os.path.join(LOBBY_REF_DIR, f"title_{name}.png")).convert("L"), dtype=np.float32)
+def lobby_title_ref(name, target="ours"):
+    path = os.path.join(LOBBY_REF_DIR, f"title_{name}.{target}.png") if target != "ours" else ""
+    if not path or not os.path.exists(path):
+        path = os.path.join(LOBBY_REF_DIR, f"title_{name}.png")
+    return np.asarray(Image.open(path).convert("L"), dtype=np.float32)
 
 
-def lobby_title_dist(gray, name):
-    """Text-mask distance of the frame's title band to the `name` reference (0 = the same title)."""
-    return map_mask_distance(gray[LOBBY_TITLE], lobby_title_ref(name))
+def lobby_title_dist(gray, name, target=None):
+    """Text-mask distance of the frame's title band to the `name` reference (0 = the same title); the titles that
+    carry the channel name compare their words only (LOBBY_TITLE_COLS). `target` defaults to the target of the
+    last frame lobby_gray() read."""
+    cols = LOBBY_TITLE_COLS.get(name)
+    band, ref = gray[LOBBY_TITLE], lobby_title_ref(name, target or _current_target)
+    if cols:
+        band, ref = band[:, :cols], ref[:, :cols]
+    return map_mask_distance(band, ref)
 
 
-def lobby_title_is(gray, name):
-    return lobby_title_dist(gray, name) <= LOBBY_TITLE_MAX_DIST
+def lobby_title_is(gray, name, target=None):
+    return lobby_title_dist(gray, name, target) <= LOBBY_TITLE_MAX_DIST
 
 
 def lobby_row_median(gray, row):
@@ -669,6 +706,12 @@ def press_verified(sh, step, btn, wait, check, what):
     def dropped():
         ok = bool(check(lobby_gray(sh)))
         sh.log(f"[lobby] {step} press={btn} verified={ok} attempt={n[0]}")
+        if not ok:
+            # Sprint 10 Goal 3: the frame the check refused, kept -- a verifier that misses a screen it should
+            # know (the console joiner's GAME LOBBY, leg 1, 2026-09-20: four misses, the round then ran) can only
+            # be calibrated from what it saw, and a re-send that lands on a screen the check did not recognise
+            # presses on into it.
+            sh.shot(f"miss_{step.replace(':', '_')}_{n[0]}")
         return not ok
 
     send()
@@ -683,6 +726,11 @@ class Shell:
     stages = ()                  # active lobby stages ((name, deadline), ...), outermost first
     clock = staticmethod(time.time)
     lobby_role = "host"          # "joiner" once join_game ran: names the teams-unbalanced class in ready()
+    # Sprint 10 Goal 3: which window this shell drives -- the keys map (keys.MAPS) and the on-screen keyboard's
+    # pacing come from it. "ours" here; tools_py.parity.pcsx2_shell.Pcsx2Shell says "pcsx2" and inherits every
+    # verified step, so the console side of the mixed match presses on what its screen shows, as ours does.
+    target = T
+    press_hold_s = 0.08          # 5 frames at the shell's 60 fps (below); PCSX2's shell wants 0.15
 
     def check_stage(self):
         # s6_ladder10/11: a resized game window breaks every fixed-box detector; put it back before any press or read.
@@ -728,7 +776,7 @@ class Shell:
         held-button repeat (a 0.15 s CROSS closed the SERVER NEWS popup and the repeat reopened it, eight times
         in a row, 2026-09-09 play4)."""
         self.check_stage()
-        keys.press(self.hwnd, b, T, hold_s=0.08)
+        keys.press(self.hwnd, b, self.target, hold_s=self.press_hold_s)
         self.stage_sleep(wait)
 
     def hold(self, b, seconds, wait=0.3):
@@ -737,7 +785,7 @@ class Shell:
         if self.pad_file:
             self.pad(seconds, [b] if b.upper() in PAD_BUTTON else (), [b] if b.upper() in PAD_AXIS else ())
         else:
-            keys.press(self.hwnd, b, T, hold_s=seconds)
+            keys.press(self.hwnd, b, self.target, hold_s=seconds)
         time.sleep(wait)
 
     def pad_press(self, b, wait=0.35, hold_s=0.09):
@@ -750,6 +798,13 @@ class Shell:
         enough to stay under the keyboard's auto-repeat (0.15 s / 9 frames overshoots the cursor).
         """
         self.check_stage()
+        if not self.pad_file:
+            # Sprint 10 Goal 3: a shell with no injected pad (the console's) presses the same button as a posted
+            # key at the press hold its target wants -- choose_map's walk crashed the console host on the pad
+            # file's None path (leg 2c) after every earlier step had gone through press().
+            keys.press(self.hwnd, b, self.target, hold_s=self.press_hold_s)
+            self.stage_sleep(wait)
+            return
         write_pad_file(self.pad_file, [b])
         try:
             self.stage_sleep(hold_s)
@@ -954,7 +1009,7 @@ class Shell:
         if self.pad_file:
             self.osk_type_pad_verified(text, shots, tag)     # reads the field and the ENTER back; fails with a class
             return
-        osk_type(self.hwnd, text, shots, tag, target=T)
+        osk_type(self.hwnd, text, shots, tag, target=self.target)
         time.sleep(OSK_ENTER_SETTLE_S)
         if self.osk_open():                                  # the posted-keys path has no cursor to re-walk from
             self.log(f"WARNING: the on-screen keyboard is still up after typing {text!r} through posted keys "
@@ -1599,7 +1654,14 @@ def map_slug(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower().replace("'", "")).strip("_")
 
 
-def map_ref_path(name):
+def map_ref_path(name, target=None):
+    # Sprint 10 Goal 3: a console frame's map rows sit narrower and offset (KNOWN section 2), so a console shell
+    # reads `map_<slug>.pcsx2.png` when one has been cut, ours' reference otherwise -- as the lobby titles do.
+    target = target or _current_target
+    if target != "ours":
+        console = os.path.join(MAP_REF_DIR, f"map_{map_slug(name)}.{target}.png")
+        if os.path.exists(console):
+            return console
     return os.path.join(MAP_REF_DIR, f"map_{map_slug(name)}.png")
 
 
@@ -1918,7 +1980,7 @@ def ready(sh):
         sh.log(f"READY check: row-2 label right edges {edges} (READY ~48, NOT READY ~82)")
         if edges == [None, None]:
             return "gone" if gone else "unread"
-        flags = [e is not None and e <= READY_EDGE_DROPPED_MAX for e in edges]
+        flags = [e is not None and e <= ready_edge_dropped_max() for e in edges]
         return "dropped" if all(flags) else "taken" if not any(flags) else "unsure"
 
     def dropped():
@@ -1954,6 +2016,11 @@ def main():
     ap.add_argument("--hold", type=int, default=30)
     ap.add_argument("--existing", action="store_true", help="the persona is already on the memory card")
     ap.add_argument("--host", action="store_true", help="after the briefing room: CREATE GAME (Frostfire, verified)")
+    # Sprint 10 Goal 3 leg 2: ours as the JOINER of a game a console client hosts -- the briefing room, JOIN GAME
+    # (verified), READY once the notice allows it, then the hold and the walk bursts (--hold / --play), as the
+    # foreign-joiner host does in online_match_ours.
+    ap.add_argument("--join", action="store_true", help="after the briefing room: JOIN GAME (verified), READY, hold, walk")
+    ap.add_argument("--play", type=int, default=4, help="with --join: 3 s W bursts after the hold")
     ap.add_argument("--instance", default="", help="A or B: window title, memory card dir and UDP ports of that instance")
     ap.add_argument("--then", default="", help="extra presses after the lobby, e.g. cross:3,type:test")
     a = ap.parse_args()
@@ -1969,6 +2036,18 @@ def main():
         if a.host:
             to_briefing_room(sh)
             host_game(sh)
+        elif a.join:
+            to_briefing_room(sh)
+            join_game(sh)
+            time.sleep(35)                                   # READY becomes available
+            ready(sh)
+            for i in range(a.hold // 10):
+                time.sleep(10)
+                sh.shot(f"hold{i:02d}")
+            for i in range(a.play):
+                sh.hold("W", 3.0)
+                sh.shot(f"play{i:02d}")
+            sh.log("RESULT MIXED-MATCH host=foreign joiner=ours lobby=ok")
         sh.log(f"LOBBY class={CLASS_OK}")
         for n, step in enumerate(a.then.split(",") if a.then else []):
             b, w = (step.split(":") + ["2"])[:2]

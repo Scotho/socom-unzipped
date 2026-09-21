@@ -1,6 +1,7 @@
 #include <chrono>
 #include <cstdio>
 #include <string>
+#include <sstream>
 #include <iostream>
 #include <cstdlib>
 #include "runtime/ps2_audio.h"
@@ -484,6 +485,30 @@ void PS2AudioBackend::onBankLoaded(uint32_t handle, const uint8_t *block, size_t
 void PS2AudioBackend::onNotify(uint32_t function, const int32_t *args, size_t count)
 {
     auto arg = [&](size_t i) { return i < count ? args[i] : 0; };
+    // The instrument (research/36 item 9, 2026-09-20): PS2X_AUDIO_INSTRUMENT=1 stamps every command that can change
+    // a route's level -- master volume, pause/continue/stop, vol/pan, AutoVol, the stream and PCM stops -- with the
+    // output-frame clock the [audio] start/done/UNDERRUN events carry, so a dip in the mix can be told from a
+    // volume the game asked for (the IOP's own log of the same commands has no clock).
+    static const bool s_instrument = std::getenv("PS2X_AUDIO_INSTRUMENT") != nullptr;
+    if (s_instrument)
+    {
+        switch (function)
+        {
+        case 0x09u: case 0x13u: case 0x14u: case 0x15u: case 0x18u: case 0x1Bu: case 0x21u: case 0x22u:
+        case 0x2Du: case 0x2Eu: case 0x2Fu: case 0x34u: case 0x3Cu: case 0x3Du:
+        {
+            std::ostringstream o;
+            o << "[audio] 989snd cmd 0x" << std::hex << function << " frame=" << std::dec << m_mixer.renderedFrames() << " [";
+            for (size_t i = 0; i < count && i < 8u; ++i)
+                o << (i ? ", " : "") << "0x" << std::hex << static_cast<uint32_t>(args[i]);
+            o << "]";
+            std::fprintf(stderr, "%s\n", o.str().c_str());
+            break;
+        }
+        default:
+            break;
+        }
+    }
     switch (function)
     {
     case 0x11u:

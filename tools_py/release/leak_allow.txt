@@ -1,0 +1,78 @@
+# The leak check's allow list -- every line is a reviewed decision, with its reason.
+#
+#   rule  path-glob  [literal]  # reason
+#
+# A hit is allowed when its rule matches (or the rule is `*`), its path matches the glob (fnmatch; a glob that
+# names a directory covers everything under it), and, if a literal is given, the matched text or its line
+# contains that literal (case-insensitive; quote a literal with spaces). Anything not listed here fails the
+# gate. Keep the reason: the next reader has to decide whether it still holds.
+#
+# What may NOT go here: a real secret, a real address, a real key. Owner-specific literals the gate must catch
+# go in the git-ignored leak_extra.txt beside this file; nothing that identifies the owner goes in the tree in
+# order to be allowed.
+
+# -- commit identities (metadata mode): the public identity is deliberate. The owner's GitHub account is public
+#    by nature; the agents' trailer address is Anthropic's no-reply.
+commit-author    "<git metadata>"  "Craig Smith <cscotho@gmail.com>"   # the owner, GitHub `Scotho`; their call (Sprint 11 spec 3a)
+commit-committer "<git metadata>"  "Craig Smith <cscotho@gmail.com>"   # same
+
+# -- the local Horizon server's shipped DEV defaults. Nothing hosted uses them: the box's real config lives under
+#    the git-ignored vm/lightsail/ and is never in the tree.
+secret-assignment  server/config/db.config.json   socom2-local-dev-key   # the simulated DB's dev key; the hosted box has its own
+secret-assignment  server/config/db.config.json   horizon                # `DatabasePassword: horizon`, the upstream default for a local DB
+
+# -- the simulated account store WAS committed once (a3cef6c, before its .gitignore line) and untracked in the
+#    pre-publication sweep. It is in public history: local dev accounts under the dev key above. Recorded for
+#    the owner (HUMAN_TASKS 2026-09-20); allowed here so the gate reports new exposures, not this known one.
+ignored-path-in-history  server/config/simulated.db   # a3cef6c; the owner's decision is pending (HUMAN_TASKS)
+
+# -- addresses that are public by nature
+ip-address  *  67.222.156.250   # PSRewired's player DNS, published on their own guide (psrewired.com/guides/socom2)
+ip-address  *  1.1.1.1          # Cloudflare's resolver
+ip-address  third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h   # upstream ps2recomp data: SDK version strings
+
+# -- upstream ps2recomp data (12 MB of symbol names, a Sprint 11 Goal 1 baggage row); not ours and not secret
+opaque-secret  third_party/ps2recomp/ps2xAnalyzer/include/ps2recomp/sce_symbol_database_data.h   # upstream ps2recomp's symbol names
+
+# -- test fixtures and examples: the canonical joke password, the recompiler's long-name test, a fixed test token
+secret-assignment  *  hunter2                          # the password every test uses; never a real one
+secret-assignment  server/horizon-server/RT.Models/Lobby/MediusTicketLoginRequest.cs  TestPass   # upstream Horizon's placeholder
+secret-assignment  third_party/ps2recomp/ps2xTest/src/ps2_iop_tests.cpp  0x1122334455667788      # a fixed test token
+opaque-secret      third_party/ps2recomp/ps2xTest/src/ps2_recompiler_tests.cpp  ReallyLongFunctionName   # the clamp test's synthetic name
+
+# -- a font's licence names its foundry's contact; that is the licence text and ships with the font
+email  third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-*.txt   # the foundry's contact in its own licence text
+
+# -- research/37 is a note, and "Route A" is its first option, not a street
+street-address  docs/*  "37 Route A"   # research note 37, option A
+
+# -- names of key FILES under git-ignored paths, in prose that says where the owner keeps them. The files are not
+#    in the tree (the `ignored` mode proves vm/ never was); the names alone open nothing.
+key-file-name  docs/HUMAN_TASKS.md  cert.pem                                       # cloudflared's login certificate, under ~/.cloudflared
+key-file-name  docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md  socom_unzipped.pem   # the Lightsail key pair, under vm/lightsail/keys/
+commit-author    "<git metadata>"  "Claude <noreply@anthropic.com>"    # three agent commits; Anthropic's no-reply
+commit-committer "<git metadata>"  "Claude <noreply@anthropic.com>"    # same
+commit-committer "<git metadata>"  "GitHub <noreply@github.com>"       # merges made on github.com
+
+# -- the gate's own files carry the planted controls: every secret shape, invented, so the scanner can prove it
+#    still catches each one. Reviewed code; nothing real may be pasted here either.
+*  tools_py/release/leakcheck.py         # the planted controls (PLANTED, PLANTED_NAMES)
+*  tools_py/tests/test_leakcheck.py      # the same controls, as tests
+*  tools_py/release/leakrules.py         # the rules spell out the shapes they recognise, in comments and names
+*  tools_py/release/leak_allow.txt       # this file names what it allows (a literal here is never a real secret)
+key-file-name  .gitignore                # the patterns that refuse key files are spelled like key files
+secret-assignment  docs/superpowers/plans/2026-09-20-sprint-10-goal-9-online-credentials.md  persona   # a ternary's string literals, quoted from code
+secret-assignment  .gitleaks.toml  0x1122334455667788   # gitleaks's allowance for the same fixed test token, spelled out
+
+# -- the canonical licence texts (LICENSES/<SPDX>.txt, verbatim from spdx/license-list-data) carry the FSF's street
+#    address, a postcode and a maintainer address; they ship in every archive as they are
+email           LICENSES/*.txt   # a licence's own contact line
+street-address  LICENSES/*.txt   # the FSF's address in the GPL/LGPL texts
+postcode        LICENSES/*.txt   # same
+
+# -- the launcher scrubber's planted controls (Sprint 10 H6): a lower-cased home, an 8.3 short name, another account's
+#    directory, a peer's address -- each must survive in the TEST so the test can prove it does not survive the scrub
+home-directory-path  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp   # planted: SECRET~1, Otheruser, /home/otheruser
+ip-address           third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  86.21.44.190   # planted: a peer's address
+secret-assignment    third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  abc123DEF456   # planted: a credential value the scrub must remove
+secret-assignment  .gitleaks.toml  abc123DEF456   # gitleaks's allowance for the same planted value, spelled out

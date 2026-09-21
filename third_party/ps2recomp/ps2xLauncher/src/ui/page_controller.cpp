@@ -19,7 +19,7 @@ namespace ui
         // The pad fills the band above the controls: 520 units wide, centred on the body, with the glyph
         // legend in its own strip underneath so nothing ever sits on top of the drawing.
         const Rect padArea{firstPick.x + (sensitivity.right() - firstPick.x) * 0.5f - 280.0f,
-                           firstPick.y - 342.0f, 560.0f, 294.0f};
+                           firstPick.y - 330.0f, 560.0f, 282.0f};
         const std::string crouch = launcher::normalizeCrouchShortcut(c.crouchShortcut);
         const PadMark mark = crouch == "l3" ? PadMark::LeftStick
                                             : (crouch == "touchpad" ? PadMark::Plate : (crouch == "l2" ? PadMark::L2 : PadMark::None));

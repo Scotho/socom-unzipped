@@ -13,6 +13,7 @@ import tempfile
 import unittest
 
 from tools_py import portable_audit
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "make_portable.sh")
@@ -20,7 +21,7 @@ LAUNCHER = os.path.join(ROOT, "dist-linux", "socom_unzipped_launcher")
 
 
 @unittest.skipUnless(platform.system() == "Linux" and os.path.isfile(LAUNCHER) and shutil.which("ldd")
-                     and shutil.which("bash"), "Linux with a built launcher (dist-linux/) only")
+                     and BASH, "Linux with a built launcher (dist-linux/) only")
 class MakePortableLinuxTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -32,7 +33,7 @@ class MakePortableLinuxTest(unittest.TestCase):
         with open(os.path.join(self.ldist, "socom2_game.elf"), "wb") as fh:
             fh.write(b"x")
         self.out = os.path.join(tmp, "out")
-        self.result = subprocess.run(["bash", SCRIPT, self.out], capture_output=True, text=True, cwd=ROOT,
+        self.result = subprocess.run([BASH, SCRIPT, self.out], capture_output=True, text=True, cwd=ROOT,
                                      env={**os.environ, "LDIST": self.ldist, "DIST": os.path.join(tmp, "nodist")})
         self.pkg = os.path.join(self.out, "socom2-linux")
         self.tarball = os.path.join(self.out, "socom2-linux.tar.gz")

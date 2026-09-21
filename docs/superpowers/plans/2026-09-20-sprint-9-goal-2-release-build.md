@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The archive a stranger downloads is as small as measurement allows, carries nothing the two shipped executables do not load, and comes with a `SHA256SUMS` they can check; the executable inside it is a `release` build that has passed the three-stage gate 3/3 *as that executable*, with its symbols kept in a separate file for crash diagnosis. Today (measured 2026-09-19 at `e8e60b8`): `dist/portable/socom2-portable.zip` is **65,494,194 bytes** for a **297,839,981-byte** folder; `socom2.exe` is 236,405,760 bytes raw and 41,144,142 compressed (63 % of the zip), of which `.text` is 191,886,198; the folder carries **31 DLLs, of which the two shipped executables reach 16** through their import tables (33,474,560 bytes raw / 14,097,831 compressed) and **15 are reached by nothing** (21,999,104 raw / 8,057,620 compressed — 12.3 % of the zip); nothing writes a checksum; and nothing can point the gate at any executable other than `dist/socom2.exe`.
+**Goal:** The archive a stranger downloads is as small as measurement allows, carries nothing the two shipped executables do not load, and comes with a `SHA256SUMS` they can check; the executable inside it is a `release` build that has passed the three-stage gate 3/3 *as that executable*, with its symbols kept in a separate file for crash diagnosis. Today (measured 2026-09-19 at `9d1d410`): `dist/portable/socom2-portable.zip` is **65,494,194 bytes** for a **297,839,981-byte** folder; `socom2.exe` is 236,405,760 bytes raw and 41,144,142 compressed (63 % of the zip), of which `.text` is 191,886,198; the folder carries **31 DLLs, of which the two shipped executables reach 16** through their import tables (33,474,560 bytes raw / 14,097,831 compressed) and **15 are reached by nothing** (21,999,104 raw / 8,057,620 compressed — 12.3 % of the zip); nothing writes a checksum; and nothing can point the gate at any executable other than `dist/socom2.exe`.
 
 **Architecture:** Four independent pieces, each decided by a pure function under a test. (1) **`SOCOM_EXE`**: one environment variable, read by `tools_py/parity/hostplatform.py:runtime_exe` and by `run.sh`, names the runner the gate, the harness and the exit-code suite start; the gate writes the executable's path, size and SHA-256 into its `summary.txt`, so a gate record says what it scored. (2) **`tools_py/portable_audit.py`**: a pure-Python PE import-table reader and ELF `DT_NEEDED` reader (no `objdump`, no `ldd`, so it audits a Windows folder on Linux and a Linux folder on Windows), the import **closure** of the shipped executables over a folder, an **audit** (`missing` = imported and neither in the folder nor the operating system's; `orphans` = carried and imported by nothing), and the `SHA256SUMS` writer and verifier. `scripts/make_portable.sh` copies the closure instead of `*.dll`, audits what it assembled, and writes `SHA256SUMS` beside the archive — both branches. (3) **The release configuration**: three CMake switches that default OFF (`PS2X_RELEASE_LINK`: `-ffunction-sections -fdata-sections`, `--gc-sections`, `--as-needed` on Linux; `PS2X_LINK_ICF`; `PS2X_LTO_SCOPE`), a `release` step in `build.sh` and `scripts/build_linux.sh` that configures **its own build tree** (`third_party/ps2recomp/build-release`, `build-linux-release`) into **its own output folder** (`dist-release/`, `dist-linux-release/`), strips the two executables and keeps `symbols/<name>.debug`. The developer tree, `dist/socom2.exe`, the daily gate and every harness default are untouched. (4) **`tools_py/release_metrics.py`**: the three numbers the spec's bar needs, read from artefacts that already exist — the runner's link time from `.ninja_log`, a frame-rate sanity figure from the gate's own `mission.game.log` (`[pc-sampler]` rows: `vsync=` and `ee=` against host `t=`), and folder/archive sizes.
 
@@ -39,7 +39,7 @@
 
 - **Subagents (owner 2026-09-17).** Bounded mechanical work goes to Opus subagents with an exact brief and a verification command; judgment stays with the controller. Each task below is marked **[Opus]** (the code and tests are written out; the brief is "make this text work and these cases pass, change nothing else") or **[Judgment]** (needs a build, a gate, a measurement read, or a decision about what ships). A subagent never decides whether a bar is met, never writes `docs/KNOWN.md`, never commits, and never starts a launch or a release build.
 
-- **Line numbers** are the numbers at `e8e60b8` (the branch tip when this was written). Before starting a task, `git diff e8e60b8 -- <the task's files>` and reconcile, saying so in the ledger. The working tree at that moment carried another task's uncommitted edits under `ps2xLauncher/`, `ps2xRuntime/src/lib/`, `ps2xShared/` and `ps2xTest/` (the crouch shortcut, R139); none of this plan's files overlap them.
+- **Line numbers** are the numbers at `9d1d410` (the branch tip when this was written). Before starting a task, `git diff 9d1d410 -- <the task's files>` and reconcile, saying so in the ledger. The working tree at that moment carried another task's uncommitted edits under `ps2xLauncher/`, `ps2xRuntime/src/lib/`, `ps2xShared/` and `ps2xTest/` (the crouch shortcut, R139); none of this plan's files overlap them.
 
 - **Test baselines.** Goal 1 closed on its own totals; **record `P` (Python `Ran N tests`) and `B` (C++ `Total Tests:`) in the ledger before Task 1.** This goal adds Python cases only (`P + n` is stated per task); `B` must not move.
 
@@ -75,7 +75,7 @@ scripts/vm_sync.sh tree && scripts/vm_sync.sh ssh 'cd ~/socom_pc && bash scripts
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 export SOCOM_EXE=/c/projects/socom_pc/dist-release/socom2.exe
 python -m tools_py.parity.gate --stamp s9_g2_release_gate --owner gate
@@ -93,7 +93,7 @@ exit $rc
 - `./build.sh test` exit 0 on the Windows host before any commit touching `third_party/ps2recomp/`, `tools_py/` or `scripts/`. **The three-stage gate PASS (3/3) before any commit touching `third_party/ps2recomp/ps2xRuntime/src/`** — this goal has no such commit; if a task finds it needs one, stop and tell the controller.
 - **No builds and no suites while a game launch runs** (`logs/.quiet`; `bash scripts/check_quiet_gate.sh`).
 - **Windows and Linux both.** The Linux build is `scripts/build_linux.sh`; CI is `.github/workflows/linux.yml` (`--no-runner`: library, tests and launcher, no generated code). Every packaging change lands in **both branches of `scripts/make_portable.sh` in the same commit**, and every new CMake switch has its non-Windows half in the same edit.
-- **The developer build does not move.** `./build.sh runtime`, `scripts/build_linux.sh runtime`, `third_party/ps2recomp/build-clang`, `build-linux`, `dist/`, `dist-linux/`, `run.sh` with no `SOCOM_EXE`, and the gate with no `SOCOM_EXE` behave exactly as at `e8e60b8`. Every new CMake switch defaults OFF/empty and is passed only by the `release` step.
+- **The developer build does not move.** `./build.sh runtime`, `scripts/build_linux.sh runtime`, `third_party/ps2recomp/build-clang`, `build-linux`, `dist/`, `dist-linux/`, `run.sh` with no `SOCOM_EXE`, and the gate with no `SOCOM_EXE` behave exactly as at `9d1d410`. Every new CMake switch defaults OFF/empty and is passed only by the `release` step.
 - **No new `PS2X_*` environment variable** (Goal 3 is counting them). This goal's variables are the harness's and the build scripts': `SOCOM_EXE` (beside the existing `SOCOM_ISO`), `REL_GENOPT`, `REL_LTO`, `REL_LTO_SCOPE`, `REL_ICF`, `REL_JOBS`.
 - **The stop rule is the spec's, verbatim:** "if LTO pushes the runner's link past 30 minutes or changes a gate score, ship without it and record why." R144 says how each half is read.
 - LF line endings in every new file. **Python tests are `unittest`, never pytest**, live in `tools_py/tests/`, and have no module-level `def test_` (`tools_py/tests/test_test_hygiene.py`).
@@ -817,7 +817,7 @@ if __name__ == "__main__":
 
 Run the module: 12 cases pass on the host (11 where there is no `dist/socom2.exe`); Python total `P + 7 + 12`.
 
-- [x] **Step 4: The real folder, read by the new reader (no RED; this is the measurement the plan was written from, re-taken by the tool that will enforce it).** `python tools_py/portable_audit.py audit dist/portable/socom2 --system Windows`. Expected: exit 4, `0 missing`, and **15 orphans** — exactly `Iex-3_3.dll IlmThread-3_3.dll Imath-3_1.dll OpenEXR-3_3.dll OpenEXRCore-3_3.dll OpenEXRUtil-3_3.dll SDL2.dll avdevice-61.dll avfilter-10.dll avformat-61.dll freetype.dll harfbuzz.dll libwebpdecoder.dll libwebpdemux.dll libwinpthread-1.dll`. A different list means `dist/` changed since `e8e60b8`: paste it into the ledger and tell the controller before Task 3.
+- [x] **Step 4: The real folder, read by the new reader (no RED; this is the measurement the plan was written from, re-taken by the tool that will enforce it).** `python tools_py/portable_audit.py audit dist/portable/socom2 --system Windows`. Expected: exit 4, `0 missing`, and **15 orphans** — exactly `Iex-3_3.dll IlmThread-3_3.dll Imath-3_1.dll OpenEXR-3_3.dll OpenEXRCore-3_3.dll OpenEXRUtil-3_3.dll SDL2.dll avdevice-61.dll avfilter-10.dll avformat-61.dll freetype.dll harfbuzz.dll libwebpdecoder.dll libwebpdemux.dll libwinpthread-1.dll`. A different list means `dist/` changed since `9d1d410`: paste it into the ledger and tell the controller before Task 3.
 
 - [x] **Step 5: Suite and commit.**
 
@@ -1536,7 +1536,7 @@ if __name__ == "__main__":
 # usage: s9_g2_build_release.sh <label> <genopt> <lto ON|OFF> <scope all|runtime> <icf -|safe|all> <cap seconds, 0 = none>
 # One release candidate: builds it, packages it, and writes logs/s9_g2_measure_<label>.txt. The work stays in
 # this script's foreground (it waits on the build), as run_detached.sh requires.
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 9
 label="$1"; export REL_GENOPT="$2" REL_LTO="$3" REL_LTO_SCOPE="$4"; icf="$5"; cap="${6:-0}"
 [ "$icf" = "-" ] && icf=""
@@ -1630,7 +1630,7 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 |---|---|---|---|---|---|---|---|---|---|---|
 | P0 | developer exe, `*.dll` (2026-09-17 zip) | 236,405,760 | 191,886,198 | 297,839,981 | 65,494,194 | — | 0.93-0.96 | `s9_g1_gate` 3/3 | 46.3 | 0.999 |
 | P1 | developer exe, closure only (Task 3) | 236,409,856 | 191,886,198 | 277,687,904 | 58,221,191 | — | — | (same exe) | — | — |
-| M1_O2 | runtime `-O3`, generated `-O3 … -O2` (last wins), `-ffunction-sections -fdata-sections`, `-Wl,--gc-sections`, no LTO, no ICF, stripped; `REL_JOBS=14` (Task 4, at `210000f`+Task 4) | 212,989,440 (221,612,544 before strip) | 174,959,574 | 253,077,088 | 62,787,774 | 1,640 | 3.06 | not gated (Task 5) | — | — |
+| M1_O2 | runtime `-O3`, generated `-O3 … -O2` (last wins), `-ffunction-sections -fdata-sections`, `-Wl,--gc-sections`, no LTO, no ICF, stripped; `REL_JOBS=14` (Task 4, at `b3e7906`+Task 4) | 212,989,440 (221,612,544 before strip) | 174,959,574 | 253,077,088 | 62,787,774 | 1,640 | 3.06 | not gated (Task 5) | — | — |
 | M2_Os | | | | | | | | | | |
 | M3_icf | | | | | | | | | | |
 | M4_lto_rt | | | | | | | | | | |
@@ -1641,7 +1641,7 @@ dist-release/socom_unzipped_launcher.exe --selftest; echo "selftest rc=$?"
 
 M1 measured 2026-09-19 in Task 4: the executable is 23.4 MB smaller than P1's raw (−9.9 %; `.text` −16.9 MB, strip −8.6 MB) and the folder −24.6 MB (−8.9 %), **but the archive is 4,566,583 bytes LARGER than P1 (+7.8 %)**: inside the zip `socom2.exe` deflates to 46,286,824 bytes against the developer executable's 41,224,772 — `-O2` code is smaller and less repetitive than `-O1` code, and the download is the compressed figure. Compile cost: 7,304 CPU-seconds over the 470 runner units (4,477 at `-O1`); the wall time is one unit, `unity_393` at 1,546 s (526 s at `-O1`), then `unity_267` 1,399 s and `unity_463` 720 s. Exit codes on the stripped runner: `--fail-test oom` 71, `--home <empty>` 68; audit `16 needed, 0 missing, 0 orphans`; `symbols/socom2.exe.debug` 8,625,664 bytes, 84,935 text symbols, `main` at 0x140001460.
 
-P1 measured 2026-09-19 after `bash scripts/make_portable.sh` at `8220078`: 16 DLLs instead of 31, folder −20,152,077 bytes (−6.8 %), zip −7,273,003 bytes (−11.1 %), `16 needed, 0 missing, 0 orphans`. The exe is 4,096 bytes larger than P0's figure (the runner was relinked by `c40a318`, the crouch shortcut) and 176,128 bytes larger than the one P0's *folder* carried (that folder was packed 2026-09-17, before Goal 1's preflight landed), so the DLL saving alone is 20,328,205 folder bytes.
+P1 measured 2026-09-19 after `bash scripts/make_portable.sh` at `8bec122`: 16 DLLs instead of 31, folder −20,152,077 bytes (−6.8 %), zip −7,273,003 bytes (−11.1 %), `16 needed, 0 missing, 0 orphans`. The exe is 4,096 bytes larger than P0's figure (the runner was relinked by `c64373a`, the crouch shortcut) and 176,128 bytes larger than the one P0's *folder* carried (that folder was packed 2026-09-17, before Goal 1's preflight landed), so the DLL saving alone is 20,328,205 folder bytes.
 
 ---
 

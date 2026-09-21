@@ -6,13 +6,17 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 
 ## 1. Where the repository is today
 
-- `github.com/Scotho/socom-unzipped`, **private**, no licence file at the root, no tags, no releases, no branch
-  protection, one CI workflow (`.github/workflows/linux.yml`: ubuntu-24.04, the library + tests + launcher with no
-  generated code, about an hour; `docs/**` changes do not trigger it).
-- `main` and `develop` have pointed at the same commit after every sprint merge since Sprint 5 (`871f9f8` today).
-  `develop` has never held anything `main` did not.
-- Fifteen branches on the remote: `main`, `develop`, `sprint-1`..`sprint-9`, `fix/gl-depth-precision`,
-  `fix/gs-block-pointer`. All but `sprint-9` are fully merged.
+- `github.com/Scotho/socom-unzipped`, **PUBLIC since 2026-09-20** (the owner flipped it after the pre-publication
+  sweep and the history rewrite). `LICENSE` (GPL-3.0) at the root; `THIRD_PARTY_NOTICES.md` and `LICENSES/`; the tag
+  `v0.9.0`; no releases yet. Rulesets on `main` and `sprint-*` (§6); four workflows: `linux` and `windows` (the
+  library + tests + launcher with no generated code, about an hour each, skipped and reporting success on a
+  docs-only push), `secrets` (the leak check over the tree and full history plus gitleaks, minutes, every push) and
+  `release-draft` (§5). *Until 2026-09-20 this bullet said "private, no licence file, no tags, no branch protection,
+  one workflow".*
+- `develop` is gone (2026-09-20): it had pointed at the same commit as `main` after every sprint merge since Sprint 5
+  and never held anything `main` did not.
+- Fifteen branches on the remote: `main`, `sprint-1`..`sprint-10`, `fix/gl-depth-precision`, `fix/gs-block-pointer`.
+  All but `sprint-10` are fully merged (`sprint-9` at `4415254`, tagged `v0.9.0`).
 - Several agent sessions share ONE working tree. That is why every commit uses an explicit pathspec.
 
 ## 2. Branches
@@ -23,9 +27,9 @@ The parts marked **NOW** are in force on `sprint-9`. The parts marked **AT S9 CL
 | `sprint-N` | The agent loop's integration branch for one sprint. Small commits, each green. Docs and code together. | The controller and the sessions it coordinates. | Opens off `main` when the sprint opens; merged by PR at close-out; deleted from the remote one sprint later (the merge commit and the tag keep the history). |
 | `fix/<slug>`, `feat/<slug>`, `docs/<slug>` | One topic. The shape an outside contributor uses, and the shape the loop uses for a risky change it wants to be able to abandon. | Anyone, from a fork or the repo. | Until the PR merges or closes. |
 | `hotfix/<version>` | A fix to something already released, branched from the release tag, merged to `main` AND to the open sprint branch. | Controller / owner. | Until merged and tagged. |
-| `develop` | **Retired at the Sprint 9 merge (AT S9 CLOSE).** It duplicates `main`, and a public contributor who sees both has to ask which one to target. Until then it keeps being fast-forwarded with `main` so nothing that reads it breaks. | -- | Deleted after `v0.9.0` is tagged, once nothing (scripts, docs, CI) names it: `git grep -n "develop"` first. |
+| `develop` | **Retired and DELETED 2026-09-20 at the Sprint 9 merge** (`4415254`, `v0.9.0`). It duplicated `main` (never held anything `main` did not), and a public contributor who sees both has to ask which one to target. `git grep` found nothing outside the records naming it. | -- | Gone. Do not recreate it. |
 
-**NOW:** work goes to `sprint-9`; push `origin sprint-9`; check CI (`gh run list --branch sprint-9 --limit 1`).
+**NOW:** work goes to `sprint-10` (off `main` at `4415254`); push `origin sprint-10`; check CI (`gh run list --branch sprint-10 --limit 1`).
 Never force-push a shared branch. Never rewrite `main`.
 
 **Merging a sprint (AT S9 CLOSE and after):** open a PR `sprint-N -> main`, title `Sprint N: <its name>`, body = the
@@ -70,13 +74,18 @@ The constraint that shapes everything: **the game executable cannot be built by 
 from the owner's disc and is not, and must never be, in the repository. So:
 
 - CI builds and tests what a fresh clone can: the runtime library, the C++ and Python suites, the launcher, the tools
-  (`scripts/build_linux.sh --no-runner`; a Windows job and a `build.sh --no-runner` are Sprint 11 Goal 0 tasks -- today
-  a fresh Windows clone has no documented way to build anything, because `build.sh` assumes the git-ignored `tools/`
-  toolchain and the generated tree).
+  (`scripts/build_linux.sh --no-runner`; on Windows `scripts/bootstrap_windows.sh` then `build.sh --no-runner`, and the
+  `windows` workflow -- Sprint 10 H3, 2026-09-21. *This used to say a fresh Windows clone had no documented way to
+  build anything; it does now.*)
 - The playable archives are built on the owner's machine (`./build.sh release`, `scripts/make_portable.sh --release`,
   the Linux pair in the VM), gated 3/3 on that exact exe, audited for their import closure, and hashed.
 - A release is: tag -> the archives + `SHA256SUMS` + `THIRD_PARTY_NOTICES` attached to a **draft** GitHub Release by
   `gh release create --draft` -> the owner reads it and publishes. Publishing is the owner's click, every time.
+  **Built (Sprint 10 H8, 2026-09-21):** `.github/workflows/release-draft.yml` -- a `v*` tag runs the leak check and
+  creates the draft with `.github/release-notes-template.md` as its checklist; the owner attaches the archives; then
+  the same workflow, run by hand with the tag, verifies `SHA256SUMS`, the import closure, the leak check and the
+  notices in each archive and appends the verdict to the draft. It is the only workflow with `contents: write`, and
+  it never publishes.
 - Whether the archives may be distributed at all (they contain code recompiled from the game's executable) is **the
   owner's legal-position decision, D2 in the Sprint 11 spec** -- the project's answer so far is "the player's own disc
   is required and no game data ships"; that sentence must be re-examined for the *executable*, not only the assets,
@@ -95,10 +104,17 @@ from the owner's disc and is not, and must never be, in the repository. So:
   owner.
 - Secret scanning and push protection on; Dependabot alerts on (the vendored tree means most updates are manual, but
   the alerts are free). Private vulnerability reporting on (`SECURITY.md` points at it).
-- Before the visibility flip: the full-history audit of Sprint 11 Goal 1 (secrets, addresses, disc-derived bytes).
-  **A private repository's history becomes public with it.** Decision D1 in the Sprint 11 spec is whether to publish
-  this history (after the audit says it is clean, or after a targeted `git filter-repo`), or to start the public
-  repository from a single import commit and keep this one private as the archive.
+- **Done 2026-09-20/21 (Sprint 10 H1-H2, rulings R181-R182 in `docs/CURRENT_SPRINT.md`):** secret scanning, push
+  protection, Dependabot alerts, private vulnerability reporting -- on. Rulesets: `main` requires a pull request and
+  the `build` + `leakcheck` checks, no force-push, no deletion, **no bypass actors** (agents push as the owner, so a
+  bypass for the owner is a bypass for every session); `sprint-*` no force-push, no deletion. Actions must be pinned
+  by commit SHA (`sha_pinning_required`); fork PRs from first-time contributors wait for approval. **One deviation
+  from the first bullet of this section:** no CODEOWNERS review is required on `main` -- the owner is the only code
+  owner and GitHub does not count an author's own review, so the rule would lock the owner's sprint merges out; it
+  goes on the day a second maintainer exists. `build-windows` joined the required set on 2026-09-21 once the workflow was green on `sprint-10`.
+- The full-history audit of Sprint 11 Goal 1 (secrets, addresses) ran before the flip (`9253026`, the address
+  rewrite); the disc-derived-bytes half ran after it (`docs/audits/2026-09-21-disc-derived-bytes.md`). Decision D1
+  was made by the flip: this history, rewritten once, is the public one.
 
 ## 7. Issues and bug reports
 

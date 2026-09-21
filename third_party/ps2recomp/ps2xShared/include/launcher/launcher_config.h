@@ -25,15 +25,28 @@ namespace launcher
     // persona, because it never reaches the game -- loadHosts() resolves it to a uint32 and maps the seven
     // retail Sony hostnames to that (ps2xRuntime/src/lib/socom2_hostnet.cpp:303-316). What it does
     // introduce is a name that might not resolve, and parseServerAddress answering 0 leaves the runtime
-    // pointing at 127.0.0.1 with nothing on screen to say so -- which is why the raw address stays on
-    // offer as its own preset rather than being deleted. The ids are the stable thing: an old config
-    // naming "unzipped" keeps working and simply starts reaching the box by name.
+    // pointing at 127.0.0.1 with nothing on screen to say so. P6 kept the raw address on offer as a fourth
+    // preset for that case; the owner had it removed on 2026-09-20 ("just remove the by address line for
+    // now") -- a player whose network will not resolve the name types 3.143.65.100 under Custom, and a
+    // config that still names "unzipped-ip" heals to "unzipped" (kRetiredPresets). The ids are the stable
+    // thing: an old config naming "unzipped" keeps working and simply starts reaching the box by name.
     constexpr ServerPreset kServerPresets[] = {
         {"community",   "SOCOM Community (public Horizon)", "COMMUNITY_SERVER_ADDRESS_TBC", "the public community server"},
         {"unzipped",    "SOCOM Unzipped (project server)",  "socom.scotho.com",             "the project's hosted server (US East)"},
-        {"unzipped-ip", "SOCOM Unzipped (by address)",      "3.143.65.100",                 "the same server, if the name will not resolve"},
         {"custom",      "Custom",                            "",                             "any address or hostname"},
     };
+    // Ids a shipped build once wrote and this one no longer offers, each with the preset it means today.
+    // fromJson reads through this before findServerPreset, so retiring a preset never costs a player their
+    // server. `unzipped-ip` was the same box by its raw address (Sprint 9 P6; removed 2026-09-20).
+    struct RetiredPreset
+    {
+        const char *id;
+        const char *now;
+    };
+    constexpr RetiredPreset kRetiredPresets[] = {
+        {"unzipped-ip", "unzipped"},
+    };
+    constexpr size_t kRetiredPresetCount = sizeof(kRetiredPresets) / sizeof(kRetiredPresets[0]);
     // Nothing may count these in a literal: P6 made them four, and two loops and one y-offset said three.
     constexpr size_t kServerPresetCount = sizeof(kServerPresets) / sizeof(kServerPresets[0]);
 

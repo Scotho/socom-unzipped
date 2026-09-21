@@ -1,16 +1,22 @@
 #pragma once
 // Sprint 8 Goal 9: the launcher's palette, its metrics and the one scale factor everything is drawn through.
 //
-// The palette is sampled from the game's own logo (owner request, third pass): the letters' blue gradient,
-// the orange-gold outline around them, the trident's gold, the electric-blue glow behind it, and the black
-// it all sits on. Nothing from the disc ships here -- these are measured colours, not artwork.
+// The palette is sampled from the project's own logo (owner request, Sprint 10: "something along the lines of
+// #0E8697 or a bit darker ... the gold is good"): the letters' teal gradient, the orange-gold outline around
+// them, the trident's gold, and the black it all sits on. Nothing from the disc ships here -- these are
+// measured colours, not artwork. The logo itself is drawn at the head of the rail (logo_embedded/).
 //
 //   sampled      #FA9600 / #E8AB2D  the logo's orange outline      -> gold / goldHi
 //                #FFC010 / #F6C656  the trident's gold highlight
-//                #008DCD / #006192  the glow and the letters' blue -> blue / blueHi
-//                #012334            the letters' deep navy bottom  -> blueDeep
+//                #088090 / #088898  the letters' teal (measured on the s2u logo; the owner's #0E8697)
+//                                                                  -> blue / blueHi, and the panels' cast
+//                #085060 / #084858  the letters' deep teal bottom  -> blueFill / blueDeep
 //                #3D4241 / #656C6E  the U.S. NAVY SEALS banner     -> the steel of the lines
 //                #010101 / #120300  the two grounds
+//
+// Sprint 8 Goal 9's palette was the retail logo's electric blue (#008DCD / #012334); Sprint 10 moved the
+// whole blue family to the teal above and gave the greys a matching cast, gold untouched. The names stayed
+// ("blue") because forty call sites carry them and a rename is not a colour change.
 //
 // PURE ON PURPOSE: no raylib here. The tests compile this header (ui::scaleFor, ui::contrastRatio, ui::Rect),
 // and the drawing code turns ui::Rgba into raylib's Color at the call site (widgets.h's `rl()`).
@@ -52,21 +58,21 @@ namespace ui
     // The design's palette (Goal 9, third pass: "a slightly bolder theme, from the logo's own colours").
     namespace theme
     {
-        constexpr Rgba ground = {0x07, 0x0B, 0x12, 0xFF};    // near-black with a cool blue cast
-        constexpr Rgba panel = {0x0C, 0x1B, 0x2E, 0xFF};     // deep navy
-        constexpr Rgba panelHi = {0x12, 0x30, 0x4F, 0xFF};   // raised / hovered
-        constexpr Rgba line = {0x1F, 0x4E, 0x7A, 0xFF};      // mid navy-blue
+        constexpr Rgba ground = {0x06, 0x0E, 0x11, 0xFF};    // near-black with a teal cast
+        constexpr Rgba panel = {0x0A, 0x1E, 0x24, 0xFF};     // deep teal-navy
+        constexpr Rgba panelHi = {0x11, 0x37, 0x40, 0xFF};   // raised / hovered
+        constexpr Rgba line = {0x1B, 0x5A, 0x64, 0xFF};      // mid teal
 
-        constexpr Rgba text = {0xDC, 0xE6, 0xF0, 0xFF};      // cool off-white
-        constexpr Rgba caption = {0xA9, 0xC0, 0xD6, 0xFF};   // help text: legible on every panel
-        constexpr Rgba dim = {0x8E, 0xA6, 0xBE, 0xFF};       // secondary text (never on panelHi)
+        constexpr Rgba text = {0xDD, 0xE8, 0xEA, 0xFF};      // cool off-white
+        constexpr Rgba caption = {0xA8, 0xC5, 0xCA, 0xFF};   // help text: legible on every panel
+        constexpr Rgba dim = {0x8D, 0xAE, 0xB3, 0xFF};       // secondary text (never on panelHi)
 
         constexpr Rgba gold = {0xF2, 0xA2, 0x1E, 0xFF};      // THE accent: selection, focus, the wordmark
         constexpr Rgba goldHi = {0xFF, 0xB9, 0x38, 0xFF};
-        constexpr Rgba blue = {0x1C, 0x86, 0xD1, 0xFF};      // the logo's letter blue: glows, markers
-        constexpr Rgba blueFill = {0x10, 0x55, 0x8C, 0xFF};  // the same blue, dark enough to carry text
-        constexpr Rgba blueHi = {0x35, 0xA7, 0xF0, 0xFF};
-        constexpr Rgba blueDeep = {0x06, 0x2A, 0x47, 0xFF};  // the bottom of the letters' gradient
+        constexpr Rgba blue = {0x0E, 0x86, 0x97, 0xFF};      // the logo's letter teal (the owner's own number): markers
+        constexpr Rgba blueFill = {0x0A, 0x5C, 0x68, 0xFF};  // the same teal, dark enough to carry text
+        constexpr Rgba blueHi = {0x2F, 0xB3, 0xC4, 0xFF};
+        constexpr Rgba blueDeep = {0x05, 0x30, 0x38, 0xFF};  // the bottom of the letters' gradient
 
         constexpr Rgba lampGreen = {0x3B, 0xE0, 0x6A, 0xFF};
         constexpr Rgba warn = gold;
@@ -113,9 +119,13 @@ namespace ui
         constexpr float minH = 520.0f;
 
         constexpr float barH = 38.0f;        // the custom top bar (there is no OS title bar above it)
+        // The content panel's title strip. Two lines of caption-size help must fit in it beside the page's
+        // name (Sprint 10: the help lives here, never over the page), under the 54 the body starts at.
+        constexpr float bandH = 48.0f;
+        constexpr float bodyTop = 66.0f;     // where a page's body starts under the panel's top: bandH + the rule + 16
         constexpr float bottomH = 56.0f;
         constexpr float railW = 220.0f;
-        constexpr float railTop = 88.0f;     // the wordmark's block at the top of the rail
+        constexpr float railTop = 124.0f;    // the logo's block at the top of the rail (204 x 108 inside it)
         constexpr float railRowH = 42.0f;
         constexpr float railGap = 6.0f;
         constexpr float margin = 28.0f;

@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <regex>
 
 namespace launcher::diagnostics
 {
@@ -64,18 +65,69 @@ namespace launcher::diagnostics
         return toJson(config);
     }
 
+    // Sprint 10 H6 (the KNOWN row): the home directory used to be matched case-sensitively in its three slash
+    // spellings and nothing else was redacted, so `c:\users\bob`, `C:\Users\BOB~1`, another account's directory,
+    // a credential printed on a log line and a peer's address all reached the report. Now: every user directory on
+    // the machine -- `<drive>:\Users\<name>`, `/home/<name>`, `/Users/<name>`, either slash, any case, any short
+    // name -- becomes `~`; a value after a credential-shaped key becomes `[redacted]`; every IPv4 but the project's
+    // hosted box becomes `[ip]`. The rules are the leak check's (tools_py/release/leakrules.py), reduced to what a
+    // run log can carry. std::regex over a log that clipLog has already bounded (4.3 MB at most; 64 KB for a bug
+    // report) is fast enough, and it runs once per report.
+    namespace
+    {
+        const std::regex kUserDir(R"((?:[A-Za-z]:[\\/]{1,2}Users[\\/]{1,2}|/home/|/Users/)[^\\/\s"'<>|]+)", std::regex::icase);
+        const std::regex kCredential(
+            R"((\b[\w-]{0,24}?(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key|private[_-]?key|bearer|credential|pass)s?\s*[:=]\s*)["']?([^\s"',;]{6,}))",
+            std::regex::icase);
+        const std::regex kIpv4(R"((?:^|[^\w.])(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})(?![\w.]))");
+        const char *const kHostedIp = "3.143.65.100";
+
+        bool isAddress(const std::smatch &m)
+        {
+            for (size_t g = 1; g <= 4; ++g)
+            {
+                const std::string &octet = m[g].str();
+                if (octet.size() > 1 && octet[0] == '0')
+                    return false;                      // 2.4.1.01: a version, not an address
+                if (std::stoi(octet) > 255)
+                    return false;                      // 31.0.15.2000: a driver version; 1.2.3.400: a count
+            }
+            return true;
+        }
+    }
+
     std::string scrub(const std::string &text, const std::string &homeDir)
     {
-        if (homeDir.size() < 4)
-            return text;
         std::string out = text;
-        std::string forward = homeDir, backward = homeDir;
-        std::replace(forward.begin(), forward.end(), '\\', '/');
-        std::replace(backward.begin(), backward.end(), '/', '\\');
-        replaceAll(out, homeDir, "~");
-        replaceAll(out, forward, "~");
-        replaceAll(out, backward, "~");
-        return out;
+        if (homeDir.size() >= 4)
+        {
+            // the caller's exact spelling first, so a home outside the conventional directories still goes
+            std::string forward = homeDir, backward = homeDir;
+            std::replace(forward.begin(), forward.end(), '\\', '/');
+            std::replace(backward.begin(), backward.end(), '/', '\\');
+            replaceAll(out, homeDir, "~");
+            replaceAll(out, forward, "~");
+            replaceAll(out, backward, "~");
+        }
+        out = std::regex_replace(out, kUserDir, "~");
+        out = std::regex_replace(out, kCredential, "$1[redacted]");
+        // addresses by hand: the hosted box stays, and a match that is not an address (a version) stays too
+        std::string masked;
+        masked.reserve(out.size());
+        auto begin = std::sregex_iterator(out.begin(), out.end(), kIpv4);
+        size_t copied = 0;
+        for (auto it = begin; it != std::sregex_iterator(); ++it)
+        {
+            const std::smatch &m = *it;
+            const size_t start = static_cast<size_t>(m.position(1));
+            const size_t end = static_cast<size_t>(m.position(4) + m.length(4));
+            const std::string address = out.substr(start, end - start);
+            masked.append(out, copied, start - copied);
+            masked += (isAddress(m) && address != kHostedIp) ? std::string("[ip]") : address;
+            copied = end;
+        }
+        masked.append(out, copied, std::string::npos);
+        return masked;
     }
 
     std::string glCapsLines(const std::string &logText)

@@ -77,9 +77,10 @@ def main():
     ap.add_argument("--seconds", type=float, default=330.0)
     ap.add_argument("--every", type=float, default=5.0)
     ap.add_argument("--spec", action="append", default=None)
+    ap.add_argument("--port", type=int, default=0, help="PINE port (default: instance A's PINESlot from its ini; B is 28012)")
     a = ap.parse_args()
     specs = a.spec or [DEFAULT_SPEC]
-    port = pine_port()
+    port = a.port or pine_port()
     t0 = time.time()
     p = None
     while p is None and time.time() - t0 < 120:

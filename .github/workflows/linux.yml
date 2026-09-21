@@ -1,26 +1,63 @@
 # Sprint 8 Goal 1, design item 6(a): the first verification ring for the Linux client.
 # Configure and build ps2_runtime, ps2x_tests and the launcher WITHOUT the generated game code (14,882
 # files produced from the owner's disc, not in the repository), then run the suite.
+#
+# What green means: the library, the two suites and the launcher build and pass without the game. It proves
+# nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
+#
+# Sprint 10 hardening: the workflow runs on every push, and a cheap first job decides whether anything outside
+# docs/ changed. The hour-long build is skipped when not -- and a skipped `build` reports success, which is
+# what lets `build` be a required check on `main` without blocking documentation-only pull requests.
 name: linux
 
 on:
-  # A documentation-only change cannot break the client build, and this job takes the best
-  # part of an hour on a hosted runner.
   push:
-    paths-ignore: ['docs/**']
   pull_request:
-    paths-ignore: ['docs/**']
+
+permissions:
+  contents: read
 
 concurrency:
   group: linux-${{ github.ref }}
-  cancel-in-progress: true
+  # false: a documentation-only push right behind a code push must not cancel the hour-long build that push
+  # started (it did, 2026-09-21); the docs-only run's `changes` job takes ten seconds and skips the build.
+  cancel-in-progress: false
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Did anything outside docs/ change?
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [ -z "$BASE" ] || [ "$BASE" = "$zero" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "no usable base ($BASE): building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" "$HEAD" | grep -v '^docs/' || true)
+          if [ -n "$changed" ]; then
+            echo "code changed:"; echo "$changed" | head -50; echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs/ only: the build is skipped and reports success"; echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Install the toolchain and the client's dependencies
         run: |
@@ -53,7 +90,7 @@ jobs:
 
       - name: Upload the launcher
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: socom-unzipped-launcher-linux
           path: dist-linux/socom_unzipped_launcher
@@ -61,7 +98,7 @@ jobs:
 
       - name: Upload the test output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: linux-test-output
           path: logs/ci/build_linux_test.log

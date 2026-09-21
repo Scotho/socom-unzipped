@@ -2,16 +2,16 @@
 run.sh (drive.py), so this is the line that lets a gate score dist-release/socom2.exe. The fake runner is a
 two-line shell script; the run takes well under a second. Side effect: run.sh repoints logs/latest.log."""
 import os
-import shutil
 import stat
 import subprocess
 import tempfile
 import unittest
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-@unittest.skipUnless(shutil.which("bash"), "bash only")
+@unittest.skipUnless(BASH, "bash only")
 class RunShExeTest(unittest.TestCase):
     def test_socom_exe_names_the_binary_run_sh_starts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -21,7 +21,7 @@ class RunShExeTest(unittest.TestCase):
             os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
             log = os.path.join(tmp, "run.log")
             env = {**os.environ, "SOCOM_EXE": fake.replace("\\", "/"), "PS2X_RUN_LOG": log.replace("\\", "/")}
-            r = subprocess.run(["bash", os.path.join(ROOT, "run.sh"), "5"], capture_output=True, text=True,
+            r = subprocess.run([BASH, os.path.join(ROOT, "run.sh"), "5"], capture_output=True, text=True,
                                cwd=ROOT, env=env, timeout=60)
             self.assertIn("exe=" + fake.replace("\\", "/"), r.stdout, r.stdout + r.stderr)
             with open(log) as fh:

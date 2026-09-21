@@ -69,12 +69,24 @@ Markers: **[A]** autonomous; **[O]** the owner's; **[B: x]** blocked on x.
      work, so it is scheduled here and not assumed;
   3a. **personal data, a known hit (2026-09-20):** the owner's home address was written in one tracked file
       (`docs/superpowers/plans/2026-09-19-sprint-8-hosted-server.md`, a Goal 12 results line) and redacted in
-      `db603f5`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
+      `a87e4b2`; **it is still in history** (the commit that added it and the one that removed it). The sweep must
       cover personal data as well as secrets: `git log --all -S` for the address string, the owner's name and e-mail
       beyond commit metadata, the AWS account id (in no tracked file today; it lives under the git-ignored `vm/`),
       phone numbers, and the Windows user name in absolute paths. This hit alone means D1 cannot be "as it is":
       either a targeted `git filter-repo --replace-text` with an owner-approved force-push, or a fresh history.
-      Nothing has been rewritten -- that is destructive on a shared branch and the owner's decision.
+      ~~Nothing has been rewritten -- that is destructive on a shared branch and the owner's decision.~~
+      **DONE 2026-09-20 at the owner's instruction:** `git filter-repo --replace-text` (the address -> `<the owner's
+      address>`, `--prune-empty never`) over a mirror of the local repository, verified (zero hits in `git log --all
+      -p`, every branch tip's tree byte-identical except the one line on `sprint-8` and `feat/web-map-viewer`, which
+      never had the redaction commit), force-pushed to every branch and tag on origin, and the local branches, tags
+      and both worktrees moved onto the rewritten commits with `update-ref` (no checkout). 268 commits from the
+      2026-09-19 plan commit onward have new hashes; the 393 doc citations of them were re-pointed from the commit
+      map in the follow-up commit. **What remains:** GitHub keeps the OLD commits fetchable by hash through the merged
+      PR #1's `refs/pull/1/head` until it garbage-collects them -- before the repository goes public, ask GitHub
+      support to purge the unreachable objects (their documented step after a sensitive-data rewrite), or publish
+      from a fresh repository. The history sweep that follows (e-mail, name, account id, phone, user name in paths)
+      was run the same day and found nothing else; the commit author e-mail on every commit is the owner's real one
+      and is the owner's call.
   4. the result decides **D1**: publish this history as it is, publish it after a targeted `git filter-repo`, or start
      the public repository from one import commit and keep this repository private as the archive. The progress story
      (Goal 6) cites commits by hash; a fresh-history public repository keeps those citations true only if the story
@@ -229,7 +241,7 @@ not less -- and `self_test` is part of the report, so an aggregator can refuse a
 
 **Owner-specific literals** (the street address, an old account name) live in a git-ignored file, as they do for the
 monitor -- committing a secret in order to scrub it defeats the exercise. The seeded file for the monitor already holds
-the home IP recovered from `db603f5`.
+the home IP recovered from `a87e4b2`.
 
 **Bar:** one command, documented in `CONTRIBUTING.md` and wired into the release workflow, that sweeps all six and
 exits non-zero on any hit naming `file:line: rule: excerpt`; a negative control in CI that plants a secret of each

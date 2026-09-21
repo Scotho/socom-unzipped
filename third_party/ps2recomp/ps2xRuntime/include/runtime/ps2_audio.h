@@ -38,6 +38,7 @@ public:
     bool pcmPosition(uint32_t &position) const;
     void setDiscImagePath(const std::string &path) { m_discImagePath = path; }   // where the VAG streams are read from
     size_t mixerActiveStreams() const { return m_mixer.activeStreams(); }
+    uint64_t mixerRenderedFrames() const { return m_mixer.renderedFrames(); }   // the output-frame clock the [audio] events carry
     size_t mixerActiveVoices() const { return m_mixer.activeVoices(); }
     bool mixerIsPlaying(uint32_t handle) const { return m_mixer.isPlaying(handle); }
     int32_t mixerGlobalReg(uint32_t index) const { return m_mixer.globalReg(index); }

@@ -178,6 +178,22 @@ namespace snd989
             return out;
         }
 
+        // A VAG stream's MAIN voice volumes (research/36 item 7, 2026-09-20). On the IRX a two-channel VPK is not one
+        // centre-panned stereo pair: the play worker (FUN_0000f7e0, 9912-9923) allocates a DOUBLING voice for the
+        // handler unless flags bit 0x20 is set, the stream start (FUN_000152fc, 12743-12775) forces the first
+        // stream's pan to 0x10e (270) when that voice exists, points the doubling voice at the second buffer (the
+        // right channel), and gives it the main voice's volumes SWAPPED (VOLL <- VOLR, VOLR <- VOLL); every later
+        // vol/pan update (FUN_00016898) repeats the swap. So with the game's pan -1 (= 0) the left channel's voice
+        // sits at pan 270 -- the pan table's (0x3fff, 0), full on its side -- and the right channel at the mirror,
+        // where ours put both at the centre entry (0.707, 0.707). Under the square law of the group stage that is
+        // exactly 2x in amplitude: the -5.9 dB median of the music-only capture (run 9b) against PCSX2. The pair
+        // rotates with the handler pan (270 + p for the left data, its mirror for the right). A mono stream keeps
+        // the centre pair; what the IRX's doubling voice plays for a mono file is not established.
+        VolPair streamBase(uint32_t channels, int32_t playVol, int32_t playPan)
+        {
+            return makeVolume(127, 0, playVol, channels > 1 ? playPan + 270 : playPan, 127, 0);
+        }
+
         // ---- the SPU ADSR envelope (psx-spx) ---------------------------------------------------------------
 
         struct Envelope
@@ -425,28 +441,33 @@ namespace snd989
             {
                 if (ended.load(std::memory_order_relaxed) || !file)
                     return false;
+                const uint32_t chunkPairStart = consumed;
+                const uint32_t remaining = dataSize > consumed ? dataSize - consumed : 0u;
+                // research/36 item 10: `interleave` is the per-channel stride (a two-channel file: header word 3 /
+                // channels, half a streaming buffer -- see playStream). One buffer holds that many bytes of the left
+                // channel and then of the right; the last, partial buffer is split in equal halves (block-aligned).
                 const size_t chunkBytes = static_cast<size_t>(interleave);
-                std::vector<uint8_t> raw(chunkBytes);
+                const size_t perChannel = channels > 1
+                                              ? std::min<size_t>(chunkBytes, (static_cast<size_t>(remaining) / channels) & ~static_cast<size_t>(15))
+                                              : std::min<size_t>(chunkBytes, remaining);
+                std::vector<uint8_t> raw(std::max<size_t>(perChannel, 16u));
                 bool any = false;
                 bool repeat = false;              // R171: this chunk pair ended a run that says it repeats
-                const uint32_t chunkPairStart = consumed;
                 for (uint32_t ch = 0; ch < channels; ++ch)
                 {
                     std::vector<int16_t> &pcmCh = out[ch];
                     pcmCh.clear();
-                    if (consumed >= dataSize)
+                    if (perChannel < 16)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    const size_t want = std::min(chunkBytes, static_cast<size_t>(dataSize - consumed));
-                    if (seek64(file, dataStart + consumed) != 0)
+                    if (seek64(file, dataStart + chunkPairStart + static_cast<uint64_t>(ch) * perChannel) != 0)
                     {
                         ended.store(true, std::memory_order_release);
                         continue;
                     }
-                    const size_t got = std::fread(raw.data(), 1, want, file);
-                    consumed += static_cast<uint32_t>(want);
+                    const size_t got = std::fread(raw.data(), 1, perChannel, file);
                     if (got < 16)
                     {
                         ended.store(true, std::memory_order_release);
@@ -500,6 +521,7 @@ namespace snd989
                     s1[ch] = h1;
                     s2[ch] = h2;
                 }
+                consumed = chunkPairStart + static_cast<uint32_t>(static_cast<size_t>(channels) * perChannel);
                 if (repeat && !ended.load(std::memory_order_relaxed))
                     consumed = loopStart;   // R171: back to the mark (0 = the top of the data) and keep playing
                 return any;
@@ -581,6 +603,14 @@ namespace snd989
             uint32_t currentBlock = 0xffffffffu;
             bool silentBlock = false;
             uint64_t underruns = 0;
+            // research/36 item 9 (2026-09-20), the instrument: a stale RUN is a stretch of output frames the head
+            // spent in blocks the game had not rewritten (silence). One "[audio] 989snd pcm UNDERRUN" line per run,
+            // stamped with the output frame it began on, printed when it ends (or when the ring stops).
+            bool inStaleRun = false;
+            uint64_t staleRunStart = 0;      // output frame the run began on
+            uint64_t staleRunFrames = 0;     // output frames of silence in the run so far
+            uint64_t starvationRuns = 0;     // runs completed (Mixer::pcmStarvationRuns)
+            uint64_t bytesWritten = 0;       // bytes the game wrote since the last occupancy line
             uint32_t blockBytes() const { return 512u * std::max<uint32_t>(channels, 1u); }
             // (Re)allocate the ring and zero it. `channels` must already be set: it sets the block size.
             void reshape(uint32_t ringBytes)
@@ -596,6 +626,10 @@ namespace snd989
                 currentBlock = 0xffffffffu;
                 silentBlock = false;
                 underruns = 0;
+                inStaleRun = false;
+                staleRunFrames = 0;
+                starvationRuns = 0;
+                bytesWritten = 0;
             }
             uint32_t frames() const { return channels == 0 || bytes.empty() ? 0u : static_cast<uint32_t>(bytes.size() / (2u * channels)); }
             int16_t sample(uint32_t frame, uint32_t channel) const
@@ -691,6 +725,72 @@ namespace snd989
                 eventSink(e);
         }
 
+        // ---- the instrument (research/36 item 9) ----------------------------------------------------------
+        void endPcmStaleRun()
+        {
+            if (!pcm.inStaleRun)
+                return;
+            pcm.inStaleRun = false;
+            ++pcm.starvationRuns;
+            std::fprintf(stderr, "[audio] 989snd pcm UNDERRUN frame=%llu silent=%llu\n",
+                         static_cast<unsigned long long>(pcm.staleRunStart), static_cast<unsigned long long>(pcm.staleRunFrames));
+        }
+
+        // Output frames of decoded audio a stream holds ahead of its read head: the current chunk's remainder plus
+        // every chunk pair waiting in its ring, converted from the file's rate.
+        uint64_t streamFramesAhead(const Stream &st) const
+        {
+            double samples = st.pcm[0].empty() ? 0.0 : std::max(0.0, static_cast<double>(st.pcm[0].size()) - st.pos);
+            {
+                std::lock_guard<std::mutex> lock(ringMutex);
+                for (const ChunkPair &c : st.ready)
+                    samples += static_cast<double>(c[0].size());
+            }
+            return static_cast<uint64_t>(st.step > 0.0 ? samples / st.step : samples);
+        }
+
+        // Fresh (written, not yet played) blocks the PCM ring holds ahead of its head, contiguously.
+        uint32_t pcmBlocksAhead() const
+        {
+            if (pcm.fresh.empty())
+                return 0u;
+            const uint32_t n = static_cast<uint32_t>(pcm.fresh.size());
+            uint32_t b = pcm.currentBlock == 0xffffffffu ? 0u : (pcm.currentBlock + 1u) % n;
+            uint32_t count = 0u;
+            while (count < n && pcm.fresh[b] != 0u)
+            {
+                ++count;
+                b = (b + 1u) % n;
+            }
+            return count;
+        }
+
+        void logOccupancy(uint64_t frame)
+        {
+            for (const auto &sp : streams)
+            {
+                const Stream &st = *sp;
+                if (st.done.load(std::memory_order_relaxed))
+                    continue;
+                size_t chunks = 0;
+                {
+                    std::lock_guard<std::mutex> lock(ringMutex);
+                    chunks = st.ready.size();
+                }
+                std::fprintf(stderr, "[audio] 989snd stream %08x occupancy frame=%llu ahead=%llu chunks=%zu%s%s\n", st.handle,
+                             static_cast<unsigned long long>(frame), static_cast<unsigned long long>(streamFramesAhead(st)), chunks,
+                             st.paused ? " paused" : "", st.ended.load(std::memory_order_relaxed) ? " ended" : "");
+            }
+            if (pcm.active && pcm.frames() > 0)
+            {
+                std::fprintf(stderr, "[audio] 989snd pcm occupancy frame=%llu ahead=%u blocks=%zu pos=%u written=%llu underruns=%llu\n",
+                             static_cast<unsigned long long>(frame), pcmBlocksAhead(), pcm.fresh.size(),
+                             static_cast<uint32_t>(pcm.pos) * 2u * pcm.channels, static_cast<unsigned long long>(pcm.bytesWritten),
+                             static_cast<unsigned long long>(pcm.underruns));
+                pcm.bytesWritten = 0;
+            }
+        }
+
         // 0..0x400; a handle with no ramp is at full scale, which multiplies out to exactly the old gain.
         int32_t volScale(uint32_t handle) const
         {
@@ -773,13 +873,26 @@ namespace snd989
             return masterVol[g] * masterVol[16] / 0x400;   // both 0..0x400
         }
 
+        // The group stage is a SQUARE law (research/36 Q6 item 1): snd_AdjustVolToGroup
+        // (research/989snd-ziemas/iop/vol.c:434-455; IRX FUN_00019b7c) takes the 14-bit voice volume, multiplies
+        // it by the group's master (x duck) / 0x400, and returns `v * v / 0x7ffe` -- the identity at full scale
+        // (0x7ffe), a QUARTER at half amplitude. It sits under every voice (blocksnd.c:1267-1268) and every stream
+        // (IRX FUN_00016898), so the MUSIC/SOUND sliders at 50 % are -12 dB on the console, a stem played at vol
+        // 0x200 likewise, and a linear 7-bit fade is a quadratic loudness curve. `vol14` is 0..0x7ffe (makeVolume),
+        // `modifier` 0..0x400 (group x master x ramp); the product's square fits an int32 (0x7ffe^2 < 2^30).
+        static int32_t adjustVolToGroup(int32_t vol14, int32_t modifier)
+        {
+            const int32_t v = (std::min(vol14, 0x7ffe) * modifier) / 0x400;
+            return (v * v) / 0x7ffe;
+        }
+
         void applyVoiceVolume(Voice &v, int32_t &left, int32_t &right) const
         {
             // The AutoVol ramp rides on top of the group modifier: no ramp is 0x400, i.e. the gain unchanged.
             const int32_t modifier = groupModifier(v.group) * volScale(v.handler) / 0x400;
             // The SPU voice takes (left >> 1, right >> 1): full volume is half of full scale (StartTone, research/32 section 3).
-            left = ((v.base.left * modifier) / 0x400) >> 1;
-            right = ((v.base.right * modifier) / 0x400) >> 1;
+            left = adjustVolToGroup(v.base.left, modifier) >> 1;
+            right = adjustVolToGroup(v.base.right, modifier) >> 1;
         }
 
         // A negative tone or child-spec volume / pan is a sentinel: -1..-4 a handler register, -5 random, -6.. a
@@ -1575,7 +1688,7 @@ namespace snd989
                 st->playPan = 0;
             else if (pan != kPanDontChange)
                 st->playPan = pan;
-            st->base = makeVolume(127, 0, st->playVol, st->playPan, 127, 0);
+            st->base = streamBase(st->channels, st->playVol, st->playPan);
             return;
         }
         Handler *h = m_impl->find(handle);
@@ -1743,8 +1856,9 @@ namespace snd989
                 int32_t left = 0, right = 0;
                 auto takeGains = [&]() {
                     const int32_t modifier = m_impl->groupModifier(cur->group) * m_impl->volScale(cur->handle) / 0x400;
-                    left = ((cur->base.left * modifier) / 0x400) >> 1;   // the SPU's half scale, as for the voices
-                    right = ((cur->base.right * modifier) / 0x400) >> 1;
+                    // The square law of the group stage (adjustVolToGroup), then the SPU's half scale, as for the voices.
+                    left = Impl::adjustVolToGroup(cur->base.left, modifier) >> 1;
+                    right = Impl::adjustVolToGroup(cur->base.right, modifier) >> 1;
                 };
                 takeGains();
                 for (size_t i = 0; i < chunk; ++i)
@@ -1806,8 +1920,18 @@ namespace snd989
                     const double frac = cur->pos - static_cast<double>(i0);
                     const double sl = l[i0] * (1.0 - frac) + l[i1] * frac;
                     const double sr = (i0 < r.size() ? r[i0] : 0) * (1.0 - frac) + (i1 < r.size() ? r[i1] : 0) * frac;
-                    mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
-                    mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                    if (cur->channels > 1)
+                    {
+                        // The IRX's voice pair (streamBase): the main voice plays the left data at (left, right), the
+                        // doubling voice the right data at the SAME volumes swapped (FUN_000152fc, FUN_00016898).
+                        mix[(frame + i) * 2] += static_cast<int32_t>((sl * left + sr * right) / 0x7FFE);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>((sl * right + sr * left) / 0x7FFE);
+                    }
+                    else
+                    {
+                        mix[(frame + i) * 2] += static_cast<int32_t>(sl / 0x7FFE * left);
+                        mix[(frame + i) * 2 + 1] += static_cast<int32_t>(sr / 0x7FFE * right);
+                    }
                     cur->pos += cur->step;
                 }
             }
@@ -1831,6 +1955,22 @@ namespace snd989
                             ring.fresh[block] = 0u;
                         else
                             ++ring.underruns;
+                    }
+                    // The instrument (research/36 item 9): a stale run begins on the first silent frame and ends,
+                    // with one UNDERRUN line, on the first fresh one (or at pcmStreamStop / pcmStreamClose).
+                    if (ring.silentBlock)
+                    {
+                        if (!ring.inStaleRun)
+                        {
+                            ring.inStaleRun = true;
+                            ring.staleRunStart = m_impl->renderedFrames + frame + i;
+                            ring.staleRunFrames = 0;
+                        }
+                        ++ring.staleRunFrames;
+                    }
+                    else if (ring.inStaleRun)
+                    {
+                        m_impl->endPcmStaleRun();
                     }
                     if (!ring.silentBlock)
                     {
@@ -1856,6 +1996,14 @@ namespace snd989
             interleaved[i] = static_cast<int16_t>(std::clamp<int32_t>(mix[i], -32768, 32767));
         m_impl->updatePcmPosition();
         m_impl->pcmUnderrunCount.store(m_impl->pcm.underruns, std::memory_order_relaxed);
+        // The instrument (research/36 item 9): PS2X_AUDIO_INSTRUMENT=1 prints, every 4800 output frames (100 ms),
+        // what each live stream holds decoded ahead of its read head and how many fresh blocks the PCM ring holds
+        // ahead of its head -- on the same output-frame clock as the start/done/UNDERRUN events, so a dip in the
+        // mix can be read against the buffer that fed it.
+        static const bool s_instrument = std::getenv("PS2X_AUDIO_INSTRUMENT") != nullptr;
+        constexpr uint64_t kOccupancyFrames = 4800u;
+        if (s_instrument && (m_impl->renderedFrames / kOccupancyFrames) != ((m_impl->renderedFrames + frames) / kOccupancyFrames))
+            m_impl->logOccupancy(m_impl->renderedFrames + frames);
         m_impl->renderedFrames += frames;   // Sprint 9 Q0: the output-frame clock the dump is written on
         m_impl->reap();
     }
@@ -1911,9 +2059,17 @@ namespace snd989
         if (std::memcmp(header, " KPV", 4) == 0)
         {
             st.dataSize = u32(4);
-            st.interleave = std::max<uint32_t>(16u, u32(8));
             st.rate = u32(16) ? u32(16) : 32000u;
             st.channels = std::clamp<uint32_t>(u32(20), 1u, 2u);
+            // research/36 item 10 (2026-09-20): header word 3 is the streaming BUFFER the file was authored for
+            // (0xb000 on every SOCOM stem; the IRX's FUN_00013334 refuses a file whose word 3 differs from its
+            // stream buffer) and the data starts there. A two-channel file is interleaved per buffer -- half of
+            // each buffer is the left channel, then half the right (the IRX's per-channel stride is
+            // `puVar12[3] >> 1`) -- so the per-channel stride is word 3 / channels, NOT word 2 (0x800, the
+            // streamer's refill grain). Reading 0x800 chunks as alternating channels put different music in the
+            // two channels: run 10's L/R correlation of 0.05 at lag 0 against the console's 0.3-0.6.
+            st.interleave = st.channels > 1 ? std::max<uint32_t>(16u, (u32(12) / st.channels) & ~15u)
+                                            : std::max<uint32_t>(16u, u32(8));
             st.dataStart = byteOffset + u32(12);
         }
         else if (std::memcmp(header, "VAGp", 4) == 0)
@@ -1939,7 +2095,7 @@ namespace snd989
         st.s2.assign(st.channels, 0);
         const int32_t playVol = std::min(127, (127 * std::clamp(vol, 0, 0x400)) >> 10);
         const int32_t playPan = (pan == kPanReset || pan == kPanDontChange) ? 0 : pan;
-        st.base = makeVolume(127, 0, playVol, playPan, 127, 0);
+        st.base = streamBase(st.channels, playVol, playPan);
         st.playVol = playVol;
         st.playPan = playPan;
         // Sprint 9 Q0 (the owner's second listen): the worker fills the ring on its own 10 ms cadence, so the
@@ -2148,6 +2304,7 @@ namespace snd989
             return;
         const size_t n = std::min(bytes, ring.bytes.size() - offset);
         std::memcpy(ring.bytes.data() + offset, data, n);
+        ring.bytesWritten += n;   // the instrument's feed counter (research/36 item 9)
         // Every block the write touches is fresh again (a partial write counts: the game writes whole blocks).
         if (n > 0 && !ring.fresh.empty())
         {
@@ -2161,6 +2318,19 @@ namespace snd989
     uint64_t Mixer::pcmUnderruns() const
     {
         return m_impl->pcmUnderrunCount.load(std::memory_order_relaxed);
+    }
+
+    uint64_t Mixer::pcmStarvationRuns() const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        return m_impl->pcm.starvationRuns;
+    }
+
+    uint64_t Mixer::streamFramesAhead(uint32_t handle) const
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        const Stream *st = m_impl->findStream(handle);
+        return st ? m_impl->streamFramesAhead(*st) : 0u;
     }
 
     // The game's audio thread polls this 30 times a second through a synchronous RPC (research/32 section 7.1):

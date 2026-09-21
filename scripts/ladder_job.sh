@@ -12,7 +12,7 @@
 # not ours: SOCOM_SERVER_IP is the project's hosted box, fixed here.
 set -u
 ROOT=/c/projects/socom_pc; cd "$ROOT" || exit 1
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 ROUNDS="${1:-4}"
 export SOCOM_SERVER_IP=3.143.65.100
 export ROUNDS

@@ -70,7 +70,12 @@ namespace ui
         f.rail = Rect{0.0f, barH, railW, window.h - barH - bottomH};
         f.content = Rect{railW + margin, barH + 20.0f, window.w - railW - margin - margin,
                          (window.h - bottomH - 16.0f) - (barH + 20.0f)};
-        f.body = Rect{f.content.x + 20.0f, f.content.y + 54.0f, f.content.w - 40.0f, f.content.h - 54.0f - 20.0f};
+        f.band = Rect{f.content.x + 2.0f, f.content.y + 2.0f, f.content.w - 4.0f, bandH};
+        // The body starts metrics::bodyTop under the panel's top: the strip, its rule, and a clear gap
+        // (owner, 2026-09-20: "the top padding may need to be applied to all pages" -- a row at b.y sat
+        // two units under the rule and its focus outline touched it). One number here, not one per page.
+        f.body = Rect{f.content.x + 20.0f, f.content.y + metrics::bodyTop, f.content.w - 40.0f,
+                      f.content.h - metrics::bodyTop - 20.0f};
         return f;
     }
 
@@ -102,7 +107,7 @@ namespace ui
             for (int i = 0; i < 4; ++i)
             {
                 static const char *ids[] = {"play.disc", "play.video", "play.pad", "play.server"};
-                add(out, page, ids[i], Rect{b.x, b.y + static_cast<float>(i) * 66.0f, b.w, 56.0f});
+                add(out, page, ids[i], Rect{b.x, b.y + 4.0f + static_cast<float>(i) * 66.0f, b.w, 56.0f});
             }
             const float y = b.bottom() - 64.0f;
             add(out, page, "play.launch", Rect{b.x, y, 300.0f, 64.0f});
@@ -141,7 +146,10 @@ namespace ui
         }
         case Page::Controller:
         {
-            const float below = b.y + 342.0f;   // under the drawn pad, its legend and the section labels
+            // Under the drawn pad, its legend and the section labels. 330, not 342: the body's top moved
+            // 12 units down for every page (metrics::bodyTop) and this page was already at the panel's
+            // bottom edge, so the pad's band gave the 12 back (page_controller.cpp draws it 282 tall).
+            const float below = b.y + 330.0f;
             const int pads = in.padChoices < 1 ? 1 : in.padChoices;
             for (int i = 0; i < pads; ++i)
                 add(out, page, "pad.pick." + std::to_string(i), Rect{b.x, below + static_cast<float>(i) * 30.0f, 400.0f, 26.0f});
@@ -423,6 +431,18 @@ namespace ui
     {
         page = p;
         focus = g.firstOn(p);
+    }
+
+    void Nav::request(Page p) { requested = pageIndex(p); }
+
+    bool Nav::applyRequest(const FocusGraph &g)
+    {
+        if (requested < 0)
+            return false;
+        const Page p = pageAt(requested);
+        requested = -1;
+        goTo(g, p);
+        return true;
     }
 
     void Nav::move(const FocusGraph &g, Dir d)

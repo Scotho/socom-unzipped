@@ -104,6 +104,26 @@ void register_diagnostics_tests()
             t.Equals(diag::scrub("text", ""), std::string("text"), "nor is nothing");
         });
 
+        // Sprint 10 H6 (KNOWN's row on this scrubber): the home path matched case-sensitively and nothing else was
+        // redacted, so a lower-cased path, an 8.3 short name, another account's directory, a token in a log line and a
+        // peer's address all reached the report. Each is a planted string that must not survive.
+        tc.Run("scrub: the home directory in any case or spelling, any user directory, tokens and addresses", [](TestCase &t)
+        {
+            const std::string home = "C:\\Users\\Secretuser";
+            t.Equals(diag::scrub("cd c:\\users\\secretuser\\x", home), std::string("cd ~\\x"), "lower-cased");
+            t.Equals(diag::scrub("cd C:\\Users\\SECRET~1\\x", home), std::string("cd ~\\x"), "the 8.3 short form");
+            t.Equals(diag::scrub("saved to C:\\Users\\Otheruser\\Games\\a.iso", home), std::string("saved to ~\\Games\\a.iso"), "another account's directory on this machine");
+            t.Equals(diag::scrub("saved to /home/otheruser/a.iso and /Users/mac/b", "/home/secretuser"), std::string("saved to ~/a.iso and ~/b"), "POSIX and macOS homes");
+            t.Equals(diag::scrub("PS2X_SOCOM2_LOGIN_PASS=hunter2hunter2 accessToken: abc123DEF456", home),
+                     std::string("PS2X_SOCOM2_LOGIN_PASS=[redacted] accessToken: [redacted]"), "a credential named on the line");
+            t.Equals(diag::scrub("peer 86.21.44.190:10071 joined; server 3.143.65.100; lan 192.168.1.9", home),
+                     std::string("peer [ip]:10071 joined; server 3.143.65.100; lan [ip]"), "every address but the project's own");
+            t.Equals(diag::scrub("driver 31.0.15.2000 and 1.2.3.400 and pos 12.5", home), std::string("driver 31.0.15.2000 and 1.2.3.400 and pos 12.5"),
+                     "a version string, an out-of-range tuple and a number are not addresses");
+            t.Equals(diag::scrub("[socom2] 640x448 at 2x, token count 3", home), std::string("[socom2] 640x448 at 2x, token count 3"),
+                     "the word token without a value stays");
+        });
+
         tc.Run("gl_caps.txt: raylib's device lines and the backend's own, CRs dropped", [](TestCase &t)
         {
             const std::string caps = diag::glCapsLines(kLog);

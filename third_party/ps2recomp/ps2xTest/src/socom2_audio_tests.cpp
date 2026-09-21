@@ -10,6 +10,7 @@
 #include "runtime/audio_volume.h"
 #include "runtime/host_mic.h"
 #include "runtime/mic_format.h"
+#include "runtime/socom2_music_trace.h"
 #include "ps2x/iop/iop_subsystem.h"
 #include "ps2_runtime.h"
 #include "ps2_iop_transport.h"
@@ -25,11 +26,20 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <vector>
 
 namespace
 {
+    // Every file a case writes goes under the system temp directory, never the working directory: the suite used
+    // to drop its VPK, ring-image and microphone WAV fixtures wherever it was run from, and they showed as untracked
+    // at the repository root for weeks (Sprint 10 H4 / Sprint 11 Goal 0). Cases still remove what they wrote.
+    std::string tmpPath(const char *name)
+    {
+        return (std::filesystem::temp_directory_path() / (std::string("ps2x_") + name)).string();
+    }
+
     std::vector<uint8_t> readFixture(const char *name)
     {
         const char *roots[] = {"../../../../tests/fixtures/audio/", "tests/fixtures/audio/", "../../../tests/fixtures/audio/"};
@@ -159,12 +169,14 @@ namespace
             up[i] = static_cast<int8_t>(i % 8);
             down[i] = static_cast<int8_t>(-(i % 8));
         }
-        std::vector<uint8_t> file(0xB0, 0u);
+        // research/36 item 10: a two-channel VPK's per-channel stride is header word 3 / 2 (the streaming buffer's
+        // half), so a file of alternating 0x800-byte channel chunks declares word 3 = 0x1000 (data at 0x1000).
+        std::vector<uint8_t> file(0x1000, 0u);
         auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
         std::memcpy(file.data(), " KPV", 4);
         put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
         put32(8, 0x800);
-        put32(12, 0xB0);
+        put32(12, 0x1000);
         put32(16, 32000);
         put32(20, 2);
         for (int c = 0; c < chunkPairs; ++c)
@@ -919,8 +931,8 @@ void register_socom2_audio_tests()
         // segment must wait, and then start on the next output frame after its parent's last, with no gap.
         tc.Run("Mixer: a queued stream waits for its parent and starts on the next frame after it, sample-accurate", [](TestCase &t)
         {
-            const std::string loud = "socom2_audio_queue_a.vpk";
-            const std::string quiet = "socom2_audio_queue_b.vpk";
+            const std::string loud = tmpPath("socom2_audio_queue_a.vpk");
+            const std::string quiet = tmpPath("socom2_audio_queue_b.vpk");
             // Two chunk pairs each: 2 x 128 blocks x 28 samples = 7168 samples at 32 kHz = 224 ms, 10752 frames at
             // 48 kHz. Shift 2 decodes loud, shift 12 quiet: the level says WHICH segment is playing.
             t.IsTrue(writeVpk(loud, 2, 2), "the parent VPK (loud)");
@@ -997,7 +1009,7 @@ void register_socom2_audio_tests()
         // WAV offset a person can open, and a starved stem is a number instead of a feeling.
         tc.Run("Mixer: stream start, end and underrun are reported on the output-frame clock the dump is written on", [](TestCase &t)
         {
-            const std::string two = "socom2_audio_clock_a.vpk";
+            const std::string two = tmpPath("socom2_audio_clock_a.vpk");
             t.IsTrue(writeVpk(two, 2, 2), "a two-chunk-pair VPK: 7168 samples at 32 kHz, 10752 output frames at 48 kHz");
             // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
             // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
@@ -1044,7 +1056,7 @@ void register_socom2_audio_tests()
         tc.Run("Mixer: a starved stream reports every underrun with its frame, stretches by exactly the starved frames, and is not 'done'", [](TestCase &t)
         {
             // Longer than the ring, so pumping once cannot hold the whole stem.
-            const std::string longStem = "socom2_audio_clock_b.vpk";
+            const std::string longStem = tmpPath("socom2_audio_clock_b.vpk");
             t.IsTrue(writeVpk(longStem, 12, 2), "a twelve-chunk-pair VPK");
             // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
             // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
@@ -1112,7 +1124,7 @@ void register_socom2_audio_tests()
         // has nothing; this is one of the mechanisms.
         tc.Run("Mixer: snd_SetSoundParams reaches a STREAM handle -- a stream started at vol 0 becomes audible when the game raises it", [](TestCase &t)
         {
-            const std::string clip = "socom2_audio_volpan_stream.vpk";
+            const std::string clip = tmpPath("socom2_audio_volpan_stream.vpk");
             t.IsTrue(writeVpk(clip, 4, 2), "a loud four-chunk-pair VPK");
             snd989::Mixer mixer;
             const uint32_t h = 0x04000041u;
@@ -1133,12 +1145,22 @@ void register_socom2_audio_tests()
             const int32_t raised = peak();
             t.IsTrue(raised > 200, "audible once the game raises it (peak " + std::to_string(raised) + ")");
 
-            mixer.setVolPan(h, snd989::kVolDontChange, 90);   // pan-only: hard right, the volume left alone
+            // The clip is two-channel: its left channel is a rising ramp, its right the same ramp negated, so at
+            // the default pan (the IRX's voice pair at 270 / its mirror) the two outputs differ.
+            int32_t differ = 0;
+            for (size_t i = 0; i < 1200; ++i)
+                differ = std::max(differ, std::abs(static_cast<int32_t>(buf[i * 2]) - static_cast<int32_t>(buf[i * 2 + 1])));
+            t.IsTrue(differ > 100, "at the default pan the two channels come out on their own sides (max |L-R| " + std::to_string(differ) + ")");
+            // research/36 item 7: a pan-only call on a two-channel stream ROTATES the IRX's voice pair (left data at
+            // 270 + p, right data mirrored): at p = 90 both voices land on the pan table's centre entry, so the
+            // two outputs become the same mix -- not "hard right", which a stereo pair cannot be.
+            mixer.setVolPan(h, snd989::kVolDontChange, 90);   // pan-only: the volume left alone
             mixer.pumpStreams();
             mixer.render(buf.data(), 1200);
-            int32_t l = 0, r = 0;
-            for (size_t i = 0; i < 1200; ++i) { l = std::max(l, std::abs(static_cast<int32_t>(buf[i * 2]))); r = std::max(r, std::abs(static_cast<int32_t>(buf[i * 2 + 1]))); }
-            t.IsTrue(r > l * 2, "and a pan moves it (L " + std::to_string(l) + ", R " + std::to_string(r) + ")");
+            int32_t same = 0;
+            for (size_t i = 0; i < 1200; ++i)
+                same = std::max(same, std::abs(static_cast<int32_t>(buf[i * 2]) - static_cast<int32_t>(buf[i * 2 + 1])));
+            t.IsTrue(same <= 2, "and a pan of 90 collapses the pair to the centre: identical outputs (max |L-R| " + std::to_string(same) + ")");
         });
         // Sprint 9 Q0 (2026-09-20): the device buffer. The traced mission run put 41 sub-second dropouts a minute at the
         // owner's speaker that the pre-device dump did not have -- the device thread missing a 10 ms deadline under
@@ -1160,7 +1182,7 @@ void register_socom2_audio_tests()
         // "stuttering, skipping a bit". The push decodes the first chunk pair itself, so the first render has data.
         tc.Run("Mixer: a stream has sound in its very first render call, before any worker pump", [](TestCase &t)
         {
-            const std::string clip = "socom2_audio_prefill.vpk";
+            const std::string clip = tmpPath("socom2_audio_prefill.vpk");
             t.IsTrue(writeVpk(clip, 4, 2), "a loud four-chunk-pair VPK");
             // The sink's vector outlives the mixer: ~Mixer stops every live stream and emits its Done into the
             // sink, so a vector declared after the mixer is already gone by then (glibc: "double free", CI 2026-09-20).
@@ -1187,8 +1209,8 @@ void register_socom2_audio_tests()
         // quieter, while every cue measured perfect on its own.
         tc.Run("Mixer: a new cue on a handle starts at its own volume, never on the fade that ended the one before", [](TestCase &t)
         {
-            const std::string a = "socom2_audio_ramp_a.vpk";
-            const std::string b = "socom2_audio_ramp_b.vpk";
+            const std::string a = tmpPath("socom2_audio_ramp_a.vpk");
+            const std::string b = tmpPath("socom2_audio_ramp_b.vpk");
             t.IsTrue(writeVpk(a, 6, 2), "a 672 ms parent");
             t.IsTrue(writeVpk(b, 6, 2), "and an equally loud successor");
             std::vector<int16_t> buf(2 * 1200);
@@ -1225,7 +1247,7 @@ void register_socom2_audio_tests()
             // (b) The same, queued: the parent must keep fading (the fade is its own), and the segment that
             // takes over afterwards must start clean.
             snd989::Mixer m2;
-            const std::string shortA = "socom2_audio_ramp_short.vpk";
+            const std::string shortA = tmpPath("socom2_audio_ramp_short.vpk");
             t.IsTrue(writeVpk(shortA, 2, 2), "a 224 ms parent to fade out and run out");
             t.IsTrue(m2.playStream(h, shortA, 0u, 0x400, -1, 1u), "the parent plays");
             m2.pumpStreams();
@@ -1262,7 +1284,7 @@ void register_socom2_audio_tests()
             // A mono VPK of two 0x800 chunks: chunk 0 loud, chunk 1 quiet, the loop start marked at the first
             // block of chunk 1 and the last block carrying end|repeat. Played out it should be loud once and
             // quiet for ever after -- which also proves it loops to the MARK, not to the beginning.
-            const std::string path = "socom2_audio_loop.vpk";
+            const std::string path = tmpPath("socom2_audio_loop.vpk");
             int8_t ramp[28];
             for (int i = 0; i < 28; ++i)
                 ramp[i] = static_cast<int8_t>(i % 8);
@@ -1342,12 +1364,12 @@ void register_socom2_audio_tests()
                 down[i] = static_cast<int8_t>(-(i % 8));   // 0..-7
             }
             const int chunksPerChannel = 3;
-            std::vector<uint8_t> file(0xB0, 0u);
+            std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
             auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
             std::memcpy(file.data(), " KPV", 4);   // the disc stores the magic as the little-endian word "VPK "
             put32(4, static_cast<uint32_t>(chunksPerChannel * 2 * 0x800));
             put32(8, 0x800);
-            put32(12, 0xB0);
+            put32(12, 0x1000);
             put32(16, 32000);
             put32(20, 2);
             for (int c = 0; c < chunksPerChannel; ++c)
@@ -1358,7 +1380,7 @@ void register_socom2_audio_tests()
                         const std::vector<uint8_t> blk = block(12, 0, last ? 0x01 : 0x00, ch == 0 ? up : down);
                         file.insert(file.end(), blk.begin(), blk.end());
                     }
-            const std::string path = "socom2_audio_test_stream.vpk";
+            const std::string path = tmpPath("socom2_audio_test_stream.vpk");
             {
                 FILE *fp = std::fopen(path.c_str(), "wb");
                 t.IsTrue(fp != nullptr, "the temporary VPK can be written");
@@ -1410,7 +1432,12 @@ void register_socom2_audio_tests()
                 left += std::fabs(static_cast<double>(buf[2 * i]));
                 right += std::fabs(static_cast<double>(buf[2 * i + 1]));
             }
-            t.IsTrue(right > 4.0 * left, "pan 90: hard right");
+            // research/36 item 7: a two-channel stream is the IRX's voice pair (left data at 270 + p, right data
+            // mirrored), so a pan of 90 puts both voices on the centre entry and the two outputs become the same
+            // mix -- for this clip's mirrored ramps, near silence on both sides. Not "hard right": a stereo pair
+            // cannot be panned to one side by the handler pan on the IRX.
+            t.IsTrue(std::fabs(left - right) <= 0.05 * (left + right) + 1.0,
+                     "pan 90: the pair collapses to the centre, equal outputs (L " + std::to_string(left) + " R " + std::to_string(right) + ")");
             mixer.stop(0x04000002u);
             t.IsTrue(!mixer.isPlaying(0x04000002u), "stop ends a stream at once");
             t.IsTrue(mixer.playStream(0x04000003u, path, 0u, 0x400, -1, 1u), "a third");
@@ -1429,7 +1456,7 @@ void register_socom2_audio_tests()
         // reading: linear, from the volume in force, to the target, over `ticks` ticks.
         tc.Run("Mixer: snd_AutoVol fades over its ticks instead of applying the target at once; the fade lands on the target", [](TestCase &t)
         {
-            const std::string path = "socom2_audio_autovol_stream.vpk";
+            const std::string path = tmpPath("socom2_audio_autovol_stream.vpk");
             t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade, loud enough to measure a level on");
             snd989::Mixer mixer;
             std::vector<int16_t> buf(2 * 2400);
@@ -1458,7 +1485,9 @@ void register_socom2_audio_tests()
             const double justAfter = renderLevel(1);          // ticks 0..12 of 240
             t.IsTrue(justAfter > 0.8 * full, "the call itself does not cut the cue (" + std::to_string(justAfter) + " of " + std::to_string(full) + ")");
             const double half = renderLevel(9);               // through tick 120: the middle of the ramp
-            t.IsTrue(half > 0.35 * full && half < 0.65 * full, "half way through it is about half as loud (" + std::to_string(half) + " of " + std::to_string(full) + ")");
+            // The ramp's scale is 0.5 here, and the group stage SQUARES it (vol.c:434-455, research/36 Q6 item 1):
+            // a linear fade is a quadratic loudness curve on the console -- a quarter of the amplitude, not half.
+            t.IsTrue(half > 0.15 * full && half < 0.35 * full, "half way through it is a QUARTER as loud, the square law (" + std::to_string(half) + " of " + std::to_string(full) + ")");
             const double landed = renderLevel(11);            // past tick 240
             t.IsTrue(landed < 1e-9, "the fade lands on silence (" + std::to_string(landed) + ")");
             t.IsTrue(mixer.isPlaying(0x04000019u), "a fade to 0 does not end the cue -- only the -4 target does");
@@ -1487,7 +1516,7 @@ void register_socom2_audio_tests()
 
         tc.Run("Mixer: snd_AutoVol's -4 target fades out and stops -- the handle plays until the ramp lands, not from the call", [](TestCase &t)
         {
-            const std::string path = "socom2_audio_autovol_stop.vpk";
+            const std::string path = tmpPath("socom2_audio_autovol_stop.vpk");
             t.IsTrue(writeVpk(path, 40, 2), "a 4.4 s stereo VPK to fade out");
             snd989::Mixer mixer;
             std::vector<int16_t> buf(2 * 2400);
@@ -1516,11 +1545,79 @@ void register_socom2_audio_tests()
             std::remove(path.c_str());
         });
 
+        // research/36 Q6 item 1 (2026-09-20): the group stage is a SQUARE law. snd_AdjustVolToGroup
+        // (research/989snd-ziemas/iop/vol.c:434-455; IRX FUN_00019b7c): m = MasterVol[g] * Duck[g] / 0x10000;
+        // v = vol14 * m / 0x400; return v * v / 0x7ffe. The identity at full scale (0x7ffe), a QUARTER at half
+        // amplitude: the MUSIC/SOUND sliders at 50 % are -12 dB on the console, and so is a stem played at vol 0x200.
+        // Ours was linear (-6 dB) -- 2x too loud in amplitude at every level below full, and every fade the wrong
+        // shape -- the likeliest reason for the music-only parity windows' level mismatch once Q1 was out of the way.
+        tc.Run("Mixer: the group stage is a square law -- half volume is -12 dB (a quarter of the amplitude), full volume is unity", [](TestCase &t)
+        {
+            const std::string path = tmpPath("socom2_audio_square_law.vpk");
+            t.IsTrue(writeVpk(path, 8, 2), "a loud stereo VPK");
+            // The mean absolute level of the second 2400-frame slice of a fresh mixer playing `path` at `vol`
+            // (group 1) under master `master`: one mixer per measurement, so nothing carries over.
+            auto streamLevel = [&](int32_t vol, int32_t master) {
+                snd989::Mixer mixer;
+                mixer.setMasterVolume(16u, master);
+                std::vector<int16_t> buf(2 * 2400);
+                t.IsTrue(mixer.playStream(0x04000071u, path, 0u, vol, -1, 1u), "the stream plays");
+                for (int i = 0; i < 2; ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                }
+                double sum = 0.0;
+                for (int16_t s : buf)
+                    sum += std::fabs(static_cast<double>(s));
+                return sum / static_cast<double>(buf.size());
+            };
+            const double full = streamLevel(0x400, 0x400);
+            t.IsTrue(full > 100.0, "loud at full (" + std::to_string(full) + ")");
+            const double again = streamLevel(0x400, 0x400);
+            t.IsTrue(std::fabs(again - full) <= 0.01 * full, "unity at full: v * v / 0x7ffe is the identity at 0x7ffe (" +
+                                                                 std::to_string(again) + " of " + std::to_string(full) + ")");
+
+            // A stem played at vol 0x200: playVol 63 of 127 (0.496 of full amplitude), squared -> 0.246. -12 dB.
+            const double halfVol = streamLevel(0x200, 0x400);
+            t.IsTrue(halfVol > 0.20 * full && halfVol < 0.30 * full, "vol 0x200 is a quarter as loud, -12 dB (" +
+                                                                       std::to_string(halfVol) + " of " + std::to_string(full) + ")");
+            t.IsTrue(halfVol < 0.40 * full, "and not the linear -6 dB of before");
+
+            // The game's MUSIC slider at 50 % = master 0x200 on the group: the same quarter.
+            const double halfMaster = streamLevel(0x400, 0x200);
+            t.IsTrue(halfMaster > 0.20 * full && halfMaster < 0.30 * full, "master 0x200 is a quarter as loud, -12 dB (" +
+                                                                             std::to_string(halfMaster) + " of " + std::to_string(full) + ")");
+
+            // A bank voice goes through the same stage (blocksnd.c:1267-1268): HUDUI sound 8 under master 0x200 is a
+            // quarter as loud as under 0x400, envelope for envelope (the same render length on a fresh mixer each).
+            const std::vector<uint8_t> blk = readFixture("hudui_block.bin");
+            const std::vector<uint8_t> vag = readFixture("hudui_vag.bin");
+            auto voiceLevel = [&](int32_t master) {
+                snd989::Mixer mixer;
+                t.IsTrue(mixer.loadBank(0x00a00000u, blk.data(), blk.size(), vag.data(), vag.size()), "HUDUI loads");
+                mixer.setMasterVolume(16u, master);
+                std::vector<int16_t> buf(2 * 4096);
+                t.IsTrue(mixer.play(0x00a00000u, 8u, 0x400, -1, 0, 0) != 0u, "sound 8 plays");
+                mixer.render(buf.data(), 4096);
+                double sum = 0.0;
+                for (int16_t s : buf)
+                    sum += std::fabs(static_cast<double>(s));
+                return sum / static_cast<double>(buf.size());
+            };
+            const double voiceFull = voiceLevel(0x400);
+            t.IsTrue(voiceFull > 20.0, "the voice is audible at full (" + std::to_string(voiceFull) + ")");
+            const double voiceHalf = voiceLevel(0x200);
+            t.IsTrue(voiceHalf > 0.20 * voiceFull && voiceHalf < 0.30 * voiceFull, "a bank voice under master 0x200 is a quarter as loud too (" +
+                                                                                     std::to_string(voiceHalf) + " of " + std::to_string(voiceFull) + ")");
+            std::remove(path.c_str());
+        });
+
         // Task 1e (audit 2026-09-17 section 2.3): the disc read moved off the audio callback. pumpStreams() decodes
         // ahead into each stream's ring on a worker; render() touches memory only.
         tc.Run("a stream plays out of its ring with the file handle closed", [](TestCase &t)
         {
-            const std::string path = "socom2_audio_ring_stream.vpk";
+            const std::string path = tmpPath("socom2_audio_ring_stream.vpk");
             t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
             snd989::Mixer mixer;
             t.IsTrue(mixer.playStream(1u, path, 0ull, 0x400, 0, 0u), "the stream starts");
@@ -1548,7 +1645,7 @@ void register_socom2_audio_tests()
 
         tc.Run("render never reads the disc", [](TestCase &t)
         {
-            const std::string path = "socom2_audio_ring_empty.vpk";
+            const std::string path = tmpPath("socom2_audio_ring_empty.vpk");
             t.IsTrue(writeVpk(path, 8), "the temporary VPK can be written");
             snd989::Mixer mixer;
             t.IsTrue(mixer.playStream(2u, path, 0ull, 0x400, 0, 0u), "the stream starts");
@@ -1589,7 +1686,7 @@ void register_socom2_audio_tests()
                 vpk.insert(vpk.end(), blk.begin(), blk.end());
             }
             image.insert(image.end(), vpk.begin(), vpk.end());
-            const std::string path = "socom2_audio_test_image.bin";
+            const std::string path = tmpPath("socom2_audio_test_image.bin");
             if (FILE *fp = std::fopen(path.c_str(), "wb"))
             {
                 std::fwrite(image.data(), 1, image.size(), fp);
@@ -1664,8 +1761,10 @@ void register_socom2_audio_tests()
 
         tc.Run("Mixer: a full-scale stream at full volume sits at the SPU's half scale (voice volume >> 1), not at clipping", [](TestCase &t)
         {
-            // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the SPU voice volume is
-            // 0x3fff * cos(45 deg) >> 1 of full scale: about 28672 * 0.707 * 0.5 = 10135 per channel.
+            // shift 0: a nibble of 7 decodes to 7 << 12 = 28672. At vol 0x400 and centre pan the 14-bit voice volume
+            // is 0x7ffe * cos(45 deg); the group stage then SQUARES it (vol.c:434-455, research/36 Q6 item 1: the IRX
+            // applies the pan table BEFORE FUN_00019b7c, so the pan's 0.707 is squared to 0.5), then the SPU's >> 1:
+            // about 28672 * 0.5 * 0.5 = 7168 per channel.
             int8_t sevens[28];
             for (int i = 0; i < 28; ++i)
                 sevens[i] = 7;
@@ -1694,10 +1793,343 @@ void register_socom2_audio_tests()
                 int32_t peak = 0;
                 for (int16_t v : buf)
                     peak = std::max<int32_t>(peak, v < 0 ? -v : v);
-                t.IsTrue(peak >= 9000 && peak <= 11500, "peak " + std::to_string(peak) + " (about 10135: 28672 x 0.707 x 1/2)");
+                t.IsTrue(peak >= 6400 && peak <= 8000, "peak " + std::to_string(peak) + " (about 7168: 28672 x 0.707^2 x 1/2, the square law)");
                 mixer.stopAll();
             }
             std::remove(path.c_str());
+        });
+
+        // research/36 item 7 (2026-09-20): the music-only capture (run 9b) had every VAG stem 5.9 dB (median) under
+        // PCSX2 with the square law in. On the IRX a two-channel VPK plays on a PAIR of voices: the play worker
+        // allocates a doubling voice (FUN_0000f7e0, 9912-9923: unless flags bit 0x20), the stream start forces the
+        // first stream's pan to 270 when it exists (FUN_000152fc, 12755) and hands the doubling voice the second
+        // buffer with the main voice's volumes swapped (12759-12775; FUN_00016898 on every update). So each channel
+        // sits at the pan table's FULL entry on its own side, where ours put both at the centre entry (0.707) --
+        // squared, exactly half the amplitude.
+        tc.Run("Mixer: a two-channel stream is the IRX's voice pair -- each channel at the pan table's full value on its side, twice the centre-panned level", [](TestCase &t)
+        {
+            // shift 0: a nibble of 7 decodes to 28672. Left channel sevens, right channel silence.
+            int8_t sevens[28], zeros[28];
+            for (int i = 0; i < 28; ++i)
+            {
+                sevens[i] = 7;
+                zeros[i] = 0;
+            }
+            std::vector<uint8_t> file(0x1000, 0u);   // research/36 item 10: word 3 = 0x1000 -> a per-channel stride of 0x800
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);
+            const int chunkPairs = 4;
+            put32(4, static_cast<uint32_t>(chunkPairs * 2 * 0x800));
+            put32(8, 0x800);
+            put32(12, 0x1000);
+            put32(16, 48000);
+            put32(20, 2);
+            for (int c = 0; c < chunkPairs; ++c)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int b = 0; b < 0x800 / 16; ++b)
+                    {
+                        const bool last = c == chunkPairs - 1 && b == 0x800 / 16 - 1;
+                        const std::vector<uint8_t> blk = block(0, 0, last ? 0x01 : 0x00, ch == 0 ? sevens : zeros);
+                        file.insert(file.end(), blk.begin(), blk.end());
+                    }
+            const std::string path = tmpPath("socom2_audio_test_pair.vpk");
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            {
+                snd989::Mixer mixer;
+                std::vector<int16_t> buf(2 * 512);
+                auto peaks = [&](int32_t &l, int32_t &r) {
+                    l = r = 0;
+                    for (size_t i = 0; i < 512; ++i)
+                    {
+                        l = std::max(l, std::abs(static_cast<int32_t>(buf[i * 2])));
+                        r = std::max(r, std::abs(static_cast<int32_t>(buf[i * 2 + 1])));
+                    }
+                };
+                t.IsTrue(mixer.playStream(0x0400000Bu, path, 0u, 0x400, -1, 1u), "starts at vol 0x400, pan -1 (the game's music cue)");
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 512);
+                int32_t l = 0, r = 0;
+                peaks(l, r);
+                // Main voice at pan 270: table (0x3fff, 0) -> 32766, the square law's identity, >> 1: 28672 / 2 = 14336.
+                t.IsTrue(l >= 12900 && l <= 15800, "left data on the left at the table's full entry (peak " + std::to_string(l) + ", about 14336 = 28672 x 1 x 1/2)");
+                t.IsTrue(r <= 8, "nothing of it on the right (peak " + std::to_string(r) + ")");
+
+                // The pair rotates with the handler pan: at 90 both voices sit on the centre entry, 0.707 squared = half.
+                mixer.setVolPan(0x0400000Bu, snd989::kVolDontChange, 90);
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 512);
+                peaks(l, r);
+                t.IsTrue(l >= 6400 && l <= 8000 && r >= 6400 && r <= 8000,
+                         "pan 90: the left data on both sides at the centre entry squared (L " + std::to_string(l) + ", R " + std::to_string(r) + ", about 7168)");
+                mixer.stopAll();
+            }
+            std::remove(path.c_str());
+        });
+
+        // research/36 item 10 (2026-09-20): the owner's "doesn't even sound like music". Every SOCOM stem is a VPK
+        // with word 2 = 0x800, word 3 = 0xb000, channels 2 -- and the two channels are interleaved per streaming
+        // BUFFER (word 3: the IRX's FUN_00013334 requires it to equal its stream buffer, and its per-channel stride
+        // is `puVar12[3] >> 1`): each 0xb000-byte buffer holds 0x5800 bytes of L then 0x5800 of R, the last, partial
+        // buffer split in halves; 0x800 is only the streamer's refill grain. Ours read alternating 0x800 chunks as
+        // L, R, L, R -- different music in the two channels (run 10: L/R correlation 0.05 at lag 0 against the
+        // console's 0.3-0.6, "best" lags scattered at 61/136/674 ms). This file is authored in the real layout with
+        // IDENTICAL data in both halves, so a correct decode renders L == R for every frame.
+        tc.Run("Mixer: a two-channel VPK is interleaved per streaming buffer (word 3 / 2): L and R stay sample-aligned through the pre-fill, every buffer boundary, the partial tail and a forced underrun", [](TestCase &t)
+        {
+            constexpr uint32_t kBuffer = 0xb000u, kHalf = kBuffer / 2u;
+            const int fullBuffers = 6;                 // 7 chunk pairs with the tail: more than the ring's 4, so an underrun can be forced
+            const uint32_t tailPerChannel = 0x1000u;   // a partial last buffer, split in halves
+            std::vector<uint8_t> file(kBuffer, 0u);    // the header block: 24 bytes of header, zero to word 3
+            auto put32 = [&](size_t at, uint32_t v) { file[at] = static_cast<uint8_t>(v); file[at + 1] = static_cast<uint8_t>(v >> 8); file[at + 2] = static_cast<uint8_t>(v >> 16); file[at + 3] = static_cast<uint8_t>(v >> 24); };
+            std::memcpy(file.data(), " KPV", 4);
+            put32(4, static_cast<uint32_t>(fullBuffers) * kBuffer + 2u * tailPerChannel);
+            put32(8, 0x800);
+            put32(12, kBuffer);
+            put32(16, 32000);
+            put32(20, 2);
+            // A block pattern that changes from block to block, so a channel reading the wrong bytes cannot match.
+            auto pattern = [](uint32_t idx, int8_t (&n)[28]) {
+                for (int i = 0; i < 28; ++i)
+                    n[i] = static_cast<int8_t>(static_cast<int>((idx * 5u + static_cast<uint32_t>(i)) % 15u) - 7);
+            };
+            int8_t nib[28];
+            for (int b = 0; b < fullBuffers; ++b)
+                for (int ch = 0; ch < 2; ++ch)
+                    for (uint32_t k = 0; k < kHalf / 16u; ++k)
+                    {
+                        pattern(static_cast<uint32_t>(b) * (kHalf / 16u) + k, nib);
+                        const std::vector<uint8_t> blk = block(4, 0, 0x00, nib);   // shift 4: samples of +-1792
+                        file.insert(file.end(), blk.begin(), blk.end());
+                    }
+            for (int ch = 0; ch < 2; ++ch)
+                for (uint32_t k = 0; k < tailPerChannel / 16u; ++k)
+                {
+                    pattern(static_cast<uint32_t>(fullBuffers) * (kHalf / 16u) + k, nib);
+                    const std::vector<uint8_t> blk = block(4, 0, k == tailPerChannel / 16u - 1u ? 0x01 : 0x00, nib);
+                    file.insert(file.end(), blk.begin(), blk.end());
+                }
+            const std::string path = tmpPath("socom2_audio_test_buffer_layout.vpk");
+            if (FILE *fp = std::fopen(path.c_str(), "wb"))
+            {
+                std::fwrite(file.data(), 1, file.size(), fp);
+                std::fclose(fp);
+            }
+            const uint64_t samplesPerChannel = (2ull * fullBuffers * kHalf + 2ull * tailPerChannel) / 2ull / 16ull * 28ull;
+            const uint64_t expectFrames = samplesPerChannel * 48000ull / 32000ull;
+            {
+                snd989::Mixer mixer;
+                const uint32_t h = 0x0400000Cu;
+                t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "the buffer-layout VPK plays (pan -1: L data left, R data right)");
+                std::vector<int16_t> buf(2 * 2400);
+                std::vector<int16_t> out;
+                for (int i = 0; i < 400 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 2400);
+                    out.insert(out.end(), buf.begin(), buf.end());
+                }
+                t.IsTrue(!mixer.isPlaying(h), "it plays to its end");
+                // Its length is every half of every buffer, tail included: the decoder read the halves, not 0x800 chunks.
+                size_t lastLoud = 0;
+                int32_t peak = 0;
+                for (size_t f = 0; f < out.size() / 2; ++f)
+                {
+                    const int32_t a = std::abs(static_cast<int32_t>(out[f * 2])), b = std::abs(static_cast<int32_t>(out[f * 2 + 1]));
+                    if (a > 200 || b > 200)
+                        lastLoud = f;
+                    peak = std::max(peak, std::max(a, b));
+                }
+                t.IsTrue(peak > 500, "audible (peak " + std::to_string(peak) + ", +-1792 blocks at the SPU half scale)");
+                t.IsTrue(lastLoud + 1 >= expectFrames - 4800 && lastLoud + 1 <= expectFrames + 4800,
+                         "the whole file plays: " + std::to_string(lastLoud + 1) + " frames of sound against " + std::to_string(expectFrames) + " expected");
+                size_t mismatches = 0, first = 0;
+                for (size_t f = 0; f < out.size() / 2; ++f)
+                    if (std::abs(static_cast<int32_t>(out[f * 2]) - static_cast<int32_t>(out[f * 2 + 1])) > 1)
+                    {
+                        if (mismatches++ == 0)
+                            first = f;
+                    }
+                t.Equals(mismatches, static_cast<size_t>(0u), "L and R are sample-aligned for the whole stream (first mismatch at frame " + std::to_string(first) + ")");
+            }
+            {
+                // A forced underrun: the worker is off in the tests, so after the pre-fill and one pump the ring holds
+                // at most 1 + 3 chunk pairs; render past them without pumping (silence), then pump again.
+                snd989::Mixer mixer;
+                const uint32_t h = 0x0400000Du;
+                t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "plays again");
+                mixer.pumpStreams();
+                std::vector<int16_t> buf(2 * 4800);
+                size_t mismatches = 0;
+                bool starved = false;
+                for (int i = 0; i < 60 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.render(buf.data(), 4800);   // 100 ms a call, no pump: the ring drains within its ~5 s
+                    int32_t peak = 0;
+                    for (size_t f = 0; f < 4800; ++f)
+                    {
+                        peak = std::max(peak, std::abs(static_cast<int32_t>(buf[f * 2])));
+                        if (std::abs(static_cast<int32_t>(buf[f * 2]) - static_cast<int32_t>(buf[f * 2 + 1])) > 1)
+                            ++mismatches;
+                    }
+                    if (peak < 8)
+                        starved = true;
+                }
+                t.IsTrue(starved, "the ring ran dry without the pump: silence");
+                mixer.pumpStreams();
+                int32_t resumed = 0;
+                for (int i = 0; i < 20 && mixer.isPlaying(h); ++i)
+                {
+                    mixer.pumpStreams();
+                    mixer.render(buf.data(), 4800);
+                    for (size_t f = 0; f < 4800; ++f)
+                    {
+                        resumed = std::max(resumed, std::abs(static_cast<int32_t>(buf[f * 2])));
+                        if (std::abs(static_cast<int32_t>(buf[f * 2]) - static_cast<int32_t>(buf[f * 2 + 1])) > 1)
+                            ++mismatches;
+                    }
+                }
+                t.IsTrue(resumed > 500, "and plays on once pumped (peak " + std::to_string(resumed) + ")");
+                t.Equals(mismatches, static_cast<size_t>(0u), "L and R stay aligned through the underrun and the resume");
+            }
+            std::remove(path.c_str());
+        });
+
+        // The same through the real thing: a mission stem straight from the disc image (skipped when no image is at
+        // hand). Decoded through the fixed path, its channels correlate at lag 0 as they do on the console.
+        tc.Run("Mixer: a real stem from the disc decodes with its two channels time-aligned (skipped without the disc image)", [](TestCase &t)
+        {
+            std::vector<std::string> candidates;
+            if (const char *env = std::getenv("PS2X_CD_IMAGE"); env && *env)
+                candidates.emplace_back(env);
+            candidates.emplace_back("../../../../game/SOCOM II - U.S. Navy SEALs (USA).iso");
+            candidates.emplace_back("C:/projects/socom_pc/game/SOCOM II - U.S. Navy SEALs (USA).iso");
+            std::string iso;
+            for (const std::string &c : candidates)
+                if (FILE *fp = std::fopen(c.c_str(), "rb"))
+                {
+                    std::fclose(fp);
+                    iso = c;
+                    break;
+                }
+            if (iso.empty())
+            {
+                t.IsTrue(true, "no disc image: skipped");
+                return;
+            }
+            snd989::Mixer mixer;
+            const uint32_t h = 0x0400000Eu;
+            // Sector 0x11ec92: a 3.9 s stereo stem (VPK size 0x22c60, word 3 0xb000) the driven mission plays twice.
+            t.IsTrue(mixer.playStream(h, iso, 0x11ec92ull * 2048ull, 0x400, -1, 1u), "the stem opens from the disc image");
+            std::vector<int16_t> buf(2 * 2400);
+            std::vector<double> L, R;
+            for (int i = 0; i < 200 && mixer.isPlaying(h); ++i)
+            {
+                mixer.pumpStreams();
+                mixer.render(buf.data(), 2400);
+                for (size_t f = 0; f < 2400; f += 8)   // decimated by 8: 6 kHz, enough for a lag search of +-80 ms
+                {
+                    L.push_back(buf[f * 2]);
+                    R.push_back(buf[f * 2 + 1]);
+                }
+            }
+            t.IsTrue(!mixer.isPlaying(h), "it plays to its end (" + std::to_string(L.size() * 8) + " frames)");
+            const size_t n = L.size();
+            double ml = 0.0, mr = 0.0;
+            for (size_t i = 0; i < n; ++i) { ml += L[i]; mr += R[i]; }
+            ml /= static_cast<double>(n); mr /= static_cast<double>(n);
+            double nl = 0.0, nr = 0.0;
+            for (size_t i = 0; i < n; ++i) { L[i] -= ml; R[i] -= mr; nl += L[i] * L[i]; nr += R[i] * R[i]; }
+            const double norm = std::sqrt(nl * nr) + 1e-9;
+            auto corrAt = [&](int lag) {
+                double s = 0.0;
+                for (size_t i = 0; i < n; ++i)
+                {
+                    const long j = static_cast<long>(i) + lag;
+                    if (j >= 0 && static_cast<size_t>(j) < n)
+                        s += L[i] * R[static_cast<size_t>(j)];
+                }
+                return s / norm;
+            };
+            const double c0 = corrAt(0);
+            int bestLag = 0;
+            double best = -2.0;
+            for (int lag = -480; lag <= 480; ++lag)   // +-80 ms at 6 kHz
+            {
+                const double c = corrAt(lag);
+                if (c > best) { best = c; bestLag = lag; }
+            }
+            t.IsTrue(c0 > 0.35, "L and R correlate at lag 0 like the console's (corr " + std::to_string(c0) + ")");
+            t.IsTrue(std::abs(bestLag) * 8 <= 144, "and the best lag is within 3 ms of zero (" + std::to_string(bestLag * 8) + " frames, corr " + std::to_string(best) + ")");
+        });
+
+        // research/36 item 9 (2026-09-20), the instrument: the owner hears 100-450 ms dips on every STREAMED route
+        // (the PCM ring, the VAG stems) and none on sounds held in memory. The mixer now counts the PCM ring's stale
+        // RUNS (a stretch of output the head spent in blocks the game had not rewritten: one "[audio] 989snd pcm
+        // UNDERRUN frame=<start> silent=<n>" line each) and answers how much decoded audio a stream holds ahead of
+        // its read head, so a dip in the mix can be read against the buffer that fed it.
+        tc.Run("Mixer: the PCM ring counts a stale run once, from its first silent frame to the first fresh one", [](TestCase &t)
+        {
+            snd989::Mixer mixer;
+            mixer.pcmStreamOpen(0x6000u, 2u);                       // 24 blocks of 256 frames (1024 bytes each)
+            std::vector<uint8_t> bytes(0x6000u);
+            for (size_t i = 0; i < bytes.size(); ++i)
+                bytes[i] = static_cast<uint8_t>((i * 7u) & 0x7Fu);
+            mixer.pcmStreamWrite(0u, bytes.data(), bytes.size());   // every block fresh
+            mixer.pcmStreamStart(0x6000u, 48000u, 2u, 0x400);
+            std::vector<int16_t> buf(2 * 6144);
+            mixer.render(buf.data(), 6144);                          // one full pass: all fresh, no run
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(0u), "a ring the game keeps fresh has no stale run");
+            // The game rewrites blocks 1..23 but not block 0: the head's next block is stale, the one after fresh.
+            mixer.pcmStreamWrite(1024u, bytes.data() + 1024u, bytes.size() - 1024u);
+            mixer.render(buf.data(), 512);                           // block 0 (stale: 256 silent frames), block 1 (fresh)
+            t.Equals(mixer.pcmUnderruns(), static_cast<uint64_t>(1u), "one stale block");
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(1u), "one stale RUN, closed by the fresh block that followed");
+            mixer.render(buf.data(), 5632);                          // the rest of the pass: fresh
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(1u), "and no new run while the ring stays fresh");
+            mixer.render(buf.data(), 1024);                          // blocks 0..3 again, none rewritten: one run of 4 blocks so far
+            mixer.pcmStreamWrite(4096u, bytes.data() + 4096u, 1024u);   // block 4 fresh again
+            mixer.render(buf.data(), 512);                           // block 4 (fresh) closes the run
+            t.Equals(mixer.pcmStarvationRuns(), static_cast<uint64_t>(2u), "a run of several stale blocks counts once");
+            mixer.pcmStreamStop();
+        });
+
+        tc.Run("Mixer: streamFramesAhead is the decoded audio ahead of a stream's read head -- it grows with the pump and drains with the render", [](TestCase &t)
+        {
+            const std::string path = tmpPath("socom2_audio_ahead.vpk");
+            t.IsTrue(writeVpk(path, 12, 2), "a 12-chunk-pair VPK (each pair 3584 samples at 32 kHz = 5376 output frames)");
+            snd989::Mixer mixer;
+            const uint32_t h = 0x04000031u;
+            t.IsTrue(mixer.playStream(h, path, 0u, 0x400, -1, 1u), "plays");
+            const uint64_t afterPush = mixer.streamFramesAhead(h);
+            t.IsTrue(afterPush >= 5000u && afterPush <= 6000u, "the push pre-fills one chunk pair (" + std::to_string(afterPush) + " frames ahead)");
+            mixer.pumpStreams();                                     // the worker is off in the tests: fill to the ring's depth
+            const uint64_t afterPump = mixer.streamFramesAhead(h);
+            t.IsTrue(afterPump >= 4u * 5000u, "the pump fills the ring (" + std::to_string(afterPump) + " frames ahead)");
+            std::vector<int16_t> buf(2 * 2400);
+            mixer.render(buf.data(), 2400);
+            const uint64_t afterRender = mixer.streamFramesAhead(h);
+            t.IsTrue(afterRender + 2400u <= afterPump + 8u && afterRender + 2400u + 8u >= afterPump,
+                     "a render of 2400 frames takes 2400 off it (" + std::to_string(afterPump) + " -> " + std::to_string(afterRender) + ")");
+            t.Equals(mixer.streamFramesAhead(0x04000032u), static_cast<uint64_t>(0u), "an unknown handle has nothing ahead");
+            mixer.stopAllStreams();
+            std::remove(path.c_str());
+        });
+
+        // research/36 item 8: the cue push's decision (FUN_0034b6c0, decomp :246909-246947), as the trace names it.
+        tc.Run("socom2 music trace: the cue push verdict follows FUN_0034b6c0 -- no free entry refuses, an unflagged cue is dropped with a 1, a flagged one queues", [](TestCase &t)
+        {
+            using socom2_music::pushVerdict;
+            t.Equals(std::string(pushVerdict(0u, 0u, 0x08u, 0x40u, 0u, 3u, 3u).label), std::string("refused"), "mgr+0x28 == 0: refused");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x08u, 0x40u, 1u, 3u, 3u).label), std::string("dropped"),
+                     "flagB 0, type 2, +0x1c bit 6 clear: the push returns 1 without queueing");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x48u, 0x40u, 1u, 3u, 4u).label), std::string("queued"), "+0x1c bit 6: queued");
+            t.Equals(std::string(pushVerdict(4u, 0u, 0x08u, 0x60u, 1u, 3u, 4u).label), std::string("queued"), "type 3: queued");
+            t.Equals(std::string(pushVerdict(4u, 1u, 0x08u, 0x40u, 1u, 3u, 4u).label), std::string("queued"), "mgr+0xb set: queued");
+            t.Equals(std::string(pushVerdict(4u, 1u, 0x08u, 0x40u, 0u, 3u, 3u).label), std::string("refused"), "flagged but the free list head was -1: refused");
         });
 
         // Sprint 7 Task 12 Step 4 (ruling R97): the owner's "persistent buzz" on the online menus was a 512-byte block
@@ -1963,6 +2395,86 @@ void register_socom2_audio_tests()
         // Sprint 7 Task 12a: the owner's run of 2026-09-18 played six VAG streams, stopped four of them with
         // snd_StopSound, and then logged "no free VAG stream slot" 237 times to the end of the run -- stopSound()
         // only ever looked in the bank-sound table, so a stream handle (type 4) freed nothing.
+        // The music, round four, second reading (research/36 Q1, 2026-09-20). Commit e39a8dc had a played-out stream
+        // keep answering its handle until its slot was retaken; that was a misreading of the IRX. What the IRX does:
+        // the streamer's per-tick update (FUN_0001107c) deactivates the handler of a stream whose final buffer has
+        // played and whose voice envelope has reached zero, and snd_DeactivateHandler CLEARS BIT 31 of the handle
+        // word it leaves in the slot (research/989snd-ziemas/iop/sndhand.c:237 `snd->OwnerID &= ~0x80000000`; IRX
+        // FUN_0000d4a4 `*param_1 = *param_1 & 0x7fffffff`). Every handle the EE holds has bit 31 SET (activation,
+        // sndhand.c:148), and snd_CheckHandlerStillActive compares the WHOLE word (sndhand.c:270-310; IRX
+        // FUN_0000d6b4 `if (*puVar1 == param_1) return puVar1; return 0`) -- so from the next tick the poll answers
+        // 0, and the slot (Sound == NULL) is the first one snd_FindFreeHandler will hand out. The EE's music manager
+        // relies on that 0 to leave its "playing" state and start the next stem fresh; with e39a8dc it never did.
+        tc.Run("989snd: a VAG stream that played out answers 0 to snd_SoundIsStillPlaying on the next poll and its slot is free (the IRX's deactivated handler)", [](TestCase &t)
+        {
+            // A host that answers for the handles it was told to play: playing until the test says the audio ended.
+            class AnsweringHost final : public Snd989TestHost
+            {
+            public:
+                std::vector<uint32_t> known;
+                std::vector<uint32_t> ended;
+                void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+                {
+                    if (function == 0x2Cu && count >= 1)
+                        known.push_back(static_cast<uint32_t>(args[0]));
+                }
+                bool audioIsPlaying(uint32_t handle, bool &playing) const override
+                {
+                    if (std::find(known.begin(), known.end(), handle) == known.end())
+                        return false;
+                    playing = std::find(ended.begin(), ended.end(), handle) == ended.end();
+                    return true;
+                }
+            };
+            Snd989HarnessT<AnsweringHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kIsStillPlaying = 0x19u;
+            const std::vector<uint32_t> play = {2000u, 0u, 0x04000000u, 0u, 1u, 0u, 0u, 0u};   // group 1, parent 0
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+
+            const uint32_t a = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(a != 0u && ((a >> 24) & 0x1Fu) == 4u, "stem A gets a stream handle");
+            t.Equals(h.call(kIsStillPlaying, {a}), a, "playing while the mixer says so");
+
+            // A live parent still chains (R169): the queued segment rides A's slot and handle.
+            std::vector<uint32_t> queued = play;
+            queued[5] = a;
+            const uint32_t q = h.call(kPlayVagStreamByLoc, queued);
+            t.Equals(q, a, "a stem queued behind the LIVE A chains onto A's handle, as before");
+
+            AnsweringHost &host = h.host;
+            host.ended.push_back(a);
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u,
+                     "the audio ended: the next poll answers 0 (sndhand.c:237 cleared bit 31; FUN_0000d6b4's whole-word compare fails)");
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "and stays 0 on the poll after that");
+
+            // A queue behind the dead handle cannot resolve its parent (FUN_0000d6b4 returns 0): the IRX's
+            // FUN_0000f7e0 falls through to a FRESH play (param_8 = 0), never a chain onto the freed slot.
+            const uint32_t behindDead = h.call(kPlayVagStreamByLoc, queued);
+            t.IsTrue(behindDead != 0u && behindDead != a, "a play queued behind the dead A starts fresh under a new handle");
+            host.ended.push_back(behindDead);
+
+            // A fresh play (no parent) takes the first free slot -- A's, freed by the poll -- under a NEW handle
+            // (snd_FindFreeHandler bumps the low 16 bits, sndhand.c:55-56; IRX FUN_000163f4).
+            const uint32_t b = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(b != 0u && b != a, "stem B gets a handle of its own");
+            t.Equals((b >> 16) & 0xFFu, (a >> 16) & 0xFFu, "in A's slot: the first free one");
+            t.Equals(h.call(kIsStillPlaying, {a}), 0u, "A still answers 0");
+            t.Equals(h.call(kIsStillPlaying, {b}), b, "B answers itself");
+
+            // Played-out slots never leak (the 107 x "no free VAG stream slot" of 2026-09-18): with both slots'
+            // audio ended and no poll in between, four more plays all get slots -- the reap on play frees them.
+            host.ended.push_back(b);
+            for (int i = 0; i < 4; ++i)
+            {
+                const uint32_t n = h.call(kPlayVagStreamByLoc, play);
+                t.IsTrue(n != 0u, "play " + std::to_string(i) + " after the ended ones gets a slot");
+                host.ended.push_back(n);
+            }
+        });
+
         tc.Run("989snd: snd_StopSound on a VAG stream handle frees its stream slot", [](TestCase &t)
         {
             Snd989Harness h;
@@ -1984,6 +2496,58 @@ void register_socom2_audio_tests()
             t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays after the stop");
             t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
                      "and so does the next one: snd_StopSound freed the stopped stream's slot");
+        });
+
+        // research/36 Q6 item 4 (2026-09-20): the IRX's snd_SetSoundParams (FUN_0000bcbc; playsnd.c:304-306, 340)
+        // answers the handle for ANY live handler, or 0. The EE polls its POSITIONED entries with 0x21 instead of
+        // 0x19 (FUN_00346ea0, flag bit 0: SetSoundParams with the same completion callback), and the module answered
+        // 0 for every stream handle -- so every positioned stream (the Sprint 9 Q0 voice lines, a positioned music
+        // cue) read as dead on its first poll. Same class of bug as Q1, in the other direction.
+        tc.Run("989snd: snd_SetSoundParams answers the handle for a live VAG STREAM too, and 0 once it has played out (the IRX's FUN_0000bcbc)", [](TestCase &t)
+        {
+            class AnsweringHost final : public Snd989TestHost
+            {
+            public:
+                std::vector<uint32_t> known;
+                std::vector<uint32_t> ended;
+                void audioNotify(uint32_t function, const int32_t *args, size_t count) override
+                {
+                    if (function == 0x2Cu && count >= 1)
+                        known.push_back(static_cast<uint32_t>(args[0]));
+                }
+                bool audioIsPlaying(uint32_t handle, bool &playing) const override
+                {
+                    if (std::find(known.begin(), known.end(), handle) == known.end())
+                        return false;
+                    playing = std::find(ended.begin(), ended.end(), handle) == ended.end();
+                    return true;
+                }
+            };
+            Snd989HarnessT<AnsweringHost> h;
+            t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
+            constexpr uint32_t kInitVagStreaming = 0x2Au;
+            constexpr uint32_t kPlayVagStreamByLoc = 0x2Cu;
+            constexpr uint32_t kSetSoundParams = 0x21u;
+            constexpr uint32_t kIsStillPlaying = 0x19u;
+            // A positioned voice line: vol 0, flags 2, then raised with SetSoundParams (Sprint 9 Q0).
+            const std::vector<uint32_t> play = {2000u, 0u, 0u, 0u, 1u, 0u, 0u, 2u};
+            t.Equals(h.call(kInitVagStreaming, {2u, 0x8000u}), 1u, "two stream slots");
+
+            const uint32_t s = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(s != 0u && ((s >> 24) & 0x1Fu) == 4u, "the stream gets a type-4 handle");
+            t.Equals(h.call(kSetSoundParams, {s, 1u, 0x400u, 0u}), s, "SetSoundParams(mask bit0, vol) on the live stream answers the HANDLE");
+            t.Equals(h.call(kSetSoundParams, {s, 6u, 0u, 90u}), s, "and so does a pan-only call");
+            t.IsTrue(!h.host.audioCommands.empty() && h.host.audioCommands.back() == kSetSoundParams,
+                     "the call still reaches the host (the mixer's setVolPan)");
+            t.Equals(h.call(kSetSoundParams, {s ^ 0x1u, 1u, 0x400u, 0u}), 0u, "a stream handle nothing owns answers 0");
+
+            h.host.ended.push_back(s);
+            t.Equals(h.call(kSetSoundParams, {s, 1u, 0x400u, 0u}), 0u,
+                     "once the mixer has finished it the answer is 0: the IRX's deactivated handler (sndhand.c:237)");
+            t.Equals(h.call(kIsStillPlaying, {s}), 0u, "and 0x19 agrees");
+            const uint32_t next = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(next != 0u && next != s, "the next play gets a fresh handle");
+            t.Equals((next >> 16) & 0xFFu, (s >> 16) & 0xFFu, "in the slot the 0x21 poll freed");
         });
 
         // Task 12c: 971 "play request for unknown bank" lines for banks that were loaded and never unloaded. The
@@ -2013,7 +2577,7 @@ void register_socom2_audio_tests()
         // rest of the run and so does the game's own handle.
         tc.Run("989snd: a VAG stream that plays to its end is reported done and its slot is reusable", [](TestCase &t)
         {
-            const std::string path = "socom2_audio_stream_end_image.bin";
+            const std::string path = tmpPath("socom2_audio_stream_end_image.bin");
             t.IsTrue(writeOneChunkVpkImage(path), "the one-chunk VPK image is written");
 
             Snd989HarnessT<Snd989MixerHost> h;
@@ -2042,10 +2606,18 @@ void register_socom2_audio_tests()
             bool playing = true;
             t.IsTrue(h.host.backend.isPlaying(first, playing) && !playing, "the mixer has finished the stream");
 
-            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "so the game's poll says done");
-            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "a stream plays into a free slot");
-            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u,
-                     "and so does the next one: the ended stream's slot was reused, not leaked");
+            // The music, round four, second reading (research/36 Q1): the IRX deactivates the handler on the tick the
+            // voice's envelope reaches zero on the final buffer (FUN_0001107c -> FUN_0000d4a4), clearing bit 31 of
+            // the handle word (sndhand.c:237); the EE's handle keeps bit 31, so the whole-word compare of
+            // snd_CheckHandlerStillActive (sndhand.c:270-310, FUN_0000d6b4) fails -- the poll answers 0 at once, and
+            // that 0 is what lets the EE's music manager free its cue entry and start the next stem.
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "the game's poll says done, as the IRX does (bit 31 cleared)");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "and keeps saying so");
+            const uint32_t second = h.call(kPlayVagStreamByLoc, play);
+            t.IsTrue(second != 0u && second != first, "a stream plays into the freed slot under a new handle");
+            t.Equals((second >> 16) & 0xFFu, (first >> 16) & 0xFFu, "the first slot: the played-out one was freed, not leaked");
+            t.Equals(h.call(kSoundIsStillPlaying, {first}), 0u, "the old handle still reads done");
+            t.IsTrue(h.call(kPlayVagStreamByLoc, play) != 0u, "and the next one takes the other slot");
 
             std::remove(path.c_str());
         });
@@ -2121,7 +2693,7 @@ void register_socom2_audio_tests()
         // after the other; replaced, only the second one's worth of audio ever comes out.
         tc.Run("989snd: a queued segment plays AFTER its parent, so the handle carries both segments' audio", [](TestCase &t)
         {
-            const std::string path = "ps2x_test_stream_queue_e2e.bin";
+            const std::string path = tmpPath("ps2x_test_stream_queue_e2e.bin");
             t.IsTrue(writeOneChunkVpkImage(path), "the one-chunk VPK image is written");
             Snd989HarnessT<Snd989MixerHost> h;
             t.IsTrue(h.configured, "the SOCOM II profile registers the 989snd service");
@@ -2164,7 +2736,7 @@ void register_socom2_audio_tests()
         // missed it -- the queue silently took a fresh slot with an unrelated handle and the chain broke.
         tc.Run("989snd: a stream queued onto a just-ended parent still chains onto the parent's slot", [](TestCase &t)
         {
-            const std::string path = "ps2x_test_stream_queue.bin";
+            const std::string path = tmpPath("ps2x_test_stream_queue.bin");
             if (!writeOneChunkVpkImage(path))
             {
                 t.IsTrue(false, "could not write the test disc image");
@@ -2251,7 +2823,7 @@ void register_socom2_audio_tests()
         // binary to lean on -- this is hand-written the way hostMicWavHeader is.
         tc.Run("micWavRead reads back what hostMicWavHeader wrote, patched sizes or not", [](TestCase &t)
         {
-            const std::string path = "socom2_mic_roundtrip.wav";
+            const std::string path = tmpPath("socom2_mic_roundtrip.wav");
             std::vector<int16_t> written(4410);
             for (size_t i = 0; i < written.size(); ++i)
                 written[i] = static_cast<int16_t>((i % 128) * 200 - 12800);
@@ -2306,7 +2878,7 @@ void register_socom2_audio_tests()
         // therefore had its metadata decoded as audio.
         tc.Run("micWavRead stops at the end of the data chunk when a LIST chunk follows it", [](TestCase &t)
         {
-            const std::string path = "socom2_mic_trailing_list.wav";
+            const std::string path = tmpPath("socom2_mic_trailing_list.wav");
             std::vector<int16_t> written(600);
             for (size_t i = 0; i < written.size(); ++i)
                 written[i] = static_cast<int16_t>((i % 100) * 300 - 15000);
@@ -2350,7 +2922,7 @@ void register_socom2_audio_tests()
         // only consumer, which silently halves both files the moment the game starts reading too.
         tc.Run("PS2X_MIC_FAKE feeds the ring from a WAV, and the PS2X_MIC_DUMP tee does not steal its frames", [](TestCase &t)
         {
-            const std::string path = "socom2_mic_fake_source.wav";
+            const std::string path = tmpPath("socom2_mic_fake_source.wav");
             {
                 std::vector<int16_t> written(11025);
                 for (size_t i = 0; i < written.size(); ++i)
@@ -2369,7 +2941,7 @@ void register_socom2_audio_tests()
             HostMic mic;
             t.IsTrue(mic.startFromFile(path), "a 11025 Hz mono WAV opens as a capture source: " + mic.error());
             t.IsTrue(mic.running(), "and running() is true exactly as it is for a device");
-            mic.startDumpTee("socom2_mic_tee.wav");
+            mic.startDumpTee(tmpPath("socom2_mic_tee.wav"));
             std::this_thread::sleep_for(std::chrono::milliseconds(300));
             std::vector<int16_t> blockOut(4096);
             const size_t got = mic.read(blockOut.data(), blockOut.size());
@@ -2431,7 +3003,7 @@ void register_socom2_audio_tests()
         // SERVED, after the resample, so the file needs no rate argument at correlation time.
         tc.Run("PS2X_MIC_GAMEREAD_DUMP records exactly the frames the module was handed", [](TestCase &t)
         {
-            const std::string path = "socom2_mic_gameread.wav";
+            const std::string path = tmpPath("socom2_mic_gameread.wav");
 #ifdef _WIN32
             _putenv_s("PS2X_MIC_GAMEREAD_DUMP", path.c_str());
 #else

@@ -56,7 +56,7 @@ A host launch script is a file under `logs/`, in the shape of `logs/s7_audio_onl
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 <the exports this run needs>
@@ -740,7 +740,7 @@ python -m tools_py.parity.gate --only title,transition,mission --stamp s8_g3_gat
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 export PS2X_MIC_FAKE="$PWD/scripts/parity/refs/voice_ref.wav"
@@ -887,7 +887,7 @@ class RefWavCorrelation(unittest.TestCase):
 
 ```bash
 #!/usr/bin/env bash
-export PATH="/usr/bin:/mingw64/bin:/c/Users/Utilisateur/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
+export PATH="/usr/bin:/mingw64/bin:$HOME/AppData/Local/Microsoft/WindowsApps:/c/Windows/system32:/c/Windows:$PATH"
 cd /c/projects/socom_pc || exit 1
 . scripts/parity/env.sh
 export PS2X_MIC_FAKE="$PWD/scripts/parity/refs/voice_ref.wav"

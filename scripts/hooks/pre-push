@@ -1,0 +1,35 @@
+#!/bin/sh
+# The leak check over every commit this push would publish: the added lines and the added file names of each
+# commit in each pushed range (what the pre-commit hook saw, re-proven -- a commit made with --no-verify, or
+# in another clone, gets its second look here). Refuses the push on any hit.
+# Installed by scripts/install_hooks.sh (git config core.hooksPath scripts/hooks).
+cd "$(git rev-parse --show-toplevel)" || exit 2
+py=python
+command -v python >/dev/null 2>&1 || py=python3
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$local_sha" = "$zero" ] && continue                      # a deletion publishes nothing
+  if [ "$remote_sha" = "$zero" ]; then
+    range="$local_sha --not --remotes"                         # a new branch: what no remote has yet
+  else
+    range="$remote_sha..$local_sha"
+  fi
+  # shellcheck disable=SC2086
+  "$py" -m tools_py.release.leakcheck history -- $range || status=$?
+  # CI's second opinion, run here too when the binary is at hand (tools/gitleaks/gitleaks.exe, git-ignored; the
+  # secrets workflow pins the same version by sha256): a finding it makes and the gate does not is caught before
+  # the push, not after (2026-09-21: the scrubber test's planted credential reached CI that way once).
+  gl=""
+  for cand in tools/gitleaks/gitleaks.exe tools/gitleaks/gitleaks; do [ -x "$cand" ] && gl="$cand" && break; done
+  command -v gitleaks >/dev/null 2>&1 && [ -z "$gl" ] && gl=gitleaks
+  if [ -n "$gl" ]; then
+    # shellcheck disable=SC2086
+    "$gl" git --log-opts="$range" --redact --exit-code 1 --no-banner . || status=$?
+  fi
+done
+if [ "$status" -ne 0 ]; then
+  echo "pre-push: leak check exit $status -- push refused (0 clean, 1 findings, 2 the scanner did not run)." >&2
+  echo "pre-push: a hit in an earlier commit needs that commit rewritten, not a new one on top -- the line stays in history." >&2
+  exit 1
+fi

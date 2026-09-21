@@ -2,7 +2,7 @@
 
 Read-only audit, commissioned by the owner: "fully code review and audit the test harness and sets of tests... review
 the project, development structure, and agent hitches and mistakes and tighten the process prioritizing: 1) self
-validation, 2) accuracy 3) speed 4) honesty". Tree: branch `sprint-9` at `1f82d88`, with another session's five
+validation, 2) accuracy 3) speed 4) honesty". Tree: branch `sprint-9` at `8bf72c5`, with another session's five
 uncommitted audio files in it. Host clock 2026-09-19 (the project stamps this session 2026-09-20; see HANDOFF section 3).
 
 **How this was produced.** Nothing was built, run, launched, staged or edited; a game launch was running on the host
@@ -24,7 +24,7 @@ failure scenario and the fix. Finding ids: `SV` self-validation, `AC` accuracy, 
 | 4 | SV-2 | Re-using a gate `--stamp` scores the PREVIOUS run's captures: `gate.py:666` and `drive.py:415` both `makedirs(exist_ok=True)` and nothing clears the stage directory, so a drive that refuses to start ("already running") leaves 23 old title captures to be scored PASS. `--only ""` prints `GATE PASS (0/0)` and exits 0. |
 | 5 | AC-1 | The title stage's bar (16 of 23 captures >= 90.0) sits far below what a clean run does (19 of 23, menu band 93.4-99.4): three menu screens can break, or every menu score can drop 3-6 points, and the stage still passes. The 4 "failing" captures are the attract movie by design (not a dead threshold) -- but nothing asserts they ARE the movie, and nothing compares a run with history. |
 | 6 | AC-2 | The console water check is print-only, and it straddles its own threshold run to run (flat 0.157-0.371 against a 0.35 bar; 21 FAIL / 45 PASS across 66 runs). The newest gate (`s9_p1_gate`) prints `-> FAIL` inside a `PASS mission` line. It can neither be trusted as a regression signal nor promoted to scoring as it stands. |
-| 7 | HO-3 | Every commit rule is prose. No git hooks exist; `server/config/simulated.db` is tracked AND in `.gitignore` AND permanently modified (one `git add -A` from a commit); 6 commits carry a wrong trailer, 239 a `Claude-Session:` line a rule forbade; a syntax error reached history in an untested `__main__` (`9eb5eb1`). Every one is a ten-line hook. |
+| 7 | HO-3 | Every commit rule is prose. No git hooks exist; `server/config/simulated.db` is tracked AND in `.gitignore` AND permanently modified (one `git add -A` from a commit); 6 commits carry a wrong trailer, 239 a `Claude-Session:` line a rule forbade; a syntax error reached history in an untested `__main__` (`018bbf9`). Every one is a ten-line hook. |
 | 8 | SP-1 | `build.sh` takes no lock at all (no `loop_lock` reference in the file): only convention stops two agents building in `build-clang` at once. The lock's busy list matches processes by NAME, so a stray `dns_stub` blocked every reap for two days. There is no ordering, no cancel, no verdict and no provenance in the launch machinery -- the argument for the queue (Design A). |
 | 9 | SV-3 | The Python suite's skip count is never checked; two gate scorer tests have skipped on every run since their `logs/` artefacts went (`test_gate.py:639,695` need `tfix3`, `wcap2`); three tests silently shrink their coverage to whatever run directories still exist; the transition fixtures can no longer be regenerated (`tfix4` is gone); on CI every `logs/`-dependent test skips. |
 | 10 | AC-3 | Flakiness is recorded as prose, not data: three wall-clock C++ cases (real 600 ms sleeps, upper bounds on elapsed time), a fixed `sleep(4.5)` lock test, ~15 more cases with the same shape that have not failed yet. No ledger of which test failed where; `audio_corr --repeat` passes an all-silent WAV (`audio_corr.py:298-300,325`). |
@@ -289,10 +289,10 @@ already said so: every failure on record was caught by a person, not a script.
 | Class | Instances (evidence) | Caught by / how late | Cheapest mechanical guard |
 |---|---|---|---|
 | **HO-A. A commit carries another agent's work** | `872d8d6` (2026-09-13: bare commit after `git add`; subject `docs(known)`, 6 files, +800/-121 incl. `online_match_ours.py`); `6b7a2b3` (2026-09-18: three of Task 8's lines + an include of an uncommitted header; "does not build on its own", repaired in `206de19`) | the committer, afterwards; 23 min and 1 h 54 min; one unbisectable commit in history | **claims registry + pre-commit hook** (section 8.5): refuse staged paths claimed by another owner. Better, structurally: one `git worktree` per building agent -- removes the class AND the shared build tree |
-| **HO-B. Syntax error in an untested entry point** | `9eb5eb1` -> `eff469d` (`tools_py/vm_prune.py` `__main__`: a lost escape; the unit test imports only `stale()`) | next run; 10 s -- but a broken commit is in history | pre-commit: `python -m py_compile` on staged `.py`, `bash -n` on staged `.sh`; plus the rule "every `__main__` has a `--help` smoke test" enforced by the hygiene test |
-| **HO-C. "Done" with an unrun half** | three pytest-style files that never ran (`process-audit.md:127-135`); a plan whose tests the runner could not discover, "Ran 0 tests" (`:191-195`); the console-replay test (`1d2d3df`); AUDIT-2026-09-17 section 3: a ten-launch rate "never measured", Task 5c "never verified", checkboxes unmaintained | audits; days | the mandatory **verified / unverified** report split (section 8.6); SV-1 and SV-3's guards (zero-case, skip budget, `[Empty]`) |
+| **HO-B. Syntax error in an untested entry point** | `018bbf9` -> `7c52784` (`tools_py/vm_prune.py` `__main__`: a lost escape; the unit test imports only `stale()`) | next run; 10 s -- but a broken commit is in history | pre-commit: `python -m py_compile` on staged `.py`, `bash -n` on staged `.sh`; plus the rule "every `__main__` has a `--help` smoke test" enforced by the hygiene test |
+| **HO-C. "Done" with an unrun half** | three pytest-style files that never ran (`process-audit.md:127-135`); a plan whose tests the runner could not discover, "Ran 0 tests" (`:191-195`); the console-replay test (`f794d70`); AUDIT-2026-09-17 section 3: a ten-launch rate "never measured", Task 5c "never verified", checkboxes unmaintained | audits; days | the mandatory **verified / unverified** report split (section 8.6); SV-1 and SV-3's guards (zero-case, skip budget, `[Empty]`) |
 | **HO-D. Static reading reported as fact** | `4114ad4` "the gate is named" -- a coincidence, real fix `abf35bb` 1 h 46 later; the depth-quantisation water theory (`3220e68` -> `5655f5c`, 7 min: the best case); "the PCSX2 golden match is the same frozen state" (two stills; weeks: `process-audit.md:18-24`); `d13040d` "my 1.5 s window was wrong" | a reviewer's re-derivation or one disconfirming run; 7 min to ~2 weeks | every claim in a report tagged `measured` (record id) / `inferred` (from what) ; a commit-msg lint: "proven / root cause / named" in a subject requires a `Measured:` line in the body |
-| **HO-E. Documents that stay false** | three false HANDOFF/STATUS sentences ~1 day, the freeze description ~2 weeks (`process-audit.md:292-302`); `a1e168b` "I broke my own rule"; `fd89ef4` (20 min stale); `1146b74` (START HERE still said Sprint 5 on 09-19); AUDIT section 4: seven drifted documents | audits | a docs lint in a 1-minute CI job (docs are currently excluded from CI altogether): "next free ruling Rn" >= max `R\d+` in the tree; HANDOFF/CURRENT_SPRINT name the checked-out branch; baselines quoted in HANDOFF section 2 equal the newest `suite_*` records |
+| **HO-E. Documents that stay false** | three false HANDOFF/STATUS sentences ~1 day, the freeze description ~2 weeks (`process-audit.md:292-302`); `a1e168b` "I broke my own rule"; `8243652` (20 min stale); `f88ef34` (START HERE still said Sprint 5 on 09-19); AUDIT section 4: seven drifted documents | audits | a docs lint in a 1-minute CI job (docs are currently excluded from CI altogether): "next free ruling Rn" >= max `R\d+` in the tree; HANDOFF/CURRENT_SPRINT name the checked-out branch; baselines quoted in HANDOFF section 2 equal the newest `suite_*` records |
 | **HO-F. Unrecorded rulings / moved defaults** | rulings stopped at R80 for two days; ten decisions backfilled as R81-R90, incl. a clock default the plan's constraints forbade; R83 moved gate thresholds (5->3, 30->40) | the 09-17 audit; 2 days | pre-commit: a diff touching an UPPER_CASE numeric constant in `gate.py`, `console_compare.py`, `screen_bands.py`, `refs.json` or a knob default needs `R\d+` in the message |
 | **HO-G. False-green instruments** | 16 screenshots of a lobby keyboard (`process-audit.md:65-68`); a resized window passing title at 18/23 (`:50-60`); the mission stage scoring the intro cinematic 09-12 14:33 -> `d2eb932`; 11 false-KILL holes (`5d0133c`, `d6cfab5`, `6f3b2be`); the transition stage green on boot black frames (`gate.py:95-110`) | adversarial review | kept: a defect-injection test per scorer (adopted). Add: SV-2, AC-1, the manifest |
 | **HO-H. Lock and build-tree contention** | orphan lock after a DONE report (`process-audit.md:397-402`); a 45-min starved A/B (`:403-407`); `dns_stub` two days (KNOWN section 4); "another agent's red TDD file fails everyone's `build.sh test`" (KNOWN ~line 378) | the controller, by hand | Design A; SP-1; and: discovery ignores untracked `test_*.py` unless `TEST_INCLUDE_UNTRACKED=1` (a red test belongs to its author until committed) |
@@ -302,7 +302,7 @@ already said so: every failure on record was caught by a person, not a script.
 ### HO-6. Hitches that left no trace
 Seven of the incidents this audit was told about have NO tracked record (searched: `git log`, `docs/`, KNOWN, STATUS,
 the specs; `.superpowers/` is empty): the wrong-server login run; the `grep -c` waiter; an agent running what its
-brief forbade; an agent committing ungated runtime changes at the owner's direct request (`c81b17a`, `1f82d88` are
+brief forbade; an agent committing ungated runtime changes at the owner's direct request (`f5809c8`, `8bf72c5` are
 owner-driven; whether they were gated is unverified); the pre-fix audio recording; the plan example with wrong
 arithmetic (nearest tracked: the `+8 px` bar, `process-audit.md:202-206`); two builders in one tree. They live only in
 the controller's context, which is exactly what is lost at a handoff. *Fix:* `docs/HITCHES.md`, an append-only table
@@ -485,7 +485,7 @@ evidence about TODAY's tree.
 ```json
 {"v":1,"id":"01J8...","kind":"gate","stamp":"s9_p1_gate","owner":"ctl","recipe":"gate","argv":["--only","title,transition,mission"],
  "attempt":1,"t_start":"2026-09-19T19:08:11-04:00","t_end":"2026-09-19T19:30:03-04:00","wall_s":1312,
- "git":{"sha":"1f82d88","branch":"sprint-9","commit_date":"...","dirty":true,
+ "git":{"sha":"8bf72c5","branch":"sprint-9","commit_date":"...","dirty":true,
         "dirty_paths":["third_party/ps2recomp/ps2xIOP/src/modules/snd989.cpp"],"diff_sha256":"..."},
  "harness":{"pinned":null,"tools_py_tree":"<git tree sha of tools_py/parity + scripts/parity>"},
  "exe":{"path":"dist/socom2.exe","bytes":236411904,"sha256":"c03df2a5...","mtime":"...","newer_than_sources":true},
@@ -676,7 +676,7 @@ worktree, none of this applies inside it -- prefer that for any C++ work.
 Every report to the controller, and every STATUS entry that makes a claim, has these four blocks, in this order:
 ```
 VERIFIED    (each line: the claim -- the command or record id -- the number)
-  gate 3/3 on exe c03df2a5 at 1f82d88+dirty(5)      record 01J8...   title min s08=93.4
+  gate 3/3 on exe c03df2a5 at 8bf72c5+dirty(5)      record 01J8...   title min s08=93.4
   C++ 666/666, Python 1368 OK skipped=8              record 01J8...
 UNVERIFIED  (what I believe but did not measure, and what would settle it)
   the ramp fix removes the wobble in the lobby -- only measured on M51; settle: a driven lobby capture
@@ -704,7 +704,7 @@ DEVIATIONS, not nowhere.
 - C++: `t.Skip("reason")`, never a bare `return`; unique case names; after adding a suite, the total printed by
   `ps2x_tests` must rise by exactly your case count -- put both numbers in your report and raise
   `PS2X_TEST_MIN_CASES`. No wall-clock upper bounds: inject the clock.
-- A new CLI entry point gets a `--help` smoke test (it must at least parse): `9eb5eb1`.
+- A new CLI entry point gets a `--help` smoke test (it must at least parse): `018bbf9`.
 
 ### 8.8 Adding or changing a gate reference or threshold
 1. Capture it from a run that has a record; copy it to `scripts/parity/refs/`; add its `MANIFEST.json` entry: sha256,
@@ -778,7 +778,7 @@ Effort S (<= 2 h) / M (<= 1 day) / L (> 1 day). Priority served: 1 self-validati
   moment) is a guess. `s9_p1_gate`'s FAIL may be noise or a real regression from the uncommitted audio work's build --
   a human should look at `logs/parity/gate/s9_p1_gate/mission/s28_none.png` beside `s9_g1_gate`'s.
 - **Seven reported hitches have no tracked record** (HO-6); they are taken from the brief, not confirmed.
-  Whether `c81b17a` / `1f82d88` were gated was not checked.
+  Whether `f5809c8` / `8bf72c5` were gated was not checked.
 - **`register_socom2_audio_tests`' definition** could not be grepped (non-text byte in the file; another session is
   editing it).
 - **Which generated file dominates `unity_393`** needs the unity `.cxx` in `build-clang`; not opened (footprint).

@@ -131,6 +131,13 @@ namespace snd989
         void pcmStreamWrite(uint32_t offset, const uint8_t *data, size_t bytes);
         uint32_t pcmStreamPosition() const;   // bytes into the ring, 0 when stopped
         uint64_t pcmUnderruns() const;        // blocks the head reached before the game rewrote them (R97); 0 after stop
+        // research/36 item 9 (2026-09-20), the instrument: stale RUNS of the PCM ring (a stretch of output frames the
+        // head spent in blocks the game had not rewritten), one "[audio] 989snd pcm UNDERRUN frame=<start> silent=<n>"
+        // line each when it ends; and the decoded audio a VAG stream holds ahead of its read head, in output frames
+        // (the current chunk's remainder plus every chunk pair in its ring). PS2X_AUDIO_INSTRUMENT=1 prints both, per
+        // live stream and for the ring, every 4800 output frames as "[audio] 989snd ... occupancy frame=<f> ahead=<n>".
+        uint64_t pcmStarvationRuns() const;
+        uint64_t streamFramesAhead(uint32_t handle) const;
         void pcmStreamStop();
         bool pcmStreamActive() const;
         size_t activeStreams() const;

@@ -32,6 +32,61 @@ LOBBY_GONE = frame(("title_kill4_no_lobby.png", TITLE), ("ready_8c_A_left_lobby.
 BLACK = Image.new("RGB", (640, 448), 0)
 
 
+# Sprint 10 Goal 1: the same GAME LOBBY under the hosted server's channel name "US East (Ohio)" in the band where
+# the reference says "Channel 1" -- the first scheduled ladder's own frame (ladder_20260920_043246), read at
+# distance 0.225 and failed as LOBBY-FAIL create-game:create until the title words alone were compared.
+LOBBY_US_EAST = frame(("title_ladder1_us_east_game_lobby.png", TITLE), ("notice_gone_8c.png", NOTICE))
+
+
+class TitleWordsTest(unittest.TestCase):
+    def test_the_game_lobby_matches_whatever_channel_name_sits_beside_it(self):
+        g = gray(LOBBY_US_EAST)
+        self.assertLessEqual(L.lobby_title_dist(g, "game_lobby"), 0.05)
+        self.assertTrue(L.lobby_title_is(g, "game_lobby"))
+        for other in ("briefing_room", "create_game", "play_list"):
+            self.assertGreater(L.lobby_title_dist(g, other), 0.3, other)
+
+    def test_the_console_reads_its_own_game_lobby_reference(self):
+        # The console draws the lobby ~7% narrower (KNOWN section 2): its title misses ours' reference and hits its own.
+        console = frame(("title_pcsx2_game_lobby.png", TITLE), ("notice_gone_8c.png", NOTICE))
+        g = gray(console)
+        self.assertGreater(L.lobby_title_dist(g, "game_lobby", "ours"), 0.4)
+        self.assertLessEqual(L.lobby_title_dist(g, "game_lobby", "pcsx2"), 0.05)
+        self.assertGreater(L.lobby_title_dist(g, "briefing_room", "pcsx2"), 0.3)
+        # lobby_gray() records the shell's target; a title without a console reference falls back to ours'.
+        L._current_target = "pcsx2"
+        try:
+            self.assertTrue(L.lobby_title_is(g, "game_lobby"))
+        finally:
+            L._current_target = "ours"
+        # A title with no console reference falls back to ours' (the console references are cut one screen at a
+        # time, from the miss frames each leg keeps).
+        import os
+        without = [n for n in L.LOBBY_TITLES if not os.path.exists(os.path.join(L.LOBBY_REF_DIR, f"title_{n}.pcsx2.png"))]
+        for n in without:
+            self.assertTrue((L.lobby_title_ref(n, "pcsx2") == L.lobby_title_ref(n, "ours")).all(), n)
+
+    def test_the_console_ready_row_reads_by_its_own_edges(self):
+        # Console frames (leg 1b/1c): READY's right edge 65, NOT READY's 87; ours' bar of 55 read both as taken.
+        unpressed = frame(("title_pcsx2_game_lobby.png", TITLE), ("ready_pcsx2_leg1c_unpressed.png", READY_BOX))
+        not_ready = frame(("title_pcsx2_game_lobby.png", TITLE), ("ready_pcsx2_leg1b_not_ready.png", READY_BOX))
+        self.assertEqual(L.ready_label_edge(gray(unpressed)), 65)
+        self.assertEqual(L.ready_label_edge(gray(not_ready)), 87)
+        L._current_target = "pcsx2"
+        try:
+            self.assertTrue(L.ready_dropped(gray(unpressed)), "the console's READY still showing: the press was dropped")
+            self.assertFalse(L.ready_dropped(gray(not_ready)), "NOT READY on the console: the press was taken")
+        finally:
+            L._current_target = "ours"
+        self.assertFalse(L.ready_dropped(gray(unpressed)), "read as ours, 65 is past the bar -- the mis-read leg 1c made")
+
+    def test_create_game_and_its_play_list_still_read_the_whole_band(self):
+        self.assertIsNone(L.LOBBY_TITLE_COLS.get("create_game"))
+        self.assertIsNone(L.LOBBY_TITLE_COLS.get("play_list"))
+        self.assertTrue(L.lobby_title_is(gray(T.CREATE_GAME), "create_game"))
+        self.assertFalse(L.lobby_title_is(gray(T.CREATE_GAME), "play_list"))
+
+
 def lit_without_cursor():
     """A GAME LOBBY whose READY row reads lit by median (68 > 50) but not by mean (41 <= 50): the
     cursor detector and the row detector disagreeing. Synthetic -- no capture shows this; it pins the

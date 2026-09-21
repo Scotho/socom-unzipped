@@ -49,6 +49,19 @@ namespace ui
         DrawRectangleRec(px(ctx, r), rl(color));
     }
 
+    void drawImage(const Ctx &ctx, const Texture2D &tex, Rect r, Rgba tint)
+    {
+        if (!drawable(r) || tex.id == 0 || tex.width <= 0 || tex.height <= 0)
+            return;
+        const float sx = r.w / static_cast<float>(tex.width);
+        const float sy = r.h / static_cast<float>(tex.height);
+        const float fit = sx < sy ? sx : sy;
+        const Rect placed{r.cx() - tex.width * fit * 0.5f, r.cy() - tex.height * fit * 0.5f,
+                          tex.width * fit, tex.height * fit};
+        const Rectangle src{0.0f, 0.0f, static_cast<float>(tex.width), static_cast<float>(tex.height)};
+        DrawTexturePro(tex, src, px(ctx, placed), Vector2{0.0f, 0.0f}, 0.0f, rl(tint));
+    }
+
     void fillRectGradient(const Ctx &ctx, Rect r, Rgba top, Rgba bottom)
     {
         if (!drawable(r))

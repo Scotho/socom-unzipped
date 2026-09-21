@@ -15,12 +15,12 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT = os.path.join(ROOT, "server", "linux", "horizon-ctl.sh")
 CONFIG = os.path.join(ROOT, "server", "config")
 FILES = ("medius.json", "dme.json", "muis.json", "nat.json")
-BASH = shutil.which("bash")
 NEW = "203.0.113.7"
 
 

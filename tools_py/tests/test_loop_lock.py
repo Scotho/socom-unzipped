@@ -25,6 +25,7 @@ import sys
 import tempfile
 import time
 import unittest
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPTS = os.environ.get("LOOP_LOCK_TEST_SCRIPTS") or os.path.join(ROOT, "scripts")
@@ -52,15 +53,7 @@ def smoke_or_slow(test):
 IDLE = ["4|0||System|", "900|4||explorer.exe|C:\\Windows\\explorer.exe", "901|900||bash.exe|bash"]
 
 
-def find_bash():
-    # On Windows, a bare "bash" can resolve to WSL's System32\bash.exe; prefer Git Bash.
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
-        if os.path.exists(cand):
-            return cand
-    return shutil.which("bash")
-
-
-BASH = find_bash()
+# the Git Bash finder that used to live here is tools_py/tests/shell.py, shared by every script-driving test
 
 
 def _read(path):

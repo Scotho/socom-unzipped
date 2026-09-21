@@ -30,6 +30,7 @@
 #include "ui/fonts.h"
 #include "ui/focus.h"
 #include "ui/glyphs.h"
+#include "ui/logo_embedded/socom_unzipped_logo.h"
 #include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/pages.h"
@@ -66,6 +67,11 @@ namespace
     float g_uiDpi = 1.0f;
     bool g_uiMaximized = false;
     bool g_nativeChrome = false;
+    // Sprint 10: the SOCOM Unzipped logo at the head of the rail (owner: "use the socom unzipped logo from
+    // s2u.scotho.com"). Embedded like the type is, decoded once the window exists, and drawn scaled with
+    // mipmaps so the rail's 204 units read clean at any window size. id 0 = it would not decode: the rail
+    // then draws its head empty rather than crash, and stderr says so.
+    Texture2D g_logo{};
 
     int chromeHitForSystem(int x, int y, int w, int h)
     {
@@ -513,16 +519,11 @@ namespace
         fillRect(ctx, app.frame.rail, theme::alpha(theme::panel, 170));
         fillRect(ctx, Rect{app.frame.rail.right() - 2.0f, app.frame.rail.y, 2.0f, app.frame.rail.h}, theme::line);
 
-        // The wordmark, where it finally has room to be read: the stencil face is only used above 28 px.
-        // Behind it, the blue halo the game puts behind its trident -- drawn, never traced.
+        // Sprint 10: the logo itself at the head of the rail, where the drawn wordmark was -- the site's
+        // artwork, fitted to the rail's width with its own teal splash behind the trident, so the glow
+        // that stood in for it is gone. The head is metrics::railTop tall; the rows start under it.
         const Rect head{app.frame.rail.x, app.frame.rail.y, app.frame.rail.w, metrics::railTop};
-        glow(ctx, Vec2{head.cx(), head.cy() - 4.0f}, 96.0f, theme::blue, 46);
-        const float wordSize = 32.0f;
-        const float wordW = textWidth(ctx, "SOCOM II", wordSize, Face::Display, 0.04f);
-        text(ctx, "SOCOM II", Vec2{head.cx() - wordW * 0.5f, head.y + 16.0f}, wordSize, theme::gold, Face::Display, 0.04f);
-        const float subW = textWidth(ctx, "UNZIPPED", 14.0f, Face::Bold, 0.34f);
-        text(ctx, "UNZIPPED", Vec2{head.cx() - subW * 0.5f, head.y + 54.0f}, 14.0f, theme::goldHi, Face::Bold, 0.34f);
-        fillRect(ctx, Rect{head.cx() - wordW * 0.5f, head.y + 50.0f, wordW, 1.0f}, theme::alpha(theme::gold, 120));
+        drawImage(ctx, g_logo, Rect{head.x + 8.0f, head.y + 8.0f, head.w - 16.0f, head.h - 16.0f}, Rgba{0xFF, 0xFF, 0xFF, 0xFF});
         for (const Node &n : rail)
         {
             const bool current = n.page == app.nav.page;
@@ -539,8 +540,9 @@ namespace
             const float drawn = size;
             text(ctx, pageName(n.page), Vec2{n.r.x + 20.0f, n.r.y + (n.r.h - drawn * 1.2f) * 0.5f}, size,
                  current ? theme::goldHi : (live ? theme::text : theme::caption), Face::Bold, 0.06f);
-            if (hit(ctx, n.r, n.id) && app.graph != nullptr)
-                app.nav.goTo(*app.graph, n.page);
+            // Asked for, not done: the page changes in the next frame's input phase (focus.h, Nav::request).
+            if (hit(ctx, n.r, n.id))
+                app.nav.request(n.page);
         }
     }
 
@@ -630,61 +632,71 @@ namespace
             app.requestLaunch = true;
     }
 
+    // The content panel and its title strip: the page's name, then either the page's one-line subtitle or --
+    // Sprint 10 (owner, 2026-09-20: "the alert overlays the disc area") -- the help for whatever holds the
+    // focus. P4 anchored the help under the focused control, and under DISC IMAGE is the verdict panel;
+    // under PROFILE the ADVANCED disclosure; under DEAD ZONE the mouse-look toggle: four of the six helps
+    // sat on top of the page. The strip is the one place on every page that nothing else is drawn in
+    // (Frame::band; the tests hold every page's layout out of it), so the help lives there, with the "?"
+    // badge that says what it is, and the subtitle steps aside while it shows.
     void drawContentFrame(const ui::Ctx &ctx, ui::App &app)
     {
         using namespace ui;
         const Rect c = app.frame.content;
         panel(ctx, c);
-        const Rect band{c.x + 2.0f, c.y + 2.0f, c.w - 4.0f, 42.0f};
+        const Rect band = app.frame.band;
         fillRect(ctx, band, theme::panelHi);
         fillRect(ctx, Rect{band.x, band.bottom(), band.w, 2.0f}, theme::line);
-        text(ctx, pageName(app.nav.page), Vec2{band.x + 18.0f, band.y + 9.0f}, 22.0f, theme::goldHi, Face::Bold, 0.08f);
-        const float nameW = textWidth(ctx, pageName(app.nav.page), 22.0f, Face::Bold, 0.08f);
-        const char *title = pageTitle(app.nav.page);
-        const char *dash = std::strstr(title, "-- ");
-        const std::string sub = dash != nullptr ? std::string(dash + 3) : std::string(title);
-        const float room = band.w - nameW - 60.0f;
-        text(ctx, ellipsizeEnd(ctx, sub, room, metrics::captionSize).c_str(),
-             Vec2{band.x + 30.0f + nameW, band.y + 13.0f}, metrics::captionSize, theme::caption);
-    }
 
-    // Sprint 9 P4 (owner: "tooltips where the launcher is unclear"). The help for wherever the FOCUS is,
-    // in a small panel anchored under the control -- below it, or above when there is no room below, and
-    // never outside the content panel. Focus rather than hover, because the launcher is driven by a pad
-    // and the mouse leaves entirely in Q3: help tied to a pointer is help most players would never see.
-    // Drawn last, over the page, which is what a tooltip is for.
-    void drawHelp(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
-    {
-        using namespace ui;
+        // The name, its capitals centred in the strip (capInk: what a reader lines up is the ink).
+        const float nameSize = 22.0f;
+        const InkBox nameInk = capInk(ctx, nameSize, Face::Bold);
+        const float mid = band.cy();
+        text(ctx, pageName(app.nav.page), Vec2{band.x + 18.0f, mid - nameInk.height * 0.5f - nameInk.top}, nameSize,
+             theme::goldHi, Face::Bold, 0.08f);
+        const float nameW = textWidth(ctx, pageName(app.nav.page), nameSize, Face::Bold, 0.08f);
+        const float afterName = band.x + 30.0f + nameW;
+
         const std::string help = helpFor(app.nav.focus);
         if (help.empty())
+        {
+            const char *title = pageTitle(app.nav.page);
+            const char *dash = std::strstr(title, "-- ");
+            const std::string sub = dash != nullptr ? std::string(dash + 3) : std::string(title);
+            const float room = band.right() - 30.0f - afterName;
+            const InkBox subInk = capInk(ctx, metrics::captionSize, Face::Body);
+            text(ctx, ellipsizeEnd(ctx, sub, room, metrics::captionSize).c_str(),
+                 Vec2{afterName, mid - subInk.height * 0.5f - subInk.top}, metrics::captionSize, theme::caption);
             return;
-        const Rect anchor = rectOf(nodes, app.nav.focus);
-        if (!drawable(anchor))
-            return;   // the focus is on the rail, or on a control this page does not hold
+        }
 
-        const Rect c = app.frame.content;
-        const float w = std::min(430.0f, c.w - 40.0f);
-        const std::vector<std::string> lines = wrapText(ctx, help, w - 52.0f, metrics::captionSize);
-        const float lineH = metrics::captionSize * 1.32f;
-        const float h = 20.0f + lineH * static_cast<float>(lines.size());
-        float x = std::min(std::max(anchor.x, c.x + 12.0f), std::max(c.x + 12.0f, c.right() - 12.0f - w));
-        float y = anchor.bottom() + 8.0f;
-        if (y + h > c.bottom() - 8.0f)
-            y = std::max(c.y + 8.0f, anchor.y - 8.0f - h);
-        const Rect box{x, y, w, h};
-
-        fillRound(ctx, box, 6.0f, theme::mix(theme::panelHi, theme::ground, 0.10f));
-        strokeRound(ctx, box, 6.0f, theme::alpha(theme::gold, 160), 1.5f);
-        const Vec2 badge{box.x + 21.0f, box.y + h * 0.5f};
+        // The badge, then the help in at most two lines. Every help text is two lines at the design width;
+        // a longer one (or a narrower strip) drops one type size before it is cut, never a third line.
+        const Vec2 badge{afterName + 12.0f, mid};
         fillCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 45));
         strokeCircle(ctx, badge, 9.0f, theme::alpha(theme::gold, 200), 1.5f);
         const InkBox q = capInk(ctx, 14.0f, Face::Bold);
         const float qW = textWidth(ctx, "?", 14.0f, Face::Bold);
         text(ctx, "?", Vec2{badge.x - qW * 0.5f, badge.y - q.height * 0.5f - q.top}, 14.0f, theme::goldHi, Face::Bold);
+
+        const float x = badge.x + 20.0f;
+        const float w = band.right() - 18.0f - x;
+        float size = metrics::captionSize;
+        std::vector<std::string> lines = wrapText(ctx, help, w, size);
+        if (lines.size() > 2u)
+        {
+            size = metrics::captionSize - 2.0f;
+            lines = wrapText(ctx, help, w, size);
+        }
+        if (lines.size() > 2u)
+        {
+            lines.resize(2);
+            lines[1] = ellipsizeEnd(ctx, lines[1] + " ...", w, size);
+        }
+        const float lineH = size * 1.30f;
+        const float top = mid - lineH * static_cast<float>(lines.size()) * 0.5f;
         for (size_t i = 0; i < lines.size(); ++i)
-            text(ctx, lines[i].c_str(), Vec2{box.x + 40.0f, box.y + 10.0f + lineH * static_cast<float>(i)},
-                 metrics::captionSize, theme::text);
+            text(ctx, lines[i].c_str(), Vec2{x, top + lineH * static_cast<float>(i)}, size, theme::text);
     }
 
     void drawPage(const ui::Ctx &ctx, ui::App &app, const std::vector<ui::Node> &nodes)
@@ -931,6 +943,18 @@ int main(int argc, char **argv)
     }
 
     ui::Fonts fonts;   // rasterised per pixel size, rebuilt when the scale changes
+    {
+        Image logo = LoadImageFromMemory(".png", kImage_SocomUnzippedLogo, kImage_SocomUnzippedLogo_len);
+        if (logo.data != nullptr)
+        {
+            g_logo = LoadTextureFromImage(logo);
+            UnloadImage(logo);
+            GenTextureMipmaps(&g_logo);
+            SetTextureFilter(g_logo, TEXTURE_FILTER_TRILINEAR);
+        }
+        if (g_logo.id == 0)
+            std::fprintf(stderr, "[launcher] the embedded logo would not decode; the rail's head stays empty\n");
+    }
 
     ui::App app;
     app.config = config;
@@ -1098,7 +1122,9 @@ int main(int argc, char **argv)
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
 
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
-        app.graph = &graph;
+        // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
+        // the frame's list is built, so the list and the page never disagree (focus.h, Nav::request).
+        nav.applyRequest(graph);
         const std::vector<ui::Node> rail = ui::railLayout(window);
         std::vector<ui::Node> nodes = ui::layoutFor(nav.page, window, app.layout);
         if (graph.find(nav.focus) == nullptr)
@@ -1322,7 +1348,6 @@ int main(int argc, char **argv)
 
         // The focus ring: on the focused control's rect, this frame, whole -- and drawn last, after the
         // pane's wipe, so nothing fades it in on the frame it lands (Sprint 8 owner feedback).
-        drawHelp(ctx, app, nodes);
         ring.update(graph, nav.focus, GetFrameTime());
         if (ring.visible)
             ui::focusRing(ctx, ring.shown);
@@ -1607,6 +1632,8 @@ int main(int argc, char **argv)
         mic->stopMeter();
     game.close();
     fonts.clear();
+    if (g_logo.id != 0)
+        UnloadTexture(g_logo);
     CloseWindow();
     // A request still in flight: the window is gone already, and each join is bounded by its request's timeout.
     reportJob.join();

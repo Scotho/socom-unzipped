@@ -265,6 +265,15 @@ namespace ps2x::iop::detail
         struct StreamSlot
         {
             uint32_t handle = 0u;
+            // `active` is the IRX's "handler activated" bit. The music, round four, second reading (research/36 Q1,
+            // 2026-09-20): when a stream plays out the IRX's per-tick update (FUN_0001107c) deactivates the handler
+            // through FUN_0000d4a4, which leaves the handle word in the slot but CLEARS ITS BIT 31 (sndhand.c:237
+            // `OwnerID &= ~0x80000000`); every handle the EE holds has bit 31 SET (sndhand.c:148, FUN_0000d428), and
+            // snd_SoundIsStillPlaying compares the whole word (sndhand.c:302-310, FUN_0000d6b4) -- so a played-out
+            // stream answers 0 from the next 240 Hz tick, and its slot (Sound == NULL) is free to allocate. Commit
+            // e39a8dc modelled the opposite (a freed slot that kept answering its handle until retaken); with it
+            // the EE's music manager never left its "playing" state and the next stem waited for an enemy-contact
+            // cue. Here a finished stream is simply inactive: 0 on the poll, allocatable, never leaked.
             bool active = false;
             bool paused = false;
             uint32_t sector1 = 0u;
@@ -801,10 +810,11 @@ namespace ps2x::iop::detail
 
                 case kSetSoundParams:
                 {
-                    SoundSlot *slot = findSound(args.u32(0));
+                    const uint32_t handle = args.u32(0);
+                    const uint32_t mask = args.u32(1);
+                    SoundSlot *slot = findSound(handle);
                     if (slot != nullptr)
                     {
-                        const uint32_t mask = args.u32(1);
                         if ((mask & 1u) != 0u)
                         {
                             slot->volume = args.s32(2);
@@ -822,6 +832,32 @@ namespace ps2x::iop::detail
                             slot->pitchBend = args.s16(5);
                         }
                         value = slot->handle;
+                    }
+                    else if (StreamSlot *stream = findStream(handle); stream != nullptr)
+                    {
+                        // research/36 Q6 item 4: the IRX's snd_SetSoundParams (FUN_0000bcbc; playsnd.c:304-306, 340)
+                        // answers the handle for ANY live handler -- a VAG stream too -- or 0. The EE polls its
+                        // POSITIONED entries with 0x21 instead of 0x19 (FUN_00346ea0: flag bit 0 -> SetSoundParams
+                        // with the same completion callback), so a stream that answered 0 here read as dead on its
+                        // first poll. Gated on the host exactly as 0x19 is: a stream the mixer has finished is the
+                        // IRX's deactivated handler, and answers 0 (its slot freed).
+                        bool playing = false;
+                        if (m_host.audioIsPlaying(handle, playing) && !playing)
+                        {
+                            stream->active = false;
+                        }
+                        else
+                        {
+                            if ((mask & 1u) != 0u)
+                            {
+                                stream->volume = args.s32(2);
+                            }
+                            if ((mask & 6u) != 0u)
+                            {
+                                stream->pan = args.s32(3);
+                            }
+                            value = stream->handle;
+                        }
                     }
                     forwardAudio(fno, args);
                     hasResult = true;
@@ -1277,9 +1313,10 @@ namespace ps2x::iop::detail
                         {
                             if (SoundSlot *slot = findSound(handle))
                                 slot->active = false;
-                            // A VAG stream the game let play to its end is never stopped: it polls here and
-                            // reuses the slot once the answer is "done". Free the model's slot with the answer,
-                            // or it leaks for the rest of the run (107 x "no free VAG stream slot", 2026-09-18).
+                            // A VAG stream that played out: the IRX deactivates its handler on the tick the voice's
+                            // envelope reaches zero (FUN_0001107c -> FUN_0000d4a4, bit 31 of the handle word cleared),
+                            // and the whole-word compare in FUN_0000d6b4 fails from then on -- 0, and the slot is
+                            // free (or the model leaks slots: 107 x "no free VAG stream slot", 2026-09-18).
                             if (StreamSlot *stream = findStream(handle))
                                 stream->active = false;
                             return 0u;
@@ -1540,7 +1577,7 @@ namespace ps2x::iop::detail
                     bool playing = false;
                     if (m_host.audioIsPlaying(slot.handle, playing) && !playing)
                     {
-                        slot.active = false;
+                        slot.active = false;   // the IRX's deactivated handler: free, and its handle answers 0
                     }
                 }
             }
@@ -1567,6 +1604,8 @@ namespace ps2x::iop::detail
                 reapEndedStreams(target != nullptr ? target->handle : 0u);
                 if (target == nullptr)
                 {
+                    // The first free slot (the IRX's FUN_000163f4: the first with Sound == NULL, which a played-out
+                    // stream's slot is from the tick its handler was deactivated -- research/36 Q1).
                     for (uint32_t i = 0; i < m_model.streamCount; ++i)
                     {
                         if (!m_model.streams[i].active)

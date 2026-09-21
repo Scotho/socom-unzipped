@@ -1,0 +1,185 @@
+# Sprint 10, the music round four: the MUSIC track alone through the owner's path. From the main menu (reached by
+# pressing CROSS until the logo band matches -- counted presses overshot into NEW GAME on both targets, run 1),
+# AUDIO OPTIONS: the SOUND VOLUME and DIALOG VOLUME rows reached by DOWN until each row's teal highlight shows
+# (until(x0,y0,x1,y1)), 60 LEFTs each (the slider is FINE: ~5 px of a 290 px track per press, ~54 presses from full
+# to zero, measured on PCSX2 run 4 -- the 13 tick marks are decoration; extra presses past zero do nothing), out through
+# each page's RETURN row (TRIANGLE offers to clear the changes),
+# UP to NEW GAME, the first mission, X through the flyover, a walk toward the first enemies with fire on contact --
+# the transitions the owner triggers. Both targets (PCSX2's keys map takes ours' stick names).
+untilref(scripts/parity/ref_main_menu_ours.png)+1.0:CROSS   # through the boot screens until the main menu logo
+stable+1.5:DOWN     # ONLINE
+stable+1.5:DOWN     # LAN
+stable+1.5:DOWN     # OPTIONS
+stable+2.0:CROSS
+stable+2.0:CROSS    # AUDIO OPTIONS (the first row)
+until(45,150,165,166)+1.0:DOWN   # SOUND VOLUME lit (rows 44 px apart on both targets: MUSIC 104, SOUND 148, DIALOG 192)
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+until(45,194,165,210)+1.0:DOWN   # DIALOG VOLUME lit
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+wait+0.4:LEFT
+stable+1.5:NONE     # the sliders as set (the capture's proof)
+until(45,379,165,393)+1.0:DOWN   # the AUDIO OPTIONS page's RETURN row lit (TRIANGLE would ask to CLEAR the changes -- run 5)
+stable+2.0:CROSS    # RETURN applies the sliders -> OPTIONS
+until(45,290,165,302)+1.0:DOWN   # the OPTIONS page's RETURN row lit
+stable+2.0:CROSS    # RETURN -> "save to the memory card?" (YES lit; run 6)
+until(378,264,422,280)+1.0:RIGHT # NO lit: the zeroed sliders must not persist on the card for other captures
+stable+2.0:CROSS    # NO -> the main menu (OPTIONS lit)
+stable+3.0:NONE     # the menu settles after the prompt (run 7: three UPs pressed into the fade were lost)
+untilref(scripts/parity/ref_main_menu_ours.png,76,86,55,105,12,10)+1.5:UP   # UP until the mid row reads NEW GAME (per-target ref: .pcsx2.png sibling)
+stable+2.0:CROSS    # NEW GAME
+next+2.0:CROSS      # select rank
+next+2.0:CROSS      # controller presets (1)
+next+2.0:CROSS      # controller presets (2)
+next+2.0:CROSS      # save prompt / cinematic
+next+2.0:CROSS      # cinematic -> skip
+next+2.0:DOWN       # briefing: OVERVIEW -> ...
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN
+wait+1.0:DOWN       # DEPLOY
+wait+2.0:CROSS      # deploy -> load mission
+next+10.0:NONE      # mission
+untilref(scripts/parity/ref_hud_ours.png,92,112,0,40,40,20,lit)+1.0:CROSS   # through the flyover until the HUD shows
+wait+8.0:NONE       # standing still after the flyover (the pop-up may arrive; it is dismissed below)
+ifpopup+1.0:CROSS
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W          # walk forward
+wait+4.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W
+wait+4.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1         # fire: contact
+wait+6.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+6.0:W
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+hold+0.3:R1
+wait+8.0:NONE
+ifpopup+1.0:CROSS
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE
+wait+8.0:NONE

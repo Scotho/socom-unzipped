@@ -34,6 +34,17 @@ launcher, a README and the licences, with empty `cards/` and `logs/`. In that fo
 `socom_unzipped_launcher.exe`**, point it at your SOCOM II ISO (NTSC r0001), pick video and controller settings, Launch.
 Nothing is installed; delete the folder to uninstall.
 
+## Publishing anything: the leak check
+
+The repository is public. `python -m tools_py.release.leakcheck <mode>` is the gate (Sprint 10 hardening; the design is
+Sprint 11 Goal 9): `tree` every tracked file, `staged` the index (the pre-commit hook), `ignored` proves the paths that
+hold real secrets (`vm/`, `logs/`, `game/`, `server/config/simulated.db`, ...) are ignored, untracked and never
+committed, `metadata` the commit identities, `history [range]` every added line of every commit (the pre-push hook),
+`artifact <dir>` an unpacked release, `all` the four repository modes. Exit 0 clean, 1 findings, **2 did not run** (a
+shallow clone, a missing target, a missed planted control) -- a caller never reads 2 as a pass. Output is masked;
+`--reveal` for the terminal, `--json` for a report. Decisions live in `tools_py/release/leak_allow.txt` with reasons;
+owner-specific literals in the git-ignored `leak_extra.txt`. Install the hooks with `bash scripts/install_hooks.sh`.
+
 ## Build and run (developer machine)
 ```
 ./build.sh recomp      # regenerate ELF, normalize the function map, run ps2_recomp (~10 s)
@@ -52,8 +63,13 @@ PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest threa
 ```
 ### Build, run, verify — a newcomer's first hour
 
+**Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
+under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
+builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
+verify. That is what the `windows` and `linux` workflows do. **With a disc,** the five commands below.
+
 Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
-(`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`) and the disc image at
+(`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
 `game/SOCOM II - U.S. Navy SEALs (USA).iso`. The expected lines are the ones to look for; the counts are as of
 2026-09-17 and only ever grow.
 

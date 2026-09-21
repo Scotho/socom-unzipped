@@ -9,6 +9,7 @@ import unittest
 
 from tools_py import portable_audit
 from tools_py.tests.binfmt_fixtures import tiny_pe
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "make_portable.sh")
@@ -36,10 +37,10 @@ def fake_dist(tmp, without=()):
     return dist
 
 
-@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")
+@unittest.skipUnless(BASH and shutil.which("powershell"), "bash and PowerShell only")
 class MakePortableTest(unittest.TestCase):
     def _run(self, dist, *args):
-        return subprocess.run(["bash", SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT,
+        return subprocess.run([BASH, SCRIPT] + list(args), capture_output=True, text=True, cwd=ROOT,
                               env={**os.environ, "DIST": dist})
 
     def test_folder_has_the_game_the_launcher_the_closure_the_readme_and_the_licences(self):
@@ -49,8 +50,8 @@ class MakePortableTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
             pkg = os.path.join(out, "socom2")
             for f in ("socom2.exe", "socom2_game.elf", "socom_unzipped_launcher.exe", "avcodec-61.dll", "zlib1.dll",
-                      "libc++.dll", "README.txt", os.path.join("LICENSES", "PS2Recomp-GPL-3.0.txt"),
-                      os.path.join("LICENSES", "README.txt")):
+                      "libc++.dll", "README.txt", "THIRD_PARTY_NOTICES.md", os.path.join("LICENSES", "GPL-3.0-only.txt"),
+                      os.path.join("LICENSES", "LGPL-2.1-or-later.txt"), os.path.join("LICENSES", "OFL-1.1.txt")):
                 self.assertTrue(os.path.isfile(os.path.join(pkg, f)), f)
             for d in ("cards", "logs"):
                 self.assertTrue(os.path.isdir(os.path.join(pkg, d)), d)
@@ -110,7 +111,7 @@ class ReleaseConfigurationTest(unittest.TestCase):
     """Sprint 9 P7. R151 was decided on a measurement -- `-O2` made the generated code's exe 9.9% smaller
     and the ZIP 4.6 MB LARGER, so the release keeps `-O1` -- and `docs/KNOWN.md` records it as settled.
     The ruling was never applied to the script: `build.sh`'s release default was introduced as `-O2` in
-    443238e and never changed, so every `./build.sh release` since has built the configuration R151
+    285382e and never changed, so every `./build.sh release` since has built the configuration R151
     rejected. Found when the playtest candidate came out 62.8 MB against Goal 2's recorded 55.7 MB.
     A ruling that is written down but not wired to anything is not a decision, it is a note."""
 

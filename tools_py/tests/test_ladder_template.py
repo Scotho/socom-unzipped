@@ -15,15 +15,10 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from tools_py.tests.shell import BASH
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 TEMPLATE = os.path.join(ROOT, "scripts", "parity", "ladder_frostfire.sh")
-BASH = shutil.which("bash")
-if os.name == "nt":
-    for cand in (r"C:\Program Files\Git\bin\bash.exe", r"C:\Program Files\Git\usr\bin\bash.exe"):
-        if os.path.exists(cand):
-            BASH = cand
-            break
 
 
 def fwd(p):

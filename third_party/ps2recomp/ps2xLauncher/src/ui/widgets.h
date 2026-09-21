@@ -56,6 +56,9 @@ namespace ui
     void fillQuad(const Ctx &ctx, Vec2 tl, Vec2 bl, Vec2 br, Vec2 tr, Rgba color);
     // A thick polyline through `count` points: the pad's outline.
     void strokePath(const Ctx &ctx, const Vec2 *points, int count, Rgba color, float thick, bool closed);
+    // Sprint 10: a texture, whole, fitted inside `r` keeping its own aspect and centred -- the logo at the
+    // head of the rail. Design units like everything else; a texture with no size draws nothing.
+    void drawImage(const Ctx &ctx, const Texture2D &tex, Rect r, Rgba tint);
 
     float textWidth(const Ctx &ctx, const char *s, float size, Face face = Face::Body, float tracking = 0.0f);
     void text(const Ctx &ctx, const char *s, Vec2 at, float size, Rgba color, Face face = Face::Body, float tracking = 0.0f);

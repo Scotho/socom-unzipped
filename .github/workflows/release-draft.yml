@@ -1,0 +1,113 @@
+# Sprint 10 H8 (Sprint 11 Goal 0's release-draft workflow; docs/GIT_STRATEGY.md §5). Two halves, and neither publishes:
+#
+#   1. A `v*` tag pushed by the owner -> the leak check over the tagged tree and its history, then a DRAFT release
+#      whose notes are the release checklist. No archive is built here: the playable archives contain code recompiled
+#      from the owner's disc and are built on the owner's machine (`./build.sh release`, `scripts/make_portable.sh
+#      --release`), gated 3/3 on that exact exe, and attached to the draft by hand.
+#   2. `workflow_dispatch` with the tag -> the assets attached to the draft are downloaded, SHA256SUMS is verified,
+#      each archive is unpacked and put through the import audit and the leak check, and the verdict is appended to
+#      the draft's notes. The owner reads the draft and publishes -- that click is theirs, every time.
+#
+# This is the only workflow with `contents: write`, and it only ever creates or edits a DRAFT.
+name: release-draft
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The draft's tag (v0.10.0); its attached archives are verified"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  draft:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: The leak check over the tagged tree, its history, the identities and the ignored paths
+        run: python -m tools_py.release.leakcheck all
+      - name: Create the DRAFT release with the checklist as its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "a release for $TAG already exists; nothing created"; exit 0
+          fi
+          sed "s/{{TAG}}/$TAG/g; s/{{SHA}}/$GITHUB_SHA/g" .github/release-notes-template.md > notes.md
+          gh release create "$TAG" --draft --verify-tag --title "SOCOM Unzipped $TAG" --notes-file notes.md
+          echo "draft created for $TAG -- attach the archives and SHA256SUMS, then run this workflow by hand to verify them"
+
+  verify:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+      - name: Download the draft's assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          gh release download "$TAG" --dir assets
+          ls -la assets
+      - name: SHA256SUMS, the import audit and the leak check, per archive
+        id: verify
+        run: |
+          set -uo pipefail
+          status=0
+          {
+            echo "## Verification of the attached archives ($(date -u +%Y-%m-%dT%H:%MZ), run ${{ github.run_id }})"
+            echo
+            if python tools_py/portable_audit.py verify assets; then echo "- SHA256SUMS: every listed archive matches"; else echo "- SHA256SUMS: **MISMATCH OR MISSING**"; status=1; fi
+            for z in assets/*.zip; do
+              [ -f "$z" ] || continue
+              rm -rf unpack && mkdir unpack && python -c "import zipfile,sys; zipfile.ZipFile(sys.argv[1]).extractall('unpack')" "$z"
+              folder=$(find unpack -mindepth 1 -maxdepth 1 -type d | head -1)
+              if python tools_py/portable_audit.py audit "$folder" --system Windows; then echo "- $(basename "$z"): import closure complete"; else echo "- $(basename "$z"): **import audit FAILED**"; status=1; fi
+              if python -m tools_py.release.leakcheck artifact "$folder"; then echo "- $(basename "$z"): leak check clean"; else echo "- $(basename "$z"): **leak check exit $?** (1 findings, 2 did not run)"; status=1; fi
+              [ -f "$folder/THIRD_PARTY_NOTICES.md" ] && echo "- $(basename "$z"): THIRD_PARTY_NOTICES.md and LICENSES/ present" || { echo "- $(basename "$z"): **no THIRD_PARTY_NOTICES.md**"; status=1; }
+            done
+            for t in assets/*.tar.gz; do
+              [ -f "$t" ] || continue
+              rm -rf unpack && mkdir unpack && tar -C unpack -xzf "$t"
+              folder=$(find unpack -mindepth 1 -maxdepth 1 -type d | head -1)
+              if python tools_py/portable_audit.py audit "$folder" --system Linux; then echo "- $(basename "$t"): import closure complete"; else echo "- $(basename "$t"): **import audit FAILED**"; status=1; fi
+              if python -m tools_py.release.leakcheck artifact "$folder"; then echo "- $(basename "$t"): leak check clean"; else echo "- $(basename "$t"): **leak check exit $?**"; status=1; fi
+            done
+            if [ "$status" = 0 ]; then echo; echo "**Verified. Publishing is the owner's click.**"; else echo; echo "**NOT verified -- do not publish.**"; fi
+          } | tee verdict.md
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+      - name: Append the verdict to the draft's notes
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body --jq .body > notes.md
+          printf '\n\n' >> notes.md
+          cat verdict.md >> notes.md
+          gh release edit "$TAG" --draft --notes-file notes.md
+      - name: Fail the job if anything above did
+        run: test "${{ steps.verify.outputs.status }}" = "0"
