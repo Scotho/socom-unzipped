@@ -1,4 +1,5 @@
 #include "MiniTest.h"
+#include "ps2x/knobs.h"
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
@@ -33,6 +34,7 @@ void register_zip_store_tests();
 void register_diagnostics_tests();
 void register_bug_report_tests();
 void register_mapping_tests();
+void register_knobs_tests();
 void reset_ps2_test_function_table();
 
 namespace
@@ -54,6 +56,7 @@ int main()
 {
     // Unbuffered stdout: a crash mid-suite must leave the last [Run] line in a redirected log (2026-09-17).
     std::setvbuf(stdout, nullptr, _IONBF, 0);
+    ps2x::knobs::setDevMode(true);   // the suite selects reference paths through Dev knobs (below) and tests set more
     // These tests cover the reference implementations, but the runtime defaults to the faster
     // paths this fork added for the game. Each is chosen per process from the environment and
     // read once, before any test runs, so select the reference ones here. An A/B run can
@@ -108,6 +111,7 @@ int main()
     register_diagnostics_tests();
     register_bug_report_tests();
     register_mapping_tests();
+    register_knobs_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

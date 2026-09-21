@@ -1,0 +1,178 @@
+#include "ps2x/knobs.h"
+
+#include <atomic>
+#include <cstdlib>
+#include <cstring>
+
+namespace ps2x
+{
+    namespace knobs
+    {
+        namespace
+        {
+            std::atomic<int> g_dev{-1};           // -1: not decided yet, PS2X_DEV decides on first use
+            std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on
+
+            std::string printable(const Entry &e, const std::string &value)
+            {
+                std::string v = value;
+                if (e.kind == Kind::Path)
+                {
+                    const size_t slash = v.find_last_of("/\\");
+                    if (slash != std::string::npos && slash + 1 < v.size())
+                        v = v.substr(slash + 1);
+                }
+                if (v.size() > 40)
+                    v = v.substr(0, 40) + "...";
+                if (v.find(' ') != std::string::npos)
+                    v = "\"" + v + "\"";
+                return v;
+            }
+        }
+
+        const Entry *find(const char *name)
+        {
+            if (name == nullptr)
+                return nullptr;
+            size_t lo = 0, hi = kTableSize;
+            while (lo < hi)
+            {
+                const size_t mid = lo + (hi - lo) / 2;
+                const int c = std::strcmp(kTable[mid].name, name);
+                if (c == 0)
+                    return &kTable[mid];
+                if (c < 0)
+                    lo = mid + 1;
+                else
+                    hi = mid;
+            }
+            return nullptr;
+        }
+
+        const char *className(Class cls)
+        {
+            switch (cls)
+            {
+            case Class::Shipping: return "Shipping";
+            case Class::Dev: return "Dev";
+            case Class::Test: return "Test";
+            case Class::Switch: return "Switch";
+            }
+            return "?";
+        }
+
+        const char *kindName(Kind kind)
+        {
+            switch (kind)
+            {
+            case Kind::Flag: return "Flag";
+            case Kind::Presence: return "Presence";
+            case Kind::Int: return "Int";
+            case Kind::Float: return "Float";
+            case Kind::Text: return "Text";
+            case Kind::Path: return "Path";
+            case Kind::Spec: return "Spec";
+            }
+            return "?";
+        }
+
+        bool flagValue(const char *value, bool dflt)
+        {
+            if (value == nullptr || *value == 0)
+                return dflt;
+            return !(std::strcmp(value, "0") == 0 || std::strcmp(value, "false") == 0 || std::strcmp(value, "off") == 0);
+        }
+
+        bool devMode()
+        {
+            int v = g_dev.load(std::memory_order_acquire);
+            if (v < 0)
+            {
+                // The one raw read of a PS2X_* name outside this function's callers: the switch cannot be read
+                // through the accessor it controls. tools_py/knobs.py allows getenv("PS2X_ in this file only.
+                v = flagValue(std::getenv("PS2X_DEV"), false) ? 1 : 0;
+                g_dev.store(v, std::memory_order_release);
+            }
+            return v != 0;
+        }
+
+        void setDevMode(bool on) { g_dev.store(on ? 1 : 0, std::memory_order_release); }
+        void resetDevModeForTests() { g_dev.store(-1, std::memory_order_release); }
+        bool enforcement() { return g_enforce.load(std::memory_order_acquire); }
+        void setEnforcement(bool on) { g_enforce.store(on, std::memory_order_release); }
+
+        bool consumeDevFlag(int &argc, char **argv)
+        {
+            bool found = false;
+            int out = 0;
+            for (int i = 0; i < argc; ++i)
+            {
+                if (i > 0 && argv[i] != nullptr && std::strcmp(argv[i], "--dev") == 0)
+                {
+                    found = true;
+                    continue;
+                }
+                argv[out++] = argv[i];
+            }
+            if (found)
+                argv[out] = nullptr;   // out < argc, and argv[argc] was already null
+            argc = out;
+            return found;
+        }
+
+        std::string describe(const Pairs &set, bool honourDev)
+        {
+            std::string shown, ignored;
+            for (const auto &pair : set)
+            {
+                const Entry *e = find(pair.first.c_str());
+                if (e == nullptr || e->cls == Class::Test || pair.second.empty())
+                    continue;
+                if (e->cls == Class::Dev && !honourDev)
+                {
+                    ignored += " " + pair.first;
+                    continue;
+                }
+                if (e->cls != Class::Dev && pair.second == e->dflt)
+                    continue;
+                shown += " " + pair.first + "=" + printable(*e, pair.second);
+            }
+            std::string out = std::string("[knobs] dev=") + (honourDev ? "1" : "0") + " set:" + (shown.empty() ? std::string(" none") : shown);
+            if (!ignored.empty())
+                out += " | ignored without --dev:" + ignored;
+            return out;
+        }
+
+        std::string startupLine()
+        {
+            Pairs set;
+            for (const Entry &e : kTable)
+            {
+                const char *v = std::getenv(e.name);
+                if (v != nullptr && *v != 0)
+                    set.emplace_back(e.name, v);
+            }
+            return describe(set, devMode() || !enforcement());
+        }
+    }
+
+    const char *knob(const char *name)
+    {
+        const char *v = std::getenv(name);
+        if (!knobs::enforcement())
+            return v;
+        if (v == nullptr || *v == 0)
+            return nullptr;               // the common case costs what it cost before: one getenv
+        const knobs::Entry *e = knobs::find(name);
+        if (e == nullptr)
+            return nullptr;               // test_knobs_registry keeps this unreachable for a literal name
+        if (e->cls == knobs::Class::Dev && !knobs::devMode())
+            return nullptr;
+        return v;
+    }
+
+    bool knobOn(const char *name, bool dflt)
+    {
+        return knobs::flagValue(knob(name), dflt);
+    }
+}

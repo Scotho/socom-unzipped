@@ -73,6 +73,7 @@ add_library(ps2_test_lib STATIC
     src/diagnostics_tests.cpp
     src/bug_report_tests.cpp
     src/mapping_tests.cpp
+    src/knobs_tests.cpp
 )
 
 target_include_directories(ps2_test_lib PRIVATE
