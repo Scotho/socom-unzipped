@@ -287,15 +287,18 @@ def needs_cross(im):
 
 
 
-def ref_for_target(ref_path, target):
+def ref_for_target(ref_path, target, root=None):
     """The reference a step script names, or its per-target sibling `<stem>.<target>.png` when one exists
     beside it (`ref_main_menu_ours.png` -> `ref_main_menu_ours.pcsx2.png` on the console). One script drives
     both targets; a band that separates the lit menu row (the mid row, 76..86 x 55..105) sits at ~10 between
     the two machines' renderings of the same screen and at ~0.5 within one, so the console needs its own frame
-    (music round four, 2026-09-20: the same-row test read 9.9 across and 18.6+ to the next row)."""
+    (music round four, 2026-09-20: the same-row test read 9.9 across and 18.6+ to the next row).
+    `root` resolves a relative `ref_path` for the existence test (gate.script_refs pins the file the drive
+    would actually read, from the repo root rather than the working directory)."""
     stem, ext = os.path.splitext(ref_path)
     sibling = f"{stem}.{target}{ext}"
-    return sibling if target and os.path.exists(sibling) else ref_path
+    probe = os.path.join(root, sibling) if root and not os.path.isabs(sibling) else sibling
+    return sibling if target and os.path.exists(probe) else ref_path
 
 def hud_match(im, ref_thumb, box, thresh, lit):
     """untilref's per-frame test -> (matched, distance, band_fraction or None).
