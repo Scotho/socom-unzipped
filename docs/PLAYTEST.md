@@ -5,12 +5,23 @@ the next and the things you have complained about come while your ears are fresh
 "fine" is an answer. Anything not on this page that annoys you is the most useful note of all.
 
 ```
-build:    2026-09-20, release at -O1 (R151)   tag: playtest-1   commit: the commit this tag sits on (git log -1 playtest-1)
-archive:  dist-release/portable/socom2-portable.zip  55,829,577 bytes
-          sha256: f8f8149cb247f328651a6f5664c5ea889f6588a8de14b91a7135430f0a68a041
-gate:     s9_p7_playtest_gate -- 3/3 (title, transition, mission) on the exe INSIDE that archive:
-          socom2.exe 226,849,280 bytes, sha256 a43bf45c321dbdefbfa91845e87fc80074aace6661a83475189c9470486523c0
+build:    2026-09-21 (evening), release at -O1 (R151)   commit: acbc693 (v0.9.0-239-gacbc693, sprint-10; untagged)
+archive:  dist-release/portable/socom2-portable.zip  56,581,263 bytes
+          sha256: c3058d286dd8bb299b2914faceae730128664f7bf3633aad93ffeaa4d7c05003
+gate:     s10_playtest2_gate -- 3/3 (title, transition, mission) on the exe INSIDE that archive:
+          socom2.exe 227,390,464 bytes, sha256 098cf126758b7dbdda175536d9dff34b5f43be594a56c343fd2d4caa2ff54997
+          (the archive also passed the release leak check: 0 hits over the staged folder)
+
+the previous sitting's build, for the record:
+          2026-09-20, tag playtest-1, zip 55,829,577 bytes sha256 f8f8149c..., gate s9_p7_playtest_gate 3/3
 ```
+
+**What is in this build that was not in `playtest-1`,** in the order you will meet it: the launcher's BUTTONS section
+(rebind on the pad), PLAYER NAME and a masked PASSWORD under PROFILE, menu sounds decoded from your own disc, the
+window switch on the pad's guide button, the game window renamed with the launcher's icon; the mouse options are gone
+and the keyboard is menus and typing only (playing needs a pad); and, for the ears, the stereo music fix (every stem
+had been playing its two channels from different places in the song), the briefing/intro movie's PCM fix, the mission
+ambience bed and the centred mix. Step 6 is the one to protect: it is the first listen on all of that.
 
 **Ready.** The block above is filled in from the run that built it, not from the directory (KNOWN §4: a failed packaging leaves the previous archive in place). If you want to play before that, play `dist/` and say which commit
 (`git log -1 --oneline`); the notes still count, but step 1 and step 9 only mean something on the archive.
@@ -21,6 +32,15 @@ gate:     s9_p7_playtest_gate -- 3/3 (title, transition, mission) on the exe INS
 - Unzip the archive to a NEW folder, not over an old one. Play from there -- it is what a stranger gets.
 
 ## The sitting
+
+0. **The new checks from 2026-09-21, folded in where they fit** -- do them as you reach them, not as a block:
+   at **step 3**, CONTROLLER > BUTTONS: rebind one face button (press the row, then the button; a countdown runs, hold
+   B or Escape cancels), take SWAP when it says the button is taken, then RESTORE DEFAULTS and confirm; AUDIO >
+   LAUNCHER: the menu sounds and their toggle. At **step 7**, press the pad's XBOX/guide button while the game runs --
+   the launcher should come forward, and again send you back (if nothing happens, bind SWITCH to another button on the
+   BUTTONS page and say so; on a Sony pad on Sony's own driver the PS button is the one measurement the machine could
+   not make). At **step 11**, type your persona name and password into ONLINE > PROFILE first: both game keyboards
+   should open already filled and you only press ENTER. Say which of these did not happen.
 
 1. **The download is whole** *(HUMAN_TASKS: the release download, c)*. `certutil -hashfile socom2-portable.zip SHA256`
    and compare with `SHA256SUMS`. Did Windows SmartScreen or your antivirus complain when you ran it? What did it say?
