@@ -98,25 +98,31 @@ private:
 // Sprint 7 Task 1b (audit 2026-09-17 section 2.2 F3, gap G7): the byte side of the same queue.
 // GsFrameBackpressure bounds how many guest FRAMES may be recorded ahead of the replay, but once
 // the consumer latches stalled (a title-bar drag holds the GL thread in the modal size-move loop
-// for as long as the mouse is down) frames stop waiting and the pending command buffer grows for
-// the whole drag: KNOWN section 4's ~15 GB working set. GsPendingCap bounds it in bytes instead.
+// for as long as the mouse is down) frames stop waiting and the pending command buffer used to
+// grow for the whole drag (the ~15 GB working set KNOWN section 4 recorded before Sprint 7).
+// GsPendingCap bounds it in bytes instead.
 //
 // Policy: while the consumer is latched, a command that carries no state (draw work: it will be
 // re-submitted next guest frame) is dropped once the pending bytes reach the cap; a command that
 // carries state (an upload, a transfer, a CLUT load, a VRAM write, anything the replay cannot
-// reconstruct) is always admitted, so no drag can corrupt what the game draws after it. Nothing is
-// ever dropped while the consumer is live. capBytes == 0 is unbounded (the pre-1b behaviour);
+// reconstruct from the queue alone) is never dropped -- from Sprint 10 Goal 11 (Q6) on it is
+// ABSORBED past the cap instead of pended: GsStallCoalescer (gs_stall_coalescer.h) remembers where
+// it wrote and re-anchors the replay from the game thread's VRAM when the latch clears, so the
+// queue stays at the cap plus one command for as long as the stall lasts and no drag can corrupt
+// what the game draws after it. Nothing is ever dropped or absorbed while the consumer is live.
+// capBytes == 0 is unbounded (the pre-1b behaviour, and the coalescer never engages);
 // PS2X_GS_PENDING_CAP_MB sets it, default 64 MB.
 //
 // The counters are atomic: admit() runs on the recorder's thread (under the queue lock) and the
 // stats line reads them on the render thread.
-// Sprint 8 Goal 5, ruling R124: the soft cap above drops only state-free draw work, so a replay
-// that stays latched for minutes still grows without bound on the state-carrying commands it may
-// never drop (dropping one would corrupt what the game draws after the stall: KNOWN's
-// "GsPendingCap::admit keeps every state-carrying command unbounded", which ends in
-// std::bad_alloc). The answer is not a second kind of drop but a HARD ceiling the RECORDER waits
-// at: above hardCapBytes the recorder blocks until the replay drains the queue, whatever the
-// latch says. mustWait() is the pure predicate; the waiting itself lives in GSGlBackend::record,
+// Sprint 8 Goal 5, ruling R124: before Q6 the soft cap dropped only state-free draw work, so a
+// replay that stayed latched for minutes still grew without bound on the state-carrying commands
+// it could never drop (KNOWN's "GsPendingCap::admit keeps every state-carrying command unbounded",
+// which ended in std::bad_alloc on the 8 GB VM). R124's answer was a HARD ceiling the RECORDER
+// waits at: above hardCapBytes the recorder blocks until the replay drains the queue, whatever the
+// latch says. It stays as the last line -- for a replay that is merely slow (unlatched, so the
+// coalescer never engages) and for PS2X_GS_PENDING_CAP_MB=0 -- but a latched stall no longer
+// reaches it. mustWait() is the pure predicate; the waiting itself lives in GSGlBackend::record,
 // which owns the queue mutex and the condition variable the replay notifies.
 // hardCapBytes == 0 is no ceiling; PS2X_GS_PENDING_HARD_CAP_MB sets it, default 1024 MB.
 class GsPendingCap
@@ -127,9 +133,27 @@ public:
 
     explicit GsPendingCap(uint64_t capBytes, uint64_t hardCapBytes = 0u);
 
-    // Returns false when the command must be dropped: only ever when the consumer is latched, the
-    // command carries no state, and the pending bytes are already at the cap.
+    // Returns false when the command must NOT be pended. Before Q6 that was only ever draw work
+    // at the cap while the consumer is latched (dropped; the next guest frame records it again).
+    // Q6: at the cap while latched a state-carrying command is refused too -- the caller ABSORBS
+    // it (GsStallCoalescer: the game VRAM already holds its effect) -- and from that first refusal
+    // the cap is "absorbing": everything is refused until the latch clears, whatever the byte
+    // count. (The replay's swap empties this accounting before the replay clears the latch, and a
+    // state command admitted in that window would go into the queue AHEAD of the older writes
+    // the re-anchor carries.) The caller asks reanchorDue() before admit(): true means the latch
+    // has cleared with an absorption open, so it pushes the re-anchor and calls endAbsorbing()
+    // first. Nothing is ever refused while the consumer is live and nothing is absorbing.
     bool admit(bool latched, bool carriesState, uint64_t bytes);
+    // Token-waited commands (Reset, the blocking Readback): accounted, never refused.
+    void admitWaited(uint64_t bytes);
+    // Q6: true iff a cap is configured and the pending bytes have reached it.
+    bool atCap() const;
+    bool absorbing() const;
+    bool reanchorDue(bool latched) const { return absorbing() && !latched; }
+    void endAbsorbing();
+    // Q6: something the caller discarded on its own (a Present while absorbing): counted with the
+    // drops, which is what it is.
+    void noteDropped(uint64_t bytes);
     // The replay took `bytes` of the pending buffer (call it with the buffer's size at the swap).
     void onReplayed(uint64_t bytes);
 
@@ -145,6 +169,9 @@ public:
     uint64_t droppedCommands() const;
     uint64_t droppedBytes() const;
     uint64_t hardWaits() const;
+    uint64_t absorptions() const;      // Q6: times the cap turned absorbing (one per latched stall that reached it)
+    uint64_t absorbedCommands() const; // Q6: state-carrying commands refused for the coalescer
+    uint64_t absorbedBytes() const;
 
     // nullptr (unset) or an unparsable value -> fallbackMb; "0" -> 0 (unbounded); "<n>" -> n.
     static uint64_t parseCapMb(const char *value, uint64_t fallbackMb = kDefaultCapMb);
@@ -156,4 +183,9 @@ private:
     std::atomic<uint64_t> m_droppedCommands{0};
     std::atomic<uint64_t> m_droppedBytes{0};
     std::atomic<uint64_t> m_hardWaits{0};
+    // Q6. Written and read on the recorder's thread under the queue lock; atomic for the stats line.
+    std::atomic<bool> m_absorbing{false};
+    std::atomic<uint64_t> m_absorptions{0};
+    std::atomic<uint64_t> m_absorbedCommands{0};
+    std::atomic<uint64_t> m_absorbedBytes{0};
 };

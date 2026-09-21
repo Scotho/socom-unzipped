@@ -1,5 +1,7 @@
 #include "MiniTest.h"
 #include "runtime/gs/gs_frame_backpressure.h"
+#include "runtime/gs/gs_stall_coalescer.h"
+#include "runtime/gs/gs_gl_backend.h"
 #include "runtime/socom2_freeze_fields.h"
 #include "runtime/gs/gs_frontend.h"
 #include "runtime/gs/gs_cpu_backend.h"
@@ -12,9 +14,11 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <random>
 #include <string>
 #include <thread>
 #include <vector>
@@ -419,20 +423,338 @@ void register_gs_frame_backpressure_tests()
             t.IsTrue(msSince(t0) < 150, "unbounded: 1000 frames record without blocking");
         });
 
-        tc.Run("a latched queue drops guest frames and keeps uploads", [](TestCase &t)
+        // Sprint 10 Goal 11 (Q6). This case used to be "a latched queue drops guest frames and keeps
+        // uploads" and asserted `cap.bytes() <= 1024 + 200 * 64` -- "only uploads may exceed the cap":
+        // it codified the unbounded state stream (KNOWN: "once the replay latches stalled,
+        // GsPendingCap::admit keeps every state-carrying command unbounded"). Now it asserts the bound.
+        tc.Run("a latched queue drops guest frames and, past the cap, refuses uploads for the coalescer instead of pending them (Q6)", [](TestCase &t)
         {
             GsPendingCap cap(1024u);            // 1 KiB, so the cap is reachable in a test
             uint64_t admittedDraws = 0, admittedUploads = 0;
             for (int frame = 0; frame < 200; ++frame)
             {
                 if (cap.admit(true, false, 64u)) ++admittedDraws;      // a guest frame's draw work
-                if (cap.admit(true, true, 64u))  ++admittedUploads;    // an upload: state, never dropped
+                if (cap.admit(true, true, 64u))  ++admittedUploads;    // an upload: state -- absorbed past the cap, never pended
             }
-            t.Equals(static_cast<int>(admittedUploads), 200, "every upload is admitted while latched");
-            t.IsTrue(cap.bytes() <= 1024u + 200u * 64u, "only uploads may exceed the cap");
+            t.IsTrue(cap.bytes() <= 1024u + 64u, "the queue stays at the cap plus one command, was " + std::to_string(cap.bytes()));
+            t.IsTrue(admittedUploads > 0u && admittedUploads < 200u,
+                     "uploads are admitted up to the cap and refused past it (" + std::to_string(admittedUploads) + " admitted)");
             t.IsTrue(admittedDraws < 200u, "draws stop being admitted at the cap (" + std::to_string(admittedDraws) + ")");
             t.IsTrue(cap.droppedCommands() > 0u, "the drops are counted");
-            t.Equals(static_cast<int>(cap.droppedBytes()), static_cast<int>((200u - admittedDraws) * 64u), "the dropped bytes are counted");
+            t.Equals(static_cast<int>(cap.droppedBytes()), static_cast<int>((200u - admittedDraws) * 64u), "the dropped bytes are counted, refused uploads are not drops");
+        });
+
+        tc.Run("Q6: across N frames of a latched stall the pending bytes stay under the cap plus one command", [](TestCase &t)
+        {
+            // The title movie's frame as the recorder sees it (research/16 section 9: ~1040 16x16
+            // CT32 tiles of 1 KB, each a BeginTransfer and an Upload), two palette snapshots, ~500
+            // draws and one Present; 600 of them = 10 s of a hung GL thread, which is what killed
+            // the 8 GB VM (s8_vm_title_audio3, std::bad_alloc). The command record's size only
+            // scales how many frames reach the cap; it is GSGlBackend's own Cmd here.
+            const uint64_t cmd = GSGlBackend::kCommandBytes;
+            const uint64_t capBytes = 64ull * 1024u * 1024u;
+            GsPendingCap cap(capBytes);
+            uint64_t peak = 0u, stateBytesOffered = 0u;
+            for (int frame = 0; frame < 600; ++frame)
+            {
+                for (int tile = 0; tile < 1040; ++tile)
+                {
+                    cap.admit(true, true, cmd);           // BeginTransfer
+                    cap.admit(true, true, cmd + 1024u);   // Upload, one tile
+                    stateBytesOffered += 2u * cmd + 1024u;
+                }
+                for (int c = 0; c < 2; ++c)
+                {
+                    cap.admit(true, true, cmd + 2048u);   // ClutLoad
+                    stateBytesOffered += cmd + 2048u;
+                }
+                for (int d = 0; d < 500; ++d)
+                    cap.admit(true, false, cmd);          // Submit: dropped at the cap since Sprint 7
+                cap.admit(true, true, cmd);               // Present (postAndGetToken accounts it)
+                stateBytesOffered += cmd;
+                peak = std::max(peak, cap.bytes());
+            }
+            const uint64_t bound = capBytes + cmd + 2048u;
+            t.IsTrue(peak <= bound, "peak pending bytes over 600 stalled frames must stay under the cap plus one command: peak " +
+                                        std::to_string(peak) + " > " + std::to_string(bound) + " (the state stream offered " +
+                                        std::to_string(stateBytesOffered) + " bytes)");
+            t.Equals(cap.absorptions(), uint64_t{1}, "one stall, one absorption");
+            t.IsTrue(cap.absorbedBytes() + cap.bytes() >= stateBytesOffered - cmd - 2048u,
+                     "everything the state stream offered past the cap was refused for the coalescer, not lost");
+            std::printf("\n      [q6] a command record is %zu bytes; one title frame offers %llu bytes of state, 600 of them %llu",
+                        GSGlBackend::kCommandBytes, static_cast<unsigned long long>(stateBytesOffered / 600u),
+                        static_cast<unsigned long long>(stateBytesOffered));
+        });
+
+        tc.Run("Q6: the cap stays absorbing until the latch clears, even when the replay empties the queue first", [](TestCase &t)
+        {
+            GsPendingCap cap(1024u);
+            t.IsFalse(cap.reanchorDue(false), "nothing is due before anything was absorbed");
+            for (int i = 0; i < 16; ++i)
+                cap.admit(true, true, 64u); // 1024 bytes: at the cap, all admitted
+            t.IsFalse(cap.absorbing(), "reaching the cap alone absorbs nothing");
+            t.IsFalse(cap.admit(true, true, 64u), "the first state command past the cap is refused");
+            t.IsTrue(cap.absorbing(), "... and the cap is absorbing");
+            t.Equals(cap.absorptions(), uint64_t{1}, "one absorption began");
+            cap.onReplayed(cap.bytes()); // the replay's swap: the accounting is empty, the latch is still set
+            t.Equals(cap.bytes(), uint64_t{0}, "the swap emptied the accounting");
+            t.IsFalse(cap.admit(true, true, 64u), "still refused: absorbing outlives the byte count while latched");
+            t.IsFalse(cap.admit(true, false, 64u), "draw work too");
+            t.Equals(cap.droppedCommands(), uint64_t{1}, "the draw is a drop");
+            t.Equals(cap.absorbedCommands(), uint64_t{2}, "the two state commands are absorptions");
+            t.Equals(cap.absorptions(), uint64_t{1}, "still the same absorption");
+            t.IsFalse(cap.reanchorDue(true), "not due while latched");
+            t.IsTrue(cap.reanchorDue(false), "due the moment the latch clears");
+            cap.endAbsorbing();
+            t.IsFalse(cap.absorbing(), "endAbsorbing closes it");
+            t.IsTrue(cap.admit(false, true, 64u), "a live consumer's state command is admitted again");
+            cap.admitWaited(64u);
+            t.Equals(cap.bytes(), uint64_t{128}, "admitWaited accounts and never refuses");
+
+            GsPendingCap live(1024u);
+            for (int i = 0; i < 100; ++i)
+                t.IsTrue(live.admit(false, true, 64u), "nothing is ever refused while the consumer is live");
+            t.Equals(live.absorptions(), uint64_t{0}, "a live consumer never starts an absorption");
+            GsPendingCap unbounded(0u);
+            for (int i = 0; i < 100; ++i)
+                t.IsTrue(unbounded.admit(true, true, 64u), "PS2X_GS_PENDING_CAP_MB=0: no cap, nothing refused (R124's ceiling is the last line)");
+        });
+
+        tc.Run("Q6: the coalescer remembers where a stall wrote, not what -- the movie's tiles become one rectangle, a palette one snapshot per id", [](TestCase &t)
+        {
+            // 600 frames of the title movie: 40x26 tiles of 16x16 CT32 into the staging buffer
+            // (dbp 0x3c0, dbw 10: research/16 section 9), two palettes alternating every load.
+            GsStallCoalescer co;
+            co.engage();
+            const uint64_t cmd = GSGlBackend::kCommandBytes;
+            GSTransferCommand tile;
+            tile.bitbltbuf.dbp = 0x3c0u;
+            tile.bitbltbuf.dbw = 10u;
+            tile.bitbltbuf.dpsm = static_cast<uint8_t>(GS_PSM_CT32);
+            tile.trxreg.rrw = 16u;
+            tile.trxreg.rrh = 16u;
+            tile.direction = 0u;
+            GSClutLoad a, b;
+            a.id = 7u; a.cbp = 0x100u; a.cpsm = static_cast<uint8_t>(GS_PSM_CT32); a.bytes.fill(0xAAu);
+            b.id = 9u; b.cbp = 0x100u; b.cpsm = static_cast<uint8_t>(GS_PSM_CT32); b.bytes.fill(0xBBu);
+            uint64_t peakWorkingSet = 0u;
+            for (int frame = 0; frame < 600; ++frame)
+            {
+                for (uint32_t ty = 0; ty < 26u; ++ty)
+                    for (uint32_t tx = 0; tx < 40u; ++tx)
+                    {
+                        tile.trxpos.dsax = static_cast<uint16_t>(tx * 16u);
+                        tile.trxpos.dsay = static_cast<uint16_t>(ty * 16u);
+                        const uint32_t page = tile.bitbltbuf.dbp >> 5;
+                        co.noteTransfer(tile, page, 1u, cmd);
+                        co.noteUpload(tile, page, 1u, cmd + 1024u);
+                    }
+                co.noteClut(a, cmd + sizeof(GSClutLoad));
+                co.noteClut(b, cmd + sizeof(GSClutLoad));
+                peakWorkingSet = std::max(peakWorkingSet, co.workingSetBytes());
+            }
+            t.IsTrue(peakWorkingSet < 16u * 1024u, "the coalescer's tables stay under 16 KB over 600 frames, peaked at " + std::to_string(peakWorkingSet));
+            t.Equals(co.rectCount(), size_t{1}, "the tiles merged into one rectangle, have " + std::to_string(co.rectCount()));
+            t.Equals(co.clutCount(), size_t{2}, "two palette ids, two snapshots");
+            t.IsFalse(co.pagesOnly(), "no fallback was needed");
+            const GsStallCoalescer::Plan plan = co.finish();
+            t.IsFalse(co.active(), "finish() ends the engagement");
+            t.Equals(plan.rects.size(), size_t{1}, "one synthesized transfer");
+            if (!plan.rects.empty())
+            {
+                const GsStallCoalescer::Rect &r = plan.rects[0];
+                t.IsTrue(r.dbp == 0x3c0u && r.dbw == 10u && r.dpsm == GS_PSM_CT32 && r.x0 == 0u && r.y0 == 0u && r.x1 == 640u && r.y1 == 416u,
+                         "the rectangle is the whole 640x416 frame at the staging buffer");
+                t.Equals(GsStallCoalescer::rectBytes(r), uint64_t{640u * 416u * 4u}, "its re-anchor carries the frame's bytes once");
+                const GSTransferCommand tr = GsStallCoalescer::transferFor(r);
+                t.IsTrue(tr.direction == 0u && tr.trxreg.rrw == 640u && tr.trxreg.rrh == 416u && tr.trxpos.dsax == 0u && tr.trxpos.dsay == 0u,
+                         "transferFor is the host->local transfer of that rectangle");
+            }
+            t.Equals(plan.cluts.size(), size_t{2}, "both palettes are re-anchored");
+            if (plan.cluts.size() == 2u)
+                t.IsTrue(plan.cluts[0].id == 7u && plan.cluts[1].id == 9u, "oldest load first (the replay evicts by age)");
+            t.Equals(plan.absorbedCommands, uint64_t{600u * (1040u * 2u + 2u)}, "every absorbed command is counted in the plan");
+            t.Equals(plan.absorbedBytes, uint64_t{600u * (1040u * (2u * cmd + 1024u) + 2u * (cmd + sizeof(GSClutLoad)))}, "... with its bytes");
+        });
+
+        tc.Run("Q6: the re-anchor's bytes are exact -- a rectangle packed from one VRAM and uploaded into another reproduces it, every format", [](TestCase &t)
+        {
+            const uint32_t kVram = 4u * 1024u * 1024u;
+            const uint8_t psms[] = {GS_PSM_CT32, GS_PSM_CT24, GS_PSM_CT16, GS_PSM_CT16S, GS_PSM_T8, GS_PSM_T4, GS_PSM_T8H,
+                                    GS_PSM_T4HL, GS_PSM_T4HH, GS_PSM_Z32, GS_PSM_Z24, GS_PSM_Z16, GS_PSM_Z16S};
+            std::mt19937 rng(20260921u);
+            for (const uint8_t psm : psms)
+            {
+                std::vector<uint8_t> vramA(kVram, 0u), vramB(kVram, 0u);
+                GSCpuBackend a, b;
+                a.Initialize(vramA.data(), kVram);
+                b.Initialize(vramB.data(), kVram);
+                // Odd sizes and an odd origin so the 4-bit formats cross byte boundaries mid-row.
+                GsStallCoalescer::Rect r;
+                r.dbp = 0x1000u;
+                r.dbw = 8u;
+                r.dpsm = psm;
+                r.x0 = 3u; r.y0 = 5u; r.x1 = 3u + 37u; r.y1 = 5u + 11u;
+                const GSTransferCommand tr = GsStallCoalescer::transferFor(r);
+                const uint64_t bytes = GsStallCoalescer::rectBytes(r);
+                std::vector<uint8_t> data(static_cast<size_t>(bytes));
+                for (uint8_t &v : data)
+                    v = static_cast<uint8_t>(rng());
+                if (GsStallCoalescer::streamBitsPerPixel(psm) == 4u && ((37u * 11u) & 1u))
+                    data.back() &= 0x0Fu; // the stream's trailing nibble is never written: keep the comparison honest
+                // The game's upload, in three chunks, as the frontend splits a rectangle across GIF
+                // tags -- at whole pixels (a multiple of 12 bytes is whole in every format), since
+                // UploadImage drops a partial pixel at the end of a packet.
+                a.BeginTransfer(tr);
+                const size_t c1 = (data.size() / 3u) / 12u * 12u, c2 = (2u * data.size() / 3u) / 12u * 12u;
+                a.UploadImage(data.data(), static_cast<uint32_t>(c1));
+                a.UploadImage(data.data() + c1, static_cast<uint32_t>(c2 - c1));
+                a.UploadImage(data.data() + c2, static_cast<uint32_t>(data.size() - c2));
+                t.IsTrue(a.GetTransferSnapshot().direction == 3u, "psm " + std::to_string(psm) + ": the game's transfer completed");
+                // The re-anchor: pack from A's VRAM, upload into B.
+                std::vector<uint8_t> packed;
+                t.IsTrue(GsStallCoalescer::packRect(vramA.data(), r, packed), "psm " + std::to_string(psm) + ": packRect reads the format");
+                t.Equals(packed.size(), data.size(), "psm " + std::to_string(psm) + ": the packed stream is the upload's size");
+                t.IsTrue(packed == data, "psm " + std::to_string(psm) + ": the packed stream IS the upload's bytes");
+                b.BeginTransfer(tr);
+                b.UploadImage(packed.data(), static_cast<uint32_t>(packed.size()));
+                t.IsTrue(std::memcmp(vramA.data(), vramB.data(), kVram) == 0, "psm " + std::to_string(psm) + ": the re-anchored VRAM equals the game's, byte for byte");
+            }
+            // The page fallback: one 64x32 CT32 rectangle is exactly a page's 8 KB, whatever was in it.
+            {
+                std::vector<uint8_t> vramA(kVram, 0u), vramB(kVram, 0u);
+                for (size_t i = 0; i < kVram; ++i)
+                    vramA[i] = static_cast<uint8_t>(rng());
+                GSCpuBackend b;
+                b.Initialize(vramB.data(), kVram);
+                for (uint32_t page = 0; page < 512u; page += 97u)
+                {
+                    const GsStallCoalescer::Rect r = GsStallCoalescer::pageRect(page);
+                    t.Equals(GsStallCoalescer::rectBytes(r), uint64_t{8192}, "a page rectangle is 8 KB");
+                    std::vector<uint8_t> packed;
+                    t.IsTrue(GsStallCoalescer::packRect(vramA.data(), r, packed), "the page packs");
+                    b.BeginTransfer(GsStallCoalescer::transferFor(r));
+                    b.UploadImage(packed.data(), static_cast<uint32_t>(packed.size()));
+                    t.IsTrue(std::memcmp(vramA.data() + page * 8192u, vramB.data() + page * 8192u, 8192u) == 0,
+                             "page " + std::to_string(page) + " arrives intact through the CT32 view");
+                }
+            }
+        });
+
+        tc.Run("Q6: an in-flight transfer is restored to the game thread's position -- the chunk after the re-anchor lands in its own row", [](TestCase &t)
+        {
+            const uint32_t kVram = 4u * 1024u * 1024u;
+            std::vector<uint8_t> vramA(kVram, 0u), vramB(kVram, 0u);
+            GSCpuBackend a, b;
+            a.Initialize(vramA.data(), kVram);
+            b.Initialize(vramB.data(), kVram);
+            GSTransferCommand tr;
+            tr.bitbltbuf.dbp = 0x2000u;
+            tr.bitbltbuf.dbw = 4u;
+            tr.bitbltbuf.dpsm = static_cast<uint8_t>(GS_PSM_CT16);
+            tr.trxpos.dsax = 8u;
+            tr.trxpos.dsay = 2u;
+            tr.trxreg.rrw = 50u;
+            tr.trxreg.rrh = 8u;
+            tr.direction = 0u;
+            std::mt19937 rng(7u);
+            std::vector<uint8_t> data(50u * 8u * 2u);
+            for (uint8_t &v : data)
+                v = static_cast<uint8_t>(rng());
+            // The game: BeginTransfer, then three and a half rows (the stall's absorbed chunks).
+            const size_t taken = 3u * 100u + 50u; // 175 pixels of 400
+            a.BeginTransfer(tr);
+            a.UploadImage(data.data(), static_cast<uint32_t>(taken));
+            const GSTransferSnapshot snap = a.GetTransferSnapshot();
+            t.Equals(snap.copiedPixels, uint32_t{175}, "the game thread is 175 pixels in");
+            t.Equals(snap.direction, uint32_t{0}, "... with the transfer open");
+            // The re-anchor for the open transfer: BeginTransfer plus the prefix re-read from A.
+            std::vector<uint8_t> prefix;
+            t.IsTrue(GsStallCoalescer::packPrefix(vramA.data(), tr, snap.copiedPixels, prefix), "packPrefix reads the prefix");
+            t.Equals(prefix.size(), taken, "the prefix is the bytes taken so far");
+            b.BeginTransfer(tr);
+            b.UploadImage(prefix.data(), static_cast<uint32_t>(prefix.size()));
+            const GSTransferSnapshot restored = b.GetTransferSnapshot();
+            t.IsTrue(restored.copiedPixels == snap.copiedPixels && restored.x == snap.x && restored.y == snap.y &&
+                         restored.totalPixels == snap.totalPixels && restored.direction == snap.direction,
+                     "the receiver's transfer state is the game thread's");
+            // The game's next chunk, applied to both: it must land in the same rows.
+            a.UploadImage(data.data() + taken, static_cast<uint32_t>(data.size() - taken));
+            b.UploadImage(data.data() + taken, static_cast<uint32_t>(data.size() - taken));
+            t.IsTrue(a.GetTransferSnapshot().direction == 3u && b.GetTransferSnapshot().direction == 3u, "both transfers completed");
+            t.IsTrue(std::memcmp(vramA.data(), vramB.data(), kVram) == 0, "the two VRAMs agree byte for byte after the chunk");
+        });
+
+        tc.Run("Q6: the bounds hold under a hostile stall -- too many destinations fall back to pages under 4 MB, palettes keep the newest 256, a Reset forgets", [](TestCase &t)
+        {
+            GsStallCoalescer co;
+            co.engage();
+            GSTransferCommand tr;
+            tr.bitbltbuf.dbw = 1u;
+            tr.bitbltbuf.dpsm = static_cast<uint8_t>(GS_PSM_CT32);
+            tr.trxreg.rrw = 8u;
+            tr.trxreg.rrh = 8u;
+            tr.direction = 0u;
+            uint64_t peak = 0u;
+            for (uint32_t i = 0; i < 4000u; ++i)
+            {
+                tr.bitbltbuf.dbp = (i * 4u) % (512u * 32u); // a new destination every time, over the first 512 pages' blocks
+                tr.trxpos.dsax = static_cast<uint16_t>((i % 5u) * 8u);
+                tr.trxpos.dsay = static_cast<uint16_t>((i % 3u) * 8u);
+                co.noteTransfer(tr, tr.bitbltbuf.dbp >> 5, 1u, 100u);
+                co.noteUpload(tr, tr.bitbltbuf.dbp >> 5, 1u, 356u);
+                peak = std::max(peak, co.workingSetBytes());
+            }
+            t.IsTrue(co.pagesOnly(), "past kMaxRects destinations the plan is per page");
+            t.IsTrue(co.rectCount() == 0u, "the rectangle table was let go");
+            t.IsTrue(co.plannedRectBytes() <= GsStallCoalescer::kVramBytes, "the re-anchor is at most VRAM's size: " + std::to_string(co.plannedRectBytes()));
+            t.IsTrue(peak < 64u * 1024u, "the tables never passed 64 KB, peaked at " + std::to_string(peak));
+            for (uint64_t id = 1; id <= 1000u; ++id)
+            {
+                GSClutLoad load;
+                load.id = id;
+                co.noteClut(load, 2100u);
+            }
+            t.Equals(co.clutCount(), GsStallCoalescer::kMaxCluts, "only the newest kMaxCluts palettes are kept");
+            GsStallCoalescer::Plan plan = co.finish();
+            t.IsTrue(plan.pagesOnly, "the plan says so");
+            t.IsTrue(plan.rects.size() <= 512u && !plan.rects.empty(), "one rectangle per touched page: " + std::to_string(plan.rects.size()));
+            bool allPages = true;
+            uint64_t planBytes = 0u;
+            for (const GsStallCoalescer::Rect &r : plan.rects)
+            {
+                allPages = allPages && r.dbw == 1u && r.dpsm == GS_PSM_CT32 && r.x0 == 0u && r.y0 == 0u && r.x1 == 64u && r.y1 == 32u && (r.dbp % 32u) == 0u;
+                planBytes += GsStallCoalescer::rectBytes(r);
+            }
+            t.IsTrue(allPages, "each is a whole page in the CT32 view");
+            t.IsTrue(planBytes <= GsStallCoalescer::kVramBytes, "and together at most 4 MB: " + std::to_string(planBytes));
+            t.Equals(plan.cluts.size(), GsStallCoalescer::kMaxCluts, "256 palettes in the plan");
+            if (plan.cluts.size() == GsStallCoalescer::kMaxCluts)
+                t.IsTrue(plan.cluts.front().id == 1000u - 255u && plan.cluts.back().id == 1000u, "the newest 256, oldest first");
+
+            // A format the packer cannot read forces the page plan too.
+            GsStallCoalescer odd;
+            odd.engage();
+            tr.bitbltbuf.dpsm = 0x05u; // no such storage format
+            odd.noteTransfer(tr, 0u, 1u, 100u);
+            t.IsTrue(odd.pagesOnly(), "an unreadable format goes the page way");
+
+            // A Reset between: what was written before it is moot; the engagement stays open.
+            GsStallCoalescer reset;
+            reset.engage();
+            tr.bitbltbuf.dpsm = static_cast<uint8_t>(GS_PSM_CT32);
+            reset.noteTransfer(tr, 0u, 1u, 100u);
+            GSClutLoad load;
+            load.id = 3u;
+            reset.noteClut(load, 2100u);
+            reset.noteReset();
+            t.IsTrue(reset.active(), "still engaged after a Reset");
+            t.Equals(reset.rectCount(), size_t{0}, "the rectangles before the Reset are forgotten");
+            t.Equals(reset.clutCount(), size_t{0}, "so are the palettes");
+            tr.bitbltbuf.dbp = 0x40u;
+            reset.noteTransfer(tr, 2u, 1u, 100u);
+            const GsStallCoalescer::Plan after = reset.finish();
+            t.Equals(after.rects.size(), size_t{1}, "only what came after the Reset is re-anchored");
         });
 
         // Sprint 8 Goal 5 (ruling R124): the hard ceiling. The soft cap above may never drop a

@@ -4,6 +4,7 @@
 #include "runtime/gs/gs_gl_upload_identity.h"
 #include "runtime/gs/gs_cpu_backend.h"
 #include "runtime/gs/gs_frame_backpressure.h"
+#include "runtime/gs/gs_stall_coalescer.h"
 #include "runtime/gs/gs_gl_caps.h"
 
 #include <array>
@@ -111,6 +112,13 @@ private:
             data.clear();
         }
     };
+
+public:
+    // What one command record costs the pending queue before its data (the tests bound a stall's
+    // working set in these; the [gs-gl] banner prints it).
+    static constexpr size_t kCommandBytes = sizeof(Cmd);
+
+private:
 
     struct RenderTarget
     {
@@ -235,6 +243,12 @@ private:
     // game-thread side
     void record(Cmd &&cmd, const uint8_t *data = nullptr, size_t size = 0);
     uint64_t postAndGetToken(Cmd &&cmd, const uint8_t *data = nullptr, size_t size = 0);
+    // Q6 (gs_stall_coalescer.h). All three run on the game thread with m_queueMutex held: a
+    // state-carrying command the cap refused goes to absorbLocked; reanchorLocked pushes the plan
+    // when GsPendingCap::reanchorDue says the latch has cleared; pushLocked is the queue append.
+    void absorbLocked(const Cmd &cmd, const uint8_t *data, size_t size);
+    void reanchorLocked();
+    void pushLocked(Cmd &&cmd, const uint8_t *data, size_t size);
     void waitForToken(uint64_t token);
     void syncDirtyPagesForRead(uint32_t page, uint32_t pageCount) const;
     bool pagesMayBeGpuDirty(uint32_t page, uint32_t pageCount) const;
@@ -308,6 +322,17 @@ private:
     // Sprint 7 Task 1b: the same queue bounded in BYTES while the consumer is latched stalled, so
     // a title-bar drag cannot grow m_pending without end (PS2X_GS_PENDING_CAP_MB, default 64 MB).
     GsPendingCap m_pendingCap;
+    // Sprint 10 Goal 11 (Q6): the state-carrying stream during that stall, absorbed into the game
+    // thread's VRAM and re-anchored when the latch clears (gs_stall_coalescer.h). Game thread only,
+    // under m_queueMutex; its counters are atomic for the stats line.
+    GsStallCoalescer m_coalescer;
+    // The last BeginTransfer the game thread issued, admitted or absorbed: an absorbed Upload
+    // chunk belongs to it, and the re-anchor restores the shadow's transfer state from it.
+    GSTransferCommand m_gameTransfer{};
+    // Scratch for the re-anchor (a VRAM snapshot and one packed rectangle); kept so a stall that
+    // clears and re-latches does not reallocate 4 MB each time.
+    std::vector<uint8_t> m_reanchorVram;
+    std::vector<uint8_t> m_reanchorData;
 
     // GPU-dirty page tracking (written on the game thread from draw submissions)
     mutable std::mutex m_dirtyMutex;
