@@ -99,16 +99,17 @@ def skip_list(d, keytab, flags):
     return None
 
 
-def main():
-    d = open(os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.BIN'), 'rb').read()
+def decrypt(d, variants):
+    """DNAS.BIN's bytes -> (plaintext bytes, [block metadata]).
+
+    `variants` is {decryptor address: {'keytab': addr, 'core': addr}}. The research path derives it
+    from the Ghidra decompilation with discover_variants() above; tools_py/disc_to_elf.py passes the
+    four pairs it has recorded for the r0001 disc, so a stranger with an ISO and no Ghidra project
+    can run this stage (the recorded addresses are only valid for the DNAS.BIN whose sha256 that file
+    also records, and it refuses before getting here if yours differs)."""
     text = struct.unpack_from('<I', d, 0x0c)[0]
-    decomp = load_decomp()
-    variants = discover_variants(decomp)
-    for dec, v in variants.items():
-        print(f"decryptor {dec:#x}: keytab {v['keytab']:#x} core {v['core']:#x}")
     blocks = find_blocks(d, 0x80, text)
     print(f"{len(blocks)} blocks")
-
     ee = EE()
     ee.write(BASE, d)                     # unpatched: the cipher code is plain MIPS
     ee.write(BASE + len(d), bytes(struct.unpack_from('<I', d, 0x14)[0]))
@@ -129,6 +130,17 @@ def main():
         out[start - BASE:start - BASE + size] = plain
         meta.append(dict(start=start, size=size, key=key, flags=flags, decryptor=dec,
                          skip=(count, lst)))
+    return bytes(out), meta
+
+
+def main():
+    d = open(os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.BIN'), 'rb').read()
+    decomp = load_decomp()
+    variants = discover_variants(decomp)
+    for dec, v in variants.items():
+        print(f"decryptor {dec:#x}: keytab {v['keytab']:#x} core {v['core']:#x}")
+    out, meta = decrypt(d, variants)
+    blocks = [(m['start'], m['size']) for m in meta]
     open(os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.dec.bin'), 'wb').write(out)
     json.dump(meta, open(os.path.join(GAME, 'OVERLAY', 'REL', 'DNAS.blocks.json'), 'w'), indent=1)
     # sanity: how many words in the decrypted blocks decode as valid MIPS?
