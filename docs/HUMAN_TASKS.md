@@ -29,6 +29,14 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
 3. **The commit author e-mail** on every commit is your personal one. GitHub's no-reply address is the alternative;
    changing history for it is your call and the gate's `metadata` mode records whatever you decide.
 
+4. **Disc-derived bytes in the public tree (H7 audit, `docs/audits/2026-09-21-disc-derived-bytes.md`):** two decisions.
+   (a) Class A -- verbatim game bytes: the three audio bank fixtures (90 KB; regenerable from the disc at test time,
+   cheap) and the 29 VU1 dump images (900 KB of the game's microcode with registers; they ARE the VU1 replay verify,
+   the second-strongest regression bar -- moving them out of the tree loses that check in CI). Drop from HEAD, and
+   rewrite history for them or not. (b) Class C -- ~240 pictures of the game's art as our renderer drew them (gate
+   fixtures, harness references, research evidence, ~9 MB): all stay as illustration of our own output, the movie
+   frames go, or every picture goes. Until you decide, nothing moves.
+
 **For the site session (not this repository):** `../scotho/scripts/secret-scan.mjs:28` carries the AWS account id as a
 literal rule. That repository is private today; the day it is not, the scanner is the leak. Its own git-ignored
 literals file is the fix.
