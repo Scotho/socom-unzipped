@@ -239,6 +239,8 @@ void register_knobs_tests()
             c.micDevice = "Microphone";
             c.mouseLook = true;
             c.secondInstance = true;
+            c.loginName = "socomc";          // Goal 9: sent only when the ONLINE fields are filled
+            c.loginPassword = "hunter2";
             // Sprint 10 Goal 8 (R174): the mapping is sent only when it is not the default.
             launcher::mapping::Mapping custom = launcher::mapping::defaults();
             custom.pad[4].host = launcher::mapping::kHostL3;
