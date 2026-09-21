@@ -1766,7 +1766,7 @@ The one task that changes behaviour, and the one that can break the harness. Fiv
 
 **Steps:**
 
-- [ ] **Step 1: RED (C++).** Append four cases. In `knobs_tests.cpp`, inside the `Knobs` case:
+- [x] **Step 1: RED (C++).** *Result (2026-09-21, `agent/flip`): as written. Compile RED (`logs/flip_red1.log`): `launcher_tests.cpp:619: too many arguments to function call, expected 2, have 3`, `:629: no member named 'isKnobKey' in namespace 'launcher'`, `diagnostics_tests.cpp:233: no member named 'knobsLine' in namespace 'launcher::diagnostics'`. With Steps 5-6 in and Steps 3-4 not (`logs/flip_red2.log`): Knobs 11/13 -- `enforcement is on by default` failed on `Sprint 9 Goal 3 Task 7`, the Flag case failed on all eight names and on `the pad is on unless someone turns it off (R160)`; Launcher and Diagnostics green.* Append four cases. In `knobs_tests.cpp`, inside the `Knobs` case:
 
 ```cpp
         tc.Run("enforcement is on by default: a process that says nothing is a stranger's", [](TestCase &t)
@@ -1829,7 +1829,7 @@ The one task that changes behaviour, and the one that can break the harness. Fiv
 
   (`diag` is that file's existing alias for the diagnostics namespace; use whatever name the file already uses.) Expected RED: `no member named 'isKnobKey' in namespace 'launcher'`, `no matching function for call to 'mergeEnvironment'`, `no member named 'knobsLine'`; after those compile, `enforcement is on by default` fails and the eight-Flag case fails on all eight.
 
-- [ ] **Step 2: RED (Python).** Create `tools_py/tests/test_knobs_line.py`:
+- [x] **Step 2: RED (Python).** *Result: the file as written. Its RED could not be watched in the worktree: the four cases are `skipUnless(os.path.isfile(EXE))` and `agent/flip` has no `dist/socom2.exe` (the `--no-runner` tree); they ran as `skipped` in both suite runs. The controller's `./build.sh test` in the main tree after `logs/s9_g3_build.sh` is where they first run for real (Step 7).* Create `tools_py/tests/test_knobs_line.py`:
 
 ```python
 """Sprint 9 Goal 3: what a stranger's environment can do to the runner -- nothing -- and how the log says so.
@@ -1899,8 +1899,8 @@ if __name__ == "__main__":
 
   A bare run with no `config.json` applies `environmentFor(Config{})`, so every line also lists the launcher's own non-default values (`PS2X_WINDOW_SIZE=1280x896`, `PS2X_PAD_CROUCH_SHORTCUT=l3`, `PS2X_MC_DIR=player`, `PS2X_SOCOM2_SERVER=…`) — the assertions above are all `assertIn`/`assertNotIn` for that reason. Expected RED against the Task 5 runner: the first case fails with `'[knobs] dev=1 set: … PS2X_GS_BACKEND=cpu …'` (enforcement is off, everyone is a developer).
 
-- [ ] **Step 3: GREEN — enforcement.** `knobs.cpp`: `std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on` becomes `std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)`. In `knobs.h` the comment above `enforcement()` becomes `// On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.`
-- [ ] **Step 4: GREEN — the eight switches (R160, R161).** In `knobs.h` change `Presence` to `Flag` and the default to `"0"` on seven rows, and `PS2X_SOCOM2_PAD` to `X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.")`. The eight sites:
+- [x] **Step 3: GREEN — enforcement.** *Result: as written; the accessor comment in `knobs.h` reworded to describe on as the state.* `knobs.cpp`: `std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on` becomes `std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)`. In `knobs.h` the comment above `enforcement()` becomes `// On. setEnforcement(false) exists for the Knobs suite, which proves what off meant.`
+- [x] **Step 4: GREEN — the eight switches (R160, R161).** *Result: as written -- the eight rows, the nine sites (`PS2X_VU1_XGKICK_CYCLE_EXACT` has two), the pad's comment, the test binary's comment; `python -m tools_py.knobs check` exit 0 (`accessor_mismatches` empty: every Flag row is read with `knobOn`).* In `knobs.h` change `Presence` to `Flag` and the default to `"0"` on seven rows, and `PS2X_SOCOM2_PAD` to `X("PS2X_SOCOM2_PAD", Shipping, Flag, "1", "The libpad2 HLE and host input path; 0 boots with no controller.")`. The eight sites:
 
 | Site (by its text) | Becomes |
 |---|---|
@@ -1915,7 +1915,7 @@ if __name__ == "__main__":
 
   `ps2xTest/src/main.cpp:66-72`'s comment about `PS2X_VU1_XGKICK_CYCLE_EXACT` ("presence-tested … setting it to 0 does NOT turn it back off") is now false: replace those seven lines with `//   PS2X_VU1_XGKICK_CYCLE_EXACT: XGKICK copies the whole packet at kick time by default; the PATH1 test asserts the per-cycle model. A Flag since Sprint 9 Goal 3: 0 in the environment selects the immediate copy for an A/B.` `test_knobs_registry`'s `accessor_mismatches` is what fails if a site and its row disagree.
 
-- [ ] **Step 5: GREEN — the launcher's filter (R156).** `launcher_config.h`, replacing the `mergeEnvironment` declaration:
+- [x] **Step 5: GREEN — the launcher's filter (R156).** *Result: as written in both glues; `posix_glue.cpp` compiles only on Linux and is unproven here (Task 8 Step 1, CI).* `launcher_config.h`, replacing the `mergeEnvironment` declaration:
 
 ```cpp
     // Sprint 9 Goal 3 (R156): is this environment key one of ours? "PS2X_" as a prefix, either case (Windows
@@ -1953,7 +1953,7 @@ if __name__ == "__main__":
 
   give `mergeEnvironment` its third parameter, and change `if (!overridden)` to `if (!overridden && (keepInheritedKnobs || !isKnobKey(key)))`. `posix_glue.cpp:241`: `launcher::mergeEnvironment(environ, launcher::environmentFor(config), ps2x::knobs::devMode())` with `#include "ps2x/knobs.h"`. `win32_glue.cpp`: `#include "ps2x/knobs.h"`; before the `GetEnvironmentStringsW` loop `const bool keepInheritedKnobs = ps2x::knobs::devMode();   // R156`; and `if (!overridden && !key.empty() && key[0] != '=')` becomes `if (!overridden && !key.empty() && key[0] != '=' && (keepInheritedKnobs || !launcher::isKnobKey(key)))`. When the launcher *is* in developer mode `PS2X_DEV=1` is itself inherited, so the game is too.
 
-- [ ] **Step 6: GREEN — the diagnostics line.** `diagnostics.h`, after `crashRecord`: `std::string knobsLine(const std::string &logText);   // the game's [knobs] line(s), or a sentence saying there is none`. `diagnostics.cpp`, after `crashRecord`:
+- [x] **Step 6: GREEN — the diagnostics line.** *Result: as written, plus R208 below: the line the zip now carries printed `PS2X_SOCOM2_LOGIN_PASS=<password>` (Goal 9 landed after this plan), so `describe()` writes that value as `[redacted]` at the source. GREEN (`logs/flip_green3.log`): `./build.sh test --no-runner` Python `Ran 1658 tests ... OK (skipped=100)`, C++ `Total Tests: 747 Passed: 747 Failed: 0`, the nine `vu1_replay` verifies PASS.* `diagnostics.h`, after `crashRecord`: `std::string knobsLine(const std::string &logText);   // the game's [knobs] line(s), or a sentence saying there is none`. `diagnostics.cpp`, after `crashRecord`:
 
 ```cpp
     std::string knobsLine(const std::string &logText)
@@ -2018,8 +2018,8 @@ git push
 | Names in the registry after Task 1 / after Task 6 | **154 / 149** (18 Shipping, 122 Dev, 8 Test, 1 Switch after Task 6; the plan's 143 / 138 counted 134 shipped names at `8e5d778`, the tree at `a3aa99a` reads 145) | `docs/KNOBS.md` |
 | `s9_g3_batches_gate` | | `logs/parity/gate/s9_g3_batches_gate/summary.txt` |
 | The gate's own knobs, per stage (the `[knobs]` lines) | | ledger |
-| `s9_g3_gating_gate` | | |
-| Poisoned launch: exit / ignored list / GL initialised / sampler rows / crash lines | | `logs/s9_g3_poisoned_env.log` |
+| `s9_g3_gating_gate` | (the controller's; Steps 1-6 landed in `869356e` on `agent/flip`, 1658 / 747 green `--no-runner`) | |
+| Poisoned launch: exit / ignored list / GL initialised / sampler rows / crash lines | (the controller's; the five expected answers are in the Task 7 ledger) | `logs/s9_g3_poisoned_env.log` |
 | `s9_g3_control` | | |
 | Linux: C++ suite, Python suite, `test_knobs_line` on `dist-linux/socom2` | | VM |
 | Bisect gates spent | | |
@@ -2144,6 +2144,95 @@ Registry counts: 154 rows after Task 1 (18 Shipping, 127 Dev, 8 Test, 1 Switch);
 - Every commit carries the trailer this session was given (`Claude Opus 5 (1M context)`, HANDOFF �5 rule 3), not the
   `Fable 5.1` one the Global Constraints name; the branch was not pushed (the push rule R157 is the controller's).
 
+### Task 7, Steps 1-6 (the Opus agent on `agent/flip`, worktree `C:\projects\wt-flip`, 2026-09-21)
+
+Branch `agent/flip` off `sprint-10` at `8d6e5c3`; one code commit, `869356e`, with the plan's Step 11 pathspec; this
+plan and `docs/KNOBS.md` the only docs touched; nothing pushed. The worktree was built `--no-runner` from scratch
+(`./build.sh runtime --no-runner`, then `./build.sh test --no-runner`, every build and suite under the machine-wide
+lock as `flip-agent`); it has no `dist/socom2.exe`, so nothing here launched the game and Steps 7-10 are untouched.
+
+| What | Result |
+|---|---|
+| Step 1 RED, compile (`logs/flip_red1.log` in the worktree) | `launcher_tests.cpp:619: too many arguments to function call, expected 2, have 3`; `:629: no member named 'isKnobKey' in namespace 'launcher'`; `diagnostics_tests.cpp:233: no member named 'knobsLine' in namespace 'launcher::diagnostics'` |
+| Step 1 RED, run time (Steps 5-6 in, 3-4 not; `flip_red2.log`) | Knobs 11/13: `enforcement is on by default` failed on `Sprint 9 Goal 3 Task 7`; the Flag case on all eight names and `the pad is on unless someone turns it off (R160)`. Launcher and Diagnostics green, the two new cases among them |
+| Step 2 RED | not watched: `test_knobs_line`'s four cases skip without `dist/socom2.exe`; they first run in the controller's `./build.sh test` (below) |
+| R208 RED (`flip_red3.log`) | the describe case failed on `the password is never written` and `the password redacted for a developer too` |
+| GREEN (`flip_green3.log`) | `./build.sh test --no-runner`: Python `Ran 1658 tests` `OK (skipped=100)`; C++ `Total Tests: 747 Passed: 747 Failed: 0` (743 before Task 7); the nine `vu1_replay` verifies PASS; `python -m tools_py.knobs check` exit 0 |
+
+**The eight switches** (rows to `Flag`, default `0`, sites to `knobOn`): `PS2X_GIF_PRIORITY_SORT`
+(`ps2_gif_arbiter.cpp`), `PS2X_GS_NO_DIRTY_REFRESH`, `PS2X_GS_NO_TEX_REVALIDATE`, `PS2X_GS_NO_ZTEST`
+(`gs_gl_backend.cpp`, three sites), `PS2X_VIF1_NO_IRQ_STALL` (`ps2_vif1_interpreter.cpp`), `PS2X_VU1_FMAC_CHECK`
+(`ps2_vu1_upper.cpp`), `PS2X_VU1_XGKICK_CYCLE_EXACT` (`ps2_vu1_core.cpp` and `socom2_dispatch_0x1b50.cpp`, both
+`!knobOn`); and `PS2X_SOCOM2_PAD` to a Shipping `Flag` with default `1`, read `knobOn("PS2X_SOCOM2_PAD", true)`.
+
+**Tests that codified the old behaviour, rewritten:** none had to be. The Knobs suite's "enforcement off" case
+sets `setEnforcement(false)` itself (it now proves what off meant, as Step 3's comment says); the existing
+`mergeEnvironment` case keeps the two-argument overload; `bare_run_tests`' "the pad, always" still holds
+(`environmentFor` still sends `1`); `ps2xTest/src/main.cpp`'s seven-line comment about the XGKICK presence trap
+was prose, not an assertion, and is replaced as Step 4 says. **Extended:** the Knobs `describe` case gains the
+password pair (R208) and both of its expected lines carry `PS2X_SOCOM2_LOGIN_PASS=[redacted]`. **Added:** the
+four cases of Step 1, the four of Step 2.
+
+**Design fit against what landed after the plan.** Goal 8's `PS2X_INPUT_MAPPING` and Goal 9's two login knobs are
+Shipping and travel in `ours`, which the R156 filter never touches; the login *password* on the `[knobs]` line
+is the one thing that did not fit -- R208 below. Q1b's pins: `env_pin` hashes the operator's environment plus
+the gate's three knobs and `harness_pin` hashes `tools_py/parity` and `scripts/parity`; this commit touches
+neither (`test_knobs_line.py` is under `tools_py/tests/`), so the gating gate needs no `--accept-pins`.
+`knobs.h` reaches no generated unit (`ps2_runtime_macros.h` does not include it), so the controller's runtime
+build is the library and the runner, not R165's rebuild: the unity count below must print 0.
+
+**The controller's launches (Steps 7-10), in the main tree after merging `agent/flip`; each with what it must
+show.**
+
+```bash
+# Step 7 -- the cheap proofs
+python -m tools_py.knobs check                                                   # exit 0, prints nothing
+cmake --build third_party/ps2recomp/build-clang --target ps2EntryRunner -- -n | grep -c "Unity/unity_"   # 0
+scripts/run_detached.sh --owner build --purpose build logs/s9_g3_build.sh logs/s9_g3_build.marker
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "Task 7 suite" -- ./build.sh test
+#   must show: Python OK with tools_py.tests.test_knobs_line's four cases "ok" (not "skipped");
+#   C++ Passed == Total, Failed: 0 (747 in the --no-runner tree; the runner tree's count may differ).
+PS2X_PEEK=0x100:4 ./run.sh 3 >/dev/null; grep -h "^\[knobs\]" logs/latest.log
+#   must show: [knobs] dev=1 set: ... PS2X_DEV=1 ... PS2X_PEEK=0x100:4 ...  -- no "ignored", no "refused"
+
+# Step 8 -- the gate (logs/s9_g3_gating_gate.sh is the command set's gate script with the stamp changed:
+#   unset every PS2X_*, then python -m tools_py.parity.gate --stamp s9_g3_gating_gate --owner gate)
+scripts/run_detached.sh --owner gate --purpose launch logs/s9_g3_gating_gate.sh logs/s9_g3_gating_gate.marker
+cat logs/parity/gate/s9_g3_gating_gate/summary.txt                              # PASS 3/3
+grep -h "^\[knobs\]" logs/parity/gate/s9_g3_gating_gate/*.game.log
+#   must show three lines, each: [knobs] dev=1 set: PS2X_CD_IMAGE="SOCOM II - U.S. Navy SEALs (USA).iso" PS2X_DEV=1
+#   PS2X_HOST_GAMEPAD=0 PS2X_HOST_SCREENSHOT_LATEST=latest_frame.png PS2X_MC_DIR=mc0 [mission only: PS2X_PC_SAMPLER=1
+#   PS2X_PEEK=0x416054:3,...] -- the Task 5 lines minus PS2X_SOCOM2_PAD=1 (now the default, so not news);
+#   no "| ignored without --dev" and no "| refused" anywhere (an "ignored" clause is a harness launch outside
+#   developer mode, the failure this task exists to catch).
+
+# Step 9 -- the poisoned launch (R163 a): logs/s9_g3_poisoned_env.sh exactly as Task 7 Step 9 writes it, with ONE
+#   change: CARD="logs/s9_g3_poisoned_card" (relative). $PWD there is /c/projects/socom_pc, an MSYS path; a
+#   relative card is under the game folder however the shell hands it on, so R207 honours it either way.
+scripts/run_detached.sh --owner gate --purpose launch logs/s9_g3_poisoned_env.sh logs/s9_g3_poisoned_env.marker
+cat logs/s9_g3_poisoned_env.done                                                 # done 124 (alive at the timeout)
+grep -h "^\[knobs\]" logs/s9_g3_poisoned_env.log
+#   must show exactly: [knobs] dev=0 set: PS2X_CD_IMAGE="SOCOM II - U.S. Navy SEALs (USA).iso" PS2X_MC_DIR=s9_g3_poisoned_card
+#   | ignored without --dev: PS2X_EE_ROUND PS2X_GS_BACKEND PS2X_GS_NO_ZTEST PS2X_PC_SAMPLER PS2X_PEEK PS2X_VU1_XGKICK_CYCLE_EXACT
+grep -c "^\[gs-gl\] initialised" logs/s9_g3_poisoned_env.log                     # 1 (GL, not the CPU backend asked for)
+grep -c "^\[pc-sampler\]\|^\[peek\]" logs/s9_g3_poisoned_env.log                 # 0
+grep -c "^\[crash\]\|^\[terminate\]" logs/s9_g3_poisoned_env.log                 # 0
+
+# Step 10 -- the online control round (R166), away window, our server only, under the lock
+"C:/Program Files/Git/bin/bash.exe" scripts/loop_lock.sh run main --purpose "s9_g3_control" -- \
+    bash scripts/parity/online_control_round.sh "foxhunt" logs/parity/s9_g3_control
+#   must show: the round's usual CONTROL-ROUND verdict (done 0 in logs/s9_g3_control.done), and in both
+#   instances' game logs a [knobs] dev=1 line with PS2X_SOCOM2_INPUT_FILE, PS2X_WINDOW_TITLE, PS2X_PEEK and
+#   PS2X_CALL_TRACE under set:, instance B also PS2X_SOCOM2_UDP_SHIFT=2, PS2X_SOCOM2_RSA_KEY=b and its own
+#   PS2X_MC_DIR; no "ignored" clause on either. (PS2X_SOCOM2_RSA_KEY="" on A is key A either way, R162.)
+```
+
+**Unverified, plainly:** `test_knobs_line` against a real runner; `posix_glue.cpp` (Linux only: CI, Task 8);
+every launch above. **One thing for the controller to know:** every game log written between the Goal 9 merge
+and this flip has the player's password in clear on its `[knobs]` line when the ONLINE fields were filled; the
+zip's scrubber redacts it only from six characters up. R208 stops new logs; the old ones under `logs/` are on the
+owner's own machine.
+
 ---
 
 ## Rulings made on the owner's behalf
@@ -2224,6 +2313,17 @@ R152 onward (Goal 2 used R140-R151). Each is a decision this plan made where the
   queued as the first item after the flip, because doing it before the flip changes what a launch with today's
   environment does (a dump path outside the folder that works today would be refused), which Trap 1 forbids.
   *Cost if wrong:* a stranger with a Dev path knob set gets nothing (the flip); a developer keeps today's behaviour.
+
+- **R208 (Task 7 Step 6; proposed by the `agent/flip` agent, 2026-09-21; Goal 9 landed after the plan).** **The
+  `[knobs]` line never writes a credential's value: `PS2X_SOCOM2_LOGIN_PASS` is printed as `[redacted]`, in
+  developer mode too.** The line is the first thing in every log; the log travels in the diagnostics zip and the
+  bug report, and Step 6 copies the line into `versions.txt`; the zip's text scrubber (`diagnostics.cpp`, R179's
+  guard) has a six-character floor that a short password passes under -- the owner's own `PS2X_SOCOM2_LOGIN_PASS=socom`
+  would have reached a report in clear. The fix is at the source (`kNeverPrinted` in `knobs.cpp`, one row, applied by
+  `describe()`), so no later reader of a log needs to know the rule, and the name still appears, so "was a password
+  sent" stays answerable. The login *name* stays printed: it is what the player sees on screen, and Goal 9 keeps it
+  in the zip's config copy. *Cost if wrong:* a developer debugging the prefill cannot read the password off the
+  log -- it is in their own `config.json`. The owner can overturn it.
 
 ## Self-review
 
