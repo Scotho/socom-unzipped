@@ -142,6 +142,37 @@ namespace ui
         return g;
     }
 
+    PadAnchor padAnchor(const PadGeometry &g, int host)
+    {
+        // launcher/mapping.h's numbering, written out so this file stays free of it: 1-4 the d-pad (up, right,
+        // down, left), 5-8 the face buttons (up, right, down, left), 9 L1, 10 L2, 11 R1, 12 R2, 13 select, 14 the
+        // guide button, 15 start, 16-17 the stick clicks.
+        auto circle = [](const PadCircle &c) { return PadAnchor{c.c, c.r, true}; };
+        auto rect = [](const Rect &r) { return PadAnchor{Vec2{r.cx(), r.cy()}, r.h * 0.5f, true}; };
+        switch (host)
+        {
+        case 1: return circle(g.dpad[0]);
+        case 2: return circle(g.dpad[3]);
+        case 3: return circle(g.dpad[1]);
+        case 4: return circle(g.dpad[2]);
+        case 5: return circle(g.face[0]);
+        case 6: return circle(g.face[3]);
+        case 7: return circle(g.face[1]);
+        case 8: return circle(g.face[2]);
+        case 9: return rect(g.shoulder[0]);
+        case 10: return rect(g.trigger[0]);
+        case 11: return rect(g.shoulder[1]);
+        case 12: return rect(g.trigger[1]);
+        case 13: return circle(g.center[0]);
+        case 14: return PadAnchor{Vec2{g.plate.cx(), g.plate.cy()}, g.width * 0.016f, true};
+        case 15: return circle(g.center[1]);
+        case 16: return PadAnchor{g.well[0], g.wellRadius, true};
+        case 17: return PadAnchor{g.well[1], g.wellRadius, true};
+        case kPadAnchorTouchpad: return PadAnchor{Vec2{g.plate.cx(), g.plate.cy()}, g.plate.h * 0.5f, true};
+        default: return PadAnchor{};
+        }
+    }
+
     bool padContains(const PadGeometry &g, Vec2 p)
     {
         bool inside = false;

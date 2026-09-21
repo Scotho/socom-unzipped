@@ -683,11 +683,15 @@ void register_pad_input_tests()
         });
 
         // Owner 2026-09-20: Escape no longer closes the game (SetExitKey(KEY_NULL)); it is Start, the pause a PC
-        // player expects from that key. Enter stays Start as well.
+        // player expects from that key. Enter stays Start as well. Since Sprint 10 Goal 8 the table is
+        // launcher/mapping.h's default key table (the runtime resolves it from PS2X_INPUT_MAPPING, unset here).
         tc.Run("the keyboard map: Escape and Enter are both Start, and every PS2 button has a key", [](TestCase &t)
         {
             using namespace ps2_stubs;
-            auto buttonsFor = [](int key) { std::vector<int> out; for (const auto &k : kSocom2Keys) if (k.key == key) out.push_back(k.button); return out; };
+            const std::vector<launcher::mapping::KeyBinding> kSocom2Keys = launcher::mapping::defaults().keys;
+            t.IsTrue(socom2HostInputMapping().keys == kSocom2Keys, "and the runtime's resolved table is that default (no PS2X_INPUT_MAPPING in the test process)");
+            t.IsTrue(launcher::mapping::isDefault(socom2HostInputMapping()), "whole");
+            auto buttonsFor = [&](int key) { std::vector<int> out; for (const auto &k : kSocom2Keys) if (k.key == key) out.push_back(k.button); return out; };
             t.IsTrue(buttonsFor(256) == std::vector<int>{kPadStart}, "Escape (256) is Start");
             t.IsTrue(buttonsFor(257) == std::vector<int>{kPadStart}, "Enter (257) is still Start");
             t.IsTrue(buttonsFor(259) == std::vector<int>{kPadSelect}, "Backspace is Select");

@@ -1,5 +1,7 @@
 #pragma once
 // config.json next to the launcher, and the PS2X_* environment it becomes (Task 8b, packaging outline section 3).
+#include "launcher/mapping.h"   // Sprint 10 Goal 8 (R174): the input mapping, a field of Config
+
 #include <string>
 #include <vector>
 
@@ -50,6 +52,14 @@ namespace launcher
     // Nothing may count these in a literal: P6 made them four, and two loops and one y-offset said three.
     constexpr size_t kServerPresetCount = sizeof(kServerPresets) / sizeof(kServerPresets[0]);
 
+    // Sprint 10 Goal 8: one profile's saved mapping (config.json's "mappings" block, keyed by profile name).
+    struct ProfileMapping
+    {
+        std::string profile;
+        mapping::Mapping mapping;
+        bool operator==(const ProfileMapping &) const = default;
+    };
+
     struct Config
     {
         std::string isoPath;
@@ -75,7 +85,18 @@ namespace launcher
         std::string server = "127.0.0.1";
         std::string profile = "player";
         bool secondInstance = false;
+        // Sprint 10 Goal 8 (R174): what the pad's buttons and the keyboard's keys drive, SAVED PER PROFILE -- a
+        // profile is one player's save and persona, and two people sharing a machine hold their pads
+        // differently. A profile with no entry plays the defaults (the tables the runtime carried at compile
+        // time until 2026-09-21); an old config.json with no block keeps them for everyone; and a default
+        // mapping sends nothing to the game (launcher/mapping.h). activeMapping() reads the current profile's.
+        std::vector<ProfileMapping> mappings;
     };
+
+    // The mapping the current profile plays (the defaults when it has none), and the setter that keeps the
+    // list clean: a profile set back to the defaults loses its entry rather than carrying a copy of them.
+    mapping::Mapping activeMapping(const Config &config);
+    void setActiveMapping(Config &config, const mapping::Mapping &m);
 
     // R139, the crouch shortcut (owner request 2026-09-19; runtime/host_crouch_shortcut.h has the mechanism).
     // SOCOM II's stance is TRIANGLE's pressure: a light press crouches, a firm one goes prone, and a PC pad's

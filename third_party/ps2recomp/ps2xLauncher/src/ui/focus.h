@@ -69,6 +69,11 @@ namespace ui
         // Sprint 9 P4: a page's ADVANCED section is shut by default, and its controls are then not on the
         // page at all -- not merely undrawn, so nothing can focus or activate what a player cannot see.
         bool advancedOpen = false;
+        // Sprint 10 Goal 8: the CONTROLLER page's two sections under the drawn pad -- SETUP (the pad pick, the
+        // dead zone, the mouse) or BUTTONS (the bindings, RESTORE, the crouch row) -- and, in BUTTONS, whether
+        // a dialog (a conflict's three answers, the restore confirm's two) has replaced the section's controls.
+        bool padButtons = false;
+        int padDialogButtons = 0;
     };
 
     // Whether an ADVANCED section MUST be open whatever the player last chose, because something inside it

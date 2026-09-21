@@ -1,5 +1,7 @@
 #pragma once
 
+#include "launcher/mapping.h"
+
 #include <cstdint>
 
 // Host input -> DualShock2 state for the SOCOM II libpad2 HLE (game_overrides_socom2.cpp).
@@ -15,11 +17,13 @@
 //   0x10 RX  0x11 RY  0x12 LX  0x13 LY   (0x80 = centre)
 //   0x14..0x1f pressure of RIGHT, LEFT, UP, DOWN, TRIANGLE, CIRCLE, CROSS, SQUARE, L1, R1, L2, R2
 //
-// Host mapping (keyboard is on whenever the pad is enabled):
+// Host mapping (keyboard is on whenever the pad is enabled), the DEFAULTS of launcher/mapping.h:
 //   arrows = d-pad          WASD = left stick        IJKL = right stick
-//   Enter = START           Backspace = SELECT
+//   Enter / Escape = START  Backspace = SELECT
 //   Z X C V = SQUARE CROSS CIRCLE TRIANGLE   (Space = CROSS too)
 //   Q / E = L1 / R1         1 / 3 = L2 / R2          2 / 4 = L3 / R3
+//   PS2X_INPUT_MAPPING (the launcher's, from the profile's block in config.json's "mappings") replaces the button tables whole;
+//   the sticks are not in the table.
 // Mouse (PS2X_SOCOM2_MOUSE=1): motion -> right stick (PS2X_SOCOM2_MOUSE_SENS, default 4),
 //   left button = R1, right button = L1. The cursor is not captured (window-relative deltas).
 // Script (PS2X_SOCOM2_INPUT_SCRIPT="6:START,9:CROSS,12:DOWN+CROSS:0.5"): at t seconds after the
@@ -44,15 +48,11 @@ namespace ps2_stubs
         kPadTriangle = 12, kPadCircle = 13, kPadCross = 14, kPadSquare = 15,
     };
 
-    // The keyboard map, as data so a test can read it. Key codes are raylib's (== GLFW's), written as numbers so this
-    // header stays free of raylib; socom2_host_input.cpp static_asserts them against raylib's enum.
-    struct Socom2KeyBinding { int key; uint8_t button; };
-    inline constexpr Socom2KeyBinding kSocom2Keys[] = {
-        {257, kPadStart}, {256, kPadStart}, {259, kPadSelect},                      // Enter, Escape (owner 2026-09-20: the pause a PC player expects), Backspace
-        {265, kPadUp}, {262, kPadRight}, {264, kPadDown}, {263, kPadLeft},            // arrows
-        {'Z', kPadSquare}, {'X', kPadCross}, {32, kPadCross}, {'C', kPadCircle}, {'V', kPadTriangle},
-        {'Q', kPadL1}, {'E', kPadR1}, {'1', kPadL2}, {'3', kPadR2}, {'2', kPadL3}, {'4', kPadR3},
-    };
+    // The keyboard map and the pad map are ONE table since 2026-09-21 (Sprint 10 Goal 8, R174): launcher/mapping.h,
+    // resolved once from PS2X_INPUT_MAPPING (unset: the defaults, which are the tables that used to live here --
+    // kSocom2Keys and the pad-to-PS2 array -- byte for byte). socom2HostInputMapping() is the resolved table; the
+    // runtime prints its hash once at startup ("[socom2] input mapping hash=...") so a gate can pin it.
+    const launcher::mapping::Mapping &socom2HostInputMapping();
 
     // Pressure field order (ids 0x14..0x1f) -> digital button id.
     inline constexpr uint8_t kSocom2PressureButton[12] = {

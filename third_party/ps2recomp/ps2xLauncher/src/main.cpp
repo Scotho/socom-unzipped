@@ -563,7 +563,15 @@ namespace
         };
         Prompt prompts[3];
         int count = 0;
-        if (typing)
+        if (app.bind.state == ui::BindFlow::State::Listening)
+        {
+            // Sprint 10 Goal 8: the pad is being listened to, so the pad's own buttons cannot be prompts here --
+            // every one of them is a candidate. Words instead: what to do, and the two ways out.
+            prompts[count++] = Prompt{"ANY", "BIND", -1};
+            prompts[count++] = Prompt{"HOLD B", "CANCEL", -1};
+            prompts[count++] = Prompt{"ESC", "CANCEL", -1};
+        }
+        else if (typing)
         {
             prompts[count++] = Prompt{"TYPE", "EDIT", -1};
             prompts[count++] = Prompt{"ENTER", "DONE", -1};
@@ -1029,6 +1037,16 @@ int main(int argc, char **argv)
         shots.push_back(Shot{ui::Page::Controller, 800, 520, "_crouch_l3"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_touchpad"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_crouch_l2"});
+        // Sprint 10 Goal 8: the BUTTONS section -- the defaults, a custom layout with its callouts, a cell
+        // listening with its countdown, a conflict's three answers, the restore confirm, and the PlayStation
+        // family's shapes in the cells.
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons"});
+        shots.push_back(Shot{ui::Page::Controller, 800, 520, "_buttons"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_custom"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_listening"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_conflict"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_restore"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_playstation"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
         // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
@@ -1120,6 +1138,9 @@ int main(int argc, char **argv)
         // OUT here -- inside the block above it would be skipped under --screenshot, and the
         // ADVANCED capture would show a section that says "in use" over nothing at all.
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
+        // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
+        app.layout.padButtons = app.padSection == 1;
+        app.layout.padDialogButtons = ui::dialogButtonCount(app.bind.state);
 
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
@@ -1210,7 +1231,66 @@ int main(int argc, char **argv)
             }
         }
 
-        if (!app.fake)
+        // Sprint 10 Goal 8: while a bind session listens, every host button is a candidate and none of them
+        // navigates -- the frame's pad reading goes to the flow and nowhere else, and the keyboard's only word
+        // is Escape. Released, not pressed (bind_flow.h says why); the button that STARTED the session (A on
+        // the cell) is still down on this frame and is ignored until it comes back up.
+        static double s_downSince[18] = {};
+        static bool s_ignoreDown[18] = {};
+        const bool listening = app.bind.state == ui::BindFlow::State::Listening;
+        if (!app.fake && listening)
+        {
+            const int padSlot = shownSlot(app.config);
+            const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
+            ui::BindInput in;
+            in.escape = IsKeyPressed(KEY_ESCAPE);
+            for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
+            {
+                const bool down = padPresent && IsGamepadButtonDown(padSlot, h);
+                if (down && s_downSince[h] == 0.0)
+                    s_downSince[h] = ctx.time;
+                if (padPresent && IsGamepadButtonReleased(padSlot, h))
+                {
+                    if (s_ignoreDown[h])
+                        s_ignoreDown[h] = false;
+                    else if (in.releasedHost == 0)
+                    {
+                        in.releasedHost = h;
+                        in.heldSeconds = s_downSince[h] > 0.0 ? ctx.time - s_downSince[h] : 0.0;
+                    }
+                }
+                if (!down)
+                    s_downSince[h] = 0.0;
+            }
+            launcher::mapping::Mapping m = launcher::activeMapping(app.config);
+            const uint8_t bound = app.bind.button;
+            const ui::GlyphFamily family = ui::glyphFamilyFor(app.pad.name);
+            switch (ui::bindStep(app.bind, m, in, ctx.time))
+            {
+            case ui::BindEvent::Bound:
+            {
+                launcher::setActiveMapping(app.config, m);
+                app.dirty = true;
+                const int row = launcher::mapping::rowOf(bound);
+                const int host = row >= 0 ? m.pad[static_cast<size_t>(row)].host : launcher::mapping::kHostNone;
+                app.status = std::string(ui::ps2Label(bound).text) + " is now " + ui::hostLabel(family, host).text;
+                break;
+            }
+            case ui::BindEvent::Conflict:
+                nav.focus = ui::dialogFocusId(app.bind.state);
+                break;
+            case ui::BindEvent::Cancelled:
+                app.status = "binding cancelled";
+                break;
+            case ui::BindEvent::TimedOut:
+                app.status = "no button pressed; binding unchanged";
+                break;
+            default:
+                break;
+            }
+            app.padPrompts = true;
+        }
+        else if (!app.fake)
         {
             const bool typing = !app.activeField.empty();
             const int padSlot = shownSlot(app.config);
@@ -1503,6 +1583,24 @@ int main(int argc, char **argv)
                     app.status = game.error;
             }
         }
+        // Sprint 10 Goal 8: a cell asked to bind. The host buttons down right now (A, which activated the cell)
+        // are remembered so their release does not bind them.
+        if (app.requestBind >= 0)
+        {
+            if (!app.fake)
+            {
+                const int padSlot = shownSlot(app.config);
+                const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
+                for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
+                {
+                    s_ignoreDown[h] = padPresent && IsGamepadButtonDown(padSlot, h);
+                    s_downSince[h] = 0.0;
+                }
+            }
+            ui::bindStart(app.bind, static_cast<uint8_t>(app.requestBind), ctx.time);
+            app.status = "press the button on your pad";
+            app.requestBind = -1;
+        }
         app.requestBrowse = app.requestVerify = app.requestLaunch = app.requestSave = false;
         app.requestDiagnostics = app.requestOpenLogs = false;
         app.requestMicChanged = app.requestMicRescan = false;
@@ -1594,8 +1692,50 @@ int main(int argc, char **argv)
                     report.changed = false;
                 }
                 const bool touchpadShot = std::strcmp(shot.suffix, "_crouch_touchpad") == 0;
-                app.pad = (std::strcmp(shot.suffix, "_playstation") == 0 || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
+                const bool playstationShot = std::strcmp(shot.suffix, "_playstation") == 0 || std::strcmp(shot.suffix, "_buttons_playstation") == 0;
+                app.pad = (playstationShot || touchpadShot) ? fakePlayStationPad() : fakeXboxPad();
                 app.config.crouchShortcut = std::strncmp(shot.suffix, "_crouch_", 8) == 0 ? shot.suffix + 8 : "off";
+                // Sprint 10 Goal 8: the BUTTONS section's states. Every shot starts from SETUP, the defaults and an
+                // idle flow; the _buttons* shots set what they show.
+                {
+                    const std::string suffix = shot.suffix;
+                    app.padSection = suffix.rfind("_buttons", 0) == 0 ? 1 : 0;
+                    app.bind = ui::BindFlow{};
+                    app.config.mappings.clear();
+                    launcher::mapping::Mapping m = launcher::mapping::defaults();
+                    if (suffix == "_buttons_custom" || suffix == "_buttons_playstation")
+                    {
+                        // Triangle on the left stick click (swapped with L3), Select on the guide button.
+                        launcher::mapping::rebind(m, launcher::mapping::kPs2Triangle, launcher::mapping::kHostL3, launcher::mapping::Resolution::Swap);
+                        launcher::mapping::rebind(m, launcher::mapping::kPs2Select, launcher::mapping::kHostGuide, launcher::mapping::Resolution::Replace);
+                        app.bind.lastHost = launcher::mapping::kHostL3;
+                        app.bind.lastAt = 1.0e12;   // "just now", whatever the clock says: the ring is in the picture
+                        shotPendingFocus = ui::bindCellId(3);   // Triangle's cell
+                    }
+                    if (suffix == "_buttons_listening")
+                    {
+                        ui::bindStart(app.bind, launcher::mapping::kPs2Triangle, 0.0);
+                        app.bind.deadline = GetTime() + 3.2;   // three frames later the cell reads 4, then 3
+                        shotPendingFocus = ui::bindCellId(3);
+                    }
+                    if (suffix == "_buttons_conflict")
+                    {
+                        app.bind.state = ui::BindFlow::State::Conflict;
+                        app.bind.button = launcher::mapping::kPs2Triangle;
+                        app.bind.host = launcher::mapping::kHostL3;
+                        app.bind.takenBy = launcher::mapping::kPs2L3;
+                        shotPendingFocus = ui::dialogFocusId(app.bind.state);
+                    }
+                    if (suffix == "_buttons_restore")
+                    {
+                        launcher::mapping::rebind(m, launcher::mapping::kPs2Triangle, launcher::mapping::kHostGuide, launcher::mapping::Resolution::Replace);
+                        ui::restoreAsk(app.bind);
+                        shotPendingFocus = ui::dialogFocusId(app.bind.state);
+                    }
+                    if (suffix == "_buttons")
+                        shotPendingFocus = ui::bindCellId(0);
+                    launcher::setActiveMapping(app.config, m);
+                }
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;
                 if (std::strcmp(shot.suffix, "_help") == 0)
                     shotPendingFocus = "online.profile";

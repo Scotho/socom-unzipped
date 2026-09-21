@@ -49,7 +49,8 @@ namespace ui
         }
     }
 
-    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, PadMark mark)
+    void drawPad(const Ctx &ctx, Rect bounds, const PadSnapshot &pad, float deadZone, int markHost,
+                 const std::vector<PadCallout> *callouts)
     {
         const PadGeometry g = padGeometry(bounds);
         const bool on = pad.present;
@@ -190,31 +191,63 @@ namespace ui
                  numberSize, A(value > 0.55f ? theme::ground : theme::caption), Face::Bold);
         }
 
-        // ---- R139: where the crouch shortcut is ----------------------------------------------------------
-        if (on && mark != PadMark::None)
+        // ---- Sprint 10 Goal 8: the callouts -- the game's button on the control that drives it now ---------
+        if (on && callouts != nullptr)
         {
-            const char *tag = "CROUCH";
-            const float size = 13.0f;
-            const float tagW = textWidth(ctx, tag, size, Face::Bold, 0.06f);
-            Vec2 at;
-            if (mark == PadMark::LeftStick)
+            for (const PadCallout &call : *callouts)
             {
-                strokeCircle(ctx, g.well[0], g.wellRadius + 5.0f, theme::goldHi, 2.0f);
-                at = Vec2{g.well[0].x - tagW * 0.5f, g.well[0].y + g.wellRadius + 9.0f};
+                const PadAnchor a = padAnchor(g, call.host);
+                if (!a.valid)
+                    continue;
+                if (call.highlight)
+                    strokeCircle(ctx, a.c, a.r + 6.0f, theme::goldHi, 2.5f);
+                if (call.face < 0 && (call.text == nullptr || call.text[0] == '\0'))
+                    continue;
+                // A gold pill over the control, carrying the shape or the word: what the game reads from it.
+                const float size = 11.0f;
+                const float w = call.face >= 0 ? 22.0f : textWidth(ctx, call.text, size, Face::Bold) + 12.0f;
+                const Rect pill{a.c.x - w * 0.5f, a.c.y - 9.0f, w, 18.0f};
+                fillRound(ctx, pill, 9.0f, theme::gold);
+                strokeRound(ctx, pill, 9.0f, theme::ground, 1.0f);
+                if (call.face >= 0)
+                    drawShapeGlyph(ctx, call.face, Vec2{pill.cx(), pill.cy()}, 12.0f, theme::ground);
+                else
+                    textCenteredIn(ctx, call.text, pill, size, theme::ground, Face::Bold);
             }
-            else if (mark == PadMark::L2)
+        }
+
+        // ---- R139: where the crouch shortcut is ----------------------------------------------------------
+        // Ringed and tagged on whichever host control the mapping binds to the shortcut's PS2 button (the plate
+        // for the touchpad, which the DualShock 2 drawn here does not have).
+        if (on && markHost != 0)
+        {
+            const PadAnchor a = padAnchor(g, markHost);
+            if (a.valid)
             {
-                const Rect t = g.trigger[0];
-                strokeRect(ctx, Rect{t.x - 4.0f, t.y - 4.0f, t.w + 8.0f, t.h + 8.0f}, theme::goldHi, 2.0f);
-                at = Vec2{t.x - tagW - 12.0f, t.cy() - size * 0.6f};
+                const char *tag = "CROUCH";
+                const float size = 13.0f;
+                const float tagW = textWidth(ctx, tag, size, Face::Bold, 0.06f);
+                Vec2 at;
+                if (markHost == kPadAnchorTouchpad)
+                {
+                    const Rect r{g.plate.x - 4.0f, g.plate.y - 4.0f, g.plate.w + 8.0f, g.plate.h + 8.0f};
+                    strokeRound(ctx, r, 8.0f, theme::goldHi, 2.0f);
+                    at = Vec2{r.cx() - tagW * 0.5f, r.bottom() + 5.0f};
+                }
+                else if (markHost == 10 || markHost == 12 || markHost == 9 || markHost == 11)
+                {
+                    // A shoulder or a trigger: a box around it, the tag beside it, away from the centre line.
+                    const Rect t = markHost == 10 ? g.trigger[0] : (markHost == 12 ? g.trigger[1] : (markHost == 9 ? g.shoulder[0] : g.shoulder[1]));
+                    strokeRect(ctx, Rect{t.x - 4.0f, t.y - 4.0f, t.w + 8.0f, t.h + 8.0f}, theme::goldHi, 2.0f);
+                    at = a.c.x < g.centre.x ? Vec2{t.x - tagW - 12.0f, t.cy() - size * 0.6f} : Vec2{t.right() + 12.0f, t.cy() - size * 0.6f};
+                }
+                else
+                {
+                    strokeCircle(ctx, a.c, a.r + 5.0f, theme::goldHi, 2.0f);
+                    at = Vec2{a.c.x - tagW * 0.5f, a.c.y + a.r + 9.0f};
+                }
+                text(ctx, tag, at, size, theme::goldHi, Face::Bold, 0.06f);
             }
-            else
-            {
-                const Rect r{g.plate.x - 4.0f, g.plate.y - 4.0f, g.plate.w + 8.0f, g.plate.h + 8.0f};
-                strokeRound(ctx, r, 8.0f, theme::goldHi, 2.0f);
-                at = Vec2{r.cx() - tagW * 0.5f, r.bottom() + 5.0f};
-            }
-            text(ctx, tag, at, size, theme::goldHi, Face::Bold, 0.06f);
         }
 
         if (!on)
