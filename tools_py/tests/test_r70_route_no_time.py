@@ -91,7 +91,8 @@ class NoDataHeadingStillScoredTest(unittest.TestCase):
     is unwrapped. Tested directly against the wrap-decision helpers (route_swap_stop_reason / route_stop_reason):
     going through the live endgame_route/endgame_cooperative call would also spin up their stander/victim thread,
     which free-runs the simulated Clock (no real wait) and races the main thread's follow_route -- a pre-existing
-    harness hazard, not this fix's concern."""
+    harness hazard, not this fix's concern. (Sprint 10: that hazard is closed -- online_rows.Clock runs its threads
+    in lockstep, test_lockstep_clock.py -- and these helper-level tests stay as they are.)"""
 
     def test_endgame_route_keeps_the_route_failed_wrap_and_swap_hint(self):
         reason = M.route_swap_stop_reason("NO-DATA heading or position", "B")

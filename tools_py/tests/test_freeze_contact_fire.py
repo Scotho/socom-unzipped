@@ -9,9 +9,15 @@
     arrive -- a freeze or a teleport in the LAST window, each visible only late;
   * I6: the same re-check for a window inside the loop, at the next iteration.
 
+Sprint 10 (KNOWN §4, the CI flake): the stander / victim thread and the shooter share the Clock in lockstep
+(online_rows.Clock), so the victim cannot walk legs while the shooter has not had its turn -- these tests ran 50
+failures in 100 contended runs before that -- and the endgames end their side thread in simulated time
+(M.join_in), which the last test of each class checks.
+
 unittest only; simulated time.
 """
 import math
+import threading
 import unittest
 
 from tools_py.parity import online_match_ours as M
@@ -169,6 +175,13 @@ class FireWindowLateTest(unittest.TestCase):
         self.assertIsNone(out.get("fire_freeze"), lines)
         self.assertIsNone(out.get("fire_teleport"), lines)
 
+    def test_the_stander_thread_ends_with_the_fight(self):
+        # Sprint 10: the stander was joined outside the clock (a native join with a 3 s timeout) and, under lockstep,
+        # could not take the poll that ends it -- the join timed out in real time and the thread leaked
+        out, lines, c, ssh = run_fight(0.1, {})
+        self.assertEqual(c.threads(), [threading.current_thread()], "a side thread outlived the fight")
+        self.assertGreater(out["t_end"], out["t_fight"])
+
 
 class CooperativeFireWindowTest(unittest.TestCase):
     """Minor (fix round): the cooperative mode classifies round resets and runs the fire-window freeze check too."""
@@ -185,17 +198,24 @@ class CooperativeFireWindowTest(unittest.TestCase):
         lines = []
         out = M.endgame_cooperative(sides, M.Duel(), None, lines.append, route=[], fight_s=0.1, micro_strafe=False,
                                     rule=False, clock=c, wait=c.wait)
-        return out, lines
+        return out, lines, c
 
     def test_a_freeze_in_the_last_window_is_no_data(self):
-        out, lines = self.run_coop({"freeze_at": "burst"})
+        out, lines, c = self.run_coop({"freeze_at": "burst"})
         self.assertGreaterEqual(out["bursts"], 1, lines)
         self.assertIsNotNone(out.get("fire_freeze"), lines)
 
     def test_a_quiet_fight_is_not(self):
-        out, lines = self.run_coop({})
+        out, lines, c = self.run_coop({})
         self.assertGreaterEqual(out["bursts"], 1, lines)
         self.assertIsNone(out.get("fire_freeze"), lines)
+
+    def test_both_side_threads_end_with_the_fight(self):
+        # Sprint 10: the shooter and the victim are both daemon threads here; the caller joins each through the
+        # injected wait, and the victim's last leg is walked in simulated time, not abandoned at a real timeout
+        out, lines, c = self.run_coop({})
+        self.assertEqual(c.threads(), [threading.current_thread()], "a side thread outlived the fight")
+        self.assertGreater(out["t_end"], out["t_fight"])
 
 
 if __name__ == "__main__":
