@@ -232,7 +232,7 @@ details[open].cited summary::after{content:"\2212"}
 .cite.commit:hover{border-color:var(--glow);color:var(--lit)}
 .cite.run{font-family:var(--mono);font-size:12px;color:var(--teal)}
 figure{margin:12px 0 4px;border:1px solid var(--line2);background:#000;max-width:640px}
-figure img{display:block;width:100%;height:auto;filter:saturate(.95)}
+figure img,figure video{display:block;width:100%;height:auto;filter:saturate(.95)}
 figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;color:var(--dim)}
 .closing{margin-top:48px;padding:18px 20px;background:var(--panel2);border:1px solid var(--line)}
 .closing h2{font:600 22px/1.2 var(--head);letter-spacing:1px;color:var(--gold);margin:0 0 10px}
@@ -270,10 +270,10 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
 <header class="story-hero">
 <img class="logo" src="img/logo.webp?v=3ba1e71ed5" alt="SOCOM II U.S. Navy SEALs" width="640" height="280" decoding="async">
 <p class="brief-sub"><span class="blink"></span>Mission briefing &middot; the story so far</p>
-<h1 class="brief-title">the story so far<small>Trying to turn a PlayStation 2 game into a PC game. 19 days in.</small></h1>
+<h1 class="brief-title">the story so far<small>Trying to turn a PlayStation 2 game into a PC game. 20 days in.</small></h1>
 <p class="lede">The timeline of this project, first commit to today. Written for people who want to play the game, not build it. Each entry has one technical line you can skip. The rest is what happened.</p>
 </header>
-<ul class="strip"><li><b>44</b><span>entries</span></li><li><b>204</b><span>commits cited</span></li><li><b>5</b><span>eras</span></li><li><b>15</b><span>pictures</span></li><li><b>Sep 2</b><span>first commit</span></li><li><b>Sep 20</b><span>latest</span></li></ul>
+<ul class="strip"><li><b>45</b><span>entries</span></li><li><b>205</b><span>commits cited</span></li><li><b>5</b><span>eras</span></li><li><b>16</b><span>pictures</span></li><li><b>Sep 2</b><span>first commit</span></li><li><b>Sep 21</b><span>latest</span></li></ul>
 <section class="preface">
 <p><strong>What this is.</strong> SOCOM II is a PlayStation 2 game from 2003. This project turns the game's own code into a Windows and Linux program. It runs from your own disc (the North American r0001 pressing; anything else gets refused with a message instead of half-working), draws on your GPU, plays through your speakers, reads your controller, and plays online against a server we host. Nothing from the game ships with it.</p>
 <p><strong>How to read an entry.</strong> Date, title, one bold line on why it mattered, a few sentences on what happened, then three small things. <em>How:</em> is the technical sentence. <em>But:</em> is the catch: what's still unproven, what got retracted, what a number doesn't mean. <code>Cited:</code> is the evidence, commit hashes you can open in the repo plus run records. The run records live in a <code>logs/</code> folder on the project machine, not in the repo, so each one cited here has a frozen witness (first lines, size, hash) in <code>docs/story/witnesses.json</code>. A test fails if any citation stops pointing at something real.</p>
@@ -287,7 +287,7 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
 <a href="#era-2026-09-08">A picture, then a gate<small>Sep 8 &ndash; Sep 11 &middot; 6</small></a>
 <a href="#era-2026-09-12">From picture to game<small>Sep 12 &ndash; Sep 14 &middot; 9</small></a>
 <a href="#era-2026-09-15">Light, sound and a launcher<small>Sep 15 &ndash; Sep 17 &middot; 6</small></a>
-<a href="#era-2026-09-18">Linux, a server, a stranger<small>Sep 18 &ndash; Sep 20 &middot; 15</small></a>
+<a href="#era-2026-09-18">Linux, a server, a stranger<small>Sep 18 &ndash; Sep 21 &middot; 16</small></a>
 </nav>
 <ol class="tl">
 <li class="era" id="era-2026-09-02"><div class="mark" aria-hidden="true"></div><span class="span">2026-09-02 &ndash; 2026-09-07</span><h2>From the disc to the screen</h2>
@@ -602,7 +602,7 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
 <p class="but"><span class="lbl">But</span>nobody had tried the launcher by hand, and the zip had never run on a clean machine. The audit's biggest gap was left alone: every online result was two copies on one machine behind one router.</p>
 <details class="cited"><summary><span class="lbl">Cited</span><span class="n">15</span></summary><div class="chips"><a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/770d5fb"><code>770d5fb</code> SOCOM Unzipped launcher, first cut</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/2a8f8e4"><code>2a8f8e4</code> scripts/make_portable.sh -- the portable folder</a> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/docs/STATUS.md">docs/STATUS.md</a> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">log logs/parity/gate/s6_launcher_gate/summary.txt</span> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">log logs/launcher_server_picker.png</span> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/docs/research/assets/launcher-first-cut.png">docs/research/assets/launcher-first-cut.png</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/09b793a"><code>09b793a</code> the 2026-09-17 audit and code review</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/fae7d0e"><code>fae7d0e</code> the audit&#x27;s fix wave</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/32aec0b"><code>32aec0b</code> Sprint 7 opened -- two strangers, two machines, one hosted server</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/a843385"><code>a843385</code> the stranger&#x27;s machine, defensively</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/39cd17f"><code>39cd17f</code> equal-priority guest threads are never time-sliced</a> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/docs/AUDIT-2026-09-17.md">docs/AUDIT-2026-09-17.md</a> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">log logs/parity/gate/s6_fixwave_gate/summary.txt</span> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">log logs/parity/gate/s7_gl_gate/summary.txt</span> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">log logs/parity/gate/s7_gl_gate2/summary.txt</span></div></details>
 </article></li>
-<li class="era" id="era-2026-09-18"><div class="mark" aria-hidden="true"></div><span class="span">2026-09-18 &ndash; 2026-09-20</span><h2>Linux, a server, a stranger</h2>
+<li class="era" id="era-2026-09-18"><div class="mark" aria-hidden="true"></div><span class="span">2026-09-18 &ndash; 2026-09-21</span><h2>Linux, a server, a stranger</h2>
 <p class="standing">A player with their own disc can unzip a 56 MB download, start the game on Windows or Linux, save to a memory card, report a bug from inside it, and play online against a server the project hosts in Ohio. As of tonight, against a console player in the same lobby too. Only the owner's PC has done any of it.</p>
 </li>
 <li class="node" id="2026-09-18-the-launcher-learns-your-pad" style="--i:29">
@@ -760,6 +760,16 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
 <p class="but"><span class="lbl">But</span>the "console" is an emulator on the same PC as ours, not a PlayStation 2 on a couch. Still owed: each guest's copy of the other's position, so "seen by the other" is measured rather than assumed. And still: no two humans have ever played each other.</p>
 <details class="cited"><summary><span class="lbl">Cited</span><span class="n">8</span></summary><div class="chips"><a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/93677a5"><code>93677a5</code> the mixed match&#x27;s leg 1 on the verified flow</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/136c635"><code>136c635</code> leg 1 reached</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/25690ad"><code>25690ad</code> leg 2 reached</a> <a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/984a342"><code>984a342</code> Sprint 10 Goal 3&#x27;s bar met</a> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">run mixed2_ours_hosts_g</span> <span class="cite run" title="a run record; its witness is in docs/story/witnesses.json">run mixed2_pcsx2_hosts_g</span> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/tools_py/parity/pcsx2_shell.py">tools_py/parity/pcsx2_shell.py</a> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md">docs/superpowers/plans/2026-09-20-sprint-10-goal-3-mixed-match.md</a></div></details>
 </article></li>
+<li class="node pic" id="2026-09-21-one-round-on-film" style="--i:44">
+<div class="dot" aria-hidden="true"></div>
+<article class="entry">
+<header><time datetime="2026-09-21">Sep 21<span class="yr"> 2026</span></time><h3><a href="#2026-09-21-one-round-on-film">One round, on film</a></h3></header>
+<p class="hook">The first kill was on the 13th and came as two stills. This one you can watch.</p>
+<p>Two of our clients on one desk, both on that night's build, both in the same round on the hosted server, both driven by the agent while the owner watched. The recording ran the whole round; this is its last fifty-eight seconds: the approach across the yard, the shot, the killfeed on both screens, the scoreboard, and the next round's opening card. Cropped to the two windows and nothing else.</p>
+<figure><video controls preload="metadata" playsinline poster="img/2026-09-21-online-kill.png"><source src="img/2026-09-21-online-kill.mp4" type="video/mp4">Round&#x27;s end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the approach and the shot.</video><figcaption>Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the approach and the shot.</figcaption></figure>
+<p class="but"><span class="lbl">But</span>it is not graceful. The camera sways, the aim hunts, and the approach takes most of a four-minute round. It is functional: the round ends by a shot, both screens say so, and the scoreboard counts it.</p>
+<details class="cited"><summary><span class="lbl">Cited</span><span class="n">2</span></summary><div class="chips"><a class="cite commit" href="https://github.com/Scotho/socom-unzipped/commit/0eef452"><code>0eef452</code> run 2 by hand -- KILL 4/4 on the hosted server</a> <a class="cite path" href="https://github.com/Scotho/socom-unzipped/blob/main/docs/LADDER.md">docs/LADDER.md</a></div></details>
+</article></li>
 </ol>
 <section class="closing" id="where-it-stands-tonight-2026-09-20"><h2>Where it stands tonight, 2026-09-20</h2>
 <p><em>Not an entry and no <code>Cited:</code> line. This is the view from the end of the record on the night it ends, and it gets replaced by real entries as things land.</em></p>
@@ -786,7 +796,7 @@ figcaption{padding:8px 10px;font:12.5px/1.45 var(--head);letter-spacing:.4px;col
       <a href="https://s2u.scotho.com/#report">Report a bug</a>
     </nav>
   </div>
-  <div class="foot-fine">generated 2026-09-20 from docs/STORY.md at 73beea6 &middot; 44 entries, 204 commit citations &middot; checked by tools_py/story/cite.py &middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;</div>
+  <div class="foot-fine">generated 2026-09-21 from docs/STORY.md at 0eef452 &middot; 45 entries, 205 commit citations &middot; checked by tools_py/story/cite.py &middot; link to a moment: #&lt;date&gt;-&lt;slug&gt;</div>
 </footer>
 
 <script>

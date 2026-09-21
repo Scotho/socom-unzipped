@@ -70,8 +70,13 @@ PLACEHOLDERS = ["{{", "}}", "TODO(release)", "RELEASE-TAG-HERE"]
 # shows must be tracked, must exist, must be under the size budget, and must have a row in
 # docs/story/PICTURES.md -- the inventory spec 5.3 asks for, which is also the disc-derived decision table's
 # input. The line is the owner's; the test only keeps the list honest.
+# A video takes the same slot on the same line, with an .mp4 under the same directory: it gets a budget of its
+# own and must have a poster frame beside it (<name>.png, tracked), which is the picture the page shows before
+# anyone presses play and the picture a browser without the codec shows instead of nothing.
 PICTURE_DIR = "docs/story/img/"
 PICTURE_MAX_BYTES = 1_000_000
+VIDEO_MAX_BYTES = 12_000_000
+VIDEO_EXT = ".mp4"
 _IMG_RE = re.compile(r"!\[([^\]]*)\]\(([^)\s]+)\)")
 _ENTRY_RE = re.compile(r"^###\s+(\d{4}-\d{2}-\d{2})\s+[—–-]+\s+(.+?)\s*$")
 _CITED_RE = re.compile(r"^`?Cited:`?\s*(.*)$")
@@ -288,7 +293,7 @@ class GitResolver(object):
         if not os.path.exists(p):
             return set()
         with open(p, encoding="utf-8") as f:
-            return set(re.findall(r"`([^`/]+\.(?:png|jpg|jpeg|webp))`", f.read()))
+            return set(re.findall(r"`([^`/]+\.(?:png|jpg|jpeg|webp|mp4))`", f.read()))
 
     def digest(self, path):
         """(bytes, sha256) of a file under logs/, or of a directory's sorted listing; None when absent."""
@@ -438,11 +443,18 @@ def check_pictures(entries, resolver, problems):
             if not resolver.tracked(path):
                 problems.append(Problem(entry.where, "picture-untracked", "%s is not tracked by git" % path))
             size = resolver.size(path)
+            video = path.endswith(VIDEO_EXT)
+            budget = VIDEO_MAX_BYTES if video else PICTURE_MAX_BYTES
             if size is None:
                 problems.append(Problem(entry.where, "picture-missing", "%s does not exist" % path))
-            elif size > PICTURE_MAX_BYTES:
+            elif size > budget:
                 problems.append(Problem(entry.where, "picture-too-large",
-                                        "%s is %d bytes; the budget is %d" % (path, size, PICTURE_MAX_BYTES)))
+                                        "%s is %d bytes; the budget is %d" % (path, size, budget)))
+            if video:
+                poster = path[:-len(VIDEO_EXT)] + ".png"
+                if resolver.size(poster) is None or not resolver.tracked(poster):
+                    problems.append(Problem(entry.where, "video-no-poster",
+                                            "%s needs its poster frame %s beside it, tracked" % (path, poster)))
             if os.path.basename(path) not in inventory:
                 problems.append(Problem(entry.where, "picture-not-inventoried",
                                         "%s has no row in docs/story/PICTURES.md" % path))

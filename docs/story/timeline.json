@@ -1,7 +1,7 @@
 {
  "schema": 1,
- "generated": "2026-09-20",
- "head": "73beea6",
+ "generated": "2026-09-21",
+ "head": "0eef452",
  "about": "Machine-readable form of docs/STORY.md. Built by reading the document; the citation test asserts the two agree.",
  "entries": [
   {
@@ -1646,7 +1646,7 @@
    "id": "2026-09-18-the-launcher-learns-your-pad",
    "date": "2026-09-18",
    "title": "The launcher learns your pad",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The front door stopped assuming everyone owns the same controller.",
    "citations": [
     {
@@ -1736,7 +1736,7 @@
    "id": "2026-09-18-the-sound-reports-run-to-ground",
    "date": "2026-09-18",
    "title": "The sound reports run to ground",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The owner said the sound stopped halfway through a mission. It had.",
    "citations": [
     {
@@ -1766,7 +1766,7 @@
    "id": "2026-09-18-the-game-runs-on-linux",
    "date": "2026-09-18",
    "title": "The game runs on Linux",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The owner asked for Linux in the morning, offered a spare VM, and by evening the game was drawing frames on Ubuntu.",
    "citations": [
     {
@@ -1812,7 +1812,7 @@
    "id": "2026-09-19-the-menus-stop-dropping-frames",
    "date": "2026-09-19",
    "title": "The menus stop dropping frames",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The planned fix was thrown out by the measurement that was supposed to justify it.",
    "citations": [
     {
@@ -1853,7 +1853,7 @@
    "id": "2026-09-19-it-can-save-and-it-can-hear-you",
    "date": "2026-09-19",
    "title": "It can save, and it can hear you",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Two things every finished game has, and this one didn't.",
    "citations": [
     {
@@ -1909,7 +1909,7 @@
    "id": "2026-09-19-the-launcher-gets-a-face",
    "date": "2026-09-19",
    "title": "The launcher gets a face",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Until now the front door was a box with some checkboxes in it.",
    "citations": [
     {
@@ -1962,7 +1962,7 @@
    "id": "2026-09-19-a-server-of-its-own-on-the-internet",
    "date": "2026-09-19",
    "title": "A server of its own, on the internet",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Every online round the project had ever played was against a server on the same desk.",
    "citations": [
     {
@@ -2027,7 +2027,7 @@
    "id": "2026-09-19-it-says-why-it-won-t-start-and-it-weighs-less",
    "date": "2026-09-19",
    "title": "It says why it won't start, and it weighs less",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "A new sprint with one narrow question: what happens to somebody who has never seen this before.",
    "citations": [
     {
@@ -2083,7 +2083,7 @@
    "id": "2026-09-19-a-way-to-report-what-went-wrong",
    "date": "2026-09-19",
    "title": "A way to report what went wrong",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The only place in the whole program where a player can talk back.",
    "citations": [
     {
@@ -2131,7 +2131,7 @@
    "id": "2026-09-19-the-things-the-owner-actually-noticed",
    "date": "2026-09-19",
    "title": "The things the owner actually noticed",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Not one of these came out of a test. They came out of somebody trying to play.",
    "citations": [
     {
@@ -2192,7 +2192,7 @@
    "id": "2026-09-20-the-first-build-made-for-a-person-to-play",
    "date": "2026-09-20",
    "title": "The first build made for a person to play",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Building it found two bugs that would have shipped. Playing it found the one the whole sprint was for.",
    "citations": [
     {
@@ -2250,7 +2250,7 @@
    "id": "2026-09-20-the-music-chased-to-the-speaker",
    "date": "2026-09-20",
    "title": "The music, chased to the speaker",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Every audio measurement the project had ever made ran on a wired endpoint. The owner listens on a Bluetooth speaker.",
    "citations": [
     {
@@ -2287,7 +2287,7 @@
    "id": "2026-09-20-an-audio-parity-test-and-the-sound-that-was-never-there",
    "date": "2026-09-20",
    "title": "An audio parity test, and the sound that was never there",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "The owner asked for an audio version of the picture test. It found something no ear had named.",
    "citations": [
     {
@@ -2330,7 +2330,7 @@
    "id": "2026-09-20-version-0-9-0-and-a-robot-that-plays-every-night",
    "date": "2026-09-20",
    "title": "Version 0.9.0, and a robot that plays every night",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "Sprint 9 merged to main and got a tag. Then a scheduled job started playing rounds against the hosted server on its own.",
    "citations": [
     {
@@ -2369,7 +2369,7 @@
    "id": "2026-09-20-a-console-and-a-pc-in-the-same-match",
    "date": "2026-09-20",
    "title": "A console and a PC in the same match",
-   "era": "2026-09-18 .. 2026-09-20 - Linux, a server, a stranger",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
    "hook": "A PlayStation 2 client and our program, in one game, on the hosted server, both ways round.",
    "citations": [
     {
@@ -2422,6 +2422,30 @@
    "picture": {
     "path": "docs/story/img/2026-09-20-mixed-match.png",
     "caption": "Our program, in a round hosted by the console client on the hosted server: the first time the two have shared a match."
+   }
+  },
+  {
+   "id": "2026-09-21-one-round-on-film",
+   "date": "2026-09-21",
+   "title": "One round, on film",
+   "era": "2026-09-18 .. 2026-09-21 - Linux, a server, a stranger",
+   "hook": "The first kill was on the 13th and came as two stills. This one you can watch.",
+   "citations": [
+    {
+     "kind": "commit",
+     "ref": "0eef452",
+     "sha": "0eef452497c7b05c8e772aeffa25ac486c45103b",
+     "date": "2026-09-21",
+     "subject": "docs(ladder): run 2 by hand -- KILL 4/4 on the hosted server (ladder_20260921_010147, exe 8a648010, harness 3850080e): streak 2 of 7"
+    },
+    {
+     "kind": "path",
+     "ref": "docs/LADDER.md"
+    }
+   ],
+   "picture": {
+    "path": "docs/story/img/2026-09-21-online-kill.mp4",
+    "caption": "Round's end, both screens: SOCOM-B on the left has just died, SOCOM-A on the right did it, and the same killfeed line sits on each. Press play for the approach and the shot."
    }
   }
  ]
