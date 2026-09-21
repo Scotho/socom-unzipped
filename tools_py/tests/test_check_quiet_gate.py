@@ -33,6 +33,9 @@ class TestCheckQuietGate(unittest.TestCase):
 
     def run_check(self, alive, pid=999999, **env_extra):
         env = dict(os.environ)
+        # A caller's FORCE_QUIET=1 (build.sh test run from a chain that already holds the lock) must not decide
+        # what this test measures: the gate's refusal is the thing under test, and the override is its own case.
+        env.pop("FORCE_QUIET", None)
         # The real probe's output must contain the pid for a hit; a fake "alive" answer must too.
         env["QUIET_GATE_TASKLIST_CMD"] = ("echo ALIVE %s" % pid) if alive else "echo nothing-here"
         env.update({k: str(v) for k, v in env_extra.items()})
