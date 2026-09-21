@@ -14,6 +14,7 @@
 #include "ui/pad_input.h"
 #include "ui/pad_render.h"
 #include "ui/theme.h"
+#include "ps2x/host_window.h"   // Sprint 10 Q4: the game window's chrome holds the launcher's palette
 #ifndef _WIN32
 #include "../../ps2xLauncher/src/win32_glue.h"   // Sprint 8 Task 4: the POSIX glue, tested where it is built
 #include <cerrno>
@@ -2033,6 +2034,22 @@ void register_launcher_tests()
             t.IsFalse(ui::helpFor(ui::kSwitchOffId).empty(), "and OFF says what it leaves alone");
         });
 
+        // Sprint 10 Q4 (b): the game window's caption, where the system lets a window colour it, wears the
+        // launcher's top bar. The runtime cannot include ui/theme.h, so ps2x/host_window.h carries the three
+        // numbers and this is what keeps them the theme's when the theme moves.
+        tc.Run("the game window's chrome colours are the launcher's top bar, its text and its rule", [](TestCase &t)
+        {
+            using namespace ps2x::host_window;
+            const ui::Rgba bar = ui::theme::mix(ui::theme::panel, ui::theme::ground, 0.5f);
+            t.IsTrue(kCaption.r == bar.r && kCaption.g == bar.g && kCaption.b == bar.b, "the caption is the top bar's ground");
+            t.IsTrue(kCaptionText.r == ui::theme::text.r && kCaptionText.g == ui::theme::text.g && kCaptionText.b == ui::theme::text.b,
+                     "the caption's text is theme::text");
+            t.IsTrue(kBorder.r == ui::theme::line.r && kBorder.g == ui::theme::line.g && kBorder.b == ui::theme::line.b,
+                     "the border is theme::line, the rule under the bar");
+            t.IsTrue(ui::contrastRatio(ui::Rgba{kCaptionText.r, kCaptionText.g, kCaptionText.b, 0xFF},
+                                       ui::Rgba{kCaption.r, kCaption.g, kCaption.b, 0xFF}) >= 4.5f,
+                     "and the title reads on it (4.5:1, the theme's own bar)");
+        });
 
 #ifndef _WIN32
         // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in

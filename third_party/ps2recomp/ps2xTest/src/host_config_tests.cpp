@@ -3,6 +3,7 @@
 #include "runtime/fps_overlay.h"
 #include "runtime/ps2_window_size.h"
 #include "launcher/launcher_config.h"
+#include "ps2x/host_window.h"   // Sprint 10 Q4
 
 #include <algorithm>
 #include <limits>
@@ -73,6 +74,29 @@ void register_host_config_tests()
             t.Equals(fpsOverlayLine(60, std::numeric_limits<double>::infinity(), 16.7), std::string("60 fps  guest -- Hz  16.7 ms"), "a divide by a zero interval prints --, never inf");
             t.Equals(fpsOverlayLine(60, 59.94, -1.0), std::string("60 fps  guest 59.9 Hz  -- ms"), "no frame time yet");
             t.IsTrue(fpsOverlayLine(60, 59.94, 16.67).size() <= 34u, "short enough to stay inside the 200 px the bar allows");
+        });
+
+        // Sprint 10 Q4 (owner 2026-09-20: the game window "like the client"): the title carries the launcher's
+        // name, and every form of it ends with the one suffix the harness finds the window by -- which must not be
+        // the launcher's own title, or the harness would post its keystrokes into the launcher.
+        tc.Run("the game window's title: the game's name, then -- SOCOM Unzipped; a tag in front; the harness's key on every form", [](TestCase &t)
+        {
+            using namespace ps2x::host_window;
+            t.Equals(title(nullptr, nullptr, "socom2_game.elf"), std::string("SOCOM II U.S. Navy SEALs -- SOCOM Unzipped"),
+                     "the project's ELF (which the game database does not know) gets the game's name");
+            t.Equals(title("SOCOM-B", nullptr, "socom2_game.elf"), std::string("SOCOM-B | SOCOM II U.S. Navy SEALs -- SOCOM Unzipped"),
+                     "PS2X_WINDOW_TITLE goes in front: the online harness finds instance B by its tag");
+            t.Equals(title("", "Some Game", "SLUS_123.45"), std::string("Some Game -- SOCOM Unzipped"), "a database name, an empty tag");
+            t.Equals(title(nullptr, nullptr, "SLUS_123.45"), std::string("SLUS_123.45 -- SOCOM Unzipped"), "no name at all: the file's");
+            const std::string key = kTitleSuffix;
+            for (const std::string &form : {title(nullptr, nullptr, "socom2_game.elf"), title("SOCOM-A", nullptr, "socom2_game.elf"),
+                                            title(nullptr, "X", "y.elf")})
+                t.IsTrue(form.size() >= key.size() && form.compare(form.size() - key.size(), key.size(), key) == 0,
+                         "every form ends with the harness's key: " + form);
+            t.IsTrue(std::string(kProduct).find(key) == std::string::npos,
+                     "and the launcher's own title (kProduct, no dashes) does not contain it, so the harness cannot pick the launcher");
+            t.IsTrue(std::string("SOCOM II - U.S. Navy SEALs").find(key) == std::string::npos, "nor does PCSX2's");
+            t.Equals(colorref(Rgb{0x08, 0x16, 0x1A}), 0x1A1608u, "COLORREF is 0x00BBGGRR, as DwmSetWindowAttribute takes it");
         });
     });
 }

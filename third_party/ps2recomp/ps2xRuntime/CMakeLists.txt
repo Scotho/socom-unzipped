@@ -392,6 +392,10 @@ add_library(ps2_runtime STATIC
     src/lib/ps2_audio_vag.cpp
     src/lib/socom2_bank.cpp
     src/lib/snd989_mixer.cpp
+    # Sprint 10 Q4: the launcher's icon and palette on the game window's chrome (two files: raylib and windows.h
+    # cannot share one).
+    src/lib/host_window_chrome.cpp
+    src/lib/host_window_chrome_win32.cpp
     src/lib/gs/ps2_gs_memory.cpp
     src/lib/gs/gs_frontend.cpp
     src/lib/gs/gs_cpu_backend.cpp

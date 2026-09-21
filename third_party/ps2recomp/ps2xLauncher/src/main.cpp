@@ -22,6 +22,7 @@
 #include "launcher/launcher_layout.h"
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
+#include "ps2x/app_icon_embedded.h"   // Sprint 10 Q4: the window icon both executables wear
 #include "ps2x/exe_dir.h"
 #include "ps2x/knobs.h"
 #include "ps2x/zip_store.h"
@@ -953,6 +954,15 @@ int main(int argc, char **argv)
 
     ui::Fonts fonts;   // rasterised per pixel size, rebuilt when the scale changes
     {
+        // Sprint 10 Q4: the crest as the window's icon (taskbar, title bar), the same one the game window gets.
+        Image icon = LoadImageFromMemory(".png", kImage_SocomUnzippedIcon, kImage_SocomUnzippedIcon_len);
+        if (icon.data != nullptr)
+        {
+            if (icon.format != PIXELFORMAT_UNCOMPRESSED_R8G8B8A8)
+                ImageFormat(&icon, PIXELFORMAT_UNCOMPRESSED_R8G8B8A8);
+            SetWindowIcon(icon);
+            UnloadImage(icon);
+        }
         Image logo = LoadImageFromMemory(".png", kImage_SocomUnzippedLogo, kImage_SocomUnzippedLogo_len);
         if (logo.data != nullptr)
         {

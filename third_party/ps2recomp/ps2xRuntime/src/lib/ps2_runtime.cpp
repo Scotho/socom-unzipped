@@ -1,6 +1,7 @@
 #include "ps2_runtime.h"
 #include "runtime/fps_overlay.h"
 #include "runtime/host_mic.h"
+#include "runtime/host_window_chrome.h"   // Sprint 10 Q4
 #include "socom2_host_input.h"
 #include "runtime/ps2_window_size.h"
 #include "ps2_log.h"
@@ -771,6 +772,10 @@ bool PS2Runtime::initialize(const char *title)
         // WindowShouldClose() true on a key a PC player presses by reflex; the window's own close button and
         // Alt+F4 still end the run (the launcher already does the same, ps2xLauncher/src/main.cpp).
         SetExitKey(KEY_NULL);
+        // Sprint 10 Q4: the launcher's icon and, where the system lets a window colour its own caption, the
+        // launcher's palette on it (host_window_chrome.cpp; the measurement is in ps2x/host_window.h). Nothing
+        // here touches the client area the gate captures.
+        ps2x_host::applyHostWindowChrome();
         if (windowSize.borderless)
             SetWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
         if (windowSize.set)
