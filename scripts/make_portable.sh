@@ -6,7 +6,8 @@
 #                                                     --release: dist-release/portable, dist-linux-release/portable)
 # Sprint 9 Goal 2: the folder carries the import closure of socom2 and the launcher and nothing else
 # (tools_py/portable_audit.py: closure, then an audit of what was assembled -- exit 4 on a finding), and
-# SHA256SUMS is written beside the archive. Exit 2 = no build, 3 = an imported library is nowhere.
+# SHA256SUMS is written beside the archive. Exit 2 = no build, 3 = an imported library is nowhere,
+# 4 = the folder failed its import audit, 5 = the folder failed the leak check (Sprint 10 H6).
 # Sprint 8 Goal 1 item 5: on Linux it assembles dist-linux/portable/socom2-linux/ instead -- the same three
 # binaries with their executable bits, lib/ filled from ldd through scripts/portable_libs.py, and a .tar.gz
 # instead of a zip. The Windows branch below is unchanged (its here-docs need column-0 terminators).
@@ -15,6 +16,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SUFFIX=""
 if [ "${1:-}" = "--release" ]; then SUFFIX="-release"; shift; fi
 AUDIT="$ROOT/tools_py/portable_audit.py"
+PY="${PYTHON:-python}"
 case "$(uname -s)" in
   Linux)
     # Sprint 8 Goal 1 item 5: the same folder as a tarball. dist-linux/ holds the native build;
@@ -59,24 +61,10 @@ case "$(uname -s)" in
     done < "$OUT/.libs.txt"
     NLIBS="$(ls "$PKG/lib" | wc -l)"
     rm -f "$OUT/.libs.txt"
-    cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
-cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-sairastencilone.txt" "$PKG/LICENSES/SairaStencilOne-OFL-1.1.txt"
-cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-rajdhani.txt" "$PKG/LICENSES/Rajdhani-OFL-1.1.txt"
-    cat > "$PKG/LICENSES/README.txt" <<'LIC'
-SOCOM Unzipped ships these components; their licence texts are the ones named here.
-  socom2, socom2_game.elf, socom_unzipped_launcher -- the PS2Recomp fork: GPL-3.0 (PS2Recomp-GPL-3.0.txt)
-  raylib (window, input, audio)                             -- zlib
-  ffmpeg (avcodec/avformat/avutil/swscale/...)             -- LGPL-2.1-or-later, shared libraries, unmodified
-  SDL2                                                      -- zlib
-  OpenEXR, Imath, IlmThread, Iex                            -- BSD-3-Clause
-  freetype                                                  -- FTL
-  harfbuzz                                                  -- MIT
-  brotli                                                    -- MIT
-  Saira Stencil One, Rajdhani (the launcher type)           -- SIL OFL 1.1 (SairaStencilOne-OFL-1.1.txt, Rajdhani-OFL-1.1.txt)
-The libraries in lib/ carry their own licences from the distribution they were built by; glibc,
-libstdc++, the OpenGL driver, X11 and the sound libraries are the host's and are not shipped.
-The game's disc image is not included: point the launcher at your own SOCOM II (NTSC, r0001) ISO.
-LIC
+    # Sprint 10 H5: the inventory is THIRD_PARTY_NOTICES.md at the root (tools_py/tests/test_third_party_notices.py keeps
+    # it complete) and the licence texts are LICENSES/<SPDX id>.txt; both ship as they are.
+    cp "$ROOT/THIRD_PARTY_NOTICES.md" "$PKG/"
+    cp "$ROOT"/LICENSES/*.txt "$PKG/LICENSES/"
     cat > "$PKG/README.txt" <<'RD'
 SOCOM Unzipped -- SOCOM II: U.S. Navy SEALs on PC (Linux)
 
@@ -94,6 +82,8 @@ directory under cards/. Logs land in logs/ -- send the newest run_*.log with any
 Nothing is installed and nothing is written outside this folder; delete the folder to remove it.
 RD
     python3 "$AUDIT" audit "$PKG" --system Linux || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
+    ( cd "$ROOT" && "$PY" -m tools_py.release.leakcheck artifact "$PKG" ) \
+      || { echo "make_portable: the assembled folder failed the leak check (exit $?) -- nothing archived" >&2; exit 5; }
     rm -f "$OUT/socom2-linux.tar.gz" "$OUT/SHA256SUMS"
     tar -C "$OUT" -czf "$OUT/socom2-linux.tar.gz" socom2-linux
     python3 "$AUDIT" sha256sums "$OUT" socom2-linux.tar.gz >/dev/null
@@ -124,23 +114,10 @@ printf '%s\n' "$NEEDED" | tr -d '\r' | while read -r dll; do
 done
 # Sprint 9 Goal 1: the launcher's About page and its diagnostics zip read version.txt; until now nothing wrote it.
 printf 'SOCOM Unzipped %s (%s)\n' "$(git -C "$ROOT" describe --always --dirty 2>/dev/null || echo unknown)" "$(date -u +%Y-%m-%d)" > "$PKG/version.txt"
-cp "$ROOT/third_party/ps2recomp/LICENSE" "$PKG/LICENSES/PS2Recomp-GPL-3.0.txt"
-cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-sairastencilone.txt" "$PKG/LICENSES/SairaStencilOne-OFL-1.1.txt"
-cp "$ROOT/third_party/ps2recomp/ps2xLauncher/assets/fonts/OFL-rajdhani.txt" "$PKG/LICENSES/Rajdhani-OFL-1.1.txt"
-cat > "$PKG/LICENSES/README.txt" <<'LIC'
-SOCOM Unzipped ships these components; their licence texts are the ones named here.
-  socom2.exe, socom2_game.elf, socom_unzipped_launcher.exe -- the PS2Recomp fork: GPL-3.0 (PS2Recomp-GPL-3.0.txt)
-  raylib (window, input, audio)                             -- zlib
-  ffmpeg (avcodec/avformat/avutil/swscale/...)             -- LGPL-2.1-or-later, shared libraries, unmodified
-  SDL2                                                      -- zlib
-  OpenEXR, Imath, IlmThread, Iex                            -- BSD-3-Clause
-  freetype                                                  -- FTL
-  harfbuzz                                                  -- MIT
-  brotli                                                    -- MIT
-  Saira Stencil One, Rajdhani (the launcher type)           -- SIL OFL 1.1 (SairaStencilOne-OFL-1.1.txt, Rajdhani-OFL-1.1.txt)
-  libc++, libunwind, libwinpthread                          -- Apache-2.0 with LLVM exception / MIT
-The game's disc image is not included: point the launcher at your own SOCOM II (NTSC, r0001) ISO.
-LIC
+# Sprint 10 H5: the inventory is THIRD_PARTY_NOTICES.md at the root (tools_py/tests/test_third_party_notices.py keeps
+# it complete) and the licence texts are LICENSES/<SPDX id>.txt; both ship as they are.
+cp "$ROOT/THIRD_PARTY_NOTICES.md" "$PKG/"
+cp "$ROOT"/LICENSES/*.txt "$PKG/LICENSES/"
 cat > "$PKG/README.txt" <<'RD'
 SOCOM Unzipped -- SOCOM II: U.S. Navy SEALs on PC
 
@@ -153,6 +130,8 @@ directory under cards/. Logs land in logs/ -- send the newest run_*.log with any
 Everything lives in this folder; delete it to uninstall.
 RD
 "$PY" "$AUDIT" audit "$PKG" --system Windows || { echo "make_portable: the assembled folder failed its audit" >&2; exit 4; }
+( cd "$ROOT" && "$PY" -m tools_py.release.leakcheck artifact "$PKG" ) \
+  || { echo "make_portable: the assembled folder failed the leak check (exit $?) -- nothing archived" >&2; exit 5; }
 ( cd "$OUT" && rm -f socom2-portable.zip SHA256SUMS && powershell -NoProfile -Command "Compress-Archive -Path 'socom2' -DestinationPath 'socom2-portable.zip' -Force" )
 "$PY" "$AUDIT" sha256sums "$OUT" socom2-portable.zip >/dev/null
 echo "portable folder: $PKG ($(ls "$PKG" | wc -l) entries), zip: $OUT/socom2-portable.zip ($(wc -c < "$OUT/socom2-portable.zip") bytes), $OUT/SHA256SUMS"

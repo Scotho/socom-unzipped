@@ -63,8 +63,17 @@ The launcher refuses any disc that is not r0001 and says so.
 ## For developers
 
 You need your own r0001 disc to build the game; without it you can still build and test the runtime, the tools, the
-launcher and the Python harness (that is what CI does). The short version, on Windows in Git Bash with the portable
-toolchain on the `PATH` and the ISO under `game/`:
+launcher and the Python harness (that is what CI does, on Linux and on Windows). A fresh clone on Windows, in Git Bash
+with Python 3:
+
+```
+bash scripts/install_hooks.sh          # the leak check before every commit and push (the repository is public)
+bash scripts/bootstrap_windows.sh      # llvm-mingw, CMake and Ninja into tools/, pinned by sha256 (~245 MB, once)
+./build.sh runtime --no-runner         # the runtime library and the launcher, no game
+./build.sh test --no-runner            # both suites and the VU1 replay goldens
+```
+
+With the ISO under `game/`, the game itself:
 
 ```
 ./build.sh recomp      # build the merged ELF from the disc and run the recompiler
@@ -116,8 +125,9 @@ not contain. Security problems go through GitHub's private vulnerability reporti
 ## License and credits
 
 The port -- the runtime fork and everything that generates or drives it -- is **GPL-3.0**, because PS2Recomp is
-(`third_party/ps2recomp/LICENSE`). The Horizon server is MIT (`server/horizon-server/LICENSE`). No game data is
-distributed and none is licensed here; SOCOM II remains the property of its rights holders.
+(`LICENSE`). The Horizon server is MIT (`server/horizon-server/LICENSE`). Every third-party component in the tree and
+in the download, with its licence, is in `THIRD_PARTY_NOTICES.md` and `LICENSES/` (a test keeps that list complete).
+No game data is distributed and none is licensed here; SOCOM II remains the property of its rights holders.
 
 Built on [PS2Recomp](https://github.com/ran-j/PS2Recomp) and
 [Horizon Private Server](https://github.com/Horizon-Private-Server/horizon-server), with

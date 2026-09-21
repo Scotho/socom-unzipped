@@ -63,8 +63,13 @@ PS2X_PC_SAMPLER=5 ./run.sh 40    # run 40 s; logs/latest.log; prints guest threa
 ```
 ### Build, run, verify — a newcomer's first hour
 
+**Without a disc (any fresh clone):** `bash scripts/bootstrap_windows.sh` puts the pinned llvm-mingw, CMake and Ninja
+under `tools/` (sha256-verified, ~245 MB once; `--check` says what is there), then `./build.sh runtime --no-runner`
+builds the runtime library and the launcher and `./build.sh test --no-runner` runs both suites and the VU1 fixture
+verify. That is what the `windows` and `linux` workflows do. **With a disc,** the five commands below.
+
 Five commands, in this order, on a clean checkout with the tools under `tools/` on the PATH
-(`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`) and the disc image at
+(`export PATH="$PWD/tools/llvm-mingw/bin:$PWD/tools/cmake/bin:$PWD/tools/ninja:$PATH"`; `build.sh` does this itself) and the disc image at
 `game/SOCOM II - U.S. Navy SEALs (USA).iso`. The expected lines are the ones to look for; the counts are as of
 2026-09-17 and only ever grow.
 

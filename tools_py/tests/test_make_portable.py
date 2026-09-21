@@ -49,8 +49,8 @@ class MakePortableTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
             pkg = os.path.join(out, "socom2")
             for f in ("socom2.exe", "socom2_game.elf", "socom_unzipped_launcher.exe", "avcodec-61.dll", "zlib1.dll",
-                      "libc++.dll", "README.txt", os.path.join("LICENSES", "PS2Recomp-GPL-3.0.txt"),
-                      os.path.join("LICENSES", "README.txt")):
+                      "libc++.dll", "README.txt", "THIRD_PARTY_NOTICES.md", os.path.join("LICENSES", "GPL-3.0-only.txt"),
+                      os.path.join("LICENSES", "LGPL-2.1-or-later.txt"), os.path.join("LICENSES", "OFL-1.1.txt")):
                 self.assertTrue(os.path.isfile(os.path.join(pkg, f)), f)
             for d in ("cards", "logs"):
                 self.assertTrue(os.path.isdir(os.path.join(pkg, d)), d)

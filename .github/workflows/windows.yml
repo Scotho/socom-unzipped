@@ -1,0 +1,103 @@
+# Sprint 10 H3 (Sprint 11 Goal 0's "a fresh clone can build something on Windows"): the shape a Windows forker's
+# first hour takes, run by a machine that has none of the owner's tools -- scripts/bootstrap_windows.sh fetches the
+# pinned llvm-mingw, CMake and Ninja by sha256 into tools/, then build.sh builds the runtime library, the launcher and
+# the C++ suite WITHOUT the generated game code (14,882 files produced from the owner's disc, not in the repository),
+# and runs both suites.
+#
+# What green means: a fresh Windows clone, following only CONTRIBUTING.md, reaches a green C++ and Python suite. It
+# proves nothing about the game -- only the three-stage gate on a rebuilt exe does that (docs/HANDOFF.md §5 rule 4).
+# Like linux.yml, a cheap first job skips the build when only docs/ moved, and a skipped `build-windows` reports success.
+name: windows
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+      - name: Did anything outside docs/ change?
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          zero=0000000000000000000000000000000000000000
+          if [ -z "$BASE" ] || [ "$BASE" = "$zero" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo "no usable base ($BASE): building"; echo "code=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "$BASE" "$HEAD" | grep -v '^docs/' || true)
+          if [ -n "$changed" ]; then
+            echo "code changed:"; echo "$changed" | head -50; echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs/ only: the build is skipped and reports success"; echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  build-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-2022
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: '3.12'
+
+      # What tools_py/parity and tools_py/tests import beyond the standard library.
+      - name: Install the Python packages the suite imports
+        run: python -m pip install numpy pillow zstandard
+
+      # The three archives are 245 MB; the cache key is the bootstrap script itself, so a version bump refetches.
+      - name: Cache the toolchain archives
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: tools/.bootstrap
+          key: toolchain-${{ hashFiles('scripts/bootstrap_windows.sh') }}
+
+      - name: Fetch and verify the toolchain (llvm-mingw, CMake, Ninja -- pinned by sha256)
+        run: bash scripts/bootstrap_windows.sh
+
+      - name: Build the runtime library and the launcher (no generated code)
+        run: bash build.sh runtime --no-runner
+
+      - name: Test (the Python suite, then ps2x_tests and the VU1 fixture verify)
+        run: |
+          mkdir -p logs/ci
+          set -o pipefail
+          bash build.sh test --no-runner 2>&1 | tee logs/ci/build_windows_test.log
+
+      - name: Upload the launcher
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: socom-unzipped-launcher-windows
+          path: dist/socom_unzipped_launcher.exe
+          if-no-files-found: error
+
+      - name: Upload the test output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-test-output
+          path: logs/ci/build_windows_test.log
+          if-no-files-found: warn

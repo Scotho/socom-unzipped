@@ -13,6 +13,11 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPT = os.path.join(ROOT, "scripts", "make_server_zip.sh")
+# What the script packages: the built .NET server. A fresh clone and the Windows CI runner have not built it
+# (Sprint 10 H3's fresh-clone trial found these two tests failing there), so the packaging run is skipped, not
+# failed, where it is absent -- the refusal test below still runs, because it needs no build.
+SERVER_EXE = os.path.join(ROOT, "server", "horizon-server", "Server.Unified.Launcher", "bin", "Release", "net9.0",
+                          "Server.Unified.Launcher.exe")
 
 
 def _run(out, env=None):
@@ -24,6 +29,8 @@ def _run(out, env=None):
 class MakeServerZipTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if not os.path.isfile(SERVER_EXE):
+            raise unittest.SkipTest("the .NET server is not built here (server/start-servers.ps1 -Build)")
         cls.tmp = tempfile.mkdtemp()
         cls.result = _run(os.path.join(cls.tmp, "out"))
         zip_path = os.path.join(cls.tmp, "out", "socom-unzipped-server.zip")
@@ -49,6 +56,11 @@ class MakeServerZipTest(unittest.TestCase):
         self.assertTrue(self.names, "no zip was produced: " + self.result.stderr)
         self.assertFalse(any(n.endswith("simulated.db") for n in self.names),
                          "a seeded database must not ship")
+
+
+@unittest.skipUnless(shutil.which("bash") and shutil.which("powershell"), "bash and PowerShell only")
+class MakeServerZipRefusalTest(unittest.TestCase):
+    """Needs no built server, so it runs on a fresh clone too."""
 
     def test_refuses_without_a_built_server(self):
         with tempfile.TemporaryDirectory() as tmp:

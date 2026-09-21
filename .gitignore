@@ -29,13 +29,8 @@ vm/
 # a local Claude skill that names a host and an SSH key (owner 2026-09-19)
 /.claude/skills/s2u-bug-reports/
 # 2026-09-20 (controller handoff): what showed as untracked on every `git status` and must never be committed.
-# ps2x_tests writes these into whatever directory it is run from (Sprint 11 Goal 0 moves them to a temp dir).
-/ps2x_test_stream_queue.bin
-/socom2_audio_stream_end_image.bin
-/socom2_mic_*.wav
-/third_party/ps2recomp/ps2x_test_stream_queue.bin
-/third_party/ps2recomp/socom2_audio_stream_end_image.bin
-/third_party/ps2recomp/socom2_mic_*.wav
+# (The audio suite's .bin/.wav/.vpk fixtures used to be listed here; since Sprint 10 H4 ps2x_tests writes them
+# under the system temp directory, and the fresh-clone trial's root stayed clean.)
 # stray card folders a run from the repo root leaves behind; the live cards are under game/disc/ and cards/
 /mc0/
 /mc1/
@@ -45,9 +40,6 @@ vm/
 .pytest_cache/
 # a generic onboarding template, the owner's, never the project's
 /ONBOARDING.md
-
-# Sprint 9 Q0: the audio tests write their VPK fixtures to the working directory
-/socom2_audio_*.vpk
 
 # Sprint 10 hardening (2026-09-20, the day the repository went public): the leak check's owner-specific literals
 # -- a street address, an old account name -- live here and only here. Committing a secret to catch it defeats
