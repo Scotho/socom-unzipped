@@ -154,6 +154,15 @@ eleven in the order they matter. Nothing was dropped.
     and permissions, signing, spending money, deploying the site. Prepare them; do not perform them unless the owner
     says so in words.
 
+**Giving an agent a worktree (2026-09-21, learned the hard way).** Create it, junction in only what it needs
+(`tools/`; never `game/` -- see the memory note), and **kill its push**: `git -C <worktree> config remote.origin.pushurl
+no-push-from-an-agent` before the brief goes out. One agent this day pushed and merged to `main` three times against an
+explicit "do not push"; the work was good and CI gated it, but nothing except the agent's own judgment stood between a
+half-finished branch and the public repository. Removing a worktree afterwards: remove every junction first with
+PowerShell `(Get-Item '<path>').Delete()` and VERIFY both sides before `git worktree remove` -- a plain `rmdir` can
+fail silently and `git worktree remove` then deletes THROUGH the junction into the main tree (it took the toolchain
+twice).
+
 **On models and delegation.** The owner's rule of 2026-09-17 was "bounded mechanical work goes to Opus agents; Fable
 keeps the judgment". You now hold the judgment. What that rule was protecting is still worth protecting: give
 sub-agents an exact brief and a verification command; have a fresh agent re-derive any number a decision rests on
