@@ -102,6 +102,9 @@ namespace launcher
         // host button NAME as mapping.h spells them ("guide" by default; "none" switches it off), not a PS2
         // button: the game never sees this one. Launcher-only -- no environment variable carries it.
         std::string focusToggle = "guide";
+        // Sprint 10 Q4: the launcher's own menu sounds -- the game's HUD cues, decoded from the player's disc
+        // (launcher/menu_sounds.h). On by default and launcher-only: the game's mix is PS2X_AUDIO_VOLUME's.
+        bool menuSounds = true;
     };
 
     // Q4: the switch's host button as mapping.h numbers them (kHostNone when off); the name normalised --

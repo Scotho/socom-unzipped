@@ -13,6 +13,9 @@ add_library(ps2x_launcher_core STATIC
     # Sprint 10 Goal 8: the press-the-button-to-bind flow, the cells' order and the pad's own button names.
     # Pure, and in the core so the tests drive a whole bind, a conflict and a restore with no window.
     src/ui/bind_flow.cpp
+    # Sprint 10 Q4: the menu cues out of the player's own disc -- the HUDUI bank read through iso9660::Reader,
+    # rendered by the runtime's 989snd mixer (ps2x_snd989), cached as WAV. Pure; main.cpp plays the files.
+    src/menu_sounds.cpp
 )
 target_include_directories(ps2x_launcher_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -20,7 +23,8 @@ target_include_directories(ps2x_launcher_core PUBLIC
 )
 target_compile_features(ps2x_launcher_core PUBLIC cxx_std_20)
 # Sprint 9 Goal 1: iso9660, sha256 and launcher_config moved to ps2x_shared (the runner reads config.json too).
-target_link_libraries(ps2x_launcher_core PUBLIC ps2x_shared)
+# Sprint 10 Q4: ps2x_snd989 is the runtime's own bank reader, VAG decoder and mixer, split out for this.
+target_link_libraries(ps2x_launcher_core PUBLIC ps2x_shared ps2x_snd989)
 
 # The window. WIN32 keeps the console away; the runner's raylib target is available here (ps2xRuntime fetched it).
 # Sprint 8 Task 1: the WIN32 keyword exists only on Windows, so it is passed through a variable that is empty

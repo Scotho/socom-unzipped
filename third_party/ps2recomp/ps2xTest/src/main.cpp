@@ -36,6 +36,7 @@ void register_bug_report_tests();
 void register_mapping_tests();
 void register_socom2_osk_prefill_tests();
 void register_knobs_tests();
+void register_menu_sounds_tests();   // Sprint 10 Q4
 void reset_ps2_test_function_table();
 
 namespace
@@ -114,6 +115,7 @@ int main()
     register_mapping_tests();
     register_socom2_osk_prefill_tests();
     register_knobs_tests();
+    register_menu_sounds_tests();
     int res = MiniTest::Run();
     std::cout.flush();
     std::cerr.flush();

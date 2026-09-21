@@ -94,6 +94,7 @@ namespace launcher
         out += std::string("  \"padDeadZone\": ") + dz + ",\n";
         out += "  \"crouchShortcut\": " + quote(normalizeCrouchShortcut(c.crouchShortcut)) + ",\n";
         out += "  \"focusToggle\": " + quote(normalizeFocusToggle(c.focusToggle)) + ",\n";   // Sprint 10 Q4
+        out += std::string("  \"menuSounds\": ") + (c.menuSounds ? "true" : "false") + ",\n";
         out += "  \"micDevice\": " + quote(c.micDevice) + ",\n";
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
@@ -193,7 +194,7 @@ namespace launcher
                     else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
-                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
+                else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume" || key == "menuSounds")
                 {
                     std::string raw;
                     if (!p.scalar(raw))
@@ -205,6 +206,7 @@ namespace launcher
                     else if (key == "audioVolume") c.audioVolume = std::atoi(raw.c_str());
                     else if (key == "gamepadIndex") c.gamepadIndex = std::atoi(raw.c_str());
                     else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
+                    else if (key == "menuSounds") c.menuSounds = raw == "true";
                     else c.secondInstance = raw == "true";
                 }
                 else if (key == "mappings")

@@ -83,6 +83,10 @@ namespace ui
         bool requestMicChanged = false;
         bool requestMicRescan = false;
         bool requestSave = false;   // the top bar's UNSAVED pill
+        // Sprint 10 Q4: the AUDIO page's toggle moved; main.cpp (re)loads or drops the cues. The status line under
+        // it is the loop's word on where the cues stand ("from your disc", "no disc set: silent", "off").
+        bool requestMenuSounds = false;
+        std::string menuSoundsStatus;
 
         std::string activeField;   // the text field holding the keyboard, by node id
         Nav nav;

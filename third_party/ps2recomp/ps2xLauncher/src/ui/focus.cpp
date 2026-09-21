@@ -157,6 +157,8 @@ namespace ui
         case Page::Audio:
         {
             add(out, page, "audio.volume", Rect{b.x + metrics::labelW, b.y + 22.0f, b.w - metrics::labelW - 90.0f, 32.0f});
+            // Sprint 10 Q4: the launcher's own sounds, under the slider's scale and its two caption lines.
+            add(out, page, "audio.sounds", Rect{b.x + metrics::labelW, b.y + 150.0f, b.w - metrics::labelW, 40.0f});
             break;
         }
         case Page::Controller:
@@ -319,6 +321,10 @@ namespace ui
             {"pad.switch.off",
              "Turns the window switch off: no pad button swaps the windows, and the XBOX / PS button is left to "
              "whatever else listens for it (Steam, the Xbox Game Bar)."},
+            // Sprint 10 Q4: where the launcher's sounds come from, and why there are none before a disc is set.
+            {"audio.sounds",
+             "The game's own menu clicks, read out of YOUR disc image the first time it is verified and kept in "
+             "cache/ next to this program. Nothing ships with the download, so with no disc set there is silence."},
         };
     }
 

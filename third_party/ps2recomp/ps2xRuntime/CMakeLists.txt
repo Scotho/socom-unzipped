@@ -384,14 +384,29 @@ set_source_files_properties(${PS2X_VU1_GENERATED_SOURCES} PROPERTIES COMPILE_OPT
 # (vu1_native_programs.cpp is the table the interpreter looks up by image hash and entry pc).
 file(GLOB PS2X_VU1_NATIVE_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/vu/native/*.cpp)
 
+# Sprint 10 Q4: the host 989snd -- the bank reader, the VAG decoder and the mixer -- as a library of its own, so
+# the launcher can render the game's own menu cues from the player's disc through the very code the game plays
+# them with (launcher/menu_sounds.h), without linking the runtime. The three files are exactly the ones
+# ps2_runtime carried; they include nothing of the runtime but ps2_vag.h's neighbour ps2_memory.h (unused).
+add_library(ps2x_snd989 STATIC
+    src/lib/ps2_audio_vag.cpp
+    src/lib/socom2_bank.cpp
+    src/lib/snd989_mixer.cpp
+)
+target_include_directories(ps2x_snd989 PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_features(ps2x_snd989 PUBLIC cxx_std_20)
+target_link_libraries(ps2x_snd989 PUBLIC ps2x_shared)
+if(UNIX AND NOT APPLE)
+    find_package(Threads REQUIRED)
+    target_link_libraries(ps2x_snd989 PUBLIC Threads::Threads)   # the mixer's stream worker is a std::thread
+endif()
+set_target_properties(ps2x_snd989 PROPERTIES POSITION_INDEPENDENT_CODE ON)   # as ps2x_shared: the Android runner is SHARED
+
 add_library(ps2_runtime STATIC
     src/lib/game_overrides.cpp
     src/lib/gs/ps2_gif_arbiter.cpp
     src/lib/ps2_audio.cpp
     src/lib/host_mic.cpp
-    src/lib/ps2_audio_vag.cpp
-    src/lib/socom2_bank.cpp
-    src/lib/snd989_mixer.cpp
     # Sprint 10 Q4: the launcher's icon and palette on the game window's chrome (two files: raylib and windows.h
     # cannot share one).
     src/lib/host_window_chrome.cpp
@@ -523,6 +538,7 @@ if(NOT MSVC AND (CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64"))
         target_compile_options(ps2EntryRunner PRIVATE -msse4.1)
     endif()
     target_compile_options(ps2_runtime PRIVATE -msse4.1)
+    target_compile_options(ps2x_snd989 PRIVATE -msse4.1)   # Q4: the mixer keeps the flags it was built with
 endif()
 set(PS2X_GENERATED_OPT "" CACHE STRING "Optimization flag override for the generated (recompiled) code, e.g. -O1 for fast bring-up builds")
 if(PS2X_BUILD_RUNNER AND PS2X_GENERATED_OPT AND NOT MSVC)
@@ -587,7 +603,7 @@ target_include_directories(ps2_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lib/Kernel
 )
 
-target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_shared)
+target_link_libraries(ps2_runtime PUBLIC ps2_host_backend ffmpeg ps2_iop ps2x_shared ps2x_snd989)
 if(UNIX AND NOT APPLE)
     # Sprint 8 Goal 1: dladdr (the crash handler and the sampler's module base), timer_create (glibc < 2.34 keeps it
     # in librt), pthreads -- on the library so the runner, the tests and the tools inherit them.
@@ -658,6 +674,7 @@ endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     EnableFastReleaseMode(ps2_runtime)
+    EnableFastReleaseMode(ps2x_snd989)
     if(PS2X_BUILD_RUNNER)
         EnableFastReleaseMode(ps2EntryRunner)
     endif()

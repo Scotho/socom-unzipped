@@ -35,5 +35,17 @@ namespace ui
         }
         text(ctx, "0", Vec2{r.x - 2.0f, r.bottom() + 12.0f}, 14.0f, theme::dim);
         text(ctx, "100", Vec2{r.right() - 22.0f, r.bottom() + 12.0f}, 14.0f, theme::dim);
+
+        // Sprint 10 Q4: the launcher's own cues (the game's HUD sounds, from the player's disc). The row's
+        // second line says where they stand: playing, waiting for a disc, or off.
+        const Rect sounds = rectOf(nodes, "audio.sounds");
+        rowLabel(ctx, sounds, "LAUNCHER");
+        if (toggle(ctx, sounds, "Menu sounds from the game (this window's clicks, not the game's mix)", "audio.sounds", app.config.menuSounds))
+        {
+            app.dirty = true;
+            app.requestMenuSounds = true;
+        }
+        if (!app.menuSoundsStatus.empty())
+            caption(ctx, Vec2{sounds.x, sounds.bottom() + 6.0f}, app.menuSoundsStatus.c_str());
     }
 }
