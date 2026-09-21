@@ -35,7 +35,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 EXPECTED = "scripts/parity/pins.json"                            # relative to ROOT; the committed standard
 RECORD_ONLY = ("harness",)
 RECORD_NAME = "pins.json"                                        # what a run writes beside its summary.txt
-MAPPING_RE = re.compile(r"\[socom2\] input mapping sha256=([0-9a-fA-F]{64})")
+# The runtime (Q3b, socom2_host_input.cpp) prints `[socom2] input mapping hash=<16 hex> (default|custom)`; the
+# design said `sha256=<64 hex>`. Both spellings are read, so neither side has to move for the pin to see it.
+MAPPING_RE = re.compile(r"\[socom2\] input mapping (?:hash|sha256)=([0-9a-fA-F]{16,64})")
 
 Pin = namedtuple("Pin", "name sha256 detail")
 Drift = namedtuple("Drift", "name actual expected")
@@ -132,7 +134,7 @@ def harness_pin(root, trees, exclude=()):
 
 
 def mapping_pin(log_paths):
-    """Q3b's hook. The runtime will print `[socom2] input mapping sha256=<hex>` (mappingHash()) on its log;
+    """Q3b's hook. The runtime prints `[socom2] input mapping hash=<hex> (default|custom)` on its log;
     the first such line in any of `log_paths` is the pin. No line anywhere: absent (recorded, never refused).
     Two logs that disagree: a finding of its own, pinned as None so it reads as absent-with-a-reason rather
     than as one of the two values."""

@@ -183,6 +183,16 @@ class MappingHook(unittest.TestCase):
             self.assertEqual(p.sha256, "ab" * 32)
             self.assertIn("mission.game.log", p.detail)
 
+    def test_the_runtimes_own_spelling_is_pinned(self):
+        """What socom2_host_input.cpp actually prints (Q3b, agent/input): `hash=` and sixteen hex digits with the
+        default/custom word after it -- the design's `sha256=` spelling is read too."""
+        with tempfile.TemporaryDirectory() as tmp:
+            log = os.path.join(tmp, "title.game.log")
+            with open(log, "w") as f:
+                f.write("[socom2] boot\n[socom2] input mapping hash=c393b87b99732a1f (default)\n")
+            p = pins.mapping_pin([log])
+            self.assertEqual(p.sha256, "c393b87b99732a1f")
+
     def test_absent_is_recorded_as_absent(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = os.path.join(tmp, "title.game.log")
