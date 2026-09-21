@@ -70,13 +70,18 @@ The constraint that shapes everything: **the game executable cannot be built by 
 from the owner's disc and is not, and must never be, in the repository. So:
 
 - CI builds and tests what a fresh clone can: the runtime library, the C++ and Python suites, the launcher, the tools
-  (`scripts/build_linux.sh --no-runner`; a Windows job and a `build.sh --no-runner` are Sprint 11 Goal 0 tasks -- today
-  a fresh Windows clone has no documented way to build anything, because `build.sh` assumes the git-ignored `tools/`
-  toolchain and the generated tree).
+  (`scripts/build_linux.sh --no-runner`; on Windows `scripts/bootstrap_windows.sh` then `build.sh --no-runner`, and the
+  `windows` workflow -- Sprint 10 H3, 2026-09-21. *This used to say a fresh Windows clone had no documented way to
+  build anything; it does now.*)
 - The playable archives are built on the owner's machine (`./build.sh release`, `scripts/make_portable.sh --release`,
   the Linux pair in the VM), gated 3/3 on that exact exe, audited for their import closure, and hashed.
 - A release is: tag -> the archives + `SHA256SUMS` + `THIRD_PARTY_NOTICES` attached to a **draft** GitHub Release by
   `gh release create --draft` -> the owner reads it and publishes. Publishing is the owner's click, every time.
+  **Built (Sprint 10 H8, 2026-09-21):** `.github/workflows/release-draft.yml` -- a `v*` tag runs the leak check and
+  creates the draft with `.github/release-notes-template.md` as its checklist; the owner attaches the archives; then
+  the same workflow, run by hand with the tag, verifies `SHA256SUMS`, the import closure, the leak check and the
+  notices in each archive and appends the verdict to the draft. It is the only workflow with `contents: write`, and
+  it never publishes.
 - Whether the archives may be distributed at all (they contain code recompiled from the game's executable) is **the
   owner's legal-position decision, D2 in the Sprint 11 spec** -- the project's answer so far is "the player's own disc
   is required and no game data ships"; that sentence must be re-examined for the *executable*, not only the assets,
