@@ -1675,7 +1675,10 @@ void register_launcher_tests()
             const ui::FocusGraph g = ui::FocusGraph::build(window, in);
             t.Equals(g.move("rail.controller", ui::Dir::Right), std::string("pad.section.0"), "the rail opens onto the section switch");
             t.Equals(g.move("pad.section.0", ui::Dir::Right), std::string("pad.section.1"), "right is BUTTONS");
-            t.Equals(g.move("pad.section.1", ui::Dir::Right), std::string("pad.restore"), "then RESTORE, at the row's right end");
+            // Sprint 10 Q4 put the window switch and its OFF on the row between BUTTONS and RESTORE.
+            t.Equals(g.move("pad.section.1", ui::Dir::Right), std::string(ui::kSwitchCellId), "then the window switch (Q4)");
+            t.Equals(g.move(ui::kSwitchCellId, ui::Dir::Right), std::string(ui::kSwitchOffId), "then its OFF");
+            t.Equals(g.move(ui::kSwitchOffId, ui::Dir::Right), std::string("pad.restore"), "then RESTORE, at the row's right end");
             t.Equals(g.move("pad.section.0", ui::Dir::Down), ui::bindCellId(0), "down from the switch is the first cell");
             t.Equals(g.move(ui::bindCellId(0), ui::Dir::Right), ui::bindCellId(1), "right walks the row");
             t.Equals(g.move(ui::bindCellId(3), ui::Dir::Down), ui::bindCellId(7), "down is the cell under it");
@@ -1904,6 +1907,132 @@ void register_launcher_tests()
             t.IsTrue(l1.c.x < g.centre.x && r1.c.x > g.centre.x, "L1 is on the left, R1 on the right");
             t.IsTrue(l1.c.y < up.c.y, "and the shoulders are above the d-pad");
         });
+
+        // ---- Sprint 10 Q4: the window switch -----------------------------------------------------------------
+        // Owner 2026-09-20: "Pressing the XBOX or PLAYSTATION button should toggle the launcher focus if
+        // possible, and again should swap back to the game." The measurement (win32_glue.h, the Q4 plan): the
+        // guide arrives through raylib on Linux and for a DirectInput pad on Windows, and NOT for an XInput pad,
+        // which the launcher reads through XInput's hidden entry point instead -- and when neither works, the
+        // switch is a binding the player can move (kSwitchTarget through Goal 8's flow). The gate opens exactly
+        // one button wide while the game runs: the rest of the pad stays the game's (P3), because the runtime
+        // reads it whether or not its window is in front.
+        tc.Run("the window switch is the one button the pad gate passes while the game runs, and nothing when it does not", [](TestCase &t)
+        {
+            ui::PadFrame pad;
+            pad.present = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Toggle)] = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Right)] = true;
+            pad.pressed[static_cast<int>(ui::PadNav::Activate)] = true;
+
+            double repeatAt = 0.0;
+            const ui::PadIntent running = ui::padIntent(pad, /*gameRunning=*/true, /*now=*/1.0, repeatAt);
+            t.IsTrue(running.toggle, "while the game runs, the switch's press asks for the swap");
+            t.Equals(running.dx, 0, "and the d-pad pressed with it still moves nothing: the pad is the game's");
+            t.IsFalse(running.activate, "and A activates nothing");
+            t.IsFalse(running.prompts, "and the prompts are not the pad's -- the launcher read one button, not the pad");
+
+            double repeatAtIdle = 0.0;
+            const ui::PadIntent idle = ui::padIntent(pad, /*gameRunning=*/false, /*now=*/1.0, repeatAtIdle);
+            t.IsFalse(idle.toggle, "with no game there is nothing to swap to, so the press is not a swap");
+            t.Equals(idle.dx, 1, "and the launcher is driven as before");
+
+            ui::PadFrame none;
+            none.present = true;
+            const ui::PadIntent quiet = ui::padIntent(none, /*gameRunning=*/true, /*now=*/2.0, repeatAt);
+            t.IsFalse(quiet.toggle, "no press, no swap");
+        });
+
+        tc.Run("the window switch is a config field: the guide by default, a host button name, none, and nonsense heals", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            launcher::Config c;
+            t.Equals(c.focusToggle, std::string("guide"), "the guide button by default (the owner's XBOX / PS button)");
+            t.Equals(launcher::focusToggleHost(c), static_cast<int>(kHostGuide), "which is raylib's GAMEPAD_BUTTON_MIDDLE");
+            t.IsTrue(launcher::toJson(c).find("\"focusToggle\": \"guide\"") != std::string::npos, "written to config.json");
+
+            c.focusToggle = "select";
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.focusToggle, std::string("select"), "a bound button survives the round trip");
+            t.Equals(launcher::focusToggleHost(back), static_cast<int>(kHostSelect), "and names raylib's button");
+
+            c.focusToggle = "none";
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses");
+            t.Equals(back.focusToggle, std::string("none"), "off is kept");
+            t.Equals(launcher::focusToggleHost(back), static_cast<int>(kHostNone), "and presses nothing");
+
+            t.Equals(launcher::normalizeFocusToggle("banana"), std::string("guide"), "a word this build does not know is the default");
+            t.Equals(launcher::normalizeFocusToggle(""), std::string("guide"), "and so is nothing");
+            launcher::Config old;
+            t.IsTrue(launcher::fromJson("{\"gsScale\": 1}", old), "a config written before Q4 parses");
+            t.Equals(old.focusToggle, std::string("guide"), "and gets the guide");
+            // Launcher-only: the game never sees the switch, so no variable carries it.
+            for (const std::string &kv : launcher::environmentFor(c))
+                t.IsTrue(kv.find("TOGGLE") == std::string::npos && kv.find("SWITCH") == std::string::npos, "no environment variable: " + kv);
+        });
+
+        tc.Run("the window switch binds through the press-the-button flow: a free button binds, a button the game reads is a two-answer conflict", [](TestCase &t)
+        {
+            using namespace launcher::mapping;
+            ui::BindFlow flow;
+            Mapping m = defaults();
+            ui::bindStart(flow, ui::kSwitchTarget, 0.0);
+            t.IsTrue(flow.state == ui::BindFlow::State::Listening, "the switch is a target the flow accepts");
+            t.Equals(std::string(ui::ps2Label(ui::kSwitchTarget).text), std::string("SWITCH"), "and its cell reads SWITCH");
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostGuide, 0.1, false}, 1.0) == ui::BindEvent::Bound, "the guide (no row of the mapping) binds");
+            t.Equals(flow.lastHost, kHostGuide, "and the caller is told which button, to write into Config::focusToggle");
+            t.IsTrue(m == defaults(), "the mapping is untouched: the switch takes no row");
+
+            // A button the game reads: the conflict has two answers, opens on CANCEL, and REPLACE frees it.
+            ui::bindStart(flow, ui::kSwitchTarget, 2.0);
+            t.IsTrue(ui::bindStep(flow, m, ui::BindInput{kHostSelect, 0.1, false}, 3.0) == ui::BindEvent::Conflict, "VIEW / SHARE drives SELECT");
+            t.Equals(flow.takenBy, static_cast<int>(kPs2Select), "which the flow names");
+            t.Equals(ui::dialogButtonCount(flow), 2, "two answers -- there is nothing to swap the switch with");
+            t.Equals(std::string(ui::dialogButtonLabel(flow, 0)), std::string("REPLACE"), "replace");
+            t.Equals(std::string(ui::dialogButtonLabel(flow, 1)), std::string("CANCEL"), "cancel");
+            t.Equals(ui::dialogFocusId(flow), std::string("pad.dialog.1"), "the focus lands on CANCEL: REPLACE takes a button from the game");
+            t.Equals(ui::dialogButtonCount(flow.state), 3, "the state alone still says three: the overload on the flow is the one to ask");
+            const std::string sentence = ui::dialogSentence(flow, ui::GlyphFamily::Xbox);
+            t.IsTrue(sentence.find("VIEW") != std::string::npos && sentence.find("SELECT") != std::string::npos, "the sentence names both: " + sentence);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Swap, 4.0) == ui::BindEvent::Cancelled, "swap is refused for the switch: it is a cancel");
+            t.IsTrue(m == defaults(), "and moved nothing");
+
+            ui::bindStart(flow, ui::kSwitchTarget, 5.0);
+            ui::bindStep(flow, m, ui::BindInput{kHostSelect, 0.1, false}, 6.0);
+            t.IsTrue(ui::bindResolve(flow, m, Resolution::Replace, 7.0) == ui::BindEvent::Bound, "replace binds the switch");
+            t.Equals(flow.lastHost, kHostSelect, "to VIEW / SHARE");
+            t.Equals(m.pad[rowOf(kPs2Select)].host, kHostNone, "and SELECT lost its pad button: the game must not read the switch");
+            t.Equals(boundTo(m, kHostSelect), -1, "nothing in the mapping drives it any more");
+        });
+
+        tc.Run("CONTROLLER: the window switch's cell and its OFF sit on BUTTONS' section row, clear of the section switch and RESTORE; the switch's conflict lays out two buttons", [](TestCase &t)
+        {
+            const ui::Rect window{0.0f, 0.0f, 1100.0f, 700.0f};
+            ui::LayoutInputs in;
+            in.padButtons = true;
+            const std::vector<ui::Node> buttons = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(buttons, ui::kSwitchCellId) && ui::hasNode(buttons, ui::kSwitchOffId), "both cells are in BUTTONS");
+            const ui::Rect sw = ui::rectOf(buttons, ui::kSwitchCellId);
+            const ui::Rect off = ui::rectOf(buttons, ui::kSwitchOffId);
+            const ui::Rect section1 = ui::rectOf(buttons, "pad.section.1");
+            const ui::Rect restore = ui::rectOf(buttons, "pad.restore");
+            t.IsTrue(std::fabs(sw.y - section1.y) < 0.001f && std::fabs(off.y - section1.y) < 0.001f, "on the section row");
+            t.IsTrue(sw.x >= section1.right() + 8.0f, "right of BUTTONS, with a gap");
+            t.IsTrue(off.x >= sw.right() + 8.0f, "OFF right of the cell, with a gap");
+            t.IsTrue(restore.x >= off.right() + 8.0f, "and RESTORE right of OFF, with a gap");
+            in.padButtons = false;
+            const std::vector<ui::Node> setup = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsFalse(ui::hasNode(setup, ui::kSwitchCellId) || ui::hasNode(setup, ui::kSwitchOffId), "SETUP has neither: a binding lives with the bindings");
+            in.padButtons = true;
+            in.padDialogButtons = 2;
+            const std::vector<ui::Node> dialog = ui::layoutFor(ui::Page::Controller, window, in);
+            t.IsTrue(ui::hasNode(dialog, "pad.dialog.0") && ui::hasNode(dialog, "pad.dialog.1") && !ui::hasNode(dialog, "pad.dialog.2"),
+                     "the switch's two-answer dialog lays out exactly two buttons");
+            t.IsFalse(ui::hasNode(dialog, ui::kSwitchCellId), "and nothing behind it");
+            t.IsTrue(ui::helpFor(ui::kSwitchCellId).find("XBOX / PS") != std::string::npos, "the cell's help names the button the owner asked for");
+            t.IsFalse(ui::helpFor(ui::kSwitchOffId).empty(), "and OFF says what it leaves alone");
+        });
+
 
 #ifndef _WIN32
         // Sprint 8 Task 4: the POSIX glue. These two need a real /proc and a real filesystem, so they run in

@@ -81,7 +81,7 @@ namespace ui
         const GlyphFamily family = glyphFamilyFor(app.pad.name);
         const bool buttons = app.padSection == 1;
         const bool listening = app.bind.state == BindFlow::State::Listening;
-        const bool dialog = dialogButtonCount(app.bind.state) > 0;
+        const bool dialog = dialogButtonCount(app.bind) > 0;
 
         // ---- the drawn pad ------------------------------------------------------------------------------
         // The pad fills the band above the sections: 560 units wide, centred on the body, with the glyph
@@ -226,13 +226,26 @@ namespace ui
                 for (size_t i = 0; i < lines.size() && i < 2u; ++i, y += (metrics::bodySize - 1.0f) * 1.3f)
                     text(ctx, lines[i].c_str(), Vec2{panelR.x + 20.0f, y}, metrics::bodySize - 1.0f, theme::text);
             }
-            const int count = dialogButtonCount(app.bind.state);
+            const int count = dialogButtonCount(app.bind);
             for (int i = 0; i < count; ++i)
             {
                 const std::string id = "pad.dialog." + std::to_string(i);
-                if (!button(ctx, rectOf(nodes, id), dialogButtonLabel(app.bind.state, i), id))
+                if (!button(ctx, rectOf(nodes, id), dialogButtonLabel(app.bind, i), id))
                     continue;
-                if (app.bind.state == BindFlow::State::Conflict)
+                if (app.bind.state == BindFlow::State::Conflict && app.bind.button == kSwitchTarget)
+                {
+                    // Sprint 10 Q4: the window switch's two answers -- REPLACE frees the button from the game
+                    // and the switch takes it; CANCEL leaves both as they were.
+                    if (bindResolve(app.bind, m, i == 0 ? Resolution::Replace : Resolution::Ask, ctx.time) == BindEvent::Bound)
+                    {
+                        launcher::setActiveMapping(c, m);
+                        c.focusToggle = hostButtonName(app.bind.lastHost);
+                        app.dirty = true;
+                        app.status = std::string("the window switch is now ") + hostLabel(family, app.bind.lastHost).text;
+                    }
+                    app.nav.focus = kSwitchCellId;
+                }
+                else if (app.bind.state == BindFlow::State::Conflict)
                 {
                     const Resolution r = i == 0 ? Resolution::Swap : (i == 1 ? Resolution::Replace : Resolution::Ask);
                     const uint8_t bound = app.bind.button;
@@ -279,11 +292,33 @@ namespace ui
             }
         }
 
+        // ---- BUTTONS: the window switch (Sprint 10 Q4) -----------------------------------------------------
+        // The seventeenth cell: the launcher's own binding, drawn like the sixteen so it is bound like them. "Not
+        // the default" here is any button but the guide; OFF is a radio cell beside it, selected when it is off.
+        {
+            const int switchHost = launcher::focusToggleHost(c);
+            const bool mine = listening && app.bind.button == kSwitchTarget;
+            if (bindCell(ctx, rectOf(nodes, kSwitchCellId), kSwitchCellId, kSwitchTarget, hostLabel(family, switchHost),
+                         switchHost != kHostGuide, mine, countdown) && !listening)
+            {
+                if (!app.pad.present)
+                    app.status = "connect a controller to bind the window switch";
+                else
+                    app.requestBind = static_cast<int>(kSwitchTarget);
+            }
+            if (radioCell(ctx, rectOf(nodes, kSwitchOffId), "OFF", kSwitchOffId, switchHost == kHostNone) && switchHost != kHostNone && !listening)
+            {
+                c.focusToggle = "none";
+                app.dirty = true;
+                app.status = "the window switch is off";
+            }
+        }
+
         // ---- BUTTONS: restore -----------------------------------------------------------------------------
         if (button(ctx, rectOf(nodes, "pad.restore"), "RESTORE DEFAULTS", "pad.restore", !isDefault(m) && !listening))
         {
             restoreAsk(app.bind);
-            app.nav.focus = dialogFocusId(app.bind.state);
+            app.nav.focus = dialogFocusId(app.bind);
         }
 
         // ---- BUTTONS: the crouch shortcut (owner request 2026-09-19, R139) ---------------------------------

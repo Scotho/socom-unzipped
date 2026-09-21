@@ -1048,6 +1048,10 @@ int main(int argc, char **argv)
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_conflict"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_restore"});
         shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_playstation"});
+        // Sprint 10 Q4: the window switch's cell bound to VIEW (a custom binding, its callout on the drawing),
+        // and its two-answer conflict dialog.
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch"});
+        shots.push_back(Shot{ui::Page::Controller, 1100, 700, "_buttons_switch_conflict"});
         // The owner's own config named the community server; this is what the page does with it.
         shots.push_back(Shot{ui::Page::Online, 1100, 700, "_community_healed"});
         // Sprint 9 P4: the ADVANCED section in both of its states. Shut is the ordinary `online`
@@ -1144,7 +1148,7 @@ int main(int argc, char **argv)
         app.layout.advancedOpen = app.advancedOpen || ui::advancedForced(app.config);
         // Sprint 10 Goal 8: the CONTROLLER page's section, and whether a bind dialog has replaced its controls.
         app.layout.padButtons = app.padSection == 1;
-        app.layout.padDialogButtons = ui::dialogButtonCount(app.bind.state);
+        app.layout.padDialogButtons = ui::dialogButtonCount(app.bind);
 
         const ui::FocusGraph graph = ui::FocusGraph::build(window, app.layout);
         // A page the last frame's draw asked for (a rail click, a PLAY row's CHANGE) lands here, before
@@ -1242,6 +1246,21 @@ int main(int argc, char **argv)
         static double s_downSince[18] = {};
         static bool s_ignoreDown[18] = {};
         const bool listening = app.bind.state == ui::BindFlow::State::Listening;
+        // Sprint 10 Q4: the guide button, once a frame, from raylib (a DirectInput pad on Windows, any pad on
+        // Linux) OR from XInput's hidden entry point (an Xbox pad on Windows, whose guide bit XInputGetState
+        // hides -- win32_glue.h has the measurement). Its edges feed the bind loop and the pad gate below.
+        static bool s_guideWasDown = false;
+        bool guideDown = false, guidePressed = false, guideReleased = false;
+        if (!app.fake)
+        {
+            const int padSlot = shownSlot(app.config);
+            const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
+            guideDown = (padPresent && IsGamepadButtonDown(padSlot, GAMEPAD_BUTTON_MIDDLE)) || win32glue::xinputGuideDown();
+            guidePressed = guideDown && !s_guideWasDown;
+            guideReleased = !guideDown && s_guideWasDown;
+            s_guideWasDown = guideDown;
+        }
+        bool toggleWindows = false;
         if (!app.fake && listening)
         {
             const int padSlot = shownSlot(app.config);
@@ -1250,10 +1269,11 @@ int main(int argc, char **argv)
             in.escape = IsKeyPressed(KEY_ESCAPE);
             for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
             {
-                const bool down = padPresent && IsGamepadButtonDown(padSlot, h);
+                const bool guide = h == launcher::mapping::kHostGuide;
+                const bool down = padPresent && (guide ? guideDown : IsGamepadButtonDown(padSlot, h));
                 if (down && s_downSince[h] == 0.0)
                     s_downSince[h] = ctx.time;
-                if (padPresent && IsGamepadButtonReleased(padSlot, h))
+                if (padPresent && (guide ? guideReleased : IsGamepadButtonReleased(padSlot, h)))
                 {
                     if (s_ignoreDown[h])
                         s_ignoreDown[h] = false;
@@ -1273,6 +1293,14 @@ int main(int argc, char **argv)
             {
             case ui::BindEvent::Bound:
             {
+                if (bound == ui::kSwitchTarget)
+                {
+                    // Sprint 10 Q4: the window switch is the launcher's, not the mapping's.
+                    app.config.focusToggle = launcher::mapping::hostButtonName(app.bind.lastHost);
+                    app.dirty = true;
+                    app.status = std::string("the window switch is now ") + ui::hostLabel(family, app.bind.lastHost).text;
+                    break;
+                }
                 launcher::setActiveMapping(app.config, m);
                 app.dirty = true;
                 const int row = launcher::mapping::rowOf(bound);
@@ -1281,7 +1309,7 @@ int main(int argc, char **argv)
                 break;
             }
             case ui::BindEvent::Conflict:
-                nav.focus = ui::dialogFocusId(app.bind.state);
+                nav.focus = ui::dialogFocusId(app.bind);
                 break;
             case ui::BindEvent::Cancelled:
                 app.status = "binding cancelled";
@@ -1318,10 +1346,17 @@ int main(int argc, char **argv)
                 edge(ui::PadNav::PagePrev, GAMEPAD_BUTTON_LEFT_TRIGGER_1);
                 edge(ui::PadNav::PageNext, GAMEPAD_BUTTON_RIGHT_TRIGGER_1);
                 edge(ui::PadNav::Launch, GAMEPAD_BUTTON_MIDDLE_RIGHT);
+                // Sprint 10 Q4: the window switch's button -- the guide (through the read above) or whatever the
+                // player bound in its place; "none" presses nothing.
+                const int toggleHost = launcher::focusToggleHost(app.config);
+                padFrame.pressed[static_cast<int>(ui::PadNav::Toggle)] =
+                    toggleHost == launcher::mapping::kHostGuide ? guidePressed
+                                                                : (toggleHost != launcher::mapping::kHostNone && IsGamepadButtonPressed(padSlot, toggleHost));
                 padFrame.leftX = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_X);
                 padFrame.leftY = GetGamepadAxisMovement(padSlot, GAMEPAD_AXIS_LEFT_Y);
             }
             const ui::PadIntent padWants = ui::padIntent(padFrame, app.running, ctx.time, padRepeatAt);
+            toggleWindows = padWants.toggle;
 
             if (typing)
             {
@@ -1484,6 +1519,19 @@ int main(int argc, char **argv)
             }
             if (app.requestOpenLogs)
                 win32glue::openFolder((dir / "logs").string());
+            // Sprint 10 Q4: the window switch. padIntent only ever raises it while the game runs; the glue
+            // decides which of the two windows is behind and brings it forward.
+            if (toggleWindows)
+            {
+                std::string why;
+                if (win32glue::toggleForeground(GetWindowHandle(), game, why))
+                    app.status = "switched windows";
+                else
+                {
+                    app.status = "window switch: " + why;
+                    std::fprintf(stderr, "[launcher] window switch: %s\n", why.c_str());
+                }
+            }
 
             // ---- Sprint 9 Goal 8: the status line. Asked for when ONLINE opens (never within 5 s of the
             // last ask) and every 10 s while it stays open; the answer lands in a slot this thread polls.
@@ -1597,7 +1645,7 @@ int main(int argc, char **argv)
                 const bool padPresent = padSlot >= 0 && IsGamepadAvailable(padSlot);
                 for (int h = 1; h <= launcher::mapping::kHostButtonMax; ++h)
                 {
-                    s_ignoreDown[h] = padPresent && IsGamepadButtonDown(padSlot, h);
+                    s_ignoreDown[h] = padPresent && (h == launcher::mapping::kHostGuide ? guideDown : IsGamepadButtonDown(padSlot, h));
                     s_downSince[h] = 0.0;
                 }
             }
@@ -1738,6 +1786,25 @@ int main(int argc, char **argv)
                     }
                     if (suffix == "_buttons")
                         shotPendingFocus = ui::bindCellId(0);
+                    // Q4: the switch. Every shot starts from the guide; _buttons_switch has it on VIEW with the
+                    // cell focused, _buttons_switch_conflict caught VIEW while SELECT still drives it.
+                    app.config.focusToggle = suffix == "_buttons_switch" ? "select" : "guide";
+                    if (suffix == "_buttons_switch")
+                    {
+                        // As the REPLACE answer leaves things: SELECT lost its pad button to the switch.
+                        launcher::mapping::rebind(m, launcher::mapping::kPs2Select, launcher::mapping::kHostNone, launcher::mapping::Resolution::Replace);
+                        app.bind.lastHost = launcher::mapping::kHostSelect;
+                        app.bind.lastAt = 1.0e12;
+                        shotPendingFocus = ui::kSwitchCellId;
+                    }
+                    if (suffix == "_buttons_switch_conflict")
+                    {
+                        app.bind.state = ui::BindFlow::State::Conflict;
+                        app.bind.button = ui::kSwitchTarget;
+                        app.bind.host = launcher::mapping::kHostSelect;
+                        app.bind.takenBy = launcher::mapping::kPs2Select;
+                        shotPendingFocus = ui::dialogFocusId(app.bind);
+                    }
                     launcher::setActiveMapping(app.config, m);
                 }
                 app.config.secondInstance = std::strcmp(shot.suffix, "_advanced") == 0;

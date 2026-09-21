@@ -25,6 +25,7 @@
 #include <string>
 #include <vector>
 
+#include <dlfcn.h>      // Sprint 10 Q4: libX11 by hand, for the window switch
 #include <fcntl.h>
 #include <signal.h>
 #include <spawn.h>
@@ -32,6 +33,13 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+// Q4: the X11 types and atoms only (the library itself is dlopen'd above). The headers are on every machine
+// that can build raylib's X11 platform, which the Linux client is (GLFW_BUILD_X11).
+#if defined(__linux__)
+#include <X11/Xatom.h>
+#include <X11/Xlib.h>
+#endif
 
 extern char **environ;
 
@@ -314,6 +322,139 @@ namespace win32glue
             game.status = raw;
         game.exited = true;
     }
+
+    // ---- Sprint 10 Q4: the window switch ------------------------------------------------------------------
+    // The guide button needs nothing here: GLFW reads evdev's BTN_MODE and its Linux mapping rows carry it, so
+    // raylib's GAMEPAD_BUTTON_MIDDLE is the button. The swap is X11 (EWMH), through dlopen so the link line and
+    // the portable folder's lib/ closure do not change: both windows are found by _NET_WM_PID in the root's
+    // _NET_CLIENT_LIST (raylib's GetWindowHandle is the GLFWwindow* on Linux, not the X window), the one in
+    // front is _NET_ACTIVE_WINDOW, and the other is asked for with the ClientMessage a pager sends (source 2),
+    // which focus-stealing prevention honours where an application's own request (source 1) may be refused.
+    // Wayland has no X display to open: the switch then does nothing and says so.
+    bool xinputGuideReadable() { return false; }
+    bool xinputGuideDown() { return false; }
+
+#if !defined(__linux__)
+    bool toggleForeground(void *, const GameProcess &, std::string &why)
+    {
+        why = "the window switch is Linux (X11) only in this build";
+        return false;
+    }
+#else
+    namespace
+    {
+        struct X11
+        {
+            void *lib = nullptr;
+            Display *(*openDisplay)(const char *) = nullptr;
+            int (*closeDisplay)(Display *) = nullptr;
+            Atom (*internAtom)(Display *, const char *, int) = nullptr;
+            int (*getWindowProperty)(Display *, Window, Atom, long, long, int, Atom, Atom *, int *, unsigned long *,
+                                     unsigned long *, unsigned char **) = nullptr;
+            int (*free)(void *) = nullptr;
+            int (*sendEvent)(Display *, Window, int, long, XEvent *) = nullptr;
+            int (*flush)(Display *) = nullptr;
+
+            bool load()
+            {
+                if (lib != nullptr)
+                    return true;
+                lib = dlopen("libX11.so.6", RTLD_NOW);
+                if (lib == nullptr)
+                    return false;
+                auto sym = [&](const char *name) { return dlsym(lib, name); };
+                openDisplay = reinterpret_cast<Display *(*)(const char *)>(sym("XOpenDisplay"));
+                closeDisplay = reinterpret_cast<int (*)(Display *)>(sym("XCloseDisplay"));
+                internAtom = reinterpret_cast<Atom (*)(Display *, const char *, int)>(sym("XInternAtom"));
+                getWindowProperty = reinterpret_cast<int (*)(Display *, Window, Atom, long, long, int, Atom, Atom *, int *,
+                                                             unsigned long *, unsigned long *, unsigned char **)>(sym("XGetWindowProperty"));
+                free = reinterpret_cast<int (*)(void *)>(sym("XFree"));
+                sendEvent = reinterpret_cast<int (*)(Display *, Window, int, long, XEvent *)>(sym("XSendEvent"));
+                flush = reinterpret_cast<int (*)(Display *)>(sym("XFlush"));
+                return openDisplay && closeDisplay && internAtom && getWindowProperty && free && sendEvent && flush;
+            }
+
+            // A 32-bit-format property as longs (Xlib hands 32-bit items back as C longs).
+            std::vector<unsigned long> longs(Display *dpy, Window w, Atom prop, Atom type)
+            {
+                std::vector<unsigned long> out;
+                Atom actualType = 0;
+                int actualFormat = 0;
+                unsigned long count = 0, after = 0;
+                unsigned char *data = nullptr;
+                if (getWindowProperty(dpy, w, prop, 0, 4096, 0, type, &actualType, &actualFormat, &count, &after, &data) != 0 || data == nullptr)
+                    return out;
+                if (actualFormat == 32)
+                    out.assign(reinterpret_cast<unsigned long *>(data), reinterpret_cast<unsigned long *>(data) + count);
+                free(data);
+                return out;
+            }
+        };
+        X11 g_x11;
+    }
+
+    bool toggleForeground(void *launcherWindow, const GameProcess &game, std::string &why)
+    {
+        (void)launcherWindow;
+        if (game.pid <= 0 || game.exited)
+        {
+            why = "no game window to switch to";
+            return false;
+        }
+        if (!g_x11.load())
+        {
+            why = "libX11 is not available (Wayland?): the window switch needs an X display";
+            return false;
+        }
+        Display *dpy = g_x11.openDisplay(nullptr);
+        if (dpy == nullptr)
+        {
+            why = "no X display: the window switch needs one";
+            return false;
+        }
+        const Window root = DefaultRootWindow(dpy);
+        const Atom clientList = g_x11.internAtom(dpy, "_NET_CLIENT_LIST", 0);
+        const Atom wmPid = g_x11.internAtom(dpy, "_NET_WM_PID", 0);
+        const Atom activeWindow = g_x11.internAtom(dpy, "_NET_ACTIVE_WINDOW", 0);
+        Window mine = 0, theirs = 0;
+        const unsigned long myPid = static_cast<unsigned long>(::getpid());
+        for (const unsigned long w : g_x11.longs(dpy, root, clientList, XA_WINDOW))
+        {
+            const std::vector<unsigned long> pid = g_x11.longs(dpy, static_cast<Window>(w), wmPid, XA_CARDINAL);
+            if (pid.empty())
+                continue;
+            if (pid[0] == myPid && mine == 0)
+                mine = static_cast<Window>(w);
+            else if (pid[0] == static_cast<unsigned long>(game.pid) && theirs == 0)
+                theirs = static_cast<Window>(w);
+        }
+        bool ok = false;
+        if (mine == 0 || theirs == 0)
+        {
+            why = theirs == 0 ? "the game has no window yet" : "the launcher's own window was not found";
+        }
+        else
+        {
+            const std::vector<unsigned long> active = g_x11.longs(dpy, root, activeWindow, XA_WINDOW);
+            const Window front = active.empty() ? 0 : static_cast<Window>(active[0]);
+            const Window target = front == mine ? theirs : mine;
+            XEvent ev{};
+            ev.xclient.type = ClientMessage;
+            ev.xclient.window = target;
+            ev.xclient.message_type = activeWindow;
+            ev.xclient.format = 32;
+            ev.xclient.data.l[0] = 2;   // source: a pager -- the request focus-stealing prevention honours
+            ev.xclient.data.l[1] = 0;   // CurrentTime
+            ev.xclient.data.l[2] = static_cast<long>(front);
+            ok = g_x11.sendEvent(dpy, root, 0, SubstructureRedirectMask | SubstructureNotifyMask, &ev) != 0;
+            g_x11.flush(dpy);
+            if (!ok)
+                why = "the window manager did not take the request";
+        }
+        g_x11.closeDisplay(dpy);
+        return ok;
+    }
+#endif
 
     // ---- Sprint 9 Goal 8: one HTTPS request (the bug report, the server's status line) ---------------------
     // No TLS library is vendored: the request is `curl`, started with an argv (posix_spawnp -- no shell, so

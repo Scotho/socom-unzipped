@@ -51,6 +51,9 @@ add_executable(socom_unzipped_launcher ${PS2X_LAUNCHER_EXE_TYPE}
 )
 if(UNIX)
     target_sources(socom_unzipped_launcher PRIVATE src/posix_glue.cpp)
+    # Sprint 10 Q4: the window switch opens libX11 with dlopen (glibc < 2.34 keeps dlopen in libdl); the link
+    # line gains no X11 and the portable folder's closure does not change.
+    target_link_libraries(socom_unzipped_launcher PRIVATE ${CMAKE_DL_LIBS})
 endif()
 target_link_libraries(socom_unzipped_launcher PRIVATE ps2x_launcher_core raylib)
 # Sprint 7 Task 9a: miniaudio ships inside raylib's own sources and is already compiled into libraylib

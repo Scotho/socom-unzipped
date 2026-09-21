@@ -20,11 +20,22 @@ namespace ui
     {
         // The gate. While the game runs the pad is the game's, and the launcher reads NOTHING from it --
         // not the buttons, and not the repeat clock either: a stick held through a firefight must not bank
-        // steps and spend them the frame the game exits.
-        if (gameRunning || !pad.present)
+        // steps and spend them the frame the game exits. Sprint 10 Q4 opens it one button wide: the window
+        // switch (the guide by default), which the game does not read (mapping.h binds no PS2 button to it
+        // unless the player does, and the CONTROLLER page refuses that without asking). The runtime reads the
+        // pad whether or not its window is in front (ps2xRuntime has no IsWindowFocused), so the launcher must
+        // NOT take the rest of the pad back when it is brought forward: that would be the P3 defect again.
+        if (!pad.present)
         {
             repeatAt = 0.0;
             return PadIntent{};
+        }
+        if (gameRunning)
+        {
+            repeatAt = 0.0;
+            PadIntent out;
+            out.toggle = edge(pad, PadNav::Toggle);
+            return out;
         }
 
         PadIntent out;

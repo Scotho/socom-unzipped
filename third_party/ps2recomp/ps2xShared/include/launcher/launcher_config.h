@@ -97,7 +97,17 @@ namespace launcher
         // time until 2026-09-21); an old config.json with no block keeps them for everyone; and a default
         // mapping sends nothing to the game (launcher/mapping.h). activeMapping() reads the current profile's.
         std::vector<ProfileMapping> mappings;
+        // Sprint 10 Q4 (owner 2026-09-20: "pressing the XBOX or PLAYSTATION button should toggle the launcher
+        // focus"): the host button that swaps the front window between the launcher and the running game. A
+        // host button NAME as mapping.h spells them ("guide" by default; "none" switches it off), not a PS2
+        // button: the game never sees this one. Launcher-only -- no environment variable carries it.
+        std::string focusToggle = "guide";
     };
+
+    // Q4: the switch's host button as mapping.h numbers them (kHostNone when off); the name normalised --
+    // a known host name or "none" stays, anything else (a typo, a newer build's word) is "guide".
+    std::string normalizeFocusToggle(const std::string &value);
+    int focusToggleHost(const Config &config);
 
     // The mapping the current profile plays (the defaults when it has none), and the setter that keeps the
     // list clean: a profile set back to the defaults loses its entry rather than carrying a copy of them.

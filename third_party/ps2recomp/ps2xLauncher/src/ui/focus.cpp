@@ -1,6 +1,7 @@
 // Sprint 8 Goal 9: the layout and the focus model. Pure -- no raylib, no globals, no drawing.
 #include "focus.h"
 
+#include "bind_flow.h"                   // Sprint 10 Q4: the window switch's cell ids
 #include "launcher/launcher_config.h"   // which server presets can be played at all
 
 #include <algorithm>
@@ -190,6 +191,10 @@ namespace ui
             }
             // BUTTONS: RESTORE at the switch row's right end; the sixteen cells four across and four down; the
             // crouch row (R139) last, in the label column's grid like every other row with a label.
+            // Sprint 10 Q4: the WINDOW SWITCH cell and its OFF sit on the section row between the section
+            // switch and RESTORE -- the one strip of BUTTONS with room, and a binding belongs with the bindings.
+            add(out, page, kSwitchCellId, Rect{b.x + 322.0f, below, 190.0f, 28.0f});
+            add(out, page, kSwitchOffId, Rect{b.x + 522.0f, below, 50.0f, 28.0f});
             add(out, page, "pad.restore", Rect{b.right() - 200.0f, below, 200.0f, 28.0f});
             const Rect grid{b.x, top, b.w, 24.0f};
             for (int i = 0; i < 16; ++i)
@@ -305,6 +310,15 @@ namespace ui
             {"pad.restore",
              "Puts every button back to the defaults for this profile. It asks first, and the answer it lands on "
              "is CANCEL."},
+            // Sprint 10 Q4: the window switch. What it does, and the one platform fact a player will hit: an Xbox
+            // pad's guide button is hidden by Windows' XInput, so the launcher asks for it another way; if that
+            // way is missing on their machine, this cell is where they put the switch on a button that works.
+            {"pad.switch.bind",
+             "While the game runs, this pad button brings the launcher in front of it, and again sends the game "
+             "back. The XBOX / PS button by default. Press to bind another one; the game never reads it."},
+            {"pad.switch.off",
+             "Turns the window switch off: no pad button swaps the windows, and the XBOX / PS button is left to "
+             "whatever else listens for it (Steam, the Xbox Game Bar)."},
         };
     }
 
