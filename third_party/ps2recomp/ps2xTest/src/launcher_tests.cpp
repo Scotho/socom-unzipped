@@ -477,6 +477,56 @@ void register_launcher_tests()
             t.Equals(back.micDevice, c.micDevice, "the device name survives the round trip");
         });
 
+        // Sprint 10 Goal 9 (research/37, /38): the persona name and its password, typed once on ONLINE, handed to
+        // the game as PS2X_SOCOM2_LOGIN_NAME / _PASS for the keyboard prefill (R179: plain in the player's own
+        // config.json; R180: prefilled, never submitted). Unset when empty, so a config that never typed them is
+        // the game exactly as before the option.
+        tc.Run("the persona name and password round-trip the config and reach the game only when set", [](TestCase &t)
+        {
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+            launcher::Config c;
+            t.IsTrue(c.loginName.empty() && c.loginPassword.empty(), "a fresh config has neither");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_NAME"), "nothing typed: the game is not told a name");
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_PASS"), "nor a password -- the keyboards open empty, as today");
+
+            c.loginName = "socomc";
+            c.loginPassword = "socom";
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_NAME=socomc"), "the name reaches the game");
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_PASS=socom"), "and the password");
+
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.loginName, std::string("socomc"), "the name survives the round trip");
+            t.Equals(back.loginPassword, std::string("socom"), "and the password (R179: plain, in the player's own file)");
+            t.IsTrue(launcher::toJson(c).find("\"loginPassword\": \"socom\"") != std::string::npos, "written under its own key, so the sanitiser can find it");
+
+            // The name is what the game's keyboard could have typed: its characters, its cap (research/38: the
+            // keyboard has every printable ASCII key but the space, refuses the double quote, and caps at 14).
+            t.Equals(launcher::kLoginNameCap, static_cast<size_t>(14), "the name keyboard's MaxChars");
+            t.Equals(launcher::kLoginPasswordCap, static_cast<size_t>(12), "the password keyboard's MaxChars");
+            t.Equals(launcher::normalizeLoginName("socomc"), std::string("socomc"), "a plain name is kept");
+            t.Equals(launcher::normalizeLoginName("Sgt_Rock-1.5"), std::string("Sgt_Rock-1.5"), "the marks the keyboard has are kept");
+            t.Equals(launcher::normalizeLoginName("so com"), std::string("socom"), "a space is not a keyboard character");
+            t.Equals(launcher::normalizeLoginName("a\"b"), std::string("ab"), "nor is the double quote on the name keyboard (NoDQuote)");
+            t.Equals(launcher::normalizeLoginName("caf\xc3\xa9"), std::string("caf"), "nor anything outside ASCII");
+            t.Equals(launcher::normalizeLoginName("abcdefghijklmnopqrstuvwxyz"), std::string("abcdefghijklmn"), "cut to the keyboard's cap");
+            t.Equals(launcher::normalizeLoginName(""), std::string(), "empty stays empty");
+            t.Equals(launcher::normalizeLoginPassword("hunter2"), std::string("hunter2"), "a plain password is kept");
+            t.Equals(launcher::normalizeLoginPassword("pa ss\"w"), std::string("pass\"w"), "the password keyboard has the double quote but no space");
+            t.Equals(launcher::normalizeLoginPassword("abcdefghijklmnop"), std::string("abcdefghijkl"), "cut to the password keyboard's cap");
+            c.loginName = "so com";
+            c.loginPassword = "hun ter2";
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_NAME=socom"), "what reaches the game is the normalised name");
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_PASS=hunter2"), "and the normalised password");
+            c.loginName = "   ";
+            env = launcher::environmentFor(c);
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_NAME"), "a name that normalises to nothing is not sent");
+        });
+
         tc.Run("micLevelDb: RMS in dB full scale, -inf for silence", [](TestCase &t)
         {
             // A full-scale sine has RMS 1/sqrt(2), i.e. -3.0103 dB, whatever its frequency or phase.

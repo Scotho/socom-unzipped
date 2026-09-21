@@ -212,6 +212,10 @@ namespace launcher
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
+        // Sprint 10 Goal 9, R179: the password is written plain -- this is the player's own file; the
+        // diagnostics zip's copy of it blanks the field (diagnostics::sanitizedConfigJson).
+        out += "  \"loginName\": " + quote(c.loginName) + ",\n";
+        out += "  \"loginPassword\": " + quote(c.loginPassword) + ",\n";
         out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + "\n";
         out += "}\n";
         return out;
@@ -257,7 +261,7 @@ namespace launcher
                 std::string key;
                 if (!p.string(key) || !p.take(':'))
                     return false;
-                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut")
+                if (key == "isoPath" || key == "presentFilter" || key == "windowSize" || key == "server" || key == "serverPreset" || key == "profile" || key == "micDevice" || key == "crouchShortcut" || key == "loginName" || key == "loginPassword")
                 {
                     std::string v;
                     if (!p.string(v))
@@ -284,6 +288,8 @@ namespace launcher
                         sawPreset = true;
                     }
                     else if (key == "micDevice") c.micDevice = v;
+                    else if (key == "loginName") c.loginName = v;
+                    else if (key == "loginPassword") c.loginPassword = v;
                     else c.profile = normalizeProfile(v);
                 }
                 else if (key == "gsScale" || key == "mouseSensitivity" || key == "mouseLook" || key == "secondInstance" || key == "gamepadIndex" || key == "padDeadZone" || key == "fpsOverlay" || key == "audioVolume")
@@ -401,6 +407,39 @@ namespace launcher
         return value.size() > 64 ? value.substr(0, 64) : value;
     }
 
+    namespace
+    {
+        // Sprint 10 Goal 9: what the game's keyboard can type. Printable ASCII, no space; the double quote only
+        // where the keyboard offers it (the name keyboard's NoDQuote flag refuses it, research/38). Anything
+        // else -- a space, an accent, a control character -- is dropped, not refused whole: a name is not a
+        // path, and what the player sees in the field is exactly what the keyboard will hold.
+        std::string keyboardText(const std::string &value, std::size_t cap, bool allowDoubleQuote)
+        {
+            std::string out;
+            for (const char ch : value)
+            {
+                const unsigned char u = static_cast<unsigned char>(ch);
+                const bool ok = u > 0x20 && u < 0x7F && (allowDoubleQuote || ch != '"');
+                if (!ok)
+                    continue;
+                out.push_back(ch);
+                if (out.size() == cap)
+                    break;
+            }
+            return out;
+        }
+    }
+
+    std::string normalizeLoginName(const std::string &value)
+    {
+        return keyboardText(value, kLoginNameCap, false);
+    }
+
+    std::string normalizeLoginPassword(const std::string &value)
+    {
+        return keyboardText(value, kLoginPasswordCap, true);
+    }
+
     const char *crouchShortcutLabel(const std::string &value)
     {
         const std::string v = normalizeCrouchShortcut(value);
@@ -445,6 +484,15 @@ namespace launcher
         env.push_back("PS2X_SOCOM2_SERVER=" + effectiveServer(c));
         const std::string profile = normalizeProfile(c.profile);
         env.push_back("PS2X_MC_DIR=cards/" + profile + (c.secondInstance ? "_b" : ""));
+        // Sprint 10 Goal 9: only when typed -- unset means the keyboards open empty, as before the option -- and
+        // as the keyboard could have typed it (normalizeLogin*), so the game is never handed a string its
+        // buffer cannot hold.
+        const std::string loginName = normalizeLoginName(c.loginName);
+        if (!loginName.empty())
+            env.push_back("PS2X_SOCOM2_LOGIN_NAME=" + loginName);
+        const std::string loginPassword = normalizeLoginPassword(c.loginPassword);
+        if (!loginPassword.empty())
+            env.push_back("PS2X_SOCOM2_LOGIN_PASS=" + loginPassword);
         // Sprint 7 Task 8: the pad the player picked (only when they picked one -- unset means the runtime's
         // own "first available" rule), and the dead zone, always, so what they tuned is what the game gets.
         if (c.gamepadIndex >= 0)
