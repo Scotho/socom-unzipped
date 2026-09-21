@@ -43,12 +43,8 @@ NOT_KNOBS = {
 # ps2xTest fixtures that are set and read back by one test and mean nothing to the runtime.
 TEST_FIXTURE_PREFIXES = ("PS2X_BARE_TEST_",)
 
-# Sprint 9 Goal 3 Task 4: files that still call getenv("PS2X_...") directly. Each batch takes its files off
-# this list in the commit that migrates them; test_knobs_registry fails if a listed file has no raw read left,
-# and if an unlisted file has one. When the set is empty, delete this comment and leave the empty set.
-RAW_GETENV_PENDING = {
-    "third_party/ps2recomp/ps2xRuntime/include/ps2_runtime_macros.h",
-}
+# Sprint 9 Goal 3 Task 4 migrated every raw getenv("PS2X_..."); a file that grows one fails test_knobs_registry.
+RAW_GETENV_PENDING = set()
 
 _ROW = re.compile(r'^\s*X\("(PS2X_[A-Z0-9_]+)",\s*(\w+),\s*(\w+),\s*"([^"]*)",\s*"([^"]*)"\)', re.M)
 _LITERAL = re.compile(r'"(PS2X_[A-Z0-9_]+)(?=["=])')
