@@ -19,7 +19,9 @@ permissions:
 
 concurrency:
   group: linux-${{ github.ref }}
-  cancel-in-progress: true
+  # false: a documentation-only push right behind a code push must not cancel the hour-long build that push
+  # started (it did, 2026-09-21); the docs-only run's `changes` job takes ten seconds and skips the build.
+  cancel-in-progress: false
 
 jobs:
   changes:
