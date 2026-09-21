@@ -478,6 +478,56 @@ void register_launcher_tests()
             t.Equals(back.micDevice, c.micDevice, "the device name survives the round trip");
         });
 
+        // Sprint 10 Goal 9 (research/37, /38): the persona name and its password, typed once on ONLINE, handed to
+        // the game as PS2X_SOCOM2_LOGIN_NAME / _PASS for the keyboard prefill (R179: plain in the player's own
+        // config.json; R180: prefilled, never submitted). Unset when empty, so a config that never typed them is
+        // the game exactly as before the option.
+        tc.Run("the persona name and password round-trip the config and reach the game only when set", [](TestCase &t)
+        {
+            auto has = [](const std::vector<std::string> &e, const std::string &kv) { return std::find(e.begin(), e.end(), kv) != e.end(); };
+            auto hasKey = [](const std::vector<std::string> &e, const std::string &k) { return std::any_of(e.begin(), e.end(), [&](const std::string &s) { return s.rfind(k + "=", 0) == 0; }); };
+            launcher::Config c;
+            t.IsTrue(c.loginName.empty() && c.loginPassword.empty(), "a fresh config has neither");
+            std::vector<std::string> env = launcher::environmentFor(c);
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_NAME"), "nothing typed: the game is not told a name");
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_PASS"), "nor a password -- the keyboards open empty, as today");
+
+            c.loginName = "socomc";
+            c.loginPassword = "socom";
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_NAME=socomc"), "the name reaches the game");
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_PASS=socom"), "and the password");
+
+            launcher::Config back;
+            t.IsTrue(launcher::fromJson(launcher::toJson(c), back), "parses its own output");
+            t.Equals(back.loginName, std::string("socomc"), "the name survives the round trip");
+            t.Equals(back.loginPassword, std::string("socom"), "and the password (R179: plain, in the player's own file)");
+            t.IsTrue(launcher::toJson(c).find("\"loginPassword\": \"socom\"") != std::string::npos, "written under its own key, so the sanitiser can find it");
+
+            // The name is what the game's keyboard could have typed: its characters, its cap (research/38: the
+            // keyboard has every printable ASCII key but the space, refuses the double quote, and caps at 14).
+            t.Equals(launcher::kLoginNameCap, static_cast<size_t>(14), "the name keyboard's MaxChars");
+            t.Equals(launcher::kLoginPasswordCap, static_cast<size_t>(12), "the password keyboard's MaxChars");
+            t.Equals(launcher::normalizeLoginName("socomc"), std::string("socomc"), "a plain name is kept");
+            t.Equals(launcher::normalizeLoginName("Sgt_Rock-1.5"), std::string("Sgt_Rock-1.5"), "the marks the keyboard has are kept");
+            t.Equals(launcher::normalizeLoginName("so com"), std::string("socom"), "a space is not a keyboard character");
+            t.Equals(launcher::normalizeLoginName("a\"b"), std::string("ab"), "nor is the double quote on the name keyboard (NoDQuote)");
+            t.Equals(launcher::normalizeLoginName("caf\xc3\xa9"), std::string("caf"), "nor anything outside ASCII");
+            t.Equals(launcher::normalizeLoginName("abcdefghijklmnopqrstuvwxyz"), std::string("abcdefghijklmn"), "cut to the keyboard's cap");
+            t.Equals(launcher::normalizeLoginName(""), std::string(), "empty stays empty");
+            t.Equals(launcher::normalizeLoginPassword("hunter2"), std::string("hunter2"), "a plain password is kept");
+            t.Equals(launcher::normalizeLoginPassword("pa ss\"w"), std::string("pass\"w"), "the password keyboard has the double quote but no space");
+            t.Equals(launcher::normalizeLoginPassword("abcdefghijklmnop"), std::string("abcdefghijkl"), "cut to the password keyboard's cap");
+            c.loginName = "so com";
+            c.loginPassword = "hun ter2";
+            env = launcher::environmentFor(c);
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_NAME=socom"), "what reaches the game is the normalised name");
+            t.IsTrue(has(env, "PS2X_SOCOM2_LOGIN_PASS=hunter2"), "and the normalised password");
+            c.loginName = "   ";
+            env = launcher::environmentFor(c);
+            t.IsFalse(hasKey(env, "PS2X_SOCOM2_LOGIN_NAME"), "a name that normalises to nothing is not sent");
+        });
+
         tc.Run("micLevelDb: RMS in dB full scale, -inf for silence", [](TestCase &t)
         {
             // A full-scale sine has RMS 1/sqrt(2), i.e. -3.0103 dB, whatever its frequency or phase.
@@ -1266,6 +1316,44 @@ void register_launcher_tests()
             in.advancedOpen = ui::advancedForced(c);   // the player's collapse does not get a vote here
             t.IsTrue(ui::hasNode(ui::layoutFor(ui::Page::Online, window, in), "online.second"),
                      "the toggle a player switched on is always on the page they switched it on");
+        });
+
+        // Sprint 10 Goal 9: the persona and its password, under PROFILE and above ADVANCED -- a stranger's first-run
+        // settings, in reading order, and still inside the body with the second-instance caption at the small size.
+        tc.Run("the ONLINE page holds a name and a masked password under PROFILE, above ADVANCED, clear of each other", [](TestCase &t)
+        {
+            for (const ui::Rect window : {ui::Rect{0.0f, 0.0f, 1100.0f, 700.0f}, ui::Rect{0.0f, 0.0f, 800.0f, 520.0f}})
+            {
+                ui::LayoutInputs in;
+                in.advancedOpen = true;
+                in.customServer = true;   // the tallest form: the address field is on the page too
+                const std::vector<ui::Node> nodes = ui::layoutFor(ui::Page::Online, window, in);
+                const ui::Rect profile = ui::rectOf(nodes, "online.profile");
+                const ui::Rect name = ui::rectOf(nodes, "online.name");
+                const ui::Rect password = ui::rectOf(nodes, "online.password");
+                const ui::Rect advanced = ui::rectOf(nodes, "online.advanced");
+                const ui::Rect second = ui::rectOf(nodes, "online.second");
+                t.IsTrue(ui::drawable(name) && ui::drawable(password), "both fields are laid out");
+                t.IsTrue(name.y >= profile.bottom() && password.y >= name.bottom(), "in reading order under PROFILE");
+                t.IsTrue(advanced.y >= password.bottom(), "ADVANCED is below them");
+                t.IsTrue(second.y >= advanced.bottom(), "and the second-instance toggle below that");
+                const ui::Frame f = ui::frameFor(window);
+                if (window.w >= 1100.0f)   // the small window scrolls its body; the design size must not need to
+                    t.IsTrue(second.bottom() + 40.0f <= f.body.bottom(), "with its caption still inside the body");
+                // The focus order follows the reading order: profile, name, password, then ADVANCED.
+                const std::vector<std::string> ids = ui::FocusGraph::build(window, in).idsOn(ui::Page::Online);
+                size_t profileAt = ids.size(), nameAt = ids.size(), passwordAt = ids.size(), advancedAt = ids.size();
+                for (size_t i = 0; i < ids.size(); ++i)
+                {
+                    if (ids[i] == "online.profile") profileAt = i;
+                    if (ids[i] == "online.name") nameAt = i;
+                    if (ids[i] == "online.password") passwordAt = i;
+                    if (ids[i] == "online.advanced") advancedAt = i;
+                }
+                t.IsTrue(profileAt < nameAt && nameAt < passwordAt && passwordAt < advancedAt, "focus walks profile, name, password, ADVANCED");
+            }
+            t.IsFalse(ui::helpFor("online.name").empty() || ui::helpFor("online.password").empty(), "both fields have help");
+            t.IsTrue(ui::helpFor("online.password").find("config.json") != std::string::npos, "and the password's says where it is kept (R179)");
         });
 
         // Sprint 9 P4 (owner, 2026-09-20): "tooltips where the launcher is unclear, 'what is a profile?'

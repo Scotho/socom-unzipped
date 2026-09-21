@@ -2,6 +2,7 @@
 // config.json next to the launcher, and the PS2X_* environment it becomes (Task 8b, packaging outline section 3).
 #include "launcher/mapping.h"   // Sprint 10 Goal 8 (R174): the input mapping, a field of Config
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -84,6 +85,11 @@ namespace launcher
         std::string serverPreset = "unzipped"; // an id out of kServerPresets; a fresh config plays on the project's hosted server (Sprint 8 Goal 12); "custom" means the address below
         std::string server = "127.0.0.1";
         std::string profile = "player";
+        // Sprint 10 Goal 9: the persona the game logs in as and its password, typed once here and handed to
+        // the game's keyboards already filled (PS2X_SOCOM2_LOGIN_NAME / _PASS; R179: stored plain in this
+        // file, R180: prefilled, never submitted). Empty = nothing is sent and the keyboards open empty.
+        std::string loginName;
+        std::string loginPassword;
         bool secondInstance = false;
         // Sprint 10 Goal 8 (R174): what the pad's buttons and the keyboard's keys drive, SAVED PER PROFILE -- a
         // profile is one player's save and persona, and two people sharing a machine hold their pads
@@ -119,6 +125,16 @@ namespace launcher
     // whole and becomes "player". Refused whole, not patched up: a config.json can be handed to a player by
     // someone else, and half-cleaning a path is how a cleaner gets walked around.
     std::string normalizeProfile(const std::string &value);
+
+    // Sprint 10 Goal 9: the persona name and password as the game's own on-screen keyboard could have typed
+    // them -- every printable ASCII character but the space (the keyboard has none), the double quote refused on
+    // the name keyboard (its NoDQuote flag), and each cut to its keyboard's MaxChars (research/38: 14 and 12,
+    // read off the login screen's two GetTextInput actions on the disc). The runtime re-applies the live cap
+    // when it fills the keyboard, so nothing longer can reach the game's buffer either way. Empty stays empty.
+    constexpr std::size_t kLoginNameCap = 14;
+    constexpr std::size_t kLoginPasswordCap = 12;
+    std::string normalizeLoginName(const std::string &value);
+    std::string normalizeLoginPassword(const std::string &value);
     // The cell's label and the one line under the row that states the trade. Never empty.
     const char *crouchShortcutLabel(const std::string &value);
     const char *crouchShortcutHint(const std::string &value);

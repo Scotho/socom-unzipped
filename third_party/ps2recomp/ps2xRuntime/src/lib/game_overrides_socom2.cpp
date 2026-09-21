@@ -16,6 +16,7 @@
 #include "runtime/ee_scheduler.h"
 #include "runtime/socom2_freeze_fields.h"
 #include "runtime/socom2_music_trace.h"
+#include "runtime/socom2_osk_prefill.h"
 #include "runtime/ps2_audio.h"
 #include "socom2_rsa_key.h"
 #include "socom2_host_input.h"
@@ -1482,6 +1483,70 @@ namespace
     }
 
     // ------------------------------------------------------------------------------------------
+    // Sprint 10 Goal 9 (research/38): the on-screen keyboard opens holding the launcher's persona name and
+    // password. The game's login screen opens both keyboards through the UI action "GetTextInput", whose one
+    // handler is FUN_0038d770(msg, ctx); the handler passes the keyboard a fixed initial-text buffer at
+    // 0x49ec70 that nothing in the game ever writes. This wrapper reads the action's argument block (the
+    // Purpose key and the keyboard name say which field it is; MaxChars/MaxBytes say the cap), writes the
+    // matching PS2X_SOCOM2_LOGIN_NAME / _PASS string into that buffer, lets the original open the keyboard
+    // (it lays the text out and puts the cursor after it), then blanks the buffer so the next keyboard -- a
+    // chat line, a game name -- opens empty as before. Nothing is submitted (R180): ENTER applies the text to
+    // the UI variable exactly as typed text would. With neither variable set the wrapper is never installed.
+    // ------------------------------------------------------------------------------------------
+    PS2Runtime::RecompiledFunction g_oskOpenOriginal = nullptr;
+
+    void socom2_OskOpenPrefill(uint8_t *rdram, R5900Context *ctx, PS2Runtime *runtime)
+    {
+        const uint32_t msgAddr = GPR_U32(ctx, 4) & PS2_RAM_MASK;
+        const uint32_t bufAddr = socom2_osk::kOskTextBufferAddr & PS2_RAM_MASK;
+        socom2_osk::Request req;
+        std::string text;
+        if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE && bufAddr + socom2_osk::kOskTextBufferBytes <= PS2_RAM_SIZE)
+        {
+            req = socom2_osk::readRequest(rdram + msgAddr);
+            text = socom2_osk::prefillFor(req.field, std::getenv("PS2X_SOCOM2_LOGIN_NAME"), std::getenv("PS2X_SOCOM2_LOGIN_PASS"),
+                                          socom2_osk::capFor(req.maxChars, req.maxBytes, socom2_osk::kOskTextBufferBytes));
+        }
+        char *buf = reinterpret_cast<char *>(rdram + bufAddr);
+        if (!text.empty())
+        {
+            std::memcpy(buf, text.data(), text.size());
+            buf[text.size()] = '\0';
+        }
+        // One line per keyboard, whatever was decided: the first driven login is research/38's dynamic
+        // confirmation (the live purpose, keyboard and caps), and never the text itself.
+        std::cout << "[socom2] on-screen keyboard open: purpose=\"" << req.purpose << "\" skb=\"" << req.skbName
+                  << "\" MaxChars=" << req.maxChars << " MaxBytes=" << req.maxBytes << " -> "
+                  << (text.empty() ? std::string("not prefilled")
+                                   : std::string("prefilled: ") + socom2_osk::fieldLabel(req.field) + " (" + std::to_string(text.size()) + " chars)")
+                  << std::endl;
+        if (g_oskOpenOriginal)
+            g_oskOpenOriginal(rdram, ctx, runtime);
+        if (!text.empty())
+            std::memset(buf, 0, text.size() + 1);   // empty again, as the game left it
+    }
+
+    void installOskPrefill(PS2Runtime &runtime)
+    {
+        const char *name = std::getenv("PS2X_SOCOM2_LOGIN_NAME");
+        const char *pass = std::getenv("PS2X_SOCOM2_LOGIN_PASS");
+        const bool haveName = name != nullptr && *name != '\0';
+        const bool havePass = pass != nullptr && *pass != '\0';
+        if (!haveName && !havePass)
+            return;
+        if (!runtime.hasFunction(socom2_osk::kOskOpenAddr))
+        {
+            std::cout << "[socom2] no function at 0x" << std::hex << socom2_osk::kOskOpenAddr << std::dec
+                      << "; the keyboards open empty (PS2X_SOCOM2_LOGIN_NAME/_PASS ignored)" << std::endl;
+            return;
+        }
+        g_oskOpenOriginal = runtime.lookupFunction(socom2_osk::kOskOpenAddr);
+        runtime.replaceFunction(socom2_osk::kOskOpenAddr, socom2_OskOpenPrefill);
+        std::cout << "[socom2] on-screen keyboard prefill armed: persona name " << (haveName ? std::to_string(std::strlen(name)) + " chars" : "unset")
+                  << ", password " << (havePass ? std::to_string(std::strlen(pass)) + " chars" : "unset") << std::endl;
+    }
+
+    // ------------------------------------------------------------------------------------------
     // PS2X_CULL_TRACE="<file>:t<seconds>[:<count>]" -- research/31 section 16. From <seconds> after start,
     // log the next <count> (default 4000) calls of the object box-frustum cull FUN_00290c30(camera,
     // corners[8], flagsOut, occlusion): the eight world-space corners, the camera's 4x4 (camera + 0x330)
@@ -1953,6 +2018,7 @@ namespace
         runtime.replaceFunction(0x00248350u, socom2_libnetb::exStartAsync);
         runtime.replaceFunction(0x002483f8u, socom2_libnetb::exStartAsync);
         installRtNetPortShift(runtime);
+        installOskPrefill(runtime);   // Sprint 10 Goal 9: only when PS2X_SOCOM2_LOGIN_NAME/_PASS is set
 
         ps2_game_overrides::bindAddressHandler(runtime, 0x00247c98u, "ret0");   // descriptor DMA helper
         // rt_crypt: RSA block transform and SHA-1 on the host (socom2_crypto.cpp).

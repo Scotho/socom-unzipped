@@ -39,11 +39,36 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
   console shows it, a wrong password is corrected on the spot, and a stranger who typed nothing on ONLINE
   sees the keyboards empty, as today. Cost if wrong: two ENTER presses per login that a later sprint can remove.
 
+**Proposed rulings from the lock-free pass (2026-09-21, the Goal 9 agent; the controller numbers them):**
+- **P-A -- the override is a runtime `replaceFunction` wrap, not a `recomp/socom2.toml` stub; no recompile.** A
+  toml `stubs=` entry makes the recompiler emit ONLY the stub for that address and drop the original body
+  (`recomp/output/FUN_003b24c0_0x3b24c0.cpp` is the shape), so a "prefill, then let the game's routine run" override
+  cannot be one -- it would have to re-implement the keyboard's activation. `PS2Runtime::replaceFunction` +
+  `lookupFunction` (the `installRtNetPortShift` pattern) wraps `FUN_0038d770` at startup with the original kept,
+  and needs only `./build.sh runtime` (the runner links the runtime library). Task 1 Step 3 and the `recomp` half of
+  Task 2 Step 5 are therefore not done, on purpose. Cost if wrong: none found -- the wrap runs on every call of
+  the same function the stub would have bound. The owner can overturn it (a toml stub plus a hand-written
+  activation, a day's work).
+- **P-B -- the persona name keeps every character the game's keyboard has, not only letters and digits.** The
+  plan's `normalizeLoginName` kept `[A-Za-z0-9]`; the keyboard (`tools_py/parity/online_login.py:OSK_ROWS`) has the
+  whole printable ASCII set but the space, and the name keyboard refuses `"` (`NoDQuote`, research/38). A persona
+  `Sgt_Rock` typed on ONLINE would have become `SgtRock` and logged in as a stranger. So: printable ASCII 0x21-0x7E,
+  no space, no `"` for the name; the same set with `"` for the password; caps 14 and 12 (research/38), applied
+  in the launcher AND re-applied from the live `MaxChars` in the runtime. Cost if wrong: a character the keyboard
+  cannot type reaches the wire -- the runtime's own cap and the game's own login refusal are behind it.
+- **P-C -- the password is capped at 12 in the launcher (the plan drew its field at 32).** The password keyboard's
+  `MaxChars` is 12; a longer one typed on ONLINE would be cut by the prefill and the login would fail with no
+  message. The field stops at 12 and says so. Cost if wrong: a 13+-character password from some other client --
+  the same game made every password, on the same keyboard.
+
 ## Global Constraints
 
 - The runtime override is bound at recompile time through `recomp/socom2.toml` (`"<name>@0x<addr>"`), which
   means `./build.sh recomp` and a runtime rebuild -- **lock-bound** (`scripts/loop_lock.sh run <owner> -- <cmd>`),
   and the built exe's sha goes in the gate record.
+  > Superseded 2026-09-21 (proposed ruling P-A above): the override is a runtime `replaceFunction` wrap with
+  > the original kept; no toml line, no recompile. Only the runner rebuild (`./build.sh runtime`) is
+  > lock-bound, and its exe's sha still goes in the gate record.
 - The variables are unset when the ONLINE fields are empty: an empty field sends nothing, and the runtime with
   no variable behaves byte-for-byte as before (the override writes nothing and falls through).
 - Persona names: the game's keyboard caps the name; Task 1 records the cap, Task 3 enforces the same cap in
@@ -70,7 +95,21 @@ crypto path) and file the Ghidra notes in research/38 for the next attempt.
   caps), and the field id or caller address that tells the persona-name keyboard from the password one.
   All five are written in research/38 as a table Task 2 copies from.
 
-- [ ] **Step 1: Find the keyboard's open routine from its callers**
+**Result (2026-09-21, static pass; `docs/research/38-osk-open-function.md` has the table and the trail):**
+`kOskOpenAddr = 0x0038D770` (`FUN_0038d770`, the `GetTextInput` UI action's handler, action table row `0x3dd5e0`),
+called by the dispatcher `FUN_002745a0` as `handler(msg, ctx)` where `msg` is the action's 0xAC-byte argument
+block (Purpose key at +0x10, SkbName at +0x58, MaxBytes at +0x98, MaxChars at +0x9C). The "two call sites" are
+the login screen's two `GetTextInput` actions in the disc's compiled UI script, not two `jal`s. The target buffer
+is the keyboard's initial-text buffer `0x0049EC70` (bss, never written by the game, at least 0x48 bytes), which
+`FUN_0038d770` hands to `FUN_0038b440`; the caps are `kOskNameCap = 14`, `kOskPasswordCap = 12` (MaxBytes 31 for
+both), decoded from the serialised argument blocks on the disc (ISO offsets `0x7617a984` and `0x7617ac4c`). The
+field is told by `Purpose` + `SkbName` (`_455_EnterPlayerName_MSG` / `_604_EnterPassword_MSG` with
+`CREATEPLAYERNAME`), not by the UiVar id (a per-screen index). The plan's string addresses were FTSCore.bin file
+offsets (guest = offset + 0x1e7000). Step 2 (the dynamic confirmation) is a game launch: the controller's; the
+override logs the live caps on every keyboard open so the first driven login IS that confirmation.
+
+- [x] **Step 1: Find the keyboard's open routine from its callers** (done by address arithmetic over the ELF and
+  the recompiler's disassembly comments; the callers are a data table, see the result above)
 
 Open `ghidra_proj/socom.gpr`. In the Defined Strings view, go to `PLAYERPASSWORD` (`0x00207990`) and follow
 its references: the function that loads this string is the password field's screen object. Do the same for
@@ -79,7 +118,7 @@ made on CROSS that takes a pointer into the object plus a small immediate (the b
 callee common to both is the keyboard-open routine. Record its `FUN_xxxxxxxx`, the `a0..a3` meanings, and the
 two immediates (the caps) in research/38.
 
-- [ ] **Step 2: Confirm the buffer dynamically**
+- [ ] **Step 2: Confirm the buffer dynamically** (NOT RUN -- a game launch; the controller's, folded into Task 6's first login: the `[socom2] on-screen keyboard` lines say the live purpose, SkbName, MaxChars/MaxBytes and what was prefilled)
 
 Run the harness's existing login with a known name and read the guest RAM for it:
 
@@ -98,7 +137,7 @@ EOF
 the persona-list object's range is the name buffer; note its guest address in research/38 next to the static
 findings. If the static and dynamic addresses disagree, the static reading is wrong -- go back to Step 1.
 
-- [ ] **Step 3: Bind the name in the recompiler's table**
+- [x] **Step 3: Bind the name in the recompiler's table** -- NOT DONE, on purpose (proposed ruling P-A above): the toml stub would drop the original body; the binding is `installOskPrefill` (`replaceFunction`) in Task 2 instead, and `recomp/socom2.toml` is untouched
 
 Append to the override list in `recomp/socom2.toml`, next to `"socom2_RsaGenerateKeyPair@0x0062B168"`:
 
@@ -106,7 +145,7 @@ Append to the override list in `recomp/socom2.toml`, next to `"socom2_RsaGenerat
   "socom2_OskOpen@0x<kOskOpenAddr>",
 ```
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit** -- `f2171b0` (research/38 only)
 
 ```bash
 git add docs/research/38-osk-open-function.md recomp/socom2.toml
@@ -131,7 +170,18 @@ git commit -m "research(osk): the keyboard-open routine, its buffer and caps, bo
 - Produces: `socom2_osk::prefillFor(fieldKind, nameEnv, passEnv, cap) -> std::string` (pure: which string
   goes in, cut to the cap, empty when the variable is unset) and the stub `ps2_stubs::socom2_OskOpen`.
 
-- [ ] **Step 1: Write the failing test**
+**Result (2026-09-21, the Goal 9 agent):** done as a runtime wrap (proposed ruling P-A), not a toml stub, so
+there is no `ps2_call_list.h` entry and no `_original` continuation: `installOskPrefill` (called from
+`applySocom2` after `installRtNetPortShift`, only when `PS2X_SOCOM2_LOGIN_NAME` or `_PASS` is set) keeps the
+original through `lookupFunction(0x38d770)` and `replaceFunction`s it with `socom2_OskOpenPrefill`, which reads
+the argument block (`socom2_osk::readRequest`), writes the field's string into the initial-text buffer
+`0x49ec70` before the original, and blanks it after. The pure header grew `fieldFor(purpose, skbName)`,
+`readRequest(block)`, `capFor(maxChars, maxBytes, bufferBytes)` and `fieldLabel` beside `prefillFor`; the test
+file holds four cases (the plan's seven assertions plus the field classifier, the cap and the block layout).
+RED: `socom2_osk_prefill_tests.cpp:6:10: fatal error: 'runtime/socom2_osk_prefill.h' file not found`. GREEN:
+the four `Socom2OskPrefill` cases pass. Commit: see the record at the end of this file.
+
+- [x] **Step 1: Write the failing test**
 
 ```cpp
 // socom2_osk_prefill_tests.cpp
@@ -154,12 +204,12 @@ void registerSocom2OskPrefillTests(TestCollection &tc)
 }
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail** (the header-not-found error above)
 
 Run (under the lock): `scripts/loop_lock.sh run <owner> --purpose "osk prefill tests" -- bash -c 'cd third_party/ps2recomp && cmake --build build-clang --target ps2x_tests -j 8 && build-clang/ps2xTest/ps2x_tests.exe'`
 Expected: a compile error, `socom2_osk_prefill.h` not found.
 
-- [ ] **Step 3: The pure part**
+- [x] **Step 3: The pure part** (plus `fieldFor`, `readRequest`, `capFor`)
 
 ```cpp
 // runtime/socom2_osk_prefill.h
@@ -187,7 +237,7 @@ namespace socom2_osk
 }
 ```
 
-- [ ] **Step 4: The stub**
+- [x] **Step 4: The stub** -- as a `replaceFunction` wrap with the original kept (P-A); the field comes from the Purpose key and SkbName, the cap from the live MaxChars/MaxBytes
 
 In `game_overrides_socom2.cpp`, after `socom2_RsaGenerateKeyPair`:
 
@@ -224,12 +274,26 @@ Task 1's table gives (the recompiler emits the original body under a name the to
 same shape `socom2_LumReadPixel` uses to fall through when it does not handle a call -- read that function
 before writing this one). The three `CHECK` comments are removed once the registers match research/38.
 
-- [ ] **Step 5: Recompile and rebuild, run the suite**
+- [ ] **Step 5: Rebuild the runner, run the suite -- THE CONTROLLER'S (lock-bound); no recompile is needed (P-A)**
 
-Run (lock-bound): `scripts/loop_lock.sh run <owner> --purpose "Goal 9 recomp + runtime" -- bash -c './build.sh recomp && ./build.sh runtime && ./build.sh test'`
-Expected: `ps2x_tests` passes with the seven new assertions; the runtime links with the new stub.
+The library half is done: `./build.sh runtime --no-runner` and `./build.sh test --no-runner` are green in the
+agent's worktree (ps2x_tests 709/0 -- the count after Tasks 2-5; Python untouched). What is left is the game
+exe, which links the runtime library with the generated code. From the main tree, on `sprint-10` with
+`agent/goal9` merged (or from a worktree with the generated code):
 
-- [ ] **Step 6: Commit**
+```
+export LOOP_LOCK_PATH=/c/projects/socom_pc/logs/.loop_lock
+bash scripts/loop_lock.sh run <owner> --purpose "Goal 9: runtime rebuild + suite" -- bash -c './build.sh runtime && ./build.sh test'
+sha256sum dist/socom2.exe      # goes in the gate record
+```
+
+What must come out: `built dist/socom2.exe`; `ps2x_tests` with `Socom2OskPrefill` (4 cases) in its list and
+`Failed: 0`; the Python suite OK. **Do NOT run `./build.sh recomp`** for this goal: `recomp/socom2.toml` is
+unchanged and a recompile would only cost the hour. Then a gate (`s10_g9_gate`, three runs) on the rebuilt
+exe with the variables UNSET proves the wrap is never installed without them (the boot log must NOT contain
+`on-screen keyboard prefill armed`).
+
+- [x] **Step 6: Commit** (the runtime side, in the agent's branch; the record at the end names the hash)
 
 ```bash
 git add third_party/ps2recomp/ps2xRuntime/include/ps2_call_list.h third_party/ps2recomp/ps2xRuntime/include/runtime/socom2_osk_prefill.h third_party/ps2recomp/ps2xRuntime/src/lib/game_overrides_socom2.cpp third_party/ps2recomp/ps2xTest/src/socom2_osk_prefill_tests.cpp third_party/ps2recomp/ps2xTest/CMakeLists.txt
@@ -253,7 +317,15 @@ git commit -m "feat(runtime): the on-screen keyboard opens holding the launcher'
 - Produces: `Config::loginName`, `Config::loginPassword` (both `std::string`, default empty);
   `launcher::normalizeLoginName(const std::string&) -> std::string`; the two environment entries.
 
-- [ ] **Step 1: Write the failing test**
+**Result (2026-09-21):** as written, with P-B/P-C: `kLoginNameCap = 14`, `kLoginPasswordCap = 12`,
+`normalizeLoginName` (printable ASCII, no space, no `"`, cut to 14) and `normalizeLoginPassword` (printable
+ASCII, no space, cut to 12), both applied in `environmentFor` so what reaches the game is what the keyboard
+could have typed; `toJson`/`fromJson` carry `loginName` / `loginPassword`. RED:
+`launcher_tests.cpp:489:24: error: no member named 'loginName' in 'launcher::Config'` (and
+`normalizeLoginName`, `kLoginNameCap`...). GREEN: "the persona name and password round-trip the config and
+reach the game only when set" passes; the `bare_run` environment case still passes.
+
+- [x] **Step 1: Write the failing test**
 
 ```cpp
         tc.Run("the persona name and password round-trip the config and reach the game only when set", [](TestCase &t)
@@ -288,12 +360,12 @@ git commit -m "feat(runtime): the on-screen keyboard opens holding the launcher'
         });
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run (under the lock, the test target only): `scripts/loop_lock.sh run <owner> --purpose "Goal 9 config tests" -- bash -c 'cd third_party/ps2recomp && cmake --build build-clang --target ps2x_tests -j 8'`
 Expected: compile error, `loginName` is not a member of `launcher::Config`.
 
-- [ ] **Step 3: The config fields and the normaliser**
+- [x] **Step 3: The config fields and the normaliser** (caps 14/12, the keyboard's character set -- P-B, P-C)
 
 In `launcher_config.h`, after `std::string profile = "player";`:
 
@@ -347,13 +419,13 @@ In `toJson`, after the `profile` line: `out += "  \"loginName\": " + quote(c.log
 `out += "  \"loginPassword\": " + quote(c.loginPassword) + ",\n";`. In `fromJson`'s string-key list add
 `key == "loginName" || key == "loginPassword"`, and the two assignments beside `micDevice`'s.
 
-- [ ] **Step 4: Run the suite**
+- [x] **Step 4: Run the suite**
 
 Same command as Step 2, then `build-clang/ps2xTest/ps2x_tests.exe`. Expected: the new case passes; the
 existing `bare_run` case "nothing added, nothing dropped relative to environmentFor" still passes (it
 compares against `environmentFor` itself).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** (the record at the end names the hash)
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/include/launcher/launcher_config.h third_party/ps2recomp/ps2xShared/src/launcher_config.cpp third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp
@@ -381,7 +453,22 @@ git commit -m "feat(config): the persona name and password in config.json and th
 - Produces: nodes `online.name`, `online.password` in the ONLINE layout, in focus order after
   `online.profile` and before `online.advanced`.
 
-- [ ] **Step 1: Write the failing layout test**
+**Result (2026-09-21):** as written, at both window sizes, plus the focus order (profile, name, password,
+ADVANCED) and the help. RED (`logs/osk/build3.log`): "both fields are laid out", "in reading order under
+PROFILE", "focus walks profile, name, password, ADVANCED", "both fields have help". The first GREEN attempt
+failed ONE assertion, "with its caption still inside the body" (build4.log): five rows on the plan's 56-px
+pitch put the open ADVANCED section's caption 30 px past the body at 1100x700. The page's rows now sit on a
+52-px pitch (`kOnlineRowPitch`, a 40-px field and the REPORT page's 12-px gap) with 20 px under the presets;
+GREEN (build5.log): 709/0. Screenshots: `logs/launcher_shots_g9/` (42 PNGs, the full walk) --
+`online_credentials_1100x700.png`: PLAYER NAME "socomc", PASSWORD as seven marks with the focus on it and its
+help in the title strip, ADVANCED shut below, nothing under the strip; `online_credentials_800x520.png`: the
+same at the small size; `online_advanced_1100x700.png`: the fields empty, the open section and its caption
+inside the body; `about_1100x700.png` / `_800x520`: "server, profile, and the password if you typed one -- in
+plain text" under the config path. One `--screenshot` run segfaulted at the resize into
+`controller_crouch_l3_800x520` (build4.log, before any ONLINE shot, in code this task does not touch); the
+rerun completed all 42. Not reproduced since; noted here for whoever sees it next.
+
+- [x] **Step 1: Write the failing layout test**
 
 ```cpp
         tc.Run("the ONLINE page holds a name and a masked password under PROFILE, above ADVANCED, clear of each other", [](TestCase &t)
@@ -405,11 +492,11 @@ git commit -m "feat(config): the persona name and password in config.json and th
         });
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [x] **Step 2: Run it to see it fail**
 
 Run (under the lock): the `ps2x_tests` build and run as in Task 3. Expected: "both fields are laid out" fails.
 
-- [ ] **Step 3: The layout, the help, the page**
+- [x] **Step 3: The layout, the help, the page** (pitch 52, not 56 -- see the result; the ABOUT line reads "server, profile, and the password if you typed one -- in plain text"; the screenshot is taken at both sizes)
 
 In `focus.cpp`'s ONLINE case, replace the two lines after the profile node:
 
@@ -453,14 +540,14 @@ width. In `page_about.cpp` the "config" row's caption becomes "config -- server,
 you typed one". Then `--screenshot` gains one capture, `online_credentials_1100x700.png`, with both fields
 filled in the fake config (`main.cpp:1000-1030`, beside `_help`).
 
-- [ ] **Step 4: Build, run the suite, take the screenshots, look at them**
+- [x] **Step 4: Build, run the suite, take the screenshots, look at them** (709/0, not 689 + 2: the count had moved on since the plan was written)
 
 Run (under the lock): build `socom_unzipped_launcher ps2x_tests`, run the suite, then
 `build-clang/ps2xLauncher/socom_unzipped_launcher.exe --screenshot logs/launcher_shots_g9`. Expected:
 689 + 2 pass; `online_credentials_1100x700.png` shows PLAYER NAME filled and PASSWORD as bullets, both above
 ADVANCED, nothing under the title strip.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit** (the record at the end names the hash)
 
 ```bash
 git add third_party/ps2recomp/ps2xLauncher/src/ui/focus.cpp third_party/ps2recomp/ps2xLauncher/src/ui/page_online.cpp third_party/ps2recomp/ps2xLauncher/src/ui/page_about.cpp third_party/ps2recomp/ps2xLauncher/src/ui/widgets.h third_party/ps2recomp/ps2xLauncher/src/ui/widgets.cpp third_party/ps2recomp/ps2xLauncher/src/main.cpp third_party/ps2recomp/ps2xTest/src/launcher_tests.cpp
@@ -485,7 +572,16 @@ git commit -m "feat(launcher): PLAYER NAME and a masked PASSWORD on ONLINE (Spri
   `launcher::bugreport::build(config, form, inputs).json` (exists).
 - Produces: nothing new; `sanitizedConfigJson` blanks `loginPassword`.
 
-- [ ] **Step 1: Write the failing tests**
+**Result (2026-09-21):** as written, with the negative controls widened: the whole bundle (`diag::entries` +
+`ZipStore::build`, every entry and the archive's bytes) with a planted "zq9pw" (under the text scrubber's
+six-character floor) and "hunter2hunter2" (over it); the bug report with a log line carrying
+`PS2X_SOCOM2_LOGIN_PASS=hunter2` and the context pairs checked for either key. A first draft planted "socom"
+and the log fixture's own `[socom2]` lines matched it -- a planted value must not be a substring of the
+fixture. RED (build3.log): "the password is not in the zip's config.json", "the key is there, empty, so a
+reader sees it was blanked", "config.json does not contain hunter2hunter2". GREEN (build5.log): both pass.
+The bug-report case passed at once, as the plan predicted, and stays as the guard.
+
+- [x] **Step 1: Write the failing tests**
 
 ```cpp
         // diagnostics_tests.cpp, after the kConfigWithSecrets case
@@ -517,13 +613,13 @@ git commit -m "feat(launcher): PLAYER NAME and a masked PASSWORD on ONLINE (Spri
         });
 ```
 
-- [ ] **Step 2: Run them to see the first fail**
+- [x] **Step 2: Run them to see the first fail**
 
 Under the lock, the `ps2x_tests` target, then `ps2x_tests.exe`. Expected: "the password is not in the zip's
 config.json" fails (`sanitizedConfigJson` round-trips every field today); the bug-report case passes at once
 and stays as the guard.
 
-- [ ] **Step 3: Blank it in the sanitiser**
+- [x] **Step 3: Blank it in the sanitiser**
 
 In `sanitizedConfigJson`, after the disc-path cut:
 
@@ -531,7 +627,7 @@ In `sanitizedConfigJson`, after the disc-path cut:
         config.loginPassword.clear();   // R179: the password stays in the player's own file and nowhere else
 ```
 
-- [ ] **Step 4: Run the suite; commit**
+- [x] **Step 4: Run the suite; commit** (the record at the end names the hash)
 
 ```bash
 git add third_party/ps2recomp/ps2xShared/src/diagnostics.cpp third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp third_party/ps2recomp/ps2xTest/src/bug_report_tests.cpp
@@ -553,6 +649,23 @@ git commit -m "fix(diagnostics): the password is blanked out of the zip's config
 - Produces: `--prefilled`: the harness exports the two variables to the game it launches and, on each
   keyboard, verifies the typed length equals the expected string's length (the existing `osk_typed`
   read-back) and presses ENTER (`osk_enter_verified`) instead of typing.
+
+**For the controller (2026-09-21, from the lock-free pass).** Not started: the task is lock-bound at Step 4
+and its Steps 1-3 are the harness's, which the agent's brief kept out. Three corrections to the steps as
+written before running them: (1) the test runner is `python -m unittest tools_py.tests.test_online_login_prefilled`,
+never pytest (`test_test_hygiene.py` refuses a pytest-style file, so the `monkeypatch` fixture below becomes
+`unittest.mock.patch.object`); (2) the runtime's log line is
+`[socom2] on-screen keyboard open: purpose="_455_EnterPlayerName_MSG" skb="CREATEPLAYERNAME" MaxChars=14 MaxBytes=31 -> prefilled: persona name (6 chars)`
+and `... purpose="_604_EnterPassword_MSG" ... MaxChars=12 ... -> prefilled: the password (5 chars)` -- grep for
+`-> prefilled:`; every other keyboard logs `-> not prefilled` with its own purpose, which is research/38's
+dynamic confirmation (Task 1 Step 2) for free; and at boot `[socom2] on-screen keyboard prefill armed:
+persona name 6 chars, password 5 chars`; (3) the harness must export BOTH variables into the game's
+environment (the launcher's `environmentFor` is not in the driven path), normalised the launcher's way
+(`normalizeLoginName`: printable ASCII, no space, no `"`, 14 max; the password 12 max) -- `socomc` / `socom`
+need no change. What must come out of Step 4: two `LOBBY class=ok` runs in a row on the hosted server, each
+log with the two `-> prefilled:` lines, the persona-name keyboard read back at 6 glyphs and the password one
+at 5 BEFORE the ENTER, and no `osk_type_pad` line. Then the owner's own login (HUMAN_TASKS), and a gate on
+the rebuilt exe with the variables unset (Task 2 Step 5) so the wrap is proven absent by default.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -621,12 +734,43 @@ git commit -m "feat(harness): --prefilled -- ours logs in from the launcher's va
 - Message `socom-pc-10` (the story session) that ONLINE gained two fields, so `docs/STORY.md`'s launcher entry
   can follow.
 
-- [ ] **Step 1: Write the rows, commit**
+**Split (2026-09-21):** the agent's half is this file and research/38 (the controller owns CURRENT_SPRINT,
+HUMAN_TASKS, KNOWN, PLAYTEST and the message to the story session); those rows are written when Task 6's two
+logins are in, and they need from here: the three proposed rulings (P-A, P-B, P-C -- to number), the KNOWN
+addition (a launcher-typed name that differs from the card's saved persona is a create-persona login, which
+is correct; and a name the keyboard cannot type -- a space, an accent -- is silently reduced to what it can,
+so a persona with such a character does not exist and cannot be typed on ONLINE either), and the HUMAN_TASKS
+check ("fill PLAYER NAME and PASSWORD on ONLINE, launch, go online: both keyboards should open already
+filled; press ENTER twice and CONNECT" -- and that the password field stops at 12 characters).
+
+- [ ] **Step 1: Write the rows, commit** -- THE CONTROLLER'S, after Task 6
 
 ```bash
 git add docs/CURRENT_SPRINT.md docs/HUMAN_TASKS.md docs/KNOWN.md docs/PLAYTEST.md
 git commit -m "docs: Sprint 10 Goal 9 recorded -- the ONLINE tab's name and password reach the game's keyboards"
 ```
+
+## The lock-free record (2026-09-21, the Goal 9 agent, worktree `wt-goal9`, branch `agent/goal9` off `sprint-10`)
+
+| Task | Commit | RED | GREEN |
+|---|---|---|---|
+| 1 | `f2171b0` research/38 (no toml line: P-A) | -- | the table: `0x38D770`, `0x49EC70`, caps 14 / 12, Purpose + SkbName |
+| 2 | `103122a` the wrap, the pure header, 4 cases | `'runtime/socom2_osk_prefill.h' file not found` | Socom2OskPrefill 4/4 |
+| 3 | `d30729d` config + environment + normalisers | `no member named 'loginName' in 'launcher::Config'` | the round-trip case |
+| 4 | `c145d39` ONLINE fields, masked, help, ABOUT, screenshots | "both fields are laid out" (+3); then "with its caption still inside the body" at pitch 56 | the layout case at both sizes; 42 PNGs |
+| 5 | `352b429` the zip's config copy blanked; the report guard | "the password is not in the zip's config.json" (+2) | both cases |
+| 7 | this file + research/38 | -- | -- |
+
+Suite sizes after the pass: `ps2x_tests` 709 / 0 (was 700-701 before this goal); the Python suite unchanged
+by this goal: 1571 OK (93 skipped), run lock-free after the last commit. Builds: `./build.sh runtime --no-runner` (the library and
+the launcher), the `ps2x_tests` target and the screenshot walk, each under the machine lock; `./build.sh
+recomp` NOT run (P-A), `./build.sh runtime` with the runner NOT run (the controller's, Task 2 Step 5). Logs in
+the worktree's git-ignored `logs/osk/` (`build2.log` RED, `build3.log` Tasks 2-3 GREEN / 4-5 RED,
+`build4.log` the pitch failure, `build5.log` GREEN) and `logs/launcher_shots_g9/`.
+
+**What is left, in order, all the controller's:** Task 2 Step 5 (rebuild the runner, suite, a gate with the
+variables unset); Task 6 (`--prefilled`, two driven logins, `logs/parity/s10_g9_prefill_gate`); Task 7 Step 1
+(the rows, the numbering of P-A/P-B/P-C, the story message); the owner's login (HUMAN_TASKS).
 
 ## Self-review against research/37
 
