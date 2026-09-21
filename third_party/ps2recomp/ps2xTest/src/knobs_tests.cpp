@@ -254,7 +254,7 @@ void register_knobs_tests()
                 t.IsTrue(shipping.count(name) == 1, name + ": sent by the launcher, so it must be Shipping");
             for (const std::string &name : shipping)
                 t.IsTrue(sent.count(name) == 1, name + ": Shipping, so config.json must be able to set it");
-            t.Equals(static_cast<int>(shipping.size()), 18, "eighteen settings: the plan's seventeen and PS2X_INPUT_MAPPING (Sprint 10 Goal 8)");
+            t.Equals(static_cast<int>(shipping.size()), 20, "twenty settings: the plan's seventeen, PS2X_INPUT_MAPPING (Goal 8) and the two login knobs (Goal 9)");
         });
     });
 }

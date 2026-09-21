@@ -1510,7 +1510,7 @@ namespace
         if (msgAddr != 0 && msgAddr + socom2_osk::kArgBlockBytes <= PS2_RAM_SIZE)
         {
             req = socom2_osk::readRequest(rdram + msgAddr);
-            text = socom2_osk::prefillFor(req.field, std::getenv("PS2X_SOCOM2_LOGIN_NAME"), std::getenv("PS2X_SOCOM2_LOGIN_PASS"),
+            text = socom2_osk::prefillFor(req.field, ps2x::knob("PS2X_SOCOM2_LOGIN_NAME"), ps2x::knob("PS2X_SOCOM2_LOGIN_PASS"),
                                           socom2_osk::capFor(req.maxChars, req.maxBytes, socom2_osk::kOskTextBufferBytes));
         }
         // The buffer's whole image, before the original and never after it (the header comment): the text for
@@ -1532,8 +1532,8 @@ namespace
 
     void installOskPrefill(PS2Runtime &runtime)
     {
-        const char *name = std::getenv("PS2X_SOCOM2_LOGIN_NAME");
-        const char *pass = std::getenv("PS2X_SOCOM2_LOGIN_PASS");
+        const char *name = ps2x::knob("PS2X_SOCOM2_LOGIN_NAME");
+        const char *pass = ps2x::knob("PS2X_SOCOM2_LOGIN_PASS");
         const bool haveName = name != nullptr && *name != '\0';
         const bool havePass = pass != nullptr && *pass != '\0';
         if (!haveName && !havePass)
