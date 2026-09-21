@@ -17,6 +17,16 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   fi
   # shellcheck disable=SC2086
   "$py" -m tools_py.release.leakcheck history -- $range || status=$?
+  # CI's second opinion, run here too when the binary is at hand (tools/gitleaks/gitleaks.exe, git-ignored; the
+  # secrets workflow pins the same version by sha256): a finding it makes and the gate does not is caught before
+  # the push, not after (2026-09-21: the scrubber test's planted credential reached CI that way once).
+  gl=""
+  for cand in tools/gitleaks/gitleaks.exe tools/gitleaks/gitleaks; do [ -x "$cand" ] && gl="$cand" && break; done
+  command -v gitleaks >/dev/null 2>&1 && [ -z "$gl" ] && gl=gitleaks
+  if [ -n "$gl" ]; then
+    # shellcheck disable=SC2086
+    "$gl" git --log-opts="$range" --redact --exit-code 1 --no-banner . || status=$?
+  fi
 done
 if [ "$status" -ne 0 ]; then
   echo "pre-push: leak check exit $status -- push refused (0 clean, 1 findings, 2 the scanner did not run)." >&2

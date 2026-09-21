@@ -160,6 +160,17 @@ overturn it** -- one line in `leakrules.py` per rule.
 2. **The hosted box as a service:** backups of the account database, a restart/update procedure that does not orphan
    personas, disk and credit watch (the free-plan credit expires 2027-03-05), a health line the site can show.
    [A] **through the hosted-server session, which owns `server/` and the box** -- coordinate, do not edit its files.
+   **DONE on the box's side 2026-09-21 04:00 UTC by the controller** (no hosted-server session exists any more: the
+   session that did the public flip confirmed it was not it, and nothing tracked under `server/` was touched): the
+   box backs up `simulated.db` + `config/*.json` daily to `/var/backups/socom-unzipped/<stamp>/` (30 kept, copied
+   twice and compared, SHA256SUMS), `vm/lightsail/backup_pull.sh` pulls a verified set off the box, and the restore
+   procedure was **run once for real** (0 players online; byte-identical before and after; 4/4 active, stats online).
+   Restart/update: personas are keyed on `muis.json`'s advertised `Endpoint` (R175), which `install.sh` never
+   overwrites -- the procedure is "never change it". `socom-health.sh` prints one HEALTH line (disk, memory,
+   services, db, newest backup, stats since) with WARN thresholds. The money line is in HUMAN_TASKS. All of it is
+   documented in the git-ignored `vm/lightsail/README.md` (the sources under `vm/lightsail/box/`). **Left:** the
+   server BUILD id on `/api/stats` (`startedUtc` is already there) -- a `server/horizon-server` change, queued for
+   whoever next builds the server package.
 3. **The mixed match, both directions,** with screen-verified PCSX2 steps (the first leg lost its place at boot:
    KNOWN §2). [A] **BAR MET 2026-09-20:** the console side runs ours' verified lobby flow (`tools_py.parity.pcsx2_shell`,
    console references where its ~7% narrower screen needs them); leg 1 (console joins ours' hosted game) and leg 2

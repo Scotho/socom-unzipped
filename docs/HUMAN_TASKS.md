@@ -18,7 +18,7 @@ because every agent pushes as you) and `sprint-*` (no force-push, no deletion). 
 checks are a paid feature and stayed off; the project's own gate covers those shapes.
 
 **Three things on the public repository only you can settle (none is urgent; the gate reports new exposures, not these):**
-1. **The old, pre-rewrite commits are still fetchable by hash** through the merged PR #1 (`refs/pull/1/head`) until
+1. ~~**The old, pre-rewrite commits are still fetchable by hash**~~ **Answered ("fine as is", relayed by the flip session 2026-09-21): left alone.** They stay fetchable through the merged PR #1 (`refs/pull/1/head`) until
    GitHub garbage-collects them. GitHub's documented step after a sensitive-data rewrite is to ask support to purge
    the unreachable objects: https://support.github.com -> "Remove cached views and references" -- one message naming
    the repository. Or leave it: the objects hold the home address that `a87e4b2` redacted, nothing else.
@@ -36,6 +36,12 @@ checks are a paid feature and stayed off; the project's own gate covers those sh
    rewrite history for them or not. (b) Class C -- ~240 pictures of the game's art as our renderer drew them (gate
    fixtures, harness references, research evidence, ~9 MB): all stay as illustration of our own output, the movie
    frames go, or every picture goes. Until you decide, nothing moves.
+
+**The hosted box, one line (Sprint 10 Goal 2, 2026-09-21):** it costs **$12/month** on the free-plan credit ($78.46 on
+2026-09-19), so the credit runs out around **March 2027** -- the same month the plan expires (2027-03-05) -- and after
+that the card pays. Backups now run daily on the box and `vm/lightsail/backup_pull.sh` copies one off it (run it
+after anything that matters; nothing here does it for you). Health any time: `vm/lightsail/ssh.sh 'sudo socom-health.sh'`.
+Nothing to do now; the date to remember is February 2027.
 
 **For the site session (not this repository):** `../scotho/scripts/secret-scan.mjs:28` carries the AWS account id as a
 literal rule. That repository is private today; the day it is not, the scanner is the leak. Its own git-ignored

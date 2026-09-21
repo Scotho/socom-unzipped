@@ -18,4 +18,6 @@ regexTarget = "line"
 regexes = [
   # ps2_iop_tests.cpp: `request.callToken = 0x1122334455667788ull` -- a fixed test token for the IOP call path
   '''callToken = 0x1122334455667788ull''',
+  # diagnostics_tests.cpp: the launcher scrubber's planted credential, which the test proves does not survive the scrub
+  '''accessToken: abc123DEF456''',
 ]

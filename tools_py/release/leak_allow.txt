@@ -74,3 +74,5 @@ postcode        LICENSES/*.txt   # same
 #    directory, a peer's address -- each must survive in the TEST so the test can prove it does not survive the scrub
 home-directory-path  third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp   # planted: SECRET~1, Otheruser, /home/otheruser
 ip-address           third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  86.21.44.190   # planted: a peer's address
+secret-assignment    third_party/ps2recomp/ps2xTest/src/diagnostics_tests.cpp  abc123DEF456   # planted: a credential value the scrub must remove
+secret-assignment  .gitleaks.toml  abc123DEF456   # gitleaks's allowance for the same planted value, spelled out
