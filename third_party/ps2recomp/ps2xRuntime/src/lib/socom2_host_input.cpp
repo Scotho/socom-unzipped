@@ -43,6 +43,10 @@ namespace ps2_stubs
         struct HostInputConfig
         {
             bool initialised = false;
+            // Sprint 10 Goal 8 (R174): the button tables, resolved once from PS2X_INPUT_MAPPING (launcher/mapping.h).
+            launcher::mapping::Mapping mapping = launcher::mapping::defaults();
+            bool mappingResolved = false;
+            bool mappingDefault = true;
             bool mouse = false;
             float mouseSensitivity = 4.0f;
             std::vector<ScriptEvent> script;
@@ -217,6 +221,24 @@ namespace ps2_stubs
             g_config.fired.assign(g_config.script.size(), false);
         }
 
+        // Sprint 10 Goal 8 (R174): the mapping, resolved once from PS2X_INPUT_MAPPING. Unset is the defaults; a
+        // value that cannot be read whole is the defaults too, said out loud -- a half-read table would be a
+        // binding nobody wrote. Separate from initialise() so a test can read the table without a window.
+        void resolveMapping()
+        {
+            if (g_config.mappingResolved)
+                return;
+            g_config.mappingResolved = true;
+            const char *mappingEnv = std::getenv("PS2X_INPUT_MAPPING");
+            const bool mappingRead = launcher::mapping::fromEnv(mappingEnv, g_config.mapping);
+            g_config.mappingDefault = launcher::mapping::isDefault(g_config.mapping);
+            if (!mappingRead)
+                std::cout << "[socom2] PS2X_INPUT_MAPPING could not be read; playing the default mapping" << std::endl;
+            // One line a gate can pin (Q1b): the resolved table's identity, and whether it is the default.
+            std::cout << "[socom2] input mapping hash=" << launcher::mapping::hashHex(g_config.mapping)
+                      << (g_config.mappingDefault ? " (default)" : " (custom)") << std::endl;
+        }
+
         void initialise()
         {
             g_config.initialised = true;
@@ -227,11 +249,15 @@ namespace ps2_stubs
                 g_config.mouseSensitivity = static_cast<float>(std::atof(sens));
             if (const char *script = std::getenv("PS2X_SOCOM2_INPUT_SCRIPT"))
                 parseScript(script);
+            resolveMapping();
             // Task 8: name the pad that is actually read (PS2X_HOST_GAMEPAD_INDEX), not slot 0.
             const int pad = hostGamepadEnabled()
                                 ? hostGamepadSelect(std::getenv("PS2X_HOST_GAMEPAD_INDEX"), kHostGamepadSlots, IsGamepadAvailable)
                                 : -1;
-            std::cout << "[socom2-input] keyboard on (arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3)"
+            std::cout << "[socom2-input] keyboard on ("
+                      << (g_config.mappingDefault ? "arrows/WASD/IJKL, Enter=START, Backspace=SELECT, ZXCV=Square/Cross/Circle/Triangle, QE=L1/R1, 13=L2/R2, 24=L3/R3"
+                                                  : "PS2X_INPUT_MAPPING's key table; WASD/IJKL sticks")
+                      << ")"
                       << "; gamepad " << (!hostGamepadEnabled() ? "off (PS2X_HOST_GAMEPAD=0)" : pad >= 0 ? GetGamepadName(pad) : "none")
                       << "; mouse " << (g_config.mouse ? "on" : "off (PS2X_SOCOM2_MOUSE=1)")
                       << "; script events " << g_config.script.size() << std::endl;
@@ -268,6 +294,12 @@ namespace ps2_stubs
         return g_injectedPadSampler.worker.joinable();
     }
 
+    const launcher::mapping::Mapping &socom2HostInputMapping()
+    {
+        resolveMapping();
+        return g_config.mapping;
+    }
+
     void socom2HostInputPoll(Socom2PadState &pad)
     {
         if (!IsWindowReady())
@@ -281,13 +313,23 @@ namespace ps2_stubs
 
         Socom2PadState next;
 
-        // Keyboard.
-        static_assert(KEY_ENTER == 257 && KEY_ESCAPE == 256 && KEY_BACKSPACE == 259 && KEY_UP == 265 && KEY_RIGHT == 262 &&
-                      KEY_DOWN == 264 && KEY_LEFT == 263 && KEY_SPACE == 32 && KEY_Z == 'Z' && KEY_ONE == '1',
-                      "kSocom2Keys (socom2_host_input.h) is written in raylib's key codes");
-        for (const auto &entry : kSocom2Keys)
+        // Keyboard: the mapping's key table (launcher/mapping.h), whose codes are raylib's (== GLFW's) and whose
+        // PS2 ids are libpad2's -- both asserted here, once, against the enums this file can see.
+        static_assert(KEY_ENTER == 257 && KEY_ESCAPE == 256 && KEY_BACKSPACE == 259 && KEY_TAB == 258 && KEY_UP == 265 &&
+                      KEY_RIGHT == 262 && KEY_DOWN == 264 && KEY_LEFT == 263 && KEY_SPACE == 32 && KEY_Z == 'Z' && KEY_ONE == '1',
+                      "launcher/mapping.h's key table is written in raylib's key codes");
+        static_assert(launcher::mapping::kPs2Select == kPadSelect && launcher::mapping::kPs2L3 == kPadL3 &&
+                      launcher::mapping::kPs2R3 == kPadR3 && launcher::mapping::kPs2Start == kPadStart &&
+                      launcher::mapping::kPs2Up == kPadUp && launcher::mapping::kPs2Right == kPadRight &&
+                      launcher::mapping::kPs2Down == kPadDown && launcher::mapping::kPs2Left == kPadLeft &&
+                      launcher::mapping::kPs2L2 == kPadL2 && launcher::mapping::kPs2R2 == kPadR2 &&
+                      launcher::mapping::kPs2L1 == kPadL1 && launcher::mapping::kPs2R1 == kPadR1 &&
+                      launcher::mapping::kPs2Triangle == kPadTriangle && launcher::mapping::kPs2Circle == kPadCircle &&
+                      launcher::mapping::kPs2Cross == kPadCross && launcher::mapping::kPs2Square == kPadSquare,
+                      "launcher/mapping.h's PS2 ids are libpad2's (Socom2PadButton)");
+        for (const launcher::mapping::KeyBinding &entry : g_config.mapping.keys)
         {
-            if (IsKeyDown(entry.key))
+            if (entry.button < 16 && IsKeyDown(entry.key))
                 next.button[entry.button] = 1u;
         }
         // R139: a full Triangle from any source outranks the crouch shortcut's light one (tracked stage by stage).
@@ -312,25 +354,36 @@ namespace ps2_stubs
                                 : -1;
         if (padSlot >= 0)
         {
-            static const struct { int button; uint8_t pad; } kPadButtons[] = {
-                {GAMEPAD_BUTTON_LEFT_FACE_UP, kPadUp}, {GAMEPAD_BUTTON_LEFT_FACE_RIGHT, kPadRight},
-                {GAMEPAD_BUTTON_LEFT_FACE_DOWN, kPadDown}, {GAMEPAD_BUTTON_LEFT_FACE_LEFT, kPadLeft},
-                {GAMEPAD_BUTTON_RIGHT_FACE_UP, kPadTriangle}, {GAMEPAD_BUTTON_RIGHT_FACE_RIGHT, kPadCircle},
-                {GAMEPAD_BUTTON_RIGHT_FACE_DOWN, kPadCross}, {GAMEPAD_BUTTON_RIGHT_FACE_LEFT, kPadSquare},
-                {GAMEPAD_BUTTON_LEFT_TRIGGER_1, kPadL1}, {GAMEPAD_BUTTON_RIGHT_TRIGGER_1, kPadR1},
-                {GAMEPAD_BUTTON_LEFT_TRIGGER_2, kPadL2}, {GAMEPAD_BUTTON_RIGHT_TRIGGER_2, kPadR2},
-                {GAMEPAD_BUTTON_MIDDLE_LEFT, kPadSelect}, {GAMEPAD_BUTTON_MIDDLE_RIGHT, kPadStart},
-                {GAMEPAD_BUTTON_LEFT_THUMB, kPadL3}, {GAMEPAD_BUTTON_RIGHT_THUMB, kPadR3},
-            };
+            // The pad table: the mapping's rows (launcher/mapping.h), whose host ids are raylib's GamepadButton
+            // values -- asserted here, once. A row bound to none (0) is skipped.
+            static_assert(GAMEPAD_BUTTON_LEFT_FACE_UP == launcher::mapping::kHostDpadUp &&
+                          GAMEPAD_BUTTON_LEFT_FACE_RIGHT == launcher::mapping::kHostDpadRight &&
+                          GAMEPAD_BUTTON_LEFT_FACE_DOWN == launcher::mapping::kHostDpadDown &&
+                          GAMEPAD_BUTTON_LEFT_FACE_LEFT == launcher::mapping::kHostDpadLeft &&
+                          GAMEPAD_BUTTON_RIGHT_FACE_UP == launcher::mapping::kHostFaceUp &&
+                          GAMEPAD_BUTTON_RIGHT_FACE_RIGHT == launcher::mapping::kHostFaceRight &&
+                          GAMEPAD_BUTTON_RIGHT_FACE_DOWN == launcher::mapping::kHostFaceDown &&
+                          GAMEPAD_BUTTON_RIGHT_FACE_LEFT == launcher::mapping::kHostFaceLeft &&
+                          GAMEPAD_BUTTON_LEFT_TRIGGER_1 == launcher::mapping::kHostL1 &&
+                          GAMEPAD_BUTTON_LEFT_TRIGGER_2 == launcher::mapping::kHostL2 &&
+                          GAMEPAD_BUTTON_RIGHT_TRIGGER_1 == launcher::mapping::kHostR1 &&
+                          GAMEPAD_BUTTON_RIGHT_TRIGGER_2 == launcher::mapping::kHostR2 &&
+                          GAMEPAD_BUTTON_MIDDLE_LEFT == launcher::mapping::kHostSelect &&
+                          GAMEPAD_BUTTON_MIDDLE == launcher::mapping::kHostGuide &&
+                          GAMEPAD_BUTTON_MIDDLE_RIGHT == launcher::mapping::kHostStart &&
+                          GAMEPAD_BUTTON_LEFT_THUMB == launcher::mapping::kHostL3 &&
+                          GAMEPAD_BUTTON_RIGHT_THUMB == launcher::mapping::kHostR3 &&
+                          GAMEPAD_BUTTON_UNKNOWN == launcher::mapping::kHostNone,
+                          "launcher/mapping.h's host ids are raylib's GamepadButton values");
             // R139: the pad's buttons are gathered into a mask and passed through the crouch shortcut, which is the
             // identity when the option is off (PS2X_PAD_CROUCH_SHORTCUT unset). The keyboard, the mouse, the script
             // and the harness's injected file never go through it.
             static const CrouchShortcut s_crouch = crouchShortcutFromEnv(std::getenv("PS2X_PAD_CROUCH_SHORTCUT"));
             uint16_t hostMask = 0;
-            for (const auto &entry : kPadButtons)
+            for (const launcher::mapping::PadBinding &entry : g_config.mapping.pad)
             {
-                if (IsGamepadButtonDown(padSlot, entry.button))
-                    hostMask = static_cast<uint16_t>(hostMask | (1u << entry.pad));
+                if (entry.host != launcher::mapping::kHostNone && entry.button < 16 && IsGamepadButtonDown(padSlot, entry.host))
+                    hostMask = static_cast<uint16_t>(hostMask | (1u << entry.button));
             }
             const bool touchpad = s_crouch == CrouchShortcut::Touchpad && hostTouchpadDown(padSlot);
             const HostPadButtons fromPad = applyCrouchShortcut(hostMask, touchpad, s_crouch);

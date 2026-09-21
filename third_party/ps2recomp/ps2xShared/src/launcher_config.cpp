@@ -1,6 +1,8 @@
 #include "launcher/launcher_config.h"
 #include "ps2x/exit_codes.h"
 
+#include "json_reader.h"
+
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -31,124 +33,7 @@ namespace launcher
             return out;
         }
 
-        struct Parser
-        {
-            const std::string &s;
-            size_t i = 0;
-            explicit Parser(const std::string &text) : s(text) {}
-
-            void ws()
-            {
-                while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i])))
-                    ++i;
-            }
-            bool take(char c)
-            {
-                ws();
-                if (i < s.size() && s[i] == c)
-                {
-                    ++i;
-                    return true;
-                }
-                return false;
-            }
-            bool string(std::string &out)
-            {
-                ws();
-                if (i >= s.size() || s[i] != '"')
-                    return false;
-                ++i;
-                out.clear();
-                while (i < s.size())
-                {
-                    const char c = s[i++];
-                    if (c == '"')
-                        return true;
-                    if (c == '\\')
-                    {
-                        if (i >= s.size())
-                            return false;
-                        const char e = s[i++];
-                        switch (e)
-                        {
-                        case '"': out.push_back('"'); break;
-                        case '\\': out.push_back('\\'); break;
-                        case '/': out.push_back('/'); break;
-                        case 'n': out.push_back('\n'); break;
-                        case 'r': out.push_back('\r'); break;
-                        case 't': out.push_back('\t'); break;
-                        case 'b': out.push_back('\b'); break;
-                        case 'f': out.push_back('\f'); break;
-                        case 'u':
-                        {
-                            if (i + 4 > s.size())
-                                return false;
-                            const unsigned code = static_cast<unsigned>(std::strtoul(s.substr(i, 4).c_str(), nullptr, 16));
-                            i += 4;
-                            if (code < 0x80)
-                                out.push_back(static_cast<char>(code));
-                            else
-                                out.push_back('?');   // the config never carries these
-                            break;
-                        }
-                        default: return false;
-                        }
-                    }
-                    else
-                        out.push_back(c);
-                }
-                return false;
-            }
-            // Skips any JSON value (used for unknown keys). Returns false on malformed input.
-            bool skipValue()
-            {
-                ws();
-                if (i >= s.size())
-                    return false;
-                const char c = s[i];
-                if (c == '"')
-                {
-                    std::string tmp;
-                    return string(tmp);
-                }
-                if (c == '{' || c == '[')
-                {
-                    const char close = c == '{' ? '}' : ']';
-                    ++i;
-                    ws();
-                    if (take(close))
-                        return true;
-                    for (;;)
-                    {
-                        if (c == '{')
-                        {
-                            std::string key;
-                            if (!string(key) || !take(':'))
-                                return false;
-                        }
-                        if (!skipValue())
-                            return false;
-                        if (take(','))
-                            continue;
-                        return take(close);
-                    }
-                }
-                // number, true, false, null
-                const size_t start = i;
-                while (i < s.size() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.'))
-                    ++i;
-                return i > start;
-            }
-            bool scalar(std::string &raw)
-            {
-                ws();
-                const size_t start = i;
-                while (i < s.size() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '-' || s[i] == '+' || s[i] == '.'))
-                    ++i;
-                raw = s.substr(start, i - start);
-                return !raw.empty();
-            }
-        };
+        using Parser = detail::JsonReader;   // Sprint 10 Goal 8: the reader moved to json_reader.h, shared with mapping.cpp
     }
 
     const ServerPreset *findServerPreset(const std::string &id)
@@ -212,7 +97,21 @@ namespace launcher
         out += "  \"serverPreset\": " + quote(c.serverPreset) + ",\n";
         out += "  \"server\": " + quote(c.server) + ",\n";
         out += "  \"profile\": " + quote(c.profile) + ",\n";
-        out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + "\n";
+        out += std::string("  \"secondInstance\": ") + (c.secondInstance ? "true" : "false") + ",\n";
+        // Sprint 10 Goal 8 (R174): the input mappings, one block per profile that has one -- a stranger can read
+        // what their pad does, and an older build skips the block as an unknown key. A profile at the defaults
+        // is not written: the file says what was changed, not what was not.
+        out += "  \"mappings\": {";
+        bool first = true;
+        for (const ProfileMapping &pm : c.mappings)
+        {
+            if (mapping::isDefault(pm.mapping) || normalizeProfile(pm.profile) != pm.profile)
+                continue;
+            out += first ? "\n" : ",\n";
+            out += "    " + quote(pm.profile) + ": " + mapping::toJson(pm.mapping, "    ");
+            first = false;
+        }
+        out += first ? "}\n" : "\n  }\n";
         out += "}\n";
         return out;
     }
@@ -300,6 +199,42 @@ namespace launcher
                     else if (key == "padDeadZone") c.padDeadZone = std::atof(raw.c_str());
                     else c.secondInstance = raw == "true";
                 }
+                else if (key == "mappings")
+                {
+                    // Sprint 10 Goal 8: {"<profile>": {mapping block}, ...}. Each block's own text goes to its own
+                    // reader. A value that is not JSON is a malformed file like any other; one that is JSON but
+                    // not a mapping is that profile at the defaults, and the rest of the file is kept
+                    // (mapping::fromJson leaves its `out` at the defaults on false). A "mappings" that is not an
+                    // object at all is skipped whole: nobody has a mapping, the file is otherwise read.
+                    if (p.peek() != '{')
+                    {
+                        if (!p.skipValue())
+                            return false;
+                    }
+                    else
+                    {
+                        p.take('{');
+                        if (!p.take('}'))
+                        {
+                            for (;;)
+                            {
+                                std::string profile, block;
+                                if (!p.string(profile) || !p.take(':') || !p.rawValue(block))
+                                    return false;
+                                ProfileMapping pm;
+                                pm.profile = normalizeProfile(profile);
+                                mapping::fromJson(block, pm.mapping);
+                                if (pm.profile == profile && !mapping::isDefault(pm.mapping))
+                                    c.mappings.push_back(pm);
+                                if (p.take(','))
+                                    continue;
+                                if (!p.take('}'))
+                                    return false;
+                                break;
+                            }
+                        }
+                    }
+                }
                 else if (!p.skipValue())
                     return false;
                 if (p.take(','))
@@ -373,6 +308,32 @@ namespace launcher
         for (const std::string &o : mine)
             merged.push_back(o);
         return merged;
+    }
+
+    mapping::Mapping activeMapping(const Config &c)
+    {
+        const std::string profile = normalizeProfile(c.profile);
+        for (const ProfileMapping &pm : c.mappings)
+            if (pm.profile == profile)
+                return pm.mapping;
+        return mapping::defaults();
+    }
+
+    void setActiveMapping(Config &c, const mapping::Mapping &m)
+    {
+        const std::string profile = normalizeProfile(c.profile);
+        for (size_t i = 0; i < c.mappings.size(); ++i)
+        {
+            if (c.mappings[i].profile != profile)
+                continue;
+            if (mapping::isDefault(m))
+                c.mappings.erase(c.mappings.begin() + static_cast<std::ptrdiff_t>(i));
+            else
+                c.mappings[i].mapping = m;
+            return;
+        }
+        if (!mapping::isDefault(m))
+            c.mappings.push_back(ProfileMapping{profile, m});
     }
 
     std::string normalizeCrouchShortcut(const std::string &value)
@@ -456,6 +417,11 @@ namespace launcher
         const std::string crouch = normalizeCrouchShortcut(c.crouchShortcut);
         if (crouch != "off")
             env.push_back("PS2X_PAD_CROUCH_SHORTCUT=" + crouch);
+        // Sprint 10 Goal 8 (R174): the profile's input mapping, only when it is not the default -- the default
+        // environment is byte for byte what it was, and the runtime's defaults ARE this table (launcher/mapping.h).
+        const mapping::Mapping active = activeMapping(c);
+        if (!mapping::isDefault(active))
+            env.push_back("PS2X_INPUT_MAPPING=" + mapping::toEnv(active));
         // Sprint 7 Task 9: only when the player picked one -- unset means the runtime opens no capture device.
         if (!c.micDevice.empty())
             env.push_back("PS2X_MIC_DEVICE=" + c.micDevice);
