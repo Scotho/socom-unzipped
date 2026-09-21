@@ -259,10 +259,10 @@ int main(int argc, char *argv[])
             Preflight::Input pre;
             pre.elfPath = pathObj;
             // The same rule as configureCdImage (game_overrides_socom2.cpp): an empty value is unset.
-            if (const char *cd = std::getenv("PS2X_CD_IMAGE"); cd != nullptr && *cd != '\0')
+            if (const char *cd = ps2x::knob("PS2X_CD_IMAGE"); cd != nullptr && *cd != '\0')
                 pre.cdImageEnv = cd;
             std::error_code absEc;
-            const char *mc = std::getenv("PS2X_MC_DIR");   // the same rule as PS2Runtime::configureIoPathsFromElf
+            const char *mc = ps2x::knob("PS2X_MC_DIR");   // the same rule as PS2Runtime::configureIoPathsFromElf
             pre.cardDir = (mc != nullptr && *mc != '\0')
                               ? std::filesystem::absolute(std::filesystem::path(mc), absEc)
                               : std::filesystem::absolute(pathObj, absEc).parent_path() / "mc0";
@@ -282,7 +282,7 @@ int main(int argc, char *argv[])
         std::string windowTitle = "PS2-Recomp | ";
         // PS2X_WINDOW_TITLE=tag: distinguishes a second instance's window (the parity harness finds
         // windows by title substring).
-        if (const char *tag = std::getenv("PS2X_WINDOW_TITLE"))
+        if (const char *tag = ps2x::knob("PS2X_WINDOW_TITLE"))
             windowTitle = std::string(tag) + " | ";
         const char *gameName = getGameName(normalizedId);
 

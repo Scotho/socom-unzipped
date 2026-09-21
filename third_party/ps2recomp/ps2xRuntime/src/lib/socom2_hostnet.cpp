@@ -1,4 +1,5 @@
 #include "socom2_hostnet.h"
+#include "ps2x/knobs.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -208,7 +209,7 @@ namespace socom2_hostnet
         void loadHosts()
         {
             uint32_t server = 0x7f000001u;
-            if (const char *env = std::getenv("PS2X_SOCOM2_SERVER"))
+            if (const char *env = ps2x::knob("PS2X_SOCOM2_SERVER"))
             {
                 const uint32_t ip = parseServerAddress(env);
                 if (ip)
@@ -219,7 +220,7 @@ namespace socom2_hostnet
                                      "gate1.jp.dnas.playstation.org", "gate1.eu.dnas.playstation.org",
                                      "updates.pdonline.scea.com"})
                 g_hosts[name] = server;
-            if (const char *env = std::getenv("PS2X_SOCOM2_HOSTS"))
+            if (const char *env = ps2x::knob("PS2X_SOCOM2_HOSTS"))
             {
                 std::stringstream ss(env);
                 std::string item;

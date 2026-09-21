@@ -9,6 +9,7 @@
 
 #include <cstdlib>
 #include <cstring>
+#include "ps2x/knobs.h"
 
 inline bool hostGamepadAllowed(const char *env)
 {
@@ -17,6 +18,6 @@ inline bool hostGamepadAllowed(const char *env)
 
 inline bool hostGamepadEnabled()
 {
-    static const bool s_enabled = hostGamepadAllowed(std::getenv("PS2X_HOST_GAMEPAD"));
+    static const bool s_enabled = hostGamepadAllowed(ps2x::knob("PS2X_HOST_GAMEPAD"));
     return s_enabled;
 }

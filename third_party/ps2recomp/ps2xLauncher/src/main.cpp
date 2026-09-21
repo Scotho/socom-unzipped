@@ -23,6 +23,7 @@
 #include "launcher/mic_devices.h"
 #include "launcher/sha256.h"
 #include "ps2x/exe_dir.h"
+#include "ps2x/knobs.h"
 #include "ps2x/zip_store.h"
 #include "win32_glue.h"
 
@@ -272,7 +273,7 @@ namespace
 
     std::string apiUrl(const char *path)
     {
-        return br::apiBase(std::getenv(br::kApiBaseEnv)) + path;
+        return br::apiBase(ps2x::knob(br::kApiBaseEnv)) + path;
     }
 
     struct ReportOutcome
@@ -1066,7 +1067,7 @@ int main(int argc, char **argv)
             shots.push_back(Shot{ui::Page::Report, 800, 520, state});
         }
     }
-    const char *selfShot = std::getenv("PS2X_LAUNCHER_SHOT");
+    const char *selfShot = ps2x::knob("PS2X_LAUNCHER_SHOT");
     unsigned selfShotFrames = 0;
     size_t shotIndex = 0;
     int shotFrame = 0;

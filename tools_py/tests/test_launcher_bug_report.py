@@ -2,7 +2,7 @@
 
 `socom_unzipped_launcher --report-bug <form.json> [home]` builds one report and POSTs it; the service's base
 URL comes from PS2X_LAUNCHER_API_BASE, which the launcher honours only for http://127.0.0.1:<port> and
-http://localhost:<port>. The handler below plays s2u.scotho.com's /api/bugs and /api/stats (sites/s2u/api):
+http://localhost:<port>, and only in developer mode (PS2X_DEV=1: it is a Dev knob, Sprint 9 Goal 3). The handler below plays s2u.scotho.com's /api/bugs and /api/stats (sites/s2u/api):
 201 with an id, 400 with a field, 429 with Retry-After, 500 -- and a closed port for "no connection".
 Runs wherever the launcher is built, CI included (no window is opened).
 """
@@ -90,7 +90,8 @@ class LauncherBugReportTest(unittest.TestCase):
         self.addCleanup(self.service.shutdown)
 
     def run_launcher(self, args, base=None):
-        env = {**os.environ, "USERPROFILE": self.fake_home, "HOME": self.fake_home,
+        # PS2X_LAUNCHER_API_BASE is a Dev knob (Sprint 9 Goal 3): the launcher honours it only in developer mode.
+        env = {**os.environ, "USERPROFILE": self.fake_home, "HOME": self.fake_home, "PS2X_DEV": "1",
                "PS2X_LAUNCHER_API_BASE": base or self.service.base}
         return subprocess.run([LAUNCHER] + args, capture_output=True, text=True, timeout=60, env=env)
 

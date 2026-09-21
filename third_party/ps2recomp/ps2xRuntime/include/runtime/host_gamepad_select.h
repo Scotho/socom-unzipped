@@ -10,6 +10,7 @@
 // PS2X_HOST_GAMEPAD=0 (host_gamepad.h) still disables every read; it is checked by the callers, not here, so
 // that this helper stays pure and testable with a fake `available`.
 #include <cstdlib>
+#include "ps2x/knobs.h"
 
 // raylib 5.5 tracks four pads (MAX_GAMEPADS); IsGamepadAvailable is false for the rest.
 constexpr int kHostGamepadSlots = 4;
@@ -41,7 +42,7 @@ inline float hostPadDeadZone()
 {
     static const float s_deadZone = []
     {
-        const char *const e = std::getenv("PS2X_PAD_DEADZONE");
+        const char *const e = ps2x::knob("PS2X_PAD_DEADZONE");
         if (e == nullptr || *e == 0)
             return 0.15f;
         char *end = nullptr;
@@ -59,6 +60,13 @@ inline float hostPadDeadZone()
 
 // A stick reading with the dead zone taken out: 0 inside it, and the rest rescaled so the value still reaches
 // +/-1 at full deflection (a hard cut would make the first usable step a jump).
+// PS2X_HOST_GAMEPAD_INDEX, read once. It was a getenv on every pad poll in all three pad paths.
+inline const char *hostGamepadIndexKnob()
+{
+    static const char *const s_value = ps2x::knob("PS2X_HOST_GAMEPAD_INDEX");
+    return s_value;
+}
+
 inline float hostPadAxis(float v, float deadZone)
 {
     if (deadZone <= 0.0f)
