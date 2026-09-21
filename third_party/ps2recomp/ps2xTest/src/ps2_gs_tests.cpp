@@ -20,6 +20,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -1520,21 +1521,50 @@ void register_ps2_gs_tests()
             t.Equals(distinct.size(), static_cast<size_t>(2u), "alternating two palettes ten thousand times uses exactly two snapshot ids");
         });
 
-        // Diagnostic (research/31 section 11): replay a PCSX2 GS dump's packet stream through the frontend + CPU
-        // rasteriser and write the frame as a PPM, so the console's own draw list can be rendered by our GS
-        // implementation and compared with PCSX2's screenshot of the same state. Runs only with
-        // PS2X_CONSOLE_REPLAY_DIR=<dir> holding vram_initial.bin (4 MiB) and packets.bin ([u32 path][u32 size][bytes]...).
-        // Diagnostic (research/31 section 11): replay a PCSX2 GS dump's packet stream through the frontend and both
-        // rasterisers -- the CPU reference and, with PS2X_CONSOLE_REPLAY_GL=1, the OpenGL backend on a hidden raylib
-        // window as well -- and write each frame as a PPM, so the console's own draw list can be rendered by our GS
-        // implementation and the two backends diffed on identical input. PS2X_CONSOLE_REPLAY_DIR=<dir> holds
-        // vram_initial.bin (4 MiB) and packets.bin ([u32 path][u32 size][bytes]...); PS2X_CONSOLE_REPLAY_STOP=<n>
-        // replays only the first n packets; PS2X_CONSOLE_REPLAY_FBP=<fbp> picks the frame buffer to write (default 0x8c).
-        tc.Run("console GS dump replays through the CPU rasteriser (PS2X_CONSOLE_REPLAY_DIR)", [](TestCase &t)
+        // The console's own draw list through our GS (research/31 sections 11-12): a PCSX2 GS dump's packet stream
+        // replayed through the frontend and the CPU rasteriser -- and, with PS2X_CONSOLE_REPLAY_GL=1, the OpenGL
+        // backend on a hidden raylib window as well (no window in CI: R109) -- then each frame scored against
+        // PCSX2's own screenshot of that state, the one pixel guard a GL change has that needs no launch.
+        //
+        // The fixture is game bytes and never enters the tree: python tools_py/gsdump_extract.py <dump.gs>
+        // game/console_replay writes vram_initial.bin (4 MiB), packets.bin ([u32 path][u32 size][bytes]...) and
+        // reference.ppm (the screenshot) from a capture under tools/pcsx2/snaps/; the case looks there
+        // (../../../../game/console_replay from the build tree, or the main tree's) or at PS2X_CONSOLE_REPLAY_DIR,
+        // and says so when it finds nothing. From Sprint 6 to Sprint 10 this case returned at once because
+        // nothing set the variable and the hand-cut dump was lost (KNOWN section 4): a case that never runs is
+        // coverage on paper only.
+        //
+        // The bars, measured 2026-09-21 on the spawn dump (20260916033728_(2).gs, 5386 packets, frames 0-1):
+        // CPU frame vs the screenshot mean |diff| 9.1, GL 10.2 (the 480-row screenshot resampled to the 448-row
+        // frame), GL vs CPU 7.6 (bilinear against nearest, the dither). Sprint 6's 1.73x-dark frame (research/31
+        // section 12) would have read about 27 against the picture. Diagnostics kept: PS2X_CONSOLE_REPLAY_STOP=<n>
+        // replays only the first n packets, _FBP=<fbp> picks the frame buffer (default 0x8c), _PIXEL=x,y prints
+        // that pixel's history on the CPU pass; the frames are written beside the fixture as PPMs.
+        tc.Run("console GS dump replays through the CPU rasteriser to the console's own picture (game/console_replay or PS2X_CONSOLE_REPLAY_DIR)", [](TestCase &t)
         {
-            const char *dir = std::getenv("PS2X_CONSOLE_REPLAY_DIR");
-            if (!dir)
+            std::string fixture;
+            {
+                std::vector<std::string> candidates;
+                if (const char *env = std::getenv("PS2X_CONSOLE_REPLAY_DIR"); env && *env)
+                    candidates.emplace_back(env);
+                candidates.emplace_back("../../../../game/console_replay");
+                candidates.emplace_back("C:/projects/socom_pc/game/console_replay");
+                for (const std::string &c : candidates)
+                    if (FILE *fp = std::fopen((c + "/packets.bin").c_str(), "rb"))
+                    {
+                        std::fclose(fp);
+                        fixture = c;
+                        break;
+                    }
+            }
+            if (fixture.empty())
+            {
+                std::printf("console replay: skipped -- no fixture (python tools_py/gsdump_extract.py <dump.gs> game/console_replay)\n");
                 return;
+            }
+            const char *dir = fixture.c_str();
+            const double kBarAgainstPicture = 16.0;   // mean |diff| per channel, 0..255; measured 9.1 (CPU) / 10.2 (GL)
+            const double kBarGlAgainstCpu = 12.0;     // measured 7.6
             std::vector<uint8_t> vramInitial(PS2_GS_VRAM_SIZE, 0u);
             {
                 FILE *fp = std::fopen((std::string(dir) + "/vram_initial.bin").c_str(), "rb");
@@ -1562,6 +1592,43 @@ void register_ps2_gs_tests()
             const long stopAt = std::getenv("PS2X_CONSOLE_REPLAY_STOP") ? std::strtol(std::getenv("PS2X_CONSOLE_REPLAY_STOP"), nullptr, 0) : -1L;
             const uint32_t fbp = std::getenv("PS2X_CONSOLE_REPLAY_FBP") ? static_cast<uint32_t>(std::strtoul(std::getenv("PS2X_CONSOLE_REPLAY_FBP"), nullptr, 0)) : 0x8cu;
             const bool wantGl = std::getenv("PS2X_CONSOLE_REPLAY_GL") != nullptr;
+            // reference.ppm: PCSX2's screenshot of the dumped state, P6, any size (640x480 for these captures).
+            uint32_t refW = 0, refH = 0;
+            std::vector<uint8_t> reference;
+            if (FILE *fp = std::fopen((std::string(dir) + "/reference.ppm").c_str(), "rb"))
+            {
+                uint32_t maxval = 0;
+                if (std::fscanf(fp, "P6 %u %u %u", &refW, &refH, &maxval) == 3 && maxval == 255u && refW && refH)
+                {
+                    std::fgetc(fp);   // the single whitespace after maxval
+                    reference.resize(static_cast<size_t>(refW) * refH * 3u);
+                    if (std::fread(reference.data(), 1, reference.size(), fp) != reference.size())
+                        reference.clear();
+                }
+                std::fclose(fp);
+            }
+            t.IsTrue(!reference.empty(), "reference.ppm (the console's own picture) is beside the fixture -- regenerate it with gsdump_extract.py");
+            // Mean |difference| per channel between a 640x448 frame and an image of any height (rows resampled linearly).
+            auto meanDiffAgainst = [](const std::vector<uint8_t> &frame, const std::vector<uint8_t> &img, uint32_t imgW, uint32_t imgH)
+            {
+                if (img.empty() || imgW != 640u)
+                    return -1.0;
+                double total = 0.0;
+                for (uint32_t y = 0; y < 448u; ++y)
+                {
+                    const double fy = (y + 0.5) * imgH / 448.0 - 0.5;
+                    const uint32_t y0 = static_cast<uint32_t>(fy < 0.0 ? 0.0 : fy);
+                    const uint32_t y1 = (y0 + 1u < imgH) ? y0 + 1u : y0;
+                    const double tt = fy < 0.0 ? 0.0 : fy - y0;
+                    const uint8_t *a = frame.data() + static_cast<size_t>(y) * 640u * 3u;
+                    const uint8_t *r0 = img.data() + static_cast<size_t>(y0) * imgW * 3u;
+                    const uint8_t *r1 = img.data() + static_cast<size_t>(y1) * imgW * 3u;
+                    for (uint32_t i = 0; i < 640u * 3u; ++i)
+                        total += std::fabs(a[i] - (r0[i] * (1.0 - tt) + r1[i] * tt));
+                }
+                return total / (640.0 * 448.0 * 3.0);
+            };
+            std::vector<uint8_t> cpuFrame, glFrame;
 
             auto setBackend = [](const char *which)
             {
@@ -1629,18 +1696,33 @@ void register_ps2_gs_tests()
                         std::memcpy(vram.data(), snap, vram.size());
                     gs.unlockDisplaySnapshot();
                 }
-                std::printf("console replay: %zu packets (%s)\n", packets, useGl ? "gl" : "cpu");
+                t.IsTrue(packets > 0u, "the fixture holds packets");
+                std::vector<uint8_t> &frame = useGl ? glFrame : cpuFrame;
+                frame.resize(640u * 448u * 3u);
+                size_t lit = 0;
+                for (uint32_t y = 0; y < 448u; ++y)
+                    for (uint32_t x = 0; x < 640u; ++x)
+                    {
+                        const uint32_t px = readReferenceFramePSMCT32Pixel(vram, fbp, 10u, x, y);
+                        uint8_t *rgb = frame.data() + (static_cast<size_t>(y) * 640u + x) * 3u;
+                        rgb[0] = static_cast<uint8_t>(px & 0xFFu);
+                        rgb[1] = static_cast<uint8_t>((px >> 8) & 0xFFu);
+                        rgb[2] = static_cast<uint8_t>((px >> 16) & 0xFFu);
+                        lit += (px & 0xFFFFFFu) != 0u;
+                    }
+                const double vsPicture = meanDiffAgainst(frame, reference, refW, refH);
+                std::printf("console replay: %zu packets (%s), %.1f%% of the frame lit, mean |diff| vs the console's picture %.2f\n",
+                            packets, useGl ? "gl" : "cpu", 100.0 * lit / (640.0 * 448.0), vsPicture);
+                if (stopAt < 0)   // a truncated replay (_STOP) is a diagnostic, not the frame
+                    t.IsTrue(lit >= static_cast<size_t>(640u * 448u * 9u / 10u), useGl ? "the GL frame is drawn (nine tenths lit)" : "the CPU frame is drawn (nine tenths lit)");
+                if (!reference.empty() && stopAt < 0)
+                    t.IsTrue(vsPicture <= kBarAgainstPicture, useGl ? "the GL frame is within the bar of the console's own picture (mean |diff| <= 16)"
+                                                                     : "the CPU frame is within the bar of the console's own picture (mean |diff| <= 16)");
                 const std::string outPath = std::string(dir) + (useGl ? "/frame_gl_fbp" : "/frame_fbp") + std::to_string(fbp) + ".ppm";
                 if (FILE *fp = std::fopen(outPath.c_str(), "wb"))
                 {
                     std::fprintf(fp, "P6\n640 448\n255\n");
-                    for (uint32_t y = 0; y < 448u; ++y)
-                        for (uint32_t x = 0; x < 640u; ++x)
-                        {
-                            const uint32_t px = readReferenceFramePSMCT32Pixel(vram, fbp, 10u, x, y);
-                            const uint8_t rgb[3] = {static_cast<uint8_t>(px & 0xFFu), static_cast<uint8_t>((px >> 8) & 0xFFu), static_cast<uint8_t>((px >> 16) & 0xFFu)};
-                            std::fwrite(rgb, 1, 3, fp);
-                        }
+                    std::fwrite(frame.data(), 1, frame.size(), fp);
                     std::fclose(fp);
                 }
             };
@@ -1651,6 +1733,10 @@ void register_ps2_gs_tests()
                 InitWindow(640, 448, "console replay");
                 render(true);
                 CloseWindow();
+                const double glVsCpu = meanDiffAgainst(glFrame, cpuFrame, 640u, 448u);
+                std::printf("console replay: GL vs CPU mean |diff| %.2f\n", glVsCpu);
+                if (stopAt < 0)
+                    t.IsTrue(glVsCpu >= 0.0 && glVsCpu <= kBarGlAgainstCpu, "the GL frame is within the bar of the CPU frame on identical input (mean |diff| <= 12)");
             }
             setBackend("cpu");
         });

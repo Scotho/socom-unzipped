@@ -3,6 +3,8 @@
 #include "Common.h"
 #include "MemoryCard.h"
 #include "ps2x/knobs.h"
+#include "ps2x/exit_codes.h"
+#include "ps2x/preflight.h"
 
 namespace ps2_stubs
 {
@@ -28,6 +30,7 @@ namespace ps2_stubs
         constexpr int32_t kMcResultSucceed = 0;
         constexpr int32_t kMcResultChangedCard = -1;
         constexpr int32_t kMcResultNoFormat = -2;
+        constexpr int32_t kMcResultFullDevice = -3;
         constexpr int32_t kMcResultNoEntry = -4;
         constexpr int32_t kMcResultDeniedPermit = -5;
         constexpr int32_t kMcResultNotEmpty = -6;
@@ -88,6 +91,14 @@ namespace ps2_stubs
         {
             std::string currentDir = "/";
             bool formatted = true;
+            // Sprint 10 Q7 (KNOWN 110 d): the cluster count is walked once and kept until the game changes the
+            // card through this module; GetInfo used to walk the directory recursively, under the mutex, on
+            // every poll. What appears in the folder behind the game's back is counted at its next own change.
+            bool usedValid = false;
+            int32_t usedClusters = 0;
+            // The root's verdict, probed once: 0 unknown, 1 a directory that takes a file, -1 cannot be.
+            int8_t rootVerdict = 0;
+            bool rootReported = false;
         };
 
         std::mutex g_mcStateMutex;
@@ -97,6 +108,7 @@ namespace ps2_stubs
         int32_t g_mcLastResult = 0;
         std::unordered_map<int32_t, McOpenFile> g_mcFiles;
         std::array<McPortState, 2> g_mcPorts{};
+        uint64_t g_mcDirectoryWalks = 0;
         int32_t g_cvMcFileCursor = 0;
 
         constexpr int32_t kCvMcSaveFileBytes = 0x838;
@@ -204,6 +216,31 @@ namespace ps2_stubs
             std::filesystem::create_directories(getMcRootPath(port), ec);
         }
 
+        // The size of a file the game holds open, from its own handle. Windows lists an open file's size as
+        // the directory entry last saw it -- 0 for a save being written until it is closed -- so a walk that
+        // trusted the listing counted the file the game is writing as empty (found by Sprint 10 Q7's full-card
+        // case: 7999 clusters written, the walk saw 1). Callers hold g_mcStateMutex.
+        bool mcOpenFileSizeLocked(const std::filesystem::path &hostPath, int64_t &size)
+        {
+            for (auto &[fd, open] : g_mcFiles)
+            {
+                if (!open.file || open.hostPath.lexically_normal() != hostPath.lexically_normal())
+                    continue;
+                std::fflush(open.file);
+                const long here = std::ftell(open.file);
+                if (here < 0 || std::fseek(open.file, 0, SEEK_END) != 0)
+                    return false;
+                const long end = std::ftell(open.file);
+                std::fseek(open.file, here, SEEK_SET);
+                if (end < 0)
+                    return false;
+                size = end;
+                return true;
+            }
+            return false;
+        }
+
+        // Callers hold g_mcStateMutex (for the open-file sizes).
         int32_t mcUsedClusters(const std::filesystem::path &root)
         {
             std::error_code ec;
@@ -213,6 +250,7 @@ namespace ps2_stubs
             }
 
             int64_t clusters = 0;
+            ++g_mcDirectoryWalks;
             ec.clear();
             auto it = std::filesystem::recursive_directory_iterator(
                 root, std::filesystem::directory_options::skip_permission_denied, ec);
@@ -228,12 +266,17 @@ namespace ps2_stubs
                 }
 
                 entryEc.clear();
-                const uintmax_t size = it->file_size(entryEc);
-                if (entryEc)
+                int64_t size = 0;
+                if (!mcOpenFileSizeLocked(it->path(), size))
                 {
-                    continue;
+                    const uintmax_t listed = it->file_size(entryEc);
+                    if (entryEc)
+                    {
+                        continue;
+                    }
+                    size = static_cast<int64_t>(listed);
                 }
-                clusters += static_cast<int64_t>((static_cast<int64_t>(size) + kMcClusterBytes - 1) / kMcClusterBytes);
+                clusters += (size + kMcClusterBytes - 1) / kMcClusterBytes;
                 if (clusters >= kMcTotalClusters)
                 {
                     return kMcTotalClusters;
@@ -243,9 +286,59 @@ namespace ps2_stubs
             return static_cast<int32_t>(std::min<int64_t>(clusters, kMcTotalClusters));
         }
 
+        // Callers hold g_mcStateMutex.
+        int32_t mcUsedClustersLocked(int32_t port)
+        {
+            McPortState &state = g_mcPorts[static_cast<size_t>(port)];
+            if (!state.usedValid)
+            {
+                state.usedClusters = mcUsedClusters(getMcRootPath(port));
+                state.usedValid = true;
+            }
+            return state.usedClusters;
+        }
+
+        void mcInvalidateUsageLocked(int32_t port)
+        {
+            if (port >= 0 && port < static_cast<int32_t>(g_mcPorts.size()))
+                g_mcPorts[static_cast<size_t>(port)].usedValid = false;
+        }
+
         int32_t mcFreeClusters(int32_t port)
         {
-            return kMcTotalClusters - mcUsedClusters(getMcRootPath(port));
+            return kMcTotalClusters - mcUsedClustersLocked(port);
+        }
+
+        int64_t mcClustersFor(int64_t bytes)
+        {
+            return (bytes + kMcClusterBytes - 1) / kMcClusterBytes;
+        }
+
+        // Sprint 10 Q7 (KNOWN 110 d): a card root that cannot be made a directory used to read as an empty,
+        // formatted card -- "does not exist" counted as "holds nothing" -- and every save then failed later, or
+        // never. Probed once per port (Preflight::directoryWritable: create, then a probe file), the verdict is
+        // kept until a Format; a refusal answers "no card", prints the preflight-shaped line the diagnostics
+        // zip collects, and leaves ExitCodes::kCardDirUnwritable for the launcher's LAST RUN sentence. The
+        // launch-time preflight (main.cpp) already covers slot 0's folder before the window; this is the
+        // second slot, and a folder that went away or read-only after the preflight. Callers hold the mutex.
+        bool mcRootUsableLocked(int32_t port)
+        {
+            McPortState &state = g_mcPorts[static_cast<size_t>(port)];
+            if (state.rootVerdict == 0)
+            {
+                std::string why;
+                state.rootVerdict = Preflight::directoryWritable(getMcRootPath(port), why) ? 1 : -1;
+                if (state.rootVerdict < 0 && !state.rootReported)
+                {
+                    state.rootReported = true;
+                    Preflight::Result r;
+                    r.code = ExitCodes::kCardDirUnwritable;
+                    r.detail = why + " (memory card port " + std::to_string(port) + ")";
+                    std::cerr << Preflight::logLine(r) << std::endl;
+                    setPs2ProcessExitCode(ExitCodes::kCardDirUnwritable);
+                }
+            }
+            return state.rootVerdict > 0;
         }
 
         std::vector<std::string> splitMcPathComponents(const std::string &value)
@@ -612,6 +705,7 @@ namespace ps2_stubs
         snapshot.lastCmd = g_mcLastCmd;
         snapshot.lastResult = g_mcLastResult;
         snapshot.cvFileCursor = g_cvMcFileCursor;
+        snapshot.directoryWalks = g_mcDirectoryWalks;
 
         for (size_t i = 0; i < g_mcPorts.size(); ++i)
         {
@@ -761,6 +855,7 @@ namespace ps2_stubs
                 }
             }
 
+            mcInvalidateUsageLocked(port);
             setMcCommandResultLocked(kMcCmdDelete, result);
         }
         setReturnS32(ctx, 0);
@@ -817,9 +912,11 @@ namespace ps2_stubs
                 std::filesystem::remove_all(root, ec);
                 ec.clear();
                 std::filesystem::create_directories(root, ec);
+                McPortState &state = g_mcPorts[static_cast<size_t>(port)];
+                state.usedValid = false;
+                state.rootVerdict = 0;
                 if (!ec)
                 {
-                    McPortState &state = g_mcPorts[static_cast<size_t>(port)];
                     state.currentDir = "/";
                     state.formatted = true;
                     result = kMcResultSucceed;
@@ -1022,10 +1119,19 @@ namespace ps2_stubs
                 // type, so anything else here is "no memory card inserted".
                 ensureMcRootExists(port);
                 McPortState &state = g_mcPorts[static_cast<size_t>(port)];
-                cardType = kMcTypePs2;
-                freeBlocks = state.formatted ? mcFreeClusters(port) : 0;
-                format = state.formatted ? kMcFormatted : kMcUnformatted;
-                result = state.formatted ? kMcResultSucceed : kMcResultNoFormat;
+                if (mcRootUsableLocked(port))
+                {
+                    cardType = kMcTypePs2;
+                    freeBlocks = state.formatted ? mcFreeClusters(port) : 0;
+                    format = state.formatted ? kMcFormatted : kMcUnformatted;
+                    result = state.formatted ? kMcResultSucceed : kMcResultNoFormat;
+                }
+                else
+                {
+                    // A folder that cannot hold a file is not a card, empty or otherwise (Sprint 10 Q7).
+                    cardType = kMcTypeNone;
+                    result = kMcResultChangedCard;
+                }
             }
             else
             {
@@ -1081,6 +1187,8 @@ namespace ps2_stubs
             {
                 state.currentDir = "/";
                 state.formatted = true;
+                state.usedValid = false;
+                state.rootVerdict = 0;
             }
         }
         ensureMcRootExists(0);
@@ -1134,6 +1242,7 @@ namespace ps2_stubs
                 }
             }
 
+            mcInvalidateUsageLocked(port);
             setMcCommandResultLocked(kMcCmdMkdir, result);
         }
         setReturnS32(ctx, 0);
@@ -1204,6 +1313,7 @@ namespace ps2_stubs
                     }
                 }
             }
+            mcInvalidateUsageLocked(port);
             setMcCommandResultLocked(kMcCmdOpen, result);
         }
         setReturnS32(ctx, 0);
@@ -1288,6 +1398,7 @@ namespace ps2_stubs
                 }
             }
 
+            mcInvalidateUsageLocked(port);
             setMcCommandResultLocked(kMcCmdRename, result);
         }
         setReturnS32(ctx, 0);
@@ -1440,6 +1551,7 @@ namespace ps2_stubs
                 }
             }
 
+            mcInvalidateUsageLocked(port);
             setMcCommandResultLocked(kMcCmdUnformat, result);
         }
         setReturnS32(ctx, 0);
@@ -1470,15 +1582,38 @@ namespace ps2_stubs
             }
             else
             {
-                const size_t bytesWritten = std::fwrite(src, 1u, static_cast<size_t>(size), it->second.file);
-                result = std::ferror(it->second.file) ? kMcResultDeniedPermit : static_cast<int32_t>(bytesWritten);
-                if (!std::ferror(it->second.file))
+                // Sprint 10 Q7 (KNOWN 110 d): the 8000-cluster card is enforced here, where the bytes land. A
+                // write that grows the file past what the card has left is refused whole with sceMcResFullDevice
+                // (-3), as libmc answers; a write inside the file's existing clusters allocates nothing.
+                FILE *file = it->second.file;
+                int64_t before = 0;
+                if (!mcOpenFileSizeLocked(it->second.hostPath, before))
                 {
-                    std::fflush(it->second.file);
+                    std::error_code sizeEc;
+                    const uintmax_t listed = std::filesystem::file_size(it->second.hostPath, sizeEc);
+                    before = sizeEc ? 0 : static_cast<int64_t>(listed);
+                }
+                const long position = std::ftell(file);
+                const int64_t end = (position < 0 ? before : static_cast<int64_t>(position)) + size;
+                const int64_t growth = end > before ? mcClustersFor(end) - mcClustersFor(before) : 0;
+                if (growth > 0 && mcUsedClustersLocked(it->second.port) + growth > kMcTotalClusters)
+                {
+                    result = kMcResultFullDevice;
                 }
                 else
                 {
-                    std::clearerr(it->second.file);
+                    const size_t bytesWritten = std::fwrite(src, 1u, static_cast<size_t>(size), file);
+                    result = std::ferror(file) ? kMcResultDeniedPermit : static_cast<int32_t>(bytesWritten);
+                    if (!std::ferror(file))
+                    {
+                        std::fflush(file);
+                    }
+                    else
+                    {
+                        std::clearerr(file);
+                    }
+                    if (growth > 0)
+                        mcInvalidateUsageLocked(it->second.port);
                 }
             }
 

@@ -34,6 +34,7 @@ namespace ps2_stubs
         int32_t cvFileCursor = 0;
         std::array<MemoryCardDebugPort, 2> ports{};
         std::vector<MemoryCardDebugOpenFile> openFiles;
+        uint64_t directoryWalks = 0;   // recursive walks of a card directory so far (Sprint 10 Q7: once per change, not per poll)
     };
 
     // One component of a guest memory-card path, checked before it is ever joined onto a host path.
