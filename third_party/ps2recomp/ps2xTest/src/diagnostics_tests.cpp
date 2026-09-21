@@ -220,5 +220,17 @@ void register_diagnostics_tests()
             t.IsTrue(std::count(clipped.begin(), clipped.end(), 'm') < 10, "the middle is gone (the only m left is the marker's)");
             t.Equals(diag::clipLog("short", 1000, 2000), std::string("short"), "a log that fits is left alone");
         });
+
+        // Sprint 9 Goal 3 Task 7: the game's own account of its knobs travels with a report, so "it ignored my
+        // setting" and "a forgotten variable changed the game" are both answered from the zip.
+        tc.Run("versions.txt carries the game's [knobs] line, or says there was none", [](TestCase &t)
+        {
+            diag::Inputs in = inputs();
+            in.logText = std::string(kLog) + "[knobs] dev=0 set: PS2X_GS_SCALE=2 | ignored without --dev: PS2X_GS_BACKEND\r\n";
+            t.IsTrue(diag::versionsText(in).find("knobs: [knobs] dev=0 set: PS2X_GS_SCALE=2 | ignored without --dev: PS2X_GS_BACKEND\n") != std::string::npos,
+                     "the line as the game wrote it, CR dropped");
+            t.IsTrue(diag::versionsText(inputs()).find("knobs: no [knobs] line in this log\n") != std::string::npos, "an older runner, or a run that died first");
+            t.Equals(diag::knobsLine("[audio] only\n"), std::string("no [knobs] line in this log\n"), "the function by itself");
+        });
     });
 }

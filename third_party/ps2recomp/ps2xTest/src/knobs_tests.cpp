@@ -184,17 +184,18 @@ void register_knobs_tests()
                 {"PS2X_GS_BACKEND", "cpu"},
                 {"PS2X_GS_SCALE", "1"},
                 {"PS2X_PEEK", "0x416054:3,*0x408c58:64,*0x408c58+0xc0*:32,*0x408c58+0x400:12"},
+                {"PS2X_SOCOM2_LOGIN_PASS", "socom"},   // Goal 9's password: five characters, under the zip scrubber's floor (R208)
                 {"PS2X_TEST_SUITE", "Knobs"},
                 {"PS2X_WINDOW_SIZE", "1280x896"},
             };
             t.Equals(ps2x::knobs::describe(set, false),
-                     std::string("[knobs] dev=0 set: PS2X_CD_IMAGE=\"SOCOM II (USA).iso\" PS2X_WINDOW_SIZE=1280x896"
+                     std::string("[knobs] dev=0 set: PS2X_CD_IMAGE=\"SOCOM II (USA).iso\" PS2X_SOCOM2_LOGIN_PASS=[redacted] PS2X_WINDOW_SIZE=1280x896"
                                  " | ignored without --dev: PS2X_GS_BACKEND PS2X_PEEK"),
-                     "a stranger: the default-valued scale is not news, the test-only name never is, the path keeps no directory");
+                     "a stranger: the default-valued scale is not news, the test-only name never is, the path keeps no directory, the password is never written");
             t.Equals(ps2x::knobs::describe(set, true),
                      std::string("[knobs] dev=1 set: PS2X_CD_IMAGE=\"SOCOM II (USA).iso\" PS2X_GS_BACKEND=cpu"
-                                 " PS2X_PEEK=0x416054:3,*0x408c58:64,*0x408c58+0xc0*:... PS2X_WINDOW_SIZE=1280x896"),
-                     "a developer: every set knob, values clipped at 40 characters");
+                                 " PS2X_PEEK=0x416054:3,*0x408c58:64,*0x408c58+0xc0*:... PS2X_SOCOM2_LOGIN_PASS=[redacted] PS2X_WINDOW_SIZE=1280x896"),
+                     "a developer: every set knob, values clipped at 40 characters, the password redacted for a developer too");
             t.Equals(ps2x::knobs::describe({}, false), std::string("[knobs] dev=0 set: none"), "nothing set");
         });
 
@@ -257,6 +258,26 @@ void register_knobs_tests()
             for (const std::string &name : shipping)
                 t.IsTrue(sent.count(name) == 1, name + ": Shipping, so config.json must be able to set it");
             t.Equals(static_cast<int>(shipping.size()), 20, "twenty settings: the plan's seventeen, PS2X_INPUT_MAPPING (Goal 8) and the two login knobs (Goal 9)");
+        });
+
+        // ---- Sprint 9 Goal 3 Task 7: the flip ---------------------------------------------------------------
+
+        tc.Run("enforcement is on by default: a process that says nothing is a stranger's", [](TestCase &t)
+        {
+            // ps2x_tests' main calls setDevMode(true) and nothing calls setEnforcement: what is read here is the default.
+            t.IsTrue(ps2x::knobs::enforcement(), "Sprint 9 Goal 3 Task 7");
+        });
+
+        tc.Run("the behaviour-changing switches are Flags: 0 no longer switches one on", [](TestCase &t)
+        {
+            for (const char *name : {"PS2X_GIF_PRIORITY_SORT", "PS2X_GS_NO_DIRTY_REFRESH", "PS2X_GS_NO_TEX_REVALIDATE", "PS2X_GS_NO_ZTEST",
+                                     "PS2X_SOCOM2_PAD", "PS2X_VIF1_NO_IRQ_STALL", "PS2X_VU1_FMAC_CHECK", "PS2X_VU1_XGKICK_CYCLE_EXACT"})
+            {
+                const ps2x::knobs::Entry *e = ps2x::knobs::find(name);
+                t.IsTrue(e != nullptr && e->kind == ps2x::knobs::Kind::Flag, std::string(name) + ": Kind::Flag, read with knobOn");
+            }
+            const ps2x::knobs::Entry *pad = ps2x::knobs::find("PS2X_SOCOM2_PAD");
+            t.IsTrue(pad != nullptr && std::string(pad->dflt) == "1", "the pad is on unless someone turns it off (R160)");
         });
     });
 }

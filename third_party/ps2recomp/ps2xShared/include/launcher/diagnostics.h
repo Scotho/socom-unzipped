@@ -24,6 +24,7 @@ namespace launcher::diagnostics
     std::string scrub(const std::string &text, const std::string &homeDir);
     std::string glCapsLines(const std::string &logText);
     std::string crashRecord(const std::string &logText);
+    std::string knobsLine(const std::string &logText);   // the game's [knobs] line(s), or a sentence saying there is none (Sprint 9 Goal 3)
     std::string joinClipped(const std::string &head, const std::string &tail, uint64_t omittedBytes);
     std::string clipLog(const std::string &logText, size_t headBytes = kLogHeadBytes, size_t tailBytes = kLogTailBytes);
 

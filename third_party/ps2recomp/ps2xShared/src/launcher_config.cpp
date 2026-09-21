@@ -285,7 +285,23 @@ namespace launcher
     }
 
 
-    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours)
+    bool isKnobKey(const std::string &key)
+    {
+        static const char kPrefix[] = "PS2X_";
+        if (key.size() < sizeof(kPrefix) - 1)
+            return false;
+        for (size_t i = 0; i + 1 < sizeof(kPrefix); ++i)
+        {
+            char c = key[i];
+            if (c >= 'a' && c <= 'z')
+                c = static_cast<char>(c - 'a' + 'A');
+            if (c != kPrefix[i])
+                return false;
+        }
+        return true;
+    }
+
+    std::vector<std::string> mergeEnvironment(const char *const *base, const std::vector<std::string> &ours, bool keepInheritedKnobs)
     {
         // Ours, minus anything that is not a KEY=VALUE pair: execve would carry a bare "D" into the child's
         // environ, where nothing can read it back.
@@ -308,7 +324,8 @@ namespace launcher
             for (const std::string &o : mine)
                 if (o.rfind(key + "=", 0) == 0)
                     overridden = true;
-            if (!overridden)
+            // R156: an inherited PS2X_* the launcher did not choose stays behind unless this is a developer's launcher.
+            if (!overridden && (keepInheritedKnobs || !isKnobKey(key)))
                 merged.push_back(s);
         }
         for (const std::string &o : mine)

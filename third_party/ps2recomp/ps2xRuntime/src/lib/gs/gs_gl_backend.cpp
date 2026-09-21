@@ -2274,7 +2274,7 @@ void GSGlBackend::refreshDirtyRows(RenderTarget &rt)
     // its milliseconds are charged to clear=, submit= and present=, never to upload=.
     static const bool s_uploadTrace = ps2x::knob("PS2X_GS_UPLOAD_TRACE") != nullptr;
     // PS2X_GS_NO_DIRTY_REFRESH=1: A/B switch — drop the pending rows instead of re-reading them.
-    static const bool s_noRefresh = ps2x::knob("PS2X_GS_NO_DIRTY_REFRESH") != nullptr;
+    static const bool s_noRefresh = ps2x::knobOn("PS2X_GS_NO_DIRTY_REFRESH");
     if (s_noRefresh)
     {
         rt.dirtyRows = false;
@@ -3550,7 +3550,7 @@ uint32_t GSGlBackend::resolveTexture(const GSDrawState &state, uint32_t &outWidt
         // 551-1385 of them a second against 26-52 cached textures. Before throwing the texture
         // away, ask whether the CONTENT actually changed. PS2X_GS_NO_TEX_REVALIDATE=1 restores the
         // old behaviour for the A/B and the bisect.
-        static const bool s_noRevalidate = ps2x::knob("PS2X_GS_NO_TEX_REVALIDATE") != nullptr;
+        static const bool s_noRevalidate = ps2x::knobOn("PS2X_GS_NO_TEX_REVALIDATE");
         if (!s_noRevalidate && it->second.sourceHash != GsGlTextureIdentity::kUnhashable)
         {
             const auto tRev0 = s_uploadTraceResolve ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
@@ -3792,7 +3792,7 @@ void GSGlBackend::setupDrawState(const GSDrawState &state)
     if (!zte)
         ztst = 1u;
     // PS2X_GS_NO_ZTEST=1: A/B switch — every draw passes the depth test.
-    static const bool s_noZtest = ps2x::knob("PS2X_GS_NO_ZTEST") != nullptr;
+    static const bool s_noZtest = ps2x::knobOn("PS2X_GS_NO_ZTEST");
     if (s_noZtest)
         ztst = 1u;
     glEnable(GL_DEPTH_TEST);

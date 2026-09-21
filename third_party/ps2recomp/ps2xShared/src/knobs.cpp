@@ -13,10 +13,23 @@ namespace ps2x
         namespace
         {
             std::atomic<int> g_dev{-1};           // -1: not decided yet, PS2X_DEV decides on first use
-            std::atomic<bool> g_enforce{false};   // Sprint 9 Goal 3 Task 7 turns this on
+            std::atomic<bool> g_enforce{true};    // a process that says nothing is a stranger's (Sprint 9 Goal 3 Task 7)
 
             // Path knobs whose value may lie anywhere: a file that is only read, kept where the player keeps it.
             constexpr const char *kReadAnywhere[] = {"PS2X_CD_IMAGE"};
+
+            // Knobs whose value is a credential: the [knobs] line says one is set and never what it is (R208).
+            // The log and versions.txt travel in the diagnostics zip and the bug report, whose text scrubber
+            // has a six-character floor (diagnostics.cpp) that a short password passes under.
+            constexpr const char *kNeverPrinted[] = {"PS2X_SOCOM2_LOGIN_PASS"};
+
+            bool named(const char *const *list, size_t count, const char *name)
+            {
+                for (size_t i = 0; i < count; ++i)
+                    if (std::strcmp(name, list[i]) == 0)
+                        return true;
+                return false;
+            }
 
             bool sameComponent(const std::filesystem::path &a, const std::filesystem::path &b)
             {
@@ -36,6 +49,8 @@ namespace ps2x
 
             std::string printable(const Entry &e, const std::string &value)
             {
+                if (named(kNeverPrinted, sizeof(kNeverPrinted) / sizeof(kNeverPrinted[0]), e.name))
+                    return "[redacted]";
                 std::string v = value;
                 if (e.kind == Kind::Path)
                 {
@@ -108,9 +123,8 @@ namespace ps2x
         {
             if (name == nullptr || value == nullptr || *value == 0)
                 return true;
-            for (const char *anywhere : kReadAnywhere)
-                if (std::strcmp(name, anywhere) == 0)
-                    return true;
+            if (named(kReadAnywhere, sizeof(kReadAnywhere) / sizeof(kReadAnywhere[0]), name))
+                return true;
             namespace fs = std::filesystem;
             std::error_code ec;
             const fs::path home = fs::weakly_canonical(fs::current_path(ec), ec);

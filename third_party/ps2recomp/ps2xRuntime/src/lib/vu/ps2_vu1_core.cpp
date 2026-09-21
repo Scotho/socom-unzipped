@@ -1075,7 +1075,7 @@ void VU1Interpreter::startXgkick(uint32_t qwordAddress)
     // signature of a buffer re-templated by the program before the modeled transfer finished.
     // Default since 2026-09-08: the per-cycle model dropped SOCOM II's object geometry (buffers
     // re-templated before the modeled transfer finished); PS2X_VU1_XGKICK_CYCLE_EXACT=1 restores it.
-    static const bool s_immediate = ps2x::knob("PS2X_VU1_XGKICK_CYCLE_EXACT") == nullptr;
+    static const bool s_immediate = !ps2x::knobOn("PS2X_VU1_XGKICK_CYCLE_EXACT");
     if (s_immediate)
     {
         m_xgkick.cycleCredit = 0x40000000u;

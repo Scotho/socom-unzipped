@@ -276,14 +276,12 @@ namespace ps2_stubs
     // (0 = released). Host input injection (real button presses) hooks the same shared state later.
     Socom2PadState g_socom2Pad;   // refreshed from the host by socom2HostInputPoll (socom2_host_input.cpp)
 
-    // Reporting a connected pad through scePad2 makes the game run first-time controller
-    // configuration through Sony's libdbc/DBCMAN DS2 device-bus protocol (rpc 0x8000131a et al.),
-    // which is not yet emulated and stalls the config lookup. Until that path is implemented, the
-    // pad HLE is opt-in via PS2X_SOCOM2_PAD so the default boot stays in the (renderable) shell
-    // loop. When disabled these behave like the previous ret0 stubs (no controller).
+    // The pad HLE is on by default (Sprint 9 Goal 3, R160); PS2X_SOCOM2_PAD=0 boots with no controller, as
+    // every boot did before input worked. When disabled these behave like the previous ret0 stubs (no
+    // controller).
     bool socom2PadEnabled()
     {
-        static const bool on = (ps2x::knob("PS2X_SOCOM2_PAD") != nullptr);
+        static const bool on = ps2x::knobOn("PS2X_SOCOM2_PAD", true);   // R160: on unless 0
         return on;
     }
 

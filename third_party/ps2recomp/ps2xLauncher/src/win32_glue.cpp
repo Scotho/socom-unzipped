@@ -3,6 +3,7 @@
 // "#else" arms below are unreachable now and their behaviour lives in posix_glue.cpp.
 #ifdef _WIN32
 #include "win32_glue.h"
+#include "ps2x/knobs.h"
 
 #include <ctime>
 #include <cwchar>
@@ -269,8 +270,10 @@ namespace win32glue
         std::error_code ec;
         fs::create_directories(dir / "logs", ec);
         fs::create_directories(dir / "cards", ec);
-        // the environment: the current block plus our knobs (ours win)
+        // the environment: the current block plus our knobs (ours win). Sprint 9 Goal 3 (R156): an inherited
+        // PS2X_* variable reaches the game only when this launcher was itself started in developer mode.
         const std::vector<std::string> ours = launcher::environmentFor(config);
+        const bool keepInheritedKnobs = ps2x::knobs::devMode();   // R156
         std::string block;
         {
             std::vector<std::string> merged;
@@ -289,7 +292,7 @@ namespace win32glue
                 for (const std::string &o : ours)
                     if (o.rfind(key + "=", 0) == 0)
                         overridden = true;
-                if (!overridden && !key.empty() && key[0] != '=')
+                if (!overridden && !key.empty() && key[0] != '=' && (keepInheritedKnobs || !launcher::isKnobKey(key)))
                     merged.push_back(s);
             }
             if (env)
