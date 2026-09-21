@@ -2385,6 +2385,103 @@ void register_socom2_audio_tests()
                 t.IsTrue(out[i] > out[i - 1], "the resampled ramp is still monotonic across the seam");
         });
 
+        // Sprint 10 Q7 item 3 (KNOWN 110 b): lgaud read micFramesNeeded() frames from the host ring -- a CONSUMING
+        // read -- and handed them to the resampler, which for its last output sample interpolates between in[i0]
+        // and in[i0 + 1] and then advances by floor(phase + step * outFrames). Those two counts agree only when
+        // the step is a whole number (16000 -> 8000: 2.0). At every other rate the ring gave up one lookahead
+        // frame per read that the resampler never advanced past, so about half the reads at 11025 Hz (the rate
+        // the game asks for, decomp :48341) dropped one input frame at the seam. The monotonic-ramp case above
+        // cannot see it: a ramp with a frame missing is still a ramp. This one can: a linear resample of the
+        // ramp in[i] = 4 * i is the ramp read at the output positions, so every served sample must sit at
+        // 4 * k * step within one LSB of rounding, across every read boundary, at every rate MicFormat accepts.
+        tc.Run("a microphone stream pulled through the resampler in reads drops no input frame at any rate MicFormat accepts (KNOWN 110 b)", [](TestCase &t)
+        {
+            std::vector<int16_t> source(8192);   // 4 * 8191 fits an int16; 12 reads at step 4 need about 5650
+            for (size_t i = 0; i < source.size(); ++i)
+                source[i] = static_cast<int16_t>(4u * i);
+            size_t ratesChecked = 0, ratesWrong = 0;
+            uint32_t firstWrongRate = 0;
+            size_t firstWrongRead = 0, firstWrongSample = 0;
+            double firstWrongGot = 0.0, firstWrongWant = 0.0;
+            for (uint32_t rate = 4000u; rate <= 48000u; rate += 1u)
+            {
+                if (!MicFormat{rate, 1u, 16u}.supported())
+                    continue;
+                ++ratesChecked;
+                const double step = 16000.0 / static_cast<double>(rate);
+                MicResampleFeed feed;
+                size_t cursor = 0;              // the consuming ring: what is read is gone
+                size_t servedTotal = 0;
+                bool wrong = false;
+                // Reads of odd sizes so the seam lands at every phase; about 17 a second in the game.
+                const size_t sizes[5] = {97u, 130u, 61u, 211u, 89u};
+                for (size_t r = 0; r < 12 && !wrong; ++r)
+                {
+                    const size_t want = sizes[r % 5];
+                    std::vector<int16_t> out(want, 0);
+                    const size_t served = feed.pull(out.data(), want, 16000u, rate, [&](int16_t *dst, size_t n)
+                    {
+                        const size_t got = std::min(n, source.size() - cursor);
+                        std::memcpy(dst, source.data() + cursor, got * sizeof(int16_t));
+                        cursor += got;
+                        return got;
+                    });
+                    for (size_t k = 0; k < served; ++k)
+                    {
+                        const double wantValue = 4.0 * static_cast<double>(servedTotal + k) * step;
+                        if (std::fabs(static_cast<double>(out[k]) - wantValue) > 1.0)
+                        {
+                            wrong = true;
+                            if (ratesWrong == 0)
+                            {
+                                firstWrongRate = rate; firstWrongRead = r; firstWrongSample = k;
+                                firstWrongGot = out[k]; firstWrongWant = wantValue;
+                            }
+                            break;
+                        }
+                    }
+                    servedTotal += served;
+                    if (served != want && !wrong)
+                    {
+                        wrong = true;   // the source holds 8192 frames, enough for every rate here
+                        if (ratesWrong == 0)
+                        {
+                            firstWrongRate = rate; firstWrongRead = r; firstWrongSample = served;
+                            firstWrongGot = static_cast<double>(served); firstWrongWant = static_cast<double>(want);
+                        }
+                    }
+                }
+                ratesWrong += wrong ? 1u : 0u;
+            }
+            t.Equals(ratesChecked, size_t{44001}, "every rate from 4000 to 48000 Hz was walked");
+            if (ratesWrong != 0)
+                std::printf("mic feed: %zu of %zu rates lose a frame; first at %u Hz, read %zu sample %zu: got %.0f want %.1f\n",
+                            ratesWrong, ratesChecked, firstWrongRate, firstWrongRead, firstWrongSample, firstWrongGot, firstWrongWant);
+            t.Equals(ratesWrong, size_t{0}, "no rate loses or repeats an input frame across a read boundary");
+        });
+
+        tc.Run("micResampleLinear reports the input frames it has finished with, which is fewer than it needed to see", [](TestCase &t)
+        {
+            std::vector<int16_t> in(64, 0);
+            std::vector<int16_t> out(8, 0);
+            double phase = 0.0;
+            size_t consumed = 0;
+            // 16000 -> 11025: step 1.4512...; 8 outputs read up to in[floor(7 * step) + 1] = in[11], so 12 frames
+            // are NEEDED, but the stream has only advanced by floor(8 * step) = 11 -- in[11] is next read's in[0].
+            t.Equals(micFramesNeeded(8u, 16000u, 11025u, 0.0), size_t{12}, "needed: the lookahead included");
+            t.Equals(micResampleLinear(in.data(), 12u, 16000u, out.data(), 8u, 11025u, phase, &consumed), size_t{8}, "eight written");
+            t.Equals(consumed, size_t{11}, "consumed: floor(8 * step), one fewer than needed");
+            t.IsTrue(std::fabs(phase - (8.0 * 16000.0 / 11025.0 - 11.0)) < 1e-9, "the phase left is the fraction past the consumed frames");
+            // At a whole-number step the two agree, which is why the 8000 Hz harness never saw the defect.
+            phase = 0.0;
+            t.Equals(micFramesNeeded(8u, 16000u, 8000u, 0.0), size_t{16}, "needed at step 2");
+            t.Equals(micResampleLinear(in.data(), 16u, 16000u, out.data(), 8u, 8000u, phase, &consumed), size_t{8}, "eight written at step 2");
+            t.Equals(consumed, size_t{16}, "consumed at step 2: the same");
+            // Equal rates: a copy, all of it consumed.
+            t.Equals(micResampleLinear(in.data(), 8u, 16000u, out.data(), 8u, 16000u, phase, &consumed), size_t{8}, "copied");
+            t.Equals(consumed, size_t{8}, "a copy consumes what it copied");
+        });
+
         tc.Run("MicFormat refuses what we cannot serve", [](TestCase &t)
         {
             t.IsTrue(!MicFormat{11025u, 2u, 16u}.supported(), "stereo capture is refused");

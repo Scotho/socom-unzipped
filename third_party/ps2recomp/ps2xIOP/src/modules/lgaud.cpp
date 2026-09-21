@@ -140,7 +140,7 @@ namespace ps2x::iop::detail
                 m_handle = 0u;
                 m_hintSent = false;
                 m_bytesRead = 0u;
-                m_phase = 0.0;
+                m_feed.reset();
                 m_format = MicFormat{};
                 m_playbackFormat = MicFormat{};
                 m_payload.clear();
@@ -330,7 +330,7 @@ namespace ps2x::iop::detail
                     m_open = false;
                     m_recording = false;
                     m_handle = 0u;
-                    m_phase = 0.0;
+                    m_feed.reset();
                     answer(kStatusOk, kStateSteady);
                     return;
 
@@ -342,7 +342,7 @@ namespace ps2x::iop::detail
                     }
                     m_recording = true;
                     m_bytesRead = 0u;
-                    m_phase = 0.0;
+                    m_feed.reset();
                     // And again here, which is the one that matters: the game opens the headset long
                     // before it presses talk, so whatever accumulated in between is the stale second the
                     // first Reads used to serve -- heard as voice arriving ~1 s late.
@@ -524,7 +524,7 @@ namespace ps2x::iop::detail
                 m_handle = m_host.allocateIopHandle(IopHandleKind::RpcPacket) | kHandleTag;
                 m_open = true;
                 m_recording = false;
-                m_phase = 0.0;
+                m_feed.reset();
                 m_bytesRead = 0u;
                 // The host has been capturing since boot; nothing it buffered before the game opened the
                 // headset belongs to this session (Sprint 8 review MUST FIX).
@@ -560,12 +560,12 @@ namespace ps2x::iop::detail
                 uint32_t bytes = 0u;
                 if (wantFrames != 0u)
                 {
-                    const size_t needFrames = micFramesNeeded(wantFrames, kRingSampleRate, m_format.rate, m_phase);
-                    m_scratch.assign(needFrames, 0);
-                    const size_t gotFrames = m_host.micRead(m_scratch.data(), needFrames);
+                    // Sprint 10 Q7 (KNOWN 110 b): the ring's read is consuming, and the resampler needs to SEE one
+                    // frame past what it advances over, so the feed carries that lookahead into the next read
+                    // instead of losing it -- which this loop did on about half the reads at 11025 Hz.
                     m_out.assign(wantFrames, 0);
-                    const size_t outFrames = micResampleLinear(m_scratch.data(), gotFrames, kRingSampleRate,
-                                                              m_out.data(), wantFrames, m_format.rate, m_phase);
+                    const size_t outFrames = m_feed.pull(m_out.data(), wantFrames, kRingSampleRate, m_format.rate,
+                                                         [this](int16_t *dst, size_t n) { return m_host.micRead(dst, n); });
                     bytes = static_cast<uint32_t>(outFrames * 2u);
                 }
                 // Reply words first, then the payload -- the EE memcpys from reply+0x30 for reply[0x20] bytes.
@@ -641,11 +641,10 @@ namespace ps2x::iop::detail
             MicFormat m_playbackFormat{};
             uint64_t m_bytesRead = 0u;
             uint64_t m_bytesWritten = 0u;
-            double m_phase = 0.0;
+            MicResampleFeed m_feed;
             std::array<uint8_t, 4> m_gain{};
             std::array<uint8_t, 16> m_mixer{};
             std::vector<uint8_t> m_payload;
-            std::vector<int16_t> m_scratch;
             std::vector<int16_t> m_out;
             std::vector<uint8_t> m_reply;
         };
