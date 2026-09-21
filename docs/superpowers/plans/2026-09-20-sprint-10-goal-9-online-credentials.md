@@ -736,7 +736,7 @@ git commit -m "feat(harness): --prefilled -- ours logs in from the launcher's va
 
 **Split (2026-09-21):** the agent's half is this file and research/38 (the controller owns CURRENT_SPRINT,
 HUMAN_TASKS, KNOWN, PLAYTEST and the message to the story session); those rows are written when Task 6's two
-logins are in, and they need from here: the three proposed rulings (P-A, R201, R202 -- to number), the KNOWN
+logins are in, and they need from here: the three proposed rulings (R200, R201, R202 -- to number), the KNOWN
 addition (a launcher-typed name that differs from the card's saved persona is a create-persona login, which
 is correct; and a name the keyboard cannot type -- a space, an accent -- is silently reduced to what it can,
 so a persona with such a character does not exist and cannot be typed on ONLINE either), and the HUMAN_TASKS
@@ -754,7 +754,7 @@ git commit -m "docs: Sprint 10 Goal 9 recorded -- the ONLINE tab's name and pass
 
 | Task | Commit | RED | GREEN |
 |---|---|---|---|
-| 1 | `f2171b0` research/38 (no toml line: P-A) | -- | the table: `0x38D770`, `0x49EC70`, caps 14 / 12, Purpose + SkbName |
+| 1 | `f2171b0` research/38 (no toml line: R200) | -- | the table: `0x38D770`, `0x49EC70`, caps 14 / 12, Purpose + SkbName |
 | 2 | `103122a` the wrap, the pure header, 4 cases | `'runtime/socom2_osk_prefill.h' file not found` | Socom2OskPrefill 4/4 |
 | 3 | `d30729d` config + environment + normalisers | `no member named 'loginName' in 'launcher::Config'` | the round-trip case |
 | 4 | `c145d39` ONLINE fields, masked, help, ABOUT, screenshots | "both fields are laid out" (+3); then "with its caption still inside the body" at pitch 56 | the layout case at both sizes; 42 PNGs |
@@ -770,7 +770,7 @@ the worktree's git-ignored `logs/osk/` (`build2.log` RED, `build3.log` Tasks 2-3
 
 **What is left, in order, all the controller's:** Task 2 Step 5 (rebuild the runner, suite, a gate with the
 variables unset); Task 6 (`--prefilled`, two driven logins, `logs/parity/s10_g9_prefill_gate`); Task 7 Step 1
-(the rows, the numbering of P-A/R201/R202, the story message); the owner's login (HUMAN_TASKS).
+(the rows, the numbering of R200/R201/R202, the story message); the owner's login (HUMAN_TASKS).
 
 ## Self-review against research/37
 
